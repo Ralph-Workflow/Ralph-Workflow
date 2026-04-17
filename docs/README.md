@@ -9,6 +9,7 @@ Start here for the maintained package:
 - `../ralph-python/README.md` — installation, development, and API overview
 - `../ralph-python/CONTRIBUTING.md` — contributor workflow for the Python package
 - `agents/verification.md` — required verification commands
+- `agents/parallelization.md` — parallel development mode guide
 - package docstrings under `../ralph-python/ralph/` — authoritative API-level pydoc
 
 ## Current architecture entry points

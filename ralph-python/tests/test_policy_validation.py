@@ -44,6 +44,7 @@ from ralph.policy.validation import (
 )
 
 ValidationError = importlib.import_module("pydantic").ValidationError
+DEFAULT_MAX_WORK_UNITS = 50
 
 
 class TestAgentsPolicyValidation:
@@ -134,6 +135,14 @@ class TestDefaultPolicyLoading:
         bundle = load_policy(default_dir)
 
         assert bundle.pipeline.terminal_phase == "complete"
+
+    def test_default_pipeline_parallel_execution_max_work_units(self) -> None:
+        """Test that default pipeline loads the work unit cap from TOML."""
+        default_dir = Path(__file__).parent.parent / "ralph" / "policy" / "defaults"
+        bundle = load_policy(default_dir)
+
+        assert bundle.pipeline.parallel_execution is not None
+        assert bundle.pipeline.parallel_execution.max_work_units == DEFAULT_MAX_WORK_UNITS
 
     def test_all_pipeline_drains_are_bound(self) -> None:
         """Test that every drain used in pipeline.phases is bound in agents.agent_drains.
@@ -687,3 +696,64 @@ class TestValidateWorkUnitsAgainstPolicy:
 
         with pytest.raises(PolicyValidationError, match="max_parallel_workers"):
             validate_work_units_against_policy(work_units, pipeline)
+
+    def test_work_units_count_cap_exceeded(self) -> None:
+        default_dir = Path(__file__).parent.parent / "ralph" / "policy" / "defaults"
+        bundle = load_policy(default_dir)
+        work_units = parse_work_units_from_artifact(
+            {
+                "work_units": [
+                    {
+                        "unit_id": f"u{i}",
+                        "description": f"Work unit {i}",
+                        "allowed_directories": ["src"],
+                    }
+                    for i in range(51)
+                ]
+            }
+        )
+        assert work_units is not None
+
+        with pytest.raises(PolicyValidationError, match="exceeds cap"):
+            validate_work_units_against_policy(work_units, bundle.pipeline)
+
+    def test_work_units_count_cap_custom(self) -> None:
+        pipeline = self._minimal_pipeline(
+            parallel_execution=ParallelExecutionPolicy(
+                max_parallel_workers=8,
+                max_work_units=3,
+            )
+        )
+
+        allowed_work_units = parse_work_units_from_artifact(
+            {
+                "work_units": [
+                    {
+                        "unit_id": f"u{i}",
+                        "description": f"Work unit {i}",
+                        "allowed_directories": ["src"],
+                    }
+                    for i in range(3)
+                ]
+            }
+        )
+        assert allowed_work_units is not None
+
+        validate_work_units_against_policy(allowed_work_units, pipeline)
+
+        rejected_work_units = parse_work_units_from_artifact(
+            {
+                "work_units": [
+                    {
+                        "unit_id": f"u{i}",
+                        "description": f"Work unit {i}",
+                        "allowed_directories": ["src"],
+                    }
+                    for i in range(4)
+                ]
+            }
+        )
+        assert rejected_work_units is not None
+
+        with pytest.raises(PolicyValidationError, match="exceeds cap"):
+            validate_work_units_against_policy(rejected_work_units, pipeline)

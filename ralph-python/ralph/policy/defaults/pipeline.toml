@@ -115,6 +115,7 @@ budget_state = "exhausted"
 [parallel_execution]
 source = "planning_artifact_work_units"
 max_parallel_workers = 8
+max_work_units = 50
 require_allowed_directories = true
 
 entry_phase = "planning"

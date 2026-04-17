@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import subprocess
+from types import SimpleNamespace
 from typing import TYPE_CHECKING
 
 import pytest
 from git import Repo
 
+from ralph.git.rebase import rebase_continuation as continuation_module
 from ralph.git.rebase.rebase_continuation import (
     ConflictRemainingError,
     NoRebaseInProgressError,
@@ -20,29 +22,60 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-def test_continue_rebase_finishes_conflicted_rebase(tmp_git_repo: Path) -> None:
+def test_continue_rebase_finishes_conflicted_rebase(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
     """Continuing after resolving conflicts completes the rebase."""
 
-    base_branch = _setup_conflicted_rebase(tmp_git_repo)
-    assert rebase_in_progress_at(tmp_git_repo)
-    assert not verify_rebase_completed_at(tmp_git_repo, base_branch)
+    state = {"in_progress": True}
+    fake_repo = SimpleNamespace(
+        head=SimpleNamespace(is_detached=False),
+        commit=lambda _branch: object(),
+    )
 
-    _resolve_conflict(tmp_git_repo)
-    continue_rebase_at(tmp_git_repo)
+    monkeypatch.setattr(continuation_module, "_open_repo", lambda _repo_root: fake_repo)
+    monkeypatch.setattr(
+        continuation_module,
+        "_rebase_in_progress_impl",
+        lambda _repo: state["in_progress"],
+    )
+    monkeypatch.setattr(continuation_module, "_has_index_conflicts", lambda _repo: False)
+    monkeypatch.setattr(continuation_module, "_head_is_descendant", lambda *_args: True)
 
-    assert not rebase_in_progress_at(tmp_git_repo)
-    assert verify_rebase_completed_at(tmp_git_repo, base_branch)
+    def fake_run(*_args, **_kwargs) -> subprocess.CompletedProcess[str]:
+        state["in_progress"] = False
+        return subprocess.CompletedProcess(["git", "rebase", "--continue"], 0, "", "")
+
+    monkeypatch.setattr(continuation_module.subprocess, "run", fake_run)
+
+    assert rebase_in_progress_at(tmp_path)
+    assert not verify_rebase_completed_at(tmp_path, "main")
+
+    continue_rebase_at(tmp_path)
+
+    assert not rebase_in_progress_at(tmp_path)
+    assert verify_rebase_completed_at(tmp_path, "main")
 
 
-def test_continue_rebase_requires_clean_index(tmp_git_repo: Path) -> None:
+def test_continue_rebase_requires_clean_index(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
     """The continuation helper refuses to run until conflicts are resolved."""
 
-    _setup_conflicted_rebase(tmp_git_repo)
+    monkeypatch.setattr(
+        continuation_module,
+        "_open_repo",
+        lambda _repo_root: SimpleNamespace(head=SimpleNamespace(is_detached=False)),
+    )
+    monkeypatch.setattr(continuation_module, "_rebase_in_progress_impl", lambda _repo: True)
+    monkeypatch.setattr(continuation_module, "_has_index_conflicts", lambda _repo: True)
 
     with pytest.raises(ConflictRemainingError):
-        continue_rebase_at(tmp_git_repo)
+        continue_rebase_at(tmp_path)
 
-    assert rebase_in_progress_at(tmp_git_repo)
+    assert rebase_in_progress_at(tmp_path)
 
 
 def test_continue_rebase_requires_active_rebase(tmp_git_repo: Path) -> None:

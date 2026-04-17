@@ -54,6 +54,15 @@ class WorkspaceScope:
         object.__setattr__(self, "local_config_path", canonical_local_config)
         object.__setattr__(self, "propagated_config_paths", canonical_propagated_configs)
 
+    @classmethod
+    def for_worktree(
+        cls,
+        worktree_path: Path,
+        allowed_directories: tuple[str, ...],
+    ) -> WorkspaceScope:
+        allowed_roots = tuple(worktree_path / ad for ad in allowed_directories)
+        return cls(root=worktree_path, allowed_roots=allowed_roots)
+
 
 def _default_local_config_path(root: Path) -> Path:
     return root / CONFIG_DIR_NAME / WORKSPACE_CONFIG_NAME

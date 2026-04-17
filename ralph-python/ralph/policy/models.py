@@ -204,6 +204,11 @@ class ParallelExecutionPolicy(BaseModel):  # type: ignore[explicit-any]
         ge=1,
         description="Maximum allowed concurrent work units from planning artifact",
     )
+    max_work_units: int = Field(
+        default=50,
+        ge=1,
+        description="Maximum allowed total work units from planning artifact",
+    )
     require_allowed_directories: bool = Field(
         default=True,
         description="Require each work unit to declare allowed_directories",

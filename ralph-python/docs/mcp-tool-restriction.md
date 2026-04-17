@@ -6,11 +6,11 @@ Ralph enforces MCP-only tooling by disabling native agent tools at the CLI and c
 
 Ralph is designed to run agentic loops where every tool call produces an auditable action with a traceable identity. Native agent tools like `Read`, `Write`, `Edit`, and `Bash` bypass the MCP bridge and therefore break Ralph's audit trail, capability mapping, and policy enforcement.
 
-Ralph's prompts claim "Native agent tools are DISABLED". This document describes how the CLI and config layer enforces that claim at invocation time for each supported backend:
+Ralph's prompts claim "Native agent tools are DISABLED". This document describes how the CLI and config layer enforces that claim at invocation time for each supported backend, and where config preservation is separate from strict policy enforcement:
 
-- **Claude Code** receives a full empty-allowlist plus strict-MCP-config flags.
+- **Claude Code** receives `--tools ""` plus strict-MCP-config synthesis that preserves supported user MCP servers.
 - **OpenCode** receives a config payload that explicitly sets each native tool to `false`.
-- **Codex** receives a TOML config that disables several built-in features, but core editing primitives cannot be fully removed.
+- **Codex** receives a TOML config that preserves existing sections and disables several built-in features, but core editing primitives cannot be fully removed.
 
 ## 2. Per-CLI Guarantees
 
@@ -19,10 +19,9 @@ Ralph's prompts claim "Native agent tools are DISABLED". This document describes
 Claude Code supports CLI flags that together remove all native tools from a session:
 
 - `--tools ""` — An empty allowlist disables every native tool. The empty string is not a wildcard; it means "allow nothing".
-- `--strict-mcp-config` — Ignores global and workspace MCP config files. Only the config explicitly passed via `--mcp-config` is used.
-- `--allowedTools <explicit list>` — After clearing native tools, Ralph passes an explicit allowlist containing only Ralph MCP tool names (e.g., `mcp__ralph__read_file`).
+- `--strict-mcp-config` — Ignores Claude's default global and workspace MCP config discovery. Ralph compensates by reading supported user config files (`~/.claude.json`, workspace `.mcp.json`, workspace `.claude.json`), merging any existing `mcpServers` entries into the generated `--mcp-config` payload, and then adding Ralph's own MCP server.
 
-The combination means Claude Code has no access to any tool that is not a Ralph MCP tool. There is no known escape hatch in the current version.
+Ralph intentionally does **not** pass `--allowedTools` for Claude. Current Claude Code behavior treats `--tools` as the built-in tool restriction surface, while `--allowedTools` acts as an additional MCP permission gate with broken wildcard support. Omitting `--allowedTools` keeps built-in tools disabled via `--tools ""` while allowing merged MCP servers — Ralph and user-defined custom servers alike — to remain callable.
 
 Reference: https://docs.anthropic.com/en/docs/claude-code/cli-reference
 
@@ -41,13 +40,13 @@ disable_overrides = dict.fromkeys(OPENCODE_NATIVE_TOOLS_TO_DISABLE, False)
 config_obj["tools"] = {**existing_tools, **disable_overrides}
 ```
 
-Because Ralph's disable entries come after the spread of existing user config, Ralph's `false` values win over any user-provided `tools.bash: true`. The MCP policy overrides user enables.
+Because Ralph's disable entries come after the spread of existing user config, Ralph's `false` values win over any user-provided `tools.bash: true`. The MCP policy overrides user enables while still preserving unrelated `mcp`, `permission`, and non-native `tools` entries.
 
 Reference: https://opencode.ai/docs
 
 ### Codex — Best-Effort Only
 
-Codex is configured via a `config.toml` file. Ralph prepares this file in `_prepare_codex_home()` and sets the following in the `[features]` block:
+Codex is configured via a `config.toml` file. Ralph prepares this file in `_prepare_codex_home()` by preserving the user's existing `config.toml`, replacing any stale `[mcp_servers.ralph]` block with the live run-scoped endpoint, and setting the following in the `[features]` block:
 
 ```
 features.shell_tool = false
@@ -72,7 +71,7 @@ Reference: https://platform.openai.com/docs/codex
 ### Claude Code
 
 - **Bug #25589**: `--disallowedTools` ignores MCP tools when combined with `--mcp-config`. Ralph avoids this by using `--tools ""` instead of a disallowed-list approach.
-- **Bug #13077**: `--allowedTools` wildcards do not match MCP tools. Ralph lists each Ralph tool name explicitly in `--allowedTools` rather than using a pattern.
+- **Bug #13077**: `--allowedTools` wildcards do not match MCP tools. Ralph avoids this path entirely for Claude so preserved custom MCP servers do not become configured-but-denied.
 - **Bug #32079**: `--tools ""` combined with `--mcp-config` and a system prompt larger than 18 KB causes Claude Code to exit silently. Ralph's system prompt is under 1 KB. If the prompt ever grows beyond 18 KB, this document must be updated and a mitigation applied.
 
 ### OpenCode
@@ -89,9 +88,9 @@ Reference: https://platform.openai.com/docs/codex
 
 Ralph's test suite covers enforcement through agent invocation tests:
 
-- **`tests/test_agents_invoke.py`** contains `test_claude_native_tools_disabled()` which verifies the command-line flags are constructed correctly and that an empty tools allowlist is passed.
-- The same file has `test_opencode_native_tools_disabled()` which verifies the JSON config payload contains `false` for all 16 native tool names.
-- For Codex, `test_codex_features_disabled()` in the same file checks that the generated `config.toml` contains the expected feature-disabling entries.
+- **`tests/test_agents_invoke.py`** verifies Claude uses `--tools ""`, merges supported user MCP config sources, and overrides stale user `ralph` server definitions with the live endpoint.
+- The same file verifies OpenCode JSON config generation disables all 16 native tools while preserving unrelated `mcp`, `permission`, and user tool entries.
+- For Codex, the same file checks that the generated `config.toml` preserves unrelated sections, preserves custom `mcp_servers`, and rewrites any stale `[mcp_servers.ralph]` block to the live endpoint.
 
 Transport selection and alias routing are verified in **`tests/test_agent_registry.py`**, which checks that `ccs` aliases resolve to the correct CLI and that each CLI receives the appropriate transport configuration.
 
@@ -99,7 +98,7 @@ Run these tests with:
 
 ```bash
 cd ralph-python
-pytest tests/test_agents_invoke.py -v -k "native_tools_disabled or features_disabled"
+pytest tests/test_agents_invoke.py -q
 ```
 
 ## 5. Follow-Up

@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 
 PYTHON = sys.executable
 EXIT_CODE = 3
-TIMEOUT_SECONDS = 0.2
+TIMEOUT_SECONDS = 0.05
 SYNC_FAILURE_SCRIPT = (
     f"import sys; print('hello'); print('oops', file=sys.stderr); raise SystemExit({EXIT_CODE})"
 )

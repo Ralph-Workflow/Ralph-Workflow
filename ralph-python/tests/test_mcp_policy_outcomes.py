@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from ralph.mcp.policy_outcomes import APPROVED_POLICY_OUTCOMES, is_policy_approved
-from ralph.mcp.tool_names import RalphToolName, claude_tool_name
+from ralph.mcp.tool_names import RalphToolName, claude_tool_name, claude_tool_name_prefix
 
 
 def test_is_policy_approved_accepts_true_and_known_strings() -> None:
@@ -34,3 +34,10 @@ def test_approved_policy_outcomes_are_frozen_and_complete() -> None:
 def test_ralph_tool_name_is_string_enum_compatible() -> None:
     assert RalphToolName.SUBMIT_ARTIFACT == "ralph_submit_artifact"
     assert claude_tool_name(RalphToolName.SUBMIT_ARTIFACT) == "mcp__ralph__ralph_submit_artifact"
+
+
+def test_claude_tool_name_supports_non_ralph_server_names() -> None:
+    assert claude_tool_name("sequentialthinking", server_name="sequential-thinking") == (
+        "mcp__sequential-thinking__sequentialthinking"
+    )
+    assert claude_tool_name_prefix(server_name="angular-cli") == "mcp__angular-cli__"

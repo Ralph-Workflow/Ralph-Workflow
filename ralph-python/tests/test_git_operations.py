@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import subprocess
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from git import Repo
@@ -35,28 +35,20 @@ def test_find_repo_root(tmp_git_repo: Path) -> None:
 
 def test_find_repo_root_prefers_active_worktree_root(tmp_path: Path) -> None:
     """Worktree paths should resolve to the active worktree, not the main checkout."""
-    main_repo = tmp_path / "main"
-    main_repo.mkdir()
-    repo = Repo.init(main_repo)
-    repo.config_writer().set_value("user", "name", "Test User").release()
-    repo.config_writer().set_value("user", "email", "test@example.com").release()
-    readme = main_repo / "README.md"
-    readme.write_text("main", encoding="utf-8")
-    repo.index.add(["README.md"])
-    repo.index.commit("initial commit")
-
     worktree = tmp_path / "feature-worktree"
-    subprocess.run(
-        ["git", "worktree", "add", str(worktree)],
-        cwd=main_repo,
-        check=True,
-        capture_output=True,
-        text=True,
+    fake_repo = SimpleNamespace(
+        working_tree_dir=str(worktree),
+        working_dir=str(tmp_path / "main"),
     )
     nested = worktree / "src"
-    nested.mkdir()
 
-    assert find_repo_root(nested) == worktree.resolve()
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr("ralph.git.operations.Repo", lambda *_args, **_kwargs: fake_repo)
+
+    try:
+        assert find_repo_root(nested) == worktree.resolve()
+    finally:
+        monkeypatch.undo()
 
 
 def test_find_repo_root_not_git() -> None:
@@ -76,16 +68,25 @@ def test_is_repo_clean(tmp_git_repo: Path) -> None:
     assert is_repo_clean(tmp_git_repo) is False
 
 
-def test_has_staged_changes(tmp_git_repo: Path) -> None:
+def test_has_staged_changes() -> None:
     """Test checking for staged changes."""
-    assert has_staged_changes(tmp_git_repo) is False
+    clean_repo = SimpleNamespace(
+        index=SimpleNamespace(diff=lambda _ref: []),
+        untracked_files=[],
+    )
+    dirty_repo = SimpleNamespace(
+        index=SimpleNamespace(diff=lambda _ref: [object()]),
+        untracked_files=[],
+    )
 
-    # Stage a change
-    readme = tmp_git_repo / "README.md"
-    readme.write_text("updated content")
-    stage_all(tmp_git_repo)
-
-    assert has_staged_changes(tmp_git_repo) is True
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr("ralph.git.operations.Repo", lambda *_args, **_kwargs: clean_repo)
+    try:
+        assert has_staged_changes(Path("/tmp/repo")) is False
+        monkeypatch.setattr("ralph.git.operations.Repo", lambda *_args, **_kwargs: dirty_repo)
+        assert has_staged_changes(Path("/tmp/repo")) is True
+    finally:
+        monkeypatch.undo()
 
 
 def test_stage_all(tmp_git_repo: Path) -> None:
@@ -100,35 +101,77 @@ def test_stage_all(tmp_git_repo: Path) -> None:
     assert len(staged) > 0
 
 
-def test_create_commit(tmp_git_repo: Path) -> None:
+def test_create_commit() -> None:
     """Test creating a commit."""
-    readme = tmp_git_repo / "README.md"
-    readme.write_text("new content")
-    stage_all(tmp_git_repo)
+    captured: dict[str, object] = {}
 
-    sha = create_commit(tmp_git_repo, "Test commit message")
+    class FakeCommit:
+        hexsha = "a" * FULL_SHA_LENGTH
 
-    assert len(sha) == FULL_SHA_LENGTH
-    assert is_repo_clean(tmp_git_repo)
+    class FakeConfig:
+        def get_value(self, section: str, key: str, default: str) -> str:
+            if (section, key) == ("user", "name"):
+                return "Test User"
+            if (section, key) == ("user", "email"):
+                return "test@example.com"
+            return default
+
+    def fake_config_reader() -> FakeConfig:
+        return FakeConfig()
+
+    class FakeIndex:
+        def commit(self, message: str, author, committer) -> FakeCommit:
+            captured["message"] = message
+            captured["author"] = author
+            captured["committer"] = committer
+            return FakeCommit()
+
+    fake_repo = SimpleNamespace(index=FakeIndex(), config_reader=fake_config_reader)
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr("ralph.git.operations.Repo", lambda *_args, **_kwargs: fake_repo)
+
+    try:
+        sha = create_commit(Path("/tmp/repo"), "Test commit message")
+    finally:
+        monkeypatch.undo()
+
+    assert sha == "a" * FULL_SHA_LENGTH
+    assert captured["message"] == "Test commit message"
 
 
-def test_create_commit_with_author(tmp_git_repo: Path) -> None:
+def test_create_commit_with_author() -> None:
     """Test creating a commit with custom author."""
-    readme = tmp_git_repo / "README.md"
-    readme.write_text("new content")
-    stage_all(tmp_git_repo)
+    captured: dict[str, object] = {}
 
-    sha = create_commit(
-        tmp_git_repo,
-        "Custom author commit",
-        author_name="Custom User",
-        author_email="custom@example.com",
-    )
+    class FakeCommit:
+        hexsha = "b" * FULL_SHA_LENGTH
 
-    repo = Repo(tmp_git_repo)
-    commit = repo.commit(sha)
-    assert commit.author.name == "Custom User"
-    assert commit.author.email == "custom@example.com"
+    class FakeIndex:
+        def commit(self, message: str, author, committer) -> FakeCommit:
+            captured["message"] = message
+            captured["author"] = author
+            captured["committer"] = committer
+            return FakeCommit()
+
+    fake_repo = SimpleNamespace(index=FakeIndex(), config_reader=lambda: None)
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr("ralph.git.operations.Repo", lambda *_args, **_kwargs: fake_repo)
+
+    try:
+        sha = create_commit(
+            Path("/tmp/repo"),
+            "Custom author commit",
+            author_name="Custom User",
+            author_email="custom@example.com",
+        )
+    finally:
+        monkeypatch.undo()
+
+    author = captured["author"]
+    assert sha == "b" * FULL_SHA_LENGTH
+    assert captured["message"] == "Custom author commit"
+    assert author.name == "Custom User"
+    assert author.email == "custom@example.com"
 
 
 def test_get_head_sha(tmp_git_repo: Path) -> None:
@@ -169,23 +212,25 @@ def test_append_to_gitignore_existing(tmp_git_repo: Path) -> None:
     assert ".new/" in content
 
 
-def test_merge_base(tmp_git_repo: Path) -> None:
+def test_merge_base() -> None:
     """Test finding merge base between commits."""
-    # Create two branches with commits
-    # Create a new commit on main
-    readme = tmp_git_repo / "README.md"
-    readme.write_text("update 1")
-    stage_all(tmp_git_repo)
-    sha1 = create_commit(tmp_git_repo, "Commit 1")
+    fake_base = SimpleNamespace(hexsha="c" * FULL_SHA_LENGTH)
 
-    readme.write_text("update 2")
-    stage_all(tmp_git_repo)
-    sha2 = create_commit(tmp_git_repo, "Commit 2")
+    class FakeRepo:
+        def merge_base(self, ref_a: str, ref_b: str) -> list[SimpleNamespace]:
+            assert {ref_a, ref_b} == {"sha1", "sha2"}
+            return [fake_base]
 
-    # Merge base should be the initial commit (before both new commits)
-    base = merge_base(tmp_git_repo, sha1, sha2)
-    # Both shas should have the same merge base (the commit before them)
-    base2 = merge_base(tmp_git_repo, sha2, sha1)
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr("ralph.git.operations.Repo", lambda *_args, **_kwargs: FakeRepo())
+
+    try:
+        base = merge_base(Path("/tmp/repo"), "sha1", "sha2")
+        base2 = merge_base(Path("/tmp/repo"), "sha2", "sha1")
+    finally:
+        monkeypatch.undo()
+
+    assert base == fake_base.hexsha
     assert base == base2
 
 

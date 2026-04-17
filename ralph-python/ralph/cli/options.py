@@ -136,28 +136,6 @@ def config_option(func: _AnyCallable) -> _AnyCallable:
     )(func)
 
 
-def developer_iters_option(func: _AnyCallable) -> _AnyCallable:
-    """Add developer iterations option decorator."""
-    return click.option(
-        "--developer-iters",
-        "-D",
-        type=int,
-        default=5,
-        show_default=True,
-        help="Number of developer agent iterations",
-    )(func)
-
-
-def reviewer_reviews_option(func: _AnyCallable) -> _AnyCallable:
-    """Add reviewer reviews option decorator."""
-    return click.option(
-        "--reviewer-reviews",
-        "-R",
-        type=int,
-        default=2,
-        show_default=True,
-        help="Number of review-fix cycles (0=skip review)",
-    )(func)
 
 
 AgentTable = Mapping[str, AgentConfig]

@@ -44,10 +44,13 @@ install-dev: dev
 
 # Testing
 test:
-	python -m ralph.verify_timeout --suite-timeout 10 -- pytest tests/ -q -n $(PYTEST_WORKERS) --override-ini addopts=''
+	uv run python -m ralph.verify_timeout --suite-timeout 10 -- pytest tests/ -q -n $(PYTEST_WORKERS)
 
-coverage:
-	pytest tests/ -q -n $(COVERAGE_WORKERS) --override-ini addopts='--cov=ralph' --cov-report=html
+coverage: test-cov
+
+test-cov:
+	uv run python -m ralph.verify_timeout --suite-timeout 10 -- pytest tests/ -q -n $(PYTEST_WORKERS)
+	uv run pytest tests/ -q --cov=ralph --cov-report=term-missing --cov-report=html
 
 # Linting
 lint:

@@ -25,6 +25,7 @@ from ralph.prompts.types import SessionCapabilities, capability_template_variabl
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from ralph.pipeline.work_units import WorkUnit
     from ralph.policy.models import PipelinePolicy
     from ralph.workspace.protocol import Workspace
 
@@ -138,6 +139,25 @@ def _merged_variables(base: dict[str, str], session_caps: SessionCapabilities) -
             tool_name_prefix=session_caps.tool_name_prefix,
         ),
     }
+
+
+def render_worker_prompt(unit: WorkUnit, base_prompt: str, policy: PipelinePolicy) -> str:
+    """Render the isolated developer prompt for a single parallel work unit."""
+
+    del policy
+    context = TemplateContext.default()
+    template = context.registry.get_template("worker_developer")
+    return render_template(
+        template,
+        {
+            "unit_id": unit.unit_id,
+            "description": unit.description,
+            "allowed_directories": json.dumps(unit.allowed_directories, indent=2),
+            "base_prompt": base_prompt,
+        },
+        context.partials,
+    )
+
 
 
 def tool_name_prefix_for_transport(transport: AgentTransport | None) -> str:

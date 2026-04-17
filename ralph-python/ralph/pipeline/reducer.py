@@ -11,23 +11,32 @@ no logging, and no mutable state. This makes it fully deterministic
 and easy to test.
 
 Routing is driven by the policy: phase transitions come from pipeline.toml,
-not hardcoded match arms. When no policy is provided, it falls back to
-the legacy hardcoded routing for backward compatibility with tests.
+not hardcoded match arms.
 """
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from ralph.config.enums import (
     PHASE_COMPLETE,
     PHASE_DEVELOPMENT,
+    PHASE_DEVELOPMENT_ANALYSIS,
     PHASE_FAILED,
+    PHASE_MERGE_INTEGRATION,
     PHASE_REVIEW,
     PipelinePhase,
 )
 from ralph.pipeline.effects import Effect, ExitFailureEffect, SaveCheckpointEffect
-from ralph.pipeline.events import Event, PipelineEvent
+from ralph.pipeline.events import (
+    Event,
+    PipelineEvent,
+    WorkerCompletedEvent,
+    WorkerFailedEvent,
+    WorkersMergeConflictEvent,
+    WorkerStartedEvent,
+)
 from ralph.pipeline.handoffs import (
     resolve_next_phase,
     resolve_phase_drain,
@@ -39,6 +48,7 @@ from ralph.pipeline.state import (
     PipelineState,
     RunMetrics,
 )
+from ralph.pipeline.worker_state import WorkerState, WorkerStatus
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -70,6 +80,30 @@ def reduce(
         Tuple of (new_state, effects). Effects are instructions for the
         effect handler to execute.
     """
+    if isinstance(event, WorkerStartedEvent):
+        new_state, effects = _handle_worker_started(state, event)
+        if state.work_units and not new_state.work_units:
+            new_state = new_state.copy_with(work_units=state.work_units)
+        return new_state, effects
+
+    if isinstance(event, WorkerCompletedEvent):
+        new_state, effects = _handle_worker_completed(state, event)
+        if state.work_units and not new_state.work_units:
+            new_state = new_state.copy_with(work_units=state.work_units)
+        return new_state, effects
+
+    if isinstance(event, WorkerFailedEvent):
+        new_state, effects = _handle_worker_failed(state, event)
+        if state.work_units and not new_state.work_units:
+            new_state = new_state.copy_with(work_units=state.work_units)
+        return new_state, effects
+
+    if isinstance(event, WorkersMergeConflictEvent):
+        new_state, effects = _handle_workers_merge_conflict(state, event)
+        if state.work_units and not new_state.work_units:
+            new_state = new_state.copy_with(work_units=state.work_units)
+        return new_state, effects
+
     handlers: dict[
         PipelineEvent,
         Callable[[PipelineState, PipelinePolicy | None], tuple[PipelineState, list[Effect]]],
@@ -91,11 +125,17 @@ def reduce(
         PipelineEvent.COMPLETE: _ignore_policy(_handle_complete),
         PipelineEvent.FAILED: _ignore_policy(_handle_failed),
         PipelineEvent.PHASE_ADVANCE: _handle_phase_advance,
+        PipelineEvent.FAN_OUT_STARTED: _ignore_policy(_handle_fan_out_started),
+        PipelineEvent.WORKERS_RESUMED: _ignore_policy(_handle_workers_resumed),
+        PipelineEvent.ALL_WORKERS_COMPLETE: _ignore_policy(_handle_all_workers_complete),
     }
     handler = handlers.get(event)
     if handler is None:
         return state, []
-    return handler(state, pipeline_policy)
+    new_state, effects = handler(state, pipeline_policy)
+    if state.work_units and not new_state.work_units:
+        new_state = new_state.copy_with(work_units=state.work_units)
+    return new_state, effects
 
 
 def _ignore_policy(
@@ -122,9 +162,11 @@ def _handle_agent_success(
     policy: PipelinePolicy | None,
 ) -> tuple[PipelineState, list[Effect]]:
     """Handle successful agent completion."""
-    if policy is not None:
-        return _policy_handle_agent_success(state, policy)
-    return _legacy_handle_agent_success(state)
+    if policy is None:
+        return _advance_to_terminal(
+            state, PHASE_FAILED, "No policy loaded for agent success routing"
+        )
+    return _policy_handle_agent_success(state, policy)
 
 
 def _policy_handle_agent_success(
@@ -154,39 +196,6 @@ def _policy_handle_agent_success(
         return _advance_to_terminal(
             state, PHASE_FAILED, f"Routing error after agent success in '{state.phase}': {exc}"
         )
-
-
-def _legacy_handle_agent_success(
-    state: PipelineState,
-) -> tuple[PipelineState, list[Effect]]:
-    """Legacy hardcoded agent success routing."""
-    if state.phase == PHASE_DEVELOPMENT:
-        if state.iteration + 1 < state.total_iterations:
-            new_state = state.copy_with(iteration=state.iteration + 1)
-            return new_state, []
-
-        new_state = state.copy_with(
-            phase=PHASE_REVIEW,
-            previous_phase=PHASE_DEVELOPMENT,
-            reviewer_pass=0,
-        )
-        return new_state, []
-
-    if state.phase == PHASE_REVIEW:
-        new_state = state.copy_with(
-            phase=PHASE_COMPLETE,
-            previous_phase=PHASE_REVIEW,
-        )
-        return new_state, []
-
-    if state.phase == "planning":
-        new_state = state.copy_with(
-            phase=PHASE_DEVELOPMENT,
-            previous_phase="planning",
-        )
-        return new_state, []
-
-    return state, []
 
 
 def _handle_agent_failure(state: PipelineState) -> tuple[PipelineState, list[Effect]]:
@@ -551,7 +560,7 @@ def _advance_phase(
     if target_phase in ("development_commit", "review_commit"):
         updates["commit"] = CommitState()
 
-    if target_phase == PHASE_DEVELOPMENT:
+    if target_phase == PHASE_DEVELOPMENT and state.phase != PHASE_DEVELOPMENT_ANALYSIS:
         updates["development_budget_remaining"] = max(0, state.development_budget_remaining - 1)
     elif target_phase == PHASE_REVIEW:
         updates["review_budget_remaining"] = max(0, state.review_budget_remaining - 1)
@@ -591,3 +600,89 @@ def _advance_to_terminal(
         effects.append(ExitFailureEffect(reason=reason))
 
     return new_state, effects
+
+
+def _handle_fan_out_started(state: PipelineState) -> tuple[PipelineState, list[Effect]]:
+    if not state.work_units or state.worker_states:
+        return state, []
+    new_worker_states = {
+        unit.unit_id: WorkerState(unit_id=unit.unit_id, status=WorkerStatus.PENDING)
+        for unit in state.work_units
+    }
+    return state.copy_with(worker_states=new_worker_states), []
+
+
+def _handle_workers_resumed(state: PipelineState) -> tuple[PipelineState, list[Effect]]:
+    if not state.worker_states:
+        return state, []
+    resumed_states = {
+        unit_id: (
+            worker_state.copy_with(status=WorkerStatus.PENDING)
+            if worker_state.status == WorkerStatus.RUNNING
+            else worker_state
+        )
+        for unit_id, worker_state in state.worker_states.items()
+    }
+    return state.copy_with(worker_states=resumed_states), []
+
+
+def _handle_worker_started(
+    state: PipelineState,
+    event: WorkerStartedEvent,
+) -> tuple[PipelineState, list[Effect]]:
+    if event.unit_id not in state.worker_states:
+        return state, []
+    updated = state.worker_states[event.unit_id].copy_with(
+        status=WorkerStatus.RUNNING, started_at=datetime.now(UTC)
+    )
+    return state.copy_with(worker_states={**state.worker_states, event.unit_id: updated}), []
+
+
+def _handle_worker_completed(
+    state: PipelineState,
+    event: WorkerCompletedEvent,
+) -> tuple[PipelineState, list[Effect]]:
+    if event.unit_id not in state.worker_states:
+        return state, []
+    updated = state.worker_states[event.unit_id].copy_with(
+        status=WorkerStatus.SUCCEEDED,
+        exit_code=event.exit_code,
+        commit_sha=event.commit_sha,
+        finished_at=datetime.now(UTC),
+    )
+    return state.copy_with(worker_states={**state.worker_states, event.unit_id: updated}), []
+
+
+def _handle_worker_failed(
+    state: PipelineState,
+    event: WorkerFailedEvent,
+) -> tuple[PipelineState, list[Effect]]:
+    if event.unit_id not in state.worker_states:
+        return state, []
+    updated = state.worker_states[event.unit_id].copy_with(
+        status=WorkerStatus.FAILED,
+        exit_code=event.exit_code,
+        error_message=event.error,
+        finished_at=datetime.now(UTC),
+    )
+    return state.copy_with(worker_states={**state.worker_states, event.unit_id: updated}), []
+
+
+def _handle_all_workers_complete(state: PipelineState) -> tuple[PipelineState, list[Effect]]:
+    if not state.worker_states or any(
+        ws.status != WorkerStatus.SUCCEEDED for ws in state.worker_states.values()
+    ):
+        return state, []
+    return state.copy_with(phase=PHASE_MERGE_INTEGRATION), []
+
+
+def _handle_workers_merge_conflict(
+    state: PipelineState,
+    event: WorkersMergeConflictEvent,
+) -> tuple[PipelineState, list[Effect]]:
+    unit_ids_str = ", ".join(event.conflicting_unit_ids)
+    return state.copy_with(
+        phase=PHASE_FAILED,
+        previous_phase=state.phase,
+        last_error=f"Merge conflict in workers: {unit_ids_str}",
+    ), []

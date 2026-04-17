@@ -40,3 +40,16 @@ python -c "from pathlib import Path; from ralph.policy.loader import load_policy
 ```
 
 Run this smoke check whenever policy defaults or loader code changes.
+
+---
+
+## Parallel-mode tests
+
+When working on or verifying the parallel development feature:
+
+```bash
+cd ralph-python
+uv run pytest -q tests/integration/test_parallel_resume.py
+uv run pytest -q tests/integration/test_runner_fanout_wiring.py
+uv run pytest -q tests/integration/test_old_checkpoint_loads.py
+```

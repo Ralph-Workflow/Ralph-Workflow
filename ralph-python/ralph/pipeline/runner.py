@@ -10,8 +10,10 @@ the handlers (I/O execution), and the reducer (state transitions).
 from __future__ import annotations
 
 import shutil
+import sys
 import uuid
 from dataclasses import dataclass
+from inspect import signature
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, cast
 
@@ -25,10 +27,11 @@ from ralph.agents.parsers import AgentOutputLine, AgentParser, get_parser
 from ralph.agents.registry import AgentRegistry
 from ralph.config.enums import (
     PHASE_COMPLETE,
+    PHASE_DEVELOPMENT,
     PHASE_FAILED,
     PHASE_PLANNING,
 )
-from ralph.display.phase_banner import show_phase_complete, show_phase_start, show_phase_transition
+from ralph.display.phase_banner import show_phase_start, show_phase_transition
 from ralph.mcp.capability_mapping import DrainClass, drain_class_for_session
 from ralph.mcp.commit_message import (
     COMMIT_MESSAGE_ARTIFACT,
@@ -44,14 +47,17 @@ from ralph.pipeline.effects import (
     Effect,
     ExitFailureEffect,
     ExitSuccessEffect,
+    FanOutDevelopmentEffect,
     InvokeAgentEffect,
+    MergeIntegrationEffect,
     PreparePromptEffect,
     SaveCheckpointEffect,
 )
-from ralph.pipeline.events import PipelineEvent
+from ralph.pipeline.events import Event, PipelineEvent
 from ralph.pipeline.handoffs import resolve_phase_drain
 from ralph.pipeline.reducer import reduce as reducer_reduce
 from ralph.pipeline.state import AgentChainState, CommitState, PipelineState, RebaseState
+from ralph.pipeline.worker_state import WorkerStatus
 from ralph.policy.loader import load_policy_or_die
 from ralph.prompts.materialize import (
     materialize_prompt_for_phase,
@@ -66,8 +72,10 @@ from ralph.workspace.scope import WorkspaceScope, resolve_workspace_scope
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable
 
+    from ralph.agents.executor import AgentExecutor
     from ralph.agents.invoke import InvokeOptions
     from ralph.config.models import AgentConfig, UnifiedConfig
+    from ralph.display.parallel_display import ParallelDisplay
     from ralph.policy.models import AgentsPolicy, PhaseDefinition, PipelinePolicy, PolicyBundle
 
 
@@ -100,15 +108,7 @@ _MAX_TOOL_RESULT_LENGTH = 150
 _MAX_TOOL_RESULT_BRIEF = 80
 _TOOL_RESULT_BRIEF_THRESHOLD = 500
 _MAX_METADATA_SUMMARY_LENGTH = 120
-
-_EVENT_DECISION_LABELS: dict[str, str] = {
-    PipelineEvent.ANALYSIS_SUCCESS: "approved",
-    PipelineEvent.ANALYSIS_LOOPBACK: "needs changes",
-    PipelineEvent.REVIEW_CLEAN: "clean — no issues",
-    PipelineEvent.REVIEW_ISSUES_FOUND: "issues found",
-    PipelineEvent.COMMIT_SUCCESS: "committed",
-    PipelineEvent.FIX_SUCCESS: "fixed",
-}
+_LEGACY_EXECUTE_EFFECT_ARITY = 3
 
 
 def _terminal_width() -> int:
@@ -142,7 +142,66 @@ def _write_start_commit_if_absent(workspace_root: Path) -> None:
     start_commit_path.write_text(repo.head.commit.hexsha + "\n")
 
 
-def run(config: UnifiedConfig, initial_state: PipelineState | None = None) -> int:
+class _LegacyConsoleDisplay:
+    def __enter__(self) -> _LegacyConsoleDisplay:
+        return self
+
+    def __exit__(self, exc_type: object, exc_val: object, exc_tb: object) -> None:
+        return None
+
+    def emit(self, unit_id: str | None, line: Text | str) -> None:
+        if unit_id is None:
+            console.print(line)
+            return
+        console.print(f"[{unit_id}] {line}")
+
+
+def _emit_display_line(
+    display: ParallelDisplay | _LegacyConsoleDisplay | None,
+    unit_id: str | None,
+    line: Text | str,
+) -> None:
+    if display is None:
+        if unit_id is None:
+            console.print(line)
+            return
+        console.print(f"[{unit_id}] {line}")
+        return
+    if isinstance(display, _LegacyConsoleDisplay):
+        display.emit(unit_id, line)
+        return
+    display.emit(unit_id, line.plain if isinstance(line, Text) else line)
+
+
+def _resolve_display(
+    display: ParallelDisplay | None,
+) -> ParallelDisplay | _LegacyConsoleDisplay:
+    if display is not None:
+        return display
+    console_obj: object = console
+    if isinstance(console_obj, Console):
+        from ralph.display.parallel_display import ParallelDisplay  # noqa: PLC0415
+
+        return ParallelDisplay(console_obj)
+    return _LegacyConsoleDisplay()
+
+
+def _execute_effect_with_optional_display(
+    effect: Effect,
+    config: UnifiedConfig,
+    workspace_scope: WorkspaceScope,
+    display: ParallelDisplay | _LegacyConsoleDisplay,
+) -> Event:
+    if len(signature(_execute_effect).parameters) == _LEGACY_EXECUTE_EFFECT_ARITY:
+        return _execute_effect(effect, config, workspace_scope)
+    return _execute_effect(effect, config, workspace_scope, display)
+
+
+def run(
+    config: UnifiedConfig,
+    initial_state: PipelineState | None = None,
+    display: ParallelDisplay | None = None,
+) -> int:
     """Execute the pipeline event loop.
 
     Args:
@@ -169,71 +228,78 @@ def run(config: UnifiedConfig, initial_state: PipelineState | None = None) -> in
         state.total_reviewer_passes,
     )
 
-    show_phase_start(state.phase, console=console)
-
-    try:
-        while state.phase not in (PHASE_COMPLETE, PHASE_FAILED):
-            previous_phase = state.phase
-
-            effect = _determine_effect_from_policy(state, policy_bundle, workspace_scope)
-            inline_result = _handle_inline_effect(
-                effect=effect,
-                state=state,
-                pipeline_policy=policy_bundle.pipeline,
-                workspace_scope=workspace_scope,
-            )
-            if inline_result is not None:
-                if isinstance(inline_result, int):
-                    return inline_result
-                state = inline_result
-                if state.phase != previous_phase:
-                    _show_phase_transition_with_context(previous_phase, state)
-                continue
-
-            workspace = FsWorkspace(
-                workspace_scope.root,
-                allowed_roots=workspace_scope.allowed_roots,
-            )
-            _materialize_agent_prompt_if_needed(
-                effect,
-                workspace,
-                policy_bundle.pipeline,
-                registry,
-                workspace_scope,
-            )
-
-            event = _execute_effect(effect, config, workspace_scope)
-            if isinstance(effect, InvokeAgentEffect) and event == PipelineEvent.AGENT_SUCCESS:
-                event = _phase_event_after_agent_run(
+    active_display = _resolve_display(display)
+    with active_display:
+        try:
+            while state.phase not in (PHASE_COMPLETE, PHASE_FAILED):
+                effect = _call_determine_effect_from_policy(state, policy_bundle, workspace_scope)
+                inline_result = _handle_inline_effect(
                     effect=effect,
-                    config=config,
-                    policy_bundle=policy_bundle,
-                    workspace=workspace,
+                    state=state,
+                    pipeline_policy=policy_bundle.pipeline,
+                    workspace_scope=workspace_scope,
+                    display=active_display,
+                )
+                if inline_result is not None:
+                    if isinstance(inline_result, int):
+                        return inline_result
+                    state = inline_result
+                    continue
+
+                if isinstance(effect, FanOutDevelopmentEffect):
+                    state = _execute_fan_out_sync(
+                        effect=effect,
+                        state=state,
+                        display=active_display,
+                        policy_bundle=policy_bundle,
+                        workspace_scope=workspace_scope,
+                    )
+                    continue
+
+                workspace = FsWorkspace(
+                    workspace_scope.root,
+                    allowed_roots=workspace_scope.allowed_roots,
+                )
+                _materialize_agent_prompt_if_needed(
+                    effect,
+                    workspace,
+                    policy_bundle.pipeline,
+                    registry,
+                    workspace_scope,
                 )
 
-            decision_label = _EVENT_DECISION_LABELS.get(event)
-            if decision_label is not None:
-                show_phase_complete(state.phase, decision=decision_label, console=console)
+                event: Event = _execute_effect_with_optional_display(
+                    effect,
+                    config,
+                    workspace_scope,
+                    active_display,
+                )
+                if isinstance(effect, InvokeAgentEffect) and event == PipelineEvent.AGENT_SUCCESS:
+                    event = _phase_event_after_agent_run(
+                        effect=effect,
+                        config=config,
+                        policy_bundle=policy_bundle,
+                        workspace=workspace,
+                    )
 
-            state, _ = reducer_reduce(state, event, policy_bundle.pipeline)
-            ckpt.save(state)
+                state, _ = reducer_reduce(state, event, policy_bundle.pipeline)
+                ckpt.save(state)
 
-            if state.phase != previous_phase:
-                _show_phase_transition_with_context(previous_phase, state)
+        except KeyboardInterrupt:
+            logger.warning("Interrupted by user; saving checkpoint.")
+            interrupted_state = state.copy_with(interrupted_by_user=True)
+            ckpt.save(interrupted_state)
+            return 130
 
-    except KeyboardInterrupt:
-        logger.warning("Interrupted by user; saving checkpoint.")
-        interrupted_state = state.copy_with(interrupted_by_user=True)
-        ckpt.save(interrupted_state)
-        return 130
-    # Final state
-    if state.phase == PHASE_COMPLETE:
-        show_phase_complete("complete", console=console)
-        console.print("[green]Pipeline completed successfully.[/green]")
-        return 0
-    else:
-        show_phase_complete("failed", console=console)
-        console.print(_status_text("Pipeline failed", state.last_error or "Unknown error", "red"))
+        if state.phase == PHASE_COMPLETE:
+            active_display.emit(None, "[green]Pipeline completed successfully.[/green]")
+            return 0
+
+        _emit_display_line(
+            active_display,
+            None,
+            _status_text("Pipeline failed", state.last_error or "Unknown error", "red"),
+        )
         return 1
 
 
@@ -262,12 +328,122 @@ def _show_phase_transition_with_context(previous_phase: str, state: PipelineStat
     )
 
 
+def _execute_fan_out_sync(
+    *,
+    effect: FanOutDevelopmentEffect,
+    state: PipelineState,
+    display: ParallelDisplay | _LegacyConsoleDisplay,
+    policy_bundle: PolicyBundle,
+    workspace_scope: WorkspaceScope,
+) -> PipelineState:
+    """Execute fan-out development synchronously by wrapping asyncio.run()."""
+    import asyncio  # noqa: PLC0415
+
+    from ralph.agents.subprocess_executor import SubprocessAgentExecutor  # noqa: PLC0415
+    from ralph.display.parallel_display import ParallelDisplay as _ParallelDisplay  # noqa: PLC0415
+    from ralph.git.executor import GitExecutor  # noqa: PLC0415
+    from ralph.git.worktree_manager import WorktreeManager  # noqa: PLC0415
+    from ralph.interrupt.asyncio_bridge import (  # noqa: PLC0415
+        SignalBridge,
+        install_signal_handlers,
+    )
+    from ralph.mcp.server.factory_impl import DynamicBindingMcpServerFactory  # noqa: PLC0415
+    from ralph.pipeline.parallel import coordinator, merge_integrator  # noqa: PLC0415
+
+    git_exec = GitExecutor()
+    repo_root = workspace_scope.root
+
+    pd: _ParallelDisplay = (
+        display if isinstance(display, _ParallelDisplay) else _ParallelDisplay(console)
+    )
+
+    async def _run() -> PipelineState:
+        loop = asyncio.get_running_loop()
+        bridge = SignalBridge()
+        root_task: asyncio.Task[object] | None = cast(
+            "asyncio.Task[object] | None", asyncio.current_task()
+        )
+        assert root_task is not None
+        install_signal_handlers(loop, root_task, bridge)
+
+        executor = cast(
+            "AgentExecutor",
+            SubprocessAgentExecutor(_parallel_worker_command(), signal_bridge=bridge),
+        )
+        workspace = FsWorkspace(
+            workspace_scope.root,
+            allowed_roots=workspace_scope.allowed_roots,
+        )
+        isolation = coordinator._IsolationDeps(
+            worktree_manager=WorktreeManager(repo_root, git_exec),
+            mcp_factory=DynamicBindingMcpServerFactory(workspace=workspace),
+            repo_root=repo_root,
+            executor_command=_parallel_worker_command(),
+            signal_bridge=bridge,
+        )
+        resumed_state, _ = reducer_reduce(
+            state, PipelineEvent.WORKERS_RESUMED, policy_bundle.pipeline
+        )
+        completed_ids = {
+            uid
+            for uid, ws in resumed_state.worker_states.items()
+            if ws.status == WorkerStatus.SUCCEEDED
+        }
+        resume_units = tuple(u for u in effect.work_units if u.unit_id not in completed_ids)
+
+        if not resume_units:
+            return resumed_state
+
+        resume_effect = FanOutDevelopmentEffect(
+            work_units=resume_units,
+            max_workers=effect.max_workers,
+        )
+        fan_out_events = await coordinator.run_fan_out(
+            effect=resume_effect,
+            executor=executor,
+            display=pd,
+            ctx=coordinator._WorkerContext(
+                log=coordinator._WorkerLog(
+                    log_dir=workspace_scope.root / ".agent" / "logs",
+                    run_id=str(uuid.uuid4()),
+                ),
+                isolation=isolation,
+            ),
+        )
+        current = resumed_state
+        for ev in fan_out_events:
+            current, _ = reducer_reduce(current, ev, policy_bundle.pipeline)
+        ckpt.save(current)
+
+        merge_effect = MergeIntegrationEffect(
+            worker_states=current.worker_states,
+            base_branch="main",
+        )
+        merge_result = await merge_integrator.integrate(
+            base_branch=merge_effect.base_branch,
+            worker_states=merge_effect.worker_states,
+            git_executor=git_exec,
+            repo_root=repo_root,
+        )
+        for ev in merge_result.events:
+            current, _ = reducer_reduce(current, ev, policy_bundle.pipeline)
+        ckpt.save(current)
+        return current
+
+    return asyncio.run(_run())
+
+
+def _parallel_worker_command() -> tuple[str, ...]:
+    return (sys.executable, "-m", "ralph")
+
+
 def _handle_inline_effect(
     *,
     effect: Effect,
     state: PipelineState,
     pipeline_policy: PipelinePolicy,
     workspace_scope: WorkspaceScope,
+    display: ParallelDisplay | _LegacyConsoleDisplay | None = None,
 ) -> PipelineState | int | None:
     if isinstance(effect, SaveCheckpointEffect):
         ckpt.save(state)
@@ -285,13 +461,11 @@ def _handle_inline_effect(
         return updated_state
 
     if isinstance(effect, ExitSuccessEffect):
-        show_phase_complete("complete", console=console)
-        console.print("[green]Pipeline completed successfully.[/green]")
+        _emit_display_line(display, None, "[green]Pipeline completed successfully.[/green]")
         return 0
 
     if isinstance(effect, ExitFailureEffect):
-        show_phase_complete("failed", console=console)
-        console.print(_status_text("Pipeline failed", effect.reason, "red"))
+        _emit_display_line(display, None, _status_text("Pipeline failed", effect.reason, "red"))
         return 1
 
     return None
@@ -405,6 +579,8 @@ def _create_initial_state(
         phase=entry_phase,
         total_iterations=config.general.developer_iters,
         total_reviewer_passes=config.general.reviewer_reviews,
+        development_budget_remaining=config.general.developer_iters,
+        review_budget_remaining=config.general.reviewer_reviews,
         planning_chain=AgentChainState(agents=planning_agents),
         dev_chain=AgentChainState(agents=dev_agents),
         dev_analysis_chain=AgentChainState(agents=dev_analysis_agents),
@@ -422,27 +598,61 @@ def _create_initial_state(
     )
 
 
-def _determine_effect_from_policy(
+def _call_determine_effect_from_policy(
     state: PipelineState,
     policy_bundle: PolicyBundle,
     workspace_scope: WorkspaceScope,
 ) -> Effect:
+    determine_effect = _determine_effect_from_policy
+    params = signature(determine_effect).parameters.values()
+    positional = [
+        param
+        for param in params
+        if param.kind in (param.POSITIONAL_ONLY, param.POSITIONAL_OR_KEYWORD)
+    ]
+    if (
+        any(param.kind == param.VAR_POSITIONAL for param in params)
+        or len(positional) >= _LEGACY_EXECUTE_EFFECT_ARITY
+    ):
+        return determine_effect(state, policy_bundle, workspace_scope)
+    return determine_effect(state, policy_bundle)
+
+
+def _terminal_phase_effect(state: PipelineState) -> Effect | None:
     if state.phase == PHASE_COMPLETE:
         return ExitSuccessEffect()
-
     if state.phase == PHASE_FAILED:
         return ExitFailureEffect(reason=state.last_error or "Unknown failure")
+    return None
+
+
+def _determine_effect_from_policy(
+    state: PipelineState,
+    policy_bundle: PolicyBundle,
+    workspace_scope: WorkspaceScope | None = None,
+) -> Effect:
+    terminal = _terminal_phase_effect(state)
+    if terminal is not None:
+        return terminal
 
     phase_def = policy_bundle.pipeline.phases.get(state.phase)
     if phase_def is None:
         return ExitFailureEffect(reason=f"Unknown phase: {state.phase}")
 
     if phase_def.requires_commit:
-        return _commit_phase_effect(state, policy_bundle, phase_def, workspace_scope)
+        scope = workspace_scope or resolve_workspace_scope()
+        return _commit_phase_effect(state, policy_bundle, phase_def, scope)
 
     agent_name = _agent_name_for_phase_from_policy(state, policy_bundle)
     if agent_name is None:
         return ExitFailureEffect(reason=f"No agent configured for phase '{state.phase}'")
+
+    if state.phase == PHASE_DEVELOPMENT and state.work_units:
+        parallel_policy = policy_bundle.pipeline.parallel_execution
+        return FanOutDevelopmentEffect(
+            work_units=state.work_units,
+            max_workers=parallel_policy.max_parallel_workers if parallel_policy is not None else 8,
+        )
 
     return InvokeAgentEffect(
         agent_name=agent_name,
@@ -521,7 +731,7 @@ def _phase_event_after_agent_run(
     config: UnifiedConfig,
     policy_bundle: PolicyBundle,
     workspace: FsWorkspace,
-) -> PipelineEvent:
+) -> Event:
     ctx = PhaseContext.model_construct(
         workspace=workspace,
         registry=AgentRegistry.from_config(config),
@@ -545,6 +755,7 @@ def _execute_effect(
     effect: Effect,
     config: UnifiedConfig,
     workspace_scope: WorkspaceScope,
+    display: ParallelDisplay | _LegacyConsoleDisplay | None = None,
 ) -> PipelineEvent:
     """Execute an effect and return the resulting event.
 
@@ -569,7 +780,7 @@ def _execute_effect(
     )
 
     if isinstance(effect, InvokeAgentEffect):
-        return _execute_agent_effect(effect, config, deps, workspace_scope)
+        return _execute_agent_effect(effect, config, deps, workspace_scope, display)
     if isinstance(effect, CommitEffect):
         return _execute_commit_effect(effect, create_commit, stage_all, workspace_scope.root)
     if isinstance(effect, SaveCheckpointEffect):
@@ -584,14 +795,17 @@ def _execute_agent_effect(
     config: UnifiedConfig,
     deps: _AgentExecutionDeps,
     workspace_scope: WorkspaceScope,
+    display: ParallelDisplay | _LegacyConsoleDisplay | None = None,
 ) -> PipelineEvent:
+    _emit_display_line(display, None, _status_text("Invoking agent", effect.agent_name, "cyan"))
     registry = deps.agent_registry.from_config(config)
     agent_config = registry.get(effect.agent_name)
     if agent_config is None:
         logger.error("Agent not found: {}", effect.agent_name)
         return PipelineEvent.AGENT_FAILURE
 
-    show_phase_start(effect.phase, agent_name=effect.agent_name, console=console)
+    if display is None or isinstance(display, _LegacyConsoleDisplay):
+        show_phase_start(effect.phase, agent_name=effect.agent_name, console=console)
 
     bridge = None
     try:
@@ -611,6 +825,7 @@ def _execute_agent_effect(
 
         options = InvokeOptions(
             verbose=config.general.verbosity >= _VERBOSE_LOG_LEVEL,
+            show_progress=False,
             workspace_path=workspace_scope.root,
             extra_env={
                 MCP_ENDPOINT_ENV: bridge.agent_endpoint_uri(),
@@ -624,7 +839,10 @@ def _execute_agent_effect(
         output_lines = deps.invoke_agent(agent_config, effect.prompt_file, options=options)
         if config.general.verbosity >= _AGENT_ACTIVITY_LOG_LEVEL:
             _stream_parsed_agent_activity(
-                output_lines, str(agent_config.json_parser), effect.agent_name
+                output_lines,
+                str(agent_config.json_parser),
+                effect.agent_name,
+                display,
             )
         else:
             for _ in output_lines:
@@ -706,13 +924,14 @@ def _stream_parsed_agent_activity(
     lines: Iterable[object],
     parser_type: str,
     agent_name: str,
+    display: ParallelDisplay | _LegacyConsoleDisplay | None = None,
 ) -> None:
     parser = _resolve_parser(parser_type)
     str_lines = (str(line) for line in lines)
     for parsed_line in parser.parse(str_lines):
         rendered = _render_agent_activity_line(parsed_line, agent_name)
         if rendered is not None:
-            console.print(rendered)
+            _emit_display_line(display, None, rendered)
 
 
 def _resolve_parser(parser_type: str) -> AgentParser:

@@ -47,6 +47,7 @@ class MockAgentInvoker:
         """
         self.workspace = workspace
         self.call_history: list[dict[str, Any]] = []
+        self.call_counts: dict[str, int] = {}
 
     def invoke(self, agent_name: str, phase: str) -> PipelineEvent:
         """Simulate agent invocation and return success event.
@@ -58,6 +59,7 @@ class MockAgentInvoker:
         Returns:
             PipelineEvent indicating success.
         """
+        self.call_counts[phase] = self.call_counts.get(phase, 0) + 1
         self.call_history.append({"agent": agent_name, "phase": phase})
 
         # For planning and development: return AGENT_SUCCESS
@@ -73,6 +75,10 @@ class MockAgentInvoker:
             return cast("PipelineEvent", PipelineEvent.COMMIT_SUCCESS)
 
         return cast("PipelineEvent", PipelineEvent.AGENT_SUCCESS)
+
+    def count_for(self, phase: str) -> int:
+        """Return the number of calls recorded for a phase."""
+        return self.call_counts.get(phase, 0)
 
 
 # ---------------------------------------------------------------------------

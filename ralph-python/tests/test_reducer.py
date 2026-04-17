@@ -12,14 +12,23 @@ from ralph.config.enums import (
     PHASE_DEVELOPMENT,
     PHASE_FAILED,
     PHASE_FIX,
+    PHASE_MERGE_INTEGRATION,
     PHASE_REVIEW,
     PHASE_REVIEW_COMMIT,
     PipelinePhase,
 )
 from ralph.pipeline.effects import ExitFailureEffect
-from ralph.pipeline.events import PipelineEvent
+from ralph.pipeline.events import (
+    PipelineEvent,
+    WorkerCompletedEvent,
+    WorkerFailedEvent,
+    WorkersMergeConflictEvent,
+    WorkerStartedEvent,
+)
 from ralph.pipeline.reducer import reduce as reducer_reduce
 from ralph.pipeline.state import AgentChainState, CommitState, PipelineState
+from ralph.pipeline.work_units import WorkUnit
+from ralph.pipeline.worker_state import WorkerState, WorkerStatus
 from ralph.policy.models import (
     PhaseDefinition,
     PhaseTransition,
@@ -156,27 +165,49 @@ def _policy_with_post_commit_routes() -> PipelinePolicy:
     )
 
 
-def test_agent_success_advances_iteration() -> None:
-    """Test that AGENT_SUCCESS in development advances iteration."""
-    state = PipelineState(
-        total_iterations=3,
-        iteration=0,
-        phase=PHASE_DEVELOPMENT,
-    )
-    new_state, _ = _reduce(state, PipelineEvent.AGENT_SUCCESS)
-    assert new_state.iteration == 1
+def test_policy_agent_success_in_development_routes_to_analysis() -> None:
+    policy = _policy_with_post_commit_routes()
+    state = PipelineState(phase=PHASE_DEVELOPMENT)
+    new_state, _ = _reduce(state, PipelineEvent.AGENT_SUCCESS, policy)
+    assert new_state.phase == "development_analysis"
+    assert new_state.previous_phase == PHASE_DEVELOPMENT
+
+
+def test_policy_agent_success_in_planning_routes_to_development_and_decrements_budget() -> None:
+    policy = _policy_with_post_commit_routes()
+    state = PipelineState(phase="planning", development_budget_remaining=2)
+    new_state, _ = _reduce(state, PipelineEvent.AGENT_SUCCESS, policy)
     assert new_state.phase == PHASE_DEVELOPMENT
+    assert new_state.development_budget_remaining == 1
 
 
-def test_final_iteration_advances_to_review() -> None:
-    """Test that AGENT_SUCCESS on final iteration advances to review."""
-    state = PipelineState(
-        total_iterations=2,
-        iteration=1,
-        phase=PHASE_DEVELOPMENT,
+def test_policy_agent_success_with_embeds_analysis_delegates_to_analysis_path() -> None:
+    policy = PipelinePolicy(
+        phases={
+            PHASE_DEVELOPMENT: PhaseDefinition(
+                drain="development",
+                embeds_analysis=True,
+                transitions=PhaseTransition(
+                    on_success="development_commit",
+                    on_loopback=PHASE_DEVELOPMENT,
+                ),
+            ),
+            "development_commit": PhaseDefinition(
+                drain="development_commit",
+                transitions=PhaseTransition(on_success=PHASE_COMPLETE),
+            ),
+            PHASE_COMPLETE: PhaseDefinition(
+                drain="complete",
+                transitions=PhaseTransition(on_success=PHASE_COMPLETE, on_loopback=PHASE_COMPLETE),
+            ),
+        },
+        entry_phase=PHASE_DEVELOPMENT,
+        terminal_phase=PHASE_COMPLETE,
     )
-    new_state, _ = _reduce(state, PipelineEvent.AGENT_SUCCESS)
-    assert new_state.phase == PHASE_REVIEW
+    state = PipelineState(phase=PHASE_DEVELOPMENT)
+    new_state, _ = _reduce(state, PipelineEvent.AGENT_SUCCESS, policy)
+    assert new_state.phase == "development_commit"
+    assert new_state.previous_phase == PHASE_DEVELOPMENT
 
 
 def test_review_clean_advances_to_commit() -> None:
@@ -314,7 +345,11 @@ def test_commit_success_routes_development_commit_to_planning_when_budget_remain
 def test_commit_success_routes_development_commit_to_review_when_budget_exhausted() -> None:
     """COMMIT_SUCCESS should route development_commit to review when budget exhausted."""
     policy = _policy_with_post_commit_routes()
-    state = PipelineState(phase="development_commit", development_budget_remaining=0)
+    state = PipelineState(
+        phase="development_commit",
+        development_budget_remaining=0,
+        review_budget_remaining=1,
+    )
 
     new_state, _ = _reduce(state, PipelineEvent.COMMIT_SUCCESS, policy)
 
@@ -451,6 +486,18 @@ class TestAnalysisDecisionDispatch:
         assert new_state.phase == PHASE_DEVELOPMENT
         assert new_state.previous_phase == "development_analysis"
 
+    def test_analysis_loopback_does_not_decrement_budget(self) -> None:
+        """Analysis loopback re-enters development WITHOUT consuming a budget slot."""
+        initial_budget = 2
+        state = PipelineState(
+            phase="development_analysis",
+            development_budget_remaining=initial_budget,
+        )
+        policy = _policy_with_post_commit_routes()
+        new_state, _ = _reduce(state, PipelineEvent.ANALYSIS_LOOPBACK, policy)
+        assert new_state.phase == "development"
+        assert new_state.development_budget_remaining == initial_budget
+
     def test_analysis_success_routes_review_analysis_to_commit(self) -> None:
         """Test that ANALYSIS_SUCCESS in review_analysis routes to review_commit."""
         state = PipelineState(
@@ -556,7 +603,6 @@ class TestAnalysisDecisionDispatch:
         new_state, _ = _reduce(state, PipelineEvent.ANALYSIS_LOOPBACK, policy)
         assert new_state.phase == "development"
 
-
 @pytest.mark.parametrize(
     "event,handler_patch_target",
     [
@@ -616,3 +662,232 @@ def test_agent_success_in_normal_phase_still_advances() -> None:
         state = PipelineState(phase="development")
         new_state, _ = _reduce(state, PipelineEvent.AGENT_SUCCESS, policy)
     assert new_state.phase == "review"
+
+# ---------------------------------------------------------------------------
+# Fan-out parallelization lifecycle events
+# ---------------------------------------------------------------------------
+
+
+def _make_work_units(*ids: str) -> tuple[WorkUnit, ...]:
+    return tuple(WorkUnit(unit_id=uid, description="task") for uid in ids)
+
+
+def test_fan_out_started_initializes_worker_states() -> None:
+    """FAN_OUT_STARTED should populate worker_states as PENDING for each work unit."""
+    state = PipelineState(
+        phase=PHASE_DEVELOPMENT,
+        work_units=_make_work_units("u1", "u2"),
+    )
+    new_state, effects = _reduce(state, PipelineEvent.FAN_OUT_STARTED)
+
+    assert effects == []
+    assert set(new_state.worker_states.keys()) == {"u1", "u2"}
+    assert new_state.worker_states["u1"].status == WorkerStatus.PENDING
+    assert new_state.worker_states["u2"].status == WorkerStatus.PENDING
+    assert new_state.phase == PHASE_DEVELOPMENT
+
+
+def test_fan_out_started_no_op_when_no_work_units() -> None:
+    """FAN_OUT_STARTED should be a no-op when work_units is empty."""
+    state = PipelineState(phase=PHASE_DEVELOPMENT)
+    new_state, effects = _reduce(state, PipelineEvent.FAN_OUT_STARTED)
+
+    assert new_state == state
+    assert effects == []
+
+
+def test_fan_out_started_no_op_when_worker_states_already_populated() -> None:
+    """FAN_OUT_STARTED should be a no-op when worker_states is already populated."""
+    pre_existing = WorkerState(unit_id="u1", status=WorkerStatus.RUNNING)
+    state = PipelineState(
+        phase=PHASE_DEVELOPMENT,
+        work_units=_make_work_units("u1"),
+        worker_states={"u1": pre_existing},
+    )
+    new_state, effects = _reduce(state, PipelineEvent.FAN_OUT_STARTED)
+
+    assert new_state == state
+    assert effects == []
+
+
+def test_worker_started_transitions_pending_to_running() -> None:
+    """WORKER_STARTED should transition the named worker from PENDING to RUNNING."""
+    pending = WorkerState(unit_id="u1", status=WorkerStatus.PENDING)
+    state = PipelineState(
+        phase=PHASE_DEVELOPMENT,
+        work_units=_make_work_units("u1"),
+        worker_states={"u1": pending},
+    )
+    new_state, effects = _reduce(state, WorkerStartedEvent(unit_id="u1"))
+
+    assert effects == []
+    assert new_state.worker_states["u1"].status == WorkerStatus.RUNNING
+    assert new_state.worker_states["u1"].started_at is not None
+
+
+def test_worker_started_unknown_unit_id_is_no_op() -> None:
+    """WORKER_STARTED for an unknown unit_id should leave state unchanged."""
+    state = PipelineState(phase=PHASE_DEVELOPMENT)
+    new_state, effects = _reduce(state, WorkerStartedEvent(unit_id="ghost"))
+
+    assert new_state == state
+    assert effects == []
+
+
+def test_worker_completed_transitions_running_to_succeeded() -> None:
+    """WORKER_COMPLETED should move the worker to SUCCEEDED and store commit_sha."""
+    running = WorkerState(unit_id="u1", status=WorkerStatus.RUNNING)
+    state = PipelineState(
+        phase=PHASE_DEVELOPMENT,
+        work_units=_make_work_units("u1"),
+        worker_states={"u1": running},
+    )
+    new_state, effects = _reduce(
+        state,
+        WorkerCompletedEvent(unit_id="u1", exit_code=0, commit_sha="abc123"),
+    )
+
+    assert effects == []
+    ws = new_state.worker_states["u1"]
+    assert ws.status == WorkerStatus.SUCCEEDED
+    assert ws.exit_code == 0
+    assert ws.commit_sha == "abc123"
+    assert ws.finished_at is not None
+
+
+def test_worker_completed_unknown_unit_id_is_no_op() -> None:
+    """WORKER_COMPLETED for an unknown unit_id should leave state unchanged."""
+    state = PipelineState(phase=PHASE_DEVELOPMENT)
+    new_state, effects = _reduce(
+        state,
+        WorkerCompletedEvent(unit_id="ghost", exit_code=0, commit_sha="sha"),
+    )
+
+    assert new_state == state
+    assert effects == []
+
+
+def test_worker_failed_transitions_running_to_failed() -> None:
+    """WORKER_FAILED should move the worker to FAILED and store error_message."""
+    running = WorkerState(unit_id="u1", status=WorkerStatus.RUNNING)
+    state = PipelineState(
+        phase=PHASE_DEVELOPMENT,
+        work_units=_make_work_units("u1"),
+        worker_states={"u1": running},
+    )
+    new_state, effects = _reduce(
+        state,
+        WorkerFailedEvent(unit_id="u1", exit_code=1, error="boom"),
+    )
+
+    assert effects == []
+    ws = new_state.worker_states["u1"]
+    assert ws.status == WorkerStatus.FAILED
+    assert ws.exit_code == 1
+    assert ws.error_message == "boom"
+    assert ws.finished_at is not None
+
+
+def test_worker_failed_unknown_unit_id_is_no_op() -> None:
+    """WORKER_FAILED for an unknown unit_id should leave state unchanged."""
+    state = PipelineState(phase=PHASE_DEVELOPMENT)
+    new_state, effects = _reduce(
+        state,
+        WorkerFailedEvent(unit_id="ghost", exit_code=1, error="err"),
+    )
+
+    assert new_state == state
+    assert effects == []
+
+
+def test_all_workers_complete_advances_to_merge_integration() -> None:
+    """ALL_WORKERS_COMPLETE should advance phase to MERGE_INTEGRATION when all succeeded."""
+    states = {
+        "u1": WorkerState(unit_id="u1", status=WorkerStatus.SUCCEEDED),
+        "u2": WorkerState(unit_id="u2", status=WorkerStatus.SUCCEEDED),
+    }
+    state = PipelineState(
+        phase=PHASE_DEVELOPMENT,
+        work_units=_make_work_units("u1", "u2"),
+        worker_states=states,
+    )
+    new_state, effects = _reduce(state, PipelineEvent.ALL_WORKERS_COMPLETE)
+
+    assert effects == []
+    assert new_state.phase == PHASE_MERGE_INTEGRATION
+
+
+def test_all_workers_complete_no_op_if_any_not_succeeded() -> None:
+    """ALL_WORKERS_COMPLETE should leave state unchanged if any worker is not SUCCEEDED."""
+    states = {
+        "u1": WorkerState(unit_id="u1", status=WorkerStatus.SUCCEEDED),
+        "u2": WorkerState(unit_id="u2", status=WorkerStatus.RUNNING),
+    }
+    state = PipelineState(
+        phase=PHASE_DEVELOPMENT,
+        work_units=_make_work_units("u1", "u2"),
+        worker_states=states,
+    )
+    new_state, effects = _reduce(state, PipelineEvent.ALL_WORKERS_COMPLETE)
+
+    assert new_state == state
+    assert effects == []
+
+
+def test_workers_resumed_requeues_running_workers_as_pending() -> None:
+    resumed_event = getattr(PipelineEvent, "WORKERS_RESUMED", None)
+    assert resumed_event is not None
+
+    state = PipelineState(
+        phase=PHASE_DEVELOPMENT,
+        work_units=_make_work_units("u1", "u2"),
+        worker_states={
+            "u1": WorkerState(unit_id="u1", status=WorkerStatus.RUNNING),
+            "u2": WorkerState(unit_id="u2", status=WorkerStatus.SUCCEEDED),
+        },
+    )
+
+    new_state, effects = _reduce(state, resumed_event)
+
+    assert effects == []
+    assert new_state.worker_states["u1"].status == WorkerStatus.PENDING
+    assert new_state.worker_states["u2"].status == WorkerStatus.SUCCEEDED
+
+
+def test_merge_conflict_fails_phase() -> None:
+    """WORKERS_MERGE_CONFLICT should transition phase to PHASE_FAILED with unit_ids."""
+    states = {
+        "u1": WorkerState(unit_id="u1", status=WorkerStatus.SUCCEEDED),
+        "u2": WorkerState(unit_id="u2", status=WorkerStatus.SUCCEEDED),
+    }
+    state = PipelineState(
+        phase=PHASE_MERGE_INTEGRATION,
+        work_units=_make_work_units("u1", "u2"),
+        worker_states=states,
+    )
+    new_state, effects = _reduce(
+        state,
+        WorkersMergeConflictEvent(conflicting_unit_ids=["u1", "u2"]),
+    )
+
+    assert effects == []
+    assert new_state.phase == PHASE_FAILED
+    assert new_state.last_error is not None
+    assert "u1" in new_state.last_error
+    assert "u2" in new_state.last_error
+
+
+def test_merge_conflict_preserves_worker_states() -> None:
+    """WORKERS_MERGE_CONFLICT should not drop existing worker_states."""
+    ws = WorkerState(unit_id="u1", status=WorkerStatus.SUCCEEDED)
+    state = PipelineState(
+        phase=PHASE_MERGE_INTEGRATION,
+        work_units=_make_work_units("u1"),
+        worker_states={"u1": ws},
+    )
+    new_state, _ = _reduce(
+        state,
+        WorkersMergeConflictEvent(conflicting_unit_ids=["u1"]),
+    )
+
+    assert "u1" in new_state.worker_states

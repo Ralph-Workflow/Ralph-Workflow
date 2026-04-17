@@ -20,6 +20,7 @@ from rich.text import Text
 # Late imports to avoid circular dependencies
 from ralph import __version__
 from ralph.api.opencode import list_providers as fetch_providers
+from ralph.cli.commands.cleanup import cleanup
 from ralph.cli.commands.commit import CommitPlumbingOptions, commit_plumbing
 from ralph.cli.commands.diagnose import diagnose_command
 from ralph.cli.commands.init import init_command
@@ -483,6 +484,7 @@ def main(  # noqa: PLR0913 - Typer CLI callbacks require many options
 
 
 app.callback(invoke_without_command=True)(main)
+app.command()(cleanup)
 
 
 def _handle_list_agents(

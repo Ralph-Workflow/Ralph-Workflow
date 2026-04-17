@@ -1,0 +1,155 @@
+# Parallel Development Mode
+
+This document covers the parallelization feature introduced in the Python implementation. If you are upgrading from an earlier Ralph version or migrating from the retired Rust implementation, read this first.
+
+---
+
+## Checkpoint Compatibility
+
+Old checkpoints load transparently. No migration step is required.
+
+When Ralph loads a checkpoint that was created before parallel mode existed, the missing fields (`work_units`, `worker_states`) are absent. Ralph initializes these as empty on load, so the pipeline resumes correctly in serial mode. No data is lost and no conversion is needed.
+
+If your checkpoint predates parallel mode and you want to use parallel mode, simply run the pipeline again from your current state. The planning phase will produce a `work_units` array if your prompt decomposes the work into multiple units, and parallel mode will activate automatically.
+
+---
+
+## New Policy Keys
+
+Two new keys control parallel execution behavior. Both are optional; existing configurations work unchanged.
+
+### `max_parallel_workers`
+
+Maximum number of concurrent work units running at once.
+
+- **Default**: `8`
+- **Minimum**: `1`
+- **Section**: `[parallel_execution]`
+
+```toml
+[pipeline.parallel_execution]
+max_parallel_workers = 4
+```
+
+Reduce this value if you hit API rate limits or want to limit resource usage.
+
+### `max_work_units`
+
+Maximum total work units Ralph will accept from a planning artifact.
+
+- **Default**: `50`
+- **Minimum**: `1`
+- **Section**: `[parallel_execution]`
+
+```toml
+[pipeline.parallel_execution]
+max_work_units = 25
+```
+
+If your planning phase produces more than this limit, Ralph rejects the artifact and the pipeline fails.
+
+### `require_allowed_directories`
+
+Whether each work unit must declare `allowed_directories`.
+
+- **Default**: `true`
+
+When `true`, units without `allowed_directories` cause a validation error.
+
+---
+
+## New CLI Command: `ralph cleanup`
+
+After a hard-kill interrupt or a failed parallel run, orphaned git worktrees may remain in `.worktrees/`. The cleanup command removes them.
+
+```bash
+# See what would be deleted (dry-run)
+ralph cleanup --dry-run
+
+# Remove orphaned worktrees (with confirmation prompt)
+ralph cleanup
+
+# Remove without confirmation (for scripts)
+ralph cleanup --force
+```
+
+### What it cleans
+
+The cleanup command:
+1. Scans `.worktrees/unit-*` directories
+2. For each orphaned worktree, destroys the worktree via `git worktree remove`
+3. Deletes the tracking branch `ralph/unit-{unit_id}`
+4. Reports the number of worktrees removed
+
+### Exit codes
+
+- `0`: No orphaned worktrees found, or all cleaned successfully
+- `1`: Error (not in a git repository, etc.)
+
+---
+
+## Opting In to Parallel Mode
+
+Parallel mode activates automatically when the planning phase produces a `work_units` array with **more than one entry**.
+
+To opt in, write your planning prompt to explicitly request a `work_units` array in the final artifact:
+
+```
+After analyzing the requirements, produce a plan that:
+
+1. Identifies distinct, independent areas of work (e.g., separate modules,
+   different features, distinct infrastructure components)
+2. For each area, specifies which directories the work will touch
+3. Ensures units have no circular dependencies
+
+Return your plan as a JSON artifact with a `work_units` array.
+```
+
+Each unit must include:
+- `unit_id`: 1-64 characters from `[a-zA-Z0-9_-]`
+- `description`: Clear description of what the unit covers
+- `allowed_directories`: List of directories the unit may modify
+- `dependencies`: Array of other unit_ids that must complete first (may be empty)
+
+See `docs/agents/parallelization.md` for the full authoring guide.
+
+---
+
+## Reverting to Serial Mode
+
+If parallel mode causes issues and you want to revert to serial behavior:
+
+1. **Abort the current run** if a pipeline is in progress:
+   ```bash
+   # Press Ctrl-C to hard-kill, then:
+   ralph cleanup --force
+   ```
+
+2. **Remove or limit work units** in your PROMPT.md planning instructions. Specifically, avoid requesting a `work_units` array, or ensure your planning phase produces only a single unit.
+
+3. **Start fresh**:
+   ```bash
+   ralph
+   ```
+
+The pipeline runs in serial mode as it did before parallelization was introduced.
+
+---
+
+## Key Differences from Serial Mode
+
+| Concern | Serial | Parallel |
+|---------|--------|----------|
+| Checkpoint format | No `work_units` | Includes `work_units` array |
+| Agent instances | One per phase | One per work unit |
+| Worktree management | One worktree | Multiple worktrees |
+| Merge behavior | N/A | Branch-per-unit merged to base |
+| Cleanup needed | No | After hard-kill or failures |
+
+---
+
+## Full Documentation
+
+For complete details on parallel mode, see:
+- `docs/agents/parallelization.md` — user guide for parallel development fan-out
+- `docs/architecture/parallel-fan-out.md` — architecture and implementation details

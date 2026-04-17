@@ -10,10 +10,20 @@ No I/O is performed in this module - effects are pure data descriptions.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from importlib import import_module
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from ralph.config.enums import PipelinePhase
+    from ralph.pipeline.work_units import WorkUnit
+    from ralph.pipeline.worker_state import WorkerState
+else:
+    Mapping = import_module("collections.abc").Mapping
+    PipelinePhase = import_module("ralph.config.enums").PipelinePhase
+    WorkUnit = import_module("ralph.pipeline.work_units").WorkUnit
+    WorkerState = import_module("ralph.pipeline.worker_state").WorkerState
 
 
 @dataclass(frozen=True)
@@ -97,6 +107,22 @@ class ExitFailureEffect:
     reason: str
 
 
+@dataclass(frozen=True)
+class FanOutDevelopmentEffect:
+    """Effect to fan out development work across workers."""
+
+    work_units: tuple[WorkUnit, ...]
+    max_workers: int
+
+
+@dataclass(frozen=True)
+class MergeIntegrationEffect:
+    """Effect to merge results from parallel workers."""
+
+    worker_states: Mapping[str, WorkerState]
+    base_branch: str
+
+
 # Union type for all effects
 Effect = (
     InvokeAgentEffect
@@ -106,4 +132,6 @@ Effect = (
     | SaveCheckpointEffect
     | ExitSuccessEffect
     | ExitFailureEffect
+    | FanOutDevelopmentEffect
+    | MergeIntegrationEffect
 )

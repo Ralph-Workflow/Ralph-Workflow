@@ -44,11 +44,12 @@ dev = [
     "hatch",
     "ruff",
     "mypy",
+    "hypothesis>=6.100",
     "pytest>=8.0",
     "pytest-asyncio>=0.23",
     "pytest-cov>=4.0",
     "pytest-xdist>=3.6",
-    "pydantic[mypy]>=2.7",
+    "pydantic>=2.7",
 ]
 bundle = [
     "pyinstaller>=6.0",

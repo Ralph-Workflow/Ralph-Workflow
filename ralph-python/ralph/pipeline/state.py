@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from ralph.config.enums import (
     PHASE_COMPLETE,
@@ -22,6 +22,8 @@ from ralph.config.enums import (
     PHASE_REVIEW,
     PipelinePhase,
 )
+from ralph.pipeline.work_units import WorkUnit  # noqa: TC001
+from ralph.pipeline.worker_state import WorkerState  # noqa: TC001
 
 if TYPE_CHECKING:
     from ralph.policy.models import DrainName
@@ -181,6 +183,29 @@ class PipelineState(BaseModel):  # type: ignore[explicit-any]
     review_budget_remaining: int = 0
     current_drain: str | None = None
 
+    work_units: tuple[WorkUnit, ...] = Field(default_factory=tuple)
+    worker_states: dict[str, WorkerState] = Field(default_factory=dict)
+
+    @field_validator("work_units", mode="before")
+    @classmethod
+    def _coerce_work_units(cls, v: object) -> tuple[WorkUnit, ...]:
+        if v is None:
+            return ()
+        if isinstance(v, list):
+            return tuple(v)
+        if isinstance(v, tuple):
+            return v
+        raise TypeError(f"Expected list or tuple for work_units, got {type(v).__name__!r}")
+
+    @field_validator("worker_states", mode="before")
+    @classmethod
+    def _coerce_worker_states(cls, v: object) -> dict[str, WorkerState]:
+        if v is None:
+            return {}
+        if isinstance(v, dict):
+            return v
+        raise TypeError(f"Expected dict for worker_states, got {type(v).__name__!r}")
+
     def is_complete(self) -> bool:
         """Check if pipeline has reached a terminal state.
 
@@ -275,5 +300,13 @@ class PipelineState(BaseModel):  # type: ignore[explicit-any]
         return self.copy_with(current_drain=drain)
 
     def copy_with(self, **updates: object) -> PipelineState:
-        """Return a copy with updates applied in a typed-safe manner."""
+        """Return a copy with updates applied in a typed-safe manner.
+
+        Note: work_units is set exactly once during the planning phase and is
+        intentionally immutable after that point.  Any attempt to overwrite an
+        already-populated work_units via copy_with is silently dropped here to
+        guard against accidental corruption of the plan between fan-out waves.
+        """
+        if self.work_units and "work_units" in updates and updates["work_units"] != self.work_units:
+            updates = {k: v for k, v in updates.items() if k != "work_units"}
         return self.model_copy(update=updates)

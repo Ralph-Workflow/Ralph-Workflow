@@ -26,10 +26,10 @@ from ralph.cli.main import (
 from ralph.config.enums import ReviewDepth, Verbosity
 from ralph.workspace.scope import WorkspaceScope
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
 RUN_PIPELINE_SUCCESS = 42
 KEYBOARD_INTERRUPT_EXIT_CODE = 130
 DEFAULT_DEVELOPER_ITERS = 3
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
 class CliResult:
@@ -62,12 +62,8 @@ class CliRunner:
     @contextmanager
     def isolated_filesystem(self, temp_dir: Path):
         temp_dir.mkdir(parents=True, exist_ok=True)
-        original_cwd = self._cwd
-        self._cwd = temp_dir
-        try:
+        with self._runner.isolated_filesystem(temp_dir):
             yield temp_dir
-        finally:
-            self._cwd = original_cwd
 
 
 @pytest.fixture

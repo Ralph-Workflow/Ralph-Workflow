@@ -1,0 +1,20 @@
+{% include 'shared/_unattended_mode.j2' %}
+
+You are a worker agent assigned to implement the following task.
+
+## Your Task
+
+**Unit ID**: {{ unit_id }}
+
+## Description
+
+{{ description }}
+
+## Allowed Directories
+
+You may only modify files within these directories:
+{{ allowed_directories }}
+
+## Base Context
+
+{{ base_prompt }}

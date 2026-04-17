@@ -19,7 +19,7 @@ from typing import TYPE_CHECKING
 from loguru import logger
 
 if TYPE_CHECKING:
-    from loguru import Logger
+    from loguru import Logger, Record
 
 # Verbosity level to loguru minimum level
 _VERBOSITY_LEVELS = {
@@ -171,6 +171,32 @@ def _configure_file_handlers(config: LoggingConfig, level: str) -> LoggingPaths:
         text_log_path=text_log_path,
         structured_log_path=structured_log_path,
     )
+
+
+@dataclass(frozen=True)
+class WorkerSinkHandle:
+    sink_id: int
+    log_path: Path
+
+
+def bind_worker_sink(
+    unit_id: str,
+    log_dir: Path,
+    run_id: str = "default",
+) -> WorkerSinkHandle:
+    worker_log_dir = log_dir / run_id / "workers"
+    worker_log_dir.mkdir(parents=True, exist_ok=True)
+    log_path = worker_log_dir / f"unit-{unit_id}.log"
+
+    def worker_filter(record: Record) -> bool:
+        return bool(record["extra"].get("unit_id") == unit_id)  # type: ignore[misc]
+
+    sink_id = logger.add(log_path, filter=worker_filter, format="{time} {level} {message}")  # type: ignore[misc]
+    return WorkerSinkHandle(sink_id=sink_id, log_path=log_path)
+
+
+def remove_worker_sink(handle: WorkerSinkHandle) -> None:
+    logger.remove(handle.sink_id)
 
 
 def get_logger() -> Logger:

@@ -29,7 +29,6 @@ from ralph.mcp.tool_names import (
     CODEX_NATIVE_FEATURES_TO_DISABLE,
     OPENCODE_NATIVE_TOOLS_TO_DISABLE,
     RALPH_MCP_SERVER_NAME,
-    claude_allowed_tool_names,
 )
 
 
@@ -185,11 +184,13 @@ def test_build_command_injects_claude_mcp_config_for_remote_endpoint() -> None:
 
     assert "--mcp-config" in cmd
     mcp_index = cmd.index("--mcp-config")
-    assert cmd[mcp_index + 1] == (
-        '{"mcpServers":{"ralph":{"type":"http","url":"http://127.0.0.1:9999/mcp"}}}'
-    )
-    allowed_index = cmd.index("--allowedTools")
-    assert cmd[allowed_index + 1] == claude_allowed_tool_names()
+    config_payload = _json_object(cmd[mcp_index + 1])
+    servers = cast("dict[str, object]", config_payload["mcpServers"])
+    assert cast("dict[str, object]", servers["ralph"]) == {
+        "type": "http",
+        "url": "http://127.0.0.1:9999/mcp",
+    }
+    assert "--allowedTools" not in cmd
     assert cmd[-2:] == ["--", "PROMPT.md"]
 
 
@@ -507,29 +508,34 @@ def test_invoke_agent_passes_claude_mcp_separator_in_subprocess_argv(
         )
     )
 
-    assert seen_cmds == [
-        [
-            "claude",
-            "-p",
-            "--output-format=stream-json",
-            "--print",
-            "--include-partial-messages",
-            "--resume",
-            "abc123",
-            "--dangerously-skip-permissions",
-            "--verbose",
-            "--mcp-config",
-            '{"mcpServers":{"ralph":{"type":"http","url":"http://127.0.0.1:9999/mcp"}}}',
-            "--strict-mcp-config",
-            "--tools",
-            "",
-            "--allowedTools",
-            claude_allowed_tool_names(),
-            "--model",
-            "claude-sonnet-4",
-            "--",
-            str(prompt_file),
-        ]
+    assert seen_cmds
+    cmd = seen_cmds[0]
+    assert cmd[:10] == [
+        "claude",
+        "-p",
+        "--output-format=stream-json",
+        "--print",
+        "--include-partial-messages",
+        "--resume",
+        "abc123",
+        "--dangerously-skip-permissions",
+        "--verbose",
+        "--mcp-config",
+    ]
+    mcp_payload = _json_object(cmd[10])
+    servers = cast("dict[str, object]", mcp_payload["mcpServers"])
+    assert cast("dict[str, object]", servers["ralph"]) == {
+        "type": "http",
+        "url": "http://127.0.0.1:9999/mcp",
+    }
+    assert cmd[11:] == [
+        "--strict-mcp-config",
+        "--tools",
+        "",
+        "--model",
+        "claude-sonnet-4",
+        "--",
+        str(prompt_file),
     ]
 
 
@@ -553,7 +559,7 @@ def test_claude_builtin_command_preserves_login_capable_mode() -> None:
 
     assert "--bare" not in cmd
     assert "--mcp-config" in cmd
-    assert "--allowedTools" in cmd
+    assert "--allowedTools" not in cmd
 
 
 def test_build_command_claude_injects_empty_tools_when_mcp_endpoint_wired() -> None:
@@ -571,8 +577,9 @@ def test_build_command_claude_injects_empty_tools_when_mcp_endpoint_wired() -> N
         "PROMPT.md",
         options=_BuildCommandOptions(mcp_endpoint="http://127.0.0.1:9999/mcp"),
     )
-    tools_idx = cmd.index("--allowedTools")
-    assert cmd[tools_idx + 1] == claude_allowed_tool_names()
+    tools_idx = cmd.index("--tools")
+    assert cmd[tools_idx + 1] == ""
+    assert "--allowedTools" not in cmd
 
 
 def test_build_command_claude_injects_strict_mcp_config_when_mcp_endpoint_wired() -> None:
@@ -591,6 +598,364 @@ def test_build_command_claude_injects_strict_mcp_config_when_mcp_endpoint_wired(
         options=_BuildCommandOptions(mcp_endpoint="http://127.0.0.1:9999/mcp"),
     )
     assert "--mcp-config" in cmd
+
+
+def test_invoke_agent_claude_preserves_existing_workspace_mcp_servers(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    prompt_file = tmp_path / "PROMPT.md"
+    prompt_file.write_text("hello", encoding="utf-8")
+    (tmp_path / ".mcp.json").write_text(
+        json.dumps(
+            {
+                "mcpServers": {
+                    "angular-cli": {
+                        "command": "npx",
+                        "args": ["-y", "@angular/cli", "mcp"],
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    config = AgentConfig(
+        cmd="claude -p",
+        output_flag="--output-format=stream-json",
+        yolo_flag="--dangerously-skip-permissions",
+        print_flag="--print",
+        streaming_flag="--include-partial-messages",
+        json_parser=JsonParserType.CLAUDE,
+        transport=AgentTransport.CLAUDE,
+    )
+    seen_cmds: list[list[str]] = []
+
+    class FakeProcess:
+        def __init__(self) -> None:
+            self.stdout = iter(["ok\n"])
+            self.stderr = SimpleNamespace(read=lambda: "")
+            self.returncode = 0
+
+        def __enter__(self) -> FakeProcess:
+            return self
+
+        def __exit__(self, exc_type: object, exc: object, tb: object) -> Literal[False]:
+            return False
+
+        def wait(self) -> int:
+            return self.returncode
+
+    def fake_popen(*args: object, **kwargs: object) -> FakeProcess:
+        del kwargs
+        seen_cmds.append(_argv(args))
+        return FakeProcess()
+
+    monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", fake_popen)
+
+    list(
+        invoke_agent(
+            config,
+            str(prompt_file),
+            options=InvokeOptions(
+                show_progress=False,
+                workspace_path=tmp_path,
+                extra_env={"RALPH_MCP_ENDPOINT": "http://127.0.0.1:9999/mcp"},
+            ),
+        )
+    )
+
+    assert seen_cmds
+    cmd = seen_cmds[0]
+    mcp_index = cmd.index("--mcp-config")
+    config_payload = _json_object(cmd[mcp_index + 1])
+    servers = cast("dict[str, object]", config_payload["mcpServers"])
+    assert "angular-cli" in servers
+    assert cast("dict[str, object]", servers["ralph"])["url"] == "http://127.0.0.1:9999/mcp"
+
+
+def test_invoke_agent_claude_preserves_home_claude_json_servers(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    prompt_file = tmp_path / "PROMPT.md"
+    prompt_file.write_text("hello", encoding="utf-8")
+    fake_home = tmp_path / "fake-home"
+    fake_home.mkdir()
+    (fake_home / ".claude.json").write_text(
+        json.dumps(
+            {
+                "mcpServers": {
+                    "angular-cli": {
+                        "command": "npx",
+                        "args": ["-y", "@angular/cli", "mcp"],
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    config = AgentConfig(
+        cmd="claude -p",
+        output_flag="--output-format=stream-json",
+        yolo_flag="--dangerously-skip-permissions",
+        print_flag="--print",
+        streaming_flag="--include-partial-messages",
+        json_parser=JsonParserType.CLAUDE,
+        transport=AgentTransport.CLAUDE,
+    )
+    seen_cmds: list[list[str]] = []
+
+    class FakeProcess:
+        def __init__(self) -> None:
+            self.stdout = iter(["ok\n"])
+            self.stderr = SimpleNamespace(read=lambda: "")
+            self.returncode = 0
+
+        def __enter__(self) -> FakeProcess:
+            return self
+
+        def __exit__(self, exc_type: object, exc: object, tb: object) -> Literal[False]:
+            return False
+
+        def wait(self) -> int:
+            return self.returncode
+
+    def fake_popen(*args: object, **kwargs: object) -> FakeProcess:
+        del kwargs
+        seen_cmds.append(_argv(args))
+        return FakeProcess()
+
+    monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", fake_popen)
+    monkeypatch.setenv("HOME", str(fake_home))
+
+    list(
+        invoke_agent(
+            config,
+            str(prompt_file),
+            options=InvokeOptions(
+                show_progress=False,
+                workspace_path=tmp_path,
+                extra_env={"RALPH_MCP_ENDPOINT": "http://127.0.0.1:9999/mcp"},
+            ),
+        )
+    )
+
+    assert seen_cmds
+    cmd = seen_cmds[0]
+    mcp_index = cmd.index("--mcp-config")
+    config_payload = _json_object(cmd[mcp_index + 1])
+    servers = cast("dict[str, object]", config_payload["mcpServers"])
+    assert "angular-cli" in servers
+
+
+def test_invoke_agent_claude_preserves_workspace_claude_json_servers(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    prompt_file = tmp_path / "PROMPT.md"
+    prompt_file.write_text("hello", encoding="utf-8")
+    (tmp_path / ".claude.json").write_text(
+        json.dumps(
+            {
+                "mcpServers": {
+                    "angular-cli": {
+                        "command": "npx",
+                        "args": ["-y", "@angular/cli", "mcp"],
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    config = AgentConfig(
+        cmd="claude -p",
+        output_flag="--output-format=stream-json",
+        yolo_flag="--dangerously-skip-permissions",
+        print_flag="--print",
+        streaming_flag="--include-partial-messages",
+        json_parser=JsonParserType.CLAUDE,
+        transport=AgentTransport.CLAUDE,
+    )
+    seen_cmds: list[list[str]] = []
+
+    class FakeProcess:
+        def __init__(self) -> None:
+            self.stdout = iter(["ok\n"])
+            self.stderr = SimpleNamespace(read=lambda: "")
+            self.returncode = 0
+
+        def __enter__(self) -> FakeProcess:
+            return self
+
+        def __exit__(self, exc_type: object, exc: object, tb: object) -> Literal[False]:
+            return False
+
+        def wait(self) -> int:
+            return self.returncode
+
+    def fake_popen(*args: object, **kwargs: object) -> FakeProcess:
+        del kwargs
+        seen_cmds.append(_argv(args))
+        return FakeProcess()
+
+    monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", fake_popen)
+
+    list(
+        invoke_agent(
+            config,
+            str(prompt_file),
+            options=InvokeOptions(
+                show_progress=False,
+                workspace_path=tmp_path,
+                extra_env={"RALPH_MCP_ENDPOINT": "http://127.0.0.1:9999/mcp"},
+            ),
+        )
+    )
+
+    assert seen_cmds
+    cmd = seen_cmds[0]
+    mcp_index = cmd.index("--mcp-config")
+    config_payload = _json_object(cmd[mcp_index + 1])
+    servers = cast("dict[str, object]", config_payload["mcpServers"])
+    assert "angular-cli" in servers
+
+
+def test_invoke_agent_claude_workspace_overrides_home_for_same_server_name(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    prompt_file = tmp_path / "PROMPT.md"
+    prompt_file.write_text("hello", encoding="utf-8")
+    fake_home = tmp_path / "fake-home"
+    fake_home.mkdir()
+    (fake_home / ".claude.json").write_text(
+        json.dumps({"mcpServers": {"angular-cli": {"command": "home-cmd"}}}),
+        encoding="utf-8",
+    )
+    (tmp_path / ".claude.json").write_text(
+        json.dumps({"mcpServers": {"angular-cli": {"command": "workspace-cmd"}}}),
+        encoding="utf-8",
+    )
+    config = AgentConfig(
+        cmd="claude -p",
+        output_flag="--output-format=stream-json",
+        yolo_flag="--dangerously-skip-permissions",
+        print_flag="--print",
+        streaming_flag="--include-partial-messages",
+        json_parser=JsonParserType.CLAUDE,
+        transport=AgentTransport.CLAUDE,
+    )
+    seen_cmds: list[list[str]] = []
+
+    class FakeProcess:
+        def __init__(self) -> None:
+            self.stdout = iter(["ok\n"])
+            self.stderr = SimpleNamespace(read=lambda: "")
+            self.returncode = 0
+
+        def __enter__(self) -> FakeProcess:
+            return self
+
+        def __exit__(self, exc_type: object, exc: object, tb: object) -> Literal[False]:
+            return False
+
+        def wait(self) -> int:
+            return self.returncode
+
+    def fake_popen(*args: object, **kwargs: object) -> FakeProcess:
+        del kwargs
+        seen_cmds.append(_argv(args))
+        return FakeProcess()
+
+    monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", fake_popen)
+    monkeypatch.setenv("HOME", str(fake_home))
+
+    list(
+        invoke_agent(
+            config,
+            str(prompt_file),
+            options=InvokeOptions(
+                show_progress=False,
+                workspace_path=tmp_path,
+                extra_env={"RALPH_MCP_ENDPOINT": "http://127.0.0.1:9999/mcp"},
+            ),
+        )
+    )
+
+    assert seen_cmds
+    cmd = seen_cmds[0]
+    mcp_index = cmd.index("--mcp-config")
+    config_payload = _json_object(cmd[mcp_index + 1])
+    servers = cast("dict[str, object]", config_payload["mcpServers"])
+    angular_cli = cast("dict[str, object]", servers["angular-cli"])
+    assert angular_cli["command"] == "workspace-cmd"
+
+
+def test_invoke_agent_claude_overrides_user_ralph_server_definition(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    prompt_file = tmp_path / "PROMPT.md"
+    prompt_file.write_text("hello", encoding="utf-8")
+    (tmp_path / ".mcp.json").write_text(
+        json.dumps(
+            {
+                "mcpServers": {
+                    "ralph": {
+                        "type": "http",
+                        "url": "http://wrong.example/mcp",
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    config = AgentConfig(
+        cmd="claude -p",
+        output_flag="--output-format=stream-json",
+        yolo_flag="--dangerously-skip-permissions",
+        print_flag="--print",
+        streaming_flag="--include-partial-messages",
+        json_parser=JsonParserType.CLAUDE,
+        transport=AgentTransport.CLAUDE,
+    )
+    seen_cmds: list[list[str]] = []
+
+    class FakeProcess:
+        def __init__(self) -> None:
+            self.stdout = iter(["ok\n"])
+            self.stderr = SimpleNamespace(read=lambda: "")
+            self.returncode = 0
+
+        def __enter__(self) -> FakeProcess:
+            return self
+
+        def __exit__(self, exc_type: object, exc: object, tb: object) -> Literal[False]:
+            return False
+
+        def wait(self) -> int:
+            return self.returncode
+
+    def fake_popen(*args: object, **kwargs: object) -> FakeProcess:
+        del kwargs
+        seen_cmds.append(_argv(args))
+        return FakeProcess()
+
+    monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", fake_popen)
+
+    list(
+        invoke_agent(
+            config,
+            str(prompt_file),
+            options=InvokeOptions(
+                show_progress=False,
+                workspace_path=tmp_path,
+                extra_env={"RALPH_MCP_ENDPOINT": "http://127.0.0.1:9999/mcp"},
+            ),
+        )
+    )
+
+    assert seen_cmds
+    cmd = seen_cmds[0]
+    mcp_index = cmd.index("--mcp-config")
+    config_payload = _json_object(cmd[mcp_index + 1])
+    servers = cast("dict[str, object]", config_payload["mcpServers"])
+    assert cast("dict[str, object]", servers["ralph"])["url"] == "http://127.0.0.1:9999/mcp"
 
 
 def test_build_command_claude_omits_tools_flag_when_no_mcp_endpoint() -> None:
@@ -840,6 +1205,49 @@ def test_opencode_config_preserves_unrelated_user_tools_sections() -> None:
     for name in OPENCODE_NATIVE_TOOLS_TO_DISABLE:
         assert tools[name] is False
     assert ui["theme"] == "dark"
+
+
+def test_opencode_config_preserves_existing_mcp_servers() -> None:
+    existing = '{"mcp": {"angular-cli": {"type": "local", "command": "npx"}}}'
+    result = _merge_opencode_config_content(existing, "http://localhost:0/mcp")
+    parsed = _json_object(result)
+    mcp_config = cast("dict[str, object]", parsed["mcp"])
+    angular_cli = cast("dict[str, object]", mcp_config["angular-cli"])
+    ralph_server = cast("dict[str, object]", mcp_config["ralph"])
+    assert angular_cli["command"] == "npx"
+    assert ralph_server["url"] == "http://localhost:0/mcp"
+
+
+def test_opencode_config_overrides_user_ralph_server_definition() -> None:
+    existing = '{"mcp": {"ralph": {"type": "remote", "url": "http://wrong.example/mcp"}}}'
+    result = _merge_opencode_config_content(existing, "http://localhost:0/mcp")
+    parsed = _json_object(result)
+    mcp_config = cast("dict[str, object]", parsed["mcp"])
+    ralph_server = cast("dict[str, object]", mcp_config["ralph"])
+    assert ralph_server["url"] == "http://localhost:0/mcp"
+
+
+def test_opencode_config_preserves_unrelated_permission_entries() -> None:
+    existing = '{"permission": {"bash": "ask", "custom_tool": "allow"}}'
+    result = _merge_opencode_config_content(existing, "http://localhost:0/mcp")
+    parsed = _json_object(result)
+    permission = cast("dict[str, object]", parsed["permission"])
+    assert permission["bash"] == "ask"
+    assert permission["custom_tool"] == "allow"
+    assert permission["ralph_*"] == "allow"
+
+
+def test_opencode_config_normalizes_non_dict_mcp_sections() -> None:
+    existing = '{"mcp": "invalid", "permission": "invalid", "tools": "invalid"}'
+    result = _merge_opencode_config_content(existing, "http://localhost:0/mcp")
+    parsed = _json_object(result)
+    mcp_config = cast("dict[str, object]", parsed["mcp"])
+    permission = cast("dict[str, object]", parsed["permission"])
+    tools = cast("dict[str, object]", parsed["tools"])
+    assert mcp_config["ralph"]
+    assert permission["ralph_*"] == "allow"
+    for name in OPENCODE_NATIVE_TOOLS_TO_DISABLE:
+        assert tools[name] is False
 
 
 def test_opencode_config_omits_tools_block_when_no_mcp_endpoint(
@@ -1126,6 +1534,70 @@ def test_codex_config_toml_preserves_existing_features_section(tmp_path: Path) -
     assert features["multi_agent"] is False
     assert features["undo"] is False
     assert features["apps"] is False
+
+
+def test_codex_config_toml_preserves_existing_mcp_servers(tmp_path: Path) -> None:
+    fake_home = tmp_path / "fake_codex"
+    fake_home.mkdir()
+    (fake_home / "config.toml").write_text(
+        '[mcp_servers.angular-cli]\ncommand = "npx"\nargs = ["-y", "@angular/cli", "mcp"]\n',
+        encoding="utf-8",
+    )
+    home = _prepare_codex_home(
+        "http://localhost:0/mcp",
+        workspace_path=tmp_path,
+        existing_home=str(fake_home),
+        system_prompt_file=None,
+    )
+    config_text = (Path(home) / "config.toml").read_text(encoding="utf-8")
+    parsed = _toml_object(config_text)
+    mcp_servers = cast("dict[str, object]", parsed["mcp_servers"])
+    angular_cli = cast("dict[str, object]", mcp_servers["angular-cli"])
+    ralph_server = cast("dict[str, object]", mcp_servers[RALPH_MCP_SERVER_NAME])
+    assert angular_cli["command"] == "npx"
+    assert angular_cli["args"] == ["-y", "@angular/cli", "mcp"]
+    assert ralph_server["url"] == "http://localhost:0/mcp"
+    assert ralph_server["enabled"] is True
+
+
+def test_codex_config_toml_overrides_existing_ralph_server_definition(tmp_path: Path) -> None:
+    fake_home = tmp_path / "fake_codex"
+    fake_home.mkdir()
+    (fake_home / "config.toml").write_text(
+        '[mcp_servers.ralph]\nurl = "http://wrong.example/mcp"\nenabled = false\n',
+        encoding="utf-8",
+    )
+    home = _prepare_codex_home(
+        "http://localhost:0/mcp",
+        workspace_path=tmp_path,
+        existing_home=str(fake_home),
+        system_prompt_file=None,
+    )
+    config_text = (Path(home) / "config.toml").read_text(encoding="utf-8")
+    parsed = _toml_object(config_text)
+    mcp_servers = cast("dict[str, object]", parsed["mcp_servers"])
+    ralph_server = cast("dict[str, object]", mcp_servers[RALPH_MCP_SERVER_NAME])
+    assert ralph_server["url"] == "http://localhost:0/mcp"
+    assert ralph_server["enabled"] is True
+
+
+def test_codex_config_toml_preserves_unrelated_top_level_sections(tmp_path: Path) -> None:
+    fake_home = tmp_path / "fake_codex"
+    fake_home.mkdir()
+    (fake_home / "config.toml").write_text(
+        'model = "gpt-5"\napproval_policy = "never"\n',
+        encoding="utf-8",
+    )
+    home = _prepare_codex_home(
+        "http://localhost:0/mcp",
+        workspace_path=tmp_path,
+        existing_home=str(fake_home),
+        system_prompt_file=None,
+    )
+    config_text = (Path(home) / "config.toml").read_text(encoding="utf-8")
+    parsed = _toml_object(config_text)
+    assert parsed["model"] == "gpt-5"
+    assert parsed["approval_policy"] == "never"
 
 
 def test_codex_config_toml_omits_features_when_no_endpoint(tmp_path: Path) -> None:

@@ -24,12 +24,14 @@ from ralph.pipeline.effects import (
     CommitEffect,
     ExitFailureEffect,
     ExitSuccessEffect,
+    FanOutDevelopmentEffect,
     InvokeAgentEffect,
     PreparePromptEffect,
     SaveCheckpointEffect,
 )
 from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.state import AgentChainState, CommitState, PipelineState
+from ralph.pipeline.work_units import WorkUnit
 from ralph.policy.loader import load_policy
 from ralph.policy.models import (
     AgentChainConfig,
@@ -141,6 +143,30 @@ class TestCreateInitialState:
 
         assert state.planning_chain.agents == ["claude"]
 
+    def test_creates_state_with_correct_development_budget(self) -> None:
+        config = MagicMock()
+        config.general.developer_iters = DEVELOPER_ITERATIONS
+        config.general.reviewer_reviews = REVIEWER_PASSES
+        config.agent_chains = {"development": ["claude"], "review": ["claude"]}
+        state = runner_module._create_initial_state(config)
+        assert state.development_budget_remaining == DEVELOPER_ITERATIONS
+
+    def test_creates_state_with_correct_review_budget(self) -> None:
+        config = MagicMock()
+        config.general.developer_iters = DEVELOPER_ITERATIONS
+        config.general.reviewer_reviews = REVIEWER_PASSES
+        config.agent_chains = {"development": ["claude"], "review": ["claude"]}
+        state = runner_module._create_initial_state(config)
+        assert state.review_budget_remaining == REVIEWER_PASSES
+
+    def test_creates_state_with_zero_review_budget_when_r_zero(self) -> None:
+        config = MagicMock()
+        config.general.developer_iters = 1
+        config.general.reviewer_reviews = 0
+        config.agent_chains = {"development": ["claude"], "review": ["claude"]}
+        state = runner_module._create_initial_state(config)
+        assert state.review_budget_remaining == 0
+
 
 class TestDetermineEffect:
     def _make_state(
@@ -201,6 +227,18 @@ class TestDetermineEffect:
             effect.agent_name
             == bundle.agents.agent_chains[bundle.agents.agent_drains["planning"].chain].agents[0]
         )
+
+    def test_development_phase_with_work_units_uses_fan_out_effect(self) -> None:
+        bundle = _load_default_policy_bundle()
+        state = PipelineState(
+            phase="development",
+            work_units=(WorkUnit(unit_id="unit-a", description="A"),),
+        )
+
+        effect = runner_module._determine_effect_from_policy(state, bundle)
+
+        assert isinstance(effect, FanOutDevelopmentEffect)
+        assert effect.work_units[0].unit_id == "unit-a"
 
     def test_commit_phase_with_requires_commit_uses_commit_effect(self, tmp_path: Path) -> None:
         bundle = _load_default_policy_bundle()
@@ -698,6 +736,13 @@ class TestExecuteAgentEffect:
     class AgentError(Exception):
         pass
 
+    class _FakeBridge:
+        def shutdown(self) -> None:
+            return
+
+        def agent_endpoint_uri(self) -> str:
+            return "http://127.0.0.1:12345/mcp"
+
     @staticmethod
     def _config(verbosity: int = 2) -> MagicMock:
         config = MagicMock()
@@ -844,15 +889,14 @@ class TestExecuteAgentEffect:
         effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="PROMPT.md")
         registry = _registry_factory(MagicMock())
 
-        class FakeBridge:
-            def shutdown(self) -> None:
-                return None
-
-            def agent_endpoint_uri(self) -> str:
-                return "http://127.0.0.1:9999/mcp"
-
         monkeypatch.setattr(
-            runner_module, "start_mcp_server", lambda *_args, **_kwargs: FakeBridge()
+            runner_module,
+            "start_mcp_server",
+            lambda *_args, **_kwargs: self._FakeBridge(),
+        )
+        monkeypatch.setattr(runner_module, "shutdown_mcp_server", lambda _bridge: None)
+        monkeypatch.setattr(
+            runner_module, "materialize_system_prompt", lambda **_kwargs: "PROMPT.md"
         )
 
         def raising_invoke(*_args, **_kwargs):
@@ -875,15 +919,14 @@ class TestExecuteAgentEffect:
         effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="PROMPT.md")
         registry = _registry_factory(MagicMock())
 
-        class FakeBridge:
-            def shutdown(self) -> None:
-                return None
-
-            def agent_endpoint_uri(self) -> str:
-                return "http://127.0.0.1:9999/mcp"
-
         monkeypatch.setattr(
-            runner_module, "start_mcp_server", lambda *_args, **_kwargs: FakeBridge()
+            runner_module,
+            "start_mcp_server",
+            lambda *_args, **_kwargs: self._FakeBridge(),
+        )
+        monkeypatch.setattr(runner_module, "shutdown_mcp_server", lambda _bridge: None)
+        monkeypatch.setattr(
+            runner_module, "materialize_system_prompt", lambda **_kwargs: "PROMPT.md"
         )
 
         def raising_value_error(*_args, **_kwargs):
