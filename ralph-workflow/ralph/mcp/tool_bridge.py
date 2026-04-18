@@ -17,6 +17,7 @@ from ralph.mcp.capability_mapping import McpCapability
 from ralph.mcp.tool_names import (
     COORDINATE_TOOL,
     DECLARE_COMPLETE_TOOL,
+    DIRECTORY_TREE_TOOL,
     DISCARD_PLAN_DRAFT_TOOL,
     EXEC_TOOL,
     FINALIZE_PLAN_TOOL,
@@ -626,6 +627,28 @@ def _tool_specs() -> tuple[ToolSpec, ...]:
             metadata=_metadata(
                 name=LIST_DIRECTORY_RECURSIVE_TOOL,
                 description="List directory contents recursively",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "path": {
+                            "type": "string",
+                            "description": "Directory path to list recursively",
+                        },
+                    },
+                    "required": ["path"],
+                },
+                required_capability="WorkspaceRead",
+            ),
+            module_name="ralph.mcp.tool_workspace",
+            handler_name="handle_list_directory_recursive",
+        ),
+        ToolSpec(
+            metadata=_metadata(
+                name=DIRECTORY_TREE_TOOL,
+                description=(
+                    "Return a recursive directory tree. Compatibility alias for tools "
+                    "that expect the standard filesystem MCP `directory_tree` name."
+                ),
                 input_schema={
                     "type": "object",
                     "properties": {

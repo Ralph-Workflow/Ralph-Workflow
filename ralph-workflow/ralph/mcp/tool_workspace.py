@@ -29,6 +29,20 @@ if TYPE_CHECKING:
 WORKSPACE_READ_CAPABILITY = "WorkspaceRead"
 WORKSPACE_WRITE_TRACKED_CAPABILITY = "WorkspaceWriteTracked"
 WORKSPACE_WRITE_EPHEMERAL_CAPABILITY = "WorkspaceWriteEphemeral"
+_RECURSIVE_SKIP_DIRECTORY_NAMES = frozenset(
+    {
+        ".git",
+        ".hg",
+        ".mypy_cache",
+        ".pytest_cache",
+        ".ruff_cache",
+        ".svn",
+        ".venv",
+        "__pycache__",
+        "node_modules",
+        "target",
+    }
+)
 
 
 def _attribute_value(
@@ -126,12 +140,20 @@ def _list_dir_flat(workspace: Workspace, path: str) -> str:
     return output
 
 
+def _should_recurse_into_directory(workspace: Workspace, entry_path: str) -> bool:
+    entry_name = PurePosixPath(entry_path).name
+    if entry_name in _RECURSIVE_SKIP_DIRECTORY_NAMES:
+        return False
+    return not workspace.exists(_join_path(entry_path, ".git"))
+
+
+
 def _append_dir_entry(workspace: Workspace, entry_path: str, output: list[str], depth: int) -> None:
     indent = "  " * depth
     is_dir = workspace.is_dir(entry_path)
     entry_type = "[DIR]" if is_dir else "[FILE]"
     output.append(f"{indent}{entry_type} {entry_path}\n")
-    if is_dir:
+    if is_dir and _should_recurse_into_directory(workspace, entry_path):
         _walk_directory_recursive(workspace, entry_path, output, depth + 1)
 
 
@@ -153,7 +175,8 @@ def _collect_matching_files(workspace: Workspace, base_path: str, pattern: str) 
     for entry in sorted(entries):
         entry_path = _join_path(base_path, entry)
         if workspace.is_dir(entry_path):
-            matches.extend(_collect_matching_files(workspace, entry_path, pattern))
+            if _should_recurse_into_directory(workspace, entry_path):
+                matches.extend(_collect_matching_files(workspace, entry_path, pattern))
         elif workspace.is_file(entry_path):
             filename = entry
             if pattern == "*" or pattern in filename:

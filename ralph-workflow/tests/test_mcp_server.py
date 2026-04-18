@@ -191,7 +191,7 @@ def test_build_fastmcp_server_falls_back_without_mcp_dependency(
     assert tools_response is not None
     tools_result = cast("dict[str, object]", tools_response.result)
     tool_names = {tool["name"] for tool in cast("list[dict[str, object]]", tools_result["tools"])}
-    assert {"read_file", "report_progress", "coordinate"}.issubset(tool_names)
+    assert {"read_file", "directory_tree", "report_progress", "coordinate"}.issubset(tool_names)
 
 
 def test_build_standalone_http_server_get_probe_avoids_missing_session_id_error(
@@ -313,6 +313,7 @@ def test_build_fastmcp_server_filters_tools_by_session_capabilities(tmp_path: Pa
     tool_names = {tool.name for tool in server._tool_manager.list_tools()}
 
     assert "read_file" in tool_names
+    assert "directory_tree" in tool_names
     assert "ralph_submit_artifact" in tool_names
     assert "exec" not in tool_names
     assert "write_file" not in tool_names
