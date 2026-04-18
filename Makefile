@@ -1,7 +1,7 @@
 # Ralph (Python) Makefile
-# Root convenience wrapper around ralph-python/Makefile
+# Root convenience wrapper around ralph-workflow/Makefile
 
-PY_DIR := ralph-python
+PY_DIR := ralph-workflow
 
 .PHONY: all build verify lint format format-check typecheck test test-cov clean install dev install-dev help
 

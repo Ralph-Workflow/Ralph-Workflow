@@ -7,15 +7,15 @@ This guide explains how to customize the prompt templates used by the maintained
 Packaged templates live under:
 
 ```text
-ralph-python/ralph/prompts/templates/
+ralph-workflow/ralph/prompts/templates/
 ```
 
 Relevant implementation modules:
 
-- `ralph-python/ralph/prompts/template_registry.py`
-- `ralph-python/ralph/prompts/template_engine.py`
-- `ralph-python/ralph/prompts/template_parsing.py`
-- `ralph-python/ralph/prompts/materialize.py`
+- `ralph-workflow/ralph/prompts/template_registry.py`
+- `ralph-workflow/ralph/prompts/template_engine.py`
+- `ralph-workflow/ralph/prompts/template_parsing.py`
+- `ralph-workflow/ralph/prompts/materialize.py`
 
 Workspace overrides are discovered from:
 
@@ -41,7 +41,7 @@ Examples in the packaged template tree include:
 
 1. Edit or add a workspace template override in `.agent/prompts/`.
 2. Keep variable names aligned with the Python prompt materialization code.
-3. Validate the package from `ralph-python/`:
+3. Validate the package from `ralph-workflow/`:
 
 ```bash
 pytest tests/test_prompts.py -v

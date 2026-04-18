@@ -2,7 +2,7 @@
 
 This document describes the Ralph upstream proxy architecture for the Python implementation.
 
-**Status**: Design and partial implementation — implementation has started; the upstream config model (`ralph-python/ralph/mcp/upstream_config.py`) is implemented as of Task 2. Remaining tasks add the proxy client, registry, and runtime integration.
+**Status**: Design and partial implementation — implementation has started; the upstream config model (`ralph-workflow/ralph/mcp/upstream_config.py`) is implemented as of Task 2. Remaining tasks add the proxy client, registry, and runtime integration.
 
 **Supersedes**: Nothing formal; this is a new component
 
@@ -148,6 +148,6 @@ Provider-visible `config.toml` contains only the Ralph MCP server entry. Upstrea
 
 ## 9. Relationship to Existing Docs
 
-This doc supersedes the "strict mode" sections of `ralph-python/docs/mcp-tool-restriction.md` and extends the architecture notes in `docs/RFC/RFC-011-mcp-tool-availability-postmortem.md` with the concrete proxy contract.
+This doc supersedes the "strict mode" sections of `ralph-workflow/docs/mcp-tool-restriction.md` and extends the architecture notes in `docs/RFC/RFC-011-mcp-tool-availability-postmortem.md` with the concrete proxy contract.
 
-For the run-scoped MCP transport architecture, see `docs/RFC/RFC-011-mcp-tool-availability-postmortem.md`. For per-CLI enforcement details, see `ralph-python/docs/mcp-tool-restriction.md`.
+For the run-scoped MCP transport architecture, see `docs/RFC/RFC-011-mcp-tool-availability-postmortem.md`. For per-CLI enforcement details, see `ralph-workflow/docs/mcp-tool-restriction.md`.

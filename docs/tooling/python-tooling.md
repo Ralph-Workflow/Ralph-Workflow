@@ -69,7 +69,7 @@ mypy provides strict static type checking with Pydantic integration.
 make typecheck
 
 # With mypy directly
-cd ralph-python
+cd ralph-workflow
 mypy ralph/
 ```
 
@@ -205,7 +205,7 @@ The resulting binary includes:
 The `make verify` target runs the complete verification suite:
 
 ```bash
-cd ralph-python
+cd ralph-workflow
 make verify
 ```
 

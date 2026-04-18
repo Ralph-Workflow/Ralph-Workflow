@@ -1,6 +1,6 @@
 # Git Workflow Architecture
 
-This document describes the current Git workflow used by the Python implementation in `ralph-python/`.
+This document describes the current Git workflow used by the Python implementation in `ralph-workflow/`.
 
 ## Overview
 
@@ -8,10 +8,10 @@ Ralph keeps agents focused on code changes while the orchestrator owns repositor
 
 Current implementation modules:
 
-- `ralph-python/ralph/git/operations.py` — repository discovery, staging, commit creation, push helpers
-- `ralph-python/ralph/git/hooks.py` — managed hook installation and tamper detection
-- `ralph-python/ralph/git/wrapper.py` — guardrails around agent phases and unauthorized commits
-- `ralph-python/ralph/git/rebase/` — rebase helpers, checkpointing, and continuation logic
+- `ralph-workflow/ralph/git/operations.py` — repository discovery, staging, commit creation, push helpers
+- `ralph-workflow/ralph/git/hooks.py` — managed hook installation and tamper detection
+- `ralph-workflow/ralph/git/wrapper.py` — guardrails around agent phases and unauthorized commits
+- `ralph-workflow/ralph/git/rebase/` — rebase helpers, checkpointing, and continuation logic
 
 ## Design rules
 
@@ -22,7 +22,7 @@ Current implementation modules:
 
 ## Verification touchpoints
 
-When changing Git behavior, verify from `ralph-python/` with:
+When changing Git behavior, verify from `ralph-workflow/` with:
 
 ```bash
 pytest tests/test_git_operations.py -v

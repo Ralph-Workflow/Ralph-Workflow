@@ -105,7 +105,7 @@ Transport selection and alias routing are verified in **`tests/test_agent_regist
 Run these tests with:
 
 ```bash
-cd ralph-python
+cd ralph-workflow
 pytest tests/test_agents_invoke.py -q
 ```
 

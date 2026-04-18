@@ -34,7 +34,7 @@ Examples:
 ## Task 1: Document the contract before code
 
 **Files:**
-- Modify: `ralph-python/docs/mcp-tool-restriction.md`
+- Modify: `ralph-workflow/docs/mcp-tool-restriction.md`
 - Modify: `docs/RFC/RFC-011-mcp-tool-availability-postmortem.md`
 - Create: `docs/architecture/mcp-upstream-proxy.md`
 
@@ -68,7 +68,7 @@ Include sections for:
 **Step 4: Commit**
 
 ```bash
-git add ralph-python/docs/mcp-tool-restriction.md docs/RFC/RFC-011-mcp-tool-availability-postmortem.md docs/architecture/mcp-upstream-proxy.md
+git add ralph-workflow/docs/mcp-tool-restriction.md docs/RFC/RFC-011-mcp-tool-availability-postmortem.md docs/architecture/mcp-upstream-proxy.md
 git commit -m "docs(mcp): define Ralph upstream proxy contract"
 ```
 
@@ -77,10 +77,10 @@ git commit -m "docs(mcp): define Ralph upstream proxy contract"
 ## Task 2: Add a normalized upstream MCP config model
 
 **Files:**
-- Create: `ralph-python/ralph/mcp/upstream_config.py`
-- Modify: `ralph-python/ralph/agents/invoke.py`
-- Test: `ralph-python/tests/test_agents_invoke.py`
-- Test: `ralph-python/tests/test_mcp_startup.py`
+- Create: `ralph-workflow/ralph/mcp/upstream_config.py`
+- Modify: `ralph-workflow/ralph/agents/invoke.py`
+- Test: `ralph-workflow/tests/test_agents_invoke.py`
+- Test: `ralph-workflow/tests/test_mcp_startup.py`
 
 **Step 1: Write the failing tests**
 
@@ -112,7 +112,7 @@ def test_upstream_config_rejects_duplicate_ralph_server_name() -> None:
 Run:
 
 ```bash
-cd ralph-python
+cd ralph-workflow
 pytest tests/test_agents_invoke.py -q -k "claude or opencode or codex or upstream"
 pytest tests/test_mcp_startup.py -q -k "upstream"
 ```
@@ -164,10 +164,10 @@ git commit -m "feat(mcp): extract upstream server config for Ralph proxying"
 ## Task 3: Add upstream MCP client abstractions (tools-only)
 
 **Files:**
-- Create: `ralph-python/ralph/mcp/upstream_client.py`
-- Create: `ralph-python/ralph/mcp/upstream_models.py`
-- Test: `ralph-python/tests/test_mcp_transport.py`
-- Test: `ralph-python/tests/test_mcp_server.py`
+- Create: `ralph-workflow/ralph/mcp/upstream_client.py`
+- Create: `ralph-workflow/ralph/mcp/upstream_models.py`
+- Test: `ralph-workflow/tests/test_mcp_transport.py`
+- Test: `ralph-workflow/tests/test_mcp_server.py`
 
 **Step 1: Write the failing tests**
 
@@ -237,10 +237,10 @@ git commit -m "feat(mcp): add upstream MCP tool clients"
 ## Task 4: Build an upstream registry with namespacing and collision detection
 
 **Files:**
-- Create: `ralph-python/ralph/mcp/upstream_registry.py`
-- Modify: `ralph-python/ralph/mcp/tool_names.py`
-- Test: `ralph-python/tests/test_mcp_bridge.py`
-- Test: `ralph-python/tests/test_mcp_server.py`
+- Create: `ralph-workflow/ralph/mcp/upstream_registry.py`
+- Modify: `ralph-workflow/ralph/mcp/tool_names.py`
+- Test: `ralph-workflow/tests/test_mcp_bridge.py`
+- Test: `ralph-workflow/tests/test_mcp_server.py`
 
 **Step 1: Write the failing tests**
 
@@ -303,12 +303,12 @@ git commit -m "feat(mcp): namespace proxied upstream tools"
 ## Task 5: Extend Ralph MCP server runtime to expose proxied upstream tools
 
 **Files:**
-- Modify: `ralph-python/ralph/mcp/tool_bridge.py`
-- Modify: `ralph-python/ralph/mcp/server/runtime.py`
-- Modify: `ralph-python/ralph/mcp/server/lifecycle.py`
-- Modify: `ralph-python/ralph/mcp/startup.py`
-- Test: `ralph-python/tests/test_mcp_server.py`
-- Test: `ralph-python/tests/test_mcp_lifecycle.py`
+- Modify: `ralph-workflow/ralph/mcp/tool_bridge.py`
+- Modify: `ralph-workflow/ralph/mcp/server/runtime.py`
+- Modify: `ralph-workflow/ralph/mcp/server/lifecycle.py`
+- Modify: `ralph-workflow/ralph/mcp/startup.py`
+- Test: `ralph-workflow/tests/test_mcp_server.py`
+- Test: `ralph-workflow/tests/test_mcp_lifecycle.py`
 
 **Step 1: Write the failing tests**
 
@@ -369,11 +369,11 @@ git commit -m "feat(mcp): expose upstream tools through Ralph server"
 ## Task 6: Enforce Ralph policy over proxied tools
 
 **Files:**
-- Modify: `ralph-python/ralph/mcp/capability_mapping.py`
-- Modify: `ralph-python/ralph/mcp/session.py`
-- Modify: `ralph-python/ralph/mcp/tool_bridge.py`
-- Test: `ralph-python/tests/test_mcp_policy_outcomes.py`
-- Test: `ralph-python/tests/test_mcp_server.py`
+- Modify: `ralph-workflow/ralph/mcp/capability_mapping.py`
+- Modify: `ralph-workflow/ralph/mcp/session.py`
+- Modify: `ralph-workflow/ralph/mcp/tool_bridge.py`
+- Test: `ralph-workflow/tests/test_mcp_policy_outcomes.py`
+- Test: `ralph-workflow/tests/test_mcp_server.py`
 
 **Step 1: Write the failing tests**
 
@@ -429,10 +429,10 @@ git commit -m "feat(mcp): gate proxied tools with Ralph capability policy"
 ## Task 7: Apply Ralph-only MCP visibility across all provider transports
 
 **Files:**
-- Modify: `ralph-python/ralph/agents/invoke.py`
-- Modify: `ralph-python/ralph/agents/registry.py`
-- Modify: `ralph-python/tests/test_agents_invoke.py`
-- Modify: `ralph-python/docs/mcp-tool-restriction.md`
+- Modify: `ralph-workflow/ralph/agents/invoke.py`
+- Modify: `ralph-workflow/ralph/agents/registry.py`
+- Modify: `ralph-workflow/tests/test_agents_invoke.py`
+- Modify: `ralph-workflow/docs/mcp-tool-restriction.md`
 
 **Step 1: Write the failing tests**
 
@@ -482,7 +482,7 @@ Expect PASS.
 **Step 5: Commit**
 
 ```bash
-git add ralph/agents/invoke.py ralph/agents/registry.py tests/test_agents_invoke.py ralph-python/docs/mcp-tool-restriction.md
+git add ralph/agents/invoke.py ralph/agents/registry.py tests/test_agents_invoke.py ralph-workflow/docs/mcp-tool-restriction.md
 git commit -m "fix(agents): route user MCP through Ralph across transports"
 ```
 
@@ -491,9 +491,9 @@ git commit -m "fix(agents): route user MCP through Ralph across transports"
 ## Task 8: Fix the surfaced commit prompt path bug before rollout
 
 **Files:**
-- Modify: `ralph-python/ralph/cli/commands/commit.py`
-- Modify: `ralph-python/ralph/prompts/system_prompt.py` (only if needed)
-- Test: `ralph-python/tests/test_cli_commands.py`
+- Modify: `ralph-workflow/ralph/cli/commands/commit.py`
+- Modify: `ralph-workflow/ralph/prompts/system_prompt.py` (only if needed)
+- Test: `ralph-workflow/tests/test_cli_commands.py`
 
 **Step 1: Write the failing test**
 
@@ -540,7 +540,7 @@ git commit -m "fix(commit): persist current prompt for Claude commit runs"
 **Step 1: Run focused MCP and invoke tests**
 
 ```bash
-cd ralph-python
+cd ralph-workflow
 pytest tests/test_agents_invoke.py -q
 pytest tests/test_mcp_server.py -q
 pytest tests/test_mcp_lifecycle.py -q

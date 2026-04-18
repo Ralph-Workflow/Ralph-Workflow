@@ -6,7 +6,7 @@ This directory contains the maintained Python package.
 
 ```bash
 git clone https://codeberg.org/RalphWorkflow/Ralph-Workflow.git
-cd Ralph-Workflow/ralph-python
+cd Ralph-Workflow/ralph-workflow
 make dev
 ```
 

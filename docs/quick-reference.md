@@ -13,7 +13,7 @@ pipx install ralph-workflow
 ## Local development
 
 ```bash
-cd ralph-python
+cd ralph-workflow
 python -m pip install -e ".[dev]"
 ralph --version
 ```
@@ -59,18 +59,18 @@ ralph-mcp
 ## Verification
 
 ```bash
-cd ralph-python
+cd ralph-workflow
 make verify
 ```
 
 ## Package layout
 
-- `ralph-python/ralph/cli/` — CLI entry points and commands
-- `ralph-python/ralph/pipeline/` — state, events, reducer, orchestrator
-- `ralph-python/ralph/phases/` — phase handlers
-- `ralph-python/ralph/mcp/` — MCP bridge and standalone server
-- `ralph-python/ralph/git/` — GitPython-backed operations
-- `ralph-python/ralph/workspace/` — filesystem abstraction
+- `ralph-workflow/ralph/cli/` — CLI entry points and commands
+- `ralph-workflow/ralph/pipeline/` — state, events, reducer, orchestrator
+- `ralph-workflow/ralph/phases/` — phase handlers
+- `ralph-workflow/ralph/mcp/` — MCP bridge and standalone server
+- `ralph-workflow/ralph/git/` — GitPython-backed operations
+- `ralph-workflow/ralph/workspace/` — filesystem abstraction
 
 ## Legacy note
 

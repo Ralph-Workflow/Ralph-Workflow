@@ -3,7 +3,7 @@
 ## Canonical command
 
 ```bash
-cd ralph-python
+cd ralph-workflow
 make verify
 ```
 
@@ -21,7 +21,7 @@ If any step fails, fix the issue immediately and rerun verification.
 ## Individual commands (when narrowing failures)
 
 ```bash
-cd ralph-python
+cd ralph-workflow
 ruff check ralph/ tests/
 ruff format --check ralph/ tests/
 mypy ralph/ --strict
@@ -35,7 +35,7 @@ python -m ralph --version
 ## Policy loader smoke check
 
 ```bash
-cd ralph-python
+cd ralph-workflow
 python -c "from pathlib import Path; from ralph.policy.loader import load_policy; load_policy(Path('ralph/policy/defaults'))"
 ```
 
@@ -48,7 +48,7 @@ Run this smoke check whenever policy defaults or loader code changes.
 When working on or verifying the parallel development feature:
 
 ```bash
-cd ralph-python
+cd ralph-workflow
 uv run pytest -q tests/integration/test_parallel_resume.py
 uv run pytest -q tests/integration/test_runner_fanout_wiring.py
 uv run pytest -q tests/integration/test_old_checkpoint_loads.py

@@ -1,12 +1,12 @@
 # Contributing to Ralph Workflow
 
-Ralph Workflow is now a **Python-first** project. The maintained CLI package lives in `ralph-python/`.
+Ralph Workflow is now a **Python-first** project. The maintained CLI package lives in `ralph-workflow/`.
 
 ## Start here
 
 ```bash
 git clone https://codeberg.org/RalphWorkflow/Ralph-Workflow.git
-cd Ralph-Workflow/ralph-python
+cd Ralph-Workflow/ralph-workflow
 python -m pip install -e ".[dev]"
 make verify
 ```
@@ -15,15 +15,15 @@ make verify
 
 Use these first when changing the Python package:
 
-- `ralph-python/README.md`
-- `ralph-python/CONTRIBUTING.md`
+- `ralph-workflow/README.md`
+- `ralph-workflow/CONTRIBUTING.md`
 - `docs/agents/verification.md`
-- package docstrings in `ralph-python/ralph/`
+- package docstrings in `ralph-workflow/ralph/`
 
 ## Required verification
 
 ```bash
-cd ralph-python
+cd ralph-workflow
 make verify
 ```
 
@@ -41,7 +41,7 @@ Verification is clean only when the Python checks pass without unresolved errors
 
 ## Repository layout
 
-- `ralph-python/` — maintained Python package
+- `ralph-workflow/` — maintained Python package
 - `docs/` — mixed current Python docs and legacy Rust-era design notes
 - `vendor/ralph-workflow-gui/` — vendored Rust/Tauri GUI
 

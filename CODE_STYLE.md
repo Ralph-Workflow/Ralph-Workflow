@@ -1,15 +1,15 @@
 # Ralph Workflow Code Style
 
-The maintained implementation in this repository is the Python package under `ralph-python/`.
+The maintained implementation in this repository is the Python package under `ralph-workflow/`.
 
 ## Source of truth
 
 Current style and quality gates come from:
 
-- `ralph-python/pyproject.toml`
-- `ralph-python/CONTRIBUTING.md`
+- `ralph-workflow/pyproject.toml`
+- `ralph-workflow/CONTRIBUTING.md`
 - `docs/agents/verification.md`
-- existing package/module docstrings and tests in `ralph-python/`
+- existing package/module docstrings and tests in `ralph-workflow/`
 
 ## Core expectations
 

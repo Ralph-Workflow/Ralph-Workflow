@@ -40,12 +40,12 @@ Example failing analysis artifact:
   "summary": "The release workflow is partially implemented, but the Windows path and verification evidence are incomplete.",
   "what_came_up_short": [
     "`.github/workflows/release-binaries.yml` does not build or upload the Windows artifact.",
-    "`ralph-python/scripts/install.ps1` exists but is not referenced from the workflow or release documentation.",
+    "`ralph-workflow/scripts/install.ps1` exists but is not referenced from the workflow or release documentation.",
     "Verification did not prove the expected archive names and checksum files are produced for every platform."
   ],
   "how_to_fix": [
     "Update `.github/workflows/release-binaries.yml` to add the Windows matrix leg and upload the Windows artifact using the same naming convention as the macOS/Linux jobs.",
-    "Wire `ralph-python/scripts/install.ps1` into the release/docs flow so Windows users have a documented install path.",
+    "Wire `ralph-workflow/scripts/install.ps1` into the release/docs flow so Windows users have a documented install path.",
     "Run the release verification commands again and record evidence that each platform archive and checksum is created with the expected filenames."
   ]
 }

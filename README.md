@@ -1,10 +1,10 @@
 # Ralph Workflow
 
-Ralph Workflow is a Python CLI for unattended, multi-agent software delivery loops. The maintained implementation lives in `ralph-python/`; this repository also keeps legacy design notes from the retired Rust implementation and a vendored Rust/Tauri GUI under `vendor/ralph-workflow-gui/`.
+Ralph Workflow is a Python CLI for unattended, multi-agent software delivery loops. The maintained implementation lives in `ralph-workflow/`; this repository also keeps legacy design notes from the retired Rust implementation and a vendored Rust/Tauri GUI under `vendor/ralph-workflow-gui/`.
 
 ## What is current
 
-- **Current product**: `ralph-python/`
+- **Current product**: `ralph-workflow/`
 - **Package name**: `ralph-workflow`
 - **CLI entry points**: `ralph`, `ralph-mcp`
 - **Primary toolchain**: Python 3.12+, `ruff`, `mypy`, `pytest`, `hatch`
@@ -30,7 +30,7 @@ ralph --help
 ### From this repository
 
 ```bash
-cd ralph-python
+cd ralph-workflow
 python -m pip install -e ".[dev]"
 ralph --version
 ```
@@ -47,7 +47,7 @@ ralph
 ## Verification
 
 ```bash
-cd ralph-python
+cd ralph-workflow
 make verify
 ```
 
@@ -59,8 +59,8 @@ That runs the current Python verification path:
 
 ## Repository map
 
-- `ralph-python/README.md` — package install, development, and API overview
-- `ralph-python/CONTRIBUTING.md` — Python contributor workflow
+- `ralph-workflow/README.md` — package install, development, and API overview
+- `ralph-workflow/CONTRIBUTING.md` — Python contributor workflow
 - `docs/README.md` — current vs legacy documentation map
 - `vendor/ralph-workflow-gui/` — vendored Rust GUI work; not the canonical CLI implementation
 
@@ -70,9 +70,9 @@ Large parts of `docs/`, `CODE_STYLE.md`, and older plans/RFCs were written for t
 
 For current behavior, prefer:
 
-1. `ralph-python/README.md`
+1. `ralph-workflow/README.md`
 2. `docs/agents/verification.md`
-3. the Python source/docstrings under `ralph-python/ralph/`
+3. the Python source/docstrings under `ralph-workflow/ralph/`
 
 ## License
 

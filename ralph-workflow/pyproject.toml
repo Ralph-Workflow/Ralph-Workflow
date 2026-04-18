@@ -61,7 +61,7 @@ ralph-mcp = "ralph.mcp.server.runtime:main"
 
 [project.urls]
 Homepage = "https://codeberg.org/RalphWorkflow/Ralph-Workflow"
-Documentation = "https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/ralph-python/README.md"
+Documentation = "https://codeberg.org/RalphWorkflow/Ralph-Workflow/src/branch/main/ralph-workflow/README.md"
 Repository = "https://codeberg.org/RalphWorkflow/Ralph-Workflow"
 Issues = "https://codeberg.org/RalphWorkflow/Ralph-Workflow/issues"
 

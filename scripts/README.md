@@ -1,11 +1,11 @@
 # Scripts
 
-The maintained CLI and verification flow for this repository is the Python package in `ralph-python/`.
+The maintained CLI and verification flow for this repository is the Python package in `ralph-workflow/`.
 
 ## Canonical verification command
 
 ```bash
-cd ../ralph-python
+cd ../ralph-workflow
 make verify
 ```
 

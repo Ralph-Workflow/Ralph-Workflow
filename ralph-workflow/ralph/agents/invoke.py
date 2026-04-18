@@ -482,7 +482,7 @@ def _prepare_codex_home_with_upstreams(
         logger.warning(
             "Codex MCP tool restriction is best-effort: apply_patch and core "
             "editing primitives cannot be disabled. See "
-            "ralph-python/docs/mcp-tool-restriction.md."
+            "ralph-workflow/docs/mcp-tool-restriction.md."
         )
         # Codex has no strict MCP-only mode. Ralph preserves the user's existing
         # non-MCP config while exposing only the live run-scoped Ralph endpoint.

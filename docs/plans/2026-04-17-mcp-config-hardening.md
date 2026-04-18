@@ -13,9 +13,9 @@
 ### Task 1: Define the canonical MCP/config policy surface
 
 **Files:**
-- Modify: `ralph-python/ralph/agents/invoke.py`
-- Modify: `ralph-python/docs/mcp-tool-restriction.md`
-- Reference: `ralph-python/ralph/mcp/tool_names.py`
+- Modify: `ralph-workflow/ralph/agents/invoke.py`
+- Modify: `ralph-workflow/docs/mcp-tool-restriction.md`
+- Reference: `ralph-workflow/ralph/mcp/tool_names.py`
 
 **Step 1: Write the failing documentation-focused test or assertion target**
 
@@ -73,10 +73,10 @@ git commit -m "docs: define MCP transport policy invariants"
 ### Task 2: Finish Claude config preservation and resolve the allowlist gap
 
 **Files:**
-- Modify: `ralph-python/ralph/agents/invoke.py`
-- Modify: `ralph-python/ralph/mcp/tool_names.py`
-- Test: `ralph-python/tests/test_agents_invoke.py`
-- Reference: `ralph-python/docs/mcp-tool-restriction.md`
+- Modify: `ralph-workflow/ralph/agents/invoke.py`
+- Modify: `ralph-workflow/ralph/mcp/tool_names.py`
+- Test: `ralph-workflow/tests/test_agents_invoke.py`
+- Reference: `ralph-workflow/docs/mcp-tool-restriction.md`
 
 **Step 1: Write the failing tests**
 
@@ -161,9 +161,9 @@ git commit -m "fix: make Claude MCP preservation and allowlist policy explicit"
 ### Task 3: Harden OpenCode behavior and make preservation rules explicit
 
 **Files:**
-- Modify: `ralph-python/ralph/agents/invoke.py`
-- Test: `ralph-python/tests/test_agents_invoke.py`
-- Modify: `ralph-python/docs/mcp-tool-restriction.md`
+- Modify: `ralph-workflow/ralph/agents/invoke.py`
+- Test: `ralph-workflow/tests/test_agents_invoke.py`
+- Modify: `ralph-workflow/docs/mcp-tool-restriction.md`
 
 **Step 1: Write the failing tests**
 
@@ -228,9 +228,9 @@ git commit -m "test: lock down OpenCode MCP merge invariants"
 ### Task 4: Fortify Codex behavior and document its permanent limitations
 
 **Files:**
-- Modify: `ralph-python/ralph/agents/invoke.py`
-- Test: `ralph-python/tests/test_agents_invoke.py`
-- Modify: `ralph-python/docs/mcp-tool-restriction.md`
+- Modify: `ralph-workflow/ralph/agents/invoke.py`
+- Test: `ralph-workflow/tests/test_agents_invoke.py`
+- Modify: `ralph-workflow/docs/mcp-tool-restriction.md`
 
 **Step 1: Write the failing tests**
 
@@ -296,10 +296,10 @@ git commit -m "docs: clarify Codex MCP preservation and limits"
 ### Task 5: Make tool-alias generation a first-class, documented policy module
 
 **Files:**
-- Modify: `ralph-python/ralph/mcp/tool_names.py`
-- Modify: `ralph-python/ralph/agents/invoke.py`
-- Test: `ralph-python/tests/test_mcp_policy_outcomes.py`
-- Test: `ralph-python/tests/test_agents_invoke.py`
+- Modify: `ralph-workflow/ralph/mcp/tool_names.py`
+- Modify: `ralph-workflow/ralph/agents/invoke.py`
+- Test: `ralph-workflow/tests/test_mcp_policy_outcomes.py`
+- Test: `ralph-workflow/tests/test_agents_invoke.py`
 
 **Step 1: Write the failing tests**
 
@@ -359,9 +359,9 @@ git commit -m "refactor: make MCP tool alias policy explicit"
 ### Task 6: Fortify the knowledge base in code comments and supporting docs
 
 **Files:**
-- Modify: `ralph-python/ralph/agents/invoke.py`
-- Modify: `ralph-python/ralph/mcp/tool_names.py`
-- Modify: `ralph-python/docs/mcp-tool-restriction.md`
+- Modify: `ralph-workflow/ralph/agents/invoke.py`
+- Modify: `ralph-workflow/ralph/mcp/tool_names.py`
+- Modify: `ralph-workflow/docs/mcp-tool-restriction.md`
 - Modify: `docs/RFC/RFC-011-mcp-tool-availability-postmortem.md`
 
 **Step 1: Write the failing documentation checklist**
@@ -389,7 +389,7 @@ These comments should answer “why is this policy correct?” and “what must 
 
 Revise:
 
-- `ralph-python/docs/mcp-tool-restriction.md` so it precisely states preservation vs usability vs enforcement for each transport.
+- `ralph-workflow/docs/mcp-tool-restriction.md` so it precisely states preservation vs usability vs enforcement for each transport.
 - `docs/RFC/RFC-011-mcp-tool-availability-postmortem.md` so the postmortem references the final transport policy and test seam once complete.
 
 **Step 4: Verify docs and comments against tests**

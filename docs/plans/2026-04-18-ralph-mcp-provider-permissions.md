@@ -24,7 +24,7 @@
 ## Task 1: Document the provider permission contract
 
 **Files:**
-- Modify: `ralph-python/docs/mcp-tool-restriction.md`
+- Modify: `ralph-workflow/docs/mcp-tool-restriction.md`
 - Modify: `docs/RFC/RFC-011-mcp-tool-availability-postmortem.md`
 - Modify: `docs/architecture/mcp-upstream-proxy.md`
 
@@ -47,19 +47,19 @@ Provider CLIs must see only the Ralph MCP server in strict mode. Where a provide
 **Step 3: Verify docs stay consistent with current runtime**
 
 Check wording against:
-- `ralph-python/ralph/agents/invoke.py`
-- `ralph-python/ralph/mcp/tool_bridge.py`
-- `ralph-python/ralph/mcp/server/runtime.py`
+- `ralph-workflow/ralph/agents/invoke.py`
+- `ralph-workflow/ralph/mcp/tool_bridge.py`
+- `ralph-workflow/ralph/mcp/server/runtime.py`
 
 ---
 
 ## Task 2: Add transport-neutral helpers for Ralph tool names
 
 **Files:**
-- Modify: `ralph-python/ralph/mcp/tool_names.py`
-- Modify: `ralph-python/ralph/mcp/tool_bridge.py`
-- Test: `ralph-python/tests/test_mcp_bridge.py`
-- Test: `ralph-python/tests/test_mcp_server.py`
+- Modify: `ralph-workflow/ralph/mcp/tool_names.py`
+- Modify: `ralph-workflow/ralph/mcp/tool_bridge.py`
+- Test: `ralph-workflow/tests/test_mcp_bridge.py`
+- Test: `ralph-workflow/tests/test_mcp_server.py`
 
 **Step 1: Write failing tests**
 
@@ -79,7 +79,7 @@ def test_tool_bridge_reports_claude_ralph_tool_names() -> None:
 Run:
 
 ```bash
-cd ralph-python
+cd ralph-workflow
 pytest tests/test_mcp_bridge.py -q -k "tool names or claude"
 pytest tests/test_mcp_server.py -q -k "tool names or claude"
 ```
@@ -111,10 +111,10 @@ Run the same pytest commands and expect PASS.
 ## Task 3: Teach provider command builders to auto-approve Ralph-only MCP tools
 
 **Files:**
-- Modify: `ralph-python/ralph/agents/invoke.py`
-- Modify: `ralph-python/ralph/agents/registry.py` only if transport defaults need tightening
-- Test: `ralph-python/tests/test_agents_invoke.py`
-- Test: `ralph-python/tests/test_agent_registry.py` if defaults change
+- Modify: `ralph-workflow/ralph/agents/invoke.py`
+- Modify: `ralph-workflow/ralph/agents/registry.py` only if transport defaults need tightening
+- Test: `ralph-workflow/tests/test_agents_invoke.py`
+- Test: `ralph-workflow/tests/test_agent_registry.py` if defaults change
 
 **Step 1: Write failing tests first**
 
@@ -175,13 +175,13 @@ Run the same pytest selector plus any new registry tests.
 ## Task 4: Finish the commit-mode prompt-path fix under the new permission model
 
 **Files:**
-- Modify: `ralph-python/ralph/cli/commands/commit.py`
-- Modify: `ralph-python/ralph/prompts/commit/__init__.py` if Claude-specific prompt generation must avoid oversized diff path references
-- Modify: `ralph-python/ralph/agents/invoke.py` if inline prompt handling still needs transport-specific fixes
-- Test: `ralph-python/tests/test_cli_commit_command.py`
-- Test: `ralph-python/tests/test_system_prompt.py`
-- Test: `ralph-python/tests/test_prompts_commit.py`
-- Test: `ralph-python/tests/test_agents_invoke.py`
+- Modify: `ralph-workflow/ralph/cli/commands/commit.py`
+- Modify: `ralph-workflow/ralph/prompts/commit/__init__.py` if Claude-specific prompt generation must avoid oversized diff path references
+- Modify: `ralph-workflow/ralph/agents/invoke.py` if inline prompt handling still needs transport-specific fixes
+- Test: `ralph-workflow/tests/test_cli_commit_command.py`
+- Test: `ralph-workflow/tests/test_system_prompt.py`
+- Test: `ralph-workflow/tests/test_prompts_commit.py`
+- Test: `ralph-workflow/tests/test_agents_invoke.py`
 
 **Step 1: Add failing tests for both prompt-path failure modes**
 

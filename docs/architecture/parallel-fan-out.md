@@ -61,7 +61,7 @@ ALL_WORKERS_COMPLETE  --> phase advances
 ### AgentExecutor Protocol
 
 ```python
-# ralph-python/ralph/agents/executor.py
+# ralph-workflow/ralph/agents/executor.py
 @runtime_checkable
 class AgentExecutor(Protocol):
     async def run(
@@ -78,7 +78,7 @@ class AgentExecutor(Protocol):
 ### SubprocessAgentExecutor (Production Adapter)
 
 ```python
-# ralph-python/ralph/agents/subprocess_executor.py
+# ralph-workflow/ralph/agents/subprocess_executor.py
 class SubprocessAgentExecutor:
     async def run(self, unit, *, on_output, on_status, command) -> WorkerResult:
         proc = await asyncio.create_subprocess_exec(
@@ -94,7 +94,7 @@ class SubprocessAgentExecutor:
 ### FakeAgentExecutor (Test Adapter)
 
 ```python
-# ralph-python/ralph/testing/fake_agent_executor.py
+# ralph-workflow/ralph/testing/fake_agent_executor.py
 class FakeAgentExecutor:
     def __init__(self, runs: dict[str, FakeRun]) -> None: ...
     async def run(self, unit, *, on_output, on_status) -> WorkerResult: ...
@@ -105,7 +105,7 @@ Returns seeded `WorkerResult` values without spawning processes. Tests use this 
 ### McpServerFactory Protocol
 
 ```python
-# ralph-python/ralph/mcp/server/factory.py
+# ralph-workflow/ralph/mcp/server/factory.py
 @runtime_checkable
 class McpServerFactory(Protocol):
     def build(self, session: object) -> McpServerHandle: ...
@@ -116,7 +116,7 @@ class McpServerFactory(Protocol):
 ### WorkspaceScope.for_worktree()
 
 ```python
-# ralph-python/ralph/workspace/scope.py
+# ralph-workflow/ralph/workspace/scope.py
 @classmethod
 def for_worktree(cls, worktree_path: Path, allowed_directories: tuple[str, ...]) -> WorkspaceScope:
     allowed_roots = tuple(worktree_path / ad for ad in allowed_directories)
@@ -128,7 +128,7 @@ Each worker subprocess is assigned its own `WorkspaceScope` pointing at the bran
 ### GitExecutor Serialization Gate
 
 ```python
-# ralph-python/ralph/git/executor.py
+# ralph-workflow/ralph/git/executor.py
 class GitExecutor:
     def __init__(self) -> None:
         self._executor = ThreadPoolExecutor(max_workers=1)
@@ -148,7 +148,7 @@ GitPython is not thread-safe when multiple threads share a `.git/` directory. `G
 The pipeline event loop in `runner.run()` is synchronous. When it encounters a `FanOutDevelopmentEffect`, it delegates to `_execute_fan_out_sync()`:
 
 ```python
-# ralph-python/ralph/pipeline/runner.py
+# ralph-workflow/ralph/pipeline/runner.py
 def _execute_fan_out_sync(*, effect, state, display, policy_bundle, workspace_scope):
     import asyncio
     async def _run() -> PipelineState:
@@ -161,7 +161,7 @@ def _execute_fan_out_sync(*, effect, state, display, policy_bundle, workspace_sc
 Within `_run()`, `coordinator.run_fan_out()` uses `asyncio.TaskGroup` for structured concurrency:
 
 ```python
-# ralph-python/ralph/pipeline/parallel/coordinator.py
+# ralph-workflow/ralph/pipeline/parallel/coordinator.py
 async with asyncio.TaskGroup() as task_group:
     while pending or running:
         ready = schedule_next_wave(completed, effect.work_units, set(running), effect.max_workers)
@@ -181,7 +181,7 @@ async with asyncio.TaskGroup() as task_group:
 Each `_run_worker()` task spawns one subprocess via `asyncio.create_subprocess_exec`:
 
 ```python
-# ralph-python/ralph/agents/subprocess_executor.py
+# ralph-workflow/ralph/agents/subprocess_executor.py
 proc = await asyncio.create_subprocess_exec(
     *command,
     stdout=asyncio.subprocess.PIPE,
@@ -197,7 +197,7 @@ The subprocess runs the MCP agent in a branch-specific worktree. Output is drain
 `ParallelDisplay` owns a `RenderThread` (a `threading.Thread`) that drives `rich.Live`:
 
 ```python
-# ralph-python/ralph/display/parallel_display.py
+# ralph-workflow/ralph/display/parallel_display.py
 class ParallelDisplay:
     def start(self) -> None:
         live = Live(console=self._console, auto_refresh=False)
@@ -208,7 +208,7 @@ class ParallelDisplay:
 The render thread is NOT a coroutine. It consumes from `queue.Queue`:
 
 ```python
-# ralph-python/ralph/display/render_thread.py
+# ralph-workflow/ralph/display/render_thread.py
 class RenderThread(threading.Thread):
     def run(self) -> None:
         while not self._stop_event.is_set():
@@ -229,7 +229,7 @@ Worker tasks call `display.emit()` and `display.set_status()` from async context
 When a worker task is cancelled (SIGINT propagates to the TaskGroup), the cancellation is propagated to the subprocess via `os.killpg`:
 
 ```python
-# ralph-python/ralph/agents/subprocess_executor.py
+# ralph-workflow/ralph/agents/subprocess_executor.py
 except asyncio.CancelledError:
     with contextlib.suppress(ProcessLookupError):
         os.killpg(proc.pid, signal.SIGKILL)
@@ -245,7 +245,7 @@ This ensures the entire process tree of the worker is killed, not just the immed
 `PipelineState` is a Pydantic model with `model_config = ConfigDict(frozen=True)`:
 
 ```python
-# ralph-python/ralph/pipeline/state.py
+# ralph-workflow/ralph/pipeline/state.py
 class PipelineState(BaseModel):
     model_config = ConfigDict(frozen=True)
     # ... fields
@@ -293,7 +293,7 @@ Handlers never write to state. Display updates happen after reducer transitions 
 The coordinator scheduler enforces the cap before every wave:
 
 ```python
-# ralph-python/ralph/pipeline/parallel/scheduler.py
+# ralph-workflow/ralph/pipeline/parallel/scheduler.py
 def schedule_next_wave(completed, all_units, currently_running, max_workers):
     available_slots = max_workers - len(currently_running)
     if available_slots <= 0:
@@ -307,7 +307,7 @@ The `max_workers` value comes from `parallel_execution.max_parallel_workers` in 
 `work_units` is set once during planning and stored in `PipelineState`. The `FanOutDevelopmentEffect` carries this frozen tuple:
 
 ```python
-# ralph-python/ralph/pipeline/effects.py
+# ralph-workflow/ralph/pipeline/effects.py
 @dataclass(frozen=True)
 class FanOutDevelopmentEffect:
     work_units: tuple[WorkUnit, ...]
@@ -321,7 +321,7 @@ Workers read from the worktree, never from each other's outputs. No work unit ma
 Checkpoint writes are serialized through the main event loop. The `_execute_fan_out_sync()` function calls `ckpt.save(current)` after all fan-out events are reduced and again after merge integration:
 
 ```python
-# ralph-python/ralph/pipeline/runner.py
+# ralph-workflow/ralph/pipeline/runner.py
 async def _run() -> PipelineState:
     # ... fan-out ...
     for ev in fan_out_events:
@@ -338,7 +338,7 @@ async def _run() -> PipelineState:
 When SIGINT arrives, `run()` catches `KeyboardInterrupt` and saves an immediate checkpoint before exiting:
 
 ```python
-# ralph-python/ralph/pipeline/runner.py
+# ralph-workflow/ralph/pipeline/runner.py
 except KeyboardInterrupt:
     interrupted_state = state.copy_with(interrupted_by_user=True)
     ckpt.save(interrupted_state)
@@ -368,7 +368,7 @@ When `KeyboardInterrupt` fires during `_execute_fan_out_sync()`, Python cancels 
 Each `_run_worker()` task catches `asyncio.CancelledError` and kills its subprocess tree:
 
 ```python
-# ralph-python/ralph/agents/subprocess_executor.py
+# ralph-workflow/ralph/agents/subprocess_executor.py
 except asyncio.CancelledError:
     with contextlib.suppress(ProcessLookupError):
         os.killpg(proc.pid, signal.SIGKILL)
@@ -392,7 +392,7 @@ The checkpoint is saved when the interrupt is caught, before any process killing
 Ralph uses Option B merge strategy: all worker branches are merged into `main` sequentially, in sorted `unit_id` order.
 
 ```python
-# ralph-python/ralph/pipeline/parallel/merge_integrator.py
+# ralph-workflow/ralph/pipeline/parallel/merge_integrator.py
 async def integrate(base_branch, worker_states, git_executor, repo_root):
     succeeded_ids = sorted(
         unit_id for unit_id, ws in worker_states.items()

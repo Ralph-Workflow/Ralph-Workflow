@@ -13,8 +13,8 @@
 ### Task 1: Lock down the failing compatibility behavior with tests
 
 **Files:**
-- Modify: `ralph-python/tests/test_mcp_server.py`
-- Modify: `ralph-python/tests/test_mcp_startup.py`
+- Modify: `ralph-workflow/tests/test_mcp_server.py`
+- Modify: `ralph-workflow/tests/test_mcp_startup.py`
 
 **Steps:**
 1. Add a regression test asserting `GET /mcp` does not return a JSON-RPC `Missing session ID` error for the standalone server.
@@ -25,8 +25,8 @@
 ### Task 2: Promote the Ralph-owned HTTP MCP server path
 
 **Files:**
-- Modify: `ralph-python/ralph/mcp/server/runtime.py`
-- Modify: `ralph-python/ralph/mcp/server/lifecycle.py` (only if startup wiring needs adjustment)
+- Modify: `ralph-workflow/ralph/mcp/server/runtime.py`
+- Modify: `ralph-workflow/ralph/mcp/server/lifecycle.py` (only if startup wiring needs adjustment)
 
 **Steps:**
 1. Refactor the fallback HTTP server into the primary standalone runtime path.
@@ -45,8 +45,8 @@
 ### Task 3: Keep the server transport testable
 
 **Files:**
-- Modify: `ralph-python/ralph/mcp/server/runtime.py`
-- Modify: `ralph-python/tests/test_mcp_server.py`
+- Modify: `ralph-workflow/ralph/mcp/server/runtime.py`
+- Modify: `ralph-workflow/tests/test_mcp_server.py`
 
 **Steps:**
 1. Extract pure response builders for each MCP method.
@@ -57,8 +57,8 @@
 ### Task 4: Verify startup and preflight still work
 
 **Files:**
-- Modify: `ralph-python/tests/test_mcp_startup.py`
-- Modify: `ralph-python/tests/test_mcp_server.py`
+- Modify: `ralph-workflow/tests/test_mcp_startup.py`
+- Modify: `ralph-workflow/tests/test_mcp_server.py`
 
 **Steps:**
 1. Verify `start_mcp_server()` preflight still succeeds against the new standalone runtime.
@@ -73,5 +73,5 @@
 **Steps:**
 1. Run targeted tests for MCP runtime/startup.
 2. Run commit-generation tests that depend on MCP availability.
-3. Run `make verify` from `ralph-python`.
+3. Run `make verify` from `ralph-workflow`.
 4. Collect final Oracle review on the transport fix.

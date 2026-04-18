@@ -6,9 +6,9 @@ This directory has not yet been fully ported to the Python implementation. Many 
 
 Use these instead when working on the maintained package:
 
-- `ralph-python/pyproject.toml` — tool configuration (`ruff`, `mypy`, packaging)
-- `ralph-python/CONTRIBUTING.md` — contributor workflow
-- public module docstrings under `ralph-python/ralph/` — API expectations for pydoc
+- `ralph-workflow/pyproject.toml` — tool configuration (`ruff`, `mypy`, packaging)
+- `ralph-workflow/CONTRIBUTING.md` — contributor workflow
+- public module docstrings under `ralph-workflow/ralph/` — API expectations for pydoc
 - existing Python modules/tests — preferred naming, typing, and error-handling patterns
 
 ## Python style expectations

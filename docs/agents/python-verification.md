@@ -1,11 +1,11 @@
 # Python Verification (before PR/completion)
 
-This guide covers verification for the Ralph Python conversion project located in `ralph-python/`.
+This guide covers verification for the Ralph Python conversion project located in `ralph-workflow/`.
 
 ## Quick Verification
 
 ```bash
-cd ralph-python
+cd ralph-workflow
 
 # Install dependencies
 pip install -e ".[dev]"
@@ -25,7 +25,7 @@ pytest tests/ -v --cov=ralph --cov-report=term-missing
 ### 1. Linting (ruff)
 
 ```bash
-cd ralph-python
+cd ralph-workflow
 ruff check ralph/ --fix
 ```
 
@@ -43,7 +43,7 @@ The ruff configuration in `pyproject.toml` enforces:
 ### 2. Type Checking (mypy)
 
 ```bash
-cd ralph-python
+cd ralph-workflow
 mypy ralph/ --strict
 ```
 
@@ -52,7 +52,7 @@ The mypy configuration enforces strict mode with pydantic plugin.
 ### 3. Testing
 
 ```bash
-cd ralph-python
+cd ralph-workflow
 pytest tests/ -v --cov=ralph --cov-report=term-missing
 ```
 
@@ -61,7 +61,7 @@ Target: 80%+ branch coverage for the `ralph` package.
 ### 4. All Checks Combined
 
 ```bash
-cd ralph-python
+cd ralph-workflow
 ruff check ralph/ && mypy ralph/ && pytest tests/ -v
 ```
 
@@ -125,7 +125,7 @@ Use `ralph.policy.loader.load_policy()` to load policy from TOML files. The load
 ### PyInstaller
 
 ```bash
-cd ralph-python
+cd ralph-workflow
 pyinstaller ralph.spec
 ```
 
@@ -136,7 +136,7 @@ Formula is in `Formula/ralph-workflow.rb`. Update SHA256 and URL before release.
 ### PyPI
 
 ```bash
-cd ralph-python
+cd ralph-workflow
 pip install build
 python -m build
 ```

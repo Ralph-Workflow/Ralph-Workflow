@@ -6,22 +6,22 @@ This repository contains both **current Python documentation** and **legacy Rust
 
 Start here for the maintained package:
 
-- `../ralph-python/README.md` — installation, development, and API overview
-- `../ralph-python/CONTRIBUTING.md` — contributor workflow for the Python package
+- `../ralph-workflow/README.md` — installation, development, and API overview
+- `../ralph-workflow/CONTRIBUTING.md` — contributor workflow for the Python package
 - `agents/verification.md` — required verification commands
 - `agents/parallelization.md` — parallel development mode guide
-- package docstrings under `../ralph-python/ralph/` — authoritative API-level pydoc
+- package docstrings under `../ralph-workflow/ralph/` — authoritative API-level pydoc
 
 ## Current architecture entry points
 
 The most reliable architecture references today are the Python modules themselves:
 
-- `../ralph-python/ralph/cli/main.py`
-- `../ralph-python/ralph/config/loader.py`
-- `../ralph-python/ralph/pipeline/orchestrator.py`
-- `../ralph-python/ralph/pipeline/reducer.py`
-- `../ralph-python/ralph/phases/__init__.py`
-- `../ralph-python/ralph/mcp/server/runtime.py`
+- `../ralph-workflow/ralph/cli/main.py`
+- `../ralph-workflow/ralph/config/loader.py`
+- `../ralph-workflow/ralph/pipeline/orchestrator.py`
+- `../ralph-workflow/ralph/pipeline/reducer.py`
+- `../ralph-workflow/ralph/phases/__init__.py`
+- `../ralph-workflow/ralph/mcp/server/runtime.py`
 
 ## Legacy material
 

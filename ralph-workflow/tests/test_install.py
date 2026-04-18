@@ -20,7 +20,7 @@ def test_install_current_checkout_runs_pip_and_pipx(monkeypatch: pytest.MonkeyPa
     def fake_run(command: Sequence[str], *, cwd: Path) -> None:
         commands.append((tuple(command), cwd))
 
-    package_dir = Path("/tmp/ralph-python")
+    package_dir = Path("/tmp/ralph-workflow")
 
     install_module.install_current_checkout(
         package_dir=package_dir,
@@ -50,7 +50,7 @@ def test_install_current_checkout_skips_pipx_when_not_available() -> None:
     def fake_run(command: Sequence[str], *, cwd: Path) -> None:
         commands.append((tuple(command), cwd))
 
-    package_dir = Path("/tmp/ralph-python")
+    package_dir = Path("/tmp/ralph-workflow")
 
     install_module.install_current_checkout(
         package_dir=package_dir,

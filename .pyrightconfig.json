@@ -1,12 +1,12 @@
 {
   "include": [
-    "ralph-python"
+    "ralph-workflow"
   ],
   "executionEnvironments": [
     {
       "root": ".",
       "extraPaths": [
-        "ralph-python"
+        "ralph-workflow"
       ]
     }
   ]
