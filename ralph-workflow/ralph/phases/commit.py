@@ -7,11 +7,15 @@ with an appropriate message.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from loguru import logger
 
 from ralph.phases import PhaseContext, register_handler
 from ralph.pipeline.effects import Effect, InvokeAgentEffect, PreparePromptEffect
-from ralph.pipeline.events import Event, PipelineEvent
+
+if TYPE_CHECKING:
+    from ralph.pipeline.events import Event
 
 
 @register_handler("development_commit")
@@ -28,10 +32,8 @@ def handle_development_commit(effect: Effect, ctx: PhaseContext) -> list[Event]:
         List of events to emit.
     """
     if isinstance(effect, InvokeAgentEffect):
-        logger.info("Development commit: committing changes")
-        # Commit is automatic after successful development
-        # The reducer handles git operations based on this event
-        return [PipelineEvent.ANALYSIS_SUCCESS]
+        logger.info("Development commit: deferring commit execution to runner")
+        return []
 
     return []
 
@@ -50,9 +52,8 @@ def handle_review_commit(effect: Effect, ctx: PhaseContext) -> list[Event]:
         List of events to emit.
     """
     if isinstance(effect, InvokeAgentEffect):
-        logger.info("Review commit: committing approved changes")
-        # Final commit after review approval
-        return [PipelineEvent.ANALYSIS_SUCCESS]
+        logger.info("Review commit: deferring commit execution to runner")
+        return []
 
     return []
 

@@ -6,11 +6,13 @@ from dataclasses import fields
 
 from ralph.agents.parsers.base import AgentOutputLine
 from ralph.display.activity_model import (
-    AgentActivityEvent,
     ActivityEventKind,
     ActivityProvider,
     ActivityVisibilityHint,
+    AgentActivityEvent,
 )
+
+_VISIBLE_WAITING_SEQUENCE = 3
 
 
 def test_activity_event_kind_covers_canonical_cross_layer_events() -> None:
@@ -32,12 +34,12 @@ def test_activity_event_supports_visible_waiting_state_without_blank_string_over
         content=None,
         visibility=ActivityVisibilityHint.FALLBACK_ONLY,
         source="message_start",
-        sequence=3,
+        sequence=_VISIBLE_WAITING_SEQUENCE,
     )
 
     assert event.content is None
     assert event.visibility is ActivityVisibilityHint.FALLBACK_ONLY
-    assert event.sequence == 3
+    assert event.sequence == _VISIBLE_WAITING_SEQUENCE
 
 
 def test_activity_event_preserves_source_and_structured_metadata() -> None:

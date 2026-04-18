@@ -115,6 +115,7 @@ _EVENT_DECISION_LABELS: dict[PipelineEvent, str] = {
     PipelineEvent.REVIEW_CLEAN: "clean — no issues",
     PipelineEvent.REVIEW_ISSUES_FOUND: "issues found",
     PipelineEvent.COMMIT_SUCCESS: "committed",
+    PipelineEvent.COMMIT_SKIPPED: "skipped — nothing to commit",
     PipelineEvent.FIX_SUCCESS: "fixed",
 }
 
@@ -905,7 +906,7 @@ def _execute_commit_effect(
         if not _repo_has_commit_work(repo_root):
             logger.info("Skipping commit because the worktree is empty")
             _cleanup_commit_message_artifacts(repo_root)
-            return PipelineEvent.COMMIT_SUCCESS
+            return PipelineEvent.COMMIT_SKIPPED
         stage_all(str(repo_root))
         sha = create_commit(str(repo_root), message)
         logger.info("Created commit: {}", sha[:8])

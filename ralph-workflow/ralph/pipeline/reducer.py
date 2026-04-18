@@ -118,6 +118,7 @@ def reduce(
         PipelineEvent.FIX_SUCCESS: _handle_fix_success,
         PipelineEvent.FIX_FAILURE: _handle_fix_failure,
         PipelineEvent.COMMIT_SUCCESS: _handle_commit_success,
+        PipelineEvent.COMMIT_SKIPPED: _handle_commit_success,
         PipelineEvent.COMMIT_FAILURE: _ignore_policy(_handle_commit_failure),
         PipelineEvent.CHECKPOINT_SAVED: _ignore_policy(_handle_checkpoint_saved),
         PipelineEvent.CONTEXT_CLEANED: _return_state,
@@ -282,7 +283,10 @@ def _handle_analysis_success(
     if policy is not None:
         try:
             next_phase = resolve_next_phase(state.phase, "success", policy)
-            return _advance_phase(state, next_phase, policy)
+            new_state, effects = _advance_phase(state, next_phase, policy)
+            if state.phase == "review_analysis":
+                new_state = new_state.copy_with(review_issues_found=False)
+            return new_state, effects
         except ValueError as exc:
             return _advance_to_terminal(
                 state,
@@ -322,7 +326,13 @@ def _handle_analysis_loopback(
     if policy is not None:
         try:
             next_phase = resolve_next_phase(state.phase, "loopback", policy)
-            return _advance_phase(state, next_phase, policy)
+            new_state, effects = _advance_phase(state, next_phase, policy)
+            if state.phase == "review_analysis":
+                new_state = new_state.copy_with(
+                    reviewer_pass=state.reviewer_pass + 1,
+                    review_issues_found=True,
+                )
+            return new_state, effects
         except ValueError as exc:
             return _advance_to_terminal(
                 state,
@@ -472,7 +482,12 @@ def _handle_commit_success(
     if policy is not None:
         try:
             next_phase = resolve_post_commit_phase(state, policy)
-            return _advance_phase(state, next_phase, policy)
+            new_state, effects = _advance_phase(state, next_phase, policy)
+            if state.phase == "development_commit":
+                new_state = new_state.copy_with(iteration=state.iteration + 1)
+            elif state.phase == "review_commit":
+                new_state = new_state.copy_with(reviewer_pass=state.reviewer_pass + 1)
+            return new_state, effects
         except ValueError as exc:
             return _advance_to_terminal(
                 state, PHASE_FAILED, f"Routing error after commit success in '{state.phase}': {exc}"

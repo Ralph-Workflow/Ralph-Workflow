@@ -17,6 +17,7 @@ class PipelineEvent(StrEnum):
     FIX_SUCCESS = "fix_success"
     FIX_FAILURE = "fix_failure"
     COMMIT_SUCCESS = "commit_success"
+    COMMIT_SKIPPED = "commit_skipped"
     COMMIT_FAILURE = "commit_failure"
     CHECKPOINT_SAVED = "checkpoint_saved"
     CONTEXT_CLEANED = "context_cleaned"

@@ -32,7 +32,7 @@ from ralph.pipeline.effects import (
     InvokeAgentEffect,
     PreparePromptEffect,
 )
-from ralph.pipeline.events import PipelineEvent
+from ralph.pipeline.events import Event, PipelineEvent
 from ralph.workspace.fs import FsWorkspace
 
 
@@ -49,7 +49,7 @@ def _stub_context() -> PhaseContext:
     )
 
 
-def test_development_commit_only_emits_analysis_success_on_invoke_agent() -> None:
+def test_development_commit_defers_to_runner_on_invoke_agent() -> None:
     ctx = _stub_context()
     effect = InvokeAgentEffect(
         agent_name="dev",
@@ -57,7 +57,7 @@ def test_development_commit_only_emits_analysis_success_on_invoke_agent() -> Non
         prompt_file="dev-plan.txt",
     )
 
-    assert handle_development_commit(effect, ctx) == [PipelineEvent.ANALYSIS_SUCCESS]
+    assert handle_development_commit(effect, ctx) == []
 
 
 def test_development_commit_ignores_prepare_prompt_effect() -> None:
@@ -70,7 +70,7 @@ def test_development_commit_ignores_prepare_prompt_effect() -> None:
     assert handle_development_commit(effect, ctx) == []
 
 
-def test_review_commit_only_emits_analysis_success_on_invoke_agent() -> None:
+def test_review_commit_defers_to_runner_on_invoke_agent() -> None:
     ctx = _stub_context()
     effect = InvokeAgentEffect(
         agent_name="review",
@@ -78,7 +78,7 @@ def test_review_commit_only_emits_analysis_success_on_invoke_agent() -> None:
         prompt_file="review-plan.txt",
     )
 
-    assert handle_review_commit(effect, ctx) == [PipelineEvent.ANALYSIS_SUCCESS]
+    assert handle_review_commit(effect, ctx) == []
 
 
 def test_handle_commit_delegates_based_on_phase() -> None:
@@ -89,7 +89,7 @@ def test_handle_commit_delegates_based_on_phase() -> None:
         prompt_file="plan.md",
     )
 
-    assert handle_commit(effect, ctx) == [PipelineEvent.ANALYSIS_SUCCESS]
+    assert handle_commit(effect, ctx) == []
 
 
 def test_handle_commit_returns_empty_for_prepare_prompt_and_review_phase() -> None:
@@ -378,7 +378,7 @@ def test_handle_phase_dispatches_to_registered_handler() -> None:
     ctx = _stub_context()
 
     @register_handler("custom_phase")
-    def _custom_handler(effect: Effect, context: PhaseContext) -> list[PipelineEvent]:
+    def _custom_handler(effect: Effect, context: PhaseContext) -> list[Event]:
         assert isinstance(effect, (PreparePromptEffect, InvokeAgentEffect))
         assert effect.phase == "custom_phase"
         assert context is ctx

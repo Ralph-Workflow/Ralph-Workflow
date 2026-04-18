@@ -1321,7 +1321,7 @@ class TestExecuteCommitEffect:
             tmp_path,
         )
 
-        assert result == PipelineEvent.COMMIT_SUCCESS
+        assert result == PipelineEvent.COMMIT_SKIPPED
         stage_all.assert_not_called()
         create_commit.assert_not_called()
         assert not message_file.exists()
@@ -1593,6 +1593,11 @@ class TestEventDecisionLabels:
 
     def test_commit_success_label(self) -> None:
         assert _event_decision_labels()[PipelineEvent.COMMIT_SUCCESS] == "committed"
+
+    def test_commit_skipped_label(self) -> None:
+        assert _event_decision_labels()[PipelineEvent.COMMIT_SKIPPED] == (
+            "skipped — nothing to commit"
+        )
 
     def test_fix_success_label(self) -> None:
         assert _event_decision_labels()[PipelineEvent.FIX_SUCCESS] == "fixed"

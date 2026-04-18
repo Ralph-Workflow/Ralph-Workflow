@@ -12,9 +12,10 @@ import os
 import queue
 import signal
 from collections.abc import Callable
-from typing import TYPE_CHECKING, Literal, cast
+from typing import TYPE_CHECKING, Literal, Protocol, cast
 
 from loguru import logger
+from rich.console import Console
 from rich.live import Live
 
 from ralph.display.render_thread import RenderThread, UpdateEvent
@@ -25,7 +26,7 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
     from types import TracebackType
 
-    from rich.console import Console, RenderableType
+    from rich.console import RenderableType
 
 NARROW_THRESHOLD: int = 60
 
@@ -39,6 +40,19 @@ def _noop_sigwinch(signum: int, frame: object) -> None:
 _STATUS_SUFFIX = "__status__"
 _UNATTRIBUTED_UNIT_ID = "activity"
 
+
+class _ConsolePrint(Protocol):
+    def __call__(self, console: Console, *args: object, **kwargs: object) -> None: ...
+
+
+_ORIGINAL_CONSOLE_PRINT = cast("_ConsolePrint", Console.print)
+
+
+class _DashboardConsole(Console):
+    """Isolated console for live dashboard control writes."""
+
+    def print(self, *args: object, **kwargs: object) -> None:
+        _ORIGINAL_CONSOLE_PRINT(self, *args, **kwargs)
 
 
 def _coerce_worker_status(raw_status: object) -> WorkerStatus:
@@ -139,8 +153,12 @@ class ParallelDisplay:
 
     def start(self) -> None:
         if self._mode == "dashboard":
-            live = Live(console=self._console, auto_refresh=False)
-            live.start()
+            live_console = _DashboardConsole(
+                file=self._console.file,
+                force_terminal=self._console.is_terminal,
+                width=self._console.width,
+            )
+            live = Live(console=live_console, auto_refresh=False)
             self._render_thread = RenderThread(
                 q=self._queue,
                 renderable_fn=_dashboard_renderable,

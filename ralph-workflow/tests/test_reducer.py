@@ -342,6 +342,24 @@ def test_commit_success_routes_development_commit_to_planning_when_budget_remain
     assert new_state.current_drain == "planning"
 
 
+
+def test_commit_success_increments_development_iteration_with_policy() -> None:
+    """A completed development commit should advance the visible iteration counter."""
+    policy = _policy_with_post_commit_routes()
+    state = PipelineState(
+        phase="development_commit",
+        iteration=0,
+        total_iterations=2,
+        development_budget_remaining=1,
+        review_budget_remaining=1,
+    )
+
+    new_state, _ = _reduce(state, PipelineEvent.COMMIT_SUCCESS, policy)
+
+    assert new_state.phase == "planning"
+    assert new_state.iteration == 1
+
+
 def test_commit_success_routes_development_commit_to_review_when_budget_exhausted() -> None:
     """COMMIT_SUCCESS should route development_commit to review when budget exhausted."""
     policy = _policy_with_post_commit_routes()
@@ -366,6 +384,23 @@ def test_commit_success_routes_review_commit_to_review_when_budget_remaining() -
 
     assert new_state.phase == PHASE_REVIEW
     assert new_state.previous_phase == "review_commit"
+
+
+
+def test_commit_success_increments_reviewer_pass_with_policy() -> None:
+    """A completed review commit should advance the visible reviewer pass counter."""
+    policy = _policy_with_post_commit_routes()
+    state = PipelineState(
+        phase="review_commit",
+        reviewer_pass=0,
+        total_reviewer_passes=2,
+        review_budget_remaining=1,
+    )
+
+    new_state, _ = _reduce(state, PipelineEvent.COMMIT_SUCCESS, policy)
+
+    assert new_state.phase == PHASE_REVIEW
+    assert new_state.reviewer_pass == 1
 
 
 def test_commit_success_routes_review_commit_to_complete_when_budget_exhausted() -> None:
@@ -519,6 +554,37 @@ class TestAnalysisDecisionDispatch:
         new_state, _ = _reduce(state, PipelineEvent.ANALYSIS_LOOPBACK)
         assert new_state.phase == PHASE_FIX
         assert new_state.previous_phase == "review_analysis"
+
+    def test_analysis_loopback_with_policy_marks_review_issue_and_advances_pass(self) -> None:
+        """Policy routing must preserve review bookkeeping on loopback to fix."""
+        policy = _policy_with_post_commit_routes()
+        state = PipelineState(
+            phase="review_analysis",
+            reviewer_pass=0,
+            total_reviewer_passes=2,
+            review_issues_found=False,
+        )
+
+        new_state, _ = _reduce(state, PipelineEvent.ANALYSIS_LOOPBACK, policy)
+
+        assert new_state.phase == PHASE_FIX
+        assert new_state.reviewer_pass == 1
+        assert new_state.review_issues_found is True
+
+    def test_analysis_success_with_policy_clears_review_issue_flag(self) -> None:
+        """Policy routing should clear stale review issue state on approval."""
+        policy = _policy_with_post_commit_routes()
+        state = PipelineState(
+            phase="review_analysis",
+            reviewer_pass=1,
+            total_reviewer_passes=2,
+            review_issues_found=True,
+        )
+
+        new_state, _ = _reduce(state, PipelineEvent.ANALYSIS_SUCCESS, policy)
+
+        assert new_state.phase == "review_commit"
+        assert new_state.review_issues_found is False
 
     def test_analysis_success_with_policy_routes_correctly(self) -> None:
         """Test that ANALYSIS_SUCCESS respects pipeline policy routing."""
