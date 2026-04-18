@@ -21,6 +21,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
@@ -29,10 +30,27 @@ from loguru import logger
 from tqdm import tqdm
 
 from ralph.config.enums import AgentTransport
+from ralph.mcp.startup import (
+    PreflightError,
+    ensure_no_preflight_error,
+    extract_preflight_tool_names,
+    initialize_request,
+    initialized_notification,
+    parse_http_endpoint,
+    post_http_jsonrpc_with_session,
+    tools_list_request,
+)
 from ralph.mcp.tool_names import (
     CODEX_NATIVE_FEATURES_TO_DISABLE,
     OPENCODE_NATIVE_TOOLS_TO_DISABLE,
     RALPH_MCP_SERVER_NAME,
+    claude_tool_name,
+)
+from ralph.mcp.upstream_config import (
+    UPSTREAM_MCP_CONFIG_ENV,
+    UpstreamMcpServer,
+    normalize_upstream_mcp_servers,
+    serialize_upstream_mcp_servers,
 )
 
 _MODELED_FLAG_PARTS = 2
@@ -68,6 +86,7 @@ class _BuildCommandOptions:
     verbose: bool = False
     pure: bool = False
     mcp_endpoint: str | None = None
+    allowed_mcp_tool_names: tuple[str, ...] = ()
     system_prompt_file: str | None = None
     workspace_path: Path | None = None
 
@@ -253,6 +272,8 @@ def invoke_agent(
         opts.workspace_path,
         system_prompt_file=opts.system_prompt_file,
     )
+    mcp_endpoint = (runtime_env or {}).get("RALPH_MCP_ENDPOINT")
+    allowed_mcp_tool_names = _provider_allowed_mcp_tool_names(config, mcp_endpoint)
     cmd = _build_command(
         config,
         prompt_file,
@@ -261,7 +282,8 @@ def invoke_agent(
             session_id=opts.session_id,
             verbose=opts.verbose,
             pure=opts.pure,
-            mcp_endpoint=(runtime_env or {}).get("RALPH_MCP_ENDPOINT"),
+            mcp_endpoint=mcp_endpoint,
+            allowed_mcp_tool_names=allowed_mcp_tool_names,
             system_prompt_file=opts.system_prompt_file,
             workspace_path=opts.workspace_path,
         ),
@@ -378,22 +400,29 @@ def _runtime_extra_env(
     if transport == AgentTransport.OPENCODE:
         if not endpoint:
             return runtime_env or None
-        runtime_env["OPENCODE_CONFIG_CONTENT"] = _merge_opencode_config_content(
+        provider_config, upstreams = _build_opencode_provider_config(
             runtime_env.get("OPENCODE_CONFIG_CONTENT") or os.environ.get("OPENCODE_CONFIG_CONTENT"),
             endpoint,
         )
+        runtime_env["OPENCODE_CONFIG_CONTENT"] = provider_config
+        _set_upstream_mcp_config(runtime_env, upstreams)
         return runtime_env
     if transport == AgentTransport.CODEX:
         if not endpoint and system_prompt_file is None:
             return runtime_env or None
-        runtime_env["CODEX_HOME"] = _prepare_codex_home(
+        codex_home, upstreams = _prepare_codex_home_with_upstreams(
             endpoint,
             workspace_path=workspace_path,
             existing_home=runtime_env.get("CODEX_HOME") or os.environ.get("CODEX_HOME"),
             system_prompt_file=system_prompt_file,
         )
+        runtime_env["CODEX_HOME"] = codex_home
+        _set_upstream_mcp_config(runtime_env, upstreams)
         return runtime_env
     if transport == AgentTransport.CLAUDE:
+        if endpoint:
+            existing = _load_existing_claude_upstream_servers(workspace_path)
+            _set_upstream_mcp_config(runtime_env, existing)
         return runtime_env
 
     if not endpoint:
@@ -422,6 +451,22 @@ def _prepare_codex_home(
     existing_home: str | None,
     system_prompt_file: str | None,
 ) -> str:
+    codex_home, _upstreams = _prepare_codex_home_with_upstreams(
+        endpoint,
+        workspace_path=workspace_path,
+        existing_home=existing_home,
+        system_prompt_file=system_prompt_file,
+    )
+    return codex_home
+
+
+def _prepare_codex_home_with_upstreams(
+    endpoint: str | None,
+    *,
+    workspace_path: Path | None,
+    existing_home: str | None,
+    system_prompt_file: str | None,
+) -> tuple[str, tuple[UpstreamMcpServer, ...]]:
     codex_root = _allocate_codex_home_dir(workspace_path)
     codex_root.mkdir(parents=True, exist_ok=True)
 
@@ -430,6 +475,7 @@ def _prepare_codex_home(
         _mirror_codex_home(source_home, codex_root)
     source_config = source_home / "config.toml"
     base_config = source_config.read_text(encoding="utf-8") if source_config.exists() else ""
+    upstreams = _extract_codex_upstream_servers(base_config)
     prefix_sections: list[str] = []
     appended_sections: list[str] = []
     if endpoint:
@@ -439,9 +485,8 @@ def _prepare_codex_home(
             "ralph-python/docs/mcp-tool-restriction.md."
         )
         # Codex has no strict MCP-only mode. Ralph preserves the user's existing
-        # config.toml where possible, but replaces any stale Ralph section so the
-        # generated config always points at the live run-scoped endpoint.
-        base_config = _remove_toml_table(base_config, f"mcp_servers.{RALPH_MCP_SERVER_NAME}")
+        # non-MCP config while exposing only the live run-scoped Ralph endpoint.
+        base_config = _remove_all_toml_mcp_server_tables(base_config)
         features_in_base = "[features]" in base_config
         # Only features.* keys belong inside [features]; web_search is a top-level Codex config key.
         feature_lines = [
@@ -459,20 +504,25 @@ def _prepare_codex_home(
         if not features_in_base:
             appended_sections.append("[features]\n" + feature_block)
     if system_prompt_file:
-        appended_sections.append(f"model_instructions_file = {json.dumps(system_prompt_file)}\n")
+        prefix_sections.append(f"model_instructions_file = {json.dumps(system_prompt_file)}\n")
     config_suffix = "\n".join(section.rstrip() for section in appended_sections if section.strip())
     prefix_text = "\n".join(section.rstrip() for section in prefix_sections if section.strip())
     config_text = "\n\n".join(
         part for part in [prefix_text, base_config.rstrip(), config_suffix] if part
     )
     (codex_root / "config.toml").write_text(config_text, encoding="utf-8")
-    return str(codex_root)
+    return str(codex_root), upstreams
 
 
 def _remove_toml_table(config_text: str, table_name: str) -> str:
     pattern = re.compile(
         rf"(?ms)^\[{re.escape(table_name)}\]\n.*?(?=^\[|\Z)",
     )
+    return pattern.sub("", config_text).strip()
+
+
+def _remove_all_toml_mcp_server_tables(config_text: str) -> str:
+    pattern = re.compile(r"(?ms)^\[mcp_servers(?:\.[^\]]+)?\]\n.*?(?=^\[|\Z)")
     return pattern.sub("", config_text).strip()
 
 
@@ -500,32 +550,30 @@ def _allocate_codex_home_dir(workspace_path: Path | None) -> Path:
 
 
 def _claude_mcp_config(endpoint: str, *, workspace_path: Path | None = None) -> str:
-    # Claude strict mode ignores its normal MCP discovery chain, so Ralph rebuilds the
-    # effective MCP server set explicitly. Only mcpServers are preserved here; importing
-    # unrelated Claude preferences would make this transport policy unpredictable.
-    config_payload = _load_existing_claude_mcp_config(workspace_path)
-    mcp_servers_obj = config_payload.setdefault("mcpServers", {})
-    if not isinstance(mcp_servers_obj, dict):
-        mcp_servers_obj = {}
-        config_payload["mcpServers"] = mcp_servers_obj
-    mcp_servers = cast("dict[str, object]", mcp_servers_obj)
-    mcp_servers[RALPH_MCP_SERVER_NAME] = {
-        "type": "http",
-        "url": endpoint,
+    del workspace_path
+    config_payload = {
+        "mcpServers": {
+            RALPH_MCP_SERVER_NAME: {
+                "type": "http",
+                "url": endpoint,
+            }
+        }
     }
-    return json.dumps(
-        config_payload,
-        separators=(",", ":"),
-    )
+    return json.dumps(config_payload, separators=(",", ":"))
 
 
-def _load_existing_claude_mcp_config(workspace_path: Path | None = None) -> dict[str, object]:
+def _load_existing_claude_upstream_servers(
+    workspace_path: Path | None = None,
+) -> tuple[UpstreamMcpServer, ...]:
     merged: dict[str, object] = {}
     for path in _claude_mcp_config_paths(workspace_path):
         config_obj = _parse_json_config_file(path)
-        if config_obj:
-            merged = _merge_claude_config_objects(merged, config_obj)
-    return merged
+        if not config_obj:
+            continue
+        value = config_obj.get("mcpServers")
+        if isinstance(value, dict):
+            merged = {**merged, **cast("dict[str, object]", value)}
+    return normalize_upstream_mcp_servers(merged)
 
 
 def _claude_mcp_config_paths(workspace_path: Path | None) -> tuple[Path, ...]:
@@ -555,40 +603,32 @@ def _parse_json_config_file(path: Path) -> dict[str, object]:
     return cast("dict[str, object]", raw_payload)
 
 
-def _merge_claude_config_objects(
-    base: dict[str, object], incoming: dict[str, object]
-) -> dict[str, object]:
-    # Workspace/home MCP servers are preserved, but Ralph-owned wiring must still win for
-    # the `ralph` server entry so runs always target the live run-scoped endpoint.
-    merged = dict(base)
-    value = incoming.get("mcpServers")
-    if isinstance(value, dict):
-        current_servers = merged.get("mcpServers")
-        current = (
-            cast("dict[str, object]", current_servers)
-            if isinstance(current_servers, dict)
-            else {}
-        )
-        merged["mcpServers"] = {**current, **cast("dict[str, object]", value)}
-    return merged
-
-
 def _merge_opencode_config_content(existing: str | None, endpoint: str) -> str:
-    # OpenCode lets us inject a full config object, so this path preserves the user's
-    # existing MCP/permission structure and then applies Ralph's native-tool shutdown as
-    # the final override. Preservation and enforcement both happen in one JSON payload.
-    config_obj = _parse_opencode_config_content(existing)
+    config_text, _upstreams = _build_opencode_provider_config(existing, endpoint)
+    return config_text
 
-    mcp_section_obj = config_obj.setdefault("mcp", {})
-    if not isinstance(mcp_section_obj, dict):
-        mcp_section_obj = {}
-        config_obj["mcp"] = mcp_section_obj
-    mcp_section = cast("dict[str, object]", mcp_section_obj)
-    mcp_section["ralph"] = {
-        "type": "remote",
-        "url": endpoint,
-        "enabled": True,
-        "timeout": 30000,
+
+def _build_opencode_provider_config(
+    existing: str | None, endpoint: str
+) -> tuple[str, tuple[UpstreamMcpServer, ...]]:
+    # OpenCode lets us inject a full config object, so this path preserves the user's
+    # existing non-MCP structure and then applies Ralph's native-tool shutdown as
+    # the final override. Provider-visible MCP config remains Ralph-only.
+    config_obj = _parse_opencode_config_content(existing)
+    existing_mcp = config_obj.get("mcp")
+    upstreams = (
+        normalize_upstream_mcp_servers(cast("dict[str, object]", existing_mcp))
+        if isinstance(existing_mcp, dict)
+        else ()
+    )
+
+    config_obj["mcp"] = {
+        "ralph": {
+            "type": "remote",
+            "url": endpoint,
+            "enabled": True,
+            "timeout": 30000,
+        }
     }
 
     permission_section_obj = config_obj.setdefault("permission", {})
@@ -605,7 +645,7 @@ def _merge_opencode_config_content(existing: str | None, endpoint: str) -> str:
     config_obj["tools"] = {**cast("dict[str, object]", existing_tools), **disable_overrides}
 
     config_obj.setdefault("$schema", "https://opencode.ai/config.json")
-    return json.dumps(config_obj, sort_keys=True)
+    return json.dumps(config_obj, sort_keys=True), upstreams
 
 
 def _parse_opencode_config_content(existing: str | None) -> dict[str, object]:
@@ -618,6 +658,30 @@ def _parse_opencode_config_content(existing: str | None) -> dict[str, object]:
     if not isinstance(decoded, dict):
         return {}
     return cast("dict[str, object]", decoded)
+
+
+def _extract_codex_upstream_servers(config_text: str) -> tuple[UpstreamMcpServer, ...]:
+    if not config_text.strip():
+        return ()
+    try:
+        parsed: object = tomllib.loads(config_text)
+    except Exception:
+        return ()
+    if not isinstance(parsed, dict):
+        return ()
+    mcp_servers = parsed.get("mcp_servers")
+    if not isinstance(mcp_servers, dict):
+        return ()
+    return normalize_upstream_mcp_servers(cast("dict[str, object]", mcp_servers))
+
+
+def _set_upstream_mcp_config(
+    runtime_env: dict[str, str], upstreams: tuple[UpstreamMcpServer, ...]
+) -> None:
+    if upstreams:
+        runtime_env[UPSTREAM_MCP_CONFIG_ENV] = serialize_upstream_mcp_servers(upstreams)
+        return
+    runtime_env.pop(UPSTREAM_MCP_CONFIG_ENV, None)
 
 
 def _read_lines_from_process(proc: subprocess.Popen[str]) -> Iterator[str]:
@@ -763,22 +827,7 @@ def _build_command(
     if build_options.verbose and config.verbose_flag:
         cmd.append(config.verbose_flag)
 
-    if transport == AgentTransport.CLAUDE and build_options.mcp_endpoint:
-        # `--tools ""` disables Claude's built-in tools. We intentionally do not pass
-        # `--allowedTools`: with strict MCP config in place, omitting the allowlist keeps
-        # preserved user MCP servers usable instead of leaving them configured-but-denied.
-        cmd.extend(
-            [
-                "--mcp-config",
-                _claude_mcp_config(
-                    build_options.mcp_endpoint,
-                    workspace_path=build_options.workspace_path,
-                ),
-                "--strict-mcp-config",
-                "--tools",
-                "",
-            ]
-        )
+    _extend_claude_transport_flags(cmd, transport, build_options)
 
     if transport == AgentTransport.CLAUDE and build_options.system_prompt_file:
         cmd.extend(["--append-system-prompt-file", build_options.system_prompt_file])
@@ -787,12 +836,92 @@ def _build_command(
     if effective_model:
         cmd.extend(effective_model.split())
 
+    _append_transport_prompt_arg(cmd, transport, prompt_file, build_options)
+    return cmd
+
+
+def _extend_claude_transport_flags(
+    cmd: list[str],
+    transport: AgentTransport,
+    build_options: _BuildCommandOptions,
+) -> None:
+    if transport != AgentTransport.CLAUDE or build_options.mcp_endpoint is None:
+        return
+
+    # `--tools ""` disables Claude's built-in tools. `--allowedTools` then grants
+    # provider-side approval only to the exact Ralph MCP tools exposed by the live
+    # runtime endpoint, keeping Ralph as the sole visible MCP server while avoiding
+    # per-tool permission prompts for Ralph-owned tools.
+    cmd.extend(
+        [
+            "--mcp-config",
+            _claude_mcp_config(
+                build_options.mcp_endpoint,
+                workspace_path=build_options.workspace_path,
+            ),
+            "--strict-mcp-config",
+            "--tools",
+            "",
+        ]
+    )
+    if build_options.allowed_mcp_tool_names:
+        cmd.extend(["--allowedTools", ",".join(build_options.allowed_mcp_tool_names)])
+
+
+
+def _append_transport_prompt_arg(
+    cmd: list[str],
+    transport: AgentTransport,
+    prompt_file: str,
+    build_options: _BuildCommandOptions,
+) -> None:
     if transport == AgentTransport.CLAUDE and build_options.mcp_endpoint:
         cmd.append("--")
-
+        cmd.append(Path(prompt_file).read_text(encoding="utf-8"))
+        return
     cmd.append(prompt_file)
 
-    return cmd
+
+
+def _provider_allowed_mcp_tool_names(
+    config: AgentConfig,
+    endpoint: str | None,
+) -> tuple[str, ...]:
+    if endpoint is None or _agent_transport(config) != AgentTransport.CLAUDE:
+        return ()
+    try:
+        visible_tool_names = _discover_http_mcp_tool_names(endpoint)
+    except (PreflightError, ValueError) as exc:
+        logger.warning("Failed to discover Ralph MCP tools for provider allowlist: {}", exc)
+        return ()
+    return tuple(claude_tool_name(tool_name) for tool_name in visible_tool_names)
+
+
+def _discover_http_mcp_tool_names(endpoint: str) -> list[str]:
+    target = parse_http_endpoint(endpoint)
+    initialize_response, session_id = post_http_jsonrpc_with_session(
+        endpoint,
+        target,
+        initialize_request(),
+    )
+    ensure_no_preflight_error("HTTP MCP initialize", initialize_response.get("error"))
+    initialized_response, session_id = post_http_jsonrpc_with_session(
+        endpoint,
+        target,
+        initialized_notification(),
+        session_id=session_id,
+    )
+    ensure_no_preflight_error(
+        "HTTP MCP notifications/initialized", initialized_response.get("error")
+    )
+    tools_response, _ = post_http_jsonrpc_with_session(
+        endpoint,
+        target,
+        tools_list_request(),
+        session_id=session_id,
+    )
+    ensure_no_preflight_error("HTTP MCP tools/list", tools_response.get("error"))
+    return extract_preflight_tool_names(tools_response.get("result"), "HTTP MCP")
 
 
 def _build_opencode_command(
@@ -845,7 +974,11 @@ def _build_codex_command(
 
 def _command_for_log(config: AgentConfig, cmd: list[str], prompt_file: str) -> str:
     logged_cmd = list(cmd)
-    if _agent_transport(config) in {AgentTransport.OPENCODE, AgentTransport.CODEX} and logged_cmd:
+    if (
+        _agent_transport(config)
+        in {AgentTransport.OPENCODE, AgentTransport.CODEX, AgentTransport.CLAUDE}
+        and logged_cmd
+    ):
         logged_cmd[-1] = prompt_file
     return " ".join(logged_cmd)
 

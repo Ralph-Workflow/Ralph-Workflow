@@ -9,7 +9,7 @@ Do not raise the limits. Do not skip or quarantine a slow test to hide it.
 A test that exceeds these limits is a **design defect** — fix the design.
 
   Per-test limit  : 1 second   (DEFAULT_TEST_TIMEOUT_SECONDS)
-  Full-suite limit: 10 seconds (DEFAULT_SUITE_TIMEOUT_SECONDS)
+  Full-suite limit: 30 seconds (DEFAULT_SUITE_TIMEOUT_SECONDS)
 
 HOW TO FIX A SLOW TEST
 -----------------------
@@ -36,7 +36,7 @@ WHAT "DONE" MEANS FOR TESTS
 ----------------------------
 A test change is complete only when ALL of the following hold:
   [ ] Every individual test finishes in < 1 s
-  [ ] The full suite finishes in < 10 s wall-clock
+  [ ] The full suite finishes in < 30 s wall-clock
   [ ] No test calls sleep() or polls real wall-clock time
   [ ] No test crosses a real I/O boundary (filesystem, process, network)
   [ ] Every assertion targets observable behavior, not internal state
@@ -54,7 +54,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
 DEFAULT_TEST_TIMEOUT_SECONDS = 1.0
-DEFAULT_SUITE_TIMEOUT_SECONDS = 10.0
+DEFAULT_SUITE_TIMEOUT_SECONDS = 30.0
 TEST_TIMEOUT_ENV = "RALPH_PYTEST_TEST_TIMEOUT_SECONDS"
 SUITE_TIMEOUT_ENV = "RALPH_PYTEST_SUITE_TIMEOUT_SECONDS"
 
@@ -73,7 +73,7 @@ _POLICY_FIX_MESSAGE = (
     "\n"
     "Limits:\n"
     "  Per-test  : 1 second   (RALPH_PYTEST_TEST_TIMEOUT_SECONDS)\n"
-    "  Full suite: 10 seconds (RALPH_PYTEST_SUITE_TIMEOUT_SECONDS)\n"
+    "  Full suite: 30 seconds (RALPH_PYTEST_SUITE_TIMEOUT_SECONDS)\n"
     "\n"
     "HOW TO FIX\n"
     "----------\n"

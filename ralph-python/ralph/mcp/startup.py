@@ -31,6 +31,8 @@ _HTTP_ACCEPTED = 202
 if TYPE_CHECKING:
     import io
 
+    from ralph.mcp.upstream_registry import UpstreamRegistry
+
 JsonRpcResponse = dict[str, object]
 
 
@@ -169,8 +171,13 @@ class HttpEndpointTarget:
     path: str
 
 
-def _visible_mcp_tool_names_owned(session: SessionLike, workspace: WorkspaceLike) -> list[str]:
-    bridge = build_ralph_tool_registry(session, workspace)
+def _visible_mcp_tool_names_owned(
+    session: SessionLike,
+    workspace: WorkspaceLike,
+    *,
+    upstream_registry: UpstreamRegistry | None = None,
+) -> list[str]:
+    bridge = build_ralph_tool_registry(session, workspace, upstream_registry=upstream_registry)
     return [definition.name for definition in bridge.list_definitions()]
 
 

@@ -455,6 +455,7 @@ def _invoke_commit_agent_attempt(
                 system_prompt_file=materialize_system_prompt(
                     workspace_root=attempt_context.repo_root,
                     name="commit",
+                    default_current_prompt="Commit message generation task.",
                 ),
             ),
         )

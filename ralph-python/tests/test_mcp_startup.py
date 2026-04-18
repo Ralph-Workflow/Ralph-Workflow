@@ -11,6 +11,13 @@ import pytest
 
 from ralph.mcp import startup
 from ralph.mcp.capability_mapping import AccessMode, SessionDrain
+from ralph.mcp.upstream_config import (
+    UpstreamConfigError,
+    UpstreamMcpServer,
+    load_upstream_mcp_servers,
+    normalize_upstream_mcp_servers,
+    serialize_upstream_mcp_servers,
+)
 
 if TYPE_CHECKING:
     import socket
@@ -78,6 +85,57 @@ def test_parse_http_endpoint_rejects_unsupported_scheme() -> None:
 def test_parse_http_endpoint_rejects_missing_host() -> None:
     with pytest.raises(ValueError, match="missing host"):
         startup.parse_http_endpoint("http:///missing")
+
+
+def test_upstream_config_normalizes_url_only_http_servers() -> None:
+    servers = normalize_upstream_mcp_servers(
+        {
+            "docs": {
+                "url": "https://example.com/mcp",
+            }
+        }
+    )
+
+    assert servers == (
+        UpstreamMcpServer(
+            name="docs",
+            transport="http",
+            url="https://example.com/mcp",
+        ),
+    )
+
+
+def test_upstream_config_rejects_duplicate_ralph_server_name() -> None:
+    with pytest.raises(UpstreamConfigError, match="ralph"):
+        normalize_upstream_mcp_servers(
+            {
+                "ralph": {
+                    "url": "https://wrong.example/mcp",
+                }
+            }
+        )
+
+
+def test_upstream_config_serializes_runtime_payload() -> None:
+    payload = serialize_upstream_mcp_servers(
+        [
+            UpstreamMcpServer(
+                name="filesystem",
+                transport="stdio",
+                command="npx",
+                args=("-y", "@modelcontextprotocol/server-filesystem"),
+            )
+        ]
+    )
+
+    assert load_upstream_mcp_servers(payload) == (
+        UpstreamMcpServer(
+            name="filesystem",
+            transport="stdio",
+            command="npx",
+            args=("-y", "@modelcontextprotocol/server-filesystem"),
+        ),
+    )
 
 
 def test_classify_connect_error_returns_retryable_for_transient_errno() -> None:

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+from ralph.mcp.capability_mapping import Capability, McpCapability, lookup_ralph_capability
 from ralph.mcp.policy_outcomes import APPROVED_POLICY_OUTCOMES, is_policy_approved
+from ralph.mcp.session import AgentSession
 from ralph.mcp.tool_names import RalphToolName, claude_tool_name, claude_tool_name_prefix
 
 
@@ -41,3 +43,31 @@ def test_claude_tool_name_supports_non_ralph_server_names() -> None:
         "mcp__sequential-thinking__sequentialthinking"
     )
     assert claude_tool_name_prefix(server_name="angular-cli") == "mcp__angular-cli__"
+
+
+def test_session_without_upstream_capability_cannot_use_proxied_tool() -> None:
+    assert McpCapability.UPSTREAM_TOOL_USE == "UpstreamToolUse"
+    session = AgentSession(
+        session_id="s-no-upstream",
+        run_id="r-no-upstream",
+        drain="development",
+        capabilities={"WorkspaceRead", "ArtifactSubmit"},
+    )
+    assert session.check_capability(McpCapability.UPSTREAM_TOOL_USE) == "denied"
+
+
+def test_session_with_upstream_capability_can_use_proxied_tool() -> None:
+    assert McpCapability.UPSTREAM_TOOL_USE == "UpstreamToolUse"
+    session = AgentSession(
+        session_id="s-with-upstream",
+        run_id="r-with-upstream",
+        drain="development",
+        capabilities={"WorkspaceRead", "ArtifactSubmit", "UpstreamToolUse"},
+    )
+    assert session.check_capability(McpCapability.UPSTREAM_TOOL_USE) == "approved"
+
+
+def test_upstream_tool_use_maps_to_ralph_capability() -> None:
+    assert Capability.UPSTREAM_TOOL_USE == "upstream.tool_use"
+    mapped = lookup_ralph_capability(McpCapability.UPSTREAM_TOOL_USE)
+    assert mapped == Capability.UPSTREAM_TOOL_USE

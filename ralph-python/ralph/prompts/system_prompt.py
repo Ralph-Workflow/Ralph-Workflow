@@ -10,8 +10,16 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-def materialize_system_prompt(*, workspace_root: Path, name: str) -> str:
+def materialize_system_prompt(
+    *,
+    workspace_root: Path,
+    name: str,
+    default_current_prompt: str | None = None,
+) -> str:
     current_prompt_path = workspace_root / ".agent" / "CURRENT_PROMPT.md"
+    if not current_prompt_path.exists() and default_current_prompt is not None:
+        current_prompt_path.parent.mkdir(parents=True, exist_ok=True)
+        current_prompt_path.write_text(default_current_prompt, encoding="utf-8")
     system_prompt_path = workspace_root / ".agent" / "tmp" / f"{name}_system_prompt.md"
     system_prompt_path.parent.mkdir(parents=True, exist_ok=True)
     system_prompt_path.write_text(

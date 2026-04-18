@@ -23,3 +23,37 @@ def test_materialize_system_prompt_writes_file(tmp_path: Path) -> None:
     assert system_prompt_path.exists()
     assert system_prompt_path.read_text(encoding="utf-8")
     assert str(current_prompt) in system_prompt_path.read_text(encoding="utf-8")
+
+
+def test_materialize_system_prompt_creates_current_prompt_when_missing(tmp_path: Path) -> None:
+    assert not (tmp_path / ".agent" / "CURRENT_PROMPT.md").exists()
+
+    Path(
+        materialize_system_prompt(
+            workspace_root=tmp_path,
+            name="commit",
+            default_current_prompt="Commit message generation task.",
+        )
+    )
+
+    current_prompt = tmp_path / ".agent" / "CURRENT_PROMPT.md"
+    assert current_prompt.exists(), (
+        "CURRENT_PROMPT.md must be created before system prompt references it"
+    )
+    assert current_prompt.read_text(encoding="utf-8") == "Commit message generation task."
+
+
+def test_materialize_system_prompt_preserves_existing_current_prompt(tmp_path: Path) -> None:
+    current_prompt = tmp_path / ".agent" / "CURRENT_PROMPT.md"
+    current_prompt.parent.mkdir(parents=True)
+    current_prompt.write_text("User's actual task.", encoding="utf-8")
+
+    materialize_system_prompt(
+        workspace_root=tmp_path,
+        name="commit",
+        default_current_prompt="Commit message generation task.",
+    )
+
+    assert current_prompt.read_text(encoding="utf-8") == "User's actual task.", (
+        "existing CURRENT_PROMPT.md must not be overwritten"
+    )

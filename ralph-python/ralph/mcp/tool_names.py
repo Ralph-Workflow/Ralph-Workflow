@@ -178,6 +178,8 @@ def claude_tool_name(
 
 
 def claude_tool_name_prefix(*, server_name: str = RALPH_MCP_SERVER_NAME) -> str:
-    # Non-Ralph server names are first-class here because Claude can surface any merged
-    # MCP server under the same `mcp__server__tool` namespace.
     return f"mcp__{server_name}__"
+
+
+def upstream_proxy_tool_name(server_name: str, tool_name: str) -> str:
+    return f"ralph_upstream__{server_name}__{tool_name}"

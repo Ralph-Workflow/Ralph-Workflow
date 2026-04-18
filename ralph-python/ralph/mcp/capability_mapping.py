@@ -117,6 +117,7 @@ class Capability(StrEnum):
     GIT_WRITE = "git.write"
     ENV_READ = "env.read"
     ENV_WRITE = "env.write"
+    UPSTREAM_TOOL_USE = "upstream.tool_use"
 
 
 class McpCapability(StrEnum):
@@ -139,6 +140,7 @@ class McpCapability(StrEnum):
     PROCESS_EXEC_BOUNDED = "ProcessExecBounded"
     PROCESS_EXEC_UNBOUNDED = "ProcessExecUnbounded"
     RUN_REPORT_PROGRESS = "RunReportProgress"
+    UPSTREAM_TOOL_USE = "UpstreamToolUse"
 
 
 class PolicyOutcomeStatus(StrEnum):
@@ -173,6 +175,7 @@ MCP_TO_RALPH_CAPABILITY_MAP: dict[McpCapability, Capability] = {
     McpCapability.PROCESS_EXEC_BOUNDED: Capability.PROCESS_EXEC_BOUNDED,
     McpCapability.PROCESS_EXEC_UNBOUNDED: Capability.PROCESS_EXEC_UNBOUNDED,
     McpCapability.RUN_REPORT_PROGRESS: Capability.RUN_REPORT_PROGRESS,
+    McpCapability.UPSTREAM_TOOL_USE: Capability.UPSTREAM_TOOL_USE,
 }
 
 _RALPH_CAPABILITY_ALIASES: dict[str, Capability] = {
@@ -206,6 +209,8 @@ _MCP_CAPABILITY_ALIASES: dict[str, McpCapability] = {
     "run.report_progress": McpCapability.RUN_REPORT_PROGRESS,
     "file.read": McpCapability.FILE_READ,
     "file.write": McpCapability.FILE_WRITE,
+    "upstream.tool_use": McpCapability.UPSTREAM_TOOL_USE,
+    "upstream_tool_use": McpCapability.UPSTREAM_TOOL_USE,
 }
 
 _APPROVED_POLICY_VALUES = {"approved", "allow", "allowed"}
@@ -473,6 +478,7 @@ def check_mcp_capability_policy(
         McpCapability.PROCESS_EXEC_BOUNDED,
         McpCapability.PROCESS_EXEC_UNBOUNDED,
         McpCapability.RUN_REPORT_PROGRESS,
+        McpCapability.UPSTREAM_TOOL_USE,
     }:
         return evaluate_mapped_capability(normalized_capability, mapped_outcome)
     return AccessDecision.deny(

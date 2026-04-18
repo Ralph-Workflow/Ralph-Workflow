@@ -21,6 +21,7 @@ from ralph.agents.invoke import (
     _command_for_log,
     _merge_opencode_config_content,
     _prepare_codex_home,
+    _provider_allowed_mcp_tool_names,
     invoke_agent,
 )
 from ralph.config.enums import AgentTransport, JsonParserType
@@ -29,6 +30,13 @@ from ralph.mcp.tool_names import (
     CODEX_NATIVE_FEATURES_TO_DISABLE,
     OPENCODE_NATIVE_TOOLS_TO_DISABLE,
     RALPH_MCP_SERVER_NAME,
+    claude_tool_name,
+)
+from ralph.mcp.upstream_config import (
+    UPSTREAM_MCP_CONFIG_ENV,
+    UpstreamConfigError,
+    UpstreamMcpServer,
+    load_upstream_mcp_servers,
 )
 
 
@@ -163,7 +171,12 @@ def test_build_command_omits_optional_flags_when_not_configured(tmp_path: Path) 
     assert cmd == ["opencode", "run", "--format", "json", "plain prompt"]
 
 
-def test_build_command_injects_claude_mcp_config_for_remote_endpoint() -> None:
+def test_build_command_injects_claude_mcp_config_for_remote_endpoint(
+    tmp_path: Path,
+) -> None:
+    prompt_content = "commit prompt content"
+    prompt_file = tmp_path / "PROMPT.md"
+    prompt_file.write_text(prompt_content, encoding="utf-8")
     config = AgentConfig(
         cmd="claude -p",
         output_flag="--output-format=stream-json",
@@ -176,9 +189,13 @@ def test_build_command_injects_claude_mcp_config_for_remote_endpoint() -> None:
 
     cmd = _build_command(
         config,
-        "PROMPT.md",
+        str(prompt_file),
         options=_BuildCommandOptions(
             mcp_endpoint="http://127.0.0.1:9999/mcp",
+            allowed_mcp_tool_names=(
+                claude_tool_name("read_file"),
+                claude_tool_name("report_progress"),
+            ),
         ),
     )
 
@@ -190,11 +207,22 @@ def test_build_command_injects_claude_mcp_config_for_remote_endpoint() -> None:
         "type": "http",
         "url": "http://127.0.0.1:9999/mcp",
     }
-    assert "--allowedTools" not in cmd
-    assert cmd[-2:] == ["--", "PROMPT.md"]
+    allowed_index = cmd.index("--allowedTools")
+    assert cmd[allowed_index + 1] == ",".join(
+        [
+            claude_tool_name("read_file"),
+            claude_tool_name("report_progress"),
+        ]
+    )
+    assert cmd[-2:] == ["--", prompt_content]
 
 
-def test_build_command_uses_transport_metadata_not_command_name_for_claude_mcp() -> None:
+def test_build_command_uses_transport_metadata_not_command_name_for_claude_mcp(
+    tmp_path: Path,
+) -> None:
+    prompt_content = "commit prompt content"
+    prompt_file = tmp_path / "PROMPT.md"
+    prompt_file.write_text(prompt_content, encoding="utf-8")
     config = AgentConfig(
         cmd="custom-claude-wrapper --json",
         output_flag="--output-format=stream-json",
@@ -207,12 +235,17 @@ def test_build_command_uses_transport_metadata_not_command_name_for_claude_mcp()
 
     cmd = _build_command(
         config,
-        "PROMPT.md",
-        options=_BuildCommandOptions(mcp_endpoint="http://127.0.0.1:9999/mcp"),
+        str(prompt_file),
+        options=_BuildCommandOptions(
+            mcp_endpoint="http://127.0.0.1:9999/mcp",
+            allowed_mcp_tool_names=(claude_tool_name("read_file"),),
+        ),
     )
 
     assert "--mcp-config" in cmd
-    assert cmd[-2:] == ["--", "PROMPT.md"]
+    allowed_index = cmd.index("--allowedTools")
+    assert cmd[allowed_index + 1] == claude_tool_name("read_file")
+    assert cmd[-2:] == ["--", prompt_content]
 
 
 def test_build_command_uses_opencode_run_json_with_prompt_contents(tmp_path: Path) -> None:
@@ -398,6 +431,13 @@ def test_invoke_agent_passes_extra_env_to_subprocess(
         return FakeProcess()
 
     monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", fake_popen)
+    monkeypatch.setattr(
+        "ralph.agents.invoke._provider_allowed_mcp_tool_names",
+        lambda config, endpoint: (
+            claude_tool_name("read_file"),
+            claude_tool_name("ralph_submit_artifact"),
+        ),
+    )
 
     list(
         invoke_agent(
@@ -442,6 +482,13 @@ def test_invoke_agent_runs_subprocess_in_workspace_path(
         return FakeProcess()
 
     monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", fake_popen)
+    monkeypatch.setattr(
+        "ralph.agents.invoke._provider_allowed_mcp_tool_names",
+        lambda config, endpoint: (
+            claude_tool_name("read_file"),
+            claude_tool_name("ralph_submit_artifact"),
+        ),
+    )
 
     list(
         invoke_agent(
@@ -493,6 +540,13 @@ def test_invoke_agent_passes_claude_mcp_separator_in_subprocess_argv(
         return FakeProcess()
 
     monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", fake_popen)
+    monkeypatch.setattr(
+        "ralph.agents.invoke._provider_allowed_mcp_tool_names",
+        lambda config, endpoint: (
+            claude_tool_name("read_file"),
+            claude_tool_name("ralph_submit_artifact"),
+        ),
+    )
 
     list(
         invoke_agent(
@@ -532,14 +586,46 @@ def test_invoke_agent_passes_claude_mcp_separator_in_subprocess_argv(
         "--strict-mcp-config",
         "--tools",
         "",
+        "--allowedTools",
+        ",".join(
+            [
+                claude_tool_name("read_file"),
+                claude_tool_name("ralph_submit_artifact"),
+            ]
+        ),
         "--model",
         "claude-sonnet-4",
         "--",
-        str(prompt_file),
+        "hello",
     ]
 
 
-def test_claude_builtin_command_preserves_login_capable_mode() -> None:
+def test_provider_allowed_mcp_tool_names_maps_live_ralph_endpoint_to_claude_aliases(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = AgentConfig(
+        cmd="claude -p",
+        output_flag="--output-format=stream-json",
+        yolo_flag="--permission-mode auto",
+        json_parser=JsonParserType.CLAUDE,
+        transport=AgentTransport.CLAUDE,
+    )
+    monkeypatch.setattr(
+        "ralph.agents.invoke._discover_http_mcp_tool_names",
+        lambda endpoint: ["read_file", "ralph_submit_artifact"],
+    )
+
+    allowed = _provider_allowed_mcp_tool_names(config, "http://127.0.0.1:9999/mcp")
+
+    assert allowed == (
+        claude_tool_name("read_file"),
+        claude_tool_name("ralph_submit_artifact"),
+    )
+
+
+def test_claude_builtin_command_preserves_login_capable_mode(tmp_path: Path) -> None:
+    prompt_file = tmp_path / "PROMPT.md"
+    prompt_file.write_text("prompt", encoding="utf-8")
     config = AgentConfig(
         cmd="claude -p",
         output_flag="--output-format=stream-json",
@@ -553,16 +639,29 @@ def test_claude_builtin_command_preserves_login_capable_mode() -> None:
 
     cmd = _build_command(
         config,
-        "PROMPT.md",
-        options=_BuildCommandOptions(mcp_endpoint="http://127.0.0.1:9999/mcp"),
+        str(prompt_file),
+        options=_BuildCommandOptions(
+            mcp_endpoint="http://127.0.0.1:9999/mcp",
+            allowed_mcp_tool_names=(
+                claude_tool_name("read_file"),
+                claude_tool_name("report_progress"),
+            ),
+        ),
     )
 
     assert "--bare" not in cmd
     assert "--mcp-config" in cmd
-    assert "--allowedTools" not in cmd
+    allowed_index = cmd.index("--allowedTools")
+    assert cmd[allowed_index + 1] == ",".join(
+        [claude_tool_name("read_file"), claude_tool_name("report_progress")]
+    )
 
 
-def test_build_command_claude_injects_empty_tools_when_mcp_endpoint_wired() -> None:
+def test_build_command_claude_injects_empty_tools_when_mcp_endpoint_wired(
+    tmp_path: Path,
+) -> None:
+    prompt_file = tmp_path / "PROMPT.md"
+    prompt_file.write_text("prompt", encoding="utf-8")
     config = AgentConfig(
         cmd="claude -p",
         output_flag="--output-format=stream-json",
@@ -574,15 +673,23 @@ def test_build_command_claude_injects_empty_tools_when_mcp_endpoint_wired() -> N
     )
     cmd = _build_command(
         config,
-        "PROMPT.md",
-        options=_BuildCommandOptions(mcp_endpoint="http://127.0.0.1:9999/mcp"),
+        str(prompt_file),
+        options=_BuildCommandOptions(
+            mcp_endpoint="http://127.0.0.1:9999/mcp",
+            allowed_mcp_tool_names=(claude_tool_name("read_file"),),
+        ),
     )
     tools_idx = cmd.index("--tools")
     assert cmd[tools_idx + 1] == ""
-    assert "--allowedTools" not in cmd
+    allowed_index = cmd.index("--allowedTools")
+    assert cmd[allowed_index + 1] == claude_tool_name("read_file")
 
 
-def test_build_command_claude_injects_strict_mcp_config_when_mcp_endpoint_wired() -> None:
+def test_build_command_claude_injects_strict_mcp_config_when_mcp_endpoint_wired(
+    tmp_path: Path,
+) -> None:
+    prompt_file = tmp_path / "PROMPT.md"
+    prompt_file.write_text("prompt", encoding="utf-8")
     config = AgentConfig(
         cmd="claude -p",
         output_flag="--output-format=stream-json",
@@ -594,17 +701,19 @@ def test_build_command_claude_injects_strict_mcp_config_when_mcp_endpoint_wired(
     )
     cmd = _build_command(
         config,
-        "PROMPT.md",
+        str(prompt_file),
         options=_BuildCommandOptions(mcp_endpoint="http://127.0.0.1:9999/mcp"),
     )
     assert "--mcp-config" in cmd
 
 
-def test_invoke_agent_claude_preserves_existing_workspace_mcp_servers(
+def test_invoke_agent_claude_extracts_existing_workspace_mcp_servers(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     prompt_file = tmp_path / "PROMPT.md"
     prompt_file.write_text("hello", encoding="utf-8")
+    fake_home = tmp_path / "fake-home"
+    fake_home.mkdir()
     (tmp_path / ".mcp.json").write_text(
         json.dumps(
             {
@@ -628,6 +737,7 @@ def test_invoke_agent_claude_preserves_existing_workspace_mcp_servers(
         transport=AgentTransport.CLAUDE,
     )
     seen_cmds: list[list[str]] = []
+    seen_env: list[dict[str, str]] = []
 
     class FakeProcess:
         def __init__(self) -> None:
@@ -645,11 +755,12 @@ def test_invoke_agent_claude_preserves_existing_workspace_mcp_servers(
             return self.returncode
 
     def fake_popen(*args: object, **kwargs: object) -> FakeProcess:
-        del kwargs
+        seen_env.append(_env_dict(kwargs))
         seen_cmds.append(_argv(args))
         return FakeProcess()
 
     monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", fake_popen)
+    monkeypatch.setenv("HOME", str(fake_home))
 
     list(
         invoke_agent(
@@ -668,11 +779,23 @@ def test_invoke_agent_claude_preserves_existing_workspace_mcp_servers(
     mcp_index = cmd.index("--mcp-config")
     config_payload = _json_object(cmd[mcp_index + 1])
     servers = cast("dict[str, object]", config_payload["mcpServers"])
-    assert "angular-cli" in servers
-    assert cast("dict[str, object]", servers["ralph"])["url"] == "http://127.0.0.1:9999/mcp"
+    assert servers == {
+        "ralph": {
+            "type": "http",
+            "url": "http://127.0.0.1:9999/mcp",
+        }
+    }
+    assert load_upstream_mcp_servers(seen_env[0][UPSTREAM_MCP_CONFIG_ENV]) == (
+        UpstreamMcpServer(
+            name="angular-cli",
+            transport="stdio",
+            command="npx",
+            args=("-y", "@angular/cli", "mcp"),
+        ),
+    )
 
 
-def test_invoke_agent_claude_preserves_home_claude_json_servers(
+def test_claude_mode_extracts_upstream_servers_without_passing_them_through(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     prompt_file = tmp_path / "PROMPT.md"
@@ -702,6 +825,7 @@ def test_invoke_agent_claude_preserves_home_claude_json_servers(
         transport=AgentTransport.CLAUDE,
     )
     seen_cmds: list[list[str]] = []
+    seen_env: list[dict[str, str]] = []
 
     class FakeProcess:
         def __init__(self) -> None:
@@ -719,7 +843,7 @@ def test_invoke_agent_claude_preserves_home_claude_json_servers(
             return self.returncode
 
     def fake_popen(*args: object, **kwargs: object) -> FakeProcess:
-        del kwargs
+        seen_env.append(_env_dict(kwargs))
         seen_cmds.append(_argv(args))
         return FakeProcess()
 
@@ -743,10 +867,23 @@ def test_invoke_agent_claude_preserves_home_claude_json_servers(
     mcp_index = cmd.index("--mcp-config")
     config_payload = _json_object(cmd[mcp_index + 1])
     servers = cast("dict[str, object]", config_payload["mcpServers"])
-    assert "angular-cli" in servers
+    assert servers == {
+        "ralph": {
+            "type": "http",
+            "url": "http://127.0.0.1:9999/mcp",
+        }
+    }
+    assert load_upstream_mcp_servers(seen_env[0][UPSTREAM_MCP_CONFIG_ENV]) == (
+        UpstreamMcpServer(
+            name="angular-cli",
+            transport="stdio",
+            command="npx",
+            args=("-y", "@angular/cli", "mcp"),
+        ),
+    )
 
 
-def test_invoke_agent_claude_preserves_workspace_claude_json_servers(
+def test_claude_mode_prefers_workspace_upstream_server_over_home_definition(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     prompt_file = tmp_path / "PROMPT.md"
@@ -756,82 +893,19 @@ def test_invoke_agent_claude_preserves_workspace_claude_json_servers(
             {
                 "mcpServers": {
                     "angular-cli": {
-                        "command": "npx",
-                        "args": ["-y", "@angular/cli", "mcp"],
+                        "command": "workspace-cmd",
                     }
                 }
             }
         ),
         encoding="utf-8",
     )
-    config = AgentConfig(
-        cmd="claude -p",
-        output_flag="--output-format=stream-json",
-        yolo_flag="--dangerously-skip-permissions",
-        print_flag="--print",
-        streaming_flag="--include-partial-messages",
-        json_parser=JsonParserType.CLAUDE,
-        transport=AgentTransport.CLAUDE,
-    )
-    seen_cmds: list[list[str]] = []
-
-    class FakeProcess:
-        def __init__(self) -> None:
-            self.stdout = iter(["ok\n"])
-            self.stderr = SimpleNamespace(read=lambda: "")
-            self.returncode = 0
-
-        def __enter__(self) -> FakeProcess:
-            return self
-
-        def __exit__(self, exc_type: object, exc: object, tb: object) -> Literal[False]:
-            return False
-
-        def wait(self) -> int:
-            return self.returncode
-
-    def fake_popen(*args: object, **kwargs: object) -> FakeProcess:
-        del kwargs
-        seen_cmds.append(_argv(args))
-        return FakeProcess()
-
-    monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", fake_popen)
-
-    list(
-        invoke_agent(
-            config,
-            str(prompt_file),
-            options=InvokeOptions(
-                show_progress=False,
-                workspace_path=tmp_path,
-                extra_env={"RALPH_MCP_ENDPOINT": "http://127.0.0.1:9999/mcp"},
-            ),
-        )
-    )
-
-    assert seen_cmds
-    cmd = seen_cmds[0]
-    mcp_index = cmd.index("--mcp-config")
-    config_payload = _json_object(cmd[mcp_index + 1])
-    servers = cast("dict[str, object]", config_payload["mcpServers"])
-    assert "angular-cli" in servers
-
-
-def test_invoke_agent_claude_workspace_overrides_home_for_same_server_name(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    prompt_file = tmp_path / "PROMPT.md"
-    prompt_file.write_text("hello", encoding="utf-8")
     fake_home = tmp_path / "fake-home"
     fake_home.mkdir()
     (fake_home / ".claude.json").write_text(
         json.dumps({"mcpServers": {"angular-cli": {"command": "home-cmd"}}}),
         encoding="utf-8",
     )
-    (tmp_path / ".claude.json").write_text(
-        json.dumps({"mcpServers": {"angular-cli": {"command": "workspace-cmd"}}}),
-        encoding="utf-8",
-    )
     config = AgentConfig(
         cmd="claude -p",
         output_flag="--output-format=stream-json",
@@ -842,6 +916,7 @@ def test_invoke_agent_claude_workspace_overrides_home_for_same_server_name(
         transport=AgentTransport.CLAUDE,
     )
     seen_cmds: list[list[str]] = []
+    seen_env: list[dict[str, str]] = []
 
     class FakeProcess:
         def __init__(self) -> None:
@@ -859,7 +934,7 @@ def test_invoke_agent_claude_workspace_overrides_home_for_same_server_name(
             return self.returncode
 
     def fake_popen(*args: object, **kwargs: object) -> FakeProcess:
-        del kwargs
+        seen_env.append(_env_dict(kwargs))
         seen_cmds.append(_argv(args))
         return FakeProcess()
 
@@ -883,11 +958,18 @@ def test_invoke_agent_claude_workspace_overrides_home_for_same_server_name(
     mcp_index = cmd.index("--mcp-config")
     config_payload = _json_object(cmd[mcp_index + 1])
     servers = cast("dict[str, object]", config_payload["mcpServers"])
-    angular_cli = cast("dict[str, object]", servers["angular-cli"])
-    assert angular_cli["command"] == "workspace-cmd"
+    assert servers == {
+        "ralph": {
+            "type": "http",
+            "url": "http://127.0.0.1:9999/mcp",
+        }
+    }
+    assert load_upstream_mcp_servers(seen_env[0][UPSTREAM_MCP_CONFIG_ENV]) == (
+        UpstreamMcpServer(name="angular-cli", transport="stdio", command="workspace-cmd"),
+    )
 
 
-def test_invoke_agent_claude_overrides_user_ralph_server_definition(
+def test_claude_mode_rejects_duplicate_ralph_server_name(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     prompt_file = tmp_path / "PROMPT.md"
@@ -914,48 +996,18 @@ def test_invoke_agent_claude_overrides_user_ralph_server_definition(
         json_parser=JsonParserType.CLAUDE,
         transport=AgentTransport.CLAUDE,
     )
-    seen_cmds: list[list[str]] = []
-
-    class FakeProcess:
-        def __init__(self) -> None:
-            self.stdout = iter(["ok\n"])
-            self.stderr = SimpleNamespace(read=lambda: "")
-            self.returncode = 0
-
-        def __enter__(self) -> FakeProcess:
-            return self
-
-        def __exit__(self, exc_type: object, exc: object, tb: object) -> Literal[False]:
-            return False
-
-        def wait(self) -> int:
-            return self.returncode
-
-    def fake_popen(*args: object, **kwargs: object) -> FakeProcess:
-        del kwargs
-        seen_cmds.append(_argv(args))
-        return FakeProcess()
-
-    monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", fake_popen)
-
-    list(
-        invoke_agent(
-            config,
-            str(prompt_file),
-            options=InvokeOptions(
-                show_progress=False,
-                workspace_path=tmp_path,
-                extra_env={"RALPH_MCP_ENDPOINT": "http://127.0.0.1:9999/mcp"},
-            ),
+    with pytest.raises(UpstreamConfigError, match="ralph"):
+        list(
+            invoke_agent(
+                config,
+                str(prompt_file),
+                options=InvokeOptions(
+                    show_progress=False,
+                    workspace_path=tmp_path,
+                    extra_env={"RALPH_MCP_ENDPOINT": "http://127.0.0.1:9999/mcp"},
+                ),
+            )
         )
-    )
-
-    assert seen_cmds
-    cmd = seen_cmds[0]
-    mcp_index = cmd.index("--mcp-config")
-    config_payload = _json_object(cmd[mcp_index + 1])
-    servers = cast("dict[str, object]", config_payload["mcpServers"])
-    assert cast("dict[str, object]", servers["ralph"])["url"] == "http://127.0.0.1:9999/mcp"
 
 
 def test_build_command_claude_omits_tools_flag_when_no_mcp_endpoint() -> None:
@@ -1207,24 +1259,87 @@ def test_opencode_config_preserves_unrelated_user_tools_sections() -> None:
     assert ui["theme"] == "dark"
 
 
-def test_opencode_config_preserves_existing_mcp_servers() -> None:
-    existing = '{"mcp": {"angular-cli": {"type": "local", "command": "npx"}}}'
-    result = _merge_opencode_config_content(existing, "http://localhost:0/mcp")
-    parsed = _json_object(result)
+def test_opencode_mode_extracts_upstream_servers_without_passing_them_through(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    prompt_file = tmp_path / "PROMPT.md"
+    prompt_file.write_text("hello", encoding="utf-8")
+    config = AgentConfig(cmd="opencode", output_flag="--json-stream")
+    seen_env: list[dict[str, str]] = []
+
+    class FakeProcess:
+        def __init__(self) -> None:
+            self.stdout = iter(["ok\n"])
+            self.stderr = SimpleNamespace(read=lambda: "")
+            self.returncode = 0
+
+        def __enter__(self) -> FakeProcess:
+            return self
+
+        def __exit__(self, exc_type: object, exc: object, tb: object) -> Literal[False]:
+            return False
+
+        def wait(self) -> int:
+            return self.returncode
+
+    def fake_popen(*args: object, **kwargs: object) -> FakeProcess:
+        del args
+        seen_env.append(_env_dict(kwargs))
+        return FakeProcess()
+
+    monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", fake_popen)
+    monkeypatch.setenv(
+        "OPENCODE_CONFIG_CONTENT",
+        json.dumps(
+            {
+                "model": "anthropic/test",
+                "mcp": {
+                    "angular-cli": {
+                        "type": "local",
+                        "command": "npx",
+                        "args": ["-y", "@angular/cli", "mcp"],
+                    }
+                },
+            }
+        ),
+    )
+
+    list(
+        invoke_agent(
+            config,
+            str(prompt_file),
+            options=InvokeOptions(
+                show_progress=False,
+                workspace_path=tmp_path,
+                extra_env={"RALPH_MCP_ENDPOINT": "http://127.0.0.1:9999/mcp"},
+            ),
+        )
+    )
+
+    parsed = _json_object(seen_env[0]["OPENCODE_CONFIG_CONTENT"])
     mcp_config = cast("dict[str, object]", parsed["mcp"])
-    angular_cli = cast("dict[str, object]", mcp_config["angular-cli"])
-    ralph_server = cast("dict[str, object]", mcp_config["ralph"])
-    assert angular_cli["command"] == "npx"
-    assert ralph_server["url"] == "http://localhost:0/mcp"
+    assert mcp_config == {
+        "ralph": {
+            "type": "remote",
+            "url": "http://127.0.0.1:9999/mcp",
+            "enabled": True,
+            "timeout": 30000,
+        }
+    }
+    assert load_upstream_mcp_servers(seen_env[0][UPSTREAM_MCP_CONFIG_ENV]) == (
+        UpstreamMcpServer(
+            name="angular-cli",
+            transport="stdio",
+            command="npx",
+            args=("-y", "@angular/cli", "mcp"),
+        ),
+    )
 
 
-def test_opencode_config_overrides_user_ralph_server_definition() -> None:
+def test_opencode_mode_rejects_duplicate_ralph_server_name() -> None:
     existing = '{"mcp": {"ralph": {"type": "remote", "url": "http://wrong.example/mcp"}}}'
-    result = _merge_opencode_config_content(existing, "http://localhost:0/mcp")
-    parsed = _json_object(result)
-    mcp_config = cast("dict[str, object]", parsed["mcp"])
-    ralph_server = cast("dict[str, object]", mcp_config["ralph"])
-    assert ralph_server["url"] == "http://localhost:0/mcp"
+    with pytest.raises(UpstreamConfigError, match="ralph"):
+        _merge_opencode_config_content(existing, "http://localhost:0/mcp")
 
 
 def test_opencode_config_preserves_unrelated_permission_entries() -> None:
@@ -1392,7 +1507,11 @@ def test_invoke_agent_injects_codex_system_prompt_file_via_config(
     )
 
     assert len(seen_config) == 1
-    assert f'model_instructions_file = "{system_prompt_file}"' in seen_config[0]
+    parsed = _toml_object(seen_config[0])
+    assert parsed["model_instructions_file"] == str(system_prompt_file)
+    features = cast("dict[str, object] | None", parsed.get("features"))
+    if features is not None:
+        assert "model_instructions_file" not in features
 
 
 def test_invoke_agent_does_not_inject_opencode_system_prompt_flag(
@@ -1513,6 +1632,22 @@ def test_codex_config_toml_disables_all_features_when_mcp_wired(tmp_path: Path) 
     assert "web_search" not in features
 
 
+def test_codex_config_toml_keeps_model_instructions_outside_features(tmp_path: Path) -> None:
+    system_prompt_file = tmp_path / "SYSTEM_PROMPT.md"
+    system_prompt_file.write_text("system", encoding="utf-8")
+    home = _prepare_codex_home(
+        "http://localhost:0/mcp",
+        workspace_path=tmp_path,
+        existing_home=None,
+        system_prompt_file=str(system_prompt_file),
+    )
+    parsed = _toml_object((Path(home) / "config.toml").read_text(encoding="utf-8"))
+    assert parsed["model_instructions_file"] == str(system_prompt_file)
+    features = cast("dict[str, object]", parsed["features"])
+    assert "model_instructions_file" not in features
+
+
+
 def test_codex_config_toml_preserves_existing_features_section(tmp_path: Path) -> None:
     fake_home = tmp_path / "fake_codex"
     fake_home.mkdir()
@@ -1536,49 +1671,88 @@ def test_codex_config_toml_preserves_existing_features_section(tmp_path: Path) -
     assert features["apps"] is False
 
 
-def test_codex_config_toml_preserves_existing_mcp_servers(tmp_path: Path) -> None:
-    fake_home = tmp_path / "fake_codex"
-    fake_home.mkdir()
-    (fake_home / "config.toml").write_text(
+def test_codex_mode_extracts_upstream_servers_without_passing_them_through(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    prompt_file = tmp_path / "PROMPT.md"
+    prompt_file.write_text("hello", encoding="utf-8")
+    config = AgentConfig(cmd="codex", output_flag="--json-stream", transport=AgentTransport.CODEX)
+    source_home = tmp_path / "source-codex-home"
+    source_home.mkdir()
+    (source_home / "config.toml").write_text(
         '[mcp_servers.angular-cli]\ncommand = "npx"\nargs = ["-y", "@angular/cli", "mcp"]\n',
         encoding="utf-8",
     )
-    home = _prepare_codex_home(
-        "http://localhost:0/mcp",
-        workspace_path=tmp_path,
-        existing_home=str(fake_home),
-        system_prompt_file=None,
+    seen_env: list[dict[str, str]] = []
+    seen_config: list[str] = []
+
+    class FakeProcess:
+        def __init__(self) -> None:
+            self.stdout = iter(["ok\n"])
+            self.stderr = SimpleNamespace(read=lambda: "")
+            self.returncode = 0
+
+        def __enter__(self) -> FakeProcess:
+            return self
+
+        def __exit__(self, exc_type: object, exc: object, tb: object) -> Literal[False]:
+            return False
+
+        def wait(self) -> int:
+            return self.returncode
+
+    def fake_popen(*args: object, **kwargs: object) -> FakeProcess:
+        del args
+        env = _env_dict(kwargs)
+        seen_env.append(env)
+        codex_home = Path(env["CODEX_HOME"])
+        seen_config.append((codex_home / "config.toml").read_text(encoding="utf-8"))
+        return FakeProcess()
+
+    monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", fake_popen)
+    monkeypatch.setenv("CODEX_HOME", str(source_home))
+
+    list(
+        invoke_agent(
+            config,
+            str(prompt_file),
+            options=InvokeOptions(
+                show_progress=False,
+                workspace_path=tmp_path,
+                extra_env={"RALPH_MCP_ENDPOINT": "http://127.0.0.1:9999/mcp"},
+            ),
+        )
     )
-    config_text = (Path(home) / "config.toml").read_text(encoding="utf-8")
-    parsed = _toml_object(config_text)
+
+    parsed = _toml_object(seen_config[0])
     mcp_servers = cast("dict[str, object]", parsed["mcp_servers"])
-    angular_cli = cast("dict[str, object]", mcp_servers["angular-cli"])
+    assert list(mcp_servers.keys()) == [RALPH_MCP_SERVER_NAME]
     ralph_server = cast("dict[str, object]", mcp_servers[RALPH_MCP_SERVER_NAME])
-    assert angular_cli["command"] == "npx"
-    assert angular_cli["args"] == ["-y", "@angular/cli", "mcp"]
-    assert ralph_server["url"] == "http://localhost:0/mcp"
-    assert ralph_server["enabled"] is True
+    assert ralph_server["url"] == "http://127.0.0.1:9999/mcp"
+    assert load_upstream_mcp_servers(seen_env[0][UPSTREAM_MCP_CONFIG_ENV]) == (
+        UpstreamMcpServer(
+            name="angular-cli",
+            transport="stdio",
+            command="npx",
+            args=("-y", "@angular/cli", "mcp"),
+        ),
+    )
 
 
-def test_codex_config_toml_overrides_existing_ralph_server_definition(tmp_path: Path) -> None:
+def test_codex_mode_rejects_duplicate_ralph_server_name(tmp_path: Path) -> None:
     fake_home = tmp_path / "fake_codex"
     fake_home.mkdir()
     (fake_home / "config.toml").write_text(
         '[mcp_servers.ralph]\nurl = "http://wrong.example/mcp"\nenabled = false\n',
         encoding="utf-8",
     )
-    home = _prepare_codex_home(
-        "http://localhost:0/mcp",
-        workspace_path=tmp_path,
-        existing_home=str(fake_home),
-        system_prompt_file=None,
-    )
-    config_text = (Path(home) / "config.toml").read_text(encoding="utf-8")
-    parsed = _toml_object(config_text)
-    mcp_servers = cast("dict[str, object]", parsed["mcp_servers"])
-    ralph_server = cast("dict[str, object]", mcp_servers[RALPH_MCP_SERVER_NAME])
-    assert ralph_server["url"] == "http://localhost:0/mcp"
-    assert ralph_server["enabled"] is True
+    with pytest.raises(UpstreamConfigError, match="ralph"):
+        _prepare_codex_home(
+            "http://localhost:0/mcp",
+            workspace_path=tmp_path,
+            existing_home=str(fake_home),
+            system_prompt_file=None,
+        )
 
 
 def test_codex_config_toml_preserves_unrelated_top_level_sections(tmp_path: Path) -> None:
@@ -1670,3 +1844,403 @@ def test_codex_does_not_log_warning_when_no_endpoint(tmp_path: Path) -> None:
         assert "best-effort" not in buf.getvalue(), "No warning when endpoint is None"
     finally:
         logger.remove(handler_id)
+
+
+# ---------------------------------------------------------------------------
+# Task 7: Apply Ralph-only MCP visibility across all provider transports
+# ---------------------------------------------------------------------------
+
+
+def test_claude_strict_mode_only_exposes_ralph_server(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    prompt_file = tmp_path / "PROMPT.md"
+    prompt_file.write_text("hello", encoding="utf-8")
+    fake_home = tmp_path / "fake-home"
+    fake_home.mkdir()
+    (fake_home / ".claude.json").write_text(
+        json.dumps(
+            {
+                "mcpServers": {
+                    "filesystem": {"command": "mcp-server-filesystem", "args": ["/tmp"]},
+                    "github": {"type": "http", "url": "https://api.github.com/mcp"},
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    config = AgentConfig(
+        cmd="claude -p",
+        output_flag="--output-format=stream-json",
+        yolo_flag="--dangerously-skip-permissions",
+        print_flag="--print",
+        streaming_flag="--include-partial-messages",
+        json_parser=JsonParserType.CLAUDE,
+        transport=AgentTransport.CLAUDE,
+    )
+    seen_cmds: list[list[str]] = []
+
+    class FakeProcess:
+        def __init__(self) -> None:
+            self.stdout = iter(["ok\n"])
+            self.stderr = SimpleNamespace(read=lambda: "")
+            self.returncode = 0
+
+        def __enter__(self) -> FakeProcess:
+            return self
+
+        def __exit__(self, exc_type: object, exc: object, tb: object) -> Literal[False]:
+            return False
+
+        def wait(self) -> int:
+            return self.returncode
+
+    def fake_popen(*args: object, **kwargs: object) -> FakeProcess:
+        del kwargs
+        seen_cmds.append(_argv(args))
+        return FakeProcess()
+
+    monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", fake_popen)
+    monkeypatch.setenv("HOME", str(fake_home))
+
+    list(
+        invoke_agent(
+            config,
+            str(prompt_file),
+            options=InvokeOptions(
+                show_progress=False,
+                workspace_path=tmp_path,
+                extra_env={"RALPH_MCP_ENDPOINT": "http://127.0.0.1:9999/mcp"},
+            ),
+        )
+    )
+
+    cmd = seen_cmds[0]
+    mcp_index = cmd.index("--mcp-config")
+    config_payload = _json_object(cmd[mcp_index + 1])
+    servers = cast("dict[str, object]", config_payload["mcpServers"])
+    # Strict mode: ONLY Ralph is visible to the provider; user servers are NOT passed through
+    assert list(servers.keys()) == [RALPH_MCP_SERVER_NAME], (
+        f"Expected only '{RALPH_MCP_SERVER_NAME}' in provider-visible MCP config, "
+        f"got: {list(servers.keys())}"
+    )
+    ralph_entry = cast("dict[str, object]", servers[RALPH_MCP_SERVER_NAME])
+    assert ralph_entry["url"] == "http://127.0.0.1:9999/mcp"
+
+
+def test_opencode_strict_mode_only_exposes_ralph_server(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    prompt_file = tmp_path / "PROMPT.md"
+    prompt_file.write_text("hello", encoding="utf-8")
+    config = AgentConfig(cmd="opencode", output_flag="--json-stream")
+    seen_env: list[dict[str, str]] = []
+
+    class FakeProcess:
+        def __init__(self) -> None:
+            self.stdout = iter(["ok\n"])
+            self.stderr = SimpleNamespace(read=lambda: "")
+            self.returncode = 0
+
+        def __enter__(self) -> FakeProcess:
+            return self
+
+        def __exit__(self, exc_type: object, exc: object, tb: object) -> Literal[False]:
+            return False
+
+        def wait(self) -> int:
+            return self.returncode
+
+    def fake_popen(*args: object, **kwargs: object) -> FakeProcess:
+        del args
+        seen_env.append(_env_dict(kwargs))
+        return FakeProcess()
+
+    monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", fake_popen)
+    monkeypatch.setenv(
+        "OPENCODE_CONFIG_CONTENT",
+        json.dumps(
+            {
+                "model": "anthropic/test",
+                "mcp": {
+                    "filesystem": {
+                        "type": "local",
+                        "command": "mcp-server-filesystem",
+                        "args": ["/tmp"],
+                    },
+                    "github": {"type": "remote", "url": "https://api.github.com/mcp"},
+                },
+            }
+        ),
+    )
+
+    list(
+        invoke_agent(
+            config,
+            str(prompt_file),
+            options=InvokeOptions(
+                show_progress=False,
+                workspace_path=tmp_path,
+                extra_env={"RALPH_MCP_ENDPOINT": "http://127.0.0.1:9999/mcp"},
+            ),
+        )
+    )
+
+    parsed = _json_object(seen_env[0]["OPENCODE_CONFIG_CONTENT"])
+    mcp_config = cast("dict[str, object]", parsed["mcp"])
+    # Strict mode: ONLY Ralph is visible to the provider; user servers are NOT passed through
+    assert list(mcp_config.keys()) == [RALPH_MCP_SERVER_NAME], (
+        f"Expected only '{RALPH_MCP_SERVER_NAME}' in provider-visible OpenCode MCP config, "
+        f"got: {list(mcp_config.keys())}"
+    )
+    ralph_entry = cast("dict[str, object]", mcp_config[RALPH_MCP_SERVER_NAME])
+    assert ralph_entry["url"] == "http://127.0.0.1:9999/mcp"
+
+
+def test_codex_strict_mode_only_exposes_ralph_server(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    prompt_file = tmp_path / "PROMPT.md"
+    prompt_file.write_text("hello", encoding="utf-8")
+    config = AgentConfig(cmd="codex", output_flag="--json-stream", transport=AgentTransport.CODEX)
+    source_home = tmp_path / "source-codex-home"
+    source_home.mkdir()
+    (source_home / "config.toml").write_text(
+        "[mcp_servers.filesystem]\n"
+        'command = "mcp-server-filesystem"\n'
+        'args = ["/tmp"]\n'
+        "\n"
+        "[mcp_servers.github]\n"
+        'url = "https://api.github.com/mcp"\n',
+        encoding="utf-8",
+    )
+    seen_env: list[dict[str, str]] = []
+    seen_config: list[str] = []
+
+    class FakeProcess:
+        def __init__(self) -> None:
+            self.stdout = iter(["ok\n"])
+            self.stderr = SimpleNamespace(read=lambda: "")
+            self.returncode = 0
+
+        def __enter__(self) -> FakeProcess:
+            return self
+
+        def __exit__(self, exc_type: object, exc: object, tb: object) -> Literal[False]:
+            return False
+
+        def wait(self) -> int:
+            return self.returncode
+
+    def fake_popen(*args: object, **kwargs: object) -> FakeProcess:
+        del args
+        env = _env_dict(kwargs)
+        seen_env.append(env)
+        codex_home = Path(env["CODEX_HOME"])
+        seen_config.append((codex_home / "config.toml").read_text(encoding="utf-8"))
+        return FakeProcess()
+
+    monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", fake_popen)
+    monkeypatch.setenv("CODEX_HOME", str(source_home))
+
+    list(
+        invoke_agent(
+            config,
+            str(prompt_file),
+            options=InvokeOptions(
+                show_progress=False,
+                workspace_path=tmp_path,
+                extra_env={"RALPH_MCP_ENDPOINT": "http://127.0.0.1:9999/mcp"},
+            ),
+        )
+    )
+
+    parsed = _toml_object(seen_config[0])
+    mcp_servers = cast("dict[str, object]", parsed["mcp_servers"])
+    # Strict mode: ONLY Ralph is visible to the provider; user servers are NOT passed through
+    assert list(mcp_servers.keys()) == [RALPH_MCP_SERVER_NAME], (
+        f"Expected only '{RALPH_MCP_SERVER_NAME}' in provider-visible Codex mcp_servers, "
+        f"got: {list(mcp_servers.keys())}"
+    )
+    ralph_entry = cast("dict[str, object]", mcp_servers[RALPH_MCP_SERVER_NAME])
+    assert ralph_entry["url"] == "http://127.0.0.1:9999/mcp"
+
+
+def test_provider_strict_mode_passes_upstream_proxy_payload_to_ralph(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    prompt_file = tmp_path / "PROMPT.md"
+    prompt_file.write_text("hello", encoding="utf-8")
+
+    seen_envs: dict[str, dict[str, str]] = {}
+
+    class FakeProcess:
+        def __init__(self) -> None:
+            self.stdout = iter(["ok\n"])
+            self.stderr = SimpleNamespace(read=lambda: "")
+            self.returncode = 0
+
+        def __enter__(self) -> FakeProcess:
+            return self
+
+        def __exit__(self, exc_type: object, exc: object, tb: object) -> Literal[False]:
+            return False
+
+        def wait(self) -> int:
+            return self.returncode
+
+    # --- Claude ---
+    fake_home = tmp_path / "fake-home"
+    fake_home.mkdir()
+    (fake_home / ".claude.json").write_text(
+        json.dumps({"mcpServers": {"upstream-server": {"command": "upstream-cmd"}}}),
+        encoding="utf-8",
+    )
+    claude_config = AgentConfig(
+        cmd="claude -p",
+        output_flag="--output-format=stream-json",
+        yolo_flag="--dangerously-skip-permissions",
+        print_flag="--print",
+        streaming_flag="--include-partial-messages",
+        json_parser=JsonParserType.CLAUDE,
+        transport=AgentTransport.CLAUDE,
+    )
+
+    def fake_popen_claude(*args: object, **kwargs: object) -> FakeProcess:
+        del args
+        seen_envs["claude"] = _env_dict(kwargs)
+        return FakeProcess()
+
+    monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", fake_popen_claude)
+    monkeypatch.setenv("HOME", str(fake_home))
+    list(
+        invoke_agent(
+            claude_config,
+            str(prompt_file),
+            options=InvokeOptions(
+                show_progress=False,
+                workspace_path=tmp_path,
+                extra_env={"RALPH_MCP_ENDPOINT": "http://127.0.0.1:9999/mcp"},
+            ),
+        )
+    )
+
+    # --- OpenCode ---
+    def fake_popen_opencode(*args: object, **kwargs: object) -> FakeProcess:
+        del args
+        seen_envs["opencode"] = _env_dict(kwargs)
+        return FakeProcess()
+
+    monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", fake_popen_opencode)
+    monkeypatch.setenv(
+        "OPENCODE_CONFIG_CONTENT",
+        json.dumps(
+            {"mcp": {"upstream-server": {"type": "local", "command": "upstream-cmd"}}}
+        ),
+    )
+    opencode_config = AgentConfig(cmd="opencode", output_flag="--json-stream")
+    list(
+        invoke_agent(
+            opencode_config,
+            str(prompt_file),
+            options=InvokeOptions(
+                show_progress=False,
+                workspace_path=tmp_path,
+                extra_env={"RALPH_MCP_ENDPOINT": "http://127.0.0.1:9999/mcp"},
+            ),
+        )
+    )
+
+    # --- Codex ---
+    source_codex_home = tmp_path / "codex-home"
+    source_codex_home.mkdir()
+    (source_codex_home / "config.toml").write_text(
+        '[mcp_servers.upstream-server]\ncommand = "upstream-cmd"\n',
+        encoding="utf-8",
+    )
+
+    def fake_popen_codex(*args: object, **kwargs: object) -> FakeProcess:
+        del args
+        seen_envs["codex"] = _env_dict(kwargs)
+        return FakeProcess()
+
+    monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", fake_popen_codex)
+    monkeypatch.setenv("CODEX_HOME", str(source_codex_home))
+    codex_config = AgentConfig(
+        cmd="codex", output_flag="--json-stream", transport=AgentTransport.CODEX
+    )
+    list(
+        invoke_agent(
+            codex_config,
+            str(prompt_file),
+            options=InvokeOptions(
+                show_progress=False,
+                workspace_path=tmp_path,
+                extra_env={"RALPH_MCP_ENDPOINT": "http://127.0.0.1:9999/mcp"},
+            ),
+        )
+    )
+
+    # All three transports must pass upstream proxy payload to Ralph via env
+    for transport_name in ("claude", "opencode", "codex"):
+        env = seen_envs[transport_name]
+        assert UPSTREAM_MCP_CONFIG_ENV in env, (
+            f"Transport '{transport_name}' did not set {UPSTREAM_MCP_CONFIG_ENV} "
+            "for Ralph upstream proxy payload"
+        )
+        upstreams = load_upstream_mcp_servers(env[UPSTREAM_MCP_CONFIG_ENV])
+        assert any(s.name == "upstream-server" for s in upstreams), (
+            f"Transport '{transport_name}' did not include 'upstream-server' "
+            "in the upstream proxy payload passed to Ralph"
+        )
+
+
+def test_claude_strict_mode_inlines_prompt_content_not_file_path(tmp_path: Path) -> None:
+    prompt_text = "Generate a commit message for the staged diff.\n"
+    prompt_file = tmp_path / "commit_prompt.md"
+    prompt_file.write_text(prompt_text, encoding="utf-8")
+
+    config = AgentConfig(
+        cmd="claude -p",
+        output_flag="--output-format=stream-json",
+        yolo_flag="--permission-mode auto",
+        json_parser=JsonParserType.CLAUDE,
+        transport=AgentTransport.CLAUDE,
+    )
+
+    cmd = _build_command(
+        config,
+        str(prompt_file),
+        options=_BuildCommandOptions(mcp_endpoint="http://localhost:9999"),
+    )
+
+    assert cmd[-1] == prompt_text, (
+        "Claude strict-mode must inline prompt content after '--', not pass the file path. "
+        "Passing the path causes the model to call mcp__ralph__read_file which triggers "
+        "classifier blocks and permission prompts."
+    )
+    assert str(prompt_file) not in cmd
+
+
+def test_claude_strict_mode_command_for_log_shows_path_not_content(tmp_path: Path) -> None:
+    prompt_text = "Generate a commit message.\n"
+    prompt_file = tmp_path / "commit_prompt.md"
+    prompt_file.write_text(prompt_text, encoding="utf-8")
+
+    config = AgentConfig(
+        cmd="claude -p",
+        output_flag="--output-format=stream-json",
+        yolo_flag="--permission-mode auto",
+        json_parser=JsonParserType.CLAUDE,
+        transport=AgentTransport.CLAUDE,
+    )
+
+    cmd = _build_command(
+        config,
+        str(prompt_file),
+        options=_BuildCommandOptions(mcp_endpoint="http://localhost:9999"),
+    )
+    log_line = _command_for_log(config, cmd, str(prompt_file))
+
+    assert str(prompt_file) in log_line
+    assert prompt_text.strip() not in log_line

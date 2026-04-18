@@ -11,8 +11,9 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from importlib import import_module
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Protocol, cast
 
+from ralph.mcp.capability_mapping import McpCapability
 from ralph.mcp.tool_names import (
     COORDINATE_TOOL,
     DECLARE_COMPLETE_TOOL,
@@ -37,8 +38,19 @@ from ralph.mcp.tool_names import (
 if TYPE_CHECKING:
     from types import ModuleType
 
+    from ralph.mcp.upstream_registry import UpstreamRegistry
+
 JsonObject = dict[str, object]
 ToolHandler = Callable[[object, object, JsonObject], object]
+
+
+class RegistrationHandler(Protocol):
+    def __call__(
+        self,
+        host_session: object | None,
+        workspace: object | None,
+        params: JsonObject,
+    ) -> object: ...
 
 
 class ToolBridgeError(Exception):
@@ -85,7 +97,7 @@ class RegisteredTool:
     """A registered tool and its executable handler."""
 
     metadata: ToolMetadata
-    handler: LazyToolHandler
+    handler: RegistrationHandler
 
 
 class LazyToolHandler:
@@ -116,6 +128,21 @@ class LazyToolHandler:
         return handler(self._session, self._workspace, params)
 
 
+class UpstreamProxyHandler:
+    def __init__(self, alias: str, upstream_registry: UpstreamRegistry) -> None:
+        self._alias = alias
+        self._upstream_registry = upstream_registry
+
+    def __call__(
+        self,
+        host_session: object | None,
+        workspace: object | None,
+        params: JsonObject,
+    ) -> object:
+        del host_session, workspace
+        return self._upstream_registry.call_tool(self._alias, params)
+
+
 class ToolBridge:
     """Registry for MCP tools and dispatcher for tool invocations."""
 
@@ -123,7 +150,7 @@ class ToolBridge:
         self._tools: dict[str, RegisteredTool] = {}
         self._session = session
 
-    def register(self, metadata: ToolMetadata, handler: LazyToolHandler) -> None:
+    def register(self, metadata: ToolMetadata, handler: RegistrationHandler) -> None:
         """Register a tool definition and handler."""
         name = metadata.definition.name
         if name in self._tools:
@@ -644,7 +671,29 @@ def _tool_specs() -> tuple[ToolSpec, ...]:
     )
 
 
-def build_ralph_tool_registry(session: object, workspace: object) -> ToolBridge:
+def _attach_upstream_registry(bridge: ToolBridge, upstream_registry: UpstreamRegistry) -> None:
+    for proxied_tool in upstream_registry.tool_definitions():
+        metadata = ToolMetadata(
+            definition=ToolDefinition(
+                name=proxied_tool.alias,
+                description=proxied_tool.tool.description,
+                input_schema=proxied_tool.tool.input_schema,
+            ),
+            required_capability=McpCapability.UPSTREAM_TOOL_USE,
+        )
+        handler = UpstreamProxyHandler(
+            alias=proxied_tool.alias,
+            upstream_registry=upstream_registry,
+        )
+        bridge.register(metadata, handler)
+
+
+def build_ralph_tool_registry(
+    session: object,
+    workspace: object,
+    *,
+    upstream_registry: UpstreamRegistry | None = None,
+) -> ToolBridge:
     """Build the default Ralph MCP tool registry.
 
     This mirrors the Rust `build_ralph_tool_registry` function. The returned
@@ -655,12 +704,15 @@ def build_ralph_tool_registry(session: object, workspace: object) -> ToolBridge:
     bridge = ToolBridge(session=session)
     for spec in _tool_specs():
         bridge.register_spec(spec, session=session, workspace=workspace)
+    if upstream_registry is not None:
+        _attach_upstream_registry(bridge, upstream_registry)
     return bridge
 
 
 __all__ = [
     "LazyToolHandler",
     "RegisteredTool",
+    "RegistrationHandler",
     "ToolBridge",
     "ToolBridgeError",
     "ToolDefinition",
@@ -668,5 +720,6 @@ __all__ = [
     "ToolMetadata",
     "ToolRegistrationError",
     "ToolSpec",
+    "UpstreamProxyHandler",
     "build_ralph_tool_registry",
 ]

@@ -61,6 +61,10 @@ _AVAILABLE_WIDTH_FLOOR = 40
 _TRUNCATE_RESULT_LEN = 6  # 5 chars + 1 ellipsis char
 
 
+def _event_decision_labels() -> dict[PipelineEvent, str]:
+    return cast("dict[PipelineEvent, str]", runner_module._EVENT_DECISION_LABELS)
+
+
 @lru_cache(maxsize=1)
 def _load_default_policy_bundle() -> PolicyBundle:
     defaults_dir = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
@@ -1573,28 +1577,28 @@ class TestEventDecisionLabels:
     """Tests for _EVENT_DECISION_LABELS mapping."""
 
     def test_analysis_success_label(self) -> None:
-        assert runner_module._EVENT_DECISION_LABELS[PipelineEvent.ANALYSIS_SUCCESS] == "approved"
+        assert _event_decision_labels()[PipelineEvent.ANALYSIS_SUCCESS] == "approved"
 
     def test_analysis_loopback_label(self) -> None:
-        labels = runner_module._EVENT_DECISION_LABELS
+        labels = _event_decision_labels()
         assert labels[PipelineEvent.ANALYSIS_LOOPBACK] == "needs changes"
 
     def test_review_clean_label(self) -> None:
-        labels = runner_module._EVENT_DECISION_LABELS
+        labels = _event_decision_labels()
         assert labels[PipelineEvent.REVIEW_CLEAN] == "clean — no issues"
 
     def test_review_issues_found_label(self) -> None:
-        labels = runner_module._EVENT_DECISION_LABELS
+        labels = _event_decision_labels()
         assert labels[PipelineEvent.REVIEW_ISSUES_FOUND] == "issues found"
 
     def test_commit_success_label(self) -> None:
-        assert runner_module._EVENT_DECISION_LABELS[PipelineEvent.COMMIT_SUCCESS] == "committed"
+        assert _event_decision_labels()[PipelineEvent.COMMIT_SUCCESS] == "committed"
 
     def test_fix_success_label(self) -> None:
-        assert runner_module._EVENT_DECISION_LABELS[PipelineEvent.FIX_SUCCESS] == "fixed"
+        assert _event_decision_labels()[PipelineEvent.FIX_SUCCESS] == "fixed"
 
     def test_unknown_event_has_no_label(self) -> None:
-        assert runner_module._EVENT_DECISION_LABELS.get(PipelineEvent.AGENT_FAILURE) is None
+        assert _event_decision_labels().get(PipelineEvent.AGENT_FAILURE) is None
 
 
 class TestStartCommitCapture:

@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 from datetime import timedelta
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from ralph.mcp.server import lifecycle
 from ralph.mcp.session import AgentSession
+from ralph.mcp.upstream_client import HttpUpstreamClient
+from ralph.mcp.upstream_config import UpstreamMcpServer
+from ralph.mcp.upstream_registry import UpstreamRegistry
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -83,6 +86,63 @@ def test_start_mcp_server_uses_injected_dependencies(tmp_path: Path) -> None:
     assert seen["endpoint"] == "http://127.0.0.1:43123/mcp"
     assert seen["timeout"] == timedelta(seconds=PREFLIGHT_TIMEOUT)
     assert seen["cwd"] == tmp_path
+
+
+def test_start_mcp_server_preflight_includes_upstream_tool_names(tmp_path: Path) -> None:
+    seen: dict[str, object] = {}
+
+    def fake_reserve_port() -> int:
+        return 43125
+
+    def fake_create_session_file(root: Path, session: object) -> Path:
+        path = tmp_path / "session-upstream.json"
+        path.write_text("{}", encoding="utf-8")
+        return path
+
+    def fake_subprocess_env(session_file: Path) -> dict[str, str]:
+        return {"RALPH_MCP_SESSION_FILE": str(session_file)}
+
+    def fake_spawn(command: list[str], cwd: Path, env: dict[str, str]) -> FakeProcess:
+        return FakeProcess()
+
+    def fake_preflight(endpoint: str, required_tools: list[str], timeout: timedelta) -> None:
+        seen["required_tools"] = list(required_tools)
+
+    upstream = UpstreamMcpServer(name="remote", transport="http", url="http://unused")
+
+    def fake_caller(method: str, params: dict[str, object]) -> dict[str, object]:
+        if method == "tools/list":
+            return {
+                "tools": [{"name": "ping", "description": "Ping", "inputSchema": {}}]
+            }  # type: ignore[return-value]
+        return {}
+
+    upstream_registry = UpstreamRegistry.build(
+        [upstream],
+        client_factory=lambda srv: HttpUpstreamClient(srv, caller=fake_caller),  # type: ignore[arg-type]
+    )
+
+    deps = lifecycle.LifecycleDeps(
+        reserve_port=fake_reserve_port,
+        create_session_file=fake_create_session_file,
+        subprocess_env=fake_subprocess_env,
+        spawn_process=fake_spawn,
+        preflight=fake_preflight,
+        preflight_timeout=lambda: timedelta(seconds=5),
+    )
+
+    session = AgentSession(
+        session_id="session-upstream-lifecycle",
+        run_id="run-upstream-lifecycle",
+        drain="development",
+        capabilities={"WorkspaceRead", "ArtifactSubmit", "UpstreamToolUse"},
+    )
+    workspace = lifecycle.FsWorkspace(tmp_path)
+
+    lifecycle.start_mcp_server(session, workspace, upstream_registry=upstream_registry, deps=deps)
+
+    required = cast("list[str]", seen["required_tools"])
+    assert "ralph_upstream__remote__ping" in required
 
 
 def test_standalone_mcp_process_shutdown_removes_session_file_even_if_process_exited(

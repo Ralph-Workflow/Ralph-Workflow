@@ -8,8 +8,14 @@ from pathlib import Path
 from typing import Any, cast
 
 from ralph.mcp import startup
+from ralph.mcp.capability_mapping import McpCapability
 from ralph.mcp.server import runtime as server_runtime
 from ralph.mcp.session import AgentSession
+from ralph.mcp.tool_names import upstream_proxy_tool_name
+from ralph.mcp.upstream_client import HttpUpstreamClient, StdioUpstreamClient, make_upstream_client
+from ralph.mcp.upstream_config import UpstreamMcpServer
+from ralph.mcp.upstream_models import UpstreamCallError
+from ralph.mcp.upstream_registry import UpstreamRegistry
 from ralph.phases import PhaseContext
 from ralph.phases.planning import handle_planning
 from ralph.pipeline import runner as runner_module
@@ -461,3 +467,260 @@ def test_planning_session_can_submit_plan_over_mcp_and_handle_planning_consumes_
     assert submit_response.error is None
     assert planning_result == [PipelineEvent.AGENT_SUCCESS]
     assert (tmp_path / ".agent" / "artifacts" / "plan.json").exists()
+
+
+def test_upstream_client_factory_selects_transport_by_server_config() -> None:
+    http_server = UpstreamMcpServer(name="fs", transport="http", url="http://localhost:9999")
+    stdio_server = UpstreamMcpServer(
+        name="gh", transport="stdio", command="npx", args=("mcp-github",)
+    )
+
+    http_client = make_upstream_client(http_server)
+    stdio_client = make_upstream_client(stdio_server)
+
+    assert isinstance(http_client, HttpUpstreamClient)
+    assert isinstance(stdio_client, StdioUpstreamClient)
+
+
+def test_upstream_proxy_tool_name_follows_canonical_namespace_format() -> None:
+    assert (
+        upstream_proxy_tool_name("filesystem", "read_file")
+        == "ralph_upstream__filesystem__read_file"
+    )
+    assert (
+        upstream_proxy_tool_name("github", "search_repos")
+        == "ralph_upstream__github__search_repos"
+    )
+    assert upstream_proxy_tool_name("my_server", "my_tool") == "ralph_upstream__my_server__my_tool"
+
+
+def test_build_fastmcp_server_lists_proxied_upstream_tools(tmp_path: Path) -> None:
+    session = AgentSession(
+        session_id="session-upstream-list",
+        run_id="run-upstream-list",
+        drain="development",
+        capabilities={"WorkspaceRead", "ArtifactSubmit", "RunReportProgress", "UpstreamToolUse"},
+    )
+    upstream = UpstreamMcpServer(name="myfs", transport="http", url="http://unused")
+
+    def fake_caller(method: str, params: dict[str, object]) -> dict[str, object]:
+        if method == "tools/list":
+            return {
+                "tools": [
+                    {
+                        "name": "read_remote",
+                        "description": "Read a remote file",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {"path": {"type": "string"}},
+                        },
+                    }
+                ]
+            }  # type: ignore[return-value]
+        return {}
+
+    upstream_registry = UpstreamRegistry.build(
+        [upstream],
+        client_factory=lambda srv: HttpUpstreamClient(srv, caller=fake_caller),  # type: ignore[arg-type]
+    )
+
+    workspace = FsWorkspace(tmp_path)
+    bridge = server_runtime.build_ralph_tool_registry(
+        session, workspace, upstream_registry=upstream_registry
+    )
+    mcp_server = server_runtime.McpServer(session, workspace, bridge)
+
+    _, state = mcp_server.handle_request(
+        server_runtime.JsonRpcRequest(jsonrpc="2.0", method="initialize", msg_id=1),
+        server_runtime.ServerState.UNINITIALIZED,
+    )
+    tools_response, _ = mcp_server.handle_request(
+        server_runtime.JsonRpcRequest(jsonrpc="2.0", method="tools/list", msg_id=2),
+        state,
+    )
+
+    assert tools_response is not None
+    tools_result = cast("dict[str, object]", tools_response.result)
+    tool_names = {
+        cast("str", t["name"])
+        for t in cast("list[dict[str, object]]", tools_result["tools"])
+    }
+    assert "read_file" in tool_names
+    assert "ralph_upstream__myfs__read_remote" in tool_names
+
+
+def test_proxied_upstream_tool_call_is_forwarded_after_policy_check(tmp_path: Path) -> None:
+    session = AgentSession(
+        session_id="session-proxy-call",
+        run_id="run-proxy-call",
+        drain="development",
+        capabilities={"WorkspaceRead", "ArtifactSubmit", "UpstreamToolUse"},
+    )
+    calls_received: list[dict[str, object]] = []
+    upstream = UpstreamMcpServer(name="remote", transport="http", url="http://unused")
+
+    def fake_caller(method: str, params: dict[str, object]) -> dict[str, object]:
+        if method == "tools/list":
+            return {
+                "tools": [{"name": "ping", "description": "Ping tool", "inputSchema": {}}]
+            }  # type: ignore[return-value]
+        if method == "tools/call":
+            calls_received.append(dict(params))
+            return {"result": "pong"}  # type: ignore[return-value]
+        return {}
+
+    upstream_registry = UpstreamRegistry.build(
+        [upstream],
+        client_factory=lambda srv: HttpUpstreamClient(srv, caller=fake_caller),  # type: ignore[arg-type]
+    )
+
+    workspace = FsWorkspace(tmp_path)
+    bridge = server_runtime.build_ralph_tool_registry(
+        session, workspace, upstream_registry=upstream_registry
+    )
+    mcp_server = server_runtime.McpServer(session, workspace, bridge)
+
+    _, state = mcp_server.handle_request(
+        server_runtime.JsonRpcRequest(jsonrpc="2.0", method="initialize", msg_id=1),
+        server_runtime.ServerState.UNINITIALIZED,
+    )
+    _, state = mcp_server.handle_request(
+        server_runtime.JsonRpcRequest(
+            jsonrpc="2.0", method="notifications/initialized", msg_id=2
+        ),
+        state,
+    )
+    call_response, _ = mcp_server.handle_request(
+        server_runtime.JsonRpcRequest(
+            jsonrpc="2.0",
+            method="tools/call",
+            msg_id=3,
+            params={"name": "ralph_upstream__remote__ping", "arguments": {}},
+        ),
+        state,
+    )
+
+    assert call_response is not None
+    assert call_response.error is None
+    assert len(calls_received) == 1
+
+
+def test_upstream_registry_catalog_excludes_unhealthy_upstream_servers() -> None:
+    good = UpstreamMcpServer(name="healthy", transport="http", url="http://unused")
+    bad = UpstreamMcpServer(name="broken", transport="http", url="http://unused")
+
+    def good_caller(method: str, params: dict[str, object]) -> dict[str, object]:
+        if method == "tools/list":
+            return {"tools": [{"name": "ping", "description": "Ping", "inputSchema": {}}]}  # type: ignore[return-value]
+        return {}
+
+    def bad_caller(method: str, params: dict[str, object]) -> dict[str, object]:
+        raise UpstreamCallError("server unreachable")
+
+    def client_factory(server: UpstreamMcpServer) -> HttpUpstreamClient:
+        if server.name == "healthy":
+            return HttpUpstreamClient(server, caller=good_caller)
+        return HttpUpstreamClient(server, caller=bad_caller)
+
+    registry = UpstreamRegistry.build([good, bad], client_factory=client_factory)  # type: ignore[arg-type]
+    definitions = registry.tool_definitions()
+
+    assert len(definitions) == 1
+    assert definitions[0].alias == "ralph_upstream__healthy__ping"
+    assert not any("broken" in d.alias for d in definitions)
+
+
+def test_upstream_policy_blocks_proxied_tools_without_upstream_capability(
+    tmp_path: Path,
+) -> None:
+    assert McpCapability.UPSTREAM_TOOL_USE == "UpstreamToolUse"
+
+    session = AgentSession(
+        session_id="session-policy-upstream-deny",
+        run_id="run-policy-upstream-deny",
+        drain="development",
+        capabilities={"WorkspaceRead", "ArtifactSubmit"},
+    )
+    upstream = UpstreamMcpServer(name="srv", transport="http", url="http://unused")
+
+    def fake_caller(method: str, params: dict[str, object]) -> dict[str, object]:
+        if method == "tools/list":
+            return {
+                "tools": [{"name": "do_thing", "description": "Does a thing", "inputSchema": {}}]
+            }  # type: ignore[return-value]
+        return {}
+
+    upstream_registry = UpstreamRegistry.build(
+        [upstream],
+        client_factory=lambda srv: HttpUpstreamClient(srv, caller=fake_caller),  # type: ignore[arg-type]
+    )
+    workspace = FsWorkspace(tmp_path)
+    bridge = server_runtime.build_ralph_tool_registry(
+        session, workspace, upstream_registry=upstream_registry
+    )
+    mcp_server = server_runtime.McpServer(session, workspace, bridge)
+
+    _, state = mcp_server.handle_request(
+        server_runtime.JsonRpcRequest(jsonrpc="2.0", method="initialize", msg_id=1),
+        server_runtime.ServerState.UNINITIALIZED,
+    )
+    tools_response, _ = mcp_server.handle_request(
+        server_runtime.JsonRpcRequest(jsonrpc="2.0", method="tools/list", msg_id=2),
+        state,
+    )
+
+    assert tools_response is not None
+    tools_result = cast("dict[str, object]", tools_response.result)
+    tool_names = {
+        cast("str", t["name"])
+        for t in cast("list[dict[str, object]]", tools_result["tools"])
+    }
+    assert "ralph_upstream__srv__do_thing" not in tool_names
+
+
+def test_upstream_policy_allows_proxied_tools_with_upstream_capability(
+    tmp_path: Path,
+) -> None:
+    assert McpCapability.UPSTREAM_TOOL_USE == "UpstreamToolUse"
+
+    session = AgentSession(
+        session_id="session-policy-upstream-allow",
+        run_id="run-policy-upstream-allow",
+        drain="development",
+        capabilities={"WorkspaceRead", "ArtifactSubmit", McpCapability.UPSTREAM_TOOL_USE},
+    )
+    upstream = UpstreamMcpServer(name="srv2", transport="http", url="http://unused")
+
+    def fake_caller(method: str, params: dict[str, object]) -> dict[str, object]:
+        if method == "tools/list":
+            return {
+                "tools": [{"name": "do_thing", "description": "Does a thing", "inputSchema": {}}]
+            }  # type: ignore[return-value]
+        return {}
+
+    upstream_registry = UpstreamRegistry.build(
+        [upstream],
+        client_factory=lambda srv: HttpUpstreamClient(srv, caller=fake_caller),  # type: ignore[arg-type]
+    )
+    workspace = FsWorkspace(tmp_path)
+    bridge = server_runtime.build_ralph_tool_registry(
+        session, workspace, upstream_registry=upstream_registry
+    )
+    mcp_server = server_runtime.McpServer(session, workspace, bridge)
+
+    _, state = mcp_server.handle_request(
+        server_runtime.JsonRpcRequest(jsonrpc="2.0", method="initialize", msg_id=1),
+        server_runtime.ServerState.UNINITIALIZED,
+    )
+    tools_response, _ = mcp_server.handle_request(
+        server_runtime.JsonRpcRequest(jsonrpc="2.0", method="tools/list", msg_id=2),
+        state,
+    )
+
+    assert tools_response is not None
+    tools_result = cast("dict[str, object]", tools_response.result)
+    tool_names = {
+        cast("str", t["name"])
+        for t in cast("list[dict[str, object]]", tools_result["tools"])
+    }
+    assert "ralph_upstream__srv2__do_thing" in tool_names

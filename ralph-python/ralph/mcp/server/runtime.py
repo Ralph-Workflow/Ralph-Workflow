@@ -45,6 +45,8 @@ if TYPE_CHECKING:
 
     from mcp.server.fastmcp.tools.base import Tool as ToolClass
 
+    from ralph.mcp.upstream_registry import UpstreamRegistry
+
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8000
 DEFAULT_TRANSPORT: Literal["streamable-http"] = "streamable-http"
@@ -478,6 +480,7 @@ def build_standalone_http_server(
     host: str = DEFAULT_HOST,
     port: int = DEFAULT_PORT,
     session: AgentSession | None = None,
+    upstream_registry: UpstreamRegistry | None = None,
 ) -> _StandaloneHttpServer:
     effective_session = session or AgentSession(
         session_id=f"standalone-{uuid.uuid4().hex[:8]}",
@@ -486,7 +489,9 @@ def build_standalone_http_server(
         capabilities=_all_capability_values(),
     )
     workspace = FsWorkspace(workspace_root)
-    registry = build_ralph_tool_registry(effective_session, workspace)
+    registry = build_ralph_tool_registry(
+        effective_session, workspace, upstream_registry=upstream_registry
+    )
     return _StandaloneHttpServer(host, port, McpServer(effective_session, workspace, registry))
 
 
@@ -676,6 +681,7 @@ def build_fastmcp_server(
     host: str = DEFAULT_HOST,
     port: int = DEFAULT_PORT,
     session: AgentSession | None = None,
+    upstream_registry: UpstreamRegistry | None = None,
 ) -> FastMcpServerLike:
     """Build a standalone FastMCP server exposing Ralph tools over HTTP."""
     effective_session = session or AgentSession(
@@ -685,7 +691,9 @@ def build_fastmcp_server(
         capabilities=_all_capability_values(),
     )
     workspace = FsWorkspace(workspace_root)
-    registry = build_ralph_tool_registry(effective_session, workspace)
+    registry = build_ralph_tool_registry(
+        effective_session, workspace, upstream_registry=upstream_registry
+    )
     if _FastMCP is None or _Tool is None:
         return cast(
             "FastMcpServerLike",

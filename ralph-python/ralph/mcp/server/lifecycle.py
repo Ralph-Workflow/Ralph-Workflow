@@ -25,6 +25,7 @@ from ralph.workspace.fs import FsWorkspace
 
 if TYPE_CHECKING:
     from ralph.mcp.startup import SessionLike, WorkspaceLike
+    from ralph.mcp.upstream_registry import UpstreamRegistry
 
 
 _PACKAGE_ROOT = Path(__file__).resolve().parents[3]
@@ -81,6 +82,7 @@ def start_mcp_server(
     session: SessionLike,
     workspace: WorkspaceLike,
     *,
+    upstream_registry: UpstreamRegistry | None = None,
     deps: LifecycleDeps | None = None,
 ) -> SessionBridgeLike:
     """Start a standalone Ralph MCP HTTP subprocess and verify tool reachability."""
@@ -110,7 +112,7 @@ def start_mcp_server(
     try:
         lifecycle_deps.preflight(
             endpoint,
-            _visible_mcp_tool_names_owned(session, workspace),
+            _visible_mcp_tool_names_owned(session, workspace, upstream_registry=upstream_registry),
             lifecycle_deps.preflight_timeout(),
         )
     except Exception:
@@ -125,8 +127,13 @@ def shutdown_mcp_server(bridge: SessionBridgeLike) -> None:
     bridge.shutdown()
 
 
-def _visible_mcp_tool_names_owned(session: SessionLike, workspace: WorkspaceLike) -> list[str]:
-    registry = build_ralph_tool_registry(session, workspace)
+def _visible_mcp_tool_names_owned(
+    session: SessionLike,
+    workspace: WorkspaceLike,
+    *,
+    upstream_registry: UpstreamRegistry | None = None,
+) -> list[str]:
+    registry = build_ralph_tool_registry(session, workspace, upstream_registry=upstream_registry)
     return [definition.name for definition in registry.list_definitions()]
 
 

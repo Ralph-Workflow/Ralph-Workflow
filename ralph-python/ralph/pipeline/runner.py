@@ -109,6 +109,14 @@ _MAX_TOOL_RESULT_BRIEF = 80
 _TOOL_RESULT_BRIEF_THRESHOLD = 500
 _MAX_METADATA_SUMMARY_LENGTH = 120
 _LEGACY_EXECUTE_EFFECT_ARITY = 3
+_EVENT_DECISION_LABELS: dict[PipelineEvent, str] = {
+    PipelineEvent.ANALYSIS_SUCCESS: "approved",
+    PipelineEvent.ANALYSIS_LOOPBACK: "needs changes",
+    PipelineEvent.REVIEW_CLEAN: "clean — no issues",
+    PipelineEvent.REVIEW_ISSUES_FOUND: "issues found",
+    PipelineEvent.COMMIT_SUCCESS: "committed",
+    PipelineEvent.FIX_SUCCESS: "fixed",
+}
 
 
 def _terminal_width() -> int:
