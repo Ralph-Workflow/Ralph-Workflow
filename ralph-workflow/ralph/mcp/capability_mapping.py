@@ -455,7 +455,8 @@ def check_mcp_capability_policy(
     except ValueError:
         return AccessDecision.deny(
             "Unrecognized McpCapability "
-            f"{capability!r}: ralph-workflow has not been updated to handle this capability variant",
+            f"{capability!r}: ralph-workflow has not been updated "
+            "to handle this capability variant",
             AccessDeniedCode.CAPABILITY_DENIED,
         )
 

@@ -122,6 +122,35 @@ def test_load_policy_reports_missing_entry_phase(tmp_path: Path) -> None:
     assert excinfo.value.source == "pipeline"
 
 
+def test_load_policy_accepts_legacy_nested_pipeline_table(tmp_path: Path) -> None:
+    _copy_default_policy_files(tmp_path)
+    (tmp_path / "pipeline.toml").write_text(
+        dedent(
+            """
+            [pipeline]
+            entry_phase = "planning"
+            terminal_phase = "complete"
+
+            [pipeline.phases.planning]
+            drain = "planning"
+            prompt_template = "planning.jinja"
+            [pipeline.phases.planning.transitions]
+            on_success = "complete"
+
+            [pipeline.phases.complete]
+            drain = "complete"
+            [pipeline.phases.complete.transitions]
+            on_success = "complete"
+            on_loopback = "complete"
+            """
+        )
+    )
+
+    bundle = load_policy(tmp_path)
+    assert bundle.pipeline.entry_phase == "planning"
+    assert set(bundle.pipeline.phases) == {"planning", "complete"}
+
+
 def test_load_policy_wraps_validate_drain_contracts_error(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

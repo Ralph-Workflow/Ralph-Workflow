@@ -76,6 +76,27 @@ def _load_toml(path: Path) -> dict[str, object]:
 
 ValidationErrorDetail = Mapping[str, object]
 ValidationErrorDetails = Sequence[ValidationErrorDetail]
+PIPELINE_POLICY_FIELDS = frozenset(
+    {
+        "phases",
+        "entry_phase",
+        "terminal_phase",
+        "post_commit_routes",
+        "parallel_execution",
+    }
+)
+
+
+def _normalize_pipeline_data(data: dict[str, object]) -> dict[str, object]:
+    """Accept legacy `[pipeline]` TOML wrappers as flat PipelinePolicy input."""
+    nested_pipeline = data.get("pipeline")
+    if not isinstance(nested_pipeline, Mapping):
+        return data
+
+    if PIPELINE_POLICY_FIELDS.intersection(data):
+        return data
+
+    return dict(cast("Mapping[str, object]", nested_pipeline))
 
 
 def _format_validation_error_messages(exc: ValidationError) -> list[str]:
@@ -142,7 +163,7 @@ def _validate_pipeline(data: dict[str, object]) -> PipelinePolicy:
         PolicyValidationError: On validation failure.
     """
     try:
-        return PipelinePolicy.model_validate(data)
+        return PipelinePolicy.model_validate(_normalize_pipeline_data(data))
     except ValidationError as exc:
         msgs = _format_validation_error_messages(exc)
         raise PolicyValidationError(
