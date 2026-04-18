@@ -1,7 +1,8 @@
 """Base types for agent output parsing.
 
-This module defines the protocol that all parser modules must implement,
-along with the AgentOutputLine dataclass for normalized output.
+This module defines the protocol that all parser modules must implement.
+`AgentOutputLine` remains available for backward compatibility as legacy
+parser output while the typed activity model is introduced separately.
 """
 
 from __future__ import annotations
@@ -15,7 +16,10 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True, slots=True)
 class AgentOutputLine:
-    """Normalised line extracted from agent NDJSON stream.
+    """Legacy normalised line extracted from agent NDJSON stream.
+
+    This type is preserved for backward compatibility while newer cross-layer
+    visibility work adopts the typed activity model.
 
     Attributes:
         type: Type of the output line (text, tool_use, tool_result, error, etc.).
