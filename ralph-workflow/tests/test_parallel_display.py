@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
-from rich.console import Console
+import time
+
+from rich.console import Console, RenderableType
+from rich.live import Live
 
 from ralph.display.parallel_display import NARROW_THRESHOLD, ParallelDisplay, detect_mode
 from ralph.pipeline.worker_state import WorkerStatus
@@ -126,3 +129,35 @@ def test_parallel_display_start_stop_stubs_do_not_raise() -> None:
     pd = ParallelDisplay(console, {})
     pd.start()
     pd.stop()
+
+
+def test_parallel_display_dashboard_mode_renders_emitted_output(monkeypatch) -> None:
+    console = Console(force_terminal=True, width=120, record=True)
+    pd = ParallelDisplay(console, {})
+    renderables: list[RenderableType] = []
+    original_update = Live.update
+
+    def capture_update(
+        self: Live,
+        renderable: RenderableType,
+        *args: object,
+        **kwargs: object,
+    ) -> None:
+        renderables.append(renderable)
+        original_update(self, renderable, *args, **kwargs)
+
+    monkeypatch.setattr(Live, "update", capture_update)
+
+    assert pd.mode == "dashboard"
+
+    pd.start()
+    try:
+        pd.emit("unit-1", "some output line")
+        time.sleep(0.35)
+    finally:
+        pd.stop()
+
+    dashboard_console = Console(record=True, width=120, force_terminal=True)
+    for renderable in renderables:
+        dashboard_console.print(renderable)
+    assert "some output line" in dashboard_console.export_text()

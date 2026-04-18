@@ -18,14 +18,14 @@ from loguru import logger
 from rich.live import Live
 
 from ralph.display.render_thread import RenderThread, UpdateEvent
+from ralph.display.renderers.dashboard import DashboardState, render_dashboard
+from ralph.pipeline.worker_state import WorkerStatus
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
     from types import TracebackType
 
-    from rich.console import Console
-
-    from ralph.pipeline.worker_state import WorkerStatus
+    from rich.console import Console, RenderableType
 
 NARROW_THRESHOLD: int = 60
 
@@ -34,6 +34,47 @@ type SignalHandler = Callable[[int, object], None] | int | None
 
 def _noop_sigwinch(signum: int, frame: object) -> None:
     logger.debug("SIGWINCH received, letting rich handle resize on next refresh")
+
+
+_STATUS_SUFFIX = "__status__"
+_UNATTRIBUTED_UNIT_ID = "activity"
+
+
+
+def _coerce_worker_status(raw_status: object) -> WorkerStatus:
+    if isinstance(raw_status, WorkerStatus):
+        return raw_status
+    if isinstance(raw_status, str):
+        try:
+            return WorkerStatus(raw_status)
+        except ValueError:
+            return WorkerStatus.RUNNING
+    return WorkerStatus.RUNNING
+
+
+
+def _dashboard_renderable(state: dict[str, list[str] | str]) -> RenderableType:
+    dashboard_state: dict[str, DashboardState] = {}
+    unit_ids = {
+        key.removesuffix(_STATUS_SUFFIX) if key.endswith(_STATUS_SUFFIX) else key
+        for key in state
+    }
+
+    for unit_id in sorted(unit_ids):
+        lines_obj = state.get(unit_id)
+        lines = lines_obj if isinstance(lines_obj, list) else []
+        status = _coerce_worker_status(
+            state.get(f"{unit_id}{_STATUS_SUFFIX}", WorkerStatus.RUNNING)
+        )
+        dashboard_state[unit_id] = {
+            "unit_id": _UNATTRIBUTED_UNIT_ID if unit_id == "__unattributed__" else unit_id,
+            "status": status,
+            "elapsed_s": 0.0,
+            "last_output": lines[-1] if lines else "",
+            "dropped": max(0, len(lines) - 1),
+        }
+
+    return render_dashboard(dashboard_state)
 
 
 def detect_mode(
@@ -102,7 +143,7 @@ class ParallelDisplay:
             live.start()
             self._render_thread = RenderThread(
                 q=self._queue,
-                renderable_fn=lambda state: "",
+                renderable_fn=_dashboard_renderable,
                 live=live,
             )
             self._render_thread.start()
