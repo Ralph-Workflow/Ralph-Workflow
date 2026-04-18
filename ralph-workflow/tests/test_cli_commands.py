@@ -1463,7 +1463,8 @@ def test_check_workspace_files_reports_status(
 
 def test_init_command_creates_files(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     stream = _attach_console(monkeypatch, init_module)
-    init_module.init_command(path=str(tmp_path))
+    monkeypatch.chdir(tmp_path)
+    init_module.init_command(template="starter-template")
     assert (tmp_path / "PROMPT.md").exists()
     assert (tmp_path / ".agent" / "ralph-workflow.toml").exists()
     output = stream.getvalue()
@@ -1473,6 +1474,7 @@ def test_init_command_creates_files(monkeypatch: pytest.MonkeyPatch, tmp_path: P
 
 def test_init_command_keeps_existing_files(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     stream = _attach_console(monkeypatch, init_module)
+    monkeypatch.chdir(tmp_path)
     prompt = tmp_path / "PROMPT.md"
     prompt.write_text("existing")
     agent_dir = tmp_path / ".agent"
@@ -1480,7 +1482,7 @@ def test_init_command_keeps_existing_files(monkeypatch: pytest.MonkeyPatch, tmp_
     config = agent_dir / "ralph-workflow.toml"
     config.write_text("existing config")
 
-    init_module.init_command(path=str(tmp_path))
+    init_module.init_command(template="starter-template")
     assert prompt.read_text() == "existing"
     assert config.read_text() == "existing config"
     assert "Created" not in stream.getvalue()
@@ -1488,11 +1490,43 @@ def test_init_command_keeps_existing_files(monkeypatch: pytest.MonkeyPatch, tmp_
 
 def test_init_command_custom_config_path(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     stream = _attach_console(monkeypatch, init_module)
+    monkeypatch.chdir(tmp_path)
     custom = tmp_path / "custom" / "custom.toml"
     custom.parent.mkdir()
-    init_module.init_command(path=str(tmp_path), config_path=custom)
+    init_module.init_command(template="starter-template", config_path=custom)
     assert custom.exists()
     assert "Created" in stream.getvalue()
+
+
+def test_init_command_creates_prompt_in_cwd_not_template_subdir(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    _attach_console(monkeypatch, init_module)
+    monkeypatch.chdir(tmp_path)
+    init_module.init_command(template="starter-template")
+    assert (tmp_path / "PROMPT.md").exists()
+    assert not (tmp_path / "starter-template").exists()
+
+
+def test_init_command_creates_agent_dir_in_cwd(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    _attach_console(monkeypatch, init_module)
+    monkeypatch.chdir(tmp_path)
+    init_module.init_command(template="starter-template")
+    assert (tmp_path / ".agent").is_dir()
+    assert (tmp_path / ".agent" / "ralph-workflow.toml").exists()
+
+
+def test_init_command_default_template(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    stream = _attach_console(monkeypatch, init_module)
+    monkeypatch.chdir(tmp_path)
+    init_module.init_command()
+    assert (tmp_path / "PROMPT.md").exists()
+    output = stream.getvalue()
+    assert "default" in output
 
 
 def test_verbosity_option_processes_values() -> None:

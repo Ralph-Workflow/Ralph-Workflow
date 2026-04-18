@@ -338,7 +338,7 @@ def main(  # noqa: PLR0913 - Typer CLI callbacks require many options
     ] = None,
     init: Annotated[
         str | None,
-        typer.Option("--init", help="Initialize Ralph in current directory"),
+        typer.Option("--init", help="Initialize Ralph with a template (e.g. starter-template)"),
     ] = None,
     init_local_config: Annotated[
         bool,
