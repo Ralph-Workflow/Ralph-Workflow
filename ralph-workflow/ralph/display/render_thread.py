@@ -53,7 +53,7 @@ class RenderThread(threading.Thread):
                     self._queue.task_done()
                 except queue.Empty:
                     break
-            self._live.update(self._renderable_fn(self._state))
+            self._live.update(self._renderable_fn(self._state), refresh=True)
             self._stop_event.wait(1 / self._refresh_hz)
 
     def stop(self) -> None:

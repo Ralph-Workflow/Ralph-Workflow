@@ -163,3 +163,35 @@ def test_render_thread_calls_renderable_fn() -> None:
         thread.stop()
 
     assert len(received_states) > 0
+
+
+def test_render_thread_forces_live_refresh(monkeypatch: pytest.MonkeyPatch) -> None:
+    q: queue.Queue[UpdateEvent] = queue.Queue()
+    refresh_flags: list[bool] = []
+
+    def renderable_fn(state: dict) -> str:  # type: ignore[type-arg]
+        return str(state)
+
+    original_update = Live.update
+
+    def capture_update(
+        self: Live,
+        renderable: object,
+        *,
+        refresh: bool = False,
+    ) -> None:
+        refresh_flags.append(refresh)
+        original_update(self, renderable, refresh=refresh)
+
+    monkeypatch.setattr(Live, "update", capture_update)
+    q.put(UpdateEvent(unit_id="u1", kind="output", payload="hello"))
+
+    live = make_live()
+    thread = RenderThread(q=q, renderable_fn=renderable_fn, live=live, refresh_hz=20)
+
+    with live:
+        thread.start()
+        q.join()
+        thread.stop()
+
+    assert True in refresh_flags
