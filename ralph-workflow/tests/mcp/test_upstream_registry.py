@@ -13,6 +13,7 @@ from ralph.mcp.upstream_client import HttpUpstreamClient
 from ralph.mcp.upstream_config import UpstreamMcpServer
 from ralph.mcp.upstream_models import UpstreamCallError
 from ralph.mcp.upstream_registry import UpstreamRegistry
+from ralph.mcp.upstream_validation import UpstreamValidationError
 
 
 @pytest.fixture(autouse=True)
@@ -51,7 +52,9 @@ class TestUpstreamRegistryWarningBehavior:
         sink_id = logger.add(stream, level="WARNING")
         try:
             registry = UpstreamRegistry.build(
-                [healthy, broken], client_factory=client_factory  # type: ignore[arg-type]
+                [healthy, broken],
+                client_factory=client_factory,  # type: ignore[arg-type]
+                on_unreachable="warn_and_skip",
             )
         finally:
             logger.remove(sink_id)
@@ -89,7 +92,11 @@ class TestUpstreamRegistryWarningBehavior:
         stream = StringIO()
         sink_id = logger.add(stream, level="WARNING")
         try:
-            UpstreamRegistry.build([healthy, broken], client_factory=client_factory)  # type: ignore[arg-type]
+            UpstreamRegistry.build(
+                [healthy, broken],
+                client_factory=client_factory,  # type: ignore[arg-type]
+                on_unreachable="warn_and_skip",
+            )
         finally:
             logger.remove(sink_id)
 
@@ -99,3 +106,29 @@ class TestUpstreamRegistryWarningBehavior:
         assert "server unreachable" in warning_output
         assert "API_KEY" not in warning_output
         assert secret not in warning_output
+
+    def test_build_raises_by_default_when_upstream_is_unreachable(self) -> None:
+        secret = "super-secret-token"
+        broken = UpstreamMcpServer(
+            name="broken",
+            transport="http",
+            url="http://unused",
+            env={"API_KEY": secret},
+        )
+
+        def bad_caller(method: str, params: dict[str, object]) -> dict[str, object]:
+            raise UpstreamCallError("server unreachable")
+
+        def client_factory(server: UpstreamMcpServer) -> HttpUpstreamClient:
+            return HttpUpstreamClient(server, caller=bad_caller)  # type: ignore[arg-type]
+
+        with pytest.raises(UpstreamValidationError) as excinfo:
+            UpstreamRegistry.build(
+                [broken],
+                client_factory=client_factory,  # type: ignore[arg-type]
+            )
+
+        message = str(excinfo.value)
+        assert "broken" in message
+        assert "API_KEY" in message
+        assert secret not in message

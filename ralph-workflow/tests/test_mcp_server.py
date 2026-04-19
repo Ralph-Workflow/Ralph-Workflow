@@ -623,7 +623,11 @@ def test_upstream_registry_catalog_excludes_unhealthy_upstream_servers() -> None
             return HttpUpstreamClient(server, caller=good_caller)
         return HttpUpstreamClient(server, caller=bad_caller)
 
-    registry = UpstreamRegistry.build([good, bad], client_factory=client_factory)  # type: ignore[arg-type]
+    registry = UpstreamRegistry.build(
+        [good, bad],
+        client_factory=client_factory,  # type: ignore[arg-type]
+        on_unreachable="warn_and_skip",
+    )
     definitions = registry.tool_definitions()
 
     assert len(definitions) == 1

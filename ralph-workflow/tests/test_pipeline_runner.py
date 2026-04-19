@@ -19,6 +19,8 @@ from ralph.config.enums import AgentTransport, JsonParserType
 from ralph.config.models import AgentConfig
 from ralph.mcp.capability_mapping import SessionDrain
 from ralph.mcp.tool_names import claude_tool_name_prefix
+from ralph.mcp.upstream_config import UpstreamMcpServer
+from ralph.mcp.upstream_validation import UpstreamValidationError
 from ralph.pipeline import runner as runner_module
 from ralph.pipeline.effects import (
     CommitEffect,
@@ -1679,3 +1681,62 @@ class TestStartCommitCapture:
         assert start_commit_path.read_text().strip() == sentinel_sha, (
             "run() must not overwrite an existing .agent/start_commit"
         )
+
+
+def test_run_returns_1_when_mcp_validation_fails_in_strict_mode(
+    monkeypatch: MonkeyPatch, tmp_path: Path
+) -> None:
+    """Strict-mode upstream validation failure aborts the pipeline before policy load."""
+    bad_server = UpstreamMcpServer(
+        name="broken", transport="http", url="http://127.0.0.1:1/mcp"
+    )
+
+    def fake_upstreams(_workspace_root: Path) -> tuple[UpstreamMcpServer, ...]:
+        return (bad_server,)
+
+    monkeypatch.setattr(
+        runner_module, "resolve_workspace_scope", lambda: WorkspaceScope(tmp_path)
+    )
+    monkeypatch.setattr(
+        "ralph.agents.transport_emit._mcp_toml_as_upstreams", fake_upstreams
+    )
+    monkeypatch.setattr("ralph.mcp.upstream_validation.strict_mode_from_env", lambda *_: True)
+
+    def fake_validator(_servers: object, *, strict: bool) -> object:
+        del strict
+        raise UpstreamValidationError("upstream MCP server 'broken' is unreachable")
+
+    monkeypatch.setattr(runner_module, "_VALIDATE_MCP", fake_validator)
+
+    rc = runner_module.run(MagicMock(), initial_state=None)
+    assert rc == 1
+
+
+def test_run_continues_when_mcp_toml_has_no_servers(
+    monkeypatch: MonkeyPatch, tmp_git_repo: Path
+) -> None:
+    """Validation must be a no-op when no custom MCP servers are configured."""
+    monkeypatch.setattr(
+        runner_module, "resolve_workspace_scope", lambda: WorkspaceScope(tmp_git_repo)
+    )
+    monkeypatch.setattr(
+        "ralph.agents.transport_emit._mcp_toml_as_upstreams", lambda _root: ()
+    )
+
+    def fail_validator(*_args: object, **_kwargs: object) -> object:
+        raise AssertionError("validator should not run when no upstreams configured")
+
+    monkeypatch.setattr(runner_module, "_VALIDATE_MCP", fail_validator)
+    monkeypatch.setattr(
+        runner_module,
+        "_determine_effect_from_policy",
+        lambda _state, _bundle, _scope: ExitSuccessEffect(),
+    )
+    monkeypatch.setattr(runner_module.ckpt, "save", MagicMock())
+    monkeypatch.setattr(runner_module, "console", MagicMock())
+
+    state = MagicMock()
+    state.phase = "planning"
+    rc = runner_module.run(MagicMock(), initial_state=state)
+    assert rc == 0
+
