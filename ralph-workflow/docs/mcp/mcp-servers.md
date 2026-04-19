@@ -77,13 +77,40 @@ Agent-native config entries are not forwarded to the provider CLI. All user-defi
 
 ## Failure policy
 
-When an upstream MCP server is unreachable at launch time, Ralph logs a warning and skips that server:
+Ralph validates every configured custom MCP server at startup by completing the standard `initialize` → `notifications/initialized` → `tools/list` handshake. If any server fails validation, Ralph exits with code 1 and logs the failure reason. Environment variable values defined under `[mcp_servers.<name>.env]` are never included in the failure output — only the variable names are surfaced.
 
 ```
-warning: upstream server "github" is unreachable; skipping its tools
+ERROR  Custom MCP servers failed startup validation:
+- github (transport=stdio) env_keys=['GITHUB_TOKEN']: HTTP request to '...' failed: ConnectError
 ```
 
-The agent session continues without the unavailable server's tools. There is no retry of the same backend within a single session.
+To preserve the legacy warn-and-skip behaviour for CI smoke runs, set `RALPH_MCP_STRICT=0` in the environment:
+
+```
+RALPH_MCP_STRICT=0 ralph
+```
+
+In soft mode, failed servers are skipped (a warning is logged per failure) and the pipeline continues with only the reachable subset.
+
+### Validating manually
+
+Use `ralph --check-mcp` to run the full startup validation + agent transport probe without starting the pipeline. The flag is a read-only pre-flight that exits `0` when every configured server passes (or when no `mcp.toml` is present) and `1` on any failure — the exact same logic the runner applies at phase 1:
+
+```
+ralph --check-mcp
+```
+
+`RALPH_MCP_STRICT=0` still relaxes the exit code to `0` while logging warnings per failure. When no custom MCP servers are configured, `--check-mcp` returns `0` immediately.
+
+## Agent compatibility validation
+
+After every upstream MCP server passes validation, Ralph synthesizes the per-agent transport wiring it would emit for Claude, Codex, and OpenCode and re-runs the same MCP handshake against each backend. This guarantees that what Ralph hands to each agent's MCP client can actually reach the same server. If any agent transport probe fails in strict mode, Ralph exits with code 1 and identifies the (server, transport) pair that failed.
+
+The probe never spawns the agent binaries themselves — the MCP JSON-RPC protocol is identical across all supported agents (`2024-11-05`), so Ralph's own client is a faithful reference.
+
+## Troubleshooting
+
+Run `ralph --diagnose` to render the per-server `Custom MCP Servers` table and the `Agent Transport Compatibility` table. Both tables surface the redacted error string Ralph would emit during startup, so users can confirm credentials, command paths, and reachability without re-running the full pipeline.
 
 ## Forward compatibility
 

@@ -79,6 +79,9 @@ if TYPE_CHECKING:
     from ralph.config.models import AgentConfig, UnifiedConfig
     from ralph.display.parallel_display import ParallelDisplay
     from ralph.display.subscriber import DashboardSubscriber
+    from ralph.mcp.agent_transport_probe import AgentProbeReport
+    from ralph.mcp.upstream_config import UpstreamMcpServer
+    from ralph.mcp.upstream_validation import UpstreamValidationReport
     from ralph.policy.models import AgentsPolicy, PhaseDefinition, PipelinePolicy, PolicyBundle
 
     class _DashboardSubscriber(Protocol):
@@ -186,6 +189,80 @@ def _write_start_commit_if_absent(workspace_root: Path) -> None:
     start_commit_path.write_text(repo.head.commit.hexsha + "\n")
 
 
+def _validate_custom_mcp_servers(workspace_root: Path) -> int:
+    """Fail-fast validation of custom MCP servers + per-agent transports.
+
+    Returns the exit code the runner should propagate (0 to continue, 1 to abort).
+    Tests can monkeypatch ``_VALIDATE_MCP`` and ``_PROBE_AGENT_TRANSPORTS`` to
+    drive deterministic outcomes without spawning real upstream servers.
+    """
+    from ralph.agents.transport_emit import _mcp_toml_as_upstreams  # noqa: PLC0415
+    from ralph.mcp.upstream_validation import (  # noqa: PLC0415
+        UpstreamValidationError,
+        strict_mode_from_env,
+    )
+
+    upstreams = _mcp_toml_as_upstreams(workspace_root)
+    if not upstreams:
+        return 0
+
+    strict = strict_mode_from_env()
+    try:
+        upstream_report = _VALIDATE_MCP(upstreams, strict=strict)
+    except UpstreamValidationError as exc:
+        logger.error("Custom MCP servers failed startup validation:\n{}", exc)
+        return 1
+
+    healthy_names = {r.name for r in upstream_report.servers if r.ok}
+    healthy_servers = tuple(s for s in upstreams if s.name in healthy_names)
+    if not healthy_servers:
+        return 0
+
+    probe_results = _PROBE_AGENT_TRANSPORTS(
+        healthy_servers, workspace_path=workspace_root
+    )
+    failures = [p for p in probe_results if not p.ok]
+    if failures and strict:
+        for failure in failures:
+            logger.error(
+                "Agent transport probe failed: server={} transport={} error={}",
+                failure.server_name,
+                failure.transport,
+                failure.error,
+            )
+        return 1
+    for failure in failures:
+        logger.warning(
+            "Agent transport probe failed (soft mode): server={} transport={} error={}",
+            failure.server_name,
+            failure.transport,
+            failure.error,
+        )
+    return 0
+
+
+def _default_validate_mcp(
+    servers: Iterable[UpstreamMcpServer], *, strict: bool
+) -> UpstreamValidationReport:
+    from ralph.mcp.upstream_validation import (  # noqa: PLC0415
+        validate_upstream_mcp_servers,
+    )
+    return validate_upstream_mcp_servers(servers, strict=strict)
+
+
+def _default_probe_agent_transports(
+    servers: Iterable[UpstreamMcpServer], *, workspace_path: Path | None
+) -> tuple[AgentProbeReport, ...]:
+    from ralph.mcp.agent_transport_probe import (  # noqa: PLC0415
+        probe_agent_transports,
+    )
+    return probe_agent_transports(servers, workspace_path=workspace_path)
+
+
+_VALIDATE_MCP = _default_validate_mcp
+_PROBE_AGENT_TRANSPORTS = _default_probe_agent_transports
+
+
 class _LegacyConsoleDisplay:
     def __enter__(self) -> _LegacyConsoleDisplay:
         return self
@@ -231,24 +308,27 @@ def _build_default_display(
     """Construct the default ParallelDisplay for the verbose run path.
 
     Falls back to the legacy console display if ParallelDisplay (or its
-    transitive Rich/panel dependencies) cannot be imported. The display
-    owns its own DashboardSubscriber so the runner and the live render
-    thread share a single subscriber.
+    transitive Rich/panel dependencies) cannot be imported or initialized.
+    The display owns its own DashboardSubscriber so the runner and the live
+    render thread share a single subscriber.
     """
     try:
         from ralph.display.parallel_display import (  # noqa: PLC0415
             ParallelDisplay as _ParallelDisplay,
         )
-    except ImportError:
-        logger.debug("ParallelDisplay unavailable; falling back to legacy console")
-        return _LegacyConsoleDisplay()
 
-    return _ParallelDisplay(
-        console=console,
-        env=dict(os.environ),
-        workspace_root=workspace_root,
-        run_id=str(uuid.uuid4()),
-    )
+        return _ParallelDisplay(
+            console=console,
+            env=dict(os.environ),
+            workspace_root=workspace_root,
+            run_id=str(uuid.uuid4()),
+        )
+    except Exception:
+        logger.debug(
+            "ParallelDisplay unavailable or failed to initialize; falling back to legacy console",
+            exc_info=True,
+        )
+        return _LegacyConsoleDisplay()
 
 
 def _execute_effect_with_optional_display(
@@ -315,7 +395,11 @@ def _emit_phase_transition_if_changed(
     context = _phase_context(state, previous_phase) or None
     if hasattr(display, "emit_phase_transition"):
         try:
-            display.emit_phase_transition(previous_phase, state.phase, context=context)
+            cast("ParallelDisplay", display).emit_phase_transition(
+                previous_phase,
+                state.phase,
+                context=context,
+            )
         except Exception:  # pragma: no cover - defensive
             logger.debug("display.emit_phase_transition failed", exc_info=True)
     else:
@@ -393,6 +477,8 @@ def run(  # noqa: PLR0912, PLR0915
     """
     workspace_scope = resolve_workspace_scope()
     _write_start_commit_if_absent(workspace_scope.root)
+    if _validate_custom_mcp_servers(workspace_scope.root) != 0:
+        return 1
     policy_bundle = load_policy_or_die(workspace_scope.root / ".agent")
     registry = AgentRegistry.from_config(config)
     state = initial_state or _create_initial_state(
@@ -916,10 +1002,22 @@ def _agents_for_phase(
         phase_def = pipeline_policy.phases.get(phase)
         if phase_def is not None:
             binding = agents_policy.agent_drains.get(phase_def.drain)
-            if binding is not None:
-                chain = agents_policy.agent_chains.get(binding.chain)
-                if chain is not None:
-                    return list(chain.agents)
+            if binding is None:
+                msg = (
+                    f"Phase '{phase}' uses drain '{phase_def.drain}' but that drain has no "
+                    "explicit agent chain binding in agents.toml. "
+                    "Policy-driven runs must fail fast instead of falling back to legacy "
+                    "phase-name inference."
+                )
+                raise ValueError(msg)
+            chain = agents_policy.agent_chains.get(binding.chain)
+            if chain is None:
+                msg = (
+                    f"Drain '{phase_def.drain}' for phase '{phase}' references chain "
+                    f"'{binding.chain}' but that chain is not defined in agents.toml."
+                )
+                raise ValueError(msg)
+            return list(chain.agents)
 
     drains = config.agent_drains if isinstance(config.agent_drains, dict) else {}
     chains = config.agent_chains if isinstance(config.agent_chains, dict) else {}
@@ -984,7 +1082,7 @@ def _phase_event_after_agent_run(  # noqa: PLR0913
             drain = effect.drain or effect.phase
             summary = read_latest_analysis_decision(workspace_scope.root, drain)
             if summary is not None:
-                display.emit_analysis_result(
+                cast("ParallelDisplay", display).emit_analysis_result(
                     phase=effect.phase,
                     decision=summary.decision,
                     reason=summary.reason,
@@ -1192,10 +1290,7 @@ def _record_activity_on_subscriber(
     agent_name: str,
 ) -> None:
     try:
-        if rendered is None:
-            line_text = ""
-        else:
-            line_text = rendered.plain
+        line_text = "" if rendered is None else rendered.plain
         tool_name: str | None = None
         if parsed_line.type == "tool_use":
             stripped = parsed_line.content.strip()

@@ -48,6 +48,10 @@ class _RunningServer:
 @pytest.fixture(autouse=True)
 def _clean_mcp_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("RALPH_UPSTREAM_MCP_CONFIG", raising=False)
+    # Prevent the parent Ralph session (if any) from leaking restricted
+    # capabilities into the standalone server subprocess via session_from_env.
+    monkeypatch.delenv("RALPH_MCP_SESSION_FILE", raising=False)
+    monkeypatch.delenv("RALPH_MCP_SESSION_JSON", raising=False)
 
 
 @contextmanager

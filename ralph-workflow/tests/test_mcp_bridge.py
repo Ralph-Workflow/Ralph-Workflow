@@ -540,7 +540,9 @@ class TestUpstreamRegistry:
             return HttpUpstreamClient(server, caller=failing_caller)
 
         registry = UpstreamRegistry.build(
-            [healthy, unhealthy], client_factory=client_factory  # type: ignore[arg-type]
+            [healthy, unhealthy],
+            client_factory=client_factory,  # type: ignore[arg-type]
+            on_unreachable="warn_and_skip",
         )
         aliases = {t.alias for t in registry.tool_definitions()}
 

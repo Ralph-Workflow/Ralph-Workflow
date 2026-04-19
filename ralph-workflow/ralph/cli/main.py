@@ -83,6 +83,7 @@ class CLIOptions:
         list_providers: List available providers.
         diagnose: Run diagnostics.
         check_config: Validate configuration.
+        check_mcp: Validate custom MCP servers and agent wiring then exit.
         show_baseline: Show performance baseline.
         generate_completion: Generate shell completion.
         init: Initialize Ralph in current directory.
@@ -125,6 +126,7 @@ class CLIOptions:
     list_providers: bool = False
     diagnose: bool = False
     check_config: bool = False
+    check_mcp: bool = False
     show_baseline: bool = False
     generate_completion: str | None = None
     init: str | None = None
@@ -222,7 +224,7 @@ def _resolve_effective_verbosity(
     return verbosity
 
 
-def main(  # noqa: PLR0913 - Typer CLI callbacks require many options
+def main(  # noqa: PLR0913 - Typer CLI callbacks require many options and branches
     ctx: typer.Context,
     config: Annotated[
         str | None,
@@ -353,6 +355,13 @@ def main(  # noqa: PLR0913 - Typer CLI callbacks require many options
         bool,
         typer.Option("--check-config", help="Validate configuration"),
     ] = False,
+    check_mcp: Annotated[
+        bool,
+        typer.Option(
+            "--check-mcp",
+            help="Validate custom MCP servers and agent wiring then exit",
+        ),
+    ] = False,
     show_baseline: Annotated[
         bool,
         typer.Option("--show-baseline", help="Show performance baseline"),
@@ -462,6 +471,10 @@ def main(  # noqa: PLR0913 - Typer CLI callbacks require many options
         raise typer.Exit(code=exit_code)
 
     exit_code = _handle_check_config(config, cli_overrides, check_config)
+    if exit_code is not None:
+        raise typer.Exit(code=exit_code)
+
+    exit_code = _handle_check_mcp(check_mcp)
     if exit_code is not None:
         raise typer.Exit(code=exit_code)
 
@@ -583,6 +596,31 @@ def _handle_check_config(
     except Exception as e:
         logger.error("Configuration is invalid: {}", e)
         return 1
+
+
+def _handle_check_mcp(check_mcp: bool) -> int | None:
+    """Handle --check-mcp flag.
+
+    Runs the same startup validation the pipeline runs, without starting
+    the pipeline itself. Returns 0 when every custom MCP server + agent
+    transport probe succeeds, 1 otherwise. When no ``mcp.toml`` is
+    configured, validation is a no-op and returns 0.
+    """
+    if not check_mcp:
+        return None
+    from ralph.pipeline import runner as runner_module  # noqa: PLC0415
+
+    try:
+        workspace_scope = resolve_workspace_scope()
+        rc = runner_module._validate_custom_mcp_servers(workspace_scope.root)
+    except Exception as e:
+        logger.error("MCP validation failed: {}", e)
+        return 1
+    if rc == 0:
+        console.print("[green]MCP servers validated successfully[/green]")
+    else:
+        console.print("[red]MCP validation failed — see logs[/red]")
+    return rc
 
 
 def _handle_commit_plumbing(

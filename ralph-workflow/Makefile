@@ -57,7 +57,7 @@ lint:
 	ruff check ralph/ tests/
 
 typecheck:
-	mypy ralph/
+	uv run python -m mypy ralph/
 
 fmt:
 	ruff format ralph/ tests/
@@ -69,7 +69,7 @@ ruff-fix:
 	ruff check --fix ralph/ tests/
 
 mypy-fix:
-	mypy ralph/
+	uv run python -m mypy ralph/
 
 # Pre-commit
 pre-commit:

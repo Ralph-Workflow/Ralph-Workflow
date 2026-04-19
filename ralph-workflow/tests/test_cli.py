@@ -11,12 +11,14 @@ from typing import cast
 import pytest
 from typer.testing import CliRunner as TyperCliRunner
 
+import ralph.pipeline.runner as runner_module
 from ralph.cli.commands.commit import CommitPlumbingOptions
 from ralph.cli.main import (
     CLIOverrideInput,
     _build_cli_overrides,
     _configure_logging,
     _handle_check_config,
+    _handle_check_mcp,
     _handle_commit_plumbing,
     _handle_list_agents,
     _handle_list_providers,
@@ -203,6 +205,49 @@ def test_handle_check_config_failure(monkeypatch: pytest.MonkeyPatch) -> None:
 
     exit_code = _handle_check_config(None, {}, True)
     assert exit_code == 1
+
+
+def test_handle_check_mcp_returns_none_when_flag_false() -> None:
+    """--check-mcp disabled is a no-op and returns None to continue execution."""
+    assert _handle_check_mcp(False) is None
+
+
+def test_handle_check_mcp_flag_returns_zero_when_validation_passes(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """--check-mcp exits 0 and prints success when the validator returns 0."""
+    scope = WorkspaceScope(tmp_path)
+    monkeypatch.setattr("ralph.cli.main.resolve_workspace_scope", lambda: scope)
+
+    monkeypatch.setattr(
+        runner_module, "_validate_custom_mcp_servers", lambda _root: 0
+    )
+    printed: list[str] = []
+    monkeypatch.setattr(
+        "ralph.cli.main.console.print", lambda message: printed.append(str(message))
+    )
+
+    assert _handle_check_mcp(True) == 0
+    assert printed and "MCP servers validated successfully" in printed[0]
+
+
+def test_handle_check_mcp_flag_returns_one_on_validation_failure(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """--check-mcp exits 1 and prints failure when the validator returns 1."""
+    scope = WorkspaceScope(tmp_path)
+    monkeypatch.setattr("ralph.cli.main.resolve_workspace_scope", lambda: scope)
+
+    monkeypatch.setattr(
+        runner_module, "_validate_custom_mcp_servers", lambda _root: 1
+    )
+    printed: list[str] = []
+    monkeypatch.setattr(
+        "ralph.cli.main.console.print", lambda message: printed.append(str(message))
+    )
+
+    assert _handle_check_mcp(True) == 1
+    assert printed and "MCP validation failed" in printed[0]
 
 
 def test_handle_list_agents_injects_workspace_scope_for_implicit_config(

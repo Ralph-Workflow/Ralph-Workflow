@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import builtins
 import os
 import sys
 from importlib import import_module
@@ -88,21 +87,15 @@ def test_error_does_not_leak_key(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_import_error_message_points_to_extras(monkeypatch: pytest.MonkeyPatch) -> None:
     exa_backend = _import_exa_module()
-    original_import = builtins.__import__
-
-    def fake_import(
-        name: str,
-        globals: dict[str, object] | None = None,
-        locals: dict[str, object] | None = None,
-        fromlist: tuple[str, ...] = (),
-        level: int = 0,
-    ):
-        if name == "exa_py":
-            raise ImportError("missing exa")
-        return original_import(name, globals, locals, fromlist, level)
 
     monkeypatch.delitem(sys.modules, "exa_py", raising=False)
-    monkeypatch.setattr(builtins, "__import__", fake_import)
+    monkeypatch.setattr(
+        exa_backend,
+        "import_module",
+        lambda name: (_ for _ in ()).throw(ImportError("missing exa"))
+        if name == "exa_py"
+        else import_module(name),
+    )
 
     with pytest.raises(exa_backend.WebSearchError, match=IMPORT_ERROR_MATCH):
         exa_backend.ExaBackend(api_key=API_KEY).search("python")
