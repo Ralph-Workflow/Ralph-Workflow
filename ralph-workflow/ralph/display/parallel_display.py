@@ -13,12 +13,21 @@ from typing import TYPE_CHECKING, Literal, Protocol, cast
 
 from loguru import logger
 from rich.console import Console
-from rich.live import Live
 
 from ralph.display.activity_router import ActivityRouter
+from ralph.display.live_dashboard import LiveDashboard
 from ralph.display.mode import NARROW_THRESHOLD, detect_mode
+from ralph.display.panels.footer import footer_panel
+from ralph.display.panels.header import header_panel
+from ralph.display.panels.log_tail import make_log_tail_panel
+from ralph.display.panels.phase_tracker import phase_tracker_panel
+from ralph.display.panels.plan import plan_panel
+from ralph.display.panels.progress import progress_panel
+from ralph.display.panels.results import results_panel
+from ralph.display.panels.worker_grid import worker_grid_panel
+from ralph.display.panels.worker_list import worker_list_panel
 from ralph.display.plain_renderer import PlainLogRenderer
-from ralph.display.render_thread import RenderThread, UpdateEvent
+from ralph.display.render_thread import UpdateEvent
 from ralph.display.renderers.dashboard import DashboardState, render_dashboard
 from ralph.display.subscriber import DashboardSubscriber
 from ralph.display.theme import make_console as _make_console
@@ -122,11 +131,33 @@ def _dashboard_renderable(
     return render_dashboard(dashboard_state)
 
 
+class _StopProxy:
+    def __init__(self, stop_callback: Callable[[], None]) -> None:
+        self._stop_callback = stop_callback
+
+    def set(self) -> None:
+        self._stop_callback()
+
+
+class _ThreadLike(Protocol):
+    def is_alive(self) -> bool: ...
+
+
+class _DashboardThreadCompat:
+    def __init__(self, thread: _ThreadLike, stop_callback: Callable[[], None]) -> None:
+        self._thread = thread
+        self._stop_event = _StopProxy(stop_callback)
+
+    def is_alive(self) -> bool:
+        return bool(self._thread.is_alive())
+
+
 class ParallelDisplay:
 
     __slots__ = (
         "_activity_router",
         "_console",
+        "_live_dashboard",
         "_mode",
         "_plain_renderer",
         "_prev_sigwinch",
@@ -160,9 +191,10 @@ class ParallelDisplay:
             self._mode = detect_mode(console, resolved_env)
 
         self._queue: queue.Queue[UpdateEvent] = queue.Queue()
-        self._render_thread: RenderThread | None = None
+        self._render_thread: _DashboardThreadCompat | None = None
         self._prev_sigwinch: SignalHandler = None
         self._worker_status: dict[str, dict[str, object]] = {}
+        self._live_dashboard: LiveDashboard | None = None
 
         self._activity_router: ActivityRouter = (
             activity_router if activity_router is not None else ActivityRouter()
@@ -203,22 +235,34 @@ class ParallelDisplay:
                 force_terminal=self._console.is_terminal,
                 width=self._console.width,
             )
-            live = Live(console=live_console, auto_refresh=False)
-            self._render_thread = RenderThread(
-                q=self._queue,
-                renderable_fn=lambda state: _dashboard_renderable(state, self._worker_status),
-                live=live,
+            self._live_dashboard = LiveDashboard(
+                console=live_console,
+                panels=(
+                    header_panel,
+                    plan_panel,
+                    phase_tracker_panel,
+                    progress_panel,
+                    worker_grid_panel,
+                    worker_list_panel,
+                    make_log_tail_panel(self._activity_router._buffers),
+                    results_panel,
+                    footer_panel,
+                ),
+                buffers=self._activity_router._buffers,
+                snapshot_queue=self._snapshot_queue,
             )
-            self._render_thread.start()
-            if hasattr(signal, "SIGWINCH"):
-                self._prev_sigwinch = cast(
-                    "SignalHandler", signal.signal(signal.SIGWINCH, _noop_sigwinch)
+            self._live_dashboard.__enter__()
+            if self._live_dashboard._render_thread is not None:
+                self._render_thread = _DashboardThreadCompat(
+                    self._live_dashboard._render_thread,
+                    self.stop,
                 )
 
     def stop(self) -> None:
-        if self._render_thread is not None:
-            self._render_thread.stop()
-            self._render_thread = None
+        if self._live_dashboard is not None:
+            self._live_dashboard.__exit__(None, None, None)
+            self._live_dashboard = None
+        self._render_thread = None
         if hasattr(signal, "SIGWINCH") and self._prev_sigwinch is not None:
             signal.signal(signal.SIGWINCH, cast("SignalHandler", self._prev_sigwinch))
 

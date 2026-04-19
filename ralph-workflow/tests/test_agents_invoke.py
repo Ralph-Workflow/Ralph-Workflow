@@ -217,6 +217,35 @@ def test_build_command_injects_claude_mcp_config_for_remote_endpoint(
     assert cmd[-2:] == ["--", prompt_content]
 
 
+def test_build_command_resolves_relative_claude_prompt_from_workspace_path(tmp_path: Path) -> None:
+    prompt_content = "commit prompt content"
+    prompt_dir = tmp_path / ".agent" / "tmp"
+    prompt_dir.mkdir(parents=True, exist_ok=True)
+    prompt_path = prompt_dir / "PROMPT.md"
+    prompt_path.write_text(prompt_content, encoding="utf-8")
+    config = AgentConfig(
+        cmd="claude -p",
+        output_flag="--output-format=stream-json",
+        yolo_flag="--dangerously-skip-permissions",
+        print_flag="--print",
+        streaming_flag="--include-partial-messages",
+        json_parser=JsonParserType.CLAUDE,
+        transport=AgentTransport.CLAUDE,
+    )
+
+    cmd = _build_command(
+        config,
+        ".agent/tmp/PROMPT.md",
+        options=_BuildCommandOptions(
+            mcp_endpoint="http://127.0.0.1:9999/mcp",
+            allowed_mcp_tool_names=(claude_tool_name("read_file"),),
+            workspace_path=tmp_path,
+        ),
+    )
+
+    assert cmd[-2:] == ["--", prompt_content]
+
+
 def test_build_command_uses_transport_metadata_not_command_name_for_claude_mcp(
     tmp_path: Path,
 ) -> None:

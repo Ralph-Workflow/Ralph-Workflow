@@ -14,7 +14,9 @@ from ralph.display.parallel_display import (
     _dashboard_renderable,
     detect_mode,
 )
-from ralph.pipeline.worker_state import WorkerStatus
+from ralph.pipeline.state import PipelineState
+from ralph.pipeline.work_units import WorkUnit
+from ralph.pipeline.worker_state import WorkerState, WorkerStatus
 
 EXPECTED_QUEUE_UPDATES = 2
 
@@ -181,6 +183,15 @@ def test_parallel_display_dashboard_mode_renders_emitted_output(monkeypatch) -> 
     pd.start()
     try:
         pd.emit("unit-1", "some output line")
+        pd.subscriber.notify(
+            PipelineState(
+                phase="development",
+                work_units=(WorkUnit(unit_id="unit-1", description="worker description"),),
+                worker_states={
+                    "unit-1": WorkerState(unit_id="unit-1", status=WorkerStatus.RUNNING)
+                },
+            )
+        )
         time.sleep(0.35)
     finally:
         pd.stop()
@@ -188,7 +199,9 @@ def test_parallel_display_dashboard_mode_renders_emitted_output(monkeypatch) -> 
     dashboard_console = Console(record=True, width=120, force_terminal=True)
     for renderable in renderables:
         dashboard_console.print(renderable)
-    assert "some output line" in dashboard_console.export_text()
+    rendered_text = dashboard_console.export_text()
+    assert "some output line" in rendered_text
+    assert "Agent Activity" in rendered_text
 
 
 def test_dashboard_renderable_uses_worker_elapsed_time() -> None:

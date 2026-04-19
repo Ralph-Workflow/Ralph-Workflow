@@ -68,13 +68,13 @@ DEFAULT_LAYOUT_GRID = LayoutSpec(
     name="adaptive-grid",
     regions=(
         ("header",        3,    None),
-        ("plan",          5,    None),
-        ("phase_tracker", 4,    None),
-        ("progress",      4,    None),
-        ("worker_grid",   None, 2),
-        ("log_tail",      None, 1),
-        ("results",       4,    None),
-        ("footer",        3,    None),
+        ("plan",          3,    None),
+        ("phase_tracker", 3,    None),
+        ("progress",      3,    None),
+        ("worker_grid",   None, 1),
+        ("log_tail",      None, 2),
+        ("results",       3,    None),
+        ("footer",        1,    None),
     ),
 )
 
@@ -82,13 +82,13 @@ DEFAULT_LAYOUT_LIST = LayoutSpec(
     name="adaptive-list",
     regions=(
         ("header",        3,    None),
-        ("plan",          4,    None),
+        ("plan",          3,    None),
         ("phase_tracker", 3,    None),
         ("progress",      3,    None),
-        ("worker_list",   None, 3),
-        ("log_tail",      None, 1),
+        ("worker_list",   None, 2),
+        ("log_tail",      None, 2),
         ("results",       3,    None),
-        ("footer",        3,    None),
+        ("footer",        1,    None),
     ),
 )
 

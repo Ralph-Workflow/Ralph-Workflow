@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Protocol, cast
 
 from .base import SearchResult, WebSearchError
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Mapping
+    from collections.abc import Callable, Iterable, Mapping
 
 
 class _DdgsTextClient(Protocol):
@@ -18,10 +18,15 @@ class _DdgsTextClient(Protocol):
     ) -> Iterable[Mapping[str, object]] | None: ...
 
 
+_ddgs_module: object | None
 try:  # pragma: no cover - exercised via monkeypatch in tests
-    from ddgs import DDGS
+    import ddgs as _loaded_ddgs_module
 except ImportError:  # pragma: no cover - depends on optional runtime dependency
-    DDGS = None
+    _ddgs_module = None
+else:
+    _ddgs_module = _loaded_ddgs_module
+
+DDGS = cast("Callable[[], _DdgsTextClient] | None", getattr(_ddgs_module, "DDGS", None))
 
 
 class DdgsBackend:
@@ -36,9 +41,9 @@ class DdgsBackend:
         return self._normalize_results(raw_results)
 
     def _create_client(self) -> _DdgsTextClient:
-        if DDGS is None:  # type: ignore[misc]
+        if DDGS is None:
             raise WebSearchError("ddgs backend is unavailable")
-        return DDGS()  # type: ignore[misc,no-any-return]
+        return DDGS()
 
     @staticmethod
     def _normalize_results(

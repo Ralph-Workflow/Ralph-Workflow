@@ -875,6 +875,14 @@ def _extend_claude_transport_flags(
 
 
 
+def _resolve_prompt_path(prompt_file: str, workspace_path: Path | None) -> Path:
+    prompt_path = Path(prompt_file)
+    if prompt_path.is_absolute() or workspace_path is None:
+        return prompt_path
+    return workspace_path / prompt_path
+
+
+
 def _append_transport_prompt_arg(
     cmd: list[str],
     transport: AgentTransport,
@@ -883,7 +891,8 @@ def _append_transport_prompt_arg(
 ) -> None:
     if transport == AgentTransport.CLAUDE and build_options.mcp_endpoint:
         cmd.append("--")
-        cmd.append(Path(prompt_file).read_text(encoding="utf-8"))
+        resolved_prompt = _resolve_prompt_path(prompt_file, build_options.workspace_path)
+        cmd.append(resolved_prompt.read_text(encoding="utf-8"))
         return
     cmd.append(prompt_file)
 
@@ -936,7 +945,9 @@ def _build_opencode_command(
     *,
     options: _BuildCommandOptions,
 ) -> list[str]:
-    prompt_text = Path(prompt_file).read_text(encoding="utf-8")
+    prompt_text = _resolve_prompt_path(
+        prompt_file, options.workspace_path
+    ).read_text(encoding="utf-8")
     cmd = [_agent_command_name(config), "run"]
     if options.pure:
         cmd.append("--pure")
@@ -964,7 +975,9 @@ def _build_codex_command(
     *,
     options: _BuildCommandOptions,
 ) -> list[str]:
-    prompt_text = Path(prompt_file).read_text(encoding="utf-8")
+    prompt_text = _resolve_prompt_path(
+        prompt_file, options.workspace_path
+    ).read_text(encoding="utf-8")
     cmd = config.cmd.split()
     cmd.append(config.output_flag)
 
