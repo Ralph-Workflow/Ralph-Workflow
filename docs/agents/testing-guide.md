@@ -11,31 +11,38 @@ Read before writing or modifying any test.
 
 ### The Rule
 
-**YOU MUST ensure every test finishes within 10 seconds.** If a test exceeds this limit, stop and fix it — do not defer, do not skip, do not mark work done.
+**YOU MUST ensure every test finishes within 10 seconds.** The default enforcement is automatic: `conftest.py` installs a `SIGALRM`-based watchdog on every test. If a test exceeds the limit it is killed with `TestExecutionTimeoutError`. Do not work around this; fix the design.
+
+Override the timeout for a specific test only when the case genuinely requires it:
+
+```python
+@pytest.mark.timeout_seconds(30)
+def test_large_artifact_round_trip() -> None: ...
+```
 
 ### What "fix it" means
 
-1. **Refactor code to be testable.** If a test is slow because production code does real I/O, sleeps, or calls real processes, that is a design defect. Extract the I/O into an injectable boundary (`Workspace`, `ProcessExecutor`) and test the pure logic with fakes.
-2. **Replace blocking calls with fakes.** Use `MemoryWorkspace` instead of real filesystem, `MockProcessExecutor` instead of real processes. Never let real I/O or real network into unit or integration tests.
-3. **Eliminate real `sleep` / wall-clock waits.** Inject a clock abstraction and advance it in tests — never call `std::thread::sleep`, `tokio::time::sleep`, or `time.sleep` inside test code.
-4. **Never use `#[ignore]` to hide a slow test.** A timeout problem is a design problem. Fix the design.
+1. **Refactor code to be testable.** If a test is slow because production code does real I/O, sleeps, or spawns real processes, that is a design defect. Extract the I/O behind a `Workspace` or `AgentExecutor` boundary and test the pure logic with fakes.
+2. **Replace real I/O with fakes.** Use `MemoryWorkspace` instead of the real filesystem, `FakeAgentExecutor` + `FakeRun` instead of real subprocesses. Never let real filesystem writes or network calls into unit or integration tests.
+3. **Eliminate real `time.sleep` / wall-clock waits.** If a module sleeps, inject a clock abstraction or use `asyncio.sleep(0)` for cooperative yields in tests. Never call `time.sleep(...)` inside test code with a non-zero delay.
+4. **Never use `@pytest.mark.skip` to hide a slow test.** A timeout problem is a design problem. Fix the design.
 
 ### Tests must test behavior, not implementation
 
 | ✅ Test the behavior (observable contract) | ❌ Do not test the implementation (internals) |
 |---|---|
-| Phase transitions, effect variants emitted | Private field mutations, internal buffer sizes |
-| Checkpoint round-trips through the public seam | Which internal function was called |
-| Observable output through `TestPrinter` / `VirtualTerminal` | Cache hit counters, task handle lifetimes |
-| Drain-addressed runtime effects | Which branch of a `match` was taken |
+| Phase transitions, `PipelineEvent` variants emitted | Private attribute mutations, internal buffer sizes |
+| Checkpoint round-trips through the public seam | Which internal method was called |
+| Observable output via captured stdout / Rich console | Cache hit counters, task handle lifetimes |
+| Effect variants returned by the orchestrator | Which branch of an `if` was taken |
 
 If changing the implementation (without changing behavior) would break a test, **the test is wrong — rewrite it.**
 
 ### Agent checklist (complete before marking any test work done)
 
 - [ ] All tests in the affected tier pass in < 10 s total wall-clock
-- [ ] No test calls `sleep` or polls real wall-clock time
-- [ ] No test reaches through a boundary into real I/O (filesystem, process, network)
+- [ ] No test calls `time.sleep(N)` with `N > 0` or polls real wall-clock time
+- [ ] No test reaches through a boundary into real I/O (filesystem, subprocess, network)
 - [ ] Every test asserts on observable behavior, not internal state
 - [ ] Any refactor needed to make code testable within time is done — not deferred
 
@@ -44,109 +51,101 @@ If changing the implementation (without changing behavior) would break a test, *
 ## Test Pyramid
 
 ```
-         ▲ system_tests (tests/system_tests/)
-         │ Real git, real filesystem, libgit2 — serial (#[serial] required)
+         ▲ git / worktree tests (tests/ using tmp_git_repo)
+         │ Real git repository, gitpython — tmp_path isolated
          │ NOT in CI — run manually only
          │
-        ██ process-system-tests (tests/process_system_tests/)
-        │  Real OS processes / PATH — NO libgit2 — parallel
-        │  NOT in CI — run manually only
+        ████ Integration tests (tests/integration/)
+        │    MemoryWorkspace + FakeAgentExecutor, no real I/O — parallel
+        │    Target: < 60 s wall-clock
         │
-       ████ Integration tests (cargo test -p ralph-workflow-tests --test integration_tests)
-       │    MemoryWorkspace + MockProcessExecutor, no real I/O — parallel
-       │    Target: < 60 s wall-clock
-       │
-   ████████ Unit tests (cargo test -p ralph-workflow --lib)
-            Pure reducers, domain logic, parsers — parallel
-            Target: subsecond per test, total < 10 s
+    ████████ Unit tests (tests/ root + tests/unit/)
+             Pure reducers, models, parsers, display components — parallel
+             Target: subsecond per test, total < 10 s
 ```
 
 ### Tier summary
 
-| Tier | Binary | Parallelism | CI? | Run command |
-|------|--------|-------------|-----|-------------|
-| Unit | `ralph-workflow --lib` | parallel | yes | `cargo test -p ralph-workflow --lib --all-features` |
-| Integration | `integration_tests` | parallel | yes | `cargo test -p ralph-workflow-tests --test integration_tests` |
-| Process system | `process-system-tests` | parallel | **no** | `cargo test -p ralph-workflow-tests --test process-system-tests` |
-| git2 system | `system_tests` | serial (libgit2) | **no** | `cargo test -p ralph-workflow-tests --test system_tests` |
+| Tier | Location | Real I/O? | CI? | Run command |
+|------|----------|-----------|-----|-------------|
+| Unit | `tests/` root, `tests/unit/` | No | yes | `pytest tests/ -v --ignore=tests/integration` |
+| Integration | `tests/integration/` | No (MemoryWorkspace) | yes | `pytest tests/integration/ -v` |
+| Git system | `tests/` (uses `tmp_git_repo`) | Yes (gitpython + tmp dir) | **no** | Run manually with `-k tmp_git_repo` |
+| All (CI) | all | mixed | yes | `make verify` |
 
 ---
 
 ## Parallelism Rules
 
-**All tests are parallel by default.**
-The only justified exception is the `system_tests` binary, where `#[serial]` is required on every test because concurrent `git2::Repository` drops from multiple threads trigger thread-unsafe libgit2 global shutdown (SIGABRT).
+**All tests are parallel-safe by default.** Use `pytest-xdist` compatible isolation:
 
-| Location | `#[serial]` | Reason |
-|----------|-------------|--------|
-| `ralph-workflow/src/` unit tests | **BANNED** | Use env-injection |
-| `tests/integration_tests/` | **BANNED** | Use MemoryWorkspace / MockProcessExecutor |
-| `tests/process_system_tests/` | **BANNED** | Use module-local Mutex for PATH mutation |
-| `tests/system_tests/` | **REQUIRED** | libgit2 global reference counter (SIGABRT) |
+| Location | Isolation technique | Reason |
+|----------|--------------------|----|
+| `tests/` unit tests | Pure functions / `MemoryWorkspace` | No shared state |
+| `tests/integration/` | `MemoryWorkspace` + `FakeAgentExecutor` fixtures | No shared state |
+| `tests/` git system | `tmp_git_repo` fixture (copies a template dir per test) | Each test gets its own `tmp_path` |
 
-> **Note on `signal_cleanup`:** The `signal_cleanup` module resides in `system_tests/` (not `process_system_tests/`) because its tests call `init_git_repo()` to set up a real git repository for SIGINT/cleanup verification. This is a direct libgit2 dependency, so `#[serial]` is required and the serial binary is the correct location.
+**`monkeypatch.setenv()` is the only acceptable way to mutate env vars in tests.** Never assign to `os.environ` directly — `monkeypatch` restores the original value after each test automatically.
 
-If a test seems to require `#[serial]`, refactor the implementation first (dependency injection, env-injection pattern) before escalating to a system test.
+If a test seems to require process-global state mutation, refactor the production code to accept an injected env-lookup function (see Env-Injection Pattern below).
 
 ---
 
 ## Deterministic Tests
 
-Every test must produce the same result on every run. Never let the following sources of
-non-determinism leak into tests:
+Every test must produce the same result on every run. Never let the following sources of non-determinism leak into tests:
 
 | Source | Isolation technique |
 |--------|-------------------|
 | Real time / wall clock | Injectable clock or frozen timestamp |
 | Randomness / RNG | Seed injection or deterministic inputs |
-| Network | Never in unit/integration tests; `MemoryWorkspace` / `MockProcessExecutor` instead |
-| Process-global env vars | Env-injection pattern (see below) |
-| Process-global singletons | Dependency injection; reset state in fixtures |
-| Filesystem | `MemoryWorkspace` (integration), `TempDir` (system tests only) |
+| Network | Never in unit/integration tests; `MemoryWorkspace` / `FakeAgentExecutor` instead |
+| Process-global env vars | `monkeypatch.setenv()` / `monkeypatch.delenv()` |
+| Filesystem | `MemoryWorkspace` (unit/integration), `tmp_path` (git system tests only) |
+| Async scheduling | `asyncio.sleep(0)` for cooperative yields; never `asyncio.sleep(N)` with N > 0 |
 
-If a test is non-deterministic, treat it as a design defect: find the non-deterministic
-source and inject it rather than tolerating flakiness. See also: **Flaky Test Policy** below.
+If a test is non-deterministic, treat it as a design defect: find the non-deterministic source and inject it rather than tolerating flakiness.
 
 ---
 
 ## Env-Injection Pattern
 
-The most common `#[serial]` cause: production code calling `std::env::var` directly.
+The most common parallelism hazard: production code calling `os.environ` directly.
 
-**BEFORE — requires `#[serial]`:**
-```rust
-#[test]
-#[serial]
-fn test_cloud_disabled_by_default() {
-    std::env::remove_var("RALPH_CLOUD_MODE");
-    let cfg = CloudConfig::from_env();
-    assert!(!cfg.enabled);
-}
+**BEFORE — requires test isolation workaround:**
+```python
+def test_cloud_disabled_by_default() -> None:
+    os.environ.pop("RALPH_CLOUD_MODE", None)   # mutates process-global state ❌
+    cfg = CloudConfig.from_env()
+    assert not cfg.enabled
 ```
 
-**AFTER — parallel-safe, no `#[serial]`:**
-```rust
-#[test]
-fn test_cloud_disabled_by_default() {
-    let cfg = CloudConfig::from_env_fn(|_| None);
-    assert!(!cfg.enabled);
-}
+**AFTER — parallel-safe, no env mutation:**
+```python
+def test_cloud_disabled_by_default() -> None:
+    cfg = CloudConfig.from_env_fn(lambda _key: None)
+    assert not cfg.enabled
 
-#[test]
-fn test_cloud_enabled_with_full_env() {
-    let env = [("RALPH_CLOUD_MODE", "true"), ("RALPH_CLOUD_API_URL", "https://x"), ...];
-    let cfg = CloudConfig::from_env_fn(|k| env.iter().find(|(key, _)| *key == k).map(|(_, v)| (*v).to_string()));
-    assert!(cfg.enabled);
-}
+def test_cloud_enabled_with_full_env() -> None:
+    env = {"RALPH_CLOUD_MODE": "true", "RALPH_CLOUD_API_URL": "https://x"}
+    cfg = CloudConfig.from_env_fn(env.get)
+    assert cfg.enabled
 ```
 
 **Production pattern** — always provide both forms:
-```rust
-pub fn from_env_fn(get: impl Fn(&str) -> Option<String>) -> Self { /* impl */ }
-pub fn from_env() -> Self { Self::from_env_fn(|k| std::env::var(k).ok()) }
+```python
+@classmethod
+def from_env_fn(cls, get: Callable[[str], str | None]) -> "CloudConfig":
+    """Build config from an injected env-lookup function."""
+    ...
+
+@classmethod
+def from_env(cls) -> "CloudConfig":
+    """Build config from the real process environment."""
+    return cls.from_env_fn(os.environ.get)
 ```
 
-For unit tests (`src/`), use `MemoryConfigEnvironment::with_env_var()` — no `#[serial]` needed.
+When `monkeypatch` is unavoidable (e.g. testing CLI entry points), use pytest's built-in `monkeypatch` fixture — never raw `os.environ` assignment.
 
 ---
 
@@ -157,140 +156,160 @@ Use the right double. Never mock domain logic — only mock at architectural bou
 | Double | When | Codebase Example |
 |--------|------|-----------------|
 | **Fake** | Working implementation, in-memory | `MemoryWorkspace` |
-| **Stub** | Returns canned values | `MockProcessExecutor` with preconfigured results |
-| **Spy** | Records calls for assertion | `TestPrinter` capturing output |
-| **Mock** | Pre-programmed expectations | `MockAppEffectHandler` |
-| **Dummy** | Placeholder, never used | Empty `MemoryWorkspace` for pure reducer tests |
+| **Fake** | Configurable subprocess simulation | `FakeAgentExecutor` + `FakeRun` |
+| **Stub** | Returns canned pipeline events | `MockAgentInvoker` with phase-specific responses |
+| **Spy** | Records calls for assertion | `MockAgentInvoker.call_history` |
+| **Mock** | Pre-programmed expectations | `unittest.mock.MagicMock` for external adapters |
+| **Dummy** | Placeholder, never used | Empty `MemoryWorkspace()` for pure orchestrator tests |
 
 **Required doubles:**
 
 | Operation | Use | Never use |
 |-----------|-----|-----------|
-| File I/O | `MemoryWorkspace` | `TempDir`, `std::fs::*` |
-| Process execution | `MockProcessExecutor` | `std::process::Command` |
-| Parser output | `TestPrinter` / `VirtualTerminal` | Direct string inspection |
+| File I/O | `MemoryWorkspace` | `tmp_path`, `open()`, `Path.read_text()` |
+| Subprocess execution | `FakeAgentExecutor` + `FakeRun` | `subprocess.run`, `asyncio.create_subprocess_exec` |
+| Agent pipeline invocations | `MockAgentInvoker` | Real agent processes |
+
+### FakeAgentExecutor usage
+
+```python
+from ralph.testing.fake_agent_executor import FakeAgentExecutor, FakeRun
+
+def test_scheduler_marks_unit_succeeded() -> None:
+    executor = FakeAgentExecutor(
+        runs={
+            "api-endpoints": FakeRun(
+                outputs=["line 1", "line 2"],
+                exit_code=0,
+                duration_ms=50,
+            )
+        }
+    )
+
+    # Pass executor to the component under test
+    result = run_scheduler(unit, executor=executor)
+
+    assert result.exit_code == 0
+    assert executor.calls[0].unit_id == "api-endpoints"
+```
+
+### MemoryWorkspace usage
+
+```python
+from ralph.workspace.memory import MemoryWorkspace
+
+def test_checkpoint_round_trip() -> None:
+    ws = MemoryWorkspace()
+    ws.write("PROMPT.md", "# Test\n\nPrompt content.")
+
+    # Exercise production code against the fake workspace
+    save_checkpoint(ws, state)
+    restored = load_checkpoint(ws)
+
+    assert restored is not None
+    assert restored.phase == state.phase
+```
 
 ---
 
 ## Architecture Boundaries
 
-Ralph uses two effect layers:
+Ralph has two primary testable layers:
 
-| Layer | Mock With | Tests |
-|-------|-----------|-------|
-| `AppEffect` (CLI setup) | `MockAppEffectHandler` | integration tests |
-| `Effect` (pipeline) | `MemoryWorkspace` + `MockProcessExecutor` | integration tests |
-| Real OS / libgit2 | none (real implementations) | system tests only |
+| Layer | What lives here | Test with |
+|-------|----------------|-----------|
+| Pure orchestration (`pipeline/orchestrator.py`, reducers) | Phase routing, effect selection, transition logic | Unit tests — value-type inputs/outputs, no mocks needed |
+| Effect handlers (`phases/`, `agents/`) | Workspace reads/writes, subprocess invocation | Integration tests with `MemoryWorkspace` + `FakeAgentExecutor` |
+| Real OS / git | Actual git operations, worktree management | Git system tests only (`tmp_git_repo`) |
 
-### Capability Gate Testing (RFC-009 Phase 2)
+### Testing phase transitions
 
-The capability gate is tested at two levels:
+Test the orchestrator directly — it is a pure function:
 
-#### Unit Tests (`reducer/boundary/tests/capability_gate_enforcement.rs`)
+```python
+from ralph.pipeline.orchestrator import determine_next_effect
+from ralph.pipeline.effects import InvokeAgentEffect, PreparePromptEffect
 
-Test `MainEffectHandler::execute()` directly with specific drain sessions:
+def test_planning_routes_to_development_on_success(
+    default_policy: tuple[AgentsPolicy, PipelinePolicy, ArtifactsPolicy],
+    initial_state: PipelineState,
+) -> None:
+    agents_policy, pipeline_policy, _ = default_policy
 
-```rust
-#[test]
-fn planning_denies_workspace_write() {
-    let session = AgentSession::for_drain(run_id.clone(), SessionDrain::Planning, 0);
-    let ctx = create_context_with_session(&workspace, session);
-    let mut handler = MainEffectHandler::new(state);
+    effect = determine_next_effect(initial_state, pipeline_policy, agents_policy)
 
-    // Planning trying to execute development effect
-    let result = handler.execute(Effect::InvokeDevelopmentAgent { iteration: 0 }, &mut ctx);
-
-    assert!(matches!(
-        result.event,
-        PipelineEvent::Agent(AgentEvent::CapabilityDenied { capability, .. })
-    ));
-    assert!(capability.contains("WorkspaceWriteTracked"));
-}
+    assert isinstance(effect, (PreparePromptEffect, InvokeAgentEffect))
+    assert effect.phase == "planning"
 ```
 
-#### Integration Tests (`tests/integration_tests/brokered_sessions/`)
+### Testing checkpoint persistence
 
-Test the full pipeline with `MockEffectHandler` using `session_override`:
+Use `MemoryWorkspace` — never the real filesystem:
 
-```rust
-#[test]
-fn brokered_session_enforces_read_only() {
-    let workspace = MemoryWorkspace::new_test();
-    let session = AgentSession::for_drain("test".to_string(), SessionDrain::Planning, 0);
+```python
+def test_checkpoint_persists_phase() -> None:
+    ws = MemoryWorkspace()
+    state = PipelineState(phase=PHASE_DEVELOPMENT, ...)
 
-    let mut handler = MockEffectHandler::new()
-        .with_session_override(session);
+    save_checkpoint(ws, state)
+    restored = load_checkpoint(ws)
 
-    // Planning session trying to invoke development agent
-    let ctx = create_context(&workspace);
-    let result = handler.execute(Effect::InvokeDevelopmentAgent { iteration: 0 }, &mut ctx.clone());
-
-    // Should be denied at capability gate level
-    assert!(matches!(result.event, PipelineEvent::Agent(AgentEvent::CapabilityDenied { .. })));
-}
+    assert restored is not None
+    assert restored.phase == PHASE_DEVELOPMENT
 ```
-
-#### Key Testing Patterns
-
-| Scenario | Test Location | Pattern |
-|----------|---------------|---------|
-| Drain denies wrong effect type | `capability_gate_enforcement.rs` | `MainEffectHandler` + direct session |
-| Behavioral equivalence (dev works) | `capability_gate_enforcement.rs` | `MainEffectHandler` + `Development` session |
-| Full pipeline with session override | `brokered_sessions/` | `MockEffectHandler::with_session_override()` |
-| Audit trail accumulation | `brokered_sessions/audit_trail_tests.rs` | Inspect `ctx.audit_trail` |
-| Session handshake persistence | `brokered_sessions/session_handshake_tests.rs` | Check `.agent/audit/*.jsonl` |
 
 ---
 
 ## Contract and Boundary Testing
 
-Validate the typed contracts that cross architectural seams explicitly. Ralph has three
-primary boundary types:
+Validate the typed contracts that cross architectural seams explicitly.
 
 ### 1. Serialization contracts
 
-Checkpoint JSON format is a persistence contract. Test it with round-trip assertions:
+Pydantic model JSON format is a persistence contract. Test it with round-trip assertions:
 
-```rust
-// ✅ CORRECT — round-trip: serialize → deserialize → serialize produces identical output
-let original = PipelineState::initial(5, 2);
-let json = serde_json::to_string(&original).expect("serialize");
-let restored: PipelineState = serde_json::from_str(&json).expect("deserialize");
-assert_eq!(original, restored);
+```python
+def test_pipeline_state_json_round_trip() -> None:
+    original = PipelineState(phase=PHASE_DEVELOPMENT, iteration=2, total_iterations=5)
 
-// Any field rename or type change must break this test — that is the point.
+    json_str = original.model_dump_json()
+    restored = PipelineState.model_validate_json(json_str)
+
+    assert original == restored
+    # Any field rename or type change must break this test — that is the point.
 ```
 
-Serialization tests live in the same module as the type. Never skip them when renaming
-or restructuring persisted fields.
+Serialization tests live in the same module as the type. Never skip them when renaming or restructuring persisted fields.
 
 ### 2. Effect/event contracts
 
-`Effect` and `AppEffect` enum variants are the typed API between reducers and handlers.
-Test that the reducer emits the **correct variant with the correct payload** — not that
-a specific internal function was called:
+`PipelineEvent` and effect dataclasses are the typed API between orchestrators and handlers. Test that the orchestrator emits the **correct type with the correct payload** — not that a specific internal function was called:
 
-```rust
-// ✅ CORRECT — validate the effect that crosses the boundary
-let (new_state, effects) = reduce(state, event);
-assert!(effects.iter().any(|e| matches!(e, Effect::WriteCheckpoint { .. })));
+```python
+# ✅ CORRECT — validate the effect that crosses the boundary
+effect = determine_next_effect(state, pipeline_policy, agents_policy)
+assert isinstance(effect, InvokeAgentEffect)
+assert effect.phase == "development"
 
-// ❌ WRONG — asserting on an internal call, not the boundary
-mock.assert_called_once_with("write_checkpoint_internal");
+# ❌ WRONG — asserting on an internal call, not the boundary
+mock_fn.assert_called_once_with("_internal_route_development")
 ```
 
 ### 3. Persistence boundary
 
-Integration-test checkpoint read/write using `MemoryWorkspace`. After a checkpoint is
-written and the pipeline resumes, observable state must match what was saved:
+Integration-test checkpoint read/write using `MemoryWorkspace`. After a checkpoint is written and the pipeline resumes, observable state must match what was saved:
 
-```rust
-// ✅ CORRECT — test through the public persistence seam
-let ws = MemoryWorkspace::new();
-save_checkpoint(&ws, &state).expect("save");
-let restored = load_checkpoint(&ws).expect("load");
-assert_eq!(state.phase, restored.phase);
-assert_eq!(state.iteration_count, restored.iteration_count);
+```python
+def test_checkpoint_resume_preserves_iteration() -> None:
+    ws = MemoryWorkspace()
+    state = PipelineState(phase=PHASE_DEVELOPMENT, iteration=3, total_iterations=5)
+
+    save_checkpoint(ws, state)
+    loaded = load_checkpoint(ws)
+
+    assert loaded is not None
+    assert loaded.phase == state.phase
+    assert loaded.iteration == state.iteration
 ```
 
 ---
@@ -299,19 +318,44 @@ assert_eq!(state.iteration_count, restored.iteration_count);
 
 Every test: one behavior, Arrange-Act-Assert.
 
-```rust
-// Arrange
-let state = PipelineState::initial(5, 2);
-let event = PipelineEvent::developer_exhausted();
+```python
+def test_pipeline_transitions_to_review_after_development() -> None:
+    # Arrange
+    state = PipelineState(
+        phase="development_commit",
+        development_budget_remaining=0,
+    )
+    agents_policy, pipeline_policy, _ = load_default_policy()
 
-// Act
-let new_state = reduce(state, event);
+    # Act
+    effect = determine_next_effect(state, pipeline_policy, agents_policy)
 
-// Assert
-assert_eq!(new_state.phase, PipelinePhase::Review);
+    # Assert
+    assert isinstance(effect, (PreparePromptEffect, InvokeAgentEffect))
+    assert effect.phase == "development_commit"
 ```
 
-Keep Arrange short. If setup exceeds 10 lines, extract a named builder helper.
+Keep Arrange short. If setup exceeds ~10 lines, extract a named builder helper or pytest fixture.
+
+---
+
+## Async Tests
+
+Use `async def test_...` directly — pytest-asyncio detects and runs them. Never use `asyncio.run()` inside test functions.
+
+```python
+async def test_save_async_round_trip(tmp_path: Path) -> None:
+    state = PipelineState(phase=PHASE_DEVELOPMENT, iteration=2, total_iterations=5)
+    path = tmp_path / "checkpoint.json"
+
+    await ckpt.save_async(state, path)
+    loaded = await ckpt.load_async(path)
+
+    assert loaded is not None
+    assert loaded.phase == PHASE_DEVELOPMENT
+```
+
+Use `asyncio.sleep(0)` for cooperative yields in fake async executors — never `asyncio.sleep(N)` with N > 0 in tests.
 
 ---
 
@@ -321,9 +365,10 @@ Name tests by **observable behavior**, not implementation:
 
 | ✅ Good | ❌ Avoid |
 |---------|---------|
-| `test_agent_fallback_after_retry_exhaustion` | `test_internal_counter_updates` |
-| `test_pipeline_transitions_to_failure` | `test_buffer_management` |
-| `test_parser_streams_deltas_to_terminal` | `test_cache_size_tracking` |
+| `test_planning_routes_to_development_on_success` | `test_internal_counter_updates` |
+| `test_pipeline_transitions_to_failed_when_budget_exhausted` | `test_buffer_management` |
+| `test_checkpoint_preserves_phase_after_round_trip` | `test_cache_size_tracking` |
+| `test_fake_executor_emits_running_status_before_outputs` | `test_run_method_called` |
 
 ---
 
@@ -331,18 +376,18 @@ Name tests by **observable behavior**, not implementation:
 
 Length assertions are acceptable **only when combined with content checks**:
 
-```rust
-// ✅ CORRECT — count + content
-let logs = logger.get_logs();
-assert_eq!(logs.len(), 2, "should buffer two writes");
-assert!(logs[0].contains("Partial line"));
-assert!(logs[1].contains("Another line"));
+```python
+# ✅ CORRECT — count + content
+calls = invoker.call_history
+assert len(calls) == 2, "should record two invocations"
+assert calls[0]["phase"] == "planning"
+assert calls[1]["phase"] == "development"
 
-// ❌ WRONG — count without content
-assert_eq!(logger.get_logs().len(), 2);
+# ❌ WRONG — count without content
+assert len(invoker.call_history) == 2
 ```
 
-If content checks already verify correctness (e.g., indexing), the length check is redundant — remove it.
+If content checks already verify correctness (e.g., indexing into the list), the length check is redundant — remove it.
 
 ---
 
@@ -350,23 +395,26 @@ If content checks already verify correctness (e.g., indexing), the length check 
 
 | Anti-pattern | Fix |
 |--------------|-----|
-| `#[serial]` in integration/unit tests | Use env-injection or MemoryWorkspace |
-| `std::env::set_var` / `remove_var` in tests | Use env-injection pattern |
-| `cfg!(test)` in production code | Use dependency injection |
-| `TempDir` / `std::fs::*` in integration tests | Use `MemoryWorkspace` |
-| `std::process::Command` in integration tests | Use `MockProcessExecutor` |
-| Testing private fields / internal state | Test through public APIs |
+| `os.environ[key] = value` / `del os.environ[key]` in tests | Use `monkeypatch.setenv()` / `monkeypatch.delenv()` |
+| `open()` / `Path.read_text()` in unit/integration tests | Use `MemoryWorkspace` |
+| `subprocess.run()` / `asyncio.create_subprocess_exec()` in unit/integration tests | Use `FakeAgentExecutor` + `FakeRun` |
+| `time.sleep(N)` with N > 0 in tests | Inject clock abstraction; use `asyncio.sleep(0)` for yields |
+| `if TYPE_CHECKING` or test-mode boolean parameters in production code | Use dependency injection |
+| Testing private attributes / internal state | Test through public APIs |
 | Asserting `.len()` without content | Add content assertions |
-| Test updates when implementation changes | Only update tests when behavior changes |
+| `# type: ignore` suppressions in tests | Fix the underlying type issue |
+| `@pytest.mark.skip` without a GitHub issue URL | Add URL; fix root cause within one sprint |
+| `unittest.mock.patch` on production internals | Inject the dependency instead |
 
 ---
 
 ## Observable vs. Internal State
 
-Ralph's public state fields (`PipelineState`, `AgentChainState`) are part of the observable contract — they are persisted in checkpoints and drive behavior. Testing them is testing observable behavior.
+Ralph's public Pydantic fields (`PipelineState`, `AgentChainState`) are part of the observable contract — they are persisted in checkpoints and drive behavior. Testing them is testing observable behavior.
 
-**Observable (test freely):** public fields, fields in checkpoint JSON, counters that enforce behavioral bounds, phase transitions.
-**Internal (do not test):** private fields, transient state not in checkpoints, buffer/cache sizes, implementation helpers.
+**Observable (test freely):** public Pydantic fields, fields in checkpoint JSON, counters that enforce behavioral bounds, phase transitions.
+
+**Internal (do not test):** private attributes (prefixed `_`), transient state not in checkpoints, internal buffer or cache sizes, implementation helpers.
 
 ---
 
@@ -376,43 +424,41 @@ A flaky test fails non-deterministically. Flaky tests must not remain in gating 
 
 ### Protocol
 
-1. **Fix** the root cause (inject clock/random seed, use TempDir isolation, apply env-injection).
+1. **Fix** the root cause (inject clock/random seed, use `tmp_path` isolation, apply env-injection via `monkeypatch`).
 2. **Quarantine** if the fix is non-trivial — open a GitHub issue first, then annotate:
 
-```rust
-#[test]
-#[ignore = "flaky: https://github.com/org/repo/issues/N — timing-sensitive signal delivery"]
-fn test_something_timing_sensitive() { ... }
+```python
+@pytest.mark.skip(reason="flaky: https://github.com/org/repo/issues/N — timing-sensitive signal delivery")
+def test_something_timing_sensitive() -> None: ...
 ```
 
 3. **Resolve** the quarantine issue within one sprint.
 
 **Rules:**
-- Every `#[ignore]` attribute must include a `https://` URL (enforced by `cargo xtask verify`).
-- A `#[ignore]` without a URL will fail the audit.
+- Every `@pytest.mark.skip` attribute must include a `https://` URL.
+- A skip without a URL will fail the `make verify` audit.
 - Do not let quarantined tests accumulate.
 
-**Common root causes:** `std::env::var` races → env-injection; real filesystem → `MemoryWorkspace`; real time → injectable clock; process-global singletons → dependency injection.
+**Common root causes:** `os.environ` races → `monkeypatch`; real filesystem → `MemoryWorkspace`; real time → injectable clock; `subprocess` in tests → `FakeAgentExecutor`.
 
 ---
 
 ## Compliance Verification
 
-Run `cargo xtask verify` before every PR.
+Run `make verify` before every PR.
 
 See `docs/agents/verification.md` for the complete pre-PR command list.
 
 If a test change, test run, or verification step exposes a pre-existing failure, flake, warning, stale fixture, or other existing repo issue, that issue becomes your top priority immediately. Fix it now rather than documenting or deferring it.
 
 **Key audit checks:**
-- No `cfg!(test)` in integration tests
-- No `TempDir` / `std::fs::*` in integration tests
-- No `std::process::Command` in integration tests
-- No `#[serial]` in integration tests or `src/` unit tests
-- No `std::env::set_var` / `remove_var` in integration tests
-- No `#[serial]` in `process_system_tests/`
-- No `git2::` imports in `process_system_tests/`
-- No `#[ignore]` without a `https://` issue URL
+- No `open()` / `Path.read_text()` in unit or integration tests (use `MemoryWorkspace`)
+- No `subprocess.run()` / `asyncio.create_subprocess_exec()` in unit or integration tests (use `FakeAgentExecutor`)
+- No `os.environ` direct mutation in tests (use `monkeypatch`)
+- No `time.sleep(N)` with N > 0 in tests
+- No `@pytest.mark.skip` without a `https://` issue URL
+- No `# type: ignore` suppressions in test files
+- No test-mode boolean parameters in production code
 
 ---
 
@@ -424,17 +470,18 @@ If a test change, test run, or verification step exposes a pre-existing failure,
 2. **Green** — implement the minimal production change to make the test pass.
 3. **Refactor** — clean up duplication and structure, keeping tests green.
 
-```rust
-// Step 1 (Red): write test first — it will not compile / will fail
-#[test]
-fn test_pipeline_rejects_empty_agent_chain() {
-    let state = PipelineState::initial_with_agents(vec![]);
-    let result = reduce(state, PipelineEvent::start());
-    assert_eq!(result.phase, PipelinePhase::Failure);
-}
+```python
+# Step 1 (Red): write test first — it will fail (ImportError or assertion)
+def test_pipeline_rejects_empty_agent_chain() -> None:
+    state = PipelineState(phase="planning", dev_chain=AgentChainState(agents=[]))
+    agents_policy, pipeline_policy, _ = load_default_policy()
 
-// Step 2 (Green): add the minimal production logic
-// Step 3 (Refactor): simplify / extract helpers
+    effect = determine_next_effect(state, pipeline_policy, agents_policy)
+
+    assert isinstance(effect, ExitFailureEffect)
+
+# Step 2 (Green): add the minimal production logic to make it pass
+# Step 3 (Refactor): simplify / extract helpers
 ```
 
 If a behavior is hard to test first, that is a design signal: simplify coupling, add a seam, or separate I/O from decision logic.
@@ -449,36 +496,31 @@ Tests are first-class architecture components. When a test is hard to write, sim
 
 | Layer | What lives here | How to test |
 |-------|----------------|-------------|
-| Pure reducers (`reducer/`) | All decision logic, phase transitions, counters | Unit-test with value-type inputs and outputs — no mocks needed |
-| Effect handlers (`app/`, `effects/`) | I/O, process spawning, filesystem writes | Integration-test with `MemoryWorkspace` + `MockProcessExecutor` |
-| OS / libgit2 | Real git operations | System-test only (serial binary) |
-
-When testing agent orchestration, seed the correct runtime `drain` in state fixtures. A populated agent chain alone is no longer enough to represent "already initialized" work, because planning, development, review, fix, commit, and analysis are distinct runtime consumers even when they share the same underlying chain definition.
-
-When testing config behavior, assert on resolved drain bindings or drain-addressed runtime effects rather than legacy role-shaped fallback tables. Legacy `[agent_chain]` tests are still useful, but only to prove they normalize into the same resolved built-in drains as the named schema.
-
-For checkpoint compatibility around agent execution state, include degraded or conflicting metadata cases in addition to round-trips: missing `current_role`, missing `current_drain`, and stale `current_role` that disagrees with the persisted drain should all restore deterministically with the drain as the authoritative runtime identity.
+| Pure orchestration (`pipeline/orchestrator.py`) | Phase routing, effect selection, all branching logic | Unit-test with Pydantic value inputs and effect outputs — no mocks needed |
+| Phase handlers (`phases/`) | Prompt materialization, workspace reads | Unit-test with `MemoryWorkspace`; assert on written paths |
+| Agent effects (`agents/`, `executor/`) | Subprocess launch, output streaming | Integration-test with `FakeAgentExecutor` + `FakeRun` |
+| Real OS / git | Actual git operations, worktree management | Git system tests only (`tmp_git_repo`) |
 
 ### Principles
 
-- **Separate decision from I/O.** Keep reducers pure; keep side effects in handlers.
-- **Depend on interfaces, not implementations.** Use `Workspace`, `ProcessExecutor`, and `AppEffectHandler` traits so collaborators can be replaced in tests.
-- **Keep boundaries explicit.** Each seam (`AppEffect` before repo root is known, `Effect` after) can be validated independently.
-- **Treat untestable code as a design defect.** If you must add a `cfg!(test)` branch, a skip flag, or a test-only boolean parameter, refactor the production code instead.
+- **Separate decision from I/O.** Keep orchestrator/reducer logic pure; keep side effects in phase handlers and executors.
+- **Depend on interfaces, not implementations.** Use `Workspace` protocol and executor ABC so collaborators can be replaced in tests.
+- **Keep boundaries explicit.** Each seam (effect types, workspace protocol) can be validated independently.
+- **Treat untestable code as a design defect.** If you must add a test-mode boolean parameter, a skip flag, or a `TYPE_CHECKING`-guarded branch in production code, refactor the production code instead.
 - **Use test failures as design feedback.** A test that requires elaborate setup usually means the unit under test has too many responsibilities.
-- **Prefer stable seams over framework internals.** Test through the typed interfaces (`Workspace`, `ProcessExecutor`, `AppEffectHandler`) that are stable across refactors. Never test through async runtime internals, serializer internals, or framework routing internals — those couple tests to implementation, not behavior.
+- **Prefer stable seams over implementation internals.** Test through the typed interfaces (`Workspace`, effect dataclasses, `PipelineEvent`) that are stable across refactors. Never reach into private attributes or mock internal methods — those couple tests to implementation, not behavior.
 
-```rust
-// ✅ Seam test — stable across internal refactors:
-let ws = MemoryWorkspace::new();
-let result = run_pipeline_phase(&ws, &config);
-assert_eq!(ws.files_written(), &["checkpoint.json"]);
+```python
+# ✅ Seam test — stable across internal refactors:
+ws = MemoryWorkspace()
+ws.write("PROMPT.md", "# Feature\n\nBuild the thing.")
+run_checkpoint_phase(ws, state)
+assert ws.exists(".agent/checkpoint.json")
 
-// ❌ Framework-coupled test — breaks on internal refactors:
-// (Do not assert on tokio task structure — it is not the contract)
-let handle = tokio::spawn(...);
-handle.await.unwrap();
-assert!(GLOBAL_SIDE_EFFECT_HAPPENED.load(Ordering::SeqCst));
+# ❌ Implementation-coupled test — breaks on internal refactors:
+with unittest.mock.patch("ralph.pipeline.checkpoint._write_json_internal") as m:
+    run_checkpoint_phase(ws, state)
+    m.assert_called_once()  # testing an internal function name, not the contract
 ```
 
 ---
@@ -489,19 +531,19 @@ A change is complete only when **all** of the following hold:
 
 - [ ] New behavior is covered by a test that was **red before** the production change.
 - [ ] Existing behavior regressions are prevented by focused, targeted tests.
-- [ ] All tests pass in **parallel mode** (no new `#[serial]` outside `system_tests`).
+- [ ] All tests pass in **parallel-safe mode** (no process-global state mutations outside `monkeypatch`).
 - [ ] No new flaky tests introduced; quarantined tests include issue URLs.
 - [ ] Test names describe observable behavior, not implementation details.
-- [ ] AAA structure is clear; setup does not exceed ~10 lines without a named helper.
-- [ ] Required refactors for testability are done; no `cfg!(test)`, skip flags, or test-mode booleans remain.
-- [ ] `cargo xtask verify` completes with no ERROR/WARNING diagnostics.
+- [ ] AAA structure is clear; setup does not exceed ~10 lines without a named fixture.
+- [ ] Required refactors for testability are done; no test-mode booleans, skip flags, or `open()` calls in unit/integration tests remain.
+- [ ] `make verify` completes with no ERROR/WARNING diagnostics.
 
 ---
 
 ## Documentation Quality
 
-- **Single source of truth:** all test strategy lives in `docs/agents/testing-guide.md`. Other files (`tests/INTEGRATION_TESTS.md`, `docs/agents/integration-tests.md`) are redirect stubs.
+- **Single source of truth:** all test strategy lives in `docs/agents/testing-guide.md`. Other files (`docs/agents/integration-tests.md`) are redirect stubs.
 - **Update docs in the same commit** as the behavior or architecture change.
 - **Keep examples runnable.** Remove stale patterns immediately when the production API changes.
 - **Prefer concise, decision-oriented wording.** Contributors should be able to find the rule they need in under a minute.
-- **Every `#[ignore]` requires an issue URL** (enforced by `cargo xtask verify`).
+- **Every `@pytest.mark.skip` requires an issue URL** (enforced by `make verify`).

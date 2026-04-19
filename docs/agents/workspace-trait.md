@@ -1,65 +1,112 @@
-# Workspace Trait (CRITICAL)
+# Workspace Protocol (CRITICAL)
 
-ALL filesystem operations MUST use the `Workspace` trait. Direct `std::fs::*` is FORBIDDEN.
+ALL filesystem operations MUST go through the `Workspace` protocol. Direct `open()`, `Path.read_text()`, `Path.write_text()`, or any other `pathlib`/`os` filesystem call is **FORBIDDEN** in production pipeline and phase code.
 
-If you need deeper architecture context (CLI `AppEffect` vs pipeline `Effect`, and where `std::fs` is allowed), see `docs/architecture/effect-system.md`.
+If you need deeper architecture context (how `FsWorkspace` wraps the real filesystem and where direct `pathlib` use is allowed at the CLI bootstrap layer), see the module docstring in `ralph/workspace/__init__.py`.
+
+## Forbidden vs. Required
 
 | FORBIDDEN | REQUIRED |
 |-----------|----------|
-| `std::fs::read_to_string(path)` | `workspace.read(path)` |
-| `std::fs::write(path, content)` | `workspace.write(path, content)` |
-| `std::fs::create_dir_all(path)` | `workspace.create_dir_all(path)` |
-| `std::fs::read_dir(path)` | `workspace.read_dir(path)` |
-| `path.exists()` | `workspace.exists(path)` |
-| `std::fs::remove_file(path)` | `workspace.remove(path)` |
+| `open(path).read()` | `workspace.read(path)` |
+| `Path(path).write_text(content)` | `workspace.write(path, content)` |
+| `Path(path).read_text()` | `workspace.read(path)` |
+| `Path(path).exists()` | `workspace.exists(path)` |
+| `os.listdir(path)` / `Path(path).iterdir()` | `workspace.list_dir(path)` |
+| `Path(path).mkdir(parents=True)` | `workspace.create_dir(path)` |
+| `Path(path).unlink()` | `workspace.remove(path)` |
+| `Path(path).is_file()` | `workspace.is_file(path)` |
+| `Path(path).is_dir()` | `workspace.is_dir(path)` |
 
-## Implementation
+## The Protocol
 
-```rust
-// Production code - accepts workspace via dependency injection
-fn my_function(workspace: &dyn Workspace) -> Result<()> {
-    let content = workspace.read(Path::new(".agent/config.toml"))?;
-    workspace.write(Path::new(".agent/output.txt"), "result")?;
-    Ok(())
-}
+`Workspace` is a Python `Protocol` defined in `ralph.workspace.protocol`. Production code accepts it via dependency injection; tests substitute `MemoryWorkspace`.
 
-// Tests - use MemoryWorkspace
-#[test]
-fn test_my_function() {
-    let workspace = MemoryWorkspace::new_test()
-        .with_file(".agent/config.toml", "key = value");
+```python
+from ralph.workspace import Workspace
 
-    my_function(&workspace).unwrap();
+def save_prompt_context(workspace: Workspace, content: str) -> None:
+    """Write rendered prompt to the standard location."""
+    workspace.write(".agent/prompt.md", content)
 
-    assert!(workspace.was_written(".agent/output.txt"));
-}
+def load_checkpoint_if_exists(workspace: Workspace) -> dict | None:
+    """Return checkpoint dict or None if no checkpoint exists."""
+    if not workspace.exists(".agent/checkpoint.json"):
+        return None
+    return json.loads(workspace.read(".agent/checkpoint.json"))
 ```
 
-## Exceptions
+## Implementations
 
-The ONLY acceptable uses of `std::fs` are:
+| Class | Import | Purpose |
+|-------|--------|---------|
+| `FsWorkspace` | `ralph.workspace.fs` | Production — wraps the real filesystem |
+| `MemoryWorkspace` | `ralph.workspace.memory` | Tests — all operations stored in a `dict` |
+| `WorkspaceScope` | `ralph.workspace.scope` | Scoped view — restricts access to a subtree |
 
-1. Inside `WorkspaceFs` implementation itself (the production `Workspace` impl)
-2. Bootstrap code that discovers the repo root before `Workspace` is created
+## Testing with MemoryWorkspace
+
+```python
+from ralph.workspace.memory import MemoryWorkspace
+
+def test_save_prompt_context_writes_to_correct_path() -> None:
+    # Arrange
+    ws = MemoryWorkspace()
+
+    # Act
+    save_prompt_context(ws, "# Feature\n\nBuild the thing.")
+
+    # Assert
+    assert ws.exists(".agent/prompt.md")
+    assert "Build the thing." in ws.read(".agent/prompt.md")
+
+
+def test_load_checkpoint_returns_none_when_missing() -> None:
+    ws = MemoryWorkspace()
+
+    result = load_checkpoint_if_exists(ws)
+
+    assert result is None
+
+
+def test_load_checkpoint_returns_parsed_json() -> None:
+    ws = MemoryWorkspace()
+    ws.write(".agent/checkpoint.json", '{"phase": "development", "iteration": 2}')
+
+    result = load_checkpoint_if_exists(ws)
+
+    assert result is not None
+    assert result["phase"] == "development"
+```
+
+Pre-populate the workspace with `ws.write(path, content)` in Arrange. Assert on observable state — file presence, content — not on internal `MemoryWorkspace` attributes.
+
+## Fixtures
+
+`conftest.py` provides a `memory_workspace` fixture pre-populated with a default `PROMPT.md`:
+
+```python
+@pytest.fixture
+def memory_workspace() -> MemoryWorkspace:
+    ws = MemoryWorkspace()
+    ws.write("PROMPT.md", "# Test Prompt\n\nThis is a test prompt.")
+    return ws
+```
+
+Use this fixture for tests that need a workspace with a valid prompt. Build your own `MemoryWorkspace()` inline for tests that control exact file contents.
 
 ## Documented Exceptions
 
-The following specific uses of `std::fs` are acceptable and do not need refactoring:
+The following specific uses of direct `pathlib`/`os` filesystem access are acceptable:
 
 | Location | Reason |
 |----------|--------|
-| `workspace.rs` (`WorkspaceFs`) | This IS the production filesystem implementation |
-| `app/effect_handler.rs` (`RealAppEffectHandler`) | This IS the production effect handler |
-| `config/path_resolver.rs` (`RealConfigEnvironment`) | Production config environment implementation |
-| `ralph-workflow/src/agents/opencode_api/cache.rs` (`RealCacheEnvironment`) | Production cache implementation |
-| `git_helpers/rebase.rs` | Operating on `.git/` directory internals |
-| `git_helpers/hooks.rs` | Bootstrap operation on `.git/hooks/` (see module docs) |
-| `files/protection/monitoring.rs` | Atomic file open for TOCTOU security |
-| `files/io/agent_files.rs` (CWD functions) | CLI plumbing commands before workspace available |
-| `checkpoint/file_state.rs` (CWD-relative impl functions) | CLI-layer code before workspace available |
-| `logger/output.rs` (legacy mode logging) | Legacy mode logging for CLI layer code before workspace available |
-| `config/unified.rs` (`load_from_path`) | Convenience method for config loading when ConfigEnvironment not available |
+| `ralph/workspace/fs.py` (`FsWorkspace`) | This IS the production filesystem implementation |
+| `ralph/cli/main.py` (root discovery) | Bootstrap code that locates the repo root before `Workspace` is constructed |
+| `ralph/config/loader.py` (TOML loading) | Config loading runs before the workspace is available |
+| `ralph/policy/loader.py` (policy loading) | Policy loading runs at startup before workspace is available |
+| `tests/` using `tmp_path` | Git system tests that require a real on-disk repository |
 
-All other production code MUST use the Workspace trait.
+All other production code MUST use the `Workspace` protocol.
 
-**When you see `std::fs` in production code outside these exceptions, it MUST be refactored to use `Workspace`.**
+**When you see `open()` or `Path(...).read_text()` in production code outside these exceptions, it MUST be refactored to use `Workspace`.**
