@@ -158,5 +158,17 @@ def test_run_fails_when_planner_does_not_submit_plan_artifact(
     result = runner_module.run(config, initial_state=state)
 
     assert result == 1
-    rendered = console_mock.print.call_args.args[0]
-    assert rendered.plain == "Pipeline failed: Agent chain exhausted in planning"
+    # The failure line is emitted via console.print before the final completion summary,
+    # so scan the call history rather than looking at just the last call.
+    rendered_plain_values: list[str] = []
+    for call in console_mock.print.call_args_list:
+        if not call.args:
+            continue
+        candidate = call.args[0]
+        plain = getattr(candidate, "plain", None)
+        if isinstance(plain, str):
+            rendered_plain_values.append(plain)
+    assert any(
+        "Pipeline failed: Agent chain exhausted in planning" in value
+        for value in rendered_plain_values
+    ), rendered_plain_values

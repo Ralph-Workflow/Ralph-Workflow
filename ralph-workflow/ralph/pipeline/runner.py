@@ -214,6 +214,28 @@ def _notify_dashboard_subscriber(
     dashboard_subscriber.notify(state)
 
 
+def _emit_final_summary(state: PipelineState, workspace_root: Path) -> None:
+    """Emit an end-of-run completion summary panel.
+
+    Called unconditionally after the pipeline loop exits (including via
+    exception) so the user sees a final summary of what Ralph did, what
+    was decided, and whether verification passed.
+    """
+    try:
+        from ralph.display.completion_summary import emit_completion_summary  # noqa: PLC0415
+        from ralph.display.snapshot import snapshot_from_state  # noqa: PLC0415
+
+        snapshot = snapshot_from_state(
+            state,
+            prompt_path=None,
+            prompt_preview=(),
+            run_id=None,
+        )
+        emit_completion_summary(console, snapshot, workspace_root=workspace_root)
+    except Exception:
+        logger.debug("Failed to emit completion summary", exc_info=True)
+
+
 def run(
     config: UnifiedConfig,
     initial_state: PipelineState | None = None,
@@ -247,81 +269,93 @@ def run(
     )
 
     active_display = _resolve_display(display)
-    with active_display:
-        try:
-            while state.phase not in (PHASE_COMPLETE, PHASE_FAILED):
-                effect = _call_determine_effect_from_policy(state, policy_bundle, workspace_scope)
-                inline_result = _handle_inline_effect(
-                    effect=effect,
-                    state=state,
-                    pipeline_policy=policy_bundle.pipeline,
-                    workspace_scope=workspace_scope,
-                    display=active_display,
-                    dashboard_subscriber=dashboard_subscriber,
-                )
-                if inline_result is not None:
-                    if isinstance(inline_result, int):
-                        return inline_result
-                    state = inline_result
-                    continue
-
-                if isinstance(effect, FanOutDevelopmentEffect):
-                    state = _execute_fan_out_sync(
+    exit_code = 0
+    try:
+        with active_display:
+            try:
+                while state.phase not in (PHASE_COMPLETE, PHASE_FAILED):
+                    effect = _call_determine_effect_from_policy(
+                        state, policy_bundle, workspace_scope
+                    )
+                    inline_result = _handle_inline_effect(
                         effect=effect,
                         state=state,
-                        display=active_display,
-                        policy_bundle=policy_bundle,
+                        pipeline_policy=policy_bundle.pipeline,
                         workspace_scope=workspace_scope,
+                        display=active_display,
                         dashboard_subscriber=dashboard_subscriber,
                     )
-                    continue
+                    if inline_result is not None:
+                        if isinstance(inline_result, int):
+                            return inline_result
+                        state = inline_result
+                        continue
 
-                workspace = FsWorkspace(
-                    workspace_scope.root,
-                    allowed_roots=workspace_scope.allowed_roots,
-                )
-                _materialize_agent_prompt_if_needed(
-                    effect,
-                    workspace,
-                    policy_bundle.pipeline,
-                    registry,
-                    workspace_scope,
-                )
+                    if isinstance(effect, FanOutDevelopmentEffect):
+                        state = _execute_fan_out_sync(
+                            effect=effect,
+                            state=state,
+                            display=active_display,
+                            policy_bundle=policy_bundle,
+                            workspace_scope=workspace_scope,
+                            dashboard_subscriber=dashboard_subscriber,
+                        )
+                        continue
 
-                event: Event = _execute_effect_with_optional_display(
-                    effect,
-                    config,
-                    workspace_scope,
-                    active_display,
-                )
-                if isinstance(effect, InvokeAgentEffect) and event == PipelineEvent.AGENT_SUCCESS:
-                    event = _phase_event_after_agent_run(
-                        effect=effect,
-                        config=config,
-                        policy_bundle=policy_bundle,
-                        workspace=workspace,
+                    workspace = FsWorkspace(
+                        workspace_scope.root,
+                        allowed_roots=workspace_scope.allowed_roots,
+                    )
+                    _materialize_agent_prompt_if_needed(
+                        effect,
+                        workspace,
+                        policy_bundle.pipeline,
+                        registry,
+                        workspace_scope,
                     )
 
-                state, _ = reducer_reduce(state, event, policy_bundle.pipeline)
-                _notify_dashboard_subscriber(dashboard_subscriber, state)
-                ckpt.save(state)
+                    event: Event = _execute_effect_with_optional_display(
+                        effect,
+                        config,
+                        workspace_scope,
+                        active_display,
+                    )
+                    if (
+                        isinstance(effect, InvokeAgentEffect)
+                        and event == PipelineEvent.AGENT_SUCCESS
+                    ):
+                        event = _phase_event_after_agent_run(
+                            effect=effect,
+                            config=config,
+                            policy_bundle=policy_bundle,
+                            workspace=workspace,
+                        )
 
-        except KeyboardInterrupt:
-            logger.warning("Interrupted by user; saving checkpoint.")
-            interrupted_state = state.copy_with(interrupted_by_user=True)
-            ckpt.save(interrupted_state)
-            return 130
+                    state, _ = reducer_reduce(state, event, policy_bundle.pipeline)
+                    _notify_dashboard_subscriber(dashboard_subscriber, state)
+                    ckpt.save(state)
 
-        if state.phase == PHASE_COMPLETE:
-            active_display.emit(None, "[green]Pipeline completed successfully.[/green]")
-            return 0
+            except KeyboardInterrupt:
+                logger.warning("Interrupted by user; saving checkpoint.")
+                interrupted_state = state.copy_with(interrupted_by_user=True)
+                ckpt.save(interrupted_state)
+                return 130
 
-        _emit_display_line(
-            active_display,
-            None,
-            _status_text("Pipeline failed", state.last_error or "Unknown error", "red"),
-        )
-        return 1
+            if state.phase == PHASE_COMPLETE:
+                active_display.emit(None, "[green]Pipeline completed successfully.[/green]")
+                exit_code = 0
+            else:
+                _emit_display_line(
+                    active_display,
+                    None,
+                    _status_text(
+                        "Pipeline failed", state.last_error or "Unknown error", "red"
+                    ),
+                )
+                exit_code = 1
+    finally:
+        _emit_final_summary(state, workspace_scope.root)
+    return exit_code
 
 
 def _show_phase_transition_with_context(previous_phase: str, state: PipelineState) -> None:

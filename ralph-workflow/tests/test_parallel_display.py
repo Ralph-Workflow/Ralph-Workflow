@@ -162,7 +162,11 @@ def test_parallel_display_start_stop_stubs_do_not_raise() -> None:
 
 
 def test_parallel_display_dashboard_mode_renders_emitted_output(monkeypatch) -> None:
-    console = Console(force_terminal=True, width=120, record=True)
+    # A taller console is needed now that the dashboard includes plan,
+    # analysis, and decision-log panels in addition to the worker activity
+    # region; without the extra rows the log_tail panel gets squeezed below
+    # its content row and no emitted line shows up in the captured output.
+    console = Console(force_terminal=True, width=120, height=50, record=True)
     pd = ParallelDisplay(console, {})
     renderables: list[RenderableType] = []
     original_update = Live.update
@@ -196,7 +200,7 @@ def test_parallel_display_dashboard_mode_renders_emitted_output(monkeypatch) -> 
     finally:
         pd.stop()
 
-    dashboard_console = Console(record=True, width=120, force_terminal=True)
+    dashboard_console = Console(record=True, width=120, height=50, force_terminal=True)
     for renderable in renderables:
         dashboard_console.print(renderable)
     rendered_text = dashboard_console.export_text()

@@ -40,9 +40,11 @@ REGIONS: tuple[str, ...] = (
     "header",
     "plan",
     "phase_tracker",
+    "analysis",
     "progress",
     "workers",
     "log_tail",
+    "decision_log",
     "results",
     "footer",
 )
@@ -70,9 +72,11 @@ DEFAULT_LAYOUT_GRID = LayoutSpec(
         ("header",        3,    None),
         ("plan",          3,    None),
         ("phase_tracker", 3,    None),
+        ("analysis",      3,    None),
         ("progress",      3,    None),
         ("worker_grid",   None, 1),
-        ("log_tail",      None, 2),
+        ("log_tail",      None, 3),
+        ("decision_log",  None, 1),
         ("results",       3,    None),
         ("footer",        1,    None),
     ),
@@ -84,9 +88,11 @@ DEFAULT_LAYOUT_LIST = LayoutSpec(
         ("header",        3,    None),
         ("plan",          3,    None),
         ("phase_tracker", 3,    None),
+        ("analysis",      3,    None),
         ("progress",      3,    None),
         ("worker_list",   None, 2),
-        ("log_tail",      None, 2),
+        ("log_tail",      None, 3),
+        ("decision_log",  None, 1),
         ("results",       3,    None),
         ("footer",        1,    None),
     ),
@@ -189,6 +195,7 @@ class LiveDashboard:
         "_live",
         "_panel_map",
         "_prev_sigwinch",
+        "_print_lock",
         "_refresh_per_second",
         "_render_thread",
         "_snapshot_queue",
@@ -216,6 +223,7 @@ class LiveDashboard:
         self._live: Live | None = None
         self._render_thread: _SnapshotRenderThread | None = None
         self._prev_sigwinch: _SignalHandler = None
+        self._print_lock = threading.Lock()
 
         # Validate default specs at construction (EA-8 extensibility safety net).
         for spec in (DEFAULT_LAYOUT_GRID, DEFAULT_LAYOUT_LIST):
@@ -263,6 +271,20 @@ class LiveDashboard:
 
     def update(self, snapshot: DashboardSnapshot) -> None:
         self._snapshot_queue.put_nowait(snapshot)
+
+    def print_above(self, renderable: RenderableType) -> None:
+        """Print a renderable above the live region.
+
+        Safe to call while the live session is running; serialized with the
+        render thread via an internal lock so output and layout updates do
+        not interleave.
+        """
+        with self._print_lock:
+            live = self._live
+            if live is not None:
+                live.console.print(renderable)
+            else:
+                self._console.print(renderable)
 
     def __enter__(self) -> LiveDashboard:
         live = Live(

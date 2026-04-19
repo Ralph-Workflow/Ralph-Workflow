@@ -13,10 +13,13 @@ from typing import TYPE_CHECKING, Literal, Protocol, cast
 
 from loguru import logger
 from rich.console import Console
+from rich.text import Text
 
 from ralph.display.activity_router import ActivityRouter
 from ralph.display.live_dashboard import LiveDashboard
 from ralph.display.mode import NARROW_THRESHOLD, detect_mode
+from ralph.display.panels.analysis import analysis_panel
+from ralph.display.panels.decision_log import decision_log_panel
 from ralph.display.panels.footer import footer_panel
 from ralph.display.panels.header import header_panel
 from ralph.display.panels.log_tail import make_log_tail_panel
@@ -26,6 +29,7 @@ from ralph.display.panels.progress import progress_panel
 from ralph.display.panels.results import results_panel
 from ralph.display.panels.worker_grid import worker_grid_panel
 from ralph.display.panels.worker_list import worker_list_panel
+from ralph.display.phase_banner import show_phase_transition
 from ralph.display.plain_renderer import PlainLogRenderer
 from ralph.display.render_thread import UpdateEvent
 from ralph.display.renderers.dashboard import DashboardState, render_dashboard
@@ -152,6 +156,13 @@ class _DashboardThreadCompat:
         return bool(self._thread.is_alive())
 
 
+def _strip_markup(line: str) -> str:
+    try:
+        return Text.from_markup(line).plain
+    except Exception:
+        return line
+
+
 class ParallelDisplay:
 
     __slots__ = (
@@ -228,6 +239,10 @@ class ParallelDisplay:
     def subscriber(self) -> DashboardSubscriber:
         return self._subscriber
 
+    @property
+    def activity_buffers(self) -> Mapping[str, object]:
+        return self._activity_router._buffers
+
     def start(self) -> None:
         if self._mode == "dashboard":
             live_console = _DashboardConsole(
@@ -241,10 +256,12 @@ class ParallelDisplay:
                     header_panel,
                     plan_panel,
                     phase_tracker_panel,
+                    analysis_panel,
                     progress_panel,
                     worker_grid_panel,
                     worker_list_panel,
                     make_log_tail_panel(self._activity_router._buffers),
+                    decision_log_panel,
                     results_panel,
                     footer_panel,
                 ),
@@ -278,7 +295,7 @@ class ParallelDisplay:
             )
         else:
             prefix = f"[{unit_id}] " if unit_id else ""
-            self._console.out(f"{prefix}{line}")
+            self._console.out(f"{prefix}{_strip_markup(line)}")
 
     def set_status(self, unit_id: str, status: WorkerStatus) -> None:
         if self._mode == "dashboard":
@@ -301,6 +318,56 @@ class ParallelDisplay:
             self._queue.put_nowait(UpdateEvent(unit_id=unit_id, kind="status", payload=str(status)))
         else:
             self._console.out(f"[{unit_id}] status={status}")
+
+    def emit_phase_transition(
+        self,
+        from_phase: str,
+        to_phase: str,
+        context: dict[str, object] | None = None,
+    ) -> None:
+        """Render a phase transition banner using the active rendering mode.
+
+        In dashboard mode, routes through the live dashboard's ``print_above``
+        so the banner appears cleanly above the live region. In lines mode,
+        prints directly. In both modes, records the transition into the
+        subscriber's decision log.
+        """
+        if self._mode == "dashboard" and self._live_dashboard is not None:
+            captured = Console(
+                file=self._console.file,
+                force_terminal=self._console.is_terminal,
+                width=self._console.width,
+                record=True,
+                soft_wrap=False,
+            )
+            show_phase_transition(from_phase, to_phase, context=context, console=captured)
+            # Use the captured text string as a single renderable so Rich Live
+            # can reflow it cleanly above the live region.
+            rendered = captured.export_text(clear=True, styles=True)
+            self._live_dashboard.print_above(Text.from_ansi(rendered).plain)
+        else:
+            show_phase_transition(
+                from_phase, to_phase, context=context, console=self._console
+            )
+        try:
+            self._subscriber.record_phase_transition(from_phase, to_phase)
+        except Exception:
+            logger.debug("Failed to record phase transition in subscriber", exc_info=True)
+
+    def emit_analysis_result(
+        self,
+        phase: str,
+        decision: str,
+        reason: str | None = None,
+    ) -> None:
+        """Publish an analysis decision to both dashboard state and lines output."""
+        if self._mode == "lines":
+            reason_part = f" — {reason}" if reason else ""
+            self._console.out(f"[analysis] {phase}: {decision}{reason_part}")
+        try:
+            self._subscriber.record_analysis(phase, decision, reason)
+        except Exception:
+            logger.debug("Failed to record analysis decision in subscriber", exc_info=True)
 
     def __enter__(self) -> ParallelDisplay:
         self.start()

@@ -110,7 +110,7 @@ class CLIOptions:
     reviewer_agent: str | None = None
     developer_model: str | None = None
     reviewer_model: str | None = None
-    verbosity: Verbosity = Verbosity.NORMAL
+    verbosity: Verbosity = Verbosity.VERBOSE
     quiet: bool = False
     debug: bool = False
     no_isolation: bool = False
@@ -200,6 +200,28 @@ def _config_path(config: str | None) -> RuntimePath | None:
     return RuntimePath(config)
 
 
+def _resolve_effective_verbosity(
+    verbosity: Verbosity,
+    *,
+    quiet: bool,
+    debug: bool,
+) -> Verbosity:
+    """Compute the verbosity to use for the run.
+
+    ``--quiet`` and ``--debug`` take precedence. Absent those, the default
+    is ``Verbosity.VERBOSE`` so Ralph is visibly active by default. The
+    legacy ``--verbosity normal`` input is mapped to VERBOSE to preserve
+    wrapper scripts that passed ``normal`` explicitly.
+    """
+    if quiet:
+        return Verbosity.QUIET
+    if debug:
+        return Verbosity.DEBUG
+    if verbosity == Verbosity.NORMAL:
+        return Verbosity.VERBOSE
+    return verbosity
+
+
 def main(  # noqa: PLR0913 - Typer CLI callbacks require many options
     ctx: typer.Context,
     config: Annotated[
@@ -263,9 +285,12 @@ def main(  # noqa: PLR0913 - Typer CLI callbacks require many options
         typer.Option(
             "--verbosity",
             "-v",
-            help="Output verbosity (quiet, normal, verbose, full, debug)",
+            help=(
+                "Output verbosity (quiet, normal, verbose, full, debug). "
+                "Default: verbose. Use --quiet to silence non-error output."
+            ),
         ),
-    ] = Verbosity.NORMAL,
+    ] = Verbosity.VERBOSE,
     quiet: Annotated[
         bool,
         typer.Option("--quiet", "-q", help="Suppress all output except errors"),
@@ -406,11 +431,7 @@ def main(  # noqa: PLR0913 - Typer CLI callbacks require many options
     if version:
         version_callback(version)
 
-    # Apply verbosity settings
-    if quiet:
-        verbosity = Verbosity.QUIET
-    if debug:
-        verbosity = Verbosity.DEBUG
+    verbosity = _resolve_effective_verbosity(verbosity, quiet=quiet, debug=debug)
 
     # Set up logging based on verbosity
     _configure_logging(verbosity)

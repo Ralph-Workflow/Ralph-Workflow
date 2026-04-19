@@ -1,0 +1,71 @@
+"""Integration tests for ParallelDisplay emit_* helpers and lines-mode parity."""
+
+from __future__ import annotations
+
+import io
+
+from rich.console import Console
+
+from ralph.display.parallel_display import ParallelDisplay, _strip_markup
+
+
+def test_strip_markup_removes_rich_tags() -> None:
+    assert _strip_markup("[green]ok[/green]") == "ok"
+    assert _strip_markup("plain text") == "plain text"
+
+
+def test_lines_mode_emit_strips_rich_markup() -> None:
+    buf = io.StringIO()
+    console = Console(file=buf, force_terminal=False, width=120, color_system=None)
+    pd = ParallelDisplay(console, {"CI": "1"}, mode="lines")
+    assert pd.mode == "lines"
+    pd.emit("unit-1", "[green]hello[/green]")
+    text = buf.getvalue()
+    assert "hello" in text
+    assert "[/green]" not in text
+    assert "[green]" not in text
+
+
+def test_emit_analysis_result_in_lines_mode_emits_structured_string() -> None:
+    buf = io.StringIO()
+    console = Console(file=buf, force_terminal=False, width=120, color_system=None)
+    pd = ParallelDisplay(console, {"CI": "1"}, mode="lines")
+    pd.emit_analysis_result(
+        "development_analysis", "proceed", "all tests pass"
+    )
+    text = buf.getvalue()
+    assert "[analysis]" in text
+    assert "development_analysis" in text
+    assert "proceed" in text
+    assert "all tests pass" in text
+
+
+def test_emit_analysis_result_updates_subscriber_state_in_dashboard_mode() -> None:
+    console = Console(file=io.StringIO(), force_terminal=True, width=120)
+    pd = ParallelDisplay(console, {}, mode="dashboard")
+    pd.emit_analysis_result("development_analysis", "proceed", "all good")
+    # subscriber state should reflect the analysis result
+    subscriber = pd.subscriber
+    log = subscriber.decision_log
+    assert any(
+        entry[1].lower() == "proceed" and "all good" in entry[2]
+        for entry in log
+    ), log
+
+
+def test_emit_phase_transition_records_into_decision_log() -> None:
+    console = Console(file=io.StringIO(), force_terminal=False, width=120, color_system=None)
+    pd = ParallelDisplay(console, {"CI": "1"}, mode="lines")
+    pd.emit_phase_transition("planning", "development")
+    log = pd.subscriber.decision_log
+    assert any(entry[0] == "planning" and "development" in entry[1] for entry in log), log
+
+
+def test_emit_phase_transition_writes_banner_in_lines_mode() -> None:
+    buf = io.StringIO()
+    console = Console(file=buf, force_terminal=False, width=120, color_system=None)
+    pd = ParallelDisplay(console, {"CI": "1"}, mode="lines")
+    pd.emit_phase_transition("planning", "development")
+    text = buf.getvalue()
+    assert "Planning" in text
+    assert "Development" in text
