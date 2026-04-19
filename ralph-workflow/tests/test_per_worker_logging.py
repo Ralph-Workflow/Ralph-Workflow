@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import ast
+import inspect
 from pathlib import Path
+from textwrap import dedent
 
 import pytest
 from loguru import logger
@@ -107,3 +110,20 @@ def test_default_run_id(tmp_path: Path) -> None:
 
     expected = log_dir / "default" / "workers" / "unit-unit-d.log"
     assert handle.log_path == expected
+
+
+def test_worker_filter_does_not_wrap_comparison_in_bool() -> None:
+    source = dedent(inspect.getsource(bind_worker_sink))
+    tree = ast.parse(source)
+    worker_filter = next(
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef) and node.name == "worker_filter"
+    )
+
+    assert not any(
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "bool"
+        for node in ast.walk(worker_filter)
+    )

@@ -3,11 +3,17 @@
 from __future__ import annotations
 
 import time
+from datetime import UTC, datetime, timedelta
 
 from rich.console import Console, RenderableType
 from rich.live import Live
 
-from ralph.display.parallel_display import NARROW_THRESHOLD, ParallelDisplay, detect_mode
+from ralph.display.parallel_display import (
+    NARROW_THRESHOLD,
+    ParallelDisplay,
+    _dashboard_renderable,
+    detect_mode,
+)
 from ralph.pipeline.worker_state import WorkerStatus
 
 
@@ -161,3 +167,32 @@ def test_parallel_display_dashboard_mode_renders_emitted_output(monkeypatch) -> 
     for renderable in renderables:
         dashboard_console.print(renderable)
     assert "some output line" in dashboard_console.export_text()
+
+
+def test_dashboard_renderable_uses_worker_elapsed_time() -> None:
+    started_at = datetime(2026, 4, 18, 12, 0, tzinfo=UTC)
+    finished_at = started_at + timedelta(seconds=3.5)
+    renderable = _dashboard_renderable(
+        {"unit-1": ["line-1"]},
+        worker_status={
+            "unit-1": {
+                "status": WorkerStatus.SUCCEEDED,
+                "started_at": started_at,
+                "finished_at": finished_at,
+            }
+        },
+    )
+
+    console = Console(record=True, width=120, force_terminal=True)
+    console.print(renderable)
+
+    assert "3.5" in console.export_text()
+
+
+def test_dashboard_renderable_reports_no_dropped_lines_for_single_source() -> None:
+    renderable = _dashboard_renderable({"unit-1": ["line-1", "line-2"]})
+
+    console = Console(record=True, width=120, force_terminal=True)
+    console.print(renderable)
+
+    assert "dropped:" not in console.export_text()

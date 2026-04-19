@@ -189,7 +189,7 @@ def bind_worker_sink(
     log_path = worker_log_dir / f"unit-{unit_id}.log"
 
     def worker_filter(record: Record) -> bool:
-        return bool(record["extra"].get("unit_id") == unit_id)  # type: ignore[misc]
+        return record["extra"].get("unit_id") == unit_id  # type: ignore[misc]
 
     sink_id = logger.add(log_path, filter=worker_filter, format="{time} {level} {message}")  # type: ignore[misc]
     return WorkerSinkHandle(sink_id=sink_id, log_path=log_path)

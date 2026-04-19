@@ -12,6 +12,7 @@ import os
 import queue
 import signal
 from collections.abc import Callable
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Literal, Protocol, cast
 
 from loguru import logger
@@ -28,7 +29,7 @@ if TYPE_CHECKING:
 
     from rich.console import RenderableType
 
-NARROW_THRESHOLD: int = 60
+from ralph.display.mode import NARROW_THRESHOLD, detect_mode
 
 type SignalHandler = Callable[[int, object], None] | int | None
 
@@ -66,9 +67,31 @@ def _coerce_worker_status(raw_status: object) -> WorkerStatus:
     return WorkerStatus.RUNNING
 
 
+def _now_utc() -> datetime:
+    return datetime.now(UTC)
 
-def _dashboard_renderable(state: dict[str, list[str] | str]) -> RenderableType:
+
+def _elapsed_seconds(runtime: Mapping[str, object] | None) -> float:
+    if runtime is None:
+        return 0.0
+
+    started_at = runtime.get("started_at")
+    if not isinstance(started_at, datetime):
+        return 0.0
+
+    finished_at = runtime.get("finished_at")
+    if isinstance(finished_at, datetime):
+        return (finished_at - started_at).total_seconds()
+
+    return (_now_utc() - started_at).total_seconds()
+
+
+def _dashboard_renderable(
+    state: dict[str, list[str] | str],
+    worker_status: Mapping[str, Mapping[str, object]] | None = None,
+) -> RenderableType:
     dashboard_state: dict[str, DashboardState] = {}
+    worker_status = {} if worker_status is None else worker_status
     unit_ids = {
         key.removesuffix(_STATUS_SUFFIX) if key.endswith(_STATUS_SUFFIX) else key
         for key in state
@@ -80,43 +103,20 @@ def _dashboard_renderable(state: dict[str, list[str] | str]) -> RenderableType:
         status = _coerce_worker_status(
             state.get(f"{unit_id}{_STATUS_SUFFIX}", WorkerStatus.RUNNING)
         )
+        runtime = worker_status.get(unit_id)
         dashboard_state[unit_id] = {
-            "unit_id": _UNATTRIBUTED_UNIT_ID if unit_id == "__unattributed__" else unit_id,
+            "unit_id": (
+                _UNATTRIBUTED_UNIT_ID if unit_id == "__unattributed__" else unit_id
+            ),
             "status": status,
-            "elapsed_s": 0.0,
+            "elapsed_s": _elapsed_seconds(runtime),
             "last_output": lines[-1] if lines else "",
-            "dropped": max(0, len(lines) - 1),
+            "dropped": 0,
+            # TODO(T15): wire RingBuffer.dropped_count once log_tail panel is the
+            # source of truth
         }
 
     return render_dashboard(dashboard_state)
-
-
-def detect_mode(
-    console: Console,
-    env: Mapping[str, str],
-) -> Literal["dashboard", "lines"]:
-    """Detect whether to use dashboard or lines display mode.
-
-    Returns "lines" when any of the following hold:
-    - env["CI"] is a non-empty truthy string
-    - "NO_COLOR" key is present in env (any value, including empty)
-    - env["TERM"] == "dumb"
-    - console.is_terminal is False
-    - console.width <= NARROW_THRESHOLD
-
-    Returns "dashboard" otherwise.
-    """
-    if env.get("CI"):
-        return "lines"
-    if "NO_COLOR" in env:
-        return "lines"
-    if env.get("TERM") == "dumb":
-        return "lines"
-    if not console.is_terminal:
-        return "lines"
-    if console.width <= NARROW_THRESHOLD:
-        return "lines"
-    return "dashboard"
 
 
 class ParallelDisplay:
@@ -132,19 +132,27 @@ class ParallelDisplay:
             os.environ when None.
     """
 
-    __slots__ = ("_console", "_mode", "_prev_sigwinch", "_queue", "_render_thread")
+    __slots__ = (
+        "_console",
+        "_mode",
+        "_prev_sigwinch",
+        "_queue",
+        "_render_thread",
+        "_worker_status",
+    )
 
     def __init__(
         self,
         console: Console,
         env: Mapping[str, str] | None = None,
     ) -> None:
-        resolved_env: Mapping[str, str] = os.environ if env is None else env
+        resolved_env = dict(os.environ if env is None else env)
         self._console = console
         self._mode: Literal["dashboard", "lines"] = detect_mode(console, resolved_env)
         self._queue: queue.Queue[UpdateEvent] = queue.Queue()
         self._render_thread: RenderThread | None = None
         self._prev_sigwinch: SignalHandler = None
+        self._worker_status: dict[str, dict[str, object]] = {}
 
     @property
     def mode(self) -> Literal["dashboard", "lines"]:
@@ -161,7 +169,7 @@ class ParallelDisplay:
             live = Live(console=live_console, auto_refresh=False)
             self._render_thread = RenderThread(
                 q=self._queue,
-                renderable_fn=_dashboard_renderable,
+                renderable_fn=lambda state: _dashboard_renderable(state, self._worker_status),
                 live=live,
             )
             self._render_thread.start()
@@ -186,6 +194,22 @@ class ParallelDisplay:
 
     def set_status(self, unit_id: str, status: WorkerStatus) -> None:
         if self._mode == "dashboard":
+            runtime = self._worker_status.setdefault(
+                unit_id,
+                {"status": status, "started_at": None, "finished_at": None},
+            )
+            now = _now_utc()
+            runtime["status"] = status
+            if status == WorkerStatus.RUNNING and runtime.get("started_at") is None:
+                runtime["started_at"] = now
+            elif status in {
+                WorkerStatus.SUCCEEDED,
+                WorkerStatus.FAILED,
+                WorkerStatus.CANCELLED,
+            }:
+                if runtime.get("started_at") is None:
+                    runtime["started_at"] = now
+                runtime["finished_at"] = now
             self._queue.put(UpdateEvent(unit_id=unit_id, kind="status", payload=str(status)))
         else:
             self._console.out(f"[{unit_id}] status={status}")

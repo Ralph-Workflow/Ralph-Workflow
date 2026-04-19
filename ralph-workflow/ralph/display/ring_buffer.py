@@ -32,10 +32,25 @@ class RingBuffer:
             self._buf.append(item)
 
     def drain(self) -> list[str]:
+        """Destructively return and clear buffered items."""
         with self._lock:
             items = list(self._buf)
             self._buf.clear()
             return items
+
+    def snapshot(self, n: int | None = None) -> list[str]:
+        """Return buffered items without clearing them.
+
+        `drain()` is destructive; `snapshot()` is the non-destructive, read-only
+        view for callers that need to inspect buffered output.
+        """
+        with self._lock:
+            items = list(self._buf)
+            if n is None:
+                return items
+            if n == 0:
+                return []
+            return items[-n:]
 
     @property
     def dropped_count(self) -> int:
