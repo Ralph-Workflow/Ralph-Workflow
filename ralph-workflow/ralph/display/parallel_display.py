@@ -285,14 +285,16 @@ class ParallelDisplay:
 
     def emit(self, unit_id: str | None, line: str) -> None:
         if self._mode == "dashboard":
-            # Legacy path: UpdateEvent queue keeps existing RenderThread
-            # rendering working for backward compatibility.
             self._queue.put_nowait(UpdateEvent(unit_id=unit_id, kind="output", payload=line))
-            # New path: ActivityRouter ring-buffer for structured log-tail panel.
             self._activity_router.push_raw_line(
                 unit_id if unit_id is not None else "__unattributed__",
                 line,
             )
+            if self._live_dashboard is not None:
+                plain = _strip_markup(line)
+                if plain.strip():
+                    prefix = f"[{unit_id}] " if unit_id else ""
+                    self._live_dashboard.print_above(f"{prefix}{plain}")
         else:
             prefix = f"[{unit_id}] " if unit_id else ""
             self._console.out(f"{prefix}{_strip_markup(line)}")

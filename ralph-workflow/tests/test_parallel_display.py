@@ -235,3 +235,28 @@ def test_dashboard_renderable_reports_no_dropped_lines_for_single_source() -> No
     console.print(renderable)
 
     assert "dropped:" not in console.export_text()
+
+
+def test_emit_in_dashboard_mode_routes_text_via_print_above() -> None:
+    console = Console(force_terminal=True, width=120)
+    pd = ParallelDisplay(console, {}, mode="dashboard")
+
+    print_above_calls: list[str] = []
+
+    class _MockLiveDashboard:
+        def print_above(self, renderable: object) -> None:
+            print_above_calls.append(str(renderable))
+
+    pd._live_dashboard = _MockLiveDashboard()  # type: ignore[assignment]
+
+    pd.emit("agent", "Planning analysis complete")
+
+    assert len(print_above_calls) == 1
+    assert "Planning analysis complete" in print_above_calls[0]
+
+
+def test_emit_in_dashboard_mode_no_live_dashboard_does_not_raise() -> None:
+    console = Console(force_terminal=True, width=120)
+    pd = ParallelDisplay(console, {}, mode="dashboard")
+    assert pd._live_dashboard is None
+    pd.emit("agent", "some line")

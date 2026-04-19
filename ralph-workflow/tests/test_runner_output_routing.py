@@ -272,7 +272,11 @@ def test_run_notifies_dashboard_subscriber_after_reduce(monkeypatch: pytest.Monk
     )
 
     assert result == 0
-    assert call_order == [("reduce", "complete"), ("notify", "complete")]
+    assert call_order == [
+        ("notify", "planning"),
+        ("reduce", "complete"),
+        ("notify", "complete"),
+    ]
 
 
 def test_handle_inline_effect_notifies_dashboard_subscriber_after_checkpoint_reduce() -> None:

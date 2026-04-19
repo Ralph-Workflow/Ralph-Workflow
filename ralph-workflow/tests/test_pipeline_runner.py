@@ -831,6 +831,43 @@ class TestPipelineRunnerLoop:
             policy_bundle.pipeline,
         )
 
+    def test_run_notifies_subscriber_with_initial_state_before_loop(
+        self, monkeypatch
+    ) -> None:
+        """run() must seed the subscriber with initial state before executing any effects.
+
+        Without this seed call, DashboardSubscriber._last_state is None during the first
+        long-running phase (e.g., planning). record_activity() calls during that phase
+        cannot build snapshots, leaving the dashboard stuck on 'Starting…' for the entire
+        phase duration. Seeding before the loop fixes the blank dashboard bug.
+        """
+        notify_calls: list[object] = []
+
+        class _RecordingSubscriber:
+            def notify(self, state: object) -> None:
+                notify_calls.append(state)
+
+        # Use a terminal initial state so the loop never runs — notify() must still
+        # be called unconditionally before the loop, not only inside it.
+        state = MagicMock()
+        state.phase = "failed"
+        state.last_error = "pre-failed for seed test"
+
+        monkeypatch.setattr(runner_module, "console", MagicMock())
+        monkeypatch.setattr(runner_module.ckpt, "save", MagicMock())
+
+        runner_module.run(
+            MagicMock(),
+            initial_state=state,
+            dashboard_subscriber=_RecordingSubscriber(),
+            verbosity=Verbosity.QUIET,
+        )
+
+        # notify() must have been called with the initial state before the loop ran
+        # (the loop never ran because phase=failed, so this proves pre-loop seeding).
+        assert len(notify_calls) >= 1, "subscriber was never seeded with initial state"
+        assert notify_calls[0] is state
+
 
 class TestExecuteAgentEffect:
     class AgentError(Exception):

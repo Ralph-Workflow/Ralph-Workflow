@@ -516,6 +516,7 @@ def run(  # noqa: PLR0912, PLR0915
     _prev_phase = state.phase
     try:
         with active_display:
+            _notify_dashboard_subscriber(dashboard_subscriber, state)
             try:
                 while state.phase not in (PHASE_COMPLETE, PHASE_FAILED):
                     effect = _call_determine_effect_from_policy(
