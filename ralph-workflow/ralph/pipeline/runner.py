@@ -726,10 +726,22 @@ def _agents_for_phase(
         phase_def = pipeline_policy.phases.get(phase)
         if phase_def is not None:
             binding = agents_policy.agent_drains.get(phase_def.drain)
-            if binding is not None:
-                chain = agents_policy.agent_chains.get(binding.chain)
-                if chain is not None:
-                    return list(chain.agents)
+            if binding is None:
+                msg = (
+                    f"Phase '{phase}' uses drain '{phase_def.drain}' but that drain has no "
+                    "explicit agent chain binding in agents.toml. "
+                    "Policy-driven runs must fail fast instead of falling back to legacy "
+                    "phase-name inference."
+                )
+                raise ValueError(msg)
+            chain = agents_policy.agent_chains.get(binding.chain)
+            if chain is None:
+                msg = (
+                    f"Drain '{phase_def.drain}' for phase '{phase}' references chain "
+                    f"'{binding.chain}' but that chain is not defined in agents.toml."
+                )
+                raise ValueError(msg)
+            return list(chain.agents)
 
     drains = config.agent_drains if isinstance(config.agent_drains, dict) else {}
     chains = config.agent_chains if isinstance(config.agent_chains, dict) else {}

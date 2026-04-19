@@ -153,6 +153,42 @@ class TestCreateInitialState:
 
         assert state.planning_chain.agents == ["claude"]
 
+    def test_policy_driven_initial_state_rejects_missing_drain_binding(self) -> None:
+        config = MagicMock()
+        config.general.developer_iters = DEVELOPER_ITERATIONS
+        config.general.reviewer_reviews = REVIEWER_PASSES
+        config.agent_chains = {"development_analysis": ["legacy-agent"]}
+        config.agent_drains = {"development_analysis": "development_analysis"}
+        agents_policy = AgentsPolicy(
+            agent_chains={"planner_chain": AgentChainConfig(agents=["claude"])},
+            agent_drains={"planning": AgentDrainConfig(chain="planner_chain")},
+        )
+        pipeline_policy = PipelinePolicy(
+            phases={
+                "planning": PhaseDefinition(
+                    drain="planning",
+                    transitions=PhaseTransition(on_success="development_analysis"),
+                ),
+                "development_analysis": PhaseDefinition(
+                    drain="development_analysis",
+                    transitions=PhaseTransition(on_success="complete"),
+                ),
+                "complete": PhaseDefinition(
+                    drain="complete",
+                    transitions=PhaseTransition(on_success="complete", on_loopback="complete"),
+                ),
+            },
+            entry_phase="planning",
+            terminal_phase="complete",
+        )
+
+        with pytest.raises(ValueError, match="development_analysis"):
+            runner_module._create_initial_state(
+                config,
+                agents_policy=agents_policy,
+                pipeline_policy=pipeline_policy,
+            )
+
     def test_creates_state_with_correct_development_budget(self) -> None:
         config = MagicMock()
         config.general.developer_iters = DEVELOPER_ITERATIONS
@@ -280,6 +316,56 @@ class TestDetermineEffect:
             state, bundle, WorkspaceScope("/tmp/worktree")
         )
         assert isinstance(effect, InvokeAgentEffect)
+        assert (
+            effect.agent_name
+            == bundle.agents.agent_chains[bundle.agents.agent_drains["review_analysis"].chain].agents[0]
+        )
+
+    def test_review_analysis_prefers_its_own_bound_chain_over_review_chain(self) -> None:
+        state = PipelineState(
+            phase="review_analysis",
+            rev_chain=AgentChainState(agents=["reviewer-agent"]),
+            review_analysis_chain=AgentChainState(agents=["analysis-agent"]),
+        )
+        bundle = PolicyBundle(
+            agents=AgentsPolicy(
+                agent_chains={
+                    "review_chain": AgentChainConfig(agents=["reviewer-agent"]),
+                    "analysis_chain": AgentChainConfig(agents=["analysis-agent"]),
+                },
+                agent_drains={
+                    "review": AgentDrainConfig(chain="review_chain"),
+                    "review_analysis": AgentDrainConfig(chain="analysis_chain"),
+                },
+            ),
+            pipeline=PipelinePolicy(
+                phases={
+                    "review_analysis": PhaseDefinition(
+                        drain="review_analysis",
+                        transitions=PhaseTransition(on_success="complete", on_loopback="fix"),
+                    ),
+                    "fix": PhaseDefinition(
+                        drain="review",
+                        transitions=PhaseTransition(on_success="complete"),
+                    ),
+                    "complete": PhaseDefinition(
+                        drain="complete",
+                        transitions=PhaseTransition(on_success="complete", on_loopback="complete"),
+                    ),
+                },
+                entry_phase="review_analysis",
+                terminal_phase="complete",
+            ),
+            artifacts=ArtifactsPolicy(artifacts={}),
+        )
+
+        effect = runner_module._determine_effect_from_policy(
+            state, bundle, WorkspaceScope("/tmp/worktree")
+        )
+
+        assert isinstance(effect, InvokeAgentEffect)
+        assert effect.agent_name == "analysis-agent"
+        assert effect.drain == "review_analysis"
 
     def test_fix_phase_uses_policy_binding(self) -> None:
         bundle = _load_default_policy_bundle()
