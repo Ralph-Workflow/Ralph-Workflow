@@ -118,6 +118,7 @@ class Capability(StrEnum):
     ENV_READ = "env.read"
     ENV_WRITE = "env.write"
     UPSTREAM_TOOL_USE = "upstream.tool_use"
+    WEB_SEARCH = "web.search"
 
 
 class McpCapability(StrEnum):
@@ -141,6 +142,7 @@ class McpCapability(StrEnum):
     PROCESS_EXEC_UNBOUNDED = "ProcessExecUnbounded"
     RUN_REPORT_PROGRESS = "RunReportProgress"
     UPSTREAM_TOOL_USE = "UpstreamToolUse"
+    WEB_SEARCH = "WebSearch"
 
 
 class PolicyOutcomeStatus(StrEnum):
@@ -176,6 +178,7 @@ MCP_TO_RALPH_CAPABILITY_MAP: dict[McpCapability, Capability] = {
     McpCapability.PROCESS_EXEC_UNBOUNDED: Capability.PROCESS_EXEC_UNBOUNDED,
     McpCapability.RUN_REPORT_PROGRESS: Capability.RUN_REPORT_PROGRESS,
     McpCapability.UPSTREAM_TOOL_USE: Capability.UPSTREAM_TOOL_USE,
+    McpCapability.WEB_SEARCH: Capability.WEB_SEARCH,
 }
 
 _RALPH_CAPABILITY_ALIASES: dict[str, Capability] = {
@@ -187,6 +190,8 @@ _RALPH_CAPABILITY_ALIASES: dict[str, Capability] = {
     "git.status_read": Capability.GIT_STATUS_READ,
     "git.diff.read": Capability.GIT_DIFF_READ,
     "git.diff_read": Capability.GIT_DIFF_READ,
+    "web.search": Capability.WEB_SEARCH,
+    "web_search": Capability.WEB_SEARCH,
 }
 
 _MCP_CAPABILITY_ALIASES: dict[str, McpCapability] = {
@@ -211,6 +216,8 @@ _MCP_CAPABILITY_ALIASES: dict[str, McpCapability] = {
     "file.write": McpCapability.FILE_WRITE,
     "upstream.tool_use": McpCapability.UPSTREAM_TOOL_USE,
     "upstream_tool_use": McpCapability.UPSTREAM_TOOL_USE,
+    "web.search": McpCapability.WEB_SEARCH,
+    "web_search": McpCapability.WEB_SEARCH,
 }
 
 _APPROVED_POLICY_VALUES = {"approved", "allow", "allowed"}
@@ -480,6 +487,7 @@ def check_mcp_capability_policy(
         McpCapability.PROCESS_EXEC_UNBOUNDED,
         McpCapability.RUN_REPORT_PROGRESS,
         McpCapability.UPSTREAM_TOOL_USE,
+        McpCapability.WEB_SEARCH,
     }:
         return evaluate_mapped_capability(normalized_capability, mapped_outcome)
     return AccessDecision.deny(

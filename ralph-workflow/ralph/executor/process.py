@@ -151,30 +151,33 @@ def run_process(
     cmd = _normalize_command(command, args)
 
     try:
-        completed = subprocess.run(
+        process = subprocess.Popen(
             cmd,
             cwd=_normalize_cwd(cwd),
             env=_build_env(env),
-            capture_output=True,
-            text=True,
-            check=False,
-            timeout=timeout,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
         )
-    except subprocess.TimeoutExpired as exc:
-        raise ProcessExecutionError.from_timeout(
-            cmd,
-            timeout=timeout,
-            stdout=_decode_output(exc.stdout),
-            stderr=_decode_output(exc.stderr),
-        ) from exc
     except OSError as exc:
         raise ProcessExecutionError.from_os_error(cmd, exc) from exc
 
+    try:
+        stdout_bytes, stderr_bytes = process.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        stdout_bytes, stderr_bytes = process.communicate()
+        raise ProcessExecutionError.from_timeout(
+            cmd,
+            timeout=timeout,
+            stdout=_decode_output(stdout_bytes),
+            stderr=_decode_output(stderr_bytes),
+        ) from None
+
     return ProcessResult(
         command=cmd,
-        returncode=completed.returncode,
-        stdout=completed.stdout,
-        stderr=completed.stderr,
+        returncode=process.returncode if process.returncode is not None else -1,
+        stdout=_decode_output(stdout_bytes),
+        stderr=_decode_output(stderr_bytes),
     )
 
 

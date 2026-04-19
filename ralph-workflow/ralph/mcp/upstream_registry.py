@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from loguru import logger
+
 from ralph.mcp.tool_names import upstream_proxy_tool_name
 from ralph.mcp.upstream_client import (
     HttpUpstreamClient,
@@ -60,7 +62,8 @@ class UpstreamRegistry:
             client = _factory(server)
             try:
                 tools = client.list_tools()
-            except UpstreamCallError:
+            except UpstreamCallError as exc:
+                logger.warning("Skipping upstream MCP server {}: {}", server.name, exc)
                 continue
 
             clients[server.name] = client

@@ -1,0 +1,51 @@
+# Bundled default MCP configuration for Ralph.
+#
+# This file ships inside the wheel as the built-in default.
+# Create `.agent/mcp.toml` (project-local) or `~/.config/ralph-workflow-mcp.toml`
+# (user-global) to override it.
+#
+# IMPORTANT:
+# - Keep this file secret-free.
+# - Prefer `api_key_env` over inline secrets.
+# - All example blocks below are commented out and fenced for safe auto-uncommenting.
+
+# @EXAMPLE-START
+# [mcp_servers.github]
+# transport = "stdio"
+# command = "npx"
+# args = ["-y", "@modelcontextprotocol/server-github"]
+#
+# [mcp_servers.github.env]
+# GITHUB_TOKEN = "$GITHUB_TOKEN"
+# @EXAMPLE-END
+
+# @EXAMPLE-START
+# [mcp_servers.docs]
+# transport = "http"
+# url = "https://mcp.example.com/docs"
+# @EXAMPLE-END
+
+# @EXAMPLE-START
+# [web_search]
+# enabled = true
+# backend = "ddgs"
+# fallback = ["searxng", "tavily", "brave", "exa"]
+# @EXAMPLE-END
+
+# @EXAMPLE-START
+# [web_search.backends.ddgs]
+# # ddgs is the default in-process backend.
+# # No configuration is required.
+# @EXAMPLE-END
+
+# @EXAMPLE-START
+# [web_search.backends.tavily]
+# # Prefer env vars; inline secrets here would be committed if uncommented.
+# api_key_env = "TAVILY_API_KEY"
+# # api_key = "DO_NOT_COMMIT_INLINE_SECRETS"
+# @EXAMPLE-END
+
+# @EXAMPLE-START
+# [web_search.backends.searxng]
+# url = "https://search.example.com"
+# @EXAMPLE-END

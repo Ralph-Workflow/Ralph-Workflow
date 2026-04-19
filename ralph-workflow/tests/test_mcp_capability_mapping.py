@@ -32,6 +32,7 @@ from ralph.mcp.capability_mapping import (
     lookup_ralph_capability,
     policy_from_outcome,
 )
+from ralph.prompts.template_variables import CapabilitySet
 
 # =============================================================================
 # Helper function tests
@@ -140,6 +141,9 @@ class TestCoerceCapability:
     def test_alias_lookup(self) -> None:
         assert _coerce_capability("process_exec_bounded") == Capability.PROCESS_EXEC_BOUNDED
 
+    def test_web_search_alias_lookup(self) -> None:
+        assert _coerce_capability("web_search") == Capability.WEB_SEARCH
+
     def test_unknown_raises(self) -> None:
         with pytest.raises(ValueError):
             _coerce_capability("unknown_capability")
@@ -154,6 +158,9 @@ class TestCoerceMcpCapability:
 
     def test_alias_with_dots(self) -> None:
         assert _coerce_mcp_capability("workspace.read") == McpCapability.WORKSPACE_READ
+
+    def test_web_search_lookup(self) -> None:
+        assert _coerce_mcp_capability("WebSearch") == McpCapability.WEB_SEARCH
 
     def test_unknown_raises(self) -> None:
         with pytest.raises(ValueError):
@@ -340,6 +347,10 @@ class TestLookupRalphCapability:
         result = lookup_ralph_capability("GitStatusRead")
         assert result == Capability.GIT_STATUS_READ
 
+    def test_web_search(self) -> None:
+        result = lookup_ralph_capability("WebSearch")
+        assert result == Capability.WEB_SEARCH
+
     def test_unknown_returns_none(self) -> None:
         result = lookup_ralph_capability("UnknownCapability")
         assert result is None
@@ -367,6 +378,13 @@ class TestEvaluateMappedCapability:
     def test_none_mapped_outcome(self) -> None:
         result = evaluate_mapped_capability("WorkspaceRead", None)
         assert result.is_allowed() is False
+
+    def test_web_search_allowed_capability(self) -> None:
+        result = evaluate_mapped_capability(
+            "WebSearch",
+            (Capability.WEB_SEARCH, {"status": "approved"}),
+        )
+        assert result.is_allowed() is True
 
 
 class TestCheckMcpCapabilityPolicy:
@@ -414,3 +432,34 @@ class TestCheckMcpCapabilityPolicy:
             None,
         )
         assert result.is_allowed() is False
+
+    def test_web_search_delegates_to_mapped_capability(self) -> None:
+        result = check_mcp_capability_policy(
+            "WebSearch",
+            {"status": "denied"},
+            {"status": "denied"},
+            (Capability.WEB_SEARCH, {"status": "approved"}),
+        )
+        assert result.is_allowed() is True
+
+
+class TestWebSearchCapabilitySupport:
+    @pytest.mark.parametrize(
+        "drain",
+        [
+            SessionDrain.PLANNING,
+            SessionDrain.DEVELOPMENT,
+            SessionDrain.DEVELOPMENT_ANALYSIS,
+            SessionDrain.DEVELOPMENT_COMMIT,
+            SessionDrain.REVIEW,
+            SessionDrain.REVIEW_ANALYSIS,
+            SessionDrain.FIX,
+            SessionDrain.REVIEW_COMMIT,
+        ],
+    )
+    def test_web_search_in_granted_drains(self, drain: SessionDrain) -> None:
+        assert CapabilitySet.defaults_for_drain(drain).contains(Capability.WEB_SEARCH)
+
+    @pytest.mark.parametrize("drain", [SessionDrain.ANALYSIS, SessionDrain.COMMIT])
+    def test_web_search_not_granted_to_other_drains(self, drain: SessionDrain) -> None:
+        assert not CapabilitySet.defaults_for_drain(drain).contains(Capability.WEB_SEARCH)

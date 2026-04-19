@@ -50,6 +50,13 @@ DEFAULT_CAPABILITIES: dict[SessionDrain, tuple[Capability, ...]] = {
         Capability.GIT_STATUS_READ,
         Capability.GIT_DIFF_READ,
         Capability.ARTIFACT_SUBMIT,
+        Capability.WEB_SEARCH,
+    ),
+    SessionDrain.DEVELOPMENT_ANALYSIS: (
+        Capability.WEB_SEARCH,
+    ),
+    SessionDrain.DEVELOPMENT_COMMIT: (
+        Capability.WEB_SEARCH,
     ),
     SessionDrain.ANALYSIS: (
         Capability.WORKSPACE_READ,
@@ -64,6 +71,10 @@ DEFAULT_CAPABILITIES: dict[SessionDrain, tuple[Capability, ...]] = {
         Capability.GIT_STATUS_READ,
         Capability.GIT_DIFF_READ,
         Capability.ARTIFACT_SUBMIT,
+        Capability.WEB_SEARCH,
+    ),
+    SessionDrain.REVIEW_ANALYSIS: (
+        Capability.WEB_SEARCH,
     ),
     SessionDrain.DEVELOPMENT: (
         Capability.WORKSPACE_READ,
@@ -75,6 +86,7 @@ DEFAULT_CAPABILITIES: dict[SessionDrain, tuple[Capability, ...]] = {
         Capability.ARTIFACT_SUBMIT,
         Capability.RUN_REPORT_PROGRESS,
         Capability.ENV_READ,
+        Capability.WEB_SEARCH,
     ),
     SessionDrain.FIX: (
         Capability.WORKSPACE_READ,
@@ -85,6 +97,10 @@ DEFAULT_CAPABILITIES: dict[SessionDrain, tuple[Capability, ...]] = {
         Capability.ARTIFACT_SUBMIT,
         Capability.RUN_REPORT_PROGRESS,
         Capability.ENV_READ,
+        Capability.WEB_SEARCH,
+    ),
+    SessionDrain.REVIEW_COMMIT: (
+        Capability.WEB_SEARCH,
     ),
     SessionDrain.COMMIT: (
         Capability.WORKSPACE_READ,
@@ -113,6 +129,7 @@ class PolicyFlag(StrEnum):
 DEFAULT_POLICY_FLAGS: dict[SessionDrain, tuple[PolicyFlag, ...]] = {
     SessionDrain.PLANNING: (PolicyFlag.NO_EDIT,),
     SessionDrain.ANALYSIS: (PolicyFlag.NO_EDIT,),
+    SessionDrain.DEVELOPMENT_ANALYSIS: (PolicyFlag.NO_EDIT,),
     SessionDrain.REVIEW: (PolicyFlag.NO_EDIT,),
     SessionDrain.DEVELOPMENT: (PolicyFlag.ALLOW_SHELL,),
     SessionDrain.FIX: (PolicyFlag.ALLOW_SHELL,),

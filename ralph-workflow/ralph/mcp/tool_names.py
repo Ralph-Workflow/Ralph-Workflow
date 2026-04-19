@@ -32,6 +32,7 @@ class RalphToolName(StrEnum):
     DECLARE_COMPLETE = "declare_complete"
     COORDINATE = "coordinate"
     READ_ENV = "read_env"
+    WEB_SEARCH = "web_search"
 
     def with_prefix(self, *, tool_name_prefix: str = "") -> str:
         return f"{tool_name_prefix}{self}" if tool_name_prefix else self.value
@@ -72,6 +73,7 @@ REPORT_PROGRESS_TOOL = RalphToolName.REPORT_PROGRESS
 DECLARE_COMPLETE_TOOL = RalphToolName.DECLARE_COMPLETE
 COORDINATE_TOOL = RalphToolName.COORDINATE
 READ_ENV_TOOL = RalphToolName.READ_ENV
+WEB_SEARCH_TOOL = RalphToolName.WEB_SEARCH
 
 WORKSPACE_READ_TOOLS: tuple[str, ...] = (
     READ_FILE_TOOL,
@@ -97,6 +99,7 @@ PLANNING_DRAFT_TOOLS: tuple[str, ...] = (
 )
 PROGRESS_TOOLS: tuple[str, ...] = (REPORT_PROGRESS_TOOL,)
 ENV_READ_TOOLS: tuple[str, ...] = (READ_ENV_TOOL,)
+WEB_SEARCH_TOOLS: tuple[str, ...] = (WEB_SEARCH_TOOL,)
 
 ALL_RALPH_TOOLS: tuple[str, ...] = (
     *WORKSPACE_READ_TOOLS,
@@ -108,6 +111,7 @@ ALL_RALPH_TOOLS: tuple[str, ...] = (
     *PLANNING_DRAFT_TOOLS,
     *PROGRESS_TOOLS,
     *ENV_READ_TOOLS,
+    *WEB_SEARCH_TOOLS,
 )
 
 # Authoritative source: https://opencode.ai/config.json schema PermissionConfig keys
