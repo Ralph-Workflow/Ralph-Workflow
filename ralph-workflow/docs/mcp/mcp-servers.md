@@ -92,6 +92,16 @@ RALPH_MCP_STRICT=0 ralph
 
 In soft mode, failed servers are skipped (a warning is logged per failure) and the pipeline continues with only the reachable subset.
 
+### Validating manually
+
+Use `ralph --check-mcp` to run the full startup validation + agent transport probe without starting the pipeline. The flag is a read-only pre-flight that exits `0` when every configured server passes (or when no `mcp.toml` is present) and `1` on any failure — the exact same logic the runner applies at phase 1:
+
+```
+ralph --check-mcp
+```
+
+`RALPH_MCP_STRICT=0` still relaxes the exit code to `0` while logging warnings per failure. When no custom MCP servers are configured, `--check-mcp` returns `0` immediately.
+
 ## Agent compatibility validation
 
 After every upstream MCP server passes validation, Ralph synthesizes the per-agent transport wiring it would emit for Claude, Codex, and OpenCode and re-runs the same MCP handshake against each backend. This guarantees that what Ralph hands to each agent's MCP client can actually reach the same server. If any agent transport probe fails in strict mode, Ralph exits with code 1 and identifies the (server, transport) pair that failed.
