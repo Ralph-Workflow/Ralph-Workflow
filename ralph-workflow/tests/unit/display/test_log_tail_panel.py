@@ -3,12 +3,16 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
+
 from rich.console import Console
-from rich.panel import Panel
 
 from ralph.display.panels.log_tail import make_log_tail_panel
 from ralph.display.ring_buffer import RingBuffer
 from ralph.display.snapshot import DashboardSnapshot, WorkerSnapshot
+
+if TYPE_CHECKING:
+    from rich.panel import Panel
 
 
 def _make_snapshot(

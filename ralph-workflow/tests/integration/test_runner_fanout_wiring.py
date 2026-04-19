@@ -205,3 +205,69 @@ def test_execute_fan_out_sync_requeues_running_workers_via_reducer_event(
 
     assert seen_events[0] == resumed_event
     assert result.worker_states["unit-a"].status == WorkerStatus.PENDING
+
+
+def test_execute_fan_out_sync_notifies_dashboard_subscriber_after_each_reduce(
+    monkeypatch, tmp_path
+) -> None:
+    unit = _make_work_unit("unit-a")
+    effect = FanOutDevelopmentEffect(work_units=(unit,), max_workers=1)
+    state = PipelineState(phase=PHASE_DEVELOPMENT, work_units=(unit,))
+    policy_bundle = _make_policy_bundle(max_workers=1)
+    workspace_scope = WorkspaceScope(tmp_path)
+    reduced_phases: list[str] = []
+    notified_phases: list[str] = []
+
+    class _Subscriber:
+        def notify(self, state: PipelineState) -> None:
+            notified_phases.append(state.phase)
+
+    class _FakeExecutor:
+        def __init__(self, command, signal_bridge=None) -> None:
+            del command, signal_bridge
+
+    class _FakeWorktreeManager:
+        def __init__(self, repo_root, git) -> None:
+            del repo_root, git
+
+    class _FakeMcpFactory:
+        def __init__(self, workspace) -> None:
+            del workspace
+
+    async def _fake_run_fan_out(**kwargs):
+        del kwargs
+        return [PipelineEvent.AGENT_SUCCESS]
+
+    async def _fake_integrate(**kwargs):
+        del kwargs
+        return SimpleNamespace(events=[PipelineEvent.ALL_WORKERS_COMPLETE])
+
+    def _recording_reduce(current_state, event, pipeline_policy=None):
+        del event, pipeline_policy
+        next_state = current_state.copy_with(phase=current_state.phase)
+        reduced_phases.append(next_state.phase)
+        return next_state, None
+
+    monkeypatch.setattr(
+        "ralph.interrupt.asyncio_bridge.install_signal_handlers", lambda *args: None
+    )
+    monkeypatch.setattr("ralph.agents.subprocess_executor.SubprocessAgentExecutor", _FakeExecutor)
+    monkeypatch.setattr("ralph.git.worktree_manager.WorktreeManager", _FakeWorktreeManager)
+    monkeypatch.setattr(
+        "ralph.mcp.server.factory_impl.DynamicBindingMcpServerFactory", _FakeMcpFactory
+    )
+    monkeypatch.setattr("ralph.pipeline.parallel.coordinator.run_fan_out", _fake_run_fan_out)
+    monkeypatch.setattr("ralph.pipeline.parallel.merge_integrator.integrate", _fake_integrate)
+    monkeypatch.setattr(runner_module, "reducer_reduce", _recording_reduce)
+    monkeypatch.setattr(runner_module.ckpt, "save", lambda _state: None)
+
+    runner_module._execute_fan_out_sync(
+        effect=effect,
+        state=state,
+        display=runner_module._LegacyConsoleDisplay(),
+        policy_bundle=policy_bundle,
+        workspace_scope=workspace_scope,
+        dashboard_subscriber=_Subscriber(),
+    )
+
+    assert notified_phases == reduced_phases

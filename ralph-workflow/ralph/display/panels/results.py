@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from rich.console import Group
 from rich.cells import cell_len
+from rich.console import Group
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
@@ -62,7 +62,8 @@ class ResultsPanel:
 
         if phase == "complete":
             border = theme.styles.get("theme.status.success", "")
-            content: list[Text | Table] = [Text.from_markup(f"{format_status('success')} Pipeline completed"), table]
+            completed_text = Text.from_markup(f"{format_status('success')} Pipeline completed")
+            content: list[Text | Table] = [completed_text, table]
 
             if snapshot.pr_url is not None:
                 pr_url = snapshot.pr_url

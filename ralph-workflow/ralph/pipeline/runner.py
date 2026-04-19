@@ -79,6 +79,10 @@ if TYPE_CHECKING:
     from ralph.policy.models import AgentsPolicy, PhaseDefinition, PipelinePolicy, PolicyBundle
 
 
+    class _DashboardSubscriber(Protocol):
+        def notify(self, state: PipelineState) -> None: ...
+
+
 class _InvokeAgentFn(Protocol):
     def __call__(
         self,
@@ -206,10 +210,20 @@ def _execute_effect_with_optional_display(
     return _execute_effect(effect, config, workspace_scope, display)
 
 
+def _notify_dashboard_subscriber(
+    dashboard_subscriber: _DashboardSubscriber | None,
+    state: PipelineState,
+) -> None:
+    if dashboard_subscriber is None:
+        return
+    dashboard_subscriber.notify(state)
+
+
 def run(
     config: UnifiedConfig,
     initial_state: PipelineState | None = None,
     display: ParallelDisplay | None = None,
+    dashboard_subscriber: _DashboardSubscriber | None = None,
 ) -> int:
     """Execute the pipeline event loop.
 
@@ -248,6 +262,7 @@ def run(
                     pipeline_policy=policy_bundle.pipeline,
                     workspace_scope=workspace_scope,
                     display=active_display,
+                    dashboard_subscriber=dashboard_subscriber,
                 )
                 if inline_result is not None:
                     if isinstance(inline_result, int):
@@ -262,6 +277,7 @@ def run(
                         display=active_display,
                         policy_bundle=policy_bundle,
                         workspace_scope=workspace_scope,
+                        dashboard_subscriber=dashboard_subscriber,
                     )
                     continue
 
@@ -292,6 +308,7 @@ def run(
                     )
 
                 state, _ = reducer_reduce(state, event, policy_bundle.pipeline)
+                _notify_dashboard_subscriber(dashboard_subscriber, state)
                 ckpt.save(state)
 
         except KeyboardInterrupt:
@@ -337,13 +354,14 @@ def _show_phase_transition_with_context(previous_phase: str, state: PipelineStat
     )
 
 
-def _execute_fan_out_sync(
+def _execute_fan_out_sync(  # noqa: PLR0913
     *,
     effect: FanOutDevelopmentEffect,
     state: PipelineState,
     display: ParallelDisplay | _LegacyConsoleDisplay,
     policy_bundle: PolicyBundle,
     workspace_scope: WorkspaceScope,
+    dashboard_subscriber: _DashboardSubscriber | None = None,
 ) -> PipelineState:
     """Execute fan-out development synchronously by wrapping asyncio.run()."""
     import asyncio  # noqa: PLC0415
@@ -393,6 +411,7 @@ def _execute_fan_out_sync(
         resumed_state, _ = reducer_reduce(
             state, PipelineEvent.WORKERS_RESUMED, policy_bundle.pipeline
         )
+        _notify_dashboard_subscriber(dashboard_subscriber, resumed_state)
         completed_ids = {
             uid
             for uid, ws in resumed_state.worker_states.items()
@@ -422,6 +441,7 @@ def _execute_fan_out_sync(
         current = resumed_state
         for ev in fan_out_events:
             current, _ = reducer_reduce(current, ev, policy_bundle.pipeline)
+            _notify_dashboard_subscriber(dashboard_subscriber, current)
         ckpt.save(current)
 
         merge_effect = MergeIntegrationEffect(
@@ -436,6 +456,7 @@ def _execute_fan_out_sync(
         )
         for ev in merge_result.events:
             current, _ = reducer_reduce(current, ev, policy_bundle.pipeline)
+            _notify_dashboard_subscriber(dashboard_subscriber, current)
         ckpt.save(current)
         return current
 
@@ -446,17 +467,19 @@ def _parallel_worker_command() -> tuple[str, ...]:
     return (sys.executable, "-m", "ralph")
 
 
-def _handle_inline_effect(
+def _handle_inline_effect(  # noqa: PLR0913
     *,
     effect: Effect,
     state: PipelineState,
     pipeline_policy: PipelinePolicy,
     workspace_scope: WorkspaceScope,
     display: ParallelDisplay | _LegacyConsoleDisplay | None = None,
+    dashboard_subscriber: _DashboardSubscriber | None = None,
 ) -> PipelineState | int | None:
     if isinstance(effect, SaveCheckpointEffect):
         ckpt.save(state)
         new_state, _ = reducer_reduce(state, PipelineEvent.CHECKPOINT_SAVED, pipeline_policy)
+        _notify_dashboard_subscriber(dashboard_subscriber, new_state)
         return new_state
 
     if isinstance(effect, PreparePromptEffect):
