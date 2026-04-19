@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import json
+import logging
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from typing import Literal, cast
 
 from ralph.mcp.tool_names import RALPH_MCP_SERVER_NAME
+
+logger = logging.getLogger(__name__)
 
 UPSTREAM_MCP_CONFIG_ENV = "RALPH_UPSTREAM_MCP_CONFIG"
 
@@ -95,7 +98,14 @@ def load_upstream_mcp_servers(raw: str | None) -> tuple[UpstreamMcpServer, ...]:
 
     if not raw:
         return ()
-    decoded: object = json.loads(raw)
+    try:
+        decoded: object = json.loads(raw)
+    except json.JSONDecodeError:
+        logger.warning(
+            "RALPH_UPSTREAM_MCP_CONFIG contains invalid JSON; "
+            "ignoring upstream servers."
+        )
+        return ()
     if not isinstance(decoded, list):
         return ()
 
