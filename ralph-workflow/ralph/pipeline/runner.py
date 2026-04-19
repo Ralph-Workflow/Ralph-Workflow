@@ -191,11 +191,6 @@ def _resolve_display(
 ) -> ParallelDisplay | _LegacyConsoleDisplay:
     if display is not None:
         return display
-    console_obj: object = console
-    if isinstance(console_obj, Console):
-        from ralph.display.parallel_display import ParallelDisplay  # noqa: PLC0415
-
-        return ParallelDisplay(console_obj)
     return _LegacyConsoleDisplay()
 
 
@@ -383,6 +378,12 @@ def _execute_fan_out_sync(  # noqa: PLR0913
     pd: _ParallelDisplay = (
         display if isinstance(display, _ParallelDisplay) else _ParallelDisplay(console)
     )
+    effective_dashboard_subscriber = dashboard_subscriber
+    if effective_dashboard_subscriber is None and hasattr(pd, "subscriber"):
+        effective_dashboard_subscriber = cast(
+            "_DashboardSubscriber | None",
+            getattr(pd, "subscriber", None),
+        )
 
     async def _run() -> PipelineState:
         loop = asyncio.get_running_loop()
@@ -411,7 +412,7 @@ def _execute_fan_out_sync(  # noqa: PLR0913
         resumed_state, _ = reducer_reduce(
             state, PipelineEvent.WORKERS_RESUMED, policy_bundle.pipeline
         )
-        _notify_dashboard_subscriber(dashboard_subscriber, resumed_state)
+        _notify_dashboard_subscriber(effective_dashboard_subscriber, resumed_state)
         completed_ids = {
             uid
             for uid, ws in resumed_state.worker_states.items()
@@ -441,7 +442,7 @@ def _execute_fan_out_sync(  # noqa: PLR0913
         current = resumed_state
         for ev in fan_out_events:
             current, _ = reducer_reduce(current, ev, policy_bundle.pipeline)
-            _notify_dashboard_subscriber(dashboard_subscriber, current)
+            _notify_dashboard_subscriber(effective_dashboard_subscriber, current)
         ckpt.save(current)
 
         merge_effect = MergeIntegrationEffect(
@@ -456,7 +457,7 @@ def _execute_fan_out_sync(  # noqa: PLR0913
         )
         for ev in merge_result.events:
             current, _ = reducer_reduce(current, ev, policy_bundle.pipeline)
-            _notify_dashboard_subscriber(dashboard_subscriber, current)
+            _notify_dashboard_subscriber(effective_dashboard_subscriber, current)
         ckpt.save(current)
         return current
 
@@ -490,6 +491,7 @@ def _handle_inline_effect(  # noqa: PLR0913
             current_drain=effect.drain or resolve_phase_drain(effect.phase, pipeline_policy),
         )
         ckpt.save(updated_state)
+        _notify_dashboard_subscriber(dashboard_subscriber, updated_state)
         return updated_state
 
     if isinstance(effect, ExitSuccessEffect):

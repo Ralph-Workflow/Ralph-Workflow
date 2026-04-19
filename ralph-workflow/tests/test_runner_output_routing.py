@@ -292,3 +292,36 @@ def test_handle_inline_effect_notifies_dashboard_subscriber_after_checkpoint_red
 
     assert isinstance(new_state, PipelineState)
     assert notified_phases == [new_state.phase]
+
+
+def test_handle_inline_effect_notifies_dashboard_subscriber_after_prepare_prompt() -> None:
+    state = PipelineState(phase="planning")
+    notified_phases: list[str] = []
+
+    class _Subscriber:
+        def notify(self, state: PipelineState) -> None:
+            notified_phases.append(state.phase)
+
+    effect = runner_module.PreparePromptEffect(
+        phase="planning",
+        iteration=0,
+        drain="planning",
+    )
+
+    with pytest.MonkeyPatch.context() as monkeypatch:
+        monkeypatch.setattr(
+            runner_module,
+            "_materialize_prepared_prompt",
+            lambda *_args, **_kwargs: None,
+        )
+        monkeypatch.setattr(runner_module.ckpt, "save", lambda _state: None)
+        new_state = runner_module._handle_inline_effect(
+            effect=effect,
+            state=state,
+            pipeline_policy=MagicMock(),
+            workspace_scope=WorkspaceScope(Path.cwd()),
+            dashboard_subscriber=_Subscriber(),
+        )
+
+    assert isinstance(new_state, PipelineState)
+    assert notified_phases == [new_state.phase]

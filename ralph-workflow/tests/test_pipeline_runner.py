@@ -90,6 +90,12 @@ def _stub_workspace_scope_and_policy(monkeypatch: MonkeyPatch, tmp_path: Path) -
     )
 
 
+def test_resolve_display_defaults_to_legacy_console_display() -> None:
+    display = runner_module._resolve_display(None)
+
+    assert isinstance(display, runner_module._LegacyConsoleDisplay)
+
+
 class TestCreateInitialState:
     def test_creates_state_with_planning_phase(self) -> None:
         config = MagicMock()
