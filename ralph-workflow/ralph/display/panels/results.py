@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from rich.console import Group
 from rich.cells import cell_len
 from rich.panel import Panel
 from rich.table import Table
@@ -51,7 +52,7 @@ class ResultsPanel:
             )
 
         table = Table(show_header=True, header_style="bold", box=None)
-        table.add_column("Metric", style="theme.text.emphasis")
+        table.add_column("Metric", style=theme.styles.get("theme.text.emphasis", ""))
         table.add_column("Value", justify="right")
         table.add_row("agent_calls", str(snapshot.total_agent_calls))
         table.add_row("continuations", str(snapshot.total_continuations))
@@ -60,17 +61,15 @@ class ResultsPanel:
         table.add_row("push_count", str(snapshot.push_count))
 
         if phase == "complete":
-            lines = [f"{format_status('success')} Pipeline completed", "", table]
             border = theme.styles.get("theme.status.success", "")
+            content: list[Text | Table] = [Text.from_markup(f"{format_status('success')} Pipeline completed"), table]
 
             if snapshot.pr_url is not None:
                 pr_url = snapshot.pr_url
                 truncated_url = _truncate(pr_url, 60)
-                lines.append("")
-                lines.append(f"[link={pr_url}]{truncated_url}[/link]")
+                content.append(Text.from_markup(f"[link={pr_url}]{truncated_url}[/link]"))
 
-            content = Text("\n".join(str(line) for line in lines))
-            return Panel(content, title="Results", border_style=border)
+            return Panel(Group(*content), title="Results", border_style=border)
 
         elif phase == "failed":
             if snapshot.last_error is not None:
