@@ -111,7 +111,7 @@ class CLIOptions:
     reviewer_agent: str | None = None
     developer_model: str | None = None
     reviewer_model: str | None = None
-    verbosity: Verbosity = Verbosity.NORMAL
+    verbosity: Verbosity = Verbosity.VERBOSE
     quiet: bool = False
     debug: bool = False
     no_isolation: bool = False
@@ -202,7 +202,29 @@ def _config_path(config: str | None) -> RuntimePath | None:
     return RuntimePath(config)
 
 
-def main(  # noqa: PLR0912, PLR0913 - Typer CLI callbacks require many options and branches
+def _resolve_effective_verbosity(
+    verbosity: Verbosity,
+    *,
+    quiet: bool,
+    debug: bool,
+) -> Verbosity:
+    """Compute the verbosity to use for the run.
+
+    ``--quiet`` and ``--debug`` take precedence. Absent those, the default
+    is ``Verbosity.VERBOSE`` so Ralph is visibly active by default. The
+    legacy ``--verbosity normal`` input is mapped to VERBOSE to preserve
+    wrapper scripts that passed ``normal`` explicitly.
+    """
+    if quiet:
+        return Verbosity.QUIET
+    if debug:
+        return Verbosity.DEBUG
+    if verbosity == Verbosity.NORMAL:
+        return Verbosity.VERBOSE
+    return verbosity
+
+
+def main(  # noqa: PLR0913 - Typer CLI callbacks require many options and branches
     ctx: typer.Context,
     config: Annotated[
         str | None,
@@ -265,9 +287,12 @@ def main(  # noqa: PLR0912, PLR0913 - Typer CLI callbacks require many options a
         typer.Option(
             "--verbosity",
             "-v",
-            help="Output verbosity (quiet, normal, verbose, full, debug)",
+            help=(
+                "Output verbosity (quiet, normal, verbose, full, debug). "
+                "Default: verbose. Use --quiet to silence non-error output."
+            ),
         ),
-    ] = Verbosity.NORMAL,
+    ] = Verbosity.VERBOSE,
     quiet: Annotated[
         bool,
         typer.Option("--quiet", "-q", help="Suppress all output except errors"),
@@ -415,11 +440,7 @@ def main(  # noqa: PLR0912, PLR0913 - Typer CLI callbacks require many options a
     if version:
         version_callback(version)
 
-    # Apply verbosity settings
-    if quiet:
-        verbosity = Verbosity.QUIET
-    if debug:
-        verbosity = Verbosity.DEBUG
+    verbosity = _resolve_effective_verbosity(verbosity, quiet=quiet, debug=debug)
 
     # Set up logging based on verbosity
     _configure_logging(verbosity)
@@ -492,7 +513,7 @@ def main(  # noqa: PLR0912, PLR0913 - Typer CLI callbacks require many options a
         return
 
     # Run the main pipeline
-    exit_code = _run_pipeline(config, cli_overrides, dry_run, resume, no_resume)
+    exit_code = _run_pipeline(config, cli_overrides, dry_run, resume, no_resume, verbosity)
     raise typer.Exit(code=exit_code)
 
 
@@ -625,12 +646,13 @@ def _handle_commit_plumbing(
     return 0
 
 
-def _run_pipeline(
+def _run_pipeline(  # noqa: PLR0913
     config: str | None,
     cli_overrides: dict[str, object],
     dry_run: bool,
     resume: bool,
     no_resume: bool,
+    verbosity: Verbosity = Verbosity.VERBOSE,
 ) -> int:
     """Run the main pipeline.
 
@@ -650,6 +672,7 @@ def _run_pipeline(
             cli_overrides=cli_overrides,
             dry_run=dry_run,
             resume=resume and not no_resume,
+            verbosity=verbosity,
         )
         return exit_code
     except KeyboardInterrupt:

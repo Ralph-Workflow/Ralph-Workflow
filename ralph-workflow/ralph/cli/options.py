@@ -39,7 +39,11 @@ _VERBOSITY_LEVELS = (
 
 # Verbosity option with custom handling
 class VerbosityOption(click.Option):
-    """Custom option for verbosity that accepts both numeric and string values."""
+    """Custom option for verbosity that accepts both numeric and string values.
+
+    The default fallback is ``Verbosity.VERBOSE``: Ralph is verbose by default
+    because the output is the product. ``--quiet`` is the explicit opt-out.
+    """
 
     def __init__(self, *args: object, **kwargs: object) -> None:
         """Initialize verbosity option."""
@@ -56,7 +60,7 @@ class VerbosityOption(click.Option):
             Processed Verbosity enum value.
         """
         if value is None:
-            return Verbosity.NORMAL
+            return Verbosity.VERBOSE
 
         if isinstance(value, Verbosity):
             return value
@@ -70,7 +74,7 @@ class VerbosityOption(click.Option):
             if verbosity is not None:
                 return verbosity
 
-        return Verbosity.NORMAL
+        return Verbosity.VERBOSE
 
     def _string_to_verbosity(self, value: str) -> Verbosity | None:
         """Convert string value to Verbosity enum.
@@ -107,12 +111,16 @@ class VerbosityOption(click.Option):
 
 # Custom option classes for better help display
 def verbose_option(func: _AnyCallable) -> _AnyCallable:
-    """Add verbose option decorator."""
+    """Add verbose option decorator.
+
+    Verbose output is on by default; -v can still be passed explicitly.
+    -vv selects FULL and -vvv selects DEBUG for extra detail.
+    """
     return click.option(
         "--verbose",
         "-v",
         count=True,
-        help="Increase verbosity (-v, -vv, -vvv)",
+        help="Increase verbosity above the default (verbose). -vv=full, -vvv=debug.",
     )(func)
 
 
@@ -122,7 +130,7 @@ def quiet_option(func: _AnyCallable) -> _AnyCallable:
         "--quiet",
         "-q",
         is_flag=True,
-        help="Suppress all output except errors",
+        help="Suppress all output except errors (opt out of verbose default)",
     )(func)
 
 

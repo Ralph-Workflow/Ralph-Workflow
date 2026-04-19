@@ -3,6 +3,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
+from ralph.config.enums import Verbosity
 from ralph.pipeline import runner as runner_module
 from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.state import AgentChainState, PipelineState
@@ -89,8 +90,8 @@ def test_run_completes_in_serial_mode_without_fan_out(
 
     monkeypatch.setattr(runner_module.ckpt, "save", _save_state)
 
-    def _fake_execute_effect(effect, config, workspace_scope, display):
-        del config, workspace_scope, display
+    def _fake_execute_effect(effect, config, workspace_scope, display, *, verbosity=None):
+        del config, workspace_scope, display, verbosity
         handled_phases.append(effect.phase)
         return PipelineEvent.AGENT_SUCCESS
 
@@ -105,7 +106,11 @@ def test_run_completes_in_serial_mode_without_fan_out(
         lambda **kwargs: (_ for _ in ()).throw(AssertionError("fan-out should not run")),
     )
 
-    exit_code = runner_module.run(config=MagicMock(), initial_state=initial_state)
+    exit_code = runner_module.run(
+        config=MagicMock(),
+        initial_state=initial_state,
+        verbosity=Verbosity.QUIET,
+    )
 
     assert exit_code == 0
     assert handled_phases == ["planning", "development"]

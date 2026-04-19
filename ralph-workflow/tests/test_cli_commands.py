@@ -1532,12 +1532,13 @@ def test_init_command_default_template(
 def test_verbosity_option_processes_values() -> None:
     ctx = click.Context(click.Command("test"))
     option = options_module.VerbosityOption(param_decls=["--verbosity"])
-    assert option.process_value(ctx, None) == Verbosity.NORMAL
+    # Default (None) now maps to VERBOSE: Ralph is verbose by default.
+    assert option.process_value(ctx, None) == Verbosity.VERBOSE
     assert option.process_value(ctx, Verbosity.FULL) == Verbosity.FULL
     assert option.process_value(ctx, "debug") == Verbosity.DEBUG
     assert option.process_value(ctx, "3") == Verbosity.FULL
     assert option.process_value(ctx, "20") == Verbosity.DEBUG
-    assert option.process_value(ctx, "nonsense") == Verbosity.NORMAL
+    assert option.process_value(ctx, "nonsense") == Verbosity.VERBOSE
 
 
 def test_display_tables_render() -> None:

@@ -337,7 +337,12 @@ def test_run_pipeline_success(monkeypatch: pytest.MonkeyPatch) -> None:
     recorded: dict[str, object] = {}
 
     def fake_run_pipeline(
-        *, config_path: Path | None, cli_overrides: dict[str, object], dry_run: bool, resume: bool
+        *,
+        config_path: Path | None,
+        cli_overrides: dict[str, object],
+        dry_run: bool,
+        resume: bool,
+        verbosity: object = None,
     ) -> int:  # type: ignore[override]
         recorded["config_path"] = config_path
         recorded["cli_overrides"] = cli_overrides

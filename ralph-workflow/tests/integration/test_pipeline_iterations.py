@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
+from ralph.config.enums import Verbosity
 from ralph.config.models import GeneralConfig, UnifiedConfig
 from ralph.pipeline import runner
 from ralph.pipeline.checkpoint import load as ckpt_load
@@ -96,7 +97,7 @@ def _run_pipeline(
     monkeypatch.setattr(runner.ckpt, "save", capture_saved_state)
     monkeypatch.setattr(runner, "console", MagicMock())
 
-    result = runner.run(config, initial_state=initial_state)
+    result = runner.run(config, initial_state=initial_state, verbosity=Verbosity.QUIET)
     return result, saved_states
 
 

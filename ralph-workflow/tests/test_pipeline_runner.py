@@ -15,7 +15,7 @@ from rich.console import Console
 from rich.text import Text
 
 from ralph.agents.parsers import AgentOutputLine, ClaudeParser
-from ralph.config.enums import AgentTransport, JsonParserType
+from ralph.config.enums import AgentTransport, JsonParserType, Verbosity
 from ralph.config.models import AgentConfig
 from ralph.mcp.capability_mapping import SessionDrain
 from ralph.mcp.tool_names import claude_tool_name_prefix
@@ -585,7 +585,7 @@ class TestPipelineRunnerLoop:
         monkeypatch.setattr(runner_module.ckpt, "save", ckpt_save)
         monkeypatch.setattr(runner_module, "console", console_mock)
 
-        result = runner_module.run(MagicMock(), initial_state=state)
+        result = runner_module.run(MagicMock(), initial_state=state, verbosity=Verbosity.QUIET)
 
         assert result == 0
         ckpt_save.assert_called_once_with(state)
@@ -609,7 +609,7 @@ class TestPipelineRunnerLoop:
         monkeypatch.setattr(runner_module, "console", console_mock)
         monkeypatch.setattr(runner_module.ckpt, "save", MagicMock())
 
-        result = runner_module.run(MagicMock(), initial_state=state)
+        result = runner_module.run(MagicMock(), initial_state=state, verbosity=Verbosity.QUIET)
 
         assert result == 1
         # Find the Text object with the failure message among all print calls
@@ -633,7 +633,7 @@ class TestPipelineRunnerLoop:
         monkeypatch.setattr(runner_module, "_determine_effect_from_policy", raise_interrupt)
         monkeypatch.setattr(runner_module.ckpt, "save", ckpt_save)
 
-        result = runner_module.run(MagicMock(), initial_state=state)
+        result = runner_module.run(MagicMock(), initial_state=state, verbosity=Verbosity.QUIET)
 
         assert result == INTERRUPT_EXIT_CODE
         state.copy_with.assert_called_once_with(interrupted_by_user=True)
@@ -653,7 +653,7 @@ class TestPipelineRunnerLoop:
         monkeypatch.setattr(runner_module, "console", console_mock)
         monkeypatch.setattr(runner_module.ckpt, "save", MagicMock())
 
-        result = runner_module.run(MagicMock(), initial_state=state)
+        result = runner_module.run(MagicMock(), initial_state=state, verbosity=Verbosity.QUIET)
 
         assert result == 1
         rendered_texts = [
@@ -692,7 +692,7 @@ class TestPipelineRunnerLoop:
         monkeypatch.setattr(runner_module.ckpt, "save", ckpt_save)
         monkeypatch.setattr(runner_module, "console", console_mock)
 
-        result = runner_module.run(MagicMock(), initial_state=state)
+        result = runner_module.run(MagicMock(), initial_state=state, verbosity=Verbosity.QUIET)
 
         assert result == 0
         state.copy_with.assert_called_once_with(
@@ -734,7 +734,7 @@ class TestPipelineRunnerLoop:
         monkeypatch.setattr(runner_module.ckpt, "save", ckpt_save)
         monkeypatch.setattr(runner_module, "console", console_mock)
 
-        result = runner_module.run(MagicMock(), initial_state=state)
+        result = runner_module.run(MagicMock(), initial_state=state, verbosity=Verbosity.QUIET)
 
         assert result == 0
         materialize.assert_called_once()
@@ -773,7 +773,7 @@ class TestPipelineRunnerLoop:
         monkeypatch.setattr(runner_module.ckpt, "save", ckpt_save)
         monkeypatch.setattr(runner_module, "console", console_mock)
 
-        result = runner_module.run(MagicMock(), initial_state=state)
+        result = runner_module.run(MagicMock(), initial_state=state, verbosity=Verbosity.QUIET)
 
         assert result == 0
         reducer.assert_called_once_with(state, PipelineEvent.AGENT_SUCCESS, policy_bundle.pipeline)
@@ -820,7 +820,9 @@ class TestPipelineRunnerLoop:
         monkeypatch.setattr(runner_module.ckpt, "save", ckpt_save)
         monkeypatch.setattr(runner_module, "console", console_mock)
 
-        result = runner_module.run(MagicMock(), initial_state=planning_state)
+        result = runner_module.run(
+            MagicMock(), initial_state=planning_state, verbosity=Verbosity.QUIET
+        )
 
         assert result == 1
         reducer.assert_called_once_with(
@@ -828,6 +830,43 @@ class TestPipelineRunnerLoop:
             PipelineEvent.AGENT_FAILURE,
             policy_bundle.pipeline,
         )
+
+    def test_run_notifies_subscriber_with_initial_state_before_loop(
+        self, monkeypatch
+    ) -> None:
+        """run() must seed the subscriber with initial state before executing any effects.
+
+        Without this seed call, DashboardSubscriber._last_state is None during the first
+        long-running phase (e.g., planning). record_activity() calls during that phase
+        cannot build snapshots, leaving the dashboard stuck on 'Starting…' for the entire
+        phase duration. Seeding before the loop fixes the blank dashboard bug.
+        """
+        notify_calls: list[object] = []
+
+        class _RecordingSubscriber:
+            def notify(self, state: object) -> None:
+                notify_calls.append(state)
+
+        # Use a terminal initial state so the loop never runs — notify() must still
+        # be called unconditionally before the loop, not only inside it.
+        state = MagicMock()
+        state.phase = "failed"
+        state.last_error = "pre-failed for seed test"
+
+        monkeypatch.setattr(runner_module, "console", MagicMock())
+        monkeypatch.setattr(runner_module.ckpt, "save", MagicMock())
+
+        runner_module.run(
+            MagicMock(),
+            initial_state=state,
+            dashboard_subscriber=_RecordingSubscriber(),
+            verbosity=Verbosity.QUIET,
+        )
+
+        # notify() must have been called with the initial state before the loop ran
+        # (the loop never ran because phase=failed, so this proves pre-loop seeding).
+        assert len(notify_calls) >= 1, "subscriber was never seeded with initial state"
+        assert notify_calls[0] is state
 
 
 class TestExecuteAgentEffect:
@@ -1720,7 +1759,7 @@ class TestStartCommitCapture:
         state = MagicMock()
         state.phase = "planning"
 
-        runner_module.run(MagicMock(), initial_state=state)
+        runner_module.run(MagicMock(), initial_state=state, verbosity=Verbosity.QUIET)
 
         start_commit_path = tmp_git_repo / ".agent" / "start_commit"
         assert start_commit_path.exists(), ".agent/start_commit was not written by run()"
@@ -1761,7 +1800,7 @@ class TestStartCommitCapture:
         state = MagicMock()
         state.phase = "planning"
 
-        runner_module.run(MagicMock(), initial_state=state)
+        runner_module.run(MagicMock(), initial_state=state, verbosity=Verbosity.QUIET)
 
         start_commit_path = tmp_git_repo / ".agent" / "start_commit"
         assert start_commit_path.read_text().strip() == sentinel_sha, (

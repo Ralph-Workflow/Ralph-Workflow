@@ -9,6 +9,7 @@ the handlers (I/O execution), and the reducer (state transitions).
 
 from __future__ import annotations
 
+import os
 import shutil
 import sys
 import uuid
@@ -30,6 +31,7 @@ from ralph.config.enums import (
     PHASE_DEVELOPMENT,
     PHASE_FAILED,
     PHASE_PLANNING,
+    Verbosity,
 )
 from ralph.display.phase_banner import show_phase_start, show_phase_transition
 from ralph.mcp.capability_mapping import DrainClass, drain_class_for_session
@@ -76,11 +78,11 @@ if TYPE_CHECKING:
     from ralph.agents.invoke import InvokeOptions
     from ralph.config.models import AgentConfig, UnifiedConfig
     from ralph.display.parallel_display import ParallelDisplay
+    from ralph.display.subscriber import DashboardSubscriber
     from ralph.mcp.agent_transport_probe import AgentProbeReport
     from ralph.mcp.upstream_config import UpstreamMcpServer
     from ralph.mcp.upstream_validation import UpstreamValidationReport
     from ralph.policy.models import AgentsPolicy, PhaseDefinition, PipelinePolicy, PolicyBundle
-
 
     class _DashboardSubscriber(Protocol):
         def notify(self, state: PipelineState) -> None: ...
@@ -125,6 +127,35 @@ _EVENT_DECISION_LABELS: dict[PipelineEvent, str] = {
     PipelineEvent.COMMIT_SKIPPED: "skipped — nothing to commit",
     PipelineEvent.FIX_SUCCESS: "fixed",
 }
+
+_VERBOSITY_RANK: dict[Verbosity, int] = {
+    Verbosity.QUIET: 0,
+    Verbosity.NORMAL: 1,
+    Verbosity.VERBOSE: 2,
+    Verbosity.FULL: 3,
+    Verbosity.DEBUG: 4,
+}
+
+
+def _verbosity_rank(verbosity: Verbosity) -> int:
+    """Return a numeric rank for a Verbosity enum value (QUIET=0 .. DEBUG=4)."""
+    return _VERBOSITY_RANK.get(verbosity, _VERBOSITY_RANK[Verbosity.VERBOSE])
+
+
+def _normalize_verbosity(value: Verbosity | int | None) -> Verbosity:
+    """Coerce a Verbosity enum, integer rank, or None into a Verbosity value.
+
+    The legacy ``GeneralConfig.verbosity`` field is an integer (0-4); the new
+    CLI surface is the ``Verbosity`` StrEnum. This helper accepts either and
+    falls back to ``Verbosity.VERBOSE`` for unknown / unset inputs.
+    """
+    if isinstance(value, Verbosity):
+        return value
+    if isinstance(value, int):
+        for vb, rank in _VERBOSITY_RANK.items():
+            if rank == value:
+                return vb
+    return Verbosity.VERBOSE
 
 
 def _terminal_width() -> int:
@@ -271,14 +302,48 @@ def _resolve_display(
     return _LegacyConsoleDisplay()
 
 
+def _build_default_display(
+    workspace_root: Path,
+) -> ParallelDisplay | _LegacyConsoleDisplay:
+    """Construct the default ParallelDisplay for the verbose run path.
+
+    Falls back to the legacy console display if ParallelDisplay (or its
+    transitive Rich/panel dependencies) cannot be imported or initialized.
+    The display owns its own DashboardSubscriber so the runner and the live
+    render thread share a single subscriber.
+    """
+    try:
+        from ralph.display.parallel_display import (  # noqa: PLC0415
+            ParallelDisplay as _ParallelDisplay,
+        )
+
+        return _ParallelDisplay(
+            console=console,
+            env=dict(os.environ),
+            workspace_root=workspace_root,
+            run_id=str(uuid.uuid4()),
+        )
+    except Exception:
+        logger.debug(
+            "ParallelDisplay unavailable or failed to initialize; falling back to legacy console",
+            exc_info=True,
+        )
+        return _LegacyConsoleDisplay()
+
+
 def _execute_effect_with_optional_display(
     effect: Effect,
     config: UnifiedConfig,
     workspace_scope: WorkspaceScope,
     display: ParallelDisplay | _LegacyConsoleDisplay,
+    *,
+    verbosity: Verbosity = Verbosity.VERBOSE,
 ) -> Event:
-    if len(signature(_execute_effect).parameters) == _LEGACY_EXECUTE_EFFECT_ARITY:
+    params = signature(_execute_effect).parameters
+    if len(params) == _LEGACY_EXECUTE_EFFECT_ARITY:
         return _execute_effect(effect, config, workspace_scope)
+    if "verbosity" in params:
+        return _execute_effect(effect, config, workspace_scope, display, verbosity=verbosity)
     return _execute_effect(effect, config, workspace_scope, display)
 
 
@@ -291,17 +356,121 @@ def _notify_dashboard_subscriber(
     dashboard_subscriber.notify(state)
 
 
-def run(
+def _phase_context(state: PipelineState, previous_phase: str) -> dict[str, object]:
+    """Build a context dict for emit_phase_transition with iteration/decision hints."""
+    context: dict[str, object] = {}
+    if state.phase in {"development", "fix"}:
+        context["iteration"] = f"{state.iteration + 1}/{state.total_iterations}"
+    if state.phase == "review":
+        context["pass"] = f"{state.reviewer_pass + 1}/{state.total_reviewer_passes}"
+    if previous_phase in {"development_analysis", "review_analysis"}:
+        if state.phase in {"development_commit", "review_commit"}:
+            context["decision"] = "approved"
+        elif state.phase in {"development", "fix"}:
+            context["decision"] = "needs changes"
+    if previous_phase == "development_commit":
+        context["dev_budget"] = f"{state.total_iterations - state.iteration} remaining"
+    if previous_phase == "review_commit":
+        context["review_budget"] = f"{state.total_reviewer_passes - state.reviewer_pass} remaining"
+    return context
+
+
+def _emit_phase_transition_if_changed(
+    display: ParallelDisplay | _LegacyConsoleDisplay,
+    previous_phase: str,
+    state: PipelineState,
+    *,
+    verbosity: Verbosity,
+) -> str:
+    """Emit a phase-transition banner if state.phase != previous_phase.
+
+    Returns the new previous_phase value (always state.phase). Quiet mode
+    is a no-op except for state tracking.
+    """
+    if state.phase == previous_phase:
+        return previous_phase
+    if _verbosity_rank(verbosity) <= _VERBOSITY_RANK[Verbosity.QUIET]:
+        return state.phase
+
+    context = _phase_context(state, previous_phase) or None
+    if hasattr(display, "emit_phase_transition"):
+        try:
+            cast("ParallelDisplay", display).emit_phase_transition(
+                previous_phase,
+                state.phase,
+                context=context,
+            )
+        except Exception:  # pragma: no cover - defensive
+            logger.debug("display.emit_phase_transition failed", exc_info=True)
+    else:
+        try:
+            show_phase_transition(previous_phase, state.phase, context=context, console=console)
+        except Exception:  # pragma: no cover - defensive
+            logger.debug("show_phase_transition failed", exc_info=True)
+    return state.phase
+
+
+def _emit_final_summary(
+    state: PipelineState,
+    workspace_root: Path,
+    *,
+    subscriber: DashboardSubscriber | None = None,
+) -> None:
+    """Emit an end-of-run completion summary panel.
+
+    Called unconditionally after the pipeline loop exits (including via
+    exception) so the user sees a final summary of what Ralph did, what
+    was decided, and whether verification passed.
+
+    When a ``subscriber`` is supplied, the snapshot is built from its
+    accumulated state (decision log, analysis, plan) so the panel mirrors
+    what the live dashboard showed during the run.
+    """
+    try:
+        from ralph.display.completion_summary import emit_completion_summary  # noqa: PLC0415
+        from ralph.display.snapshot import snapshot_from_state  # noqa: PLC0415
+
+        snapshot = None
+        if subscriber is not None:
+            try:
+                snapshot = subscriber.build_snapshot(state)
+            except Exception:
+                logger.debug(
+                    "subscriber.build_snapshot failed; falling back to raw snapshot",
+                    exc_info=True,
+                )
+        if snapshot is None:
+            snapshot = snapshot_from_state(
+                state,
+                prompt_path=None,
+                prompt_preview=(),
+                run_id=None,
+            )
+        emit_completion_summary(console, snapshot, workspace_root=workspace_root)
+    except Exception:
+        logger.debug("Failed to emit completion summary", exc_info=True)
+
+
+def run(  # noqa: PLR0912, PLR0915
     config: UnifiedConfig,
     initial_state: PipelineState | None = None,
     display: ParallelDisplay | None = None,
     dashboard_subscriber: _DashboardSubscriber | None = None,
+    *,
+    verbosity: Verbosity | None = None,
 ) -> int:
     """Execute the pipeline event loop.
 
     Args:
         config: Unified configuration for the pipeline.
         initial_state: Optional initial state (for resume from checkpoint).
+        display: Optional pre-built display. When omitted, a ParallelDisplay
+            is constructed by default unless ``verbosity`` is QUIET.
+        dashboard_subscriber: Optional subscriber that will receive notify(state)
+            calls after each reduce. When a ParallelDisplay is constructed by
+            this function, its built-in subscriber is wired in automatically.
+        verbosity: Optional explicit verbosity. Defaults to the configured
+            value in ``config.general.verbosity`` (mapped from int rank).
 
     Returns:
         Exit code (0 for success, non-zero for failure).
@@ -318,6 +487,11 @@ def run(
         pipeline_policy=policy_bundle.pipeline,
     )
 
+    effective_verbosity = _normalize_verbosity(
+        verbosity if verbosity is not None else config.general.verbosity
+    )
+    is_quiet = _verbosity_rank(effective_verbosity) <= _VERBOSITY_RANK[Verbosity.QUIET]
+
     logger.info(
         "Starting pipeline: phase={}, iterations={}, reviews={}",
         state.phase,
@@ -325,107 +499,131 @@ def run(
         state.total_reviewer_passes,
     )
 
-    active_display = _resolve_display(display)
-    with active_display:
-        try:
-            while state.phase not in (PHASE_COMPLETE, PHASE_FAILED):
-                effect = _call_determine_effect_from_policy(state, policy_bundle, workspace_scope)
-                inline_result = _handle_inline_effect(
-                    effect=effect,
-                    state=state,
-                    pipeline_policy=policy_bundle.pipeline,
-                    workspace_scope=workspace_scope,
-                    display=active_display,
-                    dashboard_subscriber=dashboard_subscriber,
-                )
-                if inline_result is not None:
-                    if isinstance(inline_result, int):
-                        return inline_result
-                    state = inline_result
-                    continue
+    if display is not None:
+        active_display: ParallelDisplay | _LegacyConsoleDisplay = display
+    elif is_quiet:
+        active_display = _LegacyConsoleDisplay()
+    else:
+        active_display = _build_default_display(workspace_scope.root)
 
-                if isinstance(effect, FanOutDevelopmentEffect):
-                    state = _execute_fan_out_sync(
+    if dashboard_subscriber is None and hasattr(active_display, "subscriber"):
+        dashboard_subscriber = cast(
+            "_DashboardSubscriber | None",
+            getattr(active_display, "subscriber", None),
+        )
+
+    exit_code = 0
+    _prev_phase = state.phase
+    try:
+        with active_display:
+            _notify_dashboard_subscriber(dashboard_subscriber, state)
+            try:
+                while state.phase not in (PHASE_COMPLETE, PHASE_FAILED):
+                    effect = _call_determine_effect_from_policy(
+                        state, policy_bundle, workspace_scope
+                    )
+                    inline_result = _handle_inline_effect(
                         effect=effect,
                         state=state,
-                        display=active_display,
-                        policy_bundle=policy_bundle,
+                        pipeline_policy=policy_bundle.pipeline,
                         workspace_scope=workspace_scope,
+                        display=active_display,
                         dashboard_subscriber=dashboard_subscriber,
                     )
-                    continue
+                    if inline_result is not None:
+                        if isinstance(inline_result, int):
+                            return inline_result
+                        state = inline_result
+                        _prev_phase = _emit_phase_transition_if_changed(
+                            active_display,
+                            _prev_phase,
+                            state,
+                            verbosity=effective_verbosity,
+                        )
+                        continue
 
-                workspace = FsWorkspace(
-                    workspace_scope.root,
-                    allowed_roots=workspace_scope.allowed_roots,
-                )
-                _materialize_agent_prompt_if_needed(
-                    effect,
-                    workspace,
-                    policy_bundle.pipeline,
-                    registry,
-                    workspace_scope,
-                )
+                    if isinstance(effect, FanOutDevelopmentEffect):
+                        state = _execute_fan_out_sync(
+                            effect=effect,
+                            state=state,
+                            display=active_display,
+                            policy_bundle=policy_bundle,
+                            workspace_scope=workspace_scope,
+                            dashboard_subscriber=dashboard_subscriber,
+                        )
+                        _prev_phase = _emit_phase_transition_if_changed(
+                            active_display,
+                            _prev_phase,
+                            state,
+                            verbosity=effective_verbosity,
+                        )
+                        continue
 
-                event: Event = _execute_effect_with_optional_display(
-                    effect,
-                    config,
-                    workspace_scope,
-                    active_display,
-                )
-                if isinstance(effect, InvokeAgentEffect) and event == PipelineEvent.AGENT_SUCCESS:
-                    event = _phase_event_after_agent_run(
-                        effect=effect,
-                        config=config,
-                        policy_bundle=policy_bundle,
-                        workspace=workspace,
+                    workspace = FsWorkspace(
+                        workspace_scope.root,
+                        allowed_roots=workspace_scope.allowed_roots,
+                    )
+                    _materialize_agent_prompt_if_needed(
+                        effect,
+                        workspace,
+                        policy_bundle.pipeline,
+                        registry,
+                        workspace_scope,
                     )
 
-                state, _ = reducer_reduce(state, event, policy_bundle.pipeline)
-                _notify_dashboard_subscriber(dashboard_subscriber, state)
-                ckpt.save(state)
+                    event: Event = _execute_effect_with_optional_display(
+                        effect,
+                        config,
+                        workspace_scope,
+                        active_display,
+                        verbosity=effective_verbosity,
+                    )
+                    if (
+                        isinstance(effect, InvokeAgentEffect)
+                        and event == PipelineEvent.AGENT_SUCCESS
+                    ):
+                        event = _phase_event_after_agent_run(
+                            effect=effect,
+                            config=config,
+                            policy_bundle=policy_bundle,
+                            workspace=workspace,
+                            workspace_scope=workspace_scope,
+                            display=active_display,
+                        )
 
-        except KeyboardInterrupt:
-            logger.warning("Interrupted by user; saving checkpoint.")
-            interrupted_state = state.copy_with(interrupted_by_user=True)
-            ckpt.save(interrupted_state)
-            return 130
+                    state, _ = reducer_reduce(state, event, policy_bundle.pipeline)
+                    _notify_dashboard_subscriber(dashboard_subscriber, state)
+                    ckpt.save(state)
+                    _prev_phase = _emit_phase_transition_if_changed(
+                        active_display,
+                        _prev_phase,
+                        state,
+                        verbosity=effective_verbosity,
+                    )
 
-        if state.phase == PHASE_COMPLETE:
-            active_display.emit(None, "[green]Pipeline completed successfully.[/green]")
-            return 0
+            except KeyboardInterrupt:
+                logger.warning("Interrupted by user; saving checkpoint.")
+                interrupted_state = state.copy_with(interrupted_by_user=True)
+                ckpt.save(interrupted_state)
+                return 130
 
-        _emit_display_line(
-            active_display,
-            None,
-            _status_text("Pipeline failed", state.last_error or "Unknown error", "red"),
+            if state.phase == PHASE_COMPLETE:
+                active_display.emit(None, "[green]Pipeline completed successfully.[/green]")
+                exit_code = 0
+            else:
+                _emit_display_line(
+                    active_display,
+                    None,
+                    _status_text("Pipeline failed", state.last_error or "Unknown error", "red"),
+                )
+                exit_code = 1
+    finally:
+        _emit_final_summary(
+            state,
+            workspace_scope.root,
+            subscriber=cast("DashboardSubscriber | None", dashboard_subscriber),
         )
-        return 1
-
-
-def _show_phase_transition_with_context(previous_phase: str, state: PipelineState) -> None:
-    """Display a phase transition banner with iteration/review context."""
-    context: dict[str, object] = {}
-    if state.phase in {"development", "fix"}:
-        context["iteration"] = f"{state.iteration + 1}/{state.total_iterations}"
-    if state.phase == "review":
-        context["pass"] = f"{state.reviewer_pass + 1}/{state.total_reviewer_passes}"
-    if previous_phase in {"development_analysis", "review_analysis"}:
-        if state.phase in {"development_commit", "review_commit"}:
-            context["decision"] = "approved"
-        elif state.phase in {"development", "fix"}:
-            context["decision"] = "needs changes"
-    if previous_phase == "development_commit":
-        context["dev_budget"] = f"{state.total_iterations - state.iteration} remaining"
-    if previous_phase == "review_commit":
-        context["review_budget"] = f"{state.total_reviewer_passes - state.reviewer_pass} remaining"
-
-    show_phase_transition(
-        previous_phase,
-        state.phase,
-        context=context if context else None,
-        console=console,
-    )
+    return exit_code
 
 
 def _execute_fan_out_sync(  # noqa: PLR0913
@@ -850,12 +1048,14 @@ def _agent_name_for_phase_from_policy(
     return chain.agents[0]
 
 
-def _phase_event_after_agent_run(
+def _phase_event_after_agent_run(  # noqa: PLR0913
     *,
     effect: InvokeAgentEffect,
     config: UnifiedConfig,
     policy_bundle: PolicyBundle,
     workspace: FsWorkspace,
+    workspace_scope: WorkspaceScope | None = None,
+    display: ParallelDisplay | _LegacyConsoleDisplay | None = None,
 ) -> Event:
     ctx = PhaseContext.model_construct(
         workspace=workspace,
@@ -867,9 +1067,31 @@ def _phase_event_after_agent_run(
         config=config,
     )
     events = handle_phase(effect, ctx)
-    if not events:
-        return PipelineEvent.AGENT_SUCCESS
-    return events[0]
+    event: Event = events[0] if events else PipelineEvent.AGENT_SUCCESS
+
+    if (
+        display is not None
+        and workspace_scope is not None
+        and event in (PipelineEvent.ANALYSIS_SUCCESS, PipelineEvent.ANALYSIS_LOOPBACK)
+        and hasattr(display, "emit_analysis_result")
+    ):
+        try:
+            from ralph.display.artifact_reader import (  # noqa: PLC0415
+                read_latest_analysis_decision,
+            )
+
+            drain = effect.drain or effect.phase
+            summary = read_latest_analysis_decision(workspace_scope.root, drain)
+            if summary is not None:
+                cast("ParallelDisplay", display).emit_analysis_result(
+                    phase=effect.phase,
+                    decision=summary.decision,
+                    reason=summary.reason,
+                )
+        except Exception:
+            logger.debug("Failed to emit analysis result", exc_info=True)
+
+    return event
 
 
 def _commit_effect(workspace_root: Path) -> CommitEffect:
@@ -881,6 +1103,8 @@ def _execute_effect(
     config: UnifiedConfig,
     workspace_scope: WorkspaceScope,
     display: ParallelDisplay | _LegacyConsoleDisplay | None = None,
+    *,
+    verbosity: Verbosity = Verbosity.VERBOSE,
 ) -> PipelineEvent:
     """Execute an effect and return the resulting event.
 
@@ -905,7 +1129,9 @@ def _execute_effect(
     )
 
     if isinstance(effect, InvokeAgentEffect):
-        return _execute_agent_effect(effect, config, deps, workspace_scope, display)
+        return _execute_agent_effect(
+            effect, config, deps, workspace_scope, display, verbosity=verbosity
+        )
     if isinstance(effect, CommitEffect):
         return _execute_commit_effect(effect, create_commit, stage_all, workspace_scope.root)
     if isinstance(effect, SaveCheckpointEffect):
@@ -915,12 +1141,14 @@ def _execute_effect(
     return PipelineEvent.AGENT_FAILURE
 
 
-def _execute_agent_effect(
+def _execute_agent_effect(  # noqa: PLR0913
     effect: InvokeAgentEffect,
     config: UnifiedConfig,
     deps: _AgentExecutionDeps,
     workspace_scope: WorkspaceScope,
     display: ParallelDisplay | _LegacyConsoleDisplay | None = None,
+    *,
+    verbosity: Verbosity = Verbosity.VERBOSE,
 ) -> PipelineEvent:
     _emit_display_line(display, None, _status_text("Invoking agent", effect.agent_name, "cyan"))
     registry = deps.agent_registry.from_config(config)
@@ -962,7 +1190,7 @@ def _execute_agent_effect(
             ),
         )
         output_lines = deps.invoke_agent(agent_config, effect.prompt_file, options=options)
-        if config.general.verbosity >= _AGENT_ACTIVITY_LOG_LEVEL:
+        if _verbosity_rank(verbosity) >= _VERBOSITY_RANK[Verbosity.NORMAL]:
             _stream_parsed_agent_activity(
                 output_lines,
                 str(agent_config.json_parser),
@@ -1045,6 +1273,40 @@ def _cleanup_commit_message_artifacts(repo_root: Path) -> None:
     delete_commit_message_artifacts(repo_root)
 
 
+def _subscriber_for_display(
+    display: ParallelDisplay | _LegacyConsoleDisplay | None,
+) -> DashboardSubscriber | None:
+    """Extract the dashboard subscriber from a display, when one is exposed."""
+    if display is None or isinstance(display, _LegacyConsoleDisplay):
+        return None
+    if not hasattr(display, "subscriber"):
+        return None
+    return cast("DashboardSubscriber | None", display.subscriber)
+
+
+def _record_activity_on_subscriber(
+    subscriber: DashboardSubscriber,
+    parsed_line: AgentOutputLine,
+    rendered: Text | None,
+    agent_name: str,
+) -> None:
+    try:
+        line_text = "" if rendered is None else rendered.plain
+        tool_name: str | None = None
+        if parsed_line.type == "tool_use":
+            stripped = parsed_line.content.strip()
+            if stripped:
+                tool_name = stripped
+        subscriber.record_activity(
+            unit_id=agent_name,
+            agent_name=agent_name,
+            line=line_text,
+            tool_name=tool_name,
+        )
+    except Exception:  # pragma: no cover - defensive
+        logger.debug("subscriber.record_activity failed", exc_info=True)
+
+
 def _stream_parsed_agent_activity(
     lines: Iterable[object],
     parser_type: str,
@@ -1053,10 +1315,13 @@ def _stream_parsed_agent_activity(
 ) -> None:
     parser = _resolve_parser(parser_type)
     str_lines = (str(line) for line in lines)
+    subscriber = _subscriber_for_display(display)
     for parsed_line in parser.parse(str_lines):
         rendered = _render_agent_activity_line(parsed_line, agent_name)
         if rendered is not None:
             _emit_display_line(display, None, rendered)
+        if subscriber is not None:
+            _record_activity_on_subscriber(subscriber, parsed_line, rendered, agent_name)
 
 
 def _resolve_parser(parser_type: str) -> AgentParser:

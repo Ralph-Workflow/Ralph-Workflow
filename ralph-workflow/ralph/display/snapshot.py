@@ -6,7 +6,7 @@ consumed by display panels and subscribers.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
@@ -66,14 +66,38 @@ class DashboardSnapshot:
     prompt_preview: tuple[str, ...]
     run_id: str | None
     created_at: datetime
+    plan_summary: str | None = None
+    plan_scope_items: tuple[str, ...] = ()
+    plan_total_steps: int = 0
+    plan_current_step: int | None = None
+    plan_risks: tuple[str, ...] = ()
+    active_agent: str | None = None
+    active_tool: str | None = None
+    last_activity_line: str | None = None
+    analysis_phase: str | None = None
+    analysis_decision: str | None = None
+    analysis_reason: str | None = None
+    decision_log: tuple[tuple[str, str, str, str], ...] = field(default_factory=tuple)
 
 
-def snapshot_from_state(
+def snapshot_from_state(  # noqa: PLR0913
     state: PipelineState,
     *,
     prompt_path: str | None,
     prompt_preview: tuple[str, ...],
     run_id: str | None,
+    plan_summary: str | None = None,
+    plan_scope_items: tuple[str, ...] = (),
+    plan_total_steps: int = 0,
+    plan_current_step: int | None = None,
+    plan_risks: tuple[str, ...] = (),
+    active_agent: str | None = None,
+    active_tool: str | None = None,
+    last_activity_line: str | None = None,
+    analysis_phase: str | None = None,
+    analysis_decision: str | None = None,
+    analysis_reason: str | None = None,
+    decision_log: tuple[tuple[str, str, str, str], ...] = (),
 ) -> DashboardSnapshot:
     """Project PipelineState into an immutable dashboard snapshot."""
 
@@ -100,6 +124,18 @@ def snapshot_from_state(
         prompt_preview=prompt_preview,
         run_id=run_id,
         created_at=created_at,
+        plan_summary=plan_summary,
+        plan_scope_items=plan_scope_items,
+        plan_total_steps=plan_total_steps,
+        plan_current_step=plan_current_step,
+        plan_risks=plan_risks,
+        active_agent=active_agent,
+        active_tool=active_tool,
+        last_activity_line=last_activity_line,
+        analysis_phase=analysis_phase,
+        analysis_decision=analysis_decision,
+        analysis_reason=analysis_reason,
+        decision_log=tuple(decision_log),
     )
 
 
