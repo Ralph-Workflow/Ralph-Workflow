@@ -9,9 +9,11 @@ import pytest
 
 from ralph.agents.executor import AgentExecutor
 from ralph.agents.subprocess_executor import SubprocessAgentExecutor
+from ralph.display.activity_router import ActivityRouter
 from ralph.pipeline.work_units import WorkUnit
 
 EXIT_CODE_FAILURE = 42
+EXPECTED_ACTIVITY_ENTRIES = 2
 
 
 def ignore_output(_line: str) -> None:
@@ -126,3 +128,31 @@ async def test_final_message_from_last_line() -> None:
         on_status=ignore_status,
     )
     assert result.final_message == (last[-1] if last else "")
+
+
+@pytest.mark.asyncio
+async def test_activity_router_receives_valid_ndjson_and_invalid_lines_as_errors(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Parallel executor routes split NDJSON lines into ActivityRouter without crashing."""
+    router = ActivityRouter()
+    executor = SubprocessAgentExecutor([sys.executable, "-c", "print('placeholder')"])
+    executor.activity_router = router
+    unit = make_unit("test-F")
+
+    monkeypatch.setattr(
+        "ralph.agents.subprocess_executor.sanitize_display_line",
+        lambda _raw: '{"content":"structured"}\nnot-json',
+    )
+
+    result = await executor.run(
+        unit,
+        on_output=ignore_output,
+        on_status=ignore_status,
+    )
+
+    entries = router.get_buffer(unit.unit_id).snapshot()
+    assert result.exit_code == 0
+    assert len(entries) == EXPECTED_ACTIVITY_ENTRIES
+    assert any("structured" in entry for entry in entries)
+    assert any("not-json" in entry and "✗" in entry for entry in entries)

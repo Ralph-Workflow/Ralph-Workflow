@@ -16,6 +16,8 @@ from ralph.display.parallel_display import (
 )
 from ralph.pipeline.worker_state import WorkerStatus
 
+EXPECTED_QUEUE_UPDATES = 2
+
 
 def test_ci_env_forces_lines() -> None:
     console = Console(force_terminal=True, width=120)
@@ -99,7 +101,7 @@ def test_parallel_display_mode_frozen_after_init() -> None:
     console = Console(force_terminal=True, width=120)
     pd = ParallelDisplay(console, {})
     try:
-        pd.mode = "lines"  # type: ignore[misc]
+        pd.mode = "lines"  # type: ignore[misc]  # reason: assert runtime immutability guard
         raise AssertionError("Should have raised AttributeError")
     except AttributeError:
         pass
@@ -128,6 +130,26 @@ def test_parallel_display_set_status_stub_does_not_raise() -> None:
     console = Console(force_terminal=True, width=120)
     pd = ParallelDisplay(console, {})
     pd.set_status("unit-1", WorkerStatus.RUNNING)
+
+
+def test_parallel_display_dashboard_mode_uses_put_nowait_for_updates() -> None:
+    console = Console(force_terminal=True, width=120)
+    pd = ParallelDisplay(console, {}, mode="dashboard")
+    queued: list[object] = []
+
+    class _QueueSpy:
+        def put(self, _item: object) -> None:
+            raise AssertionError("blocking put() should not be used")
+
+        def put_nowait(self, item: object) -> None:
+            queued.append(item)
+
+    pd._queue = _QueueSpy()  # type: ignore[assignment]  # reason: inject queue spy for put_nowait assertion
+
+    pd.emit("unit-1", "some output line")
+    pd.set_status("unit-1", WorkerStatus.RUNNING)
+
+    assert len(queued) == EXPECTED_QUEUE_UPDATES
 
 
 def test_parallel_display_start_stop_stubs_do_not_raise() -> None:

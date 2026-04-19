@@ -62,10 +62,8 @@ class ResultsPanel:
 
         if phase == "complete":
             border = theme.styles.get("theme.status.success", "")
-            content: list[Text | Table] = [
-                Text.from_markup(f"{format_status('success')} Pipeline completed"),
-                table,
-            ]
+            completed_text = Text.from_markup(f"{format_status('success')} Pipeline completed")
+            content: list[Text | Table] = [completed_text, table]
 
             if snapshot.pr_url is not None:
                 pr_url = snapshot.pr_url

@@ -216,3 +216,79 @@ def test_single_agent_visual_parity(monkeypatch: pytest.MonkeyPatch) -> None:
     assert "Invoking agent: development" in output
     assert "Invoking agent: review" in output
     assert "Pipeline completed successfully." in output
+
+
+def test_run_notifies_dashboard_subscriber_after_reduce(monkeypatch: pytest.MonkeyPatch) -> None:
+    effects = [
+        InvokeAgentEffect(agent_name="planning", phase="planning", prompt_file="planning.md"),
+        ExitSuccessEffect(),
+    ]
+    state = PipelineState(phase="planning")
+    call_order: list[tuple[str, object]] = []
+
+    class _Subscriber:
+        def notify(self, state: PipelineState) -> None:
+            call_order.append(("notify", state.phase))
+
+    def stub_determine_effect(_state: object, _bundle: object) -> object:
+        return effects.pop(0)
+
+    def stub_reducer(current_state: PipelineState, _event: object, _policy: object):
+        next_state = current_state.copy_with(phase="complete")
+        call_order.append(("reduce", next_state.phase))
+        return next_state, None
+
+    def fake_execute_effect(
+        effect: object,
+        config: UnifiedConfig,
+        workspace_scope: WorkspaceScope,
+        display: ParallelDisplay,
+    ) -> PipelineEvent:
+        del config, workspace_scope, display
+        assert isinstance(effect, InvokeAgentEffect)
+        return PipelineEvent.AGENT_SUCCESS
+
+    _patch_common_runner_dependencies(monkeypatch)
+    monkeypatch.setattr(runner_module, "_determine_effect_from_policy", stub_determine_effect)
+    monkeypatch.setattr(runner_module, "reducer_reduce", stub_reducer)
+    monkeypatch.setattr(runner_module, "_execute_effect", fake_execute_effect)
+    monkeypatch.setattr(
+        runner_module,
+        "_phase_event_after_agent_run",
+        lambda **_kwargs: PipelineEvent.AGENT_SUCCESS,
+    )
+
+    display = ParallelDisplay(
+        Console(file=io.StringIO(), force_terminal=False, width=120),
+        env={},
+    )
+
+    result = runner_module.run(
+        _config(),
+        initial_state=state,
+        display=display,
+        dashboard_subscriber=_Subscriber(),
+    )
+
+    assert result == 0
+    assert call_order == [("reduce", "complete"), ("notify", "complete")]
+
+
+def test_handle_inline_effect_notifies_dashboard_subscriber_after_checkpoint_reduce() -> None:
+    state = PipelineState(phase="planning")
+    notified_phases: list[str] = []
+
+    class _Subscriber:
+        def notify(self, state: PipelineState) -> None:
+            notified_phases.append(state.phase)
+
+    new_state = runner_module._handle_inline_effect(
+        effect=runner_module.SaveCheckpointEffect(),
+        state=state,
+        pipeline_policy=MagicMock(),
+        workspace_scope=WorkspaceScope(Path.cwd()),
+        dashboard_subscriber=_Subscriber(),
+    )
+
+    assert isinstance(new_state, PipelineState)
+    assert notified_phases == [new_state.phase]

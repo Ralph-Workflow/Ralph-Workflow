@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any, cast
 from loguru import logger
 
 from ralph.agents.executor import WorkerResult
+from ralph.display.activity_router import ActivityRouter
 from ralph.mcp.server.factory import McpServerHandle
 from ralph.pipeline.effects import FanOutDevelopmentEffect
 from ralph.pipeline.events import (
@@ -360,7 +361,7 @@ async def test_isolation_creates_worker_session_and_cleans_up_success(tmp_path: 
     worktree_manager = _RecordingWorktreeManager(tmp_path)
     mcp_factory = _RecordingMcpFactory()
 
-    isolation = module._IsolationDeps(  # type: ignore[attr-defined]
+    isolation = module._IsolationDeps(  # type: ignore[attr-defined]  # reason: test reaches private fixture type
         worktree_manager=worktree_manager,
         mcp_factory=mcp_factory,
         repo_root=tmp_path,
@@ -390,7 +391,7 @@ async def test_isolation_preserves_failed_worktree(tmp_path: Path) -> None:
     worktree_manager = _RecordingWorktreeManager(tmp_path)
     mcp_factory = _RecordingMcpFactory()
 
-    isolation = module._IsolationDeps(  # type: ignore[attr-defined]
+    isolation = module._IsolationDeps(  # type: ignore[attr-defined]  # reason: test reaches private fixture type
         worktree_manager=worktree_manager,
         mcp_factory=mcp_factory,
         repo_root=tmp_path,
@@ -409,6 +410,86 @@ async def test_isolation_preserves_failed_worktree(tmp_path: Path) -> None:
     assert worktree_manager.create_calls == [("unit-a", "main")]
     assert worktree_manager.destroy_calls == []
     assert mcp_factory.handles[0].shutdown_calls == 1
+
+
+async def test_activity_router_is_passed_to_subprocess_worker_executor(
+    tmp_path: Path, monkeypatch: Any
+) -> None:
+    module = importlib.import_module("ralph.pipeline.parallel.coordinator")
+    run_fan_out = _load_run_fan_out()
+    unit = make_unit("unit-a")
+    effect = FanOutDevelopmentEffect(work_units=(unit,), max_workers=1)
+    display = RecordingDisplay()
+    worktree_manager = _RecordingWorktreeManager(tmp_path)
+    mcp_factory = _RecordingMcpFactory()
+    router = ActivityRouter()
+    recorded_activity_routers: list[ActivityRouter | None] = []
+    coordinator = module.ParallelCoordinator(activity_router=router)
+
+    assert coordinator.activity_router is router
+
+    class _RecordingSubprocessExecutor:
+        def __init__(
+            self,
+            *_args: Any,
+            activity_router: ActivityRouter | None = None,
+            **_kwargs: Any,
+        ) -> None:
+            recorded_activity_routers.append(activity_router)
+
+        async def run(
+            self,
+            unit: WorkUnit,
+            *,
+            on_output: Callable[[str], None],
+            on_status: Callable[[WorkerStatus], None],
+        ) -> WorkerResult:
+            on_status(WorkerStatus.RUNNING)
+            on_output("done")
+            on_status(WorkerStatus.SUCCEEDED)
+            return WorkerResult(
+                unit_id=unit.unit_id,
+                exit_code=0,
+                final_message="done",
+                duration_ms=1,
+            )
+
+    monkeypatch.setattr(
+        module.subprocess_executor,
+        "SubprocessAgentExecutor",
+        _RecordingSubprocessExecutor,
+    )
+
+    class _FakeDynamicBindingMcpServerFactory:
+        def __init__(self, *, workspace: object) -> None:
+            del workspace
+
+        def build(self, session: object) -> McpServerHandle:
+            return mcp_factory.build(session)
+
+    monkeypatch.setattr(
+        module.factory_impl,
+        "DynamicBindingMcpServerFactory",
+        _FakeDynamicBindingMcpServerFactory,
+    )
+
+    isolation = module._IsolationDeps(  # type: ignore[attr-defined]  # reason: test reaches private fixture type
+        worktree_manager=worktree_manager,
+        mcp_factory=mcp_factory,
+        repo_root=tmp_path,
+        executor_command=("python", "-m", "ralph"),
+    )
+
+    events = await run_fan_out(
+        effect=effect,
+        executor=FakeAgentExecutor({}),
+        display=display,
+        ctx=make_worker_context(isolation=isolation),
+        activity_router=router,
+    )
+
+    assert events[-1] is PipelineEvent.ALL_WORKERS_COMPLETE
+    assert recorded_activity_routers == [router]
 
 
 async def test_worker_logs_are_routed_to_per_worker_sink(tmp_path: Path) -> None:

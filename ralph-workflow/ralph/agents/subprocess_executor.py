@@ -4,12 +4,15 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import json
 import os
 import signal
 import time
 from typing import TYPE_CHECKING
 
 from ralph.agents.executor import ExecutorError, WorkerResult
+from ralph.display.activity_model import ActivityEventKind, make_event, render_event_line
+from ralph.display.activity_router import ActivityRouter, detect_provider_from_command
 from ralph.display.line_sanitizer import sanitize_display_line
 from ralph.pipeline.worker_state import WorkerStatus
 
@@ -17,6 +20,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Mapping, Sequence
     from pathlib import Path
 
+    from ralph.display.activity_model import ActivityProvider
     from ralph.interrupt.asyncio_bridge import SignalBridge
     from ralph.pipeline.work_units import WorkUnit
 
@@ -36,11 +40,13 @@ class SubprocessAgentExecutor:
         signal_bridge: SignalBridge | None = None,
         cwd: Path | None = None,
         extra_env: Mapping[str, str] | None = None,
+        activity_router: ActivityRouter | None = None,
     ) -> None:
         self._command = tuple(command)
         self._signal_bridge = signal_bridge
         self._cwd = cwd
         self._extra_env = extra_env
+        self.activity_router = activity_router
 
     async def run(
         self,
@@ -52,6 +58,7 @@ class SubprocessAgentExecutor:
         on_status(WorkerStatus.RUNNING)
         start_time = time.monotonic()
         last_line: str = ""
+        activity_provider = detect_provider_from_command(list(self._command))
 
         env = {**os.environ, **self._extra_env} if self._extra_env else None
         try:
@@ -73,6 +80,16 @@ class SubprocessAgentExecutor:
             async for raw_line in proc.stdout:
                 line = sanitize_display_line(raw_line.rstrip(b"\n"))
                 on_output(line)
+                if self.activity_router is not None:
+                    for parsed_line in line.splitlines():
+                        stripped_line = parsed_line.strip()
+                        if not stripped_line:
+                            continue
+                        self._route_activity_line(
+                            unit_id=unit.unit_id,
+                            line=stripped_line,
+                            provider=activity_provider,
+                        )
                 last_line = line
 
         if self._signal_bridge is not None:
@@ -100,6 +117,27 @@ class SubprocessAgentExecutor:
             final_message=last_line,
             duration_ms=duration_ms,
         )
+
+    def _route_activity_line(self, *, unit_id: str, line: str, provider: ActivityProvider) -> None:
+        assert self.activity_router is not None
+        try:
+            json.loads(line)
+        except json.JSONDecodeError:
+            error_event = make_event(
+                provider=provider,
+                kind=ActivityEventKind.ERROR,
+                content=f"invalid ndjson: {line}",
+                source=unit_id,
+            )
+            rendered = render_event_line(
+                error_event.kind,
+                error_event.content,
+                timestamp=error_event.timestamp,
+            )
+            self.activity_router.get_buffer(unit_id).enqueue(rendered)
+            return
+
+        self.activity_router.push_raw_line(unit_id, line, provider=provider)
 
 
 __all__ = ["SubprocessAgentExecutor"]

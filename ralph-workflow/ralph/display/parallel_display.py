@@ -226,7 +226,7 @@ class ParallelDisplay:
         if self._mode == "dashboard":
             # Legacy path: UpdateEvent queue keeps existing RenderThread
             # rendering working for backward compatibility.
-            self._queue.put(UpdateEvent(unit_id=unit_id, kind="output", payload=line))
+            self._queue.put_nowait(UpdateEvent(unit_id=unit_id, kind="output", payload=line))
             # New path: ActivityRouter ring-buffer for structured log-tail panel.
             self._activity_router.push_raw_line(
                 unit_id if unit_id is not None else "__unattributed__",
@@ -254,7 +254,7 @@ class ParallelDisplay:
                 if runtime.get("started_at") is None:
                     runtime["started_at"] = now
                 runtime["finished_at"] = now
-            self._queue.put(UpdateEvent(unit_id=unit_id, kind="status", payload=str(status)))
+            self._queue.put_nowait(UpdateEvent(unit_id=unit_id, kind="status", payload=str(status)))
         else:
             self._console.out(f"[{unit_id}] status={status}")
 

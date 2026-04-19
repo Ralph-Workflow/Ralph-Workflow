@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, cast
 
 from loguru import logger
@@ -28,6 +28,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from ralph.agents.executor import AgentExecutor, WorkerResult
+    from ralph.display.activity_router import ActivityRouter
     from ralph.display.parallel_display import ParallelDisplay
     from ralph.git.worktree_manager import WorktreeManager
     from ralph.interrupt.asyncio_bridge import SignalBridge
@@ -56,6 +57,90 @@ class _IsolationDeps:
 class _WorkerContext:
     log: _WorkerLog | None = None
     isolation: _IsolationDeps | None = None
+    activity_router: ActivityRouter | None = None
+
+
+class ParallelCoordinator:
+    def __init__(self, *, activity_router: ActivityRouter | None = None) -> None:
+        self.activity_router = activity_router
+
+    async def run_fan_out(
+        self,
+        effect: FanOutDevelopmentEffect,
+        executor: AgentExecutor,
+        display: ParallelDisplay,
+        ctx: _WorkerContext | None = None,
+    ) -> list[Event]:
+        """Execute parallel work units while respecting DAG dependencies and worker caps."""
+        worker_ctx = (
+            _WorkerContext(activity_router=self.activity_router)
+            if ctx is None
+            else replace(ctx, activity_router=self.activity_router)
+        )
+        events: list[Event] = [PipelineEvent.FAN_OUT_STARTED]
+        if not effect.work_units:
+            return [*events, PipelineEvent.ALL_WORKERS_COMPLETE]
+
+        pending = {unit.unit_id for unit in effect.work_units}
+        completed: set[str] = set()
+        running: dict[str, WorkUnit] = {}
+        completion_queue: asyncio.Queue[WorkerResult] = asyncio.Queue()
+
+        try:
+            async with asyncio.TaskGroup() as task_group:
+                while pending or running:
+                    ready = schedule_next_wave(
+                        completed,
+                        effect.work_units,
+                        set(running),
+                        effect.max_workers,
+                    )
+
+                    for unit in ready:
+                        pending.discard(unit.unit_id)
+                        running[unit.unit_id] = unit
+                        events.append(WorkerStartedEvent(unit_id=unit.unit_id))
+                        task_group.create_task(
+                            _run_worker(
+                                unit,
+                                executor,
+                                display,
+                                completion_queue,
+                                worker_ctx,
+                            ),
+                            name=unit.unit_id,
+                        )
+
+                    if running:
+                        result = await completion_queue.get()
+                        running.pop(result.unit_id, None)
+                        completed.add(result.unit_id)
+                        events.append(
+                            WorkerCompletedEvent(
+                                unit_id=result.unit_id,
+                                exit_code=result.exit_code,
+                                commit_sha="",
+                            )
+                        )
+                        continue
+
+                    if pending:
+                        break
+        except* Exception as group:
+            failures, unexpected = _flatten_worker_failures(group.exceptions)
+            _append_terminal_failure_events(
+                events=events,
+                work_units=effect.work_units,
+                pending=pending,
+                running=running,
+                failures=failures,
+            )
+            if unexpected:
+                raise ExceptionGroup("Unexpected fan-out coordinator failure", unexpected) from None
+        else:
+            events.append(PipelineEvent.ALL_WORKERS_COMPLETE)
+
+        return events
 
 
 class _WorkerFailureError(Exception):
@@ -97,6 +182,7 @@ def _prepare_executor(
     unit: WorkUnit,
     executor: AgentExecutor,
     isolation: _IsolationDeps | None,
+    activity_router: ActivityRouter | None = None,
 ) -> tuple[AgentExecutor, WorkerSessionBundle | None]:
     if isolation is None:
         return executor, None
@@ -119,6 +205,7 @@ def _prepare_executor(
                 signal_bridge=isolation.signal_bridge,
                 cwd=worktree_path,
                 extra_env={"RALPH_MCP_ENDPOINT": bundle.mcp_handle.endpoint},
+                activity_router=activity_router,
             ),
         ),
         bundle,
@@ -214,6 +301,7 @@ async def _run_worker(
 ) -> None:
     log = ctx.log if ctx is not None else None
     isolation = ctx.isolation if ctx is not None else None
+    activity_router = ctx.activity_router if ctx is not None else None
 
     with logger.contextualize(unit_id=unit.unit_id):
         sink_handle = (
@@ -235,7 +323,12 @@ async def _run_worker(
             display.set_status(unit.unit_id, status)
 
         try:
-            active_executor, bundle = _prepare_executor(unit, executor, isolation)
+            active_executor, bundle = _prepare_executor(
+                unit,
+                executor,
+                isolation,
+                activity_router,
+            )
 
             try:
                 result = await active_executor.run(unit, on_output=on_output, on_status=on_status)
@@ -275,72 +368,10 @@ async def run_fan_out(
     executor: AgentExecutor,
     display: ParallelDisplay,
     ctx: _WorkerContext | None = None,
+    activity_router: ActivityRouter | None = None,
 ) -> list[Event]:
-    """Execute parallel work units while respecting DAG dependencies and worker caps."""
-    events: list[Event] = [PipelineEvent.FAN_OUT_STARTED]
-    if not effect.work_units:
-        return [*events, PipelineEvent.ALL_WORKERS_COMPLETE]
-
-    pending = {unit.unit_id for unit in effect.work_units}
-    completed: set[str] = set()
-    running: dict[str, WorkUnit] = {}
-    completion_queue: asyncio.Queue[WorkerResult] = asyncio.Queue()
-
-    try:
-        async with asyncio.TaskGroup() as task_group:
-            while pending or running:
-                ready = schedule_next_wave(
-                    completed,
-                    effect.work_units,
-                    set(running),
-                    effect.max_workers,
-                )
-
-                for unit in ready:
-                    pending.discard(unit.unit_id)
-                    running[unit.unit_id] = unit
-                    events.append(WorkerStartedEvent(unit_id=unit.unit_id))
-                    task_group.create_task(
-                        _run_worker(
-                            unit,
-                            executor,
-                            display,
-                            completion_queue,
-                            ctx,
-                        ),
-                        name=unit.unit_id,
-                    )
-
-                if running:
-                    result = await completion_queue.get()
-                    running.pop(result.unit_id, None)
-                    completed.add(result.unit_id)
-                    events.append(
-                        WorkerCompletedEvent(
-                            unit_id=result.unit_id,
-                            exit_code=result.exit_code,
-                            commit_sha="",
-                        )
-                    )
-                    continue
-
-                if pending:
-                    break
-    except* Exception as group:
-        failures, unexpected = _flatten_worker_failures(group.exceptions)
-        _append_terminal_failure_events(
-            events=events,
-            work_units=effect.work_units,
-            pending=pending,
-            running=running,
-            failures=failures,
-        )
-        if unexpected:
-            raise ExceptionGroup("Unexpected fan-out coordinator failure", unexpected) from None
-    else:
-        events.append(PipelineEvent.ALL_WORKERS_COMPLETE)
-
-    return events
+    coordinator = ParallelCoordinator(activity_router=activity_router)
+    return await coordinator.run_fan_out(effect, executor, display, ctx)
 
 
-__all__ = ["run_fan_out"]
+__all__ = ["ParallelCoordinator", "run_fan_out"]
