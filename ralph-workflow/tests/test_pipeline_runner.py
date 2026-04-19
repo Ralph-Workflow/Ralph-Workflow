@@ -318,10 +318,10 @@ class TestDetermineEffect:
             state, bundle, WorkspaceScope("/tmp/worktree")
         )
         assert isinstance(effect, InvokeAgentEffect)
-        assert (
-            effect.agent_name
-            == bundle.agents.agent_chains[bundle.agents.agent_drains["review_analysis"].chain].agents[0]
-        )
+        expected_agent = bundle.agents.agent_chains[
+            bundle.agents.agent_drains["review_analysis"].chain
+        ].agents[0]
+        assert effect.agent_name == expected_agent
 
     def test_review_analysis_prefers_its_own_bound_chain_over_review_chain(self) -> None:
         state = PipelineState(
