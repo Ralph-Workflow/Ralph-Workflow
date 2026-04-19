@@ -25,19 +25,23 @@ if TYPE_CHECKING:
 
 
 class _FakeUpstreamClientFactory:
+    _tools: list[UpstreamTool]
+
     def __init__(self, tools: list[dict[str, object]]) -> None:
-        self._tools: list[UpstreamTool] = [
-            UpstreamTool(
-                name=cast(str, t["name"]),
-                description=str(t.get("description", "")) if t.get("description") else "",
-                input_schema=cast(dict[str, object], t.get("inputSchema", {})),
-            )
-            for t in tools
-        ]
+        result: list[UpstreamTool] = []
+        for t in tools:
+            name = cast(str, t["name"])
+            desc_raw = t.get("description", "")
+            desc = str(desc_raw) if desc_raw else ""
+            input_schema_raw = t.get("inputSchema", {})
+            input_schema = cast(dict[str, object], input_schema_raw)
+            result.append(UpstreamTool(name=name, description=desc, input_schema=input_schema))
+        self._tools = result
 
     def __call__(self, server: UpstreamMcpServer) -> MagicMock:
         mock = MagicMock()
-        mock.list_tools.return_value = self._tools
+        tools: list[UpstreamTool] = self._tools
+        mock.list_tools.return_value = tools
         return mock
 
 
@@ -104,7 +108,7 @@ class TestUpstreamEnvVar:
         serialized = serialize_upstream_mcp_servers([fake_upstream_server])
         monkeypatch.setenv("RALPH_UPSTREAM_MCP_CONFIG", serialized)
 
-        fake_tools = [
+        fake_tools: list[dict[str, object]] = [
             {
                 "name": "ping",
                 "description": "Ping the server",
