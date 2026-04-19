@@ -41,7 +41,11 @@ from ralph.mcp.env import (
 )
 from ralph.mcp.session import AgentSession, session_has_capability
 from ralph.mcp.tool_bridge import ToolBridge, ToolDefinition, build_ralph_tool_registry
-from ralph.mcp.upstream_config import UPSTREAM_MCP_CONFIG_ENV, load_upstream_mcp_servers
+from ralph.mcp.upstream_config import (
+    UPSTREAM_MCP_CONFIG_ENV,
+    UpstreamMcpServer,
+    load_upstream_mcp_servers,
+)
 from ralph.mcp.upstream_registry import UpstreamRegistry
 from ralph.workspace.fs import FsWorkspace
 
@@ -495,9 +499,10 @@ def build_standalone_http_server(  # noqa: PLR0913
         capabilities=_all_capability_values(),
     )
     workspace = FsWorkspace(workspace_root)
-    mcp_cfg = mcp_config if mcp_config is not None else load_mcp_config(None)
-    raw_upstream = os.environ.get(UPSTREAM_MCP_CONFIG_ENV)
-    upstream_servers = load_upstream_mcp_servers(raw_upstream)
+    mcp_cfg = mcp_config if mcp_config is not None else load_mcp_config(
+        config_path=_workspace_mcp_config_path(workspace_root)
+    )
+    upstream_servers = _load_runtime_upstream_servers(mcp_cfg)
     upstream_reg = UpstreamRegistry.build(upstream_servers) if upstream_servers else None
     registry = build_ralph_tool_registry(
         effective_session,
@@ -718,9 +723,10 @@ def build_fastmcp_server(  # noqa: PLR0913
         capabilities=_all_capability_values(),
     )
     workspace = FsWorkspace(workspace_root)
-    mcp_cfg = mcp_config if mcp_config is not None else load_mcp_config(None)
-    raw_upstream = os.environ.get(UPSTREAM_MCP_CONFIG_ENV)
-    upstream_servers = load_upstream_mcp_servers(raw_upstream)
+    mcp_cfg = mcp_config if mcp_config is not None else load_mcp_config(
+        config_path=_workspace_mcp_config_path(workspace_root)
+    )
+    upstream_servers = _load_runtime_upstream_servers(mcp_cfg)
     upstream_reg = UpstreamRegistry.build(upstream_servers) if upstream_servers else None
     registry = build_ralph_tool_registry(
         effective_session,
@@ -747,6 +753,33 @@ def build_fastmcp_server(  # noqa: PLR0913
         streamable_http_path=DEFAULT_MOUNT_PATH,
         tools=tools,
     )
+
+
+def _workspace_mcp_config_path(workspace_root: Path) -> Path:
+    return workspace_root / ".agent" / "mcp.toml"
+
+
+def _mcp_toml_upstream_servers(mcp_config: McpConfig) -> tuple[UpstreamMcpServer, ...]:
+    return tuple(
+        UpstreamMcpServer(
+            name=spec.name,
+            transport=spec.transport,
+            url=spec.url,
+            command=spec.command,
+            args=tuple(spec.args),
+            env=dict(spec.env),
+        )
+        for spec in mcp_config.mcp_servers.values()
+    )
+
+
+def _load_runtime_upstream_servers(mcp_config: McpConfig) -> tuple[UpstreamMcpServer, ...]:
+    raw_upstream = os.environ.get(UPSTREAM_MCP_CONFIG_ENV)
+    env_servers = load_upstream_mcp_servers(raw_upstream)
+    merged: dict[str, UpstreamMcpServer] = {server.name: server for server in env_servers}
+    for server in _mcp_toml_upstream_servers(mcp_config):
+        merged[server.name] = server
+    return tuple(merged.values())
 
 
 def run_standalone_server(

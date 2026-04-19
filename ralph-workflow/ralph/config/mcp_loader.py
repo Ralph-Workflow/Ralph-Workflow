@@ -72,6 +72,15 @@ def _validate_fallback_backends(config: McpConfig) -> None:
             raise SystemExit(1)
 
 
+def _inject_mcp_server_names(merged: dict[str, object]) -> None:
+    raw_servers = merged.get("mcp_servers")
+    if not isinstance(raw_servers, dict):
+        return
+    for server_name, server_spec in raw_servers.items():
+        if isinstance(server_spec, dict) and "name" not in server_spec:
+            server_spec["name"] = server_name
+
+
 def load_mcp_config(
     workspace_scope: WorkspaceScope | None = None,
     config_path: Path | None = None,
@@ -102,6 +111,7 @@ def load_mcp_config(
 
     merged = _deep_merge(bundled, global_data)
     merged = _deep_merge(merged, local_data)
+    _inject_mcp_server_names(merged)
 
     try:
         config = McpConfig.model_validate(merged)

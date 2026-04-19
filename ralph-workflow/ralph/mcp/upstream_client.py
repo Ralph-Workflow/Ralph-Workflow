@@ -167,13 +167,33 @@ def _make_stdio_caller(server: UpstreamMcpServer) -> JsonRpcCaller:
                 f"upstream server '{server.name}' has no command configured"
             )
         command = [server.command, *server.args]
-        payload_obj: dict[str, object] = {
+        initialize_payload: JsonObject = {
             "jsonrpc": "2.0",
             "id": 1,
+            "method": "initialize",
+            "params": {
+                "protocolVersion": "2024-11-05",
+                "capabilities": {},
+                "clientInfo": {"name": "ralph-upstream", "version": "0"},
+            },
+        }
+        initialized_payload: JsonObject = {
+            "jsonrpc": "2.0",
+            "method": "notifications/initialized",
+            "params": {},
+        }
+        method_payload: JsonObject = {
+            "jsonrpc": "2.0",
+            "id": 2,
             "method": method,
             "params": params,
         }
-        payload = json.dumps(payload_obj, separators=(",", ":"))
+        payload_lines = [
+            json.dumps(initialize_payload, separators=(",", ":")),
+            json.dumps(initialized_payload, separators=(",", ":")),
+            json.dumps(method_payload, separators=(",", ":")),
+        ]
+        payload = "\n".join(payload_lines) + "\n"
         env: dict[str, str] = {**os.environ, **server.env}
         proc = subprocess.run(
             command,
@@ -186,7 +206,10 @@ def _make_stdio_caller(server: UpstreamMcpServer) -> JsonRpcCaller:
             raise UpstreamCallError(
                 f"upstream server '{server.name}' process exited {proc.returncode}"
             )
-        raw: object = json.loads(proc.stdout)
+        stdout_lines = [line for line in proc.stdout.decode().splitlines() if line.strip()]
+        if not stdout_lines:
+            raise UpstreamCallError(f"upstream server '{server.name}' returned no JSON-RPC output")
+        raw: object = json.loads(stdout_lines[-1])
         return _json_rpc_result(raw, f"'{server.name}'")
 
     return _call

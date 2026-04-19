@@ -40,7 +40,11 @@ def pytest_runtest_call(item: pytest.Item):
         yield
         return
 
-    timeout_seconds = timeout_seconds_from_env(TEST_TIMEOUT_ENV, DEFAULT_TEST_TIMEOUT_SECONDS)
+    timeout_marker = item.get_closest_marker("timeout_seconds")
+    if timeout_marker is not None and timeout_marker.args:
+        timeout_seconds = float(timeout_marker.args[0])
+    else:
+        timeout_seconds = timeout_seconds_from_env(TEST_TIMEOUT_ENV, DEFAULT_TEST_TIMEOUT_SECONDS)
 
     def _handle_timeout(signum: int, frame) -> None:
         del signum, frame
