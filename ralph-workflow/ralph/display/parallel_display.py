@@ -1,26 +1,27 @@
-"""Parallel display skeleton with TTY/CI mode detection.
-
-Provides ParallelDisplay, a context manager that routes output to either a
-live dashboard (rich, TTY) or plain line-by-line output (CI, dumb terminals).
-Rendering logic is filled in by subsequent tasks (T24 for emit, T25 for
-set_status).
-"""
+"""Parallel display adapter: routes to LiveDashboard (TTY) or PlainLogRenderer (non-TTY)."""
 
 from __future__ import annotations
 
 import os
 import queue
 import signal
+import uuid
 from collections.abc import Callable
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import TYPE_CHECKING, Literal, Protocol, cast
 
 from loguru import logger
 from rich.console import Console
 from rich.live import Live
 
+from ralph.display.activity_router import ActivityRouter
+from ralph.display.mode import NARROW_THRESHOLD, detect_mode
+from ralph.display.plain_renderer import PlainLogRenderer
 from ralph.display.render_thread import RenderThread, UpdateEvent
 from ralph.display.renderers.dashboard import DashboardState, render_dashboard
+from ralph.display.subscriber import DashboardSubscriber
+from ralph.display.theme import make_console as _make_console
 from ralph.pipeline.worker_state import WorkerStatus
 
 if TYPE_CHECKING:
@@ -29,9 +30,11 @@ if TYPE_CHECKING:
 
     from rich.console import RenderableType
 
-from ralph.display.mode import NARROW_THRESHOLD, detect_mode
+    from ralph.display.snapshot import DashboardSnapshot
 
 type SignalHandler = Callable[[int, object], None] | int | None
+
+_DEFAULT_SNAPSHOT_QUEUE_MAXSIZE: int = 64
 
 
 def _noop_sigwinch(signum: int, frame: object) -> None:
@@ -120,44 +123,78 @@ def _dashboard_renderable(
 
 
 class ParallelDisplay:
-    """Display manager for parallel pipeline workers.
-
-    Detects at construction time whether to run in "dashboard" mode (rich live
-    rendering, TTY) or "lines" mode (plain line-by-line output, CI/dumb).
-    The mode is frozen after __init__ and cannot be changed.
-
-    Args:
-        console: Rich Console instance used for rendering and TTY detection.
-        env: Environment mapping used for mode detection.  Defaults to
-            os.environ when None.
-    """
 
     __slots__ = (
+        "_activity_router",
         "_console",
         "_mode",
+        "_plain_renderer",
         "_prev_sigwinch",
         "_queue",
         "_render_thread",
+        "_snapshot_queue",
+        "_subscriber",
         "_worker_status",
     )
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
-        console: Console,
+        console: Console | None = None,
         env: Mapping[str, str] | None = None,
+        *,
+        mode: Literal["dashboard", "lines"] | None = None,
+        activity_router: ActivityRouter | None = None,
+        subscriber: DashboardSubscriber | None = None,
+        workspace_root: Path | None = None,
+        run_id: str | None = None,
     ) -> None:
         resolved_env = dict(os.environ if env is None else env)
-        self._console = console
-        self._mode: Literal["dashboard", "lines"] = detect_mode(console, resolved_env)
+
+        if console is None:
+            console = _make_console()
+        self._console: Console = console
+
+        if mode is not None:
+            self._mode: Literal["dashboard", "lines"] = mode
+        else:
+            self._mode = detect_mode(console, resolved_env)
+
         self._queue: queue.Queue[UpdateEvent] = queue.Queue()
         self._render_thread: RenderThread | None = None
         self._prev_sigwinch: SignalHandler = None
         self._worker_status: dict[str, dict[str, object]] = {}
 
+        self._activity_router: ActivityRouter = (
+            activity_router if activity_router is not None else ActivityRouter()
+        )
+        self._plain_renderer: PlainLogRenderer = PlainLogRenderer(console)
+
+        # Reuse the subscriber's queue when one is injected so the snapshot
+        # bridge contract is preserved: one queue shared by the subscriber
+        # writer and the LiveDashboard reader.
+        if subscriber is not None:
+            self._subscriber: DashboardSubscriber = subscriber
+            self._snapshot_queue: queue.Queue[DashboardSnapshot] = subscriber.queue
+        else:
+            snapshot_q: queue.Queue[DashboardSnapshot] = queue.Queue(
+                maxsize=_DEFAULT_SNAPSHOT_QUEUE_MAXSIZE
+            )
+            self._snapshot_queue = snapshot_q
+            effective_root = workspace_root if workspace_root is not None else Path.cwd()
+            effective_run_id = run_id if run_id is not None else str(uuid.uuid4())
+            self._subscriber = DashboardSubscriber(
+                queue=snapshot_q,
+                workspace_root=effective_root,
+                run_id=effective_run_id,
+            )
+
     @property
     def mode(self) -> Literal["dashboard", "lines"]:
-        """Display mode, frozen after construction."""
         return self._mode
+
+    @property
+    def subscriber(self) -> DashboardSubscriber:
+        return self._subscriber
 
     def start(self) -> None:
         if self._mode == "dashboard":
@@ -187,7 +224,14 @@ class ParallelDisplay:
 
     def emit(self, unit_id: str | None, line: str) -> None:
         if self._mode == "dashboard":
+            # Legacy path: UpdateEvent queue keeps existing RenderThread
+            # rendering working for backward compatibility.
             self._queue.put(UpdateEvent(unit_id=unit_id, kind="output", payload=line))
+            # New path: ActivityRouter ring-buffer for structured log-tail panel.
+            self._activity_router.push_raw_line(
+                unit_id if unit_id is not None else "__unattributed__",
+                line,
+            )
         else:
             prefix = f"[{unit_id}] " if unit_id else ""
             self._console.out(f"{prefix}{line}")
