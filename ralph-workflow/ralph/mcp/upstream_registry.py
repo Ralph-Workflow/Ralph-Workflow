@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 from loguru import logger
 
@@ -52,7 +52,10 @@ class UpstreamRegistry:
         servers: Iterable[UpstreamMcpServer],
         *,
         client_factory: UpstreamClientFactory | None = None,
+        on_unreachable: Literal["raise", "warn_and_skip"] = "raise",
     ) -> UpstreamRegistry:
+        from ralph.mcp.upstream_validation import UpstreamValidationError  # noqa: PLC0415
+
         _factory = client_factory if client_factory is not None else make_upstream_client
         seen_aliases: dict[str, tuple[str, str]] = {}
         proxied_tools: list[ProxiedTool] = []
@@ -63,6 +66,14 @@ class UpstreamRegistry:
             try:
                 tools = client.list_tools()
             except UpstreamCallError as exc:
+                if on_unreachable == "raise":
+                    env_key_repr = (
+                        f" env_keys={sorted(server.env.keys())}" if server.env else ""
+                    )
+                    raise UpstreamValidationError(
+                        f"upstream MCP server '{server.name}'"
+                        f"{env_key_repr} is unreachable: {exc}"
+                    ) from exc
                 logger.warning("Skipping upstream MCP server {}: {}", server.name, exc)
                 continue
 

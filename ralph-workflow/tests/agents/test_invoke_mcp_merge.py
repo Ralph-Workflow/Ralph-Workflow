@@ -118,7 +118,7 @@ def test_mcp_toml_as_upstreams_converts_http_server(tmp_path: Path) -> None:
     spec = McpServerSpec(name="my-http-svc", transport="http", url="http://example.com/mcp")
     fake_config = McpConfig(mcp_servers={"my-http-svc": spec})
 
-    with patch("ralph.agents.invoke.load_mcp_config", return_value=fake_config):
+    with patch("ralph.agents.transport_emit.load_mcp_config", return_value=fake_config):
         result = _mcp_toml_as_upstreams(tmp_path)
 
     assert len(result) == 1
@@ -137,7 +137,7 @@ def test_mcp_toml_as_upstreams_converts_stdio_server(tmp_path: Path) -> None:
     )
     fake_config = McpConfig(mcp_servers={"my-stdio-svc": spec})
 
-    with patch("ralph.agents.invoke.load_mcp_config", return_value=fake_config):
+    with patch("ralph.agents.transport_emit.load_mcp_config", return_value=fake_config):
         result = _mcp_toml_as_upstreams(tmp_path)
 
     assert len(result) == 1
@@ -156,7 +156,7 @@ def test_mcp_toml_as_upstreams_passes_local_agent_path(tmp_path: Path) -> None:
         captured.append(config_path)
         return McpConfig()
 
-    with patch("ralph.agents.invoke.load_mcp_config", side_effect=fake_load):
+    with patch("ralph.agents.transport_emit.load_mcp_config", side_effect=fake_load):
         _mcp_toml_as_upstreams(tmp_path)
 
     assert captured == [tmp_path / ".agent" / "mcp.toml"]
@@ -169,7 +169,7 @@ def test_mcp_toml_as_upstreams_none_workspace_passes_none(tmp_path: Path) -> Non
         captured.append(config_path)
         return McpConfig()
 
-    with patch("ralph.agents.invoke.load_mcp_config", side_effect=fake_load):
+    with patch("ralph.agents.transport_emit.load_mcp_config", side_effect=fake_load):
         _mcp_toml_as_upstreams(None)
 
     assert captured == [None]

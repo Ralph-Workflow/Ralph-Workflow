@@ -76,6 +76,9 @@ if TYPE_CHECKING:
     from ralph.agents.invoke import InvokeOptions
     from ralph.config.models import AgentConfig, UnifiedConfig
     from ralph.display.parallel_display import ParallelDisplay
+    from ralph.mcp.agent_transport_probe import AgentProbeReport
+    from ralph.mcp.upstream_config import UpstreamMcpServer
+    from ralph.mcp.upstream_validation import UpstreamValidationReport
     from ralph.policy.models import AgentsPolicy, PhaseDefinition, PipelinePolicy, PolicyBundle
 
 
@@ -155,6 +158,80 @@ def _write_start_commit_if_absent(workspace_root: Path) -> None:
     start_commit_path.write_text(repo.head.commit.hexsha + "\n")
 
 
+def _validate_custom_mcp_servers(workspace_root: Path) -> int:
+    """Fail-fast validation of custom MCP servers + per-agent transports.
+
+    Returns the exit code the runner should propagate (0 to continue, 1 to abort).
+    Tests can monkeypatch ``_VALIDATE_MCP`` and ``_PROBE_AGENT_TRANSPORTS`` to
+    drive deterministic outcomes without spawning real upstream servers.
+    """
+    from ralph.agents.transport_emit import _mcp_toml_as_upstreams  # noqa: PLC0415
+    from ralph.mcp.upstream_validation import (  # noqa: PLC0415
+        UpstreamValidationError,
+        strict_mode_from_env,
+    )
+
+    upstreams = _mcp_toml_as_upstreams(workspace_root)
+    if not upstreams:
+        return 0
+
+    strict = strict_mode_from_env()
+    try:
+        upstream_report = _VALIDATE_MCP(upstreams, strict=strict)
+    except UpstreamValidationError as exc:
+        logger.error("Custom MCP servers failed startup validation:\n{}", exc)
+        return 1
+
+    healthy_names = {r.name for r in upstream_report.servers if r.ok}
+    healthy_servers = tuple(s for s in upstreams if s.name in healthy_names)
+    if not healthy_servers:
+        return 0
+
+    probe_results = _PROBE_AGENT_TRANSPORTS(
+        healthy_servers, workspace_path=workspace_root
+    )
+    failures = [p for p in probe_results if not p.ok]
+    if failures and strict:
+        for failure in failures:
+            logger.error(
+                "Agent transport probe failed: server={} transport={} error={}",
+                failure.server_name,
+                failure.transport,
+                failure.error,
+            )
+        return 1
+    for failure in failures:
+        logger.warning(
+            "Agent transport probe failed (soft mode): server={} transport={} error={}",
+            failure.server_name,
+            failure.transport,
+            failure.error,
+        )
+    return 0
+
+
+def _default_validate_mcp(
+    servers: Iterable[UpstreamMcpServer], *, strict: bool
+) -> UpstreamValidationReport:
+    from ralph.mcp.upstream_validation import (  # noqa: PLC0415
+        validate_upstream_mcp_servers,
+    )
+    return validate_upstream_mcp_servers(servers, strict=strict)
+
+
+def _default_probe_agent_transports(
+    servers: Iterable[UpstreamMcpServer], *, workspace_path: Path | None
+) -> tuple[AgentProbeReport, ...]:
+    from ralph.mcp.agent_transport_probe import (  # noqa: PLC0415
+        probe_agent_transports,
+    )
+    return probe_agent_transports(servers, workspace_path=workspace_path)
+
+
+_VALIDATE_MCP = _default_validate_mcp
+_PROBE_AGENT_TRANSPORTS = _default_probe_agent_transports
+
+
 class _LegacyConsoleDisplay:
     def __enter__(self) -> _LegacyConsoleDisplay:
         return self
@@ -231,6 +308,8 @@ def run(
     """
     workspace_scope = resolve_workspace_scope()
     _write_start_commit_if_absent(workspace_scope.root)
+    if _validate_custom_mcp_servers(workspace_scope.root) != 0:
+        return 1
     policy_bundle = load_policy_or_die(workspace_scope.root / ".agent")
     registry = AgentRegistry.from_config(config)
     state = initial_state or _create_initial_state(

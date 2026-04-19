@@ -14,7 +14,7 @@ from rich.text import Text
 
 from ralph.config.loader import load_config
 from ralph.git.operations import find_repo_root, is_repo_clean
-from ralph.workspace.scope import resolve_workspace_scope
+from ralph.workspace.scope import WorkspaceScope, resolve_workspace_scope
 
 console = Console()
 
@@ -31,16 +31,12 @@ def diagnose_command(
     """
     console.print("\n[cyan bold]Ralph Diagnostics[/cyan bold]\n")
 
-    # Check git repository
+    workspace_scope = resolve_workspace_scope()
+
     _check_git_repo()
-
-    # Check configuration
     _check_configuration(config_path, cli_overrides)
-
-    # Check agent availability
     _check_agents(cli_overrides)
-
-    # Check workspace files
+    _check_mcp_servers(workspace_scope)
     _check_workspace_files()
 
     console.print()
@@ -112,6 +108,94 @@ def _check_agents(cli_overrides: dict[str, object] | None) -> None:
         table.add_row("Agents", _status_text("Error", str(e), "red"))
 
     console.print(table)
+
+
+def _check_mcp_servers(workspace_scope: WorkspaceScope) -> None:
+    """Render custom MCP server health and per-agent transport compatibility."""
+    from ralph.agents.transport_emit import _mcp_toml_as_upstreams  # noqa: PLC0415
+    from ralph.mcp.agent_transport_probe import probe_agent_transports  # noqa: PLC0415
+    from ralph.mcp.upstream_validation import validate_upstream_mcp_servers  # noqa: PLC0415
+
+    server_table = Table(title="Custom MCP Servers")
+    server_table.add_column("Server", style="cyan")
+    server_table.add_column("Transport")
+    server_table.add_column("Status")
+    server_table.add_column("Tools")
+    server_table.add_column("Detail")
+
+    upstreams = _mcp_toml_as_upstreams(workspace_scope.root)
+    if not upstreams:
+        server_table.add_row(
+            "(none)",
+            "-",
+            "[yellow]No custom MCP servers configured[/yellow]",
+            "-",
+            "-",
+        )
+        console.print(server_table)
+        return
+
+    try:
+        report = validate_upstream_mcp_servers(upstreams, strict=False)
+    except Exception as exc:
+        server_table.add_row(
+            "(validator)",
+            "-",
+            _status_text("Error", str(exc), "red"),
+            "-",
+            "-",
+        )
+        console.print(server_table)
+        return
+
+    for entry in report.servers:
+        status = "[green]ok[/green]" if entry.ok else "[red]failed[/red]"
+        detail = entry.error or ""
+        if entry.secret_keys:
+            keys = ",".join(entry.secret_keys)
+            detail = f"{detail} [dim](env: {keys})[/dim]" if detail else f"[dim]env: {keys}[/dim]"
+        server_table.add_row(
+            entry.name,
+            entry.transport,
+            status,
+            str(entry.tool_count),
+            detail or "-",
+        )
+
+    console.print(server_table)
+
+    healthy_names = {r.name for r in report.servers if r.ok}
+    healthy_servers = tuple(s for s in upstreams if s.name in healthy_names)
+    if not healthy_servers:
+        return
+
+    probe_table = Table(title="Agent Transport Compatibility")
+    probe_table.add_column("Server", style="cyan")
+    probe_table.add_column("Claude")
+    probe_table.add_column("Codex")
+    probe_table.add_column("OpenCode")
+
+    probes = probe_agent_transports(healthy_servers, workspace_path=workspace_scope.root)
+    by_server: dict[str, dict[str, str]] = {}
+    for probe in probes:
+        if probe.note and probe.ok:
+            cell = "[yellow]-[/yellow]"
+        elif probe.ok:
+            cell = "[green]✓[/green]"
+        else:
+            cell = "[red]✗[/red]"
+        by_server.setdefault(probe.server_name, {})[probe.transport.value] = cell
+
+    for server in healthy_servers:
+        cells = by_server.get(server.name, {})
+        probe_table.add_row(
+            server.name,
+            cells.get("claude", "-"),
+            cells.get("codex", "-"),
+            cells.get("opencode", "-"),
+        )
+
+    console.print(probe_table)
 
 
 def _check_workspace_files() -> None:
