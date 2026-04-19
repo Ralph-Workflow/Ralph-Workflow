@@ -83,13 +83,12 @@ class WorkerListPanel:
         table.add_column("Unit ID", max_width=24)
         table.add_column("Phase/Status")
         table.add_column("Elapsed", justify="right")
-        table.add_column("Description", max_width=40)
-        table.add_column("Last")
 
         # Hide Description in compact mode (width < 80)
         is_compact = width is not None and width < self.COMPACT_WIDTH_THRESHOLD
-        if is_compact:
-            table.columns[4]._visible = False  # type: ignore[attr-defined]
+        if not is_compact:
+            table.add_column("Description", max_width=40)
+        table.add_column("Last")
 
         for w in sorted_workers:
             status_badge = format_status(w.status_semantic)
@@ -108,15 +107,25 @@ class WorkerListPanel:
 
             row_style = theme.styles.get(f"theme.status.{w.status_semantic}", "")
 
-            table.add_row(
-                status_badge,
-                unit_id_cell,
-                phase,
-                elapsed_s,
-                description_cell,
-                last_cell,
-                style=row_style,
-            )
+            if is_compact:
+                table.add_row(
+                    status_badge,
+                    unit_id_cell,
+                    phase,
+                    elapsed_s,
+                    last_cell,
+                    style=row_style,
+                )
+            else:
+                table.add_row(
+                    status_badge,
+                    unit_id_cell,
+                    phase,
+                    elapsed_s,
+                    description_cell,
+                    last_cell,
+                    style=row_style,
+                )
 
         return Panel(table, title="Workers", border_style=theme.styles["theme.panel.border"])
 
