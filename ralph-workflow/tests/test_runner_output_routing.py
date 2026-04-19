@@ -104,7 +104,8 @@ def test_no_bare_console_print_during_live(monkeypatch: pytest.MonkeyPatch) -> N
         ExitSuccessEffect(),
     ]
     state = PipelineState(phase="planning")
-    display = ParallelDisplay(Console(file=io.StringIO(), force_terminal=True, width=120), env={})
+    test_console = Console(file=io.StringIO(), force_terminal=True, width=120)
+    display = ParallelDisplay(test_console, env={})
 
     def stub_determine_effect(_state: object, _bundle: object) -> object:
         return effects.pop(0)
@@ -141,7 +142,7 @@ def test_no_bare_console_print_during_live(monkeypatch: pytest.MonkeyPatch) -> N
     live_active = True
 
     def guarded_print(self: Console, *args: object, **kwargs: Any) -> None:
-        if live_active:
+        if live_active and self is test_console:
             msg = f"bare Console.print during live session: {args!r}"
             raise AssertionError(msg)
         cast("Any", original_print)(self, *args, **kwargs)

@@ -500,7 +500,7 @@ def main(  # noqa: PLR0913 - Typer CLI callbacks require many options
         return
 
     # Run the main pipeline
-    exit_code = _run_pipeline(config, cli_overrides, dry_run, resume, no_resume)
+    exit_code = _run_pipeline(config, cli_overrides, dry_run, resume, no_resume, verbosity)
     raise typer.Exit(code=exit_code)
 
 
@@ -608,12 +608,13 @@ def _handle_commit_plumbing(
     return 0
 
 
-def _run_pipeline(
+def _run_pipeline(  # noqa: PLR0913
     config: str | None,
     cli_overrides: dict[str, object],
     dry_run: bool,
     resume: bool,
     no_resume: bool,
+    verbosity: Verbosity = Verbosity.VERBOSE,
 ) -> int:
     """Run the main pipeline.
 
@@ -633,6 +634,7 @@ def _run_pipeline(
             cli_overrides=cli_overrides,
             dry_run=dry_run,
             resume=resume and not no_resume,
+            verbosity=verbosity,
         )
         return exit_code
     except KeyboardInterrupt:

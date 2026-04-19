@@ -15,7 +15,7 @@ from rich.console import Console
 from rich.text import Text
 
 from ralph.agents.parsers import AgentOutputLine, ClaudeParser
-from ralph.config.enums import AgentTransport, JsonParserType
+from ralph.config.enums import AgentTransport, JsonParserType, Verbosity
 from ralph.config.models import AgentConfig
 from ralph.mcp.capability_mapping import SessionDrain
 from ralph.mcp.tool_names import claude_tool_name_prefix
@@ -497,7 +497,7 @@ class TestPipelineRunnerLoop:
         monkeypatch.setattr(runner_module.ckpt, "save", ckpt_save)
         monkeypatch.setattr(runner_module, "console", console_mock)
 
-        result = runner_module.run(MagicMock(), initial_state=state)
+        result = runner_module.run(MagicMock(), initial_state=state, verbosity=Verbosity.QUIET)
 
         assert result == 0
         ckpt_save.assert_called_once_with(state)
@@ -521,7 +521,7 @@ class TestPipelineRunnerLoop:
         monkeypatch.setattr(runner_module, "console", console_mock)
         monkeypatch.setattr(runner_module.ckpt, "save", MagicMock())
 
-        result = runner_module.run(MagicMock(), initial_state=state)
+        result = runner_module.run(MagicMock(), initial_state=state, verbosity=Verbosity.QUIET)
 
         assert result == 1
         # Find the Text object with the failure message among all print calls
@@ -545,7 +545,7 @@ class TestPipelineRunnerLoop:
         monkeypatch.setattr(runner_module, "_determine_effect_from_policy", raise_interrupt)
         monkeypatch.setattr(runner_module.ckpt, "save", ckpt_save)
 
-        result = runner_module.run(MagicMock(), initial_state=state)
+        result = runner_module.run(MagicMock(), initial_state=state, verbosity=Verbosity.QUIET)
 
         assert result == INTERRUPT_EXIT_CODE
         state.copy_with.assert_called_once_with(interrupted_by_user=True)
@@ -565,7 +565,7 @@ class TestPipelineRunnerLoop:
         monkeypatch.setattr(runner_module, "console", console_mock)
         monkeypatch.setattr(runner_module.ckpt, "save", MagicMock())
 
-        result = runner_module.run(MagicMock(), initial_state=state)
+        result = runner_module.run(MagicMock(), initial_state=state, verbosity=Verbosity.QUIET)
 
         assert result == 1
         rendered_texts = [
@@ -604,7 +604,7 @@ class TestPipelineRunnerLoop:
         monkeypatch.setattr(runner_module.ckpt, "save", ckpt_save)
         monkeypatch.setattr(runner_module, "console", console_mock)
 
-        result = runner_module.run(MagicMock(), initial_state=state)
+        result = runner_module.run(MagicMock(), initial_state=state, verbosity=Verbosity.QUIET)
 
         assert result == 0
         state.copy_with.assert_called_once_with(
@@ -646,7 +646,7 @@ class TestPipelineRunnerLoop:
         monkeypatch.setattr(runner_module.ckpt, "save", ckpt_save)
         monkeypatch.setattr(runner_module, "console", console_mock)
 
-        result = runner_module.run(MagicMock(), initial_state=state)
+        result = runner_module.run(MagicMock(), initial_state=state, verbosity=Verbosity.QUIET)
 
         assert result == 0
         materialize.assert_called_once()
@@ -685,7 +685,7 @@ class TestPipelineRunnerLoop:
         monkeypatch.setattr(runner_module.ckpt, "save", ckpt_save)
         monkeypatch.setattr(runner_module, "console", console_mock)
 
-        result = runner_module.run(MagicMock(), initial_state=state)
+        result = runner_module.run(MagicMock(), initial_state=state, verbosity=Verbosity.QUIET)
 
         assert result == 0
         reducer.assert_called_once_with(state, PipelineEvent.AGENT_SUCCESS, policy_bundle.pipeline)
@@ -732,7 +732,9 @@ class TestPipelineRunnerLoop:
         monkeypatch.setattr(runner_module.ckpt, "save", ckpt_save)
         monkeypatch.setattr(runner_module, "console", console_mock)
 
-        result = runner_module.run(MagicMock(), initial_state=planning_state)
+        result = runner_module.run(
+            MagicMock(), initial_state=planning_state, verbosity=Verbosity.QUIET
+        )
 
         assert result == 1
         reducer.assert_called_once_with(
@@ -1632,7 +1634,7 @@ class TestStartCommitCapture:
         state = MagicMock()
         state.phase = "planning"
 
-        runner_module.run(MagicMock(), initial_state=state)
+        runner_module.run(MagicMock(), initial_state=state, verbosity=Verbosity.QUIET)
 
         start_commit_path = tmp_git_repo / ".agent" / "start_commit"
         assert start_commit_path.exists(), ".agent/start_commit was not written by run()"
@@ -1673,7 +1675,7 @@ class TestStartCommitCapture:
         state = MagicMock()
         state.phase = "planning"
 
-        runner_module.run(MagicMock(), initial_state=state)
+        runner_module.run(MagicMock(), initial_state=state, verbosity=Verbosity.QUIET)
 
         start_commit_path = tmp_git_repo / ".agent" / "start_commit"
         assert start_commit_path.read_text().strip() == sentinel_sha, (

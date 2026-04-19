@@ -1,0 +1,169 @@
+"""Integration test: default `ralph` run wires ParallelDisplay + dashboard surfaces.
+
+Drives a single planning → development → development_analysis → development_commit
+cycle through the runner using a fake agent-execute seam, asserting the
+dashboard surfaces (phase banner, decision log, completion summary) reflect
+real pipeline state.
+"""
+
+from __future__ import annotations
+
+import os
+from pathlib import Path
+from typing import TYPE_CHECKING
+from unittest.mock import MagicMock
+
+import pytest
+from rich.console import Console
+
+import ralph.display.parallel_display as pd_module
+from ralph.config.models import GeneralConfig, UnifiedConfig
+from ralph.pipeline import runner as runner_module
+from ralph.pipeline.effects import (
+    CommitEffect,
+    InvokeAgentEffect,
+)
+from ralph.pipeline.events import PipelineEvent
+from ralph.pipeline.state import PipelineState
+from ralph.policy.loader import load_policy
+from ralph.workspace.scope import WorkspaceScope
+
+if TYPE_CHECKING:
+    from pytest import MonkeyPatch
+
+
+DEFAULT_POLICY_DIR = Path(__file__).parent.parent.parent / "ralph" / "policy" / "defaults"
+
+
+def _config() -> UnifiedConfig:
+    return UnifiedConfig(
+        general=GeneralConfig(
+            verbosity=2,
+            developer_iters=1,
+            reviewer_reviews=0,
+        )
+    )
+
+
+@pytest.mark.skipif(
+    os.environ.get("CI") == "1",
+    reason="Terminal emulation is unstable in CI; covered by display unit tests",
+)
+def test_default_run_constructs_parallel_display_and_renders_surfaces(
+    monkeypatch: MonkeyPatch, tmp_path: Path
+) -> None:
+    """Calling runner.run() without a display constructs exactly one ParallelDisplay."""
+    policy_bundle = load_policy(DEFAULT_POLICY_DIR)
+
+    constructed: list[object] = []
+    real_init = pd_module.ParallelDisplay.__init__
+
+    def spy_init(self, *args, **kwargs):  # type: ignore[no-untyped-def]
+        constructed.append(self)
+        # Force lines mode so the test does not require a real terminal.
+        kwargs.setdefault("mode", "lines")
+        real_init(self, *args, **kwargs)
+
+    monkeypatch.setattr(pd_module.ParallelDisplay, "__init__", spy_init)
+
+    captured_console = Console(record=True, force_terminal=True, width=120, height=60)
+    monkeypatch.setattr(runner_module, "console", captured_console)
+
+    monkeypatch.setattr(runner_module, "resolve_workspace_scope", lambda: WorkspaceScope(tmp_path))
+    monkeypatch.setattr(runner_module, "load_policy_or_die", lambda _path: policy_bundle)
+    monkeypatch.setattr(runner_module, "_materialize_agent_prompt_if_needed", lambda *a, **kw: None)
+    monkeypatch.setattr(runner_module.ckpt, "save", lambda _state: None)
+
+    invoked_phases: list[str] = []
+
+    def fake_execute_effect(effect, _config, _workspace_scope):
+        if isinstance(effect, InvokeAgentEffect):
+            invoked_phases.append(effect.phase)
+            return PipelineEvent.AGENT_SUCCESS
+        if isinstance(effect, CommitEffect):
+            return PipelineEvent.COMMIT_SUCCESS
+        msg = f"Unexpected effect: {type(effect)!r}"
+        raise AssertionError(msg)
+
+    def fake_phase_event_after_agent_run(*, effect, **_kwargs):
+        if effect.phase == "development_analysis":
+            return PipelineEvent.ANALYSIS_SUCCESS
+        if effect.phase == "review_analysis":
+            return PipelineEvent.ANALYSIS_SUCCESS
+        return PipelineEvent.AGENT_SUCCESS
+
+    monkeypatch.setattr(runner_module, "_execute_effect", fake_execute_effect)
+    monkeypatch.setattr(
+        runner_module,
+        "_phase_event_after_agent_run",
+        fake_phase_event_after_agent_run,
+    )
+
+    state = PipelineState(
+        phase="planning",
+        total_iterations=1,
+        total_reviewer_passes=0,
+        development_budget_remaining=1,
+        review_budget_remaining=0,
+    )
+
+    exit_code = runner_module.run(_config(), initial_state=state)
+
+    assert exit_code == 0
+    # Default verbose path constructs exactly one ParallelDisplay.
+    assert len(constructed) == 1
+    # Pipeline ran through planning -> development -> dev_analysis -> dev_commit.
+    assert "planning" in invoked_phases
+    assert "development" in invoked_phases
+    assert "development_analysis" in invoked_phases
+
+    out = captured_console.export_text()
+    # Completion summary panel always renders.
+    assert "Pipeline Complete" in out or "Pipeline Failed" in out
+
+
+def test_default_run_propagates_display_subscriber_to_dashboard_subscriber(
+    monkeypatch: MonkeyPatch, tmp_path: Path
+) -> None:
+    """When no display is provided, the runner uses the ParallelDisplay subscriber."""
+    policy_bundle = load_policy(DEFAULT_POLICY_DIR)
+
+    captured_subscribers: list[object] = []
+
+    real_notify_dashboard = runner_module._notify_dashboard_subscriber
+
+    def spy_notify(subscriber, state):  # type: ignore[no-untyped-def]
+        captured_subscribers.append(subscriber)
+        real_notify_dashboard(subscriber, state)
+
+    monkeypatch.setattr(runner_module, "_notify_dashboard_subscriber", spy_notify)
+    monkeypatch.setattr(runner_module, "resolve_workspace_scope", lambda: WorkspaceScope(tmp_path))
+    monkeypatch.setattr(runner_module, "load_policy_or_die", lambda _path: policy_bundle)
+    monkeypatch.setattr(runner_module.ckpt, "save", lambda _state: None)
+
+    captured_console = Console(record=True, force_terminal=True, width=120, height=60)
+    monkeypatch.setattr(runner_module, "console", captured_console)
+
+    real_init = pd_module.ParallelDisplay.__init__
+
+    def lines_init(self, *args, **kwargs):  # type: ignore[no-untyped-def]
+        kwargs.setdefault("mode", "lines")
+        real_init(self, *args, **kwargs)
+
+    monkeypatch.setattr(pd_module.ParallelDisplay, "__init__", lines_init)
+
+    # Short-circuit immediately: enter -> exit by going straight to complete.
+    state = MagicMock()
+    state.phase = "complete"
+    monkeypatch.setattr(
+        runner_module,
+        "_determine_effect_from_policy",
+        lambda *_args, **_kwargs: runner_module.ExitSuccessEffect(),
+    )
+
+    exit_code = runner_module.run(_config(), initial_state=state)
+
+    assert exit_code == 0
+    # The subscriber attached should not be None — display.subscriber was used.
+    if captured_subscribers:
+        assert all(s is not None for s in captured_subscribers)

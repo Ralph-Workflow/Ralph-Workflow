@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, datetime
+from queue import Queue
 from typing import TYPE_CHECKING
 
 from rich.console import Console
@@ -13,6 +14,8 @@ from ralph.display.completion_summary import (
     render_completion_summary,
 )
 from ralph.display.snapshot import DashboardSnapshot, WorkerSnapshot
+from ralph.display.subscriber import DashboardSubscriber
+from ralph.pipeline.state import PipelineState
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -81,9 +84,7 @@ def test_render_success_title_and_plan_summary() -> None:
 
 
 def test_render_failure_uses_failed_title() -> None:
-    text = _render_plain(
-        _make_snapshot(phase="failed", last_error="boom", pr_url=None)
-    )
+    text = _render_plain(_make_snapshot(phase="failed", last_error="boom", pr_url=None))
     assert "Pipeline Failed" in text
     assert "boom" in text
 
@@ -160,9 +161,7 @@ def test_render_missing_pr_url_omits_pr_line() -> None:
 
 
 def test_render_risks_section_lists_items() -> None:
-    text = _render_plain(
-        _make_snapshot(plan_risks=("risk one", "risk two"))
-    )
+    text = _render_plain(_make_snapshot(plan_risks=("risk one", "risk two")))
     assert "Open Risks" in text
     assert "risk one" in text
     assert "risk two" in text
@@ -173,3 +172,27 @@ def test_emit_completion_summary_writes_to_console() -> None:
     emit_completion_summary(console, _make_snapshot())
     out = console.export_text()
     assert "Pipeline Complete" in out
+
+
+def test_emit_completion_summary_uses_subscriber_decision_log(tmp_path: Path) -> None:
+    """Snapshot built via subscriber.build_snapshot drives the completion panel."""
+    queue: Queue = Queue(maxsize=64)
+    subscriber = DashboardSubscriber(
+        queue=queue,
+        workspace_root=tmp_path,
+        run_id="r1",
+    )
+    subscriber.record_phase_transition("planning", "development")
+    subscriber.record_analysis("development_analysis", "proceed", "all green")
+
+    state = PipelineState(phase="complete", previous_phase="review_commit")
+    snapshot = subscriber.build_snapshot(state)
+    assert snapshot is not None
+
+    text = _render_plain(snapshot, workspace_root=tmp_path)
+    assert "Pipeline Complete" in text
+    assert "Development Analysis" in text
+    assert "proceed" in text
+    assert "all green" in text
+    # phase transition row from record_phase_transition
+    assert "→ development" in text

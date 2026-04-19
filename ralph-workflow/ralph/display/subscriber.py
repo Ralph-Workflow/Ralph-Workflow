@@ -112,6 +112,16 @@ class DashboardSubscriber:
         if snapshot is not None:
             self._enqueue(snapshot)
 
+    def build_snapshot(self, state: PipelineState) -> DashboardSnapshot | None:
+        """Project the subscriber's accumulated state into a snapshot.
+
+        Read-only: does not mutate any internal state. Safe to call from
+        external code (such as the end-of-run summary path) without breaking
+        the notify(state) contract.
+        """
+        with self._lock:
+            return self._build_snapshot_locked(state)
+
     def record_activity(
         self,
         unit_id: str,
