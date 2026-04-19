@@ -16,7 +16,6 @@ from ralph.display.activity_model import (
     render_event_line,
 )
 
-
 THREAD_COUNT = 10
 CALLS_PER_THREAD = 100
 EXPECTED_SEQUENCES = THREAD_COUNT * CALLS_PER_THREAD
