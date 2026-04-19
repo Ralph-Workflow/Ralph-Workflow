@@ -177,7 +177,9 @@ def _visible_mcp_tool_names_owned(
     *,
     upstream_registry: UpstreamRegistry | None = None,
 ) -> list[str]:
-    bridge = build_ralph_tool_registry(session, workspace, upstream_registry=upstream_registry)
+    bridge = build_ralph_tool_registry(
+        session, workspace, upstream_registry=upstream_registry, mcp_config=None
+    )
     return [definition.name for definition in bridge.list_definitions()]
 
 

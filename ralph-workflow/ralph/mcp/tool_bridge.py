@@ -33,12 +33,14 @@ from ralph.mcp.tool_names import (
     REPORT_PROGRESS_TOOL,
     SUBMIT_ARTIFACT_TOOL,
     SUBMIT_PLAN_SECTION_TOOL,
+    WEB_SEARCH_TOOL,
     WRITE_FILE_TOOL,
 )
 
 if TYPE_CHECKING:
     from types import ModuleType
 
+    from ralph.config.mcp_models import McpConfig
     from ralph.mcp.upstream_registry import UpstreamRegistry
 
 JsonObject = dict[str, object]
@@ -111,11 +113,15 @@ class LazyToolHandler:
         handler_name: str,
         session: object,
         workspace: object,
+        extra_kwargs: dict[str, object] | None = None,
     ) -> None:
         self._module_name = module_name
         self._handler_name = handler_name
         self._session = session
         self._workspace = workspace
+        self._extra_kwargs: dict[str, object] = (
+            extra_kwargs if extra_kwargs is not None else {}
+        )
 
     def __call__(
         self,
@@ -126,7 +132,7 @@ class LazyToolHandler:
         del host_session, workspace
         module: ModuleType = import_module(self._module_name)
         handler = cast("ToolHandler", getattr(module, self._handler_name))
-        return handler(self._session, self._workspace, params)
+        return handler(self._session, self._workspace, params, **self._extra_kwargs)
 
 
 class UpstreamProxyHandler:
@@ -267,8 +273,8 @@ def _metadata(
     )
 
 
-def _tool_specs() -> tuple[ToolSpec, ...]:
-    return (
+def _tool_specs(mcp_config: McpConfig) -> tuple[ToolSpec, ...]:
+    _specs: list[ToolSpec] = [
         ToolSpec(
             metadata=_metadata(
                 name=READ_FILE_TOOL,
@@ -691,7 +697,33 @@ def _tool_specs() -> tuple[ToolSpec, ...]:
             module_name="ralph.mcp.tool_coordination",
             handler_name="handle_coordinate",
         ),
-    )
+    ]
+    if mcp_config.web_search.enabled:
+        _specs.append(
+            ToolSpec(
+                metadata=_metadata(
+                    name=WEB_SEARCH_TOOL,
+                    description="Search the web using a multi-backend fallback chain",
+                    input_schema={
+                        "type": "object",
+                        "properties": {
+                            "query": {"type": "string", "description": "search query"},
+                            "limit": {
+                                "type": "integer",
+                                "minimum": 1,
+                                "maximum": 25,
+                                "default": 10,
+                            },
+                        },
+                        "required": ["query"],
+                    },
+                    required_capability="WebSearch",
+                ),
+                module_name="ralph.mcp.tool_websearch",
+                handler_name="handle_web_search",
+            ),
+        )
+    return tuple(_specs)
 
 
 def _attach_upstream_registry(bridge: ToolBridge, upstream_registry: UpstreamRegistry) -> None:
@@ -716,6 +748,7 @@ def build_ralph_tool_registry(
     workspace: object,
     *,
     upstream_registry: UpstreamRegistry | None = None,
+    mcp_config: McpConfig | None = None,
 ) -> ToolBridge:
     """Build the default Ralph MCP tool registry.
 
@@ -724,9 +757,28 @@ def build_ralph_tool_registry(
     expose Rust-compatible `handle_*` functions without extra adapter glue.
     """
 
+    from ralph.config.mcp_models import McpConfig  # noqa: PLC0415
+
+    mcp_cfg = mcp_config or McpConfig()
     bridge = ToolBridge(session=session)
-    for spec in _tool_specs():
-        bridge.register_spec(spec, session=session, workspace=workspace)
+    for spec in _tool_specs(mcp_cfg):
+        is_websearch = (
+            spec.module_name == "ralph.mcp.tool_websearch"
+            and spec.handler_name == "handle_web_search"
+        )
+        if is_websearch:
+            bridge.register(
+                spec.metadata,
+                LazyToolHandler(
+                    module_name=spec.module_name,
+                    handler_name=spec.handler_name,
+                    session=session,
+                    workspace=workspace,
+                    extra_kwargs={"web_search_config": mcp_cfg.web_search},
+                ),
+            )
+        else:
+            bridge.register_spec(spec, session=session, workspace=workspace)
     if upstream_registry is not None:
         _attach_upstream_registry(bridge, upstream_registry)
     return bridge

@@ -28,7 +28,10 @@ except ModuleNotFoundError:  # pragma: no cover - exercised via runtime fallback
     _FastMCP = cast("object | None", None)
     _Tool = cast("object | None", None)
 
+from loguru import logger
+
 from ralph import __version__
+from ralph.config.mcp_loader import load_mcp_config
 from ralph.mcp.capability_mapping import Capability, McpCapability
 from ralph.mcp.env import (
     MCP_SESSION_ENV as SESSION_ENV,
@@ -38,6 +41,8 @@ from ralph.mcp.env import (
 )
 from ralph.mcp.session import AgentSession, session_has_capability
 from ralph.mcp.tool_bridge import ToolBridge, ToolDefinition, build_ralph_tool_registry
+from ralph.mcp.upstream_config import UPSTREAM_MCP_CONFIG_ENV, load_upstream_mcp_servers
+from ralph.mcp.upstream_registry import UpstreamRegistry
 from ralph.workspace.fs import FsWorkspace
 
 if TYPE_CHECKING:
@@ -45,7 +50,7 @@ if TYPE_CHECKING:
 
     from mcp.server.fastmcp.tools.base import Tool as ToolClass
 
-    from ralph.mcp.upstream_registry import UpstreamRegistry
+    from ralph.config.mcp_models import McpConfig
 
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8000
@@ -474,13 +479,14 @@ class _StandaloneHttpServer(_FallbackStandaloneServer):
     pass
 
 
-def build_standalone_http_server(
+def build_standalone_http_server(  # noqa: PLR0913
     workspace_root: Path,
     *,
     host: str = DEFAULT_HOST,
     port: int = DEFAULT_PORT,
     session: AgentSession | None = None,
     upstream_registry: UpstreamRegistry | None = None,
+    mcp_config: McpConfig | None = None,
 ) -> _StandaloneHttpServer:
     effective_session = session or AgentSession(
         session_id=f"standalone-{uuid.uuid4().hex[:8]}",
@@ -489,9 +495,29 @@ def build_standalone_http_server(
         capabilities=_all_capability_values(),
     )
     workspace = FsWorkspace(workspace_root)
+    mcp_cfg = mcp_config if mcp_config is not None else load_mcp_config(None)
+    raw_upstream = os.environ.get(UPSTREAM_MCP_CONFIG_ENV)
+    upstream_servers = load_upstream_mcp_servers(raw_upstream)
+    upstream_reg = UpstreamRegistry.build(upstream_servers) if upstream_servers else None
     registry = build_ralph_tool_registry(
-        effective_session, workspace, upstream_registry=upstream_registry
+        effective_session,
+        workspace,
+        upstream_registry=upstream_reg,
+        mcp_config=mcp_cfg,
     )
+    n_builtin = len(list(registry.list_definitions()))
+    if upstream_reg and upstream_servers:
+        n_proxied = len(list(upstream_reg.tool_definitions()))
+        n_servers = len(upstream_servers)
+        logger.info(
+            "MCP server started with {n} built-in tools + "
+            "{m} proxied upstream tools from {k} servers",
+            n=n_builtin,
+            m=n_proxied,
+            k=n_servers,
+        )
+    else:
+        logger.info("MCP server started with {n} built-in tools", n=n_builtin)
     return _StandaloneHttpServer(host, port, McpServer(effective_session, workspace, registry))
 
 
@@ -675,13 +701,14 @@ def _create_tool(registry: ToolBridge, definition: ToolDefinition) -> ToolBuilde
     return tool
 
 
-def build_fastmcp_server(
+def build_fastmcp_server(  # noqa: PLR0913
     workspace_root: Path,
     *,
     host: str = DEFAULT_HOST,
     port: int = DEFAULT_PORT,
     session: AgentSession | None = None,
     upstream_registry: UpstreamRegistry | None = None,
+    mcp_config: McpConfig | None = None,
 ) -> FastMcpServerLike:
     """Build a standalone FastMCP server exposing Ralph tools over HTTP."""
     effective_session = session or AgentSession(
@@ -691,8 +718,15 @@ def build_fastmcp_server(
         capabilities=_all_capability_values(),
     )
     workspace = FsWorkspace(workspace_root)
+    mcp_cfg = mcp_config if mcp_config is not None else load_mcp_config(None)
+    raw_upstream = os.environ.get(UPSTREAM_MCP_CONFIG_ENV)
+    upstream_servers = load_upstream_mcp_servers(raw_upstream)
+    upstream_reg = UpstreamRegistry.build(upstream_servers) if upstream_servers else None
     registry = build_ralph_tool_registry(
-        effective_session, workspace, upstream_registry=upstream_registry
+        effective_session,
+        workspace,
+        upstream_registry=upstream_reg,
+        mcp_config=mcp_cfg,
     )
     if _FastMCP is None or _Tool is None:
         return cast(
