@@ -46,7 +46,7 @@ class ResultsPanel:
 
         if phase not in ("complete", "failed"):
             return Panel(
-                Text("[dim]results pending — pipeline still running[/dim]"),
+                Text.from_markup("[dim]results pending — pipeline still running[/dim]"),
                 title="Results",
                 border_style=theme.styles.get("theme.panel.border", ""),
             )
@@ -77,13 +77,13 @@ class ResultsPanel:
                 truncated_error = _truncate(snapshot.last_error, 200)
                 error_text = Text(f"[bold red]Error:[/] {truncated_error}")
             else:
-                error_text = Text("[bold red]Error:[/] [dim]unknown error[/dim]")
+                error_text = Text.from_markup("[bold red]Error:[/] [dim]unknown error[/dim]")
 
             border = theme.styles.get("theme.status.error", "")
             return Panel(error_text, title="Results", border_style=border)
 
         return Panel(
-            Text("[dim]results pending[/dim]"),
+            Text.from_markup("[dim]results pending[/dim]"),
             title="Results",
             border_style=theme.styles.get("theme.panel.border", ""),
         )

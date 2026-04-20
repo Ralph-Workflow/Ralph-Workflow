@@ -47,13 +47,13 @@ class WorkerGridPanel:
         workers = snapshot.workers
         if len(workers) == 0:
             return Panel(
-                Text("[dim]no workers[/dim]"),
+                Text.from_markup("[dim]no workers[/dim]"),
                 title="Workers",
                 border_style=theme.styles.get("theme.panel.border", ""),
             )
         if len(workers) > MAX_GRID_WORKERS:
             return Panel(
-                Text("[dim]use list view (>4 workers)[/dim]"),
+                Text.from_markup("[dim]use list view (>4 workers)[/dim]"),
                 title="Workers",
                 border_style=theme.styles.get("theme.panel.border", ""),
             )
@@ -67,7 +67,7 @@ class WorkerGridPanel:
                 lines.append(f"[theme.text.muted]commit: {w.commit_sha[:7]}[/]")
             if w.error_message:
                 lines.append(f"[bold red]{_truncate(w.error_message, 80)}[/]")
-            content = Text("\n".join(lines))
+            content = Text.from_markup("\n".join(lines))
             border = theme.styles.get(f"theme.status.{w.status_semantic}", "")
             panels.append(Panel(content, title=title, border_style=border, padding=(0, 1)))
 

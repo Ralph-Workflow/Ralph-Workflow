@@ -28,6 +28,7 @@ if TYPE_CHECKING:
     from rich.console import Console, RenderableType
     from rich.theme import Theme
 
+    from ralph.display.plain_renderer import PlainLogRenderer
     from ralph.display.protocols import LayoutSelector, PanelRenderer
     from ralph.display.ring_buffer import RingBuffer
     from ralph.display.snapshot import DashboardSnapshot
@@ -116,12 +117,14 @@ class AdaptiveLayoutSelector:
 
 
 class _SnapshotRenderThread(threading.Thread):
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         snapshot_queue: queue.Queue[DashboardSnapshot],
         live: Live,
         set_snapshot: Callable[[DashboardSnapshot], None],
         render_fn: Callable[[], RenderableType],
+        print_lock: threading.Lock,
+        transcript_renderer: PlainLogRenderer | None = None,
         refresh_hz: int = 4,
     ) -> None:
         super().__init__(daemon=True, name="live-dashboard-render")
@@ -131,6 +134,8 @@ class _SnapshotRenderThread(threading.Thread):
         self._render_fn = render_fn
         self._stop_event = threading.Event()
         self._refresh_hz = refresh_hz
+        self._print_lock = print_lock
+        self._transcript_renderer = transcript_renderer
 
     def run(self) -> None:
         while not self._stop_event.is_set():
@@ -152,6 +157,12 @@ class _SnapshotRenderThread(threading.Thread):
 
             if latest is not None:
                 self._set_snapshot(latest)
+                if self._transcript_renderer is not None:
+                    transcript_lines = self._transcript_renderer.snapshot_lines(latest)
+                    if transcript_lines:
+                        with self._print_lock:
+                            for line in transcript_lines:
+                                self._live.console.print(line, markup=False, highlight=False)
 
             self._live.update(self._render_fn(), refresh=True)
             self._stop_event.wait(1 / self._refresh_hz)
@@ -199,6 +210,7 @@ class LiveDashboard:
         "_refresh_per_second",
         "_render_thread",
         "_snapshot_queue",
+        "_transcript_renderer",
     )
 
     def __init__(  # noqa: PLR0913
@@ -211,6 +223,7 @@ class LiveDashboard:
         layout_selector: LayoutSelector = AdaptiveLayoutSelector(),  # noqa: B008
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
         refresh_per_second: int = 4,
+        transcript_renderer: PlainLogRenderer | None = None,
     ) -> None:
         self._console = console
         self._panel_map: dict[str, PanelRenderer] = {p.name: p for p in panels}
@@ -220,6 +233,7 @@ class LiveDashboard:
         self._clock = clock
         self._refresh_per_second = refresh_per_second
         self._latest_snapshot: DashboardSnapshot | None = None
+        self._transcript_renderer = transcript_renderer
         self._live: Live | None = None
         self._render_thread: _SnapshotRenderThread | None = None
         self._prev_sigwinch: _SignalHandler = None
@@ -302,6 +316,8 @@ class LiveDashboard:
             live=live,
             set_snapshot=self._set_latest_snapshot,
             render_fn=self._render_once,
+            print_lock=self._print_lock,
+            transcript_renderer=self._transcript_renderer,
             refresh_hz=self._refresh_per_second,
         )
         self._render_thread.start()

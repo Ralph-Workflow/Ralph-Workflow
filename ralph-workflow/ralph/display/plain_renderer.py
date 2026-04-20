@@ -1,9 +1,11 @@
-"""Plain line renderer for non-TTY environments."""
+"""Plain line renderer for non-TTY environments and copy-paste-safe transcripts."""
 
 from __future__ import annotations
 
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Final
+
+from rich.text import Text
 
 from ralph.display.snapshot import DashboardSnapshot, snapshot_from_state
 
@@ -25,6 +27,13 @@ LEVELS: Final[dict[str, str]] = {
 }
 
 
+def _strip_markup(text: str) -> str:
+    try:
+        return Text.from_markup(text).plain
+    except Exception:
+        return text
+
+
 class PlainLogRenderer:
     """Emit plain, ANSI-free structured log lines."""
 
@@ -39,39 +48,144 @@ class PlainLogRenderer:
         self._last_phase: str | None = None
         self._last_iteration: int | None = None
         self._last_worker_states: dict[str, str] = {}
+        self._last_plan_signature: tuple[str | None, tuple[str, ...], int] | None = None
+        self._last_activity_signature: tuple[
+            str | None,
+            str | None,
+            str | None,
+            str | None,
+            str | None,
+            str | None,
+        ] | None = None
+        self._last_analysis_signature: tuple[str | None, str | None, str | None] | None = None
 
-    def emit_snapshot(self, snapshot: DashboardSnapshot) -> None:
+    def snapshot_lines(self, snapshot: DashboardSnapshot) -> list[str]:
+        timestamp = self._clock().isoformat()
         lines: list[str] = []
+        lines.extend(self._phase_lines(snapshot, timestamp))
+        lines.extend(self._plan_lines(snapshot, timestamp))
+        lines.extend(self._activity_lines(snapshot, timestamp))
+        lines.extend(self._analysis_lines(snapshot, timestamp))
+        lines.extend(self._worker_lines(snapshot, timestamp))
+        lines.extend(self._result_lines(snapshot, timestamp))
+        return lines
 
+    def _phase_lines(self, snapshot: DashboardSnapshot, timestamp: str) -> list[str]:
         if snapshot.phase != self._last_phase:
-            lines.append(
-                f"{self._clock().isoformat()} {LEVELS.get(snapshot.phase, 'INFO')} "
-                f"[phase] {snapshot.phase}"
-            )
             self._last_phase = snapshot.phase
-        elif snapshot.iteration != self._last_iteration:
-            lines.append(
-                f"{self._clock().isoformat()} INFO [progress] iteration "
+            self._last_iteration = snapshot.iteration
+            return [f"{timestamp} {LEVELS.get(snapshot.phase, 'INFO')} [phase] {snapshot.phase}"]
+        if snapshot.iteration != self._last_iteration:
+            self._last_iteration = snapshot.iteration
+            return [
+                f"{timestamp} INFO [progress] iteration "
                 f"{snapshot.iteration}/{snapshot.total_iterations}"
+            ]
+        return []
+
+    def _plan_lines(self, snapshot: DashboardSnapshot, timestamp: str) -> list[str]:
+        plan_signature = (
+            snapshot.plan_summary,
+            snapshot.plan_scope_items,
+            snapshot.plan_total_steps,
+        )
+        if plan_signature == self._last_plan_signature:
+            return []
+        self._last_plan_signature = plan_signature
+
+        lines: list[str] = []
+        if snapshot.plan_summary:
+            lines.append(f"{timestamp} INFO [plan] {snapshot.plan_summary}")
+        if snapshot.plan_scope_items:
+            scope = " | ".join(snapshot.plan_scope_items)
+            lines.append(f"{timestamp} INFO [plan-scope] {scope}")
+        if snapshot.plan_total_steps > 0:
+            lines.append(
+                f"{timestamp} INFO [plan-steps] "
+                f"{snapshot.plan_current_step or '—'}/{snapshot.plan_total_steps}"
             )
+        return lines
 
-        self._last_iteration = snapshot.iteration
+    def _activity_lines(self, snapshot: DashboardSnapshot, timestamp: str) -> list[str]:
+        activity_signature = (
+            snapshot.active_agent,
+            snapshot.active_tool,
+            snapshot.active_path,
+            snapshot.active_workdir,
+            snapshot.active_command,
+            snapshot.last_activity_line,
+        )
+        if activity_signature == self._last_activity_signature:
+            return []
+        self._last_activity_signature = activity_signature
 
+        activity_parts: list[str] = []
+        if snapshot.active_agent:
+            activity_parts.append(f"agent={snapshot.active_agent}")
+        if snapshot.active_tool:
+            activity_parts.append(f"tool={snapshot.active_tool}")
+        if snapshot.active_path:
+            activity_parts.append(f"path={snapshot.active_path}")
+        if snapshot.active_workdir:
+            activity_parts.append(f"workdir={snapshot.active_workdir}")
+        if snapshot.active_command:
+            activity_parts.append(f"command={snapshot.active_command}")
+
+        lines: list[str] = []
+        if activity_parts:
+            lines.append(f"{timestamp} INFO [activity] {' '.join(activity_parts)}")
+        if snapshot.last_activity_line:
+            lines.append(f"{timestamp} INFO [activity-line] {snapshot.last_activity_line}")
+        return lines
+
+    def _analysis_lines(self, snapshot: DashboardSnapshot, timestamp: str) -> list[str]:
+        analysis_signature = (
+            snapshot.analysis_phase,
+            snapshot.analysis_decision,
+            snapshot.analysis_reason,
+        )
+        if analysis_signature == self._last_analysis_signature:
+            return []
+        self._last_analysis_signature = analysis_signature
+
+        if not snapshot.analysis_phase or not snapshot.analysis_decision:
+            return []
+
+        reason = f" — {snapshot.analysis_reason}" if snapshot.analysis_reason else ""
+        return [
+            f"{timestamp} INFO [analysis] "
+            f"{snapshot.analysis_phase} {snapshot.analysis_decision}{reason}"
+        ]
+
+    def _worker_lines(self, snapshot: DashboardSnapshot, timestamp: str) -> list[str]:
+        lines: list[str] = []
         for worker in snapshot.workers:
             previous_status = self._last_worker_states.get(worker.unit_id)
             if previous_status == worker.status:
                 continue
-            lines.append(
-                f"{self._clock().isoformat()} INFO [worker] {worker.unit_id} {worker.status}"
-            )
+            lines.append(f"{timestamp} INFO [worker] {worker.unit_id} {worker.status}")
             self._last_worker_states[worker.unit_id] = worker.status
+        return lines
 
-        for line in lines:
+    def _result_lines(self, snapshot: DashboardSnapshot, timestamp: str) -> list[str]:
+        if snapshot.phase == "failed" and snapshot.last_error:
+            return [f"{timestamp} ERROR [failure] {snapshot.last_error}"]
+        if snapshot.phase != "complete":
+            return []
+
+        lines = [f"{timestamp} SUCCESS [result] pipeline complete"]
+        if snapshot.pr_url:
+            lines.append(f"{timestamp} SUCCESS [pr] {snapshot.pr_url}")
+        return lines
+
+    def emit_snapshot(self, snapshot: DashboardSnapshot) -> None:
+        for line in self.snapshot_lines(snapshot):
             self._console.print(line, markup=False, highlight=False, no_wrap=True)
 
     def emit_log_line(self, unit_id: str, line: str) -> None:
+        sanitized = _strip_markup(line)
         self._console.print(
-            f"{self._clock().isoformat()} INFO [{unit_id}] {line}",
+            f"{self._clock().isoformat()} INFO [{unit_id}] {sanitized}",
             markup=False,
             highlight=False,
             no_wrap=True,

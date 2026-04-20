@@ -1297,11 +1297,18 @@ def _record_activity_on_subscriber(
             stripped = parsed_line.content.strip()
             if stripped:
                 tool_name = stripped
+        metadata = parsed_line.metadata
+        path = _format_metadata_value(metadata.get("path")) or None
+        workdir = _format_metadata_value(metadata.get("workdir")) or None
+        command = _format_metadata_value(metadata.get("command")) or None
         subscriber.record_activity(
             unit_id=agent_name,
             agent_name=agent_name,
             line=line_text,
             tool_name=tool_name,
+            path=path,
+            workdir=workdir,
+            command=command,
         )
     except Exception:  # pragma: no cover - defensive
         logger.debug("subscriber.record_activity failed", exc_info=True)

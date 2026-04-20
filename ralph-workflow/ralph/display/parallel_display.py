@@ -267,6 +267,7 @@ class ParallelDisplay:
                 ),
                 buffers=self._activity_router._buffers,
                 snapshot_queue=self._snapshot_queue,
+                transcript_renderer=self._plain_renderer,
             )
             self._live_dashboard.__enter__()
             if self._live_dashboard._render_thread is not None:

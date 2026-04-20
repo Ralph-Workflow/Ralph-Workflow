@@ -64,13 +64,13 @@ class WorkerListPanel:
         workers = snapshot.workers
         if len(workers) == 0:
             return Panel(
-                Text("[dim]no workers[/dim]"),
+                Text.from_markup("[dim]no workers[/dim]"),
                 title="Workers",
                 border_style=theme.styles.get("theme.panel.border", ""),
             )
         if len(workers) <= self.MAX_LIST_WORKERS:
             return Panel(
-                Text("[dim]use grid view (≤4 workers)[/dim]"),
+                Text.from_markup("[dim]use grid view (≤4 workers)[/dim]"),
                 title="Workers",
                 border_style=theme.styles.get("theme.panel.border", ""),
             )

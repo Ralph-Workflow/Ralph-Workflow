@@ -60,7 +60,23 @@ class PhaseTrackerPanel:
             error = snapshot.last_error[:_MAX_ERROR_LENGTH]
             lines.append(f"\n[bold red]✗ {escape(error)}[/]")
 
-        content = Text("".join(lines))
+        activity_lines: list[str] = []
+        if snapshot.active_agent:
+            activity_lines.append(f"Agent: {escape(snapshot.active_agent)}")
+        if snapshot.active_tool:
+            activity_lines.append(f"Tool: {escape(snapshot.active_tool)}")
+        if snapshot.active_path:
+            activity_lines.append(f"Path: {escape(snapshot.active_path)}")
+        if snapshot.active_workdir:
+            activity_lines.append(f"Workdir: {escape(snapshot.active_workdir)}")
+        if snapshot.active_command:
+            activity_lines.append(f"Command: {escape(snapshot.active_command)}")
+        if snapshot.last_activity_line:
+            activity_lines.append(escape(snapshot.last_activity_line))
+        if activity_lines:
+            lines.append("\n" + "\n".join(f"[dim]{entry}[/]" for entry in activity_lines))
+
+        content = Text.from_markup("".join(lines))
         return Panel(
             content,
             title="Phase",

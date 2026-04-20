@@ -43,6 +43,18 @@ def test_malformed_line_produces_error_event_no_crash() -> None:
     assert "parser error" in entries[0]
 
 
+def test_unknown_parser_event_is_rendered_instead_of_dropped() -> None:
+    router = _make_router_with_stub_parser(
+        [AgentOutputLine(type="mystery_event", content='{"kind":"weird","value":1}')]
+    )
+
+    router.push_raw_line("unit-b", '{"kind":"weird","value":1}')
+
+    entries = router.get_buffer("unit-b").snapshot()
+    assert len(entries) == 1
+    assert '{"kind":"weird","value":1}' in entries[0]
+
+
 def test_get_buffer_same_unit_id_returns_same_instance() -> None:
     router = ActivityRouter()
     buf1 = router.get_buffer("unit-c")

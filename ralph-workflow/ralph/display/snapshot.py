@@ -73,6 +73,9 @@ class DashboardSnapshot:
     plan_risks: tuple[str, ...] = ()
     active_agent: str | None = None
     active_tool: str | None = None
+    active_path: str | None = None
+    active_workdir: str | None = None
+    active_command: str | None = None
     last_activity_line: str | None = None
     analysis_phase: str | None = None
     analysis_decision: str | None = None
@@ -93,6 +96,9 @@ def snapshot_from_state(  # noqa: PLR0913
     plan_risks: tuple[str, ...] = (),
     active_agent: str | None = None,
     active_tool: str | None = None,
+    active_path: str | None = None,
+    active_workdir: str | None = None,
+    active_command: str | None = None,
     last_activity_line: str | None = None,
     analysis_phase: str | None = None,
     analysis_decision: str | None = None,
@@ -131,6 +137,9 @@ def snapshot_from_state(  # noqa: PLR0913
         plan_risks=plan_risks,
         active_agent=active_agent,
         active_tool=active_tool,
+        active_path=active_path,
+        active_workdir=active_workdir,
+        active_command=active_command,
         last_activity_line=last_activity_line,
         analysis_phase=analysis_phase,
         analysis_decision=analysis_decision,

@@ -173,3 +173,24 @@ class TestLiveDashboard:
         dash._latest_snapshot = _make_snapshot(3)
         result = dash._render_once()
         assert isinstance(result, Layout)
+
+    def test_context_manager_emits_plain_transcript_lines_for_snapshots(self) -> None:
+        class _TranscriptRenderer:
+            def snapshot_lines(self, snapshot: DashboardSnapshot) -> list[str]:
+                return [f"[phase] {snapshot.phase}"]
+
+        console = Console(record=True, width=120, height=40, force_terminal=False)
+        snap_queue: queue.Queue[DashboardSnapshot] = queue.Queue()
+        dash = LiveDashboard(
+            console=console,
+            panels=_make_mock_panels(),
+            buffers={},
+            snapshot_queue=snap_queue,
+            transcript_renderer=_TranscriptRenderer(),
+        )
+
+        with dash:
+            dash.update(_make_snapshot(1))
+            time.sleep(0.2)
+
+        assert "[phase] build" in console.export_text()

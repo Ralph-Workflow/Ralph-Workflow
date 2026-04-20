@@ -39,7 +39,7 @@ class LogTailPanel:
         workers = snapshot.workers
         if not workers:
             return Panel(
-                Text("[dim]no logs yet[/dim]"),
+                Text.from_markup("[dim]no logs yet[/dim]"),
                 title="Agent Activity",
                 border_style=theme.styles.get("theme.panel.border", ""),
             )
@@ -64,9 +64,9 @@ class LogTailPanel:
 
             # Lines from RingBuffer are already pre-rendered Rich-markup strings.
             content = (
-                Text("\n".join(lines))
+                Text.from_markup("\n".join(lines))
                 if lines
-                else Text("[dim]waiting for output[/dim]")
+                else Text.from_markup("[dim]waiting for output[/dim]")
             )
 
             sub_panels.append(
