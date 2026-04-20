@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 
     from rich.console import Console
 
-    from ralph.display.snapshot import DashboardSnapshot
+    from ralph.display.snapshot import PipelineSnapshot
 
 _VERIFICATION_ARTIFACT = ".agent/artifacts/verification.json"
 _DECISION_LABELS: dict[str, str] = {
@@ -48,7 +48,7 @@ def _read_verification_status(workspace_root: Path | None) -> tuple[str, str | N
     return (label, reason_text)
 
 
-def _commit_sha_from_snapshot(snapshot: DashboardSnapshot) -> str | None:
+def _commit_sha_from_snapshot(snapshot: PipelineSnapshot) -> str | None:
     for worker in reversed(snapshot.workers):
         if worker.commit_sha:
             return worker.commit_sha
@@ -72,7 +72,7 @@ def _commit_message_lines(workspace_root: Path | None) -> list[str]:
 
 
 def _verification_line(
-    snapshot: DashboardSnapshot,
+    snapshot: PipelineSnapshot,
     workspace_root: Path | None,
     *,
     failed: bool,
@@ -85,10 +85,18 @@ def _verification_line(
     return f"Verification: {status}{suffix}"
 
 
+def _dropped_count_line(dropped: int) -> str:
+    """Return a line reporting dropped snapshots, shown only when drops occurred."""
+    if dropped <= 0:
+        return ""
+    return f"Snapshots dropped: {dropped}"
+
+
 def render_completion_summary(
-    snapshot: DashboardSnapshot,
+    snapshot: PipelineSnapshot,
     *,
     workspace_root: Path | None = None,
+    dropped_count: int = 0,
 ) -> Text:
     failed = snapshot.phase == "failed"
     lines: list[str] = ["Pipeline Failed" if failed else "Pipeline Complete"]
@@ -130,16 +138,24 @@ def render_completion_summary(
         lines.append("Open Risks:")
         lines.extend(f"- {risk}" for risk in snapshot.plan_risks)
 
+    dropped_line = _dropped_count_line(dropped_count)
+    if dropped_line:
+        lines.append(dropped_line)
+
     return Text("\n".join(lines))
 
 
 def emit_completion_summary(
     console: Console,
-    snapshot: DashboardSnapshot,
+    snapshot: PipelineSnapshot,
     *,
     workspace_root: Path | None = None,
+    dropped_count: int = 0,
 ) -> None:
-    console.print(render_completion_summary(snapshot, workspace_root=workspace_root), markup=False)
+    console.print(
+        render_completion_summary(snapshot, workspace_root=workspace_root, dropped_count=dropped_count),
+        markup=False,
+    )
 
 
 __all__ = ["emit_completion_summary", "render_completion_summary"]

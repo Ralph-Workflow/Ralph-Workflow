@@ -78,13 +78,13 @@ if TYPE_CHECKING:
     from ralph.agents.invoke import InvokeOptions
     from ralph.config.models import AgentConfig, UnifiedConfig
     from ralph.display.parallel_display import ParallelDisplay
-    from ralph.display.subscriber import DashboardSubscriber
+    from ralph.display.subscriber import PipelineSubscriber
     from ralph.mcp.agent_transport_probe import AgentProbeReport
     from ralph.mcp.upstream_config import UpstreamMcpServer
     from ralph.mcp.upstream_validation import UpstreamValidationReport
     from ralph.policy.models import AgentsPolicy, PhaseDefinition, PipelinePolicy, PolicyBundle
 
-    class _DashboardSubscriber(Protocol):
+    class _PipelineSubscriber(Protocol):
         def notify(self, state: PipelineState) -> None: ...
 
 
@@ -309,7 +309,7 @@ def _build_default_display(
 
     Falls back to the legacy console display if ParallelDisplay (or its
     transitive Rich/panel dependencies) cannot be imported or initialized.
-    The display owns its own DashboardSubscriber so the runner and the live
+    The display owns its own PipelineSubscriber so the runner and the live
     render thread share a single subscriber.
     """
     try:
@@ -347,13 +347,13 @@ def _execute_effect_with_optional_display(
     return _execute_effect(effect, config, workspace_scope, display)
 
 
-def _notify_dashboard_subscriber(
-    dashboard_subscriber: _DashboardSubscriber | None,
+def _notify_pipeline_subscriber(
+    pipeline_subscriber: _PipelineSubscriber | None,
     state: PipelineState,
 ) -> None:
-    if dashboard_subscriber is None:
+    if pipeline_subscriber is None:
         return
-    dashboard_subscriber.notify(state)
+    pipeline_subscriber.notify(state)
 
 
 def _phase_context(state: PipelineState, previous_phase: str) -> dict[str, object]:
@@ -414,7 +414,7 @@ def _emit_final_summary(
     state: PipelineState,
     workspace_root: Path,
     *,
-    subscriber: DashboardSubscriber | None = None,
+    subscriber: PipelineSubscriber | None = None,
 ) -> None:
     """Emit an end-of-run completion summary panel.
 
@@ -424,15 +424,17 @@ def _emit_final_summary(
 
     When a ``subscriber`` is supplied, the snapshot is built from its
     accumulated state (decision log, analysis, plan) so the panel mirrors
-    what the live dashboard showed during the run.
+    what the live display showed during the run.
     """
     try:
         from ralph.display.completion_summary import emit_completion_summary  # noqa: PLC0415
         from ralph.display.snapshot import snapshot_from_state  # noqa: PLC0415
 
+        dropped_count = 0
         snapshot = None
         if subscriber is not None:
             try:
+                dropped_count = subscriber.dropped_count
                 snapshot = subscriber.build_snapshot(state)
             except Exception:
                 logger.debug(
@@ -446,7 +448,7 @@ def _emit_final_summary(
                 prompt_preview=(),
                 run_id=None,
             )
-        emit_completion_summary(console, snapshot, workspace_root=workspace_root)
+        emit_completion_summary(console, snapshot, workspace_root=workspace_root, dropped_count=dropped_count)
     except Exception:
         logger.debug("Failed to emit completion summary", exc_info=True)
 
@@ -455,7 +457,7 @@ def run(  # noqa: PLR0912, PLR0915
     config: UnifiedConfig,
     initial_state: PipelineState | None = None,
     display: ParallelDisplay | None = None,
-    dashboard_subscriber: _DashboardSubscriber | None = None,
+    pipeline_subscriber: _PipelineSubscriber | None = None,
     *,
     verbosity: Verbosity | None = None,
 ) -> int:
@@ -466,7 +468,7 @@ def run(  # noqa: PLR0912, PLR0915
         initial_state: Optional initial state (for resume from checkpoint).
         display: Optional pre-built display. When omitted, a ParallelDisplay
             is constructed by default unless ``verbosity`` is QUIET.
-        dashboard_subscriber: Optional subscriber that will receive notify(state)
+        pipeline_subscriber: Optional subscriber that will receive notify(state)
             calls after each reduce. When a ParallelDisplay is constructed by
             this function, its built-in subscriber is wired in automatically.
         verbosity: Optional explicit verbosity. Defaults to the configured
@@ -506,9 +508,9 @@ def run(  # noqa: PLR0912, PLR0915
     else:
         active_display = _build_default_display(workspace_scope.root)
 
-    if dashboard_subscriber is None and hasattr(active_display, "subscriber"):
-        dashboard_subscriber = cast(
-            "_DashboardSubscriber | None",
+    if pipeline_subscriber is None and hasattr(active_display, "subscriber"):
+        pipeline_subscriber = cast(
+            "_PipelineSubscriber | None",
             getattr(active_display, "subscriber", None),
         )
 
@@ -516,7 +518,7 @@ def run(  # noqa: PLR0912, PLR0915
     _prev_phase = state.phase
     try:
         with active_display:
-            _notify_dashboard_subscriber(dashboard_subscriber, state)
+            _notify_pipeline_subscriber(pipeline_subscriber, state)
             try:
                 while state.phase not in (PHASE_COMPLETE, PHASE_FAILED):
                     effect = _call_determine_effect_from_policy(
@@ -528,7 +530,7 @@ def run(  # noqa: PLR0912, PLR0915
                         pipeline_policy=policy_bundle.pipeline,
                         workspace_scope=workspace_scope,
                         display=active_display,
-                        dashboard_subscriber=dashboard_subscriber,
+                        pipeline_subscriber=pipeline_subscriber,
                     )
                     if inline_result is not None:
                         if isinstance(inline_result, int):
@@ -549,7 +551,7 @@ def run(  # noqa: PLR0912, PLR0915
                             display=active_display,
                             policy_bundle=policy_bundle,
                             workspace_scope=workspace_scope,
-                            dashboard_subscriber=dashboard_subscriber,
+                            pipeline_subscriber=pipeline_subscriber,
                         )
                         _prev_phase = _emit_phase_transition_if_changed(
                             active_display,
@@ -592,7 +594,7 @@ def run(  # noqa: PLR0912, PLR0915
                         )
 
                     state, _ = reducer_reduce(state, event, policy_bundle.pipeline)
-                    _notify_dashboard_subscriber(dashboard_subscriber, state)
+                    _notify_pipeline_subscriber(pipeline_subscriber, state)
                     ckpt.save(state)
                     _prev_phase = _emit_phase_transition_if_changed(
                         active_display,
@@ -621,7 +623,7 @@ def run(  # noqa: PLR0912, PLR0915
         _emit_final_summary(
             state,
             workspace_scope.root,
-            subscriber=cast("DashboardSubscriber | None", dashboard_subscriber),
+            subscriber=cast("PipelineSubscriber | None", pipeline_subscriber),
         )
     return exit_code
 
@@ -633,7 +635,7 @@ def _execute_fan_out_sync(  # noqa: PLR0913
     display: ParallelDisplay | _LegacyConsoleDisplay,
     policy_bundle: PolicyBundle,
     workspace_scope: WorkspaceScope,
-    dashboard_subscriber: _DashboardSubscriber | None = None,
+    pipeline_subscriber: _PipelineSubscriber | None = None,
 ) -> PipelineState:
     """Execute fan-out development synchronously by wrapping asyncio.run()."""
     import asyncio  # noqa: PLC0415
@@ -655,10 +657,10 @@ def _execute_fan_out_sync(  # noqa: PLR0913
     pd: _ParallelDisplay = (
         display if isinstance(display, _ParallelDisplay) else _ParallelDisplay(console)
     )
-    effective_dashboard_subscriber = dashboard_subscriber
-    if effective_dashboard_subscriber is None and hasattr(pd, "subscriber"):
-        effective_dashboard_subscriber = cast(
-            "_DashboardSubscriber | None",
+    effective_pipeline_subscriber = pipeline_subscriber
+    if effective_pipeline_subscriber is None and hasattr(pd, "subscriber"):
+        effective_pipeline_subscriber = cast(
+            "_PipelineSubscriber | None",
             getattr(pd, "subscriber", None),
         )
 
@@ -689,7 +691,7 @@ def _execute_fan_out_sync(  # noqa: PLR0913
         resumed_state, _ = reducer_reduce(
             state, PipelineEvent.WORKERS_RESUMED, policy_bundle.pipeline
         )
-        _notify_dashboard_subscriber(effective_dashboard_subscriber, resumed_state)
+        _notify_pipeline_subscriber(effective_pipeline_subscriber, resumed_state)
         completed_ids = {
             uid
             for uid, ws in resumed_state.worker_states.items()
@@ -719,7 +721,7 @@ def _execute_fan_out_sync(  # noqa: PLR0913
         current = resumed_state
         for ev in fan_out_events:
             current, _ = reducer_reduce(current, ev, policy_bundle.pipeline)
-            _notify_dashboard_subscriber(effective_dashboard_subscriber, current)
+            _notify_pipeline_subscriber(effective_pipeline_subscriber, current)
         ckpt.save(current)
 
         merge_effect = MergeIntegrationEffect(
@@ -734,7 +736,7 @@ def _execute_fan_out_sync(  # noqa: PLR0913
         )
         for ev in merge_result.events:
             current, _ = reducer_reduce(current, ev, policy_bundle.pipeline)
-            _notify_dashboard_subscriber(effective_dashboard_subscriber, current)
+            _notify_pipeline_subscriber(effective_pipeline_subscriber, current)
         ckpt.save(current)
         return current
 
@@ -752,12 +754,12 @@ def _handle_inline_effect(  # noqa: PLR0913
     pipeline_policy: PipelinePolicy,
     workspace_scope: WorkspaceScope,
     display: ParallelDisplay | _LegacyConsoleDisplay | None = None,
-    dashboard_subscriber: _DashboardSubscriber | None = None,
+    pipeline_subscriber: _PipelineSubscriber | None = None,
 ) -> PipelineState | int | None:
     if isinstance(effect, SaveCheckpointEffect):
         ckpt.save(state)
         new_state, _ = reducer_reduce(state, PipelineEvent.CHECKPOINT_SAVED, pipeline_policy)
-        _notify_dashboard_subscriber(dashboard_subscriber, new_state)
+        _notify_pipeline_subscriber(pipeline_subscriber, new_state)
         return new_state
 
     if isinstance(effect, PreparePromptEffect):
@@ -768,7 +770,7 @@ def _handle_inline_effect(  # noqa: PLR0913
             current_drain=effect.drain or resolve_phase_drain(effect.phase, pipeline_policy),
         )
         ckpt.save(updated_state)
-        _notify_dashboard_subscriber(dashboard_subscriber, updated_state)
+        _notify_pipeline_subscriber(pipeline_subscriber, updated_state)
         return updated_state
 
     if isinstance(effect, ExitSuccessEffect):
@@ -1316,17 +1318,17 @@ def _cleanup_commit_message_artifacts(repo_root: Path) -> None:
 
 def _subscriber_for_display(
     display: ParallelDisplay | _LegacyConsoleDisplay | None,
-) -> DashboardSubscriber | None:
-    """Extract the dashboard subscriber from a display, when one is exposed."""
+) -> PipelineSubscriber | None:
+    """Extract the pipeline subscriber from a display, when one is exposed."""
     if display is None or isinstance(display, _LegacyConsoleDisplay):
         return None
     if not hasattr(display, "subscriber"):
         return None
-    return cast("DashboardSubscriber | None", display.subscriber)
+    return cast("PipelineSubscriber | None", display.subscriber)
 
 
 def _record_activity_on_subscriber(
-    subscriber: DashboardSubscriber,
+    subscriber: PipelineSubscriber,
     parsed_line: AgentOutputLine,
     rendered: Text | None,
     agent_name: str,
@@ -1422,127 +1424,59 @@ def _render_agent_activity_line(output: AgentOutputLine, agent_name: str) -> Tex
     elif output.type == "error":
         error = output.content.strip() or "unknown error"
         rendered = _styled_prefix(f"{agent_name} ✗", "red")
-        rendered.append(error, style="red")
-    else:
-        summary = _event_summary(output)
-        rendered = _styled_prefix(f"{agent_name} {output.type}", "dim")
-        rendered.append(summary)
+        rendered.append(error, style="bold red")
+    elif output.type == "assistant":
+        # assistant messages may contain text content
+        content = output.content.strip()
+        if content:
+            rendered = _styled_prefix(agent_name, "dim")
+            rendered.append(content)
+    elif output.type == "result":
+        # result events sometimes contain final output
+        content = output.content.strip()
+        if content:
+            rendered = _styled_prefix(agent_name, "dim")
+            rendered.append(content)
 
     return rendered
 
 
-def _styled_prefix(label: str, style: str) -> Text:
-    text = Text()
-    text.append(f"{label}:", style=style)
-    text.append(" ")
-    return text
-
-
-def _status_text(label: str, detail: str, style: str) -> Text:
-    text = Text()
-    text.append(f"{label}:", style=style)
-    text.append(" ")
-    text.append(detail)
-    return text
-
-
-def _prompt_session_drain_for_phase(phase: str) -> SessionDrain:
-    drain_map = {
-        "planning": SessionDrain.PLANNING,
-        "development": SessionDrain.DEVELOPMENT,
-        "development_analysis": SessionDrain.DEVELOPMENT_ANALYSIS,
-        "development_commit": SessionDrain.DEVELOPMENT_COMMIT,
-        "review": SessionDrain.REVIEW,
-        "review_analysis": SessionDrain.REVIEW_ANALYSIS,
-        "review_commit": SessionDrain.REVIEW_COMMIT,
-        "fix": SessionDrain.FIX,
-    }
-    return drain_map.get(phase, SessionDrain.COMMIT)
-
-
-def _event_summary(output: AgentOutputLine) -> str:
-    content = output.content.strip()
-    if content:
-        return content
-
-    if output.metadata:
-        summary = _metadata_summary(output.metadata)
-        if summary:
-            return summary
-
-    return "(no details)"
-
-
 def _tool_input_summary(metadata: dict[str, object]) -> str:
-    input_obj = metadata.get("input")
-    if isinstance(input_obj, dict):
-        return _metadata_summary(cast("dict[str, object]", input_obj))
+    if not metadata:
+        return ""
+    input_data = metadata.get("input")
+    if isinstance(input_data, dict) and "args" in input_data:
+        args = input_data["args"]
+        if isinstance(args, str) and args:
+            return args
     return ""
 
 
-def _metadata_summary(metadata: dict[str, object]) -> str:
-    preferred_keys = (
-        "status",
-        "summary",
-        "phase",
-        "tool",
-        "name",
-        "command",
-        "workdir",
-        "path",
-        "result",
-        "output",
-        "error",
-        "message",
-    )
-
-    parts: list[str] = []
-    for key in preferred_keys:
-        if key not in metadata:
-            continue
-        value = _format_metadata_value(metadata[key])
-        if value:
-            parts.append(f"{key}={value}")
-
-    if parts:
-        result = "; ".join(parts)
-        return _truncate(result, _MAX_METADATA_SUMMARY_LENGTH)
-
-    for key, value_obj in metadata.items():
-        value = _format_metadata_value(value_obj)
-        if value:
-            parts.append(f"{key}={value}")
-        if len(parts) >= _MAX_METADATA_PARTS:
-            break
-
-    result = "; ".join(parts)
-    return _truncate(result, _MAX_METADATA_SUMMARY_LENGTH)
+def _format_metadata_value(value: object) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, str) and value:
+        return value
+    return None
 
 
-def _format_metadata_value(value: object) -> str:
-    formatted = ""
-    if isinstance(value, str):
-        formatted = value.strip()
-    elif isinstance(value, (bool, int, float)):
-        formatted = str(value)
-    elif isinstance(value, dict):
-        dict_value = cast("dict[str, object]", value)
-        nested = _metadata_summary(dict_value)
-        formatted = nested or f"{len(dict_value)} field(s)"
-    elif isinstance(value, list):
-        if not value:
-            return formatted
-        formatted = _format_list_metadata_value(value)
-    return formatted
+def _styled_prefix(label: str, style: str) -> Text:
+    """Create a styled prefix for activity lines."""
+    text = Text()
+    text.append(f"[{label}] ", style=f"bold {style}")
+    return text
 
 
-def _format_list_metadata_value(value: list[object]) -> str:
-    scalar_items: list[str] = []
-    for item in value:
-        if isinstance(item, (str, int, float, bool)):
-            item_str = str(item).strip()
-            if item_str:
-                scalar_items.append(item_str)
-        else:
-            return f"{len(value)} item(s)"
-    return ", ".join(scalar_items)
+def _status_text(label: str, value: str, style: str) -> Text:
+    """Create a styled status text."""
+    text = Text()
+    text.append(f"{label}: ", style=f"bold {style}")
+    text.append(value, style=style)
+    return text
+
+
+def _prompt_session_drain_for_phase(drain: str | None) -> SessionDrain:
+    """Return the session drain to use for a phase."""
+    if drain is not None:
+        return SessionDrain(drain)
+    return SessionDrain("cli")

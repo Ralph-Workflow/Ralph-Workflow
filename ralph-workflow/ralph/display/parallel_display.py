@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Literal
 from ralph.display.mode import NARROW_THRESHOLD, detect_mode
 from ralph.display.phase_banner import show_phase_transition
 from ralph.display.plain_renderer import PlainLogRenderer
-from ralph.display.subscriber import DashboardSubscriber
+from ralph.display.subscriber import PipelineSubscriber
 from ralph.display.theme import make_console as _make_console
 
 if TYPE_CHECKING:
@@ -20,7 +20,7 @@ if TYPE_CHECKING:
 
     from rich.console import Console
 
-    from ralph.display.snapshot import DashboardSnapshot
+    from ralph.display.snapshot import PipelineSnapshot
     from ralph.pipeline.worker_state import WorkerStatus
 
 _DEFAULT_SNAPSHOT_QUEUE_MAXSIZE: int = 64
@@ -43,8 +43,8 @@ class ParallelDisplay:
         console: Console | None = None,
         env: Mapping[str, str] | None = None,
         *,
-        mode: Literal["dashboard", "lines"] | None = None,
-        subscriber: DashboardSubscriber | None = None,
+        mode: Literal["lines"] | None = None,
+        subscriber: PipelineSubscriber | None = None,
         workspace_root: Path | None = None,
         run_id: str | None = None,
     ) -> None:
@@ -61,12 +61,12 @@ class ParallelDisplay:
         if subscriber is not None:
             self._subscriber = subscriber
         else:
-            snapshot_q: queue.Queue[DashboardSnapshot] = queue.Queue(
+            snapshot_q: queue.Queue[PipelineSnapshot] = queue.Queue(
                 maxsize=_DEFAULT_SNAPSHOT_QUEUE_MAXSIZE
             )
             effective_root = workspace_root if workspace_root is not None else Path.cwd()
             effective_run_id = run_id if run_id is not None else str(uuid.uuid4())
-            self._subscriber = DashboardSubscriber(
+            self._subscriber = PipelineSubscriber(
                 queue=snapshot_q,
                 workspace_root=effective_root,
                 run_id=effective_run_id,
@@ -78,7 +78,7 @@ class ParallelDisplay:
         return self._mode
 
     @property
-    def subscriber(self) -> DashboardSubscriber:
+    def subscriber(self) -> PipelineSubscriber:
         return self._subscriber
 
     def start(self) -> None:

@@ -4,6 +4,12 @@ These exports cover progress rendering, phase/status display, and simple table
 views used by CLI diagnostics and listing commands.
 """
 
+from ralph.display.artifact_renderer import (
+    render_analysis_decision,
+    render_commit_message,
+    render_fix_artifact,
+    render_plan_artifact,
+)
 from ralph.display.phase_banner import (
     PhaseStartContext,
     show_phase_complete,
@@ -20,6 +26,10 @@ __all__ = [
     "display_phase",
     "display_progress",
     "get_progress",
+    "render_analysis_decision",
+    "render_commit_message",
+    "render_fix_artifact",
+    "render_plan_artifact",
     "show_agents",
     "show_config",
     "show_phase_complete",

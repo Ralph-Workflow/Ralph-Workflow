@@ -1,4 +1,4 @@
-"""Immutable dashboard snapshot models.
+"""Immutable pipeline snapshot models.
 
 This module projects pipeline state into a presentation-agnostic data shape
 consumed by display panels and subscribers.
@@ -43,8 +43,8 @@ class WorkerSnapshot:
 
 
 @dataclass(frozen=True, slots=True)
-class DashboardSnapshot:
-    """Immutable dashboard view of pipeline state."""
+class PipelineSnapshot:
+    """Immutable pipeline state snapshot for transcript rendering."""
 
     phase: str
     previous_phase: str | None
@@ -104,12 +104,12 @@ def snapshot_from_state(  # noqa: PLR0913
     analysis_decision: str | None = None,
     analysis_reason: str | None = None,
     decision_log: tuple[tuple[str, str, str, str], ...] = (),
-) -> DashboardSnapshot:
-    """Project PipelineState into an immutable dashboard snapshot."""
+) -> PipelineSnapshot:
+    """Project PipelineState into an immutable pipeline snapshot."""
 
     created_at = datetime.now(UTC)
     workers = _snapshot_workers(state)
-    return DashboardSnapshot(
+    return PipelineSnapshot(
         phase=state.phase,
         previous_phase=state.previous_phase,
         iteration=state.iteration,

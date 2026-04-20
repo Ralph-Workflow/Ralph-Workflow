@@ -1,8 +1,8 @@
-"""Helpers for reading plan and analysis-decision artifacts for the dashboard.
+"""Helpers for reading plan and analysis-decision artifacts.
 
 These readers are intentionally tolerant: missing files, malformed JSON, or
-unexpected schemas all return ``None`` rather than raising.  This keeps the
-dashboard resilient when artifacts are partially written or absent (for
+unexpected schemas all return ``None`` rather than raising. This keeps the
+display resilient when artifacts are partially written or absent (for
 example during the first iteration before any analysis has run).
 """
 

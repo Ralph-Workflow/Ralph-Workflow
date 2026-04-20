@@ -9,8 +9,8 @@ from queue import Queue
 
 from loguru import logger
 
-from ralph.display.snapshot import DashboardSnapshot
-from ralph.display.subscriber import DashboardSubscriber
+from ralph.display.snapshot import PipelineSnapshot
+from ralph.display.subscriber import PipelineSubscriber
 from ralph.pipeline.state import PipelineState, RunMetrics
 
 _MAX_NOTIFY_SECONDS = 0.001
@@ -41,8 +41,8 @@ def _make_subscriber(
     maxsize: int = 0,
     workspace_root: Path | None = None,
     prompt_reader=None,
-) -> tuple[Queue[DashboardSnapshot], DashboardSubscriber]:
-    q: Queue[DashboardSnapshot] = Queue(maxsize=maxsize)
+) -> tuple[Queue[PipelineSnapshot], PipelineSubscriber]:
+    q: Queue[PipelineSnapshot] = Queue(maxsize=maxsize)
     kwargs: dict = {
         "queue": q,
         "workspace_root": workspace_root or Path("/tmp"),
@@ -50,7 +50,7 @@ def _make_subscriber(
     }
     if prompt_reader is not None:
         kwargs["prompt_reader"] = prompt_reader
-    sub = DashboardSubscriber(**kwargs)
+    sub = PipelineSubscriber(**kwargs)
     return q, sub
 
 
@@ -60,11 +60,11 @@ class TestNotifyEnqueues:
         sub.notify(_make_state())
         assert q.qsize() == 1
         item = q.get_nowait()
-        assert isinstance(item, DashboardSnapshot)
+        assert isinstance(item, PipelineSnapshot)
 
     def test_notify_snapshot_has_correct_run_id(self) -> None:
-        q: Queue[DashboardSnapshot] = Queue()
-        sub = DashboardSubscriber(queue=q, workspace_root=Path("/tmp"), run_id="my-run")
+        q: Queue[PipelineSnapshot] = Queue()
+        sub = PipelineSubscriber(queue=q, workspace_root=Path("/tmp"), run_id="my-run")
         sub.notify(_make_state())
         snap = q.get_nowait()
         assert snap.run_id == "my-run"
@@ -202,7 +202,7 @@ class TestPlanArtifactRefresh:
                             "scope_items": ["Render plan", "Show results"],
                         },
                         "steps": [{"title": "one"}, {"title": "two"}],
-                        "risks_mitigations": ["Keep dashboard output plain-text safe"],
+                        "risks_mitigations": ["Keep transcript output plain-text safe"],
                     }
                 }
             ),
@@ -214,11 +214,11 @@ class TestPlanArtifactRefresh:
         assert refreshed.plan_summary == "Ship a visible, copy-pasteable planning transcript"
         assert refreshed.plan_scope_items == ("Render plan", "Show results")
         assert refreshed.plan_total_steps == PLAN_STEP_COUNT
-        assert refreshed.plan_risks == ("Keep dashboard output plain-text safe",)
+        assert refreshed.plan_risks == ("Keep transcript output plain-text safe",)
 
 
 class TestQueueProperty:
     def test_queue_property_returns_injected_queue(self) -> None:
-        q: Queue[DashboardSnapshot] = Queue()
-        sub = DashboardSubscriber(queue=q, workspace_root=Path("/tmp"), run_id="x")
+        q: Queue[PipelineSnapshot] = Queue()
+        sub = PipelineSubscriber(queue=q, workspace_root=Path("/tmp"), run_id="x")
         assert sub.queue is q

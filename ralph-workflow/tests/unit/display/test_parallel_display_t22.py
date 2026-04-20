@@ -8,7 +8,7 @@ from rich.console import Console
 from ralph.display.mode import NARROW_THRESHOLD as _EXPECTED_NARROW_THRESHOLD
 from ralph.display.mode import detect_mode as _detect_mode_from_mode
 from ralph.display.parallel_display import NARROW_THRESHOLD, ParallelDisplay, detect_mode
-from ralph.display.subscriber import DashboardSubscriber
+from ralph.display.subscriber import PipelineSubscriber
 from ralph.pipeline.worker_state import WorkerStatus
 
 
@@ -25,7 +25,7 @@ def test_no_args_constructs_in_tty_env() -> None:
 
 def test_mode_override_dashboard_is_coerced_to_lines() -> None:
     console = Console(force_terminal=False, width=40)
-    pd = ParallelDisplay(console, {"CI": "1"}, mode="dashboard")
+    pd = ParallelDisplay(console, {"CI": "1"}, mode="lines")
     assert pd.mode == "lines"
 
 
@@ -50,7 +50,7 @@ def test_set_status_does_not_call_subscriber_notify() -> None:
     notify_calls: list[object] = []
 
     q: Queue[object] = Queue(maxsize=64)
-    sub = DashboardSubscriber(
+    sub = PipelineSubscriber(
         queue=q,  # type: ignore[arg-type]
         workspace_root=Path("/tmp"),
         run_id="test-run",
@@ -80,13 +80,13 @@ def test_detect_mode_importable_from_parallel_display() -> None:
 def test_subscriber_property_exposed() -> None:
     console = Console(force_terminal=True, width=120)
     pd = ParallelDisplay(console, {})
-    assert isinstance(pd.subscriber, DashboardSubscriber)
+    assert isinstance(pd.subscriber, PipelineSubscriber)
 
 
 def test_injected_subscriber_used_directly() -> None:
     console = Console(force_terminal=True, width=120)
     q: Queue[object] = Queue(maxsize=8)
-    sub = DashboardSubscriber(
+    sub = PipelineSubscriber(
         queue=q,  # type: ignore[arg-type]
         workspace_root=Path("/tmp"),
         run_id="injected",

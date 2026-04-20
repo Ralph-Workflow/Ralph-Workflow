@@ -6,7 +6,7 @@ from io import StringIO
 
 from rich.console import Console
 
-from ralph.display.snapshot import DashboardSnapshot, WorkerSnapshot
+from ralph.display.snapshot import PipelineSnapshot, WorkerSnapshot
 
 plain_renderer = importlib.import_module("ralph.display.plain_renderer")
 PlainLogRenderer = plain_renderer.PlainLogRenderer
@@ -34,8 +34,8 @@ def _make_snapshot(  # noqa: PLR0913
     active_workdir: str | None = None,
     active_command: str | None = None,
     last_activity_line: str | None = None,
-) -> DashboardSnapshot:
-    return DashboardSnapshot(
+) -> PipelineSnapshot:
+    return PipelineSnapshot(
         phase=phase,
         previous_phase=None,
         iteration=iteration,

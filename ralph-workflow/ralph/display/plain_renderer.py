@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Final
 
 from rich.text import Text
 
-from ralph.display.snapshot import DashboardSnapshot, snapshot_from_state
+from ralph.display.snapshot import PipelineSnapshot, snapshot_from_state
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -25,6 +26,25 @@ LEVELS: Final[dict[str, str]] = {
     "failed": "ERROR",
     "interrupted": "WARN",
 }
+
+# Closed set of tags for structured log lines
+_TAGS: Final[tuple[str, ...]] = (
+    "phase",
+    "plan",
+    "plan-scope",
+    "plan-steps",
+    "activity",
+    "activity-line",
+    "analysis",
+    "worker",
+    "result",
+    "pr",
+    "failure",
+    "artifact",
+)
+
+_ANSI_ESCAPE = re.compile(r"\x1b\[[0-9;]*m")
+
 
 def _strip_markup(text: str) -> str:
     try:
@@ -61,7 +81,7 @@ class PlainLogRenderer:
         ) = None
         self._last_analysis_signature: tuple[str | None, str | None, str | None] | None = None
 
-    def snapshot_lines(self, snapshot: DashboardSnapshot) -> list[str]:
+    def snapshot_lines(self, snapshot: PipelineSnapshot) -> list[str]:
         timestamp = self._clock().isoformat()
         lines: list[str] = []
         lines.extend(self._phase_lines(snapshot, timestamp))
@@ -72,7 +92,7 @@ class PlainLogRenderer:
         lines.extend(self._result_lines(snapshot, timestamp))
         return lines
 
-    def _phase_lines(self, snapshot: DashboardSnapshot, timestamp: str) -> list[str]:
+    def _phase_lines(self, snapshot: PipelineSnapshot, timestamp: str) -> list[str]:
         if snapshot.phase != self._last_phase:
             self._last_phase = snapshot.phase
             self._last_iteration = snapshot.iteration
@@ -85,7 +105,7 @@ class PlainLogRenderer:
             ]
         return []
 
-    def _plan_lines(self, snapshot: DashboardSnapshot, timestamp: str) -> list[str]:
+    def _plan_lines(self, snapshot: PipelineSnapshot, timestamp: str) -> list[str]:
         plan_signature = (
             snapshot.plan_summary,
             snapshot.plan_scope_items,
@@ -108,7 +128,7 @@ class PlainLogRenderer:
             )
         return lines
 
-    def _activity_lines(self, snapshot: DashboardSnapshot, timestamp: str) -> list[str]:
+    def _activity_lines(self, snapshot: PipelineSnapshot, timestamp: str) -> list[str]:
         activity_signature = (
             snapshot.active_agent,
             snapshot.active_tool,
@@ -140,7 +160,7 @@ class PlainLogRenderer:
             lines.append(f"{timestamp} INFO [activity-line] {snapshot.last_activity_line}")
         return lines
 
-    def _analysis_lines(self, snapshot: DashboardSnapshot, timestamp: str) -> list[str]:
+    def _analysis_lines(self, snapshot: PipelineSnapshot, timestamp: str) -> list[str]:
         analysis_signature = (
             snapshot.analysis_phase,
             snapshot.analysis_decision,
@@ -159,7 +179,7 @@ class PlainLogRenderer:
             f"{snapshot.analysis_phase} {snapshot.analysis_decision}{reason}"
         ]
 
-    def _worker_lines(self, snapshot: DashboardSnapshot, timestamp: str) -> list[str]:
+    def _worker_lines(self, snapshot: PipelineSnapshot, timestamp: str) -> list[str]:
         lines: list[str] = []
         for worker in snapshot.workers:
             previous_status = self._last_worker_states.get(worker.unit_id)
@@ -169,7 +189,7 @@ class PlainLogRenderer:
             self._last_worker_states[worker.unit_id] = worker.status
         return lines
 
-    def _result_lines(self, snapshot: DashboardSnapshot, timestamp: str) -> list[str]:
+    def _result_lines(self, snapshot: PipelineSnapshot, timestamp: str) -> list[str]:
         if snapshot.phase == "failed" and snapshot.last_error:
             return [f"{timestamp} ERROR [failure] {snapshot.last_error}"]
         if snapshot.phase != "complete":
@@ -182,18 +202,32 @@ class PlainLogRenderer:
 
     @staticmethod
     def strip_markup(text: str) -> str:
-        return _strip_markup(text)
+        # First try rich's markup stripping
+        stripped = _strip_markup(text)
+        # Then strip any residual ANSI escape sequences
+        return _ANSI_ESCAPE.sub("", stripped)
 
-    def emit_snapshot(self, snapshot: DashboardSnapshot) -> None:
+    def emit_snapshot(self, snapshot: PipelineSnapshot) -> None:
         for line in self.snapshot_lines(snapshot):
-            self._console.print(line, markup=False, highlight=False, no_wrap=True)
+            # Strip any ANSI escapes to ensure copy-paste safety
+            clean_line = _ANSI_ESCAPE.sub("", line)
+            self._console.print(clean_line, markup=False, highlight=False, no_wrap=True)
 
     def emit_log_line(self, unit_id: str, line: str) -> None:
         sanitized = _strip_markup(line)
+        # Ensure no ANSI escapes leak through
+        sanitized = _ANSI_ESCAPE.sub("", sanitized)
         self._console.out(f"[{unit_id}] {sanitized}")
 
     def emit_status_line(self, unit_id: str, status: str) -> None:
         self._console.out(f"[{unit_id}] status={status}")
+
+    def emit_artifact(self, kind: str, summary: str) -> None:
+        """Emit an artifact summary line for copy-paste-safe transcripts."""
+        timestamp = self._clock().isoformat()
+        line = f"{timestamp} INFO [artifact] kind={kind} summary={summary}"
+        clean_line = _ANSI_ESCAPE.sub("", line)
+        self._console.out(clean_line)
 
 
 class PlainModeAdapter:
@@ -213,4 +247,4 @@ class PlainModeAdapter:
         )
 
 
-__all__ = ["LEVELS", "PlainLogRenderer", "PlainModeAdapter"]
+__all__ = ["LEVELS", "PlainLogRenderer", "PlainModeAdapter", "_TAGS"]

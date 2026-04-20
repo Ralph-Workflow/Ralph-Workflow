@@ -15,7 +15,7 @@ from ralph.display.artifact_reader import (
     read_plan_artifact,
 )
 from ralph.display.prompt_reader import find_prompt_path, read_prompt_preview
-from ralph.display.snapshot import DashboardSnapshot, snapshot_from_state
+from ralph.display.snapshot import PipelineSnapshot, snapshot_from_state
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -32,8 +32,8 @@ def _now_iso() -> str:
     return datetime.now(UTC).isoformat()
 
 
-class DashboardSubscriber:
-    """Receives PipelineState after each reducer reduce and enqueues a DashboardSnapshot.
+class PipelineSubscriber:
+    """Receives PipelineState after each reducer reduce and enqueues a PipelineSnapshot.
 
     Thread and asyncio safe: notify() only calls put_nowait() which is documented
     as thread-safe and never blocks. Prompt preview and the plan artifact are
@@ -47,11 +47,11 @@ class DashboardSubscriber:
     def __init__(
         self,
         *,
-        queue: Queue[DashboardSnapshot],
+        queue: Queue[PipelineSnapshot],
         workspace_root: Path,
         run_id: str,
         prompt_reader: Callable[[Path], tuple[str, ...]] = read_prompt_preview,
-        on_snapshot: Callable[[DashboardSnapshot], None] | None = None,
+        on_snapshot: Callable[[PipelineSnapshot], None] | None = None,
     ) -> None:
         self._queue = queue
         self._run_id = run_id
@@ -86,7 +86,7 @@ class DashboardSubscriber:
         self._last_state: PipelineState | None = None
 
     @property
-    def queue(self) -> Queue[DashboardSnapshot]:
+    def queue(self) -> Queue[PipelineSnapshot]:
         return self._queue
 
     @property
@@ -103,9 +103,9 @@ class DashboardSubscriber:
         return self._plan_risks
 
     def notify(self, state: PipelineState) -> None:
-        """Build a DashboardSnapshot from state and enqueue it non-blocking.
+        """Build a PipelineSnapshot from state and enqueue it non-blocking.
 
-        Never blocks. On queue.Full, increments dropped_count and logs at DEBUG.
+        Never blocks. On queue.Full, increments dropped_count silently.
         Safe to call from both sync (runner.py) and async (coordinator.py) contexts.
         """
         with self._lock:
@@ -118,7 +118,7 @@ class DashboardSubscriber:
         if snapshot is not None:
             self._publish(snapshot)
 
-    def build_snapshot(self, state: PipelineState) -> DashboardSnapshot | None:
+    def build_snapshot(self, state: PipelineState) -> PipelineSnapshot | None:
         """Project the subscriber's accumulated state into a snapshot.
 
         Read-only: does not mutate any internal state. Safe to call from
@@ -256,7 +256,7 @@ class DashboardSubscriber:
     def _build_snapshot_locked(
         self,
         state: PipelineState | None,
-    ) -> DashboardSnapshot | None:
+    ) -> PipelineSnapshot | None:
         if state is None:
             return None
         return snapshot_from_state(
@@ -281,22 +281,23 @@ class DashboardSubscriber:
             decision_log=tuple(self._decision_log),
         )
 
-    def _publish(self, snapshot: DashboardSnapshot) -> None:
+    def _publish(self, snapshot: PipelineSnapshot) -> None:
         if self._on_snapshot is not None:
             try:
                 self._on_snapshot(snapshot)
-            except Exception:
-                logger.debug("DashboardSubscriber: on_snapshot callback failed", exc_info=True)
+            except Exception as exc:
+                logger.bind(event="subscriber_callback_error").error(
+                    "callback failed: {err}", err=exc
+                )
         self._enqueue(snapshot)
 
-    def _enqueue(self, snapshot: DashboardSnapshot) -> None:
+    def _enqueue(self, snapshot: PipelineSnapshot) -> None:
         try:
             self._queue.put_nowait(snapshot)
         except Full:
-            # Keep the drop accounting for diagnostics and tests, but do not emit
-            # per-drop logs into the user transcript path. PROMPT.md requires
-            # polished, distraction-free output by default.
+            # Silent backpressure - keep count for end-of-run diagnostics only.
+            # Do NOT emit per-drop logs into the user transcript.
             self._dropped_count += 1
 
 
-__all__ = ["DashboardSubscriber"]
+__all__ = ["PipelineSubscriber"]

@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 
 import pytest
 
-from ralph.display.snapshot import DashboardSnapshot, WorkerSnapshot, snapshot_from_state
+from ralph.display.snapshot import PipelineSnapshot, WorkerSnapshot, snapshot_from_state
 from ralph.pipeline.state import PipelineState, RunMetrics
 from ralph.pipeline.work_units import WorkUnit
 from ralph.pipeline.worker_state import WorkerState, WorkerStatus
@@ -162,11 +162,11 @@ def test_snapshot_from_state_maps_unknown_status_to_info() -> None:
 
 def test_snapshot_dataclasses_are_frozen_and_slotted() -> None:
     assert is_dataclass(WorkerSnapshot)
-    assert is_dataclass(DashboardSnapshot)
+    assert is_dataclass(PipelineSnapshot)
     assert WorkerSnapshot.__dict__["__dataclass_params__"].frozen is True
-    assert DashboardSnapshot.__dict__["__dataclass_params__"].frozen is True
+    assert PipelineSnapshot.__dict__["__dataclass_params__"].frozen is True
 
-    snapshot = DashboardSnapshot(
+    snapshot = PipelineSnapshot(
         phase="planning",
         previous_phase=None,
         iteration=0,
@@ -193,7 +193,7 @@ def test_snapshot_dataclasses_are_frozen_and_slotted() -> None:
         snapshot.phase = "development"  # type: ignore[misc]
 
     assert hasattr(WorkerSnapshot, "__slots__")
-    assert hasattr(DashboardSnapshot, "__slots__")
+    assert hasattr(PipelineSnapshot, "__slots__")
 
 
 def test_snapshot_field_names_match_plan_exactly() -> None:
