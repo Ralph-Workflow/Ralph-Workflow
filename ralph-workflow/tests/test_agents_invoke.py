@@ -1676,7 +1676,6 @@ def test_codex_config_toml_keeps_model_instructions_outside_features(tmp_path: P
     assert "model_instructions_file" not in features
 
 
-
 def test_codex_config_toml_preserves_existing_features_section(tmp_path: Path) -> None:
     fake_home = tmp_path / "fake_codex"
     fake_home.mkdir()
@@ -2163,9 +2162,7 @@ def test_provider_strict_mode_passes_upstream_proxy_payload_to_ralph(
     monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", fake_popen_opencode)
     monkeypatch.setenv(
         "OPENCODE_CONFIG_CONTENT",
-        json.dumps(
-            {"mcp": {"upstream-server": {"type": "local", "command": "upstream-cmd"}}}
-        ),
+        json.dumps({"mcp": {"upstream-server": {"type": "local", "command": "upstream-cmd"}}}),
     )
     opencode_config = AgentConfig(cmd="opencode", output_flag="--json-stream")
     list(

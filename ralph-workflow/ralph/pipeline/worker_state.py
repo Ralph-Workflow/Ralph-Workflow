@@ -46,4 +46,3 @@ class WorkerState(BaseModel):  # type: ignore[explicit-any]
     def copy_with(self, **updates: object) -> "WorkerState":
         """Return a copy with the given fields replaced."""
         return self.model_copy(update=updates)
-

@@ -64,9 +64,7 @@ class _StubClient:
         return None
 
 
-def _patch_make_upstream_client(
-    monkeypatch: pytest.MonkeyPatch, client: _StubClient
-) -> None:
+def _patch_make_upstream_client(monkeypatch: pytest.MonkeyPatch, client: _StubClient) -> None:
     def factory(_server: UpstreamMcpServer, **_kw: object) -> _StubClient:
         return client
 
@@ -79,9 +77,7 @@ def test_validator_passes_healthy_http_server(monkeypatch: pytest.MonkeyPatch) -
         monkeypatch,
         _StubClient([UpstreamTool(name="ping", description="ping")]),
     )
-    report = validate_upstream_mcp_servers(
-        [server], strict=True, preflight_http=_passing_http
-    )
+    report = validate_upstream_mcp_servers([server], strict=True, preflight_http=_passing_http)
     assert report.all_ok
     assert report.servers[0].tool_count == 1
 
@@ -117,9 +113,7 @@ def test_validator_does_not_raise_in_soft_mode() -> None:
     stream = StringIO()
     sink_id = logger.add(stream, level="WARNING")
     try:
-        report = validate_upstream_mcp_servers(
-            [server], strict=False, preflight_http=boom
-        )
+        report = validate_upstream_mcp_servers([server], strict=False, preflight_http=boom)
     finally:
         logger.remove(sink_id)
     assert not report.all_ok
@@ -132,9 +126,7 @@ def test_validator_report_redacts_env_secrets() -> None:
     server = _http_server(name="leaky", env={"API_KEY": secret})
 
     def boom(*_args: object, **_kwargs: object) -> None:
-        raise RetryablePreflightError(
-            f"connection refused (token={secret})"
-        )
+        raise RetryablePreflightError(f"connection refused (token={secret})")
 
     with pytest.raises(UpstreamValidationError) as excinfo:
         validate_upstream_mcp_servers([server], strict=True, preflight_http=boom)
@@ -173,7 +165,9 @@ def test_validator_uses_explicit_timeout(monkeypatch: pytest.MonkeyPatch) -> Non
 
     _patch_make_upstream_client(monkeypatch, _StubClient([]))
     validate_upstream_mcp_servers(
-        [_http_server()], strict=True,
-        preflight_http=fake_http, timeout=timedelta(seconds=2),
+        [_http_server()],
+        strict=True,
+        preflight_http=fake_http,
+        timeout=timedelta(seconds=2),
     )
     assert captured[0] == timedelta(seconds=2)

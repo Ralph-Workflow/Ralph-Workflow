@@ -64,9 +64,7 @@ class StdioUpstreamClient:
         caller: JsonRpcCaller | None = None,
     ) -> None:
         self._server = server
-        self._caller: JsonRpcCaller = (
-            caller if caller is not None else _make_stdio_caller(server)
-        )
+        self._caller: JsonRpcCaller = caller if caller is not None else _make_stdio_caller(server)
 
     def list_tools(self) -> list[UpstreamTool]:
         try:
@@ -163,9 +161,7 @@ def _make_http_caller(url: str) -> JsonRpcCaller:
 def _make_stdio_caller(server: UpstreamMcpServer) -> JsonRpcCaller:
     def _call(method: str, params: JsonObject) -> JsonObject:
         if not server.command:
-            raise UpstreamCallError(
-                f"upstream server '{server.name}' has no command configured"
-            )
+            raise UpstreamCallError(f"upstream server '{server.name}' has no command configured")
         command = [server.command, *server.args]
         initialize_payload: JsonObject = {
             "jsonrpc": "2.0",

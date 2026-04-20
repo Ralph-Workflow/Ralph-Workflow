@@ -102,8 +102,7 @@ def load_upstream_mcp_servers(raw: str | None) -> tuple[UpstreamMcpServer, ...]:
         decoded: object = json.loads(raw)
     except json.JSONDecodeError:
         logger.warning(
-            "RALPH_UPSTREAM_MCP_CONFIG contains invalid JSON; "
-            "ignoring upstream servers."
+            "RALPH_UPSTREAM_MCP_CONFIG contains invalid JSON; ignoring upstream servers."
         )
         return ()
     if not isinstance(decoded, list):

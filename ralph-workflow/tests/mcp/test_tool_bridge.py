@@ -124,9 +124,7 @@ class TestUpstreamEnvVar:
             },
         ]
         mock_factory = _FakeUpstreamClientFactory(fake_tools)
-        upstream_reg = UpstreamRegistry.build(
-            [fake_upstream_server], client_factory=mock_factory
-        )
+        upstream_reg = UpstreamRegistry.build([fake_upstream_server], client_factory=mock_factory)
 
         bridge = build_ralph_tool_registry(
             _AllowedSession(),

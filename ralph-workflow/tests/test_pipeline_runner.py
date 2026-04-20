@@ -831,9 +831,7 @@ class TestPipelineRunnerLoop:
             policy_bundle.pipeline,
         )
 
-    def test_run_notifies_subscriber_with_initial_state_before_loop(
-        self, monkeypatch
-    ) -> None:
+    def test_run_notifies_subscriber_with_initial_state_before_loop(self, monkeypatch) -> None:
         """run() must seed the subscriber with initial state before executing any effects.
 
         Without this seed call, DashboardSubscriber._last_state is None during the first
@@ -1812,19 +1810,13 @@ def test_run_returns_1_when_mcp_validation_fails_in_strict_mode(
     monkeypatch: MonkeyPatch, tmp_path: Path
 ) -> None:
     """Strict-mode upstream validation failure aborts the pipeline before policy load."""
-    bad_server = UpstreamMcpServer(
-        name="broken", transport="http", url="http://127.0.0.1:1/mcp"
-    )
+    bad_server = UpstreamMcpServer(name="broken", transport="http", url="http://127.0.0.1:1/mcp")
 
     def fake_upstreams(_workspace_root: Path) -> tuple[UpstreamMcpServer, ...]:
         return (bad_server,)
 
-    monkeypatch.setattr(
-        runner_module, "resolve_workspace_scope", lambda: WorkspaceScope(tmp_path)
-    )
-    monkeypatch.setattr(
-        "ralph.agents.transport_emit._mcp_toml_as_upstreams", fake_upstreams
-    )
+    monkeypatch.setattr(runner_module, "resolve_workspace_scope", lambda: WorkspaceScope(tmp_path))
+    monkeypatch.setattr("ralph.agents.transport_emit._mcp_toml_as_upstreams", fake_upstreams)
     monkeypatch.setattr("ralph.mcp.upstream_validation.strict_mode_from_env", lambda *_: True)
 
     def fake_validator(_servers: object, *, strict: bool) -> object:
@@ -1844,9 +1836,7 @@ def test_run_continues_when_mcp_toml_has_no_servers(
     monkeypatch.setattr(
         runner_module, "resolve_workspace_scope", lambda: WorkspaceScope(tmp_git_repo)
     )
-    monkeypatch.setattr(
-        "ralph.agents.transport_emit._mcp_toml_as_upstreams", lambda _root: ()
-    )
+    monkeypatch.setattr("ralph.agents.transport_emit._mcp_toml_as_upstreams", lambda _root: ())
 
     def fail_validator(*_args: object, **_kwargs: object) -> object:
         raise AssertionError("validator should not run when no upstreams configured")
@@ -1864,4 +1854,3 @@ def test_run_continues_when_mcp_toml_has_no_servers(
     state.phase = "planning"
     rc = runner_module.run(MagicMock(), initial_state=state)
     assert rc == 0
-

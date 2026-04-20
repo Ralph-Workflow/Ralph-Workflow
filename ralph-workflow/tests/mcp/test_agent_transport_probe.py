@@ -78,9 +78,7 @@ def test_probe_emits_claude_http_config_and_reaches_server(
         captured_blobs.append((endpoint, blob))
         return blob
 
-    monkeypatch.setattr(
-        "ralph.mcp.agent_transport_probe._claude_mcp_config", spy_claude
-    )
+    monkeypatch.setattr("ralph.mcp.agent_transport_probe._claude_mcp_config", spy_claude)
 
     reports = probe_agent_transports(
         [server], transports=(AgentTransport.CLAUDE,), workspace_path=None
@@ -115,9 +113,7 @@ def test_probe_emits_codex_config_toml_with_mcp_servers_table(
     # The probe augments the TOML in-memory; verify _prepare_codex_home produced
     # baseline output, and that the augmented copy parses with the server entry.
     # Re-augment from the probe internals to assert that table shape.
-    augmented = _augment_codex_config_with_server(
-        candidates[0].read_text(encoding="utf-8"), server
-    )
+    augmented = _augment_codex_config_with_server(candidates[0].read_text(encoding="utf-8"), server)
     parsed_augmented = tomllib.loads(augmented)
     assert "docs" in parsed_augmented["mcp_servers"]
     assert parsed_augmented["mcp_servers"]["docs"]["url"] == server.url
@@ -167,12 +163,8 @@ def test_probe_reports_failure_when_server_unreachable(
     def boom_server(_server: UpstreamMcpServer) -> None:
         raise RetryablePreflightError("connection refused")
 
-    monkeypatch.setattr(
-        "ralph.mcp.agent_transport_probe._http_handshake", boom_http
-    )
-    monkeypatch.setattr(
-        "ralph.mcp.agent_transport_probe._server_handshake", boom_server
-    )
+    monkeypatch.setattr("ralph.mcp.agent_transport_probe._http_handshake", boom_http)
+    monkeypatch.setattr("ralph.mcp.agent_transport_probe._server_handshake", boom_server)
     monkeypatch.setenv("HOME", str(tmp_path / "fake-home"))
 
     reports = probe_agent_transports(

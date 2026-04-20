@@ -43,9 +43,7 @@ def test_commit_invocation_passes_default_current_prompt_to_materialize_system_p
         patch("ralph.cli.commands.commit.delete_commit_message_artifacts"),
         patch("ralph.cli.commands.commit.read_commit_message_artifact", return_value=None),
     ):
-        mock_materialize.return_value = str(
-            tmp_path / ".agent" / "tmp" / "commit_system_prompt.md"
-        )
+        mock_materialize.return_value = str(tmp_path / ".agent" / "tmp" / "commit_system_prompt.md")
         _invoke_commit_agent_attempt(
             _claude_commit_agent(),
             prompt_file=str(prompt_file),

@@ -147,7 +147,6 @@ def _should_recurse_into_directory(workspace: Workspace, entry_path: str) -> boo
     return not workspace.exists(_join_path(entry_path, ".git"))
 
 
-
 def _append_dir_entry(workspace: Workspace, entry_path: str, output: list[str], depth: int) -> None:
     indent = "  " * depth
     is_dir = workspace.is_dir(entry_path)

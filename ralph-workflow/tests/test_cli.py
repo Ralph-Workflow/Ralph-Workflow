@@ -219,9 +219,7 @@ def test_handle_check_mcp_flag_returns_zero_when_validation_passes(
     scope = WorkspaceScope(tmp_path)
     monkeypatch.setattr("ralph.cli.main.resolve_workspace_scope", lambda: scope)
 
-    monkeypatch.setattr(
-        runner_module, "_validate_custom_mcp_servers", lambda _root: 0
-    )
+    monkeypatch.setattr(runner_module, "_validate_custom_mcp_servers", lambda _root: 0)
     printed: list[str] = []
     monkeypatch.setattr(
         "ralph.cli.main.console.print", lambda message: printed.append(str(message))
@@ -238,9 +236,7 @@ def test_handle_check_mcp_flag_returns_one_on_validation_failure(
     scope = WorkspaceScope(tmp_path)
     monkeypatch.setattr("ralph.cli.main.resolve_workspace_scope", lambda: scope)
 
-    monkeypatch.setattr(
-        runner_module, "_validate_custom_mcp_servers", lambda _root: 1
-    )
+    monkeypatch.setattr(runner_module, "_validate_custom_mcp_servers", lambda _root: 1)
     printed: list[str] = []
     monkeypatch.setattr(
         "ralph.cli.main.console.print", lambda message: printed.append(str(message))

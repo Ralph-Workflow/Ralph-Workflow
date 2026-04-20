@@ -122,8 +122,6 @@ def test_worker_filter_does_not_wrap_comparison_in_bool() -> None:
     )
 
     assert not any(
-        isinstance(node, ast.Call)
-        and isinstance(node.func, ast.Name)
-        and node.func.id == "bool"
+        isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "bool"
         for node in ast.walk(worker_filter)
     )

@@ -265,9 +265,7 @@ def _set_upstream_mcp_config(
 
 
 def _mcp_toml_as_upstreams(workspace_path: Path | None) -> tuple[UpstreamMcpServer, ...]:
-    config_path = (
-        (workspace_path / ".agent" / "mcp.toml") if workspace_path is not None else None
-    )
+    config_path = (workspace_path / ".agent" / "mcp.toml") if workspace_path is not None else None
     mcp_config = load_mcp_config(config_path=config_path)
     return tuple(
         UpstreamMcpServer(

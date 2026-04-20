@@ -489,8 +489,7 @@ def test_upstream_proxy_tool_name_follows_canonical_namespace_format() -> None:
         == "ralph_upstream__filesystem__read_file"
     )
     assert (
-        upstream_proxy_tool_name("github", "search_repos")
-        == "ralph_upstream__github__search_repos"
+        upstream_proxy_tool_name("github", "search_repos") == "ralph_upstream__github__search_repos"
     )
     assert upstream_proxy_tool_name("my_server", "my_tool") == "ralph_upstream__my_server__my_tool"
 
@@ -543,8 +542,7 @@ def test_build_fastmcp_server_lists_proxied_upstream_tools(tmp_path: Path) -> No
     assert tools_response is not None
     tools_result = cast("dict[str, object]", tools_response.result)
     tool_names = {
-        cast("str", t["name"])
-        for t in cast("list[dict[str, object]]", tools_result["tools"])
+        cast("str", t["name"]) for t in cast("list[dict[str, object]]", tools_result["tools"])
     }
     assert "read_file" in tool_names
     assert "ralph_upstream__myfs__read_remote" in tool_names
@@ -562,9 +560,7 @@ def test_proxied_upstream_tool_call_is_forwarded_after_policy_check(tmp_path: Pa
 
     def fake_caller(method: str, params: dict[str, object]) -> dict[str, object]:
         if method == "tools/list":
-            return {
-                "tools": [{"name": "ping", "description": "Ping tool", "inputSchema": {}}]
-            }  # type: ignore[return-value]
+            return {"tools": [{"name": "ping", "description": "Ping tool", "inputSchema": {}}]}  # type: ignore[return-value]
         if method == "tools/call":
             calls_received.append(dict(params))
             return {"result": "pong"}  # type: ignore[return-value]
@@ -586,9 +582,7 @@ def test_proxied_upstream_tool_call_is_forwarded_after_policy_check(tmp_path: Pa
         server_runtime.ServerState.UNINITIALIZED,
     )
     _, state = mcp_server.handle_request(
-        server_runtime.JsonRpcRequest(
-            jsonrpc="2.0", method="notifications/initialized", msg_id=2
-        ),
+        server_runtime.JsonRpcRequest(jsonrpc="2.0", method="notifications/initialized", msg_id=2),
         state,
     )
     call_response, _ = mcp_server.handle_request(
@@ -677,8 +671,7 @@ def test_upstream_policy_blocks_proxied_tools_without_upstream_capability(
     assert tools_response is not None
     tools_result = cast("dict[str, object]", tools_response.result)
     tool_names = {
-        cast("str", t["name"])
-        for t in cast("list[dict[str, object]]", tools_result["tools"])
+        cast("str", t["name"]) for t in cast("list[dict[str, object]]", tools_result["tools"])
     }
     assert "ralph_upstream__srv__do_thing" not in tool_names
 
@@ -725,7 +718,6 @@ def test_upstream_policy_allows_proxied_tools_with_upstream_capability(
     assert tools_response is not None
     tools_result = cast("dict[str, object]", tools_response.result)
     tool_names = {
-        cast("str", t["name"])
-        for t in cast("list[dict[str, object]]", tools_result["tools"])
+        cast("str", t["name"]) for t in cast("list[dict[str, object]]", tools_result["tools"])
     }
     assert "ralph_upstream__srv2__do_thing" in tool_names

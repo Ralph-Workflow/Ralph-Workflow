@@ -144,8 +144,6 @@ def config_option(func: _AnyCallable) -> _AnyCallable:
     )(func)
 
 
-
-
 AgentTable = Mapping[str, AgentConfig]
 
 

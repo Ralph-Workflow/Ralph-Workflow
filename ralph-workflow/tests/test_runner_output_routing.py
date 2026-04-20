@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import io
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
 import pytest
@@ -98,13 +98,14 @@ def _patch_common_runner_dependencies(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(runner_module.ckpt, "save", lambda _state: None)
 
 
-def test_no_bare_console_print_during_live(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_run_streams_transcript_output_without_dashboard(monkeypatch: pytest.MonkeyPatch) -> None:
     effects = [
         InvokeAgentEffect(agent_name="planning", phase="planning", prompt_file="planning.md"),
         ExitSuccessEffect(),
     ]
     state = PipelineState(phase="planning")
-    test_console = Console(file=io.StringIO(), force_terminal=True, width=120)
+    rendered = io.StringIO()
+    test_console = Console(file=rendered, force_terminal=True, width=120)
     display = ParallelDisplay(test_console, env={})
 
     def stub_determine_effect(_state: object, _bundle: object) -> object:
@@ -138,27 +139,18 @@ def test_no_bare_console_print_during_live(monkeypatch: pytest.MonkeyPatch) -> N
         )
         return runner_module._execute_agent_effect(effect, config, deps, workspace_scope, display)
 
-    original_print = Console.print
-    live_active = True
-
-    def guarded_print(self: Console, *args: object, **kwargs: Any) -> None:
-        if live_active and self is test_console:
-            msg = f"bare Console.print during live session: {args!r}"
-            raise AssertionError(msg)
-        cast("Any", original_print)(self, *args, **kwargs)
-
     _patch_common_runner_dependencies(monkeypatch)
     monkeypatch.setattr(runner_module, "_determine_effect_from_policy", stub_determine_effect)
     monkeypatch.setattr(runner_module, "reducer_reduce", stub_reducer)
     monkeypatch.setattr(runner_module, "_execute_effect", fake_execute_effect)
-    monkeypatch.setattr(Console, "print", guarded_print)
 
-    try:
-        result = runner_module.run(_config(), initial_state=state, display=display)
-    finally:
-        live_active = False
+    result = runner_module.run(_config(), initial_state=state, display=display)
 
+    output = rendered.getvalue()
     assert result == 0
+    assert "Invoking agent: planning" in output
+    assert "planning output" in output
+    assert "Pipeline completed successfully." in output
 
 
 def test_single_agent_visual_parity(monkeypatch: pytest.MonkeyPatch) -> None:

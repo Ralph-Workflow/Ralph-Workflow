@@ -67,12 +67,9 @@ class UpstreamRegistry:
                 tools = client.list_tools()
             except UpstreamCallError as exc:
                 if on_unreachable == "raise":
-                    env_key_repr = (
-                        f" env_keys={sorted(server.env.keys())}" if server.env else ""
-                    )
+                    env_key_repr = f" env_keys={sorted(server.env.keys())}" if server.env else ""
                     raise UpstreamValidationError(
-                        f"upstream MCP server '{server.name}'"
-                        f"{env_key_repr} is unreachable: {exc}"
+                        f"upstream MCP server '{server.name}'{env_key_repr} is unreachable: {exc}"
                     ) from exc
                 logger.warning("Skipping upstream MCP server {}: {}", server.name, exc)
                 continue

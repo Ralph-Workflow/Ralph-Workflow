@@ -51,12 +51,14 @@ class DashboardSubscriber:
         workspace_root: Path,
         run_id: str,
         prompt_reader: Callable[[Path], tuple[str, ...]] = read_prompt_preview,
+        on_snapshot: Callable[[DashboardSnapshot], None] | None = None,
     ) -> None:
         self._queue = queue
         self._run_id = run_id
         self._workspace_root = workspace_root
         self._dropped_count = 0
         self._lock = threading.Lock()
+        self._on_snapshot = on_snapshot
 
         prompt_path = find_prompt_path(workspace_root)
         self._prompt_path: str | None = str(prompt_path) if prompt_path is not None else None
@@ -114,7 +116,7 @@ class DashboardSubscriber:
             self._last_state = state
             snapshot = self._build_snapshot_locked(state)
         if snapshot is not None:
-            self._enqueue(snapshot)
+            self._publish(snapshot)
 
     def build_snapshot(self, state: PipelineState) -> DashboardSnapshot | None:
         """Project the subscriber's accumulated state into a snapshot.
@@ -151,7 +153,7 @@ class DashboardSubscriber:
             self._last_activity_line = line
             snapshot = self._build_snapshot_locked(self._last_state)
         if snapshot is not None:
-            self._enqueue(snapshot)
+            self._publish(snapshot)
 
     def record_phase_transition(self, from_phase: str, to_phase: str) -> None:
         """Record a phase transition into the decision log."""
@@ -163,7 +165,7 @@ class DashboardSubscriber:
             )
             snapshot = self._build_snapshot_locked(self._last_state)
         if snapshot is not None:
-            self._enqueue(snapshot)
+            self._publish(snapshot)
 
     def record_analysis(self, phase: str, decision: str, reason: str | None = None) -> None:
         """Record an analysis result; updates the analysis panel and decision log."""
@@ -178,7 +180,7 @@ class DashboardSubscriber:
             )
             snapshot = self._build_snapshot_locked(self._last_state)
         if snapshot is not None:
-            self._enqueue(snapshot)
+            self._publish(snapshot)
 
     def _record_state_transitions_locked(self, state: PipelineState) -> None:
         prev = self._previous_phase
@@ -278,6 +280,14 @@ class DashboardSubscriber:
             analysis_reason=self._analysis_reason,
             decision_log=tuple(self._decision_log),
         )
+
+    def _publish(self, snapshot: DashboardSnapshot) -> None:
+        if self._on_snapshot is not None:
+            try:
+                self._on_snapshot(snapshot)
+            except Exception:
+                logger.debug("DashboardSubscriber: on_snapshot callback failed", exc_info=True)
+        self._enqueue(snapshot)
 
     def _enqueue(self, snapshot: DashboardSnapshot) -> None:
         try:

@@ -1,4 +1,4 @@
-"""Terminal mode detection with explicit priority order."""
+"""Terminal mode detection for Ralph's copy-paste-first transcript output."""
 
 from __future__ import annotations
 
@@ -13,13 +13,6 @@ NARROW_THRESHOLD: int = 60
 def detect_mode(
     console: Console,
     env: dict[str, str],
-) -> Literal["dashboard", "lines"]:
-    if "NO_COLOR" in env:
-        return "lines"
-    if env.get("CI") or env.get("TERM") == "dumb":
-        return "lines"
-    if env.get("FORCE_COLOR"):
-        return "dashboard"
-    if not console.is_terminal or console.width <= NARROW_THRESHOLD:
-        return "lines"
-    return "dashboard"
+) -> Literal["lines"]:
+    del console, env
+    return "lines"

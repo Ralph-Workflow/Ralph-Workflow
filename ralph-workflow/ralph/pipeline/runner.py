@@ -218,9 +218,7 @@ def _validate_custom_mcp_servers(workspace_root: Path) -> int:
     if not healthy_servers:
         return 0
 
-    probe_results = _PROBE_AGENT_TRANSPORTS(
-        healthy_servers, workspace_path=workspace_root
-    )
+    probe_results = _PROBE_AGENT_TRANSPORTS(healthy_servers, workspace_path=workspace_root)
     failures = [p for p in probe_results if not p.ok]
     if failures and strict:
         for failure in failures:
@@ -247,6 +245,7 @@ def _default_validate_mcp(
     from ralph.mcp.upstream_validation import (  # noqa: PLC0415
         validate_upstream_mcp_servers,
     )
+
     return validate_upstream_mcp_servers(servers, strict=strict)
 
 
@@ -256,6 +255,7 @@ def _default_probe_agent_transports(
     from ralph.mcp.agent_transport_probe import (  # noqa: PLC0415
         probe_agent_transports,
     )
+
     return probe_agent_transports(servers, workspace_path=workspace_path)
 
 

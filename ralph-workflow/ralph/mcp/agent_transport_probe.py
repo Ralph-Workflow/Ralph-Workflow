@@ -126,9 +126,7 @@ def _probe_pair(
     )
 
 
-def _probe_claude(
-    server: UpstreamMcpServer, workspace_path: Path | None
-) -> AgentProbeReport:
+def _probe_claude(server: UpstreamMcpServer, workspace_path: Path | None) -> AgentProbeReport:
     if server.transport == "stdio":
         return AgentProbeReport(
             transport=AgentTransport.CLAUDE,
@@ -156,14 +154,10 @@ def _probe_claude(
             f"Claude MCP config Ralph url='{entry.get('url')!r}' does not match server.url"
         )
     _http_handshake(server.url)
-    return AgentProbeReport(
-        transport=AgentTransport.CLAUDE, server_name=server.name, ok=True
-    )
+    return AgentProbeReport(transport=AgentTransport.CLAUDE, server_name=server.name, ok=True)
 
 
-def _probe_codex(
-    server: UpstreamMcpServer, workspace_path: Path | None
-) -> AgentProbeReport:
+def _probe_codex(server: UpstreamMcpServer, workspace_path: Path | None) -> AgentProbeReport:
     codex_home_str, _upstreams = _prepare_codex_home_with_upstreams(
         endpoint=None,
         workspace_path=workspace_path,
@@ -188,22 +182,16 @@ def _probe_codex(
         )
     entry = cast("dict[str, object]", raw_entry)
     if server.transport == "http" and entry.get("url") != server.url:
-        raise AgentTransportProbeError(
-            f"Codex config.toml mcp_servers.{server.name}.url mismatch"
-        )
+        raise AgentTransportProbeError(f"Codex config.toml mcp_servers.{server.name}.url mismatch")
     if server.transport == "stdio" and entry.get("command") != server.command:
         raise AgentTransportProbeError(
             f"Codex config.toml mcp_servers.{server.name}.command mismatch"
         )
     _server_handshake(server)
-    return AgentProbeReport(
-        transport=AgentTransport.CODEX, server_name=server.name, ok=True
-    )
+    return AgentProbeReport(transport=AgentTransport.CODEX, server_name=server.name, ok=True)
 
 
-def _augment_codex_config_with_server(
-    base_config: str, server: UpstreamMcpServer
-) -> str:
+def _augment_codex_config_with_server(base_config: str, server: UpstreamMcpServer) -> str:
     section_lines = [f"[mcp_servers.{server.name}]"]
     if server.transport == "http":
         section_lines.append(f'url = "{server.url}"')
@@ -219,9 +207,7 @@ def _augment_codex_config_with_server(
     return section
 
 
-def _probe_opencode(
-    server: UpstreamMcpServer, workspace_path: Path | None
-) -> AgentProbeReport:
+def _probe_opencode(server: UpstreamMcpServer, workspace_path: Path | None) -> AgentProbeReport:
     del workspace_path
     if server.transport == "stdio":
         return AgentProbeReport(
@@ -237,9 +223,7 @@ def _probe_opencode(
     inner: dict[str, object] = {"type": "remote", "url": server.url}
     existing_payload_obj: dict[str, object] = {"mcp": {server.name: inner}}
     existing_payload = json.dumps(existing_payload_obj)
-    config_text, _upstreams = _build_opencode_provider_config(
-        existing_payload, server.url
-    )
+    config_text, _upstreams = _build_opencode_provider_config(existing_payload, server.url)
     parsed = _parse_json_obj(config_text, "OpenCode provider config")
     mcp_section = parsed.get("mcp")
     if not isinstance(mcp_section, dict):
@@ -247,18 +231,12 @@ def _probe_opencode(
     typed_mcp = cast("dict[str, object]", mcp_section)
     raw_ralph_entry = typed_mcp.get(RALPH_MCP_SERVER_NAME)
     if not isinstance(raw_ralph_entry, dict):
-        raise AgentTransportProbeError(
-            "OpenCode config missing Ralph mcp entry after synthesis"
-        )
+        raise AgentTransportProbeError("OpenCode config missing Ralph mcp entry after synthesis")
     ralph_entry = cast("dict[str, object]", raw_ralph_entry)
     if ralph_entry.get("type") != "remote" or ralph_entry.get("url") != server.url:
-        raise AgentTransportProbeError(
-            "OpenCode Ralph mcp entry shape mismatch (type/url)"
-        )
+        raise AgentTransportProbeError("OpenCode Ralph mcp entry shape mismatch (type/url)")
     _http_handshake(server.url)
-    return AgentProbeReport(
-        transport=AgentTransport.OPENCODE, server_name=server.name, ok=True
-    )
+    return AgentProbeReport(transport=AgentTransport.OPENCODE, server_name=server.name, ok=True)
 
 
 def _http_handshake(endpoint: str) -> None:

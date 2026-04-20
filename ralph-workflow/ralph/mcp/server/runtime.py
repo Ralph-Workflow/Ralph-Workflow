@@ -499,8 +499,10 @@ def build_standalone_http_server(  # noqa: PLR0913
         capabilities=_all_capability_values(),
     )
     workspace = FsWorkspace(workspace_root)
-    mcp_cfg = mcp_config if mcp_config is not None else load_mcp_config(
-        config_path=_workspace_mcp_config_path(workspace_root)
+    mcp_cfg = (
+        mcp_config
+        if mcp_config is not None
+        else load_mcp_config(config_path=_workspace_mcp_config_path(workspace_root))
     )
     upstream_servers = _load_runtime_upstream_servers(mcp_cfg)
     upstream_reg = (
@@ -727,8 +729,10 @@ def build_fastmcp_server(  # noqa: PLR0913
         capabilities=_all_capability_values(),
     )
     workspace = FsWorkspace(workspace_root)
-    mcp_cfg = mcp_config if mcp_config is not None else load_mcp_config(
-        config_path=_workspace_mcp_config_path(workspace_root)
+    mcp_cfg = (
+        mcp_config
+        if mcp_config is not None
+        else load_mcp_config(config_path=_workspace_mcp_config_path(workspace_root))
     )
     upstream_servers = _load_runtime_upstream_servers(mcp_cfg)
     upstream_reg = (

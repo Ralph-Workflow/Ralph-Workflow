@@ -119,9 +119,7 @@ class LazyToolHandler:
         self._handler_name = handler_name
         self._session = session
         self._workspace = workspace
-        self._extra_kwargs: dict[str, object] = (
-            extra_kwargs if extra_kwargs is not None else {}
-        )
+        self._extra_kwargs: dict[str, object] = extra_kwargs if extra_kwargs is not None else {}
 
     def __call__(
         self,
