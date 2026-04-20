@@ -650,7 +650,15 @@ def run(  # noqa: PLR0912, PLR0913, PLR0915
                         )
                         state, _ = reducer_reduce(state, failure_event, policy_bundle.pipeline)
                     _notify_pipeline_subscriber(effective_pipeline_subscriber, state)
-                    ckpt.save(state)
+                    try:
+                        ckpt.save(state)
+                    except Exception as exc:
+                        logger.exception(
+                            "Checkpoint save failed in phase={phase}: {err} "
+                            "-- continuing without checkpoint",
+                            phase=state.phase,
+                            err=exc,
+                        )
                     _prev_phase = _emit_phase_transition_if_changed(
                         active_display,
                         _prev_phase,
