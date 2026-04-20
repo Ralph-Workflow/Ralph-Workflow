@@ -43,7 +43,7 @@ class OpenCodeParser:
                 continue
 
             try:
-                parsed: object = json.loads(stripped)
+                parsed: object = json.loads(stripped, strict=False)
             except json.JSONDecodeError:
                 yield AgentOutputLine(type="raw", content=stripped, raw=stripped)
                 continue
