@@ -58,6 +58,19 @@ class PhaseHandlerNotFoundError(Exception):
 TransitionKey = Literal["on_success", "on_failure", "on_loopback"]
 
 
+def _failure_reason(state: PipelineState, fallback: str) -> str:
+    """Extract a descriptive failure reason from state, or use the fallback.
+
+    Uses explicit truthiness check (not `or`) to handle empty-string last_error.
+    Empty strings are falsy but not None, so `state.last_error or fallback`
+    would work correctly in Python, but explicit checks make the intent clearer
+    and guard against future misuse of empty-string assignment.
+    """
+    if state.last_error:
+        return state.last_error
+    return fallback
+
+
 def determine_next_effect(
     state: PipelineState,
     pipeline_policy: PipelinePolicy,
@@ -85,7 +98,17 @@ def determine_next_effect(
         return ExitSuccessEffect()
 
     if state.phase == PHASE_FAILED:
-        return ExitFailureEffect(reason=state.last_error or "Unknown failure")
+        # last_error should always be set before reaching PHASE_FAILED,
+        # but provide a fallback only for backward compatibility with
+        # pre-PhaseFailureEvent checkpoint state.
+        reason = _failure_reason(
+            state,
+            (
+                f"Pipeline terminated in phase='{state.phase}' with no explicit error; "
+                "check upstream last_error propagation"
+            ),
+        )
+        return ExitFailureEffect(reason=reason)
 
     # Look up the current phase definition
     phase_def = pipeline_policy.phases.get(state.phase)

@@ -176,7 +176,6 @@ def test_render_includes_commit_message_artifact_when_present(tmp_path: Path) ->
     assert "Show the final commit message in the completion summary." in text
 
 
-
 def test_render_includes_commit_sha_from_workers() -> None:
     worker = WorkerSnapshot(
         unit_id="unit-1",
@@ -208,7 +207,6 @@ def test_render_pr_url_included_when_set() -> None:
 def test_render_missing_pr_url_omits_pr_line() -> None:
     text = _render_plain(_make_snapshot(pr_url=None))
     assert "PR:" not in text
-
 
 
 def test_render_without_commit_message_artifact_omits_commit_message_line(tmp_path: Path) -> None:

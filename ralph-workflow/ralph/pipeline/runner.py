@@ -56,7 +56,7 @@ from ralph.pipeline.effects import (
     PreparePromptEffect,
     SaveCheckpointEffect,
 )
-from ralph.pipeline.events import Event, PipelineEvent
+from ralph.pipeline.events import Event, PhaseFailureEvent, PipelineEvent
 from ralph.pipeline.handoffs import resolve_phase_drain
 from ralph.pipeline.reducer import reduce as reducer_reduce
 from ralph.pipeline.state import AgentChainState, CommitState, PipelineState, RebaseState
@@ -598,41 +598,64 @@ def run(  # noqa: PLR0912, PLR0913, PLR0915
                         )
                         continue
 
-                    workspace = FsWorkspace(
-                        workspace_scope.root,
-                        allowed_roots=workspace_scope.allowed_roots,
-                    )
-                    _materialize_agent_prompt_if_needed(
-                        effect,
-                        workspace,
-                        policy_bundle.pipeline,
-                        registry,
-                        workspace_scope,
-                    )
-
-                    event: Event = _execute_effect_with_optional_display(
-                        effect,
-                        config,
-                        workspace_scope,
-                        active_display,
-                        verbosity=effective_verbosity,
-                    )
-                    if (
-                        isinstance(effect, InvokeAgentEffect)
-                        and event == PipelineEvent.AGENT_SUCCESS
-                    ):
-                        event = _phase_event_after_agent_run(
-                            effect=effect,
-                            config=config,
-                            policy_bundle=policy_bundle,
-                            workspace=workspace,
-                            workspace_scope=workspace_scope,
-                            display=active_display,
+                    try:
+                        workspace = FsWorkspace(
+                            workspace_scope.root,
+                            allowed_roots=workspace_scope.allowed_roots,
+                        )
+                        _materialize_agent_prompt_if_needed(
+                            effect,
+                            workspace,
+                            policy_bundle.pipeline,
+                            registry,
+                            workspace_scope,
                         )
 
-                    state, _ = reducer_reduce(state, event, policy_bundle.pipeline)
+                        event: Event = _execute_effect_with_optional_display(
+                            effect,
+                            config,
+                            workspace_scope,
+                            active_display,
+                            verbosity=effective_verbosity,
+                        )
+                        if (
+                            isinstance(effect, InvokeAgentEffect)
+                            and event == PipelineEvent.AGENT_SUCCESS
+                        ):
+                            event = _phase_event_after_agent_run(
+                                effect=effect,
+                                config=config,
+                                policy_bundle=policy_bundle,
+                                workspace=workspace,
+                                workspace_scope=workspace_scope,
+                                display=active_display,
+                            )
+
+                        state, _ = reducer_reduce(state, event, policy_bundle.pipeline)
+                    except (KeyboardInterrupt, SystemExit):
+                        raise
+                    except Exception as exc:
+                        logger.exception(
+                            "Effect handler crashed in phase={phase}: {err}",
+                            phase=state.phase,
+                            err=exc,
+                        )
+                        failure_event = PhaseFailureEvent(
+                            phase=state.phase,
+                            reason=f"Effect handler crashed: {type(exc).__name__}: {exc}",
+                            recoverable=True,
+                        )
+                        state, _ = reducer_reduce(state, failure_event, policy_bundle.pipeline)
                     _notify_pipeline_subscriber(effective_pipeline_subscriber, state)
-                    ckpt.save(state)
+                    try:
+                        ckpt.save(state)
+                    except Exception as exc:
+                        logger.exception(
+                            "Checkpoint save failed in phase={phase}: {err} "
+                            "-- continuing without checkpoint",
+                            phase=state.phase,
+                            err=exc,
+                        )
                     _prev_phase = _emit_phase_transition_if_changed(
                         active_display,
                         _prev_phase,
@@ -980,7 +1003,12 @@ def _terminal_phase_effect(state: PipelineState) -> Effect | None:
     if state.phase == PHASE_COMPLETE:
         return ExitSuccessEffect()
     if state.phase == PHASE_FAILED:
-        return ExitFailureEffect(reason=state.last_error or "Unknown failure")
+        last_error = (
+            state.last_error
+            or f"Pipeline exited unexpectedly in phase={state.phase!r} "
+            "with no explicit error; check upstream last_error propagation"
+        )
+        return ExitFailureEffect(reason=last_error)
     return None
 
 
@@ -1150,7 +1178,23 @@ def _phase_event_after_agent_run(  # noqa: PLR0913
         artifacts_policy=policy_bundle.artifacts,
         config=config,
     )
-    events = handle_phase(effect, ctx)
+    try:
+        events = handle_phase(effect, ctx)
+    except (KeyboardInterrupt, SystemExit):
+        raise
+    except Exception as exc:
+        logger.exception(
+            "Phase handler crashed in phase={phase}: {err}",
+            phase=effect.phase,
+            err=exc,
+        )
+        events = [
+            PhaseFailureEvent(
+                phase=effect.phase,
+                reason=f"Phase handler crashed: {type(exc).__name__}: {exc}",
+                recoverable=True,
+            )
+        ]
     event: Event = events[0] if events else PipelineEvent.AGENT_SUCCESS
 
     if (
@@ -1469,7 +1513,6 @@ def _clear_phase_output_artifacts(workspace: FsWorkspace, phase: str) -> None:
         workspace.remove(path)
 
 
-
 def _phase_output_artifact_paths(phase: str) -> tuple[str, ...]:
     phase_artifacts = {
         "development": (".agent/artifacts/development_result.json",),
@@ -1481,7 +1524,6 @@ def _phase_output_artifact_paths(phase: str) -> tuple[str, ...]:
         "review_commit": (COMMIT_MESSAGE_ARTIFACT,),
     }
     return phase_artifacts.get(phase, ())
-
 
 
 def _default_mcp_capabilities_for_phase(phase: str) -> set[str]:
@@ -1658,7 +1700,6 @@ def _render_text_line(agent_name: str, content: str, style: str) -> Text | None:
     return rendered
 
 
-
 def _render_tool_use_line(agent_name: str, output: AgentOutputLine) -> Text:
     tool_name = output.content.strip() or "unknown-tool"
     prefix_label = f"{agent_name} tool"
@@ -1671,7 +1712,6 @@ def _render_tool_use_line(agent_name: str, output: AgentOutputLine) -> Text:
         truncated = _truncate(input_summary, tool_input_width)
         rendered.append(f" ({truncated})", style="dim")
     return rendered
-
 
 
 def _render_tool_result_line(agent_name: str, content: str) -> Text | None:
@@ -1691,13 +1731,11 @@ def _render_tool_result_line(agent_name: str, content: str) -> Text | None:
     return rendered
 
 
-
 def _render_error_line(agent_name: str, content: str) -> Text:
     error = content.strip() or "unknown error"
     rendered = _styled_prefix(f"{agent_name} ✗", "red")
     rendered.append(error, style="bold red")
     return rendered
-
 
 
 def _render_metadata_event_line(agent_name: str, output: AgentOutputLine) -> Text:
@@ -1707,7 +1745,6 @@ def _render_metadata_event_line(agent_name: str, output: AgentOutputLine) -> Tex
     if summary:
         rendered.append(f" ({summary})", style="dim")
     return rendered
-
 
 
 def _tool_input_summary(metadata: dict[str, object]) -> str:

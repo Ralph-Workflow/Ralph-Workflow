@@ -17,7 +17,7 @@ not hardcoded match arms.
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from ralph.config.enums import (
     PHASE_COMPLETE,
@@ -31,6 +31,7 @@ from ralph.config.enums import (
 from ralph.pipeline.effects import Effect, ExitFailureEffect, SaveCheckpointEffect
 from ralph.pipeline.events import (
     Event,
+    PhaseFailureEvent,
     PipelineEvent,
     WorkerCompletedEvent,
     WorkerFailedEvent,
@@ -58,6 +59,67 @@ if TYPE_CHECKING:
 # Maximum number of agent retries before giving up
 _MAX_AGENT_RETRIES = 3
 
+# Forbidden sentinel strings that indicate a bug in error handling.
+_FORBIDDEN_ERROR_SENTINELS: frozenset[str] = frozenset(
+    {
+        "Unknown failure",
+        "unknown failure",
+        "",
+        "None",
+        "null",
+    }
+)
+
+
+def _is_valid_error_message(msg: str | None) -> bool:
+    """Check if an error message is descriptive (not a forbidden sentinel)."""
+    if msg is None:
+        return False
+    stripped = msg.strip()
+    return stripped != "" and msg not in _FORBIDDEN_ERROR_SENTINELS
+
+
+def _failure_reason(state: PipelineState, fallback: str) -> str:
+    """Extract a descriptive failure reason from state, or use the fallback.
+
+    Uses explicit truthiness check (not `or`) to handle empty-string last_error.
+    Empty strings are falsy but not None, so `state.last_error or fallback`
+    would work correctly in Python, but explicit checks make the intent clearer
+    and guard against future misuse of empty-string assignment.
+    """
+    if state.last_error:
+        return state.last_error
+    return fallback
+
+
+def _restore_work_units(
+    state: PipelineState,
+    new_state: PipelineState,
+) -> PipelineState:
+    """Restore work_units if they were lost during state transition."""
+    if state.work_units and not new_state.work_units:
+        return new_state.copy_with(work_units=state.work_units)
+    return new_state
+
+
+def _dispatch_worker_event(
+    state: PipelineState, event: Event
+) -> tuple[PipelineState, list[Effect]] | None:
+    """Handle worker events, returning None if the event is not a worker event."""
+    if isinstance(event, WorkerStartedEvent):
+        new_state, effects = _handle_worker_started(state, event)
+        return _restore_work_units(state, new_state), effects
+    if isinstance(event, WorkerCompletedEvent):
+        new_state, effects = _handle_worker_completed(state, event)
+        return _restore_work_units(state, new_state), effects
+    if isinstance(event, WorkerFailedEvent):
+        new_state, effects = _handle_worker_failed(state, event)
+        return _restore_work_units(state, new_state), effects
+    if isinstance(event, WorkersMergeConflictEvent):
+        new_state, effects = _handle_workers_merge_conflict(state, event)
+        return _restore_work_units(state, new_state), effects
+    return None
+
 
 def reduce(
     state: PipelineState,
@@ -80,29 +142,14 @@ def reduce(
         Tuple of (new_state, effects). Effects are instructions for the
         effect handler to execute.
     """
-    if isinstance(event, WorkerStartedEvent):
-        new_state, effects = _handle_worker_started(state, event)
-        if state.work_units and not new_state.work_units:
-            new_state = new_state.copy_with(work_units=state.work_units)
-        return new_state, effects
+    # Handle PhaseFailureEvent before the generic PipelineEvent dispatch
+    if isinstance(event, PhaseFailureEvent):
+        return _handle_phase_failure(state, event)
 
-    if isinstance(event, WorkerCompletedEvent):
-        new_state, effects = _handle_worker_completed(state, event)
-        if state.work_units and not new_state.work_units:
-            new_state = new_state.copy_with(work_units=state.work_units)
-        return new_state, effects
-
-    if isinstance(event, WorkerFailedEvent):
-        new_state, effects = _handle_worker_failed(state, event)
-        if state.work_units and not new_state.work_units:
-            new_state = new_state.copy_with(work_units=state.work_units)
-        return new_state, effects
-
-    if isinstance(event, WorkersMergeConflictEvent):
-        new_state, effects = _handle_workers_merge_conflict(state, event)
-        if state.work_units and not new_state.work_units:
-            new_state = new_state.copy_with(work_units=state.work_units)
-        return new_state, effects
+    # Handle worker events with a unified approach
+    worker_result = _dispatch_worker_event(state, event)
+    if worker_result is not None:
+        return worker_result
 
     handlers: dict[
         PipelineEvent,
@@ -130,13 +177,12 @@ def reduce(
         PipelineEvent.WORKERS_RESUMED: _ignore_policy(_handle_workers_resumed),
         PipelineEvent.ALL_WORKERS_COMPLETE: _ignore_policy(_handle_all_workers_complete),
     }
-    handler = handlers.get(event)
+    # At this point, event is a PipelineEvent (PhaseFailureEvent and worker events handled above)
+    handler = handlers.get(cast("PipelineEvent", event))
     if handler is None:
         return state, []
     new_state, effects = handler(state, pipeline_policy)
-    if state.work_units and not new_state.work_units:
-        new_state = new_state.copy_with(work_units=state.work_units)
-    return new_state, effects
+    return _restore_work_units(state, new_state), effects
 
 
 def _ignore_policy(
@@ -156,6 +202,40 @@ def _return_state(
     _policy: PipelinePolicy | None,
 ) -> tuple[PipelineState, list[Effect]]:
     return state, []
+
+
+def _handle_phase_failure(
+    state: PipelineState, event: PhaseFailureEvent
+) -> tuple[PipelineState, list[Effect]]:
+    """Handle PhaseFailureEvent from phase handlers.
+
+    PhaseFailureEvent carries a recoverable flag:
+    - recoverable=True: route through _handle_agent_failure retry/fallback logic
+    - recoverable=False: route directly to PHASE_FAILED (terminal agent decision)
+
+    In both cases, last_error is set to a descriptive string combining the
+    phase name and the reason.
+    """
+    # Use the event reason if it's descriptive, otherwise synthesize one.
+    if event.reason and event.reason.strip():
+        failure_message = f"{event.phase}: {event.reason}"
+    else:
+        failure_message = f"(no reason reported for phase={event.phase})"
+
+    if event.recoverable:
+        # Inject the failure message into state.last_error so that
+        # _handle_agent_failure preserves it when it transitions to PHASE_FAILED.
+        state_with_error = state.copy_with(last_error=failure_message)
+        return _handle_agent_failure(state_with_error)
+    else:
+        # Non-recoverable: explicit agent decision (FAILURE/ESCALATE),
+        # go directly to terminal failure.
+        new_state = state.copy_with(
+            phase=PHASE_FAILED,
+            previous_phase=state.phase,
+            last_error=failure_message,
+        )
+        return new_state, [ExitFailureEffect(reason=failure_message)]
 
 
 def _handle_agent_success(
@@ -203,12 +283,13 @@ def _handle_agent_failure(state: PipelineState) -> tuple[PipelineState, list[Eff
     """Handle agent failure with retry/fallback logic."""
     chain = state.chain_for_phase(state.phase)
     if chain is None:
+        failure_reason = _failure_reason(state, f"No tracked agent chain for {state.phase}")
         new_state = state.copy_with(
             phase=PHASE_FAILED,
             previous_phase=state.phase,
-            last_error=f"No tracked agent chain for {state.phase}",
+            last_error=failure_reason,
         )
-        return new_state, [ExitFailureEffect(reason=f"No tracked agent chain for {state.phase}")]
+        return new_state, [ExitFailureEffect(reason=failure_reason)]
 
     if chain.retries < _MAX_AGENT_RETRIES:
         new_chain = AgentChainState(
@@ -240,24 +321,34 @@ def _handle_agent_failure(state: PipelineState) -> tuple[PipelineState, list[Eff
         new_state = state.with_phase_chain(state.phase, new_chain).copy_with(metrics=new_metrics)
         return new_state, []
 
+    # Chain exhausted: preserve any informative last_error from PhaseFailureEvent,
+    # otherwise construct a descriptive message.
+    failure_reason = _failure_reason(
+        state,
+        (
+            f"Agent chain exhausted in phase='{state.phase}' after "
+            f"{chain.retries} retries across {len(chain.agents)} agents"
+        ),
+    )
     new_state = state.copy_with(
         phase=PHASE_FAILED,
         previous_phase=state.phase,
-        last_error=f"Agent chain exhausted in {state.phase}",
+        last_error=failure_reason,
     )
-    return new_state, [ExitFailureEffect(reason="Agent chain exhausted")]
+    return new_state, [ExitFailureEffect(reason=failure_reason)]
 
 
 def _handle_agent_retry(state: PipelineState) -> tuple[PipelineState, list[Effect]]:
     """Handle agent retry request."""
     chain = state.chain_for_phase(state.phase)
     if chain is None:
+        failure_reason = _failure_reason(state, f"No tracked agent chain for {state.phase}")
         new_state = state.copy_with(
             phase=PHASE_FAILED,
             previous_phase=state.phase,
-            last_error=f"No tracked agent chain for {state.phase}",
+            last_error=failure_reason,
         )
-        return new_state, [ExitFailureEffect(reason=f"No tracked agent chain for {state.phase}")]
+        return new_state, [ExitFailureEffect(reason=failure_reason)]
 
     new_chain = AgentChainState(
         agents=chain.agents,
@@ -458,11 +549,13 @@ def _handle_fix_failure(
         try:
             next_phase = resolve_next_phase(state.phase, "failure", policy)
             if next_phase == PHASE_FAILED:
+                failure_reason = _failure_reason(state, "Fix phase failed")
                 new_state = state.copy_with(
                     phase=PHASE_FAILED,
                     previous_phase=state.phase,
+                    last_error=failure_reason,
                 )
-                return new_state, [ExitFailureEffect(reason="Fix phase failed")]
+                return new_state, [ExitFailureEffect(reason=failure_reason)]
             return _advance_phase(state, next_phase, policy)
         except ValueError as exc:
             return _advance_to_terminal(
@@ -538,12 +631,13 @@ def _handle_commit_skipped(
 
 def _handle_commit_failure(state: PipelineState) -> tuple[PipelineState, list[Effect]]:
     """Handle commit failure."""
+    failure_reason = _failure_reason(state, "Commit failed")
     new_state = state.copy_with(
         phase=PHASE_FAILED,
         previous_phase=state.phase,
-        last_error="Commit failed",
+        last_error=failure_reason,
     )
-    return new_state, [ExitFailureEffect(reason="Commit failed")]
+    return new_state, [ExitFailureEffect(reason=failure_reason)]
 
 
 def _handle_checkpoint_saved(state: PipelineState) -> tuple[PipelineState, list[Effect]]:
@@ -565,12 +659,24 @@ def _handle_complete(state: PipelineState) -> tuple[PipelineState, list[Effect]]
 
 
 def _handle_failed(state: PipelineState) -> tuple[PipelineState, list[Effect]]:
-    """Handle pipeline failure."""
+    """Handle pipeline failure.
+
+    Uses state.last_error if available and descriptive, which should have been
+    set by the preceding failure event handler. Falls back to a descriptive
+    message only as a last resort.
+    """
+    last_error = _failure_reason(
+        state,
+        (
+            f"Pipeline terminated in phase='{state.phase}' with no explicit error; "
+            "check upstream last_error propagation"
+        ),
+    )
     new_state = state.copy_with(
         phase=PHASE_FAILED,
-        last_error=state.last_error or "Unknown failure",
+        last_error=last_error,
     )
-    return new_state, [ExitFailureEffect(reason=state.last_error or "Unknown failure")]
+    return new_state, [ExitFailureEffect(reason=last_error)]
 
 
 def _handle_phase_advance(
@@ -732,8 +838,9 @@ def _handle_workers_merge_conflict(
     event: WorkersMergeConflictEvent,
 ) -> tuple[PipelineState, list[Effect]]:
     unit_ids_str = ", ".join(event.conflicting_unit_ids)
+    failure_reason = f"Merge conflict in workers: {unit_ids_str}"
     return state.copy_with(
         phase=PHASE_FAILED,
         previous_phase=state.phase,
-        last_error=f"Merge conflict in workers: {unit_ids_str}",
-    ), []
+        last_error=failure_reason,
+    ), [ExitFailureEffect(reason=failure_reason)]

@@ -1,18 +1,9 @@
-from __future__ import annotations
+"""Upstream MCP models - re-exports from sub-package."""
 
-from dataclasses import dataclass, field
-
-
-@dataclass(frozen=True)
-class UpstreamTool:
-    name: str
-    description: str
-    input_schema: dict[str, object] = field(default_factory=dict)
-
-
-class UpstreamCallError(Exception):
-    pass
-
+from ralph.mcp.upstream.models import (
+    UpstreamCallError,
+    UpstreamTool,
+)
 
 __all__ = [
     "UpstreamCallError",

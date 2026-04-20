@@ -181,3 +181,79 @@ def test_remove_nonexistent_checkpoint_idempotent(tmp_path: Path) -> None:
 
     path = tmp_path / "checkpoint.json"
     ckpt.remove(path)
+
+
+def test_load_drops_unknown_failure_sentinel(tmp_path: Path) -> None:
+    """Checkpoints with 'Unknown failure' last_error should be sanitized on load.
+
+    Pre-fix checkpoints may contain the 'Unknown failure' sentinel in last_error.
+    Loading such a checkpoint must drop the sentinel and replace it with None
+    so the old bug cannot be resurrected after an upgrade.
+    """
+    path = tmp_path / "checkpoint.json"
+
+    # Create a checkpoint with the forbidden sentinel
+    state_with_sentinel = PipelineState(
+        phase=PHASE_DEVELOPMENT,
+        iteration=1,
+        last_error="Unknown failure",
+    )
+    ckpt.save(state_with_sentinel, path)
+
+    # Load it
+    loaded = ckpt.load(path)
+    assert loaded is not None
+
+    # The sentinel must be dropped
+    assert loaded.last_error is None, (
+        f"Expected last_error to be None after sanitization, got: {loaded.last_error!r}"
+    )
+
+
+def test_load_drops_empty_string_sentinel(tmp_path: Path) -> None:
+    """Checkpoints with empty-string last_error should be sanitized on load."""
+    path = tmp_path / "checkpoint.json"
+
+    state_with_empty = PipelineState(
+        phase=PHASE_DEVELOPMENT,
+        iteration=1,
+        last_error="",
+    )
+    ckpt.save(state_with_empty, path)
+
+    loaded = ckpt.load(path)
+    assert loaded is not None
+    assert loaded.last_error is None
+
+
+def test_load_drops_none_sentinel(tmp_path: Path) -> None:
+    """Checkpoints with 'None' string last_error should be sanitized on load."""
+    path = tmp_path / "checkpoint.json"
+
+    state_with_none = PipelineState(
+        phase=PHASE_DEVELOPMENT,
+        iteration=1,
+        last_error="None",
+    )
+    ckpt.save(state_with_none, path)
+
+    loaded = ckpt.load(path)
+    assert loaded is not None
+    assert loaded.last_error is None
+
+
+def test_load_preserves_valid_last_error(tmp_path: Path) -> None:
+    """Checkpoints with valid last_error should be preserved."""
+    path = tmp_path / "checkpoint.json"
+
+    valid_error = "development: Missing planning artifact at .agent/artifacts/plan.json"
+    state_with_valid = PipelineState(
+        phase=PHASE_DEVELOPMENT,
+        iteration=1,
+        last_error=valid_error,
+    )
+    ckpt.save(state_with_valid, path)
+
+    loaded = ckpt.load(path)
+    assert loaded is not None
+    assert loaded.last_error == valid_error

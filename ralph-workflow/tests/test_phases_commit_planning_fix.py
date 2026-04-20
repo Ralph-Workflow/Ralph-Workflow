@@ -32,7 +32,7 @@ from ralph.pipeline.effects import (
     InvokeAgentEffect,
     PreparePromptEffect,
 )
-from ralph.pipeline.events import Event, PipelineEvent
+from ralph.pipeline.events import Event, PhaseFailureEvent, PipelineEvent
 from ralph.workspace.fs import FsWorkspace
 
 
@@ -395,9 +395,8 @@ def test_handle_planning_accepts_noop_plan() -> None:
 def test_handle_development_reads_wrapped_plan_artifact_and_validates_schema() -> None:
     ctx = _stub_context()
     workspace = cast("MagicMock", ctx.workspace)
-    workspace.exists.side_effect = (
-        lambda path: path
-        in {".agent/artifacts/plan.json", ".agent/artifacts/development_result.json"}
+    workspace.exists.side_effect = lambda path: (
+        path in {".agent/artifacts/plan.json", ".agent/artifacts/development_result.json"}
     )
     workspace.read.side_effect = lambda path: {
         ".agent/artifacts/plan.json": (
@@ -465,7 +464,7 @@ def test_handle_fix_invokes_agent_successfully() -> None:
     assert handle_fix(effect, ctx) == [PipelineEvent.AGENT_SUCCESS]
 
 
-def test_handle_fix_fails_without_fix_result_artifact() -> None:
+def test_handle_fix_fails_without_fix_result_artifact_returns_phase_failure_recoverable() -> None:
     ctx = _stub_context()
     workspace = cast("MagicMock", ctx.workspace)
     workspace.exists.return_value = False
@@ -475,7 +474,13 @@ def test_handle_fix_fails_without_fix_result_artifact() -> None:
         prompt_file="fix.txt",
     )
 
-    assert handle_fix(effect, ctx) == [PipelineEvent.FAILED]
+    result = handle_fix(effect, ctx)
+    assert len(result) == 1
+    event = result[0]
+    assert isinstance(event, PhaseFailureEvent)
+    assert event.phase == "fix"
+    assert event.recoverable is True
+    assert "fix_result" in event.reason.lower() or "artifact" in event.reason.lower()
 
 
 def test_handle_fix_ignores_unrelated_effects() -> None:
@@ -546,8 +551,13 @@ def test_handle_development_analysis_skips_empty_steps_plan() -> None:
     assert handle_development_analysis(effect, ctx) == [PipelineEvent.ANALYSIS_SUCCESS]
 
 
-def test_handle_development_analysis_proceeds_when_plan_is_not_noop() -> None:
-    """handle_development_analysis must parse analysis decision when plan is not a no-op."""
+def test_handle_dev_analysis_non_noop_returns_phase_failure_not_recoverable() -> None:
+    """handle_development_analysis must parse analysis decision when plan is not a no-op.
+
+    When plan is not a no-op, it falls through to parse_analysis_decision.
+    Since there's no development_analysis_decision artifact, it returns FAILURE as a
+    non-recoverable PhaseFailureEvent.
+    """
     ctx = _stub_context()
     workspace = cast("MagicMock", ctx.workspace)
     # plan.json exists but is NOT a no-op
@@ -563,7 +573,9 @@ def test_handle_development_analysis_proceeds_when_plan_is_not_noop() -> None:
         prompt_file="development_analysis.txt",
     )
 
-    # When plan is not a no-op, it falls through to parse_analysis_decision.
-    # Since there's no development_analysis_decision artifact, it returns FAILURE.
     result = handle_development_analysis(effect, ctx)
-    assert result == [PipelineEvent.FAILED]
+    assert len(result) == 1
+    event = result[0]
+    assert isinstance(event, PhaseFailureEvent)
+    assert event.phase == "development_analysis"
+    assert event.recoverable is False

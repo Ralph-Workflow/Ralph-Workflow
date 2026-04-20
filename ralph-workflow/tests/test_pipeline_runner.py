@@ -16,15 +16,23 @@ from rich.text import Text
 
 from ralph.agents.invoke import AgentInactivityTimeoutError, AgentInvocationError
 from ralph.agents.parsers import AgentOutputLine, ClaudeParser
-from ralph.config.enums import AgentTransport, JsonParserType, Verbosity
+from ralph.config.enums import (
+    PHASE_DEVELOPMENT,
+    PHASE_FAILED,
+    AgentTransport,
+    JsonParserType,
+    Verbosity,
+)
 from ralph.config.models import AgentConfig, CcsConfig, UnifiedConfig
 from ralph.mcp.capability_mapping import SessionDrain
 from ralph.mcp.tool_names import claude_tool_name_prefix
 from ralph.mcp.upstream_config import UpstreamMcpServer
 from ralph.mcp.upstream_validation import UpstreamValidationError
+from ralph.phases import HANDLERS, PhaseContext, handle_phase
 from ralph.pipeline import runner as runner_module
 from ralph.pipeline.effects import (
     CommitEffect,
+    Effect,
     ExitFailureEffect,
     ExitSuccessEffect,
     FanOutDevelopmentEffect,
@@ -32,7 +40,8 @@ from ralph.pipeline.effects import (
     PreparePromptEffect,
     SaveCheckpointEffect,
 )
-from ralph.pipeline.events import PipelineEvent
+from ralph.pipeline.events import PhaseFailureEvent, PipelineEvent
+from ralph.pipeline.reducer import reduce as reducer_reduce
 from ralph.pipeline.state import AgentChainState, CommitState, PipelineState
 from ralph.pipeline.work_units import WorkUnit
 from ralph.policy.loader import load_policy
@@ -1488,9 +1497,11 @@ class TestExecuteAgentEffect:
         def fake_invoke_agent(_agent_config, _prompt_file, *, options=None):
             seen_session_ids.append(None if options is None else options.session_id)
             if len(seen_session_ids) == 1:
+
                 def _first_attempt():
                     yield '{"session_id":"claude-session-42"}'
                     raise AgentInvocationError("claude", 1, "connection refused")
+
                 return _first_attempt()
             return iter(
                 ['{"type":"assistant","message":{"content":[{"type":"text","text":"done"}]}}']
@@ -1549,9 +1560,11 @@ class TestExecuteAgentEffect:
             del options
             seen_prompt_files.append(prompt_path)
             if len(seen_prompt_files) == 1:
+
                 def _first_attempt():
                     yield '{"type":"text","content":"drafted the fix"}'
                     raise AgentInactivityTimeoutError("codex", 30, ["drafted the fix"])
+
                 return _first_attempt()
             return iter(['{"type":"result","result":"finished"}'])
 
@@ -2164,3 +2177,90 @@ def test_run_continues_when_mcp_toml_has_no_servers(
     state.phase = "planning"
     rc = runner_module.run(MagicMock(), initial_state=state)
     assert rc == 0
+
+
+class TestPhaseHandlerExceptionGuard:
+    """Tests for the phase handler exception guard in runner.py.
+
+    When runner.py wraps handle_phase calls in try/except Exception, a handler that
+    raises RuntimeError should result in PhaseFailureEvent(recoverable=True) being
+    emitted rather than the exception propagating.
+    """
+
+    def _make_context(self) -> PhaseContext:
+        """Create a mock phase context for testing."""
+        workspace = MagicMock()
+        workspace.exists.return_value = False
+        return PhaseContext.construct(
+            workspace=workspace,
+            registry=MagicMock(),
+            chain_manager=MagicMock(),
+            pipeline_policy=MagicMock(),
+            agents_policy=MagicMock(),
+            artifacts_policy=MagicMock(),
+        )
+
+    def test_keyboard_interrupt_propagates_not_swallowed(self) -> None:
+        """KeyboardInterrupt must propagate, not be caught by the exception guard."""
+
+        def ki_handler(effect: Effect, ctx: PhaseContext) -> list[PipelineEvent]:
+            raise KeyboardInterrupt()
+
+        ctx = self._make_context()
+        original_handler = HANDLERS.get("development")
+        try:
+            HANDLERS["development"] = ki_handler
+
+            effect = InvokeAgentEffect(
+                agent_name="developer",
+                phase="development",
+                prompt_file="development.txt",
+            )
+
+            with pytest.raises(KeyboardInterrupt):
+                handle_phase(effect, ctx)
+        finally:
+            if original_handler is not None:
+                HANDLERS["development"] = original_handler
+            else:
+                HANDLERS.pop("development", None)
+
+    def test_phase_failure_event_recoverable_routes_through_reducer_retry(
+        self,
+    ) -> None:
+        """PhaseFailureEvent(recoverable=True) should route through reducer retry."""
+        state = PipelineState(
+            phase=PHASE_DEVELOPMENT,
+            dev_chain=AgentChainState(agents=["claude"], current_index=0, retries=0),
+        )
+        event = PhaseFailureEvent(
+            phase="development",
+            reason="Phase handler crashed: RuntimeError: boom",
+            recoverable=True,
+        )
+
+        new_state, effects = reducer_reduce(state, event)
+
+        # Should increment retries, not fail
+        assert new_state.dev_chain.retries == 1
+        assert new_state.phase == PHASE_DEVELOPMENT
+        assert effects == []
+
+    def test_phase_failure_event_not_recoverable_transitions_to_failed(
+        self,
+    ) -> None:
+        """PhaseFailureEvent(recoverable=False) should transition to PHASE_FAILED."""
+        state = PipelineState(
+            phase=PHASE_DEVELOPMENT,
+            dev_chain=AgentChainState(agents=["claude"], current_index=0, retries=0),
+        )
+        event = PhaseFailureEvent(
+            phase="development_analysis",
+            reason="Analysis decision: FAILURE",
+            recoverable=False,
+        )
+
+        new_state, _effects = reducer_reduce(state, event)
+
+        assert new_state.phase == PHASE_FAILED
+        assert "FAILURE" in new_state.last_error

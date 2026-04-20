@@ -65,7 +65,7 @@ class GeminiParser:
                 continue
 
             try:
-                obj = cast("JsonDict", json.loads(stripped))
+                obj = cast("JsonDict", json.loads(stripped, strict=False))
             except json.JSONDecodeError:
                 yield AgentOutputLine(type="raw", content=stripped, raw=stripped)
                 continue

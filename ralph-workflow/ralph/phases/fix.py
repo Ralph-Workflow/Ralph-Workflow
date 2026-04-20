@@ -19,7 +19,7 @@ from ralph.phases.artifacts import (
     unwrap_phase_artifact_content,
 )
 from ralph.pipeline.effects import Effect, InvokeAgentEffect, PreparePromptEffect
-from ralph.pipeline.events import Event, PipelineEvent
+from ralph.pipeline.events import Event, PhaseFailureEvent, PipelineEvent
 
 FIX_RESULT_ARTIFACT_PATH = ".agent/artifacts/fix_result.json"
 
@@ -54,7 +54,13 @@ def handle_fix(effect: Effect, ctx: PhaseContext) -> list[Event]:
             )
         except (json.JSONDecodeError, PhaseArtifactError, TypeError, ValueError) as exc:
             logger.warning("Fix phase missing fresh fix_result artifact: {}", exc)
-            return [PipelineEvent.FAILED]
+            return [
+                PhaseFailureEvent(
+                    phase="fix",
+                    reason=f"Missing/invalid fix_result artifact: {exc}",
+                    recoverable=True,
+                )
+            ]
 
         # Render the fix artifact block for the user
         if ctx.console is not None:

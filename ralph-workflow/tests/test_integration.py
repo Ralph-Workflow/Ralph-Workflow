@@ -168,7 +168,5 @@ def test_run_fails_when_planner_does_not_submit_plan_artifact(
         plain = getattr(candidate, "plain", None)
         if isinstance(plain, str):
             rendered_plain_values.append(plain)
-    assert any(
-        "Pipeline failed: Agent chain exhausted in planning" in value
-        for value in rendered_plain_values
-    ), rendered_plain_values
+    expected = "Agent chain exhausted in phase='planning' after 3 retries across 1 agents"
+    assert any(expected in value for value in rendered_plain_values), rendered_plain_values

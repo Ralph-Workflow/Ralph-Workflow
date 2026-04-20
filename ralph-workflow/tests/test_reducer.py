@@ -19,6 +19,7 @@ from ralph.config.enums import (
 )
 from ralph.pipeline.effects import ExitFailureEffect
 from ralph.pipeline.events import (
+    PhaseFailureEvent,
     PipelineEvent,
     WorkerCompletedEvent,
     WorkerFailedEvent,
@@ -163,6 +164,119 @@ def _policy_with_post_commit_routes() -> PipelinePolicy:
             ),
         ],
     )
+
+
+# =============================================================================
+# PhaseFailureEvent tests
+# =============================================================================
+
+
+class TestPhaseFailureEvent:
+    """Tests for PhaseFailureEvent routing through the reducer."""
+
+    def test_phase_failure_recoverable_increments_retries(self) -> None:
+        """PhaseFailureEvent(recoverable=True) increments retry count."""
+        state = PipelineState(
+            phase=PHASE_DEVELOPMENT,
+            dev_chain=AgentChainState(agents=["claude"], current_index=0, retries=0),
+        )
+        event = PhaseFailureEvent(phase="development", reason="missing artifact", recoverable=True)
+        new_state, effects = _reduce(state, event)
+        assert new_state.dev_chain.retries == 1
+        assert new_state.phase == PHASE_DEVELOPMENT
+        assert effects == []
+
+    def test_phase_failure_recoverable_after_3_retries_falls_back_to_next_agent(
+        self,
+    ) -> None:
+        """After 3 retries, recoverable PhaseFailureEvent advances to next agent."""
+        state = PipelineState(
+            phase=PHASE_DEVELOPMENT,
+            dev_chain=AgentChainState(agents=["claude", "opencode"], current_index=0, retries=3),
+        )
+        event = PhaseFailureEvent(phase="development", reason="missing artifact", recoverable=True)
+        new_state, effects = _reduce(state, event)
+        assert new_state.dev_chain.current_index == 1
+        assert new_state.dev_chain.retries == 0
+        assert effects == []
+
+    def test_phase_failure_recoverable_with_single_agent_after_3_retries_fails(
+        self,
+    ) -> None:
+        """Single-agent chain exhausted after 3 retries transitions to PHASE_FAILED."""
+        state = PipelineState(
+            phase=PHASE_DEVELOPMENT,
+            dev_chain=AgentChainState(agents=["claude"], current_index=0, retries=3),
+        )
+        event = PhaseFailureEvent(phase="development", reason="missing artifact", recoverable=True)
+        new_state, effects = _reduce(state, event)
+        assert new_state.phase == PHASE_FAILED
+        assert "development" in new_state.last_error
+        assert "missing artifact" in new_state.last_error
+        assert len(effects) == 1
+        assert isinstance(effects[0], ExitFailureEffect)
+        assert "development" in effects[0].reason
+
+    def test_phase_failure_not_recoverable_transitions_to_failed_immediately(
+        self,
+    ) -> None:
+        """PhaseFailureEvent(recoverable=False) transitions directly to PHASE_FAILED."""
+        state = PipelineState(
+            phase=PHASE_DEVELOPMENT,
+            dev_chain=AgentChainState(agents=["claude"], current_index=0, retries=0),
+        )
+        event = PhaseFailureEvent(
+            phase="development_analysis",
+            reason="Analysis decision: FAILURE",
+            recoverable=False,
+        )
+        new_state, effects = _reduce(state, event)
+        assert new_state.phase == PHASE_FAILED
+        assert new_state.last_error == "development_analysis: Analysis decision: FAILURE"
+        assert len(effects) == 1
+        assert isinstance(effects[0], ExitFailureEffect)
+        assert effects[0].reason == "development_analysis: Analysis decision: FAILURE"
+
+    def test_phase_failure_recoverable_preserves_reason_in_last_error(self) -> None:
+        """When chain exhausts, the original PhaseFailureEvent reason is preserved."""
+        state = PipelineState(
+            phase=PHASE_DEVELOPMENT,
+            dev_chain=AgentChainState(agents=["claude"], current_index=0, retries=3),
+        )
+        event = PhaseFailureEvent(
+            phase="development",
+            reason="Invalid development evidence: missing planning artifact",
+            recoverable=True,
+        )
+        new_state, _effects = _reduce(state, event)
+        assert new_state.phase == PHASE_FAILED
+        assert "missing planning artifact" in new_state.last_error
+        assert "development" in new_state.last_error
+
+    def test_phase_failure_never_produces_unknown_failure_string(self) -> None:
+        """Terminal failure from PhaseFailureEvent must never show 'Unknown failure'."""
+        state = PipelineState(
+            phase=PHASE_REVIEW,
+            rev_chain=AgentChainState(agents=["reviewer"], current_index=0, retries=3),
+        )
+        event = PhaseFailureEvent(
+            phase="review",
+            reason="Missing/invalid issues artifact",
+            recoverable=True,
+        )
+        new_state, effects = _reduce(state, event)
+        assert new_state.phase == PHASE_FAILED
+        assert new_state.last_error != "Unknown failure"
+        assert "Unknown failure" not in new_state.last_error
+        for effect in effects:
+            if isinstance(effect, ExitFailureEffect):
+                assert effect.reason != "Unknown failure"
+                assert "Unknown failure" not in effect.reason
+
+
+# =============================================================================
+# Existing reducer tests (unchanged)
+# =============================================================================
 
 
 def test_policy_agent_success_in_development_routes_to_analysis() -> None:
@@ -935,7 +1049,9 @@ def test_merge_conflict_fails_phase() -> None:
         WorkersMergeConflictEvent(conflicting_unit_ids=["u1", "u2"]),
     )
 
-    assert effects == []
+    assert len(effects) == 1
+    assert isinstance(effects[0], ExitFailureEffect)
+    assert effects[0].reason == "Merge conflict in workers: u1, u2"
     assert new_state.phase == PHASE_FAILED
     assert new_state.last_error is not None
     assert "u1" in new_state.last_error
@@ -1050,6 +1166,61 @@ def test_review_clean_without_policy_still_routes_to_review_commit() -> None:
 # ---------------------------------------------------------------------------
 # FULL NO-OP PIPELINE FLOW
 # ---------------------------------------------------------------------------
+
+
+def test_phase_handler_crash_exhausts_chain_before_failing() -> None:
+    """PhaseFailureEvent(recoverable=True) must exhaust retries AND fallbacks before failing.
+
+    This is the single most important regression guard for the bug where the pipeline
+    exited on the first exception instead of going through the retry/fallback chain.
+    """
+    # State with a 2-agent dev_chain
+    state = PipelineState(
+        phase=PHASE_DEVELOPMENT,
+        dev_chain=AgentChainState(agents=["claude", "codex"], current_index=0, retries=0),
+    )
+
+    # PhaseFailureEvent that simulates a handler crash
+    crash_event = PhaseFailureEvent(
+        phase="development",
+        reason="Phase handler crashed: RuntimeError: boom",
+        recoverable=True,
+    )
+
+    # Agent 0: 3 retries (retries 0->1->2->3)
+    for expected_retries in range(1, 4):
+        state, effects = _reduce(state, crash_event)
+        assert state.phase == PHASE_DEVELOPMENT
+        assert state.dev_chain.current_index == 0
+        assert state.dev_chain.retries == expected_retries
+        assert effects == []
+
+    # 4th crash on agent 0: fallback to agent 1 (retries reset to 0)
+    state, effects = _reduce(state, crash_event)
+    assert state.phase == PHASE_DEVELOPMENT
+    assert state.dev_chain.current_index == 1
+    assert state.dev_chain.retries == 0
+    assert effects == []
+
+    # Agent 1: 3 more retries (retries 0->1->2->3)
+    for expected_retries in range(1, 4):
+        state, effects = _reduce(state, crash_event)
+        assert state.phase == PHASE_DEVELOPMENT
+        assert state.dev_chain.current_index == 1
+        assert state.dev_chain.retries == expected_retries
+        assert effects == []
+
+    # Final crash on agent 1 (chain exhausted): PHASE_FAILED with descriptive reason
+    state, effects = _reduce(state, crash_event)
+    assert state.phase == PHASE_FAILED
+    assert "Phase handler crashed: RuntimeError: boom" in state.last_error
+    assert len(effects) == 1
+    effect = effects[0]
+    assert isinstance(effect, ExitFailureEffect)
+    assert effect.reason == state.last_error
+    assert "Phase handler crashed" in effect.reason
+    assert effect.reason != "Unknown failure"
+    assert effect.reason != ""
 
 
 def test_full_noop_pipeline_flow_reaches_complete_without_billing_counters() -> None:

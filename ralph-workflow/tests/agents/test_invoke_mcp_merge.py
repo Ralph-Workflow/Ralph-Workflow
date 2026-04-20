@@ -45,7 +45,8 @@ class _FakeProcess:
     def __enter__(self) -> _FakeProcess:
         return self
 
-    def __exit__(self, exc_type: object, exc: object, _tb: object) -> Literal[False]: return False
+    def __exit__(self, exc_type: object, exc: object, _tb: object) -> Literal[False]:
+        return False
 
     def wait(self) -> int:
         return self.returncode
