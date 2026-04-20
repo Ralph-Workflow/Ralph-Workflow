@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from ralph.mcp.tool_coordination import (
+from ralph.mcp.tools.coordination import (
     handle_coordinate,
     handle_declare_complete,
     handle_report_progress,

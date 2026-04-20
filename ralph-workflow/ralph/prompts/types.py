@@ -24,8 +24,8 @@ from ralph.prompts.template_variables import (
 )
 
 if TYPE_CHECKING:
-    from ralph.mcp.capability_mapping import Capability, SessionDrain
-    from ralph.mcp.tool_names import (
+    from ralph.mcp.protocol.capability_mapping import Capability, SessionDrain
+    from ralph.mcp.tools.names import (
         ARTIFACT_TOOLS,
         ENV_READ_TOOLS,
         GIT_DIFF_READ_TOOLS,
@@ -37,8 +37,8 @@ if TYPE_CHECKING:
         WORKSPACE_READ_TOOLS,
     )
 else:
-    from ralph.mcp.capability_mapping import Capability, SessionDrain
-    from ralph.mcp.tool_names import (
+    from ralph.mcp.protocol.capability_mapping import Capability, SessionDrain
+    from ralph.mcp.tools.names import (
         ARTIFACT_TOOLS,
         ENV_READ_TOOLS,
         GIT_DIFF_READ_TOOLS,

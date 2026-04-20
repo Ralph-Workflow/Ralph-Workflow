@@ -3,7 +3,7 @@
 Ralph generates Claude/Codex/OpenCode-specific config payloads at agent
 invocation time. Those emitters live here so they can be shared between
 ``ralph.agents.invoke`` and the upstream MCP probes in
-``ralph.mcp.agent_transport_probe`` without circular imports.
+``ralph.mcp.upstream.agent_probe`` without circular imports.
 """
 
 from __future__ import annotations
@@ -19,14 +19,14 @@ from typing import cast
 from loguru import logger
 
 from ralph.config.mcp_loader import load_mcp_config
-from ralph.mcp.tool_names import (
+from ralph.mcp.tools.names import (
     ALL_RALPH_TOOLS,
     CODEX_NATIVE_FEATURES_TO_DISABLE,
     OPENCODE_NATIVE_TOOLS_TO_DISABLE,
     RALPH_MCP_SERVER_NAME,
     claude_tool_name,
 )
-from ralph.mcp.upstream_config import (
+from ralph.mcp.upstream.config import (
     UPSTREAM_MCP_CONFIG_ENV,
     UpstreamMcpServer,
     normalize_upstream_mcp_servers,

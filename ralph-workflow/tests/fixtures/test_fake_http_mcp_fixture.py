@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from ralph.mcp.startup import (
+from ralph.mcp.protocol.startup import (
     initialize_request,
     initialized_notification,
     parse_http_endpoint,

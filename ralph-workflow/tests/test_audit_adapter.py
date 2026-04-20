@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from ralph.mcp import audit_adapter
-from ralph.mcp.capability_mapping import (
+from ralph.mcp.artifacts import audit_adapter
+from ralph.mcp.protocol.capability_mapping import (
     AccessDecision,
     AccessDeniedCode,
     McpCapability,

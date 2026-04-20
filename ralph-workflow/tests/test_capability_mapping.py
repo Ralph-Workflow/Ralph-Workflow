@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from ralph.mcp.capability_mapping import (
+from ralph.mcp.protocol.capability_mapping import (
     DrainClass,
     PolicyMode,
     SessionDrain,

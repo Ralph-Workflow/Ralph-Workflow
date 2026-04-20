@@ -7,18 +7,18 @@ from typing import TYPE_CHECKING, cast
 from unittest.mock import MagicMock
 
 from ralph.config.mcp_models import McpConfig, WebSearchConfig
-from ralph.mcp.tool_bridge import _tool_specs, build_ralph_tool_registry
-from ralph.mcp.tool_names import (
+from ralph.mcp.tools.bridge import _tool_specs, build_ralph_tool_registry
+from ralph.mcp.tools.names import (
     ALL_RALPH_TOOLS,
     WEB_SEARCH_TOOL,
 )
-from ralph.mcp.upstream_config import (
+from ralph.mcp.upstream.config import (
     UpstreamMcpServer,
     load_upstream_mcp_servers,
     serialize_upstream_mcp_servers,
 )
-from ralph.mcp.upstream_models import UpstreamTool
-from ralph.mcp.upstream_registry import UpstreamRegistry
+from ralph.mcp.upstream.models import UpstreamTool
+from ralph.mcp.upstream.registry import UpstreamRegistry
 
 if TYPE_CHECKING:
     import pytest

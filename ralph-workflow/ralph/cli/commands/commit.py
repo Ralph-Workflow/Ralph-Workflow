@@ -34,13 +34,13 @@ from ralph.git.operations import (
     has_staged_changes,
     stage_all,
 )
-from ralph.mcp.commit_message import (
+from ralph.mcp.artifacts.commit_message import (
     delete_commit_message_artifacts,
     read_commit_message_artifact,
 )
+from ralph.mcp.protocol.session import MCP_ENDPOINT_ENV, MCP_RUN_ID_ENV, AgentSession
 from ralph.mcp.server.lifecycle import SessionBridgeLike, start_mcp_server
-from ralph.mcp.session import MCP_ENDPOINT_ENV, MCP_RUN_ID_ENV, AgentSession
-from ralph.mcp.tool_names import SUBMIT_ARTIFACT_TOOL, claude_tool_name, claude_tool_name_prefix
+from ralph.mcp.tools.names import SUBMIT_ARTIFACT_TOOL, claude_tool_name, claude_tool_name_prefix
 from ralph.prompts.commit import (
     CommitPromptPayloadConfig,
     prompt_commit_message,

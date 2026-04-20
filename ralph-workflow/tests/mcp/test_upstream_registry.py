@@ -9,11 +9,11 @@ if TYPE_CHECKING:
 import pytest
 from loguru import logger
 
-from ralph.mcp.upstream_client import HttpUpstreamClient
-from ralph.mcp.upstream_config import UpstreamMcpServer
-from ralph.mcp.upstream_models import UpstreamCallError
-from ralph.mcp.upstream_registry import UpstreamRegistry
-from ralph.mcp.upstream_validation import UpstreamValidationError
+from ralph.mcp.upstream.client import HttpUpstreamClient
+from ralph.mcp.upstream.config import UpstreamMcpServer
+from ralph.mcp.upstream.models import UpstreamCallError
+from ralph.mcp.upstream.registry import UpstreamRegistry
+from ralph.mcp.upstream.validation import UpstreamValidationError
 
 
 @pytest.fixture(autouse=True)

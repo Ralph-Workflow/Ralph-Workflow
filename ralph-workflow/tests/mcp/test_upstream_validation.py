@@ -1,4 +1,4 @@
-"""Tests for ralph/mcp/upstream_validation.py."""
+"""Tests for ralph/mcp/upstream/validation.py."""
 
 from __future__ import annotations
 
@@ -9,10 +9,10 @@ from typing import TYPE_CHECKING
 import pytest
 from loguru import logger
 
-from ralph.mcp.startup import RetryablePreflightError
-from ralph.mcp.upstream_config import UpstreamMcpServer
-from ralph.mcp.upstream_models import UpstreamTool
-from ralph.mcp.upstream_validation import (
+from ralph.mcp.protocol.startup import RetryablePreflightError
+from ralph.mcp.upstream.config import UpstreamMcpServer
+from ralph.mcp.upstream.models import UpstreamTool
+from ralph.mcp.upstream.validation import (
     UpstreamValidationError,
     strict_mode_from_env,
     validate_upstream_mcp_servers,
@@ -68,7 +68,7 @@ def _patch_make_upstream_client(monkeypatch: pytest.MonkeyPatch, client: _StubCl
     def factory(_server: UpstreamMcpServer, **_kw: object) -> _StubClient:
         return client
 
-    monkeypatch.setattr("ralph.mcp.upstream_validation.make_upstream_client", factory)
+    monkeypatch.setattr("ralph.mcp.upstream.validation.make_upstream_client", factory)
 
 
 def test_validator_passes_healthy_http_server(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -17,9 +17,9 @@ from ralph.cli.commands import diagnose as diagnose_module
 from ralph.cli.commands import init as init_module
 from ralph.config.enums import AgentTransport, JsonParserType, ReviewDepth, Verbosity
 from ralph.config.models import AgentConfig, UnifiedConfig
-from ralph.mcp.commit_message import write_commit_message_artifact
-from ralph.mcp.session import AgentSession
-from ralph.mcp.tool_bridge import build_ralph_tool_registry
+from ralph.mcp.artifacts.commit_message import write_commit_message_artifact
+from ralph.mcp.protocol.session import AgentSession
+from ralph.mcp.tools.bridge import build_ralph_tool_registry
 from ralph.workspace.fs import FsWorkspace
 from ralph.workspace.scope import WorkspaceScope
 

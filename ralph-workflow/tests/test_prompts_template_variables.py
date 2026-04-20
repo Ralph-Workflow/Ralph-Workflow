@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from ralph.mcp.capability_mapping import SessionDrain
-from ralph.mcp.session import AgentSession
+from ralph.mcp.protocol.capability_mapping import SessionDrain
+from ralph.mcp.protocol.session import AgentSession
 from ralph.prompts import template_variables
 
 

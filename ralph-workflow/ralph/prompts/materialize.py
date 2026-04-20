@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, cast
 from git import Repo
 
 from ralph.config.enums import AgentTransport
-from ralph.mcp.tool_names import SUBMIT_ARTIFACT_TOOL, claude_tool_name_prefix
+from ralph.mcp.tools.names import SUBMIT_ARTIFACT_TOOL, claude_tool_name_prefix
 from ralph.prompts.commit import CommitPromptPayloadConfig, prompt_commit_message
 from ralph.prompts.debug_dump import dump_rendered_prompt, prompt_dump_path
 from ralph.prompts.developer import (

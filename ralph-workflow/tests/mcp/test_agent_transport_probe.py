@@ -1,4 +1,4 @@
-"""Tests for ralph/mcp/agent_transport_probe.py."""
+"""Tests for ralph/mcp/upstream/agent_probe.py."""
 
 from __future__ import annotations
 
@@ -9,13 +9,13 @@ from typing import TYPE_CHECKING
 import pytest
 
 from ralph.config.enums import AgentTransport
-from ralph.mcp.agent_transport_probe import (
+from ralph.mcp.protocol.startup import RetryablePreflightError
+from ralph.mcp.upstream.agent_probe import (
     AgentProbeReport,
     _augment_codex_config_with_server,
     probe_agent_transports,
 )
-from ralph.mcp.startup import RetryablePreflightError
-from ralph.mcp.upstream_config import UpstreamMcpServer
+from ralph.mcp.upstream.config import UpstreamMcpServer
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -43,7 +43,7 @@ def _stub_http_handshake_pass(monkeypatch: pytest.MonkeyPatch) -> list[str]:
         captured.append(endpoint)
 
     monkeypatch.setattr(
-        "ralph.mcp.agent_transport_probe._http_handshake",
+        "ralph.mcp.upstream.agent_probe._http_handshake",
         fake,
     )
     return captured
@@ -56,7 +56,7 @@ def _stub_server_handshake_pass(monkeypatch: pytest.MonkeyPatch) -> list[Upstrea
         captured.append(server)
 
     monkeypatch.setattr(
-        "ralph.mcp.agent_transport_probe._server_handshake",
+        "ralph.mcp.upstream.agent_probe._server_handshake",
         fake,
     )
     return captured
@@ -78,7 +78,7 @@ def test_probe_emits_claude_http_config_and_reaches_server(
         captured_blobs.append((endpoint, blob))
         return blob
 
-    monkeypatch.setattr("ralph.mcp.agent_transport_probe._claude_mcp_config", spy_claude)
+    monkeypatch.setattr("ralph.agents.transport_emit._claude_mcp_config", spy_claude)
 
     reports = probe_agent_transports(
         [server], transports=(AgentTransport.CLAUDE,), workspace_path=None
@@ -136,7 +136,7 @@ def test_probe_emits_opencode_config_with_remote_mcp_entry(
         return text, ups
 
     monkeypatch.setattr(
-        "ralph.mcp.agent_transport_probe._build_opencode_provider_config",
+        "ralph.agents.transport_emit._build_opencode_provider_config",
         spy_opencode,
     )
 
@@ -163,8 +163,8 @@ def test_probe_reports_failure_when_server_unreachable(
     def boom_server(_server: UpstreamMcpServer) -> None:
         raise RetryablePreflightError("connection refused")
 
-    monkeypatch.setattr("ralph.mcp.agent_transport_probe._http_handshake", boom_http)
-    monkeypatch.setattr("ralph.mcp.agent_transport_probe._server_handshake", boom_server)
+    monkeypatch.setattr("ralph.mcp.upstream.agent_probe._http_handshake", boom_http)
+    monkeypatch.setattr("ralph.mcp.upstream.agent_probe._server_handshake", boom_server)
     monkeypatch.setenv("HOME", str(tmp_path / "fake-home"))
 
     reports = probe_agent_transports(
@@ -181,7 +181,7 @@ def test_probe_reports_failure_when_server_unreachable(
 def test_probe_skips_stdio_for_claude(monkeypatch: pytest.MonkeyPatch) -> None:
     server = _stdio_server(name="cli")
     monkeypatch.setattr(
-        "ralph.mcp.agent_transport_probe._http_handshake",
+        "ralph.mcp.upstream.agent_probe._http_handshake",
         lambda endpoint: pytest.fail("stdio claude probe should not call http handshake"),
     )
 

@@ -7,13 +7,13 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from ralph.mcp.tool_coordination import (
+from ralph.mcp.tools.coordination import (
     CapabilityDeniedError,
     InvalidParamsError,
     ToolError,
     _read_env_value,
 )
-from ralph.mcp.tool_workspace import (
+from ralph.mcp.tools.workspace import (
     WORKSPACE_READ_CAPABILITY,
     WORKSPACE_WRITE_EPHEMERAL_CAPABILITY,
     WORKSPACE_WRITE_TRACKED_CAPABILITY,

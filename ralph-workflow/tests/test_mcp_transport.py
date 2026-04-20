@@ -8,10 +8,10 @@ if TYPE_CHECKING:
 
 import pytest
 
-from ralph.mcp.transport import StdioTransport
-from ralph.mcp.upstream_client import HttpUpstreamClient, StdioUpstreamClient
-from ralph.mcp.upstream_config import UpstreamMcpServer
-from ralph.mcp.upstream_models import UpstreamCallError, UpstreamTool
+from ralph.mcp.protocol.transport import StdioTransport
+from ralph.mcp.upstream.client import HttpUpstreamClient, StdioUpstreamClient
+from ralph.mcp.upstream.config import UpstreamMcpServer
+from ralph.mcp.upstream.models import UpstreamCallError, UpstreamTool
 
 
 class _FakeProcess:

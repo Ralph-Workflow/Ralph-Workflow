@@ -7,8 +7,8 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import TYPE_CHECKING, cast
 
-from ralph.mcp.capability_mapping import Capability, SessionDrain, drain_class_for_session
-from ralph.mcp.tool_names import (
+from ralph.mcp.protocol.capability_mapping import Capability, SessionDrain, drain_class_for_session
+from ralph.mcp.tools.names import (
     ARTIFACT_TOOLS,
     COORDINATE_TOOL,
     DECLARE_COMPLETE_TOOL,
@@ -41,7 +41,7 @@ from ralph.mcp.tool_names import (
 )
 
 if TYPE_CHECKING:
-    from ralph.mcp.session import AgentSession
+    from ralph.mcp.protocol.session import AgentSession
 
 DEFAULT_CAPABILITIES: dict[SessionDrain, tuple[Capability, ...]] = {
     SessionDrain.PLANNING: (

@@ -10,9 +10,9 @@ import pytest
 from loguru import logger
 
 from ralph.config.enums import AgentTransport
-from ralph.mcp.agent_transport_probe import AgentProbeReport
-from ralph.mcp.upstream_config import UpstreamMcpServer
-from ralph.mcp.upstream_validation import (
+from ralph.mcp.upstream.agent_probe import AgentProbeReport
+from ralph.mcp.upstream.config import UpstreamMcpServer
+from ralph.mcp.upstream.validation import (
     UpstreamServerReport,
     UpstreamValidationError,
     UpstreamValidationReport,

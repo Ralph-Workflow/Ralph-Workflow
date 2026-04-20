@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from ralph.mcp.development_result_artifact import (
+from ralph.mcp.artifacts.development_result import (
     DevelopmentResultValidationError,
     normalize_development_result_content,
 )

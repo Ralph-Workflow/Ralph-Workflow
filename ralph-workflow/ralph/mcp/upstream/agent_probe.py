@@ -14,17 +14,14 @@ from __future__ import annotations
 
 import json
 import tomllib
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
 from loguru import logger
 
-from ralph.agents.transport_emit import (
-    _build_opencode_provider_config,
-    _claude_mcp_config,
-    _prepare_codex_home_with_upstreams,
-)
+from ralph.agents import transport_emit as _transport_emit_module
 from ralph.config.enums import AgentTransport
 from ralph.mcp.protocol.startup import (
     PreflightError,
@@ -33,13 +30,11 @@ from ralph.mcp.protocol.startup import (
 )
 from ralph.mcp.tools.names import RALPH_MCP_SERVER_NAME
 from ralph.mcp.upstream.client import make_upstream_client
+from ralph.mcp.upstream.config import UpstreamMcpServer
 from ralph.mcp.upstream.models import UpstreamCallError
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
     from datetime import timedelta
-
-    from ralph.mcp.upstream.config import UpstreamMcpServer
 
 _DEFAULT_TRANSPORTS: tuple[AgentTransport, ...] = (
     AgentTransport.CLAUDE,
@@ -59,6 +54,12 @@ class AgentProbeReport:
     ok: bool
     error: str | None = None
     note: str | None = None
+
+
+_ClaudeMcpConfigFn = Callable[[str], str]
+_BuildOpencodeProviderConfigFn = Callable[
+    [str | None, str], tuple[str, tuple[UpstreamMcpServer, ...]]
+]
 
 
 def probe_agent_transports(
@@ -126,6 +127,16 @@ def _probe_pair(
     )
 
 
+def _get_claude_mcp_config() -> _ClaudeMcpConfigFn:
+    """Get the claude_mcp_config function, allowing for test patching."""
+    return _transport_emit_module._claude_mcp_config
+
+
+def _get_build_opencode_provider_config() -> _BuildOpencodeProviderConfigFn:
+    """Get the build_opencode_provider_config function, allowing for test patching."""
+    return _transport_emit_module._build_opencode_provider_config
+
+
 def _probe_claude(server: UpstreamMcpServer, workspace_path: Path | None) -> AgentProbeReport:
     if server.transport == "stdio":
         return AgentProbeReport(
@@ -138,7 +149,8 @@ def _probe_claude(server: UpstreamMcpServer, workspace_path: Path | None) -> Age
         raise AgentTransportProbeError(
             f"server '{server.name}' is missing url for Claude http transport"
         )
-    config_blob = _claude_mcp_config(server.url, workspace_path=workspace_path)
+    claude_mcp_config = _get_claude_mcp_config()
+    config_blob = claude_mcp_config(server.url)
     parsed = _parse_json_obj(config_blob, "Claude MCP config")
     mcp_servers = parsed.get("mcpServers")
     if not isinstance(mcp_servers, dict):
@@ -223,7 +235,8 @@ def _probe_opencode(server: UpstreamMcpServer, workspace_path: Path | None) -> A
     inner: dict[str, object] = {"type": "remote", "url": server.url}
     existing_payload_obj: dict[str, object] = {"mcp": {server.name: inner}}
     existing_payload = json.dumps(existing_payload_obj)
-    config_text, _upstreams = _build_opencode_provider_config(existing_payload, server.url)
+    build_opencode_config = _get_build_opencode_provider_config()
+    config_text, _upstreams = build_opencode_config(existing_payload, server.url)
     parsed = _parse_json_obj(config_text, "OpenCode provider config")
     mcp_section = parsed.get("mcp")
     if not isinstance(mcp_section, dict):
@@ -289,6 +302,22 @@ def _server_handshake(server: UpstreamMcpServer) -> None:
         return
     client = make_upstream_client(server)
     client.list_tools()
+
+
+def _prepare_codex_home_with_upstreams(
+    endpoint: str | None,
+    *,
+    workspace_path: Path | None,
+    existing_home: str | None,
+    system_prompt_file: str | None,
+) -> tuple[str, tuple[UpstreamMcpServer, ...]]:
+    """Prepare codex home dir and return upstreams. Delegates to transport_emit."""
+    return _transport_emit_module._prepare_codex_home_with_upstreams(
+        endpoint,
+        workspace_path=workspace_path,
+        existing_home=existing_home,
+        system_prompt_file=system_prompt_file,
+    )
 
 
 def _parse_json_obj(text: str, label: str) -> dict[str, object]:

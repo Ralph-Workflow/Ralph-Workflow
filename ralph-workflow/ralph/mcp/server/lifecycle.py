@@ -14,18 +14,18 @@ from datetime import timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, cast
 
-from ralph.mcp.env import MCP_SESSION_FILE_ENV as SESSION_FILE_ENV
-from ralph.mcp.startup import (
+from ralph.mcp.protocol.env import MCP_SESSION_FILE_ENV as SESSION_FILE_ENV
+from ralph.mcp.protocol.startup import (
     SessionBridgeLike,
     mcp_preflight_timeout_from_env,
     preflight_http_mcp_server_tools,
 )
-from ralph.mcp.tool_bridge import build_ralph_tool_registry
+from ralph.mcp.tools.bridge import build_ralph_tool_registry
 from ralph.workspace.fs import FsWorkspace
 
 if TYPE_CHECKING:
-    from ralph.mcp.startup import SessionLike, WorkspaceLike
-    from ralph.mcp.upstream_registry import UpstreamRegistry
+    from ralph.mcp.protocol.startup import SessionLike, WorkspaceLike
+    from ralph.mcp.upstream.registry import UpstreamRegistry
 
 
 _PACKAGE_ROOT = Path(__file__).resolve().parents[3]

@@ -1,4 +1,4 @@
-.PHONY: help install dev install-dev test lint typecheck build build-wheel build-sdist publish test-pypi test-pypi-upload clean dist clean-dist fmt format-check ruff-fix mypy-fix pre-commit dist-homebrew verify coverage dist-binary dist-pypi dist-all formula-check dead-code
+.PHONY: help install dev install-dev test lint typecheck build build-wheel build-sdist publish test-pypi test-pypi-upload clean dist clean-dist fmt format-check ruff-fix mypy-fix pre-commit dist-homebrew verify coverage dist-binary dist-pypi dist-all formula-check dead-code fix-imports
 
 PYTEST_WORKERS ?= 8
 COVERAGE_WORKERS ?= 16
@@ -30,6 +30,7 @@ help:
 	@echo "  dist-all       Build both binary and PyPI distributions"
 	@echo "  formula-check  Validate Homebrew formula syntax"
 	@echo "  dead-code      Run Vulture dead-code audit (fails while backlog exists)"
+	@echo "  fix-imports    Fix MCP flat shim imports to canonical paths"
 	@echo ""
 	@echo "  run            Run ralph CLI directly"
 	@echo "  check          Run all checks (lint, typecheck, test)"
@@ -76,6 +77,10 @@ mypy-fix:
 pre-commit:
 	pre-commit run --all-files
 
+# Import fixing
+fix-imports:
+	python fix_imports.py
+
 # Building
 build: clean-dist
 	python -m build
@@ -121,6 +126,7 @@ dist-homebrew: build-wheel
 # Distribution targets
 verify:
 	@echo "Running full verification..."
+	@$(MAKE) fix-imports
 	@$(MAKE) lint
 	@$(MAKE) typecheck
 	@$(MAKE) test

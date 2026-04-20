@@ -9,8 +9,8 @@ from typing import cast
 
 import pytest
 
-from ralph.mcp.file_backend import FileBackend
-from ralph.mcp.tool_artifact import (
+from ralph.mcp.artifacts.file_backend import FileBackend
+from ralph.mcp.tools.artifact import (
     ArtifactHandlerDeps,
     _prepare_artifact_submission,
     handle_discard_plan_draft,
@@ -19,7 +19,7 @@ from ralph.mcp.tool_artifact import (
     handle_submit_artifact,
     handle_submit_plan_section,
 )
-from ralph.mcp.tool_coordination import InvalidParamsError
+from ralph.mcp.tools.coordination import InvalidParamsError
 
 
 class MemoryBackend(FileBackend):

@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, cast
 
 import pytest
 
-from ralph.mcp.plan_artifact import (
+from ralph.mcp.artifacts.plan import (
     PlanArtifactValidationError,
     delete_plan_draft,
     finalize_plan_draft,

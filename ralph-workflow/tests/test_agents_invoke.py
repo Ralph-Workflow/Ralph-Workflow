@@ -29,14 +29,14 @@ from ralph.agents.invoke import (
 )
 from ralph.config.enums import AgentTransport, JsonParserType
 from ralph.config.models import AgentConfig
-from ralph.mcp.tool_names import (
+from ralph.mcp.tools.names import (
     ALL_RALPH_TOOLS,
     CODEX_NATIVE_FEATURES_TO_DISABLE,
     OPENCODE_NATIVE_TOOLS_TO_DISABLE,
     RALPH_MCP_SERVER_NAME,
     claude_tool_name,
 )
-from ralph.mcp.upstream_config import (
+from ralph.mcp.upstream.config import (
     UPSTREAM_MCP_CONFIG_ENV,
     UpstreamConfigError,
     UpstreamMcpServer,

@@ -32,21 +32,21 @@ from loguru import logger
 
 from ralph import __version__
 from ralph.config.mcp_loader import load_mcp_config
-from ralph.mcp.capability_mapping import Capability, McpCapability
-from ralph.mcp.env import (
+from ralph.mcp.protocol.capability_mapping import Capability, McpCapability
+from ralph.mcp.protocol.env import (
     MCP_SESSION_ENV as SESSION_ENV,
 )
-from ralph.mcp.env import (
+from ralph.mcp.protocol.env import (
     MCP_SESSION_FILE_ENV as SESSION_FILE_ENV,
 )
-from ralph.mcp.session import AgentSession, session_has_capability
-from ralph.mcp.tool_bridge import ToolBridge, ToolDefinition, build_ralph_tool_registry
-from ralph.mcp.upstream_config import (
+from ralph.mcp.protocol.session import AgentSession, session_has_capability
+from ralph.mcp.tools.bridge import ToolBridge, ToolDefinition, build_ralph_tool_registry
+from ralph.mcp.upstream.config import (
     UPSTREAM_MCP_CONFIG_ENV,
     UpstreamMcpServer,
     load_upstream_mcp_servers,
 )
-from ralph.mcp.upstream_registry import UpstreamRegistry
+from ralph.mcp.upstream.registry import UpstreamRegistry
 from ralph.workspace.fs import FsWorkspace
 
 if TYPE_CHECKING:

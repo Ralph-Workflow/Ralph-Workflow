@@ -58,7 +58,7 @@ def test_mcp_tool_bridge_lazy_exports_and_error() -> None:
 
     assert "ToolBridge" not in module.__dict__
 
-    tool_bridge_module = importlib.import_module("ralph.mcp.tool_bridge")
+    tool_bridge_module = importlib.import_module("ralph.mcp.tools.bridge")
     assert module.ToolBridge is tool_bridge_module.ToolBridge
     assert module.ToolBridge is module.__dict__["ToolBridge"]
 

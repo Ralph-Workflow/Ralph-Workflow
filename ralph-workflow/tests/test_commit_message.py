@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from ralph.mcp.commit_message import (
+from ralph.mcp.artifacts.commit_message import (
     read_commit_message_artifact,
     read_commit_message_from_path,
     write_commit_message_artifact,

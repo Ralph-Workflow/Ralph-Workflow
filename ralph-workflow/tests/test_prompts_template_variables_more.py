@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from ralph.mcp.capability_mapping import Capability, SessionDrain
+from ralph.mcp.protocol.capability_mapping import Capability, SessionDrain
 from ralph.prompts import template_variables
 
 

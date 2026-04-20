@@ -9,9 +9,9 @@ from typing import TYPE_CHECKING, cast
 import httpx
 import pytest
 
-from ralph.mcp import startup
-from ralph.mcp.capability_mapping import AccessMode, SessionDrain
-from ralph.mcp.upstream_config import (
+from ralph.mcp.protocol import startup
+from ralph.mcp.protocol.capability_mapping import AccessMode, SessionDrain
+from ralph.mcp.upstream.config import (
     UpstreamConfigError,
     UpstreamMcpServer,
     load_upstream_mcp_servers,

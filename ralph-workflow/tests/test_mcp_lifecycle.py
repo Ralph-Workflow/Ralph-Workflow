@@ -3,11 +3,11 @@ from __future__ import annotations
 from datetime import timedelta
 from typing import TYPE_CHECKING, cast
 
+from ralph.mcp.protocol.session import AgentSession
 from ralph.mcp.server import lifecycle
-from ralph.mcp.session import AgentSession
-from ralph.mcp.upstream_client import HttpUpstreamClient
-from ralph.mcp.upstream_config import UpstreamMcpServer
-from ralph.mcp.upstream_registry import UpstreamRegistry
+from ralph.mcp.upstream.client import HttpUpstreamClient
+from ralph.mcp.upstream.config import UpstreamMcpServer
+from ralph.mcp.upstream.registry import UpstreamRegistry
 
 if TYPE_CHECKING:
     from pathlib import Path

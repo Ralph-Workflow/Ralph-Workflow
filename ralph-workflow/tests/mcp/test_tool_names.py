@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from ralph.mcp.tool_names import ALL_RALPH_TOOLS, WEB_SEARCH_TOOL, WEB_SEARCH_TOOLS, RalphToolName
+from ralph.mcp.tools.names import ALL_RALPH_TOOLS, WEB_SEARCH_TOOL, WEB_SEARCH_TOOLS, RalphToolName
 
 
 def test_web_search_tool_name_is_in_enum() -> None:

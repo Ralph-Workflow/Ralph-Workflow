@@ -1,4 +1,4 @@
-"""Tests for ralph/mcp/tool_git_read.py — MCP git read tool handlers."""
+"""Tests for ralph/mcp/tools/git_read.py — MCP git read tool handlers."""
 
 from __future__ import annotations
 
@@ -7,11 +7,11 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from ralph.mcp.tool_coordination import CapabilityDeniedError, InvalidParamsError
-from ralph.mcp.tool_git_read import (
+from ralph.mcp.tools.coordination import CapabilityDeniedError, InvalidParamsError
+from ralph.mcp.tools.git_read import (
     _DEFAULT_LOG_COUNT as DEFAULT_LOG_COUNT,
 )
-from ralph.mcp.tool_git_read import (
+from ralph.mcp.tools.git_read import (
     GIT_DIFF_READ_CAPABILITY,
     GIT_STATUS_READ_CAPABILITY,
     ExecutionError,
@@ -123,7 +123,7 @@ class TestParseGitShowParams:
             parse_git_show_params(params)
 
     def test_non_string_ref_raises(self) -> None:
-        params: dict[str, object] = {"ref": 123}
+        params = {"ref": 123}
         with pytest.raises(InvalidParamsError):
             parse_git_show_params(params)
 
@@ -205,7 +205,7 @@ class TestHandleGitStatus:
         session = MockSession({GIT_STATUS_READ_CAPABILITY})
         workspace = MockWorkspaceRoot(tmp_path)
 
-        with patch("ralph.mcp.tool_git_read.run_git_command") as mock_git:
+        with patch("ralph.mcp.tools.git_read.run_git_command") as mock_git:
             mock_git.return_value = "On branch main\nnothing to commit"
             result = handle_git_status(session, workspace, {})
             assert result.is_error is False
@@ -229,7 +229,7 @@ class TestHandleGitDiff:
         session = MockSession({GIT_DIFF_READ_CAPABILITY})
         workspace = MockWorkspaceRoot(tmp_path)
 
-        with patch("ralph.mcp.tool_git_read.run_git_command_lenient") as mock_git:
+        with patch("ralph.mcp.tools.git_read.run_git_command_lenient") as mock_git:
             mock_git.return_value = "diff --staged content"
             result = handle_git_diff(session, workspace, {"args": ["--staged"]})
             assert result.is_error is False
@@ -252,7 +252,7 @@ class TestHandleGitLog:
         session = MockSession({GIT_STATUS_READ_CAPABILITY})
         workspace = MockWorkspaceRoot(tmp_path)
 
-        with patch("ralph.mcp.tool_git_read.run_git_command") as mock_git:
+        with patch("ralph.mcp.tools.git_read.run_git_command") as mock_git:
             mock_git.return_value = "abc123 commit message"
             result = handle_git_log(session, workspace, {"count": 5})
             assert result.is_error is False

@@ -7,10 +7,10 @@ from typing import TYPE_CHECKING, Protocol, runtime_checkable
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+from ralph.mcp.protocol.session import AgentSession
+from ralph.mcp.protocol.startup import SessionBridgeLike, WorkspaceLike
 from ralph.mcp.server import lifecycle
 from ralph.mcp.server.factory import McpServerFactory, McpServerHandle
-from ralph.mcp.session import AgentSession
-from ralph.mcp.startup import SessionBridgeLike, WorkspaceLike
 
 
 class StartServer(Protocol):

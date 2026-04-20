@@ -39,7 +39,7 @@ from ralph.agents.transport_emit import (
     _set_upstream_mcp_config,
 )
 from ralph.config.enums import AgentTransport
-from ralph.mcp.startup import (
+from ralph.mcp.protocol.startup import (
     PreflightError,
     ensure_no_preflight_error,
     extract_preflight_tool_names,
@@ -49,7 +49,7 @@ from ralph.mcp.startup import (
     post_http_jsonrpc_with_session,
     tools_list_request,
 )
-from ralph.mcp.tool_names import claude_tool_name
+from ralph.mcp.tools.names import claude_tool_name
 
 _MODELED_FLAG_PARTS = 2
 _IDLE_POLL_INTERVAL_SECONDS = 0.05

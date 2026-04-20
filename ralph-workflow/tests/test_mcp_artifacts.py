@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from ralph.mcp.artifacts import (
+from ralph.mcp.artifacts.store import (
     Artifact,
     ArtifactExistsError,
     ArtifactNotFoundError,

@@ -16,7 +16,12 @@ from typing import TYPE_CHECKING, cast
 if TYPE_CHECKING:
     from types import ModuleType
 
-from ralph.mcp.artifacts import (
+from ralph.mcp.artifacts.bridge import (
+    BridgeConfig,
+    BridgeError,
+    MCPBridge,
+)
+from ralph.mcp.artifacts.store import (
     ArtifactError,
     ArtifactExistsError,
     ArtifactNotFoundError,
@@ -24,11 +29,6 @@ from ralph.mcp.artifacts import (
     list_artifacts,
     submit_artifact,
     update_artifact,
-)
-from ralph.mcp.artifacts.bridge import (
-    BridgeConfig,
-    BridgeError,
-    MCPBridge,
 )
 from ralph.mcp.protocol.startup import (
     HeartbeatPolicy,

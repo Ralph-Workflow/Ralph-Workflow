@@ -7,11 +7,11 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from ralph.mcp.tool_coordination import CapabilityDeniedError, InvalidParamsError
-from ralph.mcp.tool_exec import (
+from ralph.mcp.tools.coordination import CapabilityDeniedError, InvalidParamsError
+from ralph.mcp.tools.exec import (
     _DEFAULT_TIMEOUT_MS as DEFAULT_TIMEOUT_MS,
 )
-from ralph.mcp.tool_exec import (
+from ralph.mcp.tools.exec import (
     ExecRunDeps,
     ExecutionError,
     WorkspaceWithRoot,

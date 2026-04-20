@@ -7,15 +7,15 @@ import json
 from pathlib import Path
 from typing import Any, cast
 
-from ralph.mcp import startup
-from ralph.mcp.capability_mapping import McpCapability
+from ralph.mcp import protocol as mcp_protocol
+from ralph.mcp.protocol.capability_mapping import McpCapability
+from ralph.mcp.protocol.session import AgentSession
 from ralph.mcp.server import runtime as server_runtime
-from ralph.mcp.session import AgentSession
-from ralph.mcp.tool_names import upstream_proxy_tool_name
-from ralph.mcp.upstream_client import HttpUpstreamClient, StdioUpstreamClient, make_upstream_client
-from ralph.mcp.upstream_config import UpstreamMcpServer
-from ralph.mcp.upstream_models import UpstreamCallError
-from ralph.mcp.upstream_registry import UpstreamRegistry
+from ralph.mcp.tools.names import upstream_proxy_tool_name
+from ralph.mcp.upstream.client import HttpUpstreamClient, StdioUpstreamClient, make_upstream_client
+from ralph.mcp.upstream.config import UpstreamMcpServer
+from ralph.mcp.upstream.models import UpstreamCallError
+from ralph.mcp.upstream.registry import UpstreamRegistry
 from ralph.phases import PhaseContext
 from ralph.phases.planning import handle_planning
 from ralph.pipeline import runner as runner_module
@@ -45,8 +45,8 @@ def _session(run_id: str = "run-1", capabilities: set[str] | None = None) -> Age
 def _http_call(
     endpoint: str, method: str, params: dict[str, Any] | None = None, *, msg_id: int = 1
 ) -> dict[str, Any]:
-    target = startup.parse_http_endpoint(endpoint)
-    return startup.post_http_jsonrpc(
+    target = mcp_protocol.startup.parse_http_endpoint(endpoint)
+    return mcp_protocol.startup.post_http_jsonrpc(
         target,
         {
             "jsonrpc": "2.0",

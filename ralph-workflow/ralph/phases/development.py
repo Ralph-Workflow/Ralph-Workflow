@@ -16,7 +16,7 @@ import json
 from loguru import logger
 
 from ralph.config.enums import AnalysisDecision
-from ralph.mcp.plan_artifact import (
+from ralph.mcp.artifacts.plan import (
     PLAN_ARTIFACT_PATH,
     PlanArtifactValidationError,
     is_noop_plan,

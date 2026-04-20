@@ -18,7 +18,7 @@ from pathlib import Path
 
 from loguru import logger
 
-from ralph.mcp.plan_artifact import (
+from ralph.mcp.artifacts.plan import (
     PLAN_ARTIFACT_PATH,
     PLAN_DRAFT_PATH,
     PlanArtifactValidationError,

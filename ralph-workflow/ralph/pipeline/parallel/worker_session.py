@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 from uuid import uuid4
 
-from ralph.mcp.session import AgentSession
+from ralph.mcp.protocol.session import AgentSession
 from ralph.workspace.scope import WorkspaceScope
 
 if TYPE_CHECKING:

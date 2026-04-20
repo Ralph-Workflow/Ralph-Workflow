@@ -15,9 +15,9 @@ from typing import TYPE_CHECKING, Any
 import pytest
 
 from ralph.agents import invoke as invoke_module
-from ralph.mcp import startup
-from ralph.mcp.tool_names import WEB_SEARCH_TOOL, upstream_proxy_tool_name
-from ralph.mcp.upstream_config import UpstreamMcpServer
+from ralph.mcp.protocol import startup
+from ralph.mcp.tools.names import WEB_SEARCH_TOOL, upstream_proxy_tool_name
+from ralph.mcp.upstream.config import UpstreamMcpServer
 
 if TYPE_CHECKING:
     from collections.abc import Iterator

@@ -6,7 +6,7 @@ from typing import Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from ralph.mcp.tool_names import RALPH_MCP_SERVER_NAME
+from ralph.mcp.tools.names import RALPH_MCP_SERVER_NAME
 
 
 class McpServerSpec(BaseModel):  # type: ignore[explicit-any]

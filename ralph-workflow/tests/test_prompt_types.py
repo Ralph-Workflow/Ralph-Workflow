@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from ralph.mcp.tool_names import PLANNING_DRAFT_TOOLS
+from ralph.mcp.tools.names import PLANNING_DRAFT_TOOLS
 from ralph.prompts.types import (
     ARTIFACT_TOOLS,
     ENV_READ_TOOLS,

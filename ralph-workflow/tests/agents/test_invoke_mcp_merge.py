@@ -18,7 +18,7 @@ from ralph.agents.invoke import (
 from ralph.config.enums import AgentTransport, JsonParserType
 from ralph.config.mcp_models import McpConfig, McpServerSpec
 from ralph.config.models import AgentConfig
-from ralph.mcp.upstream_config import (
+from ralph.mcp.upstream.config import (
     UPSTREAM_MCP_CONFIG_ENV,
     UpstreamMcpServer,
     load_upstream_mcp_servers,

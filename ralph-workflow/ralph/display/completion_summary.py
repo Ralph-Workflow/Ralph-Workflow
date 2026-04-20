@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 
 from rich.text import Text
 
-from ralph.mcp.commit_message import read_commit_message_artifact
+from ralph.mcp.artifacts.commit_message import read_commit_message_artifact
 
 if TYPE_CHECKING:
     from pathlib import Path

@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from ralph.mcp.capability_mapping import Capability, McpCapability, lookup_ralph_capability
-from ralph.mcp.policy_outcomes import APPROVED_POLICY_OUTCOMES, is_policy_approved
-from ralph.mcp.session import AgentSession
-from ralph.mcp.tool_names import RalphToolName, claude_tool_name, claude_tool_name_prefix
+from ralph.mcp.artifacts.policy_outcomes import APPROVED_POLICY_OUTCOMES, is_policy_approved
+from ralph.mcp.protocol.capability_mapping import Capability, McpCapability, lookup_ralph_capability
+from ralph.mcp.protocol.session import AgentSession
+from ralph.mcp.tools.names import RalphToolName, claude_tool_name, claude_tool_name_prefix
 
 
 def test_is_policy_approved_accepts_true_and_known_strings() -> None:

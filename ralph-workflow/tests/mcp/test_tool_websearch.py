@@ -6,9 +6,9 @@ from unittest.mock import MagicMock
 from loguru import logger
 
 from ralph.config.mcp_models import WebSearchConfig
-from ralph.mcp import tool_websearch
-from ralph.mcp.tool_coordination import ToolResult
-from ralph.mcp.tool_websearch import _MAX_LIMIT, _MIN_LIMIT
+from ralph.mcp.tools import websearch as tool_websearch
+from ralph.mcp.tools.coordination import ToolResult
+from ralph.mcp.tools.websearch import _MAX_LIMIT, _MIN_LIMIT
 from ralph.mcp.websearch.backends.base import SearchResult, WebSearchError
 
 if TYPE_CHECKING:

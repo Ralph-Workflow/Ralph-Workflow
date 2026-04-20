@@ -24,10 +24,10 @@ from ralph.config.enums import (
     Verbosity,
 )
 from ralph.config.models import AgentConfig, CcsConfig, UnifiedConfig
-from ralph.mcp.capability_mapping import SessionDrain
-from ralph.mcp.tool_names import claude_tool_name_prefix
-from ralph.mcp.upstream_config import UpstreamMcpServer
-from ralph.mcp.upstream_validation import UpstreamValidationError
+from ralph.mcp.protocol.capability_mapping import SessionDrain
+from ralph.mcp.tools.names import claude_tool_name_prefix
+from ralph.mcp.upstream.config import UpstreamMcpServer
+from ralph.mcp.upstream.validation import UpstreamValidationError
 from ralph.phases import HANDLERS, PhaseContext, handle_phase
 from ralph.pipeline import runner as runner_module
 from ralph.pipeline.effects import (
@@ -2140,7 +2140,7 @@ def test_run_returns_1_when_mcp_validation_fails_in_strict_mode(
 
     monkeypatch.setattr(runner_module, "resolve_workspace_scope", lambda: WorkspaceScope(tmp_path))
     monkeypatch.setattr("ralph.agents.transport_emit._mcp_toml_as_upstreams", fake_upstreams)
-    monkeypatch.setattr("ralph.mcp.upstream_validation.strict_mode_from_env", lambda *_: True)
+    monkeypatch.setattr("ralph.mcp.upstream.validation.strict_mode_from_env", lambda *_: True)
 
     def fake_validator(_servers: object, *, strict: bool) -> object:
         del strict

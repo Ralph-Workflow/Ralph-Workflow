@@ -1,4 +1,4 @@
-"""Tests for ralph/mcp/bridge.py — MCP bridge layer."""
+"""Tests for ralph/mcp/artifacts/bridge.py — MCP bridge layer."""
 
 from __future__ import annotations
 
@@ -10,19 +10,19 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from ralph.mcp.artifacts import ArtifactExistsError, ArtifactNotFoundError
-from ralph.mcp.bridge import (
+from ralph.mcp.artifacts.bridge import (
     BridgeArtifactDeps,
     BridgeConfig,
     BridgeError,
     MCPBridge,
     MCPTool,
 )
-from ralph.mcp.file_backend import FileBackend
-from ralph.mcp.upstream_client import HttpUpstreamClient
-from ralph.mcp.upstream_config import UpstreamMcpServer
-from ralph.mcp.upstream_models import UpstreamCallError
-from ralph.mcp.upstream_registry import RegistryCollisionError, UpstreamRegistry
+from ralph.mcp.artifacts.file_backend import FileBackend
+from ralph.mcp.artifacts.store import ArtifactExistsError, ArtifactNotFoundError
+from ralph.mcp.upstream.client import HttpUpstreamClient
+from ralph.mcp.upstream.config import UpstreamMcpServer
+from ralph.mcp.upstream.models import UpstreamCallError
+from ralph.mcp.upstream.registry import RegistryCollisionError, UpstreamRegistry
 
 METHOD_NOT_FOUND_CODE = -32601
 INVALID_REQUEST_CODE = -32600
@@ -175,7 +175,7 @@ class TestMCPBridge:
         error = cast("str", result["error"])
         assert "test error" in error
 
-    @patch("ralph.mcp.bridge.submit_artifact")
+    @patch("ralph.mcp.artifacts.bridge.submit_artifact")
     def test_submit_artifact_success(self, mock_submit: MagicMock) -> None:
         bridge = self._make_bridge()
         artifact_mock = MagicMock()
@@ -191,7 +191,7 @@ class TestMCPBridge:
         artifact = _object_dict(result["artifact"])
         assert artifact["name"] == "test_artifact"
 
-    @patch("ralph.mcp.bridge.submit_artifact")
+    @patch("ralph.mcp.artifacts.bridge.submit_artifact")
     def test_submit_artifact_exists(self, mock_submit: MagicMock) -> None:
         bridge = self._make_bridge()
         mock_submit.side_effect = ArtifactExistsError("Artifact already exists")
@@ -205,7 +205,7 @@ class TestMCPBridge:
         error = cast("str", result["error"])
         assert "already exists" in error
 
-    @patch("ralph.mcp.bridge.get_artifact")
+    @patch("ralph.mcp.artifacts.bridge.get_artifact")
     def test_get_artifact_success(self, mock_get: MagicMock) -> None:
         bridge = self._make_bridge()
         artifact_mock = MagicMock()
@@ -217,7 +217,7 @@ class TestMCPBridge:
         artifact = _object_dict(result["artifact"])
         assert artifact["name"] == "test_artifact"
 
-    @patch("ralph.mcp.bridge.get_artifact")
+    @patch("ralph.mcp.artifacts.bridge.get_artifact")
     def test_get_artifact_not_found(self, mock_get: MagicMock) -> None:
         bridge = self._make_bridge()
         mock_get.side_effect = ArtifactNotFoundError("Artifact not found")
@@ -227,7 +227,7 @@ class TestMCPBridge:
         error = cast("str", result["error"])
         assert "not found" in error
 
-    @patch("ralph.mcp.bridge.list_artifacts")
+    @patch("ralph.mcp.artifacts.bridge.list_artifacts")
     def test_list_artifacts_success(self, mock_list: MagicMock) -> None:
         bridge = self._make_bridge()
         artifact_mock = MagicMock()

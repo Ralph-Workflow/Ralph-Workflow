@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from ralph.mcp.protocol.session import AgentSession
 from ralph.mcp.server.factory import McpServerFactory
 from ralph.mcp.server.factory_impl import DynamicBindingMcpServerFactory
-from ralph.mcp.session import AgentSession
 from ralph.workspace.fs import FsWorkspace
 
 if TYPE_CHECKING:

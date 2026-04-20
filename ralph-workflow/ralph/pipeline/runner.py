@@ -35,14 +35,14 @@ from ralph.config.enums import (
     Verbosity,
 )
 from ralph.display.phase_banner import show_phase_start, show_phase_transition
-from ralph.mcp.capability_mapping import DrainClass, drain_class_for_session
-from ralph.mcp.commit_message import (
+from ralph.mcp.artifacts.commit_message import (
     COMMIT_MESSAGE_ARTIFACT,
     delete_commit_message_artifacts,
     read_commit_message_from_path,
 )
+from ralph.mcp.protocol.capability_mapping import DrainClass, drain_class_for_session
+from ralph.mcp.protocol.session import MCP_ENDPOINT_ENV, MCP_RUN_ID_ENV, AgentSession
 from ralph.mcp.server.lifecycle import shutdown_mcp_server, start_mcp_server
-from ralph.mcp.session import MCP_ENDPOINT_ENV, MCP_RUN_ID_ENV, AgentSession
 from ralph.phases import PhaseContext, handle_phase
 from ralph.pipeline import checkpoint as ckpt
 from ralph.pipeline.effects import (
@@ -80,9 +80,9 @@ if TYPE_CHECKING:
     from ralph.config.models import AgentConfig, UnifiedConfig
     from ralph.display.parallel_display import ParallelDisplay
     from ralph.display.subscriber import PipelineSubscriber
-    from ralph.mcp.agent_transport_probe import AgentProbeReport
-    from ralph.mcp.upstream_config import UpstreamMcpServer
-    from ralph.mcp.upstream_validation import UpstreamValidationReport
+    from ralph.mcp.upstream.agent_probe import AgentProbeReport
+    from ralph.mcp.upstream.config import UpstreamMcpServer
+    from ralph.mcp.upstream.validation import UpstreamValidationReport
     from ralph.policy.models import AgentsPolicy, PhaseDefinition, PipelinePolicy, PolicyBundle
 
     class _PipelineSubscriber(Protocol):
@@ -220,7 +220,7 @@ def _validate_custom_mcp_servers(workspace_root: Path) -> int:
     drive deterministic outcomes without spawning real upstream servers.
     """
     from ralph.agents.transport_emit import _mcp_toml_as_upstreams  # noqa: PLC0415
-    from ralph.mcp.upstream_validation import (  # noqa: PLC0415
+    from ralph.mcp.upstream.validation import (  # noqa: PLC0415
         UpstreamValidationError,
         strict_mode_from_env,
     )
@@ -265,7 +265,7 @@ def _validate_custom_mcp_servers(workspace_root: Path) -> int:
 def _default_validate_mcp(
     servers: Iterable[UpstreamMcpServer], *, strict: bool
 ) -> UpstreamValidationReport:
-    from ralph.mcp.upstream_validation import (  # noqa: PLC0415
+    from ralph.mcp.upstream.validation import (  # noqa: PLC0415
         validate_upstream_mcp_servers,
     )
 
@@ -275,7 +275,7 @@ def _default_validate_mcp(
 def _default_probe_agent_transports(
     servers: Iterable[UpstreamMcpServer], *, workspace_path: Path | None
 ) -> tuple[AgentProbeReport, ...]:
-    from ralph.mcp.agent_transport_probe import (  # noqa: PLC0415
+    from ralph.mcp.upstream.agent_probe import (  # noqa: PLC0415
         probe_agent_transports,
     )
 

@@ -12,7 +12,7 @@ import pytest
 from loguru import logger
 
 from ralph.config.enums import AgentTransport
-from ralph.mcp.agent_transport_probe import probe_agent_transports
+from ralph.mcp.upstream.agent_probe import probe_agent_transports
 from ralph.pipeline import runner as runner_module
 
 if TYPE_CHECKING:

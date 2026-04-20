@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from ralph.mcp import env as mcp_env
+from ralph.mcp.protocol import env as mcp_env
 
 
 def test_mcp_env_constants_are_stable() -> None:
