@@ -48,7 +48,7 @@ class AgentConfig(BaseModel):  # type: ignore[explicit-any]
     display_name: str | None = None
     transport: AgentTransport | None = None
 
-    def model_post_init(self, __context: object) -> None:
+    def model_post_init(self, _context: object) -> None:
         if self.transport is not None:
             return
 

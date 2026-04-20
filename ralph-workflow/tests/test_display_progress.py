@@ -46,8 +46,7 @@ class _DummyProgressProto:
     def __enter__(self) -> _DummyProgressProto:
         return self
 
-    def __exit__(self, exc_type: object, exc: object, tb: object) -> bool | None:
-        return None
+    def __exit__(self, exc_type: object, exc: object, _tb: object) -> bool | None: return None
 
     def update(
         self,
@@ -93,7 +92,7 @@ class _DummyRichProgress:
         self.entered = True
         return self
 
-    def __exit__(self, exc_type: object, exc: object, tb: object) -> bool | None:
+    def __exit__(self, exc_type: object, exc: object, _tb: object) -> bool | None:
         self.exited = True
         return None
 

@@ -30,6 +30,7 @@ from ralph.workspace.scope import WorkspaceScope
 
 RUN_PIPELINE_SUCCESS = 42
 KEYBOARD_INTERRUPT_EXIT_CODE = 130
+USAGE_ERROR_EXIT_CODE = 2
 DEFAULT_DEVELOPER_ITERS = 3
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
@@ -87,6 +88,31 @@ def test_app_version(cli_runner: CliRunner) -> None:
     result = cli_runner.invoke(app, ["--version"])
     assert result.exit_code == 0
     assert "Ralph" in result.stdout or "version" in result.stdout.lower()
+
+
+def test_unknown_command_uses_typer_usage_error(cli_runner: CliRunner) -> None:
+    """Unknown commands should fail with Typer's standard exit code and message."""
+    result = cli_runner.invoke(app, ["does-not-exist"])
+    assert result.exit_code == USAGE_ERROR_EXIT_CODE
+    assert "No such command 'does-not-exist'" in result.stderr
+    assert "Try 'ralph --help' for help." in result.stderr
+
+
+
+def test_unknown_option_uses_typer_usage_error(cli_runner: CliRunner) -> None:
+    """Unknown options should surface Typer's standard usage error."""
+    result = cli_runner.invoke(app, ["--does-not-exist"])
+    assert result.exit_code == USAGE_ERROR_EXIT_CODE
+    assert "No such option: --does-not-exist" in result.stderr
+    assert "Usage: ralph [OPTIONS] COMMAND [ARGS]..." in result.stderr
+
+
+
+def test_cleanup_rejects_unexpected_extra_argument(cli_runner: CliRunner) -> None:
+    """Subcommands should keep strict parsing for unexpected extra arguments."""
+    result = cli_runner.invoke(app, ["cleanup", "extra-arg"])
+    assert result.exit_code == USAGE_ERROR_EXIT_CODE
+    assert "Got unexpected extra argument (extra-arg)" in result.stderr
 
 
 def test_app_list_agents_empty(cli_runner: CliRunner) -> None:

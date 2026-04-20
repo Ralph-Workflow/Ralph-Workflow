@@ -14,6 +14,7 @@ from git import Repo as GitRepo
 from rich.console import Console
 from rich.text import Text
 
+from ralph.agents.invoke import AgentInactivityTimeoutError, AgentInvocationError
 from ralph.agents.parsers import AgentOutputLine, ClaudeParser
 from ralph.config.enums import AgentTransport, JsonParserType, Verbosity
 from ralph.config.models import AgentConfig, CcsConfig, UnifiedConfig
@@ -1395,6 +1396,136 @@ class TestExecuteAgentEffect:
         assert "message_start" in printed
         assert "plan complete" in printed
         assert "stop" in printed
+
+    def test_retries_transient_connectivity_failures_with_session_resume(
+        self, monkeypatch, tmp_path: Path
+    ) -> None:
+        prompt_file = tmp_path / "PROMPT.md"
+        prompt_file.write_text("ship it", encoding="utf-8")
+        effect = InvokeAgentEffect(
+            agent_name="dev",
+            phase="development",
+            prompt_file=str(prompt_file),
+        )
+        agent_config = AgentConfig(
+            cmd="claude -p",
+            output_flag="--output-format=stream-json",
+            print_flag="--print",
+            streaming_flag="--include-partial-messages",
+            session_flag="--resume {}",
+            json_parser=JsonParserType.CLAUDE,
+            transport=AgentTransport.CLAUDE,
+        )
+        registry = _registry_factory(agent_config)
+
+        bridge_starts: list[int] = []
+
+        class FakeBridge:
+            def __init__(self, marker: int) -> None:
+                self.marker = marker
+
+            def shutdown(self) -> None:
+                return
+
+            def agent_endpoint_uri(self) -> str:
+                return f"http://127.0.0.1:{12345 + self.marker}/mcp"
+
+        def fake_start_mcp_server(*_args, **_kwargs):
+            marker = len(bridge_starts)
+            bridge_starts.append(marker)
+            return FakeBridge(marker)
+
+        monkeypatch.setattr(runner_module, "start_mcp_server", fake_start_mcp_server)
+
+        seen_session_ids: list[str | None] = []
+
+        def fake_invoke_agent(_agent_config, _prompt_file, *, options=None):
+            seen_session_ids.append(None if options is None else options.session_id)
+            if len(seen_session_ids) == 1:
+                def _first_attempt():
+                    yield '{"session_id":"claude-session-42"}'
+                    raise AgentInvocationError("claude", 1, "connection refused")
+                return _first_attempt()
+            return iter(
+                ['{"type":"assistant","message":{"content":[{"type":"text","text":"done"}]}}']
+            )
+
+        result = runner_module._execute_agent_effect(
+            effect,
+            self._config(),
+            runner_module._AgentExecutionDeps(
+                invoke_agent=fake_invoke_agent,
+                agent_invocation_error=AgentInvocationError,
+                agent_registry=registry,
+            ),
+            WorkspaceScope(tmp_path),
+        )
+
+        assert result == PipelineEvent.AGENT_SUCCESS
+        assert seen_session_ids == [None, "claude-session-42"]
+        assert bridge_starts == [0, 1]
+
+    def test_retries_inactivity_failures_with_summary_prompt(
+        self,
+        monkeypatch,
+        tmp_path: Path,
+    ) -> None:
+        prompt_file = tmp_path / "PROMPT.md"
+        prompt_file.write_text("implement the change", encoding="utf-8")
+        effect = InvokeAgentEffect(
+            agent_name="dev",
+            phase="development",
+            prompt_file=str(prompt_file),
+        )
+        agent_config = AgentConfig(
+            cmd="codex",
+            output_flag="--json-stream",
+            json_parser=JsonParserType.CODEX,
+        )
+        registry = _registry_factory(agent_config)
+
+        class FakeBridge:
+            def shutdown(self) -> None:
+                return
+
+            def agent_endpoint_uri(self) -> str:
+                return "http://127.0.0.1:12345/mcp"
+
+        monkeypatch.setattr(
+            runner_module,
+            "start_mcp_server",
+            lambda *_args, **_kwargs: FakeBridge(),
+        )
+
+        seen_prompt_files: list[str] = []
+
+        def fake_invoke_agent(_agent_config, prompt_path, *, options=None):
+            del options
+            seen_prompt_files.append(prompt_path)
+            if len(seen_prompt_files) == 1:
+                def _first_attempt():
+                    yield '{"type":"text","content":"drafted the fix"}'
+                    raise AgentInactivityTimeoutError("codex", 30, ["drafted the fix"])
+                return _first_attempt()
+            return iter(['{"type":"result","result":"finished"}'])
+
+        result = runner_module._execute_agent_effect(
+            effect,
+            self._config(),
+            runner_module._AgentExecutionDeps(
+                invoke_agent=fake_invoke_agent,
+                agent_invocation_error=AgentInvocationError,
+                agent_registry=registry,
+            ),
+            WorkspaceScope(tmp_path),
+        )
+
+        assert result == PipelineEvent.AGENT_SUCCESS
+        assert seen_prompt_files[0] == str(prompt_file)
+        assert seen_prompt_files[1] != str(prompt_file)
+        retry_prompt = Path(seen_prompt_files[1]).read_text(encoding="utf-8")
+        assert "inactivity timeout" in retry_prompt
+        assert "drafted the fix" in retry_prompt
 
 
 def test_determine_effect_invokes_commit_agent_when_agent_not_yet_invoked(

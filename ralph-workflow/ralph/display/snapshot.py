@@ -184,6 +184,9 @@ def _snapshot_worker(description: str, worker: WorkerState) -> WorkerSnapshot:
     )
 
 
+DashboardSnapshot = PipelineSnapshot
+
+
 def _elapsed_seconds(worker: WorkerState) -> float:
     if worker.started_at is None:
         return 0.0

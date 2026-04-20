@@ -1280,7 +1280,7 @@ def test_handle_show_or_generate_displays_staged_files(monkeypatch: pytest.Monke
     stream = _attach_console(monkeypatch, commit_module)
     files = [f"file_{i}" for i in range(commit_module._MAX_DISPLAY_FILES + 2)]
     monkeypatch.setattr(commit_module, "get_staged_files", lambda root: files)
-    monkeypatch.setattr(commit_module, "_generate_commit_message", lambda staged, root: "auto msg")
+    monkeypatch.setattr(commit_module, "_generate_commit_message", lambda _staged, root: "auto msg")
 
     def fail_commit(*args: object, **kwargs: object) -> Path:
         raise AssertionError("Should not commit when apply=False")
@@ -1305,7 +1305,7 @@ def test_handle_show_or_generate_displays_staged_files(monkeypatch: pytest.Monke
 def test_handle_show_or_generate_applies_commit_success(monkeypatch: pytest.MonkeyPatch) -> None:
     stream = _attach_console(monkeypatch, commit_module)
     monkeypatch.setattr(commit_module, "get_staged_files", lambda root: ["src/app.py"])
-    monkeypatch.setattr(commit_module, "_generate_commit_message", lambda staged, root: "auto msg")
+    monkeypatch.setattr(commit_module, "_generate_commit_message", lambda _staged, root: "auto msg")
     recorded: list[str] = []
 
     def fake_create(
@@ -1332,7 +1332,7 @@ def test_handle_show_or_generate_applies_commit_success(monkeypatch: pytest.Monk
 def test_handle_show_or_generate_applies_commit_failure(monkeypatch: pytest.MonkeyPatch) -> None:
     stream = _attach_console(monkeypatch, commit_module)
     monkeypatch.setattr(commit_module, "get_staged_files", lambda root: ["src/app.py"])
-    monkeypatch.setattr(commit_module, "_generate_commit_message", lambda staged, root: "auto msg")
+    monkeypatch.setattr(commit_module, "_generate_commit_message", lambda _staged, root: "auto msg")
 
     def raise_commit(*args: object, **kwargs: object) -> str:
         raise RuntimeError("boom")

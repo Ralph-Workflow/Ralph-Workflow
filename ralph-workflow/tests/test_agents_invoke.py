@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import json
+import threading
 import tomllib
 from pathlib import Path
 from types import SimpleNamespace
@@ -13,6 +14,7 @@ import pytest
 from loguru import logger
 
 from ralph.agents.invoke import (
+    AgentInactivityTimeoutError,
     AgentInvocationError,
     InvokeOptions,
     UnsupportedMcpTransportError,
@@ -407,7 +409,12 @@ def test_invoke_agent_does_not_reexecute_command_after_stream_finishes(
         def __enter__(self) -> FakeProcess:
             return self
 
-        def __exit__(self, exc_type: object, exc: object, tb: object) -> Literal[False]:
+        def __exit__(
+            self,
+            _exc_type: object,
+            exc: object,
+            _tb: object,
+        ) -> Literal[False]:
             return False
 
         def wait(self) -> int:
@@ -448,7 +455,12 @@ def test_invoke_agent_passes_extra_env_to_subprocess(
         def __enter__(self) -> FakeProcess:
             return self
 
-        def __exit__(self, exc_type: object, exc: object, tb: object) -> Literal[False]:
+        def __exit__(
+            self,
+            _exc_type: object,
+            exc: object,
+            _tb: object,
+        ) -> Literal[False]:
             return False
 
         def wait(self) -> int:
@@ -483,6 +495,79 @@ def test_invoke_agent_passes_extra_env_to_subprocess(
     assert seen_env[0]["RALPH_MCP_ENDPOINT"] == "http://127.0.0.1:9999/mcp"
 
 
+def test_invoke_agent_times_out_when_agent_goes_idle(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    prompt_file = tmp_path / "PROMPT.md"
+    prompt_file.write_text("hello", encoding="utf-8")
+    config = AgentConfig(cmd="codex", output_flag="--json-stream")
+
+    class BlockingStdout:
+        def __iter__(self) -> BlockingStdout:
+            return self
+
+        def __next__(self) -> str:
+            threading.Event().wait(60)
+            raise StopIteration
+
+    class FakeProcess:
+        def __init__(self) -> None:
+            self.stdout = BlockingStdout()
+            self.stderr = SimpleNamespace(read=lambda: "")
+            self.returncode = None
+            self.terminated = False
+            self.killed = False
+
+        def __enter__(self) -> FakeProcess:
+            return self
+
+        def __exit__(
+            self,
+            _exc_type: object,
+            exc: object,
+            _tb: object,
+        ) -> Literal[False]:
+            return False
+
+        def wait(self, timeout: float | None = None) -> int | None:
+            del timeout
+            return self.returncode
+
+        def terminate(self) -> None:
+            self.terminated = True
+            self.returncode = -15
+
+        def kill(self) -> None:
+            self.killed = True
+            self.returncode = -9
+
+        def poll(self) -> int | None:
+            return self.returncode
+
+    fake_process = FakeProcess()
+    monotonic_values = iter([0.0, 10.0])
+
+    monkeypatch.setattr("ralph.agents.invoke._IDLE_POLL_INTERVAL_SECONDS", 0.0)
+    monkeypatch.setattr("ralph.agents.invoke.time.monotonic", lambda: next(monotonic_values))
+    monkeypatch.setattr(
+        "ralph.agents.invoke.subprocess.Popen",
+        lambda *args, **kwargs: fake_process,
+    )
+
+    with pytest.raises(AgentInactivityTimeoutError, match="produced no output"):
+        list(
+            invoke_agent(
+                config,
+                str(prompt_file),
+                options=InvokeOptions(show_progress=False, idle_timeout_seconds=5),
+            )
+        )
+
+    assert fake_process.terminated
+    assert not fake_process.killed
+
+
+
 def test_invoke_agent_runs_subprocess_in_workspace_path(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -500,7 +585,12 @@ def test_invoke_agent_runs_subprocess_in_workspace_path(
         def __enter__(self) -> FakeProcess:
             return self
 
-        def __exit__(self, exc_type: object, exc: object, tb: object) -> Literal[False]:
+        def __exit__(
+            self,
+            _exc_type: object,
+            exc: object,
+            _tb: object,
+        ) -> Literal[False]:
             return False
 
         def wait(self) -> int:
@@ -558,7 +648,12 @@ def test_invoke_agent_passes_claude_mcp_separator_in_subprocess_argv(
         def __enter__(self) -> FakeProcess:
             return self
 
-        def __exit__(self, exc_type: object, exc: object, tb: object) -> Literal[False]:
+        def __exit__(
+            self,
+            _exc_type: object,
+            exc: object,
+            _tb: object,
+        ) -> Literal[False]:
             return False
 
         def wait(self) -> int:
@@ -778,7 +873,12 @@ def test_invoke_agent_claude_extracts_existing_workspace_mcp_servers(
         def __enter__(self) -> FakeProcess:
             return self
 
-        def __exit__(self, exc_type: object, exc: object, tb: object) -> Literal[False]:
+        def __exit__(
+            self,
+            _exc_type: object,
+            exc: object,
+            _tb: object,
+        ) -> Literal[False]:
             return False
 
         def wait(self) -> int:
@@ -866,7 +966,12 @@ def test_claude_mode_extracts_upstream_servers_without_passing_them_through(
         def __enter__(self) -> FakeProcess:
             return self
 
-        def __exit__(self, exc_type: object, exc: object, tb: object) -> Literal[False]:
+        def __exit__(
+            self,
+            _exc_type: object,
+            exc: object,
+            _tb: object,
+        ) -> Literal[False]:
             return False
 
         def wait(self) -> int:
@@ -957,7 +1062,12 @@ def test_claude_mode_prefers_workspace_upstream_server_over_home_definition(
         def __enter__(self) -> FakeProcess:
             return self
 
-        def __exit__(self, exc_type: object, exc: object, tb: object) -> Literal[False]:
+        def __exit__(
+            self,
+            _exc_type: object,
+            exc: object,
+            _tb: object,
+        ) -> Literal[False]:
             return False
 
         def wait(self) -> int:
@@ -1090,7 +1200,12 @@ def test_invoke_agent_surfaces_stdout_error_when_stderr_is_empty(
         def __enter__(self) -> FakeProcess:
             return self
 
-        def __exit__(self, exc_type: object, exc: object, tb: object) -> Literal[False]:
+        def __exit__(
+            self,
+            _exc_type: object,
+            exc: object,
+            _tb: object,
+        ) -> Literal[False]:
             return False
 
         def wait(self) -> int:
@@ -1131,7 +1246,12 @@ def test_invoke_agent_injects_opencode_mcp_config_for_remote_endpoint(
         def __enter__(self) -> FakeProcess:
             return self
 
-        def __exit__(self, exc_type: object, exc: object, tb: object) -> Literal[False]:
+        def __exit__(
+            self,
+            _exc_type: object,
+            exc: object,
+            _tb: object,
+        ) -> Literal[False]:
             return False
 
         def wait(self) -> int:
@@ -1187,7 +1307,12 @@ def test_invoke_agent_merges_existing_opencode_config_content(
         def __enter__(self) -> FakeProcess:
             return self
 
-        def __exit__(self, exc_type: object, exc: object, tb: object) -> Literal[False]:
+        def __exit__(
+            self,
+            _exc_type: object,
+            exc: object,
+            _tb: object,
+        ) -> Literal[False]:
             return False
 
         def wait(self) -> int:
@@ -1239,7 +1364,12 @@ def test_invoke_agent_does_not_inject_opencode_mcp_config_without_explicit_endpo
         def __enter__(self) -> FakeProcess:
             return self
 
-        def __exit__(self, exc_type: object, exc: object, tb: object) -> Literal[False]:
+        def __exit__(
+            self,
+            _exc_type: object,
+            exc: object,
+            _tb: object,
+        ) -> Literal[False]:
             return False
 
         def wait(self) -> int:
@@ -1306,7 +1436,12 @@ def test_opencode_mode_extracts_upstream_servers_without_passing_them_through(
         def __enter__(self) -> FakeProcess:
             return self
 
-        def __exit__(self, exc_type: object, exc: object, tb: object) -> Literal[False]:
+        def __exit__(
+            self,
+            _exc_type: object,
+            exc: object,
+            _tb: object,
+        ) -> Literal[False]:
             return False
 
         def wait(self) -> int:
@@ -1421,7 +1556,12 @@ def test_opencode_config_omits_tools_block_when_no_mcp_endpoint(
         def __enter__(self) -> FakeProcess:
             return self
 
-        def __exit__(self, exc_type: object, exc: object, tb: object) -> Literal[False]:
+        def __exit__(
+            self,
+            _exc_type: object,
+            exc: object,
+            _tb: object,
+        ) -> Literal[False]:
             return False
 
         def wait(self) -> int:
@@ -1462,7 +1602,12 @@ def test_invoke_agent_injects_codex_mcp_config_for_remote_endpoint(
         def __enter__(self) -> FakeProcess:
             return self
 
-        def __exit__(self, exc_type: object, exc: object, tb: object) -> Literal[False]:
+        def __exit__(
+            self,
+            _exc_type: object,
+            exc: object,
+            _tb: object,
+        ) -> Literal[False]:
             return False
 
         def wait(self) -> int:
@@ -1518,7 +1663,12 @@ def test_invoke_agent_injects_codex_system_prompt_file_via_config(
         def __enter__(self) -> FakeProcess:
             return self
 
-        def __exit__(self, exc_type: object, exc: object, tb: object) -> Literal[False]:
+        def __exit__(
+            self,
+            _exc_type: object,
+            exc: object,
+            _tb: object,
+        ) -> Literal[False]:
             return False
 
         def wait(self) -> int:
@@ -1572,7 +1722,12 @@ def test_invoke_agent_does_not_inject_opencode_system_prompt_flag(
         def __enter__(self) -> FakeProcess:
             return self
 
-        def __exit__(self, exc_type: object, exc: object, tb: object) -> Literal[False]:
+        def __exit__(
+            self,
+            _exc_type: object,
+            exc: object,
+            _tb: object,
+        ) -> Literal[False]:
             return False
 
         def wait(self) -> int:
@@ -1620,7 +1775,12 @@ def test_invoke_agent_preserves_existing_codex_home_state(
         def __enter__(self) -> FakeProcess:
             return self
 
-        def __exit__(self, exc_type: object, exc: object, tb: object) -> Literal[False]:
+        def __exit__(
+            self,
+            _exc_type: object,
+            exc: object,
+            _tb: object,
+        ) -> Literal[False]:
             return False
 
         def wait(self) -> int:
@@ -1733,7 +1893,12 @@ def test_codex_mode_extracts_upstream_servers_without_passing_them_through(
         def __enter__(self) -> FakeProcess:
             return self
 
-        def __exit__(self, exc_type: object, exc: object, tb: object) -> Literal[False]:
+        def __exit__(
+            self,
+            _exc_type: object,
+            exc: object,
+            _tb: object,
+        ) -> Literal[False]:
             return False
 
         def wait(self) -> int:
@@ -1927,7 +2092,12 @@ def test_claude_strict_mode_only_exposes_ralph_server(
         def __enter__(self) -> FakeProcess:
             return self
 
-        def __exit__(self, exc_type: object, exc: object, tb: object) -> Literal[False]:
+        def __exit__(
+            self,
+            _exc_type: object,
+            exc: object,
+            _tb: object,
+        ) -> Literal[False]:
             return False
 
         def wait(self) -> int:
@@ -1983,7 +2153,12 @@ def test_opencode_strict_mode_only_exposes_ralph_server(
         def __enter__(self) -> FakeProcess:
             return self
 
-        def __exit__(self, exc_type: object, exc: object, tb: object) -> Literal[False]:
+        def __exit__(
+            self,
+            _exc_type: object,
+            exc: object,
+            _tb: object,
+        ) -> Literal[False]:
             return False
 
         def wait(self) -> int:
@@ -2064,7 +2239,12 @@ def test_codex_strict_mode_only_exposes_ralph_server(
         def __enter__(self) -> FakeProcess:
             return self
 
-        def __exit__(self, exc_type: object, exc: object, tb: object) -> Literal[False]:
+        def __exit__(
+            self,
+            _exc_type: object,
+            exc: object,
+            _tb: object,
+        ) -> Literal[False]:
             return False
 
         def wait(self) -> int:
@@ -2121,7 +2301,12 @@ def test_provider_strict_mode_passes_upstream_proxy_payload_to_ralph(
         def __enter__(self) -> FakeProcess:
             return self
 
-        def __exit__(self, exc_type: object, exc: object, tb: object) -> Literal[False]:
+        def __exit__(
+            self,
+            _exc_type: object,
+            exc: object,
+            _tb: object,
+        ) -> Literal[False]:
             return False
 
         def wait(self) -> int:

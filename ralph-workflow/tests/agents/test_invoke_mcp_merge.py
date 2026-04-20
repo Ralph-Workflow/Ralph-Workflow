@@ -45,8 +45,7 @@ class _FakeProcess:
     def __enter__(self) -> _FakeProcess:
         return self
 
-    def __exit__(self, exc_type: object, exc: object, tb: object) -> Literal[False]:
-        return False
+    def __exit__(self, exc_type: object, exc: object, _tb: object) -> Literal[False]: return False
 
     def wait(self) -> int:
         return self.returncode
@@ -200,7 +199,7 @@ def test_claude_upstream_env_var_includes_mcp_toml_server(
     seen_env: list[dict[str, str]] = []
     monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", _fake_popen_capturing(seen_env))
     monkeypatch.setattr("ralph.agents.invoke._mcp_toml_as_upstreams", _fake_mcp_toml_as_upstreams)
-    monkeypatch.setattr("ralph.agents.invoke._provider_allowed_mcp_tool_names", lambda cfg, ep: ())
+    monkeypatch.setattr("ralph.agents.invoke._provider_allowed_mcp_tool_names", lambda cfg, _ep: ())
     monkeypatch.setenv("HOME", str(fake_home))
 
     list(
@@ -295,7 +294,7 @@ def test_claude_collision_mcp_toml_overrides_native_server(
     seen_env: list[dict[str, str]] = []
     monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", _fake_popen_capturing(seen_env))
     monkeypatch.setattr("ralph.agents.invoke._mcp_toml_as_upstreams", _fake_mcp_toml_as_upstreams)
-    monkeypatch.setattr("ralph.agents.invoke._provider_allowed_mcp_tool_names", lambda cfg, ep: ())
+    monkeypatch.setattr("ralph.agents.invoke._provider_allowed_mcp_tool_names", lambda cfg, _ep: ())
     monkeypatch.setenv("HOME", str(fake_home))
 
     list(

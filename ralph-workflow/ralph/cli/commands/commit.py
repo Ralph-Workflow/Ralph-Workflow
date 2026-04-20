@@ -17,7 +17,12 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.text import Text
 
-from ralph.agents.invoke import AgentInvocationError, InvokeOptions, invoke_agent
+from ralph.agents.invoke import (
+    AgentInvocationError,
+    InvokeOptions,
+    extract_session_id,
+    invoke_agent,
+)
 from ralph.agents.parsers import AgentOutputLine, AgentParser, get_parser
 from ralph.agents.registry import AgentRegistry
 from ralph.config.enums import AgentTransport
@@ -492,7 +497,7 @@ def _invoke_commit_agent_attempt(
             ),
             parsed_output=parsed_output,
             raw_output=raw_output,
-            resume_session_id=_extract_commit_session_id(raw_output),
+            resume_session_id=extract_session_id(raw_output),
         )
 
     if not artifact_message:
@@ -505,7 +510,7 @@ def _invoke_commit_agent_attempt(
             ),
             parsed_output=parsed_output,
             raw_output=raw_output,
-            resume_session_id=_extract_commit_session_id(raw_output),
+            resume_session_id=extract_session_id(raw_output),
         )
 
     if _is_skip_response(artifact_message):
@@ -574,36 +579,6 @@ def _read_retry_prompt_text(prompt_file: str) -> str:
     if not path.exists():
         return ""
     return path.read_text(encoding="utf-8")
-
-
-def _extract_commit_session_id(raw_output: list[str]) -> str | None:
-    for line in raw_output:
-        try:
-            parsed = cast("object", json.loads(line))
-        except json.JSONDecodeError:
-            continue
-        session_id = _find_session_id(parsed)
-        if session_id:
-            return session_id
-    return None
-
-
-def _find_session_id(value: object) -> str | None:
-    if isinstance(value, dict):
-        for key in ("session_id", "sessionId"):
-            session_id = value.get(key)
-            if isinstance(session_id, str) and session_id:
-                return session_id
-        for nested in value.values():
-            session_id = _find_session_id(nested)
-            if session_id:
-                return session_id
-    if isinstance(value, list):
-        for item in value:
-            session_id = _find_session_id(item)
-            if session_id:
-                return session_id
-    return None
 
 
 def _write_commit_prompt_file(repo_root: Path, prompt: str) -> str:

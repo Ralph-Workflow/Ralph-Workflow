@@ -102,13 +102,7 @@ class ToolFactoryLike(Protocol):
     """Factory surface used to create typed FastMCP tools."""
 
     @staticmethod
-    def from_function(
-        fn: object,
-        *,
-        name: str,
-        description: str,
-        structured_output: bool,
-    ) -> ToolBuilderLike:
+    def from_function(*args: object, **kwargs: object) -> ToolBuilderLike:
         """Create a tool from a callable."""
         ...
 
@@ -133,7 +127,7 @@ class _ToDict(Protocol):
 
 
 class _ModelDump(Protocol):
-    def __call__(self, *, exclude_none: bool, by_alias: bool) -> dict[str, object]:
+    def __call__(self, **kwargs: bool) -> dict[str, object]:
         """Serialize a content block model into a dictionary."""
         ...
 
@@ -149,15 +143,7 @@ class FastMcpServerLike(Protocol):
 
 
 class FastMcpConstructorLike(Protocol):
-    def __call__(
-        self,
-        name: str,
-        *,
-        host: str,
-        port: int,
-        streamable_http_path: str,
-        tools: list[ToolClass],
-    ) -> FastMcpServerLike:
+    def __call__(self, *args: object, **kwargs: object) -> FastMcpServerLike:
         """Construct a FastMCP server instance."""
         ...
 

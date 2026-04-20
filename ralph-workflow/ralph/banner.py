@@ -25,7 +25,7 @@ TAGLINE = "PROMPT-driven agent orchestrator"
 class SupportsPrint(Protocol):
     """Protocol for rich-compatible consoles."""
 
-    def print(self, *objects: object, **kwargs: object) -> None:
+    def print(self, *_objects: object, **kwargs: object) -> None:
         """Print rich renderables."""
 
 
@@ -38,13 +38,13 @@ class _RichTextProto(Protocol):
 class _RichPanelProto(Protocol):
     """Protocol for rich.Panel class."""
 
-    def fit(self, renderable: object, **kwargs: object) -> object: ...
+    def fit(self, _renderable: object, **kwargs: object) -> object: ...
 
 
 class _RichGroupProto(Protocol):
     """Protocol for rich.Group class."""
 
-    def __call__(self, *renderables: object) -> object: ...
+    def __call__(self, *_renderables: object) -> object: ...
 
 
 class _RichConsoleClassProto(Protocol):

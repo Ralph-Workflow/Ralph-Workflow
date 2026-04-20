@@ -127,6 +127,28 @@ def test_render_verification_reads_artifact_when_present(tmp_path: Path) -> None
     assert "lint errors" in text
 
 
+def test_render_verification_reads_wrapped_artifact_content(tmp_path: Path) -> None:
+    artifacts = tmp_path / ".agent" / "artifacts"
+    artifacts.mkdir(parents=True)
+    (artifacts / "verification.json").write_text(
+        json.dumps(
+            {
+                "name": "verification",
+                "type": "verification",
+                "content": {
+                    "status": "failed",
+                    "reason": "wrapped lint errors",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    text = _render_plain(_make_snapshot(), workspace_root=tmp_path)
+    assert "Verification" in text
+    assert "failed" in text
+    assert "wrapped lint errors" in text
+
+
 def test_render_includes_commit_message_artifact_when_present(tmp_path: Path) -> None:
     commit_dir = tmp_path / ".agent" / "tmp"
     commit_dir.mkdir(parents=True)

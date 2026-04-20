@@ -26,6 +26,13 @@ _DECISION_LABELS: dict[str, str] = {
 }
 
 
+def _artifact_content(parsed: dict[str, object]) -> dict[str, object]:
+    content = parsed.get("content")
+    if isinstance(content, dict):
+        return content
+    return parsed
+
+
 def _read_verification_status(workspace_root: Path | None) -> tuple[str, str | None]:
     if workspace_root is None:
         return ("unknown", None)
@@ -40,7 +47,7 @@ def _read_verification_status(workspace_root: Path | None) -> tuple[str, str | N
         return ("unknown", None)
     if not isinstance(parsed, dict):
         return ("unknown", None)
-    parsed_dict: dict[str, object] = parsed
+    parsed_dict = _artifact_content(parsed)
     status = parsed_dict.get("status") or parsed_dict.get("outcome")
     reason = parsed_dict.get("reason") or parsed_dict.get("summary") or parsed_dict.get("message")
     label = status if isinstance(status, str) and status else "unknown"
@@ -153,7 +160,11 @@ def emit_completion_summary(
     dropped_count: int = 0,
 ) -> None:
     console.print(
-        render_completion_summary(snapshot, workspace_root=workspace_root, dropped_count=dropped_count),
+        render_completion_summary(
+            snapshot,
+            workspace_root=workspace_root,
+            dropped_count=dropped_count,
+        ),
         markup=False,
     )
 

@@ -29,7 +29,7 @@ from ralph.cli.options import (
     display_agents_table,
     display_providers_table,
 )
-from ralph.config.enums import PauseOnExit, RecoveryStrategy, ReviewDepth, Verbosity
+from ralph.config.enums import ReviewDepth, Verbosity
 from ralph.config.loader import load_config
 from ralph.pipeline import checkpoint as ckpt
 from ralph.workspace.scope import resolve_workspace_scope
@@ -54,97 +54,6 @@ class CLIOverrideInput:
     git_user_name: str | None = None
     git_user_email: str | None = None
     isolation_mode: bool | None = None
-
-
-@dataclass(frozen=True)
-class CLIOptions:
-    """Complete CLI options for Ralph.
-
-    Attributes:
-        config: Path to configuration file.
-        developer_iters: Number of developer iterations.
-        reviewer_reviews: Number of reviewer reviews.
-        developer_agent: Developer agent name.
-        reviewer_agent: Reviewer agent name.
-        developer_model: Developer model flag.
-        reviewer_model: Reviewer model flag.
-        verbosity: Output verbosity level.
-        quiet: Suppress all output except errors.
-        debug: Enable debug output.
-        no_isolation: Disable isolation mode.
-        review_depth: Review depth setting.
-        resume: Resume from checkpoint.
-        no_resume: Ignore existing checkpoint.
-        inspect_checkpoint: Show checkpoint contents.
-        recovery_strategy: Recovery strategy.
-        dry_run: Run without invoking agents.
-        list_agents: List configured agents.
-        list_available_agents: List available agents.
-        list_providers: List available providers.
-        diagnose: Run diagnostics.
-        check_config: Validate configuration.
-        check_mcp: Validate custom MCP servers and agent wiring then exit.
-        show_baseline: Show performance baseline.
-        generate_completion: Generate shell completion.
-        init: Initialize Ralph in current directory.
-        init_local_config: Create local config file.
-        init_global: Create global config.
-        with_rebase: Rebase before commit.
-        rebase_only: Only rebase, don't run pipeline.
-        pause_on_exit: Pause before exit.
-        generate_commit_msg: Generate commit message.
-        apply_commit: Apply generated commit.
-        generate_commit: Generate and apply commit.
-        show_commit_msg: Show commit message.
-        interactive: Interactive mode.
-        show_streaming_metrics: Show streaming metrics.
-        git_user_name: Git user name for commits.
-        git_user_email: Git user email for commits.
-        preset: Use preset configuration.
-        version: Show version.
-    """
-
-    config: str | None = None
-    developer_iters: int = 5
-    reviewer_reviews: int = 2
-    developer_agent: str | None = None
-    reviewer_agent: str | None = None
-    developer_model: str | None = None
-    reviewer_model: str | None = None
-    verbosity: Verbosity = Verbosity.VERBOSE
-    quiet: bool = False
-    debug: bool = False
-    no_isolation: bool = False
-    review_depth: ReviewDepth = ReviewDepth.STANDARD
-    resume: bool = False
-    no_resume: bool = False
-    inspect_checkpoint: bool = False
-    recovery_strategy: RecoveryStrategy = RecoveryStrategy.AUTO
-    dry_run: bool = False
-    list_agents: bool = False
-    list_available_agents: bool = False
-    list_providers: bool = False
-    diagnose: bool = False
-    check_config: bool = False
-    check_mcp: bool = False
-    show_baseline: bool = False
-    generate_completion: str | None = None
-    init: str | None = None
-    init_local_config: bool = False
-    init_global: bool = False
-    with_rebase: bool = False
-    rebase_only: bool = False
-    pause_on_exit: PauseOnExit = PauseOnExit.AUTO
-    generate_commit_msg: bool = False
-    apply_commit: bool = False
-    generate_commit: bool = False
-    show_commit_msg: bool = False
-    interactive: bool = False
-    show_streaming_metrics: bool = False
-    git_user_name: str | None = None
-    git_user_email: str | None = None
-    preset: str | None = None
-    version: bool = False
 
 
 class GeneralOverrides(TypedDict):
@@ -179,6 +88,7 @@ app = typer.Typer(
     "review and fixes, automatically staging and committing the final result.",
     add_completion=True,
     rich_markup_mode="rich",
+    suggest_commands=True,
 )
 console = Console()
 
@@ -324,13 +234,6 @@ def main(  # noqa: PLR0913 - Typer CLI callbacks require many options and branch
         bool,
         typer.Option("--inspect-checkpoint", help="Show checkpoint contents"),
     ] = False,
-    recovery_strategy: Annotated[
-        RecoveryStrategy,
-        typer.Option(
-            "--recovery-strategy",
-            help="Recovery strategy: fail, auto, force",
-        ),
-    ] = RecoveryStrategy.AUTO,
     dry_run: Annotated[
         bool,
         typer.Option("--dry-run", help="Run without invoking agents"),
@@ -338,10 +241,6 @@ def main(  # noqa: PLR0913 - Typer CLI callbacks require many options and branch
     list_agents: Annotated[
         bool,
         typer.Option("--list-agents", help="List configured agents"),
-    ] = False,
-    list_available_agents: Annotated[
-        bool,
-        typer.Option("--list-available-agents", help="List available agents"),
     ] = False,
     list_providers: Annotated[
         bool,
@@ -362,38 +261,14 @@ def main(  # noqa: PLR0913 - Typer CLI callbacks require many options and branch
             help="Validate custom MCP servers and agent wiring then exit",
         ),
     ] = False,
-    show_baseline: Annotated[
-        bool,
-        typer.Option("--show-baseline", help="Show performance baseline"),
-    ] = False,
-    generate_completion: Annotated[
-        str | None,
-        typer.Option("--generate-completion", help="Generate shell completion"),
-    ] = None,
     init: Annotated[
         str | None,
         typer.Option("--init", help="Initialize Ralph with a template (e.g. starter-template)"),
     ] = None,
-    init_local_config: Annotated[
-        bool,
-        typer.Option("--init-local-config", help="Create local config file"),
-    ] = False,
-    init_global: Annotated[
-        bool,
-        typer.Option("--init-global", "--init-config", help="Create global config"),
-    ] = False,
-    with_rebase: Annotated[
-        bool,
-        typer.Option("--with-rebase", help="Rebase before commit"),
-    ] = False,
     rebase_only: Annotated[
         bool,
         typer.Option("--rebase-only", help="Only rebase, don't run pipeline"),
     ] = False,
-    pause_on_exit: Annotated[
-        PauseOnExit,
-        typer.Option("--pause-on-exit", help="Pause before exit"),
-    ] = PauseOnExit.AUTO,
     generate_commit_msg: Annotated[
         bool,
         typer.Option("--generate-commit-msg", help="Generate commit message"),
@@ -410,14 +285,6 @@ def main(  # noqa: PLR0913 - Typer CLI callbacks require many options and branch
         bool,
         typer.Option("--show-commit-msg", help="Show commit message"),
     ] = False,
-    interactive: Annotated[
-        bool,
-        typer.Option("--interactive", "-i", help="Interactive mode"),
-    ] = False,
-    show_streaming_metrics: Annotated[
-        bool,
-        typer.Option("--show-streaming-metrics", help="Show streaming metrics"),
-    ] = False,
     git_user_name: Annotated[
         str | None,
         typer.Option("--git-user-name", help="Git user name for commits"),
@@ -425,10 +292,6 @@ def main(  # noqa: PLR0913 - Typer CLI callbacks require many options and branch
     git_user_email: Annotated[
         str | None,
         typer.Option("--git-user-email", help="Git user email for commits"),
-    ] = None,
-    preset: Annotated[
-        str | None,
-        typer.Option("--preset", help="Use preset configuration"),
     ] = None,
     version: Annotated[
         bool,

@@ -72,7 +72,7 @@ from ralph.workspace import FsWorkspace
 from ralph.workspace.scope import WorkspaceScope, resolve_workspace_scope
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterable
+    from collections.abc import Callable, Iterable, Iterator
 
     from ralph.agents.executor import AgentExecutor
     from ralph.agents.invoke import InvokeOptions
@@ -118,6 +118,21 @@ _MAX_TOOL_RESULT_BRIEF = 80
 _TOOL_RESULT_BRIEF_THRESHOLD = 500
 _MAX_METADATA_SUMMARY_LENGTH = 120
 _LEGACY_EXECUTE_EFFECT_ARITY = 3
+_DEFAULT_AGENT_IDLE_TIMEOUT_SECONDS = 120.0
+_AGENT_IDLE_TIMEOUT_ENV = "RALPH_AGENT_IDLE_TIMEOUT_SECONDS"
+_RECOVERY_CONTEXT_LINES = 12
+_TRANSIENT_CONNECTIVITY_MARKERS = (
+    "connection refused",
+    "network is unreachable",
+    "temporary failure in name resolution",
+    "name or service not known",
+    "timed out",
+    "timeout",
+    "offline",
+    "econnreset",
+    "enotfound",
+    "socket hang up",
+)
 _EVENT_DECISION_LABELS: dict[PipelineEvent, str] = {
     PipelineEvent.ANALYSIS_SUCCESS: "approved",
     PipelineEvent.ANALYSIS_LOOPBACK: "needs changes",
@@ -173,6 +188,13 @@ class _AgentExecutionDeps:
     invoke_agent: _InvokeAgentFn
     agent_invocation_error: type[Exception]
     agent_registry: _AgentRegistryFactory
+
+
+@dataclass(frozen=True)
+class _AgentRecoveryPlan:
+    prompt_file: str
+    session_id: str | None
+    reason: str
 
 
 def _write_start_commit_if_absent(workspace_root: Path) -> None:
@@ -267,7 +289,7 @@ class _LegacyConsoleDisplay:
     def __enter__(self) -> _LegacyConsoleDisplay:
         return self
 
-    def __exit__(self, exc_type: object, exc_val: object, exc_tb: object) -> None:
+    def __exit__(self, _exc_type: object, _exc_val: object, _exc_tb: object) -> None:
         return None
 
     def emit(self, unit_id: str | None, line: Text | str) -> None:
@@ -347,13 +369,20 @@ def _execute_effect_with_optional_display(
     return _execute_effect(effect, config, workspace_scope, display)
 
 
+def _notify_dashboard_subscriber(
+    dashboard_subscriber: _PipelineSubscriber | None,
+    state: PipelineState,
+) -> None:
+    if dashboard_subscriber is None:
+        return
+    dashboard_subscriber.notify(state)
+
+
 def _notify_pipeline_subscriber(
     pipeline_subscriber: _PipelineSubscriber | None,
     state: PipelineState,
 ) -> None:
-    if pipeline_subscriber is None:
-        return
-    pipeline_subscriber.notify(state)
+    _notify_dashboard_subscriber(pipeline_subscriber, state)
 
 
 def _phase_context(state: PipelineState, previous_phase: str) -> dict[str, object]:
@@ -448,17 +477,23 @@ def _emit_final_summary(
                 prompt_preview=(),
                 run_id=None,
             )
-        emit_completion_summary(console, snapshot, workspace_root=workspace_root, dropped_count=dropped_count)
+        emit_completion_summary(
+            console,
+            snapshot,
+            workspace_root=workspace_root,
+            dropped_count=dropped_count,
+        )
     except Exception:
         logger.debug("Failed to emit completion summary", exc_info=True)
 
 
-def run(  # noqa: PLR0912, PLR0915
+def run(  # noqa: PLR0912, PLR0913, PLR0915
     config: UnifiedConfig,
     initial_state: PipelineState | None = None,
     display: ParallelDisplay | None = None,
     pipeline_subscriber: _PipelineSubscriber | None = None,
     *,
+    dashboard_subscriber: _PipelineSubscriber | None = None,
     verbosity: Verbosity | None = None,
 ) -> int:
     """Execute the pipeline event loop.
@@ -508,8 +543,9 @@ def run(  # noqa: PLR0912, PLR0915
     else:
         active_display = _build_default_display(workspace_scope.root)
 
-    if pipeline_subscriber is None and hasattr(active_display, "subscriber"):
-        pipeline_subscriber = cast(
+    effective_pipeline_subscriber = dashboard_subscriber or pipeline_subscriber
+    if effective_pipeline_subscriber is None and hasattr(active_display, "subscriber"):
+        effective_pipeline_subscriber = cast(
             "_PipelineSubscriber | None",
             getattr(active_display, "subscriber", None),
         )
@@ -518,7 +554,7 @@ def run(  # noqa: PLR0912, PLR0915
     _prev_phase = state.phase
     try:
         with active_display:
-            _notify_pipeline_subscriber(pipeline_subscriber, state)
+            _notify_pipeline_subscriber(effective_pipeline_subscriber, state)
             try:
                 while state.phase not in (PHASE_COMPLETE, PHASE_FAILED):
                     effect = _call_determine_effect_from_policy(
@@ -530,7 +566,7 @@ def run(  # noqa: PLR0912, PLR0915
                         pipeline_policy=policy_bundle.pipeline,
                         workspace_scope=workspace_scope,
                         display=active_display,
-                        pipeline_subscriber=pipeline_subscriber,
+                        pipeline_subscriber=effective_pipeline_subscriber,
                     )
                     if inline_result is not None:
                         if isinstance(inline_result, int):
@@ -551,7 +587,7 @@ def run(  # noqa: PLR0912, PLR0915
                             display=active_display,
                             policy_bundle=policy_bundle,
                             workspace_scope=workspace_scope,
-                            pipeline_subscriber=pipeline_subscriber,
+                            pipeline_subscriber=effective_pipeline_subscriber,
                         )
                         _prev_phase = _emit_phase_transition_if_changed(
                             active_display,
@@ -594,7 +630,7 @@ def run(  # noqa: PLR0912, PLR0915
                         )
 
                     state, _ = reducer_reduce(state, event, policy_bundle.pipeline)
-                    _notify_pipeline_subscriber(pipeline_subscriber, state)
+                    _notify_pipeline_subscriber(effective_pipeline_subscriber, state)
                     ckpt.save(state)
                     _prev_phase = _emit_phase_transition_if_changed(
                         active_display,
@@ -623,7 +659,7 @@ def run(  # noqa: PLR0912, PLR0915
         _emit_final_summary(
             state,
             workspace_scope.root,
-            subscriber=cast("PipelineSubscriber | None", pipeline_subscriber),
+            subscriber=cast("PipelineSubscriber | None", effective_pipeline_subscriber),
         )
     return exit_code
 
@@ -636,6 +672,7 @@ def _execute_fan_out_sync(  # noqa: PLR0913
     policy_bundle: PolicyBundle,
     workspace_scope: WorkspaceScope,
     pipeline_subscriber: _PipelineSubscriber | None = None,
+    dashboard_subscriber: _PipelineSubscriber | None = None,
 ) -> PipelineState:
     """Execute fan-out development synchronously by wrapping asyncio.run()."""
     import asyncio  # noqa: PLC0415
@@ -657,7 +694,7 @@ def _execute_fan_out_sync(  # noqa: PLR0913
     pd: _ParallelDisplay = (
         display if isinstance(display, _ParallelDisplay) else _ParallelDisplay(console)
     )
-    effective_pipeline_subscriber = pipeline_subscriber
+    effective_pipeline_subscriber = dashboard_subscriber or pipeline_subscriber
     if effective_pipeline_subscriber is None and hasattr(pd, "subscriber"):
         effective_pipeline_subscriber = cast(
             "_PipelineSubscriber | None",
@@ -755,11 +792,14 @@ def _handle_inline_effect(  # noqa: PLR0913
     workspace_scope: WorkspaceScope,
     display: ParallelDisplay | _LegacyConsoleDisplay | None = None,
     pipeline_subscriber: _PipelineSubscriber | None = None,
+    dashboard_subscriber: _PipelineSubscriber | None = None,
 ) -> PipelineState | int | None:
+    effective_pipeline_subscriber = dashboard_subscriber or pipeline_subscriber
+
     if isinstance(effect, SaveCheckpointEffect):
         ckpt.save(state)
         new_state, _ = reducer_reduce(state, PipelineEvent.CHECKPOINT_SAVED, pipeline_policy)
-        _notify_pipeline_subscriber(pipeline_subscriber, new_state)
+        _notify_pipeline_subscriber(effective_pipeline_subscriber, new_state)
         return new_state
 
     if isinstance(effect, PreparePromptEffect):
@@ -770,7 +810,7 @@ def _handle_inline_effect(  # noqa: PLR0913
             current_drain=effect.drain or resolve_phase_drain(effect.phase, pipeline_policy),
         )
         ckpt.save(updated_state)
-        _notify_pipeline_subscriber(pipeline_subscriber, updated_state)
+        _notify_pipeline_subscriber(effective_pipeline_subscriber, updated_state)
         return updated_state
 
     if isinstance(effect, ExitSuccessEffect):
@@ -1203,56 +1243,216 @@ def _execute_agent_effect(  # noqa: PLR0913
     if display is None or isinstance(display, _LegacyConsoleDisplay):
         show_phase_start(effect.phase, agent_name=effect.agent_name, console=console)
 
-    bridge = None
-    try:
-        from ralph.agents.invoke import InvokeOptions  # noqa: PLC0415
+    from ralph.agents.invoke import (  # noqa: PLC0415
+        AgentInactivityTimeoutError,
+        InvokeOptions,
+        extract_session_id,
+    )
 
-        session = AgentSession(
-            session_id=f"{effect.phase}-{uuid.uuid4().hex[:8]}",
-            run_id=str(uuid.uuid4()),
-            drain=effect.drain or effect.phase,
-            capabilities=_default_mcp_capabilities_for_phase(effect.drain or effect.phase),
-        )
-        workspace = FsWorkspace(
-            workspace_scope.root,
-            allowed_roots=workspace_scope.allowed_roots,
-        )
-        bridge = start_mcp_server(session, workspace)
+    attempt_prompt_file = effect.prompt_file
+    resume_session_id: str | None = None
+    max_recovery_attempts = _same_agent_recovery_attempts(config)
 
-        options = InvokeOptions(
-            verbose=config.general.verbosity >= _VERBOSE_LOG_LEVEL,
-            show_progress=False,
-            workspace_path=workspace_scope.root,
-            extra_env={
-                MCP_ENDPOINT_ENV: bridge.agent_endpoint_uri(),
-                MCP_RUN_ID_ENV: session.run_id,
-            },
-            system_prompt_file=materialize_system_prompt(
-                workspace_root=workspace_scope.root,
-                name=str(effect.phase),
-            ),
-        )
-        output_lines = deps.invoke_agent(agent_config, effect.prompt_file, options=options)
-        if _verbosity_rank(verbosity) >= _VERBOSITY_RANK[Verbosity.NORMAL]:
-            _stream_parsed_agent_activity(
-                output_lines,
-                str(agent_config.json_parser),
-                effect.agent_name,
-                display,
+    for attempt_index in range(max_recovery_attempts + 1):
+        bridge = None
+        raw_output: list[str] = []
+        rendered_output: list[str] = []
+        try:
+            session = AgentSession(
+                session_id=f"{effect.phase}-{uuid.uuid4().hex[:8]}",
+                run_id=str(uuid.uuid4()),
+                drain=effect.drain or effect.phase,
+                capabilities=_default_mcp_capabilities_for_phase(effect.drain or effect.phase),
             )
-        else:
-            for _ in output_lines:
-                pass
-    except deps.agent_invocation_error as exc:
-        logger.error("Agent invocation failed: {}", exc)
-        return PipelineEvent.AGENT_FAILURE
-    except Exception:
-        logger.exception("Unexpected error during agent invocation: {}")
-        return PipelineEvent.AGENT_FAILURE
-    finally:
-        if bridge is not None:
-            shutdown_mcp_server(bridge)
-    return PipelineEvent.AGENT_SUCCESS
+            workspace = FsWorkspace(
+                workspace_scope.root,
+                allowed_roots=workspace_scope.allowed_roots,
+            )
+            bridge = start_mcp_server(session, workspace)
+
+            options = InvokeOptions(
+                verbose=config.general.verbosity >= _VERBOSE_LOG_LEVEL,
+                show_progress=False,
+                workspace_path=workspace_scope.root,
+                extra_env={
+                    MCP_ENDPOINT_ENV: bridge.agent_endpoint_uri(),
+                    MCP_RUN_ID_ENV: session.run_id,
+                },
+                idle_timeout_seconds=_agent_idle_timeout_seconds(),
+                session_id=resume_session_id,
+                system_prompt_file=materialize_system_prompt(
+                    workspace_root=workspace_scope.root,
+                    name=str(effect.phase),
+                ),
+            )
+            output_lines = deps.invoke_agent(agent_config, attempt_prompt_file, options=options)
+            if _verbosity_rank(verbosity) >= _VERBOSITY_RANK[Verbosity.NORMAL]:
+                _stream_parsed_agent_activity(
+                    output_lines,
+                    str(agent_config.json_parser),
+                    effect.agent_name,
+                    display,
+                    raw_output_sink=raw_output,
+                    rendered_output_sink=rendered_output,
+                )
+            else:
+                raw_output.extend(str(line) for line in output_lines)
+            return PipelineEvent.AGENT_SUCCESS
+        except deps.agent_invocation_error as exc:
+            recovery_plan = _build_agent_recovery_plan(
+                exc=exc,
+                attempt_index=attempt_index,
+                max_recovery_attempts=max_recovery_attempts,
+                effect=effect,
+                workspace_root=workspace_scope.root,
+                raw_output=raw_output,
+                rendered_output=rendered_output,
+                extracted_session_id=extract_session_id(raw_output),
+                inactivity_error_type=AgentInactivityTimeoutError,
+            )
+            if recovery_plan is None:
+                logger.error("Agent invocation failed: {}", exc)
+                return PipelineEvent.AGENT_FAILURE
+            logger.warning(
+                "Retrying agent '{}' after {} ({}/{})",
+                effect.agent_name,
+                recovery_plan.reason,
+                attempt_index + 1,
+                max_recovery_attempts,
+            )
+            attempt_prompt_file = recovery_plan.prompt_file
+            resume_session_id = recovery_plan.session_id
+        except Exception:
+            logger.exception("Unexpected error during agent invocation: {}")
+            return PipelineEvent.AGENT_FAILURE
+        finally:
+            if bridge is not None:
+                shutdown_mcp_server(bridge)
+    return PipelineEvent.AGENT_FAILURE
+
+
+def _same_agent_recovery_attempts(config: UnifiedConfig) -> int:
+    raw = cast("object", getattr(config.general, "max_same_agent_retries", 1))
+    return raw if isinstance(raw, int) and raw >= 0 else 1
+
+
+def _agent_idle_timeout_seconds() -> float | None:
+    raw = os.environ.get(_AGENT_IDLE_TIMEOUT_ENV)
+    if raw is None:
+        return _DEFAULT_AGENT_IDLE_TIMEOUT_SECONDS
+    try:
+        parsed = float(raw)
+    except ValueError:
+        return _DEFAULT_AGENT_IDLE_TIMEOUT_SECONDS
+    return parsed if parsed > 0 else None
+
+
+def _build_agent_recovery_plan(  # noqa: PLR0913
+    *,
+    exc: Exception,
+    attempt_index: int,
+    max_recovery_attempts: int,
+    effect: InvokeAgentEffect,
+    workspace_root: Path,
+    raw_output: list[str],
+    rendered_output: list[str],
+    extracted_session_id: str | None,
+    inactivity_error_type: type[Exception],
+) -> _AgentRecoveryPlan | None:
+    if attempt_index >= max_recovery_attempts:
+        return None
+
+    reason = _retryable_agent_failure_reason(exc, inactivity_error_type)
+    if reason is None:
+        return None
+
+    if extracted_session_id:
+        return _AgentRecoveryPlan(
+            prompt_file=effect.prompt_file,
+            session_id=extracted_session_id,
+            reason=reason,
+        )
+
+    return _AgentRecoveryPlan(
+        prompt_file=_write_agent_retry_prompt(
+            workspace_root=workspace_root,
+            prompt_file=effect.prompt_file,
+            reason=reason,
+            context_lines=_recovery_context_lines(exc, raw_output, rendered_output),
+        ),
+        session_id=None,
+        reason=reason,
+    )
+
+
+def _retryable_agent_failure_reason(
+    exc: Exception,
+    inactivity_error_type: type[Exception],
+) -> str | None:
+    if isinstance(exc, inactivity_error_type):
+        return "an inactivity timeout"
+
+    details = "\n".join(_recovery_error_parts(exc)).lower()
+    for marker in _TRANSIENT_CONNECTIVITY_MARKERS:
+        if marker in details:
+            return "a transient connectivity failure"
+    return None
+
+
+def _recovery_error_parts(exc: Exception) -> list[str]:
+    parts: list[str] = [str(exc)]
+    stderr = cast("object", getattr(exc, "stderr", None))
+    if isinstance(stderr, str) and stderr.strip():
+        parts.append(stderr.strip())
+    parsed_output = cast("object", getattr(exc, "parsed_output", None))
+    if isinstance(parsed_output, list):
+        parts.extend(str(item).strip() for item in parsed_output if str(item).strip())
+    return parts
+
+
+def _recovery_context_lines(
+    exc: Exception,
+    raw_output: list[str],
+    rendered_output: list[str],
+) -> list[str]:
+    if rendered_output:
+        return rendered_output[-_RECOVERY_CONTEXT_LINES:]
+
+    parsed_output = cast("object", getattr(exc, "parsed_output", None))
+    if isinstance(parsed_output, list) and parsed_output:
+        return [str(item) for item in parsed_output[-_RECOVERY_CONTEXT_LINES:]]
+
+    stripped_raw = [line.strip() for line in raw_output if line.strip()]
+    return stripped_raw[-_RECOVERY_CONTEXT_LINES:]
+
+
+def _write_agent_retry_prompt(
+    *,
+    workspace_root: Path,
+    prompt_file: str,
+    reason: str,
+    context_lines: list[str],
+) -> str:
+    prompt_path = Path(prompt_file)
+    base_prompt = prompt_path.read_text(encoding="utf-8") if prompt_path.exists() else ""
+    prompt_dir = workspace_root / ".agent" / "tmp"
+    prompt_dir.mkdir(parents=True, exist_ok=True)
+    retry_prompt_path = prompt_dir / f"agent_retry_{uuid.uuid4().hex}.md"
+    summary = "\n".join(context_lines) if context_lines else "(no output captured)"
+    retry_prompt_path.write_text(
+        (
+            f"{base_prompt}\n\n"
+            "RETRY CONTEXT:\n"
+            f"The previous attempt ended because of {reason}.\n"
+            "Treat this as an infrastructure interruption, not a new user request.\n"
+            "Resume from the current workspace state instead of starting over.\n"
+            "Review the latest files and prior output summary before continuing.\n"
+            "Previous output summary:\n"
+            f"{summary}\n"
+        ),
+        encoding="utf-8",
+    )
+    return str(retry_prompt_path)
 
 
 def _default_mcp_capabilities_for_phase(phase: str) -> set[str]:
@@ -1360,18 +1560,30 @@ def _record_activity_on_subscriber(
         logger.debug("subscriber.record_activity failed", exc_info=True)
 
 
-def _stream_parsed_agent_activity(
+def _stream_parsed_agent_activity(  # noqa: PLR0913
     lines: Iterable[object],
     parser_type: str,
     agent_name: str,
     display: ParallelDisplay | _LegacyConsoleDisplay | None = None,
+    *,
+    raw_output_sink: list[str] | None = None,
+    rendered_output_sink: list[str] | None = None,
 ) -> None:
     parser = _resolve_parser(parser_type)
-    str_lines = (str(line) for line in lines)
+
+    def _iter_lines() -> Iterator[str]:
+        for line in lines:
+            text = str(line)
+            if raw_output_sink is not None:
+                raw_output_sink.append(text)
+            yield text
+
     subscriber = _subscriber_for_display(display)
-    for parsed_line in parser.parse(str_lines):
+    for parsed_line in parser.parse(_iter_lines()):
         rendered = _render_agent_activity_line(parsed_line, agent_name)
         if rendered is not None:
+            if rendered_output_sink is not None:
+                rendered_output_sink.append(rendered.plain)
             _emit_display_line(display, None, rendered)
         if subscriber is not None:
             _record_activity_on_subscriber(subscriber, parsed_line, rendered, agent_name)
@@ -1392,10 +1604,12 @@ def _truncate(text: str, max_length: int) -> str:
     return text[:max_length] + "…"
 
 
-def _render_agent_activity_line(output: AgentOutputLine, agent_name: str) -> Text | None:
+def _render_agent_activity_line(
+    output: AgentOutputLine, agent_name: str
+) -> Text | None:
     rendered: Text | None = None
 
-    if output.type == "text":
+    if output.type in {"text", "assistant", "result"}:
         content = output.content.strip()
         if content:
             rendered = _styled_prefix(agent_name, "white")
@@ -1428,18 +1642,15 @@ def _render_agent_activity_line(output: AgentOutputLine, agent_name: str) -> Tex
         error = output.content.strip() or "unknown error"
         rendered = _styled_prefix(f"{agent_name} ✗", "red")
         rendered.append(error, style="bold red")
-    elif output.type == "assistant":
-        # assistant messages may contain text content
-        content = output.content.strip()
-        if content:
-            rendered = _styled_prefix(agent_name, "dim")
-            rendered.append(content)
-    elif output.type == "result":
-        # result events sometimes contain final output
-        content = output.content.strip()
-        if content:
-            rendered = _styled_prefix(agent_name, "dim")
-            rendered.append(content)
+    else:
+        metadata_summary = _metadata_summary(output.metadata)
+        summary = (
+            output.type
+            if output.type in {"message_start", "stop"}
+            else metadata_summary or output.content.strip() or output.type
+        )
+        rendered = _styled_prefix(agent_name, "dim")
+        rendered.append(summary, style="dim")
 
     return rendered
 
@@ -1448,11 +1659,49 @@ def _tool_input_summary(metadata: dict[str, object]) -> str:
     if not metadata:
         return ""
     input_data = metadata.get("input")
-    if isinstance(input_data, dict) and "args" in input_data:
-        args = input_data["args"]
-        if isinstance(args, str) and args:
-            return args
-    return ""
+    if not isinstance(input_data, dict):
+        return ""
+
+    preferred_keys = ("command", "workdir", "path", "file_path", "pattern", "args")
+    parts: list[str] = []
+    seen: set[str] = set()
+    for key in preferred_keys:
+        value = _format_metadata_value(input_data.get(key))
+        if value:
+            parts.append(f"{key}={value}")
+            seen.add(key)
+    for key, value_obj in input_data.items():
+        if key in seen:
+            continue
+        value = _format_metadata_value(value_obj)
+        if value:
+            parts.append(f"{key}={value}")
+        if len(parts) >= _MAX_METADATA_PARTS:
+            break
+    return ", ".join(parts)
+
+
+def _metadata_summary(metadata: dict[str, object]) -> str:
+    if not metadata:
+        return ""
+
+    preferred_keys = ("status", "summary", "phase", "decision", "message", "event")
+    parts: list[str] = []
+    seen: set[str] = set()
+    for key in preferred_keys:
+        value = _format_metadata_value(metadata.get(key))
+        if value:
+            parts.append(f"{key}={value}")
+            seen.add(key)
+    for key, value_obj in metadata.items():
+        if key in seen or key == "input":
+            continue
+        value = _format_metadata_value(value_obj)
+        if value:
+            parts.append(f"{key}={value}")
+        if len(parts) >= _MAX_METADATA_PARTS:
+            break
+    return _truncate(" ".join(parts), _MAX_METADATA_SUMMARY_LENGTH)
 
 
 def _format_metadata_value(value: object) -> str | None:
@@ -1466,7 +1715,7 @@ def _format_metadata_value(value: object) -> str | None:
 def _styled_prefix(label: str, style: str) -> Text:
     """Create a styled prefix for activity lines."""
     text = Text()
-    text.append(f"[{label}] ", style=f"bold {style}")
+    text.append(f"{label}: ", style=f"bold {style}")
     return text
 
 

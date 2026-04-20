@@ -12,11 +12,14 @@ Key features:
 
 from __future__ import annotations
 
+import json
 import os
 import shlex
 import subprocess
 import sys
 import threading
+import time
+from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
@@ -49,6 +52,15 @@ from ralph.mcp.startup import (
 from ralph.mcp.tool_names import claude_tool_name
 
 _MODELED_FLAG_PARTS = 2
+_IDLE_POLL_INTERVAL_SECONDS = 0.05
+
+
+class _IdleStreamTimeoutError(RuntimeError):
+    """Raised when an agent process stops producing output for too long."""
+
+    def __init__(self, timeout_seconds: float) -> None:
+        self.timeout_seconds = timeout_seconds
+        super().__init__(f"Agent produced no output for {timeout_seconds:.0f}s")
 
 
 @dataclass(frozen=True)
@@ -60,8 +72,9 @@ class InvokeOptions:
         session_id: Optional session identifier for resume-capable agents.
         verbose: Whether to pass verbose flag to agent.
         show_progress: Whether to show tqdm progress bar.
-    workspace_path: Optional path to workspace for file-change monitoring.
-    extra_env: Optional environment overrides for the subprocess.
+        workspace_path: Optional path to workspace for file-change monitoring.
+        extra_env: Optional environment overrides for the subprocess.
+        idle_timeout_seconds: Optional maximum idle time without agent output.
     """
 
     model_flag: str | None = None
@@ -70,6 +83,7 @@ class InvokeOptions:
     show_progress: bool = True
     workspace_path: Path | None = None
     extra_env: dict[str, str] | None = None
+    idle_timeout_seconds: float | None = None
     pure: bool = False
     system_prompt_file: str | None = None
 
@@ -120,7 +134,7 @@ class _HasSrcPath(Protocol):
 class _ObserverProtocol(_HasStop, Protocol):
     """Protocol for watchdog Observer-like objects used by this module."""
 
-    def schedule(self, event_handler: object, path: str, *, recursive: bool = False) -> None: ...
+    def schedule(self, _event_handler: object, path: str, **kwargs: object) -> None: ...
     def start(self) -> None: ...
 
 
@@ -164,8 +178,57 @@ class AgentInvocationError(Exception):
         return ""
 
 
+class AgentInactivityTimeoutError(AgentInvocationError):
+    """Raised when an agent stalls without producing output."""
+
+    def __init__(
+        self,
+        agent_name: str,
+        timeout_seconds: float,
+        parsed_output: list[str] | None = None,
+    ) -> None:
+        self.timeout_seconds = timeout_seconds
+        super().__init__(
+            agent_name,
+            -1,
+            f"Agent produced no output for {timeout_seconds:.0f}s",
+            parsed_output,
+        )
+
+
 class UnsupportedMcpTransportError(RuntimeError):
     """Raised when MCP-backed execution is requested for an unsupported transport."""
+
+
+def extract_session_id(raw_output: list[str]) -> str | None:
+    """Extract a nested session identifier from raw NDJSON output lines."""
+    for line in raw_output:
+        try:
+            parsed = cast("object", json.loads(line))
+        except json.JSONDecodeError:
+            continue
+        session_id = _find_session_id(parsed)
+        if session_id:
+            return session_id
+    return None
+
+
+def _find_session_id(value: object) -> str | None:
+    if isinstance(value, dict):
+        for key in ("session_id", "sessionId"):
+            session_id = value.get(key)
+            if isinstance(session_id, str) and session_id:
+                return session_id
+        for nested in value.values():
+            session_id = _find_session_id(nested)
+            if session_id:
+                return session_id
+    if isinstance(value, list):
+        for item in value:
+            session_id = _find_session_id(item)
+            if session_id:
+                return session_id
+    return None
 
 
 class WorkspaceMonitor:
@@ -294,6 +357,7 @@ def invoke_agent(
             opts.show_progress,
             runtime_env,
             opts.workspace_path,
+            idle_timeout_seconds=opts.idle_timeout_seconds,
         )
         yield from lines_iter
 
@@ -318,12 +382,14 @@ def _start_workspace_monitor(workspace_path: Path | None) -> WorkspaceMonitor | 
     return monitor
 
 
-def _run_subprocess_and_read_lines(
+def _run_subprocess_and_read_lines(  # noqa: PLR0913
     cmd: list[str],
     config: AgentConfig,
     show_progress: bool,
     extra_env: dict[str, str] | None,
     workspace_path: Path | None,
+    *,
+    idle_timeout_seconds: float | None = None,
 ) -> Iterator[str]:
     """Run subprocess and yield output lines.
 
@@ -348,7 +414,7 @@ def _run_subprocess_and_read_lines(
             msg = "Failed to capture stdout"
             raise AgentInvocationError(_agent_command_name(config), -1, msg)
 
-        lines_iter = _read_lines_from_process(proc)
+        lines_iter = _read_lines_from_process(proc, idle_timeout_seconds=idle_timeout_seconds)
         parsed_output: list[str] = []
         if show_progress:
             agent_name = _agent_command_name(config)
@@ -362,13 +428,27 @@ def _run_subprocess_and_read_lines(
                     file=sys.stdout,
                 ),
             )
-            for line in progress_iter:
-                parsed_output.append(line.rstrip())
-                yield line
+            try:
+                for line in progress_iter:
+                    parsed_output.append(line.rstrip())
+                    yield line
+            except _IdleStreamTimeoutError as exc:
+                raise AgentInactivityTimeoutError(
+                    _agent_command_name(config),
+                    exc.timeout_seconds,
+                    parsed_output,
+                ) from exc
         else:
-            for line in lines_iter:
-                parsed_output.append(line.rstrip())
-                yield line
+            try:
+                for line in lines_iter:
+                    parsed_output.append(line.rstrip())
+                    yield line
+            except _IdleStreamTimeoutError as exc:
+                raise AgentInactivityTimeoutError(
+                    _agent_command_name(config),
+                    exc.timeout_seconds,
+                    parsed_output,
+                ) from exc
 
         proc.wait()
         _check_process_result(proc, _agent_command_name(config), parsed_output)
@@ -444,11 +524,16 @@ def _agent_command_name(config: AgentConfig) -> str:
     return config.cmd.split()[0]
 
 
-def _read_lines_from_process(proc: subprocess.Popen[str]) -> Iterator[str]:
+def _read_lines_from_process(
+    proc: subprocess.Popen[str],
+    *,
+    idle_timeout_seconds: float | None = None,
+) -> Iterator[str]:
     """Read lines from subprocess stdout in a background thread.
 
     Args:
         proc: Running subprocess.
+        idle_timeout_seconds: Optional maximum idle time without output.
 
     Yields:
         Lines from stdout.
@@ -456,6 +541,7 @@ def _read_lines_from_process(proc: subprocess.Popen[str]) -> Iterator[str]:
     lines_queue: list[str] = []
     lines_lock = threading.Lock()
     lines_event = threading.Event()
+    last_activity = time.monotonic()
 
     def read_lines_thread() -> None:
         if proc.stdout is None:
@@ -473,15 +559,61 @@ def _read_lines_from_process(proc: subprocess.Popen[str]) -> Iterator[str]:
     reader.start()
 
     while True:
+        queued_line: str | None = None
         with lines_lock:
             if lines_queue:
-                yield lines_queue.pop(0)
-            elif lines_event.is_set():
-                break
-            else:
-                continue
+                queued_line = lines_queue.pop(0)
+
+        if queued_line is not None:
+            last_activity = time.monotonic()
+            yield queued_line
+            continue
+
+        if lines_event.is_set():
+            break
+
+        if (
+            idle_timeout_seconds is not None
+            and time.monotonic() - last_activity >= idle_timeout_seconds
+        ):
+            _terminate_subprocess(proc)
+            raise _IdleStreamTimeoutError(idle_timeout_seconds)
+
+        lines_event.wait(_IDLE_POLL_INTERVAL_SECONDS)
 
     reader.join(timeout=10)
+
+
+def _terminate_subprocess(proc: subprocess.Popen[str]) -> None:
+    if _process_poll(proc) is not None:
+        return
+
+    with suppress(Exception):
+        proc.terminate()
+    _process_wait(proc, timeout=1)
+
+    if _process_poll(proc) is not None:
+        return
+
+    with suppress(Exception):
+        proc.kill()
+
+
+
+def _process_poll(proc: subprocess.Popen[str]) -> int | None:
+    with suppress(Exception):
+        return proc.poll()
+    return None
+
+
+
+def _process_wait(proc: subprocess.Popen[str], *, timeout: float) -> None:
+    try:
+        proc.wait(timeout=timeout)
+    except TypeError:
+        return
+    except Exception:
+        return
 
 
 def _log_workspace_completion(monitor: WorkspaceMonitor | None) -> None:
