@@ -48,6 +48,11 @@ Every git commit in this repository must be created with `ralph --generate-commi
 
 This rule is mandatory so commit generation is continuously dogfooded in real development.
 
+## Absolutely Zero Dead code
+
+Zero tolerance for any type of dead code. This is not negotiable, it is **INFINITELY BETTER** to rewrite dead code if we need to later on 
+than it is to leave dead code around. If in doubt, **REMOVE IT**.
+
 ## Verification
 
 Before completion, run the required checks from `docs/agents/verification.md`:

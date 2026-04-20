@@ -24,6 +24,14 @@ Run this before opening or updating a PR:
 make verify
 ```
 
+The dead-code audit is available separately while the existing dead-code backlog is still being cleaned up:
+
+```bash
+make dead-code
+```
+
+`make dead-code` uses Vulture and is expected to fail until the repo is fully cleaned. Keep it separate from `make verify` for now so the tooling can be validated without blocking unrelated work.
+
 You can narrow failures with:
 
 ```bash

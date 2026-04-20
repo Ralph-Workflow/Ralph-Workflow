@@ -62,6 +62,14 @@ That runs:
 - `mypy ralph/`
 - `pytest tests/ -v --cov=ralph --cov-report=term-missing --cov-report=html`
 
+For the dead-code policy tooling, run the separate Vulture audit:
+
+```bash
+make dead-code
+```
+
+It is intentionally separate from `make verify` while the current dead-code backlog still exists; today the command proves the scanner wiring by failing on the code that still needs cleanup.
+
 ## Package map
 
 - `ralph/cli/` — Typer CLI entry points and command plumbing

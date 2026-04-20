@@ -49,6 +49,7 @@ dev = [
     "pytest-cov>=4.0",
     "pytest-xdist>=3.6",
     "pydantic>=2.7",
+    "vulture>=2.16",
 ]
 web-search = [
     "tavily-python>=0.7.23",
@@ -109,6 +110,11 @@ select = ["E", "F", "W", "I", "N", "UP", "ANN", "B", "C4", "SIM", "RUF", "TCH", 
 [tool.ruff.format]
 quote-style = "double"
 indent-style = "space"
+
+[tool.vulture]
+paths = ["ralph", "tests"]
+min_confidence = 100
+sort_by_size = true
 
 [tool.mypy]
 strict = true

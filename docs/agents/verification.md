@@ -18,6 +18,17 @@ If any step fails, fix the issue immediately and rerun verification.
 
 ---
 
+## Dead-code audit
+
+```bash
+cd ralph-workflow
+make dead-code
+```
+
+`make dead-code` runs Vulture with the repository's `pyproject.toml` configuration and is intentionally separate from `make verify` while the repo still contains known dead code. Today it is a validation and cleanup command: the expected behavior is a non-zero exit until the backlog is removed.
+
+---
+
 ## Individual commands (when narrowing failures)
 
 ```bash
