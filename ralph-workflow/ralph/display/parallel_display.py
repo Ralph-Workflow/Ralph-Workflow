@@ -9,7 +9,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
 from ralph.display.mode import NARROW_THRESHOLD, detect_mode
-from ralph.display.phase_banner import show_phase_transition
 from ralph.display.plain_renderer import PlainLogRenderer
 from ralph.display.subscriber import PipelineSubscriber
 from ralph.display.theme import make_console as _make_console
@@ -93,18 +92,6 @@ class ParallelDisplay:
     def set_status(self, unit_id: str, status: WorkerStatus) -> None:
         self._plain_renderer.emit_status_line(unit_id, str(status))
 
-    def emit_phase_transition(
-        self,
-        from_phase: str,
-        to_phase: str,
-        context: dict[str, object] | None = None,
-    ) -> None:
-        show_phase_transition(from_phase, to_phase, context=context, console=self._console)
-        try:
-            self._subscriber.record_phase_transition(from_phase, to_phase)
-        except Exception:
-            return None
-
     def emit_analysis_result(
         self,
         phase: str,
@@ -117,6 +104,11 @@ class ParallelDisplay:
             self._subscriber.record_analysis(phase, decision, reason)
         except Exception:
             return None
+
+    @property
+    def console(self) -> Console:
+        """Expose console for external renderers."""
+        return self._console
 
     def __enter__(self) -> ParallelDisplay:
         self.start()

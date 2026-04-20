@@ -27,7 +27,9 @@ class OpenCodeParser:
     - Iterator exhaustion (final flush via ``_flush_all_accumulators()``)
     """
 
-    _STOP_EVENT_TYPES: Final[frozenset[str]] = frozenset({"step_start", "step_finish", "done"})
+    _STOP_EVENT_TYPES: Final[frozenset[str]] = frozenset(
+        {"step_start", "step_finish", "done"}
+    )
 
     def __init__(self) -> None:
         # Accumulator keyed by part id or synthetic stream key
@@ -131,10 +133,12 @@ class OpenCodeParser:
             parts = acc.buffer.split("\n\n", 1)
             remaining = parts[1]
             flushed_content = parts[0]
-            # Build raw from all but the last raw line (the \n\n line itself)
-            raw_parts = acc.raw_lines[: len(acc.raw_lines) - 1]
-            flushed_raw = "\n".join(raw_parts) if raw_parts else ""
-            yield AgentOutputLine(type="text", content=flushed_content, raw=flushed_raw)
+            # Only yield if there's actual content (skip empty flush at boundary)
+            if flushed_content:
+                # Build raw from all but the last raw line (the \n\n line itself)
+                raw_parts = acc.raw_lines[: len(acc.raw_lines) - 1]
+                flushed_raw = "\n".join(raw_parts) if raw_parts else ""
+                yield AgentOutputLine(type="text", content=flushed_content, raw=flushed_raw)
             # Reset for remaining content
             acc.buffer = remaining
             # If there's remaining content, keep raw_lines starting with current raw

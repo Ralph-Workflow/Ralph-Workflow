@@ -34,7 +34,7 @@ from ralph.config.enums import (
     PHASE_PLANNING,
     Verbosity,
 )
-from ralph.display.phase_banner import show_phase_start, show_phase_transition
+from ralph.display.phase_banner import show_phase_complete, show_phase_start, show_phase_transition
 from ralph.mcp.capability_mapping import DrainClass, drain_class_for_session
 from ralph.mcp.commit_message import (
     COMMIT_MESSAGE_ARTIFACT,
@@ -422,21 +422,18 @@ def _emit_phase_transition_if_changed(
     if _verbosity_rank(verbosity) <= _VERBOSITY_RANK[Verbosity.QUIET]:
         return state.phase
 
+    # Emit phase completion for the phase we're leaving
+    try:
+        show_phase_complete(previous_phase)
+    except Exception:  # pragma: no cover - defensive
+        logger.debug("show_phase_complete failed", exc_info=True)
+
+    # Emit transition to the new phase
     context = _phase_context(state, previous_phase) or None
-    if hasattr(display, "emit_phase_transition"):
-        try:
-            cast("ParallelDisplay", display).emit_phase_transition(
-                previous_phase,
-                state.phase,
-                context=context,
-            )
-        except Exception:  # pragma: no cover - defensive
-            logger.debug("display.emit_phase_transition failed", exc_info=True)
-    else:
-        try:
-            show_phase_transition(previous_phase, state.phase, context=context, console=console)
-        except Exception:  # pragma: no cover - defensive
-            logger.debug("show_phase_transition failed", exc_info=True)
+    try:
+        show_phase_transition(previous_phase, state.phase, context=context)
+    except Exception:  # pragma: no cover - defensive
+        logger.debug("show_phase_transition failed", exc_info=True)
     return state.phase
 
 
