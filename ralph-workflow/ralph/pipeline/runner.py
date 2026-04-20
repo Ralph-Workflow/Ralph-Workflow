@@ -975,6 +975,10 @@ def _create_initial_state(
             if pipeline_policy is not None
             else None
         ),
+        max_development_analysis_iterations=config.general.max_development_analysis_iterations,
+        max_review_analysis_iterations=config.general.max_review_analysis_iterations,
+        development_analysis_iteration=0,
+        review_analysis_iteration=0,
     )
 
 

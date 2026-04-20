@@ -140,6 +140,8 @@ class GeneralConfig(BaseModel):  # type: ignore[explicit-any]
         execution: Execution behavior flags (universal prompt, isolation mode).
         developer_iters: Number of developer iterations.
         reviewer_reviews: Number of reviewer re-review passes.
+        max_development_analysis_iterations: Max development analysis loop budget.
+        max_review_analysis_iterations: Max review analysis loop budget.
         developer_context: Developer context level.
         reviewer_context: Reviewer context level.
         review_depth: Review depth level.
@@ -166,6 +168,8 @@ class GeneralConfig(BaseModel):  # type: ignore[explicit-any]
     execution: GeneralExecutionFlags = Field(default_factory=GeneralExecutionFlags)
     developer_iters: int = Field(default=5, ge=1)
     reviewer_reviews: int = Field(default=2, ge=0)
+    max_development_analysis_iterations: int = Field(default=3, ge=0)
+    max_review_analysis_iterations: int = Field(default=2, ge=0)
     developer_context: int = Field(default=1, ge=1)
     reviewer_context: int = Field(default=0, ge=0)
     review_depth: ReviewDepth = ReviewDepth.STANDARD
