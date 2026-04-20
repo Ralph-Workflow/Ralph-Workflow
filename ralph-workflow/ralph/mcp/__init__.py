@@ -25,17 +25,17 @@ from ralph.mcp.artifacts import (
     submit_artifact,
     update_artifact,
 )
-from ralph.mcp.bridge import (
+from ralph.mcp.artifacts.bridge import (
     BridgeConfig,
     BridgeError,
     MCPBridge,
 )
-from ralph.mcp.startup import (
+from ralph.mcp.protocol.startup import (
     HeartbeatPolicy,
     SessionBridgeError,
     access_mode_for_drain,
 )
-from ralph.mcp.transport import (
+from ralph.mcp.protocol.transport import (
     MCPTransport,
     StdioTransport,
     TransportError,
@@ -82,7 +82,7 @@ _TOOL_BRIDGE_SYMBOLS = {
 
 def __getattr__(name: str) -> object:
     if name in _TOOL_BRIDGE_SYMBOLS:
-        module: ModuleType = import_module(".tool_bridge", __name__)
+        module: ModuleType = import_module(".tools.bridge", __name__)
         value = cast("object", getattr(module, name))
         module_globals = cast("dict[str, object]", globals())
         module_globals[name] = value
