@@ -2,13 +2,14 @@
 
 Gemini emits Server-Sent Events (SSE) where each event contains a JSON payload.
 This parser handles the SSE format and normalizes Gemini output to AgentOutputLine
-instances.
+instances with robust delta accumulation.
 """
 
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING, cast
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Final, cast
 
 from ralph.agents.parsers.base import AgentOutputLine
 
@@ -19,13 +20,28 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
 
 
+@dataclass
+class _TextAccumulator:
+    buffer: str = ""
+    raw_lines: list[str] = field(default_factory=list)
+
+
 class GeminiParser:
-    """Parser for Gemini's SSE+JSON streaming output.
+    """Parser for Gemini's SSE+JSON streaming output with robust delta accumulation.
 
     Gemini uses SSE with data: lines containing JSON payloads.
     Each payload has a "type" field indicating what kind of content it carries.
-    This parser normalizes these to AgentOutputLine instances.
+    Text deltas are accumulated into coherent blocks before emission, flushing on:
+    - ``done`` / ``stop`` / ``message_end`` (end of message)
+    - ``\\n\\n`` paragraph boundary (incremental surfacing of long responses)
+    - Iterator exhaustion (final flush via ``_flush_all_accumulators()``)
     """
+
+    _STOP_EVENT_TYPES: Final[frozenset[str]] = frozenset({"done", "stop", "message_end"})
+
+    def __init__(self) -> None:
+        # Single accumulator for gemini's sequential text streaming
+        self._text_accumulator: _TextAccumulator | None = None
 
     def parse(self, lines: Iterator[str]) -> Iterator[AgentOutputLine]:
         """Parse Gemini SSE streaming lines.
@@ -56,6 +72,9 @@ class GeminiParser:
 
             yield from self._parse_object(obj, stripped)
 
+        # Final flush: if iterator exhausted with pending accumulators, flush them all
+        yield from self._flush_all_accumulators()
+
     def _parse_object(self, obj: JsonDict, stripped: str) -> Iterator[AgentOutputLine]:
         """Parse a JSON object into AgentOutputLine instances.
 
@@ -68,6 +87,12 @@ class GeminiParser:
         """
         event_type = str(obj.get("type", obj.get("event", "unknown")))
 
+        # Handle stop events - flush accumulators first
+        if event_type in self._STOP_EVENT_TYPES:
+            yield from self._flush_all_accumulators()
+            yield AgentOutputLine(type="stop", raw=stripped, metadata=obj)
+            return
+
         if event_type in ("text", "content"):
             yield from self._parse_text_content(obj, stripped)
         elif event_type in ("block", "content_block"):
@@ -76,8 +101,6 @@ class GeminiParser:
             yield from self._parse_tool_call(obj, stripped)
         elif event_type in ("tool_result", "function_call"):
             yield from self._parse_tool_result(obj, stripped)
-        elif event_type in ("done", "stop", "message_end"):
-            yield AgentOutputLine(type="stop", raw=stripped)
         elif event_type in ("error", "error_details"):
             yield from self._parse_error(obj, stripped)
         elif event_type in ("candidate", "prompt_feedback"):
@@ -88,20 +111,66 @@ class GeminiParser:
             yield AgentOutputLine(type=event_type, raw=stripped, metadata=obj)
 
     def _parse_text_content(self, obj: JsonDict, stripped: str) -> Iterator[AgentOutputLine]:
-        """Parse text/content event."""
+        """Parse text/content event with delta accumulation."""
         content = self._extract_first_part_text(obj)
         if not content:
             content = str(obj.get("content", "") or obj.get("text", ""))
-        if content:
-            yield AgentOutputLine(type="text", content=content, raw=stripped)
+
+        if not content:
+            return
+
+        # Accumulate text deltas
+        if self._text_accumulator is None:
+            self._text_accumulator = _TextAccumulator()
+
+        acc = self._text_accumulator
+        acc.buffer += content
+        acc.raw_lines.append(stripped)
+
+        # Check for paragraph boundary - flush on \n\n
+        if "\n\n" in acc.buffer:
+            parts = acc.buffer.split("\n\n", 1)
+            remaining = parts[1]
+            flushed_content = parts[0]
+            # Build raw from all but the last raw line (the \n\n line itself)
+            raw_parts = acc.raw_lines[: len(acc.raw_lines) - 1]
+            flushed_raw = "\n".join(raw_parts) if raw_parts else ""
+            yield AgentOutputLine(type="text", content=flushed_content, raw=flushed_raw)
+            # Reset for remaining content
+            acc.buffer = remaining
+            # Always keep current line after \n\n for proper raw tracking
+            acc.raw_lines = [stripped]
 
     def _parse_block(self, obj: JsonDict, stripped: str) -> Iterator[AgentOutputLine]:
-        """Parse block/content_block event."""
+        """Parse block/content_block event with delta accumulation."""
         content = self._extract_first_part_text(obj)
         if not content:
             content = str(obj.get("content", ""))
-        if content:
-            yield AgentOutputLine(type="text", content=content, raw=stripped)
+
+        if not content:
+            return
+
+        # Accumulate text deltas
+        if self._text_accumulator is None:
+            self._text_accumulator = _TextAccumulator()
+
+        acc = self._text_accumulator
+        acc.buffer += content
+        acc.raw_lines.append(stripped)
+
+        # Check for paragraph boundary - flush on \n\n
+        if "\n\n" in acc.buffer:
+            parts = acc.buffer.split("\n\n", 1)
+            remaining = parts[1]
+            flushed_content = parts[0]
+            # Build raw from all but the last raw line (the \n\n line itself)
+            raw_parts = acc.raw_lines[: len(acc.raw_lines) - 1]
+            flushed_raw = "\n".join(raw_parts) if raw_parts else ""
+            yield AgentOutputLine(type="text", content=flushed_content, raw=flushed_raw)
+            # Reset for remaining content
+            acc.buffer = remaining
+            # Always keep current line after \n\n for proper raw tracking
+            acc.raw_lines = [stripped]
 
     def _parse_tool_call(self, obj: JsonDict, stripped: str) -> Iterator[AgentOutputLine]:
         """Parse tool_call/tool_use event."""
@@ -181,3 +250,21 @@ class GeminiParser:
                 part_dict = cast("JsonDict", first_part)
                 return str(part_dict.get("text", ""))
         return ""
+
+    def _flush_accumulator(self) -> Iterator[AgentOutputLine]:
+        """Flush the single text accumulator and clear it."""
+        if self._text_accumulator is None:
+            return
+
+        acc = self._text_accumulator
+        self._text_accumulator = None
+        buffer = acc.buffer
+        raw_lines = acc.raw_lines
+
+        if buffer:
+            raw_joined = "\n".join(raw_lines) if raw_lines else ""
+            yield AgentOutputLine(type="text", content=buffer, raw=raw_joined)
+
+    def _flush_all_accumulators(self) -> Iterator[AgentOutputLine]:
+        """Flush all pending accumulators on stop or iterator exhaustion."""
+        yield from self._flush_accumulator()

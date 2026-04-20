@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING, cast
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Final, cast
 
 from ralph.agents.parsers.base import AgentOutputLine
 
@@ -11,10 +12,28 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
 
 
-class OpenCodeParser:
-    """Parser for OpenCode's NDJSON streaming output."""
+@dataclass
+class _TextAccumulator:
+    buffer: str = ""
+    raw_lines: list[str] = field(default_factory=list)
 
-    _LIFECYCLE_EVENT_TYPES = frozenset({"step_start", "step_finish", "done"})
+
+class OpenCodeParser:
+    """Parser for OpenCode's NDJSON streaming output with robust delta accumulation.
+
+    Text deltas are accumulated into coherent blocks before emission, flushing on:
+    - ``step_finish`` / ``done`` (end of step/message)
+    - ``\\n\\n`` paragraph boundary (incremental surfacing of long responses)
+    - Iterator exhaustion (final flush via ``_flush_all_accumulators()``)
+    """
+
+    _STOP_EVENT_TYPES: Final[frozenset[str]] = frozenset({"step_start", "step_finish", "done"})
+
+    def __init__(self) -> None:
+        # Accumulator keyed by part id or synthetic stream key
+        self._text_accumulator: dict[str, _TextAccumulator] = {}
+        self._current_part_id: str | None = None
+        self._stream_counter = 0
 
     def parse(self, lines: Iterator[str]) -> Iterator[AgentOutputLine]:
         """Parse OpenCode streaming NDJSON lines."""
@@ -36,10 +55,30 @@ class OpenCodeParser:
             obj = cast("dict[str, object]", parsed)
             yield from self._parse_object(obj, stripped)
 
+        # Final flush: if iterator exhausted with pending accumulators, flush them all
+        yield from self._flush_all_accumulators()
+
     def _parse_object(self, obj: dict[str, object], stripped: str) -> Iterator[AgentOutputLine]:
         """Parse a JSON object into AgentOutputLine instances."""
         event_type = str(obj.get("type", "unknown"))
-        if event_type in self._LIFECYCLE_EVENT_TYPES:
+
+        # Handle lifecycle events
+        if event_type == "step_start":
+            # Track the step id for accumulator keying
+            step_id = str(obj.get("id", ""))
+            if step_id:
+                self._current_part_id = step_id
+            return
+        if event_type == "step_finish":
+            # Flush accumulators for this step
+            if self._current_part_id and self._current_part_id in self._text_accumulator:
+                yield from self._flush_accumulator(self._current_part_id)
+            self._current_part_id = None
+            return
+        if event_type == "done":
+            yield from self._flush_all_accumulators()
+            self._current_part_id = None
+            yield AgentOutputLine(type="stop", raw=stripped, metadata=obj)
             return
 
         part_obj = obj.get("part")
@@ -69,8 +108,38 @@ class OpenCodeParser:
         raw: str,
     ) -> Iterator[AgentOutputLine]:
         content = obj.get("content", "")
-        if isinstance(content, str) and content:
+        if not isinstance(content, str) or not content:
+            return
+
+        # Use part id for accumulator keying if available
+        part_id = self._current_part_id
+        if part_id is None:
+            # No active step context, yield immediately
             yield AgentOutputLine(type="text", content=content, raw=raw)
+            return
+
+        key = part_id
+        if key not in self._text_accumulator:
+            self._text_accumulator[key] = _TextAccumulator()
+
+        acc = self._text_accumulator[key]
+        acc.buffer += content
+        acc.raw_lines.append(raw)
+
+        # Check for paragraph boundary - flush on \n\n
+        if "\n\n" in acc.buffer:
+            parts = acc.buffer.split("\n\n", 1)
+            remaining = parts[1]
+            flushed_content = parts[0]
+            # Build raw from all but the last raw line (the \n\n line itself)
+            raw_parts = acc.raw_lines[: len(acc.raw_lines) - 1]
+            flushed_raw = "\n".join(raw_parts) if raw_parts else ""
+            yield AgentOutputLine(type="text", content=flushed_content, raw=flushed_raw)
+            # Reset for remaining content
+            acc.buffer = remaining
+            # If there's remaining content, keep raw_lines starting with current raw
+            # Always keep current line after \n\n for proper raw tracking
+            acc.raw_lines = [raw]
 
     def _parse_text(
         self,
@@ -188,3 +257,21 @@ class OpenCodeParser:
             if text_parts:
                 return "\n".join(part for part in text_parts if part)
         return str(output)
+
+    def _flush_accumulator(self, key: str) -> Iterator[AgentOutputLine]:
+        """Flush a single accumulator and remove it."""
+        if key not in self._text_accumulator:
+            return
+
+        acc = self._text_accumulator.pop(key)
+        buffer = acc.buffer
+        raw_lines = acc.raw_lines
+
+        if buffer:
+            raw_joined = "\n".join(raw_lines) if raw_lines else ""
+            yield AgentOutputLine(type="text", content=buffer, raw=raw_joined)
+
+    def _flush_all_accumulators(self) -> Iterator[AgentOutputLine]:
+        """Flush all pending accumulators on stop or iterator exhaustion."""
+        for key in list(self._text_accumulator.keys()):
+            yield from self._flush_accumulator(key)

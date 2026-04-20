@@ -53,6 +53,11 @@ def _strip_markup(text: str) -> str:
         return text
 
 
+def _sanitize(text: str) -> str:
+    """Strip both Rich markup and ANSI escapes for copy-paste safety."""
+    return _ANSI_ESCAPE.sub("", _strip_markup(text))
+
+
 class PlainLogRenderer:
     """Emit plain, ANSI-free structured log lines."""
 
@@ -214,13 +219,12 @@ class PlainLogRenderer:
             self._console.print(clean_line, markup=False, highlight=False, no_wrap=True)
 
     def emit_log_line(self, unit_id: str, line: str) -> None:
-        sanitized = _strip_markup(line)
-        # Ensure no ANSI escapes leak through
-        sanitized = _ANSI_ESCAPE.sub("", sanitized)
+        sanitized = _sanitize(line)
         self._console.out(f"[{unit_id}] {sanitized}")
 
     def emit_status_line(self, unit_id: str, status: str) -> None:
-        self._console.out(f"[{unit_id}] status={status}")
+        sanitized = _sanitize(status)
+        self._console.out(f"[{unit_id}] status={sanitized}")
 
     def emit_artifact(self, kind: str, summary: str) -> None:
         """Emit an artifact summary line for copy-paste-safe transcripts."""

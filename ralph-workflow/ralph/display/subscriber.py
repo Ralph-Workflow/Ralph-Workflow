@@ -313,7 +313,4 @@ class PipelineSubscriber:
             self._dropped_count += 1
 
 
-DashboardSubscriber = PipelineSubscriber
-
-
-__all__ = ["DashboardSubscriber", "PipelineSubscriber"]
+__all__ = ["PipelineSubscriber"]

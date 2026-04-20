@@ -192,7 +192,4 @@ def _elapsed_seconds(worker: WorkerState) -> float:
     return (datetime.now(UTC) - worker.started_at).total_seconds()
 
 
-DashboardSnapshot = PipelineSnapshot
-
-
-__all__ = ["DashboardSnapshot", "PipelineSnapshot", "WorkerSnapshot", "snapshot_from_state"]
+__all__ = ["PipelineSnapshot", "WorkerSnapshot", "snapshot_from_state"]
