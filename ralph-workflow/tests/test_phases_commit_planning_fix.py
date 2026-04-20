@@ -465,9 +465,7 @@ def test_handle_fix_invokes_agent_successfully() -> None:
     assert handle_fix(effect, ctx) == [PipelineEvent.AGENT_SUCCESS]
 
 
-def test_handle_fix_fails_without_fix_result_artifact_returns_phase_failure_recoverable(
-    self,
-) -> None:
+def test_handle_fix_fails_without_fix_result_artifact_returns_phase_failure_recoverable() -> None:
     ctx = _stub_context()
     workspace = cast("MagicMock", ctx.workspace)
     workspace.exists.return_value = False
@@ -554,9 +552,7 @@ def test_handle_development_analysis_skips_empty_steps_plan() -> None:
     assert handle_development_analysis(effect, ctx) == [PipelineEvent.ANALYSIS_SUCCESS]
 
 
-def test_handle_development_analysis_proceeds_when_plan_is_not_noop_returns_phase_failure_not_recoverable(
-    self,
-) -> None:
+def test_handle_dev_analysis_non_noop_returns_phase_failure_not_recoverable() -> None:
     """handle_development_analysis must parse analysis decision when plan is not a no-op.
 
     When plan is not a no-op, it falls through to parse_analysis_decision.

@@ -188,7 +188,7 @@ class TestHandleReviewAnalysis:
         assert isinstance(event, PhaseFailureEvent)
         assert event.phase == "review_analysis"
         assert event.recoverable is False
-        assert "FAILURE" in event.reason
+        assert "failure" in event.reason
 
     def test_escalate_decision_returns_phase_failure_not_recoverable(self) -> None:
         effect = self._mock_invoke_effect()
@@ -202,7 +202,7 @@ class TestHandleReviewAnalysis:
         assert isinstance(event, PhaseFailureEvent)
         assert event.phase == "review_analysis"
         assert event.recoverable is False
-        assert "ESCALATE" in event.reason
+        assert "escalate" in event.reason
 
     def test_missing_artifact_returns_phase_failure_not_recoverable(self) -> None:
         effect = self._mock_invoke_effect()

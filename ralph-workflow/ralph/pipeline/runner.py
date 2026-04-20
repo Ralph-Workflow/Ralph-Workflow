@@ -601,39 +601,54 @@ def run(  # noqa: PLR0912, PLR0913, PLR0915
                         )
                         continue
 
-                    workspace = FsWorkspace(
-                        workspace_scope.root,
-                        allowed_roots=workspace_scope.allowed_roots,
-                    )
-                    _materialize_agent_prompt_if_needed(
-                        effect,
-                        workspace,
-                        policy_bundle.pipeline,
-                        registry,
-                        workspace_scope,
-                    )
-
-                    event: Event = _execute_effect_with_optional_display(
-                        effect,
-                        config,
-                        workspace_scope,
-                        active_display,
-                        verbosity=effective_verbosity,
-                    )
-                    if (
-                        isinstance(effect, InvokeAgentEffect)
-                        and event == PipelineEvent.AGENT_SUCCESS
-                    ):
-                        event = _phase_event_after_agent_run(
-                            effect=effect,
-                            config=config,
-                            policy_bundle=policy_bundle,
-                            workspace=workspace,
-                            workspace_scope=workspace_scope,
-                            display=active_display,
+                    try:
+                        workspace = FsWorkspace(
+                            workspace_scope.root,
+                            allowed_roots=workspace_scope.allowed_roots,
+                        )
+                        _materialize_agent_prompt_if_needed(
+                            effect,
+                            workspace,
+                            policy_bundle.pipeline,
+                            registry,
+                            workspace_scope,
                         )
 
-                    state, _ = reducer_reduce(state, event, policy_bundle.pipeline)
+                        event: Event = _execute_effect_with_optional_display(
+                            effect,
+                            config,
+                            workspace_scope,
+                            active_display,
+                            verbosity=effective_verbosity,
+                        )
+                        if (
+                            isinstance(effect, InvokeAgentEffect)
+                            and event == PipelineEvent.AGENT_SUCCESS
+                        ):
+                            event = _phase_event_after_agent_run(
+                                effect=effect,
+                                config=config,
+                                policy_bundle=policy_bundle,
+                                workspace=workspace,
+                                workspace_scope=workspace_scope,
+                                display=active_display,
+                            )
+
+                        state, _ = reducer_reduce(state, event, policy_bundle.pipeline)
+                    except (KeyboardInterrupt, SystemExit):
+                        raise
+                    except Exception as exc:
+                        logger.exception(
+                            "Effect handler crashed in phase={phase}: {err}",
+                            phase=state.phase,
+                            err=exc,
+                        )
+                        failure_event = PhaseFailureEvent(
+                            phase=state.phase,
+                            reason=f"Effect handler crashed: {type(exc).__name__}: {exc}",
+                            recoverable=True,
+                        )
+                        state, _ = reducer_reduce(state, failure_event, policy_bundle.pipeline)
                     _notify_pipeline_subscriber(effective_pipeline_subscriber, state)
                     ckpt.save(state)
                     _prev_phase = _emit_phase_transition_if_changed(
