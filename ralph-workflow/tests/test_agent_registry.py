@@ -139,6 +139,24 @@ def test_agent_registry_resolves_direct_claude_model_reference() -> None:
     assert agent.can_commit is True
 
 
+def test_agent_registry_resolves_direct_ccs_model_reference() -> None:
+    registry = AgentRegistry.from_config(UnifiedConfig())
+
+    agent = registry.get("ccs/mm")
+
+    assert agent is not None
+    assert agent.cmd == "ccs mm"
+    assert agent.output_flag == "--output-format=stream-json"
+    assert agent.yolo_flag == "--permission-mode auto"
+    assert agent.verbose_flag == "--verbose"
+    assert agent.json_parser == "claude"
+    assert agent.transport == AgentTransport.CLAUDE
+    assert agent.print_flag == "--print"
+    assert agent.streaming_flag == "--include-partial-messages"
+    assert agent.session_flag == "--resume {}"
+    assert agent.can_commit is True
+
+
 @pytest.mark.parametrize(
     "name",
     [

@@ -27,6 +27,7 @@ from ralph.agents.invoke import (
 from ralph.config.enums import AgentTransport, JsonParserType
 from ralph.config.models import AgentConfig
 from ralph.mcp.tool_names import (
+    ALL_RALPH_TOOLS,
     CODEX_NATIVE_FEATURES_TO_DISABLE,
     OPENCODE_NATIVE_TOOLS_TO_DISABLE,
     RALPH_MCP_SERVER_NAME,
@@ -1379,6 +1380,15 @@ def test_opencode_config_preserves_unrelated_permission_entries() -> None:
     assert permission["bash"] == "ask"
     assert permission["custom_tool"] == "allow"
     assert permission["ralph_*"] == "allow"
+
+
+def test_opencode_config_allows_all_bare_ralph_mcp_tool_names() -> None:
+    result = _merge_opencode_config_content(None, "http://localhost:0/mcp")
+    parsed = _json_object(result)
+    permission = cast("dict[str, object]", parsed["permission"])
+
+    for tool_name in ALL_RALPH_TOOLS:
+        assert permission[str(tool_name)] == "allow"
 
 
 def test_opencode_config_normalizes_non_dict_mcp_sections() -> None:

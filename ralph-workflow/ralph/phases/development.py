@@ -24,7 +24,11 @@ from ralph.mcp.plan_artifact import (
 )
 from ralph.phases import PhaseContext, register_handler
 from ralph.phases.analysis import parse_analysis_decision
-from ralph.phases.artifacts import load_phase_artifact, unwrap_phase_artifact_content
+from ralph.phases.artifacts import (
+    PhaseArtifactError,
+    load_phase_artifact,
+    unwrap_phase_artifact_content,
+)
 from ralph.pipeline.effects import Effect, InvokeAgentEffect, PreparePromptEffect
 from ralph.pipeline.events import Event, PipelineEvent
 from ralph.pipeline.work_units import WorkUnitsValidationError, parse_work_units_from_artifact
@@ -99,6 +103,10 @@ def handle_development_analysis(effect: Effect, ctx: PhaseContext) -> list[Event
     After the development agent completes, the analysis step reads the
     decision from the development analysis artifact and routes accordingly.
 
+    When the planning artifact is a typed no-op plan, the handler short-circuits
+    with ``ANALYSIS_SUCCESS`` so the pipeline advances through commit without
+    trying to parse a non-existent development_analysis_decision artifact.
+
     Args:
         effect: The effect that triggered this phase.
         ctx: Phase context with workspace and policy.
@@ -107,6 +115,23 @@ def handle_development_analysis(effect: Effect, ctx: PhaseContext) -> list[Event
         List of events to emit.
     """
     if isinstance(effect, InvokeAgentEffect):
+        # Short-circuit if the plan artifact is a no-op — there is no analysis
+        # decision artifact to parse because no development work was done.
+        if ctx.workspace.exists(PLAN_ARTIFACT_PATH):
+            try:
+                wrapper = load_phase_artifact(ctx.workspace, PLAN_ARTIFACT_PATH)
+                raw = unwrap_phase_artifact_content(wrapper, expected_type="plan")
+                if is_noop_plan(raw):
+                    logger.info("Development analysis: plan is a no-op — skipping analysis")
+                    return [PipelineEvent.ANALYSIS_SUCCESS]
+            except (
+                json.JSONDecodeError,
+                PlanArtifactValidationError,
+                PhaseArtifactError,
+                ValueError,
+            ):
+                pass  # fall through to normal analysis decision parsing
+
         # Read the analysis artifact to determine routing
         decision = parse_analysis_decision(ctx, "development_analysis")
         logger.info("Development analysis decision: {}", decision)

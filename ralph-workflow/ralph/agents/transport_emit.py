@@ -20,9 +20,11 @@ from loguru import logger
 
 from ralph.config.mcp_loader import load_mcp_config
 from ralph.mcp.tool_names import (
+    ALL_RALPH_TOOLS,
     CODEX_NATIVE_FEATURES_TO_DISABLE,
     OPENCODE_NATIVE_TOOLS_TO_DISABLE,
     RALPH_MCP_SERVER_NAME,
+    claude_tool_name,
 )
 from ralph.mcp.upstream_config import (
     UPSTREAM_MCP_CONFIG_ENV,
@@ -217,6 +219,11 @@ def _build_opencode_provider_config(
         config_obj["permission"] = permission_section_obj
     permission_section = cast("dict[str, object]", permission_section_obj)
     permission_section["ralph_*"] = "allow"
+    permission_section["mcp__ralph__*"] = "allow"
+    for tool_name in ALL_RALPH_TOOLS:
+        bare_name = str(tool_name)
+        permission_section[bare_name] = "allow"
+        permission_section[claude_tool_name(bare_name)] = "allow"
 
     existing_tools = config_obj.get("tools", {})
     if not isinstance(existing_tools, dict):
