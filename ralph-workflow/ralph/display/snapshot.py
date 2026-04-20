@@ -184,12 +184,15 @@ def _snapshot_worker(description: str, worker: WorkerState) -> WorkerSnapshot:
     )
 
 
-DashboardSnapshot = PipelineSnapshot
-
-
 def _elapsed_seconds(worker: WorkerState) -> float:
     if worker.started_at is None:
         return 0.0
     if worker.finished_at is not None:
         return (worker.finished_at - worker.started_at).total_seconds()
     return (datetime.now(UTC) - worker.started_at).total_seconds()
+
+
+DashboardSnapshot = PipelineSnapshot
+
+
+__all__ = ["DashboardSnapshot", "PipelineSnapshot", "WorkerSnapshot", "snapshot_from_state"]

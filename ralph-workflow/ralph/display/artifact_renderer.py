@@ -35,12 +35,12 @@ def _read_json_defensive(path: Path) -> dict[str, object] | None:
     except (FileNotFoundError, OSError, PermissionError):
         return None
     try:
-        parsed = cast("object", json.loads(raw))
+        parsed_obj: object = json.loads(raw)
     except json.JSONDecodeError:
         return None
-    if not isinstance(parsed, dict):
+    if not isinstance(parsed_obj, dict):
         return None
-    return cast("dict[str, object]", parsed)
+    return cast("dict[str, object]", parsed_obj)
 
 
 def render_plan_artifact(
@@ -207,25 +207,37 @@ def render_fix_artifact(
     # Extract a summary from the artifact
     if "issues" in found and isinstance(found["issues"], list):
         issues = found["issues"]
-        console.print(f"  {len(issues)} issue(s) addressed:", markup=False, highlight=False)
+        console.print(
+            f"  {len(issues)} issue(s) addressed:",
+            markup=False,
+            highlight=False,
+        )
         for issue in issues[:10]:  # Cap at 10 for transcript safety
             if isinstance(issue, dict):
                 desc_obj = issue.get("description") or issue.get("message") or str(issue)
-                desc = str(desc_obj)
             else:
-                desc = str(issue)
+                desc_obj = str(issue)
+            desc = str(desc_obj)
             console.print(f"    - {desc[:120]}", markup=False, highlight=False)
     elif "fixed" in found:
         fixed = found["fixed"]
         if isinstance(fixed, list):
-            console.print(f"  {len(fixed)} item(s) fixed:", markup=False, highlight=False)
+            console.print(
+                f"  {len(fixed)} item(s) fixed:",
+                markup=False,
+                highlight=False,
+            )
             for item in fixed[:10]:
                 console.print(f"    - {str(item)[:120]}", markup=False, highlight=False)
         else:
             console.print(f"  Fixed: {fixed}", markup=False, highlight=False)
     else:
         # Generic fallback - just print keys
-        console.print(f"  Fix artifact: {list(found.keys())[:5]}", markup=False, highlight=False)
+        console.print(
+            f"  Fix artifact: {list(found.keys())[:5]}",
+            markup=False,
+            highlight=False,
+        )
 
     console.print(
         Rule(style=_phase_style("fix")),

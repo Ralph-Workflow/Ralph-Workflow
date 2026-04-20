@@ -23,7 +23,10 @@ def load_phase_artifact(workspace: Workspace, path: str) -> dict[str, object]:
     except (FileNotFoundError, OSError) as exc:
         raise PhaseArtifactError(f"Artifact not found at {path}") from exc
 
-    raw_obj: object = json.loads(content)
+    try:
+        raw_obj: object = json.loads(content)
+    except (TypeError, json.JSONDecodeError) as exc:
+        raise PhaseArtifactError(f"Artifact at {path} must be valid JSON text") from exc
     if not isinstance(raw_obj, dict):
         raise PhaseArtifactError(f"Artifact at {path} must be a JSON object")
     return cast("dict[str, object]", raw_obj)

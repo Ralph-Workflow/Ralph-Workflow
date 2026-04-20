@@ -96,6 +96,21 @@ python -m pydoc ralph.workspace
 
 Use package/module docstrings for API understanding and this README for workflow-level guidance.
 
+## Phase-output hardening
+
+Ralph now treats several agent-driven phases as producing explicit evidence, not just a zero exit code.
+
+- `development` must leave behind a fresh `.agent/artifacts/development_result.json`.
+- `review` must leave behind a fresh `.agent/artifacts/issues.json`.
+- `fix` must leave behind a fresh `.agent/artifacts/fix_result.json`.
+- The runner removes those per-phase artifacts before each invocation so a later interrupted run cannot silently reuse stale output from an earlier pass.
+
+This hardening is intentionally strict. It adds complexity, but it closes a real unattended-mode failure class where a provider could exit successfully, emit no meaningful work, and still let the pipeline advance because an old artifact was still present on disk.
+
+## Claude/CCS MCP safety note
+
+Claude-compatible transports such as `claude` and `ccs` run through a stricter MCP path. Ralph still uses `--mcp-config` plus `--strict-mcp-config`, but it only emits `--tools ""` / `--allowedTools ...` when live MCP tool discovery succeeds with a non-empty allowlist. That avoids a brittle edge case in non-interactive Claude/CCS runs where empty-tool configurations and MCP bootstrapping can produce misleadingly successful no-op executions.
+
 ## Parallel mode
 
 When your planning phase produces two or more work units, Ralph fans development out across multiple git worktrees simultaneously. Configure it in your pipeline policy:

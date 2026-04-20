@@ -46,6 +46,18 @@ pytest tests/ -v --cov=ralph --cov-report=term-missing --cov-report=html
 - Update user-facing Markdown when workflows or commands change.
 - Update public module/package docstrings when APIs change.
 - Keep exported package docstrings self-sufficient enough for `pydoc` users.
+- When changing pipeline hardening around artifacts or agent success criteria, document both the behavior change and the failure mode it prevents. Future contributors need to understand why the stricter contract exists.
+
+## Agent hardening contract
+
+When working on `ralph/pipeline/runner.py`, `ralph/phases/`, or Claude/CCS agent invocation, preserve these invariants unless you are deliberately replacing them with something stronger:
+
+1. A clean subprocess exit is not enough evidence of useful work for `development`, `review`, or `fix`.
+2. Those phases depend on fresh per-phase artifacts created during the current invocation.
+3. The runner clears stale per-phase artifacts before invoking the agent so interrupted runs cannot satisfy later checks accidentally.
+4. Claude/CCS MCP invocations must avoid half-configured tool restriction flags. If the live MCP allowlist cannot be discovered, prefer the safer strict-MCP path over emitting brittle `--tools ""` combinations.
+
+This logic is more complex than a naive "agent exited 0" flow, but it exists to prevent silent no-op runs in unattended mode. If you change it, update tests and docs together.
 
 ## Release notes
 

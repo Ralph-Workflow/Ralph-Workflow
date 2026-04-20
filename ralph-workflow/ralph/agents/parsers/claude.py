@@ -72,21 +72,31 @@ class ClaudeParser:
     ) -> Iterator[AgentOutputLine]:
         event_type = str(obj.get("type", "unknown"))
 
-        if event_type == "message_start":
-            self._record_message_start(obj)
-            return
-        if event_type == "message_stop":
-            yield from self._flush_all_accumulators()
-            self._current_message_id = None
-            self._seen_content_blocks.clear()
-            return
-        if event_type == "content_block_stop":
-            yield from self._flush_content_block(obj)
-            return
-        if event_type in self._LIFECYCLE_EVENT_TYPES:
+        lifecycle_result = self._handle_lifecycle_event(obj, event_type)
+        if lifecycle_result is not None:
+            yield from lifecycle_result
             return
 
-        yield from self._parse_non_lifecycle_object(event_type, obj, raw)
+        yield from self._dispatch_top_level_event(obj, raw, event_type)
+
+    def _handle_lifecycle_event(
+        self,
+        obj: dict[str, object],
+        event_type: str,
+    ) -> Iterator[AgentOutputLine] | None:
+        if event_type == "message_start":
+            self._record_message_start(obj)
+            return iter(())
+        if event_type == "message_stop":
+            flushed = self._flush_all_accumulators()
+            self._current_message_id = None
+            self._seen_content_blocks.clear()
+            return flushed
+        if event_type == "content_block_stop":
+            return self._flush_content_block(obj)
+        if event_type in self._LIFECYCLE_EVENT_TYPES:
+            return iter(())
+        return None
 
     def _record_message_start(self, obj: dict[str, object]) -> None:
         message = obj.get("message")
@@ -103,11 +113,11 @@ class ClaudeParser:
             if key in self._text_accumulator:
                 yield from self._flush_accumulator(key)
 
-    def _parse_non_lifecycle_object(
+    def _dispatch_top_level_event(
         self,
-        event_type: str,
         obj: dict[str, object],
         raw: str,
+        event_type: str,
     ) -> Iterator[AgentOutputLine]:
         if event_type == "stream_event":
             event = obj.get("event")
@@ -115,19 +125,30 @@ class ClaudeParser:
                 yield from self._parse_stream_inner(event, raw)
             else:
                 yield AgentOutputLine(type="stream_event", raw=raw, metadata=obj)
-        elif event_type == "content_block_delta":
+            return
+
+        if event_type == "content_block_delta":
             yield from self._parse_content_block_delta(obj, raw)
-        elif event_type == "content_block_start":
+            return
+
+        if event_type == "content_block_start":
             self._track_content_block_start(obj)
             yield from self._parse_content_block_start(obj, raw)
-        elif event_type == "assistant":
+            return
+
+        if event_type == "assistant":
             yield from self._parse_assistant_message(obj, raw)
-        elif event_type == "result":
+            return
+
+        if event_type == "result":
             yield from self._parse_result_event(obj, raw)
-        elif event_type == "error":
+            return
+
+        if event_type == "error":
             yield from self._parse_error_event(obj, raw)
-        else:
-            yield AgentOutputLine(type=event_type, raw=raw, metadata=obj)
+            return
+
+        yield AgentOutputLine(type=event_type, raw=raw, metadata=obj)
 
     def _track_content_block_start(self, obj: dict[str, object]) -> None:
         content_block = obj.get("content_block")

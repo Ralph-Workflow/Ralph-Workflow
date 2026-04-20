@@ -55,14 +55,6 @@ _MODELED_FLAG_PARTS = 2
 _IDLE_POLL_INTERVAL_SECONDS = 0.05
 
 
-class _IdleStreamTimeoutError(RuntimeError):
-    """Raised when an agent process stops producing output for too long."""
-
-    def __init__(self, timeout_seconds: float) -> None:
-        self.timeout_seconds = timeout_seconds
-        super().__init__(f"Agent produced no output for {timeout_seconds:.0f}s")
-
-
 @dataclass(frozen=True)
 class InvokeOptions:
     """Options for agent invocation.
@@ -83,7 +75,7 @@ class InvokeOptions:
     show_progress: bool = True
     workspace_path: Path | None = None
     extra_env: dict[str, str] | None = None
-    idle_timeout_seconds: float | None = None
+    idle_timeout_seconds: float | None = 300.0
     pure: bool = False
     system_prompt_file: str | None = None
 
@@ -136,6 +128,14 @@ class _ObserverProtocol(_HasStop, Protocol):
 
     def schedule(self, _event_handler: object, path: str, **kwargs: object) -> None: ...
     def start(self) -> None: ...
+
+
+class _IdleStreamTimeoutError(RuntimeError):
+    """Raised when an agent process stops producing output for too long."""
+
+    def __init__(self, timeout_seconds: float) -> None:
+        self.timeout_seconds = timeout_seconds
+        super().__init__(f"Agent produced no output for {timeout_seconds:.0f}s")
 
 
 class AgentInvocationError(Exception):
@@ -740,10 +740,10 @@ def _extend_claude_transport_flags(
     if transport != AgentTransport.CLAUDE or build_options.mcp_endpoint is None:
         return
 
-    # `--tools ""` disables Claude's built-in tools. `--allowedTools` then grants
-    # provider-side approval only to the exact Ralph MCP tools exposed by the live
-    # runtime endpoint, keeping Ralph as the sole visible MCP server while avoiding
-    # per-tool permission prompts for Ralph-owned tools.
+    # Claude/CCS non-interactive MCP mode is brittle around `--tools ""` combined
+    # with `--allowedTools`. We only emit the tool restriction flags when live MCP
+    # tool discovery succeeds and yields a non-empty allowlist; otherwise we keep the
+    # strict MCP server isolation but avoid the known empty-tool edge case entirely.
     cmd.extend(
         [
             "--mcp-config",
@@ -752,12 +752,17 @@ def _extend_claude_transport_flags(
                 workspace_path=build_options.workspace_path,
             ),
             "--strict-mcp-config",
-            "--tools",
-            "",
         ]
     )
     if build_options.allowed_mcp_tool_names:
-        cmd.extend(["--allowedTools", ",".join(build_options.allowed_mcp_tool_names)])
+        cmd.extend(
+            [
+                "--tools",
+                "",
+                "--allowedTools",
+                ",".join(build_options.allowed_mcp_tool_names),
+            ]
+        )
 
 
 def _resolve_prompt_path(prompt_file: str, workspace_path: Path | None) -> Path:

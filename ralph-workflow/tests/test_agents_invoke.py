@@ -13,6 +13,7 @@ from typing import Literal, cast
 import pytest
 from loguru import logger
 
+from ralph.agents import invoke as invoke_module
 from ralph.agents.invoke import (
     AgentInactivityTimeoutError,
     AgentInvocationError,
@@ -59,6 +60,105 @@ def _env_dict(kwargs: dict[str, object]) -> dict[str, str]:
 
 def _argv(args: tuple[object, ...]) -> list[str]:
     return cast("list[str]", args[0])
+
+
+DEFAULT_IDLE_TIMEOUT_SECONDS = 300.0
+
+
+def test_invoke_agent_uses_five_minute_default_idle_timeout(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    config = AgentConfig(cmd="opencode", output_flag="--json-stream")
+    prompt_file = tmp_path / "PROMPT.md"
+    prompt_file.write_text("hello", encoding="utf-8")
+    captured: dict[str, object] = {}
+
+    def fake_run_subprocess_and_read_lines(  # noqa: PLR0913
+        cmd: list[str],
+        cfg: AgentConfig,
+        show_progress: bool,
+        extra_env: dict[str, str] | None,
+        workspace_path: Path | None,
+        *,
+        idle_timeout_seconds: float | None = None,
+    ) -> list[str]:
+        captured["cmd"] = cmd
+        captured["config"] = cfg
+        captured["show_progress"] = show_progress
+        captured["extra_env"] = extra_env
+        captured["workspace_path"] = workspace_path
+        captured["idle_timeout_seconds"] = idle_timeout_seconds
+        return []
+
+    monkeypatch.setattr(
+        "ralph.agents.invoke._run_subprocess_and_read_lines",
+        fake_run_subprocess_and_read_lines,
+    )
+
+    list(
+        invoke_agent(
+            config,
+            str(prompt_file),
+            options=InvokeOptions(show_progress=False, workspace_path=tmp_path),
+        )
+    )
+
+    assert captured["idle_timeout_seconds"] == DEFAULT_IDLE_TIMEOUT_SECONDS
+
+
+
+def test_run_subprocess_and_read_lines_wraps_idle_stream_timeout(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    config = AgentConfig(cmd="opencode", output_flag="--json-stream")
+
+    class FakeProcess:
+        def __init__(self) -> None:
+            self.stdout = iter(())
+            self.stderr = SimpleNamespace(read=lambda: "")
+            self.returncode = 0
+
+        def __enter__(self) -> FakeProcess:
+            return self
+
+        def __exit__(
+            self,
+            _exc_type: object,
+            _exc: object,
+            _tb: object,
+        ) -> Literal[False]:
+            return False
+
+        def wait(self) -> int:
+            return self.returncode
+
+    monkeypatch.setattr(
+        "ralph.agents.invoke.subprocess.Popen",
+        lambda *args, **kwargs: FakeProcess(),
+    )
+
+    def fake_read_lines_from_process(*args: object, **kwargs: object):
+        del args, kwargs
+        raise invoke_module._IdleStreamTimeoutError(0.05)
+        yield ""  # pragma: no cover
+
+    monkeypatch.setattr(
+        "ralph.agents.invoke._read_lines_from_process",
+        fake_read_lines_from_process,
+    )
+
+    with pytest.raises(AgentInactivityTimeoutError, match="no output for 0s"):
+        list(
+            invoke_module._run_subprocess_and_read_lines(
+                ["opencode", "run"],
+                config,
+                False,
+                None,
+                tmp_path,
+                idle_timeout_seconds=0.05,
+            )
+        )
+
 
 
 def test_build_command_includes_print_streaming_and_session_flags() -> None:
@@ -830,6 +930,36 @@ def test_build_command_claude_injects_strict_mcp_config_when_mcp_endpoint_wired(
         options=_BuildCommandOptions(mcp_endpoint="http://127.0.0.1:9999/mcp"),
     )
     assert "--mcp-config" in cmd
+
+
+
+def test_build_command_claude_omits_tool_flags_when_allowlist_is_empty(
+    tmp_path: Path,
+) -> None:
+    prompt_file = tmp_path / "PROMPT.md"
+    prompt_file.write_text("prompt", encoding="utf-8")
+    config = AgentConfig(
+        cmd="claude -p",
+        output_flag="--output-format=stream-json",
+        yolo_flag="--dangerously-skip-permissions",
+        print_flag="--print",
+        streaming_flag="--include-partial-messages",
+        json_parser=JsonParserType.CLAUDE,
+        transport=AgentTransport.CLAUDE,
+    )
+    cmd = _build_command(
+        config,
+        str(prompt_file),
+        options=_BuildCommandOptions(
+            mcp_endpoint="http://127.0.0.1:9999/mcp",
+            allowed_mcp_tool_names=(),
+        ),
+    )
+
+    assert "--mcp-config" in cmd
+    assert "--strict-mcp-config" in cmd
+    assert "--tools" not in cmd
+    assert "--allowedTools" not in cmd
 
 
 def test_invoke_agent_claude_extracts_existing_workspace_mcp_servers(

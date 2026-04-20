@@ -247,9 +247,4 @@ class PlainModeAdapter:
         )
 
 
-__all__ = [
-    "LEVELS",
-    "_TAGS",
-    "PlainLogRenderer",
-    "PlainModeAdapter",
-]
+__all__ = ["LEVELS", "_TAGS", "PlainLogRenderer", "PlainModeAdapter"]

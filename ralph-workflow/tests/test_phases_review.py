@@ -49,9 +49,21 @@ class TestHandleReview:
     def test_invoke_agent_effect_returns_agent_success(self) -> None:
         effect = MagicMock(spec=InvokeAgentEffect)
         ctx = self._make_context()
+        ctx.workspace.exists.side_effect = lambda path: path == ".agent/artifacts/issues.json"
+        ctx.workspace.read.return_value = (
+            '{"type":"issues","content":{"status":"clean","summary":"ok","issues":[]}}'
+        )
 
         result = handle_review(effect, ctx)
         assert result == [PipelineEvent.AGENT_SUCCESS]
+
+    def test_invoke_agent_effect_without_issues_artifact_returns_failed(self) -> None:
+        effect = MagicMock(spec=InvokeAgentEffect)
+        ctx = self._make_context()
+        ctx.workspace.exists.return_value = False
+
+        result = handle_review(effect, ctx)
+        assert result == [PipelineEvent.FAILED]
 
     def test_other_effect_returns_empty_list(self) -> None:
         effect = MagicMock(spec=Effect)
@@ -80,6 +92,12 @@ class TestHandleReview:
         marker_path = tmp_git_repo / REVIEW_BASELINE_MARKER
         marker_path.parent.mkdir(parents=True, exist_ok=True)
         marker_path.write_text(baseline, encoding="utf-8")
+        issues_path = tmp_git_repo / ".agent" / "artifacts" / "issues.json"
+        issues_path.parent.mkdir(parents=True, exist_ok=True)
+        issues_path.write_text(
+            '{"type":"issues","content":{"status":"clean","summary":"ok","issues":[]}}',
+            encoding="utf-8",
+        )
 
         repo = Repo(tmp_git_repo)
         (tmp_git_repo / "changed.txt").write_text("x")
@@ -100,6 +118,12 @@ class TestHandleReview:
 
     def test_review_first_pass_has_no_baseline(self, tmp_git_repo: Path) -> None:
         ctx = _fs_context(tmp_git_repo)
+        issues_path = tmp_git_repo / ".agent" / "artifacts" / "issues.json"
+        issues_path.parent.mkdir(parents=True, exist_ok=True)
+        issues_path.write_text(
+            '{"type":"issues","content":{"status":"clean","summary":"ok","issues":[]}}',
+            encoding="utf-8",
+        )
         effect = InvokeAgentEffect(
             agent_name="reviewer",
             phase="review",

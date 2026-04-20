@@ -71,6 +71,7 @@ class PipelineSubscriber:
         self._plan_scope_items: tuple[str, ...] = plan.scope_items
         self._plan_total_steps: int = plan.total_steps
         self._plan_risks: tuple[str, ...] = plan.risks_mitigations
+        self._last_plan_refresh_marker: int | None = self._plan_refresh_marker()
 
         self._previous_phase: str | None = None
         self._active_agent: str | None = None
@@ -110,7 +111,7 @@ class PipelineSubscriber:
         """
         with self._lock:
             self._record_state_transitions_locked(state)
-            self._refresh_plan_from_disk_locked()
+            self._refresh_plan_from_disk_locked(state)
             self._refresh_analysis_for_phase_change_locked(state)
             self._active_agent = state.current_agent() or self._active_agent
             self._last_state = state
@@ -221,12 +222,24 @@ class PipelineSubscriber:
 
         self._previous_phase = cur
 
-    def _refresh_plan_from_disk_locked(self) -> None:
+    def _refresh_plan_from_disk_locked(self, state: PipelineState) -> None:
+        del state
+        marker = self._plan_refresh_marker()
+        if marker == self._last_plan_refresh_marker:
+            return
         plan = read_plan_artifact(self._workspace_root) or PlanSummary()
         self._plan_summary = plan.summary
         self._plan_scope_items = plan.scope_items
         self._plan_total_steps = plan.total_steps
         self._plan_risks = plan.risks_mitigations
+        self._last_plan_refresh_marker = marker
+
+    def _plan_refresh_marker(self) -> int | None:
+        plan_path = self._workspace_root / ".agent" / "artifacts" / "plan.json"
+        try:
+            return plan_path.stat().st_mtime_ns
+        except OSError:
+            return None
 
     def _refresh_analysis_for_phase_change_locked(self, state: PipelineState) -> None:
         prev = self._previous_phase

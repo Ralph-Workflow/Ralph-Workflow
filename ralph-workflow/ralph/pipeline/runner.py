@@ -13,6 +13,7 @@ import os
 import shutil
 import sys
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass
 from inspect import signature
 from pathlib import Path
@@ -535,6 +536,9 @@ def run(  # noqa: PLR0912, PLR0913, PLR0915
         state.total_iterations,
         state.total_reviewer_passes,
     )
+
+    if pipeline_subscriber is None:
+        pipeline_subscriber = dashboard_subscriber
 
     if display is not None:
         active_display: ParallelDisplay | _LegacyConsoleDisplay = display
@@ -1268,6 +1272,7 @@ def _execute_agent_effect(  # noqa: PLR0913
                 workspace_scope.root,
                 allowed_roots=workspace_scope.allowed_roots,
             )
+            _clear_phase_output_artifacts(workspace, effect.phase)
             bridge = start_mcp_server(session, workspace)
 
             options = InvokeOptions(
@@ -1455,6 +1460,33 @@ def _write_agent_retry_prompt(
     return str(retry_prompt_path)
 
 
+def _clear_phase_output_artifacts(workspace: FsWorkspace, phase: str) -> None:
+    """Remove stale per-phase artifacts before invoking an agent.
+
+    This hardening makes phase handlers reason about outputs created by the
+    current invocation instead of silently accepting artifacts left behind by a
+    prior interrupted run. The mapping is intentionally explicit so new
+    artifact-emitting phases must opt in deliberately.
+    """
+    for path in _phase_output_artifact_paths(phase):
+        workspace.remove(path)
+
+
+
+def _phase_output_artifact_paths(phase: str) -> tuple[str, ...]:
+    phase_artifacts = {
+        "development": (".agent/artifacts/development_result.json",),
+        "development_analysis": (".agent/artifacts/development_analysis_decision.json",),
+        "review": (".agent/artifacts/issues.json",),
+        "review_analysis": (".agent/artifacts/review_analysis_decision.json",),
+        "fix": (".agent/artifacts/fix_result.json",),
+        "development_commit": (COMMIT_MESSAGE_ARTIFACT,),
+        "review_commit": (COMMIT_MESSAGE_ARTIFACT,),
+    }
+    return phase_artifacts.get(phase, ())
+
+
+
 def _default_mcp_capabilities_for_phase(phase: str) -> set[str]:
     drain_class = drain_class_for_session(phase)
     base = {
@@ -1604,55 +1636,81 @@ def _truncate(text: str, max_length: int) -> str:
     return text[:max_length] + "…"
 
 
-def _render_agent_activity_line(
-    output: AgentOutputLine, agent_name: str
-) -> Text | None:
-    rendered: Text | None = None
+def _render_agent_activity_line(output: AgentOutputLine, agent_name: str) -> Text | None:
+    content_renderers: dict[str, Callable[[], Text | None]] = {
+        "text": lambda: _render_text_line(agent_name, output.content, "white"),
+        "assistant": lambda: _render_text_line(agent_name, output.content, "dim"),
+        "result": lambda: _render_text_line(agent_name, output.content, "dim"),
+        "tool_use": lambda: _render_tool_use_line(agent_name, output),
+        "tool_result": lambda: _render_tool_result_line(agent_name, output.content),
+        "error": lambda: _render_error_line(agent_name, output.content),
+    }
+    renderer = content_renderers.get(output.type)
+    if renderer is not None:
+        return renderer()
+    return _render_metadata_event_line(agent_name, output)
 
-    if output.type in {"text", "assistant", "result"}:
-        content = output.content.strip()
-        if content:
-            rendered = _styled_prefix(agent_name, "white")
-            text_width = min(_MAX_TEXT_LENGTH, _available_width(len(agent_name) + 2))
-            rendered.append(_truncate(content, text_width))
-    elif output.type == "tool_use":
-        tool_name = output.content.strip() or "unknown-tool"
-        prefix_label = f"{agent_name} tool"
-        rendered = _styled_prefix(prefix_label, "magenta")
-        rendered.append(tool_name, style="bold magenta")
-        input_summary = _tool_input_summary(output.metadata)
-        if input_summary:
-            prefix_total = len(prefix_label) + 2 + len(tool_name) + 3
-            tool_input_width = min(_MAX_TOOL_INPUT_LENGTH, _available_width(prefix_total))
-            truncated = _truncate(input_summary, tool_input_width)
-            rendered.append(f" ({truncated})", style="dim")
-    elif output.type == "tool_result":
-        result = output.content.strip()
-        if result:
-            result_label = f"{agent_name} result"
-            rendered = _styled_prefix(result_label, "dim")
-            result_prefix_len = len(result_label) + 2
-            if len(result) > _TOOL_RESULT_BRIEF_THRESHOLD:
-                brief_width = min(_MAX_TOOL_RESULT_BRIEF, _available_width(result_prefix_len))
-                rendered.append(_truncate(result, brief_width), style="dim")
-            else:
-                result_width = min(_MAX_TOOL_RESULT_LENGTH, _available_width(result_prefix_len))
-                rendered.append(_truncate(result, result_width), style="dim")
-    elif output.type == "error":
-        error = output.content.strip() or "unknown error"
-        rendered = _styled_prefix(f"{agent_name} ✗", "red")
-        rendered.append(error, style="bold red")
-    else:
-        metadata_summary = _metadata_summary(output.metadata)
-        summary = (
-            output.type
-            if output.type in {"message_start", "stop"}
-            else metadata_summary or output.content.strip() or output.type
-        )
-        rendered = _styled_prefix(agent_name, "dim")
-        rendered.append(summary, style="dim")
 
+def _render_text_line(agent_name: str, content: str, style: str) -> Text | None:
+    stripped = content.strip()
+    if not stripped:
+        return None
+    rendered = _styled_prefix(agent_name, style)
+    text_width = min(_MAX_TEXT_LENGTH, _available_width(len(agent_name) + 2))
+    rendered.append(_truncate(stripped, text_width))
     return rendered
+
+
+
+def _render_tool_use_line(agent_name: str, output: AgentOutputLine) -> Text:
+    tool_name = output.content.strip() or "unknown-tool"
+    prefix_label = f"{agent_name} tool"
+    rendered = _styled_prefix(prefix_label, "magenta")
+    rendered.append(tool_name, style="bold magenta")
+    input_summary = _tool_input_summary(output.metadata)
+    if input_summary:
+        prefix_total = len(prefix_label) + len(tool_name) + 4
+        tool_input_width = min(_MAX_TOOL_INPUT_LENGTH, _available_width(prefix_total))
+        truncated = _truncate(input_summary, tool_input_width)
+        rendered.append(f" ({truncated})", style="dim")
+    return rendered
+
+
+
+def _render_tool_result_line(agent_name: str, content: str) -> Text | None:
+    result = content.strip()
+    if not result:
+        return None
+    result_label = f"{agent_name} result"
+    rendered = _styled_prefix(result_label, "dim")
+    result_prefix_len = len(result_label) + 2
+    max_length = (
+        _MAX_TOOL_RESULT_BRIEF
+        if len(result) > _TOOL_RESULT_BRIEF_THRESHOLD
+        else _MAX_TOOL_RESULT_LENGTH
+    )
+    result_width = min(max_length, _available_width(result_prefix_len))
+    rendered.append(_truncate(result, result_width), style="dim")
+    return rendered
+
+
+
+def _render_error_line(agent_name: str, content: str) -> Text:
+    error = content.strip() or "unknown error"
+    rendered = _styled_prefix(f"{agent_name} ✗", "red")
+    rendered.append(error, style="bold red")
+    return rendered
+
+
+
+def _render_metadata_event_line(agent_name: str, output: AgentOutputLine) -> Text:
+    summary = _metadata_summary(output.metadata)
+    rendered = _styled_prefix(agent_name, "dim")
+    rendered.append(output.type, style="dim")
+    if summary:
+        rendered.append(f" ({summary})", style="dim")
+    return rendered
+
 
 
 def _tool_input_summary(metadata: dict[str, object]) -> str:
@@ -1661,47 +1719,55 @@ def _tool_input_summary(metadata: dict[str, object]) -> str:
     input_data = metadata.get("input")
     if not isinstance(input_data, dict):
         return ""
-
-    preferred_keys = ("command", "workdir", "path", "file_path", "pattern", "args")
-    parts: list[str] = []
-    seen: set[str] = set()
-    for key in preferred_keys:
-        value = _format_metadata_value(input_data.get(key))
-        if value:
-            parts.append(f"{key}={value}")
-            seen.add(key)
-    for key, value_obj in input_data.items():
-        if key in seen:
-            continue
-        value = _format_metadata_value(value_obj)
-        if value:
-            parts.append(f"{key}={value}")
-        if len(parts) >= _MAX_METADATA_PARTS:
-            break
-    return ", ".join(parts)
+    args = input_data.get("args")
+    if isinstance(args, str) and args:
+        return args
+    return _kv_summary(
+        input_data,
+        preferred_keys=("command", "workdir", "path", "file_path", "pattern", "name"),
+        max_parts=_MAX_METADATA_PARTS,
+        max_length=_MAX_TOOL_INPUT_LENGTH,
+    )
 
 
 def _metadata_summary(metadata: dict[str, object]) -> str:
     if not metadata:
         return ""
+    return _kv_summary(
+        metadata,
+        preferred_keys=(
+            "status",
+            "summary",
+            "phase",
+            "decision",
+            "message",
+            "event",
+            "tool",
+            "path",
+            "workdir",
+            "command",
+        ),
+        max_parts=_MAX_METADATA_PARTS,
+        max_length=_MAX_METADATA_SUMMARY_LENGTH,
+    )
 
-    preferred_keys = ("status", "summary", "phase", "decision", "message", "event")
+
+def _kv_summary(
+    values: dict[str, object],
+    *,
+    preferred_keys: tuple[str, ...],
+    max_parts: int,
+    max_length: int,
+) -> str:
     parts: list[str] = []
-    seen: set[str] = set()
     for key in preferred_keys:
-        value = _format_metadata_value(metadata.get(key))
-        if value:
-            parts.append(f"{key}={value}")
-            seen.add(key)
-    for key, value_obj in metadata.items():
-        if key in seen or key == "input":
+        value = _format_metadata_value(values.get(key))
+        if value is None:
             continue
-        value = _format_metadata_value(value_obj)
-        if value:
-            parts.append(f"{key}={value}")
-        if len(parts) >= _MAX_METADATA_PARTS:
+        parts.append(f"{key}={value}")
+        if len(parts) >= max_parts:
             break
-    return _truncate(" ".join(parts), _MAX_METADATA_SUMMARY_LENGTH)
+    return _truncate(", ".join(parts), max_length) if parts else ""
 
 
 def _format_metadata_value(value: object) -> str | None:

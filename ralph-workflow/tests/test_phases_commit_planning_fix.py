@@ -395,22 +395,31 @@ def test_handle_planning_accepts_noop_plan() -> None:
 def test_handle_development_reads_wrapped_plan_artifact_and_validates_schema() -> None:
     ctx = _stub_context()
     workspace = cast("MagicMock", ctx.workspace)
-    workspace.exists.side_effect = lambda path: path == ".agent/artifacts/plan.json"
-    workspace.read.return_value = (
-        '{"type":"plan","content":{"summary":{"context":"Plan MCP rollout","scope_items":['
-        '{"text":"Update validation"},{"text":"Add tests"},{"text":"Update prompts"}]},'
-        '"steps":[{"number":1,"title":"Validate plan","content":"Do the work"}],'
-        '"critical_files":{"primary_files":[{"path":"ralph/mcp/tool_artifact.py","action":"modify"}]},'
-        '"risks_mitigations":[{"risk":"Schema drift","mitigation":"HTTP tests"}],'
-        '"verification_strategy":[{"method":"pytest","expected_outcome":"passes"}]}}'
+    workspace.exists.side_effect = (
+        lambda path: path
+        in {".agent/artifacts/plan.json", ".agent/artifacts/development_result.json"}
     )
+    workspace.read.side_effect = lambda path: {
+        ".agent/artifacts/plan.json": (
+            '{"type":"plan","content":{"summary":{"context":"Plan MCP rollout","scope_items":['
+            '{"text":"Update validation"},{"text":"Add tests"},{"text":"Update prompts"}]},'
+            '"steps":[{"number":1,"title":"Validate plan","content":"Do the work"}],'
+            '"critical_files":{"primary_files":[{"path":"ralph/mcp/tool_artifact.py","action":"modify"}]},'
+            '"risks_mitigations":[{"risk":"Schema drift","mitigation":"HTTP tests"}],'
+            '"verification_strategy":[{"method":"pytest","expected_outcome":"passes"}]}}'
+        ),
+        ".agent/artifacts/development_result.json": (
+            '{"type":"development_result","content":{"status":"success","summary":"done"}}'
+        ),
+    }[path]
 
     effect = InvokeAgentEffect(
         agent_name="developer", phase="development", prompt_file="development.txt"
     )
 
     assert handle_development(effect, ctx) == [PipelineEvent.AGENT_SUCCESS]
-    workspace.read.assert_called_once_with(".agent/artifacts/plan.json")
+    expected_read_count = 2
+    assert workspace.read.call_count == expected_read_count
 
 
 def test_handle_development_skips_when_plan_is_noop() -> None:
@@ -442,6 +451,11 @@ def test_handle_fix_prepares_prompt_with_iteration_context() -> None:
 
 def test_handle_fix_invokes_agent_successfully() -> None:
     ctx = _stub_context()
+    workspace = cast("MagicMock", ctx.workspace)
+    workspace.exists.side_effect = lambda path: path == ".agent/artifacts/fix_result.json"
+    workspace.read.return_value = (
+        '{"type":"fix_result","content":{"summary":"patched","files_changed":["a.py"]}}'
+    )
     effect = InvokeAgentEffect(
         agent_name="fixer",
         phase=PHASE_FIX,
@@ -449,6 +463,19 @@ def test_handle_fix_invokes_agent_successfully() -> None:
     )
 
     assert handle_fix(effect, ctx) == [PipelineEvent.AGENT_SUCCESS]
+
+
+def test_handle_fix_fails_without_fix_result_artifact() -> None:
+    ctx = _stub_context()
+    workspace = cast("MagicMock", ctx.workspace)
+    workspace.exists.return_value = False
+    effect = InvokeAgentEffect(
+        agent_name="fixer",
+        phase=PHASE_FIX,
+        prompt_file="fix.txt",
+    )
+
+    assert handle_fix(effect, ctx) == [PipelineEvent.FAILED]
 
 
 def test_handle_fix_ignores_unrelated_effects() -> None:
