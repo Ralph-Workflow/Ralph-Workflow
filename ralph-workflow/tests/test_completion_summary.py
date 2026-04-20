@@ -127,6 +127,34 @@ def test_render_verification_reads_artifact_when_present(tmp_path: Path) -> None
     assert "lint errors" in text
 
 
+def test_render_includes_commit_message_artifact_when_present(tmp_path: Path) -> None:
+    commit_dir = tmp_path / ".agent" / "tmp"
+    commit_dir.mkdir(parents=True)
+    (commit_dir / "commit_message.json").write_text(
+        json.dumps(
+            {
+                "name": "commit_message",
+                "type": "commit_message",
+                "content": {
+                    "type": "commit",
+                    "subject": "feat(display): surface polished completion output",
+                    "body_summary": "Show the final commit message in the completion summary.",
+                },
+                "created_at": "STATIC",
+                "updated_at": "STATIC",
+                "metadata": {},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    text = _render_plain(_make_snapshot(), workspace_root=tmp_path)
+    assert "Commit Message" in text
+    assert "feat(display): surface polished completion output" in text
+    assert "Show the final commit message in the completion summary." in text
+
+
+
 def test_render_includes_commit_sha_from_workers() -> None:
     worker = WorkerSnapshot(
         unit_id="unit-1",
@@ -158,6 +186,12 @@ def test_render_pr_url_included_when_set() -> None:
 def test_render_missing_pr_url_omits_pr_line() -> None:
     text = _render_plain(_make_snapshot(pr_url=None))
     assert "PR:" not in text
+
+
+
+def test_render_without_commit_message_artifact_omits_commit_message_line(tmp_path: Path) -> None:
+    text = _render_plain(_make_snapshot(), workspace_root=tmp_path)
+    assert "Commit Message:" not in text
 
 
 def test_render_risks_section_lists_items() -> None:

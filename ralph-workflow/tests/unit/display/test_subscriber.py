@@ -3,8 +3,11 @@ from __future__ import annotations
 import asyncio
 import json
 import time
+from io import StringIO
 from pathlib import Path
 from queue import Queue
+
+from loguru import logger
 
 from ralph.display.snapshot import DashboardSnapshot
 from ralph.display.subscriber import DashboardSubscriber
@@ -103,6 +106,19 @@ class TestBackpressure:
             sub.notify(state)
         assert sub.dropped_count == notify_count - maxsize
         assert q.qsize() == maxsize
+
+    def test_queue_full_does_not_emit_noisy_drop_debug_log(self) -> None:
+        stream = StringIO()
+        sink_id = logger.add(stream, level="DEBUG", format="{message}")
+        try:
+            _q, sub = _make_subscriber(maxsize=1)
+            state = _make_state()
+            sub.notify(state)
+            sub.notify(state)
+        finally:
+            logger.remove(sink_id)
+
+        assert "snapshot dropped" not in stream.getvalue()
 
 
 class TestAsyncioCompat:

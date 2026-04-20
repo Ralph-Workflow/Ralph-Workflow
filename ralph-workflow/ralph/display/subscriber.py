@@ -293,11 +293,10 @@ class DashboardSubscriber:
         try:
             self._queue.put_nowait(snapshot)
         except Full:
+            # Keep the drop accounting for diagnostics and tests, but do not emit
+            # per-drop logs into the user transcript path. PROMPT.md requires
+            # polished, distraction-free output by default.
             self._dropped_count += 1
-            logger.debug(
-                "DashboardSubscriber: queue full, snapshot dropped (total dropped={})",
-                self._dropped_count,
-            )
 
 
 __all__ = ["DashboardSubscriber"]

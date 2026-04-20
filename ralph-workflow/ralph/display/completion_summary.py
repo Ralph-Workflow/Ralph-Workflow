@@ -7,6 +7,8 @@ from typing import TYPE_CHECKING
 
 from rich.text import Text
 
+from ralph.mcp.commit_message import read_commit_message_artifact
+
 if TYPE_CHECKING:
     from pathlib import Path
 
@@ -51,6 +53,22 @@ def _commit_sha_from_snapshot(snapshot: DashboardSnapshot) -> str | None:
         if worker.commit_sha:
             return worker.commit_sha
     return None
+
+
+def _commit_message_lines(workspace_root: Path | None) -> list[str]:
+    if workspace_root is None:
+        return []
+    message = read_commit_message_artifact(workspace_root)
+    if message is None:
+        return []
+
+    lines = [line.strip() for line in message.splitlines() if line.strip()]
+    if not lines:
+        return []
+
+    rendered = [f"Commit Message: {lines[0]}"]
+    rendered.extend(f"  {line}" for line in lines[1:])
+    return rendered
 
 
 def _verification_line(
@@ -99,6 +117,7 @@ def render_completion_summary(
         lines.append("Decisions: (none recorded)")
 
     lines.append(_verification_line(snapshot, workspace_root, failed=failed))
+    lines.extend(_commit_message_lines(workspace_root))
 
     sha = _commit_sha_from_snapshot(snapshot)
     if sha:
