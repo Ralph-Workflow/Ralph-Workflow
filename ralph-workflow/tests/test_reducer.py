@@ -1223,6 +1223,120 @@ def test_phase_handler_crash_exhausts_chain_before_failing() -> None:
 
 
 
+
+def test_phase_handler_crash_exhausts_chain_before_failing_v2() -> None:
+    """PhaseFailureEvent(recoverable=True) must exhaust retries AND fallbacks before failing.
+
+    This is the single most important regression guard for the bug where the pipeline
+    exited on the first exception instead of going through the retry/fallback chain.
+    """
+    # State with a 2-agent dev_chain
+    state = PipelineState(
+        phase=PHASE_DEVELOPMENT,
+        dev_chain=AgentChainState(agents=["claude", "codex"], current_index=0, retries=0),
+    )
+
+    # PhaseFailureEvent that simulates a handler crash
+    crash_event = PhaseFailureEvent(
+        phase="development",
+        reason="Phase handler crashed: RuntimeError: boom",
+        recoverable=True,
+    )
+
+    # Agent 0: 3 retries (retries 0->1->2->3)
+    for expected_retries in range(1, 4):
+        state, effects = _reduce(state, crash_event)
+        assert state.phase == PHASE_DEVELOPMENT
+        assert state.dev_chain.current_index == 0
+        assert state.dev_chain.retries == expected_retries
+        assert effects == []
+
+    # 4th crash on agent 0: fallback to agent 1 (retries reset to 0)
+    state, effects = _reduce(state, crash_event)
+    assert state.phase == PHASE_DEVELOPMENT
+    assert state.dev_chain.current_index == 1
+    assert state.dev_chain.retries == 0
+    assert effects == []
+
+    # Agent 1: 3 more retries (retries 0->1->2->3)
+    for expected_retries in range(1, 4):
+        state, effects = _reduce(state, crash_event)
+        assert state.phase == PHASE_DEVELOPMENT
+        assert state.dev_chain.current_index == 1
+        assert state.dev_chain.retries == expected_retries
+        assert effects == []
+
+    # Final crash on agent 1 (chain exhausted): PHASE_FAILED with descriptive reason
+    state, effects = _reduce(state, crash_event)
+    assert state.phase == PHASE_FAILED
+    assert "Phase handler crashed: RuntimeError: boom" in state.last_error
+    assert len(effects) == 1
+    effect = effects[0]
+    assert isinstance(effect, ExitFailureEffect)
+    assert effect.reason == state.last_error
+    assert "Phase handler crashed" in effect.reason
+    assert effect.reason != "Unknown failure"
+    assert effect.reason != ""
+
+
+
+
+def test_phase_handler_crash_exhausts_chain_before_failing_v3() -> None:
+    """PhaseFailureEvent(recoverable=True) must exhaust retries AND fallbacks before failing.
+
+    This is the single most important regression guard for the bug where the pipeline
+    exited on the first exception instead of going through the retry/fallback chain.
+    """
+    # State with a 2-agent dev_chain
+    state = PipelineState(
+        phase=PHASE_DEVELOPMENT,
+        dev_chain=AgentChainState(agents=["claude", "codex"], current_index=0, retries=0),
+    )
+
+    # PhaseFailureEvent that simulates a handler crash
+    crash_event = PhaseFailureEvent(
+        phase="development",
+        reason="Phase handler crashed: RuntimeError: boom",
+        recoverable=True,
+    )
+
+    # Agent 0: 3 retries (retries 0->1->2->3)
+    for expected_retries in range(1, 4):
+        state, effects = _reduce(state, crash_event)
+        assert state.phase == PHASE_DEVELOPMENT
+        assert state.dev_chain.current_index == 0
+        assert state.dev_chain.retries == expected_retries
+        assert effects == []
+
+    # 4th crash on agent 0: fallback to agent 1 (retries reset to 0)
+    state, effects = _reduce(state, crash_event)
+    assert state.phase == PHASE_DEVELOPMENT
+    assert state.dev_chain.current_index == 1
+    assert state.dev_chain.retries == 0
+    assert effects == []
+
+    # Agent 1: 3 more retries (retries 0->1->2->3)
+    for expected_retries in range(1, 4):
+        state, effects = _reduce(state, crash_event)
+        assert state.phase == PHASE_DEVELOPMENT
+        assert state.dev_chain.current_index == 1
+        assert state.dev_chain.retries == expected_retries
+        assert effects == []
+
+    # Final crash on agent 1 (chain exhausted): PHASE_FAILED with descriptive reason
+    state, effects = _reduce(state, crash_event)
+    assert state.phase == PHASE_FAILED
+    assert "Phase handler crashed: RuntimeError: boom" in state.last_error
+    assert len(effects) == 1
+    effect = effects[0]
+    assert isinstance(effect, ExitFailureEffect)
+    assert effect.reason == state.last_error
+    assert "Phase handler crashed" in effect.reason
+    assert effect.reason != "Unknown failure"
+    assert effect.reason != ""
+
+
+
 def test_full_noop_pipeline_flow_reaches_complete_without_billing_counters() -> None:
     """End-to-end no-op pipeline.
 
