@@ -1499,7 +1499,8 @@ def test_init_command_custom_config_path(monkeypatch: pytest.MonkeyPatch, tmp_pa
 
 
 def test_init_command_creates_prompt_in_cwd_not_template_subdir(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     _attach_console(monkeypatch, init_module)
     monkeypatch.chdir(tmp_path)
@@ -1509,7 +1510,8 @@ def test_init_command_creates_prompt_in_cwd_not_template_subdir(
 
 
 def test_init_command_creates_agent_dir_in_cwd(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     _attach_console(monkeypatch, init_module)
     monkeypatch.chdir(tmp_path)
@@ -1519,7 +1521,8 @@ def test_init_command_creates_agent_dir_in_cwd(
 
 
 def test_init_command_default_template(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     stream = _attach_console(monkeypatch, init_module)
     monkeypatch.chdir(tmp_path)

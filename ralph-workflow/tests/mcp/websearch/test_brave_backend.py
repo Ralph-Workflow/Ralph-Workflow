@@ -45,9 +45,7 @@ class _ExplodingResponse:
 
 def test_search_result_shape(monkeypatch: pytest.MonkeyPatch) -> None:
     brave_backend = _import_brave_module()
-    monkeypatch.setitem(
-        sys.modules, CLIENT_MODULE_NAME, ModuleType(CLIENT_MODULE_NAME)
-    )
+    monkeypatch.setitem(sys.modules, CLIENT_MODULE_NAME, ModuleType(CLIENT_MODULE_NAME))
 
     def fake_get(
         url: str,
@@ -90,9 +88,7 @@ def test_search_result_shape(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_error_does_not_leak_key(monkeypatch: pytest.MonkeyPatch) -> None:
     brave_backend = _import_brave_module()
-    monkeypatch.setitem(
-        sys.modules, CLIENT_MODULE_NAME, ModuleType(CLIENT_MODULE_NAME)
-    )
+    monkeypatch.setitem(sys.modules, CLIENT_MODULE_NAME, ModuleType(CLIENT_MODULE_NAME))
 
     def fake_get(
         url: str,

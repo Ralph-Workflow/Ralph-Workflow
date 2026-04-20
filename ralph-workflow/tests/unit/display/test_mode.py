@@ -37,16 +37,16 @@ def test_narrow_terminal_forces_lines() -> None:
     assert mode.detect_mode(console, {}) == "lines"
 
 
-def test_dashboard_when_tty_and_wide() -> None:
+def test_wide_tty_still_prefers_lines_for_copy_paste_output() -> None:
     console = Console(force_terminal=True, width=120)
 
-    assert mode.detect_mode(console, {}) == "dashboard"
+    assert mode.detect_mode(console, {}) == "lines"
 
 
-def test_force_color_enables_dashboard_without_tty() -> None:
+def test_force_color_does_not_reenable_dashboard_mode() -> None:
     console = Console(force_terminal=False, width=120)
 
-    assert mode.detect_mode(console, {"FORCE_COLOR": "1"}) == "dashboard"
+    assert mode.detect_mode(console, {"FORCE_COLOR": "1"}) == "lines"
 
 
 def test_non_terminal_without_force_color_stays_lines() -> None:

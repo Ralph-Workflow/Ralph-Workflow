@@ -52,12 +52,8 @@ DEFAULT_CAPABILITIES: dict[SessionDrain, tuple[Capability, ...]] = {
         Capability.ARTIFACT_SUBMIT,
         Capability.WEB_SEARCH,
     ),
-    SessionDrain.DEVELOPMENT_ANALYSIS: (
-        Capability.WEB_SEARCH,
-    ),
-    SessionDrain.DEVELOPMENT_COMMIT: (
-        Capability.WEB_SEARCH,
-    ),
+    SessionDrain.DEVELOPMENT_ANALYSIS: (Capability.WEB_SEARCH,),
+    SessionDrain.DEVELOPMENT_COMMIT: (Capability.WEB_SEARCH,),
     SessionDrain.ANALYSIS: (
         Capability.WORKSPACE_READ,
         Capability.WORKSPACE_WRITE_EPHEMERAL,
@@ -73,9 +69,7 @@ DEFAULT_CAPABILITIES: dict[SessionDrain, tuple[Capability, ...]] = {
         Capability.ARTIFACT_SUBMIT,
         Capability.WEB_SEARCH,
     ),
-    SessionDrain.REVIEW_ANALYSIS: (
-        Capability.WEB_SEARCH,
-    ),
+    SessionDrain.REVIEW_ANALYSIS: (Capability.WEB_SEARCH,),
     SessionDrain.DEVELOPMENT: (
         Capability.WORKSPACE_READ,
         Capability.WORKSPACE_WRITE_EPHEMERAL,
@@ -99,9 +93,7 @@ DEFAULT_CAPABILITIES: dict[SessionDrain, tuple[Capability, ...]] = {
         Capability.ENV_READ,
         Capability.WEB_SEARCH,
     ),
-    SessionDrain.REVIEW_COMMIT: (
-        Capability.WEB_SEARCH,
-    ),
+    SessionDrain.REVIEW_COMMIT: (Capability.WEB_SEARCH,),
     SessionDrain.COMMIT: (
         Capability.WORKSPACE_READ,
         Capability.WORKSPACE_WRITE_EPHEMERAL,

@@ -87,13 +87,16 @@ def _reserve_port() -> int:
 def _write_http_mcp_toml(workspace: Path, port: int) -> None:
     agent_dir = workspace / ".agent"
     agent_dir.mkdir(parents=True, exist_ok=True)
-    body = dedent(
-        f"""
+    body = (
+        dedent(
+            f"""
         [mcp_servers.fake_http]
         transport = "http"
         url = "http://127.0.0.1:{port}/mcp"
         """
-    ).strip() + "\n"
+        ).strip()
+        + "\n"
+    )
     (agent_dir / "mcp.toml").write_text(body, encoding="utf-8")
 
 

@@ -26,7 +26,6 @@ LEVELS: Final[dict[str, str]] = {
     "interrupted": "WARN",
 }
 
-
 def _strip_markup(text: str) -> str:
     try:
         return Text.from_markup(text).plain
@@ -49,14 +48,17 @@ class PlainLogRenderer:
         self._last_iteration: int | None = None
         self._last_worker_states: dict[str, str] = {}
         self._last_plan_signature: tuple[str | None, tuple[str, ...], int] | None = None
-        self._last_activity_signature: tuple[
-            str | None,
-            str | None,
-            str | None,
-            str | None,
-            str | None,
-            str | None,
-        ] | None = None
+        self._last_activity_signature: (
+            tuple[
+                str | None,
+                str | None,
+                str | None,
+                str | None,
+                str | None,
+                str | None,
+            ]
+            | None
+        ) = None
         self._last_analysis_signature: tuple[str | None, str | None, str | None] | None = None
 
     def snapshot_lines(self, snapshot: DashboardSnapshot) -> list[str]:
@@ -178,18 +180,20 @@ class PlainLogRenderer:
             lines.append(f"{timestamp} SUCCESS [pr] {snapshot.pr_url}")
         return lines
 
+    @staticmethod
+    def strip_markup(text: str) -> str:
+        return _strip_markup(text)
+
     def emit_snapshot(self, snapshot: DashboardSnapshot) -> None:
         for line in self.snapshot_lines(snapshot):
             self._console.print(line, markup=False, highlight=False, no_wrap=True)
 
     def emit_log_line(self, unit_id: str, line: str) -> None:
         sanitized = _strip_markup(line)
-        self._console.print(
-            f"{self._clock().isoformat()} INFO [{unit_id}] {sanitized}",
-            markup=False,
-            highlight=False,
-            no_wrap=True,
-        )
+        self._console.out(f"[{unit_id}] {sanitized}")
+
+    def emit_status_line(self, unit_id: str, status: str) -> None:
+        self._console.out(f"[{unit_id}] status={status}")
 
 
 class PlainModeAdapter:

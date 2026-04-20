@@ -444,7 +444,6 @@ def _agent_command_name(config: AgentConfig) -> str:
     return config.cmd.split()[0]
 
 
-
 def _read_lines_from_process(proc: subprocess.Popen[str]) -> Iterator[str]:
     """Read lines from subprocess stdout in a background thread.
 
@@ -629,13 +628,11 @@ def _extend_claude_transport_flags(
         cmd.extend(["--allowedTools", ",".join(build_options.allowed_mcp_tool_names)])
 
 
-
 def _resolve_prompt_path(prompt_file: str, workspace_path: Path | None) -> Path:
     prompt_path = Path(prompt_file)
     if prompt_path.is_absolute() or workspace_path is None:
         return prompt_path
     return workspace_path / prompt_path
-
 
 
 def _append_transport_prompt_arg(
@@ -650,7 +647,6 @@ def _append_transport_prompt_arg(
         cmd.append(resolved_prompt.read_text(encoding="utf-8"))
         return
     cmd.append(prompt_file)
-
 
 
 def _provider_allowed_mcp_tool_names(
@@ -700,9 +696,9 @@ def _build_opencode_command(
     *,
     options: _BuildCommandOptions,
 ) -> list[str]:
-    prompt_text = _resolve_prompt_path(
-        prompt_file, options.workspace_path
-    ).read_text(encoding="utf-8")
+    prompt_text = _resolve_prompt_path(prompt_file, options.workspace_path).read_text(
+        encoding="utf-8"
+    )
     cmd = [_agent_command_name(config), "run"]
     if options.pure:
         cmd.append("--pure")
@@ -730,9 +726,9 @@ def _build_codex_command(
     *,
     options: _BuildCommandOptions,
 ) -> list[str]:
-    prompt_text = _resolve_prompt_path(
-        prompt_file, options.workspace_path
-    ).read_text(encoding="utf-8")
+    prompt_text = _resolve_prompt_path(prompt_file, options.workspace_path).read_text(
+        encoding="utf-8"
+    )
     cmd = config.cmd.split()
     cmd.append(config.output_flag)
 
@@ -768,7 +764,6 @@ def _split_optional_flag(flag: str | None) -> list[str]:
     if not flag:
         return []
     return shlex.split(flag)
-
 
 
 def check_agent_available(config: AgentConfig) -> bool:

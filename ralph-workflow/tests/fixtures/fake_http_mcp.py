@@ -133,9 +133,7 @@ class _McpHandler(BaseHTTPRequestHandler):
             session_id=session_id,
         )
 
-    def _send_method_not_found(
-        self, req_id: object, method: str, session_id: str | None
-    ) -> None:
+    def _send_method_not_found(self, req_id: object, method: str, session_id: str | None) -> None:
         self._send_json(
             HTTPStatus.OK,
             {

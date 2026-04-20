@@ -14,40 +14,25 @@ from ralph.pipeline.worker_state import WorkerStatus
 
 def test_no_args_constructs_in_non_tty_env() -> None:
     pd = ParallelDisplay()
-    assert pd.mode in ("dashboard", "lines")
+    assert pd.mode == "lines"
 
 
 def test_no_args_constructs_in_tty_env() -> None:
     console = Console(force_terminal=True, width=120)
     pd = ParallelDisplay(console, {})
-    assert pd.mode == "dashboard"
-
-
-def test_mode_override_dashboard_ignores_detection() -> None:
-    console = Console(force_terminal=False, width=40)
-    pd = ParallelDisplay(console, {"CI": "1"}, mode="dashboard")
-    assert pd.mode == "dashboard"
-
-
-def test_mode_override_lines_ignores_detection() -> None:
-    console = Console(force_terminal=True, width=200)
-    pd = ParallelDisplay(console, {}, mode="lines")
     assert pd.mode == "lines"
 
 
-def test_emit_dashboard_mode_buffer_registered_for_unit() -> None:
-    console = Console(force_terminal=True, width=120)
-    pd = ParallelDisplay(console, {}, mode="dashboard")
-    pd.emit("u1", "hi")
-    assert pd._activity_router.get_buffer("u1") is not None
+def test_mode_override_dashboard_is_coerced_to_lines() -> None:
+    console = Console(force_terminal=False, width=40)
+    pd = ParallelDisplay(console, {"CI": "1"}, mode="dashboard")
+    assert pd.mode == "lines"
 
 
-def test_emit_dashboard_mode_buffer_contains_line() -> None:
-    console = Console(force_terminal=True, width=120)
-    pd = ParallelDisplay(console, {}, mode="dashboard")
-    pd.emit("u1", "hello world")
-    snap = pd._activity_router.get_buffer("u1").snapshot(10)
-    assert any("hello world" in entry for entry in snap)
+def test_mode_override_lines_stays_lines() -> None:
+    console = Console(force_terminal=True, width=200)
+    pd = ParallelDisplay(console, {}, mode="lines")
+    assert pd.mode == "lines"
 
 
 def test_emit_lines_mode_writes_to_console() -> None:
@@ -57,6 +42,7 @@ def test_emit_lines_mode_writes_to_console() -> None:
     pd.emit("u1", "hi from lines mode")
     text = console.export_text()
     assert "hi from lines mode" in text
+    assert "[u1]" in text
 
 
 def test_set_status_does_not_call_subscriber_notify() -> None:
@@ -77,7 +63,7 @@ def test_set_status_does_not_call_subscriber_notify() -> None:
 
     sub.notify = tracking_notify  # type: ignore[method-assign]
 
-    pd = ParallelDisplay(console, {}, mode="dashboard", subscriber=sub)
+    pd = ParallelDisplay(console, {}, mode="lines", subscriber=sub)
     pd.set_status("u1", WorkerStatus.RUNNING)
 
     assert notify_calls == []

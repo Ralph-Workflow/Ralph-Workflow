@@ -159,7 +159,6 @@ def render_worker_prompt(unit: WorkUnit, base_prompt: str, policy: PipelinePolic
     )
 
 
-
 def tool_name_prefix_for_transport(transport: AgentTransport | None) -> str:
     # Prompt templates should talk about the same tool names the current agent
     # transport will actually see. Claude gets namespaced MCP tools; other

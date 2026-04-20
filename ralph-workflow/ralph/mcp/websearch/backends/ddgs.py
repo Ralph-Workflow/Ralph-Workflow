@@ -13,9 +13,7 @@ if TYPE_CHECKING:
 class _DdgsTextClient(Protocol):
     """Minimal structural protocol matching the DDGS text-search API."""
 
-    def text(
-        self, query: str, max_results: int
-    ) -> Iterable[Mapping[str, object]] | None: ...
+    def text(self, query: str, max_results: int) -> Iterable[Mapping[str, object]] | None: ...
 
 
 _ddgs_module: object | None

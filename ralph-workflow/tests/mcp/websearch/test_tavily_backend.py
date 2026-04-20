@@ -50,9 +50,7 @@ def test_search_result_shape(monkeypatch: pytest.MonkeyPatch) -> None:
     fake_module.TavilyClient = FakeClient
     monkeypatch.setitem(sys.modules, "tavily", fake_module)
 
-    results = tavily_backend.TavilyBackend(api_key=API_KEY).search(
-        "python", limit=SEARCH_LIMIT
-    )
+    results = tavily_backend.TavilyBackend(api_key=API_KEY).search("python", limit=SEARCH_LIMIT)
 
     assert results == [
         tavily_backend.SearchResult(

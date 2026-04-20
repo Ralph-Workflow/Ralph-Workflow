@@ -31,7 +31,6 @@ def test_render_worker_prompt_includes_unit_specific_description_and_base_prompt
     assert BASE_PROMPT in rendered
 
 
-
 def test_render_worker_prompt_lists_allowed_directories_as_json(tmp_path: Path) -> None:
     policy = load_policy(tmp_path / ".agent")
     unit = WorkUnit(
@@ -43,7 +42,6 @@ def test_render_worker_prompt_lists_allowed_directories_as_json(tmp_path: Path) 
     rendered = render_worker_prompt(unit=unit, base_prompt=BASE_PROMPT, policy=policy.pipeline)
 
     assert json.dumps(unit.allowed_directories, indent=2) in rendered
-
 
 
 def test_render_worker_prompt_does_not_leak_other_unit_data(tmp_path: Path) -> None:

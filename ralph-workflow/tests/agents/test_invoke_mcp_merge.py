@@ -72,7 +72,9 @@ def _fake_popen_capturing(seen_env: list[dict[str, str]]) -> object:
 
 
 def test_merge_no_collision_preserves_all_servers() -> None:
-    native = (UpstreamMcpServer(name="native-svc", transport="http", url="http://native.example/mcp"),)
+    native = (
+        UpstreamMcpServer(name="native-svc", transport="http", url="http://native.example/mcp"),
+    )
     toml = (UpstreamMcpServer(name="toml-svc", transport="http", url="http://toml.example/mcp"),)
 
     result = _merge_mcp_toml_into_upstreams(native, toml)
@@ -95,7 +97,9 @@ def test_merge_collision_emits_warning() -> None:
     warnings: list[str] = []
     sink_id = logger.add(lambda msg: warnings.append(str(msg)), level="WARNING")
     try:
-        native = (UpstreamMcpServer(name="shared", transport="http", url="http://native.example/mcp"),)
+        native = (
+            UpstreamMcpServer(name="shared", transport="http", url="http://native.example/mcp"),
+        )
         toml = (UpstreamMcpServer(name="shared", transport="http", url="http://toml.example/mcp"),)
         _merge_mcp_toml_into_upstreams(native, toml)
     finally:
@@ -105,7 +109,9 @@ def test_merge_collision_emits_warning() -> None:
 
 
 def test_merge_empty_toml_is_noop() -> None:
-    native = (UpstreamMcpServer(name="native-svc", transport="http", url="http://native.example/mcp"),)
+    native = (
+        UpstreamMcpServer(name="native-svc", transport="http", url="http://native.example/mcp"),
+    )
     assert _merge_mcp_toml_into_upstreams(native, ()) == native
 
 
@@ -194,9 +200,7 @@ def test_claude_upstream_env_var_includes_mcp_toml_server(
     seen_env: list[dict[str, str]] = []
     monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", _fake_popen_capturing(seen_env))
     monkeypatch.setattr("ralph.agents.invoke._mcp_toml_as_upstreams", _fake_mcp_toml_as_upstreams)
-    monkeypatch.setattr(
-        "ralph.agents.invoke._provider_allowed_mcp_tool_names", lambda cfg, ep: ()
-    )
+    monkeypatch.setattr("ralph.agents.invoke._provider_allowed_mcp_tool_names", lambda cfg, ep: ())
     monkeypatch.setenv("HOME", str(fake_home))
 
     list(
@@ -291,9 +295,7 @@ def test_claude_collision_mcp_toml_overrides_native_server(
     seen_env: list[dict[str, str]] = []
     monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", _fake_popen_capturing(seen_env))
     monkeypatch.setattr("ralph.agents.invoke._mcp_toml_as_upstreams", _fake_mcp_toml_as_upstreams)
-    monkeypatch.setattr(
-        "ralph.agents.invoke._provider_allowed_mcp_tool_names", lambda cfg, ep: ()
-    )
+    monkeypatch.setattr("ralph.agents.invoke._provider_allowed_mcp_tool_names", lambda cfg, ep: ())
     monkeypatch.setenv("HOME", str(fake_home))
 
     list(

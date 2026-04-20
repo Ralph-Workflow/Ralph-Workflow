@@ -101,9 +101,7 @@ def _redact_error(server: UpstreamMcpServer, exc: BaseException) -> str:
 def _format_failure_report(failures: Iterable[UpstreamServerReport]) -> str:
     lines: list[str] = []
     for failure in failures:
-        keys_part = (
-            f" env_keys={list(failure.secret_keys)}" if failure.secret_keys else ""
-        )
+        keys_part = f" env_keys={list(failure.secret_keys)}" if failure.secret_keys else ""
         lines.append(
             f"- {failure.name} (transport={failure.transport}){keys_part}: {failure.error}"
         )
@@ -184,15 +182,12 @@ def validate_upstream_mcp_servers(
 
     if not failures:
         if server_list:
-            logger.info(
-                "Validated {} custom MCP server(s); all reachable.", len(server_list)
-            )
+            logger.info("Validated {} custom MCP server(s); all reachable.", len(server_list))
         return report
 
     if effective_strict:
         raise UpstreamValidationError(
-            "Custom MCP servers failed startup validation:\n"
-            + _format_failure_report(failures)
+            "Custom MCP servers failed startup validation:\n" + _format_failure_report(failures)
         )
 
     for failure in failures:

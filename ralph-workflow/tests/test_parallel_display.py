@@ -1,24 +1,16 @@
-"""Tests for ParallelDisplay mode detection."""
+"""Tests for ParallelDisplay's log-first output mode."""
 
 from __future__ import annotations
 
-import time
-from datetime import UTC, datetime, timedelta
-
-from rich.console import Console, RenderableType
-from rich.live import Live
+from rich.console import Console
 
 from ralph.display.parallel_display import (
     NARROW_THRESHOLD,
     ParallelDisplay,
-    _dashboard_renderable,
+    _strip_markup,
     detect_mode,
 )
-from ralph.pipeline.state import PipelineState
-from ralph.pipeline.work_units import WorkUnit
-from ralph.pipeline.worker_state import WorkerState, WorkerStatus
-
-EXPECTED_QUEUE_UPDATES = 2
+from ralph.pipeline.worker_state import WorkerStatus
 
 
 def test_ci_env_forces_lines() -> None:
@@ -26,10 +18,9 @@ def test_ci_env_forces_lines() -> None:
     assert detect_mode(console, {"CI": "1"}) == "lines"
 
 
-def test_ci_empty_string_does_not_force_lines() -> None:
-    """CI='' is falsy — should not trigger lines mode on its own."""
+def test_ci_empty_string_still_prefers_lines() -> None:
     console = Console(force_terminal=True, width=120)
-    assert detect_mode(console, {"CI": ""}) == "dashboard"
+    assert detect_mode(console, {"CI": ""}) == "lines"
 
 
 def test_no_color_forces_lines() -> None:
@@ -38,7 +29,6 @@ def test_no_color_forces_lines() -> None:
 
 
 def test_no_color_empty_string_forces_lines() -> None:
-    """NO_COLOR='' — merely being set (even empty) triggers lines mode."""
     console = Console(force_terminal=True, width=120)
     assert detect_mode(console, {"NO_COLOR": ""}) == "lines"
 
@@ -48,9 +38,9 @@ def test_term_dumb_forces_lines() -> None:
     assert detect_mode(console, {"TERM": "dumb"}) == "lines"
 
 
-def test_term_other_value_does_not_force_lines() -> None:
+def test_term_other_value_still_prefers_lines() -> None:
     console = Console(force_terminal=True, width=120)
-    assert detect_mode(console, {"TERM": "xterm-256color"}) == "dashboard"
+    assert detect_mode(console, {"TERM": "xterm-256color"}) == "lines"
 
 
 def test_non_terminal_console_forces_lines() -> None:
@@ -64,25 +54,19 @@ def test_narrow_terminal_forces_lines() -> None:
 
 
 def test_threshold_boundary_forces_lines() -> None:
-    """Width exactly at NARROW_THRESHOLD is still too narrow."""
     console = Console(force_terminal=True, width=NARROW_THRESHOLD)
     assert detect_mode(console, {}) == "lines"
 
 
-def test_threshold_plus_one_is_dashboard() -> None:
+def test_threshold_plus_one_still_prefers_lines() -> None:
     console = Console(force_terminal=True, width=NARROW_THRESHOLD + 1)
-    assert detect_mode(console, {}) == "dashboard"
-
-
-def test_dashboard_mode_when_all_good() -> None:
-    console = Console(force_terminal=True, width=120)
-    assert detect_mode(console, {}) == "dashboard"
+    assert detect_mode(console, {}) == "lines"
 
 
 def test_parallel_display_mode_detected_at_init() -> None:
     console = Console(force_terminal=True, width=120)
     pd = ParallelDisplay(console, {})
-    assert pd.mode == "dashboard"
+    assert pd.mode == "lines"
 
 
 def test_parallel_display_mode_lines_when_ci() -> None:
@@ -92,31 +76,28 @@ def test_parallel_display_mode_lines_when_ci() -> None:
 
 
 def test_parallel_display_default_env_uses_os_environ() -> None:
-    """Passing env=None should not crash (uses os.environ internally)."""
     console = Console(force_terminal=True, width=120)
     pd = ParallelDisplay(console)
-    assert pd.mode in ("dashboard", "lines")
+    assert pd.mode == "lines"
 
 
 def test_parallel_display_mode_frozen_after_init() -> None:
-    """mode attribute must not be writable."""
     console = Console(force_terminal=True, width=120)
     pd = ParallelDisplay(console, {})
     try:
-        pd.mode = "lines"  # type: ignore[misc]  # reason: assert runtime immutability guard
+        pd.mode = "lines"  # type: ignore[misc]
         raise AssertionError("Should have raised AttributeError")
     except AttributeError:
         pass
 
 
 def test_parallel_display_context_manager() -> None:
-    """__enter__/__exit__ must not raise."""
     console = Console(force_terminal=True, width=120)
     with ParallelDisplay(console, {}) as pd:
-        assert pd.mode in ("dashboard", "lines")
+        assert pd.mode == "lines"
 
 
-def test_parallel_display_emit_stub_does_not_raise() -> None:
+def test_parallel_display_emit_does_not_raise() -> None:
     console = Console(force_terminal=True, width=120)
     pd = ParallelDisplay(console, {})
     pd.emit("unit-1", "some output line")
@@ -128,135 +109,39 @@ def test_parallel_display_emit_none_unit_id_does_not_raise() -> None:
     pd.emit(None, "some output line")
 
 
-def test_parallel_display_set_status_stub_does_not_raise() -> None:
-    console = Console(force_terminal=True, width=120)
+def test_parallel_display_set_status_writes_line() -> None:
+    console = Console(force_terminal=True, width=120, record=True)
     pd = ParallelDisplay(console, {})
     pd.set_status("unit-1", WorkerStatus.RUNNING)
+    assert "status=RUNNING" in console.export_text()
 
 
-def test_parallel_display_dashboard_mode_uses_put_nowait_for_updates() -> None:
-    console = Console(force_terminal=True, width=120)
-    pd = ParallelDisplay(console, {}, mode="dashboard")
-    queued: list[object] = []
-
-    class _QueueSpy:
-        def put(self, _item: object) -> None:
-            raise AssertionError("blocking put() should not be used")
-
-        def put_nowait(self, item: object) -> None:
-            queued.append(item)
-
-    pd._queue = _QueueSpy()  # type: ignore[assignment]  # reason: inject queue spy for put_nowait assertion
-
-    pd.emit("unit-1", "some output line")
-    pd.set_status("unit-1", WorkerStatus.RUNNING)
-
-    assert len(queued) == EXPECTED_QUEUE_UPDATES
-
-
-def test_parallel_display_start_stop_stubs_do_not_raise() -> None:
+def test_parallel_display_start_stop_do_not_raise() -> None:
     console = Console(force_terminal=True, width=120)
     pd = ParallelDisplay(console, {})
     pd.start()
     pd.stop()
 
 
-def test_parallel_display_dashboard_mode_renders_emitted_output(monkeypatch) -> None:
-    # A taller console is needed now that the dashboard includes plan,
-    # analysis, and decision-log panels in addition to the worker activity
-    # region; without the extra rows the log_tail panel gets squeezed below
-    # its content row and no emitted line shows up in the captured output.
-    console = Console(force_terminal=True, width=120, height=50, record=True)
+def test_parallel_display_default_mode_streams_copy_pasteable_lines() -> None:
+    console = Console(force_terminal=True, width=120, record=True)
     pd = ParallelDisplay(console, {})
-    renderables: list[RenderableType] = []
-    original_update = Live.update
 
-    def capture_update(
-        self: Live,
-        renderable: RenderableType,
-        *args: object,
-        **kwargs: object,
-    ) -> None:
-        renderables.append(renderable)
-        original_update(self, renderable, *args, **kwargs)
-
-    monkeypatch.setattr(Live, "update", capture_update)
-
-    assert pd.mode == "dashboard"
+    assert pd.mode == "lines"
 
     pd.start()
     try:
-        pd.emit("unit-1", "some output line")
-        pd.subscriber.notify(
-            PipelineState(
-                phase="development",
-                work_units=(WorkUnit(unit_id="unit-1", description="worker description"),),
-                worker_states={
-                    "unit-1": WorkerState(unit_id="unit-1", status=WorkerStatus.RUNNING)
-                },
-            )
-        )
-        time.sleep(0.35)
+        pd.emit("unit-1", "[green]some output line[/green]")
     finally:
         pd.stop()
 
-    dashboard_console = Console(record=True, width=120, height=50, force_terminal=True)
-    for renderable in renderables:
-        dashboard_console.print(renderable)
-    rendered_text = dashboard_console.export_text()
+    rendered_text = console.export_text()
     assert "some output line" in rendered_text
-    assert "Agent Activity" in rendered_text
+    assert "[green]" not in rendered_text
+    assert "[/green]" not in rendered_text
+    assert "Agent Activity" not in rendered_text
 
 
-def test_dashboard_renderable_uses_worker_elapsed_time() -> None:
-    started_at = datetime(2026, 4, 18, 12, 0, tzinfo=UTC)
-    finished_at = started_at + timedelta(seconds=3.5)
-    renderable = _dashboard_renderable(
-        {"unit-1": ["line-1"]},
-        worker_status={
-            "unit-1": {
-                "status": WorkerStatus.SUCCEEDED,
-                "started_at": started_at,
-                "finished_at": finished_at,
-            }
-        },
-    )
-
-    console = Console(record=True, width=120, force_terminal=True)
-    console.print(renderable)
-
-    assert "3.5" in console.export_text()
-
-
-def test_dashboard_renderable_reports_no_dropped_lines_for_single_source() -> None:
-    renderable = _dashboard_renderable({"unit-1": ["line-1", "line-2"]})
-
-    console = Console(record=True, width=120, force_terminal=True)
-    console.print(renderable)
-
-    assert "dropped:" not in console.export_text()
-
-
-def test_emit_in_dashboard_mode_routes_text_via_print_above() -> None:
-    console = Console(force_terminal=True, width=120)
-    pd = ParallelDisplay(console, {}, mode="dashboard")
-
-    print_above_calls: list[str] = []
-
-    class _MockLiveDashboard:
-        def print_above(self, renderable: object) -> None:
-            print_above_calls.append(str(renderable))
-
-    pd._live_dashboard = _MockLiveDashboard()  # type: ignore[assignment]
-
-    pd.emit("agent", "Planning analysis complete")
-
-    assert len(print_above_calls) == 1
-    assert "Planning analysis complete" in print_above_calls[0]
-
-
-def test_emit_in_dashboard_mode_no_live_dashboard_does_not_raise() -> None:
-    console = Console(force_terminal=True, width=120)
-    pd = ParallelDisplay(console, {}, mode="dashboard")
-    assert pd._live_dashboard is None
-    pd.emit("agent", "some line")
+def test_strip_markup_removes_rich_tags() -> None:
+    assert _strip_markup("[green]ok[/green]") == "ok"
+    assert _strip_markup("plain text") == "plain text"

@@ -98,9 +98,7 @@ def test_emit_snapshot_for_development_outputs_one_line() -> None:
 
     renderer.emit_snapshot(_make_snapshot(phase="development"))
 
-    assert stream.getvalue().splitlines() == [
-        "2026-04-18T12:00:00+00:00 INFO [phase] development"
-    ]
+    assert stream.getvalue().splitlines() == ["2026-04-18T12:00:00+00:00 INFO [phase] development"]
 
 
 def test_emit_snapshot_deduplicates_identical_snapshots() -> None:
@@ -110,9 +108,7 @@ def test_emit_snapshot_deduplicates_identical_snapshots() -> None:
     renderer.emit_snapshot(snapshot)
     renderer.emit_snapshot(snapshot)
 
-    assert stream.getvalue().splitlines() == [
-        "2026-04-18T12:00:00+00:00 INFO [phase] development"
-    ]
+    assert stream.getvalue().splitlines() == ["2026-04-18T12:00:00+00:00 INFO [phase] development"]
 
 
 def test_emit_log_line_strips_markup_for_copy_paste() -> None:
@@ -120,17 +116,13 @@ def test_emit_log_line_strips_markup_for_copy_paste() -> None:
 
     renderer.emit_log_line("worker-1", "[bold magenta]hello[/bold magenta]")
 
-    assert stream.getvalue().splitlines() == [
-        "2026-04-18T12:00:00+00:00 INFO [worker-1] hello"
-    ]
+    assert stream.getvalue().splitlines() == ["[worker-1] hello"]
 
 
 def test_emit_snapshot_output_has_no_ansi_escape_codes() -> None:
     renderer, stream = _make_renderer()
 
-    renderer.emit_snapshot(
-        _make_snapshot(workers=(_make_worker(status="RUNNING"),))
-    )
+    renderer.emit_snapshot(_make_snapshot(workers=(_make_worker(status="RUNNING"),)))
 
     output = stream.getvalue()
     assert "\x1b" not in output
@@ -160,8 +152,7 @@ def test_emit_snapshot_includes_plan_activity_and_analysis_context() -> None:
     lines = stream.getvalue().splitlines()
     assert any("[plan] Expose the full NDJSON transcript in the UI" in line for line in lines)
     assert any(
-        "[plan-scope] Render all events | Keep output copy-pasteable" in line
-        for line in lines
+        "[plan-scope] Render all events | Keep output copy-pasteable" in line for line in lines
     )
     assert any("[activity] agent=planner tool=read path=PROMPT.md" in line for line in lines)
     assert any("workdir=/tmp/project" in line for line in lines)

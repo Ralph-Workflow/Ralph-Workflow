@@ -29,6 +29,7 @@ if TYPE_CHECKING:
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 class _FakeScope:
     """Minimal WorkspaceScope stand-in for loader tests."""
 
@@ -39,6 +40,7 @@ class _FakeScope:
 # ---------------------------------------------------------------------------
 # Path resolution
 # ---------------------------------------------------------------------------
+
 
 def test_bundled_default_path_resolves_to_existing_file() -> None:
     path = _bundled_default_mcp_config_path()
@@ -78,6 +80,7 @@ def test_local_mcp_config_path(tmp_path: Path) -> None:
 # No files present -> defaults
 # ---------------------------------------------------------------------------
 
+
 def test_load_mcp_config_no_files_returns_defaults(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -93,6 +96,7 @@ def test_load_mcp_config_no_files_returns_defaults(
 # ---------------------------------------------------------------------------
 # Layer merge order
 # ---------------------------------------------------------------------------
+
 
 def test_load_mcp_config_local_overrides_global(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
@@ -172,6 +176,7 @@ def test_load_mcp_config_workspace_scope_local_path(
 # Fail-fast TOML parse errors
 # ---------------------------------------------------------------------------
 
+
 def test_load_mcp_config_malformed_local_toml_exits(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -199,6 +204,7 @@ def test_load_mcp_config_malformed_global_toml_exits(
 # Schema validation errors
 # ---------------------------------------------------------------------------
 
+
 def test_load_mcp_config_reserved_server_name_exits(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -221,6 +227,7 @@ def test_load_mcp_config_reserved_server_name_exits(
 # ---------------------------------------------------------------------------
 # Fallback backend validation
 # ---------------------------------------------------------------------------
+
 
 def test_load_mcp_config_unknown_fallback_backend_exits(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
@@ -278,6 +285,7 @@ def test_load_mcp_config_configured_fallback_allowed(
 # ---------------------------------------------------------------------------
 # Secret scrubbing
 # ---------------------------------------------------------------------------
+
 
 def test_load_mcp_config_api_key_not_in_logs(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path

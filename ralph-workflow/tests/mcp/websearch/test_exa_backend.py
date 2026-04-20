@@ -49,9 +49,7 @@ def test_search_result_shape(monkeypatch: pytest.MonkeyPatch) -> None:
     fake_module.Exa = FakeExa
     monkeypatch.setitem(sys.modules, "exa_py", fake_module)
 
-    results = exa_backend.ExaBackend(api_key=API_KEY).search(
-        "python", limit=SEARCH_LIMIT
-    )
+    results = exa_backend.ExaBackend(api_key=API_KEY).search("python", limit=SEARCH_LIMIT)
 
     assert results == [
         exa_backend.SearchResult(
@@ -92,9 +90,11 @@ def test_import_error_message_points_to_extras(monkeypatch: pytest.MonkeyPatch) 
     monkeypatch.setattr(
         exa_backend,
         "import_module",
-        lambda name: (_ for _ in ()).throw(ImportError("missing exa"))
-        if name == "exa_py"
-        else import_module(name),
+        lambda name: (
+            (_ for _ in ()).throw(ImportError("missing exa"))
+            if name == "exa_py"
+            else import_module(name)
+        ),
     )
 
     with pytest.raises(exa_backend.WebSearchError, match=IMPORT_ERROR_MATCH):

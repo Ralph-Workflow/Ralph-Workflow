@@ -248,9 +248,7 @@ def test_execute_fan_out_sync_uses_parallel_display_subscriber_when_not_provided
     monkeypatch.setattr(
         "ralph.interrupt.asyncio_bridge.install_signal_handlers", lambda *args: None
     )
-    monkeypatch.setattr(
-        "ralph.display.parallel_display.ParallelDisplay", _FakeParallelDisplay
-    )
+    monkeypatch.setattr("ralph.display.parallel_display.ParallelDisplay", _FakeParallelDisplay)
     monkeypatch.setattr("ralph.agents.subprocess_executor.SubprocessAgentExecutor", _FakeExecutor)
     monkeypatch.setattr("ralph.git.worktree_manager.WorktreeManager", _FakeWorktreeManager)
     monkeypatch.setattr(

@@ -458,9 +458,7 @@ class TestStartClose:
 
 
 class TestUpstreamRegistry:
-    def _make_tools_caller(
-        self, tools: list[dict[str, object]]
-    ) -> object:
+    def _make_tools_caller(self, tools: list[dict[str, object]]) -> object:
         def caller(method: str, params: dict[str, object]) -> dict[str, object]:
             if method == "tools/list":
                 return {"tools": tools}  # type: ignore[return-value]
@@ -485,7 +483,8 @@ class TestUpstreamRegistry:
             return HttpUpstreamClient(server, caller=gh_caller)  # type: ignore[arg-type]
 
         registry = UpstreamRegistry.build(
-            [fs_server, gh_server], client_factory=client_factory  # type: ignore[arg-type]
+            [fs_server, gh_server],
+            client_factory=client_factory,  # type: ignore[arg-type]
         )
         aliases = {t.alias for t in registry.tool_definitions()}
 
@@ -502,12 +501,8 @@ class TestUpstreamRegistry:
             name="a", transport="http", url="http://unused"
         )
 
-        ab_caller = self._make_tools_caller(
-            [{"name": "c", "description": "", "inputSchema": {}}]
-        )
-        a_caller = self._make_tools_caller(
-            [{"name": "b__c", "description": "", "inputSchema": {}}]
-        )
+        ab_caller = self._make_tools_caller([{"name": "c", "description": "", "inputSchema": {}}])
+        a_caller = self._make_tools_caller([{"name": "b__c", "description": "", "inputSchema": {}}])
 
         def client_factory(server: UpstreamMcpServer) -> HttpUpstreamClient:
             if server.name == "a__b":
