@@ -1,6 +1,6 @@
 # Ralph Workflow
 
-Ralph Workflow is a Python CLI for unattended, multi-agent software delivery loops. The maintained implementation lives in `ralph-workflow/`; this repository also keeps legacy design notes from the retired Rust implementation and a vendored Rust/Tauri GUI under `vendor/ralph-workflow-gui/`.
+Ralph Workflow is a Python CLI for unattended, multi-agent software delivery loops. The maintained implementation lives in `ralph-workflow/`; this repository also keeps legacy design notes from the retired Rust implementation.
 
 ## What is current
 
@@ -62,7 +62,6 @@ That runs the current Python verification path:
 - `ralph-workflow/README.md` — package install, development, and API overview
 - `ralph-workflow/CONTRIBUTING.md` — Python contributor workflow
 - `docs/README.md` — current vs legacy documentation map
-- `vendor/ralph-workflow-gui/` — vendored Rust GUI work; not the canonical CLI implementation
 
 ## Legacy documentation status
 
