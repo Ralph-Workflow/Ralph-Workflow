@@ -1,5 +1,4 @@
 """Unit tests for agent NDJSON parsers."""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -9,6 +8,7 @@ import pytest
 from ralph.agents.parsers import (
     ClaudeParser,
     CodexParser,
+    GeminiParser,
     GenericParser,
     OpenCodeParser,
     get_parser,
@@ -18,6 +18,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
 
 EXPECTED_TEXT_RESULTS = 2
+EXPECTED_TWO_LINES = 2
 
 
 def _make_lines(data: list[str]) -> Iterator[str]:
@@ -198,7 +199,7 @@ def test_claude_parser_prefixed_transcript_message_delta_is_suppressed() -> None
 
 
 def test_opencode_parser_stream() -> None:
-    """OpenCode parser should suppress lifecycle-only events in user-facing output."""
+    """OpenCode parser should accumulate stream deltas and emit at step_finish."""
     parser = OpenCodeParser()
     lines = [
         '{"type":"step_start","id":"step-1"}',
@@ -209,11 +210,10 @@ def test_opencode_parser_stream() -> None:
     ]
     results = list(parser.parse(_make_lines(lines)))
 
-    assert results[0].type == "text"
-    assert results[0].content == "Hello"
-    assert results[1].type == "text"
-    assert results[1].content == " World"
-    assert len(results) == EXPECTED_TEXT_RESULTS
+    # With delta accumulation, Hello and World are merged into Hello World
+    text_results = [r for r in results if r.type == "text"]
+    assert len(text_results) == 1
+    assert text_results[0].content == "Hello World"
 
 
 def test_opencode_parser_tool_use() -> None:
@@ -421,6 +421,260 @@ def test_codex_parser_item_completed_mcp_tool_result_maps_to_tool_result() -> No
     assert results[0].type == "tool_result"
     assert results[0].metadata["tool"] == "write_memory"
     assert results[0].metadata["result"] == {"status": "ok", "written": 2}
+
+
+def test_codex_parser_delta_accumulates_to_single_line_on_stop() -> None:
+    """Codex parser should accumulate multiple deltas into one text line on stop."""
+    parser = CodexParser()
+    lines = [
+        '{"type":"text_delta","delta":"Hello","response_id":"resp-1"}',
+        '{"type":"text_delta","delta":" ","response_id":"resp-1"}',
+        '{"type":"text_delta","delta":"World","response_id":"resp-1"}',
+        '{"type":"text_delta","delta":"!","response_id":"resp-1"}',
+        '{"type":"response.completed","response_id":"resp-1"}',
+    ]
+
+    results = list(parser.parse(_make_lines(lines)))
+
+    # Should be 2 results: one coalesced text line + stop
+    text_results = [r for r in results if r.type == "text"]
+    assert len(text_results) == 1
+    assert text_results[0].content == "Hello World!"
+
+
+def test_codex_parser_paragraph_boundary_yields_two_lines() -> None:
+    """Codex parser should flush on paragraph boundary (double newline)."""
+    parser = CodexParser()
+    lines = [
+        '{"type":"text_delta","delta":"First paragraph","response_id":"resp-1"}',
+        '{"type":"text_delta","delta":"\n\n","response_id":"resp-1"}',
+        '{"type":"text_delta","delta":"Second paragraph","response_id":"resp-1"}',
+        '{"type":"response.completed","response_id":"resp-1"}',
+    ]
+
+    results = list(parser.parse(_make_lines(lines)))
+
+    text_results = [r for r in results if r.type == "text"]
+    assert len(text_results) == EXPECTED_TWO_LINES
+    assert text_results[0].content == "First paragraph"
+    assert text_results[1].content == "Second paragraph"
+
+
+def test_codex_parser_error_delta_flushes_immediately() -> None:
+    """Codex parser should flush pending text before emitting error."""
+    parser = CodexParser()
+    lines = [
+        '{"type":"text_delta","delta":"Some text","response_id":"resp-1"}',
+        '{"type":"error","error":{"message":"Rate limited"}}',
+        '{"type":"response.completed","response_id":"resp-1"}',
+    ]
+
+    results = list(parser.parse(_make_lines(lines)))
+
+    # Should have text + error + stop
+    text_results = [r for r in results if r.type == "text"]
+    error_results = [r for r in results if r.type == "error"]
+    assert len(text_results) == 1
+    assert text_results[0].content == "Some text"
+    assert len(error_results) == 1
+    assert error_results[0].content == "Rate limited"
+
+
+def test_codex_parser_iterator_exhaustion_flushes_accumulator() -> None:
+    """Codex parser should flush remaining accumulator when iterator ends."""
+    parser = CodexParser()
+    lines = [
+        '{"type":"text_delta","delta":"Partial","response_id":"resp-1"}',
+        '{"type":"text_delta","delta":" text","response_id":"resp-1"}',
+        # No explicit stop event
+    ]
+
+    results = list(parser.parse(_make_lines(lines)))
+
+    text_results = [r for r in results if r.type == "text"]
+    assert len(text_results) == 1
+    assert text_results[0].content == "Partial text"
+
+
+def test_opencode_parser_delta_accumulates_to_single_line_on_done() -> None:
+    """OpenCode parser should accumulate multiple stream deltas into one text line on done."""
+    parser = OpenCodeParser()
+    lines = [
+        '{"type":"step_start","id":"step-1"}',
+        '{"type":"stream","content":"Hello"}',
+        '{"type":"stream","content":" "}',
+        '{"type":"stream","content":"World"}',
+        '{"type":"step_finish","id":"step-1"}',
+        '{"type":"done"}',
+    ]
+
+    results = list(parser.parse(_make_lines(lines)))
+
+    text_results = [r for r in results if r.type == "text"]
+    assert len(text_results) == 1
+    assert text_results[0].content == "Hello World"
+
+
+def test_opencode_parser_paragraph_boundary_yields_two_lines() -> None:
+    """OpenCode parser should flush on paragraph boundary (double newline)."""
+    parser = OpenCodeParser()
+    lines = [
+        '{"type":"step_start","id":"step-1"}',
+        '{"type":"stream","content":"Para 1\n\n"}',
+        '{"type":"stream","content":"Para 2"}',
+        '{"type":"step_finish","id":"step-1"}',
+        '{"type":"done"}',
+    ]
+
+    results = list(parser.parse(_make_lines(lines)))
+
+    text_results = [r for r in results if r.type == "text"]
+    assert len(text_results) == EXPECTED_TWO_LINES
+    assert text_results[0].content == "Para 1"
+    assert text_results[1].content == "Para 2"
+
+
+def test_opencode_parser_error_flushes_immediately() -> None:
+    """OpenCode parser should flush pending text before emitting error."""
+    parser = OpenCodeParser()
+    lines = [
+        '{"type":"step_start","id":"step-1"}',
+        '{"type":"stream","content":"Some text"}',
+        '{"type":"error","error":{"message":"Tool failed"}}',
+        '{"type":"step_finish","id":"step-1"}',
+        '{"type":"done"}',
+    ]
+
+    results = list(parser.parse(_make_lines(lines)))
+
+    text_results = [r for r in results if r.type == "text"]
+    error_results = [r for r in results if r.type == "error"]
+    assert len(text_results) == 1
+    assert text_results[0].content == "Some text"
+    assert len(error_results) == 1
+    assert error_results[0].content == "Tool failed"
+
+
+def test_opencode_parser_iterator_exhaustion_flushes_accumulator() -> None:
+    """OpenCode parser should flush remaining accumulator when iterator ends."""
+    parser = OpenCodeParser()
+    lines = [
+        '{"type":"step_start","id":"step-1"}',
+        '{"type":"stream","content":"Partial"}',
+        '{"type":"stream","content":" text"}',
+        # No step_finish or done
+    ]
+
+    results = list(parser.parse(_make_lines(lines)))
+
+    text_results = [r for r in results if r.type == "text"]
+    assert len(text_results) == 1
+    assert text_results[0].content == "Partial text"
+
+
+def test_gemini_parser_text_content_accumulates() -> None:
+    """Gemini parser should accumulate text content into coherent blocks."""
+    parser = GeminiParser()
+    lines = [
+        'data: {"type":"text","content":"Hello"}',
+        'data: {"type":"text","content":" World"}',
+        'data: {"type":"done"}',
+    ]
+
+    results = list(parser.parse(_make_lines(lines)))
+
+    text_results = [r for r in results if r.type == "text"]
+    assert len(text_results) == 1
+    assert text_results[0].content == "Hello World"
+
+
+def test_gemini_parser_paragraph_boundary_yields_two_lines() -> None:
+    """Gemini parser should flush on paragraph boundary (double newline)."""
+    parser = GeminiParser()
+    lines = [
+        'data: {"type":"text","content":"Para 1\n\n"}',
+        'data: {"type":"text","content":"Para 2"}',
+        'data: {"type":"done"}',
+    ]
+
+    results = list(parser.parse(_make_lines(lines)))
+
+    text_results = [r for r in results if r.type == "text"]
+    assert len(text_results) == EXPECTED_TWO_LINES
+    assert text_results[0].content == "Para 1"
+    assert text_results[1].content == "Para 2"
+
+
+def test_gemini_parser_block_content_accumulates() -> None:
+    """Gemini parser should accumulate block content."""
+    parser = GeminiParser()
+    lines = [
+        'data: {"type":"block","content":"Block 1"}',
+        'data: {"type":"block","content":" Block 2"}',
+        'data: {"type":"stop"}',
+    ]
+
+    results = list(parser.parse(_make_lines(lines)))
+
+    text_results = [r for r in results if r.type == "text"]
+    assert len(text_results) == 1
+    assert text_results[0].content == "Block 1 Block 2"
+
+
+def test_gemini_parser_message_end_flushes_accumulator() -> None:
+    """Gemini parser should flush on message_end."""
+    parser = GeminiParser()
+    lines = [
+        'data: {"type":"text","content":"Final text"}',
+        'data: {"type":"message_end"}',
+    ]
+
+    results = list(parser.parse(_make_lines(lines)))
+
+    text_results = [r for r in results if r.type == "text"]
+    assert len(text_results) == 1
+    assert text_results[0].content == "Final text"
+
+
+def test_gemini_parser_iterator_exhaustion_flushes_accumulator() -> None:
+    """Gemini parser should flush remaining accumulator when iterator ends."""
+    parser = GeminiParser()
+    lines = [
+        'data: {"type":"text","content":"Partial"}',
+        'data: {"type":"text","content":" text"}',
+        # No explicit stop
+    ]
+
+    results = list(parser.parse(_make_lines(lines)))
+
+    text_results = [r for r in results if r.type == "text"]
+    assert len(text_results) == 1
+    assert text_results[0].content == "Partial text"
+
+
+def test_gemini_parser_tool_call_emitted_separately() -> None:
+    """Gemini parser should emit tool_use events separately from text."""
+    parser = GeminiParser()
+    lines = [
+        'data: {"type":"text","content":"Thinking..."}',
+        'data: {"type":"tool_call","name":"bash","args":{"command":"ls"}}',
+        'data: {"type":"done"}',
+    ]
+
+    results = list(parser.parse(_make_lines(lines)))
+
+    text_results = [r for r in results if r.type == "text"]
+    tool_results = [r for r in results if r.type == "tool_use"]
+    assert len(text_results) == 1
+    assert text_results[0].content == "Thinking..."
+    assert len(tool_results) == 1
+    assert tool_results[0].content == "bash"
+
+
+def test_get_parser_gemini() -> None:
+    """Test get_parser returns GeminiParser for 'gemini'."""
+    parser = get_parser("gemini")
+    assert isinstance(parser, GeminiParser)
 
 
 def test_get_parser_unknown_raises() -> None:

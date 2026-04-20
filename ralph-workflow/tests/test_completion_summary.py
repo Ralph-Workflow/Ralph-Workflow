@@ -13,8 +13,8 @@ from ralph.display.completion_summary import (
     emit_completion_summary,
     render_completion_summary,
 )
-from ralph.display.snapshot import DashboardSnapshot, WorkerSnapshot
-from ralph.display.subscriber import DashboardSubscriber
+from ralph.display.snapshot import PipelineSnapshot, WorkerSnapshot
+from ralph.display.subscriber import PipelineSubscriber
 from ralph.pipeline.state import PipelineState
 
 if TYPE_CHECKING:
@@ -39,8 +39,8 @@ def _make_snapshot(  # noqa: PLR0913 - test helper exposes many kwargs for cover
     last_error: str | None = None,
     workers: tuple[WorkerSnapshot, ...] = (),
     plan_risks: tuple[str, ...] = (),
-) -> DashboardSnapshot:
-    return DashboardSnapshot(
+) -> PipelineSnapshot:
+    return PipelineSnapshot(
         phase=phase,
         previous_phase="development_commit",
         iteration=3,
@@ -70,7 +70,7 @@ def _make_snapshot(  # noqa: PLR0913 - test helper exposes many kwargs for cover
     )
 
 
-def _render_plain(snapshot: DashboardSnapshot, *, workspace_root: Path | None = None) -> str:
+def _render_plain(snapshot: PipelineSnapshot, *, workspace_root: Path | None = None) -> str:
     console = Console(record=True, width=120, force_terminal=False, color_system=None)
     console.print(render_completion_summary(snapshot, workspace_root=workspace_root))
     return console.export_text()
@@ -231,7 +231,7 @@ def test_emit_completion_summary_writes_to_console() -> None:
 def test_emit_completion_summary_uses_subscriber_decision_log(tmp_path: Path) -> None:
     """Snapshot built via subscriber.build_snapshot drives the completion panel."""
     queue: Queue = Queue(maxsize=64)
-    subscriber = DashboardSubscriber(
+    subscriber = PipelineSubscriber(
         queue=queue,
         workspace_root=tmp_path,
         run_id="r1",
