@@ -28,6 +28,7 @@ else:
 
 # Forbidden sentinel strings that must never appear as ExitFailureEffect.reason.
 # These indicate bugs in the pipeline where descriptive error information was lost.
+# Checked as substrings to catch cases like "development: Unknown failure".
 _FORBIDDEN_SENTINELS: frozenset[str] = frozenset({
     "Unknown failure",
     "unknown failure",
@@ -35,6 +36,19 @@ _FORBIDDEN_SENTINELS: frozenset[str] = frozenset({
     "None",
     "null",
 })
+
+
+def _contains_forbidden_sentinel(reason: str) -> tuple[bool, str | None]:
+    """Check if reason contains any forbidden sentinel as a substring.
+
+    Returns:
+        Tuple of (is_forbidden, matched_sentinel). matched_sentinel is the
+        specific sentinel that was found, or None if no sentinel found.
+    """
+    for sentinel in _FORBIDDEN_SENTINELS:
+        if sentinel in reason:
+            return True, sentinel
+    return False, None
 
 
 @dataclass(frozen=True)
@@ -114,7 +128,9 @@ class ExitFailureEffect:
     Attributes:
         reason: Reason for the failure. Must be non-empty, non-whitespace,
             and must not be any known sentinel that indicates a bug (e.g.
-            "Unknown failure", "", "None", "null").
+            "Unknown failure", "", "None", "null"). The sentinel check is
+            performed as a substring match to catch cases like
+            "development: Unknown failure".
     """
 
     reason: str
@@ -122,10 +138,18 @@ class ExitFailureEffect:
     def __post_init__(self) -> None:
         """Validate that reason is non-empty, non-whitespace, and not a forbidden sentinel."""
         stripped = self.reason.strip()
-        if stripped == "" or self.reason in _FORBIDDEN_SENTINELS:
+        if stripped == "":
             raise ValueError(
-                f"ExitFailureEffect.reason must be descriptive and cannot be a sentinel; "
+                f"ExitFailureEffect.reason must be descriptive and cannot be empty or whitespace; "
                 f"got: {self.reason!r} (whitespace stripped: {stripped!r})"
+            )
+
+        # Check for forbidden sentinels as substrings
+        is_forbidden, matched = _contains_forbidden_sentinel(self.reason)
+        if is_forbidden:
+            raise ValueError(
+                f"ExitFailureEffect.reason must be descriptive and cannot contain a forbidden sentinel; "
+                f"matched sentinel: {matched!r} in reason: {self.reason!r}"
             )
 
 

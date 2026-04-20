@@ -148,10 +148,43 @@ class TestRecoveryFirstBehavior:
             ExitFailureEffect(reason="")
 
     def test_exit_failure_effect_rejects_forbidden_sentinels(self) -> None:
-        """ExitFailureEffect must reject known sentinel strings."""
+        """ExitFailureEffect must reject known sentinel strings as exact matches."""
         for sentinel in ("Unknown failure", "unknown failure", "None", "null"):
             with pytest.raises(ValueError, match="sentinel"):
                 ExitFailureEffect(reason=sentinel)
+
+    def test_exit_failure_effect_rejects_sentinel_as_substring(self) -> None:
+        """ExitFailureEffect must reject reasons containing sentinels as substrings.
+
+        This prevents bugs where a descriptive message is constructed by
+        concatenating a phase name with a sentinel reason, e.g.
+        'development: Unknown failure'.
+        """
+        # These reasons contain a forbidden sentinel as a substring and must be rejected
+        for reason in (
+            "development: Unknown failure",
+            "review: unknown failure",
+            "analysis: None",
+            "fix: null",
+            "Unknown failure occurred",
+            "unknown failure in development",
+        ):
+            with pytest.raises(ValueError, match="sentinel"):
+                ExitFailureEffect(reason=reason)
+
+    def test_exit_failure_effect_accepts_valid_descriptive_reasons(self) -> None:
+        """ExitFailureEffect must accept reasons that are descriptive and contain no sentinels."""
+        valid_reasons = [
+            "development: Phase handler crashed: RuntimeError: boom",
+            "review: Missing issues artifact",
+            "analysis: Invalid decision artifact",
+            "Commit failed: git push rejected",
+            "Agent invocation failed: connection timeout",
+        ]
+        for reason in valid_reasons:
+            # Should not raise
+            effect = ExitFailureEffect(reason=reason)
+            assert effect.reason == reason
 
 
 def test_phase_failure_recoverable_empty_reason_produces_descriptive_error() -> None:
