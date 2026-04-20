@@ -28,7 +28,7 @@ class ProgressPanel:
     ) -> Panel:
         if snapshot.total_iterations == 0:
             return Panel(
-                Text("[dim]no iteration budget[/dim]"),
+                Text.from_markup("[dim]no iteration budget[/dim]"),
                 border_style=theme.styles["theme.panel.border"],
             )
 

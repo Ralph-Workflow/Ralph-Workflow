@@ -16,11 +16,17 @@ TOTAL_ITERATIONS = 10
 TOTAL_REVIEWER_PASSES = 4
 
 
-def _make_snapshot(
+def _make_snapshot(  # noqa: PLR0913
     *,
     phase: str = "development",
     interrupted_by_user: bool = False,
     last_error: str | None = None,
+    active_agent: str | None = None,
+    active_tool: str | None = None,
+    active_path: str | None = None,
+    active_workdir: str | None = None,
+    active_command: str | None = None,
+    last_activity_line: str | None = None,
 ) -> DashboardSnapshot:
     return DashboardSnapshot(
         phase=phase,
@@ -43,6 +49,12 @@ def _make_snapshot(
         prompt_preview=(),
         run_id=None,
         created_at=datetime(2026, 4, 18, 12, 0, tzinfo=UTC),
+        active_agent=active_agent,
+        active_tool=active_tool,
+        active_path=active_path,
+        active_workdir=active_workdir,
+        active_command=active_command,
+        last_activity_line=last_activity_line,
     )
 
 
@@ -150,6 +162,28 @@ class TestPhaseTrackerPanel:
         content_str = str(content_text)
         assert len(content_str) < 300 + 50
         assert "✗" in content_str
+
+    def test_phase_tracker_renders_activity_context_when_present(
+        self,
+        panel: PhaseTrackerPanel,
+    ) -> None:
+        snapshot = _make_snapshot(
+            active_agent="developer",
+            active_tool="edit_file",
+            active_path="src/foo.py",
+            active_workdir="/tmp/project",
+            active_command="python -m pytest tests/test_foo.py",
+            last_activity_line="Editing foo.py to expose plan progress",
+        )
+        rendered = panel.render(snapshot)
+        content_text = rendered.renderable if hasattr(rendered, "renderable") else str(rendered)
+        content_str = str(content_text)
+        assert "Agent: developer" in content_str
+        assert "Tool: edit_file" in content_str
+        assert "Path: src/foo.py" in content_str
+        assert "Workdir: /tmp/project" in content_str
+        assert "Command: python -m pytest tests/test_foo.py" in content_str
+        assert "Editing foo.py to expose plan progress" in content_str
 
     def test_phase_name_formatted_correctly(
         self,

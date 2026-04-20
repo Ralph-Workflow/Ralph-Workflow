@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import time
 from pathlib import Path
 from queue import Queue
@@ -10,6 +11,7 @@ from ralph.display.subscriber import DashboardSubscriber
 from ralph.pipeline.state import PipelineState, RunMetrics
 
 _MAX_NOTIFY_SECONDS = 0.001
+PLAN_STEP_COUNT = 2
 
 
 def _make_state() -> PipelineState:
@@ -162,6 +164,41 @@ class TestPromptCaching:
             sub.notify(state)
 
         assert counter[0] == 1
+
+
+class TestPlanArtifactRefresh:
+    def test_notify_refreshes_plan_artifact_created_after_init(self, tmp_path: Path) -> None:
+        q, sub = _make_subscriber(workspace_root=tmp_path)
+        state = _make_state()
+
+        sub.notify(state)
+        first = q.get_nowait()
+        assert first.plan_summary is None
+
+        artifacts_dir = tmp_path / ".agent" / "artifacts"
+        artifacts_dir.mkdir(parents=True)
+        (artifacts_dir / "plan.json").write_text(
+            json.dumps(
+                {
+                    "content": {
+                        "summary": {
+                            "context": "Ship a visible, copy-pasteable planning transcript",
+                            "scope_items": ["Render plan", "Show results"],
+                        },
+                        "steps": [{"title": "one"}, {"title": "two"}],
+                        "risks_mitigations": ["Keep dashboard output plain-text safe"],
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        sub.notify(state)
+        refreshed = q.get_nowait()
+        assert refreshed.plan_summary == "Ship a visible, copy-pasteable planning transcript"
+        assert refreshed.plan_scope_items == ("Render plan", "Show results")
+        assert refreshed.plan_total_steps == PLAN_STEP_COUNT
+        assert refreshed.plan_risks == ("Keep dashboard output plain-text safe",)
 
 
 class TestQueueProperty:

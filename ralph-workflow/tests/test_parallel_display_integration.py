@@ -78,6 +78,9 @@ def test_record_activity_updates_snapshot_fields() -> None:
         agent_name="developer",
         line="I am editing foo.py",
         tool_name="edit_file",
+        path="src/foo.py",
+        workdir="/tmp/project",
+        command="python -m pytest tests/test_foo.py",
     )
     state = PipelineState(phase="development")
     pd.subscriber.notify(state)
@@ -91,6 +94,9 @@ def test_record_activity_updates_snapshot_fields() -> None:
     assert drained is not None
     assert drained.active_agent == "developer"
     assert drained.active_tool == "edit_file"
+    assert drained.active_path == "src/foo.py"
+    assert drained.active_workdir == "/tmp/project"
+    assert drained.active_command == "python -m pytest tests/test_foo.py"
     assert drained.last_activity_line == "I am editing foo.py"
 
     # build_snapshot exposes the same projection without going through the queue.
@@ -98,4 +104,7 @@ def test_record_activity_updates_snapshot_fields() -> None:
     assert snap is not None
     assert snap.active_agent == "developer"
     assert snap.active_tool == "edit_file"
+    assert snap.active_path == "src/foo.py"
+    assert snap.active_workdir == "/tmp/project"
+    assert snap.active_command == "python -m pytest tests/test_foo.py"
     assert snap.last_activity_line == "I am editing foo.py"

@@ -73,6 +73,9 @@ class DashboardSubscriber:
         self._previous_phase: str | None = None
         self._active_agent: str | None = None
         self._active_tool: str | None = None
+        self._active_path: str | None = None
+        self._active_workdir: str | None = None
+        self._active_command: str | None = None
         self._last_activity_line: str | None = None
         self._analysis_phase: str | None = None
         self._analysis_decision: str | None = None
@@ -105,6 +108,7 @@ class DashboardSubscriber:
         """
         with self._lock:
             self._record_state_transitions_locked(state)
+            self._refresh_plan_from_disk_locked()
             self._refresh_analysis_for_phase_change_locked(state)
             self._active_agent = state.current_agent() or self._active_agent
             self._last_state = state
@@ -122,12 +126,15 @@ class DashboardSubscriber:
         with self._lock:
             return self._build_snapshot_locked(state)
 
-    def record_activity(
+    def record_activity(  # noqa: PLR0913
         self,
         unit_id: str,
         agent_name: str,
         line: str,
         tool_name: str | None = None,
+        path: str | None = None,
+        workdir: str | None = None,
+        command: str | None = None,
     ) -> None:
         """Record a lightweight agent-activity event and push a fresh snapshot."""
         del unit_id
@@ -135,6 +142,12 @@ class DashboardSubscriber:
             self._active_agent = agent_name or self._active_agent
             if tool_name is not None:
                 self._active_tool = tool_name
+            if path:
+                self._active_path = path
+            if workdir:
+                self._active_workdir = workdir
+            if command:
+                self._active_command = command
             self._last_activity_line = line
             snapshot = self._build_snapshot_locked(self._last_state)
         if snapshot is not None:
@@ -206,6 +219,13 @@ class DashboardSubscriber:
 
         self._previous_phase = cur
 
+    def _refresh_plan_from_disk_locked(self) -> None:
+        plan = read_plan_artifact(self._workspace_root) or PlanSummary()
+        self._plan_summary = plan.summary
+        self._plan_scope_items = plan.scope_items
+        self._plan_total_steps = plan.total_steps
+        self._plan_risks = plan.risks_mitigations
+
     def _refresh_analysis_for_phase_change_locked(self, state: PipelineState) -> None:
         prev = self._previous_phase
         cur = state.phase
@@ -249,6 +269,9 @@ class DashboardSubscriber:
             plan_risks=self._plan_risks,
             active_agent=self._active_agent,
             active_tool=self._active_tool,
+            active_path=self._active_path,
+            active_workdir=self._active_workdir,
+            active_command=self._active_command,
             last_activity_line=self._last_activity_line,
             analysis_phase=self._analysis_phase,
             analysis_decision=self._analysis_decision,
