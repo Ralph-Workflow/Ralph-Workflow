@@ -9,7 +9,7 @@ from ralph.phases.development import (
     handle_development_analysis,
 )
 from ralph.pipeline.effects import Effect, InvokeAgentEffect, PreparePromptEffect
-from ralph.pipeline.events import PipelineEvent
+from ralph.pipeline.events import PhaseFailureEvent, PipelineEvent
 
 
 class TestHandleDevelopment:
@@ -24,15 +24,24 @@ class TestHandleDevelopment:
         result = handle_development(effect, ctx)
         assert result == [PipelineEvent.PROMPT_PREPARED]
 
-    def test_invoke_agent_effect_without_plan_artifact_returns_failed(self) -> None:
+    def test_invoke_agent_effect_without_plan_artifact_returns_phase_failure_recoverable(
+        self,
+    ) -> None:
         effect = MagicMock(spec=InvokeAgentEffect)
         ctx = self._make_context()
         ctx.workspace.exists.return_value = False
 
         result = handle_development(effect, ctx)
-        assert result == [PipelineEvent.FAILED]
+        assert len(result) == 1
+        event = result[0]
+        assert isinstance(event, PhaseFailureEvent)
+        assert event.phase == "development"
+        assert event.recoverable is True
+        assert "planning artifact" in event.reason
 
-    def test_invoke_agent_effect_with_invalid_work_units_returns_failed(self) -> None:
+    def test_invoke_agent_effect_with_invalid_work_units_returns_phase_failure_recoverable(
+        self,
+    ) -> None:
         effect = MagicMock(spec=InvokeAgentEffect)
         ctx = self._make_context()
         ctx.workspace.exists.return_value = True
@@ -43,7 +52,11 @@ class TestHandleDevelopment:
         ctx.pipeline_policy.parallel_execution = None
 
         result = handle_development(effect, ctx)
-        assert result == [PipelineEvent.FAILED]
+        assert len(result) == 1
+        event = result[0]
+        assert isinstance(event, PhaseFailureEvent)
+        assert event.phase == "development"
+        assert event.recoverable is True
 
     def test_invoke_agent_effect_with_valid_work_units_returns_agent_success(self) -> None:
         effect = MagicMock(spec=InvokeAgentEffect)
@@ -76,7 +89,9 @@ class TestHandleDevelopment:
         result = handle_development(effect, ctx)
         assert result == [PipelineEvent.AGENT_SUCCESS]
 
-    def test_invoke_agent_effect_without_fresh_development_result_returns_failed(self) -> None:
+    def test_invoke_agent_effect_without_fresh_development_result_returns_phase_failure_recoverable(
+        self,
+    ) -> None:
         effect = MagicMock(spec=InvokeAgentEffect)
         ctx = self._make_context()
         ctx.workspace.exists.side_effect = lambda path: path == ".agent/artifacts/plan.json"
@@ -90,7 +105,11 @@ class TestHandleDevelopment:
         ctx.pipeline_policy.parallel_execution = parallel_execution
 
         result = handle_development(effect, ctx)
-        assert result == [PipelineEvent.FAILED]
+        assert len(result) == 1
+        event = result[0]
+        assert isinstance(event, PhaseFailureEvent)
+        assert event.phase == "development"
+        assert event.recoverable is True
 
     def test_other_effect_returns_empty_list(self) -> None:
         effect = MagicMock(spec=Effect)
@@ -135,31 +154,45 @@ class TestHandleDevelopmentAnalysis:
         result = handle_development_analysis(effect, ctx)
         assert result == [PipelineEvent.ANALYSIS_LOOPBACK]
 
-    def test_failure_decision_returns_failed_event(self) -> None:
+    def test_failure_decision_returns_phase_failure_not_recoverable(self) -> None:
         effect = self._mock_invoke_effect()
         ctx = self._make_context()
         ctx.workspace.exists.return_value = True
         ctx.workspace.read.return_value = '{"status": "failed"}'
 
         result = handle_development_analysis(effect, ctx)
-        assert result == [PipelineEvent.FAILED]
+        assert len(result) == 1
+        event = result[0]
+        assert isinstance(event, PhaseFailureEvent)
+        assert event.phase == "development_analysis"
+        assert event.recoverable is False
+        assert "FAILURE" in event.reason
 
-    def test_escalate_decision_returns_failed_event(self) -> None:
+    def test_escalate_decision_returns_phase_failure_not_recoverable(self) -> None:
         effect = self._mock_invoke_effect()
         ctx = self._make_context()
         ctx.workspace.exists.return_value = True
         ctx.workspace.read.return_value = '{"status": "escalate"}'
 
         result = handle_development_analysis(effect, ctx)
-        assert result == [PipelineEvent.FAILED]
+        assert len(result) == 1
+        event = result[0]
+        assert isinstance(event, PhaseFailureEvent)
+        assert event.phase == "development_analysis"
+        assert event.recoverable is False
+        assert "ESCALATE" in event.reason
 
-    def test_missing_artifact_fails_closed(self) -> None:
+    def test_missing_artifact_returns_phase_failure_not_recoverable(self) -> None:
         effect = self._mock_invoke_effect()
         ctx = self._make_context()
         ctx.workspace.exists.return_value = False
 
         result = handle_development_analysis(effect, ctx)
-        assert result == [PipelineEvent.FAILED]
+        assert len(result) == 1
+        event = result[0]
+        assert isinstance(event, PhaseFailureEvent)
+        assert event.phase == "development_analysis"
+        assert event.recoverable is False
 
     def test_non_invoke_effect_returns_empty_list(self) -> None:
         effect = MagicMock(spec=PreparePromptEffect)

@@ -30,7 +30,7 @@ from ralph.phases.artifacts import (
     unwrap_phase_artifact_content,
 )
 from ralph.pipeline.effects import Effect, InvokeAgentEffect, PreparePromptEffect
-from ralph.pipeline.events import Event, PipelineEvent
+from ralph.pipeline.events import Event, PhaseFailureEvent, PipelineEvent
 
 REVIEW_BASELINE_MARKER = ".agent/tmp/last_reviewed_sha.txt"
 REVIEW_ISSUES_ARTIFACT_PATH = ".agent/artifacts/issues.json"
@@ -124,7 +124,11 @@ def handle_review(effect: Effect, ctx: PhaseContext) -> list[Event]:
             )
         except (json.JSONDecodeError, PhaseArtifactError, TypeError, ValueError) as exc:
             logger.warning("Review phase missing fresh issues artifact: {}", exc)
-            return [PipelineEvent.FAILED]
+            return [PhaseFailureEvent(
+                phase="review",
+                reason=f"Missing/invalid issues artifact: {exc}",
+                recoverable=True,
+            )]
 
         head = _current_head_sha(ctx)
         if head is not None:
@@ -158,7 +162,11 @@ def handle_review_analysis(effect: Effect, ctx: PhaseContext) -> list[Event]:
             return [PipelineEvent.ANALYSIS_LOOPBACK]
         elif decision in (AnalysisDecision.FAILURE, AnalysisDecision.ESCALATE):
             logger.warning("Review analysis decision {} triggers pipeline failure", decision)
-            return [PipelineEvent.FAILED]
+            return [PhaseFailureEvent(
+                phase="review_analysis",
+                reason=f"Analysis decision: {decision}",
+                recoverable=False,
+            )]
         else:
             logger.warning(
                 "Unknown review analysis decision: {}. Defaulting to success.",

@@ -15,7 +15,7 @@ from ralph.phases.review import (
     handle_review_analysis,
 )
 from ralph.pipeline.effects import Effect, InvokeAgentEffect, PreparePromptEffect
-from ralph.pipeline.events import PipelineEvent
+from ralph.pipeline.events import PhaseFailureEvent, PipelineEvent
 from ralph.workspace.fs import FsWorkspace
 
 if TYPE_CHECKING:
@@ -57,13 +57,20 @@ class TestHandleReview:
         result = handle_review(effect, ctx)
         assert result == [PipelineEvent.AGENT_SUCCESS]
 
-    def test_invoke_agent_effect_without_issues_artifact_returns_failed(self) -> None:
+    def test_invoke_agent_effect_without_issues_artifact_returns_phase_failure_recoverable(
+        self,
+    ) -> None:
         effect = MagicMock(spec=InvokeAgentEffect)
         ctx = self._make_context()
         ctx.workspace.exists.return_value = False
 
         result = handle_review(effect, ctx)
-        assert result == [PipelineEvent.FAILED]
+        assert len(result) == 1
+        event = result[0]
+        assert isinstance(event, PhaseFailureEvent)
+        assert event.phase == "review"
+        assert event.recoverable is True
+        assert "issues" in event.reason.lower() or "artifact" in event.reason.lower()
 
     def test_other_effect_returns_empty_list(self) -> None:
         effect = MagicMock(spec=Effect)
@@ -169,31 +176,45 @@ class TestHandleReviewAnalysis:
         result = handle_review_analysis(effect, ctx)
         assert result == [PipelineEvent.ANALYSIS_LOOPBACK]
 
-    def test_failure_decision_returns_failed_event(self) -> None:
+    def test_failure_decision_returns_phase_failure_not_recoverable(self) -> None:
         effect = self._mock_invoke_effect()
         ctx = self._make_context()
         ctx.workspace.exists.return_value = True
         ctx.workspace.read.return_value = '{"status": "failed"}'
 
         result = handle_review_analysis(effect, ctx)
-        assert result == [PipelineEvent.FAILED]
+        assert len(result) == 1
+        event = result[0]
+        assert isinstance(event, PhaseFailureEvent)
+        assert event.phase == "review_analysis"
+        assert event.recoverable is False
+        assert "FAILURE" in event.reason
 
-    def test_escalate_decision_returns_failed_event(self) -> None:
+    def test_escalate_decision_returns_phase_failure_not_recoverable(self) -> None:
         effect = self._mock_invoke_effect()
         ctx = self._make_context()
         ctx.workspace.exists.return_value = True
         ctx.workspace.read.return_value = '{"status": "escalate"}'
 
         result = handle_review_analysis(effect, ctx)
-        assert result == [PipelineEvent.FAILED]
+        assert len(result) == 1
+        event = result[0]
+        assert isinstance(event, PhaseFailureEvent)
+        assert event.phase == "review_analysis"
+        assert event.recoverable is False
+        assert "ESCALATE" in event.reason
 
-    def test_missing_artifact_fails_closed(self) -> None:
+    def test_missing_artifact_returns_phase_failure_not_recoverable(self) -> None:
         effect = self._mock_invoke_effect()
         ctx = self._make_context()
         ctx.workspace.exists.return_value = False
 
         result = handle_review_analysis(effect, ctx)
-        assert result == [PipelineEvent.FAILED]
+        assert len(result) == 1
+        event = result[0]
+        assert isinstance(event, PhaseFailureEvent)
+        assert event.phase == "review_analysis"
+        assert event.recoverable is False
 
     def test_non_invoke_effect_returns_empty_list(self) -> None:
         effect = MagicMock(spec=PreparePromptEffect)

@@ -56,7 +56,7 @@ from ralph.pipeline.effects import (
     PreparePromptEffect,
     SaveCheckpointEffect,
 )
-from ralph.pipeline.events import Event, PipelineEvent
+from ralph.pipeline.events import Event, PhaseFailureEvent, PipelineEvent
 from ralph.pipeline.handoffs import resolve_phase_drain
 from ralph.pipeline.reducer import reduce as reducer_reduce
 from ralph.pipeline.state import AgentChainState, CommitState, PipelineState, RebaseState
@@ -983,7 +983,12 @@ def _terminal_phase_effect(state: PipelineState) -> Effect | None:
     if state.phase == PHASE_COMPLETE:
         return ExitSuccessEffect()
     if state.phase == PHASE_FAILED:
-        return ExitFailureEffect(reason=state.last_error or "Unknown failure")
+        last_error = (
+            state.last_error
+            or f"Pipeline exited unexpectedly in phase={state.phase!r} "
+            "with no explicit error; check upstream last_error propagation"
+        )
+        return ExitFailureEffect(reason=last_error)
     return None
 
 
@@ -1153,7 +1158,23 @@ def _phase_event_after_agent_run(  # noqa: PLR0913
         artifacts_policy=policy_bundle.artifacts,
         config=config,
     )
-    events = handle_phase(effect, ctx)
+    try:
+        events = handle_phase(effect, ctx)
+    except (KeyboardInterrupt, SystemExit):
+        raise
+    except Exception as exc:
+        logger.exception(
+            "Phase handler crashed in phase={phase}: {err}",
+            phase=effect.phase,
+            err=exc,
+        )
+        events = [
+            PhaseFailureEvent(
+                phase=effect.phase,
+                reason=f"Phase handler crashed: {type(exc).__name__}: {exc}",
+                recoverable=True,
+            )
+        ]
     event: Event = events[0] if events else PipelineEvent.AGENT_SUCCESS
 
     if (

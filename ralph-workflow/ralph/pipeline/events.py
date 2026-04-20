@@ -32,6 +32,27 @@ class PipelineEvent(StrEnum):
 
 
 @dataclass(frozen=True)
+class PhaseFailureEvent:
+    """Event emitted when a phase handler encounters a failure condition.
+
+    This event carries a recoverable flag that determines how the reducer
+    processes the failure:
+    - recoverable=True: routes through _handle_agent_failure retry/fallback logic
+    - recoverable=False: routes directly to PHASE_FAILED (terminal failure)
+
+    Attributes:
+        phase: Name of the phase that generated this event.
+        reason: Human-readable description of what caused the failure.
+        recoverable: Whether this failure should trigger retry/fallback (True)
+            or act as a terminal decision (False).
+    """
+
+    phase: str
+    reason: str
+    recoverable: bool
+
+
+@dataclass(frozen=True)
 class WorkerStartedEvent:
     unit_id: str
 
@@ -57,6 +78,7 @@ class WorkersMergeConflictEvent:
 
 Event = (
     PipelineEvent
+    | PhaseFailureEvent
     | WorkerStartedEvent
     | WorkerCompletedEvent
     | WorkerFailedEvent

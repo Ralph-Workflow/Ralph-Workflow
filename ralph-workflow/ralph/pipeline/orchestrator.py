@@ -85,7 +85,14 @@ def determine_next_effect(
         return ExitSuccessEffect()
 
     if state.phase == PHASE_FAILED:
-        return ExitFailureEffect(reason=state.last_error or "Unknown failure")
+        # last_error should always be set before reaching PHASE_FAILED,
+        # but provide a fallback only for backward compatibility with
+        # pre-PhaseFailureEvent checkpoint state.
+        reason = state.last_error or (
+            f"Pipeline terminated in phase='{state.phase}' with no explicit error; "
+            "check upstream last_error propagation"
+        )
+        return ExitFailureEffect(reason=reason)
 
     # Look up the current phase definition
     phase_def = pipeline_policy.phases.get(state.phase)

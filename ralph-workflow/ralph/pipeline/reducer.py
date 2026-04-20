@@ -31,6 +31,7 @@ from ralph.config.enums import (
 from ralph.pipeline.effects import Effect, ExitFailureEffect, SaveCheckpointEffect
 from ralph.pipeline.events import (
     Event,
+    PhaseFailureEvent,
     PipelineEvent,
     WorkerCompletedEvent,
     WorkerFailedEvent,
@@ -80,6 +81,10 @@ def reduce(
         Tuple of (new_state, effects). Effects are instructions for the
         effect handler to execute.
     """
+    # Handle PhaseFailureEvent before the generic PipelineEvent dispatch
+    if isinstance(event, PhaseFailureEvent):
+        return _handle_phase_failure(state, event)
+
     if isinstance(event, WorkerStartedEvent):
         new_state, effects = _handle_worker_started(state, event)
         if state.work_units and not new_state.work_units:
@@ -158,6 +163,36 @@ def _return_state(
     return state, []
 
 
+def _handle_phase_failure(
+    state: PipelineState, event: PhaseFailureEvent
+) -> tuple[PipelineState, list[Effect]]:
+    """Handle PhaseFailureEvent from phase handlers.
+
+    PhaseFailureEvent carries a recoverable flag:
+    - recoverable=True: route through _handle_agent_failure retry/fallback logic
+    - recoverable=False: route directly to PHASE_FAILED (terminal agent decision)
+
+    In both cases, last_error is set to a descriptive string combining the
+    phase name and the reason.
+    """
+    failure_message = f"{event.phase}: {event.reason}"
+
+    if event.recoverable:
+        # Inject the failure message into state.last_error so that
+        # _handle_agent_failure preserves it when it transitions to PHASE_FAILED.
+        state_with_error = state.copy_with(last_error=failure_message)
+        return _handle_agent_failure(state_with_error)
+    else:
+        # Non-recoverable: explicit agent decision (FAILURE/ESCALATE),
+        # go directly to terminal failure.
+        new_state = state.copy_with(
+            phase=PHASE_FAILED,
+            previous_phase=state.phase,
+            last_error=failure_message,
+        )
+        return new_state, [ExitFailureEffect(reason=failure_message)]
+
+
 def _handle_agent_success(
     state: PipelineState,
     policy: PipelinePolicy | None,
@@ -203,12 +238,13 @@ def _handle_agent_failure(state: PipelineState) -> tuple[PipelineState, list[Eff
     """Handle agent failure with retry/fallback logic."""
     chain = state.chain_for_phase(state.phase)
     if chain is None:
+        failure_reason = state.last_error or f"No tracked agent chain for {state.phase}"
         new_state = state.copy_with(
             phase=PHASE_FAILED,
             previous_phase=state.phase,
-            last_error=f"No tracked agent chain for {state.phase}",
+            last_error=failure_reason,
         )
-        return new_state, [ExitFailureEffect(reason=f"No tracked agent chain for {state.phase}")]
+        return new_state, [ExitFailureEffect(reason=failure_reason)]
 
     if chain.retries < _MAX_AGENT_RETRIES:
         new_chain = AgentChainState(
@@ -240,12 +276,19 @@ def _handle_agent_failure(state: PipelineState) -> tuple[PipelineState, list[Eff
         new_state = state.with_phase_chain(state.phase, new_chain).copy_with(metrics=new_metrics)
         return new_state, []
 
+    # Chain exhausted: preserve any informative last_error from PhaseFailureEvent,
+    # otherwise construct a descriptive message.
+    if not state.last_error:
+        state.last_error = (
+            f"Agent chain exhausted in phase='{state.phase}' after "
+            f"{chain.retries} retries across {len(chain.agents)} agents"
+        )
     new_state = state.copy_with(
         phase=PHASE_FAILED,
         previous_phase=state.phase,
-        last_error=f"Agent chain exhausted in {state.phase}",
+        last_error=state.last_error,
     )
-    return new_state, [ExitFailureEffect(reason="Agent chain exhausted")]
+    return new_state, [ExitFailureEffect(reason=state.last_error)]
 
 
 def _handle_agent_retry(state: PipelineState) -> tuple[PipelineState, list[Effect]]:
@@ -495,7 +538,7 @@ def _handle_commit_success(
             new_state, effects = _advance_phase(state, next_phase, policy)
             if state.phase == "development_commit":
                 new_state = new_state.copy_with(iteration=state.iteration + 1)
-            elif state.phase == "review_commit":
+            elif state.phrase == "review_commit":
                 new_state = new_state.copy_with(reviewer_pass=state.reviewer_pass + 1)
             return new_state, effects
         except ValueError as exc:
@@ -565,12 +608,21 @@ def _handle_complete(state: PipelineState) -> tuple[PipelineState, list[Effect]]
 
 
 def _handle_failed(state: PipelineState) -> tuple[PipelineState, list[Effect]]:
-    """Handle pipeline failure."""
+    """Handle pipeline failure.
+
+    Uses state.last_error if available, which should have been set by the
+    preceding failure event handler. Falls back to a descriptive message
+    only as a last resort.
+    """
+    last_error = state.last_error or (
+        f"Pipeline terminated in phase='{state.phase}' with no explicit error; "
+        "check upstream last_error propagation"
+    )
     new_state = state.copy_with(
         phase=PHASE_FAILED,
-        last_error=state.last_error or "Unknown failure",
+        last_error=last_error,
     )
-    return new_state, [ExitFailureEffect(reason=state.last_error or "Unknown failure")]
+    return new_state, [ExitFailureEffect(reason=last_error)]
 
 
 def _handle_phase_advance(

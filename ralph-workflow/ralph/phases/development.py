@@ -30,7 +30,7 @@ from ralph.phases.artifacts import (
     unwrap_phase_artifact_content,
 )
 from ralph.pipeline.effects import Effect, InvokeAgentEffect, PreparePromptEffect
-from ralph.pipeline.events import Event, PipelineEvent
+from ralph.pipeline.events import Event, PhaseFailureEvent, PipelineEvent
 from ralph.pipeline.work_units import WorkUnitsValidationError, parse_work_units_from_artifact
 from ralph.policy.validation import PolicyValidationError, validate_work_units_against_policy
 
@@ -62,7 +62,11 @@ def handle_development(effect: Effect, ctx: PhaseContext) -> list[Event]:
             logger.warning(
                 "Development phase missing required planning artifact at {}", planning_artifact_path
             )
-            return [PipelineEvent.FAILED]
+            return [PhaseFailureEvent(
+                phase="development",
+                reason=f"Missing planning artifact at {planning_artifact_path}",
+                recoverable=True,
+            )]
 
         try:
             artifact_wrapper = load_phase_artifact(ctx.workspace, planning_artifact_path)
@@ -90,7 +94,11 @@ def handle_development(effect: Effect, ctx: PhaseContext) -> list[Event]:
             PolicyValidationError,
         ) as exc:
             logger.warning("Invalid development phase evidence: {}", exc)
-            return [PipelineEvent.FAILED]
+            return [PhaseFailureEvent(
+                phase="development",
+                reason=f"Invalid development evidence: {exc}",
+                recoverable=True,
+            )]
         return [PipelineEvent.AGENT_SUCCESS]
 
     return []
@@ -158,7 +166,11 @@ def handle_development_analysis(effect: Effect, ctx: PhaseContext) -> list[Event
             return [PipelineEvent.ANALYSIS_LOOPBACK]
         elif decision in (AnalysisDecision.FAILURE, AnalysisDecision.ESCALATE):
             logger.warning("Analysis decision {} triggers pipeline failure", decision)
-            return [PipelineEvent.FAILED]
+            return [PhaseFailureEvent(
+                phase="development_analysis",
+                reason=f"Analysis decision: {decision}",
+                recoverable=False,
+            )]
         else:
             logger.warning("Unknown analysis decision: {}, defaulting to success", decision)
             return [PipelineEvent.ANALYSIS_SUCCESS]

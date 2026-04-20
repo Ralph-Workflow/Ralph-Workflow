@@ -106,6 +106,14 @@ class ExitFailureEffect:
 
     reason: str
 
+    def __post_init__(self) -> None:
+        """Validate that reason is non-empty and not the generic 'Unknown failure'."""
+        if not self.reason or self.reason == "Unknown failure":
+            raise ValueError(
+                f"ExitFailureEffect.reason must be non-empty and cannot be 'Unknown failure', "
+                f"got: {self.reason!r}"
+            )
+
 
 @dataclass(frozen=True)
 class FanOutDevelopmentEffect:
