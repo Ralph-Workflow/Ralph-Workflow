@@ -34,6 +34,8 @@ from ralph.pipeline.events import Event, PipelineEvent
 from ralph.pipeline.work_units import WorkUnitsValidationError, parse_work_units_from_artifact
 from ralph.policy.validation import PolicyValidationError, validate_work_units_against_policy
 
+DEVELOPMENT_RESULT_ARTIFACT_PATH = ".agent/artifacts/development_result.json"
+
 
 @register_handler("development")
 def handle_development(effect: Effect, ctx: PhaseContext) -> list[Event]:
@@ -78,14 +80,16 @@ def handle_development(effect: Effect, ctx: PhaseContext) -> list[Event]:
             parsed = parse_work_units_from_artifact(artifact)
             if parsed is not None:
                 validate_work_units_against_policy(parsed, ctx.pipeline_policy)
+            _require_development_result_artifact(ctx)
         except (
             json.JSONDecodeError,
             PlanArtifactValidationError,
+            PhaseArtifactError,
             ValueError,
             WorkUnitsValidationError,
             PolicyValidationError,
         ) as exc:
-            logger.warning("Invalid planning artifact: {}", exc)
+            logger.warning("Invalid development phase evidence: {}", exc)
             return [PipelineEvent.FAILED]
         return [PipelineEvent.AGENT_SUCCESS]
 
@@ -94,6 +98,18 @@ def handle_development(effect: Effect, ctx: PhaseContext) -> list[Event]:
 
 def _is_legacy_work_units_payload(content: dict[str, object]) -> bool:
     return "work_units" in content and "summary" not in content
+
+
+def _require_development_result_artifact(ctx: PhaseContext) -> None:
+    artifact_wrapper = load_phase_artifact(ctx.workspace, DEVELOPMENT_RESULT_ARTIFACT_PATH)
+    if artifact_wrapper.get("type") != "development_result":
+        raise PhaseArtifactError(
+            "Development result artifact must declare type='development_result'"
+        )
+    unwrap_phase_artifact_content(
+        artifact_wrapper,
+        expected_type="development_result",
+    )
 
 
 @register_handler("development_analysis")

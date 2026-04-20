@@ -8,10 +8,8 @@ highlight-free for copy-paste safety.
 from __future__ import annotations
 
 import json
-from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
-from rich.console import Console
 from rich.rule import Rule
 
 from ralph.display.artifact_reader import (
@@ -19,9 +17,12 @@ from ralph.display.artifact_reader import (
     read_plan_artifact,
 )
 from ralph.display.phase_banner import _phase_style
+from ralph.mcp.commit_message import read_commit_message_artifact
 
 if TYPE_CHECKING:
-    pass
+    from pathlib import Path
+
+    from rich.console import Console
 
 
 _ARTIFACTS_DIR = ".agent/artifacts"
@@ -35,12 +36,12 @@ def _read_json_defensive(path: Path) -> dict[str, object] | None:
     except (FileNotFoundError, OSError, PermissionError):
         return None
     try:
-        parsed = json.loads(raw)
+        parsed_obj: object = json.loads(raw)
     except json.JSONDecodeError:
         return None
-    if not isinstance(parsed, dict):
+    if not isinstance(parsed_obj, dict):
         return None
-    return parsed
+    return cast("dict[str, object]", parsed_obj)
 
 
 def render_plan_artifact(
@@ -53,7 +54,6 @@ def render_plan_artifact(
     summary context, bulleted scope items, step count, and risks.
     Missing file produces no output; malformed JSON prints a single error line.
     """
-    plan_path = workspace_root / _ARTIFACTS_DIR / "plan.json"
     plan = read_plan_artifact(workspace_root)
 
     if plan is None:
@@ -136,8 +136,6 @@ def render_commit_message(
     own line and body indented.
     Missing file produces no output; malformed JSON produces no output (defensive).
     """
-    from ralph.mcp.commit_message import read_commit_message_artifact
-
     try:
         message = read_commit_message_artifact(workspace_root)
     except Exception:
@@ -210,24 +208,37 @@ def render_fix_artifact(
     # Extract a summary from the artifact
     if "issues" in found and isinstance(found["issues"], list):
         issues = found["issues"]
-        console.print(f"  {len(issues)} issue(s) addressed:", markup=False, highlight=False)
+        console.print(
+            f"  {len(issues)} issue(s) addressed:",
+            markup=False,
+            highlight=False,
+        )
         for issue in issues[:10]:  # Cap at 10 for transcript safety
             if isinstance(issue, dict):
-                desc = issue.get("description") or issue.get("message") or str(issue)
+                desc_obj = issue.get("description") or issue.get("message") or str(issue)
             else:
-                desc = str(issue)
+                desc_obj = str(issue)
+            desc = str(desc_obj)
             console.print(f"    - {desc[:120]}", markup=False, highlight=False)
     elif "fixed" in found:
         fixed = found["fixed"]
         if isinstance(fixed, list):
-            console.print(f"  {len(fixed)} item(s) fixed:", markup=False, highlight=False)
+            console.print(
+                f"  {len(fixed)} item(s) fixed:",
+                markup=False,
+                highlight=False,
+            )
             for item in fixed[:10]:
                 console.print(f"    - {str(item)[:120]}", markup=False, highlight=False)
         else:
             console.print(f"  Fixed: {fixed}", markup=False, highlight=False)
     else:
         # Generic fallback - just print keys
-        console.print(f"  Fix artifact: {list(found.keys())[:5]}", markup=False, highlight=False)
+        console.print(
+            f"  Fix artifact: {list(found.keys())[:5]}",
+            markup=False,
+            highlight=False,
+        )
 
     console.print(
         Rule(style=_phase_style("fix")),
@@ -237,8 +248,8 @@ def render_fix_artifact(
 
 
 __all__ = [
-    "render_plan_artifact",
     "render_analysis_decision",
     "render_commit_message",
     "render_fix_artifact",
+    "render_plan_artifact",
 ]

@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import json
 from io import StringIO
-from pathlib import Path
+from typing import TYPE_CHECKING
 
-import pytest
 from rich.console import Console
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 from ralph.display.artifact_renderer import (
     render_analysis_decision,

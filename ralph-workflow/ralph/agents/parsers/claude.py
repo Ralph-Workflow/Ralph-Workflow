@@ -3,12 +3,18 @@
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING, Final, cast
+from typing import TYPE_CHECKING, Final, TypedDict, cast
 
 from ralph.agents.parsers.base import AgentOutputLine
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
+
+
+class _Accumulator(TypedDict):
+    buffer: str
+    raw_lines: list[str]
+    block_type: str
 
 
 class ClaudeParser:
@@ -27,7 +33,7 @@ class ClaudeParser:
     def __init__(self) -> None:
         # Accumulator keyed by (message_id, content_block_index)
         # Each value is a dict with 'buffer' (str) and 'raw_lines' (list[str])
-        self._text_accumulator: dict[tuple[str, int], dict[str, object]] = {}
+        self._text_accumulator: dict[tuple[str, int], _Accumulator] = {}
         self._current_message_id: str | None = None
         self._seen_content_blocks: set[tuple[str, int]] = set()
 
@@ -66,67 +72,97 @@ class ClaudeParser:
     ) -> Iterator[AgentOutputLine]:
         event_type = str(obj.get("type", "unknown"))
 
+        lifecycle_result = self._handle_lifecycle_event(obj, event_type)
+        if lifecycle_result is not None:
+            yield from lifecycle_result
+            return
+
+        yield from self._dispatch_top_level_event(obj, raw, event_type)
+
+    def _handle_lifecycle_event(
+        self,
+        obj: dict[str, object],
+        event_type: str,
+    ) -> Iterator[AgentOutputLine] | None:
         if event_type == "message_start":
-            # Track message_id for accumulator keying
             message = obj.get("message")
             if isinstance(message, dict):
                 msg_id = str(message.get("id", ""))
                 if msg_id:
                     self._current_message_id = msg_id
-            # Don't swallow - still process normally but don't yield
-            return
+            return iter(())
 
         if event_type == "message_stop":
-            # Flush all pending accumulators for this message
-            yield from self._flush_all_accumulators()
             self._current_message_id = None
             self._seen_content_blocks.clear()
-            return
+            return self._flush_all_accumulators()
 
         if event_type == "content_block_stop":
-            # Extract block index and flush
             index = obj.get("index")
             if isinstance(index, int) and self._current_message_id is not None:
                 key = (self._current_message_id, index)
                 if key in self._text_accumulator:
-                    yield from self._flush_accumulator(key)
-            return
+                    return self._flush_accumulator(key)
+            return iter(())
 
         if event_type in self._LIFECYCLE_EVENT_TYPES:
-            return
+            return iter(())
+        return None
 
+    def _dispatch_top_level_event(
+        self,
+        obj: dict[str, object],
+        raw: str,
+        event_type: str,
+    ) -> Iterator[AgentOutputLine]:
         if event_type == "stream_event":
             event = obj.get("event")
             if isinstance(event, dict):
                 yield from self._parse_stream_inner(event, raw)
             else:
                 yield AgentOutputLine(type="stream_event", raw=raw, metadata=obj)
-        elif event_type == "content_block_delta":
+            return
+
+        if event_type == "content_block_delta":
             yield from self._parse_content_block_delta(obj, raw)
-        elif event_type == "content_block_start":
-            # Track content block start for index mapping
-            content_block = obj.get("content_block")
-            if isinstance(content_block, dict) and self._current_message_id is not None:
-                index = obj.get("index")
-                if isinstance(index, int):
-                    block_type = str(content_block.get("type", ""))
-                    if block_type == "text":
-                        key = (self._current_message_id, index)
-                        if key not in self._text_accumulator:
-                            self._text_accumulator[key] = {
-                                "buffer": "",
-                                "raw_lines": [],
-                                "block_type": block_type,
-                            }
+            return
+
+        if event_type == "content_block_start":
+            self._track_text_content_block(obj)
             yield from self._parse_content_block_start(obj, raw)
-        elif event_type == "assistant":
+            return
+
+        if event_type == "assistant":
             yield from self._parse_assistant_message(obj, raw)
-        elif event_type == "result":
+            return
+
+        if event_type == "result":
             yield from self._parse_result_event(obj, raw)
-        elif event_type == "error":
+            return
+
+        if event_type == "error":
             yield from self._parse_error_event(obj, raw)
-        else:
-            yield AgentOutputLine(type=event_type, raw=raw, metadata=obj)
+            return
+
+        yield AgentOutputLine(type=event_type, raw=raw, metadata=obj)
+
+    def _track_text_content_block(self, obj: dict[str, object]) -> None:
+        content_block = obj.get("content_block")
+        if not isinstance(content_block, dict) or self._current_message_id is None:
+            return
+        index = obj.get("index")
+        if not isinstance(index, int):
+            return
+        block_type = str(content_block.get("type", ""))
+        if block_type != "text":
+            return
+        key = (self._current_message_id, index)
+        if key not in self._text_accumulator:
+            self._text_accumulator[key] = {
+                "buffer": "",
+                "raw_lines": [],
+                "block_type": block_type,
+            }
 
     def _parse_stream_inner(
         self,
@@ -175,8 +211,8 @@ class ClaudeParser:
         if not isinstance(delta, dict):
             return
 
-        delta_type = str(delta.get("type", ""))
-        if delta_type != "text_delta":
+        delta_type_obj = delta.get("type")
+        if delta_type_obj is not None and str(delta_type_obj) != "text_delta":
             return
 
         text = str(delta.get("text", ""))
@@ -192,19 +228,19 @@ class ClaudeParser:
             if block_key in self._text_accumulator:
                 # Accumulate into existing block
                 acc = self._text_accumulator[block_key]
-                acc["buffer"] = acc["buffer"] + text  # type: ignore[operator]
-                acc["raw_lines"].append(raw)  # type: ignore[union-attr]
+                acc["buffer"] = acc["buffer"] + text
+                acc["raw_lines"].append(raw)
 
                 # Check for paragraph boundary - flush on \n\n
                 if "\n\n" in acc["buffer"]:
-                    parts = acc["buffer"].split("\n\n", 1)  # type: ignore[union-attr]
-                    acc["buffer"] = parts[1]  # Keep remainder  # type: ignore[union-attr]
+                    parts = acc["buffer"].split("\n\n", 1)
+                    acc["buffer"] = parts[1]  # Keep remainder
                     yield AgentOutputLine(
                         type="text",
                         content=parts[0],
-                        raw="\n".join(acc["raw_lines"]),  # type: ignore[union-attr]
+                        raw="\n".join(acc["raw_lines"]),
                     )
-                    acc["raw_lines"] = [raw] if acc["buffer"] else []  # type: ignore[union-attr]
+                    acc["raw_lines"] = [raw] if acc["buffer"] else []
                 return
 
         # No active accumulator - yield immediately (fallback for non-indexed deltas)
@@ -220,7 +256,7 @@ class ClaudeParser:
         raw_lines = acc["raw_lines"]
 
         if buffer:
-            raw_joined = "\n".join(raw_lines) if raw_lines else (raw_lines[-1] if raw_lines else "")
+            raw_joined = "\n".join(raw_lines) if raw_lines else ""
             yield AgentOutputLine(
                 type="text",
                 content=buffer,

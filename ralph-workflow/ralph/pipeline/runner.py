@@ -13,6 +13,7 @@ import os
 import shutil
 import sys
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass
 from inspect import signature
 from pathlib import Path
@@ -356,6 +357,9 @@ def _notify_pipeline_subscriber(
     pipeline_subscriber.notify(state)
 
 
+_notify_dashboard_subscriber = _notify_pipeline_subscriber
+
+
 def _phase_context(state: PipelineState, previous_phase: str) -> dict[str, object]:
     """Build a context dict for emit_phase_transition with iteration/decision hints."""
     context: dict[str, object] = {}
@@ -448,17 +452,23 @@ def _emit_final_summary(
                 prompt_preview=(),
                 run_id=None,
             )
-        emit_completion_summary(console, snapshot, workspace_root=workspace_root, dropped_count=dropped_count)
+        emit_completion_summary(
+            console,
+            snapshot,
+            workspace_root=workspace_root,
+            dropped_count=dropped_count,
+        )
     except Exception:
         logger.debug("Failed to emit completion summary", exc_info=True)
 
 
-def run(  # noqa: PLR0912, PLR0915
+def run(  # noqa: PLR0912, PLR0913, PLR0915
     config: UnifiedConfig,
     initial_state: PipelineState | None = None,
     display: ParallelDisplay | None = None,
     pipeline_subscriber: _PipelineSubscriber | None = None,
     *,
+    dashboard_subscriber: _PipelineSubscriber | None = None,
     verbosity: Verbosity | None = None,
 ) -> int:
     """Execute the pipeline event loop.
@@ -500,6 +510,9 @@ def run(  # noqa: PLR0912, PLR0915
         state.total_iterations,
         state.total_reviewer_passes,
     )
+
+    if pipeline_subscriber is None:
+        pipeline_subscriber = dashboard_subscriber
 
     if display is not None:
         active_display: ParallelDisplay | _LegacyConsoleDisplay = display
@@ -636,6 +649,7 @@ def _execute_fan_out_sync(  # noqa: PLR0913
     policy_bundle: PolicyBundle,
     workspace_scope: WorkspaceScope,
     pipeline_subscriber: _PipelineSubscriber | None = None,
+    dashboard_subscriber: _PipelineSubscriber | None = None,
 ) -> PipelineState:
     """Execute fan-out development synchronously by wrapping asyncio.run()."""
     import asyncio  # noqa: PLC0415
@@ -657,7 +671,7 @@ def _execute_fan_out_sync(  # noqa: PLR0913
     pd: _ParallelDisplay = (
         display if isinstance(display, _ParallelDisplay) else _ParallelDisplay(console)
     )
-    effective_pipeline_subscriber = pipeline_subscriber
+    effective_pipeline_subscriber = pipeline_subscriber or dashboard_subscriber
     if effective_pipeline_subscriber is None and hasattr(pd, "subscriber"):
         effective_pipeline_subscriber = cast(
             "_PipelineSubscriber | None",
@@ -755,11 +769,14 @@ def _handle_inline_effect(  # noqa: PLR0913
     workspace_scope: WorkspaceScope,
     display: ParallelDisplay | _LegacyConsoleDisplay | None = None,
     pipeline_subscriber: _PipelineSubscriber | None = None,
+    dashboard_subscriber: _PipelineSubscriber | None = None,
 ) -> PipelineState | int | None:
+    effective_pipeline_subscriber = pipeline_subscriber or dashboard_subscriber
+
     if isinstance(effect, SaveCheckpointEffect):
         ckpt.save(state)
         new_state, _ = reducer_reduce(state, PipelineEvent.CHECKPOINT_SAVED, pipeline_policy)
-        _notify_pipeline_subscriber(pipeline_subscriber, new_state)
+        _notify_pipeline_subscriber(effective_pipeline_subscriber, new_state)
         return new_state
 
     if isinstance(effect, PreparePromptEffect):
@@ -770,7 +787,7 @@ def _handle_inline_effect(  # noqa: PLR0913
             current_drain=effect.drain or resolve_phase_drain(effect.phase, pipeline_policy),
         )
         ckpt.save(updated_state)
-        _notify_pipeline_subscriber(pipeline_subscriber, updated_state)
+        _notify_pipeline_subscriber(effective_pipeline_subscriber, updated_state)
         return updated_state
 
     if isinstance(effect, ExitSuccessEffect):
@@ -1217,6 +1234,7 @@ def _execute_agent_effect(  # noqa: PLR0913
             workspace_scope.root,
             allowed_roots=workspace_scope.allowed_roots,
         )
+        _clear_phase_output_artifacts(workspace, effect.phase)
         bridge = start_mcp_server(session, workspace)
 
         options = InvokeOptions(
@@ -1253,6 +1271,33 @@ def _execute_agent_effect(  # noqa: PLR0913
         if bridge is not None:
             shutdown_mcp_server(bridge)
     return PipelineEvent.AGENT_SUCCESS
+
+
+def _clear_phase_output_artifacts(workspace: FsWorkspace, phase: str) -> None:
+    """Remove stale per-phase artifacts before invoking an agent.
+
+    This hardening makes phase handlers reason about outputs created by the
+    current invocation instead of silently accepting artifacts left behind by a
+    prior interrupted run. The mapping is intentionally explicit so new
+    artifact-emitting phases must opt in deliberately.
+    """
+    for path in _phase_output_artifact_paths(phase):
+        workspace.remove(path)
+
+
+
+def _phase_output_artifact_paths(phase: str) -> tuple[str, ...]:
+    phase_artifacts = {
+        "development": (".agent/artifacts/development_result.json",),
+        "development_analysis": (".agent/artifacts/development_analysis_decision.json",),
+        "review": (".agent/artifacts/issues.json",),
+        "review_analysis": (".agent/artifacts/review_analysis_decision.json",),
+        "fix": (".agent/artifacts/fix_result.json",),
+        "development_commit": (COMMIT_MESSAGE_ARTIFACT,),
+        "review_commit": (COMMIT_MESSAGE_ARTIFACT,),
+    }
+    return phase_artifacts.get(phase, ())
+
 
 
 def _default_mcp_capabilities_for_phase(phase: str) -> set[str]:
@@ -1393,66 +1438,130 @@ def _truncate(text: str, max_length: int) -> str:
 
 
 def _render_agent_activity_line(output: AgentOutputLine, agent_name: str) -> Text | None:
-    rendered: Text | None = None
+    content_renderers: dict[str, Callable[[], Text | None]] = {
+        "text": lambda: _render_text_line(agent_name, output.content, "white"),
+        "assistant": lambda: _render_text_line(agent_name, output.content, "dim"),
+        "result": lambda: _render_text_line(agent_name, output.content, "dim"),
+        "tool_use": lambda: _render_tool_use_line(agent_name, output),
+        "tool_result": lambda: _render_tool_result_line(agent_name, output.content),
+        "error": lambda: _render_error_line(agent_name, output.content),
+    }
+    renderer = content_renderers.get(output.type)
+    if renderer is not None:
+        return renderer()
+    return _render_metadata_event_line(agent_name, output)
 
-    if output.type == "text":
-        content = output.content.strip()
-        if content:
-            rendered = _styled_prefix(agent_name, "white")
-            text_width = min(_MAX_TEXT_LENGTH, _available_width(len(agent_name) + 2))
-            rendered.append(_truncate(content, text_width))
-    elif output.type == "tool_use":
-        tool_name = output.content.strip() or "unknown-tool"
-        prefix_label = f"{agent_name} tool"
-        rendered = _styled_prefix(prefix_label, "magenta")
-        rendered.append(tool_name, style="bold magenta")
-        input_summary = _tool_input_summary(output.metadata)
-        if input_summary:
-            prefix_total = len(prefix_label) + 2 + len(tool_name) + 3
-            tool_input_width = min(_MAX_TOOL_INPUT_LENGTH, _available_width(prefix_total))
-            truncated = _truncate(input_summary, tool_input_width)
-            rendered.append(f" ({truncated})", style="dim")
-    elif output.type == "tool_result":
-        result = output.content.strip()
-        if result:
-            result_label = f"{agent_name} result"
-            rendered = _styled_prefix(result_label, "dim")
-            result_prefix_len = len(result_label) + 2
-            if len(result) > _TOOL_RESULT_BRIEF_THRESHOLD:
-                brief_width = min(_MAX_TOOL_RESULT_BRIEF, _available_width(result_prefix_len))
-                rendered.append(_truncate(result, brief_width), style="dim")
-            else:
-                result_width = min(_MAX_TOOL_RESULT_LENGTH, _available_width(result_prefix_len))
-                rendered.append(_truncate(result, result_width), style="dim")
-    elif output.type == "error":
-        error = output.content.strip() or "unknown error"
-        rendered = _styled_prefix(f"{agent_name} ✗", "red")
-        rendered.append(error, style="bold red")
-    elif output.type == "assistant":
-        # assistant messages may contain text content
-        content = output.content.strip()
-        if content:
-            rendered = _styled_prefix(agent_name, "dim")
-            rendered.append(content)
-    elif output.type == "result":
-        # result events sometimes contain final output
-        content = output.content.strip()
-        if content:
-            rendered = _styled_prefix(agent_name, "dim")
-            rendered.append(content)
 
+
+def _render_text_line(agent_name: str, content: str, style: str) -> Text | None:
+    stripped = content.strip()
+    if not stripped:
+        return None
+    rendered = _styled_prefix(agent_name, style)
+    text_width = min(_MAX_TEXT_LENGTH, _available_width(len(agent_name) + 2))
+    rendered.append(_truncate(stripped, text_width))
     return rendered
+
+
+
+def _render_tool_use_line(agent_name: str, output: AgentOutputLine) -> Text:
+    tool_name = output.content.strip() or "unknown-tool"
+    prefix_label = f"{agent_name} tool"
+    rendered = _styled_prefix(prefix_label, "magenta")
+    rendered.append(tool_name, style="bold magenta")
+    input_summary = _tool_input_summary(output.metadata)
+    if input_summary:
+        prefix_total = len(prefix_label) + len(tool_name) + 4
+        tool_input_width = min(_MAX_TOOL_INPUT_LENGTH, _available_width(prefix_total))
+        truncated = _truncate(input_summary, tool_input_width)
+        rendered.append(f" ({truncated})", style="dim")
+    return rendered
+
+
+
+def _render_tool_result_line(agent_name: str, content: str) -> Text | None:
+    result = content.strip()
+    if not result:
+        return None
+    result_label = f"{agent_name} result"
+    rendered = _styled_prefix(result_label, "dim")
+    result_prefix_len = len(result_label) + 2
+    max_length = (
+        _MAX_TOOL_RESULT_BRIEF
+        if len(result) > _TOOL_RESULT_BRIEF_THRESHOLD
+        else _MAX_TOOL_RESULT_LENGTH
+    )
+    result_width = min(max_length, _available_width(result_prefix_len))
+    rendered.append(_truncate(result, result_width), style="dim")
+    return rendered
+
+
+
+def _render_error_line(agent_name: str, content: str) -> Text:
+    error = content.strip() or "unknown error"
+    rendered = _styled_prefix(f"{agent_name} ✗", "red")
+    rendered.append(error, style="bold red")
+    return rendered
+
+
+
+def _render_metadata_event_line(agent_name: str, output: AgentOutputLine) -> Text:
+    summary = _metadata_summary(output.metadata)
+    rendered = _styled_prefix(agent_name, "dim")
+    rendered.append(output.type, style="dim")
+    if summary:
+        rendered.append(f" ({summary})", style="dim")
+    return rendered
+
 
 
 def _tool_input_summary(metadata: dict[str, object]) -> str:
     if not metadata:
         return ""
     input_data = metadata.get("input")
-    if isinstance(input_data, dict) and "args" in input_data:
-        args = input_data["args"]
-        if isinstance(args, str) and args:
-            return args
-    return ""
+    if not isinstance(input_data, dict):
+        return ""
+    args = input_data.get("args")
+    if isinstance(args, str) and args:
+        return args
+    return _kv_summary(
+        input_data,
+        preferred_keys=("command", "workdir", "path", "file_path", "pattern", "name"),
+        max_parts=_MAX_METADATA_PARTS,
+        max_length=_MAX_TOOL_INPUT_LENGTH,
+    )
+
+
+
+def _metadata_summary(metadata: dict[str, object]) -> str:
+    if not metadata:
+        return ""
+    return _kv_summary(
+        metadata,
+        preferred_keys=("status", "summary", "phase", "tool", "path", "workdir", "command"),
+        max_parts=_MAX_METADATA_PARTS,
+        max_length=_MAX_METADATA_SUMMARY_LENGTH,
+    )
+
+
+
+def _kv_summary(
+    values: dict[str, object],
+    *,
+    preferred_keys: tuple[str, ...],
+    max_parts: int,
+    max_length: int,
+) -> str:
+    parts: list[str] = []
+    for key in preferred_keys:
+        value = _format_metadata_value(values.get(key))
+        if value is None:
+            continue
+        parts.append(f"{key}={value}")
+        if len(parts) >= max_parts:
+            break
+    return _truncate(", ".join(parts), max_length) if parts else ""
+
 
 
 def _format_metadata_value(value: object) -> str | None:
@@ -1466,7 +1575,7 @@ def _format_metadata_value(value: object) -> str | None:
 def _styled_prefix(label: str, style: str) -> Text:
     """Create a styled prefix for activity lines."""
     text = Text()
-    text.append(f"[{label}] ", style=f"bold {style}")
+    text.append(f"{label}: ", style=f"bold {style}")
     return text
 
 

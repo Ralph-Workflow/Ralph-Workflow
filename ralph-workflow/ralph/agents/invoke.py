@@ -17,6 +17,8 @@ import shlex
 import subprocess
 import sys
 import threading
+import time
+from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
@@ -49,6 +51,7 @@ from ralph.mcp.startup import (
 from ralph.mcp.tool_names import claude_tool_name
 
 _MODELED_FLAG_PARTS = 2
+_IDLE_POLL_INTERVAL_SECONDS = 0.05
 
 
 @dataclass(frozen=True)
@@ -70,6 +73,7 @@ class InvokeOptions:
     show_progress: bool = True
     workspace_path: Path | None = None
     extra_env: dict[str, str] | None = None
+    idle_timeout_seconds: float | None = 300.0
     pure: bool = False
     system_prompt_file: str | None = None
 
@@ -124,6 +128,14 @@ class _ObserverProtocol(_HasStop, Protocol):
     def start(self) -> None: ...
 
 
+class _IdleStreamTimeoutError(RuntimeError):
+    """Raised when an agent process stops producing output for too long."""
+
+    def __init__(self, timeout_seconds: float) -> None:
+        self.timeout_seconds = timeout_seconds
+        super().__init__(f"Agent produced no output for {timeout_seconds:.0f}s")
+
+
 class AgentInvocationError(Exception):
     """Raised when agent invocation fails.
 
@@ -162,6 +174,24 @@ class AgentInvocationError(Exception):
         if self.parsed_output:
             return " | ".join(self.parsed_output)
         return ""
+
+
+class AgentInactivityTimeoutError(AgentInvocationError):
+    """Raised when an agent stalls without producing output."""
+
+    def __init__(
+        self,
+        agent_name: str,
+        timeout_seconds: float,
+        parsed_output: list[str] | None = None,
+    ) -> None:
+        self.timeout_seconds = timeout_seconds
+        super().__init__(
+            agent_name,
+            -1,
+            f"Agent produced no output for {timeout_seconds:.0f}s",
+            parsed_output,
+        )
 
 
 class UnsupportedMcpTransportError(RuntimeError):
@@ -294,6 +324,7 @@ def invoke_agent(
             opts.show_progress,
             runtime_env,
             opts.workspace_path,
+            idle_timeout_seconds=opts.idle_timeout_seconds,
         )
         yield from lines_iter
 
@@ -318,12 +349,14 @@ def _start_workspace_monitor(workspace_path: Path | None) -> WorkspaceMonitor | 
     return monitor
 
 
-def _run_subprocess_and_read_lines(
+def _run_subprocess_and_read_lines(  # noqa: PLR0913
     cmd: list[str],
     config: AgentConfig,
     show_progress: bool,
     extra_env: dict[str, str] | None,
     workspace_path: Path | None,
+    *,
+    idle_timeout_seconds: float | None = None,
 ) -> Iterator[str]:
     """Run subprocess and yield output lines.
 
@@ -348,7 +381,7 @@ def _run_subprocess_and_read_lines(
             msg = "Failed to capture stdout"
             raise AgentInvocationError(_agent_command_name(config), -1, msg)
 
-        lines_iter = _read_lines_from_process(proc)
+        lines_iter = _read_lines_from_process(proc, idle_timeout_seconds=idle_timeout_seconds)
         parsed_output: list[str] = []
         if show_progress:
             agent_name = _agent_command_name(config)
@@ -362,13 +395,27 @@ def _run_subprocess_and_read_lines(
                     file=sys.stdout,
                 ),
             )
-            for line in progress_iter:
-                parsed_output.append(line.rstrip())
-                yield line
+            try:
+                for line in progress_iter:
+                    parsed_output.append(line.rstrip())
+                    yield line
+            except _IdleStreamTimeoutError as exc:
+                raise AgentInactivityTimeoutError(
+                    _agent_command_name(config),
+                    exc.timeout_seconds,
+                    parsed_output,
+                ) from exc
         else:
-            for line in lines_iter:
-                parsed_output.append(line.rstrip())
-                yield line
+            try:
+                for line in lines_iter:
+                    parsed_output.append(line.rstrip())
+                    yield line
+            except _IdleStreamTimeoutError as exc:
+                raise AgentInactivityTimeoutError(
+                    _agent_command_name(config),
+                    exc.timeout_seconds,
+                    parsed_output,
+                ) from exc
 
         proc.wait()
         _check_process_result(proc, _agent_command_name(config), parsed_output)
@@ -444,11 +491,16 @@ def _agent_command_name(config: AgentConfig) -> str:
     return config.cmd.split()[0]
 
 
-def _read_lines_from_process(proc: subprocess.Popen[str]) -> Iterator[str]:
+def _read_lines_from_process(
+    proc: subprocess.Popen[str],
+    *,
+    idle_timeout_seconds: float | None = None,
+) -> Iterator[str]:
     """Read lines from subprocess stdout in a background thread.
 
     Args:
         proc: Running subprocess.
+        idle_timeout_seconds: Optional maximum idle time without output.
 
     Yields:
         Lines from stdout.
@@ -456,6 +508,7 @@ def _read_lines_from_process(proc: subprocess.Popen[str]) -> Iterator[str]:
     lines_queue: list[str] = []
     lines_lock = threading.Lock()
     lines_event = threading.Event()
+    last_activity = time.monotonic()
 
     def read_lines_thread() -> None:
         if proc.stdout is None:
@@ -473,15 +526,62 @@ def _read_lines_from_process(proc: subprocess.Popen[str]) -> Iterator[str]:
     reader.start()
 
     while True:
+        queued_line: str | None = None
         with lines_lock:
             if lines_queue:
-                yield lines_queue.pop(0)
-            elif lines_event.is_set():
-                break
-            else:
-                continue
+                queued_line = lines_queue.pop(0)
+
+        if queued_line is not None:
+            last_activity = time.monotonic()
+            yield queued_line
+            continue
+
+        if lines_event.is_set():
+            break
+
+        if (
+            idle_timeout_seconds is not None
+            and time.monotonic() - last_activity >= idle_timeout_seconds
+        ):
+            _terminate_subprocess(proc)
+            raise _IdleStreamTimeoutError(idle_timeout_seconds)
+
+        lines_event.wait(_IDLE_POLL_INTERVAL_SECONDS)
 
     reader.join(timeout=10)
+
+
+
+def _terminate_subprocess(proc: subprocess.Popen[str]) -> None:
+    if _process_poll(proc) is not None:
+        return
+
+    with suppress(Exception):
+        proc.terminate()
+    _process_wait(proc, timeout=1)
+
+    if _process_poll(proc) is not None:
+        return
+
+    with suppress(Exception):
+        proc.kill()
+
+
+
+def _process_poll(proc: subprocess.Popen[str]) -> int | None:
+    with suppress(Exception):
+        return proc.poll()
+    return None
+
+
+
+def _process_wait(proc: subprocess.Popen[str], *, timeout: float) -> None:
+    try:
+        proc.wait(timeout=timeout)
+    except TypeError:
+        return
+    except Exception:
+        return
 
 
 def _log_workspace_completion(monitor: WorkspaceMonitor | None) -> None:
@@ -608,10 +708,10 @@ def _extend_claude_transport_flags(
     if transport != AgentTransport.CLAUDE or build_options.mcp_endpoint is None:
         return
 
-    # `--tools ""` disables Claude's built-in tools. `--allowedTools` then grants
-    # provider-side approval only to the exact Ralph MCP tools exposed by the live
-    # runtime endpoint, keeping Ralph as the sole visible MCP server while avoiding
-    # per-tool permission prompts for Ralph-owned tools.
+    # Claude/CCS non-interactive MCP mode is brittle around `--tools ""` combined
+    # with `--allowedTools`. We only emit the tool restriction flags when live MCP
+    # tool discovery succeeds and yields a non-empty allowlist; otherwise we keep the
+    # strict MCP server isolation but avoid the known empty-tool edge case entirely.
     cmd.extend(
         [
             "--mcp-config",
@@ -620,12 +720,17 @@ def _extend_claude_transport_flags(
                 workspace_path=build_options.workspace_path,
             ),
             "--strict-mcp-config",
-            "--tools",
-            "",
         ]
     )
     if build_options.allowed_mcp_tool_names:
-        cmd.extend(["--allowedTools", ",".join(build_options.allowed_mcp_tool_names)])
+        cmd.extend(
+            [
+                "--tools",
+                "",
+                "--allowedTools",
+                ",".join(build_options.allowed_mcp_tool_names),
+            ]
+        )
 
 
 def _resolve_prompt_path(prompt_file: str, workspace_path: Path | None) -> Path:

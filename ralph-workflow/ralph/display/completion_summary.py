@@ -153,7 +153,11 @@ def emit_completion_summary(
     dropped_count: int = 0,
 ) -> None:
     console.print(
-        render_completion_summary(snapshot, workspace_root=workspace_root, dropped_count=dropped_count),
+        render_completion_summary(
+            snapshot,
+            workspace_root=workspace_root,
+            dropped_count=dropped_count,
+        ),
         markup=False,
     )
 

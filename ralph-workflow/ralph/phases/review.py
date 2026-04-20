@@ -14,6 +14,7 @@ changes are substantive.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from git import InvalidGitRepositoryError
@@ -23,10 +24,16 @@ from ralph.config.enums import AnalysisDecision
 from ralph.git.operations import GitOperationError, get_head_sha, has_commits_since
 from ralph.phases import PhaseContext, register_handler
 from ralph.phases.analysis import parse_analysis_decision
+from ralph.phases.artifacts import (
+    PhaseArtifactError,
+    load_phase_artifact,
+    unwrap_phase_artifact_content,
+)
 from ralph.pipeline.effects import Effect, InvokeAgentEffect, PreparePromptEffect
 from ralph.pipeline.events import Event, PipelineEvent
 
 REVIEW_BASELINE_MARKER = ".agent/tmp/last_reviewed_sha.txt"
+REVIEW_ISSUES_ARTIFACT_PATH = ".agent/artifacts/issues.json"
 
 
 def _workspace_absolute_path(ctx: PhaseContext, rel: str) -> str | None:
@@ -107,6 +114,18 @@ def handle_review(effect: Effect, ctx: PhaseContext) -> list[Event]:
             return [PipelineEvent.REVIEW_CLEAN]
 
         logger.info("Review phase: processing review result after agent run")
+        try:
+            artifact_wrapper = load_phase_artifact(ctx.workspace, REVIEW_ISSUES_ARTIFACT_PATH)
+            if artifact_wrapper.get("type") != "issues":
+                raise PhaseArtifactError("Review issues artifact must declare type='issues'")
+            unwrap_phase_artifact_content(
+                artifact_wrapper,
+                expected_type="issues",
+            )
+        except (json.JSONDecodeError, PhaseArtifactError, TypeError, ValueError) as exc:
+            logger.warning("Review phase missing fresh issues artifact: {}", exc)
+            return [PipelineEvent.FAILED]
+
         head = _current_head_sha(ctx)
         if head is not None:
             _write_review_baseline(ctx, head)

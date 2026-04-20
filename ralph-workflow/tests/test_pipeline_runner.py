@@ -1088,6 +1088,52 @@ class TestExecuteAgentEffect:
 
         assert result == PipelineEvent.AGENT_FAILURE
 
+    @pytest.mark.parametrize(
+        ("phase", "artifact_path"),
+        [
+            ("development", ".agent/artifacts/development_result.json"),
+            ("review", ".agent/artifacts/issues.json"),
+            ("fix", ".agent/artifacts/fix_result.json"),
+        ],
+    )
+    def test_execute_agent_effect_removes_stale_phase_artifact_before_invocation(
+        self, monkeypatch: MonkeyPatch, tmp_path: Path, phase: str, artifact_path: str
+    ) -> None:
+        effect = InvokeAgentEffect(
+            agent_name="ccs/mm",
+            phase=phase,
+            prompt_file="PROMPT.md",
+        )
+        prompt_file = tmp_path / "PROMPT.md"
+        prompt_file.write_text("prompt", encoding="utf-8")
+        stale_artifact = tmp_path / artifact_path
+        stale_artifact.parent.mkdir(parents=True, exist_ok=True)
+        stale_artifact.write_text('{"type":"stale"}', encoding="utf-8")
+
+        monkeypatch.setattr(
+            runner_module,
+            "start_mcp_server",
+            lambda *_args, **_kwargs: self._FakeBridge(),
+        )
+        monkeypatch.setattr(runner_module, "shutdown_mcp_server", lambda _bridge: None)
+        monkeypatch.setattr(
+            runner_module, "materialize_system_prompt", lambda **_kwargs: str(prompt_file)
+        )
+
+        result = runner_module._execute_agent_effect(
+            effect,
+            UnifiedConfig(),
+            runner_module._AgentExecutionDeps(
+                invoke_agent=lambda *_args, **_kwargs: iter(["line"]),
+                agent_invocation_error=self.AgentError,
+                agent_registry=runner_module.AgentRegistry,
+            ),
+            WorkspaceScope(tmp_path),
+        )
+
+        assert result == PipelineEvent.AGENT_SUCCESS
+        assert not stale_artifact.exists()
+
     def test_dynamic_ccs_agent_reaches_invocation(self, monkeypatch: MonkeyPatch) -> None:
         effect = InvokeAgentEffect(
             agent_name="ccs/mm",

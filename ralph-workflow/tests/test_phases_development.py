@@ -48,7 +48,38 @@ class TestHandleDevelopment:
     def test_invoke_agent_effect_with_valid_work_units_returns_agent_success(self) -> None:
         effect = MagicMock(spec=InvokeAgentEffect)
         ctx = self._make_context()
-        ctx.workspace.exists.return_value = True
+        ctx.workspace.exists.side_effect = (
+            lambda path: path
+            in {
+                ".agent/artifacts/plan.json",
+                ".agent/artifacts/development_result.json",
+            }
+        )
+        plan_payload = (
+            '{"work_units":[{"unit_id":"u1","description":"A",'
+            '"allowed_directories":["src"]}]}'
+        )
+        result_payload = (
+            '{"type":"development_result","content":'
+            '{"status":"success","summary":"done"}}'
+        )
+        ctx.workspace.read.side_effect = lambda path: {
+            ".agent/artifacts/plan.json": plan_payload,
+            ".agent/artifacts/development_result.json": result_payload,
+        }[path]
+
+        parallel_execution = MagicMock()
+        parallel_execution.max_parallel_workers = 8
+        parallel_execution.require_allowed_directories = True
+        ctx.pipeline_policy.parallel_execution = parallel_execution
+
+        result = handle_development(effect, ctx)
+        assert result == [PipelineEvent.AGENT_SUCCESS]
+
+    def test_invoke_agent_effect_without_fresh_development_result_returns_failed(self) -> None:
+        effect = MagicMock(spec=InvokeAgentEffect)
+        ctx = self._make_context()
+        ctx.workspace.exists.side_effect = lambda path: path == ".agent/artifacts/plan.json"
         ctx.workspace.read.return_value = (
             '{"work_units":[{"unit_id":"u1","description":"A","allowed_directories":["src"]}]}'
         )
@@ -59,7 +90,7 @@ class TestHandleDevelopment:
         ctx.pipeline_policy.parallel_execution = parallel_execution
 
         result = handle_development(effect, ctx)
-        assert result == [PipelineEvent.AGENT_SUCCESS]
+        assert result == [PipelineEvent.FAILED]
 
     def test_other_effect_returns_empty_list(self) -> None:
         effect = MagicMock(spec=Effect)
