@@ -30,6 +30,9 @@ If instructions conflict, follow the stricter one.
 - Do not leave the repo in a broken state.
 - Do not weaken checks to get green results.
 - Update user-facing docs when commands, workflows, or behavior change.
+- All code **must** be testable in a black box way. If you cannot test it easily, it strongly suggests you have to refactor.
+- If there is a test failure, either the tests is implemented wrong, the code behavior is wrong, or the test is testing the wrong behavior. DO NOT change the test to match the current implementation. A test may never make any assumptions about the underlying implementation of the code.
+- All tests must complete in 30s or less, no exceptions.
 
 ## Required workflows
 
@@ -40,13 +43,7 @@ If instructions conflict, follow the stricter one.
 
 ## Commit rule
 
-Every git commit in this repository must be created with `ralph --generate-commit`.
-
-- Do not use `git commit -m`, `git commit --amend`, or any other direct git commit path.
-- Stage the intended files first, then run `ralph --generate-commit` from `ralph-workflow/`.
-- If `ralph --generate-commit` fails, stop and fix that problem instead of falling back to `git commit`.
-
-This rule is mandatory so commit generation is continuously dogfooded in real development.
+- Do not run any commits. If commits are required by prompt, use `ralph --generate-commit` ONLY and nothing else
 
 ## Absolutely Zero Dead code
 

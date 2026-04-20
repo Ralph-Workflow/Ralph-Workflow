@@ -7,9 +7,11 @@ It applies agent-suggested fixes to the codebase.
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 from loguru import logger
 
+from ralph.display.artifact_renderer import render_fix_artifact
 from ralph.phases import PhaseContext, register_handler
 from ralph.phases.artifacts import (
     PhaseArtifactError,
@@ -59,6 +61,12 @@ def handle_fix(effect: Effect, ctx: PhaseContext) -> list[Event]:
                     recoverable=True,
                 )
             ]
+
+        # Render the fix artifact block for the user
+        if ctx.console is not None:
+            workspace_root = Path(ctx.workspace.absolute_path("."))
+            render_fix_artifact(workspace_root, ctx.console)
+
         return [PipelineEvent.AGENT_SUCCESS]
 
     return []

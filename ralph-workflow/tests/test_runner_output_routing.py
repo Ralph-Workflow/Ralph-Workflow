@@ -148,8 +148,8 @@ def test_run_streams_transcript_output_without_dashboard(monkeypatch: pytest.Mon
 
     output = rendered.getvalue()
     assert result == 0
-    assert "Invoking agent: planning" in output
-    assert "planning output" in output
+    assert "[phase] planning" in output
+    assert "[phase] complete" in output
     assert "Pipeline completed successfully." in output
 
 
@@ -205,9 +205,10 @@ def test_single_agent_visual_parity(monkeypatch: pytest.MonkeyPatch) -> None:
 
     output = rendered.getvalue()
     assert result == 0
-    assert "Invoking agent: planning" in output
-    assert "Invoking agent: development" in output
-    assert "Invoking agent: review" in output
+    assert "[phase] planning" in output
+    assert "[phase] development" in output
+    assert "[phase] review" in output
+    assert "[phase] complete" in output
     assert "Pipeline completed successfully." in output
 
 

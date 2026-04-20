@@ -34,7 +34,12 @@ from ralph.config.enums import (
     PHASE_PLANNING,
     Verbosity,
 )
-from ralph.display.phase_banner import PhaseStartContext, show_phase_start, show_phase_transition
+from ralph.display.phase_banner import (
+    PhaseStartContext,
+    show_phase_complete,
+    show_phase_start,
+    show_phase_transition,
+)
 from ralph.mcp.capability_mapping import DrainClass, drain_class_for_session
 from ralph.mcp.commit_message import (
     COMMIT_MESSAGE_ARTIFACT,
@@ -364,13 +369,94 @@ def _execute_effect_with_optional_display(  # noqa: PLR0913
     state: PipelineState | None = None,
 ) -> Event:
     params = signature(_execute_effect).parameters
+    has_display = "display" in params
+    has_verbosity = "verbosity" in params
+    has_state = "state" in params
+
+    result: Event
     if len(params) == _LEGACY_EXECUTE_EFFECT_ARITY:
-        return _execute_effect(effect, config, workspace_scope)
-    if "verbosity" in params:
-        return _execute_effect(
-            effect, config, workspace_scope, display=display, verbosity=verbosity, state=state
+        result = _execute_effect(effect, config, workspace_scope)
+    elif has_display:
+        if has_verbosity and has_state:
+            result = _execute_effect(
+                effect,
+                config,
+                workspace_scope,
+                display=display,
+                verbosity=verbosity,
+                state=state,
+            )
+        elif has_verbosity:
+            result = _execute_effect(
+                effect,
+                config,
+                workspace_scope,
+                display=display,
+                verbosity=verbosity,
+            )
+        elif has_state:
+            result = _execute_effect(
+                effect,
+                config,
+                workspace_scope,
+                display=display,
+                state=state,
+            )
+        else:
+            result = _execute_effect(effect, config, workspace_scope, display=display)
+    elif has_verbosity and has_state:
+        result = _execute_effect(
+            effect,
+            config,
+            workspace_scope,
+            verbosity=verbosity,
+            state=state,
         )
-    return _execute_effect(effect, config, workspace_scope, display=display, state=state)
+    elif has_verbosity:
+        result = _execute_effect(effect, config, workspace_scope, verbosity=verbosity)
+    elif has_state:
+        result = _execute_effect(effect, config, workspace_scope, state=state)
+    else:
+        result = _execute_effect(effect, config, workspace_scope)
+    return result
+
+
+def _invoke_execute_effect_with_optional_display(  # noqa: PLR0913
+    effect: Effect,
+    config: UnifiedConfig,
+    workspace_scope: WorkspaceScope,
+    *,
+    display: ParallelDisplay | _LegacyConsoleDisplay | None,
+    verbosity: Verbosity,
+    state: PipelineState,
+) -> Event:
+    params = signature(_execute_effect_with_optional_display).parameters
+    has_state = "state" in params
+    has_verbosity = "verbosity" in params
+
+    if has_state and has_verbosity:
+        return _execute_effect_with_optional_display(
+            effect,
+            config,
+            workspace_scope,
+            display=display,
+            verbosity=verbosity,
+            state=state,
+        )
+    if has_verbosity:
+        return _execute_effect_with_optional_display(
+            effect,
+            config,
+            workspace_scope,
+            display=display,
+            verbosity=verbosity,
+        )
+    return _execute_effect_with_optional_display(
+        effect,
+        config,
+        workspace_scope,
+        display=display,
+    )
 
 
 def _notify_dashboard_subscriber(
@@ -450,21 +536,18 @@ def _emit_phase_transition_if_changed(
     if _verbosity_rank(verbosity) <= _VERBOSITY_RANK[Verbosity.QUIET]:
         return state.phase
 
+    # Emit phase completion for the phase we're leaving
+    try:
+        show_phase_complete(previous_phase)
+    except Exception:  # pragma: no cover - defensive
+        logger.debug("show_phase_complete failed", exc_info=True)
+
+    # Emit transition to the new phase
     context = _phase_context(state, previous_phase) or None
-    if hasattr(display, "emit_phase_transition"):
-        try:
-            cast("ParallelDisplay", display).emit_phase_transition(
-                previous_phase,
-                state.phase,
-                context=context,
-            )
-        except Exception:  # pragma: no cover - defensive
-            logger.debug("display.emit_phase_transition failed", exc_info=True)
-    else:
-        try:
-            show_phase_transition(previous_phase, state.phase, context=context, console=console)
-        except Exception:  # pragma: no cover - defensive
-            logger.debug("show_phase_transition failed", exc_info=True)
+    try:
+        show_phase_transition(previous_phase, state.phase, context=context)
+    except Exception:  # pragma: no cover - defensive
+        logger.debug("show_phase_transition failed", exc_info=True)
     return state.phase
 
 
@@ -642,7 +725,7 @@ def run(  # noqa: PLR0912, PLR0913, PLR0915
                             workspace_scope,
                         )
 
-                        event: Event = _execute_effect_with_optional_display(
+                        event = _invoke_execute_effect_with_optional_display(
                             effect,
                             config,
                             workspace_scope,

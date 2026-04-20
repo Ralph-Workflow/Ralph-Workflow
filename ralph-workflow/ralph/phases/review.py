@@ -21,6 +21,7 @@ from git import InvalidGitRepositoryError
 from loguru import logger
 
 from ralph.config.enums import AnalysisDecision
+from ralph.display.artifact_renderer import render_analysis_decision
 from ralph.git.operations import GitOperationError, get_head_sha, has_commits_since
 from ralph.phases import PhaseContext, register_handler
 from ralph.phases.analysis import parse_analysis_decision
@@ -157,6 +158,11 @@ def handle_review_analysis(effect: Effect, ctx: PhaseContext) -> list[Event]:
     if isinstance(effect, InvokeAgentEffect):
         decision = parse_analysis_decision(ctx, "review_analysis")
         logger.info("Review analysis decision: {}", decision)
+
+        # Render the analysis decision block for the user
+        if ctx.console is not None:
+            workspace_root = Path(ctx.workspace.absolute_path("."))
+            render_analysis_decision(workspace_root, "review_analysis", ctx.console)
 
         if decision in (AnalysisDecision.PROCEED, AnalysisDecision.COMPLETE):
             return [PipelineEvent.ANALYSIS_SUCCESS]
