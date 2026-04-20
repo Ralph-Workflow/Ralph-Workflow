@@ -1497,9 +1497,11 @@ class TestExecuteAgentEffect:
         def fake_invoke_agent(_agent_config, _prompt_file, *, options=None):
             seen_session_ids.append(None if options is None else options.session_id)
             if len(seen_session_ids) == 1:
+
                 def _first_attempt():
                     yield '{"session_id":"claude-session-42"}'
                     raise AgentInvocationError("claude", 1, "connection refused")
+
                 return _first_attempt()
             return iter(
                 ['{"type":"assistant","message":{"content":[{"type":"text","text":"done"}]}}']
@@ -1558,9 +1560,11 @@ class TestExecuteAgentEffect:
             del options
             seen_prompt_files.append(prompt_path)
             if len(seen_prompt_files) == 1:
+
                 def _first_attempt():
                     yield '{"type":"text","content":"drafted the fix"}'
                     raise AgentInactivityTimeoutError("codex", 30, ["drafted the fix"])
+
                 return _first_attempt()
             return iter(['{"type":"result","result":"finished"}'])
 
@@ -2260,5 +2264,3 @@ class TestPhaseHandlerExceptionGuard:
 
         assert new_state.phase == PHASE_FAILED
         assert "FAILURE" in new_state.last_error
-
-

@@ -106,7 +106,6 @@ def test_invoke_agent_uses_five_minute_default_idle_timeout(
     assert captured["idle_timeout_seconds"] == DEFAULT_IDLE_TIMEOUT_SECONDS
 
 
-
 def test_run_subprocess_and_read_lines_wraps_idle_stream_timeout(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -158,7 +157,6 @@ def test_run_subprocess_and_read_lines_wraps_idle_stream_timeout(
                 idle_timeout_seconds=0.05,
             )
         )
-
 
 
 def test_build_command_includes_print_streaming_and_session_flags() -> None:
@@ -667,7 +665,6 @@ def test_invoke_agent_times_out_when_agent_goes_idle(
     assert not fake_process.killed
 
 
-
 def test_invoke_agent_runs_subprocess_in_workspace_path(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -930,7 +927,6 @@ def test_build_command_claude_injects_strict_mcp_config_when_mcp_endpoint_wired(
         options=_BuildCommandOptions(mcp_endpoint="http://127.0.0.1:9999/mcp"),
     )
     assert "--mcp-config" in cmd
-
 
 
 def test_build_command_claude_omits_tool_flags_when_allowlist_is_empty(

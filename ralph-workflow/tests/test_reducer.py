@@ -1168,7 +1168,6 @@ def test_review_clean_without_policy_still_routes_to_review_commit() -> None:
 # ---------------------------------------------------------------------------
 
 
-
 def test_phase_handler_crash_exhausts_chain_before_failing() -> None:
     """PhaseFailureEvent(recoverable=True) must exhaust retries AND fallbacks before failing.
 

@@ -98,14 +98,12 @@ def test_unknown_command_uses_typer_usage_error(cli_runner: CliRunner) -> None:
     assert "Try 'ralph --help' for help." in result.stderr
 
 
-
 def test_unknown_option_uses_typer_usage_error(cli_runner: CliRunner) -> None:
     """Unknown options should surface Typer's standard usage error."""
     result = cli_runner.invoke(app, ["--does-not-exist"])
     assert result.exit_code == USAGE_ERROR_EXIT_CODE
     assert "No such option: --does-not-exist" in result.stderr
     assert "Usage: ralph [OPTIONS] COMMAND [ARGS]..." in result.stderr
-
 
 
 def test_cleanup_rejects_unexpected_extra_argument(cli_runner: CliRunner) -> None:

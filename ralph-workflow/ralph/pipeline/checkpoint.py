@@ -23,13 +23,15 @@ CHECKPOINT_PATH = Path(".agent") / "checkpoint.json"
 # Forbidden sentinel strings that indicate a bug in error handling.
 # If a pre-fix checkpoint contains one of these as last_error, we drop it
 # and log a warning to prevent the old bug from being resurrected.
-_FORBIDDEN_ERROR_SENTINELS: frozenset[str] = frozenset({
-    "Unknown failure",
-    "unknown failure",
-    "",
-    "None",
-    "null",
-})
+_FORBIDDEN_ERROR_SENTINELS: frozenset[str] = frozenset(
+    {
+        "Unknown failure",
+        "unknown failure",
+        "",
+        "None",
+        "null",
+    }
+)
 
 
 def _cleanup_stray_tmp(path: Path) -> None:

@@ -124,11 +124,13 @@ def handle_review(effect: Effect, ctx: PhaseContext) -> list[Event]:
             )
         except (json.JSONDecodeError, PhaseArtifactError, TypeError, ValueError) as exc:
             logger.warning("Review phase missing fresh issues artifact: {}", exc)
-            return [PhaseFailureEvent(
-                phase="review",
-                reason=f"Missing/invalid issues artifact: {exc}",
-                recoverable=True,
-            )]
+            return [
+                PhaseFailureEvent(
+                    phase="review",
+                    reason=f"Missing/invalid issues artifact: {exc}",
+                    recoverable=True,
+                )
+            ]
 
         head = _current_head_sha(ctx)
         if head is not None:
@@ -162,11 +164,13 @@ def handle_review_analysis(effect: Effect, ctx: PhaseContext) -> list[Event]:
             return [PipelineEvent.ANALYSIS_LOOPBACK]
         elif decision in (AnalysisDecision.FAILURE, AnalysisDecision.ESCALATE):
             logger.warning("Review analysis decision {} triggers pipeline failure", decision)
-            return [PhaseFailureEvent(
-                phase="review_analysis",
-                reason=f"Analysis decision: {decision}",
-                recoverable=False,
-            )]
+            return [
+                PhaseFailureEvent(
+                    phase="review_analysis",
+                    reason=f"Analysis decision: {decision}",
+                    recoverable=False,
+                )
+            ]
         else:
             logger.warning(
                 "Unknown review analysis decision: {}. Defaulting to success.",

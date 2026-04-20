@@ -46,7 +46,8 @@ class _DummyProgressProto:
     def __enter__(self) -> _DummyProgressProto:
         return self
 
-    def __exit__(self, exc_type: object, exc: object, _tb: object) -> bool | None: return None
+    def __exit__(self, exc_type: object, exc: object, _tb: object) -> bool | None:
+        return None
 
     def update(
         self,

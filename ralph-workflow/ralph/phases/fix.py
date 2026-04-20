@@ -52,11 +52,13 @@ def handle_fix(effect: Effect, ctx: PhaseContext) -> list[Event]:
             )
         except (json.JSONDecodeError, PhaseArtifactError, TypeError, ValueError) as exc:
             logger.warning("Fix phase missing fresh fix_result artifact: {}", exc)
-            return [PhaseFailureEvent(
-                phase="fix",
-                reason=f"Missing/invalid fix_result artifact: {exc}",
-                recoverable=True,
-            )]
+            return [
+                PhaseFailureEvent(
+                    phase="fix",
+                    reason=f"Missing/invalid fix_result artifact: {exc}",
+                    recoverable=True,
+                )
+            ]
         return [PipelineEvent.AGENT_SUCCESS]
 
     return []

@@ -60,13 +60,15 @@ if TYPE_CHECKING:
 _MAX_AGENT_RETRIES = 3
 
 # Forbidden sentinel strings that indicate a bug in error handling.
-_FORBIDDEN_ERROR_SENTINELS: frozenset[str] = frozenset({
-    "Unknown failure",
-    "unknown failure",
-    "",
-    "None",
-    "null",
-})
+_FORBIDDEN_ERROR_SENTINELS: frozenset[str] = frozenset(
+    {
+        "Unknown failure",
+        "unknown failure",
+        "",
+        "None",
+        "null",
+    }
+)
 
 
 def _is_valid_error_message(msg: str | None) -> bool:
@@ -281,9 +283,7 @@ def _handle_agent_failure(state: PipelineState) -> tuple[PipelineState, list[Eff
     """Handle agent failure with retry/fallback logic."""
     chain = state.chain_for_phase(state.phase)
     if chain is None:
-        failure_reason = _failure_reason(
-            state, f"No tracked agent chain for {state.phase}"
-        )
+        failure_reason = _failure_reason(state, f"No tracked agent chain for {state.phase}")
         new_state = state.copy_with(
             phase=PHASE_FAILED,
             previous_phase=state.phase,
@@ -342,9 +342,7 @@ def _handle_agent_retry(state: PipelineState) -> tuple[PipelineState, list[Effec
     """Handle agent retry request."""
     chain = state.chain_for_phase(state.phase)
     if chain is None:
-        failure_reason = _failure_reason(
-            state, f"No tracked agent chain for {state.phase}"
-        )
+        failure_reason = _failure_reason(state, f"No tracked agent chain for {state.phase}")
         new_state = state.copy_with(
             phase=PHASE_FAILED,
             previous_phase=state.phase,

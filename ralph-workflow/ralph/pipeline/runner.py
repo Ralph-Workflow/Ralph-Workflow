@@ -1516,7 +1516,6 @@ def _clear_phase_output_artifacts(workspace: FsWorkspace, phase: str) -> None:
         workspace.remove(path)
 
 
-
 def _phase_output_artifact_paths(phase: str) -> tuple[str, ...]:
     phase_artifacts = {
         "development": (".agent/artifacts/development_result.json",),
@@ -1528,7 +1527,6 @@ def _phase_output_artifact_paths(phase: str) -> tuple[str, ...]:
         "review_commit": (COMMIT_MESSAGE_ARTIFACT,),
     }
     return phase_artifacts.get(phase, ())
-
 
 
 def _default_mcp_capabilities_for_phase(phase: str) -> set[str]:
@@ -1705,7 +1703,6 @@ def _render_text_line(agent_name: str, content: str, style: str) -> Text | None:
     return rendered
 
 
-
 def _render_tool_use_line(agent_name: str, output: AgentOutputLine) -> Text:
     tool_name = output.content.strip() or "unknown-tool"
     prefix_label = f"{agent_name} tool"
@@ -1718,7 +1715,6 @@ def _render_tool_use_line(agent_name: str, output: AgentOutputLine) -> Text:
         truncated = _truncate(input_summary, tool_input_width)
         rendered.append(f" ({truncated})", style="dim")
     return rendered
-
 
 
 def _render_tool_result_line(agent_name: str, content: str) -> Text | None:
@@ -1738,13 +1734,11 @@ def _render_tool_result_line(agent_name: str, content: str) -> Text | None:
     return rendered
 
 
-
 def _render_error_line(agent_name: str, content: str) -> Text:
     error = content.strip() or "unknown error"
     rendered = _styled_prefix(f"{agent_name} ✗", "red")
     rendered.append(error, style="bold red")
     return rendered
-
 
 
 def _render_metadata_event_line(agent_name: str, output: AgentOutputLine) -> Text:
@@ -1754,7 +1748,6 @@ def _render_metadata_event_line(agent_name: str, output: AgentOutputLine) -> Tex
     if summary:
         rendered.append(f" ({summary})", style="dim")
     return rendered
-
 
 
 def _tool_input_summary(metadata: dict[str, object]) -> str:

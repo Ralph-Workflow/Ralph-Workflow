@@ -599,12 +599,10 @@ def _terminate_subprocess(proc: subprocess.Popen[str]) -> None:
         proc.kill()
 
 
-
 def _process_poll(proc: subprocess.Popen[str]) -> int | None:
     with suppress(Exception):
         return proc.poll()
     return None
-
 
 
 def _process_wait(proc: subprocess.Popen[str], *, timeout: float) -> None:

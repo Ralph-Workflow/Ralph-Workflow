@@ -395,9 +395,8 @@ def test_handle_planning_accepts_noop_plan() -> None:
 def test_handle_development_reads_wrapped_plan_artifact_and_validates_schema() -> None:
     ctx = _stub_context()
     workspace = cast("MagicMock", ctx.workspace)
-    workspace.exists.side_effect = (
-        lambda path: path
-        in {".agent/artifacts/plan.json", ".agent/artifacts/development_result.json"}
+    workspace.exists.side_effect = lambda path: (
+        path in {".agent/artifacts/plan.json", ".agent/artifacts/development_result.json"}
     )
     workspace.read.side_effect = lambda path: {
         ".agent/artifacts/plan.json": (

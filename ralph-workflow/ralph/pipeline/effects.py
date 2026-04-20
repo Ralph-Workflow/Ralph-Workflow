@@ -26,16 +26,18 @@ else:
     WorkerState = import_module("ralph.pipeline.worker_state").WorkerState
 
 
-# Forbidden sentinel strings that must never appear as ExitFailureEffect.reason.
-# These indicate bugs in the pipeline where descriptive error information was lost.
-# Checked as substrings to catch cases like "development: Unknown failure".
-_FORBIDDEN_SENTINELS: frozenset[str] = frozenset({
-    "Unknown failure",
-    "unknown failure",
-    "",
-    "None",
-    "null",
-})
+# Forbidden non-empty sentinel strings that must never appear inside
+# ExitFailureEffect.reason. Empty and whitespace-only values are validated
+# separately in __post_init__ so the substring check does not reject every
+# possible reason via "" in reason.
+_FORBIDDEN_SENTINELS: frozenset[str] = frozenset(
+    {
+        "Unknown failure",
+        "unknown failure",
+        "None",
+        "null",
+    }
+)
 
 
 def _contains_forbidden_sentinel(reason: str) -> tuple[bool, str | None]:
@@ -127,9 +129,10 @@ class ExitFailureEffect:
 
     Attributes:
         reason: Reason for the failure. Must be non-empty, non-whitespace,
-            and must not be any known sentinel that indicates a bug (e.g.
-            "Unknown failure", "", "None", "null"). The sentinel check is
-            performed as a substring match to catch cases like
+            and must not contain any known non-empty sentinel that indicates
+            a bug (e.g. "Unknown failure", "None", "null"). Empty and
+            whitespace-only reasons are rejected separately. Sentinel checks
+            are performed as substring matches to catch cases like
             "development: Unknown failure".
     """
 
@@ -148,8 +151,9 @@ class ExitFailureEffect:
         is_forbidden, matched = _contains_forbidden_sentinel(self.reason)
         if is_forbidden:
             raise ValueError(
-                f"ExitFailureEffect.reason must be descriptive and cannot contain a forbidden sentinel; "
-                f"matched sentinel: {matched!r} in reason: {self.reason!r}"
+                "ExitFailureEffect.reason must be descriptive and cannot contain "
+                f"a forbidden sentinel; matched sentinel: {matched!r} "
+                f"in reason: {self.reason!r}"
             )
 
 
