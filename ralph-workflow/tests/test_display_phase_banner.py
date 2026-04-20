@@ -279,3 +279,128 @@ def test_show_phase_start_reviewer_pass_last_boundary() -> None:
     show_phase_start("review", ctx=ctx, console=console)
     output = console.export_text()
     assert "3/3" in output
+
+
+# --- New tests for analysis iteration counters (Step 5) ---
+
+
+def test_show_phase_start_dev_analysis_shows_analysis_counter() -> None:
+    """When phase is development_analysis with counter context, suffix [analysis N/M] appears."""
+    console = Console(record=True)
+    ctx = PhaseStartContext(
+        development_analysis_iteration=1,
+        max_development_analysis_iterations=3,
+    )
+    show_phase_start("development_analysis", ctx=ctx, console=console)
+    output = console.export_text()
+    assert "Development Analysis" in output
+    assert "[analysis 2/3]" in output
+
+
+def test_show_phase_start_dev_analysis_zero_index_shows_one() -> None:
+    """development_analysis_iteration=0 shows as [analysis 1/M]."""
+    console = Console(record=True)
+    ctx = PhaseStartContext(
+        development_analysis_iteration=0,
+        max_development_analysis_iterations=3,
+    )
+    show_phase_start("development_analysis", ctx=ctx, console=console)
+    output = console.export_text()
+    assert "[analysis 1/3]" in output
+
+
+def test_show_phase_start_dev_analysis_at_max_shows_max() -> None:
+    """development_analysis_iteration=2 with max=3 shows [analysis 3/3]."""
+    console = Console(record=True)
+    ctx = PhaseStartContext(
+        development_analysis_iteration=2,
+        max_development_analysis_iterations=3,
+    )
+    show_phase_start("development_analysis", ctx=ctx, console=console)
+    output = console.export_text()
+    assert "[analysis 3/3]" in output
+
+
+def test_show_phase_start_review_analysis_shows_analysis_counter() -> None:
+    """When phase is review_analysis with counter context, suffix [analysis N/M] appears."""
+    console = Console(record=True)
+    ctx = PhaseStartContext(
+        review_analysis_iteration=0,
+        max_review_analysis_iterations=2,
+    )
+    show_phase_start("review_analysis", ctx=ctx, console=console)
+    output = console.export_text()
+    assert "Review Analysis" in output
+    assert "[analysis 1/2]" in output
+
+
+def test_show_phase_start_review_analysis_at_max_shows_max() -> None:
+    """review_analysis_iteration=1 with max=2 shows [analysis 2/2]."""
+    console = Console(record=True)
+    ctx = PhaseStartContext(
+        review_analysis_iteration=1,
+        max_review_analysis_iterations=2,
+    )
+    show_phase_start("review_analysis", ctx=ctx, console=console)
+    output = console.export_text()
+    assert "[analysis 2/2]" in output
+
+
+def test_show_phase_start_dev_analysis_no_suffix_without_context() -> None:
+    """When phase is development_analysis but no counter context, no [analysis] suffix."""
+    console = Console(record=True)
+    ctx = PhaseStartContext(
+        iteration=0,
+        total_iterations=5,
+        # No development_analysis_iteration or max set
+    )
+    show_phase_start("development_analysis", ctx=ctx, console=console)
+    output = console.export_text()
+    assert "Development Analysis" in output
+    assert "[analysis" not in output
+
+
+def test_show_phase_start_development_no_analysis_suffix() -> None:
+    """When phase is development (not analysis), no [analysis] suffix even with counters."""
+    console = Console(record=True)
+    ctx = PhaseStartContext(
+        iteration=1,
+        total_iterations=5,
+        development_analysis_iteration=2,
+        max_development_analysis_iterations=3,
+    )
+    show_phase_start("development", ctx=ctx, console=console)
+    output = console.export_text()
+    assert "Development" in output
+    assert "[analysis" not in output
+
+
+def test_show_phase_start_review_no_analysis_suffix() -> None:
+    """When phase is review (not analysis), no [analysis] suffix even with counters."""
+    console = Console(record=True)
+    ctx = PhaseStartContext(
+        reviewer_pass=0,
+        total_reviewer_passes=2,
+        review_analysis_iteration=1,
+        max_review_analysis_iterations=2,
+    )
+    show_phase_start("review", ctx=ctx, console=console)
+    output = console.export_text()
+    assert "Review" in output
+    assert "[analysis" not in output
+
+
+def test_show_phase_start_combines_iteration_and_analysis_counters() -> None:
+    """Both iteration and analysis counters can appear together."""
+    console = Console(record=True)
+    ctx = PhaseStartContext(
+        iteration=2,
+        total_iterations=5,
+        development_analysis_iteration=1,
+        max_development_analysis_iterations=3,
+    )
+    show_phase_start("development_analysis", ctx=ctx, console=console)
+    output = console.export_text()
+    assert "Development Analysis" in output
+    assert "[iteration 3/5]" in output
+    assert "[analysis 2/3]" in output

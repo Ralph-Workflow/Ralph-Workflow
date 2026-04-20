@@ -782,6 +782,90 @@ class TestAnalysisDecisionDispatch:
         assert new_state.phase == "development"
 
 
+    def test_dev_analysis_loopback_increments_dev_analysis_iteration(self) -> None:
+        """ANALYSIS_LOOPBACK in development_analysis increments the iteration counter."""
+        state = PipelineState(
+            phase="development_analysis",
+            development_analysis_iteration=0,
+            max_development_analysis_iterations=3,
+        )
+        new_state, _ = _reduce(state, PipelineEvent.ANALYSIS_LOOPBACK)
+        assert new_state.development_analysis_iteration == 1
+
+    def test_dev_analysis_loopback_at_max_forces_commit(self) -> None:
+        """At max iterations, ANALYSIS_LOOPBACK forces development_commit."""
+        state = PipelineState(
+            phase="development_analysis",
+            development_analysis_iteration=2,
+            max_development_analysis_iterations=3,
+        )
+        new_state, _ = _reduce(state, PipelineEvent.ANALYSIS_LOOPBACK)
+        assert new_state.phase == "development_commit"
+        assert new_state.previous_phase == "development_analysis"
+        assert new_state.development_analysis_iteration == state.max_development_analysis_iterations
+
+    def test_dev_analysis_success_resets_dev_analysis_iteration(self) -> None:
+        """ANALYSIS_SUCCESS in development_analysis resets the iteration counter."""
+        state = PipelineState(
+            phase="development_analysis",
+            development_analysis_iteration=2,
+            max_development_analysis_iterations=3,
+        )
+        new_state, _ = _reduce(state, PipelineEvent.ANALYSIS_SUCCESS)
+        assert new_state.development_analysis_iteration == 0
+
+    def test_commit_success_resets_dev_analysis_iteration(self) -> None:
+        """COMMIT_SUCCESS in development_commit resets development_analysis_iteration."""
+        state = PipelineState(
+            phase="development_commit",
+            development_analysis_iteration=2,
+            max_development_analysis_iterations=3,
+        )
+        new_state, _ = _reduce(state, PipelineEvent.COMMIT_SUCCESS)
+        assert new_state.development_analysis_iteration == 0
+
+    def test_review_analysis_loopback_increments_review_analysis_iteration(self) -> None:
+        """ANALYSIS_LOOPBACK in review_analysis increments the iteration counter."""
+        state = PipelineState(
+            phase="review_analysis",
+            review_analysis_iteration=0,
+            max_review_analysis_iterations=3,
+        )
+        new_state, _ = _reduce(state, PipelineEvent.ANALYSIS_LOOPBACK)
+        assert new_state.review_analysis_iteration == 1
+
+    def test_review_analysis_loopback_at_max_forces_commit(self) -> None:
+        """When review_analysis_iteration hits max, ANALYSIS_LOOPBACK forces review_commit."""
+        state = PipelineState(
+            phase="review_analysis",
+            review_analysis_iteration=2,
+            max_review_analysis_iterations=3,
+        )
+        new_state, _ = _reduce(state, PipelineEvent.ANALYSIS_LOOPBACK)
+        assert new_state.phase == "review_commit"
+        assert new_state.previous_phase == "review_analysis"
+        assert new_state.review_analysis_iteration == state.max_review_analysis_iterations
+
+    def test_review_analysis_success_resets_review_analysis_iteration(self) -> None:
+        """ANALYSIS_SUCCESS in review_analysis resets the iteration counter."""
+        state = PipelineState(
+            phase="review_analysis",
+            review_analysis_iteration=2,
+            max_review_analysis_iterations=3,
+        )
+        new_state, _ = _reduce(state, PipelineEvent.ANALYSIS_SUCCESS)
+        assert new_state.review_analysis_iteration == 0
+
+    def test_commit_success_resets_review_analysis_iteration(self) -> None:
+        """COMMIT_SUCCESS in review_commit resets review_analysis_iteration."""
+        state = PipelineState(
+            phase="review_commit",
+            review_analysis_iteration=2,
+            max_review_analysis_iterations=3,
+        )
+        new_state, _ = _reduce(state, PipelineEvent.COMMIT_SUCCESS)
+        assert new_state.review_analysis_iteration == 0
+
 @pytest.mark.parametrize(
     "event,handler_patch_target",
     [

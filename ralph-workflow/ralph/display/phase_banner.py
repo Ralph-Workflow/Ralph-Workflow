@@ -138,6 +138,18 @@ class PhaseStartContext:
     reviewer_pass: int | None = None
     total_reviewer_passes: int | None = None
     agent_name: str | None = None
+    development_analysis_iteration: int | None = None
+    max_development_analysis_iterations: int | None = None
+    review_analysis_iteration: int | None = None
+    max_review_analysis_iterations: int | None = None
+
+
+def _build_analysis_suffix(
+    iteration: int,
+    max_iterations: int,
+) -> str:
+    """Build the analysis iteration suffix string."""
+    return f" [analysis {iteration + 1}/{max_iterations}]"
 
 
 def show_phase_start(
@@ -168,6 +180,26 @@ def show_phase_start(
             line.append(f" [iteration {ctx.iteration + 1}/{ctx.total_iterations}]", style="dim")
         if ctx.reviewer_pass is not None and ctx.total_reviewer_passes is not None:
             line.append(f" [pass {ctx.reviewer_pass + 1}/{ctx.total_reviewer_passes}]", style="dim")
+        if (
+            phase == "development_analysis"
+            and ctx.development_analysis_iteration is not None
+            and ctx.max_development_analysis_iterations is not None
+        ):
+            suffix = _build_analysis_suffix(
+                ctx.development_analysis_iteration,
+                ctx.max_development_analysis_iterations,
+            )
+            line.append(suffix, style="dim")
+        if (
+            phase == "review_analysis"
+            and ctx.review_analysis_iteration is not None
+            and ctx.max_review_analysis_iterations is not None
+        ):
+            suffix = _build_analysis_suffix(
+                ctx.review_analysis_iteration,
+                ctx.max_review_analysis_iterations,
+            )
+            line.append(suffix, style="dim")
         effective_agent = ctx.agent_name or agent_name
     else:
         effective_agent = agent_name

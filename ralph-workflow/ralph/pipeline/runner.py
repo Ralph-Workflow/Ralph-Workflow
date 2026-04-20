@@ -34,7 +34,7 @@ from ralph.config.enums import (
     PHASE_PLANNING,
     Verbosity,
 )
-from ralph.display.phase_banner import show_phase_start, show_phase_transition
+from ralph.display.phase_banner import PhaseStartContext, show_phase_start, show_phase_transition
 from ralph.mcp.capability_mapping import DrainClass, drain_class_for_session
 from ralph.mcp.commit_message import (
     COMMIT_MESSAGE_ARTIFACT,
@@ -354,20 +354,23 @@ def _build_default_display(
         return _LegacyConsoleDisplay()
 
 
-def _execute_effect_with_optional_display(
+def _execute_effect_with_optional_display(  # noqa: PLR0913
     effect: Effect,
     config: UnifiedConfig,
     workspace_scope: WorkspaceScope,
-    display: ParallelDisplay | _LegacyConsoleDisplay,
     *,
+    display: ParallelDisplay | _LegacyConsoleDisplay | None = None,
     verbosity: Verbosity = Verbosity.VERBOSE,
+    state: PipelineState | None = None,
 ) -> Event:
     params = signature(_execute_effect).parameters
     if len(params) == _LEGACY_EXECUTE_EFFECT_ARITY:
         return _execute_effect(effect, config, workspace_scope)
     if "verbosity" in params:
-        return _execute_effect(effect, config, workspace_scope, display, verbosity=verbosity)
-    return _execute_effect(effect, config, workspace_scope, display)
+        return _execute_effect(
+            effect, config, workspace_scope, display=display, verbosity=verbosity, state=state
+        )
+    return _execute_effect(effect, config, workspace_scope, display=display, state=state)
 
 
 def _notify_dashboard_subscriber(
@@ -403,6 +406,31 @@ def _phase_context(state: PipelineState, previous_phase: str) -> dict[str, objec
     if previous_phase == "review_commit":
         context["review_budget"] = f"{state.total_reviewer_passes - state.reviewer_pass} remaining"
     return context
+
+
+def _show_phase_start_with_context(
+    phase: str,
+    agent_name: str,
+    console: Console | None,
+    state: PipelineState | None,
+) -> None:
+    """Helper to call show_phase_start with PhaseStartContext when state is available."""
+    if state is None:
+        show_phase_start(phase, agent_name=agent_name, console=console)
+        return
+
+    # Build PhaseStartContext from state
+    ctx = PhaseStartContext(
+        iteration=state.iteration,
+        total_iterations=state.total_iterations,
+        reviewer_pass=state.reviewer_pass,
+        total_reviewer_passes=state.total_reviewer_passes,
+        development_analysis_iteration=state.development_analysis_iteration,
+        max_development_analysis_iterations=state.max_development_analysis_iterations,
+        review_analysis_iteration=state.review_analysis_iteration,
+        max_review_analysis_iterations=state.max_review_analysis_iterations,
+    )
+    show_phase_start(phase, ctx=ctx, agent_name=agent_name, console=console)
 
 
 def _emit_phase_transition_if_changed(
@@ -618,8 +646,9 @@ def run(  # noqa: PLR0912, PLR0913, PLR0915
                             effect,
                             config,
                             workspace_scope,
-                            active_display,
+                            display=active_display,
                             verbosity=effective_verbosity,
+                            state=state,
                         )
                         if (
                             isinstance(effect, InvokeAgentEffect)
@@ -975,6 +1004,10 @@ def _create_initial_state(
             if pipeline_policy is not None
             else None
         ),
+        max_development_analysis_iterations=config.general.max_development_analysis_iterations,
+        max_review_analysis_iterations=config.general.max_review_analysis_iterations,
+        development_analysis_iteration=0,
+        review_analysis_iteration=0,
     )
 
 
@@ -1229,13 +1262,14 @@ def _commit_effect(workspace_root: Path) -> CommitEffect:
     return CommitEffect(message_file=str(workspace_root / COMMIT_MESSAGE_ARTIFACT))
 
 
-def _execute_effect(
+def _execute_effect(  # noqa: PLR0913
     effect: Effect,
     config: UnifiedConfig,
     workspace_scope: WorkspaceScope,
-    display: ParallelDisplay | _LegacyConsoleDisplay | None = None,
     *,
+    display: ParallelDisplay | _LegacyConsoleDisplay | None = None,
     verbosity: Verbosity = Verbosity.VERBOSE,
+    state: PipelineState | None = None,
 ) -> PipelineEvent:
     """Execute an effect and return the resulting event.
 
@@ -1261,7 +1295,7 @@ def _execute_effect(
 
     if isinstance(effect, InvokeAgentEffect):
         return _execute_agent_effect(
-            effect, config, deps, workspace_scope, display, verbosity=verbosity
+            effect, config, deps, workspace_scope, display=display, verbosity=verbosity, state=state
         )
     if isinstance(effect, CommitEffect):
         return _execute_commit_effect(effect, create_commit, stage_all, workspace_scope.root)
@@ -1277,9 +1311,10 @@ def _execute_agent_effect(  # noqa: PLR0913
     config: UnifiedConfig,
     deps: _AgentExecutionDeps,
     workspace_scope: WorkspaceScope,
-    display: ParallelDisplay | _LegacyConsoleDisplay | None = None,
     *,
+    display: ParallelDisplay | _LegacyConsoleDisplay | None = None,
     verbosity: Verbosity = Verbosity.VERBOSE,
+    state: PipelineState | None = None,
 ) -> PipelineEvent:
     _emit_display_line(display, None, _status_text("Invoking agent", effect.agent_name, "cyan"))
     registry = deps.agent_registry.from_config(config)
@@ -1289,7 +1324,7 @@ def _execute_agent_effect(  # noqa: PLR0913
         return PipelineEvent.AGENT_FAILURE
 
     if display is None or isinstance(display, _LegacyConsoleDisplay):
-        show_phase_start(effect.phase, agent_name=effect.agent_name, console=console)
+        _show_phase_start_with_context(effect.phase, effect.agent_name, console, state)
 
     from ralph.agents.invoke import (  # noqa: PLC0415
         AgentInactivityTimeoutError,
