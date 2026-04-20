@@ -77,6 +77,19 @@ def _is_valid_error_message(msg: str | None) -> bool:
     return stripped != "" and msg not in _FORBIDDEN_ERROR_SENTINELS
 
 
+def _failure_reason(state: PipelineState, fallback: str) -> str:
+    """Extract a descriptive failure reason from state, or use the fallback.
+
+    Uses explicit truthiness check (not `or`) to handle empty-string last_error.
+    Empty strings are falsy but not None, so `state.last_error or fallback`
+    would work correctly in Python, but explicit checks make the intent clearer
+    and guard against future misuse of empty-string assignment.
+    """
+    if state.last_error:
+        return state.last_error
+    return fallback
+
+
 def _restore_work_units(
     state: PipelineState,
     new_state: PipelineState,
@@ -268,9 +281,8 @@ def _handle_agent_failure(state: PipelineState) -> tuple[PipelineState, list[Eff
     """Handle agent failure with retry/fallback logic."""
     chain = state.chain_for_phase(state.phase)
     if chain is None:
-        failure_reason = (
-            state.last_error
-            or f"No tracked agent chain for {state.phase}"
+        failure_reason = _failure_reason(
+            state, f"No tracked agent chain for {state.phase}"
         )
         new_state = state.copy_with(
             phase=PHASE_FAILED,
@@ -311,12 +323,12 @@ def _handle_agent_failure(state: PipelineState) -> tuple[PipelineState, list[Eff
 
     # Chain exhausted: preserve any informative last_error from PhaseFailureEvent,
     # otherwise construct a descriptive message.
-    failure_reason = (
-        state.last_error
-        or (
+    failure_reason = _failure_reason(
+        state,
+        (
             f"Agent chain exhausted in phase='{state.phase}' after "
             f"{chain.retries} retries across {len(chain.agents)} agents"
-        )
+        ),
     )
     new_state = state.copy_with(
         phase=PHASE_FAILED,
@@ -330,9 +342,8 @@ def _handle_agent_retry(state: PipelineState) -> tuple[PipelineState, list[Effec
     """Handle agent retry request."""
     chain = state.chain_for_phase(state.phase)
     if chain is None:
-        failure_reason = (
-            state.last_error
-            or f"No tracked agent chain for {state.phase}"
+        failure_reason = _failure_reason(
+            state, f"No tracked agent chain for {state.phase}"
         )
         new_state = state.copy_with(
             phase=PHASE_FAILED,
@@ -540,10 +551,7 @@ def _handle_fix_failure(
         try:
             next_phase = resolve_next_phase(state.phase, "failure", policy)
             if next_phase == PHASE_FAILED:
-                failure_reason = (
-                    state.last_error
-                    or "Fix phase failed"
-                )
+                failure_reason = _failure_reason(state, "Fix phase failed")
                 new_state = state.copy_with(
                     phase=PHASE_FAILED,
                     previous_phase=state.phase,
@@ -625,10 +633,7 @@ def _handle_commit_skipped(
 
 def _handle_commit_failure(state: PipelineState) -> tuple[PipelineState, list[Effect]]:
     """Handle commit failure."""
-    failure_reason = (
-        state.last_error
-        or "Commit failed"
-    )
+    failure_reason = _failure_reason(state, "Commit failed")
     new_state = state.copy_with(
         phase=PHASE_FAILED,
         previous_phase=state.phase,
@@ -662,12 +667,12 @@ def _handle_failed(state: PipelineState) -> tuple[PipelineState, list[Effect]]:
     set by the preceding failure event handler. Falls back to a descriptive
     message only as a last resort.
     """
-    last_error = (
-        state.last_error
-        or (
+    last_error = _failure_reason(
+        state,
+        (
             f"Pipeline terminated in phase='{state.phase}' with no explicit error; "
             "check upstream last_error propagation"
-        )
+        ),
     )
     new_state = state.copy_with(
         phase=PHASE_FAILED,
