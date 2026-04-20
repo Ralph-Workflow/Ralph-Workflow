@@ -5,60 +5,56 @@ build-backend = "hatchling.build"
 [project]
 name = "ralph-workflow"
 dynamic = ["version"]
-description = "Python CLI for unattended multi-agent AI development workflows"
+description = "Ralph Workflow is an unattended multi-agent AI development workflows with extensive customization options based on the original Ralph concept."
 readme = "README.md"
 requires-python = ">=3.12"
-license = {text = "AGPL-3.0-or-later"}
+license = { text = "AGPL-3.0-or-later" }
 license-files = ["LICENSE"]
-authors = [
-    {name = "Ralph Workflow maintainers"}
-]
+authors = [{ name = "Mistlight" }]
 keywords = ["ai", "agent", "orchestration", "pipeline", "multi-agent"]
 classifiers = [
-    "Development Status :: 3 - Alpha",
-    "Intended Audience :: Developers",
-    "License :: OSI Approved :: GNU Affero General Public License v3",
-    "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.12",
-    "Programming Language :: Python :: 3.13",
-    "Programming Language :: Python :: 3.14",
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: GNU Affero General Public License v3",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
 ]
 dependencies = [
-    "typer>=0.12",
-    "rich>=13.0",
-    "rich-click>=1.8",
-    "mcp>=1.27.0",
-    "pydantic>=2.7",
-    "httpx>=0.27",
-    "jinja2>=3.1",
-    "loguru>=0.7",
-    "tqdm>=4.66",
-    "watchdog>=4.0",
-    "gitpython>=3.1",
-    "ddgs>=9.14.0",
+  "typer>=0.12",
+  "rich>=13.0",
+  "rich-click>=1.8",
+  "mcp>=1.27.0",
+  "pydantic>=2.7",
+  "httpx>=0.27",
+  "jinja2>=3.1",
+  "loguru>=0.7",
+  "tqdm>=4.66",
+  "watchdog>=4.0",
+  "gitpython>=3.1",
+  "ddgs>=9.14.0",
 ]
 
 [project.optional-dependencies]
 dev = [
-    "hatch",
-    "ruff",
-    "mypy",
-    "hypothesis>=6.100",
-    "pytest>=8.0",
-    "pytest-asyncio>=0.23",
-    "pytest-cov>=4.0",
-    "pytest-xdist>=3.6",
-    "pydantic>=2.7",
-    "vulture>=2.16",
+  "hatch",
+  "ruff",
+  "mypy",
+  "hypothesis>=6.100",
+  "pytest>=8.0",
+  "pytest-asyncio>=0.23",
+  "pytest-cov>=4.0",
+  "pytest-xdist>=3.6",
+  "pydantic>=2.7",
+  "vulture>=2.16",
 ]
 web-search = [
-    "tavily-python>=0.7.23",
-    "exa-py>=2.12.0",
-    "brave-search-python-client>=0.4.27",
+  "tavily-python>=0.7.23",
+  "exa-py>=2.12.0",
+  "brave-search-python-client>=0.4.27",
 ]
-bundle = [
-    "pyinstaller>=6.0",
-]
+bundle = ["pyinstaller>=6.0"]
 
 [project.scripts]
 ralph = "ralph.cli.main:app"
@@ -76,17 +72,14 @@ path = "ralph/__init__.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["ralph"]
-include = [
-  "ralph/prompts/templates/**/*.jinja",
-  "ralph/policy/defaults/*.toml",
-]
+include = ["ralph/prompts/templates/**/*.jinja", "ralph/policy/defaults/*.toml"]
 
 [tool.hatch.build.targets.sdist]
 include = [
-    "/ralph",
-    "/README.md",
-    "/LICENSE",
-    "/ralph/prompts/templates/**/*.jinja",
+  "/ralph",
+  "/README.md",
+  "/LICENSE",
+  "/ralph/prompts/templates/**/*.jinja",
 ]
 
 [tool.hatch.envs.publish]
@@ -101,7 +94,23 @@ line-length = 100
 target-version = "py312"
 
 [tool.ruff.lint]
-select = ["E", "F", "W", "I", "N", "UP", "ANN", "B", "C4", "SIM", "RUF", "TCH", "PTH", "PERF", "PL"]
+select = [
+  "E",
+  "F",
+  "W",
+  "I",
+  "N",
+  "UP",
+  "ANN",
+  "B",
+  "C4",
+  "SIM",
+  "RUF",
+  "TCH",
+  "PTH",
+  "PERF",
+  "PL",
+]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["ANN"]
@@ -132,7 +141,7 @@ data_file = ".coverage.pytest"
 
 [tool.coverage.report]
 exclude_lines = [
-    "pragma: no cover",
-    "if TYPE_CHECKING:",
-    "raise NotImplementedError",
+  "pragma: no cover",
+  "if TYPE_CHECKING:",
+  "raise NotImplementedError",
 ]
