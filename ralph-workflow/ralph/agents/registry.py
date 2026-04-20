@@ -64,9 +64,10 @@ class AgentRegistry:
         agents: Dictionary mapping agent names to their configurations.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, *, ccs_defaults: CcsConfig | None = None) -> None:
         """Initialize an empty agent registry."""
         self.agents: dict[str, AgentConfig] = {}
+        self._ccs_defaults = ccs_defaults or CcsConfig()
 
     @classmethod
     def from_config(cls, config: UnifiedConfig) -> AgentRegistry:
@@ -78,7 +79,7 @@ class AgentRegistry:
         Returns:
             Populated AgentRegistry instance.
         """
-        registry = cls()
+        registry = cls(ccs_defaults=config.ccs)
 
         for name, agent_config in _builtin_agents().items():
             registry.register(name, agent_config)
@@ -114,7 +115,7 @@ class AgentRegistry:
         config = self.agents.get(name)
         if config is not None:
             return config
-        return _resolve_dynamic_agent(name)
+        return _resolve_dynamic_agent(name, self._ccs_defaults)
 
     def list_agents(self) -> list[str]:
         """List all registered agent names.
@@ -203,9 +204,10 @@ def _resolve_ccs_alias(alias_value: str | CcsAliasConfig, defaults: CcsConfig) -
     )
 
 
-def _resolve_dynamic_agent(name: str) -> AgentConfig | None:
+def _resolve_dynamic_agent(name: str, ccs_defaults: CcsConfig) -> AgentConfig | None:
+    segments = name.split("/")
+
     if name.startswith("opencode/"):
-        segments = name.split("/")
         if len(segments) < _MIN_OPENCODE_SEGMENTS or not all(segments[1:]):
             return None
 
@@ -216,16 +218,25 @@ def _resolve_dynamic_agent(name: str) -> AgentConfig | None:
         }
         return base_config.model_copy(update=dynamic_overrides)
 
-    if not name.startswith("claude/"):
+    if len(segments) != _CLAUDE_MODEL_SEGMENTS or not segments[1]:
         return None
 
-    segments = name.split("/")
-    if len(segments) != _CLAUDE_MODEL_SEGMENTS or not segments[1]:
+    if name.startswith("ccs/"):
+        return _resolve_dynamic_ccs_agent(name, ccs_defaults)
+
+    if not name.startswith("claude/"):
         return None
 
     base_config = deepcopy(_builtin_agents()["claude"])
     claude_overrides: dict[str, object] = {"model_flag": f"--model {segments[1]}"}
     return base_config.model_copy(update=claude_overrides)
+
+
+def _resolve_dynamic_ccs_agent(name: str, ccs_defaults: CcsConfig) -> AgentConfig | None:
+    segments = name.split("/")
+    if len(segments) != _CLAUDE_MODEL_SEGMENTS or not segments[1]:
+        return None
+    return _resolve_ccs_alias(f"ccs {segments[1]}", ccs_defaults)
 
 
 def _normalize_opencode_model_id(name: str) -> str:

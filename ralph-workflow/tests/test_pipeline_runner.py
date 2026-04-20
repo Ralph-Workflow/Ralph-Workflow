@@ -16,7 +16,7 @@ from rich.text import Text
 
 from ralph.agents.parsers import AgentOutputLine, ClaudeParser
 from ralph.config.enums import AgentTransport, JsonParserType, Verbosity
-from ralph.config.models import AgentConfig
+from ralph.config.models import AgentConfig, CcsConfig, UnifiedConfig
 from ralph.mcp.capability_mapping import SessionDrain
 from ralph.mcp.tool_names import claude_tool_name_prefix
 from ralph.mcp.upstream_config import UpstreamMcpServer
@@ -947,6 +947,9 @@ class TestExecuteAgentEffect:
     def _config(verbosity: int = 2) -> MagicMock:
         config = MagicMock()
         config.general.verbosity = verbosity
+        config.agents = {}
+        config.ccs = CcsConfig()
+        config.ccs_aliases = {"mm": "ccs mm"}
         return config
 
     def test_returns_success_when_invocation_succeeds(self, monkeypatch) -> None:
@@ -1084,6 +1087,43 @@ class TestExecuteAgentEffect:
         )
 
         assert result == PipelineEvent.AGENT_FAILURE
+
+    def test_dynamic_ccs_agent_reaches_invocation(self, monkeypatch: MonkeyPatch) -> None:
+        effect = InvokeAgentEffect(
+            agent_name="ccs/mm",
+            phase="development",
+            prompt_file="PROMPT.md",
+        )
+        invoked: dict[str, object] = {}
+
+        monkeypatch.setattr(
+            runner_module,
+            "start_mcp_server",
+            lambda *_args, **_kwargs: self._FakeBridge(),
+        )
+        monkeypatch.setattr(runner_module, "shutdown_mcp_server", lambda _bridge: None)
+        monkeypatch.setattr(
+            runner_module, "materialize_system_prompt", lambda **_kwargs: "PROMPT.md"
+        )
+
+        def record_invoke(config: AgentConfig, *_args, **_kwargs):
+            invoked["cmd"] = config.cmd
+            invoked["transport"] = config.transport
+            return iter(["line"])
+
+        result = runner_module._execute_agent_effect(
+            effect,
+            UnifiedConfig(),
+            runner_module._AgentExecutionDeps(
+                invoke_agent=record_invoke,
+                agent_invocation_error=self.AgentError,
+                agent_registry=runner_module.AgentRegistry,
+            ),
+            WorkspaceScope("/tmp/worktree"),
+        )
+
+        assert result == PipelineEvent.AGENT_SUCCESS
+        assert invoked == {"cmd": "ccs mm", "transport": AgentTransport.CLAUDE}
 
     def test_handles_invocation_error_gracefully(self, monkeypatch: MonkeyPatch) -> None:
         effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="PROMPT.md")
@@ -1709,6 +1749,27 @@ class TestRenderAgentActivityLine:
         assert rendered is not None
         assert "✗" in rendered.plain
         assert "something broke" in rendered.plain
+
+    def test_record_activity_uses_metadata_tool_for_tool_backed_errors(self) -> None:
+        subscriber = MagicMock()
+        parsed_line = AgentOutputLine(
+            type="error",
+            content="Git diff requires capability 'GitDiffRead': 'denied'",
+            metadata={"tool": "git_diff"},
+        )
+        rendered = Text("opencode tool error: git_diff denied")
+
+        runner_module._record_activity_on_subscriber(subscriber, parsed_line, rendered, "opencode")
+
+        subscriber.record_activity.assert_called_once_with(
+            unit_id="opencode",
+            agent_name="opencode",
+            line="opencode tool error: git_diff denied",
+            tool_name="git_diff",
+            path=None,
+            workdir=None,
+            command=None,
+        )
 
     def test_tool_result_brief_for_very_long_content(self) -> None:
         long_result = "z" * 600

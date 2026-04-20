@@ -23,7 +23,7 @@ from ralph.phases.commit import (
     handle_development_commit,
     handle_review_commit,
 )
-from ralph.phases.development import handle_development
+from ralph.phases.development import handle_development, handle_development_analysis
 from ralph.phases.fix import handle_fix
 from ralph.phases.planning import handle_planning
 from ralph.pipeline.effects import (
@@ -483,3 +483,60 @@ def test_handle_phase_raises_when_handler_missing() -> None:
         handle_phase(effect, ctx)
 
     assert "unknown" in str(excinfo.value)
+
+
+def test_handle_development_analysis_skips_when_plan_is_noop() -> None:
+    """handle_development_analysis must short-circuit with ANALYSIS_SUCCESS when plan is a no-op."""
+    ctx = _stub_context()
+    workspace = cast("MagicMock", ctx.workspace)
+    workspace.exists.side_effect = lambda path: path == ".agent/artifacts/plan.json"
+    workspace.read.return_value = '{"type":"plan","content":{"noop":true}}'
+
+    effect = InvokeAgentEffect(
+        agent_name="developer",
+        phase="development_analysis",
+        prompt_file="development_analysis.txt",
+    )
+
+    assert handle_development_analysis(effect, ctx) == [PipelineEvent.ANALYSIS_SUCCESS]
+
+
+def test_handle_development_analysis_skips_empty_steps_plan() -> None:
+    """handle_development_analysis must short-circuit when plan has empty steps
+    AND empty work_units."""
+    ctx = _stub_context()
+    workspace = cast("MagicMock", ctx.workspace)
+    workspace.exists.side_effect = lambda path: path == ".agent/artifacts/plan.json"
+    # is_noop_plan fallback requires BOTH steps AND work_units to be empty lists
+    workspace.read.return_value = '{"type":"plan","content":{"steps":[],"work_units":[]}}'
+
+    effect = InvokeAgentEffect(
+        agent_name="developer",
+        phase="development_analysis",
+        prompt_file="development_analysis.txt",
+    )
+
+    assert handle_development_analysis(effect, ctx) == [PipelineEvent.ANALYSIS_SUCCESS]
+
+
+def test_handle_development_analysis_proceeds_when_plan_is_not_noop() -> None:
+    """handle_development_analysis must parse analysis decision when plan is not a no-op."""
+    ctx = _stub_context()
+    workspace = cast("MagicMock", ctx.workspace)
+    # plan.json exists but is NOT a no-op
+    workspace.exists.side_effect = lambda path: path == ".agent/artifacts/plan.json"
+    workspace.read.return_value = (
+        '{"type":"plan","content":{"summary":{"context":"Real work","scope_items":'
+        '[{"text":"Implement feature"}]},"steps":[{"number":1,"title":"Do it","content":"x"}]}}'
+    )
+
+    effect = InvokeAgentEffect(
+        agent_name="developer",
+        phase="development_analysis",
+        prompt_file="development_analysis.txt",
+    )
+
+    # When plan is not a no-op, it falls through to parse_analysis_decision.
+    # Since there's no development_analysis_decision artifact, it returns FAILURE.
+    result = handle_development_analysis(effect, ctx)
+    assert result == [PipelineEvent.FAILED]

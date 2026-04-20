@@ -368,15 +368,25 @@ def _handle_review_clean(
     state: PipelineState,
     policy: PipelinePolicy | None,
 ) -> tuple[PipelineState, list[Effect]]:
-    """Handle clean review (no issues found)."""
+    """Handle clean review (no issues found).
+
+    When a review is clean (no issues found), the review phase is skipped and
+    we advance directly to the post-review commit phase. This is true for both
+    the legacy (no-policy) path and the policy-driven path: REVIEW_CLEAN means
+    the review analysis step was bypassed, so we should not route through
+    review_analysis (which would expect a review_analysis_decision artifact
+    that was never produced). Instead, we advance directly to review_commit.
+    """
     if policy is not None:
-        try:
-            next_phase = resolve_next_phase(state.phase, "success", policy)
-            return _advance_phase(state, next_phase, policy)
-        except ValueError as exc:
-            return _advance_to_terminal(
-                state, PHASE_FAILED, f"Routing error after review clean in '{state.phase}': {exc}"
-            )
+        # Policy path: advance directly to review_commit, bypassing review_analysis.
+        # REVIEW_CLEAN is emitted precisely when review was SKIPPED and no
+        # review_analysis_decision artifact was ever produced. Routing through
+        # on_success would land on review_analysis, which would then fail when
+        # trying to parse the non-existent decision artifact.
+        next_phase = "review_commit"
+        new_state, effects = _advance_phase(state, next_phase, policy)
+        new_state = new_state.copy_with(review_issues_found=False)
+        return new_state, effects
 
     new_state = state.copy_with(
         phase="review_commit",

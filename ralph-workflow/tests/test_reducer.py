@@ -673,7 +673,6 @@ class TestAnalysisDecisionDispatch:
     [
         ("ANALYSIS_SUCCESS", "ralph.pipeline.reducer.resolve_next_phase"),
         ("ANALYSIS_LOOPBACK", "ralph.pipeline.reducer.resolve_next_phase"),
-        ("REVIEW_CLEAN", "ralph.pipeline.reducer.resolve_next_phase"),
         ("REVIEW_ISSUES_FOUND", "ralph.pipeline.reducer.resolve_next_phase"),
         ("FIX_SUCCESS", "ralph.pipeline.reducer.resolve_next_phase"),
         ("COMMIT_SUCCESS", "ralph.pipeline.reducer.resolve_post_commit_phase"),
@@ -1020,3 +1019,110 @@ def test_commit_skipped_without_policy_advances_to_complete() -> None:
     new_state, _ = _reduce(state, PipelineEvent.COMMIT_SKIPPED)
     assert new_state.phase == PHASE_COMPLETE
     assert new_state.reviewer_pass == 1
+
+
+# ---------------------------------------------------------------------------
+# REVIEW_CLEAN — skips review_analysis and routes directly to review_commit
+# ---------------------------------------------------------------------------
+
+
+def test_review_clean_with_policy_routes_to_review_commit_not_analysis() -> None:
+    """REVIEW_CLEAN with policy must route directly to review_commit (bypassing review_analysis)."""
+    policy = _policy_with_post_commit_routes()
+    state = PipelineState(phase=PHASE_REVIEW, review_budget_remaining=1)
+    new_state, _ = _reduce(state, PipelineEvent.REVIEW_CLEAN, policy)
+
+    assert new_state.phase == "review_commit"
+    assert new_state.previous_phase == PHASE_REVIEW
+    assert new_state.review_issues_found is False
+
+
+def test_review_clean_without_policy_still_routes_to_review_commit() -> None:
+    """Legacy path (no policy): REVIEW_CLEAN still routes to review_commit."""
+    state = PipelineState(phase=PHASE_REVIEW, review_budget_remaining=1)
+    new_state, _ = _reduce(state, PipelineEvent.REVIEW_CLEAN)
+
+    assert new_state.phase == "review_commit"
+    assert new_state.previous_phase == PHASE_REVIEW
+    assert new_state.review_issues_found is False
+
+
+# ---------------------------------------------------------------------------
+# FULL NO-OP PIPELINE FLOW
+# ---------------------------------------------------------------------------
+
+
+def test_full_noop_pipeline_flow_reaches_complete_without_billing_counters() -> None:
+    """End-to-end no-op pipeline.
+
+    plan noop → dev skip → dev_analysis skip → dev_commit skip →
+    review skip → review_commit skip → complete.
+
+    All billing counters (iteration, reviewer_pass) must remain 0 throughout.
+    """
+    policy = _policy_with_post_commit_routes()
+
+    # Step 1: planning → AGENT_SUCCESS (noop plan) → development
+    # Budget starts at 2: first iteration consumes 1, second still has 1 left
+    state = PipelineState(
+        phase="planning",
+        iteration=0,
+        reviewer_pass=0,
+        development_budget_remaining=2,
+        review_budget_remaining=1,
+    )
+    new_state, _ = _reduce(state, PipelineEvent.AGENT_SUCCESS, policy)
+    assert new_state.phase == PHASE_DEVELOPMENT
+    assert new_state.iteration == 0
+    assert new_state.reviewer_pass == 0
+
+    # Step 2: development → AGENT_SUCCESS → development_analysis
+    state = new_state
+    new_state, _ = _reduce(state, PipelineEvent.AGENT_SUCCESS, policy)
+    assert new_state.phase == "development_analysis"
+    assert new_state.iteration == 0
+
+    # Step 3: development_analysis → ANALYSIS_SUCCESS (noop short-circuit) → development_commit
+    state = new_state
+    new_state, _ = _reduce(state, PipelineEvent.ANALYSIS_SUCCESS, policy)
+    assert new_state.phase == "development_commit"
+    assert new_state.iteration == 0
+
+    # Step 4: development_commit → COMMIT_SKIPPED → planning (budget remaining)
+    state = new_state
+    new_state, _ = _reduce(state, PipelineEvent.COMMIT_SKIPPED, policy)
+    assert new_state.phase == "planning"
+    assert new_state.iteration == 0
+
+    # Step 5: planning → AGENT_SUCCESS (noop again) → development
+    state = new_state
+    new_state, _ = _reduce(state, PipelineEvent.AGENT_SUCCESS, policy)
+    assert new_state.phase == PHASE_DEVELOPMENT
+
+    # Step 6: development → AGENT_SUCCESS → development_analysis
+    state = new_state
+    new_state, _ = _reduce(state, PipelineEvent.AGENT_SUCCESS, policy)
+    assert new_state.phase == "development_analysis"
+
+    # Step 7: development_analysis → ANALYSIS_SUCCESS → development_commit
+    state = new_state
+    new_state, _ = _reduce(state, PipelineEvent.ANALYSIS_SUCCESS, policy)
+    assert new_state.phase == "development_commit"
+
+    # Step 8: development_commit → COMMIT_SKIPPED → review (budget exhausted)
+    state = new_state.copy_with(development_budget_remaining=0)
+    new_state, _ = _reduce(state, PipelineEvent.COMMIT_SKIPPED, policy)
+    assert new_state.phase == PHASE_REVIEW
+    assert new_state.iteration == 0
+
+    # Step 9: review → REVIEW_CLEAN → review_commit (NOT review_analysis)
+    state = new_state
+    new_state, _ = _reduce(state, PipelineEvent.REVIEW_CLEAN, policy)
+    assert new_state.phase == "review_commit"
+    assert new_state.reviewer_pass == 0
+
+    # Step 10: review_commit → COMMIT_SKIPPED → complete (budget exhausted)
+    state = new_state.copy_with(review_budget_remaining=0)
+    new_state, _ = _reduce(state, PipelineEvent.COMMIT_SKIPPED, policy)
+    assert new_state.phase == PHASE_COMPLETE
+    assert new_state.reviewer_pass == 0

@@ -1335,12 +1335,15 @@ def _record_activity_on_subscriber(
 ) -> None:
     try:
         line_text = "" if rendered is None else rendered.plain
+        metadata = parsed_line.metadata
         tool_name: str | None = None
-        if parsed_line.type == "tool_use":
+        metadata_tool = metadata.get("tool")
+        if isinstance(metadata_tool, str) and metadata_tool.strip():
+            tool_name = metadata_tool.strip()
+        elif parsed_line.type == "tool_use":
             stripped = parsed_line.content.strip()
             if stripped:
                 tool_name = stripped
-        metadata = parsed_line.metadata
         path = _format_metadata_value(metadata.get("path")) or None
         workdir = _format_metadata_value(metadata.get("workdir")) or None
         command = _format_metadata_value(metadata.get("command")) or None
