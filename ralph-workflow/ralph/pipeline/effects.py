@@ -26,6 +26,17 @@ else:
     WorkerState = import_module("ralph.pipeline.worker_state").WorkerState
 
 
+# Forbidden sentinel strings that must never appear as ExitFailureEffect.reason.
+# These indicate bugs in the pipeline where descriptive error information was lost.
+_FORBIDDEN_SENTINELS: frozenset[str] = frozenset({
+    "Unknown failure",
+    "unknown failure",
+    "",
+    "None",
+    "null",
+})
+
+
 @dataclass(frozen=True)
 class InvokeAgentEffect:
     """Effect to invoke an AI agent.
@@ -101,17 +112,20 @@ class ExitFailureEffect:
     """Effect to exit with failure.
 
     Attributes:
-        reason: Reason for the failure.
+        reason: Reason for the failure. Must be non-empty, non-whitespace,
+            and must not be any known sentinel that indicates a bug (e.g.
+            "Unknown failure", "", "None", "null").
     """
 
     reason: str
 
     def __post_init__(self) -> None:
-        """Validate that reason is non-empty and not the generic 'Unknown failure'."""
-        if not self.reason or self.reason == "Unknown failure":
+        """Validate that reason is non-empty, non-whitespace, and not a forbidden sentinel."""
+        stripped = self.reason.strip()
+        if stripped == "" or self.reason in _FORBIDDEN_SENTINELS:
             raise ValueError(
-                f"ExitFailureEffect.reason must be non-empty and cannot be 'Unknown failure', "
-                f"got: {self.reason!r}"
+                f"ExitFailureEffect.reason must be descriptive and cannot be a sentinel; "
+                f"got: {self.reason!r} (whitespace stripped: {stripped!r})"
             )
 
 

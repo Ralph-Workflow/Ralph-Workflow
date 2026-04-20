@@ -1049,7 +1049,9 @@ def test_merge_conflict_fails_phase() -> None:
         WorkersMergeConflictEvent(conflicting_unit_ids=["u1", "u2"]),
     )
 
-    assert effects == []
+    assert len(effects) == 1
+    assert isinstance(effects[0], ExitFailureEffect)
+    assert effects[0].reason == "Merge conflict in workers: u1, u2"
     assert new_state.phase == PHASE_FAILED
     assert new_state.last_error is not None
     assert "u1" in new_state.last_error

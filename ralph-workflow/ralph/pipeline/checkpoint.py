@@ -20,6 +20,17 @@ from ralph.pipeline.state import PipelineState
 
 CHECKPOINT_PATH = Path(".agent") / "checkpoint.json"
 
+# Forbidden sentinel strings that indicate a bug in error handling.
+# If a pre-fix checkpoint contains one of these as last_error, we drop it
+# and log a warning to prevent the old bug from being resurrected.
+_FORBIDDEN_ERROR_SENTINELS: frozenset[str] = frozenset({
+    "Unknown failure",
+    "unknown failure",
+    "",
+    "None",
+    "null",
+})
+
 
 def _cleanup_stray_tmp(path: Path) -> None:
     tmp = Path(str(path) + ".tmp")
@@ -30,6 +41,27 @@ class Checkpoint:
     def __init__(self, path: Path = CHECKPOINT_PATH) -> None:
         self._path = path
         _cleanup_stray_tmp(path)
+
+
+def _sanitize_last_error(state: PipelineState) -> PipelineState:
+    """Drop forbidden sentinel last_error values loaded from old checkpoints.
+
+    If last_error is None or is a known sentinel string (indicating a bug
+    in the old code), replace it with None so the pipeline starts fresh.
+    """
+    last_error = state.last_error
+    if last_error is None:
+        return state
+
+    stripped = last_error.strip()
+    if stripped == "" or last_error in _FORBIDDEN_ERROR_SENTINELS:
+        logger.warning(
+            "Dropping stale last_error sentinel {!r} loaded from checkpoint; "
+            "pipeline will start with a clean error state.",
+            last_error,
+        )
+        return state.copy_with(last_error=None)
+    return state
 
 
 def save(state: PipelineState, path: Path = CHECKPOINT_PATH) -> None:
@@ -64,6 +96,8 @@ def load(path: Path = CHECKPOINT_PATH) -> PipelineState | None:
 
     Returns:
         PipelineState if checkpoint exists and is valid, None otherwise.
+        If the loaded state contains a forbidden last_error sentinel
+        (e.g. "Unknown failure"), it is dropped and replaced with None.
     """
     if not path.exists():
         logger.debug("No checkpoint found at {}", path)
@@ -71,6 +105,9 @@ def load(path: Path = CHECKPOINT_PATH) -> PipelineState | None:
     try:
         data = path.read_text(encoding="utf-8")
         state = PipelineState.model_validate_json(data)
+        # Sanitize any stale error sentinel that might have been saved
+        # by a pre-fix version of the pipeline.
+        state = _sanitize_last_error(state)
         logger.debug("Checkpoint loaded from {}", path)
         return state
     except (json.JSONDecodeError, ValueError) as exc:

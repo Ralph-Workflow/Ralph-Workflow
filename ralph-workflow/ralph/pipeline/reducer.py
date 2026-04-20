@@ -59,6 +59,23 @@ if TYPE_CHECKING:
 # Maximum number of agent retries before giving up
 _MAX_AGENT_RETRIES = 3
 
+# Forbidden sentinel strings that indicate a bug in error handling.
+_FORBIDDEN_ERROR_SENTINELS: frozenset[str] = frozenset({
+    "Unknown failure",
+    "unknown failure",
+    "",
+    "None",
+    "null",
+})
+
+
+def _is_valid_error_message(msg: str | None) -> bool:
+    """Check if an error message is descriptive (not a forbidden sentinel)."""
+    if msg is None:
+        return False
+    stripped = msg.strip()
+    return stripped != "" and msg not in _FORBIDDEN_ERROR_SENTINELS
+
 
 def _restore_work_units(
     state: PipelineState,
@@ -184,7 +201,11 @@ def _handle_phase_failure(
     In both cases, last_error is set to a descriptive string combining the
     phase name and the reason.
     """
-    failure_message = f"{event.phase}: {event.reason}"
+    # Use the event reason if it's descriptive, otherwise synthesize one.
+    if event.reason and event.reason.strip():
+        failure_message = f"{event.phase}: {event.reason}"
+    else:
+        failure_message = f"(no reason reported for phase={event.phase})"
 
     if event.recoverable:
         # Inject the failure message into state.last_error so that
@@ -247,7 +268,10 @@ def _handle_agent_failure(state: PipelineState) -> tuple[PipelineState, list[Eff
     """Handle agent failure with retry/fallback logic."""
     chain = state.chain_for_phase(state.phase)
     if chain is None:
-        failure_reason = state.last_error or f"No tracked agent chain for {state.phase}"
+        failure_reason = (
+            state.last_error
+            or f"No tracked agent chain for {state.phase}"
+        )
         new_state = state.copy_with(
             phase=PHASE_FAILED,
             previous_phase=state.phase,
@@ -287,9 +311,12 @@ def _handle_agent_failure(state: PipelineState) -> tuple[PipelineState, list[Eff
 
     # Chain exhausted: preserve any informative last_error from PhaseFailureEvent,
     # otherwise construct a descriptive message.
-    failure_reason = state.last_error or (
-        f"Agent chain exhausted in phase='{state.phase}' after "
-        f"{chain.retries} retries across {len(chain.agents)} agents"
+    failure_reason = (
+        state.last_error
+        or (
+            f"Agent chain exhausted in phase='{state.phase}' after "
+            f"{chain.retries} retries across {len(chain.agents)} agents"
+        )
     )
     new_state = state.copy_with(
         phase=PHASE_FAILED,
@@ -303,12 +330,16 @@ def _handle_agent_retry(state: PipelineState) -> tuple[PipelineState, list[Effec
     """Handle agent retry request."""
     chain = state.chain_for_phase(state.phase)
     if chain is None:
+        failure_reason = (
+            state.last_error
+            or f"No tracked agent chain for {state.phase}"
+        )
         new_state = state.copy_with(
             phase=PHASE_FAILED,
             previous_phase=state.phase,
-            last_error=f"No tracked agent chain for {state.phase}",
+            last_error=failure_reason,
         )
-        return new_state, [ExitFailureEffect(reason=f"No tracked agent chain for {state.phase}")]
+        return new_state, [ExitFailureEffect(reason=failure_reason)]
 
     new_chain = AgentChainState(
         agents=chain.agents,
@@ -509,11 +540,16 @@ def _handle_fix_failure(
         try:
             next_phase = resolve_next_phase(state.phase, "failure", policy)
             if next_phase == PHASE_FAILED:
+                failure_reason = (
+                    state.last_error
+                    or "Fix phase failed"
+                )
                 new_state = state.copy_with(
                     phase=PHASE_FAILED,
                     previous_phase=state.phase,
+                    last_error=failure_reason,
                 )
-                return new_state, [ExitFailureEffect(reason="Fix phase failed")]
+                return new_state, [ExitFailureEffect(reason=failure_reason)]
             return _advance_phase(state, next_phase, policy)
         except ValueError as exc:
             return _advance_to_terminal(
@@ -589,12 +625,16 @@ def _handle_commit_skipped(
 
 def _handle_commit_failure(state: PipelineState) -> tuple[PipelineState, list[Effect]]:
     """Handle commit failure."""
+    failure_reason = (
+        state.last_error
+        or "Commit failed"
+    )
     new_state = state.copy_with(
         phase=PHASE_FAILED,
         previous_phase=state.phase,
-        last_error="Commit failed",
+        last_error=failure_reason,
     )
-    return new_state, [ExitFailureEffect(reason="Commit failed")]
+    return new_state, [ExitFailureEffect(reason=failure_reason)]
 
 
 def _handle_checkpoint_saved(state: PipelineState) -> tuple[PipelineState, list[Effect]]:
@@ -618,13 +658,16 @@ def _handle_complete(state: PipelineState) -> tuple[PipelineState, list[Effect]]
 def _handle_failed(state: PipelineState) -> tuple[PipelineState, list[Effect]]:
     """Handle pipeline failure.
 
-    Uses state.last_error if available, which should have been set by the
-    preceding failure event handler. Falls back to a descriptive message
-    only as a last resort.
+    Uses state.last_error if available and descriptive, which should have been
+    set by the preceding failure event handler. Falls back to a descriptive
+    message only as a last resort.
     """
-    last_error = state.last_error or (
-        f"Pipeline terminated in phase='{state.phase}' with no explicit error; "
-        "check upstream last_error propagation"
+    last_error = (
+        state.last_error
+        or (
+            f"Pipeline terminated in phase='{state.phase}' with no explicit error; "
+            "check upstream last_error propagation"
+        )
     )
     new_state = state.copy_with(
         phase=PHASE_FAILED,
@@ -792,8 +835,9 @@ def _handle_workers_merge_conflict(
     event: WorkersMergeConflictEvent,
 ) -> tuple[PipelineState, list[Effect]]:
     unit_ids_str = ", ".join(event.conflicting_unit_ids)
+    failure_reason = f"Merge conflict in workers: {unit_ids_str}"
     return state.copy_with(
         phase=PHASE_FAILED,
         previous_phase=state.phase,
-        last_error=f"Merge conflict in workers: {unit_ids_str}",
-    ), []
+        last_error=failure_reason,
+    ), [ExitFailureEffect(reason=failure_reason)]
