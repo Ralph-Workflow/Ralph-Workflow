@@ -240,6 +240,28 @@ class CcsAliasConfig(BaseModel):  # type: ignore[explicit-any]
     session_flag: str | None = None
 
 
+def _default_agent_chains() -> dict[str, list[str]]:
+    return {
+        "planning": ["claude"],
+        "development": ["claude", "opencode"],
+        "analysis": ["claude"],
+        "review": ["claude"],
+        "fix": ["claude"],
+        "commit": ["claude"],
+    }
+
+
+def _default_agent_drains() -> dict[str, str]:
+    return {
+        "planning": "planning",
+        "development": "development",
+        "analysis": "analysis",
+        "review": "review",
+        "fix": "fix",
+        "commit": "commit",
+    }
+
+
 class UnifiedConfig(BaseModel):  # type: ignore[explicit-any]
     """Top-level merged configuration (global + local + CLI overrides).
 
@@ -262,6 +284,6 @@ class UnifiedConfig(BaseModel):  # type: ignore[explicit-any]
     ccs: CcsConfig = Field(default_factory=CcsConfig)
     agents: dict[str, AgentConfig] = Field(default_factory=dict)
     ccs_aliases: dict[str, str | CcsAliasConfig] = Field(default_factory=dict)
-    agent_chains: dict[str, list[str]] = Field(default_factory=dict)
-    agent_drains: dict[str, str] = Field(default_factory=dict)
+    agent_chains: dict[str, list[str]] = Field(default_factory=_default_agent_chains)
+    agent_drains: dict[str, str] = Field(default_factory=_default_agent_drains)
     cloud: CloudConfig = Field(default_factory=CloudConfig)

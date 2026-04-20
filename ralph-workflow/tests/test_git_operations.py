@@ -15,7 +15,9 @@ from ralph.git.operations import (
     find_repo_root,
     get_current_branch,
     get_head_sha,
+    has_commits_since,
     has_staged_changes,
+    has_uncommitted_changes,
     is_repo_clean,
     merge_base,
     push,
@@ -87,6 +89,39 @@ def test_has_staged_changes() -> None:
         assert has_staged_changes(Path("/tmp/repo")) is True
     finally:
         monkeypatch.undo()
+
+
+def test_has_uncommitted_changes_clean_repo(tmp_git_repo: Path) -> None:
+    assert has_uncommitted_changes(tmp_git_repo) is False
+
+
+def test_has_uncommitted_changes_dirty_repo(tmp_git_repo: Path) -> None:
+    (tmp_git_repo / "README.md").write_text("dirty")
+    assert has_uncommitted_changes(tmp_git_repo) is True
+
+
+def test_has_uncommitted_changes_untracked_file(tmp_git_repo: Path) -> None:
+    (tmp_git_repo / "new_file.txt").write_text("new")
+    assert has_uncommitted_changes(tmp_git_repo) is True
+
+
+def test_has_commits_since_no_baseline_returns_true(tmp_git_repo: Path) -> None:
+    assert has_commits_since(tmp_git_repo, None) is True
+
+
+def test_has_commits_since_head_equals_baseline_returns_false(tmp_git_repo: Path) -> None:
+    head = get_head_sha(tmp_git_repo)
+    assert has_commits_since(tmp_git_repo, head) is False
+
+
+def test_has_commits_since_new_commit_returns_true(tmp_git_repo: Path) -> None:
+    baseline = get_head_sha(tmp_git_repo)
+    # Add a new commit
+    repo = Repo(tmp_git_repo)
+    (tmp_git_repo / "extra.txt").write_text("more")
+    repo.index.add(["extra.txt"])
+    repo.index.commit("another commit")
+    assert has_commits_since(tmp_git_repo, baseline) is True
 
 
 def test_stage_all(tmp_git_repo: Path) -> None:

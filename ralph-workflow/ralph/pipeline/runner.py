@@ -520,7 +520,7 @@ def run(  # noqa: PLR0912, PLR0915
             try:
                 while state.phase not in (PHASE_COMPLETE, PHASE_FAILED):
                     effect = _call_determine_effect_from_policy(
-                        state, policy_bundle, workspace_scope
+                        state, policy_bundle, workspace_scope, config
                     )
                     inline_result = _handle_inline_effect(
                         effect=effect,
@@ -913,16 +913,20 @@ def _call_determine_effect_from_policy(
     state: PipelineState,
     policy_bundle: PolicyBundle,
     workspace_scope: WorkspaceScope,
+    config: UnifiedConfig,
 ) -> Effect:
     determine_effect = _determine_effect_from_policy
-    params = signature(determine_effect).parameters.values()
+    params = signature(determine_effect).parameters
+    if "config" in params:
+        return determine_effect(state, policy_bundle, workspace_scope, config=config)
+
     positional = [
         param
-        for param in params
+        for param in params.values()
         if param.kind in (param.POSITIONAL_ONLY, param.POSITIONAL_OR_KEYWORD)
     ]
     if (
-        any(param.kind == param.VAR_POSITIONAL for param in params)
+        any(param.kind == param.VAR_POSITIONAL for param in params.values())
         or len(positional) >= _LEGACY_EXECUTE_EFFECT_ARITY
     ):
         return determine_effect(state, policy_bundle, workspace_scope)
@@ -941,6 +945,8 @@ def _determine_effect_from_policy(
     state: PipelineState,
     policy_bundle: PolicyBundle,
     workspace_scope: WorkspaceScope | None = None,
+    *,
+    config: UnifiedConfig | None = None,
 ) -> Effect:
     terminal = _terminal_phase_effect(state)
     if terminal is not None:
@@ -952,9 +958,9 @@ def _determine_effect_from_policy(
 
     if phase_def.requires_commit:
         scope = workspace_scope or resolve_workspace_scope()
-        return _commit_phase_effect(state, policy_bundle, phase_def, scope)
+        return _commit_phase_effect(state, policy_bundle, phase_def, scope, config=config)
 
-    agent_name = _agent_name_for_phase_from_policy(state, policy_bundle)
+    agent_name = _agent_name_for_phase_from_policy(state, policy_bundle, config=config)
     if agent_name is None:
         return ExitFailureEffect(reason=f"No agent configured for phase '{state.phase}'")
 
@@ -978,10 +984,12 @@ def _commit_phase_effect(
     policy_bundle: PolicyBundle,
     phase_def: PhaseDefinition,
     workspace_scope: WorkspaceScope,
+    *,
+    config: UnifiedConfig | None = None,
 ) -> Effect:
     if state.commit.agent_invoked:
         return _commit_effect(workspace_scope.root)
-    agent_name = _agent_name_for_phase_from_policy(state, policy_bundle)
+    agent_name = _agent_name_for_phase_from_policy(state, policy_bundle, config=config)
     if agent_name is None:
         return ExitFailureEffect(reason=f"No agent configured for commit phase '{state.phase}'")
     return InvokeAgentEffect(
@@ -999,36 +1007,68 @@ def _agents_for_phase(
     agents_policy: AgentsPolicy | None = None,
     pipeline_policy: PipelinePolicy | None = None,
 ) -> list[str]:
-    if agents_policy is not None and pipeline_policy is not None:
+    policy_drain: str | None = None
+    if pipeline_policy is not None:
         phase_def = pipeline_policy.phases.get(phase)
         if phase_def is not None:
-            binding = agents_policy.agent_drains.get(phase_def.drain)
-            if binding is None:
-                msg = (
-                    f"Phase '{phase}' uses drain '{phase_def.drain}' but that drain has no "
-                    "explicit agent chain binding in agents.toml. "
-                    "Policy-driven runs must fail fast instead of falling back to legacy "
-                    "phase-name inference."
-                )
-                raise ValueError(msg)
-            chain = agents_policy.agent_chains.get(binding.chain)
-            if chain is None:
-                msg = (
-                    f"Drain '{phase_def.drain}' for phase '{phase}' references chain "
-                    f"'{binding.chain}' but that chain is not defined in agents.toml."
-                )
-                raise ValueError(msg)
-            return list(chain.agents)
+            policy_drain = phase_def.drain
+
+    config_agents = _config_agents_for_phase(config, phase=phase, policy_drain=policy_drain)
+    if config_agents:
+        return config_agents
+
+    return []
+
+
+def _config_drain_candidates(*, phase: str, policy_drain: str | None) -> tuple[str, ...]:
+    generic_aliases = {
+        "development_analysis": "analysis",
+        "review_analysis": "analysis",
+        "development_commit": "commit",
+        "review_commit": "commit",
+    }
+    ordered = [candidate for candidate in (policy_drain, phase) if candidate]
+    for candidate in tuple(ordered):
+        alias = generic_aliases.get(candidate)
+        if alias is not None:
+            ordered.append(alias)
+
+    deduped: list[str] = []
+    for candidate in ordered:
+        if candidate not in deduped:
+            deduped.append(candidate)
+    return tuple(deduped)
+
+
+def _config_agents_for_phase(
+    config: UnifiedConfig | None,
+    *,
+    phase: str,
+    policy_drain: str | None,
+) -> list[str]:
+    if config is None:
+        return []
 
     drains = config.agent_drains if isinstance(config.agent_drains, dict) else {}
     chains = config.agent_chains if isinstance(config.agent_chains, dict) else {}
-    chain_name = drains.get(phase) or phase
-    return list(chains.get(chain_name, []))
+    for drain_name in _config_drain_candidates(phase=phase, policy_drain=policy_drain):
+        chain_name = drains.get(drain_name)
+        if isinstance(chain_name, str):
+            chain_agents = chains.get(chain_name)
+            if isinstance(chain_agents, list):
+                return list(chain_agents)
+
+        direct_chain_agents = chains.get(drain_name)
+        if isinstance(direct_chain_agents, list):
+            return list(direct_chain_agents)
+    return []
 
 
 def _agent_name_for_phase_from_policy(
     state: PipelineState,
     policy_bundle: PolicyBundle,
+    *,
+    config: UnifiedConfig | None = None,
 ) -> str | None:
     current_agent = state.current_agent()
     if current_agent is not None:
@@ -1038,14 +1078,15 @@ def _agent_name_for_phase_from_policy(
     if phase_def is None:
         return None
 
-    binding = policy_bundle.agents.agent_drains.get(phase_def.drain)
-    if binding is None:
-        return None
+    config_agents = _config_agents_for_phase(
+        config,
+        phase=state.phase,
+        policy_drain=phase_def.drain,
+    )
+    if config_agents:
+        return config_agents[0]
 
-    chain = policy_bundle.agents.agent_chains.get(binding.chain)
-    if chain is None or not chain.agents:
-        return None
-    return chain.agents[0]
+    return None
 
 
 def _phase_event_after_agent_run(  # noqa: PLR0913

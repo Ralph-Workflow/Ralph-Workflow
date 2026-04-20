@@ -3,6 +3,10 @@
 The development phase invokes the development agent to implement code changes
 based on the planning artifact. It may embed an analysis step that decides
 whether to continue development or loop back for more iterations.
+
+When the planning artifact is a typed no-op plan, the handler short-circuits
+with ``AGENT_SUCCESS`` so the pipeline advances through development/commit
+without invoking the development agent for a plan that asked for nothing.
 """
 
 from __future__ import annotations
@@ -15,6 +19,7 @@ from ralph.config.enums import AnalysisDecision
 from ralph.mcp.plan_artifact import (
     PLAN_ARTIFACT_PATH,
     PlanArtifactValidationError,
+    is_noop_plan,
     normalize_plan_artifact_content,
 )
 from ralph.phases import PhaseContext, register_handler
@@ -59,6 +64,9 @@ def handle_development(effect: Effect, ctx: PhaseContext) -> list[Event]:
                 artifact_wrapper,
                 expected_type="plan",
             )
+            if is_noop_plan(artifact_content):
+                logger.info("Development phase: plan is a no-op — skipping dev iteration")
+                return [PipelineEvent.AGENT_SUCCESS]
             if _is_legacy_work_units_payload(artifact_content):
                 artifact = artifact_content
             else:

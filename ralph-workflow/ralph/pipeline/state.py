@@ -143,6 +143,8 @@ class PipelineState(BaseModel):  # type: ignore[explicit-any]
         pr_url: URL of created PR.
         push_count: Count of successful push operations.
         last_error: Last error message.
+        last_reviewed_sha: HEAD SHA captured after the last review pass
+            completed. Used to skip review when no new commits exist.
         policy_entry_phase: Entry phase from the loaded pipeline policy.
         development_budget_remaining: Remaining development iterations budget.
         review_budget_remaining: Remaining review passes budget.
@@ -176,6 +178,7 @@ class PipelineState(BaseModel):  # type: ignore[explicit-any]
     pr_url: str | None = None
     push_count: int = 0
     last_error: str | None = None
+    last_reviewed_sha: str | None = None
 
     # Policy-derived fields (set at startup and after phase transitions)
     policy_entry_phase: PipelinePhase = "planning"

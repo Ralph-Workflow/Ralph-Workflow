@@ -2,14 +2,36 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
+from git import Repo
+
+from ralph.git.operations import get_head_sha
+from ralph.phases import PhaseContext
 from ralph.phases.review import (
+    REVIEW_BASELINE_MARKER,
     handle_review,
     handle_review_analysis,
 )
 from ralph.pipeline.effects import Effect, InvokeAgentEffect, PreparePromptEffect
 from ralph.pipeline.events import PipelineEvent
+from ralph.workspace.fs import FsWorkspace
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+
+def _fs_context(root: Path) -> PhaseContext:
+    workspace = FsWorkspace(root)
+    return PhaseContext.construct(
+        workspace=workspace,
+        registry=object(),
+        chain_manager=object(),
+        pipeline_policy=object(),
+        agents_policy=object(),
+        artifacts_policy=object(),
+    )
 
 
 class TestHandleReview:
@@ -37,6 +59,55 @@ class TestHandleReview:
 
         result = handle_review(effect, ctx)
         assert result == []
+
+    def test_review_skips_when_no_new_commits(self, tmp_git_repo: Path) -> None:
+        ctx = _fs_context(tmp_git_repo)
+        head = get_head_sha(tmp_git_repo)
+        marker_path = tmp_git_repo / REVIEW_BASELINE_MARKER
+        marker_path.parent.mkdir(parents=True, exist_ok=True)
+        marker_path.write_text(head, encoding="utf-8")
+
+        effect = InvokeAgentEffect(
+            agent_name="reviewer",
+            phase="review",
+            prompt_file="review.txt",
+        )
+        assert handle_review(effect, ctx) == [PipelineEvent.REVIEW_CLEAN]
+
+    def test_review_proceeds_when_new_commits_exist(self, tmp_git_repo: Path) -> None:
+        ctx = _fs_context(tmp_git_repo)
+        baseline = get_head_sha(tmp_git_repo)
+        marker_path = tmp_git_repo / REVIEW_BASELINE_MARKER
+        marker_path.parent.mkdir(parents=True, exist_ok=True)
+        marker_path.write_text(baseline, encoding="utf-8")
+
+        repo = Repo(tmp_git_repo)
+        (tmp_git_repo / "changed.txt").write_text("x")
+        repo.index.add(["changed.txt"])
+        repo.index.commit("new work")
+        new_head = get_head_sha(tmp_git_repo)
+        assert new_head != baseline
+
+        effect = InvokeAgentEffect(
+            agent_name="reviewer",
+            phase="review",
+            prompt_file="review.txt",
+        )
+        assert handle_review(effect, ctx) == [PipelineEvent.AGENT_SUCCESS]
+
+        updated_marker = marker_path.read_text(encoding="utf-8").strip()
+        assert updated_marker == new_head
+
+    def test_review_first_pass_has_no_baseline(self, tmp_git_repo: Path) -> None:
+        ctx = _fs_context(tmp_git_repo)
+        effect = InvokeAgentEffect(
+            agent_name="reviewer",
+            phase="review",
+            prompt_file="review.txt",
+        )
+        assert handle_review(effect, ctx) == [PipelineEvent.AGENT_SUCCESS]
+        marker_path = tmp_git_repo / REVIEW_BASELINE_MARKER
+        assert marker_path.exists()
 
 
 class TestHandleReviewAnalysis:

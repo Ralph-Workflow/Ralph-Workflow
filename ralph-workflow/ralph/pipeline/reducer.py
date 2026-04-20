@@ -118,7 +118,7 @@ def reduce(
         PipelineEvent.FIX_SUCCESS: _handle_fix_success,
         PipelineEvent.FIX_FAILURE: _handle_fix_failure,
         PipelineEvent.COMMIT_SUCCESS: _handle_commit_success,
-        PipelineEvent.COMMIT_SKIPPED: _handle_commit_success,
+        PipelineEvent.COMMIT_SKIPPED: _handle_commit_skipped,
         PipelineEvent.COMMIT_FAILURE: _ignore_policy(_handle_commit_failure),
         PipelineEvent.CHECKPOINT_SAVED: _ignore_policy(_handle_checkpoint_saved),
         PipelineEvent.CONTEXT_CLEANED: _return_state,
@@ -496,6 +496,32 @@ def _handle_commit_success(
     new_state = state.copy_with(
         phase=PHASE_COMPLETE,
         previous_phase="review_commit",
+    )
+    return new_state, []
+
+
+def _handle_commit_skipped(
+    state: PipelineState,
+    policy: PipelinePolicy | None,
+) -> tuple[PipelineState, list[Effect]]:
+    """Handle a skipped commit (no diff to commit).
+
+    Advances phase routing exactly like a successful commit so the pipeline
+    does not stall, but does NOT increment iteration or reviewer_pass because
+    no meaningful agent activity occurred during the skipped phase.
+    """
+    if policy is not None:
+        try:
+            next_phase = resolve_post_commit_phase(state, policy)
+            return _advance_phase(state, next_phase, policy)
+        except ValueError as exc:
+            return _advance_to_terminal(
+                state, PHASE_FAILED, f"Routing error after commit skipped in '{state.phase}': {exc}"
+            )
+
+    new_state = state.copy_with(
+        phase=PHASE_COMPLETE,
+        previous_phase=state.phase,
     )
     return new_state, []
 

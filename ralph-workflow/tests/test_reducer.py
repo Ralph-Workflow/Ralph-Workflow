@@ -957,3 +957,66 @@ def test_merge_conflict_preserves_worker_states() -> None:
     )
 
     assert "u1" in new_state.worker_states
+
+
+# ---------------------------------------------------------------------------
+# COMMIT_SKIPPED — advances routing without incrementing iteration counters
+# ---------------------------------------------------------------------------
+
+
+def test_commit_skipped_advances_without_iteration_increment() -> None:
+    """COMMIT_SKIPPED in development_commit must advance phase but NOT bump iteration."""
+    policy = _policy_with_post_commit_routes()
+    state = PipelineState(
+        phase="development_commit",
+        iteration=0,
+        total_iterations=2,
+        development_budget_remaining=1,
+        review_budget_remaining=1,
+    )
+
+    new_state, _ = _reduce(state, PipelineEvent.COMMIT_SKIPPED, policy)
+
+    assert new_state.phase == "planning"
+    assert new_state.previous_phase == "development_commit"
+    assert new_state.iteration == 0
+
+
+def test_commit_skipped_in_review_commit_advances_without_reviewer_pass_increment() -> None:
+    """COMMIT_SKIPPED in review_commit must advance phase but NOT bump reviewer_pass."""
+    policy = _policy_with_post_commit_routes()
+    state = PipelineState(
+        phase="review_commit",
+        reviewer_pass=0,
+        total_reviewer_passes=2,
+        review_budget_remaining=1,
+    )
+
+    new_state, _ = _reduce(state, PipelineEvent.COMMIT_SKIPPED, policy)
+
+    assert new_state.phase == PHASE_REVIEW
+    assert new_state.previous_phase == "review_commit"
+    assert new_state.reviewer_pass == 0
+
+
+def test_commit_skipped_routes_to_complete_when_budget_exhausted() -> None:
+    """COMMIT_SKIPPED in review_commit routes to complete without bumping counters."""
+    policy = _policy_with_post_commit_routes()
+    state = PipelineState(
+        phase="review_commit",
+        reviewer_pass=0,
+        review_budget_remaining=0,
+    )
+
+    new_state, _ = _reduce(state, PipelineEvent.COMMIT_SKIPPED, policy)
+
+    assert new_state.phase == PHASE_COMPLETE
+    assert new_state.reviewer_pass == 0
+
+
+def test_commit_skipped_without_policy_advances_to_complete() -> None:
+    """Legacy path (no policy): COMMIT_SKIPPED advances directly to complete."""
+    state = PipelineState(phase="review_commit", reviewer_pass=1)
+    new_state, _ = _reduce(state, PipelineEvent.COMMIT_SKIPPED)
+    assert new_state.phase == PHASE_COMPLETE
+    assert new_state.reviewer_pass == 1

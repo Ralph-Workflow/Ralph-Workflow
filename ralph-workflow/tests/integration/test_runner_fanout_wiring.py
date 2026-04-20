@@ -7,6 +7,7 @@ from typing import Any, cast
 from unittest.mock import MagicMock
 
 from ralph.config.enums import PHASE_DEVELOPMENT, PHASE_PLANNING
+from ralph.config.models import UnifiedConfig
 from ralph.pipeline import runner as runner_module
 from ralph.pipeline.effects import FanOutDevelopmentEffect, InvokeAgentEffect
 from ralph.pipeline.events import PipelineEvent
@@ -46,7 +47,11 @@ class TestFanOutRouting:
         state = PipelineState(phase=PHASE_DEVELOPMENT, work_units=())
         policy_bundle = _make_policy_bundle()
 
-        effect = runner_module._determine_effect_from_policy(state, policy_bundle)
+        effect = runner_module._determine_effect_from_policy(
+            state,
+            policy_bundle,
+            config=UnifiedConfig(),
+        )
 
         assert isinstance(effect, InvokeAgentEffect)
         assert effect.phase == PHASE_DEVELOPMENT
@@ -61,7 +66,11 @@ class TestFanOutRouting:
         state = PipelineState(phase=PHASE_DEVELOPMENT, work_units=units)
         policy_bundle = _make_policy_bundle(max_workers=max_workers)
 
-        effect = runner_module._determine_effect_from_policy(state, policy_bundle)
+        effect = runner_module._determine_effect_from_policy(
+            state,
+            policy_bundle,
+            config=UnifiedConfig(),
+        )
 
         assert isinstance(effect, FanOutDevelopmentEffect)
         assert effect.work_units == units
@@ -73,7 +82,11 @@ class TestFanOutRouting:
         state = PipelineState(phase=PHASE_PLANNING, work_units=units)
         policy_bundle = _make_policy_bundle()
 
-        effect = runner_module._determine_effect_from_policy(state, policy_bundle)
+        effect = runner_module._determine_effect_from_policy(
+            state,
+            policy_bundle,
+            config=UnifiedConfig(),
+        )
 
         assert isinstance(effect, InvokeAgentEffect)
         assert effect.phase == PHASE_PLANNING

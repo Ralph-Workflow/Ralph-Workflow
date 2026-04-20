@@ -49,6 +49,18 @@ def _stub_context() -> PhaseContext:
     )
 
 
+def _fs_context(root: Path) -> PhaseContext:
+    workspace = FsWorkspace(root)
+    return PhaseContext.construct(
+        workspace=workspace,
+        registry=object(),
+        chain_manager=object(),
+        pipeline_policy=object(),
+        agents_policy=object(),
+        artifacts_policy=object(),
+    )
+
+
 def test_development_commit_defers_to_runner_on_invoke_agent() -> None:
     ctx = _stub_context()
     effect = InvokeAgentEffect(
@@ -72,6 +84,52 @@ def test_development_commit_ignores_prepare_prompt_effect() -> None:
 
 def test_review_commit_defers_to_runner_on_invoke_agent() -> None:
     ctx = _stub_context()
+    effect = InvokeAgentEffect(
+        agent_name="review",
+        phase=PHASE_REVIEW_COMMIT,
+        prompt_file="review-plan.txt",
+    )
+
+    assert handle_review_commit(effect, ctx) == []
+
+
+def test_development_commit_emits_skip_when_no_diff(tmp_git_repo: Path) -> None:
+    ctx = _fs_context(tmp_git_repo)
+    effect = InvokeAgentEffect(
+        agent_name="dev",
+        phase=PHASE_DEVELOPMENT_COMMIT,
+        prompt_file="dev-plan.txt",
+    )
+
+    assert handle_development_commit(effect, ctx) == [PipelineEvent.COMMIT_SKIPPED]
+
+
+def test_development_commit_defers_when_diff_exists(tmp_git_repo: Path) -> None:
+    (tmp_git_repo / "README.md").write_text("dirty")
+    ctx = _fs_context(tmp_git_repo)
+    effect = InvokeAgentEffect(
+        agent_name="dev",
+        phase=PHASE_DEVELOPMENT_COMMIT,
+        prompt_file="dev-plan.txt",
+    )
+
+    assert handle_development_commit(effect, ctx) == []
+
+
+def test_review_commit_emits_skip_when_no_diff(tmp_git_repo: Path) -> None:
+    ctx = _fs_context(tmp_git_repo)
+    effect = InvokeAgentEffect(
+        agent_name="review",
+        phase=PHASE_REVIEW_COMMIT,
+        prompt_file="review-plan.txt",
+    )
+
+    assert handle_review_commit(effect, ctx) == [PipelineEvent.COMMIT_SKIPPED]
+
+
+def test_review_commit_defers_when_diff_exists(tmp_git_repo: Path) -> None:
+    (tmp_git_repo / "README.md").write_text("dirty")
+    ctx = _fs_context(tmp_git_repo)
     effect = InvokeAgentEffect(
         agent_name="review",
         phase=PHASE_REVIEW_COMMIT,
@@ -321,6 +379,19 @@ def test_handle_planning_invalid_plan_schema_returns_agent_failure() -> None:
     assert handle_planning(effect, ctx) == [PipelineEvent.AGENT_FAILURE]
 
 
+def test_handle_planning_accepts_noop_plan() -> None:
+    ctx = _stub_context()
+    workspace = cast("MagicMock", ctx.workspace)
+    workspace.exists.side_effect = lambda path: path == ".agent/artifacts/plan.json"
+    workspace.read.return_value = '{"type":"plan","content":{"noop":true}}'
+
+    effect = InvokeAgentEffect(
+        agent_name="planner", phase=PHASE_PLANNING, prompt_file="planning.txt"
+    )
+
+    assert handle_planning(effect, ctx) == [PipelineEvent.AGENT_SUCCESS]
+
+
 def test_handle_development_reads_wrapped_plan_artifact_and_validates_schema() -> None:
     ctx = _stub_context()
     workspace = cast("MagicMock", ctx.workspace)
@@ -340,6 +411,19 @@ def test_handle_development_reads_wrapped_plan_artifact_and_validates_schema() -
 
     assert handle_development(effect, ctx) == [PipelineEvent.AGENT_SUCCESS]
     workspace.read.assert_called_once_with(".agent/artifacts/plan.json")
+
+
+def test_handle_development_skips_when_plan_is_noop() -> None:
+    ctx = _stub_context()
+    workspace = cast("MagicMock", ctx.workspace)
+    workspace.exists.side_effect = lambda path: path == ".agent/artifacts/plan.json"
+    workspace.read.return_value = '{"type":"plan","content":{"noop":true}}'
+
+    effect = InvokeAgentEffect(
+        agent_name="developer", phase="development", prompt_file="development.txt"
+    )
+
+    assert handle_development(effect, ctx) == [PipelineEvent.AGENT_SUCCESS]
 
 
 def test_handle_planning_ignores_unrelated_effects() -> None:

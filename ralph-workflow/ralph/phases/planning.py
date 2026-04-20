@@ -3,6 +3,11 @@
 The planning phase invokes the planning agent to generate an implementation plan.
 The agent submits a PlanningArtifact via MCP, which is then used to drive
 the development phase.
+
+If the planning artifact is a typed no-op plan (``noop: true`` or empty steps
+AND empty work_units), the handler treats it as a successful plan — the
+downstream development phase will recognise the same no-op signal and skip
+execution.
 """
 
 from __future__ import annotations
@@ -17,6 +22,7 @@ from ralph.mcp.plan_artifact import (
     PLAN_ARTIFACT_PATH,
     PLAN_DRAFT_PATH,
     PlanArtifactValidationError,
+    is_noop_plan,
     load_plan_draft,
     normalize_plan_artifact_content,
 )
@@ -56,9 +62,11 @@ def handle_planning(effect: Effect, ctx: PhaseContext) -> list[Event]:
 
         try:
             artifact_wrapper = load_phase_artifact(ctx.workspace, planning_artifact_path)
-            artifact = normalize_plan_artifact_content(
-                unwrap_phase_artifact_content(artifact_wrapper, expected_type="plan")
-            )
+            raw_content = unwrap_phase_artifact_content(artifact_wrapper, expected_type="plan")
+            if is_noop_plan(raw_content):
+                logger.info("Planning produced a no-op plan — skipping development iteration")
+                return [PipelineEvent.AGENT_SUCCESS]
+            artifact = normalize_plan_artifact_content(raw_content)
             parsed = parse_work_units_from_artifact(artifact)
             if parsed is not None:
                 validate_work_units_against_policy(parsed, ctx.pipeline_policy)

@@ -10,6 +10,7 @@ from ralph.mcp.plan_artifact import (
     PlanArtifactValidationError,
     delete_plan_draft,
     finalize_plan_draft,
+    is_noop_plan,
     load_plan_draft,
     merge_plan_section,
     new_plan_draft,
@@ -279,3 +280,25 @@ def test_plan_draft_io_uses_injected_backend_and_clock(tmp_path: Path) -> None:
 
     assert loaded is not None
     assert loaded["updated_at"] == "UPDATED"
+
+
+def test_is_noop_plan_returns_true_for_explicit_flag() -> None:
+    assert is_noop_plan({"noop": True}) is True
+
+
+def test_is_noop_plan_returns_true_for_empty_lists() -> None:
+    assert is_noop_plan({"steps": [], "work_units": []}) is True
+
+
+def test_is_noop_plan_returns_false_for_malformed_empty_plan() -> None:
+    # A dict missing steps entirely is malformed, not a deliberate noop.
+    assert is_noop_plan({}) is False
+
+
+def test_is_noop_plan_returns_false_for_plan_with_steps() -> None:
+    assert is_noop_plan({"steps": [{"number": 1}], "work_units": []}) is False
+
+
+def test_noop_plan_normalizes_to_noop_only() -> None:
+    normalized = normalize_plan_artifact_content({"noop": True})
+    assert normalized == {"noop": True}

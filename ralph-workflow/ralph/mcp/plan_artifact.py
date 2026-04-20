@@ -12,7 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from ralph.mcp.file_backend import DEFAULT_FILE_BACKEND, FileBackend
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Mapping
     from pathlib import Path
 
 PLAN_ARTIFACT_TYPE = "plan"
@@ -154,7 +154,35 @@ PLAN_SECTION_NAMES: frozenset[str] = frozenset(
 )
 
 
+def is_noop_plan(artifact: Mapping[str, object]) -> bool:
+    """Return True when ``artifact`` represents a planning no-op.
+
+    An explicit ``noop: true`` marker is authoritative. As a defensive fallback,
+    a plan with no ``steps`` and no ``work_units`` is also treated as a no-op
+    so badly-shaped empty plans short-circuit cleanly instead of blowing up in
+    schema validation downstream.
+    """
+    if artifact.get("noop") is True:
+        return True
+    steps = artifact.get("steps")
+    work_units = artifact.get("work_units")
+    steps_empty = steps is None or (isinstance(steps, list) and len(steps) == 0)
+    work_units_empty = work_units is None or (
+        isinstance(work_units, list) and len(work_units) == 0
+    )
+    # Only treat as noop fallback when both are explicitly empty lists — a plan
+    # with no `steps` key at all is just malformed, not a deliberate no-op.
+    return (
+        steps_empty
+        and work_units_empty
+        and isinstance(steps, list)
+        and isinstance(work_units, list)
+    )
+
+
 def normalize_plan_artifact_content(content: dict[str, object]) -> dict[str, object]:
+    if is_noop_plan(content):
+        return {"noop": True}
     try:
         validated = PlanArtifact.model_validate(content)
         return cast(
@@ -339,6 +367,7 @@ __all__ = [
     "SectionMode",
     "delete_plan_draft",
     "finalize_plan_draft",
+    "is_noop_plan",
     "load_plan_draft",
     "merge_plan_section",
     "new_plan_draft",

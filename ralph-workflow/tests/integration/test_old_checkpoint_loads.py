@@ -4,6 +4,7 @@ import json
 from unittest.mock import MagicMock
 
 from ralph.config.enums import PHASE_DEVELOPMENT
+from ralph.config.models import UnifiedConfig
 from ralph.pipeline.effects import FanOutDevelopmentEffect, InvokeAgentEffect
 from ralph.pipeline.runner import _determine_effect_from_policy
 from ralph.pipeline.state import PipelineState
@@ -38,7 +39,7 @@ class TestOldCheckpointLoads:
         state = PipelineState(phase=PHASE_DEVELOPMENT, work_units=())
         policy_bundle = _make_policy_bundle()
 
-        effect = _determine_effect_from_policy(state, policy_bundle)
+        effect = _determine_effect_from_policy(state, policy_bundle, config=UnifiedConfig())
 
         assert isinstance(effect, InvokeAgentEffect)
         assert not isinstance(effect, FanOutDevelopmentEffect)
@@ -47,6 +48,6 @@ class TestOldCheckpointLoads:
         state = PipelineState(phase=PHASE_DEVELOPMENT, work_units=())
         policy_bundle = _make_policy_bundle()
 
-        effect = _determine_effect_from_policy(state, policy_bundle)
+        effect = _determine_effect_from_policy(state, policy_bundle, config=UnifiedConfig())
 
         assert not isinstance(effect, FanOutDevelopmentEffect)

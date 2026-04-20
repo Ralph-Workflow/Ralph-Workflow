@@ -82,6 +82,32 @@ def is_repo_clean(repo_root: Path | str) -> bool:
     return not repo.is_dirty()
 
 
+def has_uncommitted_changes(repo_root: Path | str) -> bool:
+    """Return True when the working tree has uncommitted work.
+
+    Includes staged diff, unstaged diff, and untracked files. This is the
+    authoritative skip check for commit phases: if this returns False, there
+    is literally nothing for a commit agent to package up.
+    """
+    repo = Repo(repo_root)
+    return repo.is_dirty(untracked_files=True)
+
+
+def has_commits_since(repo_root: Path | str, baseline_sha: str | None) -> bool:
+    """Return True when HEAD is ahead of ``baseline_sha``.
+
+    When ``baseline_sha`` is None the caller has no prior baseline (first run),
+    so we conservatively return True to allow the caller to proceed.
+    """
+    if baseline_sha is None:
+        return True
+    repo = Repo(repo_root)
+    try:
+        return any(True for _ in repo.iter_commits(f"{baseline_sha}..HEAD"))
+    except Exception:
+        return True
+
+
 def has_staged_changes(repo_root: Path | str) -> bool:
     """Check if repository has staged changes.
 

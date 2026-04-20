@@ -84,6 +84,17 @@ def _registry_factory(return_value):
     return Registry
 
 
+def _config_with_agents(
+    *,
+    agent_chains: dict[str, list[str]],
+    agent_drains: dict[str, str],
+):
+    config = MagicMock()
+    config.agent_chains = agent_chains
+    config.agent_drains = agent_drains
+    return config
+
+
 @pytest.fixture(autouse=True)
 def _stub_workspace_scope_and_policy(monkeypatch: MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setattr(runner_module, "resolve_workspace_scope", lambda: WorkspaceScope(tmp_path))
@@ -122,12 +133,12 @@ class TestCreateInitialState:
         assert state.dev_chain.agents == []
         assert state.rev_chain.agents == []
 
-    def test_uses_policy_drain_bindings_when_available(self) -> None:
+    def test_initial_state_prefers_config_drain_bindings_over_policy_chains(self) -> None:
         config = MagicMock()
         config.general.developer_iters = DEVELOPER_ITERATIONS
         config.general.reviewer_reviews = REVIEWER_PASSES
-        config.agent_chains = {}
-        config.agent_drains = {}
+        config.agent_chains = {"plan_chain": ["codex"]}
+        config.agent_drains = {"planning": "plan_chain"}
         agents_policy = AgentsPolicy(
             agent_chains={"planner_chain": AgentChainConfig(agents=["claude"])},
             agent_drains={"planning": AgentDrainConfig(chain="planner_chain")},
@@ -153,14 +164,14 @@ class TestCreateInitialState:
             pipeline_policy=pipeline_policy,
         )
 
-        assert state.planning_chain.agents == ["claude"]
+        assert state.planning_chain.agents == ["codex"]
 
-    def test_policy_driven_initial_state_rejects_missing_drain_binding(self) -> None:
+    def test_initial_state_maps_analysis_phases_to_config_analysis_drain(self) -> None:
         config = MagicMock()
         config.general.developer_iters = DEVELOPER_ITERATIONS
         config.general.reviewer_reviews = REVIEWER_PASSES
-        config.agent_chains = {"development_analysis": ["legacy-agent"]}
-        config.agent_drains = {"development_analysis": "development_analysis"}
+        config.agent_chains = {"analysis_chain": ["config-analysis-agent"]}
+        config.agent_drains = {"analysis": "analysis_chain"}
         agents_policy = AgentsPolicy(
             agent_chains={"planner_chain": AgentChainConfig(agents=["claude"])},
             agent_drains={"planning": AgentDrainConfig(chain="planner_chain")},
@@ -184,12 +195,13 @@ class TestCreateInitialState:
             terminal_phase="complete",
         )
 
-        with pytest.raises(ValueError, match="development_analysis"):
-            runner_module._create_initial_state(
-                config,
-                agents_policy=agents_policy,
-                pipeline_policy=pipeline_policy,
-            )
+        state = runner_module._create_initial_state(
+            config,
+            agents_policy=agents_policy,
+            pipeline_policy=pipeline_policy,
+        )
+
+        assert state.dev_analysis_chain.agents == ["config-analysis-agent"]
 
     def test_creates_state_with_correct_development_budget(self) -> None:
         config = MagicMock()
@@ -262,19 +274,20 @@ class TestDetermineEffect:
         assert isinstance(effect, ExitFailureEffect)
         assert "Unknown phase" in effect.reason
 
-    def test_default_planning_phase_uses_policy_drain_agent(self) -> None:
+    def test_default_planning_phase_uses_config_drain_agent(self) -> None:
         bundle = _load_default_policy_bundle()
         state = PipelineState(phase="planning")
+        config = _config_with_agents(
+            agent_chains={"plan_chain": ["claude"]},
+            agent_drains={"planning": "plan_chain"},
+        )
 
         effect = runner_module._determine_effect_from_policy(
-            state, bundle, WorkspaceScope("/tmp/worktree")
+            state, bundle, WorkspaceScope("/tmp/worktree"), config=config
         )
 
         assert isinstance(effect, InvokeAgentEffect)
-        assert (
-            effect.agent_name
-            == bundle.agents.agent_chains[bundle.agents.agent_drains["planning"].chain].agents[0]
-        )
+        assert effect.agent_name == "claude"
 
     def test_development_phase_with_work_units_uses_fan_out_effect(self) -> None:
         bundle = _load_default_policy_bundle()
@@ -282,8 +295,12 @@ class TestDetermineEffect:
             phase="development",
             work_units=(WorkUnit(unit_id="unit-a", description="A"),),
         )
+        config = _config_with_agents(
+            agent_chains={"developer": ["claude"]},
+            agent_drains={"development": "developer"},
+        )
 
-        effect = runner_module._determine_effect_from_policy(state, bundle)
+        effect = runner_module._determine_effect_from_policy(state, bundle, config=config)
 
         assert isinstance(effect, FanOutDevelopmentEffect)
         assert effect.work_units[0].unit_id == "unit-a"
@@ -297,31 +314,33 @@ class TestDetermineEffect:
         )
         assert isinstance(effect, CommitEffect)
 
-    def test_review_phase_uses_bound_review_agent(self) -> None:
+    def test_review_phase_uses_config_review_agent(self) -> None:
         bundle = _load_default_policy_bundle()
         state = PipelineState(phase="review")
+        config = _config_with_agents(
+            agent_chains={"review_chain": ["claude"]},
+            agent_drains={"review": "review_chain"},
+        )
 
         effect = runner_module._determine_effect_from_policy(
-            state, bundle, WorkspaceScope("/tmp/worktree")
+            state, bundle, WorkspaceScope("/tmp/worktree"), config=config
         )
         assert isinstance(effect, InvokeAgentEffect)
-        assert (
-            effect.agent_name
-            == bundle.agents.agent_chains[bundle.agents.agent_drains["review"].chain].agents[0]
-        )
+        assert effect.agent_name == "claude"
 
-    def test_review_analysis_phase_uses_policy_binding(self) -> None:
+    def test_review_analysis_phase_uses_config_analysis_binding(self) -> None:
         bundle = _load_default_policy_bundle()
         state = PipelineState(phase="review_analysis")
+        config = _config_with_agents(
+            agent_chains={"analysis_chain": ["analysis-agent"]},
+            agent_drains={"analysis": "analysis_chain"},
+        )
 
         effect = runner_module._determine_effect_from_policy(
-            state, bundle, WorkspaceScope("/tmp/worktree")
+            state, bundle, WorkspaceScope("/tmp/worktree"), config=config
         )
         assert isinstance(effect, InvokeAgentEffect)
-        expected_agent = bundle.agents.agent_chains[
-            bundle.agents.agent_drains["review_analysis"].chain
-        ].agents[0]
-        assert effect.agent_name == expected_agent
+        assert effect.agent_name == "analysis-agent"
 
     def test_review_analysis_prefers_its_own_bound_chain_over_review_chain(self) -> None:
         state = PipelineState(
@@ -369,12 +388,16 @@ class TestDetermineEffect:
         assert effect.agent_name == "analysis-agent"
         assert effect.drain == "review_analysis"
 
-    def test_fix_phase_uses_policy_binding(self) -> None:
+    def test_fix_phase_uses_config_binding(self) -> None:
         bundle = _load_default_policy_bundle()
         state = PipelineState(phase="fix")
+        config = _config_with_agents(
+            agent_chains={"fix_chain": ["claude"]},
+            agent_drains={"fix": "fix_chain"},
+        )
 
         effect = runner_module._determine_effect_from_policy(
-            state, bundle, WorkspaceScope("/tmp/worktree")
+            state, bundle, WorkspaceScope("/tmp/worktree"), config=config
         )
         assert isinstance(effect, InvokeAgentEffect)
 
@@ -399,7 +422,7 @@ class TestDetermineEffect:
         )
         assert isinstance(effect, ExitFailureEffect)
 
-    def test_policy_driven_custom_phase_uses_policy_drain_agent(self) -> None:
+    def test_policy_driven_custom_phase_uses_config_drain_agent(self) -> None:
         state = PipelineState(phase="custom_phase")
         bundle = PolicyBundle(
             agents=AgentsPolicy(
@@ -425,14 +448,56 @@ class TestDetermineEffect:
             ),
             artifacts=ArtifactsPolicy(artifacts={}),
         )
+        config = MagicMock()
+        config.agent_chains = {"dev_chain": ["codex"]}
+        config.agent_drains = {"development": "dev_chain"}
 
         effect = runner_module._determine_effect_from_policy(
-            state, bundle, WorkspaceScope("/tmp/worktree")
+            state, bundle, WorkspaceScope("/tmp/worktree"), config=config
         )
 
         assert isinstance(effect, InvokeAgentEffect)
-        assert effect.agent_name == "claude"
+        assert effect.agent_name == "codex"
         assert effect.drain == "development"
+
+    def test_commit_phase_prefers_config_commit_drain_over_policy_commit_chain(self) -> None:
+        state = PipelineState(phase="development_commit", commit=CommitState(agent_invoked=False))
+        bundle = PolicyBundle(
+            agents=AgentsPolicy(
+                agent_chains={"policy_commit_chain": AgentChainConfig(agents=["claude"])},
+                agent_drains={"development_commit": AgentDrainConfig(chain="policy_commit_chain")},
+            ),
+            pipeline=PipelinePolicy(
+                phases={
+                    "development_commit": PhaseDefinition(
+                        drain="development_commit",
+                        requires_commit=True,
+                        transitions=PhaseTransition(on_success="complete", on_failure="failed"),
+                    ),
+                    "complete": PhaseDefinition(
+                        drain="complete",
+                        transitions=PhaseTransition(on_success="complete", on_loopback="complete"),
+                    ),
+                },
+                entry_phase="development_commit",
+                terminal_phase="complete",
+            ),
+            artifacts=ArtifactsPolicy(artifacts={}),
+        )
+        config = MagicMock()
+        config.agent_chains = {"commit_chain": ["ccs/mm"]}
+        config.agent_drains = {"commit": "commit_chain"}
+
+        effect = runner_module._determine_effect_from_policy(
+            state,
+            bundle,
+            WorkspaceScope("/tmp/worktree"),
+            config=config,
+        )
+
+        assert isinstance(effect, InvokeAgentEffect)
+        assert effect.agent_name == "ccs/mm"
+        assert effect.drain == "development_commit"
 
     def test_handle_inline_prepare_prompt_updates_current_drain_from_policy(self) -> None:
         bundle = _load_default_policy_bundle()
@@ -1300,13 +1365,20 @@ def test_determine_effect_invokes_commit_agent_when_agent_not_yet_invoked(
     phase_def.requires_commit = True
     phase_def.drain = "development_commit"
     policy_bundle.pipeline.phases.get.return_value = phase_def
-    policy_bundle.agents.agent_drains.get.return_value = MagicMock(chain="commit_chain")
-    policy_bundle.agents.agent_chains.get.return_value = MagicMock(agents=["commit-agent"])
 
     state = PipelineState(phase="development_commit", commit=CommitState(agent_invoked=False))
     workspace_scope = WorkspaceScope(root=tmp_path, allowed_roots=[tmp_path])
+    config = _config_with_agents(
+        agent_chains={"commit_chain": ["commit-agent"]},
+        agent_drains={"commit": "commit_chain"},
+    )
 
-    effect = runner_module._determine_effect_from_policy(state, policy_bundle, workspace_scope)
+    effect = runner_module._determine_effect_from_policy(
+        state,
+        policy_bundle,
+        workspace_scope,
+        config=config,
+    )
 
     assert isinstance(effect, InvokeAgentEffect)
     assert effect.agent_name == "commit-agent"
