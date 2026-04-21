@@ -10,6 +10,7 @@ from loguru import logger
 
 from ralph import logging as ralph_logging
 from ralph.agents import subprocess_executor
+from ralph.executor.process import run_process_async
 from ralph.mcp.artifacts.store import list_artifacts
 from ralph.mcp.server import factory_impl
 from ralph.pipeline.events import (
@@ -179,12 +180,25 @@ def _flatten_worker_failures(
     return failures, unexpected
 
 
-def _has_empirical_evidence(worktree_path: Path) -> bool:
-    """Return True if the worktree contains at least one submitted artifact."""
+async def _has_empirical_evidence(worktree_path: Path) -> bool:
+    """Return True if the worktree has artifact evidence OR git workspace changes.
+
+    Artifacts are checked first. If none are found, a `git status --porcelain`
+    query on the worktree serves as the fallback signal. A worker is considered
+    successful when either signal is present; only when both are absent is the
+    worker treated as having produced no output.
+    """
     artifact_dir = worktree_path / ".agent" / "artifacts"
-    if not artifact_dir.exists():
+    if artifact_dir.exists() and list_artifacts(artifact_dir):
+        return True
+
+    try:
+        result = await run_process_async(
+            "git", ["-C", str(worktree_path), "status", "--porcelain"]
+        )
+        return bool(result.stdout.strip())
+    except Exception:
         return False
-    return bool(list_artifacts(artifact_dir))
 
 
 def _prepare_executor(
@@ -362,21 +376,22 @@ async def _run_worker(
                 raise
 
             # For isolated workers (worktree + MCP bundle), success is determined by
-            # empirical evidence: the worker must have submitted at least one artifact.
+            # empirical evidence: submitted artifacts OR workspace changes (git status).
+            # Exit code is kept as diagnostic info only and never decides success/failure.
             if (
                 bundle is not None
                 and worktree_path is not None
-                and not _has_empirical_evidence(worktree_path)
+                and not await _has_empirical_evidence(worktree_path)
             ):
-                display.set_status(unit.unit_id, WorkerStatus.FAILED)
-                raise _WorkerFailureError(
-                    unit_id=unit.unit_id,
-                    exit_code=result.exit_code,
-                    error=(
-                        f"Worker {unit.unit_id!r} submitted no artifact "
-                        f"(exit_code={result.exit_code})"
-                    ),
-                )
+                    display.set_status(unit.unit_id, WorkerStatus.FAILED)
+                    raise _WorkerFailureError(
+                        unit_id=unit.unit_id,
+                        exit_code=result.exit_code,
+                        error=(
+                            f"Worker {unit.unit_id!r} produced no artifact and no workspace "
+                            f"changes (exit_code={result.exit_code})"
+                        ),
+                    )
 
             display.set_status(unit.unit_id, WorkerStatus.SUCCEEDED)
             await completion_queue.put(result)

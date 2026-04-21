@@ -9,10 +9,10 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import os
 import sys
 import time
 
+import psutil
 import pytest
 
 from ralph.process import (
@@ -148,16 +148,8 @@ def test_shutdown_all_kills_multiple_children() -> None:
     for h in handles:
         assert h.record.status in (ProcessStatus.KILLED, ProcessStatus.EXITED)
 
-    if hasattr(os, "kill"):
-        for pid in pids:
-            try:
-                os.kill(pid, 0)
-                gone = False
-            except ProcessLookupError:
-                gone = True
-            except PermissionError:
-                gone = True
-            assert gone, f"PID {pid} still alive after shutdown_all"
+    for pid in pids:
+        assert not psutil.pid_exists(pid), f"PID {pid} still alive after shutdown_all"
 
 
 # ---------------------------------------------------------------------------
@@ -250,11 +242,10 @@ def test_raising_listener_does_not_break_lifecycle() -> None:
 
 
 # ---------------------------------------------------------------------------
-# 10. process group teardown assertion (POSIX only)
+# 10. process teardown via psutil (cross-platform, no killpg dependency)
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.skipif(not hasattr(os, "killpg"), reason="POSIX only")
 def test_process_group_is_torn_down_on_terminate() -> None:
     pm = _make_pm()
     handle = pm.spawn(
@@ -262,22 +253,55 @@ def test_process_group_is_torn_down_on_terminate() -> None:
         start_new_session=True,
     )
     pid = handle.record.pid
-    pgid = handle.record.pgid
-    assert pgid > 0
+    assert pid > 0
 
     handle.terminate(grace_period_s=0.2)
 
+    assert handle.record.status == ProcessStatus.KILLED
+
     deadline = time.monotonic() + 1.0
     while time.monotonic() < deadline:
-        try:
-            os.kill(pid, 0)
-            time.sleep(0.02)
-        except ProcessLookupError:
+        if not psutil.pid_exists(pid):
             break
-        except PermissionError:
-            break
+        time.sleep(0.02)
     else:
         pytest.fail(f"Process {pid} still alive after terminate")
+
+
+# ---------------------------------------------------------------------------
+# 11. Recursive process-tree teardown: parent + grandchild both die
+# ---------------------------------------------------------------------------
+
+
+def test_recursive_process_tree_teardown() -> None:
+    """Both the parent and its forked grandchild are gone after shutdown_all_for_label."""
+    pm = _make_pm()
+    code = (
+        "import subprocess, sys, time; "
+        "subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(30)']); "
+        "time.sleep(30)"
+    )
+    handle = pm.spawn([PYTHON, "-c", code], label="tree-kill-test")
+    parent_pid = handle.record.pid
+
+    # Give the grandchild a moment to spawn before teardown.
+    time.sleep(0.3)
+
+    grandchild_pid: int | None = None
+    try:
+        root = psutil.Process(parent_pid)
+        children = root.children(recursive=True)
+        grandchild_pid = children[0].pid if children else None
+    except (psutil.NoSuchProcess, psutil.AccessDenied):
+        pass
+
+    pm.shutdown_all_for_label("tree-kill-test", grace_period_s=0.3)
+
+    assert not psutil.pid_exists(parent_pid), f"Parent {parent_pid} still alive after teardown"
+    if grandchild_pid is not None:
+        assert not psutil.pid_exists(grandchild_pid), (
+            f"Grandchild {grandchild_pid} still alive after teardown"
+        )
 
 
 # ---------------------------------------------------------------------------

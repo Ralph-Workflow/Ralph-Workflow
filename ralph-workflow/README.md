@@ -107,7 +107,7 @@ Use package/module docstrings for API understanding and this README for workflow
 Ralph now treats several agent-driven phases as producing explicit evidence, not just a zero exit code.
 
 - `review` must leave behind a fresh `.agent/artifacts/issues.json`.
-- `development` and `fix` are side-effect-driven phases: Ralph judges them by the workspace changes they make, not by whether they submit a structured result artifact.
+- `development` and `fix` workers in isolated parallel runs are judged by empirical evidence: submitted artifacts are checked first; if none are found, workspace changes (untracked or modified files detected by `git status`) serve as the fallback signal. A worker is considered successful when either signal is present, and exit code is retained as diagnostic information only.
 - Planning keeps `.agent/artifacts/plan.json` as the canonical machine-readable artifact and mirrors it to `.agent/PLAN.md` as the human/agent handoff.
 - The runner still removes per-phase artifacts before each invocation so interrupted runs cannot leak stale summaries or review findings into later phases.
 
@@ -122,7 +122,7 @@ Artifact contract:
   - `.agent/DEVELOPMENT_ANALYSIS_DECISION.md`
   - `.agent/REVIEW_ANALYSIS_DECISION.md`
 
-This hardening is intentionally selective. Review and planning still rely on explicit artifacts where Ralph needs structured evidence, while development and fix stay focused on producing workspace side effects without extra submission ceremony.
+This hardening is intentionally selective. Review and planning still rely on explicit artifacts where Ralph needs structured evidence, while development and fix workers are judged by the empirical evidence they leave behind (artifacts and/or workspace changes), not by process exit code.
 
 ## Claude/CCS MCP safety note
 

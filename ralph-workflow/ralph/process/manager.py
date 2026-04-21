@@ -434,7 +434,11 @@ class ProcessManager:
                     self._terminate_by_pid(record, gp)
 
     def _terminate_by_pid(self, record: ProcessRecord, grace_period_s: float) -> None:
-        """Kill a process tree given only its PID (no Popen handle available)."""
+        """Kill a process tree given only its PID (no Popen handle available).
+
+        Raises ProcessTerminationError if the process tree is still alive after
+        escalating through graceful terminate → forceful kill.
+        """
         try:
             root = psutil.Process(record.pid)
             children = root.children(recursive=True)
@@ -453,9 +457,10 @@ class ProcessManager:
                 proc.kill()
 
         _, still_alive = psutil.wait_procs(alive, timeout=self.policy.kill_followup_timeout_s)
+        self._mark_killed(record)
         if still_alive:
             logger.error("Process {} still alive after kill", record.pid)
-        self._mark_killed(record)
+            raise ProcessTerminationError(record.pid, record.pgid)
 
     def _escalate_termination_sync(
         self,

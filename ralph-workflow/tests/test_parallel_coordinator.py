@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib
 import importlib.util
 import json
+import subprocess
 from collections import defaultdict
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
@@ -579,3 +580,50 @@ async def test_worker_logs_are_routed_to_per_worker_sink(tmp_path: Path) -> None
     assert events[-1] is PipelineEvent.ALL_WORKERS_COMPLETE
     log_path = tmp_path / "logs" / "run-logging" / "workers" / "unit-unit-a.log"
     assert "worker-log-message" in log_path.read_text()
+
+
+async def test_empirical_success_git_changes_no_artifact(tmp_path: Path) -> None:
+    """Isolated worker with no artifact succeeds when worktree has uncommitted git changes."""
+    module = importlib.import_module("ralph.pipeline.parallel.coordinator")
+    run_fan_out = _load_run_fan_out()
+    unit = make_unit("unit-a")
+    effect = FanOutDevelopmentEffect(work_units=(unit,), max_workers=1)
+    display = RecordingDisplay()
+
+    # Initialize a git repo so `git status --porcelain` works in the worktree.
+    subprocess.run(["git", "init", str(tmp_path)], check=True, capture_output=True)
+    subprocess.run(
+        ["git", "-C", str(tmp_path), "config", "user.email", "test@test.com"],
+        check=True, capture_output=True,
+    )
+    subprocess.run(
+        ["git", "-C", str(tmp_path), "config", "user.name", "Test"],
+        check=True, capture_output=True,
+    )
+
+    worktree_manager = _RecordingWorktreeManager(tmp_path)
+    mcp_factory = _RecordingMcpFactory()
+
+    # Pre-create the worktree dir and add an untracked file to simulate git changes.
+    worktree_path = tmp_path / ".worktrees" / "unit-a"
+    worktree_path.mkdir(parents=True, exist_ok=True)
+    (worktree_path / "result.py").write_text("# work done")
+
+    isolation = module._IsolationDeps(  # type: ignore[attr-defined]
+        worktree_manager=worktree_manager,
+        mcp_factory=mcp_factory,
+        repo_root=tmp_path,
+    )
+
+    events = await run_fan_out(
+        effect=effect,
+        executor=FakeAgentExecutor(
+            {"unit-a": FakeRun(outputs=["done"], exit_code=0, duration_ms=1)}
+        ),
+        display=display,
+        ctx=make_worker_context(isolation=isolation),
+    )
+
+    assert events[-1] is PipelineEvent.ALL_WORKERS_COMPLETE
+    assert display.statuses["unit-a"][-1] is WorkerStatus.SUCCEEDED
+    assert worktree_manager.destroy_calls == ["unit-a"]

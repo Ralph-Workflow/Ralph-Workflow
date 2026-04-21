@@ -202,6 +202,11 @@ class StdioTransport(MCPTransport):
             if isinstance(proc, ManagedProcess):
                 with contextlib.suppress(ProcessTerminationError):
                     proc.terminate(grace_period_s=5.0)
+                for attr in ("stdin", "stdout", "stderr"):
+                    pipe: IO[bytes] | None = getattr(proc, attr, None)
+                    if pipe is not None:
+                        with contextlib.suppress(Exception):
+                            pipe.close()
             else:
                 proc.terminate()
                 proc.wait()

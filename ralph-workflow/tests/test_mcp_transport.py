@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import asyncio
+import contextlib
+import sys
+import time
 from io import BytesIO
 from typing import IO, TYPE_CHECKING
 
@@ -12,6 +16,9 @@ from ralph.mcp.protocol.transport import StdioTransport
 from ralph.mcp.upstream.client import HttpUpstreamClient, StdioUpstreamClient
 from ralph.mcp.upstream.config import UpstreamMcpServer
 from ralph.mcp.upstream.models import UpstreamCallError, UpstreamTool
+from ralph.process.manager import ProcessStatus, get_process_manager, reset_process_manager
+
+PYTHON = sys.executable
 
 
 class _FakeProcess:
@@ -67,6 +74,40 @@ def test_stdio_transport_uses_injected_process_and_thread_factories() -> None:
     assert created["command"] == ["python", "-m", "demo"]
     assert created["cwd"] == "/tmp/demo"
     assert events == ["create:1", "create:2", "start:1", "start:2"]
+
+
+def test_stdio_transport_default_factory_tracks_process_in_manager() -> None:
+    """StdioTransport default factory registers the spawned process with ProcessManager.
+
+    After start(), a record with label 'mcp-stdio:<cmd>' appears as RUNNING.
+    After close(), the record transitions to a terminal state (EXITED or KILLED).
+    """
+    reset_process_manager()
+    try:
+        pm = get_process_manager()
+        transport = StdioTransport([PYTHON, "-c", "import time; time.sleep(30)"])
+        transport.start()
+
+        # Give the process a moment to register.
+        deadline = time.monotonic() + 1.0
+        while time.monotonic() < deadline:
+            active = [r for r in pm.list_active() if r.label and r.label.startswith("mcp-stdio:")]
+            if active:
+                break
+            time.sleep(0.02)
+
+        assert len(active) == 1, f"Expected 1 mcp-stdio record, got {active}"
+        assert active[0].status == ProcessStatus.RUNNING
+
+        asyncio.run(transport.close())
+
+        all_mcp = [r for r in pm._records.values() if r.label and r.label.startswith("mcp-stdio:")]
+        assert len(all_mcp) == 1
+        assert all_mcp[0].status in (ProcessStatus.EXITED, ProcessStatus.KILLED)
+    finally:
+        with contextlib.suppress(Exception):
+            get_process_manager().shutdown_all(grace_period_s=0)
+        reset_process_manager()
 
 
 def test_http_upstream_client_lists_tools() -> None:
