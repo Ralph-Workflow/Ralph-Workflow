@@ -17,9 +17,14 @@ from ralph.git.rebase.rebase_continuation import (
     rebase_in_progress_at,
     verify_rebase_completed_at,
 )
+from ralph.git.subprocess_runner import GitRunResult
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+_CONTINUE_OK = GitRunResult(
+    args=("git", "rebase", "--continue"), returncode=0, stdout="", stderr=""
+)
 
 
 def test_continue_rebase_finishes_conflicted_rebase(
@@ -43,11 +48,11 @@ def test_continue_rebase_finishes_conflicted_rebase(
     monkeypatch.setattr(continuation_module, "_has_index_conflicts", lambda _repo: False)
     monkeypatch.setattr(continuation_module, "_head_is_descendant", lambda *_args: True)
 
-    def fake_run(*_args, **_kwargs) -> subprocess.CompletedProcess[str]:
+    def fake_run_git(*_args, **_kwargs) -> GitRunResult:
         state["in_progress"] = False
-        return subprocess.CompletedProcess(["git", "rebase", "--continue"], 0, "", "")
+        return _CONTINUE_OK
 
-    monkeypatch.setattr(continuation_module.subprocess, "run", fake_run)
+    monkeypatch.setattr(continuation_module, "run_git", fake_run_git)
 
     assert rebase_in_progress_at(tmp_path)
     assert not verify_rebase_completed_at(tmp_path, "main")

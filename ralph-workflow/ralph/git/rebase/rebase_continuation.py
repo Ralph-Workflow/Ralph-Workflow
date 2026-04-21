@@ -5,11 +5,12 @@ from __future__ import annotations
 import os
 import subprocess
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
-from git import GitCommandError, InvalidGitRepositoryError, Repo
+from git import InvalidGitRepositoryError, Repo
 
 from ralph.git.operations import GitOperationError, find_repo_root
+from ralph.git.subprocess_runner import run_git
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -92,16 +93,17 @@ def _repo_root_path(repo: Repo) -> Path:
 def _has_index_conflicts(repo: Repo) -> bool:
     repo_root = _repo_root_path(repo)
     try:
-        result = subprocess.run(
-            ["git", "diff", "--name-only", "--diff-filter=U"],
-            cwd=str(repo_root),
+        result = run_git(
+            ["diff", "--name-only", "--diff-filter=U"],
+            cwd=repo_root,
+            label="git-rebase:diff",
+            env=_git_env(),
+            check=True,
             capture_output=True,
             text=True,
-            check=True,
-            env=_git_env(),
         )
         return bool(result.stdout.strip())
-    except (subprocess.CalledProcessError, OSError) as exc:
+    except subprocess.CalledProcessError as exc:
         raise RebaseContinuationError("Unable to inspect git index") from exc
 
 
@@ -116,6 +118,8 @@ def rebase_in_progress(repo_root: Path | str | None = None) -> bool:
 
 
 def verify_rebase_completed_at(repo_root: Path | str, upstream_branch: str) -> bool:
+    from git import GitCommandError  # noqa: PLC0415
+
     repo = _open_repo(repo_root)
 
     if _rebase_in_progress_impl(repo):
@@ -143,14 +147,6 @@ def verify_rebase_completed(upstream_branch: str, repo_root: Path | str | None =
     return verify_rebase_completed_at(path, upstream_branch)
 
 
-def _process_output_text(value: str | bytes | None) -> str:
-    if isinstance(value, str):
-        return value.strip()
-    if isinstance(value, bytes):
-        return value.decode(errors="replace").strip()
-    return ""
-
-
 def continue_rebase_at(repo_root: Path | str) -> None:
     repo = _open_repo(repo_root)
 
@@ -161,18 +157,21 @@ def continue_rebase_at(repo_root: Path | str) -> None:
         raise ConflictRemainingError("Conflicts still exist in the index")
 
     try:
-        subprocess.run(
-            ["git", "rebase", "--continue"],
-            cwd=str(Path(repo_root)),
+        run_git(
+            ["rebase", "--continue"],
+            cwd=Path(repo_root),
+            label="git-rebase:continue",
+            env=_git_env(),
             check=True,
             capture_output=True,
             text=True,
-            env=_git_env(),
         )
     except subprocess.CalledProcessError as exc:
-        stderr = _process_output_text(cast("str | bytes | None", exc.stderr))
-        stdout = _process_output_text(cast("str | bytes | None", exc.stdout))
-        detail = stderr or stdout or str(exc)
+        raw_stderr: object = exc.stderr
+        raw_stdout: object = exc.stdout
+        stderr = raw_stderr if isinstance(raw_stderr, str) else ""
+        stdout = raw_stdout if isinstance(raw_stdout, str) else ""
+        detail = stderr.strip() or stdout.strip() or str(exc)
         raise RebaseContinuationError(f"Failed to continue rebase: {detail}") from exc
 
 
@@ -183,13 +182,14 @@ def continue_rebase(repo_root: Path | str | None = None) -> None:
 
 def _head_is_descendant(repo_root: Path | str, upstream_branch: str) -> bool:
     repo_root_path = Path(repo_root)
-    result = subprocess.run(
-        ["git", "merge-base", "--is-ancestor", upstream_branch, "HEAD"],
-        cwd=str(repo_root_path),
-        capture_output=True,
-        text=True,
+    result = run_git(
+        ["merge-base", "--is-ancestor", upstream_branch, "HEAD"],
+        cwd=repo_root_path,
+        label="git-rebase:merge-base",
         env=_git_env(),
         check=False,
+        capture_output=True,
+        text=True,
     )
     if result.returncode == 0:
         return True

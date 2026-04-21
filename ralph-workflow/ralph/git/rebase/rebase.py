@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
-import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
 
 from git import Repo
 from git.exc import GitCommandError, InvalidGitRepositoryError
+
+from ralph.git.subprocess_runner import run_git
 
 from .rebase_kinds import RebaseErrorKind, RebaseKind, classify_rebase_error
 
@@ -49,7 +50,7 @@ class ProcessExecutor(Protocol):
 
 @dataclass(frozen=True)
 class SubprocessExecutor:
-    """Default executor powered by subprocess."""
+    """Default executor powered by ProcessManager."""
 
     def execute(
         self,
@@ -58,19 +59,20 @@ class SubprocessExecutor:
         env: Mapping[str, str] | None = None,
         cwd: Path | None = None,
     ) -> ProcessResult:
-        cmd = (command, *args)
-        process = subprocess.run(
-            cmd,
-            cwd=str(cwd) if cwd else None,
+        subcommand = args[0] if args else "unknown"
+        result = run_git(
+            args,
+            cwd=cwd,
+            label=f"git-rebase:{subcommand}",
             env=env,
-            text=True,
-            capture_output=True,
             check=False,
+            capture_output=True,
+            text=True,
         )
         return ProcessResult(
-            returncode=process.returncode,
-            stdout=process.stdout.strip(),
-            stderr=process.stderr.strip(),
+            returncode=result.returncode,
+            stdout=result.stdout.strip(),
+            stderr=result.stderr.strip(),
         )
 
 

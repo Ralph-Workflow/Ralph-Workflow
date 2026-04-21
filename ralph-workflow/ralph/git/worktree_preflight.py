@@ -1,11 +1,17 @@
 """Pre-flight checks for git worktree availability."""
 
+from __future__ import annotations
+
 import subprocess
 from dataclasses import dataclass
-from pathlib import Path
-from typing import cast
+from typing import TYPE_CHECKING
 
-from ralph.git.executor import GitExecutor
+from ralph.git.subprocess_runner import run_git
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+    from ralph.git.executor import GitExecutor
 
 
 @dataclass(frozen=True)
@@ -32,9 +38,9 @@ def check_worktree_supported(repo_root: Path, git: GitExecutor) -> WorktreePrefl
         )
 
     try:
-        result = _run_git(repo_root, git, ["worktree", "list", "--porcelain"])
+        result = _run_git(repo_root, ["worktree", "list", "--porcelain"])
     except subprocess.CalledProcessError as error:
-        if _git_stdout(repo_root, git, ["rev-parse", "--abbrev-ref", "HEAD"]) == "HEAD":
+        if _git_stdout(repo_root, ["rev-parse", "--abbrev-ref", "HEAD"]) == "HEAD":
             return WorktreePreflightResult(
                 supported=False,
                 reason=(
@@ -43,10 +49,10 @@ def check_worktree_supported(repo_root: Path, git: GitExecutor) -> WorktreePrefl
                 ),
             )
 
-        stderr_raw = cast("object", error.stderr)
-        stdout_raw = cast("object", error.stdout)
-        stderr_text = stderr_raw if isinstance(stderr_raw, str) else ""
-        stdout_text = stdout_raw if isinstance(stdout_raw, str) else ""
+        raw_stderr: object = error.stderr
+        raw_stdout: object = error.stdout
+        stderr_text = raw_stderr if isinstance(raw_stderr, str) else ""
+        stdout_text = raw_stdout if isinstance(raw_stdout, str) else ""
         stderr = stderr_text.strip() or stdout_text.strip() or str(error)
         return WorktreePreflightResult(
             supported=False,
@@ -62,28 +68,30 @@ def check_worktree_supported(repo_root: Path, git: GitExecutor) -> WorktreePrefl
     )
 
 
-def _run_git(
-    repo_root: Path, git: GitExecutor, args: list[str]
-) -> subprocess.CompletedProcess[str]:
-    return git.run(
-        lambda: subprocess.run(
-            ["git", *args],
-            cwd=repo_root,
-            check=True,
-            capture_output=True,
-            text=True,
-        )
+def _run_git(repo_root: Path, args: list[str]) -> subprocess.CompletedProcess[str]:
+    result = run_git(
+        args,
+        cwd=repo_root,
+        label="git-worktree-preflight",
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return subprocess.CompletedProcess(
+        args=list(result.args),
+        returncode=result.returncode,
+        stdout=result.stdout,
+        stderr=result.stderr,
     )
 
 
-def _git_stdout(repo_root: Path, git: GitExecutor, args: list[str]) -> str:
-    result = git.run(
-        lambda: subprocess.run(
-            ["git", *args],
-            cwd=repo_root,
-            check=False,
-            capture_output=True,
-            text=True,
-        )
+def _git_stdout(repo_root: Path, args: list[str]) -> str:
+    result = run_git(
+        args,
+        cwd=repo_root,
+        label="git-worktree-preflight",
+        check=False,
+        capture_output=True,
+        text=True,
     )
     return result.stdout.strip()

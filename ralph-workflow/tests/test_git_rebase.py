@@ -15,11 +15,13 @@ from ralph.git.rebase.rebase import (
     RebaseConflicts,
     RebaseNoOp,
     RebaseOperationError,
+    SubprocessExecutor,
     abort_rebase,
     continue_rebase,
     get_conflicted_files,
     rebase_onto,
 )
+from ralph.process.manager import ProcessStatus, get_process_manager, reset_process_manager
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
@@ -279,6 +281,29 @@ def test_verify_rebase_completed_at_rejects_detached_head(tmp_git_repo: Path) ->
 
     with pytest.raises(RebaseVerificationError, match="HEAD is detached"):
         verify_rebase_completed_at(tmp_git_repo, "main")
+
+
+def test_subprocess_executor_emits_process_manager_events(tmp_git_repo: Path) -> None:
+    """Real SubprocessExecutor routes git calls through ProcessManager with labeled events."""
+    reset_process_manager()
+    events = []
+    unsubscribe = get_process_manager().register_listener(events.append)
+
+    try:
+        executor = SubprocessExecutor()
+        get_conflicted_files(repo_root=tmp_git_repo, executor=executor)
+    finally:
+        unsubscribe()
+        reset_process_manager()
+
+    rebase_events = [
+        e for e in events
+        if e.record.label and e.record.label.startswith("git-rebase:")
+    ]
+    assert rebase_events, "Expected events with label prefix 'git-rebase:'"
+
+    exited = [e for e in rebase_events if e.new_status == ProcessStatus.EXITED]
+    assert exited, "Expected at least one EXITED event for a git-rebase spawn"
 
 
 def _setup_conflicted_rebase(repo_root: Path, feature_branch: str = "feature") -> str:

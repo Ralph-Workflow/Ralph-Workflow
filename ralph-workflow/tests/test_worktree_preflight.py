@@ -2,30 +2,26 @@
 
 import subprocess
 from pathlib import Path
+from unittest.mock import patch
 
 from ralph.git.worktree_preflight import check_worktree_supported
 
 
-class FakeGitExecutor:
-    def __init__(self, result: subprocess.CompletedProcess[str]) -> None:
-        self.result = result
-
-    def run(self, _action):
-        return self.result
+def _make_completed(stdout: str = "", returncode: int = 0) -> subprocess.CompletedProcess[str]:
+    return subprocess.CompletedProcess(
+        args=["git", "worktree", "list", "--porcelain"],
+        returncode=returncode,
+        stdout=stdout,
+        stderr="",
+    )
 
 
 def test_check_worktree_supported_returns_true_for_normal_repo(tmp_path: Path) -> None:
-    result = check_worktree_supported(
-        repo_root=tmp_path,
-        git=FakeGitExecutor(
-            subprocess.CompletedProcess(
-                args=["git", "worktree", "list", "--porcelain"],
-                returncode=0,
-                stdout=f"worktree {tmp_path}\n",
-                stderr="",
-            )
-        ),
-    )
+    with patch(
+        "ralph.git.worktree_preflight._run_git",
+        return_value=_make_completed(stdout=f"worktree {tmp_path}\n"),
+    ):
+        result = check_worktree_supported(repo_root=tmp_path, git=None)  # type: ignore[arg-type]
 
     assert result.supported is True
     assert result.reason == ""
@@ -39,12 +35,7 @@ def test_check_worktree_supported_returns_actionable_message_for_shallow_repo(
     shallow_file = git_dir / "shallow"
     shallow_file.write_text("fake-shallow\n")
 
-    result = check_worktree_supported(
-        repo_root=tmp_path,
-        git=FakeGitExecutor(
-            subprocess.CompletedProcess(args=["git"], returncode=0, stdout="", stderr="")
-        ),
-    )
+    result = check_worktree_supported(repo_root=tmp_path, git=None)  # type: ignore[arg-type]
 
     assert result.supported is False
     assert "unshallow" in result.reason

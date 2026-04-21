@@ -912,7 +912,7 @@ def _fan_out_worker_context(
             run_id=str(uuid.uuid4()),
         ),
         isolation=coordinator._IsolationDeps(
-            worktree_manager=WorktreeManager(repo_root, git_exec),
+            worktree_manager=WorktreeManager(repo_root),
             mcp_factory=DynamicBindingMcpServerFactory(workspace=workspace),
             repo_root=repo_root,
             executor_command=_parallel_worker_command(),
