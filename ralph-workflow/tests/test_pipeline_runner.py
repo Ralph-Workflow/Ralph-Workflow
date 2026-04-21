@@ -1099,15 +1099,39 @@ class TestExecuteAgentEffect:
         assert result == PipelineEvent.AGENT_FAILURE
 
     @pytest.mark.parametrize(
-        ("phase", "artifact_path"),
+        ("phase", "artifact_paths"),
         [
-            ("development", ".agent/artifacts/development_result.json"),
-            ("review", ".agent/artifacts/issues.json"),
-            ("fix", ".agent/artifacts/fix_result.json"),
+            (
+                "development",
+                (
+                    ".agent/artifacts/development_result.json",
+                    ".agent/DEVELOPMENT_RESULT.md",
+                ),
+            ),
+            (
+                "development_analysis",
+                (
+                    ".agent/artifacts/development_analysis_decision.json",
+                    ".agent/DEVELOPMENT_ANALYSIS_DECISION.md",
+                ),
+            ),
+            ("review", (".agent/artifacts/issues.json", ".agent/ISSUES.md")),
+            (
+                "review_analysis",
+                (
+                    ".agent/artifacts/review_analysis_decision.json",
+                    ".agent/REVIEW_ANALYSIS_DECISION.md",
+                ),
+            ),
+            ("fix", (".agent/artifacts/fix_result.json", ".agent/FIX_RESULT.md")),
         ],
     )
     def test_execute_agent_effect_removes_stale_phase_artifact_before_invocation(
-        self, monkeypatch: MonkeyPatch, tmp_path: Path, phase: str, artifact_path: str
+        self,
+        monkeypatch: MonkeyPatch,
+        tmp_path: Path,
+        phase: str,
+        artifact_paths: tuple[str, ...],
     ) -> None:
         effect = InvokeAgentEffect(
             agent_name="ccs/mm",
@@ -1116,9 +1140,10 @@ class TestExecuteAgentEffect:
         )
         prompt_file = tmp_path / "PROMPT.md"
         prompt_file.write_text("prompt", encoding="utf-8")
-        stale_artifact = tmp_path / artifact_path
-        stale_artifact.parent.mkdir(parents=True, exist_ok=True)
-        stale_artifact.write_text('{"type":"stale"}', encoding="utf-8")
+        stale_artifacts = [tmp_path / artifact_path for artifact_path in artifact_paths]
+        for stale_artifact in stale_artifacts:
+            stale_artifact.parent.mkdir(parents=True, exist_ok=True)
+            stale_artifact.write_text('{"type":"stale"}', encoding="utf-8")
 
         monkeypatch.setattr(
             runner_module,
@@ -1142,7 +1167,8 @@ class TestExecuteAgentEffect:
         )
 
         assert result == PipelineEvent.AGENT_SUCCESS
-        assert not stale_artifact.exists()
+        for stale_artifact in stale_artifacts:
+            assert not stale_artifact.exists()
 
     def test_dynamic_ccs_agent_reaches_invocation(self, monkeypatch: MonkeyPatch) -> None:
         effect = InvokeAgentEffect(

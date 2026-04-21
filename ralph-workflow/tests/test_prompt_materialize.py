@@ -183,6 +183,152 @@ def test_materialize_development_prompt_reads_agent_plan_markdown_handoff(
     assert "Add regression tests" not in rendered
 
 
+def test_materialize_development_prompt_uses_analysis_feedback_handoff(
+    tmp_path: Path,
+) -> None:
+    policy = load_policy(tmp_path / ".agent")
+    workspace = MemoryWorkspace(root=str(tmp_path))
+    workspace.write("PROMPT.md", "Implement the feature")
+    workspace.write(
+        ".agent/artifacts/development_analysis_decision.json",
+        json.dumps(
+            {
+                "type": "development_analysis_decision",
+                "content": {
+                    "status": "request_changes",
+                    "summary": "Need another iteration.",
+                    "what_came_up_short": ["Feedback is hidden from the developer."],
+                    "how_to_fix": ["Read the analysis handoff before editing."],
+                },
+            }
+        ),
+    )
+
+    prompt_path = materialize_prompt_for_phase(
+        phase="development",
+        workspace=workspace,
+        pipeline_policy=policy.pipeline,
+        session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT),
+        workspace_root=tmp_path,
+    )
+
+    rendered = workspace.read(prompt_path)
+    assert str(tmp_path / ".agent" / "DEVELOPMENT_ANALYSIS_DECISION.md") in rendered
+    assert "Read the complete analysis feedback from file at" in rendered
+    assert "Need another iteration." not in rendered
+
+
+def test_materialize_development_analysis_uses_markdown_result_handoff(
+    tmp_path: Path,
+) -> None:
+    policy = load_policy(tmp_path / ".agent")
+    workspace = MemoryWorkspace(root=str(tmp_path))
+    workspace.write("PROMPT.md", "Analyze the implementation")
+    workspace.write(
+        ".agent/artifacts/development_result.json",
+        json.dumps(
+            {
+                "type": "development_result",
+                "content": {
+                    "status": "completed",
+                    "summary": "Implemented the feature.",
+                    "files_changed": "- src/app.py",
+                },
+            }
+        ),
+    )
+
+    prompt_path = materialize_prompt_for_phase(
+        phase="development_analysis",
+        workspace=workspace,
+        pipeline_policy=policy.pipeline,
+        session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT),
+        workspace_root=tmp_path,
+    )
+
+    rendered = workspace.read(prompt_path)
+    assert str(tmp_path / ".agent" / "DEVELOPMENT_RESULT.md") in rendered
+    assert "Read the complete latest artifact from file at" in rendered
+    assert "Implemented the feature." not in rendered
+
+
+def test_materialize_fix_prompt_uses_markdown_issues_handoff(
+    tmp_path: Path,
+) -> None:
+    policy = load_policy(tmp_path / ".agent")
+    workspace = MemoryWorkspace(root=str(tmp_path))
+    workspace.write("PROMPT.md", "Apply the fixes")
+    workspace.write(
+        ".agent/artifacts/issues.json",
+        json.dumps(
+            {
+                "type": "issues",
+                "content": {
+                    "status": "issues_found",
+                    "summary": "Review found gaps.",
+                    "issues": [
+                        {
+                            "path": "ralph/pipeline/runner.py",
+                            "severity": "high",
+                            "summary": "Need better visibility.",
+                        }
+                    ],
+                    "what_came_up_short": ["User cannot see the review handoff."],
+                    "how_to_fix": ["Mirror issues.json to ISSUES.md."],
+                },
+            }
+        ),
+    )
+
+    prompt_path = materialize_prompt_for_phase(
+        phase="fix",
+        workspace=workspace,
+        pipeline_policy=policy.pipeline,
+        session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.FIX),
+        workspace_root=tmp_path,
+    )
+
+    rendered = workspace.read(prompt_path)
+    assert str(tmp_path / ".agent" / "ISSUES.md") in rendered
+    assert "Read the complete issues from file at" in rendered
+    assert "Need better visibility." not in rendered
+
+
+def test_materialize_fix_prompt_uses_review_analysis_feedback_handoff(
+    tmp_path: Path,
+) -> None:
+    policy = load_policy(tmp_path / ".agent")
+    workspace = MemoryWorkspace(root=str(tmp_path))
+    workspace.write("PROMPT.md", "Apply the fixes")
+    workspace.write(
+        ".agent/artifacts/review_analysis_decision.json",
+        json.dumps(
+            {
+                "type": "review_analysis_decision",
+                "content": {
+                    "status": "request_changes",
+                    "summary": "Fixes are required.",
+                    "what_came_up_short": ["The fixer cannot see review-analysis feedback."],
+                    "how_to_fix": ["Read the review analysis handoff first."],
+                },
+            }
+        ),
+    )
+
+    prompt_path = materialize_prompt_for_phase(
+        phase="fix",
+        workspace=workspace,
+        pipeline_policy=policy.pipeline,
+        session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.FIX),
+        workspace_root=tmp_path,
+    )
+
+    rendered = workspace.read(prompt_path)
+    assert str(tmp_path / ".agent" / "REVIEW_ANALYSIS_DECISION.md") in rendered
+    assert "Read the complete analysis feedback from file at" in rendered
+    assert "Fixes are required." not in rendered
+
+
 def test_materialize_development_prefers_structured_plan_artifact_over_plan_md(
     tmp_path: Path,
 ) -> None:
@@ -222,6 +368,9 @@ def test_materialize_development_prefers_structured_plan_artifact_over_plan_md(
     assert str(tmp_path / ".agent" / "PLAN.md") in rendered
     assert "Read the complete implementation plan from file at" in rendered
     assert "STALE PLAN" not in rendered
+    assert "Fresh structured plan" not in rendered
+    assert (tmp_path / ".agent" / "PLAN.md").read_text(encoding="utf-8") != "STALE PLAN"
+    assert "Fresh structured plan" in (tmp_path / ".agent" / "PLAN.md").read_text(encoding="utf-8")
     assert (tmp_path / ".agent" / "CURRENT_PROMPT.md").read_text(encoding="utf-8") == (
         "Implement unattended planning recovery"
     )

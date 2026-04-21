@@ -14,6 +14,7 @@ from ralph.display.artifact_renderer import (
     render_commit_message,
     render_fix_artifact,
     render_plan_artifact,
+    render_review_artifact,
 )
 
 
@@ -98,6 +99,32 @@ class TestRenderPlanArtifact:
 
 
 class TestRenderAnalysisDecision:
+    def test_renders_analysis_markdown_handoff_when_present(self, tmp_path: Path) -> None:
+        agent_dir = tmp_path / ".agent"
+        agent_dir.mkdir(parents=True)
+        (agent_dir / "DEVELOPMENT_ANALYSIS_DECISION.md").write_text(
+            "# Development Analysis Decision\n\n## Summary\n\nUse the markdown handoff.\n",
+            encoding="utf-8",
+        )
+        artifacts_dir = agent_dir / "artifacts"
+        artifacts_dir.mkdir(parents=True)
+        (artifacts_dir / "development_analysis_decision.json").write_text(
+            json.dumps(
+                {
+                    "decision": "approved",
+                    "reason": "Stale JSON should not win",
+                    "timestamp": "2026-04-19T12:00:00Z",
+                }
+            ),
+            encoding="utf-8",
+        )
+        console = _make_console()
+        render_analysis_decision(tmp_path, "development_analysis", console)
+        output = _console_output(console)
+        assert "ANALYSIS: development_analysis" in output
+        assert "Use the markdown handoff." in output
+        assert "Stale JSON should not win" not in output
+
     def test_renders_analysis_block_when_file_present(self, tmp_path: Path) -> None:
         artifacts_dir = tmp_path / ".agent" / "artifacts"
         artifacts_dir.mkdir(parents=True)
@@ -182,6 +209,21 @@ class TestRenderCommitMessage:
         assert output == ""
 
 
+class TestRenderReviewArtifact:
+    def test_renders_review_markdown_handoff_when_present(self, tmp_path: Path) -> None:
+        agent_dir = tmp_path / ".agent"
+        agent_dir.mkdir(parents=True)
+        (agent_dir / "ISSUES.md").write_text(
+            "# Review Issues\n\n## Summary\n\nReview found gaps.\n",
+            encoding="utf-8",
+        )
+        console = _make_console()
+        render_review_artifact(tmp_path, console)
+        output = _console_output(console)
+        assert "REVIEW ISSUES" in output
+        assert "Review found gaps." in output
+
+
 class TestRenderFixArtifact:
     def test_renders_fix_block_when_issues_file_present(self, tmp_path: Path) -> None:
         artifacts_dir = tmp_path / ".agent" / "artifacts"
@@ -204,6 +246,19 @@ class TestRenderFixArtifact:
         assert "2 issue(s) addressed" in output
         assert "Bug in foo" in output
         assert "Bug in bar" in output
+
+    def test_renders_fix_markdown_handoff_when_present(self, tmp_path: Path) -> None:
+        agent_dir = tmp_path / ".agent"
+        agent_dir.mkdir(parents=True)
+        (agent_dir / "FIX_RESULT.md").write_text(
+            "# Fix Result\n\n## Summary\n\nApplied the fixes.\n",
+            encoding="utf-8",
+        )
+        console = _make_console()
+        render_fix_artifact(tmp_path, console)
+        output = _console_output(console)
+        assert "FIX" in output
+        assert "Applied the fixes." in output
 
     def test_renders_fix_block_when_fix_result_present(self, tmp_path: Path) -> None:
         artifacts_dir = tmp_path / ".agent" / "artifacts"

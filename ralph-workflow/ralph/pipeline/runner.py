@@ -1640,11 +1640,20 @@ def _clear_phase_output_artifacts(workspace: FsWorkspace, phase: str) -> None:
 
 def _phase_output_artifact_paths(phase: str) -> tuple[str, ...]:
     phase_artifacts = {
-        "development": (".agent/artifacts/development_result.json",),
-        "development_analysis": (".agent/artifacts/development_analysis_decision.json",),
-        "review": (".agent/artifacts/issues.json",),
-        "review_analysis": (".agent/artifacts/review_analysis_decision.json",),
-        "fix": (".agent/artifacts/fix_result.json",),
+        "development": (
+            ".agent/artifacts/development_result.json",
+            ".agent/DEVELOPMENT_RESULT.md",
+        ),
+        "development_analysis": (
+            ".agent/artifacts/development_analysis_decision.json",
+            ".agent/DEVELOPMENT_ANALYSIS_DECISION.md",
+        ),
+        "review": (".agent/artifacts/issues.json", ".agent/ISSUES.md"),
+        "review_analysis": (
+            ".agent/artifacts/review_analysis_decision.json",
+            ".agent/REVIEW_ANALYSIS_DECISION.md",
+        ),
+        "fix": (".agent/artifacts/fix_result.json", ".agent/FIX_RESULT.md"),
         "development_commit": (COMMIT_MESSAGE_ARTIFACT,),
         "review_commit": (COMMIT_MESSAGE_ARTIFACT,),
     }

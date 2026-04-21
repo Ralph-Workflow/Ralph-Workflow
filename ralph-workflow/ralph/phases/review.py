@@ -21,7 +21,7 @@ from git import InvalidGitRepositoryError
 from loguru import logger
 
 from ralph.config.enums import AnalysisDecision
-from ralph.display.artifact_renderer import render_analysis_decision
+from ralph.display.artifact_renderer import render_analysis_decision, render_review_artifact
 from ralph.git.operations import GitOperationError, get_head_sha, has_commits_since
 from ralph.phases import PhaseContext, register_handler
 from ralph.phases.analysis import parse_analysis_decision
@@ -132,6 +132,10 @@ def handle_review(effect: Effect, ctx: PhaseContext) -> list[Event]:
                     recoverable=True,
                 )
             ]
+
+        if ctx.console is not None:
+            workspace_root = Path(ctx.workspace.absolute_path("."))
+            render_review_artifact(workspace_root, ctx.console)
 
         head = _current_head_sha(ctx)
         if head is not None:

@@ -10,6 +10,12 @@ from typing import cast
 import pytest
 
 from ralph.mcp.artifacts.file_backend import FileBackend
+from ralph.mcp.artifacts.handoffs import (
+    delete_markdown_handoff,
+    ensure_markdown_handoff_from_artifact,
+    render_markdown_handoff,
+    sync_markdown_handoff,
+)
 from ralph.mcp.tools.artifact import (
     ArtifactHandlerDeps,
     _prepare_artifact_submission,
@@ -605,6 +611,181 @@ def test_handle_submit_artifact_accepts_structured_development_result(tmp_path: 
     artifact_file = tmp_path / ".agent" / "artifacts" / "development_result.json"
     stored = json.loads(artifact_file.read_text(encoding="utf-8"))
     assert stored["content"]["status"] == "completed"
+    assert (tmp_path / ".agent" / "DEVELOPMENT_RESULT.md").read_text(encoding="utf-8").startswith(
+        "# Development Result\n"
+    )
+
+
+def test_handle_submit_artifact_mirrors_issues_to_markdown_handoff(tmp_path: Path) -> None:
+    result = handle_submit_artifact(
+        MockSession(drain="review"),
+        MockWorkspace(tmp_path),
+        {
+            "artifact_type": "issues",
+            "content": _content(
+                {
+                    "status": "issues_found",
+                    "summary": "Review found gaps.",
+                    "issues": [
+                        {
+                            "path": "ralph/pipeline/runner.py",
+                            "severity": "high",
+                            "summary": "Need better handoff visibility.",
+                        }
+                    ],
+                    "what_came_up_short": ["User cannot see review findings."],
+                    "how_to_fix": ["Mirror issues.json to ISSUES.md."],
+                }
+            ),
+        },
+    )
+
+    assert result.is_error is False
+    issues_md = (tmp_path / ".agent" / "ISSUES.md").read_text(encoding="utf-8")
+    assert "# Review Issues" in issues_md
+    assert "Need better handoff visibility." in issues_md
+    assert "Mirror issues.json to ISSUES.md." in issues_md
+
+
+def test_handle_submit_artifact_mirrors_fix_result_to_markdown_handoff(tmp_path: Path) -> None:
+    result = handle_submit_artifact(
+        MockSession(drain="fix"),
+        MockWorkspace(tmp_path),
+        {
+            "artifact_type": "fix_result",
+            "content": _content(
+                {
+                    "summary": "Applied the reviewer fixes.",
+                    "files_changed": "- ralph/prompts/materialize.py",
+                    "next_steps": "Run review again.",
+                }
+            ),
+        },
+    )
+
+    assert result.is_error is False
+    fix_md = (tmp_path / ".agent" / "FIX_RESULT.md").read_text(encoding="utf-8")
+    assert "# Fix Result" in fix_md
+    assert "Applied the reviewer fixes." in fix_md
+    assert "Run review again." in fix_md
+
+
+def test_handle_submit_artifact_mirrors_analysis_decision_to_markdown_handoff(
+    tmp_path: Path,
+) -> None:
+    result = handle_submit_artifact(
+        MockSession(drain="development_analysis"),
+        MockWorkspace(tmp_path),
+        {
+            "artifact_type": "analysis_decision",
+            "content": _content(
+                {
+                    "status": "request_changes",
+                    "summary": "Implementation needs another pass.",
+                    "what_came_up_short": ["The developer cannot see the analysis feedback."],
+                    "how_to_fix": ["Mirror the analysis decision into Markdown."],
+                }
+            ),
+        },
+    )
+
+    assert result.is_error is False
+    decision_md = (tmp_path / ".agent" / "DEVELOPMENT_ANALYSIS_DECISION.md").read_text(
+        encoding="utf-8"
+    )
+    assert "# Development Analysis Decision" in decision_md
+    assert "Implementation needs another pass." in decision_md
+    assert "Mirror the analysis decision into Markdown." in decision_md
+
+
+def test_render_markdown_handoff_formats_review_issues_for_agents_and_users() -> None:
+    markdown = render_markdown_handoff(
+        "issues",
+        {
+            "status": "issues_found",
+            "summary": "Review found gaps.",
+            "issues": [
+                {
+                    "path": "ralph/pipeline/runner.py",
+                    "severity": "high",
+                    "summary": "Need better handoff visibility.",
+                }
+            ],
+            "what_came_up_short": ["Users cannot see review findings."],
+            "how_to_fix": ["Mirror issues.json to ISSUES.md."],
+        },
+    )
+
+    assert markdown.startswith("# Review Issues\n")
+    assert "[high] Need better handoff visibility. (`ralph/pipeline/runner.py`)" in markdown
+    assert "## What Came Up Short" in markdown
+    assert "## How To Fix" in markdown
+
+
+def test_sync_and_delete_markdown_handoff_use_shared_contract_with_injected_backend() -> None:
+    backend = MemoryBackend()
+    workspace_root = Path("/virtual")
+
+    relative_path = sync_markdown_handoff(
+        workspace_root,
+        "fix_result",
+        {
+            "summary": "Applied the reviewer fixes.",
+            "files_changed": "- ralph/prompts/materialize.py",
+            "next_steps": "Run review again.",
+        },
+        backend=backend,
+    )
+
+    assert relative_path == ".agent/FIX_RESULT.md"
+    expected = (
+        "# Fix Result\n"
+        "\n"
+        "## Summary\n"
+        "\n"
+        "Applied the reviewer fixes.\n"
+        "\n"
+        "## Files Changed\n"
+        "\n"
+        "- ralph/prompts/materialize.py\n"
+        "\n"
+        "## Next Steps\n"
+        "\n"
+        "Run review again.\n"
+    )
+    assert backend.read_text(Path("/virtual/.agent/FIX_RESULT.md")) == expected
+
+    delete_markdown_handoff(workspace_root, "fix_result", backend=backend)
+
+    assert backend.exists(Path("/virtual/.agent/FIX_RESULT.md")) is False
+
+
+def test_ensure_markdown_handoff_from_artifact_materializes_analysis_feedback() -> None:
+    backend = MemoryBackend()
+    workspace_root = Path("/virtual")
+
+    created_path = ensure_markdown_handoff_from_artifact(
+        workspace_root,
+        "review_analysis_decision",
+        json.dumps(
+            {
+                "type": "review_analysis_decision",
+                "content": {
+                    "status": "request_changes",
+                    "summary": "Fixes are required.",
+                    "what_came_up_short": ["The fixer cannot see review-analysis feedback."],
+                    "how_to_fix": ["Read the review analysis handoff first."],
+                },
+            }
+        ),
+        backend=backend,
+    )
+
+    assert created_path == "/virtual/.agent/REVIEW_ANALYSIS_DECISION.md"
+    rendered = backend.read_text(Path(created_path))
+    assert rendered.startswith("# Review Analysis Decision\n")
+    assert "Fixes are required." in rendered
+    assert "Read the review analysis handoff first." in rendered
 
 
 def _full_plan_payload() -> dict[str, object]:

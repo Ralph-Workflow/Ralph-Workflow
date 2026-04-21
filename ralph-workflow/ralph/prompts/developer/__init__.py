@@ -22,7 +22,9 @@ if TYPE_CHECKING:
 class DeveloperPromptInputs:
     prompt_content: str | None
     plan_content: str | None
+    analysis_feedback_content: str | None = None
     plan_path: str = ""
+    analysis_feedback_path: str = ""
     prompt_name_prefix: str = "development"
 
 
@@ -50,17 +52,25 @@ def prompt_developer_iteration_xml_with_context(
             workspace.absolute_path(".agent/CURRENT_PROMPT.md"),
         )
     )
+    payload_values = {
+        "PLAN": inputs.plan_content or "(no plan available)",
+        "ANALYSIS_FEEDBACK": inputs.analysis_feedback_content or "",
+    }
+    base_vars.update(
+        _prompt_payload_variables(
+            payload_values,
+            workspace=workspace,
+            prompt_name_prefix=inputs.prompt_name_prefix,
+        )
+    )
     if inputs.plan_path:
         base_vars.update({"PLAN": "", "PLAN_PATH": inputs.plan_path})
-    else:
+    if inputs.analysis_feedback_path:
         base_vars.update(
-            _prompt_payload_variables(
-                {
-                    "PLAN": inputs.plan_content or "(no plan available)",
-                },
-                workspace=workspace,
-                prompt_name_prefix=inputs.prompt_name_prefix,
-            )
+            {
+                "ANALYSIS_FEEDBACK": "",
+                "ANALYSIS_FEEDBACK_PATH": inputs.analysis_feedback_path,
+            }
         )
 
     capability_vars = capability_template_variables(
@@ -81,11 +91,17 @@ def prompt_developer_iteration_xml_with_context(
                 **capability_vars,
                 "PROMPT": inputs.prompt_content or "No requirements provided",
                 "PLAN": inputs.plan_content or "(no plan available)",
+                "ANALYSIS_FEEDBACK": inputs.analysis_feedback_content or "",
                 "PROMPT_PATH": workspace.absolute_path(".agent/CURRENT_PROMPT.md"),
                 "PLAN_PATH": inputs.plan_path
                 or str(
                     Path(workspace.absolute_path(".agent/tmp/prompt_payloads"))
                     / f"{inputs.prompt_name_prefix}_plan.txt"
+                ),
+                "ANALYSIS_FEEDBACK_PATH": inputs.analysis_feedback_path
+                or str(
+                    Path(workspace.absolute_path(".agent/tmp/prompt_payloads"))
+                    / f"{inputs.prompt_name_prefix}_analysis_feedback.txt"
                 ),
             },
         )

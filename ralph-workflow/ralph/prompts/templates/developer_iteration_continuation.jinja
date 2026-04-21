@@ -10,6 +10,9 @@ ORIGINAL REQUEST:
 IMPLEMENTATION PLAN:
 {{ render_payload_section('IMPLEMENTATION PLAN', PLAN|default('(no plan available)'), PLAN_PATH) }}
 
+ANALYSIS FEEDBACK:
+{{ render_payload_section('ANALYSIS FEEDBACK', ANALYSIS_FEEDBACK|default(''), ANALYSIS_FEEDBACK_PATH) }}
+
 If you need to revise a saved result artifact during this continuation, edit `.agent/artifacts/development_result.json` and resubmit with `content_path` using this exact call:
 `{{SUBMIT_ARTIFACT_TOOL_NAME}}({"artifact_type":"development_result","content_path":".agent/artifacts/development_result.json"})`
 {{SUBMIT_ARTIFACT_BARE_HINT}}

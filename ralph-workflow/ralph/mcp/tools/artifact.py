@@ -20,6 +20,7 @@ from ralph.mcp.artifacts.development_result import (
     normalize_development_result_content,
 )
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
+from ralph.mcp.artifacts.handoffs import delete_markdown_handoff, sync_markdown_handoff
 from ralph.mcp.artifacts.plan import (
     PLAN_ARTIFACT_TYPE,
     PLAN_SECTION_NAMES,
@@ -33,7 +34,6 @@ from ralph.mcp.artifacts.plan import (
     normalize_plan_artifact_content,
     save_plan_draft,
     validate_plan_section,
-    write_plan_markdown,
 )
 from ralph.mcp.artifacts.store import (
     DEFAULT_ARTIFACT_PERSISTENCE,
@@ -197,8 +197,8 @@ def handle_finalize_plan(
 
     try:
         # Keep the structured JSON artifact for Ralph's validation/routing, but
-        # always mirror it to .agent/PLAN.md because downstream agents and users
-        # consume the Markdown handoff rather than plan.json directly.
+        # always mirror agent/user-consumed artifacts into Markdown handoffs so
+        # downstream phases never need to read raw JSON directly.
         submit_artifact(
             artifact_dir,
             name=PLAN_ARTIFACT_TYPE,
@@ -209,8 +209,9 @@ def handle_finalize_plan(
                 persistence=resolved_deps.artifact_persistence,
             ),
         )
-        write_plan_markdown(
+        sync_markdown_handoff(
             _workspace_root(workspace),
+            PLAN_ARTIFACT_TYPE,
             normalized,
             backend=resolved_deps.backend,
         )
@@ -474,11 +475,12 @@ def _rollback_submit_side_effect(
         delete_commit_message_artifacts(_workspace_root(workspace), backend=deps.backend)
         with suppress(Exception):
             delete_artifact(artifact_dir, artifact_type, backend=deps.backend)
-    if artifact_type == PLAN_ARTIFACT_TYPE:
-        with suppress(Exception):
-            deps.backend.unlink(_workspace_root(workspace) / ".agent" / "PLAN.md", missing_ok=True)
-        with suppress(Exception):
-            delete_artifact(artifact_dir, artifact_type, backend=deps.backend)
+        return
+
+    with suppress(Exception):
+        delete_markdown_handoff(_workspace_root(workspace), artifact_type, backend=deps.backend)
+    with suppress(Exception):
+        delete_artifact(artifact_dir, artifact_type, backend=deps.backend)
 
 
 def _run_post_submit_side_effect(
@@ -489,12 +491,13 @@ def _run_post_submit_side_effect(
     *,
     deps: ArtifactHandlerDeps,
 ) -> None:
+    sync_markdown_handoff(
+        _workspace_root(workspace),
+        artifact_type,
+        parsed_content,
+        backend=deps.backend,
+    )
     if artifact_type == PLAN_ARTIFACT_TYPE:
-        write_plan_markdown(
-            _workspace_root(workspace),
-            parsed_content,
-            backend=deps.backend,
-        )
         # Atomic full-plan submission supersedes any partial draft.
         delete_plan_draft(artifact_dir, backend=deps.backend)
 

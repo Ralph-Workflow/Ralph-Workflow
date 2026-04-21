@@ -63,6 +63,10 @@ def test_capture_file_system_state_uses_default_tracked_files(tmp_path: Path) ->
     assert state.files[Path("PROMPT.md")].exists is True
     assert state.files[Path(".agent/PLAN.md")].exists is True
     assert state.files[Path(".agent/ISSUES.md")].exists is False
+    assert state.files[Path(".agent/DEVELOPMENT_RESULT.md")].exists is False
+    assert state.files[Path(".agent/FIX_RESULT.md")].exists is False
+    assert state.files[Path(".agent/DEVELOPMENT_ANALYSIS_DECISION.md")].exists is False
+    assert state.files[Path(".agent/REVIEW_ANALYSIS_DECISION.md")].exists is False
 
 
 def test_validate_file_system_state_reports_missing_changed_and_unexpected_files(

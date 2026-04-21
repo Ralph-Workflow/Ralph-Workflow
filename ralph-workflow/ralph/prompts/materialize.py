@@ -9,7 +9,10 @@ from typing import TYPE_CHECKING, cast
 from git import Repo
 
 from ralph.config.enums import AgentTransport
-from ralph.mcp.artifacts.plan import render_plan_markdown
+from ralph.mcp.artifacts.handoffs import (
+    ensure_markdown_handoff_from_artifact,
+    handoff_path_for_artifact,
+)
 from ralph.mcp.tools.names import SUBMIT_ARTIFACT_TOOL, claude_tool_name_prefix
 from ralph.prompts.commit import CommitPromptPayloadConfig, prompt_commit_message
 from ralph.prompts.debug_dump import dump_rendered_prompt, prompt_dump_path
@@ -24,7 +27,7 @@ from ralph.prompts.template_engine import render_template
 from ralph.prompts.types import SessionCapabilities, capability_template_variables
 
 if TYPE_CHECKING:
-    from pathlib import Path
+    from collections.abc import Callable
 
     from ralph.pipeline.work_units import WorkUnit
     from ralph.policy.models import PipelinePolicy
@@ -82,12 +85,18 @@ def _render_prompt_for_phase(
             template_name=template_name,
         )
     if phase == "development":
+        analysis_feedback_content, analysis_feedback_path = _resolve_loopback_analysis_feedback(
+            workspace,
+            phase,
+        )
         return prompt_developer_iteration_xml_with_context(
             context=context,
             inputs=DeveloperPromptInputs(
                 prompt_content=prompt_content,
                 plan_content=plan_content,
+                analysis_feedback_content=analysis_feedback_content,
                 plan_path=plan_path,
+                analysis_feedback_path=analysis_feedback_path,
                 prompt_name_prefix=phase,
             ),
             workspace=workspace,
@@ -97,6 +106,13 @@ def _render_prompt_for_phase(
     if phase in {"review", "fix", "development_analysis", "review_analysis"}:
         template = context.registry.get_template(template_name)
         diff_content = _git_diff(workspace_root)
+        latest_artifact_content, latest_artifact_path = _latest_artifact_content(workspace, phase)
+        issues_content, issues_path = _resolve_issues_content(workspace)
+        fix_result_content, fix_result_path = _resolve_fix_result_content(workspace)
+        analysis_feedback_content, analysis_feedback_path = _resolve_loopback_analysis_feedback(
+            workspace,
+            phase,
+        )
         variables = _phase_payload_variables(
             phase=phase,
             workspace_root=workspace_root,
@@ -104,13 +120,22 @@ def _render_prompt_for_phase(
                 "PLAN": "" if plan_path else (plan_content or "(no plan available)"),
                 "DIFF": diff_content,
                 "CHANGES": diff_content,
-                "LATEST_ARTIFACT": _latest_artifact_content(workspace, phase),
-                "ISSUES": _resolve_issues_content(workspace),
-                "FIX_RESULT": _resolve_fix_result_content(workspace),
+                "LATEST_ARTIFACT": latest_artifact_content,
+                "ISSUES": issues_content,
+                "FIX_RESULT": fix_result_content,
+                "ANALYSIS_FEEDBACK": analysis_feedback_content,
             },
         )
         if plan_path:
             variables["PLAN_PATH"] = plan_path
+        if latest_artifact_path:
+            variables["LATEST_ARTIFACT_PATH"] = latest_artifact_path
+        if issues_path:
+            variables["ISSUES_PATH"] = issues_path
+        if fix_result_path:
+            variables["FIX_RESULT_PATH"] = fix_result_path
+        if analysis_feedback_path:
+            variables["ANALYSIS_FEEDBACK_PATH"] = analysis_feedback_path
         variables.update(_current_prompt_variables(prompt_content, current_prompt_path))
         return render_template(
             template,
@@ -211,32 +236,60 @@ def _current_prompt_variables(
 
 
 def _resolve_plan_handoff(workspace: Workspace) -> tuple[str | None, str]:
-    """Return the agent-facing plan handoff.
+    """Return the plan handoff users and downstream agents should consume."""
+    return _resolve_agent_handoff(
+        workspace,
+        artifact_type="plan",
+        artifact_path=".agent/artifacts/plan.json",
+        fallback_formatter=_format_plan_for_execution,
+    )
 
-    `.agent/artifacts/plan.json` remains Ralph's canonical machine-readable plan
-    artifact, but prompts should point agents at `.agent/PLAN.md` so handoffs stay
-    human-readable and consistent across phase boundaries.
+
+def _resolve_agent_handoff(
+    workspace: Workspace,
+    *,
+    artifact_type: str,
+    artifact_path: str,
+    fallback_formatter: Callable[[str], str] | None = None,
+) -> tuple[str | None, str]:
+    """Return the Markdown handoff for an agent-consumed artifact.
+
+    JSON artifacts are Ralph's machine-readable source of truth; prompts should
+    point agents at mirrored Markdown handoffs whenever one is defined.
     """
-    markdown_path = workspace.absolute_path(".agent/PLAN.md")
-    wrapped_plan = _read_optional(workspace, ".agent/artifacts/plan.json")
-    if wrapped_plan:
-        markdown_plan = _render_plan_markdown_from_artifact(wrapped_plan)
-        if markdown_plan is not None:
-            workspace.write(".agent/PLAN.md", markdown_plan)
-            return markdown_plan, markdown_path
-        return _format_plan_for_execution(wrapped_plan), ""
+    relative_handoff_path = handoff_path_for_artifact(artifact_type)
+    handoff_path = workspace.absolute_path(relative_handoff_path) if relative_handoff_path else ""
 
-    markdown_plan = _read_optional(workspace, ".agent/PLAN.md")
-    if markdown_plan:
-        return markdown_plan, markdown_path
+    artifact_content = _read_optional(workspace, artifact_path)
+    if artifact_content:
+        created_path = ensure_markdown_handoff_from_artifact(
+            Path(workspace.absolute_path(".")),
+            artifact_type,
+            artifact_content,
+        )
+        if created_path is not None:
+            try:
+                markdown = Path(created_path).read_text(encoding="utf-8")
+            except OSError:
+                markdown = None
+            if markdown:
+                return markdown, created_path
+        if fallback_formatter is not None:
+            return fallback_formatter(artifact_content), ""
+
+    if relative_handoff_path:
+        markdown = _read_optional(workspace, relative_handoff_path)
+        if markdown:
+            return markdown, handoff_path
+        if handoff_path:
+            try:
+                markdown = Path(handoff_path).read_text(encoding="utf-8")
+            except OSError:
+                markdown = None
+            if markdown:
+                return markdown, handoff_path
+
     return None, ""
-
-
-def _render_plan_markdown_from_artifact(content: str) -> str | None:
-    plan = _parse_plan_content(content)
-    if plan is None:
-        return None
-    return render_plan_markdown(plan)
 
 
 def _format_plan_for_execution(content: str) -> str:
@@ -386,32 +439,64 @@ def _bullet_lines(items: object, text_key: str) -> list[str]:
     ]
 
 
-def _resolve_issues_content(workspace: Workspace) -> str:
-    for path in (".agent/ISSUES.md", ".agent/artifacts/issues.json"):
-        content = _read_optional(workspace, path)
-        if content:
-            return content
-    return "(no review issues available)"
+def _resolve_issues_content(workspace: Workspace) -> tuple[str, str]:
+    content, path = _resolve_agent_handoff(
+        workspace,
+        artifact_type="issues",
+        artifact_path=".agent/artifacts/issues.json",
+    )
+    return content or "(no review issues available)", path
 
 
-def _resolve_fix_result_content(workspace: Workspace) -> str:
-    content = _read_optional(workspace, ".agent/artifacts/fix_result.json")
-    if content:
-        return content
-    return "(no fix result available)"
+def _resolve_fix_result_content(workspace: Workspace) -> tuple[str, str]:
+    content, path = _resolve_agent_handoff(
+        workspace,
+        artifact_type="fix_result",
+        artifact_path=".agent/artifacts/fix_result.json",
+    )
+    return content or "(no fix result available)", path
 
 
-def _latest_artifact_content(workspace: Workspace, phase: str) -> str:
-    artifact_paths = {
-        "development_analysis": ".agent/artifacts/development_result.json",
-        "review_analysis": ".agent/artifacts/issues.json",
-        "fix": ".agent/artifacts/issues.json",
-        "review": ".agent/artifacts/development_result.json",
+def _resolve_loopback_analysis_feedback(workspace: Workspace, phase: str) -> tuple[str, str]:
+    sources = {
+        "development": (
+            "development_analysis_decision",
+            ".agent/artifacts/development_analysis_decision.json",
+        ),
+        "fix": (
+            "review_analysis_decision",
+            ".agent/artifacts/review_analysis_decision.json",
+        ),
     }
-    path = artifact_paths.get(phase)
-    if path is None:
-        return ""
-    return _read_optional(workspace, path) or ""
+    source = sources.get(phase)
+    if source is None:
+        return "", ""
+    artifact_type, artifact_path = source
+    content, path = _resolve_agent_handoff(
+        workspace,
+        artifact_type=artifact_type,
+        artifact_path=artifact_path,
+    )
+    return content or "", path
+
+
+def _latest_artifact_content(workspace: Workspace, phase: str) -> tuple[str, str]:
+    handoff_sources = {
+        "development_analysis": ("development_result", ".agent/artifacts/development_result.json"),
+        "review_analysis": ("issues", ".agent/artifacts/issues.json"),
+        "fix": ("issues", ".agent/artifacts/issues.json"),
+        "review": ("development_result", ".agent/artifacts/development_result.json"),
+    }
+    source = handoff_sources.get(phase)
+    if source is None:
+        return "", ""
+    artifact_type, artifact_path = source
+    content, path = _resolve_agent_handoff(
+        workspace,
+        artifact_type=artifact_type,
+        artifact_path=artifact_path,
+    )
+    return content or "", path
 
 
 def _git_diff(workspace_root: Path) -> str:
