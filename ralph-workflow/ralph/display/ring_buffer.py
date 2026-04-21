@@ -52,6 +52,17 @@ class RingBuffer:
                 return []
             return items[-n:]
 
+    def consume_drop_delta(self) -> int:
+        """Return and zero the dropped_count atomically.
+
+        Each call returns how many items were dropped since the last call
+        (or since construction). Thread-safe.
+        """
+        with self._lock:
+            delta = self._dropped_count
+            self._dropped_count = 0
+            return delta
+
     @property
     def dropped_count(self) -> int:
         with self._lock:

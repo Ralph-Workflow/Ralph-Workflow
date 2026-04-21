@@ -80,11 +80,14 @@ def test_emoji_boundary_safety() -> None:
     assert cell_len("".join(emoji_chars)) <= _SOFT_LIMIT
 
 
-def test_overflow_ref_none_uses_fallback() -> None:
+def test_overflow_ref_none_produces_truncated_without_path() -> None:
+    # When no overflow_ref is provided, the condenser emits (truncated) without a path.
+    # The caller (PlainLogRenderer) is responsible for surfacing the ref via condensed_ref.
     text = "a" * (_SOFT_LIMIT + 100)
     visible, condensed = condense_content(text, soft_limit=_SOFT_LIMIT, overflow_ref=None)
     assert condensed is True
-    assert "raw unavailable" in visible
+    assert "(truncated)" in visible
+    assert "raw unavailable" not in visible
 
 
 def test_exactly_at_soft_limit_passthrough() -> None:

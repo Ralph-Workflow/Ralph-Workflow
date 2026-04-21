@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 from typing import TYPE_CHECKING, cast
 
 from ralph.agents.parsers import (
@@ -81,6 +82,7 @@ class ActivityRouter:
         parser_factory: Callable[[ActivityProvider], AgentParser] | None = None,
         buffer_factory: Callable[[], RingBuffer] | None = None,
         on_event: Callable[[str, ActivityEventKind, str | None, str | None], None] | None = None,
+        raw_overflow_callback: Callable[[str, str], None] | None = None,
     ) -> None:
         self._parser_factory = parser_factory or _default_parser_factory
         self._buffer_factory = buffer_factory or (
@@ -89,6 +91,7 @@ class ActivityRouter:
         self._parsers: dict[str, AgentParser] = {}
         self._buffers: dict[str, RingBuffer] = {}
         self._on_event = on_event
+        self._raw_overflow_callback = raw_overflow_callback
 
     def get_buffer(self, unit_id: str) -> RingBuffer:
         if unit_id not in self._buffers:
@@ -128,6 +131,9 @@ class ActivityRouter:
                 if self._on_event is not None:
                     self._on_event(unit_id, kind, event.content, raw_reference)
         except Exception as exc:
+            if self._raw_overflow_callback is not None:
+                with contextlib.suppress(Exception):
+                    self._raw_overflow_callback(unit_id, raw_line)
             error_event = make_event(
                 provider=provider,
                 kind=ActivityEventKind.ERROR,

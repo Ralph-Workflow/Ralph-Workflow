@@ -30,6 +30,11 @@ class RawOverflowLog:
         self._first_write = True
         self._disabled = False
 
+    def disable(self) -> None:
+        """Permanently disable this log so future appends are no-ops."""
+        with self._lock:
+            self._disabled = True
+
     def append(self, line: str) -> None:
         """Write *line* to the overflow log. No-op on any I/O error."""
         with self._lock:

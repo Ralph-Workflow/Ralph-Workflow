@@ -145,38 +145,80 @@ See `docs/agents/parallelization.md` for the full guide.
 Ralph emits every agent output line as a structured plain-text entry in the following format:
 
 ```
-<ISO-TS> <LEVEL>  [<tag>][<unit>] <content>
+<ISO-TS> <LEVEL> <CAT> [<tag>][<unit>] <content>
 ```
+
+**Levels** indicate severity and importance:
+
+| Level | Meaning |
+|-------|---------|
+| `INFO` | Routine update or progress |
+| `SUCCESS` | Phase or pipeline completed successfully |
+| `WARN` | Non-fatal issue or degraded state |
+| `ERROR` | Fatal error or malformed input |
+| `MILESTONE` | Major phase transition (planning, development, review, fix) |
+
+**Categories** (`CAT`) group tags into two buckets:
+
+| Category | Meaning |
+|----------|---------|
+| `META` | Workflow metadata: phase, plan, activity, worker, result, etc. |
+| `CONT` | Agent-produced content: text, thinking, tool calls, errors |
 
 **Tags** indicate the source and type of the line:
 
-| Tag | Meaning |
-|-----|---------|
-| `phase` | Workflow phase transition (planning, development, review, …) |
-| `plan` | Plan summary or scope |
-| `plan-scope` | Plan scope items |
-| `plan-steps` | Step progress |
-| `activity` | Agent activity metadata (tool, path, workdir) |
-| `activity-line` | Last raw activity line from an agent |
-| `analysis` | Phase analysis and decision |
-| `worker` | Parallel worker status update |
-| `result` | Pipeline completion result |
-| `pr` | Pull request URL |
-| `artifact` | Artifact kind/summary |
-| `content` | Agent text output (parsed from NDJSON) |
-| `thinking` | Agent thinking/reasoning content (Claude extended thinking) |
-| `tool` | Tool invocation (tool name) |
-| `tool-result` | Tool result content |
-| `error` | Error or malformed input |
-| `progress` | Progress update |
-| `status-content` | Status or lifecycle event from the agent |
+| Tag | Category | Meaning |
+|-----|----------|---------|
+| `phase` | META | Workflow phase transition |
+| `plan` | META | Plan summary or scope |
+| `plan-scope` | META | Plan scope items |
+| `plan-steps` | META | Step progress |
+| `activity` | META | Agent activity metadata (tool, path, workdir) |
+| `activity-line` | META | Last raw activity line from an agent |
+| `analysis` | META | Phase analysis and decision |
+| `worker` | META | Parallel worker status update |
+| `result` | META | Pipeline completion result |
+| `pr` | META | Pull request URL |
+| `artifact` | META | Artifact kind/summary |
+| `progress` | META | Progress update |
+| `content` | CONT | Agent text output (one-shot, non-streaming) |
+| `content-start` | CONT | Start of a streaming text block |
+| `content-continue` | CONT | Continuation line in a streaming text block |
+| `content-end` | CONT | End of a streaming text block (with headline summary) |
+| `thinking` | CONT | Agent thinking/reasoning (one-shot) |
+| `thinking-start` | CONT | Start of a streaming thinking block |
+| `thinking-continue` | CONT | Continuation of a streaming thinking block |
+| `thinking-end` | CONT | End of a streaming thinking block |
+| `tool` | CONT | Tool invocation (tool name) |
+| `tool-result` | CONT | Tool result content |
+| `error` | CONT | Error or malformed input |
+| `status-content` | CONT | Status or lifecycle event from the agent |
 
-**Levels** are `INFO`, `SUCCESS`, `WARN`, or `ERROR`.
+**Streaming blocks**: consecutive `text` or `thinking` activity lines from the same worker are grouped into `start`/`continue`/`end` sequences so progressive output feels coherent. When a different kind or a lifecycle event arrives, the open block is automatically closed with a `content-end` (or `thinking-end`) line whose content is a one-line headline summary of the accumulated block.
 
 **Oversized content** is condensed to a head+tail excerpt with a pointer:
 
 ```
-2026-04-20T12:34:56Z INFO [content][dev-1] AAAAAAA … [+4200 chars, see .agent/raw/dev-1.log] … ZZZZZZZ
+2026-04-20T12:34:56Z INFO CONT [content][dev-1] AAAAAAA … (+4200 chars, see .agent/raw/dev-1.log) … ZZZZZZZ
 ```
 
-The full raw NDJSON output for each work unit is always written to `.agent/raw/<unit-id>.log` so you can inspect the complete output when needed.
+When a content block exceeds the soft limit and is condensed, the full text is preserved to `.agent/raw/<unit-id>.log` so you can inspect the complete output. Malformed input lines that cannot be parsed are also preserved there for diagnosis. Short, non-condensed output is not written to the raw log.
+
+## Long-content display
+
+By default, oversized agent output is condensed using a deterministic head+tail excerpt (see above). For an additional quick-context layer on very large blocks, set:
+
+```bash
+export RALPH_LONG_CONTENT_SUMMARY=1
+```
+
+When this flag is set and a content block exceeds 4000 display cells, Ralph prepends a `↳ summary:` line before the condensed excerpt:
+
+```
+2026-04-20T12:34:56Z INFO CONT [content-start][dev-1] ↳ summary: My first non-empty headline sentence
+2026-04-20T12:34:56Z INFO CONT [content-start][dev-1] First 400 chars… (+4200 chars, see .agent/raw/dev-1.log) …last chars
+```
+
+The summary is extracted deterministically from the first non-empty line of the already-AI-produced content (markdown heading and quote prefixes stripped, truncated to 120 characters). No additional AI call is made. The condensed head+tail view remains the trusted default; the summary is an additive layer for quick orientation on unusually large blocks.
+
+Accepted values for `RALPH_LONG_CONTENT_SUMMARY`: `1`, `true`, `yes`. Any other value (including unset) disables the summary layer.

@@ -98,7 +98,9 @@ def test_emit_snapshot_for_development_outputs_one_line() -> None:
 
     renderer.emit_snapshot(_make_snapshot(phase="development"))
 
-    assert stream.getvalue().splitlines() == ["2026-04-18T12:00:00+00:00 INFO [phase] development"]
+    assert stream.getvalue().splitlines() == [
+        "2026-04-18T12:00:00+00:00 MILESTONE META [phase] ◆ development"
+    ]
 
 
 def test_emit_snapshot_deduplicates_identical_snapshots() -> None:
@@ -108,7 +110,9 @@ def test_emit_snapshot_deduplicates_identical_snapshots() -> None:
     renderer.emit_snapshot(snapshot)
     renderer.emit_snapshot(snapshot)
 
-    assert stream.getvalue().splitlines() == ["2026-04-18T12:00:00+00:00 INFO [phase] development"]
+    assert stream.getvalue().splitlines() == [
+        "2026-04-18T12:00:00+00:00 MILESTONE META [phase] ◆ development"
+    ]
 
 
 def test_emit_log_line_strips_markup_for_copy_paste() -> None:
@@ -117,7 +121,7 @@ def test_emit_log_line_strips_markup_for_copy_paste() -> None:
     renderer.emit_log_line("worker-1", "[bold magenta]hello[/bold magenta]")
 
     assert stream.getvalue().splitlines() == [
-        "2026-04-18T12:00:00+00:00 INFO [content][worker-1] hello"
+        "2026-04-18T12:00:00+00:00 INFO CONT [content][worker-1] hello"
     ]
 
 

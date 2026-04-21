@@ -8,6 +8,7 @@ from ralph.display.artifact_renderer import (
     render_analysis_decision,
     render_commit_message,
     render_fix_artifact,
+    render_missing_plan_hint,
     render_plan_artifact,
 )
 from ralph.display.phase_banner import (
@@ -29,6 +30,7 @@ __all__ = [
     "render_analysis_decision",
     "render_commit_message",
     "render_fix_artifact",
+    "render_missing_plan_hint",
     "render_plan_artifact",
     "show_agents",
     "show_config",

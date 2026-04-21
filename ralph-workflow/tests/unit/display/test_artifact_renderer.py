@@ -128,22 +128,22 @@ class TestRenderPlanArtifact:
         assert "Fresh plan context" in output
         assert "STALE PLAN" not in output
 
-    def test_no_output_when_file_absent(self, tmp_path: Path) -> None:
+    def test_emits_hint_when_file_absent(self, tmp_path: Path) -> None:
         console = _make_console()
         render_plan_artifact(tmp_path, console)
         output = _console_output(console)
-        # Missing file → no output per spec
-        assert output == ""
+        assert "[plan]" in output
+        assert "no plan artifact on disk" in output
 
-    def test_no_output_for_malformed_json(self, tmp_path: Path) -> None:
+    def test_emits_hint_for_malformed_json(self, tmp_path: Path) -> None:
         artifacts_dir = tmp_path / ".agent" / "artifacts"
         artifacts_dir.mkdir(parents=True)
         (artifacts_dir / "plan.json").write_text("not valid json{", encoding="utf-8")
         console = _make_console()
         render_plan_artifact(tmp_path, console)
         output = _console_output(console)
-        # Malformed → no output per spec (defensive)
-        assert output == ""
+        assert "[plan]" in output
+        assert "no plan artifact on disk" in output
 
 
 class TestRenderAnalysisDecision:
@@ -202,7 +202,6 @@ class TestRenderAnalysisDecision:
         console = _make_console()
         render_analysis_decision(tmp_path, "nonexistent_phase", console)
         output = _console_output(console)
-        # Missing file → no output per spec
         assert output == ""
 
     def test_no_output_for_malformed_json(self, tmp_path: Path) -> None:
@@ -215,7 +214,6 @@ class TestRenderAnalysisDecision:
         console = _make_console()
         render_analysis_decision(tmp_path, "review_analysis", console)
         output = _console_output(console)
-        # Malformed → no output per spec (defensive)
         assert output == ""
 
 
@@ -248,7 +246,6 @@ class TestRenderCommitMessage:
         console = _make_console()
         render_commit_message(tmp_path, console)
         output = _console_output(console)
-        # Missing file → no output per spec
         assert output == ""
 
     def test_no_output_for_malformed_json(self, tmp_path: Path) -> None:
@@ -258,7 +255,6 @@ class TestRenderCommitMessage:
         console = _make_console()
         render_commit_message(tmp_path, console)
         output = _console_output(console)
-        # Malformed → no output per spec (defensive)
         assert output == ""
 
 
@@ -383,7 +379,6 @@ class TestRenderFixArtifact:
         console = _make_console()
         render_fix_artifact(tmp_path, console)
         output = _console_output(console)
-        # No file → no output per spec
         assert output == ""
 
     def test_no_output_for_malformed_json(self, tmp_path: Path) -> None:
@@ -393,5 +388,4 @@ class TestRenderFixArtifact:
         console = _make_console()
         render_fix_artifact(tmp_path, console)
         output = _console_output(console)
-        # Malformed → no output per spec (defensive)
         assert output == ""

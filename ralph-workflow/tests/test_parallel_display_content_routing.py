@@ -32,7 +32,9 @@ def test_push_text_line_emits_content_tag(tmp_path: Path) -> None:
         provider=ActivityProvider.CLAUDE,
     )
     out = buf.getvalue()
-    assert "[content][u]" in out
+    # Streaming blocks: first text event opens [content-start]
+    assert "[content" in out
+    assert "[u]" in out
     assert "hello world" in out
 
 
@@ -54,7 +56,9 @@ def test_thinking_delta_emits_thinking_tag(tmp_path: Path) -> None:
     for line in lines:
         pd.activity_router.push_raw_line("u", line, provider=ActivityProvider.CLAUDE)
     out = buf.getvalue()
-    assert "[thinking][u]" in out
+    # Streaming blocks: first thinking event opens [thinking-start]
+    assert "[thinking" in out
+    assert "[u]" in out
     assert "deep thought" in out
 
 
@@ -80,7 +84,8 @@ def test_very_long_line_is_condensed(tmp_path: Path) -> None:
     )
 
     out = buf.getvalue()
-    assert "[content][u]" in out
+    # Streaming blocks use [content-start]/[content-continue]/[content-end] tags
+    assert "[content" in out
     # Content should be condensed (not all characters present)
     assert len(out) < _LONG_TEXT_LEN
     assert "…" in out or "truncated" in out or "raw unavailable" in out
@@ -145,13 +150,15 @@ def test_raw_log_written_via_subprocess_executor(tmp_path: Path) -> None:
 
 
 def test_condensed_ref_appears_in_output_with_overflow_root(tmp_path: Path) -> None:
-    """When push_raw_line has raw_reference, condensed output shows the file path."""
+    """When content is condensed, overflow file path appears in the output."""
     pd, buf = _make_display(tmp_path, width=10000)
 
-    long_text = "B" * _LONG_TEXT_LEN
+    # 500 chars: above soft_limit(400), below hard_limit(4000)
+    # condenser produces head + " … (truncated, see .agent/raw/u.log)"
+    medium_text = "B" * 500
     raw_json = json.dumps({
         "type": "content_block_delta",
-        "delta": {"type": "text_delta", "text": long_text},
+        "delta": {"type": "text_delta", "text": medium_text},
     })
     pd.activity_router.push_raw_line(
         "u",
@@ -159,13 +166,7 @@ def test_condensed_ref_appears_in_output_with_overflow_root(tmp_path: Path) -> N
         provider=ActivityProvider.CLAUDE,
         raw_reference=".agent/raw/u.log",
     )
-    pd.activity_router.push_raw_line(
-        "u",
-        '{"type":"message_stop"}',
-        provider=ActivityProvider.CLAUDE,
-        raw_reference=".agent/raw/u.log",
-    )
 
     out = buf.getvalue()
-    assert "[content][u]" in out
+    assert "[content" in out
     assert ".agent/raw/u.log" in out
