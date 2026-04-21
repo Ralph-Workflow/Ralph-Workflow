@@ -137,10 +137,7 @@ async def test_spawn_async_captures_output() -> None:
 
 def test_shutdown_all_kills_multiple_children() -> None:
     pm = _make_pm()
-    handles = [
-        pm.spawn([PYTHON, "-c", "import time; time.sleep(30)"])
-        for _ in range(3)
-    ]
+    handles = [pm.spawn([PYTHON, "-c", "import time; time.sleep(30)"]) for _ in range(3)]
     pids = [h.record.pid for h in handles]
 
     pm.shutdown_all(grace_period_s=0)

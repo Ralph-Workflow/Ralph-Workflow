@@ -74,10 +74,12 @@ def test_very_long_line_is_condensed(tmp_path: Path) -> None:
     pd, buf = _make_display(tmp_path, width=10000)
 
     long_text = "A" * _LONG_TEXT_LEN
-    raw_json = json.dumps({
-        "type": "content_block_delta",
-        "delta": {"type": "text_delta", "text": long_text},
-    })
+    raw_json = json.dumps(
+        {
+            "type": "content_block_delta",
+            "delta": {"type": "text_delta", "text": long_text},
+        }
+    )
     pd.activity_router.push_raw_line("u", raw_json, provider=ActivityProvider.CLAUDE)
     pd.activity_router.push_raw_line(
         "u", '{"type":"message_stop"}', provider=ActivityProvider.CLAUDE
@@ -115,9 +117,7 @@ def test_raw_log_written_via_subprocess_executor(tmp_path: Path) -> None:
 
     received: list[str] = []
 
-    router = ActivityRouter(
-        on_event=lambda uid, kind, content, ref: received.append(content or "")
-    )
+    router = ActivityRouter(on_event=lambda uid, kind, content, ref: received.append(content or ""))
 
     executor = SubprocessAgentExecutor(
         [
@@ -156,10 +156,12 @@ def test_condensed_ref_appears_in_output_with_overflow_root(tmp_path: Path) -> N
     # 500 chars: above soft_limit(400), below hard_limit(4000)
     # condenser produces head + " … (truncated, see .agent/raw/u.log)"
     medium_text = "B" * 500
-    raw_json = json.dumps({
-        "type": "content_block_delta",
-        "delta": {"type": "text_delta", "text": medium_text},
-    })
+    raw_json = json.dumps(
+        {
+            "type": "content_block_delta",
+            "delta": {"type": "text_delta", "text": medium_text},
+        }
+    )
     pd.activity_router.push_raw_line(
         "u",
         raw_json,

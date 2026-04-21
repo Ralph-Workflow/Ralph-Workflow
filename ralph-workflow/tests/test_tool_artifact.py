@@ -612,8 +612,10 @@ def test_handle_submit_artifact_accepts_structured_development_result(tmp_path: 
     artifact_file = tmp_path / ".agent" / "artifacts" / "development_result.json"
     stored = json.loads(artifact_file.read_text(encoding="utf-8"))
     assert stored["content"]["status"] == "completed"
-    assert (tmp_path / ".agent" / "DEVELOPMENT_RESULT.md").read_text(encoding="utf-8").startswith(
-        "# Development Result\n"
+    assert (
+        (tmp_path / ".agent" / "DEVELOPMENT_RESULT.md")
+        .read_text(encoding="utf-8")
+        .startswith("# Development Result\n")
     )
 
 
@@ -887,11 +889,15 @@ def test_piecewise_plan_submission_produces_same_plan_json_as_atomic(tmp_path: P
     assert stored["type"] == "plan"
     summary = cast("dict[str, object]", stored["content"]["summary"])
     assert summary["context"] == "Plan the MCP validation rollout."
-    assert (atomic_path / ".agent" / "PLAN.md").read_text(encoding="utf-8").startswith(
-        "# Implementation Plan\n"
+    assert (
+        (atomic_path / ".agent" / "PLAN.md")
+        .read_text(encoding="utf-8")
+        .startswith("# Implementation Plan\n")
     )
-    assert (piecewise_path / ".agent" / "PLAN.md").read_text(encoding="utf-8").startswith(
-        "# Implementation Plan\n"
+    assert (
+        (piecewise_path / ".agent" / "PLAN.md")
+        .read_text(encoding="utf-8")
+        .startswith("# Implementation Plan\n")
     )
     # Draft must be gone after a successful finalize.
     assert not (piecewise_path / ".agent" / "artifacts" / ".plan_draft.json").exists()

@@ -277,9 +277,7 @@ class TestUpstreamMultimodalBoundary:
         client = self._make_http_client(
             server,
             [
-                {
-                    "tools": [{"name": "echo", "description": "Echo text", "inputSchema": {}}]
-                },
+                {"tools": [{"name": "echo", "description": "Echo text", "inputSchema": {}}]},
                 {"content": [{"type": "text", "text": "hello world"}]},
             ],
         )

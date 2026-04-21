@@ -320,9 +320,7 @@ def test_malformed_input_written_to_overflow_log(tmp_path: Path) -> None:
     pd._activity_router._parser_factory = lambda _: _AlwaysRaisingParser()
 
     bad_line = '{"broken": true, "this_will_fail": }'
-    pd._activity_router.push_raw_line(
-        "unit-bad", bad_line, provider=ActivityProvider.GENERIC
-    )
+    pd._activity_router.push_raw_line("unit-bad", bad_line, provider=ActivityProvider.GENERIC)
 
     overflow_log = tmp_path / ".agent" / "raw" / "unit-bad.log"
     assert overflow_log.exists(), "malformed line should be written to overflow log"

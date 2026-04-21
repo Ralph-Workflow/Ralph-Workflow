@@ -260,9 +260,7 @@ class PlainLogRenderer:
         if activity_parts:
             lines.append(f"{timestamp} INFO META [activity] {' '.join(activity_parts)}")
         if snapshot.last_activity_line:
-            lines.append(
-                f"{timestamp} INFO META [activity-line] {snapshot.last_activity_line}"
-            )
+            lines.append(f"{timestamp} INFO META [activity-line] {snapshot.last_activity_line}")
         return lines
 
     def _analysis_lines(self, snapshot: PipelineSnapshot, timestamp: str) -> list[str]:
@@ -305,9 +303,7 @@ class PlainLogRenderer:
             previous_status = self._last_worker_states.get(worker.unit_id)
             if previous_status == worker.status:
                 continue
-            lines.append(
-                f"{timestamp} INFO META [worker] {worker.unit_id} {worker.status}"
-            )
+            lines.append(f"{timestamp} INFO META [worker] {worker.unit_id} {worker.status}")
             self._last_worker_states[worker.unit_id] = worker.status
         return lines
 
@@ -389,9 +385,7 @@ class PlainLogRenderer:
                 for other_uid in other_units:
                     end_line = self._close_block(other_uid, timestamp)
                     if end_line:
-                        self._console.print(
-                            end_line, markup=False, highlight=False, no_wrap=True
-                        )
+                        self._console.print(end_line, markup=False, highlight=False, no_wrap=True)
                 if unit_id not in self._active_block:
                     # Open new block
                     self._active_block[unit_id] = (base_tag, [content])

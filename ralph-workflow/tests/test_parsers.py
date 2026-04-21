@@ -1,4 +1,5 @@
 """Unit tests for agent NDJSON parsers."""
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING

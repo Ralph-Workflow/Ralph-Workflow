@@ -499,7 +499,6 @@ def _notify_pipeline_subscriber(
     _notify_dashboard_subscriber(pipeline_subscriber, state)
 
 
-
 def _reduce_runtime_recovery(
     state: PipelineState,
     pipeline_policy: PipelinePolicy,
@@ -594,8 +593,7 @@ def _run_pipeline_step(  # noqa: PLR0913
         _save_checkpoint_or_log(
             next_state,
             message=(
-                "Checkpoint save failed in phase={phase}: {err} "
-                "-- continuing without checkpoint"
+                "Checkpoint save failed in phase={phase}: {err} -- continuing without checkpoint"
             ),
         )
         return next_state
@@ -1024,8 +1022,7 @@ async def _run_fan_out_async(  # noqa: PLR0913
         _save_checkpoint_or_log(
             recovered,
             message=(
-                "Checkpoint save failed while recording fan-out recovery in phase={phase}: "
-                "{err}"
+                "Checkpoint save failed while recording fan-out recovery in phase={phase}: {err}"
             ),
         )
         return recovered
@@ -1542,7 +1539,6 @@ def _render_phase_artifact_handoff(
         return
     if phase in {"development_analysis", "review_analysis"}:
         render_analysis_decision(workspace_root, phase, console_obj)
-
 
 
 def _commit_effect(workspace_root: Path) -> CommitEffect:

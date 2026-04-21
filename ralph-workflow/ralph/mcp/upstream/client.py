@@ -147,9 +147,7 @@ def _get_content_list(result: JsonObject) -> list[object] | None:
     return list(content)
 
 
-def _check_upstream_content_blocks(
-    result: JsonObject, server_name: str, tool_name: str
-) -> None:
+def _check_upstream_content_blocks(result: JsonObject, server_name: str, tool_name: str) -> None:
     """Check upstream tool result for multimodal content blocks and reject if found.
 
     This enforces the boundary policy: upstream multimodal payloads are not
@@ -243,14 +241,10 @@ def _make_stdio_caller(server: UpstreamMcpServer) -> JsonRpcCaller:
             label=f"upstream:{server.name}",
         )
         try:
-            stdout_bytes, _stderr = handle.communicate(
-                input=payload.encode(), timeout=30
-            )
+            stdout_bytes, _stderr = handle.communicate(input=payload.encode(), timeout=30)
         except subprocess.TimeoutExpired:
             handle.terminate(grace_period_s=0)
-            raise UpstreamCallError(
-                f"upstream server '{server.name}' timed out"
-            ) from None
+            raise UpstreamCallError(f"upstream server '{server.name}' timed out") from None
         if (handle.returncode or 0) != 0:
             raise UpstreamCallError(
                 f"upstream server '{server.name}' process exited {handle.returncode}"

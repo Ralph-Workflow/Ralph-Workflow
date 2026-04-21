@@ -126,9 +126,7 @@ class LazyToolHandler:
         self._handler_name = handler_name
         self._session = session
         self._workspace = workspace
-        self._extra_kwargs: dict[str, object] = (
-            extra_kwargs if extra_kwargs is not None else {}
-        )
+        self._extra_kwargs: dict[str, object] = extra_kwargs if extra_kwargs is not None else {}
 
     def __call__(
         self,
@@ -176,9 +174,7 @@ class ToolBridge:
             raise ToolRegistrationError(f"Tool '{name}' is already registered")
         self._tools[name] = RegisteredTool(metadata=metadata, handler=handler)
 
-    def register_spec(
-        self, spec: ToolSpec, *, session: object, workspace: object
-    ) -> None:
+    def register_spec(self, spec: ToolSpec, *, session: object, workspace: object) -> None:
         """Register a tool from a complete lazy-loading spec."""
         self.register(
             spec.metadata,
@@ -256,9 +252,7 @@ class ToolBridge:
             or "media.read" in client_caps
         )
 
-    def _is_tool_allowed(
-        self, metadata: ToolMetadata, session: object | None = None
-    ) -> bool:
+    def _is_tool_allowed(self, metadata: ToolMetadata, session: object | None = None) -> bool:
         effective_session = session or self._session
         if effective_session is None:
             return True
@@ -368,7 +362,7 @@ def _tool_specs(mcp_config: McpConfig) -> tuple[ToolSpec, ...]:
                                 "Text content to write as a UTF-8 string "
                                 "(example values: 'hello world', "
                                 "'# Heading\\n\\nSome content here', "
-                                "'{\"key\": \"value\"}')."
+                                '\'{"key": "value"}\').'
                             ),
                         },
                     },
@@ -628,8 +622,11 @@ def _tool_specs(mcp_config: McpConfig) -> tuple[ToolSpec, ...]:
                             "type": "string",
                             "description": (
                                 "Artifact payload as a JSON-serialized string "
-                                "(example values: " + _EXAMPLE_PLAN_CONTENT + ", "
-                                + _EXAMPLE_COMMIT_CONTENT + ")."
+                                "(example values: "
+                                + _EXAMPLE_PLAN_CONTENT
+                                + ", "
+                                + _EXAMPLE_COMMIT_CONTENT
+                                + ")."
                             ),
                         },
                         "content_path": {
@@ -677,8 +674,11 @@ def _tool_specs(mcp_config: McpConfig) -> tuple[ToolSpec, ...]:
                             "type": "string",
                             "description": (
                                 "JSON-serialized section payload as a string "
-                                "(example values: " + _EXAMPLE_PLAN_CONTENT + ", "
-                                + _EXAMPLE_STEPS_CONTENT + ")."
+                                "(example values: "
+                                + _EXAMPLE_PLAN_CONTENT
+                                + ", "
+                                + _EXAMPLE_STEPS_CONTENT
+                                + ")."
                             ),
                         },
                         "mode": {
@@ -1012,9 +1012,7 @@ def _tool_specs(mcp_config: McpConfig) -> tuple[ToolSpec, ...]:
     return tuple(_specs)
 
 
-def _attach_upstream_registry(
-    bridge: ToolBridge, upstream_registry: UpstreamRegistry
-) -> None:
+def _attach_upstream_registry(bridge: ToolBridge, upstream_registry: UpstreamRegistry) -> None:
     for proxied_tool in upstream_registry.tool_definitions():
         metadata = ToolMetadata(
             definition=ToolDefinition(

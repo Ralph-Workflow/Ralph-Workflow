@@ -89,9 +89,7 @@ def test_all_top_level_templates_include_unattended_partial() -> None:
 ANALYSIS_CONTENT_PATH_GUIDANCE = (
     "Use `content_path` only when resubmitting a JSON file that already exists on disk."
 )
-ANALYSIS_EXHAUSTIVE_FAILURE_GUIDANCE = (
-    "Include every issue that contributed to the failing status."
-)
+ANALYSIS_EXHAUSTIVE_FAILURE_GUIDANCE = "Include every issue that contributed to the failing status."
 ANALYSIS_OMISSION_GUIDANCE = (
     "If you omit a real failure cause, the analysis artifact is incomplete."
 )

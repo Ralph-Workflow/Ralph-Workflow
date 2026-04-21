@@ -203,9 +203,7 @@ def render_completion_summary_group(  # noqa: PLR0912
             badge = _DECISION_LABELS.get(decision.lower(), "INFO")
             reason_part = f" — {reason}" if reason else ""
             renderables.append(
-                Text(
-                    f"  [{badge}] {phase.replace('_', ' ').title()}: {decision}{reason_part}"
-                )
+                Text(f"  [{badge}] {phase.replace('_', ' ').title()}: {decision}{reason_part}")
             )
     else:
         renderables.append(Text("  (none recorded)"))

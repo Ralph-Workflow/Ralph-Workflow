@@ -168,9 +168,7 @@ def is_noop_plan(artifact: Mapping[str, object]) -> bool:
     steps = artifact.get("steps")
     work_units = artifact.get("work_units")
     steps_empty = steps is None or (isinstance(steps, list) and len(steps) == 0)
-    work_units_empty = work_units is None or (
-        isinstance(work_units, list) and len(work_units) == 0
-    )
+    work_units_empty = work_units is None or (isinstance(work_units, list) and len(work_units) == 0)
     # Only treat as noop fallback when both are explicitly empty lists — a plan
     # with no `steps` key at all is just malformed, not a deliberate no-op.
     return (

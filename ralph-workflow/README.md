@@ -50,6 +50,25 @@ ralph --init feature-spec
 ralph
 ```
 
+### First-run configuration
+
+On first run, Ralph auto-creates `~/.config/ralph-workflow.toml` and
+`~/.config/ralph-workflow-mcp.toml` (or `$XDG_CONFIG_HOME/...` if set) from
+bundled, fully-commented templates.
+
+These ship with sane defaults — you only need to edit them if you want to
+override something specific.
+
+Project-local overrides live in `.agent/ralph-workflow.toml` and `.agent/mcp.toml`,
+created when you run `ralph --init`.
+
+To reset all configs from the bundled defaults (existing files are backed up to
+`<name>.bak`), run:
+
+```bash
+ralph --regenerate-config
+```
+
 ## Verification
 
 ```bash

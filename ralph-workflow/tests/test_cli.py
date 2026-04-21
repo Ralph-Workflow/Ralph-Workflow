@@ -482,3 +482,22 @@ def test_configure_logging_debug_level(monkeypatch: pytest.MonkeyPatch) -> None:
     _configure_logging(Verbosity.DEBUG)
     assert calls[-1][0] == "add"
     assert calls[-1][2]["level"] == "TRACE"
+
+
+def test_regenerate_config_flag_creates_bak(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    xdg_dir = tmp_path / "xdg"
+    xdg_dir.mkdir()
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(xdg_dir))
+    existing = xdg_dir / "ralph-workflow.toml"
+    existing.write_text("# MINE", encoding="utf-8")
+
+    runner = TyperCliRunner()
+    result = runner.invoke(app, ["--regenerate-config"], catch_exceptions=False)
+    assert result.exit_code == 0
+
+    bak = xdg_dir / "ralph-workflow.toml.bak"
+    assert bak.exists()
+    assert bak.read_text(encoding="utf-8") == "# MINE"
+    assert (xdg_dir / "ralph-workflow.toml").read_text(encoding="utf-8").startswith("#")

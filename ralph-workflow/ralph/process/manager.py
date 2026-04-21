@@ -175,7 +175,7 @@ class ManagedProcess:
             ProcessStatus.FAILED,
         ):
             self.terminate(grace_period_s=2.0)
-        for attr in ('stdout', 'stderr', 'stdin'):
+        for attr in ("stdout", "stderr", "stdin"):
             pipe: IO[bytes] | IO[str] | None = getattr(self._proc, attr, None)
             if pipe is not None:
                 with contextlib.suppress(Exception):
@@ -271,9 +271,7 @@ class ProcessManager:
         self._listeners: dict[int, Callable[[ProcessEvent], None]] = {}
         self._listener_counter = 0
 
-    def register_listener(
-        self, callback: Callable[[ProcessEvent], None]
-    ) -> Callable[[], None]:
+    def register_listener(self, callback: Callable[[ProcessEvent], None]) -> Callable[[], None]:
         """Subscribe to lifecycle events.  Returns an unsubscribe callable."""
         lid = self._listener_counter
         self._listener_counter += 1

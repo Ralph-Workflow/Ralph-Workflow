@@ -706,9 +706,7 @@ def _show_commit_message(repo_root: Path) -> None:
 
 def _print_commit_failure_details(failure_details: list[str]) -> None:
     for detail in failure_details:
-        console.print(
-            Text(detail, style="red")
-        )
+        console.print(Text(detail, style="red"))
 
 
 def _format_agent_invocation_failure(

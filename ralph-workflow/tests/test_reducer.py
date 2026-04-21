@@ -787,7 +787,6 @@ class TestAnalysisDecisionDispatch:
         new_state, _ = _reduce(state, PipelineEvent.ANALYSIS_LOOPBACK, policy)
         assert new_state.phase == "development"
 
-
     def test_dev_analysis_loopback_increments_dev_analysis_iteration(self) -> None:
         """ANALYSIS_LOOPBACK in development_analysis increments the iteration counter."""
         state = PipelineState(
@@ -871,6 +870,7 @@ class TestAnalysisDecisionDispatch:
         )
         new_state, _ = _reduce(state, PipelineEvent.COMMIT_SUCCESS)
         assert new_state.review_analysis_iteration == 0
+
 
 @pytest.mark.parametrize(
     "event,handler_patch_target",

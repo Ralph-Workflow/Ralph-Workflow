@@ -145,9 +145,7 @@ class ActivityRouter:
             )
             buffer.enqueue(rendered)
             if self._on_event is not None:
-                self._on_event(
-                    unit_id, ActivityEventKind.ERROR, error_event.content, raw_reference
-                )
+                self._on_event(unit_id, ActivityEventKind.ERROR, error_event.content, raw_reference)
 
 
 __all__ = [

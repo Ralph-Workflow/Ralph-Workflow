@@ -29,6 +29,11 @@ from ralph.cli.options import (
     display_agents_table,
     display_providers_table,
 )
+from ralph.config.bootstrap import (
+    ensure_global_config,
+    ensure_global_mcp_config,
+    regenerate_all,
+)
 from ralph.config.enums import ReviewDepth, Verbosity
 from ralph.config.loader import load_config
 from ralph.pipeline import checkpoint as ckpt
@@ -132,6 +137,29 @@ def _resolve_effective_verbosity(
     if verbosity == Verbosity.NORMAL:
         return Verbosity.VERBOSE
     return verbosity
+
+
+def _bootstrap_global_configs() -> None:
+    """Create user-global config files from bundled templates if they don't exist."""
+    for result in (ensure_global_config(), ensure_global_mcp_config()):
+        if result.action == "created":
+            console.print(_status_text("Created default config", str(result.path), "green"))
+
+
+def _handle_regenerate_config() -> None:
+    """Regenerate global and local configs from bundled defaults, backing up existing files."""
+    agent_dir: RuntimePath | None
+    try:
+        scope = resolve_workspace_scope()
+        agent_dir = scope.local_config_path.parent
+    except Exception as exc:
+        logger.debug("Workspace scope unavailable, skipping local regenerate: {}", exc)
+        agent_dir = None
+    for result in regenerate_all(agent_dir=agent_dir):
+        label = "Regenerated" if result.action == "regenerated" else "Created"
+        console.print(_status_text(label, str(result.path), "green"))
+        if result.backup is not None:
+            console.print(_status_text("  backup", str(result.backup), "dim"))
 
 
 def main(  # noqa: PLR0913 - Typer CLI callbacks require many options and branches
@@ -265,6 +293,14 @@ def main(  # noqa: PLR0913 - Typer CLI callbacks require many options and branch
         str | None,
         typer.Option("--init", help="Initialize Ralph with a template (e.g. starter-template)"),
     ] = None,
+    regenerate_config: Annotated[
+        bool,
+        typer.Option(
+            "--regenerate-config",
+            help="Rewrite global and local configs from bundled defaults"
+            " (existing files are backed up to <name>.bak)",
+        ),
+    ] = False,
     rebase_only: Annotated[
         bool,
         typer.Option("--rebase-only", help="Only rebase, don't run pipeline"),
@@ -304,6 +340,8 @@ def main(  # noqa: PLR0913 - Typer CLI callbacks require many options and branch
         version_callback(version)
 
     verbosity = _resolve_effective_verbosity(verbosity, quiet=quiet, debug=debug)
+
+    _bootstrap_global_configs()
 
     # Set up logging based on verbosity
     _configure_logging(verbosity)
@@ -347,6 +385,10 @@ def main(  # noqa: PLR0913 - Typer CLI callbacks require many options and branch
 
     if init is not None:
         init_command(init, _config_path(config))
+        raise typer.Exit()
+
+    if regenerate_config:
+        _handle_regenerate_config()
         raise typer.Exit()
 
     if inspect_checkpoint:

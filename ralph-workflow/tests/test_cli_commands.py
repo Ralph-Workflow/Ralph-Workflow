@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import tomllib
 from io import StringIO
 from pathlib import Path
 from types import SimpleNamespace
@@ -1473,6 +1474,11 @@ def test_init_command_creates_files(monkeypatch: pytest.MonkeyPatch, tmp_path: P
 
 
 def test_init_command_keeps_existing_files(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    xdg_dir = tmp_path / "xdg"
+    xdg_dir.mkdir()
+    (xdg_dir / "ralph-workflow.toml").write_text("# global", encoding="utf-8")
+    (xdg_dir / "ralph-workflow-mcp.toml").write_text("# mcp", encoding="utf-8")
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(xdg_dir))
     stream = _attach_console(monkeypatch, init_module)
     monkeypatch.chdir(tmp_path)
     prompt = tmp_path / "PROMPT.md"
@@ -1481,6 +1487,7 @@ def test_init_command_keeps_existing_files(monkeypatch: pytest.MonkeyPatch, tmp_
     agent_dir.mkdir()
     config = agent_dir / "ralph-workflow.toml"
     config.write_text("existing config")
+    (agent_dir / "mcp.toml").write_text("# local mcp", encoding="utf-8")
 
     init_module.init_command(template="starter-template")
     assert prompt.read_text() == "existing"
@@ -1562,3 +1569,40 @@ def test_display_tables_render() -> None:
     assert "Available" in rendered
     assert "Providers" in rendered
     assert "opencode" in rendered
+
+
+def test_init_command_writes_local_and_global_configs(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    xdg_dir = tmp_path / "xdg"
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(xdg_dir))
+    _attach_console(monkeypatch, init_module)
+    monkeypatch.chdir(tmp_path)
+
+    init_module.init_command(None, None)
+
+    assert (tmp_path / ".agent" / "ralph-workflow.toml").exists()
+    assert (tmp_path / ".agent" / "mcp.toml").exists()
+    assert (xdg_dir / "ralph-workflow.toml").exists()
+    assert (xdg_dir / "ralph-workflow-mcp.toml").exists()
+
+    agent_cfg_text = (tmp_path / ".agent" / "ralph-workflow.toml").read_text()
+    assert isinstance(tomllib.loads(agent_cfg_text), dict)
+    assert isinstance(tomllib.loads((tmp_path / ".agent" / "mcp.toml").read_text()), dict)
+    assert isinstance(tomllib.loads((xdg_dir / "ralph-workflow.toml").read_text()), dict)
+    assert isinstance(tomllib.loads((xdg_dir / "ralph-workflow-mcp.toml").read_text()), dict)
+
+
+def test_init_command_respects_explicit_config_path(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    xdg_dir = tmp_path / "xdg"
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(xdg_dir))
+    _attach_console(monkeypatch, init_module)
+    monkeypatch.chdir(tmp_path)
+    custom = tmp_path / "custom.toml"
+
+    init_module.init_command(None, custom)
+
+    assert custom.exists()
+    assert isinstance(tomllib.loads(custom.read_text()), dict)

@@ -126,12 +126,8 @@ def test_materialize_development_phase_surfaces_bare_fallbacks_for_shared_mcp_to
                         "primary_files": [{"path": "src/app.py", "action": "modify"}],
                         "reference_files": [],
                     },
-                    "risks_mitigations": [
-                        {"risk": "regression", "mitigation": "add tests"}
-                    ],
-                    "verification_strategy": [
-                        {"method": "pytest", "expected_outcome": "passes"}
-                    ],
+                    "risks_mitigations": [{"risk": "regression", "mitigation": "add tests"}],
+                    "verification_strategy": [{"method": "pytest", "expected_outcome": "passes"}],
                     "work_units": [],
                 },
             }
@@ -369,8 +365,7 @@ def test_materialize_development_prefers_structured_plan_artifact_over_plan_md(
     assert str(tmp_path / ".agent" / "PLAN.md") in rendered
     assert "Read the complete implementation plan from file at" in rendered
     assert (
-        "This file is the authoritative source for implementation plan in this prompt."
-        in rendered
+        "This file is the authoritative source for implementation plan in this prompt." in rendered
     )
     assert "STALE PLAN" not in rendered
     assert "Fresh structured plan" not in rendered

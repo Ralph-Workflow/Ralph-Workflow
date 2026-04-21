@@ -113,6 +113,7 @@ def test_run_subprocess_and_read_lines_wraps_idle_stream_timeout(
 
     class FakeProcess:
         pid: int = 12345
+
         def poll(self) -> int | None:
             return self.returncode
 
@@ -503,6 +504,7 @@ def test_invoke_agent_does_not_reexecute_command_after_stream_finishes(
 
     class FakeProcess:
         pid: int = 12345
+
         def poll(self) -> int | None:
             return self.returncode
 
@@ -554,6 +556,7 @@ def test_invoke_agent_passes_extra_env_to_subprocess(
 
     class FakeProcess:
         pid: int = 12345
+
         def poll(self) -> int | None:
             return self.returncode
 
@@ -622,6 +625,7 @@ def test_invoke_agent_times_out_when_agent_goes_idle(
 
     class FakeProcess:
         pid: int = 12345
+
         def __init__(self) -> None:
             self.stdout = BlockingStdout()
             self.stderr = SimpleNamespace(read=lambda: "")
@@ -657,6 +661,7 @@ def test_invoke_agent_times_out_when_agent_goes_idle(
 
     fake_process = FakeProcess()
     _mono_idx = [0]
+
     def _mock_mono() -> float:
         v = 0.0 if _mono_idx[0] == 0 else 10.0
         _mono_idx[0] += 1
@@ -679,8 +684,6 @@ def test_invoke_agent_times_out_when_agent_goes_idle(
         )
 
 
-
-
 def test_invoke_agent_runs_subprocess_in_workspace_path(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -691,6 +694,7 @@ def test_invoke_agent_runs_subprocess_in_workspace_path(
 
     class FakeProcess:
         pid: int = 12345
+
         def poll(self) -> int | None:
             return self.returncode
 
@@ -758,6 +762,7 @@ def test_invoke_agent_passes_claude_mcp_separator_in_subprocess_argv(
 
     class FakeProcess:
         pid: int = 12345
+
         def poll(self) -> int | None:
             return self.returncode
 
@@ -1016,6 +1021,7 @@ def test_invoke_agent_claude_extracts_existing_workspace_mcp_servers(
 
     class FakeProcess:
         pid: int = 12345
+
         def poll(self) -> int | None:
             return self.returncode
 
@@ -1113,6 +1119,7 @@ def test_claude_mode_extracts_upstream_servers_without_passing_them_through(
 
     class FakeProcess:
         pid: int = 12345
+
         def poll(self) -> int | None:
             return self.returncode
 
@@ -1213,6 +1220,7 @@ def test_claude_mode_prefers_workspace_upstream_server_over_home_definition(
 
     class FakeProcess:
         pid: int = 12345
+
         def poll(self) -> int | None:
             return self.returncode
 
@@ -1347,6 +1355,7 @@ def test_invoke_agent_surfaces_stdout_error_when_stderr_is_empty(
 
     class FakeProcess:
         pid: int = 12345
+
         def poll(self) -> int | None:
             return self.returncode
 
@@ -1405,6 +1414,7 @@ def test_invoke_agent_injects_opencode_mcp_config_for_remote_endpoint(
 
     class FakeProcess:
         pid: int = 12345
+
         def poll(self) -> int | None:
             return self.returncode
 
@@ -1470,6 +1480,7 @@ def test_invoke_agent_merges_existing_opencode_config_content(
 
     class FakeProcess:
         pid: int = 12345
+
         def poll(self) -> int | None:
             return self.returncode
 
@@ -1531,6 +1542,7 @@ def test_invoke_agent_does_not_inject_opencode_mcp_config_without_explicit_endpo
 
     class FakeProcess:
         pid: int = 12345
+
         def poll(self) -> int | None:
             return self.returncode
 
@@ -1607,6 +1619,7 @@ def test_opencode_mode_extracts_upstream_servers_without_passing_them_through(
 
     class FakeProcess:
         pid: int = 12345
+
         def poll(self) -> int | None:
             return self.returncode
 
@@ -1731,6 +1744,7 @@ def test_opencode_config_omits_tools_block_when_no_mcp_endpoint(
 
     class FakeProcess:
         pid: int = 12345
+
         def poll(self) -> int | None:
             return self.returncode
 
@@ -1781,6 +1795,7 @@ def test_invoke_agent_injects_codex_mcp_config_for_remote_endpoint(
 
     class FakeProcess:
         pid: int = 12345
+
         def poll(self) -> int | None:
             return self.returncode
 
@@ -1846,6 +1861,7 @@ def test_invoke_agent_injects_codex_system_prompt_file_via_config(
 
     class FakeProcess:
         pid: int = 12345
+
         def poll(self) -> int | None:
             return self.returncode
 
@@ -1909,6 +1925,7 @@ def test_invoke_agent_does_not_inject_opencode_system_prompt_flag(
 
     class FakeProcess:
         pid: int = 12345
+
         def poll(self) -> int | None:
             return self.returncode
 
@@ -1966,6 +1983,7 @@ def test_invoke_agent_preserves_existing_codex_home_state(
 
     class FakeProcess:
         pid: int = 12345
+
         def poll(self) -> int | None:
             return self.returncode
 
@@ -2088,6 +2106,7 @@ def test_codex_mode_extracts_upstream_servers_without_passing_them_through(
 
     class FakeProcess:
         pid: int = 12345
+
         def poll(self) -> int | None:
             return self.returncode
 
@@ -2291,6 +2310,7 @@ def test_claude_strict_mode_only_exposes_ralph_server(
 
     class FakeProcess:
         pid: int = 12345
+
         def poll(self) -> int | None:
             return self.returncode
 
@@ -2356,6 +2376,7 @@ def test_opencode_strict_mode_only_exposes_ralph_server(
 
     class FakeProcess:
         pid: int = 12345
+
         def poll(self) -> int | None:
             return self.returncode
 
@@ -2446,6 +2467,7 @@ def test_codex_strict_mode_only_exposes_ralph_server(
 
     class FakeProcess:
         pid: int = 12345
+
         def poll(self) -> int | None:
             return self.returncode
 
@@ -2512,6 +2534,7 @@ def test_provider_strict_mode_passes_upstream_proxy_payload_to_ralph(
 
     class FakeProcess:
         pid: int = 12345
+
         def poll(self) -> int | None:
             return self.returncode
 

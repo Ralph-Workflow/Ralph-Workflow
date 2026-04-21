@@ -57,9 +57,7 @@ _REQUIRED_CAPABILITIES = {
 class TestHttpMcpServer:
     """Test the Ralph MCP HTTP server by booting it and walking the JSON-RPC handshake."""
 
-    def test_initialize_tools_list_read_file_roundtrip(
-        self, temp_workspace: Path
-    ) -> None:
+    def test_initialize_tools_list_read_file_roundtrip(self, temp_workspace: Path) -> None:
         """Full MCP wire roundtrip over HTTP transport.
 
         Exercises the public runtime entrypoint and JSON-RPC handshake over HTTP.
@@ -169,7 +167,7 @@ def _parse_sse_body(body: bytes) -> dict[str, Any]:
         elif text[i] == "}":
             depth -= 1
             if depth == 0:
-                json_str = text[json_start:i + 1]
+                json_str = text[json_start : i + 1]
                 return json.loads(json_str)
         i += 1
     return {}
@@ -241,9 +239,7 @@ def _do_initialized_notification(base_url: str, session_id: str) -> None:
         )
         status = response.status_code
 
-    assert status == HTTPStatus.ACCEPTED.value, (
-        f"notifications/initialized failed with {status}"
-    )
+    assert status == HTTPStatus.ACCEPTED.value, f"notifications/initialized failed with {status}"
 
 
 def _do_tools_list(base_url: str, session_id: str) -> list[dict[str, Any]]:
@@ -276,8 +272,7 @@ def _assert_tool_descriptions(tools: list[dict[str, Any]]) -> None:
             f"Tool {tool['name']} description too long: {desc!r}"
         )
         assert tool.get("inputSchema", {}).get("type") == "object", (
-            f"Tool {tool['name']} inputSchema type is not 'object': "
-            f"{tool.get('inputSchema')}"
+            f"Tool {tool['name']} inputSchema type is not 'object': {tool.get('inputSchema')}"
         )
 
 
@@ -317,9 +312,7 @@ class TestStdioUpstreamClient:
 
     def test_list_tools_from_fake_stdio_server(self) -> None:
         """make_upstream_client lists tools from the fake stdio server."""
-        fake_stdio_path = (
-            Path(__file__).parent.parent / "fixtures" / "fake_stdio_mcp.py"
-        )
+        fake_stdio_path = Path(__file__).parent.parent / "fixtures" / "fake_stdio_mcp.py"
 
         server = UpstreamMcpServer(
             name="fake",
@@ -337,9 +330,7 @@ class TestStdioUpstreamClient:
 
     def test_call_tool_on_fake_stdio_server(self) -> None:
         """call_tool on the fake stdio server returns the expected response shape."""
-        fake_stdio_path = (
-            Path(__file__).parent.parent / "fixtures" / "fake_stdio_mcp.py"
-        )
+        fake_stdio_path = Path(__file__).parent.parent / "fixtures" / "fake_stdio_mcp.py"
 
         server = UpstreamMcpServer(
             name="fake",

@@ -37,9 +37,7 @@ def test_readme_states_default_on(long_content_section: str) -> None:
 
 
 def test_readme_does_not_claim_opt_in_by_setting_flag_to_1(long_content_section: str) -> None:
-    match = re.search(
-        r"set[^\n]*RALPH_LONG_CONTENT_SUMMARY=1", long_content_section, re.IGNORECASE
-    )
+    match = re.search(r"set[^\n]*RALPH_LONG_CONTENT_SUMMARY=1", long_content_section, re.IGNORECASE)
     assert match is None, (
         "README must not describe RALPH_LONG_CONTENT_SUMMARY=1 as the way to enable the summary"
     )

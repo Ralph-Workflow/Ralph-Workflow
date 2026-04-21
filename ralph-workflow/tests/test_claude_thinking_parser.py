@@ -44,10 +44,7 @@ def test_thinking_and_text_deltas_produce_distinct_types() -> None:
             '"delta":{"type":"thinking_delta","thinking":"My reasoning"}}'
         ),
         '{"type":"content_block_stop","index":0}',
-        (
-            '{"type":"content_block_start","index":1,'
-            '"content_block":{"type":"text","text":""}}'
-        ),
+        ('{"type":"content_block_start","index":1,"content_block":{"type":"text","text":""}}'),
         (
             '{"type":"content_block_delta","index":1,'
             '"delta":{"type":"text_delta","text":"My answer"}}'
@@ -96,14 +93,8 @@ def test_thinking_paragraph_boundary_flushes() -> None:
 def test_existing_text_parsing_unaffected() -> None:
     lines = [
         '{"type":"message_start","message":{"id":"msg-1"}}',
-        (
-            '{"type":"content_block_start","index":0,'
-            '"content_block":{"type":"text","text":""}}'
-        ),
-        (
-            '{"type":"content_block_delta","index":0,'
-            '"delta":{"type":"text_delta","text":"Hello"}}'
-        ),
+        ('{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}'),
+        ('{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hello"}}'),
         '{"type":"content_block_stop","index":0}',
         '{"type":"message_stop"}',
     ]

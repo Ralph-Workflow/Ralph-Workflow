@@ -31,11 +31,11 @@ def _target_body(name: str) -> list[str]:
 def test_verify_runs_single_covered_suite_instead_of_repeating_pytest() -> None:
     verify_body = _target_body("verify")
 
-    assert '@$(MAKE) lint' in verify_body
-    assert '@$(MAKE) typecheck' in verify_body
-    assert '@$(MAKE) test-cov' in verify_body
-    assert '@$(MAKE) test' not in verify_body
-    assert '@$(MAKE) coverage' not in verify_body
+    assert "@$(MAKE) lint" in verify_body
+    assert "@$(MAKE) typecheck" in verify_body
+    assert "@$(MAKE) test-cov" in verify_body
+    assert "@$(MAKE) test" not in verify_body
+    assert "@$(MAKE) coverage" not in verify_body
 
 
 def test_test_cov_runs_pytest_once_with_coverage() -> None:

@@ -783,10 +783,11 @@ class TestImageContentSerialization:
         expected_block_count = 3
         assert len(content_list) == expected_block_count
         assert content_list[0] == {"type": "text", "text": "header"}
-        assert (
-            content_list[1] ==
-            {"type": "image", "data": "SGVsbG8gV29ybGQ=", "mimeType": "image/png"}
-        )
+        assert content_list[1] == {
+            "type": "image",
+            "data": "SGVsbG8gV29ybGQ=",
+            "mimeType": "image/png",
+        }
         assert content_list[2] == {"type": "text", "text": "footer"}
 
     def test_tool_result_serialize_content_blocks_no_stringify_fallback(self) -> None:
@@ -834,9 +835,7 @@ class TestMultimodalToolVisibility:
         )
         workspace = FsWorkspace(tmp_path)
         config = McpConfig(media=MediaConfig(enabled=False))
-        bridge = server_runtime.build_ralph_tool_registry(
-            session, workspace, mcp_config=config
-        )
+        bridge = server_runtime.build_ralph_tool_registry(session, workspace, mcp_config=config)
         mcp_server = server_runtime.McpServer(session, workspace, bridge)
 
         # Initialize with NO multimodal capability
@@ -857,8 +856,7 @@ class TestMultimodalToolVisibility:
         assert tools_response is not None
         tools_result = cast("dict[str, object]", tools_response.result)
         tool_names = {
-            cast("str", t["name"])
-            for t in cast("list[dict[str, object]]", tools_result["tools"])
+            cast("str", t["name"]) for t in cast("list[dict[str, object]]", tools_result["tools"])
         }
         assert "read_image" not in tool_names
 
@@ -874,9 +872,7 @@ class TestMultimodalToolVisibility:
         )
         workspace = FsWorkspace(tmp_path)
         config = McpConfig(media=MediaConfig(enabled=True))
-        bridge = server_runtime.build_ralph_tool_registry(
-            session, workspace, mcp_config=config
-        )
+        bridge = server_runtime.build_ralph_tool_registry(session, workspace, mcp_config=config)
         mcp_server = server_runtime.McpServer(session, workspace, bridge)
 
         # Initialize with NO multimodal capability in client declaration
@@ -897,15 +893,12 @@ class TestMultimodalToolVisibility:
         assert tools_response is not None
         tools_result = cast("dict[str, object]", tools_response.result)
         tool_names = {
-            cast("str", t["name"])
-            for t in cast("list[dict[str, object]]", tools_result["tools"])
+            cast("str", t["name"]) for t in cast("list[dict[str, object]]", tools_result["tools"])
         }
         # Text-only client should NOT see read_image even when media is enabled on server
         assert "read_image" not in tool_names
 
-    def test_multimodal_client_sees_read_image_when_media_enabled(
-        self, tmp_path: Path
-    ) -> None:
+    def test_multimodal_client_sees_read_image_when_media_enabled(self, tmp_path: Path) -> None:
         """When media.enabled=True and client declares multimodal support, read_image IS visible."""
         session = AgentSession(
             session_id="session-multimodal",
@@ -920,9 +913,7 @@ class TestMultimodalToolVisibility:
         )
         workspace = FsWorkspace(tmp_path)
         config = McpConfig(media=MediaConfig(enabled=True))
-        bridge = server_runtime.build_ralph_tool_registry(
-            session, workspace, mcp_config=config
-        )
+        bridge = server_runtime.build_ralph_tool_registry(session, workspace, mcp_config=config)
         mcp_server = server_runtime.McpServer(session, workspace, bridge)
 
         # Initialize WITH multimodal capability declaration
@@ -943,15 +934,12 @@ class TestMultimodalToolVisibility:
         assert tools_response is not None
         tools_result = cast("dict[str, object]", tools_response.result)
         tool_names = {
-            cast("str", t["name"])
-            for t in cast("list[dict[str, object]]", tools_result["tools"])
+            cast("str", t["name"]) for t in cast("list[dict[str, object]]", tools_result["tools"])
         }
         # Multimodal-capable client SHOULD see read_image
         assert "read_image" in tool_names
 
-    def test_baseline_text_only_tools_unchanged_when_media_enabled(
-        self, tmp_path: Path
-    ) -> None:
+    def test_baseline_text_only_tools_unchanged_when_media_enabled(self, tmp_path: Path) -> None:
         """Text-only tools are identical regardless of media.enabled setting."""
         capabilities = {"WorkspaceRead", "ArtifactSubmit", "RunReportProgress"}
 
@@ -964,9 +952,7 @@ class TestMultimodalToolVisibility:
         )
         workspace1 = FsWorkspace(tmp_path)
         config1 = McpConfig(media=MediaConfig(enabled=False))
-        bridge1 = server_runtime.build_ralph_tool_registry(
-            session1, workspace1, mcp_config=config1
-        )
+        bridge1 = server_runtime.build_ralph_tool_registry(session1, workspace1, mcp_config=config1)
         mcp_server1 = server_runtime.McpServer(session1, workspace1, bridge1)
 
         # With media
@@ -978,9 +964,7 @@ class TestMultimodalToolVisibility:
         )
         workspace2 = FsWorkspace(tmp_path)
         config2 = McpConfig(media=MediaConfig(enabled=True))
-        bridge2 = server_runtime.build_ralph_tool_registry(
-            session2, workspace2, mcp_config=config2
-        )
+        bridge2 = server_runtime.build_ralph_tool_registry(session2, workspace2, mcp_config=config2)
         mcp_server2 = server_runtime.McpServer(session2, workspace2, bridge2)
 
         # Initialize both with text-only client capabilities

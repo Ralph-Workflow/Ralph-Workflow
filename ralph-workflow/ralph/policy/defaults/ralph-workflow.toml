@@ -1,0 +1,126 @@
+# User-global Ralph configuration.
+#
+# Location: ~/.config/ralph-workflow.toml  (or $XDG_CONFIG_HOME/ralph-workflow.toml)
+#
+# Project-local overrides live in .agent/ralph-workflow.toml — values there
+# take precedence over this file.
+#
+# Every non-secret field is listed below with its default value, commented out.
+# Uncomment and edit only the fields you want to change; everything else keeps
+# its documented default automatically.
+#
+# For MCP servers and web search, edit ~/.config/ralph-workflow-mcp.toml
+# (or .agent/mcp.toml for project-local overrides).
+
+# ---------------------------------------------------------------------------
+# [general] — Core workflow settings
+# ---------------------------------------------------------------------------
+[general]
+# verbosity = 2                         # 0=quiet 1=normal 2=verbose 3=full 4=debug
+# developer_iters = 5                   # developer iterations per run (>=1)
+# reviewer_reviews = 2                  # review-fix cycles (0 = skip review, >=0)
+# max_development_analysis_iterations = 3  # max development analysis loop budget (>=0)
+# max_review_analysis_iterations = 2    # max review analysis loop budget (>=0)
+# developer_context = 1                 # developer context level (>=1)
+# reviewer_context = 0                  # reviewer context level (>=0)
+# review_depth = "standard"             # standard | comprehensive | security | incremental
+# prompt_path = "/path/to/PROMPT.md"    # override default PROMPT.md path (comment out to use default)
+# templates_dir = "/path/to/templates"  # user templates directory (comment out to use bundled)
+# git_user_name = "Your Name"           # git author name for commits (comment out to use git config)
+# git_user_email = "you@example.com"    # git author email for commits (comment out to use git config)
+# max_same_agent_retries = 2            # max consecutive retries on the same agent (>=0)
+# max_commit_residual_retries = 10      # max extra residual commit retries (>=0)
+# max_retries = 3                       # max retries per agent attempt (>=0)
+# retry_delay_ms = 1000                 # base delay between retries in ms (>=0)
+# backoff_multiplier = 2.0              # exponential backoff multiplier (>=1.0)
+# max_backoff_ms = 60000                # maximum retry backoff delay in ms (>=0)
+# max_cycles = 3                        # max full fallback cycles through a drain (>=1)
+# execution_history_limit = 1000        # max execution history entries in memory (>=1)
+
+# [general.behavior] — Behavioral flags
+[general.behavior]
+# interactive = false           # keep agent in foreground (interactive mode)
+# auto_detect_stack = true      # auto-detect project stack for review guidelines
+# strict_validation = false     # strict PROMPT.md validation
+
+# [general.workflow] — Workflow automation flags
+[general.workflow]
+# checkpoint_enabled = true     # enable checkpoint/resume functionality
+
+# [general.execution] — Execution behavior flags
+[general.execution]
+# force_universal_prompt = false  # force universal review prompt for all agents
+# isolation_mode = true           # prevent context contamination between iterations
+
+# ---------------------------------------------------------------------------
+# [ccs] — Claude Code Switch (CCS) defaults
+# ---------------------------------------------------------------------------
+[ccs]
+# output_flag = "--output-format=stream-json"
+# yolo_flag = "--permission-mode auto"
+# verbose_flag = "--verbose"
+# print_flag = "--print"
+# streaming_flag = "--include-partial-messages"
+# json_parser = "claude"
+# session_flag = "--resume {}"
+# can_commit = true
+
+# ---------------------------------------------------------------------------
+# [cloud] — Optional cloud reporting (leave disabled unless you have an account)
+# ---------------------------------------------------------------------------
+[cloud]
+# enabled = false
+# api_url = "https://api.example.com"   # base URL for cloud API
+# api_key = ""                          # prefer RALPH_CLOUD_API_KEY env var instead
+# timeout_secs = 30
+
+# ---------------------------------------------------------------------------
+# [agents.*] — Agent definitions
+# Uncomment and adjust to add or override agents.
+# ---------------------------------------------------------------------------
+
+# [agents.claude]
+# cmd = "claude"
+# output_flag = "--output-format=stream-json"
+# yolo_flag = "--permission-mode auto"
+# verbose_flag = "--verbose"
+# print_flag = "--print"
+# streaming_flag = "--include-partial-messages"
+# json_parser = "claude"
+# session_flag = "--resume {}"
+# can_commit = true
+# display_name = "Claude"
+
+# [agents.opencode]
+# cmd = "opencode"
+# output_flag = "--output-format=stream-json"
+# yolo_flag = "-y"
+# json_parser = "opencode"
+# can_commit = false
+# display_name = "OpenCode"
+
+# ---------------------------------------------------------------------------
+# [agent_chains.*] — Named reusable chain definitions (list of agent names)
+# Defaults shown below mirror the built-in factory defaults.
+# ---------------------------------------------------------------------------
+
+# [agent_chains]
+# planning = ["claude"]
+# development = ["claude", "opencode"]
+# analysis = ["claude"]
+# review = ["claude"]
+# fix = ["claude"]
+# commit = ["claude"]
+
+# ---------------------------------------------------------------------------
+# [agent_drains.*] — Drain-to-chain bindings for built-in drains
+# Defaults shown below mirror the built-in factory defaults.
+# ---------------------------------------------------------------------------
+
+# [agent_drains]
+# planning = "planning"
+# development = "development"
+# analysis = "analysis"
+# review = "review"
+# fix = "fix"
+# commit = "commit"

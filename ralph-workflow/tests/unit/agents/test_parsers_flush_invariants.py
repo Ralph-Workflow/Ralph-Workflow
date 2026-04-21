@@ -78,8 +78,7 @@ class TestParagraphBoundaryFlush:
 
         # Should produce exactly 2 text blocks (one per paragraph)
         assert len(text_results) == EXPECTED_TWO_TEXT_RESULTS, (
-            "Expected 2 text results, got "
-            f"{len(text_results)} for {parser_factory.__name__}"
+            f"Expected 2 text results, got {len(text_results)} for {parser_factory.__name__}"
         )
         assert text_results[0].content == "Para 1"
         assert text_results[1].content == "Para 2"
@@ -193,8 +192,7 @@ class TestEmptyFlushSuppression:
 
         # Should not have empty string in content
         assert "" not in content_values, (
-            "Empty content should not appear for "
-            f"{parser_factory.__name__}"
+            f"Empty content should not appear for {parser_factory.__name__}"
         )
         assert "Actual content" in content_values
 
@@ -252,7 +250,6 @@ class TestNoMidTokenSplit:
 
         # Should coalesce into one coherent text block
         assert len(text_results) == EXPECTED_SINGLE_TEXT_RESULT, (
-            "Expected 1 coherent block, got "
-            f"{len(text_results)} for {parser_factory.__name__}"
+            f"Expected 1 coherent block, got {len(text_results)} for {parser_factory.__name__}"
         )
         assert text_results[0].content == "Hello World!"

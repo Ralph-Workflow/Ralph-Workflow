@@ -27,9 +27,7 @@ class OpenCodeParser:
     - Iterator exhaustion (final flush via ``_flush_all_accumulators()``)
     """
 
-    _STOP_EVENT_TYPES: Final[frozenset[str]] = frozenset(
-        {"step_start", "step_finish", "done"}
-    )
+    _STOP_EVENT_TYPES: Final[frozenset[str]] = frozenset({"step_start", "step_finish", "done"})
 
     def __init__(self) -> None:
         # Accumulator keyed by part id or synthetic stream key

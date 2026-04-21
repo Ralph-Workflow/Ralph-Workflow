@@ -16,6 +16,8 @@ To refresh the runnable `ralph` executable from the current checkout, run:
 make install
 ```
 
+When adding or renaming fields on `UnifiedConfig` / `GeneralConfig` in `ralph/config/models.py`, also update the bundled user-global template at `ralph/policy/defaults/ralph-workflow.toml` so new users see the documented default.
+
 ## Required verification
 
 Run this before opening or updating a PR:

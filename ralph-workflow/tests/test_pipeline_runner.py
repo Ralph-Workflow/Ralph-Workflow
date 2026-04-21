@@ -759,6 +759,7 @@ class TestPipelineRunnerLoop:
             "_emit_phase_transition_if_changed",
             lambda *args, **kwargs: args[1],
         )
+
         def record_saved_state(saved_state: PipelineState) -> None:
             saved_states.append(saved_state)
 

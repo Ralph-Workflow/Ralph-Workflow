@@ -153,7 +153,6 @@ def test_non_conflict_merge_failure_enters_recovery_state(
     assert "git merge failed for branch ralph/unit-worker-2" in final_state.last_error
 
 
-
 def test_merge_conflict_fails_phase_and_preserves_worktrees(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

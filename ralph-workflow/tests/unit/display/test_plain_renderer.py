@@ -171,6 +171,5 @@ def test_emit_snapshot_includes_plan_activity_and_analysis_context() -> None:
     assert any("command=python -m ralph" in line for line in lines)
     assert any("Inspecting PROMPT.md for visibility requirements" in line for line in lines)
     assert any(
-        "[analysis] review revise — The current dashboard drops key state" in line
-        for line in lines
+        "[analysis] review revise — The current dashboard drops key state" in line for line in lines
     )
