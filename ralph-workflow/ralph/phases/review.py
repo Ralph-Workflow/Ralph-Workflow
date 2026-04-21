@@ -178,22 +178,17 @@ def handle_review_analysis(effect: Effect, ctx: PhaseContext) -> list[Event]:
 
         if decision in (AnalysisDecision.PROCEED, AnalysisDecision.COMPLETE):
             return [PipelineEvent.ANALYSIS_SUCCESS]
-        elif decision == AnalysisDecision.REVISE:
+        if decision in (
+            AnalysisDecision.REVISE,
+            AnalysisDecision.FAILURE,
+            AnalysisDecision.ESCALATE,
+        ):
+            logger.warning("Review analysis decision {} triggers loopback", decision)
             return [PipelineEvent.ANALYSIS_LOOPBACK]
-        elif decision in (AnalysisDecision.FAILURE, AnalysisDecision.ESCALATE):
-            logger.warning("Review analysis decision {} triggers pipeline failure", decision)
-            return [
-                PhaseFailureEvent(
-                    phase="review_analysis",
-                    reason=f"Analysis decision: {decision}",
-                    recoverable=False,
-                )
-            ]
-        else:
-            logger.warning(
-                "Unknown review analysis decision: {}. Defaulting to success.",
-                decision,
-            )
-            return [PipelineEvent.ANALYSIS_SUCCESS]
+        logger.warning(
+            "Unknown review analysis decision: {}. Defaulting to success.",
+            decision,
+        )
+        return [PipelineEvent.ANALYSIS_SUCCESS]
 
     return []

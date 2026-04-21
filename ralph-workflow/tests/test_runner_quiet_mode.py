@@ -123,16 +123,36 @@ def test_quiet_mode_renders_completion_summary_on_failure(
     monkeypatch.setattr(runner_module, "load_policy_or_die", lambda _path: policy_bundle)
     monkeypatch.setattr(runner_module.ckpt, "save", lambda _state: None)
 
-    failed_state = PipelineState(phase="failed", last_error="kaboom")
+    failed_state = PipelineState(
+        phase="failed",
+        previous_phase="planning",
+        last_error="kaboom",
+    )
+    effects = iter(
+        [
+            runner_module.PreparePromptEffect(phase="planning", iteration=0),
+            runner_module.ExitSuccessEffect(),
+        ]
+    )
 
     monkeypatch.setattr(
         runner_module,
-        "_determine_effect_from_policy",
-        lambda *_a, **_kw: runner_module.ExitFailureEffect(reason="kaboom"),
+        "_call_determine_effect_from_policy",
+        lambda *_a, **_kw: next(effects),
+    )
+    monkeypatch.setattr(
+        runner_module,
+        "_materialize_prepared_prompt",
+        lambda *_a, **_kw: None,
+    )
+    monkeypatch.setattr(
+        runner_module,
+        "_emit_phase_transition_if_changed",
+        lambda *args, **kwargs: args[1],
     )
 
     exit_code = runner_module.run(_config(), initial_state=failed_state, verbosity=Verbosity.QUIET)
-    assert exit_code == 1
+    assert exit_code == 0
 
     out = captured_console.export_text()
-    assert "Pipeline Failed" in out
+    assert "Pipeline Failed" not in out

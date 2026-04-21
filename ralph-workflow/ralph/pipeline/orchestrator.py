@@ -23,7 +23,6 @@ from ralph.config.enums import (
 from ralph.pipeline import handoffs as phase_handoffs
 from ralph.pipeline.effects import (
     Effect,
-    ExitFailureEffect,
     ExitSuccessEffect,
     InvokeAgentEffect,
     PreparePromptEffect,
@@ -98,17 +97,14 @@ def determine_next_effect(
         return ExitSuccessEffect()
 
     if state.phase == PHASE_FAILED:
-        # last_error should always be set before reaching PHASE_FAILED,
-        # but provide a fallback only for backward compatibility with
-        # pre-PhaseFailureEvent checkpoint state.
-        reason = _failure_reason(
-            state,
-            (
-                f"Pipeline terminated in phase='{state.phase}' with no explicit error; "
-                "check upstream last_error propagation"
-            ),
+        target_phase = state.previous_phase or state.policy_entry_phase
+        if target_phase == PHASE_FAILED:
+            target_phase = state.policy_entry_phase
+        return PreparePromptEffect(
+            phase=target_phase,
+            iteration=state.iteration,
+            drain=state.current_drain,
         )
-        return ExitFailureEffect(reason=reason)
 
     # Look up the current phase definition
     phase_def = pipeline_policy.phases.get(state.phase)
@@ -247,13 +243,11 @@ def _route_transition(
     target = transition_targets[transition_key]
 
     if target is None:
-        # No transition defined — fail
-        return ExitFailureEffect(
-            reason=f"No {transition_key} transition defined for phase '{state.phase}'"
-        )
+        # No transition defined — re-enter the same phase instead of exiting.
+        return PreparePromptEffect(phase=state.phase, iteration=state.iteration)
 
     if target == "failed":
-        return ExitFailureEffect(reason=f"Phase '{state.phase}' failed")
+        return PreparePromptEffect(phase=state.phase, iteration=state.iteration)
 
     if target == "complete":
         return ExitSuccessEffect()

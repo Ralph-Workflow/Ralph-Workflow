@@ -7,12 +7,19 @@ from typing import cast
 from unittest.mock import MagicMock
 
 from ralph.pipeline import runner as runner_module
-from ralph.pipeline.effects import CommitEffect, ExitSuccessEffect, PreparePromptEffect
+from ralph.pipeline.effects import (
+    CommitEffect,
+    ExitSuccessEffect,
+    InvokeAgentEffect,
+    PreparePromptEffect,
+)
 from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.orchestrator import determine_next_effect
 from ralph.pipeline.reducer import reduce
 from ralph.pipeline.state import AgentChainState, CommitState, PipelineState, RebaseState
 from ralph.policy.loader import load_policy
+
+_EXPECTED_RECOVERY_DETERMINE_CALLS = 2
 
 
 def _load_default_bundle():
@@ -104,7 +111,7 @@ def test_full_pipeline_transitions_from_planning_to_complete() -> None:
     ]
 
 
-def test_run_fails_when_planner_does_not_submit_plan_artifact(
+def test_run_recovers_when_planner_does_not_submit_plan_artifact(
     monkeypatch,
     tmp_path: Path,
 ) -> None:
@@ -136,11 +143,43 @@ def test_run_fails_when_planner_does_not_submit_plan_artifact(
     mock_phase_def.drain = "planning"
     mock_bundle.pipeline.phases.get.return_value = mock_phase_def
 
+    call_count = 0
+
+    def stub_determine_effect(*_args, **_kwargs):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            return InvokeAgentEffect(
+                agent_name="planner",
+                phase="planning",
+                prompt_file=".agent/tmp/planning_prompt.md",
+            )
+        return ExitSuccessEffect()
+
     monkeypatch.setattr(runner_module, "resolve_workspace_scope", lambda: mock_scope)
     monkeypatch.setattr(runner_module, "load_policy_or_die", lambda _: mock_bundle)
     monkeypatch.setattr(runner_module, "AgentRegistry", MagicMock())
     monkeypatch.setattr(runner_module, "FsWorkspace", MagicMock())
-    monkeypatch.setattr(runner_module, "_materialize_agent_prompt_if_needed", lambda *a, **kw: None)
+    monkeypatch.setattr(
+        runner_module,
+        "_materialize_agent_prompt_if_needed",
+        lambda *a, **kw: None,
+    )
+    monkeypatch.setattr(
+        runner_module,
+        "_materialize_prepared_prompt",
+        lambda *a, **kw: None,
+    )
+    monkeypatch.setattr(
+        runner_module,
+        "_emit_phase_transition_if_changed",
+        lambda *args, **kwargs: args[1],
+    )
+    monkeypatch.setattr(
+        runner_module,
+        "_call_determine_effect_from_policy",
+        stub_determine_effect,
+    )
     monkeypatch.setattr(
         runner_module,
         "_phase_event_after_agent_run",
@@ -157,16 +196,5 @@ def test_run_fails_when_planner_does_not_submit_plan_artifact(
 
     result = runner_module.run(config, initial_state=state)
 
-    assert result == 1
-    # The failure line is emitted via console.print before the final completion summary,
-    # so scan the call history rather than looking at just the last call.
-    rendered_plain_values: list[str] = []
-    for call in console_mock.print.call_args_list:
-        if not call.args:
-            continue
-        candidate = call.args[0]
-        plain = getattr(candidate, "plain", None)
-        if isinstance(plain, str):
-            rendered_plain_values.append(plain)
-    expected = "Agent chain exhausted in phase='planning' after 3 retries across 1 agents"
-    assert any(expected in value for value in rendered_plain_values), rendered_plain_values
+    assert result == 0
+    assert call_count == _EXPECTED_RECOVERY_DETERMINE_CALLS
