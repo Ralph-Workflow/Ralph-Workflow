@@ -27,17 +27,6 @@ from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
 from loguru import logger
 from tqdm import tqdm
 
-from ralph.agents.transport_emit import (
-    _build_opencode_provider_config,
-    _claude_mcp_config,
-    _load_existing_claude_upstream_servers,
-    _mcp_toml_as_upstreams,
-    _merge_mcp_toml_into_upstreams,
-    _merge_opencode_config_content,  # noqa: F401  (re-exported for tests)
-    _prepare_codex_home,  # noqa: F401  (re-exported for tests)
-    _prepare_codex_home_with_upstreams,
-    _set_upstream_mcp_config,
-)
 from ralph.config.enums import AgentTransport
 from ralph.mcp.protocol.startup import (
     PreflightError,
@@ -50,6 +39,14 @@ from ralph.mcp.protocol.startup import (
     tools_list_request,
 )
 from ralph.mcp.tools.names import claude_tool_name
+from ralph.mcp.transport.claude import claude_mcp_config, load_existing_claude_upstream_servers
+from ralph.mcp.transport.codex import prepare_codex_home_with_upstreams
+from ralph.mcp.transport.common import (
+    mcp_toml_as_upstreams,
+    merge_mcp_toml_into_upstreams,
+    set_upstream_mcp_config,
+)
+from ralph.mcp.transport.opencode import build_opencode_provider_config
 
 _MODELED_FLAG_PARTS = 2
 _IDLE_POLL_INTERVAL_SECONDS = 0.05
@@ -475,34 +472,32 @@ def _runtime_extra_env(
     if transport == AgentTransport.OPENCODE:
         if not endpoint:
             return runtime_env or None
-        provider_config, upstreams = _build_opencode_provider_config(
+        provider_config, upstreams = build_opencode_provider_config(
             runtime_env.get("OPENCODE_CONFIG_CONTENT") or os.environ.get("OPENCODE_CONFIG_CONTENT"),
             endpoint,
         )
         runtime_env["OPENCODE_CONFIG_CONTENT"] = provider_config
-        mcp_toml = _mcp_toml_as_upstreams(workspace_path)
-        _set_upstream_mcp_config(runtime_env, _merge_mcp_toml_into_upstreams(upstreams, mcp_toml))
+        mcp_toml = mcp_toml_as_upstreams(workspace_path)
+        set_upstream_mcp_config(runtime_env, merge_mcp_toml_into_upstreams(upstreams, mcp_toml))
         return runtime_env
     if transport == AgentTransport.CODEX:
         if not endpoint and system_prompt_file is None:
             return runtime_env or None
-        codex_home, upstreams = _prepare_codex_home_with_upstreams(
+        codex_home, upstreams = prepare_codex_home_with_upstreams(
             endpoint,
             workspace_path=workspace_path,
             existing_home=runtime_env.get("CODEX_HOME") or os.environ.get("CODEX_HOME"),
             system_prompt_file=system_prompt_file,
         )
         runtime_env["CODEX_HOME"] = codex_home
-        mcp_toml = _mcp_toml_as_upstreams(workspace_path)
-        _set_upstream_mcp_config(runtime_env, _merge_mcp_toml_into_upstreams(upstreams, mcp_toml))
+        mcp_toml = mcp_toml_as_upstreams(workspace_path)
+        set_upstream_mcp_config(runtime_env, merge_mcp_toml_into_upstreams(upstreams, mcp_toml))
         return runtime_env
     if transport == AgentTransport.CLAUDE:
         if endpoint:
-            existing = _load_existing_claude_upstream_servers(workspace_path)
-            mcp_toml = _mcp_toml_as_upstreams(workspace_path)
-            _set_upstream_mcp_config(
-                runtime_env, _merge_mcp_toml_into_upstreams(existing, mcp_toml)
-            )
+            existing = load_existing_claude_upstream_servers(workspace_path)
+            mcp_toml = mcp_toml_as_upstreams(workspace_path)
+            set_upstream_mcp_config(runtime_env, merge_mcp_toml_into_upstreams(existing, mcp_toml))
         return runtime_env
 
     if not endpoint:
@@ -745,7 +740,7 @@ def _extend_claude_transport_flags(
     cmd.extend(
         [
             "--mcp-config",
-            _claude_mcp_config(
+            claude_mcp_config(
                 build_options.mcp_endpoint,
                 workspace_path=build_options.workspace_path,
             ),

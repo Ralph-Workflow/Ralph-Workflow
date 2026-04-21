@@ -22,8 +22,6 @@ from ralph.agents.invoke import (
     _build_command,
     _BuildCommandOptions,
     _command_for_log,
-    _merge_opencode_config_content,
-    _prepare_codex_home,
     _provider_allowed_mcp_tool_names,
     invoke_agent,
 )
@@ -36,6 +34,8 @@ from ralph.mcp.tools.names import (
     RALPH_MCP_SERVER_NAME,
     claude_tool_name,
 )
+from ralph.mcp.transport.codex import prepare_codex_home
+from ralph.mcp.transport.opencode import merge_opencode_config_content
 from ralph.mcp.upstream.config import (
     UPSTREAM_MCP_CONFIG_ENV,
     UpstreamConfigError,
@@ -1518,7 +1518,7 @@ def test_invoke_agent_does_not_inject_opencode_mcp_config_without_explicit_endpo
 
 
 def test_opencode_config_disables_all_native_tools_when_mcp_wired() -> None:
-    result = _merge_opencode_config_content(None, "http://localhost:0/mcp")
+    result = merge_opencode_config_content(None, "http://localhost:0/mcp")
     parsed = _json_object(result)
     tools = cast("dict[str, object]", parsed["tools"])
     for name in OPENCODE_NATIVE_TOOLS_TO_DISABLE:
@@ -1527,7 +1527,7 @@ def test_opencode_config_disables_all_native_tools_when_mcp_wired() -> None:
 
 def test_opencode_config_tools_disable_overrides_user_enables() -> None:
     existing = '{"tools": {"bash": true}}'
-    result = _merge_opencode_config_content(existing, "http://localhost:0/mcp")
+    result = merge_opencode_config_content(existing, "http://localhost:0/mcp")
     parsed = _json_object(result)
     tools = cast("dict[str, object]", parsed["tools"])
     assert tools["bash"] is False, "MCP policy must override user enable"
@@ -1535,7 +1535,7 @@ def test_opencode_config_tools_disable_overrides_user_enables() -> None:
 
 def test_opencode_config_preserves_unrelated_user_tools_sections() -> None:
     existing = '{"tools": {"custom_plugin_tool": true}, "ui": {"theme": "dark"}}'
-    result = _merge_opencode_config_content(existing, "http://localhost:0/mcp")
+    result = merge_opencode_config_content(existing, "http://localhost:0/mcp")
     parsed = _json_object(result)
     tools = cast("dict[str, object]", parsed["tools"])
     ui = cast("dict[str, object]", parsed["ui"])
@@ -1630,12 +1630,12 @@ def test_opencode_mode_extracts_upstream_servers_without_passing_them_through(
 def test_opencode_mode_rejects_duplicate_ralph_server_name() -> None:
     existing = '{"mcp": {"ralph": {"type": "remote", "url": "http://wrong.example/mcp"}}}'
     with pytest.raises(UpstreamConfigError, match="ralph"):
-        _merge_opencode_config_content(existing, "http://localhost:0/mcp")
+        merge_opencode_config_content(existing, "http://localhost:0/mcp")
 
 
 def test_opencode_config_preserves_unrelated_permission_entries() -> None:
     existing = '{"permission": {"bash": "ask", "custom_tool": "allow"}}'
-    result = _merge_opencode_config_content(existing, "http://localhost:0/mcp")
+    result = merge_opencode_config_content(existing, "http://localhost:0/mcp")
     parsed = _json_object(result)
     permission = cast("dict[str, object]", parsed["permission"])
     assert permission["bash"] == "ask"
@@ -1644,7 +1644,7 @@ def test_opencode_config_preserves_unrelated_permission_entries() -> None:
 
 
 def test_opencode_config_allows_all_bare_ralph_mcp_tool_names() -> None:
-    result = _merge_opencode_config_content(None, "http://localhost:0/mcp")
+    result = merge_opencode_config_content(None, "http://localhost:0/mcp")
     parsed = _json_object(result)
     permission = cast("dict[str, object]", parsed["permission"])
 
@@ -1654,7 +1654,7 @@ def test_opencode_config_allows_all_bare_ralph_mcp_tool_names() -> None:
 
 def test_opencode_config_normalizes_non_dict_mcp_sections() -> None:
     existing = '{"mcp": "invalid", "permission": "invalid", "tools": "invalid"}'
-    result = _merge_opencode_config_content(existing, "http://localhost:0/mcp")
+    result = merge_opencode_config_content(existing, "http://localhost:0/mcp")
     parsed = _json_object(result)
     mcp_config = cast("dict[str, object]", parsed["mcp"])
     permission = cast("dict[str, object]", parsed["permission"])
@@ -1938,7 +1938,7 @@ def test_invoke_agent_preserves_existing_codex_home_state(
 
 
 def test_codex_config_toml_disables_all_features_when_mcp_wired(tmp_path: Path) -> None:
-    home = _prepare_codex_home(
+    home = prepare_codex_home(
         "http://localhost:0/mcp",
         workspace_path=tmp_path,
         existing_home=None,
@@ -1960,7 +1960,7 @@ def test_codex_config_toml_disables_all_features_when_mcp_wired(tmp_path: Path) 
 def test_codex_config_toml_keeps_model_instructions_outside_features(tmp_path: Path) -> None:
     system_prompt_file = tmp_path / "SYSTEM_PROMPT.md"
     system_prompt_file.write_text("system", encoding="utf-8")
-    home = _prepare_codex_home(
+    home = prepare_codex_home(
         "http://localhost:0/mcp",
         workspace_path=tmp_path,
         existing_home=None,
@@ -1979,7 +1979,7 @@ def test_codex_config_toml_preserves_existing_features_section(tmp_path: Path) -
         '[features]\nfoo = true\n\n[profiles.default]\nmodel = "gpt-5"\n',
         encoding="utf-8",
     )
-    home = _prepare_codex_home(
+    home = prepare_codex_home(
         "http://localhost:0/mcp",
         workspace_path=tmp_path,
         existing_home=str(fake_home),
@@ -2076,7 +2076,7 @@ def test_codex_mode_rejects_duplicate_ralph_server_name(tmp_path: Path) -> None:
         encoding="utf-8",
     )
     with pytest.raises(UpstreamConfigError, match="ralph"):
-        _prepare_codex_home(
+        prepare_codex_home(
             "http://localhost:0/mcp",
             workspace_path=tmp_path,
             existing_home=str(fake_home),
@@ -2091,7 +2091,7 @@ def test_codex_config_toml_preserves_unrelated_top_level_sections(tmp_path: Path
         'model = "gpt-5"\napproval_policy = "never"\n',
         encoding="utf-8",
     )
-    home = _prepare_codex_home(
+    home = prepare_codex_home(
         "http://localhost:0/mcp",
         workspace_path=tmp_path,
         existing_home=str(fake_home),
@@ -2104,7 +2104,7 @@ def test_codex_config_toml_preserves_unrelated_top_level_sections(tmp_path: Path
 
 
 def test_codex_config_toml_omits_features_when_no_endpoint(tmp_path: Path) -> None:
-    home = _prepare_codex_home(
+    home = prepare_codex_home(
         None,
         workspace_path=tmp_path,
         existing_home=None,
@@ -2146,7 +2146,7 @@ def test_codex_logs_best_effort_warning_when_mcp_endpoint_wired(tmp_path: Path) 
     logger.remove()
     handler_id = logger.add(buf, level="WARNING")
     try:
-        _prepare_codex_home(
+        prepare_codex_home(
             "http://localhost:0/mcp",
             workspace_path=tmp_path,
             existing_home=None,
@@ -2164,7 +2164,7 @@ def test_codex_does_not_log_warning_when_no_endpoint(tmp_path: Path) -> None:
     logger.remove()
     handler_id = logger.add(buf, level="WARNING")
     try:
-        _prepare_codex_home(
+        prepare_codex_home(
             None,
             workspace_path=tmp_path,
             existing_home=None,

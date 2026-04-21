@@ -14,9 +14,9 @@ from typing import TYPE_CHECKING, Any
 
 import pytest
 
-from ralph.agents import invoke as invoke_module
 from ralph.mcp.protocol import startup
 from ralph.mcp.tools.names import WEB_SEARCH_TOOL, upstream_proxy_tool_name
+from ralph.mcp.transport.common import merge_mcp_toml_into_upstreams
 from ralph.mcp.upstream.config import UpstreamMcpServer
 
 if TYPE_CHECKING:
@@ -357,7 +357,7 @@ def test_mcp_toml_wins_over_simulated_claude_json_collision() -> None:
         ),
     )
 
-    merged = invoke_module._merge_mcp_toml_into_upstreams(claude_native, mcp_toml_servers)
+    merged = merge_mcp_toml_into_upstreams(claude_native, mcp_toml_servers)
 
     assert merged == mcp_toml_servers
 

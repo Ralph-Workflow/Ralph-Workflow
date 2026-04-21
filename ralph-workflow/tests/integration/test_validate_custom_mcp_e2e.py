@@ -12,6 +12,7 @@ import pytest
 from loguru import logger
 
 from ralph.config.enums import AgentTransport
+from ralph.mcp.transport.common import mcp_toml_as_upstreams
 from ralph.mcp.upstream.agent_probe import probe_agent_transports
 from ralph.pipeline import runner as runner_module
 
@@ -83,12 +84,10 @@ def test_validate_with_real_stdio_fixture_returns_zero(
 def test_validate_with_real_stdio_fixture_http_probe_skipped_for_stdio(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    from ralph.agents.transport_emit import _mcp_toml_as_upstreams  # noqa: PLC0415
-
     _write_fake_stdio_mcp_toml(tmp_path)
     monkeypatch.setenv("HOME", str(tmp_path / "fake-home"))
 
-    upstreams = _mcp_toml_as_upstreams(tmp_path)
+    upstreams = mcp_toml_as_upstreams(tmp_path)
     assert len(upstreams) == 1
 
     skip_reports = probe_agent_transports(

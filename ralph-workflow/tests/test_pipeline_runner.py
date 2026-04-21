@@ -2397,7 +2397,7 @@ def test_run_returns_1_when_mcp_validation_fails_in_strict_mode(
         return (bad_server,)
 
     monkeypatch.setattr(runner_module, "resolve_workspace_scope", lambda: WorkspaceScope(tmp_path))
-    monkeypatch.setattr("ralph.agents.transport_emit._mcp_toml_as_upstreams", fake_upstreams)
+    monkeypatch.setattr("ralph.mcp.transport.common.mcp_toml_as_upstreams", fake_upstreams)
     monkeypatch.setattr("ralph.mcp.upstream.validation.strict_mode_from_env", lambda *_: True)
 
     def fake_validator(_servers: object, *, strict: bool) -> object:
@@ -2417,7 +2417,7 @@ def test_run_continues_when_mcp_toml_has_no_servers(
     monkeypatch.setattr(
         runner_module, "resolve_workspace_scope", lambda: WorkspaceScope(tmp_git_repo)
     )
-    monkeypatch.setattr("ralph.agents.transport_emit._mcp_toml_as_upstreams", lambda _root: ())
+    monkeypatch.setattr("ralph.mcp.transport.common.mcp_toml_as_upstreams", lambda _root: ())
 
     def fail_validator(*_args: object, **_kwargs: object) -> object:
         raise AssertionError("validator should not run when no upstreams configured")

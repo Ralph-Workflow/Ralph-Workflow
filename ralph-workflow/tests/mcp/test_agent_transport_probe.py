@@ -69,16 +69,14 @@ def test_probe_emits_claude_http_config_and_reaches_server(
     captured = _stub_http_handshake_pass(monkeypatch)
     captured_blobs: list[tuple[str, object]] = []
 
-    real_claude_config = __import__(
-        "ralph.agents.transport_emit", fromlist=["_claude_mcp_config"]
-    )._claude_mcp_config
+    from ralph.mcp.transport.claude import claude_mcp_config as real_claude_config  # noqa: PLC0415
 
     def spy_claude(endpoint: str, **kw: object) -> str:
         blob = real_claude_config(endpoint, **kw)
         captured_blobs.append((endpoint, blob))
         return blob
 
-    monkeypatch.setattr("ralph.agents.transport_emit._claude_mcp_config", spy_claude)
+    monkeypatch.setattr("ralph.mcp.transport.claude.claude_mcp_config", spy_claude)
 
     reports = probe_agent_transports(
         [server], transports=(AgentTransport.CLAUDE,), workspace_path=None
@@ -126,9 +124,9 @@ def test_probe_emits_opencode_config_with_remote_mcp_entry(
     server = _http_server(name="docs", url="http://docs.invalid/mcp")
     captured_endpoint = _stub_http_handshake_pass(monkeypatch)
     captured_configs: list[str] = []
-    real_opencode = __import__(
-        "ralph.agents.transport_emit", fromlist=["_build_opencode_provider_config"]
-    )._build_opencode_provider_config
+    from ralph.mcp.transport.opencode import (  # noqa: PLC0415
+        build_opencode_provider_config as real_opencode,
+    )
 
     def spy_opencode(existing: str | None, endpoint: str) -> tuple[str, tuple[object, ...]]:
         text, ups = real_opencode(existing, endpoint)
@@ -136,7 +134,7 @@ def test_probe_emits_opencode_config_with_remote_mcp_entry(
         return text, ups
 
     monkeypatch.setattr(
-        "ralph.agents.transport_emit._build_opencode_provider_config",
+        "ralph.mcp.transport.opencode.build_opencode_provider_config",
         spy_opencode,
     )
 

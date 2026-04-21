@@ -112,7 +112,7 @@ def _check_agents(cli_overrides: dict[str, object] | None) -> None:
 
 def _check_mcp_servers(workspace_scope: WorkspaceScope) -> None:
     """Render custom MCP server health and per-agent transport compatibility."""
-    from ralph.agents.transport_emit import _mcp_toml_as_upstreams  # noqa: PLC0415
+    from ralph.mcp.transport.common import mcp_toml_as_upstreams  # noqa: PLC0415
     from ralph.mcp.upstream.agent_probe import probe_agent_transports  # noqa: PLC0415
     from ralph.mcp.upstream.validation import validate_upstream_mcp_servers  # noqa: PLC0415
 
@@ -123,7 +123,7 @@ def _check_mcp_servers(workspace_scope: WorkspaceScope) -> None:
     server_table.add_column("Tools")
     server_table.add_column("Detail")
 
-    upstreams = _mcp_toml_as_upstreams(workspace_scope.root)
+    upstreams = mcp_toml_as_upstreams(workspace_scope.root)
     if not upstreams:
         server_table.add_row(
             "(none)",
