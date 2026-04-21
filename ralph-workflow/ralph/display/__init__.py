@@ -8,12 +8,14 @@ from ralph.display.artifact_renderer import (
     render_analysis_decision,
     render_commit_message,
     render_fix_artifact,
+    render_missing_plan_hint,
     render_plan_artifact,
 )
 from ralph.display.phase_banner import (
     PhaseStartContext,
     show_phase_complete,
     show_phase_start,
+    show_phase_start_from_state,
     show_phase_transition,
 )
 from ralph.display.progress import RalphProgress, get_progress
@@ -29,11 +31,13 @@ __all__ = [
     "render_analysis_decision",
     "render_commit_message",
     "render_fix_artifact",
+    "render_missing_plan_hint",
     "render_plan_artifact",
     "show_agents",
     "show_config",
     "show_phase_complete",
     "show_phase_start",
+    "show_phase_start_from_state",
     "show_phase_transition",
     "show_providers",
 ]

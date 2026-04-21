@@ -106,11 +106,10 @@ Use package/module docstrings for API understanding and this README for workflow
 
 Ralph now treats several agent-driven phases as producing explicit evidence, not just a zero exit code.
 
-- `development` must leave behind a fresh `.agent/artifacts/development_result.json`.
 - `review` must leave behind a fresh `.agent/artifacts/issues.json`.
-- `fix` must leave behind a fresh `.agent/artifacts/fix_result.json`.
+- `development` and `fix` are side-effect-driven phases: Ralph judges them by the workspace changes they make, not by whether they submit a structured result artifact.
 - Planning keeps `.agent/artifacts/plan.json` as the canonical machine-readable artifact and mirrors it to `.agent/PLAN.md` as the human/agent handoff.
-- The runner removes those per-phase artifacts before each invocation so a later interrupted run cannot silently reuse stale output from an earlier pass.
+- The runner still removes per-phase artifacts before each invocation so interrupted runs cannot leak stale summaries or review findings into later phases.
 
 Artifact contract:
 - Use `.json` artifacts for Ralph's validation, routing, checkpointing, and other orchestrator-only logic.
@@ -123,7 +122,7 @@ Artifact contract:
   - `.agent/DEVELOPMENT_ANALYSIS_DECISION.md`
   - `.agent/REVIEW_ANALYSIS_DECISION.md`
 
-This hardening is intentionally strict. It adds complexity, but it closes a real unattended-mode failure class where a provider could exit successfully, emit no meaningful work, and still let the pipeline advance because an old artifact was still present on disk.
+This hardening is intentionally selective. Review and planning still rely on explicit artifacts where Ralph needs structured evidence, while development and fix stay focused on producing workspace side effects without extra submission ceremony.
 
 ## Claude/CCS MCP safety note
 
@@ -140,3 +139,86 @@ max_work_units = 50
 ```
 
 See `docs/agents/parallelization.md` for the full guide.
+
+## Transcript layout
+
+Ralph emits every agent output line as a structured plain-text entry in the following format:
+
+```
+<ISO-TS> <LEVEL> <CAT> [<tag>][<unit>] <content>
+```
+
+**Levels** indicate severity and importance:
+
+| Level | Meaning |
+|-------|---------|
+| `INFO` | Routine update or progress |
+| `SUCCESS` | Phase or pipeline completed successfully |
+| `WARN` | Non-fatal issue or degraded state |
+| `ERROR` | Fatal error or malformed input |
+| `MILESTONE` | Major phase transition (planning, development, review, fix) |
+
+**Categories** (`CAT`) group tags into two buckets:
+
+| Category | Meaning |
+|----------|---------|
+| `META` | Workflow metadata: phase, plan, activity, worker, result, etc. |
+| `CONT` | Agent-produced content: text, thinking, tool calls, errors |
+
+**Tags** indicate the source and type of the line:
+
+| Tag | Category | Meaning |
+|-----|----------|---------|
+| `phase` | META | Workflow phase transition |
+| `plan` | META | Plan summary or scope |
+| `plan-scope` | META | Plan scope items |
+| `plan-steps` | META | Step progress |
+| `activity` | META | Agent activity metadata (tool, path, workdir) |
+| `activity-line` | META | Last raw activity line from an agent |
+| `analysis` | META | Phase analysis and decision |
+| `worker` | META | Parallel worker status update |
+| `result` | META | Pipeline completion result |
+| `pr` | META | Pull request URL |
+| `artifact` | META | Artifact kind/summary |
+| `progress` | META | Progress update |
+| `content` | CONT | Agent text output (one-shot, non-streaming) |
+| `content-start` | CONT | Start of a streaming text block |
+| `content-continue` | CONT | Continuation line in a streaming text block |
+| `content-end` | CONT | End of a streaming text block (with headline summary) |
+| `thinking` | CONT | Agent thinking/reasoning (one-shot) |
+| `thinking-start` | CONT | Start of a streaming thinking block |
+| `thinking-continue` | CONT | Continuation of a streaming thinking block |
+| `thinking-end` | CONT | End of a streaming thinking block |
+| `tool` | CONT | Tool invocation (tool name) |
+| `tool-result` | CONT | Tool result content |
+| `error` | CONT | Error or malformed input |
+| `status-content` | CONT | Status or lifecycle event from the agent |
+
+**Streaming blocks**: consecutive `text` or `thinking` activity lines from the same worker are grouped into `start`/`continue`/`end` sequences so progressive output feels coherent. When a different kind or a lifecycle event arrives, the open block is automatically closed with a `content-end` (or `thinking-end`) line whose content is a one-line headline summary of the accumulated block.
+
+**Oversized content** is condensed to a head+tail excerpt with a pointer:
+
+```
+2026-04-20T12:34:56Z INFO CONT [content][dev-1] AAAAAAA … (+4200 chars, see .agent/raw/dev-1.log) … ZZZZZZZ
+```
+
+When a content block exceeds the soft limit and is condensed, the full text is preserved to `.agent/raw/<unit-id>.log` so you can inspect the complete output. Malformed input lines that cannot be parsed are also preserved there for diagnosis. Short, non-condensed output is not written to the raw log.
+
+## Long-content display
+
+By default, oversized agent output is condensed using a deterministic head+tail excerpt (see above). For an additional quick-context layer on very large blocks, set:
+
+```bash
+export RALPH_LONG_CONTENT_SUMMARY=1
+```
+
+When this flag is set and a content block exceeds 4000 display cells, Ralph prepends a `↳ summary:` line before the condensed excerpt:
+
+```
+2026-04-20T12:34:56Z INFO CONT [content-start][dev-1] ↳ summary: My first non-empty headline sentence
+2026-04-20T12:34:56Z INFO CONT [content-start][dev-1] First 400 chars… (+4200 chars, see .agent/raw/dev-1.log) …last chars
+```
+
+The summary is extracted deterministically from the first non-empty line of the already-AI-produced content (markdown heading and quote prefixes stripped, truncated to 120 characters). No additional AI call is made. The condensed head+tail view remains the trusted default; the summary is an additive layer for quick orientation on unusually large blocks.
+
+Accepted values for `RALPH_LONG_CONTENT_SUMMARY`: `1`, `true`, `yes`. Any other value (including unset) disables the summary layer.

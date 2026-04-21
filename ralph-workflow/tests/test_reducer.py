@@ -17,7 +17,6 @@ from ralph.config.enums import (
     PHASE_REVIEW_COMMIT,
     PipelinePhase,
 )
-from ralph.pipeline.effects import ExitFailureEffect
 from ralph.pipeline.events import (
     PhaseFailureEvent,
     PipelineEvent,
@@ -200,10 +199,10 @@ class TestPhaseFailureEvent:
         assert new_state.dev_chain.retries == 0
         assert effects == []
 
-    def test_phase_failure_recoverable_with_single_agent_after_3_retries_fails(
+    def test_phase_failure_recoverable_with_single_agent_after_3_retries_enters_recovery(
         self,
     ) -> None:
-        """Single-agent chain exhausted after 3 retries transitions to PHASE_FAILED."""
+        """Single-agent chain exhaustion should enter recovery without exit effects."""
         state = PipelineState(
             phase=PHASE_DEVELOPMENT,
             dev_chain=AgentChainState(agents=["claude"], current_index=0, retries=3),
@@ -214,14 +213,13 @@ class TestPhaseFailureEvent:
         assert new_state.last_error is not None
         assert "development" in new_state.last_error
         assert "missing artifact" in new_state.last_error
-        assert len(effects) == 1
-        assert isinstance(effects[0], ExitFailureEffect)
-        assert "development" in effects[0].reason
+        assert new_state.recovery_epoch == 1
+        assert effects == []
 
-    def test_phase_failure_not_recoverable_transitions_to_failed_immediately(
+    def test_phase_failure_not_recoverable_enters_recovery_without_exit_effect(
         self,
     ) -> None:
-        """PhaseFailureEvent(recoverable=False) transitions directly to PHASE_FAILED."""
+        """PhaseFailureEvent(recoverable=False) should still avoid process exit."""
         state = PipelineState(
             phase=PHASE_DEVELOPMENT,
             dev_chain=AgentChainState(agents=["claude"], current_index=0, retries=0),
@@ -234,9 +232,8 @@ class TestPhaseFailureEvent:
         new_state, effects = _reduce(state, event)
         assert new_state.phase == PHASE_FAILED
         assert new_state.last_error == "development_analysis: Analysis decision: FAILURE"
-        assert len(effects) == 1
-        assert isinstance(effects[0], ExitFailureEffect)
-        assert effects[0].reason == "development_analysis: Analysis decision: FAILURE"
+        assert new_state.recovery_epoch == 1
+        assert effects == []
 
     def test_phase_failure_recoverable_preserves_reason_in_last_error(self) -> None:
         """When chain exhausts, the original PhaseFailureEvent reason is preserved."""
@@ -254,6 +251,7 @@ class TestPhaseFailureEvent:
         assert new_state.last_error is not None
         assert "missing planning artifact" in new_state.last_error
         assert "development" in new_state.last_error
+        assert new_state.recovery_epoch == 1
 
     def test_phase_failure_never_produces_unknown_failure_string(self) -> None:
         """Terminal failure from PhaseFailureEvent must never show 'Unknown failure'."""
@@ -271,10 +269,8 @@ class TestPhaseFailureEvent:
         assert new_state.last_error is not None
         assert new_state.last_error != "Unknown failure"
         assert "Unknown failure" not in new_state.last_error
-        for effect in effects:
-            if isinstance(effect, ExitFailureEffect):
-                assert effect.reason != "Unknown failure"
-                assert "Unknown failure" not in effect.reason
+        assert new_state.recovery_epoch == 1
+        assert effects == []
 
 
 # =============================================================================
@@ -375,7 +371,8 @@ def test_policy_agent_success_unknown_phase_routes_to_failed() -> None:
     assert new_state.phase == PHASE_FAILED
     assert new_state.previous_phase == "missing"
     assert new_state.last_error == "Unknown phase: missing"
-    assert effects == [ExitFailureEffect(reason="Unknown phase: missing")]
+    assert new_state.recovery_epoch == 1
+    assert effects == []
 
 
 def test_phase_advance_event_fails_on_unknown_policy_phase() -> None:
@@ -387,7 +384,9 @@ def test_phase_advance_event_fails_on_unknown_policy_phase() -> None:
 
     assert new_state.phase == PHASE_FAILED
     assert new_state.previous_phase == "missing"
-    assert any("missing" in str(getattr(e, "reason", "")) for e in effects)
+    assert new_state.recovery_epoch == 1
+    assert "missing" in (new_state.last_error or "")
+    assert effects == []
 
 
 def test_fix_failure_policy_terminal_transition_emits_exit_failure() -> None:
@@ -412,7 +411,8 @@ def test_fix_failure_policy_terminal_transition_emits_exit_failure() -> None:
 
     assert new_state.phase == PHASE_FAILED
     assert new_state.previous_phase == PHASE_FIX
-    assert effects == [ExitFailureEffect(reason="Fix phase failed")]
+    assert new_state.recovery_epoch == 1
+    assert effects == []
 
 
 def test_phase_advance_decreases_development_budget() -> None:
@@ -551,14 +551,16 @@ def test_agent_failure_falls_back_to_next_agent() -> None:
     assert new_state.dev_chain.retries == 0
 
 
-def test_agent_failure_with_exhausted_chain_fails() -> None:
-    """Test that AGENT_FAILURE with exhausted chain transitions to failed."""
+def test_agent_failure_with_exhausted_chain_enters_recovery() -> None:
+    """AGENT_FAILURE with exhausted chain should enter recovery without exit effects."""
     state = PipelineState(
         phase=PHASE_DEVELOPMENT,
         dev_chain=AgentChainState(agents=["claude"], current_index=0, retries=3),
     )
-    new_state, _ = _reduce(state, PipelineEvent.AGENT_FAILURE)
+    new_state, effects = _reduce(state, PipelineEvent.AGENT_FAILURE)
     assert new_state.phase == PHASE_FAILED
+    assert new_state.recovery_epoch == 1
+    assert effects == []
 
 
 def test_planning_agent_failure_uses_planning_chain_instead_of_review_chain() -> None:
@@ -594,10 +596,10 @@ def test_is_complete_returns_true_for_complete() -> None:
     assert state.is_complete() is True
 
 
-def test_is_complete_returns_true_for_failed() -> None:
-    """Test that is_complete() returns True for FAILED phase."""
+def test_is_complete_returns_false_for_failed() -> None:
+    """Failed phase is recoverable and must not be treated as complete."""
     state = PipelineState(phase=PHASE_FAILED)
-    assert state.is_complete() is True
+    assert state.is_complete() is False
 
 
 def test_is_complete_returns_false_for_development() -> None:
@@ -896,7 +898,9 @@ def test_routing_error_propagates_as_failure_not_silent(
         new_state, effects = _reduce(state, getattr(PipelineEvent, event), policy)
 
     assert new_state.phase == PHASE_FAILED
-    assert any("unknown phase" in str(getattr(e, "reason", "")) for e in effects)
+    assert new_state.recovery_epoch == 1
+    assert "unknown phase" in (new_state.last_error or "")
+    assert effects == []
 
 
 def test_agent_success_in_requires_commit_phase_marks_agent_invoked_without_advancing() -> None:
@@ -1137,10 +1141,9 @@ def test_merge_conflict_fails_phase() -> None:
         WorkersMergeConflictEvent(conflicting_unit_ids=["u1", "u2"]),
     )
 
-    assert len(effects) == 1
-    assert isinstance(effects[0], ExitFailureEffect)
-    assert effects[0].reason == "Merge conflict in workers: u1, u2"
+    assert effects == []
     assert new_state.phase == PHASE_FAILED
+    assert new_state.recovery_epoch == 1
     assert new_state.last_error is not None
     assert "u1" in new_state.last_error
     assert "u2" in new_state.last_error
@@ -1298,18 +1301,13 @@ def test_phase_handler_crash_exhausts_chain_before_failing() -> None:
         assert state.dev_chain.retries == expected_retries
         assert effects == []
 
-    # Final crash on agent 1 (chain exhausted): PHASE_FAILED with descriptive reason
+    # Final crash on agent 1 (chain exhausted): PHASE_FAILED recovery state
     state, effects = _reduce(state, crash_event)
     assert state.phase == PHASE_FAILED
     assert state.last_error is not None
     assert "Phase handler crashed: RuntimeError: boom" in state.last_error
-    assert len(effects) == 1
-    effect = effects[0]
-    assert isinstance(effect, ExitFailureEffect)
-    assert effect.reason == state.last_error
-    assert "Phase handler crashed" in effect.reason
-    assert effect.reason != "Unknown failure"
-    assert effect.reason != ""
+    assert state.recovery_epoch == 1
+    assert effects == []
 
 
 def test_full_noop_pipeline_flow_reaches_complete_without_billing_counters() -> None:

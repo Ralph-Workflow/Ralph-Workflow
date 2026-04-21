@@ -34,8 +34,6 @@ from ralph.pipeline.events import Event, PhaseFailureEvent, PipelineEvent
 from ralph.pipeline.work_units import WorkUnitsValidationError, parse_work_units_from_artifact
 from ralph.policy.validation import PolicyValidationError, validate_work_units_against_policy
 
-DEVELOPMENT_RESULT_ARTIFACT_PATH = ".agent/artifacts/development_result.json"
-
 
 @register_handler("development")
 def handle_development(effect: Effect, ctx: PhaseContext) -> list[Event]:
@@ -86,7 +84,6 @@ def handle_development(effect: Effect, ctx: PhaseContext) -> list[Event]:
             parsed = parse_work_units_from_artifact(artifact)
             if parsed is not None:
                 validate_work_units_against_policy(parsed, ctx.pipeline_policy)
-            _require_development_result_artifact(ctx)
         except (
             json.JSONDecodeError,
             PlanArtifactValidationError,
@@ -113,16 +110,46 @@ def _is_legacy_work_units_payload(content: dict[str, object]) -> bool:
     return "work_units" in content and "summary" not in content
 
 
-def _require_development_result_artifact(ctx: PhaseContext) -> None:
-    artifact_wrapper = load_phase_artifact(ctx.workspace, DEVELOPMENT_RESULT_ARTIFACT_PATH)
-    if artifact_wrapper.get("type") != "development_result":
-        raise PhaseArtifactError(
-            "Development result artifact must declare type='development_result'"
-        )
-    unwrap_phase_artifact_content(
-        artifact_wrapper,
-        expected_type="development_result",
+def _development_plan_is_noop(ctx: PhaseContext) -> bool:
+    if not ctx.workspace.exists(PLAN_ARTIFACT_PATH):
+        return False
+    try:
+        wrapper = load_phase_artifact(ctx.workspace, PLAN_ARTIFACT_PATH)
+        raw = unwrap_phase_artifact_content(wrapper, expected_type="plan")
+    except (
+        json.JSONDecodeError,
+        PlanArtifactValidationError,
+        PhaseArtifactError,
+        ValueError,
+    ):
+        return False
+    return is_noop_plan(raw)
+
+
+def _missing_analysis_artifact_event(phase: str, artifact_path: str) -> PhaseFailureEvent:
+    return PhaseFailureEvent(
+        phase=phase,
+        reason=(
+            "Missing required analysis artifact at "
+            f"{artifact_path}; the agent must submit "
+            f"{phase}_decision before declaring completion"
+        ),
+        recoverable=True,
     )
+
+
+def _analysis_event_for_decision(phase: str, decision: AnalysisDecision) -> list[Event]:
+    if decision in (AnalysisDecision.PROCEED, AnalysisDecision.COMPLETE):
+        return [PipelineEvent.ANALYSIS_SUCCESS]
+    if decision in (
+        AnalysisDecision.REVISE,
+        AnalysisDecision.FAILURE,
+        AnalysisDecision.ESCALATE,
+    ):
+        logger.warning("Analysis decision {} triggers loopback", decision)
+        return [PipelineEvent.ANALYSIS_LOOPBACK]
+    logger.warning("Unknown analysis decision: {}, defaulting to success", decision)
+    return [PipelineEvent.ANALYSIS_SUCCESS]
 
 
 @register_handler("development_analysis")
@@ -143,43 +170,21 @@ def handle_development_analysis(effect: Effect, ctx: PhaseContext) -> list[Event
     Returns:
         List of events to emit.
     """
-    if isinstance(effect, InvokeAgentEffect):
-        # Short-circuit if the plan artifact is a no-op — there is no analysis
-        # decision artifact to parse because no development work was done.
-        if ctx.workspace.exists(PLAN_ARTIFACT_PATH):
-            try:
-                wrapper = load_phase_artifact(ctx.workspace, PLAN_ARTIFACT_PATH)
-                raw = unwrap_phase_artifact_content(wrapper, expected_type="plan")
-                if is_noop_plan(raw):
-                    logger.info("Development analysis: plan is a no-op — skipping analysis")
-                    return [PipelineEvent.ANALYSIS_SUCCESS]
-            except (
-                json.JSONDecodeError,
-                PlanArtifactValidationError,
-                PhaseArtifactError,
-                ValueError,
-            ):
-                pass  # fall through to normal analysis decision parsing
+    if not isinstance(effect, InvokeAgentEffect):
+        return []
 
-        # Read the analysis artifact to determine routing
-        decision = parse_analysis_decision(ctx, "development_analysis")
-        logger.info("Development analysis decision: {}", decision)
+    if _development_plan_is_noop(ctx):
+        logger.info("Development analysis: plan is a no-op — skipping analysis")
+        return [PipelineEvent.ANALYSIS_SUCCESS]
 
-        if decision in (AnalysisDecision.PROCEED, AnalysisDecision.COMPLETE):
-            return [PipelineEvent.ANALYSIS_SUCCESS]
-        elif decision == AnalysisDecision.REVISE:
-            return [PipelineEvent.ANALYSIS_LOOPBACK]
-        elif decision in (AnalysisDecision.FAILURE, AnalysisDecision.ESCALATE):
-            logger.warning("Analysis decision {} triggers pipeline failure", decision)
-            return [
-                PhaseFailureEvent(
-                    phase="development_analysis",
-                    reason=f"Analysis decision: {decision}",
-                    recoverable=False,
-                )
-            ]
-        else:
-            logger.warning("Unknown analysis decision: {}, defaulting to success", decision)
-            return [PipelineEvent.ANALYSIS_SUCCESS]
+    artifact_path = ".agent/artifacts/development_analysis_decision.json"
+    if not ctx.workspace.exists(artifact_path):
+        logger.warning(
+            "Development analysis completed without required artifact at {}",
+            artifact_path,
+        )
+        return [_missing_analysis_artifact_event("development_analysis", artifact_path)]
 
-    return []
+    decision = parse_analysis_decision(ctx, "development_analysis")
+    logger.info("Development analysis decision: {}", decision)
+    return _analysis_event_for_decision("development_analysis", decision)

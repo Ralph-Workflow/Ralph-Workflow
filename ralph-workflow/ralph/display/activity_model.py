@@ -26,6 +26,7 @@ class ActivityEventKind(StrEnum):
     """Canonical event kinds emitted across providers."""
 
     TEXT = "text"
+    THINKING = "thinking"
     STATUS = "status"
     TOOL_USE = "tool_use"
     TOOL_RESULT = "tool_result"
@@ -95,6 +96,7 @@ def make_event(  # noqa: PLR0913
 
 _ICON_BY_KIND: dict[ActivityEventKind, str] = {
     ActivityEventKind.TEXT: "│",
+    ActivityEventKind.THINKING: "∴",
     ActivityEventKind.STATUS: "\u203a",
     ActivityEventKind.TOOL_USE: "▸",
     ActivityEventKind.TOOL_RESULT: "✓",

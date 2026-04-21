@@ -6,20 +6,11 @@ It applies agent-suggested fixes to the codebase.
 
 from __future__ import annotations
 
-import json
-
 from loguru import logger
 
 from ralph.phases import PhaseContext, register_handler
-from ralph.phases.artifacts import (
-    PhaseArtifactError,
-    load_phase_artifact,
-    unwrap_phase_artifact_content,
-)
 from ralph.pipeline.effects import Effect, InvokeAgentEffect, PreparePromptEffect
-from ralph.pipeline.events import Event, PhaseFailureEvent, PipelineEvent
-
-FIX_RESULT_ARTIFACT_PATH = ".agent/artifacts/fix_result.json"
+from ralph.pipeline.events import Event, PipelineEvent
 
 
 @register_handler("fix")
@@ -41,25 +32,7 @@ def handle_fix(effect: Effect, ctx: PhaseContext) -> list[Event]:
         return [PipelineEvent.PROMPT_PREPARED]
 
     if isinstance(effect, InvokeAgentEffect):
-        logger.info("Fix phase: processing fix result after agent run")
-        try:
-            artifact_wrapper = load_phase_artifact(ctx.workspace, FIX_RESULT_ARTIFACT_PATH)
-            if artifact_wrapper.get("type") != "fix_result":
-                raise PhaseArtifactError("Fix result artifact must declare type='fix_result'")
-            unwrap_phase_artifact_content(
-                artifact_wrapper,
-                expected_type="fix_result",
-            )
-        except (json.JSONDecodeError, PhaseArtifactError, TypeError, ValueError) as exc:
-            logger.warning("Fix phase missing fresh fix_result artifact: {}", exc)
-            return [
-                PhaseFailureEvent(
-                    phase="fix",
-                    reason=f"Missing/invalid fix_result artifact: {exc}",
-                    recoverable=True,
-                )
-            ]
-
+        logger.info("Fix phase: accepting workspace side effects after agent run")
         return [PipelineEvent.AGENT_SUCCESS]
 
     return []

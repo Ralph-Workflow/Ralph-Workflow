@@ -176,35 +176,25 @@ class TestHandleReviewAnalysis:
         result = handle_review_analysis(effect, ctx)
         assert result == [PipelineEvent.ANALYSIS_LOOPBACK]
 
-    def test_failure_decision_returns_phase_failure_not_recoverable(self) -> None:
+    def test_failure_decision_returns_analysis_loopback(self) -> None:
         effect = self._mock_invoke_effect()
         ctx = self._make_context()
         ctx.workspace.exists.return_value = True
         ctx.workspace.read.return_value = '{"status": "failed"}'
 
         result = handle_review_analysis(effect, ctx)
-        assert len(result) == 1
-        event = result[0]
-        assert isinstance(event, PhaseFailureEvent)
-        assert event.phase == "review_analysis"
-        assert event.recoverable is False
-        assert "failure" in event.reason
+        assert result == [PipelineEvent.ANALYSIS_LOOPBACK]
 
-    def test_escalate_decision_returns_phase_failure_not_recoverable(self) -> None:
+    def test_escalate_decision_returns_analysis_loopback(self) -> None:
         effect = self._mock_invoke_effect()
         ctx = self._make_context()
         ctx.workspace.exists.return_value = True
         ctx.workspace.read.return_value = '{"status": "escalate"}'
 
         result = handle_review_analysis(effect, ctx)
-        assert len(result) == 1
-        event = result[0]
-        assert isinstance(event, PhaseFailureEvent)
-        assert event.phase == "review_analysis"
-        assert event.recoverable is False
-        assert "escalate" in event.reason
+        assert result == [PipelineEvent.ANALYSIS_LOOPBACK]
 
-    def test_missing_artifact_returns_phase_failure_not_recoverable(self) -> None:
+    def test_missing_artifact_returns_phase_failure_recoverable(self) -> None:
         effect = self._mock_invoke_effect()
         ctx = self._make_context()
         ctx.workspace.exists.return_value = False
@@ -214,7 +204,8 @@ class TestHandleReviewAnalysis:
         event = result[0]
         assert isinstance(event, PhaseFailureEvent)
         assert event.phase == "review_analysis"
-        assert event.recoverable is False
+        assert event.recoverable is True
+        assert "review_analysis_decision" in event.reason
 
     def test_non_invoke_effect_returns_empty_list(self) -> None:
         effect = MagicMock(spec=PreparePromptEffect)

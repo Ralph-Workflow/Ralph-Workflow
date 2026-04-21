@@ -395,30 +395,22 @@ def test_handle_planning_accepts_noop_plan() -> None:
 def test_handle_development_reads_wrapped_plan_artifact_and_validates_schema() -> None:
     ctx = _stub_context()
     workspace = cast("MagicMock", ctx.workspace)
-    workspace.exists.side_effect = lambda path: (
-        path in {".agent/artifacts/plan.json", ".agent/artifacts/development_result.json"}
+    workspace.exists.side_effect = lambda path: path == ".agent/artifacts/plan.json"
+    workspace.read.return_value = (
+        '{"type":"plan","content":{"summary":{"context":"Plan MCP rollout","scope_items":['
+        '{"text":"Update validation"},{"text":"Add tests"},{"text":"Update prompts"}]},'
+        '"steps":[{"number":1,"title":"Validate plan","content":"Do the work"}],'
+        '"critical_files":{"primary_files":[{"path":"ralph/mcp/tool_artifact.py","action":"modify"}]},'
+        '"risks_mitigations":[{"risk":"Schema drift","mitigation":"HTTP tests"}],'
+        '"verification_strategy":[{"method":"pytest","expected_outcome":"passes"}]}}'
     )
-    workspace.read.side_effect = lambda path: {
-        ".agent/artifacts/plan.json": (
-            '{"type":"plan","content":{"summary":{"context":"Plan MCP rollout","scope_items":['
-            '{"text":"Update validation"},{"text":"Add tests"},{"text":"Update prompts"}]},'
-            '"steps":[{"number":1,"title":"Validate plan","content":"Do the work"}],'
-            '"critical_files":{"primary_files":[{"path":"ralph/mcp/tool_artifact.py","action":"modify"}]},'
-            '"risks_mitigations":[{"risk":"Schema drift","mitigation":"HTTP tests"}],'
-            '"verification_strategy":[{"method":"pytest","expected_outcome":"passes"}]}}'
-        ),
-        ".agent/artifacts/development_result.json": (
-            '{"type":"development_result","content":{"status":"success","summary":"done"}}'
-        ),
-    }[path]
 
     effect = InvokeAgentEffect(
         agent_name="developer", phase="development", prompt_file="development.txt"
     )
 
     assert handle_development(effect, ctx) == [PipelineEvent.AGENT_SUCCESS]
-    expected_read_count = 2
-    assert workspace.read.call_count == expected_read_count
+    workspace.read.assert_called_once_with(".agent/artifacts/plan.json")
 
 
 def test_handle_development_skips_when_plan_is_noop() -> None:
@@ -450,11 +442,6 @@ def test_handle_fix_prepares_prompt_with_iteration_context() -> None:
 
 def test_handle_fix_invokes_agent_successfully() -> None:
     ctx = _stub_context()
-    workspace = cast("MagicMock", ctx.workspace)
-    workspace.exists.side_effect = lambda path: path == ".agent/artifacts/fix_result.json"
-    workspace.read.return_value = (
-        '{"type":"fix_result","content":{"summary":"patched","files_changed":["a.py"]}}'
-    )
     effect = InvokeAgentEffect(
         agent_name="fixer",
         phase=PHASE_FIX,
@@ -464,23 +451,15 @@ def test_handle_fix_invokes_agent_successfully() -> None:
     assert handle_fix(effect, ctx) == [PipelineEvent.AGENT_SUCCESS]
 
 
-def test_handle_fix_fails_without_fix_result_artifact_returns_phase_failure_recoverable() -> None:
+def test_handle_fix_succeeds_without_fix_result_artifact() -> None:
     ctx = _stub_context()
-    workspace = cast("MagicMock", ctx.workspace)
-    workspace.exists.return_value = False
     effect = InvokeAgentEffect(
         agent_name="fixer",
         phase=PHASE_FIX,
         prompt_file="fix.txt",
     )
 
-    result = handle_fix(effect, ctx)
-    assert len(result) == 1
-    event = result[0]
-    assert isinstance(event, PhaseFailureEvent)
-    assert event.phase == "fix"
-    assert event.recoverable is True
-    assert "fix_result" in event.reason.lower() or "artifact" in event.reason.lower()
+    assert handle_fix(effect, ctx) == [PipelineEvent.AGENT_SUCCESS]
 
 
 def test_handle_fix_ignores_unrelated_effects() -> None:
@@ -551,12 +530,12 @@ def test_handle_development_analysis_skips_empty_steps_plan() -> None:
     assert handle_development_analysis(effect, ctx) == [PipelineEvent.ANALYSIS_SUCCESS]
 
 
-def test_handle_dev_analysis_non_noop_returns_phase_failure_not_recoverable() -> None:
-    """handle_development_analysis must parse analysis decision when plan is not a no-op.
+def test_handle_dev_analysis_non_noop_missing_decision_is_recoverable() -> None:
+    """Missing analysis evidence should retry instead of terminally failing.
 
-    When plan is not a no-op, it falls through to parse_analysis_decision.
-    Since there's no development_analysis_decision artifact, it returns FAILURE as a
-    non-recoverable PhaseFailureEvent.
+    When a real development run finishes without submitting
+    development_analysis_decision.json, Ralph should treat that as an incomplete
+    agent attempt and route it through normal retry/fallback handling.
     """
     ctx = _stub_context()
     workspace = cast("MagicMock", ctx.workspace)
@@ -578,4 +557,5 @@ def test_handle_dev_analysis_non_noop_returns_phase_failure_not_recoverable() ->
     event = result[0]
     assert isinstance(event, PhaseFailureEvent)
     assert event.phase == "development_analysis"
-    assert event.recoverable is False
+    assert event.recoverable is True
+    assert "development_analysis_decision" in event.reason

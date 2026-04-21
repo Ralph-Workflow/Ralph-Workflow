@@ -5,8 +5,11 @@ from __future__ import annotations
 import json
 from typing import TYPE_CHECKING
 
+from rich.console import Group
+from rich.rule import Rule
 from rich.text import Text
 
+from ralph.display.phase_banner import _phase_style
 from ralph.mcp.artifacts.commit_message import read_commit_message_artifact
 
 if TYPE_CHECKING:
@@ -152,21 +155,128 @@ def render_completion_summary(
     return Text("\n".join(lines))
 
 
-def emit_completion_summary(
+def render_completion_summary_group(  # noqa: PLR0912
+    snapshot: PipelineSnapshot,
+    *,
+    workspace_root: Path | None = None,
+    dropped_count: int = 0,
+    thinking_block_count: int = 0,
+    overflow_path: str | None = None,
+) -> Group:
+    """Render the completion summary as a Rich Group with rule-delimited sections.
+
+    Returns a Group suitable for ``console.print(group, markup=False, highlight=False)``.
+    """
+    failed = snapshot.phase == "failed"
+    style = _phase_style("failed" if failed else "complete")
+    title = "Pipeline Failed" if failed else "Pipeline Complete"
+
+    renderables: list[Rule | Text] = []
+
+    # Header rule
+    renderables.append(Rule(title, style=style))
+
+    # Plan section
+    if snapshot.plan_summary or snapshot.plan_scope_items:
+        renderables.append(Rule("Plan", style=_phase_style("planning")))
+        if snapshot.plan_summary:
+            renderables.append(Text(f"  {snapshot.plan_summary}"))
+        if snapshot.plan_scope_items:
+            renderables.append(Text(f"  Scope: {len(snapshot.plan_scope_items)} item(s)"))
+
+    # Metrics section
+    renderables.append(Rule("Metrics", style=style))
+    renderables.append(
+        Text(
+            f"  agent_calls={snapshot.total_agent_calls} "
+            f"continuations={snapshot.total_continuations} "
+            f"fallbacks={snapshot.total_fallbacks} "
+            f"retries={snapshot.total_retries} "
+            f"pushes={snapshot.push_count}"
+        )
+    )
+
+    # Decisions section
+    renderables.append(Rule("Decisions", style=style))
+    if snapshot.decision_log:
+        for phase, decision, reason, _ts in snapshot.decision_log:
+            badge = _DECISION_LABELS.get(decision.lower(), "INFO")
+            reason_part = f" — {reason}" if reason else ""
+            renderables.append(
+                Text(
+                    f"  [{badge}] {phase.replace('_', ' ').title()}: {decision}{reason_part}"
+                )
+            )
+    else:
+        renderables.append(Text("  (none recorded)"))
+
+    # Verification section
+    renderables.append(Rule("Verification", style=style))
+    renderables.append(Text(f"  {_verification_line(snapshot, workspace_root, failed=failed)}"))
+
+    # Activity Summary section
+    renderables.append(Rule("Activity Summary", style=style))
+    renderables.append(Text(f"  agent_calls={snapshot.total_agent_calls}"))
+    if thinking_block_count > 0:
+        renderables.append(Text(f"  thinking_blocks={thinking_block_count}"))
+    if overflow_path is not None:
+        renderables.append(Text(f"  raw_overflow={overflow_path}"))
+
+    # Commit section
+    commit_lines = _commit_message_lines(workspace_root)
+    sha = _commit_sha_from_snapshot(snapshot)
+    if commit_lines or sha or snapshot.pr_url:
+        renderables.append(Rule("Commit", style=_phase_style("development_commit")))
+        renderables.extend(Text(f"  {ln}") for ln in commit_lines)
+        if sha:
+            renderables.append(Text(f"  Commit SHA: {sha[:12]}"))
+        if snapshot.pr_url:
+            renderables.append(Text(f"  PR: {snapshot.pr_url}"))
+
+    # Risks section
+    if snapshot.plan_risks:
+        renderables.append(Rule("Open Risks", style=_phase_style("fix")))
+        renderables.extend(Text(f"  - {risk}") for risk in snapshot.plan_risks)
+
+    # Error section
+    if snapshot.last_error:
+        renderables.append(Rule("Error", style=_phase_style("failed")))
+        renderables.append(Text(f"  {snapshot.last_error}"))
+
+    dropped_line = _dropped_count_line(dropped_count)
+    if dropped_line:
+        renderables.append(Text(f"  {dropped_line}"))
+
+    # Footer rule
+    renderables.append(Rule(style=style))
+
+    return Group(*renderables)
+
+
+def emit_completion_summary(  # noqa: PLR0913
     console: Console,
     snapshot: PipelineSnapshot,
     *,
     workspace_root: Path | None = None,
     dropped_count: int = 0,
+    thinking_block_count: int = 0,
+    overflow_path: str | None = None,
 ) -> None:
     console.print(
-        render_completion_summary(
+        render_completion_summary_group(
             snapshot,
             workspace_root=workspace_root,
             dropped_count=dropped_count,
+            thinking_block_count=thinking_block_count,
+            overflow_path=overflow_path,
         ),
         markup=False,
+        highlight=False,
     )
 
 
-__all__ = ["emit_completion_summary", "render_completion_summary"]
+__all__ = [
+    "emit_completion_summary",
+    "render_completion_summary",
+    "render_completion_summary_group",
+]

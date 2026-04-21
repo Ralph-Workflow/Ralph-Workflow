@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import types
+from io import StringIO
+
 from rich.console import Console
 
 from ralph.display.phase_banner import (
@@ -12,6 +15,7 @@ from ralph.display.phase_banner import (
     _phase_style,
     show_phase_complete,
     show_phase_start,
+    show_phase_start_from_state,
     show_phase_transition,
 )
 
@@ -404,3 +408,34 @@ def test_show_phase_start_combines_iteration_and_analysis_counters() -> None:
     assert "Development Analysis" in output
     assert "[iteration 3/5]" in output
     assert "[analysis 2/3]" in output
+
+
+# --- Tests for show_phase_start_from_state (Step 13) ---
+
+
+def test_show_phase_start_from_state_forwards_counters() -> None:
+    stub = types.SimpleNamespace(
+        iteration=0,
+        total_iterations=3,
+        reviewer_pass=1,
+        total_reviewer_passes=2,
+        agent_name="coder",
+    )
+    buf = StringIO()
+    console = Console(file=buf, force_terminal=False, color_system=None, width=200)
+    show_phase_start_from_state(stub, "development", console=console)
+    output = buf.getvalue()
+    assert "iteration 1/3" in output
+    assert "pass 2/2" in output
+    assert "Development" in output
+
+
+def test_show_phase_start_from_state_tolerates_missing_attrs() -> None:
+    stub = types.SimpleNamespace(iteration=0, total_iterations=3)
+    buf = StringIO()
+    console = Console(file=buf, force_terminal=False, color_system=None, width=200)
+    show_phase_start_from_state(stub, "planning", console=console)
+    output = buf.getvalue()
+    assert "iteration 1/3" in output
+    assert "Planning" in output
+    assert "pass" not in output
