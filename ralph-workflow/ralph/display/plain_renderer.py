@@ -178,6 +178,13 @@ class PlainLogRenderer:
         if not snapshot.analysis_phase or not snapshot.analysis_decision:
             return []
 
+        # Suppress the [analysis] line for development_analysis and review_analysis
+        # phases because render_analysis_decision already outputs a titled block
+        # for these phases. We only emit [analysis] lines for other snapshot
+        # sources that don't have their own titled-block renderer.
+        if snapshot.analysis_phase in ("development_analysis", "review_analysis"):
+            return []
+
         reason = f" — {snapshot.analysis_reason}" if snapshot.analysis_reason else ""
         return [
             f"{timestamp} INFO [analysis] "
