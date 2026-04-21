@@ -75,3 +75,27 @@ def test_should_summarize_above_threshold() -> None:
     assert should_summarize("x" * (_SUMMARY_THRESHOLD + 1), {}) is True, (
         "should_summarize must return True for text exceeding the threshold with no env flag"
     )
+
+
+def test_readme_documents_deterministic_headline(long_content_section: str) -> None:
+    assert "deterministic headline" in long_content_section, (
+        "README 'Long-content display' must describe the deterministic headline layer"
+    )
+
+
+def test_readme_documents_ai_summary_label(long_content_section: str) -> None:
+    assert "ai-summary" in long_content_section, (
+        "README 'Long-content display' must document the '↳ ai-summary:' label"
+    )
+
+
+def test_readme_documents_no_headline_available(long_content_section: str) -> None:
+    assert "(no headline available)" in long_content_section, (
+        "README must document the '(no headline available)' placeholder text"
+    )
+
+
+def test_readme_documents_ralph_long_content_ai_summary(long_content_section: str) -> None:
+    assert "RALPH_LONG_CONTENT_AI_SUMMARY" in long_content_section, (
+        "README must document the RALPH_LONG_CONTENT_AI_SUMMARY opt-in env var"
+    )

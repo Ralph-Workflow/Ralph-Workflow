@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+import os
 import re
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Final
 
 from rich.text import Text
 
-from ralph.display.long_content_summary import build_content_summary
+from ralph.display.long_content_summary import build_headline_or_placeholder
 from ralph.display.snapshot import PipelineSnapshot, snapshot_from_state
 
 if TYPE_CHECKING:
@@ -52,9 +53,11 @@ _TAGS: Final[tuple[str, ...]] = (
     "content-start",
     "content-continue",
     "content-end",
+    "content-checkpoint",
     "thinking-start",
     "thinking-continue",
     "thinking-end",
+    "thinking-checkpoint",
 )
 
 # Maps activity kind strings to their log tag
@@ -104,9 +107,11 @@ _TAG_CATEGORY: Final[dict[str, str]] = {
     "content-start": "CONT",
     "content-continue": "CONT",
     "content-end": "CONT",
+    "content-checkpoint": "CONT",
     "thinking-start": "CONT",
     "thinking-continue": "CONT",
     "thinking-end": "CONT",
+    "thinking-checkpoint": "CONT",
 }
 
 # Kinds that form streaming blocks
@@ -122,6 +127,12 @@ _ANSI_ESCAPE = re.compile(r"\x1b\[[0-9;]*m")
 
 _EMPTY_PLAN_SIGNATURE: tuple[None, tuple[str, ...], int] = (None, (), 0)
 
+# Streaming checkpoint thresholds
+_STREAMING_CHECKPOINT_FRAGMENTS: Final[int] = 20
+_STREAMING_CHECKPOINT_CHARS: Final[int] = 4000
+
+_CHECKPOINTS_DISABLED_VALUES: frozenset[str] = frozenset({"0", "false", "no", "off"})
+
 
 def _strip_markup(text: str) -> str:
     try:
@@ -133,6 +144,11 @@ def _strip_markup(text: str) -> str:
 def _sanitize(text: str) -> str:
     """Strip both Rich markup and ANSI escapes for copy-paste safety."""
     return _ANSI_ESCAPE.sub("", _strip_markup(text))
+
+
+def _checkpoints_enabled() -> bool:
+    flag = os.environ.get("RALPH_STREAMING_CHECKPOINTS", "").lower().strip()
+    return flag not in _CHECKPOINTS_DISABLED_VALUES
 
 
 class PlainLogRenderer:
@@ -166,6 +182,8 @@ class PlainLogRenderer:
         # _active_block maps unit_id -> (base_tag, accumulated_content).
         # Invariant: len(_active_block) <= 1.
         self._active_block: dict[str, tuple[str, list[str]]] = {}
+        # Per-unit char count at the last emitted checkpoint
+        self._last_checkpoint_chars: dict[str, int] = {}
         # One-shot flags for empty-state placeholders
         self._emitted_empty_plan: bool = False
         self._emitted_empty_activity: bool = False
@@ -340,17 +358,16 @@ class PlainLogRenderer:
         if unit_id not in self._active_block:
             return None
         base_tag, accumulated = self._active_block.pop(unit_id)
+        self._last_checkpoint_chars.pop(unit_id, None)
         block_tags = _STREAMING_BLOCK_TAGS.get(base_tag)
         if block_tags is None:
             return None
         end_tag = block_tags[2]
         n = len(accumulated)
         chars = sum(len(x) for x in accumulated)
-        summary = build_content_summary(" ".join(accumulated), max_chars=120)
+        summary = build_headline_or_placeholder(" ".join(accumulated), max_chars=120)
         prefix = f"{timestamp} INFO CONT [{end_tag}][{unit_id}] ({n} fragments, {chars} chars)"
-        if summary:
-            return f"{prefix} {summary}"
-        return prefix
+        return f"{prefix} {summary}"
 
     def flush_blocks(self) -> None:
         """Close all open streaming blocks. Call on phase transitions and stop."""
@@ -361,7 +378,7 @@ class PlainLogRenderer:
             if end_line:
                 self._console.print(end_line, markup=False, highlight=False, no_wrap=True)
 
-    def emit_activity_line(  # noqa: PLR0912, PLR0913
+    def emit_activity_line(  # noqa: PLR0912, PLR0913, PLR0915
         self,
         unit_id: str,
         kind: str,
@@ -370,8 +387,14 @@ class PlainLogRenderer:
         condensed_ref: str | None = None,
         condensed_flag: bool = False,
         summary_line: str | None = None,
+        ai_summary_line: str | None = None,
     ) -> None:
-        """Emit a kind-tagged, level-badged content line."""
+        """Emit a kind-tagged, level-badged content line.
+
+        Optional AI-generated summary emitted on its own line labelled ai-summary.
+        When both summary_line and ai_summary_line are given, summary_line is
+        printed first, then ai_summary_line.
+        """
         timestamp = self._clock().isoformat()
         base_tag = _KIND_TO_TAG.get(kind, "content")
         level = _KIND_TO_LEVEL.get(kind, "INFO")
@@ -395,6 +418,7 @@ class PlainLogRenderer:
                 if unit_id not in self._active_block:
                     # Open new block
                     self._active_block[unit_id] = (base_tag, [content])
+                    self._last_checkpoint_chars[unit_id] = 0
                     tag = start_tag
                 else:
                     existing_base_tag, accumulated = self._active_block[unit_id]
@@ -407,12 +431,34 @@ class PlainLogRenderer:
                             )
                         # Open new block
                         self._active_block[unit_id] = (base_tag, [content])
+                        self._last_checkpoint_chars[unit_id] = 0
                         tag = start_tag
                     else:
                         # Sequence number: 1-based, computed before appending
                         seq = len(accumulated) + 1
                         accumulated.append(content)
                         tag = f"{continue_tag}#{seq}"
+
+                        if _checkpoints_enabled():
+                            total_chars = sum(len(x) for x in accumulated)
+                            last_cp = self._last_checkpoint_chars.get(unit_id, 0)
+                            emit_checkpoint = (
+                                seq % _STREAMING_CHECKPOINT_FRAGMENTS == 0
+                                or total_chars - last_cp >= _STREAMING_CHECKPOINT_CHARS
+                            )
+                            if emit_checkpoint:
+                                self._last_checkpoint_chars[unit_id] = total_chars
+                                headline = build_headline_or_placeholder(
+                                    " ".join(accumulated), max_chars=120
+                                )
+                                cp_tag = f"{base_tag}-checkpoint#{seq}"
+                                cp_line = (
+                                    f"{timestamp} INFO CONT [{cp_tag}][{unit_id}]"
+                                    f" ({seq} fragments, {total_chars} chars) {headline}"
+                                )
+                                self._console.print(
+                                    cp_line, markup=False, highlight=False, no_wrap=True
+                                )
             else:
                 tag = base_tag
         else:
@@ -424,10 +470,30 @@ class PlainLogRenderer:
                     self._console.print(end_line, markup=False, highlight=False, no_wrap=True)
             tag = base_tag
 
-        if summary_line is not None:
-            summary_text = _sanitize(summary_line)
+        # Emit summary line (deterministic headline or placeholder for condensed content)
+        effective_summary = summary_line if summary_line else None
+        if effective_summary is not None:
+            summary_text = _sanitize(effective_summary)
             self._console.print(
                 f"{timestamp} INFO {cat} [{tag}][{unit_id}] ↳ summary: {summary_text}",
+                markup=False,
+                highlight=False,
+                no_wrap=True,
+            )
+        elif condensed_flag:
+            self._console.print(
+                f"{timestamp} INFO {cat} [{tag}][{unit_id}]"
+                f" ↳ summary: (no headline available)",
+                markup=False,
+                highlight=False,
+                no_wrap=True,
+            )
+
+        # Emit optional AI-generated summary line after the deterministic headline
+        if ai_summary_line:
+            ai_text = _sanitize(ai_summary_line)
+            self._console.print(
+                f"{timestamp} INFO {cat} [{tag}][{unit_id}] ↳ ai-summary: {ai_text}",
                 markup=False,
                 highlight=False,
                 no_wrap=True,

@@ -4,8 +4,12 @@ from __future__ import annotations
 
 from ralph.display.content_condenser import condense_content
 from ralph.display.long_content_summary import (
+    _AI_SUMMARY_MAX_CHARS,
+    build_ai_summary,
     build_content_summary,
+    build_headline_or_placeholder,
     build_headline_summary,
+    set_ai_summary_hook,
     should_summarize,
 )
 
@@ -15,7 +19,7 @@ _SHORT = "x" * 100
 _MAX_HEADLINE_LEN = 51  # max_chars=50 plus one ellipsis character
 _MAX_CONTENT_SUMMARY_LEN = 201  # max_chars=200 plus one ellipsis character
 _EXPECTED_2TUPLE = 2
-_EXPECTED_3TUPLE = 3
+_EXPECTED_4TUPLE = 4
 
 
 class TestShouldSummarize:
@@ -121,6 +125,100 @@ class TestBuildHeadlineSummary:
         assert build_headline_summary("\n\n\n") == ""
 
 
+class TestBuildHeadlineOrPlaceholder:
+    def test_returns_headline_when_content_available(self) -> None:
+        assert build_headline_or_placeholder("First sentence. More text.") == "First sentence."
+
+    def test_returns_placeholder_when_all_empty_lines(self) -> None:
+        assert build_headline_or_placeholder("\n\n   \n") == "(no headline available)"
+
+    def test_returns_placeholder_when_empty_string(self) -> None:
+        assert build_headline_or_placeholder("") == "(no headline available)"
+
+    def test_markdown_only_stripped_to_empty_returns_placeholder(self) -> None:
+        assert build_headline_or_placeholder("# \n# \n") == "(no headline available)"
+
+    def test_truncates_to_max_chars(self) -> None:
+        text = "a" * 200
+        result = build_headline_or_placeholder(text, max_chars=50)
+        assert result.endswith("…")
+
+    def test_empty_headline_falls_back_to_placeholder(self) -> None:
+        # Text whose splitlines all yield empty stripped lines
+        empty_text = "\n\n\n"
+        assert build_content_summary(empty_text) == ""
+        assert build_headline_or_placeholder(empty_text) == "(no headline available)"
+
+
+class TestAiSummaryHook:
+    def setup_method(self) -> None:
+        set_ai_summary_hook(None)
+
+    def teardown_method(self) -> None:
+        set_ai_summary_hook(None)
+
+    def test_ai_summary_hook_invoked_when_configured(self) -> None:
+        calls: list[str] = []
+
+        def hook(text: str) -> str:
+            calls.append(text)
+            return "AI says: " + text[:10]
+
+        set_ai_summary_hook(hook)
+        long_text = "x" * 5000
+        result = build_ai_summary(long_text, {"RALPH_LONG_CONTENT_AI_SUMMARY": "1"})
+        assert len(calls) == 1
+        assert calls[0] == long_text
+        assert result is not None
+        assert "AI says:" in result
+
+    def test_ai_summary_hook_not_invoked_when_disabled(self) -> None:
+        calls: list[str] = []
+
+        def hook(text: str) -> str:
+            calls.append(text)
+            return "AI says something"
+
+        set_ai_summary_hook(hook)
+        result = build_ai_summary("x" * 5000, {})
+        assert len(calls) == 0
+        assert result is None
+
+    def test_ai_summary_hook_error_is_swallowed(self) -> None:
+        def hook(text: str) -> str:
+            raise RuntimeError("hook failed")
+
+        set_ai_summary_hook(hook)
+        result = build_ai_summary("x" * 5000, {"RALPH_LONG_CONTENT_AI_SUMMARY": "1"})
+        assert result is None
+
+    def test_ai_summary_not_invoked_when_no_hook(self) -> None:
+        result = build_ai_summary("x" * 5000, {"RALPH_LONG_CONTENT_AI_SUMMARY": "1"})
+        assert result is None
+
+    def test_ai_summary_capped_at_400_chars(self) -> None:
+        def hook(text: str) -> str:
+            return "x" * 500
+
+        set_ai_summary_hook(hook)
+        result = build_ai_summary("x" * 5000, {"RALPH_LONG_CONTENT_AI_SUMMARY": "1"})
+        assert result is not None
+        assert len(result) <= _AI_SUMMARY_MAX_CHARS + 1  # cap + ellipsis
+        assert result.endswith("…")
+
+    def test_ai_summary_not_invoked_below_threshold(self) -> None:
+        calls: list[str] = []
+
+        def hook(text: str) -> str:
+            calls.append(text)
+            return "summary"
+
+        set_ai_summary_hook(hook)
+        result = build_ai_summary("short text", {"RALPH_LONG_CONTENT_AI_SUMMARY": "1"})
+        assert len(calls) == 0
+        assert result is None
+
+
 class TestCondenseContentSummaryContract:
     def test_2tuple_returned_when_summary_false(self) -> None:
         result = condense_content("x" * 6000)
@@ -129,20 +227,22 @@ class TestCondenseContentSummaryContract:
         assert isinstance(visible, str)
         assert isinstance(condensed, bool)
 
-    def test_3tuple_returned_when_summary_true(self) -> None:
+    def test_4tuple_returned_when_summary_true(self) -> None:
         result = condense_content("x" * 6000, summary=True)
-        assert len(result) == _EXPECTED_3TUPLE
-        visible, condensed, summary_line = result
+        assert len(result) == _EXPECTED_4TUPLE
+        visible, condensed, summary_line, ai_summary_line = result
         assert isinstance(visible, str)
         assert condensed is True
         assert summary_line is None or isinstance(summary_line, str)
+        assert ai_summary_line is None or isinstance(ai_summary_line, str)
 
     def test_summary_none_for_short_text(self) -> None:
         result = condense_content("short", summary=True)
-        _visible, condensed, summary_line = result
+        _visible, condensed, summary_line, ai_summary_line = result
         assert condensed is False
         assert summary_line is None
+        assert ai_summary_line is None
 
     def test_empty_text_summary_none(self) -> None:
         result = condense_content("", summary=True)
-        assert result == ("", False, None)
+        assert result == ("", False, None, None)

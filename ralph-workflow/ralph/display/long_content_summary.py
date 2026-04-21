@@ -13,11 +13,20 @@ headings stripped), capped at 120 characters. No external AI call is made.
 Note: the sentence splitter is intentionally simple — it may truncate on
 abbreviations ('e.g.') or URLs. The summary is additive and labelled
 '↳ summary:' so a wrong headline never obscures the raw content.
+
+Optional AI-generated summary layer (default-OFF):
+Set RALPH_LONG_CONTENT_AI_SUMMARY=1 AND register a hook via
+set_ai_summary_hook() to enable. The hook receives the raw text and must
+return a string or None. Exceptions are swallowed. Output is capped at 400
+characters. Labelled '↳ ai-summary:' to distinguish from the deterministic
+headline.
 """
 
 from __future__ import annotations
 
 import re
+import threading
+from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 from rich.cells import cell_len
@@ -29,7 +38,28 @@ _SUMMARY_THRESHOLD = 4000
 _DISABLED_VALUES: frozenset[str] = frozenset({"0", "false", "no", "off"})
 _ENABLED_VALUES: frozenset[str] = frozenset({"1", "true", "yes"})
 
+_PLACEHOLDER_HEADLINE = "(no headline available)"
+_AI_SUMMARY_MAX_CHARS = 400
+
 _SENTENCE_END = re.compile(r"[.!?\n]")
+
+AiSummaryHook = Callable[[str], "str | None"]
+
+_ai_hook: AiSummaryHook | None = None
+_ai_hook_lock = threading.Lock()
+
+
+def set_ai_summary_hook(hook: AiSummaryHook | None) -> None:
+    """Register (or clear) the AI summary hook. Thread-safe."""
+    global _ai_hook  # noqa: PLW0603
+    with _ai_hook_lock:
+        _ai_hook = hook
+
+
+def get_ai_summary_hook() -> AiSummaryHook | None:
+    """Return the current AI summary hook. Thread-safe atomic read."""
+    with _ai_hook_lock:
+        return _ai_hook
 
 
 def should_summarize(text: str, env: Mapping[str, str]) -> bool:
@@ -71,4 +101,47 @@ def build_headline_summary(text: str, max_chars: int = 120) -> str:
     return build_content_summary(text, max_chars=max_chars)
 
 
-__all__ = ["build_content_summary", "build_headline_summary", "should_summarize"]
+def build_headline_or_placeholder(text: str, max_chars: int = 120) -> str:
+    """Extract headline; return placeholder when no headline can be extracted."""
+    result = build_content_summary(text, max_chars=max_chars)
+    return result if result else _PLACEHOLDER_HEADLINE
+
+
+def build_ai_summary(text: str, env: Mapping[str, str]) -> str | None:  # noqa: PLR0911
+    """Return an AI-generated summary string, or None when disabled/unavailable.
+
+    Requires RALPH_LONG_CONTENT_AI_SUMMARY=1 in env AND a registered hook AND
+    text above the threshold. Hook exceptions are swallowed. Output is capped
+    at 400 chars with an ellipsis suffix.
+    """
+    flag = env.get("RALPH_LONG_CONTENT_AI_SUMMARY", "").lower().strip()
+    if flag not in _ENABLED_VALUES:
+        return None
+    hook = get_ai_summary_hook()
+    if hook is None:
+        return None
+    if not should_summarize(text, env):
+        return None
+    try:
+        result = hook(text)
+    except Exception:
+        return None
+    if result is None:
+        return None
+    if len(result) > _AI_SUMMARY_MAX_CHARS:
+        return result[:_AI_SUMMARY_MAX_CHARS] + "…"
+    return result
+
+
+__all__ = [
+    "_PLACEHOLDER_HEADLINE",
+    "_SUMMARY_THRESHOLD",
+    "AiSummaryHook",
+    "build_ai_summary",
+    "build_content_summary",
+    "build_headline_or_placeholder",
+    "build_headline_summary",
+    "get_ai_summary_hook",
+    "set_ai_summary_hook",
+    "should_summarize",
+]

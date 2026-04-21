@@ -185,10 +185,12 @@ Ralph emits every agent output line as a structured plain-text entry in the foll
 | `content-start` | CONT | Start of a streaming text block |
 | `content-continue` | CONT | Continuation line in a streaming text block |
 | `content-end` | CONT | End of a streaming text block (with headline summary) |
+| `content-checkpoint` | CONT | Mid-stream orientation line emitted every 20 fragments or 4000 chars |
 | `thinking` | CONT | Agent thinking/reasoning (one-shot) |
 | `thinking-start` | CONT | Start of a streaming thinking block |
 | `thinking-continue` | CONT | Continuation of a streaming thinking block |
 | `thinking-end` | CONT | End of a streaming thinking block |
+| `thinking-checkpoint` | CONT | Mid-stream orientation line for thinking blocks |
 | `tool` | CONT | Tool invocation (tool name) |
 | `tool-result` | CONT | Tool result content |
 | `error` | CONT | Error or malformed input |
@@ -210,7 +212,7 @@ When a content block exceeds the soft limit and is condensed, the full text is p
 2026-04-21T12:00:00+00:00 MILESTONE META [phase] ◆ development               # major phase transition
 2026-04-21T12:00:01+00:00 INFO META [plan] (no plan loaded yet)              # empty-state placeholder
 2026-04-21T12:00:02+00:00 INFO META [activity] agent=claude tool=bash        # metadata about what agent is doing
-2026-04-21T12:00:03+00:00 INFO CONT [content-start][dev-1] ↳ summary: Refactored parser to accept streaming deltas  # default-on summary layer
+2026-04-21T12:00:03+00:00 INFO CONT [content-start][dev-1] ↳ summary: Refactored parser to accept streaming deltas  # default-on deterministic headline layer
 2026-04-21T12:00:03+00:00 INFO CONT [content-start][dev-1] Refactored parser to…  # start of streaming content block
 2026-04-21T12:00:04+00:00 INFO CONT [content-continue#2][dev-1] next chunk   # second fragment in the same block
 2026-04-21T12:00:05+00:00 INFO CONT [content-end][dev-1] (2 fragments, 850 chars) Refactored parser to accept streaming deltas  # block closed with fragment count, char total, headline
@@ -224,14 +226,28 @@ Tags starting with `content-`, `thinking-`, `tool`, `tool-result`, `error`, or `
 
 ## Long-content display
 
-Condensation (head+tail with `(+N chars, see .agent/raw/<unit>.log)`) is the deterministic default for oversized lines and is always active — the summary described below is an additional layer on top.
+Ralph applies three distinct layers when agent content is large. Each layer is additive — earlier layers remain active when later layers are enabled.
 
-For content blocks exceeding 4000 display cells, Ralph also emits a `↳ summary:` headline line **before** the condensed excerpt. This summary layer is **default-on** — no environment variable is needed:
+### Layer 1 — head+tail condensation (always active)
+
+Condensation is the deterministic default for oversized lines and is always active. When content exceeds 400 display cells the line is truncated to a head+tail excerpt:
 
 ```
-2026-04-20T12:34:56Z INFO CONT [content-start][dev-1] ↳ summary: My first non-empty headline sentence
+2026-04-20T12:34:56Z INFO CONT [content][dev-1] First 400 chars… (+4200 chars, see .agent/raw/dev-1.log) …last chars
+```
+
+The full raw text is always preserved to `.agent/raw/<unit-id>.log` so readers have a path to the complete output.
+
+### Layer 2 — deterministic headline `↳ summary:` (default-on)
+
+For content blocks exceeding 4000 display cells, Ralph emits a `↳ summary:` line **before** the condensed excerpt. This deterministic headline layer is **default-on** — no environment variable is needed:
+
+```
+2026-04-20T12:34:56Z INFO CONT [content-start][dev-1] ↳ summary: My first non-empty headline sentence.
 2026-04-20T12:34:56Z INFO CONT [content-start][dev-1] First 400 chars… (+4200 chars, see .agent/raw/dev-1.log) …last chars
 ```
+
+When no extractable headline exists (all lines are blank, markdown-only, or empty after stripping), the placeholder `(no headline available)` is emitted instead so the summary line is never silently dropped for oversized content.
 
 To **disable** the summary layer, set `RALPH_LONG_CONTENT_SUMMARY` to one of: `0`, `false`, `no`, `off` (case-insensitive):
 
@@ -239,10 +255,35 @@ To **disable** the summary layer, set `RALPH_LONG_CONTENT_SUMMARY` to one of: `0
 export RALPH_LONG_CONTENT_SUMMARY=0  # disable the summary layer
 ```
 
-Any other value — including `1`, `true`, `yes`, or an unset variable — leaves the summary enabled.
+Any other value — including an unset variable — leaves the summary enabled.
 
-Inline summaries (emitted above the condensed content) are truncated at 200 characters. Streaming end-line summaries emitted inside `[content-end]`/`[thinking-end]` lines are truncated at 120 characters.
+Inline summaries are truncated at 200 characters. Streaming end-line summaries inside `[content-end]`/`[thinking-end]` lines are truncated at 120 characters.
 
-The summary is deterministic: the first non-empty line with markdown heading and quote prefixes stripped, terminated at the first sentence boundary (`.`, `!`, `?`, or newline). No external AI call is made; the upstream provider already produced the text.
+The headline is deterministic: the first non-empty line with markdown heading and quote prefixes stripped, terminated at the first sentence boundary (`.`, `!`, `?`, or newline). No external AI call is made.
 
-The full raw content of any condensed line is preserved to `.agent/raw/<unit-id>.log` so readers always have a path to the complete output.
+### Layer 3 — optional AI summary `↳ ai-summary:` (default-OFF)
+
+An optional AI-generated summary can be emitted after the deterministic headline. This layer is **disabled by default** and requires two things:
+
+1. Set `RALPH_LONG_CONTENT_AI_SUMMARY=1` (or `true`/`yes`).
+2. Register a hook via `ralph.display.long_content_summary.set_ai_summary_hook(callable)`.
+
+When both conditions are met and content exceeds the 4000-cell threshold, Ralph calls the hook with the raw text and emits the result on its own labelled line:
+
+```
+2026-04-20T12:34:56Z INFO CONT [content-start][dev-1] ↳ summary: My first sentence.
+2026-04-20T12:34:56Z INFO CONT [content-start][dev-1] ↳ ai-summary: Higher-level recap produced by the hook.
+2026-04-20T12:34:56Z INFO CONT [content-start][dev-1] First 400 chars… (+4200 chars, see .agent/raw/dev-1.log) …last chars
+```
+
+Hook requirements: the callable must accept `(text: str) -> str | None`. Exceptions are swallowed and treated as None. Output is capped at 400 characters. Ralph provides no built-in hook — integrators supply their own. The hook must be non-blocking.
+
+### Mid-stream checkpoints (default-on)
+
+For very long streaming blocks, Ralph emits a `[content-checkpoint#N]` orientation line every 20 fragments or every 4000 accumulated characters (whichever comes first), with a running fragment count, char total, and deterministic headline:
+
+```
+2026-04-20T12:34:56Z INFO CONT [content-checkpoint#20][dev-1] (20 fragments, 4500 chars) My running headline.
+```
+
+To disable checkpoints, set `RALPH_STREAMING_CHECKPOINTS=0`.

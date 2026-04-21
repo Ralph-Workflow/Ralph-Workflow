@@ -154,7 +154,7 @@ class ParallelDisplay:
 
         # Condenser runs without overflow_ref so it does not embed the path.
         # The renderer receives condensed_ref and appends [see path] when condensed.
-        visible, condensed_flag, summary_line = condense_content(
+        visible, condensed_flag, summary_line, ai_summary_line = condense_content(
             text, soft_limit=400, hard_limit=4000, summary=True
         )
 
@@ -169,6 +169,7 @@ class ParallelDisplay:
             condensed_ref=overflow_ref if condensed_flag else None,
             condensed_flag=condensed_flag,
             summary_line=summary_line,
+            ai_summary_line=ai_summary_line,
         )
 
         self._emit_drop_warning(unit_id)
