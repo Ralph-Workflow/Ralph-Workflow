@@ -21,6 +21,7 @@ from ralph.pipeline.events import (
 from ralph.pipeline.parallel import worker_session
 from ralph.pipeline.parallel.scheduler import schedule_next_wave
 from ralph.pipeline.worker_state import WorkerStatus
+from ralph.process.manager import ProcessTerminationError, get_process_manager
 from ralph.workspace import fs
 from ralph.workspace.scope import WorkspaceScope
 
@@ -371,6 +372,14 @@ async def _run_worker(
                 if worker_succeeded:
                     assert isolation is not None
                     isolation.worktree_manager.destroy(unit.unit_id)
+            try:
+                get_process_manager().shutdown_all_for_label(
+                    f"agent:{unit.unit_id}", grace_period_s=2.0
+                )
+            except ProcessTerminationError as exc:
+                logger.error(
+                    "Failed to terminate agent processes for worker {}: {}", unit.unit_id, exc
+                )
             if sink_handle is not None:
                 ralph_logging.remove_worker_sink(sink_handle)
 

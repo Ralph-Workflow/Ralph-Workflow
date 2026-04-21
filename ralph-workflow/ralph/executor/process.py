@@ -6,7 +6,9 @@ import asyncio
 import os
 import subprocess
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
+
+from ralph.process.manager import get_process_manager
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
@@ -102,8 +104,8 @@ async def run_process_async(
     cmd = _normalize_command(command, args)
 
     try:
-        process = await asyncio.create_subprocess_exec(
-            *cmd,
+        handle = await get_process_manager().spawn_async(
+            cmd,
             cwd=_normalize_cwd(cwd),
             env=_build_env(env),
             stdout=asyncio.subprocess.PIPE,
@@ -112,15 +114,12 @@ async def run_process_async(
     except OSError as exc:
         raise ProcessExecutionError.from_os_error(cmd, exc) from exc
 
-    communicate_task: asyncio.Task[tuple[bytes | None, bytes | None]]
-    communicate_task = cast(
-        "asyncio.Task[tuple[bytes | None, bytes | None]]",
-        asyncio.create_task(process.communicate()),
-    )
+    communicate_task: asyncio.Task[tuple[bytes, bytes]]
+    communicate_task = asyncio.create_task(handle.communicate())
 
     done, _pending = await asyncio.wait({communicate_task}, timeout=timeout)
     if communicate_task not in done:
-        process.kill()
+        await handle.terminate(grace_period_s=0)
         stdout_bytes, stderr_bytes = await communicate_task
         raise ProcessExecutionError.from_timeout(
             cmd,
@@ -131,9 +130,10 @@ async def run_process_async(
 
     stdout_bytes, stderr_bytes = communicate_task.result()
 
+    rc = handle.returncode if handle.returncode is not None else -1
     return ProcessResult(
         command=cmd,
-        returncode=process.returncode if process.returncode is not None else -1,
+        returncode=rc,
         stdout=_decode_output(stdout_bytes),
         stderr=_decode_output(stderr_bytes),
     )
@@ -151,7 +151,7 @@ def run_process(
     cmd = _normalize_command(command, args)
 
     try:
-        process = subprocess.Popen(
+        handle = get_process_manager().spawn(
             cmd,
             cwd=_normalize_cwd(cwd),
             env=_build_env(env),
@@ -162,10 +162,10 @@ def run_process(
         raise ProcessExecutionError.from_os_error(cmd, exc) from exc
 
     try:
-        stdout_bytes, stderr_bytes = process.communicate(timeout=timeout)
+        stdout_bytes, stderr_bytes = handle.communicate(timeout=timeout)
     except subprocess.TimeoutExpired:
-        process.kill()
-        stdout_bytes, stderr_bytes = process.communicate()
+        handle.terminate(grace_period_s=0)
+        stdout_bytes, stderr_bytes = handle.communicate()
         raise ProcessExecutionError.from_timeout(
             cmd,
             timeout=timeout,
@@ -173,9 +173,10 @@ def run_process(
             stderr=_decode_output(stderr_bytes),
         ) from None
 
+    rc = handle.returncode if handle.returncode is not None else -1
     return ProcessResult(
         command=cmd,
-        returncode=process.returncode if process.returncode is not None else -1,
+        returncode=rc,
         stdout=_decode_output(stdout_bytes),
         stderr=_decode_output(stderr_bytes),
     )

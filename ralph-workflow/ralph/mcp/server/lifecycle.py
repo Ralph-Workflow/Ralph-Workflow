@@ -21,6 +21,7 @@ from ralph.mcp.protocol.startup import (
     preflight_http_mcp_server_tools,
 )
 from ralph.mcp.tools.bridge import build_ralph_tool_registry
+from ralph.process.manager import ManagedProcess, get_process_manager
 from ralph.workspace.fs import FsWorkspace
 
 if TYPE_CHECKING:
@@ -33,9 +34,12 @@ _PACKAGE_ROOT = Path(__file__).resolve().parents[3]
 
 class ProcessLike(Protocol):
     def poll(self) -> int | None: ...
-    def terminate(self) -> None: ...
+    def terminate(self, grace_period_s: float = 5.0) -> None: ...
     def wait(self, timeout: float | None = None) -> int | None: ...
     def kill(self) -> None: ...
+
+    @property
+    def pid(self) -> int: ...
 
 
 type SpawnProcess = Callable[[list[str], Path, dict[str, str]], ProcessLike]
@@ -69,12 +73,7 @@ class StandaloneMcpProcess:
 
     def shutdown(self) -> None:
         if self.process.poll() is None:
-            self.process.terminate()
-            try:
-                self.process.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                self.process.kill()
-                self.process.wait(timeout=5)
+            self.process.terminate(grace_period_s=5.0)
         self.session_file.unlink(missing_ok=True)
 
 
@@ -168,14 +167,15 @@ def _subprocess_env(session_file: Path) -> dict[str, str]:
     return env
 
 
-def _spawn_process(command: list[str], cwd: Path, env: dict[str, str]) -> subprocess.Popen[str]:
-    return subprocess.Popen(
+def _spawn_process(command: list[str], cwd: Path, env: dict[str, str]) -> ManagedProcess:
+    return get_process_manager().spawn(
         command,
         cwd=str(cwd),
         env=env,
-        text=True,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
+        start_new_session=True,
+        label="mcp-server",
     )
 
 
