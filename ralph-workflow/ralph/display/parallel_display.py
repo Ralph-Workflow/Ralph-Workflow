@@ -99,8 +99,9 @@ class ParallelDisplay:
         decision: str,
         reason: str | None = None,
     ) -> None:
-        reason_part = f" — {reason}" if reason else ""
-        self._console.out(f"[analysis] {phase}: {decision}{reason_part}")
+        # Only record to decision_log via subscriber; the titled block is rendered
+        # by render_analysis_decision in the phase handler (development.py/review.py).
+        # This avoids double-rendering both a plain [analysis] line and a titled block.
         try:
             self._subscriber.record_analysis(phase, decision, reason)
         except Exception:

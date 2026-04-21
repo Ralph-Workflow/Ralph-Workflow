@@ -28,16 +28,23 @@ def test_lines_mode_emit_strips_rich_markup() -> None:
     assert "[green]" not in text
 
 
-def test_emit_analysis_result_in_lines_mode_emits_structured_string() -> None:
+def test_emit_analysis_result_in_lines_mode_records_to_decision_log() -> None:
+    """emit_analysis_result records to decision_log but does NOT emit to console.
+
+    The analysis decision is rendered as a titled block by render_analysis_decision
+    in the phase handler, not by emit_analysis_result. This avoids double-rendering.
+    """
     buf = io.StringIO()
     console = Console(file=buf, force_terminal=False, width=120, color_system=None)
     pd = ParallelDisplay(console, {"CI": "1"}, mode="lines")
     pd.emit_analysis_result("development_analysis", "proceed", "all tests pass")
     text = buf.getvalue()
-    assert "[analysis]" in text
-    assert "development_analysis" in text
-    assert "proceed" in text
-    assert "all tests pass" in text
+    # emit_analysis_result should NOT emit to console - the titled block is
+    # rendered separately by render_analysis_decision in development.py/review.py
+    assert text == ""
+    # But it SHOULD record to decision_log for the completion summary
+    log = pd.subscriber.decision_log
+    assert any(entry[1].lower() == "proceed" and "all tests pass" in entry[2] for entry in log), log
 
 
 def test_emit_analysis_result_updates_subscriber_state_in_dashboard_mode() -> None:

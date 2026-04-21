@@ -14,6 +14,7 @@ import shutil
 import sys
 import uuid
 from collections.abc import Callable
+from contextlib import suppress
 from dataclasses import dataclass
 from inspect import signature
 from pathlib import Path
@@ -34,6 +35,8 @@ from ralph.config.enums import (
     PHASE_PLANNING,
     Verbosity,
 )
+from ralph.display.artifact_renderer import render_commit_message
+from ralph.display.parallel_display import ParallelDisplay
 from ralph.display.phase_banner import (
     PhaseStartContext,
     show_phase_complete,
@@ -83,7 +86,6 @@ if TYPE_CHECKING:
     from ralph.agents.executor import AgentExecutor
     from ralph.agents.invoke import InvokeOptions
     from ralph.config.models import AgentConfig, UnifiedConfig
-    from ralph.display.parallel_display import ParallelDisplay
     from ralph.display.subscriber import PipelineSubscriber
     from ralph.mcp.agent_transport_probe import AgentProbeReport
     from ralph.mcp.upstream_config import UpstreamMcpServer
@@ -1381,7 +1383,9 @@ def _execute_effect(  # noqa: PLR0913
             effect, config, deps, workspace_scope, display=display, verbosity=verbosity, state=state
         )
     if isinstance(effect, CommitEffect):
-        return _execute_commit_effect(effect, create_commit, stage_all, workspace_scope.root)
+        return _execute_commit_effect(
+            effect, create_commit, stage_all, workspace_scope.root, display
+        )
     if isinstance(effect, SaveCheckpointEffect):
         return PipelineEvent.CHECKPOINT_SAVED
 
@@ -1676,6 +1680,7 @@ def _execute_commit_effect(
     create_commit: Callable[[str, str], str],
     stage_all: Callable[[str], None],
     repo_root: Path,
+    display: ParallelDisplay | _LegacyConsoleDisplay | None = None,
 ) -> PipelineEvent:
     try:
         message = _read_commit_effect_message(effect)
@@ -1690,9 +1695,14 @@ def _execute_commit_effect(
         sha = create_commit(str(repo_root), message)
         logger.info("Created commit: {}", sha[:8])
         _cleanup_commit_message_artifacts(repo_root)
+        # Render the commit message artifact for the user
+        if isinstance(display, ParallelDisplay) and display.console is not None:
+            with suppress(Exception):
+                render_commit_message(repo_root, display.console)
     except Exception as exc:
         logger.error("Commit failed: {}", exc)
         return PipelineEvent.COMMIT_FAILURE
+
     return PipelineEvent.COMMIT_SUCCESS
 
 
