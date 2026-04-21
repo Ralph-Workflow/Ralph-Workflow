@@ -47,12 +47,34 @@ def render_plan_artifact(
     workspace_root: Path,
     console: Console,
 ) -> None:
-    """Render the plan.json artifact as a titled, well-formatted block.
+    """Render the agent-facing plan handoff, falling back to the JSON summary.
 
-    Reads ``.agent/artifacts/plan.json`` and prints a titled Rule followed by
-    summary context, bulleted scope items, step count, and risks.
-    Missing file produces no output; malformed JSON prints a single error line.
+    Prefer ``.agent/PLAN.md`` because that is the human/agent communication
+    artifact. Fall back to ``.agent/artifacts/plan.json`` only when the Markdown
+    handoff is unavailable. Missing artifacts produce no output.
     """
+    markdown_path = workspace_root / ".agent" / "PLAN.md"
+    markdown = None
+    try:
+        markdown = markdown_path.read_text(encoding="utf-8").strip()
+    except (FileNotFoundError, OSError, PermissionError):
+        markdown = None
+
+    if markdown:
+        console.print()
+        console.print(
+            Rule("PLAN", style=_phase_style("planning")),
+            markup=False,
+            highlight=False,
+        )
+        console.print(markdown, markup=False, highlight=False)
+        console.print(
+            Rule(style=_phase_style("planning")),
+            markup=False,
+            highlight=False,
+        )
+        return
+
     plan = read_plan_artifact(workspace_root)
 
     if plan is None:

@@ -33,6 +33,7 @@ from ralph.mcp.artifacts.plan import (
     normalize_plan_artifact_content,
     save_plan_draft,
     validate_plan_section,
+    write_plan_markdown,
 )
 from ralph.mcp.artifacts.store import (
     DEFAULT_ARTIFACT_PERSISTENCE,
@@ -101,11 +102,17 @@ def handle_submit_artifact(
                 persistence=resolved_deps.artifact_persistence,
             ),
         )
+        _run_post_submit_side_effect(
+            artifact_type,
+            workspace,
+            artifact_dir,
+            parsed_content,
+            deps=resolved_deps,
+        )
     except Exception:
         _rollback_submit_side_effect(artifact_type, workspace, artifact_dir, deps=resolved_deps)
         raise
 
-    _run_post_submit_side_effect(artifact_type, artifact_dir, deps=resolved_deps)
     return ToolResult(
         content=[ToolContent.text_content(f"Artifact submitted: {artifact_type}")],
         is_error=False,
@@ -188,17 +195,30 @@ def handle_finalize_plan(
     except PlanArtifactValidationError as exc:
         raise InvalidParamsError(str(exc)) from exc
 
-    submit_artifact(
-        artifact_dir,
-        name=PLAN_ARTIFACT_TYPE,
-        artifact_type=PLAN_ARTIFACT_TYPE,
-        content=normalized,
-        options=ArtifactSubmitOptions(
-            overwrite=True,
-            persistence=resolved_deps.artifact_persistence,
-        ),
-    )
-    delete_plan_draft(artifact_dir, backend=resolved_deps.backend)
+    try:
+        # Keep the structured JSON artifact for Ralph's validation/routing, but
+        # always mirror it to .agent/PLAN.md because downstream agents and users
+        # consume the Markdown handoff rather than plan.json directly.
+        submit_artifact(
+            artifact_dir,
+            name=PLAN_ARTIFACT_TYPE,
+            artifact_type=PLAN_ARTIFACT_TYPE,
+            content=normalized,
+            options=ArtifactSubmitOptions(
+                overwrite=True,
+                persistence=resolved_deps.artifact_persistence,
+            ),
+        )
+        write_plan_markdown(
+            _workspace_root(workspace),
+            normalized,
+            backend=resolved_deps.backend,
+        )
+        delete_plan_draft(artifact_dir, backend=resolved_deps.backend)
+    except Exception:
+        with suppress(Exception):
+            delete_artifact(artifact_dir, PLAN_ARTIFACT_TYPE, backend=resolved_deps.backend)
+        raise
 
     return ToolResult(
         content=[ToolContent.text_content(f"Artifact submitted: {PLAN_ARTIFACT_TYPE}")],
@@ -454,12 +474,27 @@ def _rollback_submit_side_effect(
         delete_commit_message_artifacts(_workspace_root(workspace), backend=deps.backend)
         with suppress(Exception):
             delete_artifact(artifact_dir, artifact_type, backend=deps.backend)
+    if artifact_type == PLAN_ARTIFACT_TYPE:
+        with suppress(Exception):
+            deps.backend.unlink(_workspace_root(workspace) / ".agent" / "PLAN.md", missing_ok=True)
+        with suppress(Exception):
+            delete_artifact(artifact_dir, artifact_type, backend=deps.backend)
 
 
 def _run_post_submit_side_effect(
-    artifact_type: str, artifact_dir: Path, *, deps: ArtifactHandlerDeps
+    artifact_type: str,
+    workspace: WorkspaceLike,
+    artifact_dir: Path,
+    parsed_content: dict[str, object],
+    *,
+    deps: ArtifactHandlerDeps,
 ) -> None:
     if artifact_type == PLAN_ARTIFACT_TYPE:
+        write_plan_markdown(
+            _workspace_root(workspace),
+            parsed_content,
+            backend=deps.backend,
+        )
         # Atomic full-plan submission supersedes any partial draft.
         delete_plan_draft(artifact_dir, backend=deps.backend)
 

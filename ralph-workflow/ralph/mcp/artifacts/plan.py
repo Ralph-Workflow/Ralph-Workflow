@@ -17,6 +17,7 @@ if TYPE_CHECKING:
 
 PLAN_ARTIFACT_TYPE = "plan"
 PLAN_ARTIFACT_PATH = ".agent/artifacts/plan.json"
+PLAN_MARKDOWN_PATH = ".agent/PLAN.md"
 PLAN_DRAFT_PATH = ".agent/artifacts/.plan_draft.json"
 PLAN_DRAFT_SCHEMA_VERSION = 1
 
@@ -355,11 +356,182 @@ def delete_plan_draft(artifact_dir: Path, *, backend: FileBackend = DEFAULT_FILE
     return True
 
 
+def render_plan_markdown(content: Mapping[str, object]) -> str:
+    """Render the structured plan artifact as agent-facing Markdown."""
+    plan = normalize_plan_artifact_content(cast("dict[str, object]", dict(content)))
+    if plan.get("noop") is True:
+        return "# Implementation Plan\n\nNo implementation work is required.\n"
+
+    lines = ["# Implementation Plan"]
+    lines.extend(_render_summary_section(plan.get("summary")))
+    lines.extend(_render_steps_section(plan.get("steps")))
+    lines.extend(_render_critical_files_section(plan.get("critical_files")))
+    lines.extend(_render_risks_section(plan.get("risks_mitigations")))
+    lines.extend(_render_verification_section(plan.get("verification_strategy")))
+    lines.extend(_render_parallel_plan_section(plan.get("parallel_plan")))
+    lines.extend(_render_work_units_section(plan.get("work_units")))
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def _render_summary_section(summary: object) -> list[str]:
+    if not isinstance(summary, dict):
+        return []
+
+    lines: list[str] = []
+    context = summary.get("context")
+    if isinstance(context, str) and context.strip():
+        lines.extend(["", "## Summary", "", context.strip()])
+
+    scope_items = summary.get("scope_items")
+    if isinstance(scope_items, list) and scope_items:
+        lines.extend(["", "## Scope"])
+        for item in scope_items:
+            if not isinstance(item, dict):
+                continue
+            text = item.get("text")
+            if isinstance(text, str) and text.strip():
+                lines.extend(["", f"- {text.strip()}"])
+    return lines
+
+
+def _render_steps_section(steps: object) -> list[str]:
+    if not isinstance(steps, list) or not steps:
+        return []
+
+    lines = ["", "## Steps"]
+    for step in steps:
+        if not isinstance(step, dict):
+            continue
+        lines.extend(_render_step_entry(step))
+    return lines
+
+
+def _render_step_entry(step: Mapping[str, object]) -> list[str]:
+    number = step.get("number", "?")
+    title = step.get("title", "Untitled step")
+    lines = ["", f"{number}. **{title}**"]
+    content_text = step.get("content")
+    if isinstance(content_text, str) and content_text.strip():
+        lines.extend(["", f"   {content_text.strip()}"])
+
+    targets = step.get("targets")
+    if isinstance(targets, list) and targets:
+        lines.extend(["", "   Targets:"])
+        for target in targets:
+            if not isinstance(target, dict):
+                continue
+            path = target.get("path")
+            action = target.get("action")
+            if isinstance(path, str) and isinstance(action, str):
+                lines.extend(["", f"   - `{path}` ({action})"])
+    return lines
+
+
+def _render_critical_files_section(critical_files: object) -> list[str]:
+    if not isinstance(critical_files, dict):
+        return []
+    primary_files = critical_files.get("primary_files")
+    if not isinstance(primary_files, list) or not primary_files:
+        return []
+
+    lines = ["", "## Critical Files"]
+    for file_info in primary_files:
+        if not isinstance(file_info, dict):
+            continue
+        path = file_info.get("path")
+        action = file_info.get("action")
+        if isinstance(path, str) and isinstance(action, str):
+            lines.extend(["", f"- `{path}` ({action})"])
+    return lines
+
+
+def _render_risks_section(risks: object) -> list[str]:
+    if not isinstance(risks, list) or not risks:
+        return []
+
+    lines = ["", "## Risks and Mitigations"]
+    for risk in risks:
+        if not isinstance(risk, dict):
+            continue
+        risk_text = risk.get("risk")
+        mitigation = risk.get("mitigation")
+        if isinstance(risk_text, str) and isinstance(mitigation, str):
+            lines.extend(["", f"- **Risk:** {risk_text}", f"  **Mitigation:** {mitigation}"])
+    return lines
+
+
+def _render_verification_section(verification: object) -> list[str]:
+    if not isinstance(verification, list) or not verification:
+        return []
+
+    lines = ["", "## Verification"]
+    for check in verification:
+        if not isinstance(check, dict):
+            continue
+        method = check.get("method")
+        outcome = check.get("expected_outcome")
+        if isinstance(method, str) and isinstance(outcome, str):
+            lines.extend(["", f"- `{method}` — {outcome}"])
+    return lines
+
+
+def _render_parallel_plan_section(parallel_plan: object) -> list[str]:
+    return _render_named_items_section(
+        parallel_plan,
+        heading="## Parallel Plan",
+        id_key="id",
+        description_key="description",
+    )
+
+
+def _render_work_units_section(work_units: object) -> list[str]:
+    return _render_named_items_section(
+        work_units,
+        heading="## Work Units",
+        id_key="unit_id",
+        description_key="description",
+    )
+
+
+def _render_named_items_section(
+    items: object,
+    *,
+    heading: str,
+    id_key: str,
+    description_key: str,
+) -> list[str]:
+    if not isinstance(items, list) or not items:
+        return []
+
+    lines = ["", heading]
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        item_id = item.get(id_key)
+        description = item.get(description_key)
+        if isinstance(item_id, str) and isinstance(description, str):
+            lines.extend(["", f"- **{item_id}** — {description}"])
+    return lines
+
+
+def write_plan_markdown(
+    workspace_root: Path,
+    content: Mapping[str, object],
+    *,
+    backend: FileBackend = DEFAULT_FILE_BACKEND,
+) -> None:
+    """Persist the agent-facing Markdown handoff for a normalized plan."""
+    destination = workspace_root / ".agent" / "PLAN.md"
+    backend.mkdir(destination.parent, parents=True, exist_ok=True)
+    backend.write_text(destination, render_plan_markdown(content), encoding="utf-8")
+
+
 __all__ = [
     "PLAN_ARTIFACT_PATH",
     "PLAN_ARTIFACT_TYPE",
     "PLAN_DRAFT_PATH",
     "PLAN_DRAFT_SCHEMA_VERSION",
+    "PLAN_MARKDOWN_PATH",
     "PLAN_SECTION_LIST_ITEM_MODELS",
     "PLAN_SECTION_NAMES",
     "PLAN_SECTION_OBJECT_MODELS",
@@ -372,6 +544,8 @@ __all__ = [
     "merge_plan_section",
     "new_plan_draft",
     "normalize_plan_artifact_content",
+    "render_plan_markdown",
     "save_plan_draft",
     "validate_plan_section",
+    "write_plan_markdown",
 ]

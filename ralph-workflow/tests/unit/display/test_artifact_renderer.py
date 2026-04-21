@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from io import StringIO
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from rich.console import Console
 
@@ -18,7 +18,16 @@ from ralph.display.artifact_renderer import (
 
 
 def _make_console() -> Console:
-    return Console(file=StringIO(), force_terminal=True, color_system=None, width=120)
+    return Console(
+        file=cast("StringIO", StringIO()),
+        force_terminal=True,
+        color_system=None,
+        width=120,
+    )
+
+
+def _console_output(console: Console) -> str:
+    return cast("StringIO", console.file).getvalue()
 
 
 class TestRenderPlanArtifact:
@@ -42,7 +51,7 @@ class TestRenderPlanArtifact:
         )
         console = _make_console()
         render_plan_artifact(tmp_path, console)
-        output = console.file.getvalue()
+        output = _console_output(console)
         assert "PLAN" in output
         assert "Test plan" in output
         assert "item1" in output
@@ -50,10 +59,30 @@ class TestRenderPlanArtifact:
         assert "3" in output  # 3 steps
         assert "Risk 1" in output
 
+    def test_renders_full_markdown_handoff_when_plan_md_present(self, tmp_path: Path) -> None:
+        agent_dir = tmp_path / ".agent"
+        agent_dir.mkdir(parents=True)
+        plan_markdown = (
+            "# Implementation Plan\n\n"
+            "## Steps\n"
+            "1. Add regression tests\n"
+            "2. Fix pipeline routing\n\n"
+            "## Work Units\n"
+            "- **api** — Update API surface\n"
+        )
+        (agent_dir / "PLAN.md").write_text(plan_markdown, encoding="utf-8")
+        console = _make_console()
+        render_plan_artifact(tmp_path, console)
+        output = _console_output(console)
+        assert "PLAN" in output
+        assert "Add regression tests" in output
+        assert "Fix pipeline routing" in output
+        assert "api" in output
+
     def test_no_output_when_file_absent(self, tmp_path: Path) -> None:
         console = _make_console()
         render_plan_artifact(tmp_path, console)
-        output = console.file.getvalue()
+        output = _console_output(console)
         # Missing file → no output per spec
         assert output == ""
 
@@ -63,7 +92,7 @@ class TestRenderPlanArtifact:
         (artifacts_dir / "plan.json").write_text("not valid json{", encoding="utf-8")
         console = _make_console()
         render_plan_artifact(tmp_path, console)
-        output = console.file.getvalue()
+        output = _console_output(console)
         # Malformed → no output per spec (defensive)
         assert output == ""
 
@@ -84,7 +113,7 @@ class TestRenderAnalysisDecision:
         )
         console = _make_console()
         render_analysis_decision(tmp_path, "development_analysis", console)
-        output = console.file.getvalue()
+        output = _console_output(console)
         assert "ANALYSIS: development_analysis" in output
         assert "approved" in output
         assert "Code looks good" in output
@@ -92,7 +121,7 @@ class TestRenderAnalysisDecision:
     def test_no_output_when_file_absent(self, tmp_path: Path) -> None:
         console = _make_console()
         render_analysis_decision(tmp_path, "nonexistent_phase", console)
-        output = console.file.getvalue()
+        output = _console_output(console)
         # Missing file → no output per spec
         assert output == ""
 
@@ -105,7 +134,7 @@ class TestRenderAnalysisDecision:
         )
         console = _make_console()
         render_analysis_decision(tmp_path, "review_analysis", console)
-        output = console.file.getvalue()
+        output = _console_output(console)
         # Malformed → no output per spec (defensive)
         assert output == ""
 
@@ -130,7 +159,7 @@ class TestRenderCommitMessage:
         (tmp_dir / "commit_message.json").write_text(json.dumps(artifact), encoding="utf-8")
         console = _make_console()
         render_commit_message(tmp_path, console)
-        output = console.file.getvalue()
+        output = _console_output(console)
         assert "COMMIT MESSAGE" in output
         assert "feat: add new feature" in output
         assert "This is the commit body" in output
@@ -138,7 +167,7 @@ class TestRenderCommitMessage:
     def test_no_output_when_file_absent(self, tmp_path: Path) -> None:
         console = _make_console()
         render_commit_message(tmp_path, console)
-        output = console.file.getvalue()
+        output = _console_output(console)
         # Missing file → no output per spec
         assert output == ""
 
@@ -148,7 +177,7 @@ class TestRenderCommitMessage:
         (tmp_dir / "commit_message.json").write_text("not json at all", encoding="utf-8")
         console = _make_console()
         render_commit_message(tmp_path, console)
-        output = console.file.getvalue()
+        output = _console_output(console)
         # Malformed → no output per spec (defensive)
         assert output == ""
 
@@ -170,7 +199,7 @@ class TestRenderFixArtifact:
         )
         console = _make_console()
         render_fix_artifact(tmp_path, console)
-        output = console.file.getvalue()
+        output = _console_output(console)
         assert "FIX" in output
         assert "2 issue(s) addressed" in output
         assert "Bug in foo" in output
@@ -189,14 +218,14 @@ class TestRenderFixArtifact:
         )
         console = _make_console()
         render_fix_artifact(tmp_path, console)
-        output = console.file.getvalue()
+        output = _console_output(console)
         assert "FIX" in output
         assert "2 item(s) fixed" in output
 
     def test_no_output_when_no_file_present(self, tmp_path: Path) -> None:
         console = _make_console()
         render_fix_artifact(tmp_path, console)
-        output = console.file.getvalue()
+        output = _console_output(console)
         # No file → no output per spec
         assert output == ""
 
@@ -206,6 +235,6 @@ class TestRenderFixArtifact:
         (artifacts_dir / "issues.json").write_text("broken json", encoding="utf-8")
         console = _make_console()
         render_fix_artifact(tmp_path, console)
-        output = console.file.getvalue()
+        output = _console_output(console)
         # Malformed → no output per spec (defensive)
         assert output == ""

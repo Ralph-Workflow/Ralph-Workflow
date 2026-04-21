@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, cast
 from git import Repo
 
 from ralph.config.enums import AgentTransport
+from ralph.mcp.artifacts.plan import render_plan_markdown
 from ralph.mcp.tools.names import SUBMIT_ARTIFACT_TOOL, claude_tool_name_prefix
 from ralph.prompts.commit import CommitPromptPayloadConfig, prompt_commit_message
 from ralph.prompts.debug_dump import dump_rendered_prompt, prompt_dump_path
@@ -71,7 +72,7 @@ def _render_prompt_for_phase(
     template_name = _template_name_for_phase(phase, pipeline_policy)
     prompt_content = _read_optional(workspace, "PROMPT.md")
     current_prompt_path = _persist_current_prompt(workspace_root, prompt_content)
-    plan_content = _resolve_plan_content(workspace)
+    plan_content, plan_path = _resolve_plan_handoff(workspace)
     if phase == "planning":
         return prompt_planning_xml_with_context(
             context=context,
@@ -86,6 +87,7 @@ def _render_prompt_for_phase(
             inputs=DeveloperPromptInputs(
                 prompt_content=prompt_content,
                 plan_content=plan_content,
+                plan_path=plan_path,
                 prompt_name_prefix=phase,
             ),
             workspace=workspace,
@@ -99,7 +101,7 @@ def _render_prompt_for_phase(
             phase=phase,
             workspace_root=workspace_root,
             values={
-                "PLAN": plan_content or "(no plan available)",
+                "PLAN": "" if plan_path else (plan_content or "(no plan available)"),
                 "DIFF": diff_content,
                 "CHANGES": diff_content,
                 "LATEST_ARTIFACT": _latest_artifact_content(workspace, phase),
@@ -107,6 +109,8 @@ def _render_prompt_for_phase(
                 "FIX_RESULT": _resolve_fix_result_content(workspace),
             },
         )
+        if plan_path:
+            variables["PLAN_PATH"] = plan_path
         variables.update(_current_prompt_variables(prompt_content, current_prompt_path))
         return render_template(
             template,
@@ -206,15 +210,33 @@ def _current_prompt_variables(
     return {"PROMPT": "", "PROMPT_PATH": current_prompt_path}
 
 
-def _resolve_plan_content(workspace: Workspace) -> str | None:
+def _resolve_plan_handoff(workspace: Workspace) -> tuple[str | None, str]:
+    """Return the agent-facing plan handoff.
+
+    `.agent/artifacts/plan.json` remains Ralph's canonical machine-readable plan
+    artifact, but prompts should point agents at `.agent/PLAN.md` so handoffs stay
+    human-readable and consistent across phase boundaries.
+    """
+    markdown_path = workspace.absolute_path(".agent/PLAN.md")
     wrapped_plan = _read_optional(workspace, ".agent/artifacts/plan.json")
     if wrapped_plan:
-        return _format_plan_for_execution(wrapped_plan)
+        markdown_plan = _render_plan_markdown_from_artifact(wrapped_plan)
+        if markdown_plan is not None:
+            workspace.write(".agent/PLAN.md", markdown_plan)
+            return markdown_plan, markdown_path
+        return _format_plan_for_execution(wrapped_plan), ""
 
     markdown_plan = _read_optional(workspace, ".agent/PLAN.md")
     if markdown_plan:
-        return markdown_plan
-    return None
+        return markdown_plan, markdown_path
+    return None, ""
+
+
+def _render_plan_markdown_from_artifact(content: str) -> str | None:
+    plan = _parse_plan_content(content)
+    if plan is None:
+        return None
+    return render_plan_markdown(plan)
 
 
 def _format_plan_for_execution(content: str) -> str:

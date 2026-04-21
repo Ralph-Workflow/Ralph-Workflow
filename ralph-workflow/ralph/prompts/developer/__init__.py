@@ -22,6 +22,7 @@ if TYPE_CHECKING:
 class DeveloperPromptInputs:
     prompt_content: str | None
     plan_content: str | None
+    plan_path: str = ""
     prompt_name_prefix: str = "development"
 
 
@@ -49,15 +50,18 @@ def prompt_developer_iteration_xml_with_context(
             workspace.absolute_path(".agent/CURRENT_PROMPT.md"),
         )
     )
-    base_vars.update(
-        _prompt_payload_variables(
-            {
-                "PLAN": inputs.plan_content or "(no plan available)",
-            },
-            workspace=workspace,
-            prompt_name_prefix=inputs.prompt_name_prefix,
+    if inputs.plan_path:
+        base_vars.update({"PLAN": "", "PLAN_PATH": inputs.plan_path})
+    else:
+        base_vars.update(
+            _prompt_payload_variables(
+                {
+                    "PLAN": inputs.plan_content or "(no plan available)",
+                },
+                workspace=workspace,
+                prompt_name_prefix=inputs.prompt_name_prefix,
+            )
         )
-    )
 
     capability_vars = capability_template_variables(
         session_caps.capabilities,
@@ -78,7 +82,8 @@ def prompt_developer_iteration_xml_with_context(
                 "PROMPT": inputs.prompt_content or "No requirements provided",
                 "PLAN": inputs.plan_content or "(no plan available)",
                 "PROMPT_PATH": workspace.absolute_path(".agent/CURRENT_PROMPT.md"),
-                "PLAN_PATH": str(
+                "PLAN_PATH": inputs.plan_path
+                or str(
                     Path(workspace.absolute_path(".agent/tmp/prompt_payloads"))
                     / f"{inputs.prompt_name_prefix}_plan.txt"
                 ),

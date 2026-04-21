@@ -103,7 +103,14 @@ def test_materialize_development_phase_surfaces_bare_fallbacks_for_shared_mcp_to
             {
                 "type": "plan",
                 "content": {
-                    "summary": {"context": "ctx", "scope_items": [{"text": "a"}]},
+                    "summary": {
+                        "context": "ctx",
+                        "scope_items": [
+                            {"text": "a"},
+                            {"text": "b"},
+                            {"text": "c"},
+                        ],
+                    },
                     "steps": [
                         {
                             "number": 1,
@@ -115,9 +122,16 @@ def test_materialize_development_phase_surfaces_bare_fallbacks_for_shared_mcp_to
                             "depends_on": [],
                         }
                     ],
-                    "critical_files": {"primary_files": [], "reference_files": []},
-                    "risks_mitigations": [],
-                    "verification_strategy": [],
+                    "critical_files": {
+                        "primary_files": [{"path": "src/app.py", "action": "modify"}],
+                        "reference_files": [],
+                    },
+                    "risks_mitigations": [
+                        {"risk": "regression", "mitigation": "add tests"}
+                    ],
+                    "verification_strategy": [
+                        {"method": "pytest", "expected_outcome": "passes"}
+                    ],
                     "work_units": [],
                 },
             }
@@ -142,35 +156,15 @@ def test_materialize_development_phase_surfaces_bare_fallbacks_for_shared_mcp_to
     assert "`mcp__ralph__declare_complete` or bare `declare_complete`" in rendered
 
 
-def test_materialize_development_prompt_formats_wrapped_plan_for_execution(
+def test_materialize_development_prompt_reads_agent_plan_markdown_handoff(
     tmp_path: Path,
 ) -> None:
     policy = load_policy(tmp_path / ".agent")
     workspace = MemoryWorkspace(root=str(tmp_path))
     workspace.write("PROMPT.md", "Implement unattended planning recovery")
     workspace.write(
-        ".agent/artifacts/plan.json",
-        (
-            '{"type":"plan","content":'
-            '{"summary":{"context":"Fix planner handoff","scope_items":['
-            '{"text":"retry invalid planning output"},'
-            '{"text":"pass plan clearly to development"}]},'
-            '"steps":['
-            '{"number":1,"title":"Add regression tests",'
-            '"content":"Cover planning and handoff failures"},'
-            '{"number":2,"title":"Fix pipeline routing",'
-            '"content":"Use phase handlers and policy transitions"}'
-            "],"
-            '"critical_files":{"primary_files":['
-            '{"path":"ralph/pipeline/runner.py","action":"modify",'
-            '"why":"Wire planning results into reducer"}'
-            "]},"
-            '"risks_mitigations":['
-            '{"risk":"Retry loop regression","mitigation":"Add targeted tests"}],'
-            '"verification_strategy":['
-            '{"method":"pytest","expected_outcome":"planning retries recover cleanly"}]'
-            "}}"
-        ),
+        ".agent/PLAN.md",
+        "# Implementation Plan\n\n## Steps\n1. Add regression tests\n2. Fix pipeline routing\n",
     )
 
     prompt_path = materialize_prompt_for_phase(
@@ -184,12 +178,9 @@ def test_materialize_development_prompt_formats_wrapped_plan_for_execution(
     rendered = workspace.read(prompt_path)
     current_prompt_path = tmp_path / ".agent" / "CURRENT_PROMPT.md"
     assert str(current_prompt_path) in rendered
-    assert (
-        current_prompt_path.read_text(encoding="utf-8") == "Implement unattended planning recovery"
-    )
-    assert "Add regression tests" in rendered
-    assert "ralph/pipeline/runner.py" in rendered
-    assert '"type":"plan"' not in rendered
+    assert str(tmp_path / ".agent" / "PLAN.md") in rendered
+    assert "Read the complete implementation plan from file at" in rendered
+    assert "Add regression tests" not in rendered
 
 
 def test_materialize_development_prefers_structured_plan_artifact_over_plan_md(
@@ -205,10 +196,17 @@ def test_materialize_development_prefers_structured_plan_artifact_over_plan_md(
             '{"type":"plan","content":'
             '{"summary":{"context":"Fresh structured plan","scope_items":['
             '{"text":"Use policy-driven handoff"},'
-            '{"text":"Reject missing plan artifacts"}]},'
+            '{"text":"Reject missing plan artifacts"},'
+            '{"text":"Expose the handoff to users"}]},'
             '"steps":[{"number":1,"title":"Honor policy","content":"Route via policy bundle"}],'
-            '"critical_files":{"primary_files":[]},'
-            '"risks_mitigations":[],"verification_strategy":[]}}'
+            '"critical_files":{"primary_files":['
+            '{"path":"ralph/pipeline/runner.py","action":"modify"}]},'
+            '"risks_mitigations":['
+            '{"risk":"Stale markdown handoff",'
+            '"mitigation":"Rewrite PLAN.md from plan.json"}],'
+            '"verification_strategy":['
+            '{"method":"pytest",'
+            '"expected_outcome":"development prompt uses PLAN.md handoff"}]}}'
         ),
     )
 
@@ -221,7 +219,8 @@ def test_materialize_development_prefers_structured_plan_artifact_over_plan_md(
     )
 
     rendered = workspace.read(prompt_path)
-    assert "Fresh structured plan" in rendered
+    assert str(tmp_path / ".agent" / "PLAN.md") in rendered
+    assert "Read the complete implementation plan from file at" in rendered
     assert "STALE PLAN" not in rendered
     assert (tmp_path / ".agent" / "CURRENT_PROMPT.md").read_text(encoding="utf-8") == (
         "Implement unattended planning recovery"

@@ -678,6 +678,12 @@ def test_piecewise_plan_submission_produces_same_plan_json_as_atomic(tmp_path: P
     assert stored["type"] == "plan"
     summary = cast("dict[str, object]", stored["content"]["summary"])
     assert summary["context"] == "Plan the MCP validation rollout."
+    assert (atomic_path / ".agent" / "PLAN.md").read_text(encoding="utf-8").startswith(
+        "# Implementation Plan\n"
+    )
+    assert (piecewise_path / ".agent" / "PLAN.md").read_text(encoding="utf-8").startswith(
+        "# Implementation Plan\n"
+    )
     # Draft must be gone after a successful finalize.
     assert not (piecewise_path / ".agent" / "artifacts" / ".plan_draft.json").exists()
 
