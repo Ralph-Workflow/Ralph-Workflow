@@ -8,6 +8,7 @@ from unittest.mock import patch
 
 from rich.console import Console
 
+from ralph.display.content_condenser import condense_content
 from ralph.display.long_content_summary import set_ai_summary_hook
 from ralph.display.plain_renderer import LEVELS, PlainLogRenderer
 
@@ -441,7 +442,8 @@ def test_empty_headline_emits_placeholder_line_not_dropped() -> None:
     assert placeholder_count == 1
 
 
-def test_none_summary_with_condensed_emits_placeholder() -> None:
+def test_none_summary_with_condensed_flag_emits_nothing() -> None:
+    """summary_line=None means 'not applicable' — no placeholder even if condensed."""
     renderer, buf = _make_renderer()
     renderer.emit_activity_line(
         "u",
@@ -451,7 +453,7 @@ def test_none_summary_with_condensed_emits_placeholder() -> None:
         summary_line=None,
     )
     out = buf.getvalue()
-    assert "↳ summary: (no headline available)" in out
+    assert "↳ summary:" not in out
 
 
 def test_none_summary_without_condensed_emits_nothing() -> None:
@@ -473,4 +475,107 @@ def test_hook_cleanup_between_tests() -> None:
     renderer, buf = _make_renderer()
     renderer.emit_activity_line("u", "text", "x" * 5000, ai_summary_line=None)
     out = buf.getvalue()
+    assert "↳ ai-summary:" not in out
+
+
+# --- Summary suppression / gating tests ---
+
+
+def test_summary_disabled_env_suppresses_summary_line() -> None:
+    """RALPH_LONG_CONTENT_SUMMARY=0 must yield no ↳ summary: line."""
+    renderer, buf = _make_renderer()
+    long_text = "First sentence. " * 300  # well above 4000 chars
+    with patch.dict(os.environ, {"RALPH_LONG_CONTENT_SUMMARY": "0"}):
+        visible, condensed, summary_line, _ai = condense_content(
+            long_text, summary=True
+        )
+    assert condensed is True
+    assert summary_line is None
+    renderer.emit_activity_line(
+        "u", "text", visible, condensed_flag=condensed, summary_line=summary_line
+    )
+    out = buf.getvalue()
+    assert "↳ summary:" not in out
+
+
+def test_sub_threshold_condensed_content_yields_no_summary() -> None:
+    """Content between 400 and 4000 cells: condensed but no summary applicable."""
+    renderer, buf = _make_renderer()
+    text = "a" * 500  # above soft_limit(400) but below summary_threshold(4000)
+    visible, condensed, summary_line, _ai = condense_content(text, summary=True)
+    assert condensed is True
+    assert summary_line is None
+    renderer.emit_activity_line(
+        "u", "text", visible, condensed_flag=condensed, summary_line=summary_line
+    )
+    out = buf.getvalue()
+    assert "↳ summary:" not in out
+
+
+def test_above_threshold_empty_headline_yields_placeholder() -> None:
+    """Content above 4000-cell threshold with no extractable headline emits placeholder."""
+    renderer, buf = _make_renderer()
+    text = " " * 4100  # all spaces: no extractable headline, but cell_len > 4000
+    visible, condensed, summary_line, _ai = condense_content(text, summary=True)
+    assert condensed is True
+    assert summary_line == "(no headline available)"
+    renderer.emit_activity_line(
+        "u", "text", visible, condensed_flag=condensed, summary_line=summary_line
+    )
+    out = buf.getvalue()
+    assert "↳ summary: (no headline available)" in out
+
+
+# --- Streaming end-of-block AI summary tests ---
+
+
+def test_content_end_emits_ai_summary_when_hook_set() -> None:
+    """Block close emits ↳ ai-summary: line after the [content-end] line."""
+    renderer, buf = _make_renderer()
+    set_ai_summary_hook(lambda text: "Block AI summary")
+    try:
+        with patch.dict(os.environ, {"RALPH_LONG_CONTENT_AI_SUMMARY": "1"}):
+            # Accumulate > 4000 chars so should_summarize returns True
+            for _ in range(3):
+                renderer.emit_activity_line("u", "text", "x" * 1500)
+            buf.truncate(0)
+            buf.seek(0)
+            renderer.flush_blocks()
+    finally:
+        set_ai_summary_hook(None)
+    out = buf.getvalue()
+    assert "[content-end][u]" in out
+    assert "↳ ai-summary: Block AI summary" in out
+    assert out.index("[content-end]") < out.index("↳ ai-summary:")
+
+
+def test_content_end_no_ai_summary_when_hook_not_set() -> None:
+    """Block close emits no ↳ ai-summary: line when hook is not registered."""
+    renderer, buf = _make_renderer()
+    set_ai_summary_hook(None)
+    for _ in range(3):
+        renderer.emit_activity_line("u", "text", "x" * 1500)
+    buf.truncate(0)
+    buf.seek(0)
+    renderer.flush_blocks()
+    out = buf.getvalue()
+    assert "[content-end][u]" in out
+    assert "↳ ai-summary:" not in out
+
+
+def test_content_end_no_ai_summary_when_env_not_set() -> None:
+    """Block close emits no ↳ ai-summary: line when env var is not set."""
+    renderer, buf = _make_renderer()
+    set_ai_summary_hook(lambda text: "should not appear")
+    try:
+        os.environ.pop("RALPH_LONG_CONTENT_AI_SUMMARY", None)
+        for _ in range(3):
+            renderer.emit_activity_line("u", "text", "x" * 1500)
+        buf.truncate(0)
+        buf.seek(0)
+        renderer.flush_blocks()
+    finally:
+        set_ai_summary_hook(None)
+    out = buf.getvalue()
+    assert "[content-end][u]" in out
     assert "↳ ai-summary:" not in out

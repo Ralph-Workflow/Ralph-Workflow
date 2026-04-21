@@ -228,16 +228,23 @@ Tags starting with `content-`, `thinking-`, `tool`, `tool-result`, `error`, or `
 
 Ralph applies three distinct layers when agent content is large. Each layer is additive — earlier layers remain active when later layers are enabled.
 
-### Layer 1 — head+tail condensation (always active)
+### Layer 1 — condensation (always active)
 
-Condensation is the deterministic default for oversized lines and is always active. When content exceeds 400 display cells the line is truncated to a head+tail excerpt:
+Condensation is the deterministic default for oversized lines and is always active. Ralph applies two tiers based on the total display-cell count:
 
-```
-2026-04-20T12:34:56Z INFO CONT [content][dev-1] First 400 chars… (+4200 chars, see .agent/raw/dev-1.log) …last chars
-```
+- **400–4000 cells (soft limit)** — head-only truncation. The first 400 cells are kept and a `(truncated)` suffix is appended:
+
+  ```
+  2026-04-20T12:34:56Z INFO CONT [content][dev-1] First 400 chars… (truncated, see .agent/raw/dev-1.log)
+  ```
+
+- **> 4000 cells (hard limit)** — head+tail truncation with the middle elided:
+
+  ```
+  2026-04-20T12:34:56Z INFO CONT [content][dev-1] First 2000 chars… (+8400 chars, see .agent/raw/dev-1.log) …last 2000 chars
+  ```
 
 The full raw text is always preserved to `.agent/raw/<unit-id>.log` so readers have a path to the complete output.
-
 ### Layer 2 — deterministic headline `↳ summary:` (default-on)
 
 For content blocks exceeding 4000 display cells, Ralph emits a `↳ summary:` line **before** the condensed excerpt. This deterministic headline layer is **default-on** — no environment variable is needed:

@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Final
 
 from rich.text import Text
 
-from ralph.display.long_content_summary import build_headline_or_placeholder
+from ralph.display.long_content_summary import build_ai_summary, build_headline_or_placeholder
 from ralph.display.snapshot import PipelineSnapshot, snapshot_from_state
 
 if TYPE_CHECKING:
@@ -353,30 +353,40 @@ class PlainLogRenderer:
             clean_line = _ANSI_ESCAPE.sub("", line)
             self._console.print(clean_line, markup=False, highlight=False, no_wrap=True)
 
-    def _close_block(self, unit_id: str, timestamp: str) -> str | None:
-        """Close an active streaming block and return the end-line, or None if no block."""
+    def _close_block(self, unit_id: str, timestamp: str) -> None:
+        """Close an active streaming block, emitting the end-line and optional AI summary."""
         if unit_id not in self._active_block:
-            return None
+            return
         base_tag, accumulated = self._active_block.pop(unit_id)
         self._last_checkpoint_chars.pop(unit_id, None)
         block_tags = _STREAMING_BLOCK_TAGS.get(base_tag)
         if block_tags is None:
-            return None
+            return
         end_tag = block_tags[2]
         n = len(accumulated)
         chars = sum(len(x) for x in accumulated)
-        summary = build_headline_or_placeholder(" ".join(accumulated), max_chars=120)
+        joined = " ".join(accumulated)
+        headline = build_headline_or_placeholder(joined, max_chars=120)
         prefix = f"{timestamp} INFO CONT [{end_tag}][{unit_id}] ({n} fragments, {chars} chars)"
-        return f"{prefix} {summary}"
+        self._console.print(f"{prefix} {headline}", markup=False, highlight=False, no_wrap=True)
+
+        # Optional AI summary on block close — only when hook + env are configured
+        ai_summary = build_ai_summary(joined, os.environ)
+        if ai_summary:
+            ai_text = _sanitize(ai_summary)
+            self._console.print(
+                f"{timestamp} INFO CONT [{end_tag}][{unit_id}] ↳ ai-summary: {ai_text}",
+                markup=False,
+                highlight=False,
+                no_wrap=True,
+            )
 
     def flush_blocks(self) -> None:
         """Close all open streaming blocks. Call on phase transitions and stop."""
         timestamp = self._clock().isoformat()
         unit_ids = list(self._active_block.keys())
         for unit_id in unit_ids:
-            end_line = self._close_block(unit_id, timestamp)
-            if end_line:
-                self._console.print(end_line, markup=False, highlight=False, no_wrap=True)
+            self._close_block(unit_id, timestamp)
 
     def emit_activity_line(  # noqa: PLR0912, PLR0913, PLR0915
         self,
@@ -394,6 +404,12 @@ class PlainLogRenderer:
         Optional AI-generated summary emitted on its own line labelled ai-summary.
         When both summary_line and ai_summary_line are given, summary_line is
         printed first, then ai_summary_line.
+
+        summary_line semantics:
+        - None: summarization was not applicable (disabled or below threshold) — no line emitted.
+        - "": summarization was applicable but no headline extracted — placeholder emitted when
+          condensed_flag is True.
+        - non-empty str: the actual headline — emitted as-is.
         """
         timestamp = self._clock().isoformat()
         base_tag = _KIND_TO_TAG.get(kind, "content")
@@ -410,11 +426,7 @@ class PlainLogRenderer:
                 # Global single-block invariant: close any block from a different unit first.
                 other_units = [uid for uid in self._active_block if uid != unit_id]
                 for other_uid in other_units:
-                    end_line = self._close_block(other_uid, timestamp)
-                    if end_line:
-                        self._console.print(
-                            end_line, markup=False, highlight=False, no_wrap=True
-                        )
+                    self._close_block(other_uid, timestamp)
                 if unit_id not in self._active_block:
                     # Open new block
                     self._active_block[unit_id] = (base_tag, [content])
@@ -424,11 +436,7 @@ class PlainLogRenderer:
                     existing_base_tag, accumulated = self._active_block[unit_id]
                     if existing_base_tag != base_tag:
                         # Different kind: close old block first
-                        end_line = self._close_block(unit_id, timestamp)
-                        if end_line:
-                            self._console.print(
-                                end_line, markup=False, highlight=False, no_wrap=True
-                            )
+                        self._close_block(unit_id, timestamp)
                         # Open new block
                         self._active_block[unit_id] = (base_tag, [content])
                         self._last_checkpoint_chars[unit_id] = 0
@@ -465,29 +473,30 @@ class PlainLogRenderer:
             # Non-streaming kind: close ALL open blocks (any unit) before emitting.
             all_units = list(self._active_block.keys())
             for uid in all_units:
-                end_line = self._close_block(uid, timestamp)
-                if end_line:
-                    self._console.print(end_line, markup=False, highlight=False, no_wrap=True)
+                self._close_block(uid, timestamp)
             tag = base_tag
 
-        # Emit summary line (deterministic headline or placeholder for condensed content)
-        effective_summary = summary_line if summary_line else None
-        if effective_summary is not None:
-            summary_text = _sanitize(effective_summary)
-            self._console.print(
-                f"{timestamp} INFO {cat} [{tag}][{unit_id}] ↳ summary: {summary_text}",
-                markup=False,
-                highlight=False,
-                no_wrap=True,
-            )
-        elif condensed_flag:
-            self._console.print(
-                f"{timestamp} INFO {cat} [{tag}][{unit_id}]"
-                f" ↳ summary: (no headline available)",
-                markup=False,
-                highlight=False,
-                no_wrap=True,
-            )
+        # Emit summary line.
+        # summary_line=None means "not applicable" — nothing emitted.
+        # summary_line="" means "applicable but no headline" — placeholder when condensed.
+        # summary_line=<non-empty> means the actual headline.
+        if summary_line is not None:
+            if summary_line:
+                summary_text = _sanitize(summary_line)
+                self._console.print(
+                    f"{timestamp} INFO {cat} [{tag}][{unit_id}] ↳ summary: {summary_text}",
+                    markup=False,
+                    highlight=False,
+                    no_wrap=True,
+                )
+            elif condensed_flag:
+                self._console.print(
+                    f"{timestamp} INFO {cat} [{tag}][{unit_id}]"
+                    f" ↳ summary: (no headline available)",
+                    markup=False,
+                    highlight=False,
+                    no_wrap=True,
+                )
 
         # Emit optional AI-generated summary line after the deterministic headline
         if ai_summary_line:
