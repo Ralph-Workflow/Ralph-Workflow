@@ -20,6 +20,8 @@ from ralph.pipeline.effects import Effect, InvokeAgentEffect, PreparePromptEffec
 from ralph.pipeline.events import Event
 
 if TYPE_CHECKING:
+    from rich.console import Console
+
     from ralph.agents.chain import ChainManager
     from ralph.agents.registry import AgentRegistry
     from ralph.config.models import UnifiedConfig
@@ -42,6 +44,7 @@ class PhaseContext(BaseModel):  # type: ignore[explicit-any]
         agents_policy: Agents policy (chains and drain bindings).
         artifacts_policy: Artifacts policy (artifact contracts).
         config: Optional legacy unified config for backward compatibility.
+        console: Rich console for output (optional).
     """
 
     model_config = {"frozen": True}
@@ -53,6 +56,7 @@ class PhaseContext(BaseModel):  # type: ignore[explicit-any]
     agents_policy: AgentsPolicy
     artifacts_policy: ArtifactsPolicy
     config: UnifiedConfig | None = None
+    console: Console | None = None
 
 
 class PhaseHandlerNotFoundError(Exception):

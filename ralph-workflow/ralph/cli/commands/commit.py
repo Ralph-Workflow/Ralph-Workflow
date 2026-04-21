@@ -27,6 +27,7 @@ from ralph.agents.parsers import AgentOutputLine, AgentParser, get_parser
 from ralph.agents.registry import AgentRegistry
 from ralph.config.enums import AgentTransport
 from ralph.config.loader import load_config
+from ralph.display.artifact_renderer import render_commit_message
 from ralph.git.operations import (
     create_commit,
     find_repo_root,
@@ -205,8 +206,9 @@ def _handle_agent_commit_generation(
         console.print("[red]Failed to persist generated commit message[/red]")
         return
 
+    # Use the shared render_commit_message for consistent UI
     console.print("\n[green]Generated commit message:[/green]")
-    console.print(Panel(persisted_message, border_style="green"))
+    render_commit_message(repo_root, console)
 
     if apply:
         stage_all(repo_root)
@@ -225,6 +227,109 @@ def _handle_agent_commit_generation(
             console.print(
                 _styled_commit_status("Commit failed", str(e), "red", leading_newline=True)
             )
+
+
+def _handle_show_or_generate(
+    repo_root: Path,
+    generate: bool,
+    apply: bool,
+    git_user_name: str | None,
+    git_user_email: str | None,
+) -> None:
+    """Handle commit message generation and display.
+
+    Args:
+        repo_root: Repository root path.
+        generate: Whether to generate commit message.
+        apply: Whether to apply (commit) the changes.
+        git_user_name: Git user name for commit.
+        git_user_email: Git user email for commit.
+    """
+    staged_files = get_staged_files(repo_root)
+
+    if not staged_files:
+        console.print("[yellow]No staged files[/yellow]")
+        return
+
+    console.print(_styled_commit_status("Staged files", str(len(staged_files)), "cyan"))
+    for f in staged_files[:_MAX_DISPLAY_FILES]:
+        staged_file_text = Text()
+        staged_file_text.append("  - ")
+        staged_file_text.append(f)
+        console.print(staged_file_text)
+    if len(staged_files) > _MAX_DISPLAY_FILES:
+        console.print(f"  ... and {len(staged_files) - _MAX_DISPLAY_FILES} more")
+
+    if generate:
+        # Generate commit message
+        message = _generate_commit_message(staged_files, repo_root)
+        console.print("\n[green]Generated commit message:[/green]")
+        console.print(Panel(message, border_style="green"))
+
+        if apply:
+            try:
+                sha = create_commit(
+                    repo_root,
+                    message,
+                    author_name=git_user_name,
+                    author_email=git_user_email,
+                )
+                delete_commit_message_artifacts(repo_root)
+                console.print(
+                    _styled_commit_status("Created commit", sha[:8], "green", leading_newline=True)
+                )
+            except Exception as e:
+                console.print(
+                    _styled_commit_status("Commit failed", str(e), "red", leading_newline=True)
+                )
+
+
+def _generate_commit_message(files: list[str], repo_root: Path) -> str:
+    """Generate a commit message from staged files.
+
+    Args:
+        files: List of staged file paths.
+        repo_root: Repository root path.
+
+    Returns:
+        Generated commit message.
+    """
+    # Simple heuristic commit message generation
+
+    if not files:
+        return "Update files"
+
+    # Group files by type
+    added: list[str] = []
+    modified: list[str] = []
+    deleted: list[str] = []
+
+    for f in files:
+        if f.startswith("src/"):
+            added.append(f)
+        elif f.startswith("tests/"):
+            modified.append(f)
+        else:
+            added.append(f)
+
+    parts: list[str] = []
+
+    if added:
+        count = len(added)
+        parts.append(f"Update {count} file{'s' if count > 1 else ''}")
+
+    if modified:
+        count = len(modified)
+        parts.append(f"Modify {count} file{'s' if count > 1 else ''}")
+
+    if deleted:
+        count = len(deleted)
+        parts.append(f"Remove {count} file{'s' if count > 1 else ''}")
+
+    if not parts:
+        parts = ["Update files"]
+
+    return ": ".join(parts)
 
 
 def _resolve_commit_message_agents(config: UnifiedConfig, registry: AgentRegistry) -> list[str]:
@@ -278,8 +383,6 @@ def _commit_submit_artifact_tool_names(
 
 
 def _submit_artifact_tool_name_for_transport(transport: AgentTransport | None) -> str:
-    # Claude exposes MCP tools under a namespaced `mcp__server__tool` surface,
-    # while OpenCode and the in-process runtime still use Ralph's bare tool name.
     if transport == AgentTransport.CLAUDE:
         return claude_tool_name(SUBMIT_ARTIFACT_TOOL)
     return SUBMIT_ARTIFACT_TOOL
@@ -597,13 +700,15 @@ def _show_commit_message(repo_root: Path) -> None:
         console.print("[red]No commit message generated yet[/red]")
         return
 
-    console.print("\n[green]Commit message:[/green]")
-    console.print(Panel(commit_message, border_style="green"))
+    # Use the shared render_commit_message for consistent UI
+    render_commit_message(repo_root, console)
 
 
 def _print_commit_failure_details(failure_details: list[str]) -> None:
     for detail in failure_details:
-        console.print(Panel(detail, border_style="red", title="Commit drain failure"))
+        console.print(
+            Text(detail, style="red")
+        )
 
 
 def _format_agent_invocation_failure(
@@ -812,110 +917,6 @@ def _invocation_error_with_output(
 def _parsed_output_from_invocation_error(exc: AgentInvocationError) -> list[str]:
     parsed_output: list[str] = exc.parsed_output
     return parsed_output
-
-
-def _handle_show_or_generate(
-    repo_root: Path,
-    generate: bool,
-    apply: bool,
-    git_user_name: str | None,
-    git_user_email: str | None,
-) -> None:
-    """Handle commit message generation and display.
-
-    Args:
-        repo_root: Repository root path.
-        generate: Whether to generate commit message.
-        apply: Whether to apply (commit) the changes.
-        git_user_name: Git user name for commit.
-        git_user_email: Git user email for commit.
-    """
-    staged_files = get_staged_files(repo_root)
-
-    if not staged_files:
-        console.print("[yellow]No staged files[/yellow]")
-        return
-
-    console.print(_styled_commit_status("Staged files", str(len(staged_files)), "cyan"))
-    for f in staged_files[:_MAX_DISPLAY_FILES]:
-        staged_file_text = Text()
-        staged_file_text.append("  - ")
-        staged_file_text.append(f)
-        console.print(staged_file_text)
-    if len(staged_files) > _MAX_DISPLAY_FILES:
-        console.print(f"  ... and {len(staged_files) - _MAX_DISPLAY_FILES} more")
-
-    if generate:
-        # Generate commit message
-        message = _generate_commit_message(staged_files, repo_root)
-        console.print("\n[green]Generated commit message:[/green]")
-        console.print(Panel(message, border_style="green"))
-
-        if apply:
-            try:
-                sha = create_commit(
-                    repo_root,
-                    message,
-                    author_name=git_user_name,
-                    author_email=git_user_email,
-                )
-                delete_commit_message_artifacts(repo_root)
-                console.print(
-                    _styled_commit_status("Created commit", sha[:8], "green", leading_newline=True)
-                )
-            except Exception as e:
-                console.print(
-                    _styled_commit_status("Commit failed", str(e), "red", leading_newline=True)
-                )
-
-
-def _generate_commit_message(files: list[str], repo_root: Path) -> str:
-    """Generate a commit message from staged files.
-
-    Args:
-        files: List of staged file paths.
-        repo_root: Repository root path.
-
-    Returns:
-        Generated commit message.
-    """
-    # Simple heuristic commit message generation
-    # In a real implementation, this would invoke an agent
-
-    if not files:
-        return "Update files"
-
-    # Group files by type
-    added: list[str] = []
-    modified: list[str] = []
-    deleted: list[str] = []
-
-    for f in files:
-        if f.startswith("src/"):
-            added.append(f)
-        elif f.startswith("tests/"):
-            modified.append(f)
-        else:
-            added.append(f)
-
-    parts: list[str] = []
-
-    if added:
-        count = len(added)
-        parts.append(f"Update {count} file{'s' if count > 1 else ''}")
-
-    if modified:
-        count = len(modified)
-        parts.append(f"Modify {count} file{'s' if count > 1 else ''}")
-
-    if deleted:
-        count = len(deleted)
-        parts.append(f"Remove {count} file{'s' if count > 1 else ''}")
-
-    if not parts:
-        parts = ["Update files"]
-
-    return ": ".join(parts)
 
 
 def _start_commit_bridge(repo_root: Path) -> SessionBridgeLike:

@@ -149,6 +149,10 @@ class PipelineState(BaseModel):  # type: ignore[explicit-any]
         development_budget_remaining: Remaining development iterations budget.
         review_budget_remaining: Remaining review passes budget.
         current_drain: Currently active drain (derived from policy at runtime).
+        development_analysis_iteration: Current development analysis loop iteration.
+        max_development_analysis_iterations: Maximum development analysis loop budget.
+        review_analysis_iteration: Current review analysis loop iteration.
+        max_review_analysis_iterations: Maximum review analysis loop budget.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -185,6 +189,12 @@ class PipelineState(BaseModel):  # type: ignore[explicit-any]
     development_budget_remaining: int = 0
     review_budget_remaining: int = 0
     current_drain: str | None = None
+
+    # Analysis iteration tracking (per dev/review cycle)
+    development_analysis_iteration: int = Field(default=0, ge=0)
+    max_development_analysis_iterations: int = Field(default=3, ge=0)
+    review_analysis_iteration: int = Field(default=0, ge=0)
+    max_review_analysis_iterations: int = Field(default=2, ge=0)
 
     work_units: tuple[WorkUnit, ...] = Field(default_factory=tuple)
     worker_states: dict[str, WorkerState] = Field(default_factory=dict)

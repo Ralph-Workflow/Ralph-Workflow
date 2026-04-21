@@ -51,27 +51,24 @@ If changing the implementation (without changing behavior) would break a test, *
 ## Test Pyramid
 
 ```
-         ▲ git / worktree tests (tests/ using tmp_git_repo)
-         │ Real git repository, gitpython — tmp_path isolated
-         │ NOT in CI — run manually only
-         │
         ████ Integration tests (tests/integration/)
-        │    MemoryWorkspace + FakeAgentExecutor, no real I/O — parallel
-        │    Target: < 60 s wall-clock
+        │    Cross-module flows, runner wiring, and end-to-end in-memory scenarios
+        │    Usually MemoryWorkspace / FakeAgentExecutor driven, but may include
+        │    isolated git-backed fixtures where the public contract requires it
         │
-    ████████ Unit tests (tests/ root + tests/unit/)
-             Pure reducers, models, parsers, display components — parallel
-             Target: subsecond per test, total < 10 s
+    ████████ Unit and focused behavior tests (tests/ root + tests/unit/)
+             Reducers, models, parsers, display components, CLI helpers,
+             and narrow pipeline behavior checks
 ```
 
 ### Tier summary
 
 | Tier | Location | Real I/O? | CI? | Run command |
 |------|----------|-----------|-----|-------------|
-| Unit | `tests/` root, `tests/unit/` | No | yes | `pytest tests/ -v --ignore=tests/integration` |
-| Integration | `tests/integration/` | No (MemoryWorkspace) | yes | `pytest tests/integration/ -v` |
-| Git system | `tests/` (uses `tmp_git_repo`) | Yes (gitpython + tmp dir) | **no** | Run manually with `-k tmp_git_repo` |
-| All (CI) | all | mixed | yes | `make verify` |
+| Unit / focused | `tests/` root, `tests/unit/` | Usually no | yes | `make test-unit` |
+| Integration | `tests/integration/` | Usually no, occasionally isolated git fixtures | yes | `make test-integration` |
+| Full suite | all collected tests | mixed | yes | `make test` |
+| Verification | lint + strict typecheck + covered full suite | mixed | yes | `make verify` |
 
 ---
 

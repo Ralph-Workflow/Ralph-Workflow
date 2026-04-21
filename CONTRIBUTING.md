@@ -43,7 +43,6 @@ Verification is clean only when the Python checks pass without unresolved errors
 
 - `ralph-workflow/` — maintained Python package
 - `docs/` — mixed current Python docs and legacy Rust-era design notes
-- `vendor/ralph-workflow-gui/` — vendored Rust/Tauri GUI
 
 ## Legacy docs
 

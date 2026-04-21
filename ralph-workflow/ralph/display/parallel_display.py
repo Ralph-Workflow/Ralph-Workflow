@@ -93,30 +93,31 @@ class ParallelDisplay:
     def set_status(self, unit_id: str, status: WorkerStatus) -> None:
         self._plain_renderer.emit_status_line(unit_id, str(status))
 
-    def emit_phase_transition(
-        self,
-        from_phase: str,
-        to_phase: str,
-        context: dict[str, object] | None = None,
-    ) -> None:
-        show_phase_transition(from_phase, to_phase, context=context, console=self._console)
-        try:
-            self._subscriber.record_phase_transition(from_phase, to_phase)
-        except Exception:
-            return None
-
     def emit_analysis_result(
         self,
         phase: str,
         decision: str,
         reason: str | None = None,
     ) -> None:
-        reason_part = f" — {reason}" if reason else ""
-        self._console.out(f"[analysis] {phase}: {decision}{reason_part}")
+        # Only record to decision_log via subscriber; the titled block is rendered
+        # by render_analysis_decision in the phase handler (development.py/review.py).
+        # This avoids double-rendering both a plain [analysis] line and a titled block.
         try:
             self._subscriber.record_analysis(phase, decision, reason)
         except Exception:
             return None
+
+    def emit_phase_transition(self, from_phase: str, to_phase: str) -> None:
+        show_phase_transition(from_phase, to_phase, console=self._console)
+        try:
+            self._subscriber.record_phase_transition(from_phase, to_phase)
+        except Exception:
+            return None
+
+    @property
+    def console(self) -> Console:
+        """Expose console for external renderers."""
+        return self._console
 
     def __enter__(self) -> ParallelDisplay:
         self.start()

@@ -35,11 +35,16 @@ make dead-code
 cd ralph-workflow
 ruff check ralph/ tests/
 ruff format --check ralph/ tests/
-mypy ralph/ --strict
-pytest --cov=ralph --cov-report=term-missing --cov-fail-under=80 -v
+uv run python -m mypy ralph/
+make test
+make test-unit
+make test-integration
+make test-cov
 python -m ralph --help
 python -m ralph --version
 ```
+
+`make test` runs the full suite without coverage. `make test-unit` excludes `tests/integration/`. `make test-integration` runs only `tests/integration/`. `make test-cov` is the single authoritative covered suite used by `make verify`.
 
 ---
 

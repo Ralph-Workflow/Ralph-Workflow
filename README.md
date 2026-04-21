@@ -1,6 +1,6 @@
 # Ralph Workflow
 
-Ralph Workflow is a Python CLI for unattended, multi-agent software delivery loops. The maintained implementation lives in `ralph-workflow/`; this repository also keeps legacy design notes from the retired Rust implementation and a vendored Rust/Tauri GUI under `vendor/ralph-workflow-gui/`.
+Ralph Workflow is a Python CLI for unattended, multi-agent software delivery loops. The maintained implementation lives in `ralph-workflow/`; this repository also keeps legacy design notes from the retired Rust implementation.
 
 ## What is current
 
@@ -54,15 +54,20 @@ make verify
 That runs the current Python verification path:
 
 - `ruff check ralph/ tests/`
-- `mypy ralph/`
-- `pytest tests/ -v --cov=ralph --cov-report=term-missing --cov-report=html`
+- `uv run python -m mypy ralph/`
+- `uv run python -m ralph.verify_timeout --suite-timeout 30 -- pytest tests/ -q -n 8 --cov=ralph --cov-report=term-missing --cov-report=html --cov-fail-under=80`
+
+Useful local narrowing commands:
+
+- `make test` — full suite without coverage
+- `make test-unit` — `tests/` excluding `tests/integration/`
+- `make test-integration` — `tests/integration/` only
 
 ## Repository map
 
 - `ralph-workflow/README.md` — package install, development, and API overview
 - `ralph-workflow/CONTRIBUTING.md` — Python contributor workflow
 - `docs/README.md` — current vs legacy documentation map
-- `vendor/ralph-workflow-gui/` — vendored Rust GUI work; not the canonical CLI implementation
 
 ## Legacy documentation status
 

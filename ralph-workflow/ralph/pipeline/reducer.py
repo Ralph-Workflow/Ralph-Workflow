@@ -375,8 +375,14 @@ def _handle_analysis_success(
         try:
             next_phase = resolve_next_phase(state.phase, "success", policy)
             new_state, effects = _advance_phase(state, next_phase, policy)
-            if state.phase == "review_analysis":
-                new_state = new_state.copy_with(review_issues_found=False)
+            # Reset analysis iteration counter when analysis succeeds (normal exit)
+            if state.phase == "development_analysis":
+                new_state = new_state.copy_with(development_analysis_iteration=0)
+            elif state.phase == "review_analysis":
+                new_state = new_state.copy_with(
+                    review_issues_found=False,
+                    review_analysis_iteration=0,
+                )
             return new_state, effects
         except ValueError as exc:
             return _advance_to_terminal(
@@ -396,6 +402,7 @@ def _legacy_handle_analysis_success(
         new_state = state.copy_with(
             phase="development_commit",
             previous_phase=state.phase,
+            development_analysis_iteration=0,
         )
         return new_state, []
 
@@ -403,6 +410,8 @@ def _legacy_handle_analysis_success(
         new_state = state.copy_with(
             phase="review_commit",
             previous_phase=state.phase,
+            review_issues_found=False,
+            review_analysis_iteration=0,
         )
         return new_state, []
 
@@ -414,24 +423,97 @@ def _handle_analysis_loopback(
     policy: PipelinePolicy | None,
 ) -> tuple[PipelineState, list[Effect]]:
     """Handle analysis loopback decision (retry/request changes)."""
-    if policy is not None:
+    if policy is None:
+        return _legacy_handle_analysis_loopback(state)
+
+    # Policy-driven routing with analysis iteration cap
+    if state.phase == "development_analysis":
+        return _handle_dev_analysis_loopback(state, policy)
+    if state.phase == "review_analysis":
+        return _handle_review_analysis_loopback(state, policy)
+
+    # Unknown analysis phase - use general loopback routing with error handling
+    try:
+        next_phase = resolve_next_phase(state.phase, "loopback", policy)
+        return _advance_phase(state, next_phase, policy)
+    except ValueError as exc:
+        return _advance_to_terminal(
+            state,
+            PHASE_FAILED,
+            f"Routing error after analysis loopback in '{state.phase}': {exc}",
+        )
+
+
+def _handle_dev_analysis_loopback(
+    state: PipelineState,
+    policy: PipelinePolicy,
+) -> tuple[PipelineState, list[Effect]]:
+    """Handle development analysis loopback with iteration cap."""
+    candidate = state.development_analysis_iteration + 1
+    if candidate >= state.max_development_analysis_iterations:
+        # Cap hit: force advance to development_commit via success route
         try:
-            next_phase = resolve_next_phase(state.phase, "loopback", policy)
-            new_state, effects = _advance_phase(state, next_phase, policy)
-            if state.phase == "review_analysis":
-                new_state = new_state.copy_with(
-                    reviewer_pass=state.reviewer_pass + 1,
-                    review_issues_found=True,
-                )
-            return new_state, effects
+            next_phase = resolve_next_phase(state.phase, "success", policy)
         except ValueError as exc:
             return _advance_to_terminal(
                 state,
                 PHASE_FAILED,
                 f"Routing error after analysis loopback in '{state.phase}': {exc}",
             )
+        new_state, effects = _advance_phase(state, next_phase, policy)
+        new_state = new_state.copy_with(development_analysis_iteration=candidate)
+        return new_state, effects
 
-    return _legacy_handle_analysis_loopback(state)
+    # Normal loopback: route to development and increment counter
+    try:
+        next_phase = resolve_next_phase(state.phase, "loopback", policy)
+    except ValueError as exc:
+        return _advance_to_terminal(
+            state,
+            PHASE_FAILED,
+            f"Routing error after analysis loopback in '{state.phase}': {exc}",
+        )
+    new_state, effects = _advance_phase(state, next_phase, policy)
+    new_state = new_state.copy_with(development_analysis_iteration=candidate)
+    return new_state, effects
+
+
+def _handle_review_analysis_loopback(
+    state: PipelineState,
+    policy: PipelinePolicy,
+) -> tuple[PipelineState, list[Effect]]:
+    """Handle review analysis loopback with iteration cap."""
+    candidate = state.review_analysis_iteration + 1
+    if candidate >= state.max_review_analysis_iterations:
+        # Cap hit: force advance to review_commit via success route
+        try:
+            next_phase = resolve_next_phase(state.phase, "success", policy)
+        except ValueError as exc:
+            return _advance_to_terminal(
+                state,
+                PHASE_FAILED,
+                f"Routing error after analysis loopback in '{state.phase}': {exc}",
+            )
+        new_state, effects = _advance_phase(state, next_phase, policy)
+        new_state = new_state.copy_with(review_analysis_iteration=candidate)
+        return new_state, effects
+
+    # Normal loopback: route to fix and update bookkeeping
+    try:
+        next_phase = resolve_next_phase(state.phase, "loopback", policy)
+    except ValueError as exc:
+        return _advance_to_terminal(
+            state,
+            PHASE_FAILED,
+            f"Routing error after analysis loopback in '{state.phase}': {exc}",
+        )
+    new_state, effects = _advance_phase(state, next_phase, policy)
+    new_state = new_state.copy_with(
+        reviewer_pass=state.reviewer_pass + 1,
+        review_issues_found=True,
+        review_analysis_iteration=candidate,
+    )
+    return new_state, effects
 
 
 def _legacy_handle_analysis_loopback(
@@ -439,16 +521,42 @@ def _legacy_handle_analysis_loopback(
 ) -> tuple[PipelineState, list[Effect]]:
     """Legacy analysis loopback routing."""
     if state.phase == "development_analysis":
+        candidate = state.development_analysis_iteration + 1
+        if candidate >= state.max_development_analysis_iterations:
+            # Cap hit: force advance to development_commit
+            new_state = state.copy_with(
+                phase="development_commit",
+                previous_phase=state.phase,
+                development_analysis_iteration=candidate,
+            )
+            return new_state, []
+        # Normal loopback
         new_state = state.copy_with(
             phase=PHASE_DEVELOPMENT,
             previous_phase=state.phase,
+            development_analysis_iteration=candidate,
         )
         return new_state, []
 
     if state.phase == "review_analysis":
+        candidate = state.review_analysis_iteration + 1
+        if candidate >= state.max_review_analysis_iterations:
+            # Cap hit: force advance to review_commit
+            new_state = state.copy_with(
+                phase="review_commit",
+                previous_phase=state.phase,
+                reviewer_pass=state.reviewer_pass + 1,
+                review_issues_found=True,
+                review_analysis_iteration=candidate,
+            )
+            return new_state, []
+        # Normal loopback
         new_state = state.copy_with(
             phase="fix",
             previous_phase=state.phase,
+            reviewer_pass=state.reviewer_pass + 1,
+            review_issues_found=True,
+            review_analysis_iteration=candidate,
         )
         return new_state, []
 
@@ -587,19 +695,39 @@ def _handle_commit_success(
             next_phase = resolve_post_commit_phase(state, policy)
             new_state, effects = _advance_phase(state, next_phase, policy)
             if state.phase == "development_commit":
-                new_state = new_state.copy_with(iteration=state.iteration + 1)
+                new_state = new_state.copy_with(
+                    iteration=state.iteration + 1,
+                    development_analysis_iteration=0,
+                )
             elif state.phase == "review_commit":
-                new_state = new_state.copy_with(reviewer_pass=state.reviewer_pass + 1)
+                new_state = new_state.copy_with(
+                    reviewer_pass=state.reviewer_pass + 1,
+                    review_analysis_iteration=0,
+                )
             return new_state, effects
         except ValueError as exc:
             return _advance_to_terminal(
                 state, PHASE_FAILED, f"Routing error after commit success in '{state.phase}': {exc}"
             )
 
-    new_state = state.copy_with(
-        phase=PHASE_COMPLETE,
-        previous_phase="review_commit",
-    )
+    # Legacy path: reset analysis iteration counters on commit success
+    if state.phase == "development_commit":
+        new_state = state.copy_with(
+            phase=PHASE_COMPLETE,
+            previous_phase=state.phase,
+            development_analysis_iteration=0,
+        )
+    elif state.phase == "review_commit":
+        new_state = state.copy_with(
+            phase=PHASE_COMPLETE,
+            previous_phase=state.phase,
+            review_analysis_iteration=0,
+        )
+    else:
+        new_state = state.copy_with(
+            phase=PHASE_COMPLETE,
+            previous_phase=state.phase,
+        )
     return new_state, []
 
 

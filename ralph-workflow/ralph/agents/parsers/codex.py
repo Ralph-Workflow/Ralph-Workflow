@@ -152,13 +152,15 @@ class CodexParser:
             parts = acc.buffer.split("\n\n", 1)
             remaining = parts[1]
             flushed_content = parts[0]
-            # Build raw from all but the last raw line (the \n\n line itself)
-            raw_parts = acc.raw_lines[: len(acc.raw_lines) - 1]
-            flushed_raw = "\n".join(raw_parts) if raw_parts else ""
-            yield AgentOutputLine(type="text", content=flushed_content, raw=flushed_raw)
+            # Only yield if there's actual content (skip empty flush at boundary)
+            if flushed_content:
+                # Build raw from all but the last raw line (the \n\n line itself)
+                raw_parts = acc.raw_lines[: len(acc.raw_lines) - 1]
+                flushed_raw = "\n".join(raw_parts) if raw_parts else ""
+                yield AgentOutputLine(type="text", content=flushed_content, raw=flushed_raw)
             # Reset for remaining content
             acc.buffer = remaining
-            # If there's remaining content, keep raw_lines starting with current stripped
+            # If there's remaining content, keep raw_lines starting with current raw
             # If no remaining content (just saw \n\n), still keep current line for next batch
             acc.raw_lines = [stripped]
 

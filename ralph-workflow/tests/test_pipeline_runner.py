@@ -1769,10 +1769,45 @@ class TestExecuteEffect:
 
         assert result == PipelineEvent.CHECKPOINT_SAVED
 
+    def test_execute_effect_with_optional_display_only_passes_supported_kwargs(
+        self, monkeypatch
+    ) -> None:
+        captured: dict[str, object] = {}
+
+        def fake_execute_effect(effect, config, workspace_scope, *, display):
+            captured["effect"] = effect
+            captured["config"] = config
+            captured["workspace_scope"] = workspace_scope
+            captured["display"] = display
+            return PipelineEvent.AGENT_SUCCESS
+
+        monkeypatch.setattr(runner_module, "_execute_effect", fake_execute_effect)
+        effect = InvokeAgentEffect(agent_name="planning", phase="planning", prompt_file="plan.md")
+        config = MagicMock()
+        workspace_scope = WorkspaceScope("/tmp/worktree")
+        display = MagicMock()
+        state = PipelineState(phase="planning")
+
+        result = runner_module._execute_effect_with_optional_display(
+            effect,
+            config,
+            workspace_scope,
+            display=display,
+            state=state,
+        )
+
+        assert result == PipelineEvent.AGENT_SUCCESS
+        assert captured == {
+            "effect": effect,
+            "config": config,
+            "workspace_scope": workspace_scope,
+            "display": display,
+        }
+
     def test_commit_effect_delegates_to_commit_handler(self, monkeypatch) -> None:
         captured: dict[str, bool] = {}
 
-        def stub_commit(effect, create_commit, stage_all, repo_root):
+        def stub_commit(effect, create_commit, stage_all, repo_root, display=None):
             captured["called"] = True
             captured["message_file"] = effect.message_file
             return PipelineEvent.COMMIT_SUCCESS

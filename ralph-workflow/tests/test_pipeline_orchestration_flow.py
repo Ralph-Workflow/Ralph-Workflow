@@ -1,4 +1,4 @@
-"""Integration tests for the policy-driven pipeline."""
+"""Focused orchestration-flow tests for the policy-driven pipeline."""
 
 from __future__ import annotations
 

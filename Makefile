@@ -3,7 +3,7 @@
 
 PY_DIR := ralph-workflow
 
-.PHONY: all build verify lint format format-check typecheck test test-cov clean install dev install-dev help
+.PHONY: all build verify lint format format-check typecheck test test-unit test-integration test-cov clean install dev install-dev help
 
 all: verify
 
@@ -28,6 +28,12 @@ typecheck:
 test:
 	$(MAKE) -C $(PY_DIR) test
 
+test-unit:
+	$(MAKE) -C $(PY_DIR) test-unit
+
+test-integration:
+	$(MAKE) -C $(PY_DIR) test-integration
+
 test-cov:
 	$(MAKE) -C $(PY_DIR) test-cov
 
@@ -48,8 +54,10 @@ help:
 	@echo "  make verify      - lint + typecheck + tests with coverage"
 	@echo "  make lint        - run ruff checks"
 	@echo "  make typecheck   - run strict mypy"
-	@echo "  make test        - run pytest"
-	@echo "  make test-cov    - run pytest with coverage threshold"
+	@echo "  make test        - run the full pytest suite without coverage"
+	@echo "  make test-unit   - run tests excluding tests/integration/"
+	@echo "  make test-integration - run tests/integration/ only"
+	@echo "  make test-cov    - run the full pytest suite with coverage"
 	@echo "  make build       - build Python distribution"
 	@echo "  make install     - install package and refresh pipx executable"
 	@echo "  make dev         - editable install with dev deps"
