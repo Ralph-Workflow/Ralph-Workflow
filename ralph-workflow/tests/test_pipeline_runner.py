@@ -2524,3 +2524,66 @@ class TestPhaseHandlerExceptionGuard:
         assert new_state.phase == PHASE_FAILED
         assert new_state.last_error is not None
         assert "FAILURE" in new_state.last_error
+
+
+def test_phase_start_banner_emitted_to_parallel_display_console(
+    monkeypatch: MonkeyPatch, tmp_path: Path
+) -> None:
+    """Phase-start banner is emitted to the ParallelDisplay console, not only legacy console.
+
+    After the runner fix, _show_phase_start_with_context is called unconditionally
+    with _display_console(display). For ParallelDisplay, this returns display.console
+    so banners appear in the display's console output regardless of display type.
+    """
+    effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="PROMPT.md")
+    registry = _registry_factory(MagicMock())
+
+    class FakeBridge:
+        def shutdown(self) -> None:
+            return
+
+        def agent_endpoint_uri(self) -> str:
+            return "http://127.0.0.1:12345/mcp"
+
+    monkeypatch.setattr(runner_module, "start_mcp_server", lambda *_args, **_kwargs: FakeBridge())
+    monkeypatch.setattr(runner_module, "shutdown_mcp_server", lambda _bridge: None)
+    monkeypatch.setattr(
+        runner_module,
+        "materialize_system_prompt",
+        lambda *, workspace_root, name: str(tmp_path / "SYS.md"),
+    )
+
+    buf = io.StringIO()
+    display_console = Console(file=buf, force_terminal=False, highlight=False, width=120)
+    display = ParallelDisplay(console=display_console, env={}, mode="lines")
+
+    config = MagicMock()
+    config.general.verbosity = 2
+    config.agents = {}
+    config.ccs = CcsConfig()
+    config.ccs_aliases = {}
+
+    state = PipelineState(
+        phase="development",
+        iteration=0,
+        total_iterations=3,
+        reviewer_pass=0,
+        total_reviewer_passes=1,
+    )
+
+    runner_module._execute_agent_effect(
+        effect,
+        config,
+        runner_module._AgentExecutionDeps(
+            invoke_agent=lambda *_args, **_kwargs: iter([]),
+            agent_invocation_error=RuntimeError,
+            agent_registry=registry,
+        ),
+        WorkspaceScope(tmp_path),
+        display=display,
+        state=state,
+    )
+
+    out = buf.getvalue()
+    assert "Development" in out
+    assert "iteration 1/3" in out

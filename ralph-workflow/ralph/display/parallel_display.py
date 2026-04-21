@@ -135,7 +135,7 @@ class ParallelDisplay:
         if now - last < _DROP_DEBOUNCE_SECONDS:
             return
         self._drop_last_warned[unit_id] = now
-        self._plain_renderer.emit_activity_line(
+        self._plain_renderer.emit_warn_line(
             unit_id,
             "progress",
             f"dropped {delta} lines since last flush",

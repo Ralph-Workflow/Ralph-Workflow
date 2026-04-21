@@ -155,6 +155,24 @@ def handle_review_analysis(effect: Effect, ctx: PhaseContext) -> list[Event]:
         List of events to emit.
     """
     if isinstance(effect, InvokeAgentEffect):
+        artifact_path = ".agent/artifacts/review_analysis_decision.json"
+        if not ctx.workspace.exists(artifact_path):
+            logger.warning(
+                "Review analysis completed without required artifact at {}",
+                artifact_path,
+            )
+            return [
+                PhaseFailureEvent(
+                    phase="review_analysis",
+                    reason=(
+                        "Missing required analysis artifact at "
+                        f"{artifact_path}; the agent must submit "
+                        "review_analysis_decision before declaring completion"
+                    ),
+                    recoverable=True,
+                )
+            ]
+
         decision = parse_analysis_decision(ctx, "review_analysis")
         logger.info("Review analysis decision: {}", decision)
 

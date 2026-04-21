@@ -93,13 +93,16 @@ def _make_renderer() -> tuple[PlainLogRenderer, StringIO]:
     return renderer, stream
 
 
-def test_emit_snapshot_for_development_outputs_one_line() -> None:
+def test_emit_snapshot_for_development_outputs_phase_and_placeholders() -> None:
     renderer, stream = _make_renderer()
 
     renderer.emit_snapshot(_make_snapshot(phase="development"))
 
     assert stream.getvalue().splitlines() == [
-        "2026-04-18T12:00:00+00:00 MILESTONE META [phase] ◆ development"
+        "2026-04-18T12:00:00+00:00 MILESTONE META [phase] ◆ development",
+        "2026-04-18T12:00:00+00:00 INFO META [plan] (no plan loaded yet)",
+        "2026-04-18T12:00:00+00:00 INFO META [activity] (no active agent yet)",
+        "2026-04-18T12:00:00+00:00 INFO META [analysis] (no decisions recorded yet)",
     ]
 
 
@@ -111,7 +114,10 @@ def test_emit_snapshot_deduplicates_identical_snapshots() -> None:
     renderer.emit_snapshot(snapshot)
 
     assert stream.getvalue().splitlines() == [
-        "2026-04-18T12:00:00+00:00 MILESTONE META [phase] ◆ development"
+        "2026-04-18T12:00:00+00:00 MILESTONE META [phase] ◆ development",
+        "2026-04-18T12:00:00+00:00 INFO META [plan] (no plan loaded yet)",
+        "2026-04-18T12:00:00+00:00 INFO META [activity] (no active agent yet)",
+        "2026-04-18T12:00:00+00:00 INFO META [analysis] (no decisions recorded yet)",
     ]
 
 

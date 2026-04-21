@@ -247,7 +247,7 @@ def test_emit_phase_transition_flushes_blocks(tmp_path: Path) -> None:
 
 
 def test_drop_warning_emitted_when_ring_buffer_drops(tmp_path: Path) -> None:
-    """When the ring buffer drops lines, a WARN [progress] line is emitted."""
+    """When the ring buffer drops lines, a WARN META [progress] line is emitted."""
     console, buf = _make_wide_console()
     pd = ParallelDisplay(console, {}, workspace_root=tmp_path)
 
@@ -266,6 +266,7 @@ def test_drop_warning_emitted_when_ring_buffer_drops(tmp_path: Path) -> None:
     rendered = buf.getvalue()
     assert "dropped" in rendered
     assert "unit-drop" in rendered
+    assert "WARN META [progress]" in rendered
 
 
 def test_drop_warning_debounced_within_one_second(tmp_path: Path) -> None:

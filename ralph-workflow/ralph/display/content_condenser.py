@@ -7,7 +7,7 @@ from typing import Literal, overload
 
 from rich.cells import cell_len
 
-from ralph.display.long_content_summary import build_headline_summary, should_summarize
+from ralph.display.long_content_summary import build_content_summary, should_summarize
 
 _SOFT_LIMIT = 400
 _HARD_LIMIT = 4000
@@ -60,8 +60,8 @@ def condense_content(  # noqa: PLR0911, PLR0912
 
     Returns ``(visible, condensed_flag)`` when *summary* is False (default).
     Returns ``(visible, condensed_flag, summary_line)`` when *summary* is True,
-    where ``summary_line`` is a non-None headline string only when the
-    RALPH_LONG_CONTENT_SUMMARY env flag is set and the content exceeds 4000 cells.
+    where ``summary_line`` is a non-None headline string only when
+    should_summarize() returns True for the content.
 
     Truncation suffixes use parentheses ``(...)`` rather than brackets to avoid
     being misinterpreted as Rich markup tags by downstream renderers.
@@ -103,7 +103,7 @@ def condense_content(  # noqa: PLR0911, PLR0912
         visible = head + suffix
         if summary:
             summary_line = (
-                build_headline_summary(text)
+                build_content_summary(text, max_chars=200)
                 if should_summarize(text, os.environ)
                 else None
             )
@@ -133,7 +133,7 @@ def condense_content(  # noqa: PLR0911, PLR0912
     visible = head + middle + tail
     if summary:
         summary_line = (
-            build_headline_summary(text)
+            build_content_summary(text, max_chars=200)
             if should_summarize(text, os.environ)
             else None
         )

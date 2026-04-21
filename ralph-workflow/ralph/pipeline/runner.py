@@ -1463,8 +1463,9 @@ def _execute_agent_effect(  # noqa: PLR0913
         logger.error("Agent not found: {}", effect.agent_name)
         return PipelineEvent.AGENT_FAILURE
 
-    if display is None or isinstance(display, _LegacyConsoleDisplay):
-        _show_phase_start_with_context(effect.phase, effect.agent_name, console, state)
+    _show_phase_start_with_context(
+        effect.phase, effect.agent_name, _display_console(display), state
+    )
 
     from ralph.agents.invoke import (  # noqa: PLC0415
         AgentInactivityTimeoutError,

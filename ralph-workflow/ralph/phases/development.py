@@ -146,6 +146,24 @@ def handle_development_analysis(effect: Effect, ctx: PhaseContext) -> list[Event
             ):
                 pass  # fall through to normal analysis decision parsing
 
+        artifact_path = ".agent/artifacts/development_analysis_decision.json"
+        if not ctx.workspace.exists(artifact_path):
+            logger.warning(
+                "Development analysis completed without required artifact at {}",
+                artifact_path,
+            )
+            return [
+                PhaseFailureEvent(
+                    phase="development_analysis",
+                    reason=(
+                        "Missing required analysis artifact at "
+                        f"{artifact_path}; the agent must submit "
+                        "development_analysis_decision before declaring completion"
+                    ),
+                    recoverable=True,
+                )
+            ]
+
         # Read the analysis artifact to determine routing
         decision = parse_analysis_decision(ctx, "development_analysis")
         logger.info("Development analysis decision: {}", decision)

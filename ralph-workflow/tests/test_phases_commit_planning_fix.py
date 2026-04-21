@@ -530,12 +530,12 @@ def test_handle_development_analysis_skips_empty_steps_plan() -> None:
     assert handle_development_analysis(effect, ctx) == [PipelineEvent.ANALYSIS_SUCCESS]
 
 
-def test_handle_dev_analysis_non_noop_returns_phase_failure_not_recoverable() -> None:
-    """handle_development_analysis must parse analysis decision when plan is not a no-op.
+def test_handle_dev_analysis_non_noop_missing_decision_is_recoverable() -> None:
+    """Missing analysis evidence should retry instead of terminally failing.
 
-    When plan is not a no-op, it falls through to parse_analysis_decision.
-    Since there's no development_analysis_decision artifact, it returns FAILURE as a
-    non-recoverable PhaseFailureEvent.
+    When a real development run finishes without submitting
+    development_analysis_decision.json, Ralph should treat that as an incomplete
+    agent attempt and route it through normal retry/fallback handling.
     """
     ctx = _stub_context()
     workspace = cast("MagicMock", ctx.workspace)
@@ -557,4 +557,5 @@ def test_handle_dev_analysis_non_noop_returns_phase_failure_not_recoverable() ->
     event = result[0]
     assert isinstance(event, PhaseFailureEvent)
     assert event.phase == "development_analysis"
-    assert event.recoverable is False
+    assert event.recoverable is True
+    assert "development_analysis_decision" in event.reason

@@ -174,7 +174,7 @@ def test_streaming_text_emits_content_continue_on_second() -> None:
     buf.seek(0)
     renderer.emit_activity_line("u", "text", "second")
     out = buf.getvalue()
-    assert "[content-continue]" in out
+    assert "[content-continue#" in out
 
 
 def test_streaming_block_flushes_on_different_kind() -> None:
@@ -211,7 +211,7 @@ def test_thinking_kind_emits_thinking_continue_on_subsequent() -> None:
     buf.seek(0)
     renderer.emit_activity_line("u", "thinking", "second thought")
     out = buf.getvalue()
-    assert "[thinking-continue]" in out
+    assert "[thinking-continue#" in out
 
 
 def test_different_unit_id_closes_previous_block() -> None:
@@ -274,3 +274,42 @@ def test_phase_lines_use_success_for_complete() -> None:
 
 def test_phase_lines_use_error_for_failed() -> None:
     assert LEVELS["failed"] == "ERROR"
+
+
+# --- Streaming sequence number tests (Step 10) ---
+
+
+def test_streaming_continue_second_emits_sequence_2() -> None:
+    renderer, buf = _make_renderer()
+    renderer.emit_activity_line("u", "text", "first")
+    renderer.emit_activity_line("u", "text", "second")
+    out = buf.getvalue()
+    assert "[content-continue#2]" in out
+
+
+def test_streaming_continue_third_emits_sequence_3() -> None:
+    renderer, buf = _make_renderer()
+    renderer.emit_activity_line("u", "text", "first")
+    renderer.emit_activity_line("u", "text", "second")
+    renderer.emit_activity_line("u", "text", "third")
+    out = buf.getvalue()
+    assert "[content-continue#3]" in out
+
+
+def test_thinking_continue_has_sequence_number() -> None:
+    renderer, buf = _make_renderer()
+    renderer.emit_activity_line("u", "thinking", "first thought")
+    renderer.emit_activity_line("u", "thinking", "second thought")
+    out = buf.getvalue()
+    assert "[thinking-continue#2]" in out
+
+
+def test_end_line_reports_fragment_and_char_counts() -> None:
+    renderer, buf = _make_renderer()
+    renderer.emit_activity_line("u", "text", "hello")  # 5 chars
+    renderer.emit_activity_line("u", "text", "world")  # 5 chars
+    buf.truncate(0)
+    buf.seek(0)
+    renderer.flush_blocks()
+    out = buf.getvalue()
+    assert "(2 fragments, 10 chars)" in out

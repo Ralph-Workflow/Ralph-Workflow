@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Final
 
 from rich.text import Text
 
+from ralph.display.long_content_summary import build_content_summary
 from ralph.display.snapshot import PipelineSnapshot, snapshot_from_state
 
 if TYPE_CHECKING:
@@ -119,6 +120,8 @@ _STREAMING_BLOCK_TAGS: Final[dict[str, tuple[str, str, str]]] = {
 
 _ANSI_ESCAPE = re.compile(r"\x1b\[[0-9;]*m")
 
+_EMPTY_PLAN_SIGNATURE: tuple[None, tuple[str, ...], int] = (None, (), 0)
+
 
 def _strip_markup(text: str) -> str:
     try:
@@ -130,17 +133,6 @@ def _strip_markup(text: str) -> str:
 def _sanitize(text: str) -> str:
     """Strip both Rich markup and ANSI escapes for copy-paste safety."""
     return _ANSI_ESCAPE.sub("", _strip_markup(text))
-
-
-def _build_headline_summary(text: str, max_chars: int = 120) -> str:
-    """Extract the first meaningful line and truncate to max_chars."""
-    for line in text.splitlines():
-        stripped = line.lstrip("#> ").strip()
-        if stripped:
-            if len(stripped) <= max_chars:
-                return stripped
-            return stripped[:max_chars] + "…"
-    return ""
 
 
 class PlainLogRenderer:
@@ -174,6 +166,10 @@ class PlainLogRenderer:
         # _active_block maps unit_id -> (base_tag, accumulated_content).
         # Invariant: len(_active_block) <= 1.
         self._active_block: dict[str, tuple[str, list[str]]] = {}
+        # One-shot flags for empty-state placeholders
+        self._emitted_empty_plan: bool = False
+        self._emitted_empty_activity: bool = False
+        self._emitted_empty_decision_log: bool = False
 
     def snapshot_lines(self, snapshot: PipelineSnapshot) -> list[str]:
         timestamp = self._clock().isoformat()
@@ -182,6 +178,7 @@ class PlainLogRenderer:
         lines.extend(self._plan_lines(snapshot, timestamp))
         lines.extend(self._activity_lines(snapshot, timestamp))
         lines.extend(self._analysis_lines(snapshot, timestamp))
+        lines.extend(self._decision_log_lines(snapshot, timestamp))
         lines.extend(self._worker_lines(snapshot, timestamp))
         lines.extend(self._result_lines(snapshot, timestamp))
         return lines
@@ -203,7 +200,7 @@ class PlainLogRenderer:
         return []
 
     def _plan_lines(self, snapshot: PipelineSnapshot, timestamp: str) -> list[str]:
-        plan_signature = (
+        plan_signature: tuple[str | None, tuple[str, ...], int] = (
             snapshot.plan_summary,
             snapshot.plan_scope_items,
             snapshot.plan_total_steps,
@@ -211,6 +208,10 @@ class PlainLogRenderer:
         if plan_signature == self._last_plan_signature:
             return []
         self._last_plan_signature = plan_signature
+
+        if plan_signature == _EMPTY_PLAN_SIGNATURE and not self._emitted_empty_plan:
+            self._emitted_empty_plan = True
+            return [f"{timestamp} INFO META [plan] (no plan loaded yet)"]
 
         lines: list[str] = []
         if snapshot.plan_summary:
@@ -237,6 +238,11 @@ class PlainLogRenderer:
         if activity_signature == self._last_activity_signature:
             return []
         self._last_activity_signature = activity_signature
+
+        all_none = all(v is None for v in activity_signature)
+        if all_none and not self._emitted_empty_activity:
+            self._emitted_empty_activity = True
+            return [f"{timestamp} INFO META [activity] (no active agent yet)"]
 
         activity_parts: list[str] = []
         if snapshot.active_agent:
@@ -283,6 +289,16 @@ class PlainLogRenderer:
             f"{snapshot.analysis_phase} {snapshot.analysis_decision}{reason}"
         ]
 
+    def _decision_log_lines(self, snapshot: PipelineSnapshot, timestamp: str) -> list[str]:
+        if snapshot.decision_log:
+            return []
+        if snapshot.phase in ("development_analysis", "review_analysis"):
+            return []
+        if self._emitted_empty_decision_log:
+            return []
+        self._emitted_empty_decision_log = True
+        return [f"{timestamp} INFO META [analysis] (no decisions recorded yet)"]
+
     def _worker_lines(self, snapshot: PipelineSnapshot, timestamp: str) -> list[str]:
         lines: list[str] = []
         for worker in snapshot.workers:
@@ -328,8 +344,13 @@ class PlainLogRenderer:
         if block_tags is None:
             return None
         end_tag = block_tags[2]
-        summary = _build_headline_summary(" ".join(accumulated), max_chars=120)
-        return f"{timestamp} INFO CONT [{end_tag}][{unit_id}] {summary}"
+        n = len(accumulated)
+        chars = sum(len(x) for x in accumulated)
+        summary = build_content_summary(" ".join(accumulated), max_chars=120)
+        prefix = f"{timestamp} INFO CONT [{end_tag}][{unit_id}] ({n} fragments, {chars} chars)"
+        if summary:
+            return f"{prefix} {summary}"
+        return prefix
 
     def flush_blocks(self) -> None:
         """Close all open streaming blocks. Call on phase transitions and stop."""
@@ -388,8 +409,10 @@ class PlainLogRenderer:
                         self._active_block[unit_id] = (base_tag, [content])
                         tag = start_tag
                     else:
+                        # Sequence number: 1-based, computed before appending
+                        seq = len(accumulated) + 1
                         accumulated.append(content)
-                        tag = continue_tag
+                        tag = f"{continue_tag}#{seq}"
             else:
                 tag = base_tag
         else:
@@ -426,6 +449,13 @@ class PlainLogRenderer:
         line = f"{timestamp} INFO META [artifact] kind={kind} summary={summary}"
         clean_line = _ANSI_ESCAPE.sub("", line)
         self._console.out(clean_line)
+
+    def emit_warn_line(self, unit_id: str, tag: str, message: str) -> None:
+        """Emit a WARN META line for a specific tag."""
+        timestamp = self._clock().isoformat()
+        cat = _TAG_CATEGORY.get(tag, "META")
+        line = f"{timestamp} WARN {cat} [{tag}][{unit_id}] {message}"
+        self._console.print(line, markup=False, highlight=False, no_wrap=True)
 
 
 class PlainModeAdapter:

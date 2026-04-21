@@ -204,7 +204,7 @@ class TestHandleReviewAnalysis:
         assert event.recoverable is False
         assert "escalate" in event.reason
 
-    def test_missing_artifact_returns_phase_failure_not_recoverable(self) -> None:
+    def test_missing_artifact_returns_phase_failure_recoverable(self) -> None:
         effect = self._mock_invoke_effect()
         ctx = self._make_context()
         ctx.workspace.exists.return_value = False
@@ -214,7 +214,8 @@ class TestHandleReviewAnalysis:
         event = result[0]
         assert isinstance(event, PhaseFailureEvent)
         assert event.phase == "review_analysis"
-        assert event.recoverable is False
+        assert event.recoverable is True
+        assert "review_analysis_decision" in event.reason
 
     def test_non_invoke_effect_returns_empty_list(self) -> None:
         effect = MagicMock(spec=PreparePromptEffect)

@@ -15,6 +15,7 @@ from ralph.display.phase_banner import (
     PhaseStartContext,
     show_phase_complete,
     show_phase_start,
+    show_phase_start_from_state,
     show_phase_transition,
 )
 from ralph.display.progress import RalphProgress, get_progress
@@ -36,6 +37,7 @@ __all__ = [
     "show_config",
     "show_phase_complete",
     "show_phase_start",
+    "show_phase_start_from_state",
     "show_phase_transition",
     "show_providers",
 ]
