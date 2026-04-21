@@ -75,7 +75,7 @@ The standalone `ralph-mcp` runtime (not changed in this reorganization).
 |------|---------|
 | `runtime.py` | Server runtime (`build_standalone_http_server`, `build_fastmcp_server`) |
 | `factory.py` / `factory_impl.py` | Server factory |
-| `lifecycle.py` | Server lifecycle |
+| `lifecycle.py` | Server lifecycle; spawns the standalone process via `ProcessManager` |
 | `__main__.py` | Entry point |
 
 **Canonical import path:** `from ralph.mcp.server import ...` or `from ralph.mcp.server.<module> import ...`

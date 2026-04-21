@@ -8,6 +8,7 @@ highlight-free for copy-paste safety.
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
@@ -128,6 +129,21 @@ def _read_json_defensive(path: Path) -> dict[str, object] | None:
     return cast("dict[str, object]", parsed_obj)
 
 
+def render_missing_plan_hint(console: Console) -> None:
+    """Emit a plain INFO line when the plan artifact is absent at phase completion.
+
+    Call this from the planning phase completion handler when plan.json is not
+    on disk so the log stream always has a [plan] entry rather than silence.
+    """
+    timestamp = datetime.now(UTC).isoformat()
+    console.print(
+        f"{timestamp} INFO META [plan] (no plan artifact on disk)",
+        markup=False,
+        highlight=False,
+        no_wrap=True,
+    )
+
+
 def render_plan_artifact(
     workspace_root: Path,
     console: Console,
@@ -136,7 +152,7 @@ def render_plan_artifact(
 
     Prefer the authoritative Markdown handoff regenerated from ``plan.json`` when
     that artifact exists. Fall back to ``.agent/PLAN.md`` only when there is no
-    structured artifact available. Missing artifacts produce no output.
+    structured artifact available. Missing artifacts emit a hint line.
     """
     markdown = _resolve_authoritative_markdown_handoff(
         workspace_root,
@@ -150,6 +166,7 @@ def render_plan_artifact(
     plan = read_plan_artifact(workspace_root)
 
     if plan is None:
+        render_missing_plan_hint(console)
         return
 
     lines: list[str] = []
@@ -334,6 +351,7 @@ __all__ = [
     "render_commit_message",
     "render_development_artifact",
     "render_fix_artifact",
+    "render_missing_plan_hint",
     "render_plan_artifact",
     "render_review_artifact",
 ]

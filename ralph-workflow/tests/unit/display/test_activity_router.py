@@ -32,15 +32,14 @@ def test_push_three_lines_produces_three_buffer_entries() -> None:
 
 
 def test_malformed_line_produces_error_event_no_crash() -> None:
-    class _BrokenParser:
-        def parse(self, lines: Iterator[str]) -> Iterator[AgentOutputLine]:
-            raise ValueError("boom")
-
-    router = ActivityRouter(parser_factory=lambda _p: _BrokenParser())
+    # Non-JSON lines are now passed to the parser, which handles them as raw content.
+    # The router does not crash; malformed lines appear as content entries.
+    router = ActivityRouter()
     router.push_raw_line("unit-b", "bad-json")
     entries = router.get_buffer("unit-b").snapshot()
     assert len(entries) == 1
-    assert "parser error" in entries[0]
+    # The entry should contain the raw content (not an "invalid ndjson" error marker)
+    assert "bad-json" in entries[0]
 
 
 def test_unknown_parser_event_is_rendered_instead_of_dropped() -> None:
@@ -103,7 +102,7 @@ def test_parsers_are_not_shared_across_unit_ids() -> None:
         return parser
 
     router = ActivityRouter(parser_factory=factory)
-    router.push_raw_line("unit-x", "line")
-    router.push_raw_line("unit-y", "line")
+    router.push_raw_line("unit-x", "{}")
+    router.push_raw_line("unit-y", "{}")
     assert len(created) == EXPECTED_TWO
     assert created[0] is not created[1]

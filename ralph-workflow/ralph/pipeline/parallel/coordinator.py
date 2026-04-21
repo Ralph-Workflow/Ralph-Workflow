@@ -21,6 +21,7 @@ from ralph.pipeline.events import (
 from ralph.pipeline.parallel import worker_session
 from ralph.pipeline.parallel.scheduler import schedule_next_wave
 from ralph.pipeline.worker_state import WorkerStatus
+from ralph.process.manager import ProcessTerminationError, get_process_manager
 from ralph.workspace import fs
 from ralph.workspace.scope import WorkspaceScope
 
@@ -72,10 +73,15 @@ class ParallelCoordinator:
         ctx: _WorkerContext | None = None,
     ) -> list[Event]:
         """Execute parallel work units while respecting DAG dependencies and worker caps."""
+        # Prefer the display's activity_router when the coordinator has none.
+        effective_router = self.activity_router
+        if effective_router is None and hasattr(display, "activity_router"):
+            effective_router = display.activity_router
+
         worker_ctx = (
-            _WorkerContext(activity_router=self.activity_router)
+            _WorkerContext(activity_router=effective_router)
             if ctx is None
-            else replace(ctx, activity_router=self.activity_router)
+            else replace(ctx, activity_router=effective_router)
         )
         events: list[Event] = [PipelineEvent.FAN_OUT_STARTED]
         if not effect.work_units:
@@ -185,6 +191,12 @@ def _prepare_executor(
     activity_router: ActivityRouter | None = None,
 ) -> tuple[AgentExecutor, WorkerSessionBundle | None]:
     if isolation is None:
+        # Inject the activity router if the executor supports it and a router is available.
+        # This ensures the non-isolated path also routes output through the activity model.
+        if activity_router is not None and isinstance(
+            executor, subprocess_executor.SubprocessAgentExecutor
+        ):
+            executor.activity_router = activity_router
         return executor, None
 
     worktree_path = isolation.worktree_manager.create(unit.unit_id, base_branch="main")
@@ -206,6 +218,7 @@ def _prepare_executor(
                 cwd=worktree_path,
                 extra_env={"RALPH_MCP_ENDPOINT": bundle.mcp_handle.endpoint},
                 activity_router=activity_router,
+                raw_overflow_root=worktree_path,
             ),
         ),
         bundle,
@@ -359,6 +372,14 @@ async def _run_worker(
                 if worker_succeeded:
                     assert isolation is not None
                     isolation.worktree_manager.destroy(unit.unit_id)
+            try:
+                get_process_manager().shutdown_all_for_label(
+                    f"agent:{unit.unit_id}", grace_period_s=2.0
+                )
+            except ProcessTerminationError as exc:
+                logger.error(
+                    "Failed to terminate agent processes for worker {}: {}", unit.unit_id, exc
+                )
             if sink_handle is not None:
                 ralph_logging.remove_worker_sink(sink_handle)
 

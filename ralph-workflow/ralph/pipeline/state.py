@@ -18,7 +18,6 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from ralph.config.enums import (
     PHASE_COMPLETE,
     PHASE_DEVELOPMENT,
-    PHASE_FAILED,
     PHASE_REVIEW,
     PipelinePhase,
 )
@@ -202,12 +201,12 @@ class PipelineState(BaseModel):  # type: ignore[explicit-any]
         raise TypeError(f"Expected dict for worker_states, got {type(v).__name__!r}")
 
     def is_complete(self) -> bool:
-        """Check if pipeline has reached a terminal state.
+        """Check if pipeline has reached a terminal success state.
 
         Returns:
-            True if pipeline is complete or failed.
+            True only when pipeline has completed successfully.
         """
-        return self.phase in (PHASE_COMPLETE, PHASE_FAILED)
+        return self.phase == PHASE_COMPLETE
 
     def current_agent(self) -> str | None:
         """Get the current agent for the active phase.

@@ -66,7 +66,6 @@ from ralph.pipeline.effects import (
     ExitSuccessEffect,
     FanOutDevelopmentEffect,
     InvokeAgentEffect,
-    MergeIntegrationEffect,
     PreparePromptEffect,
     SaveCheckpointEffect,
 )
@@ -94,9 +93,13 @@ if TYPE_CHECKING:
     from ralph.config.models import AgentConfig, UnifiedConfig
     from ralph.display.parallel_display import ParallelDisplay
     from ralph.display.subscriber import PipelineSubscriber
+    from ralph.git.executor import GitExecutor
+    from ralph.interrupt.asyncio_bridge import SignalBridge
     from ralph.mcp.upstream.agent_probe import AgentProbeReport
     from ralph.mcp.upstream.config import UpstreamMcpServer
     from ralph.mcp.upstream.validation import UpstreamValidationReport
+    from ralph.pipeline.parallel import coordinator as parallel_coordinator
+    from ralph.pipeline.work_units import WorkUnit
     from ralph.policy.models import AgentsPolicy, PhaseDefinition, PipelinePolicy, PolicyBundle
 
     class _PipelineSubscriber(Protocol):
@@ -233,13 +236,13 @@ def _validate_custom_mcp_servers(workspace_root: Path) -> int:
     Tests can monkeypatch ``_VALIDATE_MCP`` and ``_PROBE_AGENT_TRANSPORTS`` to
     drive deterministic outcomes without spawning real upstream servers.
     """
-    from ralph.agents.transport_emit import _mcp_toml_as_upstreams  # noqa: PLC0415
+    from ralph.mcp.transport.common import mcp_toml_as_upstreams  # noqa: PLC0415
     from ralph.mcp.upstream.validation import (  # noqa: PLC0415
         UpstreamValidationError,
         strict_mode_from_env,
     )
 
-    upstreams = _mcp_toml_as_upstreams(workspace_root)
+    upstreams = mcp_toml_as_upstreams(workspace_root)
     if not upstreams:
         return 0
 
@@ -496,6 +499,127 @@ def _notify_pipeline_subscriber(
     _notify_dashboard_subscriber(pipeline_subscriber, state)
 
 
+
+def _reduce_runtime_recovery(
+    state: PipelineState,
+    pipeline_policy: PipelinePolicy,
+    *,
+    reason: str,
+) -> PipelineState:
+    failure_event = PhaseFailureEvent(
+        phase=state.phase,
+        reason=reason,
+        recoverable=True,
+    )
+    recovered_state, _ = reducer_reduce(state, failure_event, pipeline_policy)
+    return recovered_state
+
+
+def _save_checkpoint_or_log(
+    state: PipelineState,
+    *,
+    message: str,
+) -> None:
+    try:
+        ckpt.save(state)
+    except Exception as exc:
+        logger.exception(message, phase=state.phase, err=exc)
+
+
+def _run_pipeline_step(  # noqa: PLR0913
+    *,
+    state: PipelineState,
+    policy_bundle: PolicyBundle,
+    workspace_scope: WorkspaceScope,
+    config: UnifiedConfig,
+    display: ParallelDisplay | _LegacyConsoleDisplay,
+    verbosity: Verbosity,
+    registry: _RegistryLike,
+    pipeline_subscriber: _PipelineSubscriber | None,
+) -> PipelineState | int:
+    try:
+        effect = _call_determine_effect_from_policy(state, policy_bundle, workspace_scope, config)
+        inline_result = _handle_inline_effect(
+            effect=effect,
+            state=state,
+            pipeline_policy=policy_bundle.pipeline,
+            workspace_scope=workspace_scope,
+            display=display,
+            pipeline_subscriber=pipeline_subscriber,
+        )
+        if inline_result is not None:
+            return inline_result
+
+        if isinstance(effect, FanOutDevelopmentEffect):
+            return _execute_fan_out_sync(
+                effect=effect,
+                state=state,
+                display=display,
+                policy_bundle=policy_bundle,
+                workspace_scope=workspace_scope,
+                pipeline_subscriber=pipeline_subscriber,
+            )
+
+        workspace = FsWorkspace(
+            workspace_scope.root,
+            allowed_roots=workspace_scope.allowed_roots,
+        )
+        _materialize_agent_prompt_if_needed(
+            effect,
+            workspace,
+            policy_bundle.pipeline,
+            registry,
+            workspace_scope,
+        )
+        event = _invoke_execute_effect_with_optional_display(
+            effect,
+            config,
+            workspace_scope,
+            display=display,
+            verbosity=verbosity,
+            state=state,
+        )
+        if isinstance(effect, InvokeAgentEffect) and event == PipelineEvent.AGENT_SUCCESS:
+            event = _phase_event_after_agent_run(
+                effect=effect,
+                config=config,
+                policy_bundle=policy_bundle,
+                workspace=workspace,
+                workspace_scope=workspace_scope,
+                display=display,
+            )
+
+        next_state, _ = reducer_reduce(state, event, policy_bundle.pipeline)
+        _notify_pipeline_subscriber(pipeline_subscriber, next_state)
+        _save_checkpoint_or_log(
+            next_state,
+            message=(
+                "Checkpoint save failed in phase={phase}: {err} "
+                "-- continuing without checkpoint"
+            ),
+        )
+        return next_state
+    except KeyboardInterrupt:
+        raise
+    except BaseException as exc:
+        logger.exception(
+            "Pipeline step crashed in phase={phase}: {err}",
+            phase=state.phase,
+            err=exc,
+        )
+        recovered_state = _reduce_runtime_recovery(
+            state,
+            policy_bundle.pipeline,
+            reason=f"Pipeline step crashed: {type(exc).__name__}: {exc}",
+        )
+        _notify_pipeline_subscriber(pipeline_subscriber, recovered_state)
+        _save_checkpoint_or_log(
+            recovered_state,
+            message="Checkpoint save failed while recording recovery in phase={phase}: {err}",
+        )
+        return recovered_state
+
+
 def _phase_context(state: PipelineState, previous_phase: str) -> dict[str, object]:
     """Build a context dict for emit_phase_transition with iteration/decision hints."""
     context: dict[str, object] = {}
@@ -620,7 +744,7 @@ def _emit_final_summary(
         logger.debug("Failed to emit completion summary", exc_info=True)
 
 
-def run(  # noqa: PLR0912, PLR0913, PLR0915
+def run(  # noqa: PLR0913
     config: UnifiedConfig,
     initial_state: PipelineState | None = None,
     display: ParallelDisplay | None = None,
@@ -692,106 +816,20 @@ def run(  # noqa: PLR0912, PLR0913, PLR0915
         with active_display:
             _notify_pipeline_subscriber(effective_pipeline_subscriber, state)
             try:
-                while state.phase not in (PHASE_COMPLETE, PHASE_FAILED):
-                    effect = _call_determine_effect_from_policy(
-                        state, policy_bundle, workspace_scope, config
-                    )
-                    inline_result = _handle_inline_effect(
-                        effect=effect,
+                while state.phase != PHASE_COMPLETE:
+                    step_result = _run_pipeline_step(
                         state=state,
-                        pipeline_policy=policy_bundle.pipeline,
+                        policy_bundle=policy_bundle,
                         workspace_scope=workspace_scope,
+                        config=config,
                         display=active_display,
+                        verbosity=effective_verbosity,
+                        registry=registry,
                         pipeline_subscriber=effective_pipeline_subscriber,
                     )
-                    if inline_result is not None:
-                        if isinstance(inline_result, int):
-                            return inline_result
-                        state = inline_result
-                        _prev_phase = _emit_phase_transition_if_changed(
-                            active_display,
-                            _prev_phase,
-                            state,
-                            verbosity=effective_verbosity,
-                        )
-                        continue
-
-                    if isinstance(effect, FanOutDevelopmentEffect):
-                        state = _execute_fan_out_sync(
-                            effect=effect,
-                            state=state,
-                            display=active_display,
-                            policy_bundle=policy_bundle,
-                            workspace_scope=workspace_scope,
-                            pipeline_subscriber=effective_pipeline_subscriber,
-                        )
-                        _prev_phase = _emit_phase_transition_if_changed(
-                            active_display,
-                            _prev_phase,
-                            state,
-                            verbosity=effective_verbosity,
-                        )
-                        continue
-
-                    try:
-                        workspace = FsWorkspace(
-                            workspace_scope.root,
-                            allowed_roots=workspace_scope.allowed_roots,
-                        )
-                        _materialize_agent_prompt_if_needed(
-                            effect,
-                            workspace,
-                            policy_bundle.pipeline,
-                            registry,
-                            workspace_scope,
-                        )
-
-                        event = _invoke_execute_effect_with_optional_display(
-                            effect,
-                            config,
-                            workspace_scope,
-                            display=active_display,
-                            verbosity=effective_verbosity,
-                            state=state,
-                        )
-                        if (
-                            isinstance(effect, InvokeAgentEffect)
-                            and event == PipelineEvent.AGENT_SUCCESS
-                        ):
-                            event = _phase_event_after_agent_run(
-                                effect=effect,
-                                config=config,
-                                policy_bundle=policy_bundle,
-                                workspace=workspace,
-                                workspace_scope=workspace_scope,
-                                display=active_display,
-                            )
-
-                        state, _ = reducer_reduce(state, event, policy_bundle.pipeline)
-                    except (KeyboardInterrupt, SystemExit):
-                        raise
-                    except Exception as exc:
-                        logger.exception(
-                            "Effect handler crashed in phase={phase}: {err}",
-                            phase=state.phase,
-                            err=exc,
-                        )
-                        failure_event = PhaseFailureEvent(
-                            phase=state.phase,
-                            reason=f"Effect handler crashed: {type(exc).__name__}: {exc}",
-                            recoverable=True,
-                        )
-                        state, _ = reducer_reduce(state, failure_event, policy_bundle.pipeline)
-                    _notify_pipeline_subscriber(effective_pipeline_subscriber, state)
-                    try:
-                        ckpt.save(state)
-                    except Exception as exc:
-                        logger.exception(
-                            "Checkpoint save failed in phase={phase}: {err} "
-                            "-- continuing without checkpoint",
-                            phase=state.phase,
-                            err=exc,
-                        )
+                    if isinstance(step_result, int):
+                        return step_result
+                    state = step_result
                     _prev_phase = _emit_phase_transition_if_changed(
                         active_display,
                         _prev_phase,
@@ -802,7 +840,12 @@ def run(  # noqa: PLR0912, PLR0913, PLR0915
             except KeyboardInterrupt:
                 logger.warning("Interrupted by user; saving checkpoint.")
                 interrupted_state = state.copy_with(interrupted_by_user=True)
-                ckpt.save(interrupted_state)
+                _save_checkpoint_or_log(
+                    interrupted_state,
+                    message=(
+                        "Checkpoint save failed while handling interrupt in phase={phase}: {err}"
+                    ),
+                )
                 return 130
 
             if state.phase == PHASE_COMPLETE:
@@ -824,6 +867,170 @@ def run(  # noqa: PLR0912, PLR0913, PLR0915
     return exit_code
 
 
+def _fan_out_display_and_subscriber(
+    display: ParallelDisplay | _LegacyConsoleDisplay,
+    pipeline_subscriber: _PipelineSubscriber | None,
+    dashboard_subscriber: _PipelineSubscriber | None,
+) -> tuple[ParallelDisplay, _PipelineSubscriber | None]:
+    from ralph.display.parallel_display import ParallelDisplay as _ParallelDisplay  # noqa: PLC0415
+
+    parallel_display: ParallelDisplay = (
+        display if isinstance(display, _ParallelDisplay) else _ParallelDisplay(console)
+    )
+    effective_pipeline_subscriber = dashboard_subscriber or pipeline_subscriber
+    if effective_pipeline_subscriber is None and hasattr(parallel_display, "subscriber"):
+        effective_pipeline_subscriber = cast(
+            "_PipelineSubscriber | None",
+            getattr(parallel_display, "subscriber", None),
+        )
+    return parallel_display, effective_pipeline_subscriber
+
+
+def _fan_out_worker_context(
+    *,
+    workspace_scope: WorkspaceScope,
+    repo_root: Path,
+    git_exec: GitExecutor,
+    bridge: SignalBridge,
+) -> tuple[AgentExecutor, parallel_coordinator._WorkerContext]:
+    from ralph.agents.subprocess_executor import SubprocessAgentExecutor  # noqa: PLC0415
+    from ralph.git.worktree_manager import WorktreeManager  # noqa: PLC0415
+    from ralph.mcp.server.factory_impl import DynamicBindingMcpServerFactory  # noqa: PLC0415
+    from ralph.pipeline.parallel import coordinator  # noqa: PLC0415
+
+    executor = cast(
+        "AgentExecutor",
+        SubprocessAgentExecutor(_parallel_worker_command(), signal_bridge=bridge),
+    )
+    workspace = FsWorkspace(
+        workspace_scope.root,
+        allowed_roots=workspace_scope.allowed_roots,
+    )
+    return executor, coordinator._WorkerContext(
+        log=coordinator._WorkerLog(
+            log_dir=workspace_scope.root / ".agent" / "logs",
+            run_id=str(uuid.uuid4()),
+        ),
+        isolation=coordinator._IsolationDeps(
+            worktree_manager=WorktreeManager(repo_root, git_exec),
+            mcp_factory=DynamicBindingMcpServerFactory(workspace=workspace),
+            repo_root=repo_root,
+            executor_command=_parallel_worker_command(),
+            signal_bridge=bridge,
+        ),
+    )
+
+
+def _resume_fan_out_state(
+    state: PipelineState,
+    effect: FanOutDevelopmentEffect,
+    pipeline_policy: PipelinePolicy,
+    pipeline_subscriber: _PipelineSubscriber | None,
+) -> tuple[PipelineState, tuple[WorkUnit, ...]]:
+    resumed_state, _ = reducer_reduce(state, PipelineEvent.WORKERS_RESUMED, pipeline_policy)
+    _notify_pipeline_subscriber(pipeline_subscriber, resumed_state)
+    completed_ids = {
+        uid
+        for uid, ws in resumed_state.worker_states.items()
+        if ws.status == WorkerStatus.SUCCEEDED
+    }
+    resume_units = tuple(u for u in effect.work_units if u.unit_id not in completed_ids)
+    return resumed_state, resume_units
+
+
+async def _run_fan_out_async(  # noqa: PLR0913
+    *,
+    effect: FanOutDevelopmentEffect,
+    state: PipelineState,
+    display: ParallelDisplay,
+    policy_bundle: PolicyBundle,
+    workspace_scope: WorkspaceScope,
+    repo_root: Path,
+    git_exec: GitExecutor,
+    pipeline_subscriber: _PipelineSubscriber | None,
+) -> PipelineState:
+    import asyncio  # noqa: PLC0415
+
+    from ralph.interrupt.asyncio_bridge import (  # noqa: PLC0415
+        SignalBridge,
+        install_signal_handlers,
+    )
+    from ralph.pipeline.parallel import coordinator, merge_integrator  # noqa: PLC0415
+
+    current = state
+    try:
+        loop = asyncio.get_running_loop()
+        bridge = SignalBridge()
+        root_task = cast("asyncio.Task[object] | None", asyncio.current_task())
+        assert root_task is not None
+        install_signal_handlers(loop, root_task, bridge)
+        executor, worker_ctx = _fan_out_worker_context(
+            workspace_scope=workspace_scope,
+            repo_root=repo_root,
+            git_exec=git_exec,
+            bridge=bridge,
+        )
+        current, resume_units = _resume_fan_out_state(
+            state,
+            effect,
+            policy_bundle.pipeline,
+            pipeline_subscriber,
+        )
+        if not resume_units:
+            return current
+
+        fan_out_events = await coordinator.run_fan_out(
+            effect=FanOutDevelopmentEffect(work_units=resume_units, max_workers=effect.max_workers),
+            executor=executor,
+            display=display,
+            ctx=worker_ctx,
+        )
+        for ev in fan_out_events:
+            current, _ = reducer_reduce(current, ev, policy_bundle.pipeline)
+            _notify_pipeline_subscriber(pipeline_subscriber, current)
+        _save_checkpoint_or_log(
+            current,
+            message="Checkpoint save failed after fan-out in phase={phase}: {err}",
+        )
+
+        merge_result = await merge_integrator.integrate(
+            base_branch="main",
+            worker_states=current.worker_states,
+            git_executor=git_exec,
+            repo_root=repo_root,
+        )
+        for ev in merge_result.events:
+            current, _ = reducer_reduce(current, ev, policy_bundle.pipeline)
+            _notify_pipeline_subscriber(pipeline_subscriber, current)
+        _save_checkpoint_or_log(
+            current,
+            message="Checkpoint save failed after merge integration in phase={phase}: {err}",
+        )
+        return current
+    except KeyboardInterrupt:
+        raise
+    except BaseException as exc:
+        logger.exception(
+            "Fan-out execution crashed in phase={phase}: {err}",
+            phase=current.phase,
+            err=exc,
+        )
+        recovered = _reduce_runtime_recovery(
+            current,
+            policy_bundle.pipeline,
+            reason=f"Fan-out execution crashed: {type(exc).__name__}: {exc}",
+        )
+        _notify_pipeline_subscriber(pipeline_subscriber, recovered)
+        _save_checkpoint_or_log(
+            recovered,
+            message=(
+                "Checkpoint save failed while recording fan-out recovery in phase={phase}: "
+                "{err}"
+            ),
+        )
+        return recovered
+
+
 def _execute_fan_out_sync(  # noqa: PLR0913
     *,
     effect: FanOutDevelopmentEffect,
@@ -837,107 +1044,25 @@ def _execute_fan_out_sync(  # noqa: PLR0913
     """Execute fan-out development synchronously by wrapping asyncio.run()."""
     import asyncio  # noqa: PLC0415
 
-    from ralph.agents.subprocess_executor import SubprocessAgentExecutor  # noqa: PLC0415
-    from ralph.display.parallel_display import ParallelDisplay as _ParallelDisplay  # noqa: PLC0415
     from ralph.git.executor import GitExecutor  # noqa: PLC0415
-    from ralph.git.worktree_manager import WorktreeManager  # noqa: PLC0415
-    from ralph.interrupt.asyncio_bridge import (  # noqa: PLC0415
-        SignalBridge,
-        install_signal_handlers,
+
+    parallel_display, effective_pipeline_subscriber = _fan_out_display_and_subscriber(
+        display,
+        pipeline_subscriber,
+        dashboard_subscriber,
     )
-    from ralph.mcp.server.factory_impl import DynamicBindingMcpServerFactory  # noqa: PLC0415
-    from ralph.pipeline.parallel import coordinator, merge_integrator  # noqa: PLC0415
-
-    git_exec = GitExecutor()
-    repo_root = workspace_scope.root
-
-    pd: _ParallelDisplay = (
-        display if isinstance(display, _ParallelDisplay) else _ParallelDisplay(console)
+    return asyncio.run(
+        _run_fan_out_async(
+            effect=effect,
+            state=state,
+            display=parallel_display,
+            policy_bundle=policy_bundle,
+            workspace_scope=workspace_scope,
+            repo_root=workspace_scope.root,
+            git_exec=GitExecutor(),
+            pipeline_subscriber=effective_pipeline_subscriber,
+        )
     )
-    effective_pipeline_subscriber = dashboard_subscriber or pipeline_subscriber
-    if effective_pipeline_subscriber is None and hasattr(pd, "subscriber"):
-        effective_pipeline_subscriber = cast(
-            "_PipelineSubscriber | None",
-            getattr(pd, "subscriber", None),
-        )
-
-    async def _run() -> PipelineState:
-        loop = asyncio.get_running_loop()
-        bridge = SignalBridge()
-        root_task: asyncio.Task[object] | None = cast(
-            "asyncio.Task[object] | None", asyncio.current_task()
-        )
-        assert root_task is not None
-        install_signal_handlers(loop, root_task, bridge)
-
-        executor = cast(
-            "AgentExecutor",
-            SubprocessAgentExecutor(_parallel_worker_command(), signal_bridge=bridge),
-        )
-        workspace = FsWorkspace(
-            workspace_scope.root,
-            allowed_roots=workspace_scope.allowed_roots,
-        )
-        isolation = coordinator._IsolationDeps(
-            worktree_manager=WorktreeManager(repo_root, git_exec),
-            mcp_factory=DynamicBindingMcpServerFactory(workspace=workspace),
-            repo_root=repo_root,
-            executor_command=_parallel_worker_command(),
-            signal_bridge=bridge,
-        )
-        resumed_state, _ = reducer_reduce(
-            state, PipelineEvent.WORKERS_RESUMED, policy_bundle.pipeline
-        )
-        _notify_pipeline_subscriber(effective_pipeline_subscriber, resumed_state)
-        completed_ids = {
-            uid
-            for uid, ws in resumed_state.worker_states.items()
-            if ws.status == WorkerStatus.SUCCEEDED
-        }
-        resume_units = tuple(u for u in effect.work_units if u.unit_id not in completed_ids)
-
-        if not resume_units:
-            return resumed_state
-
-        resume_effect = FanOutDevelopmentEffect(
-            work_units=resume_units,
-            max_workers=effect.max_workers,
-        )
-        fan_out_events = await coordinator.run_fan_out(
-            effect=resume_effect,
-            executor=executor,
-            display=pd,
-            ctx=coordinator._WorkerContext(
-                log=coordinator._WorkerLog(
-                    log_dir=workspace_scope.root / ".agent" / "logs",
-                    run_id=str(uuid.uuid4()),
-                ),
-                isolation=isolation,
-            ),
-        )
-        current = resumed_state
-        for ev in fan_out_events:
-            current, _ = reducer_reduce(current, ev, policy_bundle.pipeline)
-            _notify_pipeline_subscriber(effective_pipeline_subscriber, current)
-        ckpt.save(current)
-
-        merge_effect = MergeIntegrationEffect(
-            worker_states=current.worker_states,
-            base_branch="main",
-        )
-        merge_result = await merge_integrator.integrate(
-            base_branch=merge_effect.base_branch,
-            worker_states=merge_effect.worker_states,
-            git_executor=git_exec,
-            repo_root=repo_root,
-        )
-        for ev in merge_result.events:
-            current, _ = reducer_reduce(current, ev, policy_bundle.pipeline)
-            _notify_pipeline_subscriber(effective_pipeline_subscriber, current)
-        ckpt.save(current)
-        return current
-
-    return asyncio.run(_run())
 
 
 def _parallel_worker_command() -> tuple[str, ...]:
@@ -978,8 +1103,21 @@ def _handle_inline_effect(  # noqa: PLR0913
         return 0
 
     if isinstance(effect, ExitFailureEffect):
-        _emit_display_line(display, None, _status_text("Pipeline failed", effect.reason, "red"))
-        return 1
+        _emit_display_line(
+            display,
+            None,
+            _status_text("Recovery triggered", effect.reason, "yellow"),
+        )
+        current_epoch = state.recovery_epoch if isinstance(state.recovery_epoch, int) else 0
+        recovered_state = state.copy_with(
+            phase=PHASE_FAILED,
+            previous_phase=state.phase,
+            last_error=effect.reason,
+            recovery_epoch=current_epoch + 1,
+        )
+        ckpt.save(recovered_state)
+        _notify_pipeline_subscriber(effective_pipeline_subscriber, recovered_state)
+        return recovered_state
 
     return None
 
@@ -1139,16 +1277,27 @@ def _call_determine_effect_from_policy(
     return determine_effect(state, policy_bundle)
 
 
+def _recovery_prepare_effect(state: PipelineState) -> PreparePromptEffect:
+    previous_phase = state.previous_phase if isinstance(state.previous_phase, str) else None
+    policy_entry_phase = (
+        state.policy_entry_phase if isinstance(state.policy_entry_phase, str) else PHASE_PLANNING
+    )
+    target_phase = previous_phase or policy_entry_phase
+    if target_phase == PHASE_FAILED:
+        target_phase = policy_entry_phase
+    drain = state.current_drain if isinstance(state.current_drain, str) else None
+    return PreparePromptEffect(
+        phase=target_phase,
+        iteration=state.iteration,
+        drain=drain,
+    )
+
+
 def _terminal_phase_effect(state: PipelineState) -> Effect | None:
     if state.phase == PHASE_COMPLETE:
         return ExitSuccessEffect()
     if state.phase == PHASE_FAILED:
-        last_error = (
-            state.last_error
-            or f"Pipeline exited unexpectedly in phase={state.phase!r} "
-            "with no explicit error; check upstream last_error propagation"
-        )
-        return ExitFailureEffect(reason=last_error)
+        return _recovery_prepare_effect(state)
     return None
 
 
@@ -1321,9 +1470,9 @@ def _phase_event_after_agent_run(  # noqa: PLR0913
     )
     try:
         events = handle_phase(effect, ctx)
-    except (KeyboardInterrupt, SystemExit):
+    except KeyboardInterrupt:
         raise
-    except Exception as exc:
+    except BaseException as exc:
         logger.exception(
             "Phase handler crashed in phase={phase}: {err}",
             phase=effect.phase,
@@ -1463,8 +1612,9 @@ def _execute_agent_effect(  # noqa: PLR0913
         logger.error("Agent not found: {}", effect.agent_name)
         return PipelineEvent.AGENT_FAILURE
 
-    if display is None or isinstance(display, _LegacyConsoleDisplay):
-        _show_phase_start_with_context(effect.phase, effect.agent_name, console, state)
+    _show_phase_start_with_context(
+        effect.phase, effect.agent_name, _display_console(display), state
+    )
 
     from ralph.agents.invoke import (  # noqa: PLC0415
         AgentInactivityTimeoutError,

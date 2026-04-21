@@ -210,6 +210,47 @@ def show_phase_start(
     c.print(line)
 
 
+def _get_int_attr(obj: object, attr: str) -> int | None:
+    """Extract a typed int attribute from any object, returning None if absent or wrong type."""
+    val: object = getattr(obj, attr, None)
+    return val if isinstance(val, int) else None
+
+
+def _get_str_attr(obj: object, attr: str) -> str | None:
+    """Extract a typed str attribute from any object, returning None if absent or wrong type."""
+    val: object = getattr(obj, attr, None)
+    return val if isinstance(val, str) else None
+
+
+def show_phase_start_from_state(
+    state: object,
+    phase: str,
+    *,
+    console: Console | None = None,
+) -> None:
+    """Display phase start using counters extracted from a pipeline state object.
+
+    Args:
+        state: Any object with optional iteration/reviewer/analysis counter attributes.
+        phase: Phase name to display.
+        console: Rich console for output.
+    """
+    ctx = PhaseStartContext(
+        iteration=_get_int_attr(state, "iteration"),
+        total_iterations=_get_int_attr(state, "total_iterations"),
+        reviewer_pass=_get_int_attr(state, "reviewer_pass"),
+        total_reviewer_passes=_get_int_attr(state, "total_reviewer_passes"),
+        agent_name=_get_str_attr(state, "agent_name"),
+        development_analysis_iteration=_get_int_attr(state, "development_analysis_iteration"),
+        max_development_analysis_iterations=_get_int_attr(
+            state, "max_development_analysis_iterations"
+        ),
+        review_analysis_iteration=_get_int_attr(state, "review_analysis_iteration"),
+        max_review_analysis_iterations=_get_int_attr(state, "max_review_analysis_iterations"),
+    )
+    show_phase_start(phase, ctx=ctx, console=console)
+
+
 def show_phase_complete(
     phase: str,
     *,

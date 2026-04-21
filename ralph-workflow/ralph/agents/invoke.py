@@ -19,7 +19,6 @@ import subprocess
 import sys
 import threading
 import time
-from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
@@ -27,17 +26,6 @@ from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
 from loguru import logger
 from tqdm import tqdm
 
-from ralph.agents.transport_emit import (
-    _build_opencode_provider_config,
-    _claude_mcp_config,
-    _load_existing_claude_upstream_servers,
-    _mcp_toml_as_upstreams,
-    _merge_mcp_toml_into_upstreams,
-    _merge_opencode_config_content,  # noqa: F401  (re-exported for tests)
-    _prepare_codex_home,  # noqa: F401  (re-exported for tests)
-    _prepare_codex_home_with_upstreams,
-    _set_upstream_mcp_config,
-)
 from ralph.config.enums import AgentTransport
 from ralph.mcp.protocol.startup import (
     PreflightError,
@@ -50,6 +38,15 @@ from ralph.mcp.protocol.startup import (
     tools_list_request,
 )
 from ralph.mcp.tools.names import claude_tool_name
+from ralph.mcp.transport.claude import claude_mcp_config, load_existing_claude_upstream_servers
+from ralph.mcp.transport.codex import prepare_codex_home_with_upstreams
+from ralph.mcp.transport.common import (
+    mcp_toml_as_upstreams,
+    merge_mcp_toml_into_upstreams,
+    set_upstream_mcp_config,
+)
+from ralph.mcp.transport.opencode import build_opencode_provider_config
+from ralph.process.manager import ManagedProcess, get_process_manager
 
 _MODELED_FLAG_PARTS = 2
 _IDLE_POLL_INTERVAL_SECONDS = 0.05
@@ -94,6 +91,7 @@ class _BuildCommandOptions:
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
+    from typing import IO
 
     from ralph.config.models import AgentConfig
 
@@ -401,20 +399,24 @@ def _run_subprocess_and_read_lines(  # noqa: PLR0913
     Yields:
         Output lines from the subprocess.
     """
-    with subprocess.Popen(
+    handle = get_process_manager().spawn(
         cmd,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
-        text=True,
-        bufsize=1,
-        env=_subprocess_env(extra_env),
+        stdin=None,
         cwd=str(workspace_path) if workspace_path is not None else None,
-    ) as proc:
-        if proc.stdout is None:
+        env=_subprocess_env(extra_env),
+        start_new_session=True,
+        label=f"invoke:{_agent_command_name(config)}",
+        text=True,
+    )
+    with handle:
+        stdout_pipe = handle.stdout
+        if stdout_pipe is None:
             msg = "Failed to capture stdout"
             raise AgentInvocationError(_agent_command_name(config), -1, msg)
 
-        lines_iter = _read_lines_from_process(proc, idle_timeout_seconds=idle_timeout_seconds)
+        lines_iter = _read_lines_from_process(handle, idle_timeout_seconds=idle_timeout_seconds)
         parsed_output: list[str] = []
         if show_progress:
             agent_name = _agent_command_name(config)
@@ -450,8 +452,8 @@ def _run_subprocess_and_read_lines(  # noqa: PLR0913
                     parsed_output,
                 ) from exc
 
-        proc.wait()
-        _check_process_result(proc, _agent_command_name(config), parsed_output)
+        handle.wait()
+        _check_process_result(handle, _agent_command_name(config), parsed_output)
 
 
 def _subprocess_env(extra_env: dict[str, str] | None) -> dict[str, str]:
@@ -475,34 +477,32 @@ def _runtime_extra_env(
     if transport == AgentTransport.OPENCODE:
         if not endpoint:
             return runtime_env or None
-        provider_config, upstreams = _build_opencode_provider_config(
+        provider_config, upstreams = build_opencode_provider_config(
             runtime_env.get("OPENCODE_CONFIG_CONTENT") or os.environ.get("OPENCODE_CONFIG_CONTENT"),
             endpoint,
         )
         runtime_env["OPENCODE_CONFIG_CONTENT"] = provider_config
-        mcp_toml = _mcp_toml_as_upstreams(workspace_path)
-        _set_upstream_mcp_config(runtime_env, _merge_mcp_toml_into_upstreams(upstreams, mcp_toml))
+        mcp_toml = mcp_toml_as_upstreams(workspace_path)
+        set_upstream_mcp_config(runtime_env, merge_mcp_toml_into_upstreams(upstreams, mcp_toml))
         return runtime_env
     if transport == AgentTransport.CODEX:
         if not endpoint and system_prompt_file is None:
             return runtime_env or None
-        codex_home, upstreams = _prepare_codex_home_with_upstreams(
+        codex_home, upstreams = prepare_codex_home_with_upstreams(
             endpoint,
             workspace_path=workspace_path,
             existing_home=runtime_env.get("CODEX_HOME") or os.environ.get("CODEX_HOME"),
             system_prompt_file=system_prompt_file,
         )
         runtime_env["CODEX_HOME"] = codex_home
-        mcp_toml = _mcp_toml_as_upstreams(workspace_path)
-        _set_upstream_mcp_config(runtime_env, _merge_mcp_toml_into_upstreams(upstreams, mcp_toml))
+        mcp_toml = mcp_toml_as_upstreams(workspace_path)
+        set_upstream_mcp_config(runtime_env, merge_mcp_toml_into_upstreams(upstreams, mcp_toml))
         return runtime_env
     if transport == AgentTransport.CLAUDE:
         if endpoint:
-            existing = _load_existing_claude_upstream_servers(workspace_path)
-            mcp_toml = _mcp_toml_as_upstreams(workspace_path)
-            _set_upstream_mcp_config(
-                runtime_env, _merge_mcp_toml_into_upstreams(existing, mcp_toml)
-            )
+            existing = load_existing_claude_upstream_servers(workspace_path)
+            mcp_toml = mcp_toml_as_upstreams(workspace_path)
+            set_upstream_mcp_config(runtime_env, merge_mcp_toml_into_upstreams(existing, mcp_toml))
         return runtime_env
 
     if not endpoint:
@@ -525,29 +525,30 @@ def _agent_command_name(config: AgentConfig) -> str:
 
 
 def _read_lines_from_process(
-    proc: subprocess.Popen[str],
+    handle: ManagedProcess,
     *,
     idle_timeout_seconds: float | None = None,
 ) -> Iterator[str]:
     """Read lines from subprocess stdout in a background thread.
 
     Args:
-        proc: Running subprocess.
+        handle: Running managed process.
         idle_timeout_seconds: Optional maximum idle time without output.
 
     Yields:
         Lines from stdout.
     """
+    stdout_pipe = cast("IO[str] | None", handle.stdout)
     lines_queue: list[str] = []
     lines_lock = threading.Lock()
     lines_event = threading.Event()
     last_activity = time.monotonic()
 
     def read_lines_thread() -> None:
-        if proc.stdout is None:
+        if stdout_pipe is None:
             return
         try:
-            for line in proc.stdout:
+            for line in stdout_pipe:
                 with lines_lock:
                     lines_queue.append(line)
         except Exception:
@@ -576,42 +577,12 @@ def _read_lines_from_process(
             idle_timeout_seconds is not None
             and time.monotonic() - last_activity >= idle_timeout_seconds
         ):
-            _terminate_subprocess(proc)
+            handle.terminate(grace_period_s=0)
             raise _IdleStreamTimeoutError(idle_timeout_seconds)
 
         lines_event.wait(_IDLE_POLL_INTERVAL_SECONDS)
 
     reader.join(timeout=10)
-
-
-def _terminate_subprocess(proc: subprocess.Popen[str]) -> None:
-    if _process_poll(proc) is not None:
-        return
-
-    with suppress(Exception):
-        proc.terminate()
-    _process_wait(proc, timeout=1)
-
-    if _process_poll(proc) is not None:
-        return
-
-    with suppress(Exception):
-        proc.kill()
-
-
-def _process_poll(proc: subprocess.Popen[str]) -> int | None:
-    with suppress(Exception):
-        return proc.poll()
-    return None
-
-
-def _process_wait(proc: subprocess.Popen[str], *, timeout: float) -> None:
-    try:
-        proc.wait(timeout=timeout)
-    except TypeError:
-        return
-    except Exception:
-        return
 
 
 def _log_workspace_completion(monitor: WorkspaceMonitor | None) -> None:
@@ -630,22 +601,22 @@ def _log_workspace_completion(monitor: WorkspaceMonitor | None) -> None:
 
 
 def _check_process_result(
-    proc: subprocess.Popen[str], agent_name: str, parsed_output: list[str] | None = None
+    handle: ManagedProcess, agent_name: str, parsed_output: list[str] | None = None
 ) -> None:
     """Check subprocess return code and raise error if non-zero.
 
     Args:
-        proc: Completed subprocess.
+        handle: Completed managed process.
         agent_name: Name of the agent.
 
     Raises:
         AgentInvocationError: If process exited with non-zero code.
     """
-    returncode = int(proc.returncode)
+    returncode = int(handle.returncode or 0)
     if returncode == 0:
         return
 
-    stderr_pipe = proc.stderr
+    stderr_pipe = cast("IO[str] | None", handle.stderr)
     stderr = stderr_pipe.read() if stderr_pipe is not None else "(unable to read stderr)"
     logger.error("Agent exited with code {}: {}", returncode, stderr)
     raise AgentInvocationError(agent_name, returncode, stderr, parsed_output)
@@ -745,7 +716,7 @@ def _extend_claude_transport_flags(
     cmd.extend(
         [
             "--mcp-config",
-            _claude_mcp_config(
+            claude_mcp_config(
                 build_options.mcp_endpoint,
                 workspace_path=build_options.workspace_path,
             ),
@@ -912,13 +883,13 @@ def check_agent_available(config: AgentConfig) -> bool:
     """
     try:
         cmd = config.cmd.split()
-        result = subprocess.run(
+        handle = get_process_manager().spawn(
             ["which", cmd[0]],
-            capture_output=True,
-            text=True,
-            check=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
         )
-        return result.returncode == 0
+        handle.wait(timeout=5)
+        return (handle.returncode or 1) == 0
     except Exception as exc:
         logger.warning("Failed to check agent availability: {}", exc)
         return False

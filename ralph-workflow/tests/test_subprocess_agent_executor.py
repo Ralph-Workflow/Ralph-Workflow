@@ -131,10 +131,14 @@ async def test_final_message_from_last_line() -> None:
 
 
 @pytest.mark.asyncio
-async def test_activity_router_receives_valid_ndjson_and_invalid_lines_as_errors(
+async def test_activity_router_receives_valid_ndjson_and_non_json_lines(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Parallel executor routes split NDJSON lines into ActivityRouter without crashing."""
+    """Parallel executor routes both JSON and non-JSON lines via ActivityRouter without crashing.
+
+    Non-JSON lines are passed to the parser (not pre-rejected) so provider parsers
+    can handle prefixed transcript formats like 'claude: ...' correctly.
+    """
     router = ActivityRouter()
     executor = SubprocessAgentExecutor([sys.executable, "-c", "print('placeholder')"])
     executor.activity_router = router
@@ -154,5 +158,7 @@ async def test_activity_router_receives_valid_ndjson_and_invalid_lines_as_errors
     entries = router.get_buffer(unit.unit_id).snapshot()
     assert result.exit_code == 0
     assert len(entries) == EXPECTED_ACTIVITY_ENTRIES
+    # Valid NDJSON line produces a content entry
     assert any("structured" in entry for entry in entries)
-    assert any("not-json" in entry and "✗" in entry for entry in entries)
+    # Non-JSON line is passed to the parser as raw content (not pre-rejected as error)
+    assert any("not-json" in entry for entry in entries)

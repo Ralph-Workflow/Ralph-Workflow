@@ -213,3 +213,69 @@ ralph_upstream__github__get_repo
 ```
 
 The `ralph_upstream__` prefix makes it unambiguous which upstream server owns each tool and prevents namespace collisions between providers.
+
+## Worked example: Angular CLI integration
+
+Angular CLI ships an MCP server (`@angular/mcp`) that exposes workspace-aware build and scaffold tools. Add it to `.agent/mcp.toml`:
+
+```toml
+[mcp_servers.angular-cli]
+transport = "stdio"
+command = "npx"
+args = ["-y", "@angular/mcp"]
+```
+
+The package name may change as the Angular MCP tooling matures; see the [Angular MCP README](https://angular.dev/tools/mcp) for the current name and any required flags.
+
+Once configured, each agent sees the Angular tools under their proxy alias. For example, `generate` becomes:
+
+```
+ralph_upstream__angular-cli__generate
+```
+
+No other config is needed — Ralph handles the stdio handshake, tool discovery, and per-agent wiring automatically.
+
+Verify the integration before running the pipeline:
+
+```
+ralph --check-mcp
+```
+
+Expected output (tools may vary by Angular CLI version):
+
+```
+Custom MCP Servers
+  angular-cli  stdio  ok
+
+Agent Transport Compatibility
+  angular-cli × CLAUDE    ok
+  angular-cli × CODEX     ok
+  angular-cli × OPENCODE  ok
+```
+
+## Worked example: Docs MCP server on localhost:6280
+
+[arabold/docs-mcp-server](https://github.com/arabold/docs-mcp-server) serves indexed documentation as MCP tools. Start it locally (it listens on port 6280 by default):
+
+```
+npx -y docs-mcp-server
+```
+
+Then add it to `.agent/mcp.toml`:
+
+```toml
+[mcp_servers.docs-mcp]
+transport = "http"
+url = "http://localhost:6280"
+```
+
+The server must be running before `ralph` (or `ralph --check-mcp`) starts. Ralph will fail startup validation if the server is unreachable. Use `RALPH_MCP_STRICT=0` during development if the docs server is optional.
+
+Once running, the search and fetch tools are exposed as:
+
+```
+ralph_upstream__docs-mcp__search_documentation
+ralph_upstream__docs-mcp__fetch_documentation
+```
+
+(Tool names depend on the docs-mcp-server version; run `ralph --check-mcp` to see the actual list.)

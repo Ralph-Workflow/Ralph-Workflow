@@ -16,10 +16,10 @@ import pytest
 
 from ralph.config.enums import (
     PHASE_COMPLETE,
+    PHASE_DEVELOPMENT,
     PHASE_FAILED,
 )
 from ralph.pipeline.effects import (
-    ExitFailureEffect,
     ExitSuccessEffect,
     PreparePromptEffect,
 )
@@ -159,16 +159,21 @@ class TestDetermineNextEffect:
 
         assert isinstance(effect, ExitSuccessEffect)
 
-    def test_failed_phase_returns_exit_failure(self) -> None:
-        """Test that PHASE_FAILED returns ExitFailureEffect."""
-        state = _make_state(phase=PHASE_FAILED, last_error="Test error")
+    def test_failed_phase_returns_prepare_prompt_for_recovery(self) -> None:
+        """PHASE_FAILED should re-enter recovery instead of returning exit failure."""
+        state = _make_state(
+            phase=PHASE_FAILED,
+            previous_phase=PHASE_DEVELOPMENT,
+            last_error="Test error",
+            current_drain="development",
+        )
         agents = _make_minimal_agents_policy()
         pipeline = _make_minimal_pipeline_policy()
 
         effect = determine_next_effect(state, pipeline, agents)
 
-        assert isinstance(effect, ExitFailureEffect)
-        assert effect.reason == "Test error"
+        assert isinstance(effect, PreparePromptEffect)
+        assert effect.phase == PHASE_DEVELOPMENT
 
     def test_unknown_phase_raises_handler_not_found(self) -> None:
         """Test that an unknown phase raises PhaseHandlerNotFoundError."""

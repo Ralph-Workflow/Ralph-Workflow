@@ -153,6 +153,58 @@ def test_execute_fan_out_sync_wires_signal_handlers_and_isolation(monkeypatch, t
     assert ctx.isolation is not None
 
 
+def test_execute_fan_out_sync_converts_unexpected_coordinator_error_to_failed_recovery_state(
+    monkeypatch, tmp_path
+) -> None:
+    unit = _make_work_unit("unit-a")
+    effect = FanOutDevelopmentEffect(work_units=(unit,), max_workers=1)
+    state = PipelineState(phase=PHASE_DEVELOPMENT, work_units=(unit,))
+    policy_bundle = _make_policy_bundle(max_workers=1)
+    workspace_scope = WorkspaceScope(tmp_path)
+
+    class _FakeExecutor:
+        def __init__(self, command, signal_bridge=None) -> None:
+            del command, signal_bridge
+
+    class _FakeWorktreeManager:
+        def __init__(self, repo_root, git) -> None:
+            del repo_root, git
+
+    class _FakeMcpFactory:
+        def __init__(self, workspace) -> None:
+            del workspace
+
+    async def _boom(**kwargs):
+        del kwargs
+        raise RuntimeError("fanout exploded")
+
+    monkeypatch.setattr(
+        "ralph.interrupt.asyncio_bridge.install_signal_handlers", lambda *args: None
+    )
+    monkeypatch.setattr("ralph.agents.subprocess_executor.SubprocessAgentExecutor", _FakeExecutor)
+    monkeypatch.setattr("ralph.git.worktree_manager.WorktreeManager", _FakeWorktreeManager)
+    monkeypatch.setattr(
+        "ralph.mcp.server.factory_impl.DynamicBindingMcpServerFactory", _FakeMcpFactory
+    )
+    monkeypatch.setattr("ralph.pipeline.parallel.coordinator.run_fan_out", _boom)
+    monkeypatch.setattr(runner_module.ckpt, "save", lambda _state: None)
+
+    recovered = runner_module._execute_fan_out_sync(
+        effect=effect,
+        state=state,
+        display=runner_module._LegacyConsoleDisplay(),
+        policy_bundle=policy_bundle,
+        workspace_scope=workspace_scope,
+    )
+
+    assert recovered.phase == PHASE_DEVELOPMENT
+    assert recovered.dev_chain.retries == 1
+    assert recovered.recovery_epoch == 0
+    assert recovered.last_error is not None
+    assert "Fan-out execution crashed" in recovered.last_error
+    assert "fanout exploded" in recovered.last_error
+
+
 def test_execute_fan_out_sync_requeues_running_workers_via_reducer_event(
     monkeypatch, tmp_path
 ) -> None:

@@ -25,6 +25,25 @@
 # url = "https://mcp.example.com/docs"
 # @EXAMPLE-END
 
+# Angular CLI MCP integration (stdio).
+# See https://angular.dev/tools/mcp for the current package name and setup.
+# Replace "<angular-mcp-package>" with the published package once it is available.
+# @EXAMPLE-START
+# [mcp_servers.angular-cli]
+# transport = "stdio"
+# command = "npx"
+# args = ["-y", "@angular/mcp"]
+# @EXAMPLE-END
+
+# Docs MCP server running locally (arabold/docs-mcp-server).
+# Start with: npx -y docs-mcp-server  (listens on port 6280 by default).
+# See https://github.com/arabold/docs-mcp-server for setup instructions.
+# @EXAMPLE-START
+# [mcp_servers.docs-mcp]
+# transport = "http"
+# url = "http://localhost:6280"
+# @EXAMPLE-END
+
 # @EXAMPLE-START
 # [web_search]
 # enabled = true

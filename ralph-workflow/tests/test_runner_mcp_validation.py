@@ -62,7 +62,7 @@ def _ok_report(servers: tuple[UpstreamMcpServer, ...]) -> UpstreamValidationRepo
 def test_returns_zero_when_no_custom_mcp_servers_configured(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    monkeypatch.setattr("ralph.agents.transport_emit._mcp_toml_as_upstreams", lambda _p: ())
+    monkeypatch.setattr("ralph.mcp.transport.common.mcp_toml_as_upstreams", lambda _p: ())
     validate_mock = MagicMock()
     probe_mock = MagicMock()
     monkeypatch.setattr(runner_module, "_VALIDATE_MCP", validate_mock)
@@ -81,7 +81,7 @@ def test_healthy_upstreams_and_probes_return_zero(
     http_server = _http_server("alpha")
     stdio_server = _stdio_server("beta")
     servers = (http_server, stdio_server)
-    monkeypatch.setattr("ralph.agents.transport_emit._mcp_toml_as_upstreams", lambda _p: servers)
+    monkeypatch.setattr("ralph.mcp.transport.common.mcp_toml_as_upstreams", lambda _p: servers)
 
     validate_mock = MagicMock(return_value=_ok_report(servers))
     monkeypatch.setattr(runner_module, "_VALIDATE_MCP", validate_mock)
@@ -102,7 +102,7 @@ def test_strict_mode_upstream_validation_error_returns_one(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     server = _http_server("alpha")
-    monkeypatch.setattr("ralph.agents.transport_emit._mcp_toml_as_upstreams", lambda _p: (server,))
+    monkeypatch.setattr("ralph.mcp.transport.common.mcp_toml_as_upstreams", lambda _p: (server,))
     monkeypatch.delenv("RALPH_MCP_STRICT", raising=False)
 
     def raising_validator(*_args: object, **_kwargs: object) -> UpstreamValidationReport:
@@ -131,7 +131,7 @@ def test_soft_mode_upstream_failure_returns_zero_and_skips_failed_servers(
     alpha = _http_server("alpha")
     beta = _http_server("beta")
     servers = (alpha, beta)
-    monkeypatch.setattr("ralph.agents.transport_emit._mcp_toml_as_upstreams", lambda _p: servers)
+    monkeypatch.setattr("ralph.mcp.transport.common.mcp_toml_as_upstreams", lambda _p: servers)
     monkeypatch.setenv("RALPH_MCP_STRICT", "0")
 
     mixed_report = UpstreamValidationReport(
@@ -175,7 +175,7 @@ def test_strict_mode_probe_failure_returns_one(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     server = _http_server("alpha")
-    monkeypatch.setattr("ralph.agents.transport_emit._mcp_toml_as_upstreams", lambda _p: (server,))
+    monkeypatch.setattr("ralph.mcp.transport.common.mcp_toml_as_upstreams", lambda _p: (server,))
     monkeypatch.delenv("RALPH_MCP_STRICT", raising=False)
 
     monkeypatch.setattr(
@@ -216,7 +216,7 @@ def test_soft_mode_probe_failure_returns_zero_and_logs_warning(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     server = _http_server("alpha")
-    monkeypatch.setattr("ralph.agents.transport_emit._mcp_toml_as_upstreams", lambda _p: (server,))
+    monkeypatch.setattr("ralph.mcp.transport.common.mcp_toml_as_upstreams", lambda _p: (server,))
     monkeypatch.setenv("RALPH_MCP_STRICT", "0")
 
     monkeypatch.setattr(
@@ -259,7 +259,7 @@ def test_no_probe_invoked_when_no_healthy_servers(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     server = _http_server("alpha")
-    monkeypatch.setattr("ralph.agents.transport_emit._mcp_toml_as_upstreams", lambda _p: (server,))
+    monkeypatch.setattr("ralph.mcp.transport.common.mcp_toml_as_upstreams", lambda _p: (server,))
     monkeypatch.setenv("RALPH_MCP_STRICT", "0")
 
     failing_report = UpstreamValidationReport(

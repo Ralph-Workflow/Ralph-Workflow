@@ -328,14 +328,19 @@ def _prepare_artifact_submission(
         _required_string(params, "artifact_type"),
         session_drain=session_drain,
     )
-    raw_content = _resolve_artifact_content_source(params, base_path=base_path, backend=backend)
+    raw_content = _resolve_artifact_content_source(
+        params,
+        artifact_type=artifact_type,
+        base_path=base_path,
+        backend=backend,
+    )
     parsed_content = _unwrap_persisted_artifact_payload(artifact_type, _parse_content(raw_content))
 
     return artifact_type, _normalize_artifact_payload(artifact_type, parsed_content)
 
 
 def _resolve_artifact_content_source(
-    params: dict[str, object], *, base_path: Path | None, backend: FileBackend
+    params: dict[str, object], *, artifact_type: str, base_path: Path | None, backend: FileBackend
 ) -> str:
     raw_content = params.get("content")
     raw_content_path = params.get("content_path")
@@ -343,7 +348,7 @@ def _resolve_artifact_content_source(
     has_content_path = isinstance(raw_content_path, str)
 
     if has_content == has_content_path:
-        raise InvalidParamsError("Provide exactly one of 'content' or 'content_path'")
+        raise InvalidParamsError(_artifact_content_format_error(artifact_type))
 
     if has_content:
         return cast("str", raw_content)
@@ -362,6 +367,25 @@ def _resolve_content_path(raw_path: str, *, base_path: Path | None) -> Path:
     if candidate.is_absolute() or base_path is None:
         return candidate
     return (base_path / candidate).resolve()
+
+
+def _artifact_content_format_error(artifact_type: str) -> str:
+    fresh_submit_example = (
+        f'{{"artifact_type":"{artifact_type}",'
+        '"content":"{\\"status\\":\\"completed\\",\\"summary\\":\\"...\\"}"}'
+    )
+    resubmit_example = (
+        f'{{"artifact_type":"{artifact_type}",'
+        f'"content_path":".agent/artifacts/{artifact_type}.json"}}'
+    )
+    return (
+        "Provide exactly one of 'content' or 'content_path'. "
+        "Use 'content' for a freshly generated JSON string. "
+        "Use 'content_path' only when resubmitting a JSON file that already exists on disk. "
+        "Never send both 'content' and 'content_path' in the same call. "
+        f"Example fresh submit: {fresh_submit_example}. "
+        f"Example resubmit from disk: {resubmit_example}."
+    )
 
 
 def _unwrap_persisted_artifact_payload(

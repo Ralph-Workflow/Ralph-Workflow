@@ -86,12 +86,8 @@ class TestRecoveryFirstBehavior:
         assert state.last_error != "Unknown failure"
         assert state.metrics.total_retries == _EXPECTED_TOTAL_RETRIES
         assert state.metrics.total_fallbacks == 1
-        assert len(effects) == 1
-        effect = effects[0]
-        assert isinstance(effect, ExitFailureEffect)
-        assert effect.reason == state.last_error
-        assert "Phase handler crashed" in effect.reason
-        assert effect.reason != "Unknown failure"
+        assert state.recovery_epoch == 1
+        assert effects == []
 
     def test_phase_failure_recoverable_empty_reason_produces_descriptive_error(
         self,
@@ -110,10 +106,8 @@ class TestRecoveryFirstBehavior:
         assert new_state.last_error != ""
         assert new_state.last_error != "Unknown failure"
         assert "development" in new_state.last_error
-        assert len(effects) == 1
-        assert isinstance(effects[0], ExitFailureEffect)
-        assert effects[0].reason != ""
-        assert effects[0].reason != "Unknown failure"
+        assert new_state.recovery_epoch == 1
+        assert effects == []
 
     def test_phase_failure_recoverable_whitespace_reason_produces_descriptive_error(
         self,
@@ -132,10 +126,8 @@ class TestRecoveryFirstBehavior:
         assert new_state.last_error.strip() != ""
         assert new_state.last_error != "Unknown failure"
         assert "development" in new_state.last_error
-        assert len(effects) == 1
-        assert isinstance(effects[0], ExitFailureEffect)
-        assert effects[0].reason.strip() != ""
-        assert effects[0].reason != "Unknown failure"
+        assert new_state.recovery_epoch == 1
+        assert effects == []
 
     def test_exit_failure_effect_rejects_whitespace_only_reason(self) -> None:
         """ExitFailureEffect must reject whitespace-only reasons with ValueError."""
@@ -202,11 +194,8 @@ def test_phase_failure_recoverable_empty_reason_produces_descriptive_error() -> 
     assert new_state.last_error != ""
     assert new_state.last_error != "Unknown failure"
     assert "development" in new_state.last_error
-    assert len(effects) == 1
-    assert isinstance(effects[0], ExitFailureEffect)
-    assert effects[0].reason != ""
-    assert effects[0].reason != "Unknown failure"
-    assert "development" in effects[0].reason
+    assert new_state.recovery_epoch == 1
+    assert effects == []
 
 
 def test_phase_failure_recoverable_whitespace_reason_produces_descriptive_error() -> None:
@@ -224,10 +213,8 @@ def test_phase_failure_recoverable_whitespace_reason_produces_descriptive_error(
     assert new_state.last_error.strip() != ""
     assert new_state.last_error != "Unknown failure"
     assert "development" in new_state.last_error
-    assert len(effects) == 1
-    assert isinstance(effects[0], ExitFailureEffect)
-    assert effects[0].reason.strip() != ""
-    assert effects[0].reason != "Unknown failure"
+    assert new_state.recovery_epoch == 1
+    assert effects == []
 
 
 def test_phase_failure_not_recoverable_empty_reason_produces_descriptive_error() -> None:
@@ -245,7 +232,5 @@ def test_phase_failure_not_recoverable_empty_reason_produces_descriptive_error()
     assert new_state.last_error != ""
     assert new_state.last_error != "Unknown failure"
     assert "development_analysis" in new_state.last_error
-    assert len(effects) == 1
-    assert isinstance(effects[0], ExitFailureEffect)
-    assert effects[0].reason != ""
-    assert effects[0].reason != "Unknown failure"
+    assert new_state.recovery_epoch == 1
+    assert effects == []

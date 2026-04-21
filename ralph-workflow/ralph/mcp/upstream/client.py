@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Protocol, cast
 import httpx
 
 from ralph.mcp.upstream.models import UpstreamCallError, UpstreamTool
+from ralph.process.manager import get_process_manager
 
 if TYPE_CHECKING:
     from ralph.mcp.upstream.config import UpstreamMcpServer
@@ -233,18 +234,29 @@ def _make_stdio_caller(server: UpstreamMcpServer) -> JsonRpcCaller:
         ]
         payload = "\n".join(payload_lines) + "\n"
         env: dict[str, str] = {**os.environ, **server.env}
-        proc = subprocess.run(
+        handle = get_process_manager().spawn(
             command,
-            input=payload.encode(),
-            capture_output=True,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             env=env,
-            check=False,
+            label=f"upstream:{server.name}",
         )
-        if proc.returncode != 0:
-            raise UpstreamCallError(
-                f"upstream server '{server.name}' process exited {proc.returncode}"
+        try:
+            stdout_bytes, _stderr = handle.communicate(
+                input=payload.encode(), timeout=30
             )
-        stdout_lines = [line for line in proc.stdout.decode().splitlines() if line.strip()]
+        except subprocess.TimeoutExpired:
+            handle.terminate(grace_period_s=0)
+            raise UpstreamCallError(
+                f"upstream server '{server.name}' timed out"
+            ) from None
+        if (handle.returncode or 0) != 0:
+            raise UpstreamCallError(
+                f"upstream server '{server.name}' process exited {handle.returncode}"
+            )
+        stdout_str = stdout_bytes.decode() if stdout_bytes else ""
+        stdout_lines = [line for line in stdout_str.splitlines() if line.strip()]
         if not stdout_lines:
             raise UpstreamCallError(f"upstream server '{server.name}' returned no JSON-RPC output")
         raw: object = json.loads(stdout_lines[-1])

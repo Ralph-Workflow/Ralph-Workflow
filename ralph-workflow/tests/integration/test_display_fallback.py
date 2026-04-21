@@ -9,6 +9,7 @@ from ralph.display.parallel_display import ParallelDisplay
 from ralph.pipeline.worker_state import WorkerStatus
 
 ANSI_ESCAPE_RE = re.compile(r"\x1b\[")
+EXPECTED_LINE_COUNT = 3
 
 
 def _make_display(
@@ -64,8 +65,7 @@ def test_prefixed_lines_format() -> None:
     display.emit("unit-1", "gamma")
 
     lines = _lines(buffer)
-    assert lines == [
-        "[unit-1] alpha",
-        "[unit-2] beta",
-        "[unit-1] gamma",
-    ]
+    assert len(lines) == EXPECTED_LINE_COUNT
+    assert "[content][unit-1] alpha" in lines[0]
+    assert "[content][unit-2] beta" in lines[1]
+    assert "[content][unit-1] gamma" in lines[2]

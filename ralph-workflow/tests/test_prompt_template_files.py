@@ -86,6 +86,28 @@ def test_all_top_level_templates_include_unattended_partial() -> None:
     assert missing == []
 
 
+ANALYSIS_CONTENT_PATH_GUIDANCE = (
+    "Use `content_path` only when resubmitting a JSON file that already exists on disk."
+)
+ANALYSIS_EXHAUSTIVE_FAILURE_GUIDANCE = (
+    "Include every issue that contributed to the failing status."
+)
+ANALYSIS_OMISSION_GUIDANCE = (
+    "If you omit a real failure cause, the analysis artifact is incomplete."
+)
+ANALYSIS_NO_FIRST_PROBLEM_GUIDANCE = (
+    "Do not stop after the first problem if more issues were found."
+)
+DEVELOPMENT_ANALYSIS_FRESH_SUBMIT_EXAMPLE = (
+    '"artifact_type":"development_analysis_decision",'
+    '"content":"{\\"status\\":\\"completed\\",\\"summary\\":\\"...\\"}"'
+)
+REVIEW_ANALYSIS_FRESH_SUBMIT_EXAMPLE = (
+    '"artifact_type":"review_analysis_decision",'
+    '"content":"{\\"status\\":\\"completed\\",\\"summary\\":\\"...\\"}"'
+)
+
+
 def test_analysis_templates_require_exact_artifact_types_and_detailed_fix_sections() -> None:
     development_analysis = (TEMPLATES_ROOT / "development_analysis.jinja").read_text(
         encoding="utf-8"
@@ -98,6 +120,24 @@ def test_analysis_templates_require_exact_artifact_types_and_detailed_fix_sectio
     assert "how_to_fix" in development_analysis
     assert "what_came_up_short" in review_analysis
     assert "how_to_fix" in review_analysis
+    assert "Not submitting the analysis artifact is a FAILURE." in development_analysis
+    assert "Not submitting the analysis artifact is a FAILURE." in review_analysis
+    assert "SUBMIT_ARTIFACT_TOOL_REFERENCE" in development_analysis
+    assert "SUBMIT_ARTIFACT_TOOL_REFERENCE" in review_analysis
+    assert "Use `content` for a freshly generated JSON string." in development_analysis
+    assert "Use `content` for a freshly generated JSON string." in review_analysis
+    assert ANALYSIS_CONTENT_PATH_GUIDANCE in development_analysis
+    assert ANALYSIS_CONTENT_PATH_GUIDANCE in review_analysis
+    assert "Never send both `content` and `content_path` in the same call." in development_analysis
+    assert "Never send both `content` and `content_path` in the same call." in review_analysis
+    assert DEVELOPMENT_ANALYSIS_FRESH_SUBMIT_EXAMPLE in development_analysis
+    assert REVIEW_ANALYSIS_FRESH_SUBMIT_EXAMPLE in review_analysis
+    assert ANALYSIS_EXHAUSTIVE_FAILURE_GUIDANCE in development_analysis
+    assert ANALYSIS_EXHAUSTIVE_FAILURE_GUIDANCE in review_analysis
+    assert ANALYSIS_OMISSION_GUIDANCE in development_analysis
+    assert ANALYSIS_OMISSION_GUIDANCE in review_analysis
+    assert ANALYSIS_NO_FIRST_PROBLEM_GUIDANCE in development_analysis
+    assert ANALYSIS_NO_FIRST_PROBLEM_GUIDANCE in review_analysis
 
 
 def test_review_and_fix_templates_define_explicit_review_handoff_contracts() -> None:
@@ -108,4 +148,5 @@ def test_review_and_fix_templates_define_explicit_review_handoff_contracts() -> 
     assert "what_came_up_short" in review_template
     assert "how_to_fix" in review_template
     assert "FIX_RESULT" in review_template
-    assert "fix_result" in fix_template
+    assert "fix_result" not in fix_template
+    assert "submit" not in fix_template.lower()

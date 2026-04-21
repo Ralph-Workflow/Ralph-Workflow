@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 from typing import TYPE_CHECKING, cast
 
 from ralph.agents.parsers import (
@@ -56,6 +57,7 @@ def detect_provider_from_command(command: list[str]) -> ActivityProvider:
 def _map_kind(parser_type: str) -> ActivityEventKind:
     mapping: dict[str, ActivityEventKind] = {
         "text": ActivityEventKind.TEXT,
+        "thinking": ActivityEventKind.THINKING,
         "tool_use": ActivityEventKind.TOOL_USE,
         "tool_result": ActivityEventKind.TOOL_RESULT,
         "error": ActivityEventKind.ERROR,
@@ -79,6 +81,8 @@ class ActivityRouter:
         *,
         parser_factory: Callable[[ActivityProvider], AgentParser] | None = None,
         buffer_factory: Callable[[], RingBuffer] | None = None,
+        on_event: Callable[[str, ActivityEventKind, str | None, str | None], None] | None = None,
+        raw_overflow_callback: Callable[[str, str], None] | None = None,
     ) -> None:
         self._parser_factory = parser_factory or _default_parser_factory
         self._buffer_factory = buffer_factory or (
@@ -86,6 +90,8 @@ class ActivityRouter:
         )
         self._parsers: dict[str, AgentParser] = {}
         self._buffers: dict[str, RingBuffer] = {}
+        self._on_event = on_event
+        self._raw_overflow_callback = raw_overflow_callback
 
     def get_buffer(self, unit_id: str) -> RingBuffer:
         if unit_id not in self._buffers:
@@ -98,6 +104,7 @@ class ActivityRouter:
         raw_line: str,
         *,
         provider: ActivityProvider = ActivityProvider.GENERIC,
+        raw_reference: str | None = None,
     ) -> None:
         """Never raises — parser failures are converted to ERROR events."""
         buffer = self.get_buffer(unit_id)
@@ -111,16 +118,22 @@ class ActivityRouter:
             lines = list(parser.parse(iter([raw_line])))
 
             for out in lines:
+                kind = _map_kind(out.type)
                 event = make_event(
                     provider=provider,
-                    kind=_map_kind(out.type),
+                    kind=kind,
                     content=out.content,
                     metadata=out.metadata or {},
                     source=unit_id,
                 )
                 rendered = render_event_line(event.kind, event.content, timestamp=event.timestamp)
                 buffer.enqueue(rendered)
+                if self._on_event is not None:
+                    self._on_event(unit_id, kind, event.content, raw_reference)
         except Exception as exc:
+            if self._raw_overflow_callback is not None:
+                with contextlib.suppress(Exception):
+                    self._raw_overflow_callback(unit_id, raw_line)
             error_event = make_event(
                 provider=provider,
                 kind=ActivityEventKind.ERROR,
@@ -131,6 +144,10 @@ class ActivityRouter:
                 error_event.kind, error_event.content, timestamp=error_event.timestamp
             )
             buffer.enqueue(rendered)
+            if self._on_event is not None:
+                self._on_event(
+                    unit_id, ActivityEventKind.ERROR, error_event.content, raw_reference
+                )
 
 
 __all__ = [

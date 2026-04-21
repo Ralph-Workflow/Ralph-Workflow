@@ -152,7 +152,7 @@ def test_run_streams_transcript_output_without_dashboard(monkeypatch: pytest.Mon
 
     output = rendered.getvalue()
     assert result == 0
-    assert "[phase] planning" in output
+    assert "[phase] \u25c6 planning" in output
     assert "[phase] complete" in output
     assert "Pipeline completed successfully." in output
 
@@ -213,9 +213,9 @@ def test_single_agent_visual_parity(monkeypatch: pytest.MonkeyPatch) -> None:
 
     output = rendered.getvalue()
     assert result == 0
-    assert "[phase] planning" in output
-    assert "[phase] development" in output
-    assert "[phase] review" in output
+    assert "[phase] \u25c6 planning" in output
+    assert "[phase] \u25c6 development" in output
+    assert "[phase] \u25c6 review" in output
     assert "[phase] complete" in output
     assert "Pipeline completed successfully." in output
 

@@ -6,17 +6,28 @@ Review the latest implementation result and determine whether development should
 
 {% include 'shared/_unattended_mode.j2' %}
 
+{% include 'shared/_session_capabilities.j2' %}
+
+{% include 'shared/_mcp_tools.j2' %}
+
 {{ render_payload_section('PROMPT', PROMPT, PROMPT_PATH) }}
 
 {{ render_payload_section('PLAN', PLAN, PLAN_PATH) }}
 
 {{ render_payload_section('LATEST ARTIFACT', LATEST_ARTIFACT, LATEST_ARTIFACT_PATH) }}
 
-Submit a structured analysis decision artifact using `artifact_type="development_analysis_decision"`.
+You MUST submit a structured analysis decision artifact with {{SUBMIT_ARTIFACT_TOOL_REFERENCE}} using `artifact_type="development_analysis_decision"` before {{DECLARE_COMPLETE_TOOL_REFERENCE}}.
+Not submitting the analysis artifact is a FAILURE.
 
 Return a JSON object.
 
 - If the implementation is acceptable, use `{"status":"completed","summary":"..."}`.
+- After preparing the JSON payload, submit it with {{SUBMIT_ARTIFACT_TOOL_REFERENCE}} and only then call {{DECLARE_COMPLETE_TOOL_REFERENCE}}.
+- Use `content` for a freshly generated JSON string.
+- Use `content_path` only when resubmitting a JSON file that already exists on disk.
+- Never send both `content` and `content_path` in the same call.
+- Valid fresh-submit example: `{"artifact_type":"development_analysis_decision","content":"{\"status\":\"completed\",\"summary\":\"...\"}"}`.
+- Valid resubmit-from-disk example: `{"artifact_type":"development_analysis_decision","content_path":".agent/artifacts/development_analysis_decision.json"}`.
 - If the implementation is not acceptable, use `{"status":"request_changes","summary":"...","what_came_up_short":[...],"how_to_fix":[...]}`.
 - If the implementation must be rejected outright, use `{"status":"failed","summary":"...","what_came_up_short":[...],"how_to_fix":[...]}`.
 
@@ -24,11 +35,15 @@ For any non-passing analysis, the following two fields are mandatory and must be
 
 1. `what_came_up_short`
    - List every missing requirement, broken verification step, incorrect file, incomplete behavior, or policy violation.
+   - Include every issue that contributed to the failing status.
+   - If you omit a real failure cause, the analysis artifact is incomplete.
+   - Do not stop after the first problem if more issues were found.
    - Cite concrete evidence: file paths, commands, tests, observed behavior, and exact mismatches.
    - Do not use vague summaries like "needs work" without specifics.
 
 2. `how_to_fix`
    - Give detailed, step-by-step remediation instructions that would allow the next implementation attempt to pass analysis.
+   - Include a fix for every item listed in `what_came_up_short`.
    - Include exact files to edit, behaviors to change, tests/checks to run, and what passing evidence should look like.
    - Be comprehensive enough that the next developer does not need to guess.
 
