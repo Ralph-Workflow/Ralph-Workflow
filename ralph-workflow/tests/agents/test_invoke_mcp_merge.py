@@ -11,13 +11,12 @@ from loguru import logger
 
 from ralph.agents.invoke import (
     InvokeOptions,
-    _mcp_toml_as_upstreams,
-    _merge_mcp_toml_into_upstreams,
     invoke_agent,
 )
 from ralph.config.enums import AgentTransport, JsonParserType
 from ralph.config.mcp_models import McpConfig, McpServerSpec
 from ralph.config.models import AgentConfig
+from ralph.mcp.transport.common import mcp_toml_as_upstreams, merge_mcp_toml_into_upstreams
 from ralph.mcp.upstream.config import (
     UPSTREAM_MCP_CONFIG_ENV,
     UpstreamMcpServer,
@@ -82,7 +81,7 @@ def test_merge_no_collision_preserves_all_servers() -> None:
     )
     toml = (UpstreamMcpServer(name="toml-svc", transport="http", url="http://toml.example/mcp"),)
 
-    result = _merge_mcp_toml_into_upstreams(native, toml)
+    result = merge_mcp_toml_into_upstreams(native, toml)
 
     names = {s.name for s in result}
     assert names == {"native-svc", "toml-svc"}
@@ -92,7 +91,7 @@ def test_merge_collision_mcp_toml_wins() -> None:
     native = (UpstreamMcpServer(name="shared", transport="http", url="http://native.example/mcp"),)
     toml = (UpstreamMcpServer(name="shared", transport="http", url="http://toml.example/mcp"),)
 
-    result = _merge_mcp_toml_into_upstreams(native, toml)
+    result = merge_mcp_toml_into_upstreams(native, toml)
 
     winning = next(s for s in result if s.name == "shared")
     assert winning.url == "http://toml.example/mcp"
@@ -106,7 +105,7 @@ def test_merge_collision_emits_warning() -> None:
             UpstreamMcpServer(name="shared", transport="http", url="http://native.example/mcp"),
         )
         toml = (UpstreamMcpServer(name="shared", transport="http", url="http://toml.example/mcp"),)
-        _merge_mcp_toml_into_upstreams(native, toml)
+        merge_mcp_toml_into_upstreams(native, toml)
     finally:
         logger.remove(sink_id)
 
@@ -117,20 +116,20 @@ def test_merge_empty_toml_is_noop() -> None:
     native = (
         UpstreamMcpServer(name="native-svc", transport="http", url="http://native.example/mcp"),
     )
-    assert _merge_mcp_toml_into_upstreams(native, ()) == native
+    assert merge_mcp_toml_into_upstreams(native, ()) == native
 
 
 def test_merge_empty_native_returns_toml_servers() -> None:
     toml = (UpstreamMcpServer(name="toml-svc", transport="stdio", command="my-cmd"),)
-    assert _merge_mcp_toml_into_upstreams((), toml) == toml
+    assert merge_mcp_toml_into_upstreams((), toml) == toml
 
 
 def test_mcp_toml_as_upstreams_converts_http_server(tmp_path: Path) -> None:
     spec = McpServerSpec(name="my-http-svc", transport="http", url="http://example.com/mcp")
     fake_config = McpConfig(mcp_servers={"my-http-svc": spec})
 
-    with patch("ralph.agents.transport_emit.load_mcp_config", return_value=fake_config):
-        result = _mcp_toml_as_upstreams(tmp_path)
+    with patch("ralph.mcp.transport.common.load_mcp_config", return_value=fake_config):
+        result = mcp_toml_as_upstreams(tmp_path)
 
     assert len(result) == 1
     assert result[0].name == "my-http-svc"
@@ -148,8 +147,8 @@ def test_mcp_toml_as_upstreams_converts_stdio_server(tmp_path: Path) -> None:
     )
     fake_config = McpConfig(mcp_servers={"my-stdio-svc": spec})
 
-    with patch("ralph.agents.transport_emit.load_mcp_config", return_value=fake_config):
-        result = _mcp_toml_as_upstreams(tmp_path)
+    with patch("ralph.mcp.transport.common.load_mcp_config", return_value=fake_config):
+        result = mcp_toml_as_upstreams(tmp_path)
 
     assert len(result) == 1
     s = result[0]
@@ -167,8 +166,8 @@ def test_mcp_toml_as_upstreams_passes_local_agent_path(tmp_path: Path) -> None:
         captured.append(config_path)
         return McpConfig()
 
-    with patch("ralph.agents.transport_emit.load_mcp_config", side_effect=fake_load):
-        _mcp_toml_as_upstreams(tmp_path)
+    with patch("ralph.mcp.transport.common.load_mcp_config", side_effect=fake_load):
+        mcp_toml_as_upstreams(tmp_path)
 
     assert captured == [tmp_path / ".agent" / "mcp.toml"]
 
@@ -180,8 +179,8 @@ def test_mcp_toml_as_upstreams_none_workspace_passes_none(tmp_path: Path) -> Non
         captured.append(config_path)
         return McpConfig()
 
-    with patch("ralph.agents.transport_emit.load_mcp_config", side_effect=fake_load):
-        _mcp_toml_as_upstreams(None)
+    with patch("ralph.mcp.transport.common.load_mcp_config", side_effect=fake_load):
+        mcp_toml_as_upstreams(None)
 
     assert captured == [None]
 
@@ -204,7 +203,7 @@ def test_claude_upstream_env_var_includes_mcp_toml_server(
     )
     seen_env: list[dict[str, str]] = []
     monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", _fake_popen_capturing(seen_env))
-    monkeypatch.setattr("ralph.agents.invoke._mcp_toml_as_upstreams", _fake_mcp_toml_as_upstreams)
+    monkeypatch.setattr("ralph.agents.invoke.mcp_toml_as_upstreams", _fake_mcp_toml_as_upstreams)
     monkeypatch.setattr("ralph.agents.invoke._provider_allowed_mcp_tool_names", lambda cfg, _ep: ())
     monkeypatch.setenv("HOME", str(fake_home))
 
@@ -232,7 +231,7 @@ def test_opencode_upstream_env_var_includes_mcp_toml_server(
     config = AgentConfig(cmd="opencode", output_flag="--json-stream")
     seen_env: list[dict[str, str]] = []
     monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", _fake_popen_capturing(seen_env))
-    monkeypatch.setattr("ralph.agents.invoke._mcp_toml_as_upstreams", _fake_mcp_toml_as_upstreams)
+    monkeypatch.setattr("ralph.agents.invoke.mcp_toml_as_upstreams", _fake_mcp_toml_as_upstreams)
     monkeypatch.delenv("OPENCODE_CONFIG_CONTENT", raising=False)
 
     list(
@@ -259,7 +258,7 @@ def test_codex_upstream_env_var_includes_mcp_toml_server(
     config = AgentConfig(cmd="codex", output_flag="--json-stream", transport=AgentTransport.CODEX)
     seen_env: list[dict[str, str]] = []
     monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", _fake_popen_capturing(seen_env))
-    monkeypatch.setattr("ralph.agents.invoke._mcp_toml_as_upstreams", _fake_mcp_toml_as_upstreams)
+    monkeypatch.setattr("ralph.agents.invoke.mcp_toml_as_upstreams", _fake_mcp_toml_as_upstreams)
 
     list(
         invoke_agent(
@@ -299,7 +298,7 @@ def test_claude_collision_mcp_toml_overrides_native_server(
     )
     seen_env: list[dict[str, str]] = []
     monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", _fake_popen_capturing(seen_env))
-    monkeypatch.setattr("ralph.agents.invoke._mcp_toml_as_upstreams", _fake_mcp_toml_as_upstreams)
+    monkeypatch.setattr("ralph.agents.invoke.mcp_toml_as_upstreams", _fake_mcp_toml_as_upstreams)
     monkeypatch.setattr("ralph.agents.invoke._provider_allowed_mcp_tool_names", lambda cfg, _ep: ())
     monkeypatch.setenv("HOME", str(fake_home))
 
@@ -328,7 +327,7 @@ def test_opencode_non_colliding_native_server_preserved(
     config = AgentConfig(cmd="opencode", output_flag="--json-stream")
     seen_env: list[dict[str, str]] = []
     monkeypatch.setattr("ralph.agents.invoke.subprocess.Popen", _fake_popen_capturing(seen_env))
-    monkeypatch.setattr("ralph.agents.invoke._mcp_toml_as_upstreams", _fake_mcp_toml_as_upstreams)
+    monkeypatch.setattr("ralph.agents.invoke.mcp_toml_as_upstreams", _fake_mcp_toml_as_upstreams)
     monkeypatch.setenv(
         "OPENCODE_CONFIG_CONTENT",
         json.dumps(

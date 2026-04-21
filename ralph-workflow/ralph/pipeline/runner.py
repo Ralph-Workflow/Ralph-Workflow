@@ -236,13 +236,13 @@ def _validate_custom_mcp_servers(workspace_root: Path) -> int:
     Tests can monkeypatch ``_VALIDATE_MCP`` and ``_PROBE_AGENT_TRANSPORTS`` to
     drive deterministic outcomes without spawning real upstream servers.
     """
-    from ralph.agents.transport_emit import _mcp_toml_as_upstreams  # noqa: PLC0415
+    from ralph.mcp.transport.common import mcp_toml_as_upstreams  # noqa: PLC0415
     from ralph.mcp.upstream.validation import (  # noqa: PLC0415
         UpstreamValidationError,
         strict_mode_from_env,
     )
 
-    upstreams = _mcp_toml_as_upstreams(workspace_root)
+    upstreams = mcp_toml_as_upstreams(workspace_root)
     if not upstreams:
         return 0
 

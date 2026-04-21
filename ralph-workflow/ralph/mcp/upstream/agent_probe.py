@@ -21,7 +21,9 @@ from typing import TYPE_CHECKING, cast
 
 from loguru import logger
 
-from ralph.agents import transport_emit as _transport_emit_module
+import ralph.mcp.transport.claude as _claude_transport
+import ralph.mcp.transport.codex as _codex_transport
+import ralph.mcp.transport.opencode as _opencode_transport
 from ralph.config.enums import AgentTransport
 from ralph.mcp.protocol.startup import (
     PreflightError,
@@ -127,16 +129,6 @@ def _probe_pair(
     )
 
 
-def _get_claude_mcp_config() -> _ClaudeMcpConfigFn:
-    """Get the claude_mcp_config function, allowing for test patching."""
-    return _transport_emit_module._claude_mcp_config
-
-
-def _get_build_opencode_provider_config() -> _BuildOpencodeProviderConfigFn:
-    """Get the build_opencode_provider_config function, allowing for test patching."""
-    return _transport_emit_module._build_opencode_provider_config
-
-
 def _probe_claude(server: UpstreamMcpServer, workspace_path: Path | None) -> AgentProbeReport:
     if server.transport == "stdio":
         return AgentProbeReport(
@@ -149,8 +141,7 @@ def _probe_claude(server: UpstreamMcpServer, workspace_path: Path | None) -> Age
         raise AgentTransportProbeError(
             f"server '{server.name}' is missing url for Claude http transport"
         )
-    claude_mcp_config = _get_claude_mcp_config()
-    config_blob = claude_mcp_config(server.url)
+    config_blob = _claude_transport.claude_mcp_config(server.url)
     parsed = _parse_json_obj(config_blob, "Claude MCP config")
     mcp_servers = parsed.get("mcpServers")
     if not isinstance(mcp_servers, dict):
@@ -170,7 +161,7 @@ def _probe_claude(server: UpstreamMcpServer, workspace_path: Path | None) -> Age
 
 
 def _probe_codex(server: UpstreamMcpServer, workspace_path: Path | None) -> AgentProbeReport:
-    codex_home_str, _upstreams = _prepare_codex_home_with_upstreams(
+    codex_home_str, _upstreams = _codex_transport.prepare_codex_home_with_upstreams(
         endpoint=None,
         workspace_path=workspace_path,
         existing_home=None,
@@ -235,8 +226,9 @@ def _probe_opencode(server: UpstreamMcpServer, workspace_path: Path | None) -> A
     inner: dict[str, object] = {"type": "remote", "url": server.url}
     existing_payload_obj: dict[str, object] = {"mcp": {server.name: inner}}
     existing_payload = json.dumps(existing_payload_obj)
-    build_opencode_config = _get_build_opencode_provider_config()
-    config_text, _upstreams = build_opencode_config(existing_payload, server.url)
+    config_text, _upstreams = _opencode_transport.build_opencode_provider_config(
+        existing_payload, server.url
+    )
     parsed = _parse_json_obj(config_text, "OpenCode provider config")
     mcp_section = parsed.get("mcp")
     if not isinstance(mcp_section, dict):
@@ -302,22 +294,6 @@ def _server_handshake(server: UpstreamMcpServer) -> None:
         return
     client = make_upstream_client(server)
     client.list_tools()
-
-
-def _prepare_codex_home_with_upstreams(
-    endpoint: str | None,
-    *,
-    workspace_path: Path | None,
-    existing_home: str | None,
-    system_prompt_file: str | None,
-) -> tuple[str, tuple[UpstreamMcpServer, ...]]:
-    """Prepare codex home dir and return upstreams. Delegates to transport_emit."""
-    return _transport_emit_module._prepare_codex_home_with_upstreams(
-        endpoint,
-        workspace_path=workspace_path,
-        existing_home=existing_home,
-        system_prompt_file=system_prompt_file,
-    )
 
 
 def _parse_json_obj(text: str, label: str) -> dict[str, object]:

@@ -23,6 +23,11 @@ Return a JSON object.
 
 - If the review is clean, use `{"status":"approved","summary":"..."}` or `{"status":"completed","summary":"..."}`.
 - After preparing the JSON payload, submit it with {{SUBMIT_ARTIFACT_TOOL_REFERENCE}} and only then call {{DECLARE_COMPLETE_TOOL_REFERENCE}}.
+- Use `content` for a freshly generated JSON string.
+- Use `content_path` only when resubmitting a JSON file that already exists on disk.
+- Never send both `content` and `content_path` in the same call.
+- Valid fresh-submit example: `{"artifact_type":"review_analysis_decision","content":"{\"status\":\"completed\",\"summary\":\"...\"}"}`.
+- Valid resubmit-from-disk example: `{"artifact_type":"review_analysis_decision","content_path":".agent/artifacts/review_analysis_decision.json"}`.
 - If changes are required, use `{"status":"request_changes","summary":"...","what_came_up_short":[...],"how_to_fix":[...]}`.
 - If the work must be rejected, use `{"status":"reject","summary":"...","what_came_up_short":[...],"how_to_fix":[...]}`.
 
@@ -30,11 +35,15 @@ For any non-passing review analysis, the following two fields are mandatory and 
 
 1. `what_came_up_short`
    - Enumerate every defect, regression, missing requirement, unsafe change, or verification gap.
+   - Include every issue that contributed to the failing status.
+   - If you omit a real failure cause, the analysis artifact is incomplete.
+   - Do not stop after the first problem if more issues were found.
    - Cite concrete evidence: file paths, failing tests, missing checks, or behavior mismatches.
    - Do not use vague summaries without specifics.
 
 2. `how_to_fix`
    - Provide detailed, ordered remediation steps that would allow the implementation to pass review on the next attempt.
+   - Include a fix for every item listed in `what_came_up_short`.
    - Include exact files to change, what to update in each file, which tests/checks to run, and what outcomes must be observed.
    - Make the instructions comprehensive enough that the developer can execute them directly.
 
