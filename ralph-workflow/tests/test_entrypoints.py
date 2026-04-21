@@ -1,4 +1,4 @@
-"""Tests for rare entrypoints and MCP lazy exports."""
+"""Tests for rare entrypoints and MCP package exports."""
 
 import builtins
 import importlib
@@ -53,14 +53,14 @@ def test_ralph_mcp_server_entrypoint_calls_main(monkeypatch: pytest.MonkeyPatch)
     assert called == ["called"]
 
 
-def test_mcp_tool_bridge_lazy_exports_and_error() -> None:
+def test_mcp_tool_bridge_exports_and_error() -> None:
+    """Test that ralph.mcp exports ToolBridge directly (not via __getattr__ lazy loading)."""
     module = importlib.reload(importlib.import_module("ralph.mcp"))
 
-    assert "ToolBridge" not in module.__dict__
-
+    # Direct imports mean ToolBridge is eagerly in __dict__
     tool_bridge_module = importlib.import_module("ralph.mcp.tools.bridge")
     assert module.ToolBridge is tool_bridge_module.ToolBridge
-    assert module.ToolBridge is module.__dict__["ToolBridge"]
+    assert "ToolBridge" in module.__dict__
 
     required_symbols = {"ToolBridge", "ToolBridgeError", "ToolDefinition", "ToolMetadata"}
     assert required_symbols.issubset(set(module.__all__))

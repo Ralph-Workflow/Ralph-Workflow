@@ -46,6 +46,11 @@ if TYPE_CHECKING:
 JsonObject = dict[str, object]
 ToolHandler = Callable[[object, object, JsonObject], object]
 
+# Example JSON snippets used in tool descriptions
+_EXAMPLE_PLAN_CONTENT = '{"summary": "placeholder"}'
+_EXAMPLE_COMMIT_CONTENT = '{"type": "commit", "subject": "placeholder"}'
+_EXAMPLE_STEPS_CONTENT = '{"steps": [{"step": "placeholder"}]}'
+
 
 class RegistrationHandler(Protocol):
     def __call__(
@@ -119,7 +124,9 @@ class LazyToolHandler:
         self._handler_name = handler_name
         self._session = session
         self._workspace = workspace
-        self._extra_kwargs: dict[str, object] = extra_kwargs if extra_kwargs is not None else {}
+        self._extra_kwargs: dict[str, object] = (
+            extra_kwargs if extra_kwargs is not None else {}
+        )
 
     def __call__(
         self,
@@ -162,7 +169,9 @@ class ToolBridge:
             raise ToolRegistrationError(f"Tool '{name}' is already registered")
         self._tools[name] = RegisteredTool(metadata=metadata, handler=handler)
 
-    def register_spec(self, spec: ToolSpec, *, session: object, workspace: object) -> None:
+    def register_spec(
+        self, spec: ToolSpec, *, session: object, workspace: object
+    ) -> None:
         """Register a tool from a complete lazy-loading spec."""
         self.register(
             spec.metadata,
@@ -188,7 +197,9 @@ class ToolBridge:
     def list_metadata(self) -> list[ToolMetadata]:
         """Return tool metadata in registration order."""
         return [
-            tool.metadata for tool in self._tools.values() if self._is_tool_allowed(tool.metadata)
+            tool.metadata
+            for tool in self._tools.values()
+            if self._is_tool_allowed(tool.metadata)
         ]
 
     def list_definitions(self) -> list[ToolDefinition]:
@@ -221,13 +232,16 @@ class ToolBridge:
         except Exception as exc:
             raise ToolDispatchError(f"Tool '{name}' failed: {exc}") from exc
 
-    def _is_tool_allowed(self, metadata: ToolMetadata, session: object | None = None) -> bool:
+    def _is_tool_allowed(
+        self, metadata: ToolMetadata, session: object | None = None
+    ) -> bool:
         effective_session = session or self._session
         if effective_session is None:
             return True
 
         checker = cast(
-            "Callable[[str], object] | None", getattr(effective_session, "check_capability", None)
+            "Callable[[str], object] | None",
+            getattr(effective_session, "check_capability", None),
         )
         if not callable(checker):
             return True
@@ -278,8 +292,9 @@ def _tool_specs(mcp_config: McpConfig) -> tuple[ToolSpec, ...]:
                 name=READ_FILE_TOOL,
                 description=(
                     "Read a UTF-8 text file from the workspace. "
-                    "Required: path (string). Returns file contents as text. "
-                    'Example: {"path": "README.md"}.'
+                    "Required param: path (string, relative or absolute path inside workspace). "
+                    "Returns the file contents as text string. "
+                    'Example: {"path": "ralph-workflow/README.md"} returns the file text.'
                 ),
                 input_schema={
                     "type": "object",
@@ -287,8 +302,9 @@ def _tool_specs(mcp_config: McpConfig) -> tuple[ToolSpec, ...]:
                         "path": {
                             "type": "string",
                             "description": (
-                                "File path, relative or absolute inside workspace "
-                                "(example: 'README.md', '/tmp/file.txt')."
+                                "File path as a string, relative or absolute inside the workspace "
+                                "(example values: 'README.md', '/tmp/file.txt', "
+                                "'ralph-workflow/ralph/__init__.py')."
                             ),
                         },
                     },
@@ -303,9 +319,11 @@ def _tool_specs(mcp_config: McpConfig) -> tuple[ToolSpec, ...]:
             metadata=_metadata(
                 name=WRITE_FILE_TOOL,
                 description=(
-                    "Write UTF-8 text to a file, creating parent dirs as needed. "
-                    "Required: path and content (both strings). Overwrites existing files. "
-                    'Example: {"path": "tmp/notes.md", "content": "hello"}.'
+                    "Write UTF-8 text to a file in the workspace, creating parent directories as "
+                    "needed. Required params: path (string) and content (string). Overwrites "
+                    "existing files if they exist. Returns nothing on success. "
+                    'Example: {"path": "tmp/notes.md", "content": "hello world"} creates '
+                    "or overwrites tmp/notes.md with 'hello world'."
                 ),
                 input_schema={
                     "type": "object",
@@ -313,13 +331,19 @@ def _tool_specs(mcp_config: McpConfig) -> tuple[ToolSpec, ...]:
                         "path": {
                             "type": "string",
                             "description": (
-                                "Destination path, relative or absolute inside workspace "
-                                "(example: 'tmp/notes.md')."
+                                "Destination file path as a string, relative or absolute inside "
+                                "the workspace (example values: 'tmp/notes.md', "
+                                "'docs/changes.txt', '/tmp/output.json')."
                             ),
                         },
                         "content": {
                             "type": "string",
-                            "description": "Text content to write to the file.",
+                            "description": (
+                                "Text content to write as a UTF-8 string "
+                                "(example values: 'hello world', "
+                                "'# Heading\\n\\nSome content here', "
+                                "'{\"key\": \"value\"}')."
+                            ),
                         },
                     },
                     "required": ["path", "content"],
@@ -333,10 +357,12 @@ def _tool_specs(mcp_config: McpConfig) -> tuple[ToolSpec, ...]:
             metadata=_metadata(
                 name=LIST_DIRECTORY_TOOL,
                 description=(
-                    "List directory entries. Required: path (string). "
-                    "Optional: recursive (boolean, default false). "
-                    "Returns array of entries with type (file/dir) and path. "
-                    'Example: {"path": "ralph", "recursive": false}.'
+                    "List entries in a directory. Required param: path (string). "
+                    "Optional param: recursive (boolean, default false). "
+                    "Returns an array of entries, each with type ('file' or 'dir'), "
+                    "name, and relative path. "
+                    'Example: {"path": "ralph-workflow/ralph", "recursive": false} '
+                    "lists files and folders in the ralph directory without recursion."
                 ),
                 input_schema={
                     "type": "object",
@@ -344,14 +370,16 @@ def _tool_specs(mcp_config: McpConfig) -> tuple[ToolSpec, ...]:
                         "path": {
                             "type": "string",
                             "description": (
-                                "Directory path, relative or absolute inside workspace "
-                                "(example: '.', 'ralph')."
+                                "Directory path as a string, relative or absolute inside the "
+                                "workspace (example values: '.', 'ralph', "
+                                "'ralph-workflow/ralph/mcp')."
                             ),
                         },
                         "recursive": {
                             "type": "boolean",
                             "description": (
-                                "List subdirectories recursively. Default false."
+                                "Whether to list subdirectories recursively as a boolean "
+                                "(example values: false, true)."
                             ),
                             "default": False,
                         },
@@ -368,8 +396,10 @@ def _tool_specs(mcp_config: McpConfig) -> tuple[ToolSpec, ...]:
                 name="search_files",
                 description=(
                     "Search for files matching a glob pattern within a directory. "
-                    "Required: pattern and path (both strings). "
-                    'Example: {"pattern": "*.py", "path": "."}.'
+                    "Required params: pattern (string, glob style) and path (string). "
+                    "Returns an array of matching file paths. "
+                    'Example: {"pattern": "*.py", "path": "."} '
+                    "finds all Python files in the current directory."
                 ),
                 input_schema={
                     "type": "object",
@@ -377,14 +407,17 @@ def _tool_specs(mcp_config: McpConfig) -> tuple[ToolSpec, ...]:
                         "pattern": {
                             "type": "string",
                             "description": (
-                                "Glob pattern to match (example: '*.py', '**/*.md')."
+                                "Glob pattern as a string to match file names "
+                                "(example values: '*.py', '**/*.md', 'test_*.py', "
+                                "'config/*.toml')."
                             ),
                         },
                         "path": {
                             "type": "string",
                             "description": (
-                                "Directory to search in, relative or absolute inside workspace "
-                                "(example: 'ralph')."
+                                "Directory path as a string to search inside, relative or "
+                                "absolute inside the workspace "
+                                "(example values: '.', 'ralph', 'tests')."
                             ),
                         },
                     },
@@ -400,7 +433,9 @@ def _tool_specs(mcp_config: McpConfig) -> tuple[ToolSpec, ...]:
                 name=GIT_STATUS_TOOL,
                 description=(
                     "Get git status showing modified, staged, and untracked files. "
-                    "No parameters required."
+                    "No parameters required. Returns a status object with lists of modified, "
+                    "staged, and untracked files. "
+                    "Example: {} returns git status output."
                 ),
                 input_schema={"type": "object", "properties": {}},
                 required_capability="GitStatusRead",
@@ -413,7 +448,10 @@ def _tool_specs(mcp_config: McpConfig) -> tuple[ToolSpec, ...]:
                 name=GIT_DIFF_TOOL,
                 description=(
                     "Get git diff showing line-by-line differences in modified files. "
-                    "Optional: args (array of extra git diff arguments)."
+                    "Optional param: args (array of extra git diff arguments as strings). "
+                    "Returns diff output with line changes. "
+                    'Example: {"args": []} shows full diff; '
+                    '{"args": ["--stat"]} shows summary only.'
                 ),
                 input_schema={
                     "type": "object",
@@ -422,7 +460,8 @@ def _tool_specs(mcp_config: McpConfig) -> tuple[ToolSpec, ...]:
                             "type": "array",
                             "items": {"type": "string"},
                             "description": (
-                                "Extra git diff args (example: ['--stat'] for summary)."
+                                "Array of extra git diff arguments as strings "
+                                "(example values: [], ['--stat'], ['--name-only'])."
                             ),
                         },
                     },
@@ -437,14 +476,19 @@ def _tool_specs(mcp_config: McpConfig) -> tuple[ToolSpec, ...]:
                 name=GIT_LOG_TOOL,
                 description=(
                     "Get git commit log with hash, author, date, and message. "
-                    "Optional: count (number, default 10)."
+                    "Optional param: count (number, default 10). "
+                    "Returns an array of commit objects. "
+                    'Example: {"count": 5} returns the 5 most recent commits.'
                 ),
                 input_schema={
                     "type": "object",
                     "properties": {
                         "count": {
                             "type": "number",
-                            "description": "Number of recent commits to show (default: 10).",
+                            "description": (
+                                "Number of recent commits to return as an integer "
+                                "(default: 10, example values: 5, 20, 100)."
+                            ),
                             "default": 10,
                         },
                     },
@@ -459,8 +503,10 @@ def _tool_specs(mcp_config: McpConfig) -> tuple[ToolSpec, ...]:
                 name=GIT_SHOW_TOOL,
                 description=(
                     "Show a git object (commit, tag, tree, blob) with full details. "
-                    "Required: ref (string, e.g. commit sha, branch, tag). "
-                    'Example: {"ref": "HEAD~1"}.'
+                    "Required param: ref (string, git object reference). "
+                    "Returns the object contents. "
+                    'Example: {"ref": "HEAD~1"} shows the parent commit; '
+                    '{"ref": "v1.0.0"} shows the tag details.'
                 ),
                 input_schema={
                     "type": "object",
@@ -468,8 +514,9 @@ def _tool_specs(mcp_config: McpConfig) -> tuple[ToolSpec, ...]:
                         "ref": {
                             "type": "string",
                             "description": (
-                                "Git reference: commit sha, branch name, or tag "
-                                "(example: 'HEAD~1', 'main', 'v1.0')."
+                                "Git object reference as a string such as a commit SHA, branch "
+                                "name, or tag "
+                                "(example values: 'HEAD~1', 'main', 'v1.0.0', 'abc123def')."
                             ),
                         },
                     },
@@ -484,11 +531,14 @@ def _tool_specs(mcp_config: McpConfig) -> tuple[ToolSpec, ...]:
             metadata=_metadata(
                 name=EXEC_TOOL,
                 description=(
-                    "Execute a shell command. Required: command (string, no shell operators). "
-                    "Optional: args (string array) and timeout_ms (number, default 30000). "
-                    "Returns stdout, stderr, exit_code. "
-                    'Example: {"command": "ls", "args": ["-la"], "timeout_ms": 5000}. '
-                    "Prefer structured tools when available."
+                    "Execute a shell command in the workspace. Required param: command "
+                    "(string, shell command without operators). Optional params: args "
+                    "(string array) and timeout_ms (number, default 30000). Returns "
+                    "stdout, stderr, and exit_code. Note: some commands may be blacklisted; "
+                    "prefer structured tools (read_file, write_file, git_status) when "
+                    "available. "
+                    'Example: {"command": "ls", "args": ["-la"], "timeout_ms": 5000} '
+                    "lists files with details, timeout 5s."
                 ),
                 input_schema={
                     "type": "object",
@@ -496,22 +546,23 @@ def _tool_specs(mcp_config: McpConfig) -> tuple[ToolSpec, ...]:
                         "command": {
                             "type": "string",
                             "description": (
-                                "Command to execute without shell operators "
-                                "(example: 'ls', 'git status')."
+                                "Shell command to execute as a string without shell operators "
+                                "(example values: 'ls', 'git status', 'python --version')."
                             ),
                         },
                         "args": {
                             "type": "array",
                             "items": {"type": "string"},
                             "description": (
-                                "Command arguments as separate strings "
-                                "(example: ['-la'])."
+                                "Command arguments as an array of strings, one per element "
+                                "(example values: ['-la'], ['--help'], ['.', '--max-depth', '2'])."
                             ),
                         },
                         "timeout_ms": {
                             "type": "number",
                             "description": (
-                                "Timeout in milliseconds (default: 30000, example: 5000)."
+                                "Timeout in milliseconds as a number "
+                                "(default: 30000, example values: 5000, 10000, 60000)."
                             ),
                             "default": 30000,
                         },
@@ -528,9 +579,12 @@ def _tool_specs(mcp_config: McpConfig) -> tuple[ToolSpec, ...]:
                 name=SUBMIT_ARTIFACT_TOOL,
                 description=(
                     "Submit a structured artifact (plan, development_result, issues, etc.). "
-                    "Required: artifact_type (string). "
-                    "Optional: content (JSON string) or content_path (path to JSON file). "
-                    'Example: {"artifact_type": "plan", "content": "{\"summary\":{...}}"}.'
+                    "Required param: artifact_type (string). Optional params: content "
+                    "(JSON string) or content_path (string, path to JSON file). "
+                    "Returns confirmation on success. "
+                    'Example: {"artifact_type": "plan", "content": '
+                    + _EXAMPLE_PLAN_CONTENT
+                    + "} submits a plan artifact."
                 ),
                 input_schema={
                     "type": "object",
@@ -538,22 +592,27 @@ def _tool_specs(mcp_config: McpConfig) -> tuple[ToolSpec, ...]:
                         "artifact_type": {
                             "type": "string",
                             "description": (
-                                "Artifact type: plan, development_result, issues, "
-                                "fix_result, commit_message, "
-                                "development_analysis_decision, review_analysis_decision."
+                                "Type of artifact as a string: plan, development_result, "
+                                "issues, fix_result, commit_message, "
+                                "development_analysis_decision, or review_analysis_decision "
+                                "(example values: 'plan', 'development_result', 'issues')."
                             ),
                         },
                         "content": {
                             "type": "string",
                             "description": (
-                                "JSON-serialized artifact payload as a string."
+                                "Artifact payload as a JSON-serialized string "
+                                "(example values: " + _EXAMPLE_PLAN_CONTENT + ", "
+                                + _EXAMPLE_COMMIT_CONTENT + ")."
                             ),
                         },
                         "content_path": {
                             "type": "string",
                             "description": (
-                                "Path to JSON file with artifact payload. "
-                                "Use instead of content to submit from disk."
+                                "Path to a JSON file containing the artifact payload, "
+                                "use instead of content to submit from disk "
+                                "(example values: '.agent/artifacts/plan.json', "
+                                "'tmp/result.json')."
                             ),
                         },
                     },
@@ -569,9 +628,12 @@ def _tool_specs(mcp_config: McpConfig) -> tuple[ToolSpec, ...]:
                 name=SUBMIT_PLAN_SECTION_TOOL,
                 description=(
                     "Submit a single section of the plan artifact for incremental validation. "
-                    "Required: section (string) and content (string). "
-                    "Optional: mode (replace or append, default replace). "
-                    "Call ralph_finalize_plan when all sections are staged."
+                    "Required params: section (string) and content (string). Optional param: "
+                    "mode (string, 'replace' or 'append', default 'replace'). "
+                    "Call ralph_finalize_plan when all sections are staged. "
+                    'Example: {"section": "summary", "content": '
+                    + _EXAMPLE_PLAN_CONTENT
+                    + ', "mode": "replace"} updates the summary section.'
                 ),
                 input_schema={
                     "type": "object",
@@ -579,20 +641,27 @@ def _tool_specs(mcp_config: McpConfig) -> tuple[ToolSpec, ...]:
                         "section": {
                             "type": "string",
                             "description": (
-                                "Section name: summary, skills_mcp, steps, "
-                                "critical_files, risks_mitigations, "
-                                "verification_strategy, or parallel_plan."
+                                "Section name as a string: summary, skills_mcp, steps, "
+                                "critical_files, risks_mitigations, verification_strategy, "
+                                "or parallel_plan "
+                                "(example values: 'summary', 'steps', 'risks_mitigations')."
                             ),
                         },
                         "content": {
                             "type": "string",
-                            "description": "JSON-serialized section payload.",
+                            "description": (
+                                "JSON-serialized section payload as a string "
+                                "(example values: " + _EXAMPLE_PLAN_CONTENT + ", "
+                                + _EXAMPLE_STEPS_CONTENT + ")."
+                            ),
                         },
                         "mode": {
                             "type": "string",
                             "enum": ["replace", "append"],
                             "description": (
-                                "replace (default) overwrites; append adds to list."
+                                "Mode as a string: 'replace' overwrites the section "
+                                "(default), 'append' adds to a list section "
+                                "(example values: 'replace', 'append')."
                             ),
                         },
                     },
@@ -608,7 +677,9 @@ def _tool_specs(mcp_config: McpConfig) -> tuple[ToolSpec, ...]:
                 name=FINALIZE_PLAN_TOOL,
                 description=(
                     "Validate the staged plan draft and write .agent/artifacts/plan.json. "
-                    "Fails if required sections are missing; draft is preserved on failure."
+                    "Fails with an error if required sections are missing; "
+                    "the draft is preserved on failure. No parameters required. "
+                    "Example: {} validates and writes the plan."
                 ),
                 input_schema={"type": "object", "properties": {}},
                 required_capability="ArtifactSubmit",
@@ -620,8 +691,10 @@ def _tool_specs(mcp_config: McpConfig) -> tuple[ToolSpec, ...]:
             metadata=_metadata(
                 name=GET_PLAN_DRAFT_TOOL,
                 description=(
-                    "Return the currently staged plan draft (sections and contents). "
-                    "Useful for resuming after restart or confirming state."
+                    "Return the currently staged plan draft with all sections and contents. "
+                    "Useful for resuming after a restart or confirming current state. "
+                    "No parameters required. "
+                    "Example: {} returns the current draft state."
                 ),
                 input_schema={"type": "object", "properties": {}},
                 required_capability="ArtifactSubmit",
@@ -632,7 +705,11 @@ def _tool_specs(mcp_config: McpConfig) -> tuple[ToolSpec, ...]:
         ToolSpec(
             metadata=_metadata(
                 name=DISCARD_PLAN_DRAFT_TOOL,
-                description="Delete the staged plan draft to start fresh.",
+                description=(
+                    "Delete the staged plan draft to start fresh. "
+                    "No parameters required. Use with caution as this cannot be undone. "
+                    "Example: {} deletes the current draft."
+                ),
                 input_schema={"type": "object", "properties": {}},
                 required_capability="ArtifactSubmit",
             ),
@@ -644,19 +721,28 @@ def _tool_specs(mcp_config: McpConfig) -> tuple[ToolSpec, ...]:
                 name=REPORT_PROGRESS_TOOL,
                 description=(
                     "Report progress status to the agent orchestrator. "
-                    "Required: status (string). Optional: note (string). "
-                    'Example: {"status": "Processing 50/100 files"}.'
+                    "Required param: status (string). Optional param: note (string). "
+                    "Returns confirmation on success. "
+                    'Example: {"status": "Processing 50/100 files", "note": "Phase 2 of 3"} '
+                    "reports current progress with an optional note."
                 ),
                 input_schema={
                     "type": "object",
                     "properties": {
                         "status": {
                             "type": "string",
-                            "description": "Status message describing current progress.",
+                            "description": (
+                                "Status message describing current progress as a string "
+                                "(example values: 'Processing 50/100 files', "
+                                "'Running tests...', 'Complete')."
+                            ),
                         },
                         "note": {
                             "type": "string",
-                            "description": "Optional additional context.",
+                            "description": (
+                                "Optional additional context or details as a string "
+                                "(example values: 'Phase 2 of 3', 'Expected: 2 min')."
+                            ),
                         },
                     },
                     "required": ["status"],
@@ -671,15 +757,21 @@ def _tool_specs(mcp_config: McpConfig) -> tuple[ToolSpec, ...]:
                 name=DECLARE_COMPLETE_TOOL,
                 description=(
                     "Declare that the agent has completed its task. "
-                    "Optional: summary (string describing what was accomplished). "
-                    'Example: {"summary": "Fixed login bug"}.'
+                    "Optional param: summary (string describing what was accomplished). "
+                    "Returns confirmation on success. "
+                    'Example: {"summary": "Fixed login bug and added tests"} '
+                    "signals task completion with a summary."
                 ),
                 input_schema={
                     "type": "object",
                     "properties": {
                         "summary": {
                             "type": "string",
-                            "description": "Summary of what was accomplished.",
+                            "description": (
+                                "Summary of what was accomplished as a string "
+                                "(example values: 'Fixed login bug', "
+                                "'Completed refactor of auth module')."
+                            ),
                         },
                     },
                 },
@@ -693,8 +785,9 @@ def _tool_specs(mcp_config: McpConfig) -> tuple[ToolSpec, ...]:
                 name=READ_ENV_TOOL,
                 description=(
                     "Read an environment variable from the Ralph process. "
-                    "Required: name (string). "
-                    'Example: {"name": "HOME"}.'
+                    "Required param: name (string). "
+                    "Returns the environment variable value as a string, or null if not set. "
+                    'Example: {"name": "HOME"} returns the home directory path.'
                 ),
                 input_schema={
                     "type": "object",
@@ -702,8 +795,8 @@ def _tool_specs(mcp_config: McpConfig) -> tuple[ToolSpec, ...]:
                         "name": {
                             "type": "string",
                             "description": (
-                                "Environment variable name "
-                                "(example: 'HOME', 'PATH')."
+                                "Environment variable name as a string "
+                                "(example values: 'HOME', 'PATH', 'USER', 'EDITOR')."
                             ),
                         },
                     },
@@ -719,8 +812,9 @@ def _tool_specs(mcp_config: McpConfig) -> tuple[ToolSpec, ...]:
                 name=LIST_DIRECTORY_RECURSIVE_TOOL,
                 description=(
                     "List all files and directories recursively starting from path. "
-                    "Required: path (string). "
-                    'Example: {"path": "ralph"}.'
+                    "Required param: path (string). "
+                    "Returns a flat array of all entries with their full paths. "
+                    'Example: {"path": "ralph"} returns all files and folders under ralph/.'
                 ),
                 input_schema={
                     "type": "object",
@@ -728,8 +822,9 @@ def _tool_specs(mcp_config: McpConfig) -> tuple[ToolSpec, ...]:
                         "path": {
                             "type": "string",
                             "description": (
-                                "Root directory for recursive listing, relative or absolute "
-                                "inside workspace (example: 'ralph')."
+                                "Root directory path as a string for recursive listing, "
+                                "relative or absolute inside the workspace "
+                                "(example values: 'ralph', '.', 'src')."
                             ),
                         },
                     },
@@ -746,8 +841,9 @@ def _tool_specs(mcp_config: McpConfig) -> tuple[ToolSpec, ...]:
                 description=(
                     "Return a recursive directory tree showing all files and folders. "
                     "Compatibility alias for tools expecting standard directory_tree name. "
-                    "Required: path (string). "
-                    'Example: {"path": "."}.'
+                    "Required param: path (string). "
+                    "Returns a tree structure with nested entries. "
+                    'Example: {"path": "."} returns the full directory tree from current dir.'
                 ),
                 input_schema={
                     "type": "object",
@@ -755,8 +851,9 @@ def _tool_specs(mcp_config: McpConfig) -> tuple[ToolSpec, ...]:
                         "path": {
                             "type": "string",
                             "description": (
-                                "Root directory for tree view, relative or absolute "
-                                "inside workspace (example: '.')."
+                                "Root directory path as a string for tree view, relative or "
+                                "absolute inside the workspace "
+                                "(example values: '.', 'ralph', 'src')."
                             ),
                         },
                     },
@@ -772,9 +869,11 @@ def _tool_specs(mcp_config: McpConfig) -> tuple[ToolSpec, ...]:
                 name=COORDINATE_TOOL,
                 description=(
                     "Coordinate parallel worker activities. "
-                    "Required: action (claim, release, status, ack). "
-                    "Optional: work_unit_id and payload. "
-                    'Example: {"action": "claim", "work_unit_id": "task-001"}.'
+                    "Required param: action (string, one of: claim, release, status, ack). "
+                    "Optional params: work_unit_id (string) and payload (object). "
+                    "Returns coordination result. "
+                    'Example: {"action": "claim", "work_unit_id": "task-001"} '
+                    "claims the work unit 'task-001'."
                 ),
                 input_schema={
                     "type": "object",
@@ -782,16 +881,23 @@ def _tool_specs(mcp_config: McpConfig) -> tuple[ToolSpec, ...]:
                         "action": {
                             "type": "string",
                             "description": (
-                                "Coordination action: claim, release, status, or ack."
+                                "Coordination action as a string: claim, release, status, or "
+                                "ack (example values: 'claim', 'release', 'status', 'ack')."
                             ),
                         },
                         "work_unit_id": {
                             "type": "string",
-                            "description": "Optional work unit identifier.",
+                            "description": (
+                                "Work unit identifier as a string "
+                                "(example values: 'task-001', 'worker-5', 'build-123')."
+                            ),
                         },
                         "payload": {
                             "type": "object",
-                            "description": "Optional coordination payload as key-value pairs.",
+                            "description": (
+                                "Optional coordination payload as a key-value object "
+                                "(example values: {'priority': 'high'}, {'status': 'ready'})."
+                            ),
                         },
                     },
                     "required": ["action"],
@@ -809,21 +915,30 @@ def _tool_specs(mcp_config: McpConfig) -> tuple[ToolSpec, ...]:
                     name=WEB_SEARCH_TOOL,
                     description=(
                         "Search the web using a multi-backend fallback chain. "
-                        "Required: query (string). Optional: limit (integer, default 10, max 25). "
-                        'Example: {"query": "python 3.12 features", "limit": 5}.'
+                        "Required param: query (string). Optional param: limit (integer, "
+                        "default 10, max 25). Returns search results with titles, URLs, "
+                        "and snippets. "
+                        'Example: {"query": "python 3.12 features", "limit": 5} '
+                        "returns 5 search results about Python 3.12."
                     ),
                     input_schema={
                         "type": "object",
                         "properties": {
                             "query": {
                                 "type": "string",
-                                "description": "Search query string (example: 'python features').",
+                                "description": (
+                                    "Search query as a string "
+                                    "(example values: 'python features', 'rust async')."
+                                ),
                             },
                             "limit": {
                                 "type": "integer",
                                 "minimum": 1,
                                 "maximum": 25,
-                                "description": "Max results to return (default: 10, max: 25).",
+                                "description": (
+                                    "Maximum number of results to return as an integer "
+                                    "(default: 10, max: 25, example values: 5, 10, 20)."
+                                ),
                                 "default": 10,
                             },
                         },
@@ -838,7 +953,9 @@ def _tool_specs(mcp_config: McpConfig) -> tuple[ToolSpec, ...]:
     return tuple(_specs)
 
 
-def _attach_upstream_registry(bridge: ToolBridge, upstream_registry: UpstreamRegistry) -> None:
+def _attach_upstream_registry(
+    bridge: ToolBridge, upstream_registry: UpstreamRegistry
+) -> None:
     for proxied_tool in upstream_registry.tool_definitions():
         metadata = ToolMetadata(
             definition=ToolDefinition(

@@ -10,12 +10,6 @@ bridge layer and ``ralph.mcp.server`` for standalone server helpers.
 
 from __future__ import annotations
 
-from importlib import import_module
-from typing import TYPE_CHECKING, cast
-
-if TYPE_CHECKING:
-    from types import ModuleType
-
 from ralph.mcp.artifacts.bridge import (
     BridgeConfig,
     BridgeError,
@@ -40,13 +34,12 @@ from ralph.mcp.protocol.transport import (
     StdioTransport,
     TransportError,
 )
-
-if TYPE_CHECKING:
-    ToolBridge: type
-    ToolBridgeError: type
-    ToolDefinition: type
-    ToolMetadata: type
-
+from ralph.mcp.tools.bridge import (
+    ToolBridge,
+    ToolBridgeError,
+    ToolDefinition,
+    ToolMetadata,
+)
 
 __all__ = [
     "ArtifactError",
@@ -70,21 +63,3 @@ __all__ = [
     "submit_artifact",
     "update_artifact",
 ]
-
-
-_TOOL_BRIDGE_SYMBOLS = {
-    "ToolBridge",
-    "ToolBridgeError",
-    "ToolDefinition",
-    "ToolMetadata",
-}
-
-
-def __getattr__(name: str) -> object:
-    if name in _TOOL_BRIDGE_SYMBOLS:
-        module: ModuleType = import_module(".tools.bridge", __name__)
-        value = cast("object", getattr(module, name))
-        module_globals = cast("dict[str, object]", globals())
-        module_globals[name] = value
-        return value
-    raise AttributeError(f"module {__name__} has no attribute {name}")
