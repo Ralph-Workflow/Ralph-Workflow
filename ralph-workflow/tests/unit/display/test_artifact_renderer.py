@@ -12,6 +12,7 @@ if TYPE_CHECKING:
 from ralph.display.artifact_renderer import (
     render_analysis_decision,
     render_commit_message,
+    render_development_artifact,
     render_fix_artifact,
     render_plan_artifact,
     render_review_artifact,
@@ -80,6 +81,53 @@ class TestRenderPlanArtifact:
         assert "Fix pipeline routing" in output
         assert "api" in output
 
+    def test_renders_fresh_plan_handoff_when_plan_json_exists(self, tmp_path: Path) -> None:
+        agent_dir = tmp_path / ".agent"
+        artifacts_dir = agent_dir / "artifacts"
+        artifacts_dir.mkdir(parents=True)
+        (agent_dir / "PLAN.md").write_text("STALE PLAN", encoding="utf-8")
+        (artifacts_dir / "plan.json").write_text(
+            json.dumps(
+                {
+                    "type": "plan",
+                    "content": {
+                        "summary": {
+                            "context": "Fresh plan context",
+                            "scope_items": [
+                                {"text": "Refresh PLAN.md before rendering"},
+                                {"text": "Keep JSON authoritative"},
+                                {"text": "Show the full handoff to users"},
+                            ],
+                        },
+                        "steps": [
+                            {
+                                "number": 1,
+                                "title": "Render the fresh handoff",
+                                "content": "Do not trust stale markdown",
+                            }
+                        ],
+                        "critical_files": {
+                            "primary_files": [
+                                {"path": "ralph/display/artifact_renderer.py", "action": "modify"}
+                            ]
+                        },
+                        "risks_mitigations": [
+                            {"risk": "Stale plan", "mitigation": "Regenerate from JSON"}
+                        ],
+                        "verification_strategy": [
+                            {"method": "pytest", "expected_outcome": "fresh handoff renders"}
+                        ],
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+        console = _make_console()
+        render_plan_artifact(tmp_path, console)
+        output = _console_output(console)
+        assert "Fresh plan context" in output
+        assert "STALE PLAN" not in output
+
     def test_no_output_when_file_absent(self, tmp_path: Path) -> None:
         console = _make_console()
         render_plan_artifact(tmp_path, console)
@@ -103,7 +151,7 @@ class TestRenderAnalysisDecision:
         agent_dir = tmp_path / ".agent"
         agent_dir.mkdir(parents=True)
         (agent_dir / "DEVELOPMENT_ANALYSIS_DECISION.md").write_text(
-            "# Development Analysis Decision\n\n## Summary\n\nUse the markdown handoff.\n",
+            "STALE ANALYSIS",
             encoding="utf-8",
         )
         artifacts_dir = agent_dir / "artifacts"
@@ -111,9 +159,12 @@ class TestRenderAnalysisDecision:
         (artifacts_dir / "development_analysis_decision.json").write_text(
             json.dumps(
                 {
-                    "decision": "approved",
-                    "reason": "Stale JSON should not win",
-                    "timestamp": "2026-04-19T12:00:00Z",
+                    "type": "development_analysis_decision",
+                    "content": {
+                        "status": "request_changes",
+                        "summary": "Use the freshly regenerated handoff.",
+                        "how_to_fix": ["Do not trust stale markdown."],
+                    },
                 }
             ),
             encoding="utf-8",
@@ -122,8 +173,8 @@ class TestRenderAnalysisDecision:
         render_analysis_decision(tmp_path, "development_analysis", console)
         output = _console_output(console)
         assert "ANALYSIS: development_analysis" in output
-        assert "Use the markdown handoff." in output
-        assert "Stale JSON should not win" not in output
+        assert "Use the freshly regenerated handoff." in output
+        assert "STALE ANALYSIS" not in output
 
     def test_renders_analysis_block_when_file_present(self, tmp_path: Path) -> None:
         artifacts_dir = tmp_path / ".agent" / "artifacts"
@@ -131,9 +182,11 @@ class TestRenderAnalysisDecision:
         (artifacts_dir / "development_analysis_decision.json").write_text(
             json.dumps(
                 {
-                    "decision": "approved",
-                    "reason": "Code looks good",
-                    "timestamp": "2026-04-19T12:00:00Z",
+                    "type": "development_analysis_decision",
+                    "content": {
+                        "status": "approved",
+                        "summary": "Code looks good",
+                    },
                 }
             ),
             encoding="utf-8",
@@ -209,6 +262,21 @@ class TestRenderCommitMessage:
         assert output == ""
 
 
+class TestRenderDevelopmentArtifact:
+    def test_renders_development_markdown_handoff_when_present(self, tmp_path: Path) -> None:
+        agent_dir = tmp_path / ".agent"
+        agent_dir.mkdir(parents=True)
+        (agent_dir / "DEVELOPMENT_RESULT.md").write_text(
+            "# Development Result\n\n## Summary\n\nImplemented the feature.\n",
+            encoding="utf-8",
+        )
+        console = _make_console()
+        render_development_artifact(tmp_path, console)
+        output = _console_output(console)
+        assert "DEVELOPMENT RESULT" in output
+        assert "Implemented the feature." in output
+
+
 class TestRenderReviewArtifact:
     def test_renders_review_markdown_handoff_when_present(self, tmp_path: Path) -> None:
         agent_dir = tmp_path / ".agent"
@@ -222,6 +290,36 @@ class TestRenderReviewArtifact:
         output = _console_output(console)
         assert "REVIEW ISSUES" in output
         assert "Review found gaps." in output
+
+    def test_renders_fresh_review_handoff_when_issues_json_exists(self, tmp_path: Path) -> None:
+        agent_dir = tmp_path / ".agent"
+        artifacts_dir = agent_dir / "artifacts"
+        artifacts_dir.mkdir(parents=True)
+        (agent_dir / "ISSUES.md").write_text("STALE ISSUES", encoding="utf-8")
+        (artifacts_dir / "issues.json").write_text(
+            json.dumps(
+                {
+                    "type": "issues",
+                    "content": {
+                        "status": "issues_found",
+                        "summary": "Fresh review findings.",
+                        "issues": [
+                            {
+                                "path": "ralph/pipeline/runner.py",
+                                "severity": "high",
+                                "summary": "Refresh ISSUES.md before rendering.",
+                            }
+                        ],
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+        console = _make_console()
+        render_review_artifact(tmp_path, console)
+        output = _console_output(console)
+        assert "Fresh review findings." in output
+        assert "STALE ISSUES" not in output
 
 
 class TestRenderFixArtifact:
@@ -266,7 +364,11 @@ class TestRenderFixArtifact:
         (artifacts_dir / "fix_result.json").write_text(
             json.dumps(
                 {
-                    "fixed": ["file1.txt", "file2.py"],
+                    "type": "fix_result",
+                    "content": {
+                        "summary": "Applied the fixes.",
+                        "files_changed": "- file1.txt\n- file2.py",
+                    },
                 }
             ),
             encoding="utf-8",
@@ -275,7 +377,7 @@ class TestRenderFixArtifact:
         render_fix_artifact(tmp_path, console)
         output = _console_output(console)
         assert "FIX" in output
-        assert "2 item(s) fixed" in output
+        assert "Applied the fixes." in output
 
     def test_no_output_when_no_file_present(self, tmp_path: Path) -> None:
         console = _make_console()

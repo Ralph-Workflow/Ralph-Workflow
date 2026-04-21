@@ -12,12 +12,10 @@ without invoking the development agent for a plan that asked for nothing.
 from __future__ import annotations
 
 import json
-from pathlib import Path
 
 from loguru import logger
 
 from ralph.config.enums import AnalysisDecision
-from ralph.display.artifact_renderer import render_analysis_decision
 from ralph.mcp.artifacts.plan import (
     PLAN_ARTIFACT_PATH,
     PlanArtifactValidationError,
@@ -105,6 +103,7 @@ def handle_development(effect: Effect, ctx: PhaseContext) -> list[Event]:
                     recoverable=True,
                 )
             ]
+
         return [PipelineEvent.AGENT_SUCCESS]
 
     return []
@@ -165,11 +164,6 @@ def handle_development_analysis(effect: Effect, ctx: PhaseContext) -> list[Event
         # Read the analysis artifact to determine routing
         decision = parse_analysis_decision(ctx, "development_analysis")
         logger.info("Development analysis decision: {}", decision)
-
-        # Render the analysis decision block for the user
-        if ctx.console is not None:
-            workspace_root = Path(ctx.workspace.absolute_path("."))
-            render_analysis_decision(workspace_root, "development_analysis", ctx.console)
 
         if decision in (AnalysisDecision.PROCEED, AnalysisDecision.COMPLETE):
             return [PipelineEvent.ANALYSIS_SUCCESS]

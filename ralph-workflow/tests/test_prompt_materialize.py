@@ -215,6 +215,7 @@ def test_materialize_development_prompt_uses_analysis_feedback_handoff(
     rendered = workspace.read(prompt_path)
     assert str(tmp_path / ".agent" / "DEVELOPMENT_ANALYSIS_DECISION.md") in rendered
     assert "Read the complete analysis feedback from file at" in rendered
+    assert "This file is the authoritative source for analysis feedback in this prompt." in rendered
     assert "Need another iteration." not in rendered
 
 
@@ -367,6 +368,10 @@ def test_materialize_development_prefers_structured_plan_artifact_over_plan_md(
     rendered = workspace.read(prompt_path)
     assert str(tmp_path / ".agent" / "PLAN.md") in rendered
     assert "Read the complete implementation plan from file at" in rendered
+    assert (
+        "This file is the authoritative source for implementation plan in this prompt."
+        in rendered
+    )
     assert "STALE PLAN" not in rendered
     assert "Fresh structured plan" not in rendered
     assert (tmp_path / ".agent" / "PLAN.md").read_text(encoding="utf-8") != "STALE PLAN"

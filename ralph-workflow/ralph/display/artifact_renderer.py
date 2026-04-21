@@ -8,6 +8,7 @@ highlight-free for copy-paste safety.
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
 from rich.rule import Rule
@@ -18,15 +19,24 @@ from ralph.display.artifact_reader import (
 )
 from ralph.display.phase_banner import _phase_style
 from ralph.mcp.artifacts.commit_message import read_commit_message_artifact
-from ralph.mcp.artifacts.handoffs import handoff_path_for_artifact
+from ralph.mcp.artifacts.handoffs import (
+    ensure_markdown_handoff_from_artifact,
+    handoff_path_for_artifact,
+)
 
 if TYPE_CHECKING:
-    from pathlib import Path
-
     from rich.console import Console
 
 
 _ARTIFACTS_DIR = ".agent/artifacts"
+
+
+def _read_text_defensive(path: Path) -> str | None:
+    try:
+        content = path.read_text(encoding="utf-8")
+    except (FileNotFoundError, OSError, PermissionError):
+        return None
+    return content
 
 
 def _read_markdown_handoff(workspace_root: Path, artifact_type: str) -> str | None:
@@ -34,25 +44,80 @@ def _read_markdown_handoff(workspace_root: Path, artifact_type: str) -> str | No
     if relative_path is None:
         return None
     candidate = workspace_root / relative_path
-    try:
-        markdown = candidate.read_text(encoding="utf-8").strip()
-    except (FileNotFoundError, OSError, PermissionError):
+    markdown = _read_text_defensive(candidate)
+    if markdown is None:
         return None
-    return markdown or None
+    stripped = markdown.strip()
+    return stripped or None
 
 
-def _render_markdown_block(title: str, body: str, style_phase: str, console: Console) -> None:
+def _regenerated_markdown_handoff(
+    workspace_root: Path,
+    artifact_type: str,
+    artifact_path: Path,
+) -> str | None:
+    artifact_content = _read_text_defensive(artifact_path)
+    if artifact_content is None:
+        return None
+    try:
+        created_path = ensure_markdown_handoff_from_artifact(
+            workspace_root,
+            artifact_type,
+            artifact_content,
+        )
+    except (json.JSONDecodeError, OSError, PermissionError, TypeError, ValueError):
+        return None
+    if created_path is None:
+        return None
+    regenerated = _read_text_defensive(Path(created_path))
+    if regenerated is None:
+        return None
+    stripped = regenerated.strip()
+    return stripped or None
+
+
+def _resolve_authoritative_markdown_handoff(
+    workspace_root: Path,
+    artifact_type: str,
+    artifact_path: Path,
+) -> str | None:
+    regenerated = _regenerated_markdown_handoff(workspace_root, artifact_type, artifact_path)
+    if regenerated is not None:
+        return regenerated
+    return _read_markdown_handoff(workspace_root, artifact_type)
+
+
+def _render_titled_lines(
+    title: str,
+    style_phase: str,
+    lines: list[str],
+    console: Console,
+) -> None:
     console.print()
     console.print(Rule(title, style=_phase_style(style_phase)), markup=False, highlight=False)
-    console.print(body, markup=False, highlight=False)
+    for line in lines:
+        console.print(line, markup=False, highlight=False)
     console.print(Rule(style=_phase_style(style_phase)), markup=False, highlight=False)
+
+
+def _render_text_block(
+    title: str,
+    body: str,
+    style_phase: str,
+    console: Console,
+    *,
+    indent: bool = False,
+) -> None:
+    lines = [line.rstrip() for line in body.splitlines() if line.strip()]
+    if indent:
+        lines = [f"  {lines[0]}", *[f"    {line}" for line in lines[1:]]] if lines else []
+    _render_titled_lines(title, style_phase, lines, console)
 
 
 def _read_json_defensive(path: Path) -> dict[str, object] | None:
     """Read JSON file defensively, returning None on any error."""
-    try:
-        raw = path.read_text(encoding="utf-8")
-    except (FileNotFoundError, OSError, PermissionError):
+    raw = _read_text_defensive(path)
+    if raw is None:
         return None
     try:
         parsed_obj: object = json.loads(raw)
@@ -69,49 +134,37 @@ def render_plan_artifact(
 ) -> None:
     """Render the agent-facing plan handoff, falling back to the JSON summary.
 
-    Prefer ``.agent/PLAN.md`` because that is the human/agent communication
-    artifact. Fall back to ``.agent/artifacts/plan.json`` only when the Markdown
-    handoff is unavailable. Missing artifacts produce no output.
+    Prefer the authoritative Markdown handoff regenerated from ``plan.json`` when
+    that artifact exists. Fall back to ``.agent/PLAN.md`` only when there is no
+    structured artifact available. Missing artifacts produce no output.
     """
-    markdown = _read_markdown_handoff(workspace_root, "plan")
+    markdown = _resolve_authoritative_markdown_handoff(
+        workspace_root,
+        "plan",
+        workspace_root / _ARTIFACTS_DIR / "plan.json",
+    )
     if markdown:
-        _render_markdown_block("PLAN", markdown, "planning", console)
+        _render_text_block("PLAN", markdown, "planning", console)
         return
 
     plan = read_plan_artifact(workspace_root)
 
     if plan is None:
-        # Missing or malformed - no output per spec
         return
 
-    console.print()
-    console.print(
-        Rule("PLAN", style=_phase_style("planning")),
-        markup=False,
-        highlight=False,
-    )
-
+    lines: list[str] = []
     if plan.summary:
-        console.print(f"  Context: {plan.summary}", markup=False, highlight=False)
-
+        lines.append(f"  Context: {plan.summary}")
     if plan.scope_items:
-        console.print("  Scope:", markup=False, highlight=False)
-        for item in plan.scope_items:
-            console.print(f"    - {item}", markup=False, highlight=False)
-
+        lines.append("  Scope:")
+        lines.extend(f"    - {item}" for item in plan.scope_items)
     if plan.total_steps > 0:
-        console.print(f"  Steps: {plan.total_steps}", markup=False, highlight=False)
-
+        lines.append(f"  Steps: {plan.total_steps}")
     if plan.risks_mitigations:
-        console.print("  Risks:", markup=False, highlight=False)
-        for risk in plan.risks_mitigations:
-            console.print(f"    - {risk}", markup=False, highlight=False)
+        lines.append("  Risks:")
+        lines.extend(f"    - {risk}" for risk in plan.risks_mitigations)
 
-    console.print(
-        Rule(style=_phase_style("planning")),
-        markup=False,
-        highlight=False,
-    )
+    _render_titled_lines("PLAN", "planning", lines, console)
 
 
 def render_analysis_decision(
@@ -122,85 +175,44 @@ def render_analysis_decision(
     """Render an analysis decision artifact as a titled block."""
     artifact_type = _analysis_handoff_artifact_type(drain)
     if artifact_type is not None:
-        markdown = _read_markdown_handoff(workspace_root, artifact_type)
+        markdown = _resolve_authoritative_markdown_handoff(
+            workspace_root,
+            artifact_type,
+            workspace_root / _ARTIFACTS_DIR / f"{artifact_type}.json",
+        )
         if markdown:
-            _render_markdown_block(
-                f"ANALYSIS: {drain}",
-                markdown,
-                "development_analysis",
-                console,
-            )
+            _render_text_block(f"ANALYSIS: {drain}", markdown, "development_analysis", console)
             return
 
     summary = read_latest_analysis_decision(workspace_root, drain)
-
     if summary is None:
-        # Missing or malformed - no output per spec
         return
 
-    console.print()
-    console.print(
-        Rule(f"ANALYSIS: {drain}", style=_phase_style("development_analysis")),
-        markup=False,
-        highlight=False,
-    )
-
-    console.print(f"  decision: {summary.decision}", markup=False, highlight=False)
+    lines = [f"  decision: {summary.decision}"]
     if summary.reason:
-        console.print(f"  reason: {summary.reason}", markup=False, highlight=False)
-
-    console.print(
-        Rule(style=_phase_style("development_analysis")),
-        markup=False,
-        highlight=False,
-    )
+        lines.append(f"  reason: {summary.reason}")
+    _render_titled_lines(f"ANALYSIS: {drain}", "development_analysis", lines, console)
 
 
 def render_commit_message(
     workspace_root: Path,
     console: Console,
 ) -> None:
-    """Render the commit message artifact as a titled block.
-
-    Reads ``.agent/tmp/commit_message.json`` (via commit_message module)
-    and prints a titled Rule ``COMMIT MESSAGE`` followed by subject on its
-    own line and body indented.
-    Missing file produces no output; malformed JSON produces no output (defensive).
-    """
+    """Render the commit message artifact as a titled block."""
     try:
         message = read_commit_message_artifact(workspace_root)
     except Exception:
-        # Defensive: malformed artifact should not crash rendering
         message = None
 
     if message is None:
-        # Missing or malformed - no output per spec
         return
 
-    console.print()
-    console.print(
-        Rule("COMMIT MESSAGE", style=_phase_style("development_commit")),
-        markup=False,
-        highlight=False,
-    )
-
-    lines = [line.strip() for line in message.splitlines() if line.strip()]
-    if not lines:
-        console.print(
-            Rule(style=_phase_style("development_commit")),
-            markup=False,
-            highlight=False,
-        )
-        return
-
-    console.print(f"  {lines[0]}", markup=False, highlight=False)
-    for line in lines[1:]:
-        console.print(f"    {line}", markup=False, highlight=False)
-
-    console.print(
-        Rule(style=_phase_style("development_commit")),
-        markup=False,
-        highlight=False,
+    _render_text_block(
+        "COMMIT MESSAGE",
+        message,
+        "development_commit",
+        console,
+        indent=True,
     )
 
 
@@ -212,20 +224,49 @@ def _analysis_handoff_artifact_type(drain: str) -> str | None:
     return mapping.get(drain)
 
 
+def render_development_artifact(
+    workspace_root: Path,
+    console: Console,
+) -> None:
+    """Render development results using the authoritative Markdown handoff."""
+    markdown = _resolve_authoritative_markdown_handoff(
+        workspace_root,
+        "development_result",
+        workspace_root / _ARTIFACTS_DIR / "development_result.json",
+    )
+    if markdown:
+        _render_text_block("DEVELOPMENT RESULT", markdown, "development", console)
+        return
+
+    found = _read_json_defensive(workspace_root / _ARTIFACTS_DIR / "development_result.json")
+    if found is None:
+        return
+    _render_text_block(
+        "DEVELOPMENT RESULT",
+        json.dumps(found, indent=2),
+        "development",
+        console,
+    )
+
+
 def render_review_artifact(
     workspace_root: Path,
     console: Console,
 ) -> None:
-    """Render review findings using the Markdown handoff when available."""
-    markdown = _read_markdown_handoff(workspace_root, "issues")
+    """Render review findings using the authoritative Markdown handoff."""
+    markdown = _resolve_authoritative_markdown_handoff(
+        workspace_root,
+        "issues",
+        workspace_root / _ARTIFACTS_DIR / "issues.json",
+    )
     if markdown:
-        _render_markdown_block("REVIEW ISSUES", markdown, "review", console)
+        _render_text_block("REVIEW ISSUES", markdown, "review", console)
         return
 
     found = _read_json_defensive(workspace_root / _ARTIFACTS_DIR / "issues.json")
     if found is None:
         return
-    _render_markdown_block("REVIEW ISSUES", json.dumps(found, indent=2), "review", console)
+    _render_text_block("REVIEW ISSUES", json.dumps(found, indent=2), "review", console)
 
 
 def render_fix_artifact(
@@ -233,9 +274,13 @@ def render_fix_artifact(
     console: Console,
 ) -> None:
     """Render fix result artifacts as a titled block."""
-    markdown = _read_markdown_handoff(workspace_root, "fix_result")
+    markdown = _resolve_authoritative_markdown_handoff(
+        workspace_root,
+        "fix_result",
+        workspace_root / _ARTIFACTS_DIR / "fix_result.json",
+    )
     if markdown:
-        _render_markdown_block("FIX", markdown, "fix", console)
+        _render_text_block("FIX", markdown, "fix", console)
         return
 
     found = _first_json_candidate(
@@ -245,10 +290,8 @@ def render_fix_artifact(
     if found is None:
         return
 
-    console.print()
-    console.print(Rule("FIX", style=_phase_style("fix")), markup=False, highlight=False)
-    _render_fix_json_summary(found, console)
-    console.print(Rule(style=_phase_style("fix")), markup=False, highlight=False)
+    lines = _render_fix_json_summary(found)
+    _render_titled_lines("FIX", "fix", lines, console)
 
 
 def _first_json_candidate(*candidates: Path) -> dict[str, object] | None:
@@ -259,38 +302,37 @@ def _first_json_candidate(*candidates: Path) -> dict[str, object] | None:
     return None
 
 
-def _render_fix_json_summary(found: dict[str, object], console: Console) -> None:
+def _render_fix_json_summary(found: dict[str, object]) -> list[str]:
     if "issues" in found and isinstance(found["issues"], list):
-        _render_issues_summary(found["issues"], console)
-        return
+        return _render_issues_summary(found["issues"])
     if "fixed" in found:
-        _render_fixed_summary(found["fixed"], console)
-        return
-    console.print(f"  Fix artifact: {list(found.keys())[:5]}", markup=False, highlight=False)
+        return _render_fixed_summary(found["fixed"])
+    return [f"  Fix artifact: {list(found.keys())[:5]}"]
 
 
-def _render_issues_summary(issues: list[object], console: Console) -> None:
-    console.print(f"  {len(issues)} issue(s) addressed:", markup=False, highlight=False)
+def _render_issues_summary(issues: list[object]) -> list[str]:
+    lines = [f"  {len(issues)} issue(s) addressed:"]
     for issue in issues[:10]:
         if isinstance(issue, dict):
             desc_obj = issue.get("description") or issue.get("message") or str(issue)
         else:
             desc_obj = str(issue)
-        console.print(f"    - {str(desc_obj)[:120]}", markup=False, highlight=False)
+        lines.append(f"    - {str(desc_obj)[:120]}")
+    return lines
 
 
-def _render_fixed_summary(fixed: object, console: Console) -> None:
+def _render_fixed_summary(fixed: object) -> list[str]:
     if isinstance(fixed, list):
-        console.print(f"  {len(fixed)} item(s) fixed:", markup=False, highlight=False)
-        for item in fixed[:10]:
-            console.print(f"    - {str(item)[:120]}", markup=False, highlight=False)
-        return
-    console.print(f"  Fixed: {fixed}", markup=False, highlight=False)
+        lines = [f"  {len(fixed)} item(s) fixed:"]
+        lines.extend(f"    - {str(item)[:120]}" for item in fixed[:10])
+        return lines
+    return [f"  Fixed: {fixed}"]
 
 
 __all__ = [
     "render_analysis_decision",
     "render_commit_message",
+    "render_development_artifact",
     "render_fix_artifact",
     "render_plan_artifact",
     "render_review_artifact",

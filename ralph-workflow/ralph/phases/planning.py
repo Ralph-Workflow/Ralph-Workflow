@@ -18,7 +18,6 @@ from pathlib import Path
 
 from loguru import logger
 
-from ralph.display.artifact_renderer import render_plan_artifact
 from ralph.mcp.artifacts.plan import (
     PLAN_ARTIFACT_PATH,
     PLAN_DRAFT_PATH,
@@ -80,11 +79,6 @@ def handle_planning(effect: Effect, ctx: PhaseContext) -> list[Event]:
         ) as exc:
             logger.warning("Invalid planning artifact: {}", exc)
             return [PipelineEvent.AGENT_FAILURE]
-
-        # After agent completes successfully, render the plan artifact
-        if ctx.console is not None:
-            workspace_root = Path(ctx.workspace.absolute_path("."))
-            render_plan_artifact(workspace_root, ctx.console)
 
         return [PipelineEvent.AGENT_SUCCESS]
 

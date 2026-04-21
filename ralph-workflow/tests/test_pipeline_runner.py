@@ -24,6 +24,7 @@ from ralph.config.enums import (
     Verbosity,
 )
 from ralph.config.models import AgentConfig, CcsConfig, UnifiedConfig
+from ralph.display.parallel_display import ParallelDisplay
 from ralph.mcp.protocol.capability_mapping import SessionDrain
 from ralph.mcp.tools.names import claude_tool_name_prefix
 from ralph.mcp.upstream.config import UpstreamMcpServer
@@ -40,7 +41,7 @@ from ralph.pipeline.effects import (
     PreparePromptEffect,
     SaveCheckpointEffect,
 )
-from ralph.pipeline.events import PhaseFailureEvent, PipelineEvent
+from ralph.pipeline.events import Event, PhaseFailureEvent, PipelineEvent
 from ralph.pipeline.reducer import reduce as reducer_reduce
 from ralph.pipeline.state import AgentChainState, CommitState, PipelineState
 from ralph.pipeline.work_units import WorkUnit
@@ -1520,7 +1521,8 @@ class TestExecuteAgentEffect:
 
         seen_session_ids: list[str | None] = []
 
-        def fake_invoke_agent(_agent_config, _prompt_file, *, options=None):
+        def fake_invoke_agent(config, prompt_file, *, options=None):
+            del config, prompt_file
             seen_session_ids.append(None if options is None else options.session_id)
             if len(seen_session_ids) == 1:
 
@@ -1582,9 +1584,9 @@ class TestExecuteAgentEffect:
 
         seen_prompt_files: list[str] = []
 
-        def fake_invoke_agent(_agent_config, prompt_path, *, options=None):
-            del options
-            seen_prompt_files.append(prompt_path)
+        def fake_invoke_agent(config, prompt_file, *, options=None):
+            del config, options
+            seen_prompt_files.append(prompt_file)
             if len(seen_prompt_files) == 1:
 
                 def _first_attempt():
@@ -1659,6 +1661,158 @@ def test_determine_effect_commits_after_agent_invoked(
     assert "commit_message.json" in effect.message_file
 
 
+class TestPhaseEventAfterAgentRun:
+    @pytest.mark.parametrize(
+        ("phase", "event", "artifact_path", "payload", "expected_title", "expected_text"),
+        [
+            (
+                "planning",
+                PipelineEvent.AGENT_SUCCESS,
+                ".agent/artifacts/plan.json",
+                {
+                    "type": "plan",
+                    "content": {
+                        "summary": {
+                            "context": "Planning handoff rendered from runner.",
+                            "scope_items": [
+                                {"text": "One"},
+                                {"text": "Two"},
+                                {"text": "Three"},
+                            ],
+                        },
+                        "steps": [
+                            {
+                                "number": 1,
+                                "title": "Plan",
+                                "content": "Show the full plan",
+                            }
+                        ],
+                        "critical_files": {
+                            "primary_files": [
+                                {
+                                    "path": "ralph/pipeline/runner.py",
+                                    "action": "modify",
+                                }
+                            ]
+                        },
+                        "risks_mitigations": [
+                            {
+                                "risk": "Hidden plan",
+                                "mitigation": "Render after phase",
+                            }
+                        ],
+                        "verification_strategy": [
+                            {
+                                "method": "pytest",
+                                "expected_outcome": "plan block visible",
+                            }
+                        ],
+                    },
+                },
+                "PLAN",
+                "Planning handoff rendered from runner.",
+            ),
+            (
+                "development",
+                PipelineEvent.AGENT_SUCCESS,
+                ".agent/artifacts/development_result.json",
+                {
+                    "type": "development_result",
+                    "content": {
+                        "status": "completed",
+                        "summary": "Development result rendered from runner.",
+                    },
+                },
+                "DEVELOPMENT RESULT",
+                "Development result rendered from runner.",
+            ),
+            (
+                "review",
+                PipelineEvent.AGENT_SUCCESS,
+                ".agent/artifacts/issues.json",
+                {
+                    "type": "issues",
+                    "content": {
+                        "status": "issues_found",
+                        "summary": "Review findings rendered from runner.",
+                    },
+                },
+                "REVIEW ISSUES",
+                "Review findings rendered from runner.",
+            ),
+            (
+                "fix",
+                PipelineEvent.AGENT_SUCCESS,
+                ".agent/artifacts/fix_result.json",
+                {
+                    "type": "fix_result",
+                    "content": {"summary": "Fix result rendered from runner."},
+                },
+                "FIX",
+                "Fix result rendered from runner.",
+            ),
+            (
+                "development_analysis",
+                PipelineEvent.ANALYSIS_LOOPBACK,
+                ".agent/artifacts/development_analysis_decision.json",
+                {
+                    "type": "development_analysis_decision",
+                    "content": {
+                        "status": "request_changes",
+                        "summary": "Analysis result rendered from runner.",
+                    },
+                },
+                "ANALYSIS: development_analysis",
+                "Analysis result rendered from runner.",
+            ),
+        ],
+    )
+    def test_renders_phase_artifact_handoff_after_phase_handler_returns(  # noqa: PLR0913
+        self,
+        tmp_path: Path,
+        monkeypatch: MonkeyPatch,
+        phase: str,
+        event: PipelineEvent,
+        artifact_path: str,
+        payload: dict[str, object],
+        expected_title: str,
+        expected_text: str,
+    ) -> None:
+        registry = MagicMock()
+        registry.from_config.return_value = MagicMock()
+        monkeypatch.setattr(runner_module, "AgentRegistry", registry)
+        monkeypatch.setattr(runner_module, "ChainManager", MagicMock(return_value=MagicMock()))
+        monkeypatch.setattr(runner_module, "handle_phase", lambda _effect, _ctx: [event])
+
+        artifact_file = tmp_path / artifact_path
+        artifact_file.parent.mkdir(parents=True, exist_ok=True)
+        artifact_file.write_text(json.dumps(payload), encoding="utf-8")
+
+        output = io.StringIO()
+        console = Console(file=output, force_terminal=False, color_system=None, width=120)
+        display = ParallelDisplay(console=console, env={})
+        policy_bundle = MagicMock()
+        policy_bundle.pipeline = MagicMock()
+        policy_bundle.agents = MagicMock()
+        policy_bundle.artifacts = MagicMock()
+        workspace = MagicMock()
+        workspace.absolute_path.side_effect = lambda path: str(tmp_path / path)
+
+        returned_event = runner_module._phase_event_after_agent_run(
+            effect=InvokeAgentEffect(agent_name="claude", phase=phase, prompt_file=f"{phase}.md"),
+            config=MagicMock(),
+            policy_bundle=policy_bundle,
+            workspace=workspace,
+            workspace_scope=WorkspaceScope(root=tmp_path, allowed_roots=[tmp_path]),
+            display=display,
+        )
+
+        assert returned_event == event
+        rendered = output.getvalue()
+        assert expected_title in rendered
+        assert expected_text in rendered
+
+
 class TestExecuteCommitEffect:
     def test_returns_success_when_commit_succeeds(
         self, tmp_path: Path, monkeypatch: MonkeyPatch
@@ -1694,6 +1848,49 @@ class TestExecuteCommitEffect:
         assert result == PipelineEvent.COMMIT_SUCCESS
         stage_all.assert_called_once_with(str(tmp_path))
         create_commit.assert_called_once_with(str(tmp_path), "fix: pipeline artifact message")
+        assert not message_file.exists()
+        assert not text_file.exists()
+
+    def test_renders_commit_message_before_cleanup_when_display_is_available(
+        self, tmp_path: Path, monkeypatch: MonkeyPatch
+    ) -> None:
+        stage_all = MagicMock()
+        create_commit = MagicMock(return_value="sha")
+        message_file = tmp_path / ".agent" / "tmp" / "commit_message.json"
+        text_file = tmp_path / ".agent" / "tmp" / "commit-message.txt"
+        message_file.parent.mkdir(parents=True, exist_ok=True)
+        text_file.write_text("fix: pipeline artifact message", encoding="utf-8")
+        monkeypatch.setattr(runner_module, "_repo_has_commit_work", lambda _repo_root: True)
+        message_file.write_text(
+            json.dumps(
+                {
+                    "name": "commit_message",
+                    "type": "commit_message",
+                    "content": {"type": "commit", "subject": "fix: pipeline artifact message"},
+                    "created_at": "STATIC",
+                    "updated_at": "STATIC",
+                    "metadata": {},
+                }
+            ),
+            encoding="utf-8",
+        )
+        output = io.StringIO()
+        display = ParallelDisplay(
+            console=Console(file=output, force_terminal=False, color_system=None, width=120),
+            env={},
+        )
+
+        result = runner_module._execute_commit_effect(
+            CommitEffect(message_file=str(message_file)),
+            create_commit,
+            stage_all,
+            tmp_path,
+            display=display,
+        )
+
+        assert result == PipelineEvent.COMMIT_SUCCESS
+        assert "COMMIT MESSAGE" in output.getvalue()
+        assert "fix: pipeline artifact message" in output.getvalue()
         assert not message_file.exists()
         assert not text_file.exists()
 
@@ -2264,7 +2461,8 @@ class TestPhaseHandlerExceptionGuard:
     def test_keyboard_interrupt_propagates_not_swallowed(self) -> None:
         """KeyboardInterrupt must propagate, not be caught by the exception guard."""
 
-        def ki_handler(effect: Effect, ctx: PhaseContext) -> list[PipelineEvent]:
+        def ki_handler(effect: Effect, ctx: PhaseContext) -> list[Event]:
+            del effect, ctx
             raise KeyboardInterrupt()
 
         ctx = self._make_context()
@@ -2324,4 +2522,5 @@ class TestPhaseHandlerExceptionGuard:
         new_state, _effects = reducer_reduce(state, event)
 
         assert new_state.phase == PHASE_FAILED
+        assert new_state.last_error is not None
         assert "FAILURE" in new_state.last_error

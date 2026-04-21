@@ -115,6 +115,13 @@ Ralph now treats several agent-driven phases as producing explicit evidence, not
 Artifact contract:
 - Use `.json` artifacts for Ralph's validation, routing, checkpointing, and other orchestrator-only logic.
 - Use `.md` handoff files when a user or downstream AI agent needs to read the result of an earlier phase.
+- Current mirrored handoffs are:
+  - `.agent/PLAN.md`
+  - `.agent/DEVELOPMENT_RESULT.md`
+  - `.agent/ISSUES.md`
+  - `.agent/FIX_RESULT.md`
+  - `.agent/DEVELOPMENT_ANALYSIS_DECISION.md`
+  - `.agent/REVIEW_ANALYSIS_DECISION.md`
 
 This hardening is intentionally strict. It adds complexity, but it closes a real unattended-mode failure class where a provider could exit successfully, emit no meaningful work, and still let the pipeline advance because an old artifact was still present on disk.
 

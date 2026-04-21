@@ -75,13 +75,14 @@ class MemoryBackend(FileBackend):
 
 
 class FailingArtifactBackend(MemoryBackend):
-    def __init__(self, failing_path: Path) -> None:
+    def __init__(self, failing_path: Path, *, message: str = "artifact store unavailable") -> None:
         super().__init__()
         self._failing_path = failing_path
+        self._message = message
 
     def write_text(self, path: Path, content: str, *, encoding: str = "utf-8") -> None:
         if path == self._failing_path:
-            raise OSError("artifact store unavailable")
+            raise OSError(self._message)
         super().write_text(path, content, encoding=encoding)
 
 
@@ -786,6 +787,33 @@ def test_ensure_markdown_handoff_from_artifact_materializes_analysis_feedback() 
     assert rendered.startswith("# Review Analysis Decision\n")
     assert "Fixes are required." in rendered
     assert "Read the review analysis handoff first." in rendered
+
+
+def test_handle_submit_artifact_rolls_back_json_and_markdown_when_handoff_sync_fails() -> None:
+    workspace_root = Path("/virtual-failure")
+    backend = FailingArtifactBackend(
+        workspace_root / ".agent" / "FIX_RESULT.md",
+        message="handoff mirror unavailable",
+    )
+
+    with pytest.raises(OSError, match="handoff mirror unavailable"):
+        handle_submit_artifact(
+            MockSession(drain="fix"),
+            MockWorkspace(workspace_root),
+            {
+                "artifact_type": "fix_result",
+                "content": _content(
+                    {
+                        "summary": "Applied the reviewer fixes.",
+                        "files_changed": "- ralph/prompts/materialize.py",
+                    }
+                ),
+            },
+            deps=_memory_handler_deps(backend),
+        )
+
+    assert backend.exists(workspace_root / ".agent/artifacts/fix_result.json") is False
+    assert backend.exists(workspace_root / ".agent/FIX_RESULT.md") is False
 
 
 def _full_plan_payload() -> dict[str, object]:

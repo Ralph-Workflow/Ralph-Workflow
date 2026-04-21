@@ -35,8 +35,14 @@ from ralph.config.enums import (
     PHASE_PLANNING,
     Verbosity,
 )
-from ralph.display.artifact_renderer import render_commit_message
-from ralph.display.parallel_display import ParallelDisplay
+from ralph.display.artifact_renderer import (
+    render_analysis_decision,
+    render_commit_message,
+    render_development_artifact,
+    render_fix_artifact,
+    render_plan_artifact,
+    render_review_artifact,
+)
 from ralph.display.phase_banner import (
     PhaseStartContext,
     show_phase_complete,
@@ -86,6 +92,7 @@ if TYPE_CHECKING:
     from ralph.agents.executor import AgentExecutor
     from ralph.agents.invoke import InvokeOptions
     from ralph.config.models import AgentConfig, UnifiedConfig
+    from ralph.display.parallel_display import ParallelDisplay
     from ralph.display.subscriber import PipelineSubscriber
     from ralph.mcp.upstream.agent_probe import AgentProbeReport
     from ralph.mcp.upstream.config import UpstreamMcpServer
@@ -294,6 +301,10 @@ _PROBE_AGENT_TRANSPORTS = _default_probe_agent_transports
 
 
 class _LegacyConsoleDisplay:
+    @property
+    def console(self) -> Console:
+        return console
+
     def __enter__(self) -> _LegacyConsoleDisplay:
         return self
 
@@ -305,6 +316,14 @@ class _LegacyConsoleDisplay:
             console.print(line)
             return
         console.print(f"[{unit_id}] {line}")
+
+
+def _display_console(
+    display: ParallelDisplay | _LegacyConsoleDisplay | None,
+) -> Console:
+    if display is None:
+        return console
+    return display.console
 
 
 def _emit_display_line(
@@ -1298,6 +1317,7 @@ def _phase_event_after_agent_run(  # noqa: PLR0913
         agents_policy=policy_bundle.agents,
         artifacts_policy=policy_bundle.artifacts,
         config=config,
+        console=_display_console(display),
     )
     try:
         events = handle_phase(effect, ctx)
@@ -1317,6 +1337,14 @@ def _phase_event_after_agent_run(  # noqa: PLR0913
             )
         ]
     event: Event = events[0] if events else PipelineEvent.AGENT_SUCCESS
+
+    with suppress(Exception):
+        _render_phase_artifact_handoff(
+            effect.phase,
+            event,
+            Path(workspace.absolute_path(".")),
+            display,
+        )
 
     if (
         display is not None
@@ -1341,6 +1369,31 @@ def _phase_event_after_agent_run(  # noqa: PLR0913
             logger.debug("Failed to emit analysis result", exc_info=True)
 
     return event
+
+
+def _render_phase_artifact_handoff(
+    phase: str,
+    event: Event,
+    workspace_root: Path,
+    display: ParallelDisplay | _LegacyConsoleDisplay | None,
+) -> None:
+    console_obj = _display_console(display)
+
+    if phase == "planning" and event == PipelineEvent.AGENT_SUCCESS:
+        render_plan_artifact(workspace_root, console_obj)
+        return
+    if phase == "development" and event == PipelineEvent.AGENT_SUCCESS:
+        render_development_artifact(workspace_root, console_obj)
+        return
+    if phase == "review" and event == PipelineEvent.AGENT_SUCCESS:
+        render_review_artifact(workspace_root, console_obj)
+        return
+    if phase == "fix" and event == PipelineEvent.AGENT_SUCCESS:
+        render_fix_artifact(workspace_root, console_obj)
+        return
+    if phase in {"development_analysis", "review_analysis"}:
+        render_analysis_decision(workspace_root, phase, console_obj)
+
 
 
 def _commit_effect(workspace_root: Path) -> CommitEffect:
@@ -1703,11 +1756,9 @@ def _execute_commit_effect(
         stage_all(str(repo_root))
         sha = create_commit(str(repo_root), message)
         logger.info("Created commit: {}", sha[:8])
+        with suppress(Exception):
+            render_commit_message(repo_root, _display_console(display))
         _cleanup_commit_message_artifacts(repo_root)
-        # Render the commit message artifact for the user
-        if isinstance(display, ParallelDisplay) and display.console is not None:
-            with suppress(Exception):
-                render_commit_message(repo_root, display.console)
     except Exception as exc:
         logger.error("Commit failed: {}", exc)
         return PipelineEvent.COMMIT_FAILURE
