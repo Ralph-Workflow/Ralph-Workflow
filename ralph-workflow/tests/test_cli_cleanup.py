@@ -8,8 +8,9 @@ from unittest.mock import patch
 import typer
 from typer.testing import CliRunner
 
-from ralph.cli.commands.cleanup import _delete_branch, cleanup
+from ralph.cli.commands.cleanup import cleanup
 from ralph.git.subprocess_runner import GitRunResult
+from ralph.git.worktree_manager import WorktreeManager
 from ralph.process.manager import ProcessStatus, get_process_manager, reset_process_manager
 
 if TYPE_CHECKING:
@@ -82,20 +83,50 @@ def test_cleanup_empty_no_crash(tmp_path: Path) -> None:
     assert "No orphaned worktrees found" in result.output
 
 
-def test_delete_branch_emits_process_manager_event(tmp_git_repo: Path) -> None:
-    """_delete_branch routes through ProcessManager and emits a RUNNING->EXITED event."""
+def _assert_full_lifecycle(events: list, label: str) -> None:
+    """Assert each PID with the given label emitted SPAWNED->RUNNING->EXITED."""
+    labeled = [e for e in events if e.record.label == label]
+    assert labeled, f"Expected events with label '{label}'"
+
+    pids = dict.fromkeys(e.record.pid for e in labeled)
+    assert pids, f"Expected at least one tracked spawn with label '{label}'"
+
+    for pid in pids:
+        pid_events = [e for e in labeled if e.record.pid == pid]
+        transitions = [(e.previous_status, e.new_status) for e in pid_events]
+        assert (ProcessStatus.SPAWNED, ProcessStatus.RUNNING) in transitions, (
+            f"Process {pid} (label {label!r}) missing SPAWNED->RUNNING; "
+            f"got {transitions}"
+        )
+        assert (ProcessStatus.RUNNING, ProcessStatus.EXITED) in transitions, (
+            f"Process {pid} (label {label!r}) missing RUNNING->EXITED; "
+            f"got {transitions}"
+        )
+
+
+def test_cleanup_command_emits_git_cleanup_lifecycle_events(tmp_git_repo: Path) -> None:
+    """cleanup CLI command routes branch delete through ProcessManager with full lifecycle.
+
+    Invokes the public cleanup command (not _delete_branch directly), mocking
+    WorktreeManager.destroy to isolate the branch-delete path and assert that the
+    'git-cleanup' labeled git child goes through the full SPAWNED->RUNNING->EXITED sequence.
+    """
+    worktrees_dir = tmp_git_repo / ".worktrees"
+    (worktrees_dir / "unit-pm-test").mkdir(parents=True)
+
     reset_process_manager()
-    events = []
+    events: list = []
     unsubscribe = get_process_manager().register_listener(events.append)
 
     try:
-        _delete_branch(tmp_git_repo, "nonexistent-branch-that-does-not-exist")
+        with (
+            patch("ralph.cli.commands.cleanup.find_repo_root", return_value=tmp_git_repo),
+            patch.object(WorktreeManager, "destroy"),
+        ):
+            result = runner.invoke(_app, ["--force"])
     finally:
         unsubscribe()
         reset_process_manager()
 
-    cleanup_events = [e for e in events if e.record.label == "git-cleanup"]
-    assert cleanup_events, "Expected at least one event with label 'git-cleanup'"
-
-    exited = [e for e in cleanup_events if e.new_status == ProcessStatus.EXITED]
-    assert exited, "Expected at least one EXITED event for git-cleanup spawn"
+    assert result.exit_code == 0, result.output
+    _assert_full_lifecycle(events, "git-cleanup")

@@ -283,10 +283,33 @@ def test_verify_rebase_completed_at_rejects_detached_head(tmp_git_repo: Path) ->
         verify_rebase_completed_at(tmp_git_repo, "main")
 
 
+def _assert_full_lifecycle(events: list, label_prefix: str) -> None:
+    """Assert each PID with the given label prefix emitted SPAWNED->RUNNING->EXITED."""
+    labeled = [
+        e for e in events if e.record.label and e.record.label.startswith(label_prefix)
+    ]
+    assert labeled, f"Expected events with label prefix '{label_prefix}'"
+
+    pids = dict.fromkeys(e.record.pid for e in labeled)
+    assert pids, f"Expected at least one tracked spawn with label prefix '{label_prefix}'"
+
+    for pid in pids:
+        pid_events = [e for e in labeled if e.record.pid == pid]
+        transitions = [(e.previous_status, e.new_status) for e in pid_events]
+        assert (ProcessStatus.SPAWNED, ProcessStatus.RUNNING) in transitions, (
+            f"Process {pid} (label {label_prefix!r}) missing SPAWNED->RUNNING; "
+            f"got {transitions}"
+        )
+        assert (ProcessStatus.RUNNING, ProcessStatus.EXITED) in transitions, (
+            f"Process {pid} (label {label_prefix!r}) missing RUNNING->EXITED; "
+            f"got {transitions}"
+        )
+
+
 def test_subprocess_executor_emits_process_manager_events(tmp_git_repo: Path) -> None:
-    """Real SubprocessExecutor routes git calls through ProcessManager with labeled events."""
+    """Real SubprocessExecutor routes git calls through ProcessManager with full lifecycle."""
     reset_process_manager()
-    events = []
+    events: list = []
     unsubscribe = get_process_manager().register_listener(events.append)
 
     try:
@@ -296,14 +319,7 @@ def test_subprocess_executor_emits_process_manager_events(tmp_git_repo: Path) ->
         unsubscribe()
         reset_process_manager()
 
-    rebase_events = [
-        e for e in events
-        if e.record.label and e.record.label.startswith("git-rebase:")
-    ]
-    assert rebase_events, "Expected events with label prefix 'git-rebase:'"
-
-    exited = [e for e in rebase_events if e.new_status == ProcessStatus.EXITED]
-    assert exited, "Expected at least one EXITED event for a git-rebase spawn"
+    _assert_full_lifecycle(events, "git-rebase:")
 
 
 def _setup_conflicted_rebase(repo_root: Path, feature_branch: str = "feature") -> str:

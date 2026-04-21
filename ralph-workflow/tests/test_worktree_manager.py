@@ -80,6 +80,29 @@ def test_destroy_removes_worktree_and_list_entry(
     assert manager.list() == []
 
 
+def _assert_full_lifecycle(events: list, label_prefix: str) -> None:
+    """Assert each PID with the given label prefix emitted SPAWNED->RUNNING->EXITED."""
+    labeled = [
+        e for e in events if e.record.label and e.record.label.startswith(label_prefix)
+    ]
+    assert labeled, f"Expected events with label prefix '{label_prefix}'"
+
+    pids = dict.fromkeys(e.record.pid for e in labeled)
+    assert pids, f"Expected at least one tracked spawn with label prefix '{label_prefix}'"
+
+    for pid in pids:
+        pid_events = [e for e in labeled if e.record.pid == pid]
+        transitions = [(e.previous_status, e.new_status) for e in pid_events]
+        assert (ProcessStatus.SPAWNED, ProcessStatus.RUNNING) in transitions, (
+            f"Process {pid} (label {label_prefix!r}) missing SPAWNED->RUNNING; "
+            f"got {transitions}"
+        )
+        assert (ProcessStatus.RUNNING, ProcessStatus.EXITED) in transitions, (
+            f"Process {pid} (label {label_prefix!r}) missing RUNNING->EXITED; "
+            f"got {transitions}"
+        )
+
+
 def test_worktree_operations_emit_process_manager_events(tmp_git_repo: Path) -> None:
     """Real worktree add+remove produces SPAWNED->RUNNING->EXITED events per spawn."""
     reset_process_manager()
@@ -95,12 +118,4 @@ def test_worktree_operations_emit_process_manager_events(tmp_git_repo: Path) -> 
         reset_process_manager()
 
     assert not worktree_path.exists()
-
-    worktree_labels = [
-        e for e in events
-        if e.record.label and e.record.label.startswith("git-worktree:")
-    ]
-    assert worktree_labels, "Expected events with label prefix 'git-worktree:'"
-
-    exited = [e for e in worktree_labels if e.new_status == ProcessStatus.EXITED]
-    assert exited, "Expected at least one EXITED event for a git-worktree spawn"
+    _assert_full_lifecycle(events, "git-worktree:")
