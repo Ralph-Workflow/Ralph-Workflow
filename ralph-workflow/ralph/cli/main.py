@@ -36,6 +36,7 @@ from ralph.config.bootstrap import (
 )
 from ralph.config.enums import ReviewDepth, Verbosity
 from ralph.config.loader import load_config
+from ralph.config.welcome import emit_first_run_welcome
 from ralph.pipeline import checkpoint as ckpt
 from ralph.workspace.scope import resolve_workspace_scope
 
@@ -141,9 +142,8 @@ def _resolve_effective_verbosity(
 
 def _bootstrap_global_configs() -> None:
     """Create user-global config files from bundled templates if they don't exist."""
-    for result in (ensure_global_config(), ensure_global_mcp_config()):
-        if result.action == "created":
-            console.print(_status_text("Created default config", str(result.path), "green"))
+    results = [ensure_global_config(), ensure_global_mcp_config()]
+    emit_first_run_welcome(console, results)
 
 
 def _handle_regenerate_config() -> None:
@@ -155,11 +155,18 @@ def _handle_regenerate_config() -> None:
     except Exception as exc:
         logger.debug("Workspace scope unavailable, skipping local regenerate: {}", exc)
         agent_dir = None
-    for result in regenerate_all(agent_dir=agent_dir):
-        label = "Regenerated" if result.action == "regenerated" else "Created"
-        console.print(_status_text(label, str(result.path), "green"))
-        if result.backup is not None:
-            console.print(_status_text("  backup", str(result.backup), "dim"))
+    results = regenerate_all(agent_dir=agent_dir)
+    if results:
+        created_or_regenerated = [r for r in results if r.action in {"created", "regenerated"}]
+        if created_or_regenerated:
+            emit_first_run_welcome(console, results)
+        else:
+            # All skipped - show minimal summary
+            console.print(
+                "[dim]No configs needed regeneration (all files up-to-date)[/dim]"
+            )
+    else:
+        console.print("[dim]No configs found to regenerate[/dim]")
 
 
 def main(  # noqa: PLR0913 - Typer CLI callbacks require many options and branches

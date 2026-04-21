@@ -20,8 +20,8 @@ from ralph.workspace.scope import WorkspaceScope
 if TYPE_CHECKING:
     import pytest
 
-_EXPECTED_LOCAL_CONFIG_COUNT = 2
-_EXPECTED_REGENERATE_COUNT = 4
+_EXPECTED_LOCAL_CONFIG_COUNT = 5
+_EXPECTED_REGENERATE_COUNT = 7
 _DEFAULT_DEVELOPER_ITERS = 5
 
 
@@ -69,16 +69,40 @@ def test_ensure_global_mcp_config_creates(tmp_path: Path) -> None:
     assert isinstance(tomllib.loads(target.read_text()), dict)
 
 
-def test_ensure_local_configs_creates_both(tmp_path: Path) -> None:
+def test_ensure_local_configs_creates_all_five(tmp_path: Path) -> None:
     agent_dir = tmp_path / ".agent"
     results = ensure_local_configs(agent_dir)
 
-    assert (agent_dir / "ralph-workflow.toml").exists()
-    assert (agent_dir / "mcp.toml").exists()
-    assert isinstance(tomllib.loads((agent_dir / "ralph-workflow.toml").read_text()), dict)
-    assert isinstance(tomllib.loads((agent_dir / "mcp.toml").read_text()), dict)
+    expected_files = (
+        "ralph-workflow.toml",
+        "mcp.toml",
+        "agents.toml",
+        "pipeline.toml",
+        "artifacts.toml",
+    )
+    for fname in expected_files:
+        assert (agent_dir / fname).exists(), f"{fname} should exist"
+        assert isinstance(tomllib.loads((agent_dir / fname).read_text()), dict)
+
     assert len(results) == _EXPECTED_LOCAL_CONFIG_COUNT
     assert all(r.action == "created" for r in results)
+
+    # Verify result list contains all policy files
+    result_names = [r.path.name for r in results]
+    for fname in expected_files:
+        assert fname in result_names, f"{fname} should be in results"
+
+
+def test_ensure_local_configs_includes_policy_files(tmp_path: Path) -> None:
+    """Verify the three policy TOMLs are in the result list."""
+    agent_dir = tmp_path / ".agent"
+    results = ensure_local_configs(agent_dir)
+
+    policy_files = {"agents.toml", "pipeline.toml", "artifacts.toml"}
+    result_names = {r.path.name for r in results}
+    assert policy_files.issubset(result_names), (
+        f"Policy files {policy_files} not all in results {result_names}"
+    )
 
 
 def test_regenerate_all_force_creates_backups(tmp_path: Path) -> None:
@@ -92,6 +116,9 @@ def test_regenerate_all_force_creates_backups(tmp_path: Path) -> None:
     (global_dir / "ralph-workflow-mcp.toml").write_text(sentinel, encoding="utf-8")
     (agent_dir / "ralph-workflow.toml").write_text(sentinel, encoding="utf-8")
     (agent_dir / "mcp.toml").write_text(sentinel, encoding="utf-8")
+    (agent_dir / "agents.toml").write_text(sentinel, encoding="utf-8")
+    (agent_dir / "pipeline.toml").write_text(sentinel, encoding="utf-8")
+    (agent_dir / "artifacts.toml").write_text(sentinel, encoding="utf-8")
 
     results = regenerate_all(global_dir=global_dir, agent_dir=agent_dir)
 

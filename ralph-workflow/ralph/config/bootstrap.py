@@ -3,6 +3,11 @@
 Auto-creates ~/.config/ralph-workflow.toml and ~/.config/ralph-workflow-mcp.toml
 from the bundled, fully-commented templates on first run. Also supports
 regenerating configs with .bak backups via --regenerate-config.
+
+Bootstrap creates five files total:
+  - User-global: ~/.config/ralph-workflow.toml, ~/.config/ralph-workflow-mcp.toml
+  - Project-local: .agent/ralph-workflow.toml, .agent/mcp.toml, .agent/agents.toml,
+                   .agent/pipeline.toml, .agent/artifacts.toml
 """
 
 from __future__ import annotations
@@ -22,7 +27,9 @@ _GLOBAL_CONFIG_FILENAME = "ralph-workflow.toml"
 _GLOBAL_MCP_FILENAME = "ralph-workflow-mcp.toml"
 _LOCAL_CONFIG_FILENAME = "ralph-workflow.toml"
 _LOCAL_MCP_FILENAME = "mcp.toml"
+_LOCAL_POLICY_FILENAMES = ("agents.toml", "pipeline.toml", "artifacts.toml")
 _BUNDLED_DEFAULTS_DIR = Path(ralph.policy.__file__).parent / "defaults"
+_LOCAL_CONFIG_SOURCE = "ralph-workflow-local.toml"
 
 
 @dataclass(frozen=True)
@@ -105,9 +112,9 @@ def ensure_local_configs(agent_dir: Path, *, force: bool = False) -> list[Bootst
         List of BootstrapResult, one per config file.
     """
     agent_dir.mkdir(parents=True, exist_ok=True)
-    results = [
+    results: list[BootstrapResult] = [
         _copy_with_backup(
-            _BUNDLED_DEFAULTS_DIR / _GLOBAL_CONFIG_FILENAME,
+            _BUNDLED_DEFAULTS_DIR / _LOCAL_CONFIG_SOURCE,
             agent_dir / _LOCAL_CONFIG_FILENAME,
             force,
         ),
@@ -117,6 +124,14 @@ def ensure_local_configs(agent_dir: Path, *, force: bool = False) -> list[Bootst
             force,
         ),
     ]
+    results.extend(
+        _copy_with_backup(
+            _BUNDLED_DEFAULTS_DIR / policy_filename,
+            agent_dir / policy_filename,
+            force,
+        )
+        for policy_filename in _LOCAL_POLICY_FILENAMES
+    )
     return results
 
 

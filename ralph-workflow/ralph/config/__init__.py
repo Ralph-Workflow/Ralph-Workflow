@@ -32,6 +32,7 @@ from ralph.config.models import (
     GeneralConfig,
     UnifiedConfig,
 )
+from ralph.config.welcome import emit_first_run_welcome
 
 __all__ = [
     "AgentConfig",
@@ -44,6 +45,7 @@ __all__ = [
     "ReviewDepth",
     "UnifiedConfig",
     "Verbosity",
+    "emit_first_run_welcome",
     "ensure_global_config",
     "ensure_global_mcp_config",
     "ensure_local_configs",

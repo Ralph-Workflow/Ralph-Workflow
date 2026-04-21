@@ -1,5 +1,13 @@
 # Default artifacts policy for Ralph.
-# Defines MCP artifact contracts for each drain.
+#
+# PURPOSE: Defines MCP artifact contracts for each drain.
+#
+# LOCATION: This file is the canonical default. Ralph reads overrides from:
+#   - .agent/artifacts.toml (project-local, takes precedence over this file)
+#
+# REGENERATION: Run `ralph --regenerate-config` to refresh from this default.
+#
+# MINIMUM REQUIRED SECTIONS: [artifacts] must be present.
 #
 # MCP-artifact-only: Unlike the legacy Rust implementation, the Python Ralph
 # does not support XML/XSD structured output. All agent output flows through

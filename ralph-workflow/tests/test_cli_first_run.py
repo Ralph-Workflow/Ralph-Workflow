@@ -1,0 +1,140 @@
+"""Black-box CLI integration tests for first-run welcome banner and idempotency."""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import pytest
+from typer.testing import CliRunner
+
+from ralph.cli.main import app
+
+
+@pytest.fixture
+def clean_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, str]:
+    """Set up a clean environment with temporary config and home directories."""
+    env = {
+        "XDG_CONFIG_HOME": str(tmp_path / ".config"),
+        "HOME": str(tmp_path / ".home"),
+    }
+    for key, val in env.items():
+        monkeypatch.setenv(key, val)
+        Path(val).mkdir(parents=True, exist_ok=True)
+    return env
+
+
+def test_cli_first_run_shows_welcome_banner(
+    clean_env: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """First invocation should show the 'Ralph first-run setup' banner."""
+    runner = CliRunner()
+
+    # chdir to the temp path so .agent is created there
+    monkeypatch.chdir(tmp_path)
+
+    result = runner.invoke(app, ["--check-config"], catch_exceptions=False)
+
+    assert result.exit_code == 0, f"Expected exit 0, got {result.exit_code}: {result.output}"
+    assert "Ralph first-run setup" in result.output, (
+        f"Expected 'Ralph first-run setup' in output, got: {result.output}"
+    )
+
+
+def test_cli_first_run_banner_not_shown_on_second_run(
+    clean_env: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Second invocation should NOT show the welcome banner (idempotency)."""
+    runner = CliRunner()
+
+    # chdir to the temp path
+    monkeypatch.chdir(tmp_path)
+
+    # First invocation - creates configs
+    result1 = runner.invoke(app, ["--check-config"], catch_exceptions=False)
+    assert result1.exit_code == 0
+
+    # Second invocation - should skip creation, no banner
+    result2 = runner.invoke(app, ["--check-config"], catch_exceptions=False)
+    assert result2.exit_code == 0
+
+    # Banner should only appear in first output
+    assert "Ralph first-run setup" in result1.output
+    assert "Ralph first-run setup" not in result2.output, (
+        f"Welcome banner should not appear on second run. Output was: {result2.output}"
+    )
+
+
+def test_cli_regenerate_config_shows_banner(
+    clean_env: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Regenerate-config should show the banner when files are regenerated."""
+    runner = CliRunner()
+
+    # chdir to the temp path
+    monkeypatch.chdir(tmp_path)
+
+    # First invocation creates configs
+    result1 = runner.invoke(app, ["--check-config"], catch_exceptions=False)
+    assert result1.exit_code == 0
+
+    # Regenerate should show banner since files are overwritten
+    result2 = runner.invoke(app, ["--regenerate-config"], catch_exceptions=False)
+    assert result2.exit_code == 0, f"Expected exit 0, got {result2.exit_code}: {result2.output}"
+
+    # The banner should appear (or a summary about configs being regenerated)
+    output_lower = result2.output.lower()
+    # Since regenerate produces "created_or_regenerated" results, welcome should fire
+    # When files already exist and are regenerated, action is "regenerated" not "skipped"
+    assert "ralph first-run setup" in output_lower or "regenerated" in output_lower, (
+        f"Expected banner or regenerate info in output, got: {result2.output}"
+    )
+
+
+def test_cli_init_shows_welcome_banner(
+    clean_env: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """`ralph --init` should show the welcome banner when creating local configs."""
+    runner = CliRunner()
+
+    # chdir to the temp path
+    monkeypatch.chdir(tmp_path)
+
+    result = runner.invoke(app, ["--init", "default"], catch_exceptions=False)
+
+    assert result.exit_code == 0, f"Expected exit 0, got {result.exit_code}: {result.output}"
+    assert "Ralph first-run setup" in result.output, (
+        f"Expected 'Ralph first-run setup' in output, got: {result.output}"
+    )
+
+
+def test_cli_init_idempotent_no_banner_on_second_run(
+    clean_env: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Second `ralph --init` should not show the welcome banner."""
+    runner = CliRunner()
+
+    # chdir to the temp path
+    monkeypatch.chdir(tmp_path)
+
+    # First init
+    result1 = runner.invoke(app, ["--init", "default"], catch_exceptions=False)
+    assert result1.exit_code == 0
+
+    # Second init - all configs already exist, should skip
+    result2 = runner.invoke(app, ["--init", "default"], catch_exceptions=False)
+    assert result2.exit_code == 0
+
+    # Banner should not appear on second run
+    assert "Ralph first-run setup" not in result2.output, (
+        f"Welcome banner should not appear on second init. Output was: {result2.output}"
+    )

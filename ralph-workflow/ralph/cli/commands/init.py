@@ -14,10 +14,12 @@ from rich.text import Text
 
 import ralph.policy
 from ralph.config.bootstrap import (
+    BootstrapResult,
     ensure_global_config,
     ensure_global_mcp_config,
     ensure_local_configs,
 )
+from ralph.config.welcome import emit_first_run_welcome
 
 console = Console()
 
@@ -60,14 +62,24 @@ def init_command(
         shutil.copy2(str(bundled_defaults / "ralph-workflow.toml"), str(config_path))
         console.print(_status_text("Created", str(config_path), "green"))
     elif config_path is None:
-        for result in ensure_local_configs(agent_dir):
-            if result.action == "created":
-                console.print(_status_text("Created", str(result.path), "green"))
+        local_results = ensure_local_configs(agent_dir)
+        global_results: list[BootstrapResult] = [
+            ensure_global_config(),
+            ensure_global_mcp_config(),
+        ]
+        all_results = local_results + global_results
 
-    for result in (ensure_global_config(), ensure_global_mcp_config()):
-        if result.action == "created":
-            console.print(_status_text("Created default config", str(result.path), "green"))
+        # Show welcome banner if anything was created/regenerated
+        created_or_regenerated = [r for r in all_results if r.action in {"created", "regenerated"}]
+        if created_or_regenerated:
+            emit_first_run_welcome(console, all_results)
+        else:
+            # All skipped - show fallback next steps
+            _print_fallback_next_steps(target, template)
 
+
+def _print_fallback_next_steps(target: Path, template: str | None) -> None:
+    """Print next steps when all configs were skipped (re-running init)."""
     template_label = template or "default"
     console.print(_status_text("Ralph initialized in", str(target), "cyan"))
     console.print(f"  [dim]Template:[/dim] {template_label}")
@@ -81,7 +93,12 @@ def init_command(
         "  3. (Optional) Configure MCP servers in [cyan].agent/mcp.toml[/cyan]"
         " or [cyan]~/.config/ralph-workflow-mcp.toml[/cyan]"
     )
-    console.print("  4. Run [cyan]ralph[/cyan] to start the pipeline")
+    console.print(
+        "  4. (Optional) Review agent chains in [cyan].agent/agents.toml[/cyan],"
+        " pipeline in [cyan].agent/pipeline.toml[/cyan],"
+        " and artifacts in [cyan].agent/artifacts.toml[/cyan]"
+    )
+    console.print("  5. Run [cyan]ralph[/cyan] to start the pipeline")
     console.print("\n[dim]To reset configs later: [cyan]ralph --regenerate-config[/cyan][/dim]")
 
 

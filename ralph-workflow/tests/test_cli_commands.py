@@ -1488,6 +1488,9 @@ def test_init_command_keeps_existing_files(monkeypatch: pytest.MonkeyPatch, tmp_
     config = agent_dir / "ralph-workflow.toml"
     config.write_text("existing config")
     (agent_dir / "mcp.toml").write_text("# local mcp", encoding="utf-8")
+    (agent_dir / "agents.toml").write_text("# agents", encoding="utf-8")
+    (agent_dir / "pipeline.toml").write_text("# pipeline", encoding="utf-8")
+    (agent_dir / "artifacts.toml").write_text("# artifacts", encoding="utf-8")
 
     init_module.init_command(template="starter-template")
     assert prompt.read_text() == "existing"

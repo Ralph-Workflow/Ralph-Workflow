@@ -1,5 +1,20 @@
 # Bundled default MCP configuration for Ralph.
 #
+# Ralph manages five config files in total:
+#   1. ~/.config/ralph-workflow.toml          (user-global main config)
+#   2. ~/.config/ralph-workflow-mcp.toml      (user-global MCP config, this file)
+#   3. .agent/ralph-workflow.toml             (project-local override)
+#   4. .agent/mcp.toml                        (project-local MCP override)
+#   5. .agent/agents.toml                     (project-local agent chains)
+#   6. .agent/pipeline.toml                   (project-local pipeline phases)
+#   7. .agent/artifacts.toml                  (project-local artifact contracts)
+#
+# OVERRIDE PRECEDENCE (highest to lowest):
+#   CLI flags > project-local (.agent/) > user-global (~/.config/) > bundled defaults
+#
+# REGENERATION: Run `ralph --regenerate-config` to refresh all configs from
+# bundled defaults. Existing files are backed up to <name>.bak before overwrite.
+#
 # This file ships inside the wheel as the built-in default.
 # Create `.agent/mcp.toml` (project-local) or `~/.config/ralph-workflow-mcp.toml`
 # (user-global) to override it.

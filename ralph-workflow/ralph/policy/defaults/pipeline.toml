@@ -1,5 +1,13 @@
 # Default pipeline policy for Ralph.
-# This defines the phase graph that drives the configurable orchestration layer.
+#
+# PURPOSE: Defines the phase graph that drives the configurable orchestration layer.
+#
+# LOCATION: This file is the canonical default. Ralph reads overrides from:
+#   - .agent/pipeline.toml (project-local, takes precedence over this file)
+#
+# REGENERATION: Run `ralph --regenerate-config` to refresh from this default.
+#
+# MINIMUM REQUIRED SECTIONS: [phases] with at least entry_phase and terminal_phase.
 #
 # Phase routing is driven entirely by this file — no hardcoded phase transitions
 # exist in the reducer. Each phase references a drain (bound in agents.toml) and

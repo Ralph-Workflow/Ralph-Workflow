@@ -1,31 +1,16 @@
-# User-global Ralph configuration.
+# Project-local Ralph configuration.
 #
-# Ralph manages five config files in total:
-#   1. ~/.config/ralph-workflow.toml          (user-global, this file)
-#   2. ~/.config/ralph-workflow-mcp.toml      (user-global MCP config)
-#   3. .agent/ralph-workflow.toml             (project-local override)
-#   4. .agent/mcp.toml                        (project-local MCP override)
-#   5. .agent/agents.toml                     (project-local agent chains)
-#   6. .agent/pipeline.toml                   (project-local pipeline phases)
-#   7. .agent/artifacts.toml                  (project-local artifact contracts)
+# Location: .agent/ralph-workflow.toml  (relative to your project root)
 #
-# OVERRIDE PRECEDENCE (highest to lowest):
-#   CLI flags > project-local (.agent/) > user-global (~/.config/) > bundled defaults
-#
-# REGENERATION: Run `ralph --regenerate-config` to refresh all configs from
-# bundled defaults. Existing files are backed up to <name>.bak before overwrite.
-#
-# Location: ~/.config/ralph-workflow.toml  (or $XDG_CONFIG_HOME/ralph-workflow.toml)
-#
-# Project-local overrides live in .agent/ralph-workflow.toml — values there
-# take precedence over this file.
+# This file overrides the user-global ~/.config/ralph-workflow.toml.
+# Values here take precedence over the global file.
 #
 # Every non-secret field is listed below with its default value, commented out.
 # Uncomment and edit only the fields you want to change; everything else keeps
 # its documented default automatically.
 #
-# For MCP servers and web search, edit ~/.config/ralph-workflow-mcp.toml
-# (or .agent/mcp.toml for project-local overrides).
+# For MCP servers and web search, edit .agent/mcp.toml (project-local)
+# or ~/.config/ralph-workflow-mcp.toml (user-global).
 
 # ---------------------------------------------------------------------------
 # [general] — Core workflow settings

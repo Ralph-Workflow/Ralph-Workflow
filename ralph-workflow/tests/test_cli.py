@@ -487,16 +487,25 @@ def test_configure_logging_debug_level(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_regenerate_config_flag_creates_bak(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
+    """Regenerate config creates .bak backup in isolated temp workspace."""
+    # Set up XDG_CONFIG_HOME to temp directory
     xdg_dir = tmp_path / "xdg"
     xdg_dir.mkdir()
     monkeypatch.setenv("XDG_CONFIG_HOME", str(xdg_dir))
+
+    # Create existing global config
     existing = xdg_dir / "ralph-workflow.toml"
     existing.write_text("# MINE", encoding="utf-8")
+
+    # Change to temp directory so resolve_workspace_scope() resolves to temp workspace
+    # (not the real repo's .agent/)
+    monkeypatch.chdir(tmp_path)
 
     runner = TyperCliRunner()
     result = runner.invoke(app, ["--regenerate-config"], catch_exceptions=False)
     assert result.exit_code == 0
 
+    # Verify backup was created in XDG_CONFIG_HOME
     bak = xdg_dir / "ralph-workflow.toml.bak"
     assert bak.exists()
     assert bak.read_text(encoding="utf-8") == "# MINE"

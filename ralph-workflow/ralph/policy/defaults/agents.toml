@@ -1,6 +1,13 @@
 # Default agents policy for Ralph.
-# Defines agent chains (fallback sequences) and drain-to-chain bindings.
 #
+# PURPOSE: Defines agent chains (fallback sequences) and drain-to-chain bindings.
+#
+# LOCATION: This file is the canonical default. Ralph reads overrides from:
+#   - .agent/agents.toml (project-local, takes precedence over this file)
+#
+# REGENERATION: Run `ralph --regenerate-config` to refresh from this default.
+#
+# MINIMUM REQUIRED SECTIONS: [agent_chains] and [agent_drains] must both be present.
 # Chains are ordered fallback lists. Ralph tries agents in order;
 # on failure it retries up to max_retries times before advancing to the next agent.
 # After all agents in a chain are exhausted, the pipeline fails.

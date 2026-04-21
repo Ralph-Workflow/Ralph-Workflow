@@ -52,22 +52,33 @@ ralph
 
 ### First-run configuration
 
-On first run, Ralph auto-creates `~/.config/ralph-workflow.toml` and
-`~/.config/ralph-workflow-mcp.toml` (or `$XDG_CONFIG_HOME/...` if set) from
-bundled, fully-commented templates.
+On first run, Ralph auto-creates seven config files from bundled, fully-commented templates:
 
-These ship with sane defaults — you only need to edit them if you want to
-override something specific.
+**User-global (created once, reused across all projects):**
+- `~/.config/ralph-workflow.toml` — main Ralph configuration
+- `~/.config/ralph-workflow-mcp.toml` — MCP servers and web search configuration
 
-Project-local overrides live in `.agent/ralph-workflow.toml` and `.agent/mcp.toml`,
-created when you run `ralph --init`.
+**Project-local (created by `ralph --init`, lives in your project directory):**
+- `.agent/ralph-workflow.toml` — project-local main config override
+- `.agent/mcp.toml` — project-local MCP override
+- `.agent/agents.toml` — agent chain definitions and drain bindings
+- `.agent/pipeline.toml` — phase graph and orchestration policy
+- `.agent/artifacts.toml` — MCP artifact contracts per drain
 
-To reset all configs from the bundled defaults (existing files are backed up to
-`<name>.bak`), run:
+**Override precedence (highest to lowest):**
+CLI flags → project-local (`.agent/`) → user-global (`~/.config/`) → bundled defaults
+
+These ship with sane defaults — you only need to edit them if you want to override something specific.
+
+**Ralph init:** Run `ralph --init` to seed all project-local files.
+
+**Regeneration:** To reset all configs from the bundled defaults (existing files are backed up to `<name>.bak`), run:
 
 ```bash
 ralph --regenerate-config
 ```
+
+The first-run welcome banner shows which files were created and checks whether your AI agents are on PATH.
 
 ## Verification
 
