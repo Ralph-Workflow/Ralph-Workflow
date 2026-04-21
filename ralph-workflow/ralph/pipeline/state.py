@@ -95,22 +95,6 @@ class RunMetrics(BaseModel):  # type: ignore[explicit-any]
     total_retries: int = 0
 
 
-class ContinuationState(BaseModel):  # type: ignore[explicit-any]
-    """Continuation state for development iterations.
-
-    Attributes:
-        active: Whether a continuation is active.
-        previous_status: The previous development status.
-        context_write_pending: Whether context write is pending.
-    """
-
-    model_config = ConfigDict(frozen=True)
-
-    active: bool = False
-    previous_status: str | None = None
-    context_write_pending: bool = False
-
-
 class PipelineState(BaseModel):  # type: ignore[explicit-any]
     """Immutable snapshot of pipeline execution state.
 
@@ -133,7 +117,6 @@ class PipelineState(BaseModel):  # type: ignore[explicit-any]
         fix_chain: Fix agent chain state.
         rebase: Git rebase state.
         commit: Commit state.
-        continuation: Continuation state.
         metrics: Run-level execution metrics.
         checkpoint_saved_count: Count of checkpoint saves.
         recovery_epoch: Recovery epoch counter.
@@ -172,7 +155,6 @@ class PipelineState(BaseModel):  # type: ignore[explicit-any]
     fix_chain: AgentChainState = Field(default_factory=AgentChainState)
     rebase: RebaseState = Field(default_factory=RebaseState)
     commit: CommitState = Field(default_factory=CommitState)
-    continuation: ContinuationState = Field(default_factory=ContinuationState)
     metrics: RunMetrics = Field(default_factory=RunMetrics)
     checkpoint_saved_count: int = 0
     recovery_epoch: int = 0

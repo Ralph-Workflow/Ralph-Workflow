@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, TypedDict, cast
 
+from ralph.pipeline.progress import derive_run_context_progress
+
 from .execution_history import ExecutionHistory, ExecutionHistoryDict
 from .run_context import RunContext, RunContextDict
 
@@ -109,13 +111,7 @@ class CheckpointBuilder:
             raise ValueError("CheckpointBuilder requires pipeline state before build()")
 
         run_context = self._run_context or RunContext.new()
-        normalized_context = RunContext(
-            run_id=run_context.run_id,
-            parent_run_id=run_context.parent_run_id,
-            resume_count=run_context.resume_count,
-            actual_developer_runs=max(run_context.actual_developer_runs, self._state.iteration),
-            actual_reviewer_runs=max(run_context.actual_reviewer_runs, self._state.reviewer_pass),
-        )
+        normalized_context = derive_run_context_progress(self._state, run_context)
 
         return CheckpointPayload(
             state=self._state,

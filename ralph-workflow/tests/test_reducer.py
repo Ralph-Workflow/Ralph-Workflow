@@ -211,6 +211,7 @@ class TestPhaseFailureEvent:
         event = PhaseFailureEvent(phase="development", reason="missing artifact", recoverable=True)
         new_state, effects = _reduce(state, event)
         assert new_state.phase == PHASE_FAILED
+        assert new_state.last_error is not None
         assert "development" in new_state.last_error
         assert "missing artifact" in new_state.last_error
         assert len(effects) == 1
@@ -250,6 +251,7 @@ class TestPhaseFailureEvent:
         )
         new_state, _effects = _reduce(state, event)
         assert new_state.phase == PHASE_FAILED
+        assert new_state.last_error is not None
         assert "missing planning artifact" in new_state.last_error
         assert "development" in new_state.last_error
 
@@ -266,6 +268,7 @@ class TestPhaseFailureEvent:
         )
         new_state, effects = _reduce(state, event)
         assert new_state.phase == PHASE_FAILED
+        assert new_state.last_error is not None
         assert new_state.last_error != "Unknown failure"
         assert "Unknown failure" not in new_state.last_error
         for effect in effects:
@@ -331,8 +334,8 @@ def test_review_clean_advances_to_commit() -> None:
     assert new_state.phase == PHASE_REVIEW_COMMIT
 
 
-def test_review_issues_found_advances_to_fix() -> None:
-    """Test that REVIEW_ISSUES_FOUND advances to fix phase."""
+def test_review_issues_found_advances_to_fix_without_completing_pass() -> None:
+    """REVIEW_ISSUES_FOUND should route to fix without incrementing reviewer_pass."""
     state = PipelineState(
         phase=PHASE_REVIEW,
         reviewer_pass=0,
@@ -340,7 +343,8 @@ def test_review_issues_found_advances_to_fix() -> None:
     )
     new_state, _ = _reduce(state, PipelineEvent.REVIEW_ISSUES_FOUND)
     assert new_state.phase == PHASE_FIX
-    assert new_state.reviewer_pass == 1
+    assert new_state.reviewer_pass == 0
+    assert new_state.review_issues_found is True
 
 
 def test_fix_success_returns_to_review() -> None:
@@ -667,7 +671,7 @@ class TestAnalysisDecisionDispatch:
         assert new_state.phase == PHASE_FIX
         assert new_state.previous_phase == "review_analysis"
 
-    def test_analysis_loopback_with_policy_marks_review_issue_and_advances_pass(self) -> None:
+    def test_analysis_loopback_with_policy_marks_review_issue_without_completing_pass(self) -> None:
         """Policy routing must preserve review bookkeeping on loopback to fix."""
         policy = _policy_with_post_commit_routes()
         state = PipelineState(
@@ -680,7 +684,7 @@ class TestAnalysisDecisionDispatch:
         new_state, _ = _reduce(state, PipelineEvent.ANALYSIS_LOOPBACK, policy)
 
         assert new_state.phase == PHASE_FIX
-        assert new_state.reviewer_pass == 1
+        assert new_state.reviewer_pass == 0
         assert new_state.review_issues_found is True
 
     def test_analysis_success_with_policy_clears_review_issue_flag(self) -> None:
@@ -1297,6 +1301,7 @@ def test_phase_handler_crash_exhausts_chain_before_failing() -> None:
     # Final crash on agent 1 (chain exhausted): PHASE_FAILED with descriptive reason
     state, effects = _reduce(state, crash_event)
     assert state.phase == PHASE_FAILED
+    assert state.last_error is not None
     assert "Phase handler crashed: RuntimeError: boom" in state.last_error
     assert len(effects) == 1
     effect = effects[0]

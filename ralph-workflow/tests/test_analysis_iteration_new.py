@@ -224,7 +224,7 @@ class TestReviewAnalysisLoopbackIncrementsContinuationCounter:
         new_state, _ = _reduce(state, PipelineEvent.ANALYSIS_LOOPBACK, policy)
         assert new_state.phase == PHASE_REVIEW_ANALYSIS
         assert new_state.review_analysis_iteration == 1
-        assert new_state.reviewer_pass == 1  # reviewer_pass also increments on loopback
+        assert new_state.reviewer_pass == 0
 
 
 class TestReviewAnalysisLoopbackAtMaxForcesCommit:

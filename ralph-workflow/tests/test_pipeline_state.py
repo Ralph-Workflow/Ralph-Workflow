@@ -150,6 +150,31 @@ def test_old_checkpoint_without_worker_states_loads_as_empty() -> None:
     assert state.worker_states == {}
 
 
+def test_pipeline_state_no_longer_exposes_legacy_continuation_state() -> None:
+    """ContinuationState is legacy bookkeeping and should not remain on PipelineState."""
+    assert "continuation" not in PipelineState.model_fields
+
+
+def test_old_checkpoint_with_legacy_continuation_state_still_loads() -> None:
+    """Old checkpoints carrying legacy continuation data should still deserialize."""
+    old_json = json.dumps(
+        {
+            "phase": "development",
+            "iteration": 1,
+            "continuation": {
+                "active": True,
+                "previous_status": "partial",
+                "context_write_pending": False,
+            },
+        }
+    )
+
+    state = PipelineState.model_validate_json(old_json)
+
+    assert state.phase == "development"
+    assert state.iteration == 1
+
+
 def test_worker_states_none_coerces_to_empty_dict() -> None:
     """field_validator coerces None → {} for backward compat."""
     state = PipelineState.model_validate({"worker_states": None})
