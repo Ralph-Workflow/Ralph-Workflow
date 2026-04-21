@@ -6,6 +6,8 @@ import asyncio
 import os
 import time
 from pathlib import Path
+from subprocess import PIPE as _PIPE
+from subprocess import STDOUT as _STDOUT
 from typing import TYPE_CHECKING
 
 from ralph.agents.executor import ExecutorError, WorkerResult
@@ -27,8 +29,9 @@ class SubprocessAgentExecutor:
     """AgentExecutor that spawns a subprocess in its own process group.
 
     Uses ProcessManager.spawn_async with start_new_session=True so the child
-    gets its own process group, enabling SIGKILL of the entire process tree on
-    cancellation.
+    gets its own process group, enabling escalating tree-kill on cancellation.
+    Success or failure is determined by the coordinator from empirical evidence
+    (artifact submission, git changes) — never from this executor's exit code.
     """
 
     def __init__(  # noqa: PLR0913
@@ -75,8 +78,8 @@ class SubprocessAgentExecutor:
                 self._command,
                 cwd=str(self._cwd) if self._cwd is not None else None,
                 env=env,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.STDOUT,
+                stdout=_PIPE,
+                stderr=_STDOUT,
                 start_new_session=True,
                 label=f"agent:{unit.unit_id}",
             )
@@ -122,8 +125,6 @@ class SubprocessAgentExecutor:
 
         duration_ms = int((time.monotonic() - start_time) * 1000)
         exit_code = handle.returncode if handle.returncode is not None else 0
-
-        on_status(WorkerStatus.SUCCEEDED if exit_code == 0 else WorkerStatus.FAILED)
 
         return WorkerResult(
             unit_id=unit.unit_id,

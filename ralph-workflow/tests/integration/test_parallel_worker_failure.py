@@ -55,7 +55,12 @@ def test_one_failure_cancels_all() -> None:
         _make_work_unit("unit-C"),
     )
     runs = {
-        "unit-A": FakeRun(outputs=[], exit_code=1, duration_ms=1),
+        "unit-A": FakeRun(
+            outputs=[],
+            exit_code=1,
+            duration_ms=1,
+            raise_on_start=RuntimeError("unit-A failed"),
+        ),
         "unit-B": FakeRun(outputs=_long_running_outputs(), exit_code=0, duration_ms=1000),
         "unit-C": FakeRun(outputs=_long_running_outputs(), exit_code=0, duration_ms=1000),
     }
@@ -89,7 +94,12 @@ def test_failed_state_transitions_reflect_failure() -> None:
         _make_work_unit("unit-C"),
     )
     runs = {
-        "unit-A": FakeRun(outputs=[], exit_code=1, duration_ms=1),
+        "unit-A": FakeRun(
+            outputs=[],
+            exit_code=1,
+            duration_ms=1,
+            raise_on_start=RuntimeError("unit-A failed"),
+        ),
         "unit-B": FakeRun(outputs=_long_running_outputs(), exit_code=0, duration_ms=1000),
         "unit-C": FakeRun(outputs=_long_running_outputs(), exit_code=0, duration_ms=1000),
     }

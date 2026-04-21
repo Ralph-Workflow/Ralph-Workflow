@@ -10,6 +10,7 @@ from loguru import logger
 
 from ralph import logging as ralph_logging
 from ralph.agents import subprocess_executor
+from ralph.mcp.artifacts.store import list_artifacts
 from ralph.mcp.server import factory_impl
 from ralph.pipeline.events import (
     Event,
@@ -178,10 +179,12 @@ def _flatten_worker_failures(
     return failures, unexpected
 
 
-def _nonzero_exit_error(result: WorkerResult) -> str:
-    if result.final_message:
-        return result.final_message
-    return f"Worker {result.unit_id} exited with code {result.exit_code}"
+def _has_empirical_evidence(worktree_path: Path) -> bool:
+    """Return True if the worktree contains at least one submitted artifact."""
+    artifact_dir = worktree_path / ".agent" / "artifacts"
+    if not artifact_dir.exists():
+        return False
+    return bool(list_artifacts(artifact_dir))
 
 
 def _prepare_executor(
@@ -189,7 +192,7 @@ def _prepare_executor(
     executor: AgentExecutor,
     isolation: _IsolationDeps | None,
     activity_router: ActivityRouter | None = None,
-) -> tuple[AgentExecutor, WorkerSessionBundle | None]:
+) -> tuple[AgentExecutor, WorkerSessionBundle | None, Path | None]:
     if isolation is None:
         # Inject the activity router if the executor supports it and a router is available.
         # This ensures the non-isolated path also routes output through the activity model.
@@ -197,14 +200,14 @@ def _prepare_executor(
             executor, subprocess_executor.SubprocessAgentExecutor
         ):
             executor.activity_router = activity_router
-        return executor, None
+        return executor, None, None
 
     worktree_path = isolation.worktree_manager.create(unit.unit_id, base_branch="main")
     worker_scope = WorkspaceScope(worktree_path)
     if isolation.executor_command is None:
         return executor, worker_session.build_worker_session(
             unit, isolation.mcp_factory, worker_scope
-        )
+        ), worktree_path
 
     worker_workspace = fs.FsWorkspace(worktree_path)
     worker_mcp_factory = factory_impl.DynamicBindingMcpServerFactory(workspace=worker_workspace)
@@ -222,6 +225,7 @@ def _prepare_executor(
             ),
         ),
         bundle,
+        worktree_path,
     )
 
 
@@ -336,7 +340,7 @@ async def _run_worker(
             display.set_status(unit.unit_id, status)
 
         try:
-            active_executor, bundle = _prepare_executor(
+            active_executor, bundle, worktree_path = _prepare_executor(
                 unit,
                 executor,
                 isolation,
@@ -357,13 +361,24 @@ async def _run_worker(
                     raise _WorkerFailureError(unit.unit_id, 1, str(exc)) from exc
                 raise
 
-            if result.exit_code != 0:
+            # For isolated workers (worktree + MCP bundle), success is determined by
+            # empirical evidence: the worker must have submitted at least one artifact.
+            if (
+                bundle is not None
+                and worktree_path is not None
+                and not _has_empirical_evidence(worktree_path)
+            ):
+                display.set_status(unit.unit_id, WorkerStatus.FAILED)
                 raise _WorkerFailureError(
                     unit_id=unit.unit_id,
                     exit_code=result.exit_code,
-                    error=_nonzero_exit_error(result),
+                    error=(
+                        f"Worker {unit.unit_id!r} submitted no artifact "
+                        f"(exit_code={result.exit_code})"
+                    ),
                 )
 
+            display.set_status(unit.unit_id, WorkerStatus.SUCCEEDED)
             await completion_queue.put(result)
             worker_succeeded = True
         finally:

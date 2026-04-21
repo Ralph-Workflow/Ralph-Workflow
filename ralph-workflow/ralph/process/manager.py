@@ -4,12 +4,13 @@ Invariants:
 - Every spawned process is recorded from start to exit; no transitions are lost.
 - All callers interact through spawn() / spawn_async() / terminate(); no direct
   subprocess.Popen / asyncio.create_subprocess_exec calls outside this module.
-- Termination escalates: SIGTERM to the process group → poll for grace_period_s →
-  SIGKILL the process group → wait kill_followup_timeout_s → raise if still alive.
+- Termination escalates via psutil: graceful terminate() to the process and all
+  descendants → wait grace_period_s → forceful kill() survivors → wait
+  kill_followup_timeout_s → raise ProcessTerminationError if still alive.
+- Cross-platform: psutil handles Linux, macOS, and Windows process trees without
+  relying on POSIX signals or process groups.
 - Listener exceptions never propagate into the spawn/terminate call path; they
   are logged via loguru and skipped.
-- POSIX-only: os.killpg / start_new_session are used unconditionally.  Falls back
-  to process.terminate() / process.kill() when os.killpg is unavailable (Windows).
 """
 
 from __future__ import annotations
@@ -17,14 +18,13 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import os
-import signal
 import subprocess
-import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import Enum, auto
 from typing import TYPE_CHECKING
 
+import psutil
 from loguru import logger
 
 if TYPE_CHECKING:
@@ -38,6 +38,9 @@ class ProcessStatus(Enum):
     EXITED = auto()
     KILLED = auto()
     FAILED = auto()
+
+
+_TERMINAL_STATUSES = (ProcessStatus.EXITED, ProcessStatus.KILLED, ProcessStatus.FAILED)
 
 
 @dataclass
@@ -98,15 +101,15 @@ class ManagedProcess:
         return self._proc.pid
 
     @property
-    def stdin(self) -> IO[bytes] | IO[str] | None:
+    def stdin(self) -> IO[bytes] | None:
         return self._proc.stdin
 
     @property
-    def stdout(self) -> IO[bytes] | IO[str] | None:
+    def stdout(self) -> IO[bytes] | None:
         return self._proc.stdout
 
     @property
-    def stderr(self) -> IO[bytes] | IO[str] | None:
+    def stderr(self) -> IO[bytes] | None:
         return self._proc.stderr
 
     @property
@@ -115,11 +118,7 @@ class ManagedProcess:
 
     def poll(self) -> int | None:
         rc = self._proc.poll()
-        if rc is not None and self._record.status not in (
-            ProcessStatus.EXITED,
-            ProcessStatus.KILLED,
-            ProcessStatus.FAILED,
-        ):
+        if rc is not None and self._record.status not in _TERMINAL_STATUSES:
             self._manager._mark_exited(self._record, rc)
         return rc
 
@@ -128,11 +127,7 @@ class ManagedProcess:
             rc = self._proc.wait(timeout=timeout)
         except subprocess.TimeoutExpired:
             raise
-        if self._record.status not in (
-            ProcessStatus.EXITED,
-            ProcessStatus.KILLED,
-            ProcessStatus.FAILED,
-        ):
+        if self._record.status not in _TERMINAL_STATUSES:
             self._manager._mark_exited(self._record, rc)
         return rc
 
@@ -146,11 +141,7 @@ class ManagedProcess:
         except subprocess.TimeoutExpired:
             raise
         rc = self._proc.returncode
-        if rc is not None and self._record.status not in (
-            ProcessStatus.EXITED,
-            ProcessStatus.KILLED,
-            ProcessStatus.FAILED,
-        ):
+        if rc is not None and self._record.status not in _TERMINAL_STATUSES:
             self._manager._mark_exited(self._record, rc)
         return stdout, stderr
 
@@ -169,22 +160,14 @@ class ManagedProcess:
         return self
 
     def __exit__(self, exc_type: object, exc_val: object, exc_tb: object) -> None:
-        if self._record.status not in (
-            ProcessStatus.EXITED,
-            ProcessStatus.KILLED,
-            ProcessStatus.FAILED,
-        ):
+        if self._record.status not in _TERMINAL_STATUSES:
             self.terminate(grace_period_s=2.0)
         for attr in ('stdout', 'stderr', 'stdin'):
-            pipe: IO[bytes] | IO[str] | None = getattr(self._proc, attr, None)
+            pipe: IO[bytes] | None = getattr(self._proc, attr, None)
             if pipe is not None:
                 with contextlib.suppress(Exception):
                     pipe.close()
-        if self._record.status not in (
-            ProcessStatus.EXITED,
-            ProcessStatus.KILLED,
-            ProcessStatus.FAILED,
-        ):
+        if self._record.status not in _TERMINAL_STATUSES:
             with contextlib.suppress(Exception):
                 self._proc.wait()
 
@@ -228,22 +211,14 @@ class ManagedAsyncProcess:
 
     async def wait(self) -> int:
         rc = await self._proc.wait()
-        if self._record.status not in (
-            ProcessStatus.EXITED,
-            ProcessStatus.KILLED,
-            ProcessStatus.FAILED,
-        ):
+        if self._record.status not in _TERMINAL_STATUSES:
             self._manager._mark_exited(self._record, rc)
         return rc
 
     async def communicate(self, input: bytes | None = None) -> tuple[bytes, bytes]:
         stdout, stderr = await self._proc.communicate(input)
         rc = self._proc.returncode
-        if rc is not None and self._record.status not in (
-            ProcessStatus.EXITED,
-            ProcessStatus.KILLED,
-            ProcessStatus.FAILED,
-        ):
+        if rc is not None and self._record.status not in _TERMINAL_STATUSES:
             self._manager._mark_exited(self._record, rc)
         return stdout or b"", stderr or b""
 
@@ -258,6 +233,10 @@ class ManagedAsyncProcess:
 
 class ProcessManager:
     """Single source of truth for all child processes Ralph spawns.
+
+    Termination uses psutil for cross-platform process-tree teardown: graceful
+    terminate() to the root and all descendants, then forceful kill() to
+    survivors. Works identically on Linux, macOS, and Windows.
 
     Use :func:`get_process_manager` to obtain the module-level singleton.
     Inject a custom instance (with a test-friendly :class:`ProcessManagerPolicy`)
@@ -429,68 +408,53 @@ class ProcessManager:
     def shutdown_all(self, *, grace_period_s: float | None = None) -> None:
         """Terminate all active processes."""
         gp = grace_period_s if grace_period_s is not None else self.policy.default_grace_period_s
-        _dead = (ProcessStatus.EXITED, ProcessStatus.KILLED, ProcessStatus.FAILED)
         for pid, record in list(self._records.items()):
-            if record.status not in _dead:
+            if record.status not in _TERMINAL_STATUSES:
                 proc = self._sync_procs.get(pid)
                 if proc is not None:
                     self._escalate_termination_sync(record, proc, gp)
                 else:
-                    self._killpg_record(record, gp)
+                    self._terminate_by_pid(record, gp)
 
     def shutdown_all_for_label(
         self, label_prefix: str, *, grace_period_s: float | None = None
     ) -> None:
         """Terminate all active processes whose label starts with label_prefix."""
         gp = grace_period_s if grace_period_s is not None else self.policy.default_grace_period_s
-        _dead = (ProcessStatus.EXITED, ProcessStatus.KILLED, ProcessStatus.FAILED)
         for pid, record in list(self._records.items()):
             if (
                 record.label is not None
                 and record.label.startswith(label_prefix)
-                and record.status not in _dead
+                and record.status not in _TERMINAL_STATUSES
             ):
                 proc = self._sync_procs.get(pid)
                 if proc is not None:
                     self._escalate_termination_sync(record, proc, gp)
                 else:
-                    self._killpg_record(record, gp)
+                    self._terminate_by_pid(record, gp)
 
-    def _killpg_record(self, record: ProcessRecord, grace_period_s: float) -> None:
-        """Kill a process group given only its record (no Popen handle available)."""
-        if record.pgid <= 0:
-            return
+    def _terminate_by_pid(self, record: ProcessRecord, grace_period_s: float) -> None:
+        """Kill a process tree given only its PID (no Popen handle available)."""
         try:
-            _killpg(record.pgid, signal.SIGTERM)
-        except (ProcessLookupError, PermissionError):
+            root = psutil.Process(record.pid)
+            children = root.children(recursive=True)
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
             self._mark_killed(record)
             return
 
-        deadline = time.monotonic() + grace_period_s
-        while time.monotonic() < deadline:
-            try:
-                os.kill(record.pid, 0)
-            except (ProcessLookupError, PermissionError):
-                self._mark_killed(record)
-                return
-            time.sleep(min(0.05, max(0, deadline - time.monotonic())))
+        all_procs = [root, *children]
+        for proc in all_procs:
+            with contextlib.suppress(psutil.NoSuchProcess, psutil.AccessDenied):
+                proc.terminate()
 
-        try:
-            _killpg(record.pgid, signal.SIGKILL)
-        except (ProcessLookupError, PermissionError):
-            self._mark_killed(record)
-            return
+        _, alive = psutil.wait_procs(all_procs, timeout=grace_period_s)
+        for proc in alive:
+            with contextlib.suppress(psutil.NoSuchProcess, psutil.AccessDenied):
+                proc.kill()
 
-        deadline2 = time.monotonic() + self.policy.kill_followup_timeout_s
-        while time.monotonic() < deadline2:
-            try:
-                os.kill(record.pid, 0)
-            except (ProcessLookupError, PermissionError):
-                self._mark_killed(record)
-                return
-            time.sleep(min(0.05, max(0, deadline2 - time.monotonic())))
-
-        logger.error("Process {} (pgid {}) still alive after SIGKILL", record.pid, record.pgid)
+        _, still_alive = psutil.wait_procs(alive, timeout=self.policy.kill_followup_timeout_s)
+        if still_alive:
+            logger.error("Process {} still alive after kill", record.pid)
         self._mark_killed(record)
 
     def _escalate_termination_sync(
@@ -499,41 +463,33 @@ class ProcessManager:
         proc: subprocess.Popen[bytes],
         grace_period_s: float,
     ) -> None:
-        """Escalate termination for a ManagedProcess (we have the Popen handle)."""
-        if record.status in (ProcessStatus.EXITED, ProcessStatus.KILLED, ProcessStatus.FAILED):
+        """Escalate termination for a ManagedProcess using psutil tree-walk."""
+        if record.status in _TERMINAL_STATUSES:
             return
 
-        with contextlib.suppress(ProcessLookupError, PermissionError):
-            _killpg(record.pgid, signal.SIGTERM)
-
-        deadline = time.monotonic() + grace_period_s
-        while time.monotonic() < deadline:
-            if proc.poll() is not None:
-                self._mark_killed(record, proc.returncode)
-                return
-            time.sleep(min(0.05, max(0, deadline - time.monotonic())))
-
-        with contextlib.suppress(ProcessLookupError, PermissionError):
-            _killpg(record.pgid, signal.SIGKILL)
-
-        deadline2 = time.monotonic() + self.policy.kill_followup_timeout_s
-        while time.monotonic() < deadline2:
-            if proc.poll() is not None:
-                self._mark_killed(record, proc.returncode)
-                return
-            time.sleep(min(0.05, max(0, deadline2 - time.monotonic())))
-
-        # Last attempt: blocking wait with short timeout
         try:
-            proc.wait(timeout=0.1)
-            self._mark_killed(record, proc.returncode)
+            root = psutil.Process(record.pid)
+            children = root.children(recursive=True)
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            self._mark_killed(record, proc.poll())
             return
-        except (subprocess.TimeoutExpired, Exception):
-            pass
 
-        logger.error("Process {} (pgid {}) still alive after SIGKILL", record.pid, record.pgid)
-        self._mark_killed(record, proc.returncode)
-        raise ProcessTerminationError(record.pid, record.pgid)
+        all_procs = [root, *children]
+        for p in all_procs:
+            with contextlib.suppress(psutil.NoSuchProcess, psutil.AccessDenied):
+                p.terminate()
+
+        _, alive = psutil.wait_procs(all_procs, timeout=grace_period_s)
+        for p in alive:
+            with contextlib.suppress(psutil.NoSuchProcess, psutil.AccessDenied):
+                p.kill()
+
+        _, still_alive = psutil.wait_procs(alive, timeout=self.policy.kill_followup_timeout_s)
+        rc = proc.poll()
+        self._mark_killed(record, rc)
+        if still_alive:
+            logger.error("Process {} still alive after kill", record.pid)
+            raise ProcessTerminationError(record.pid, record.pgid)
 
     async def _escalate_termination_async(
         self,
@@ -541,40 +497,40 @@ class ProcessManager:
         proc: asyncio.subprocess.Process,
         grace_period_s: float,
     ) -> None:
-        """Escalate termination for a ManagedAsyncProcess."""
-        if record.status in (ProcessStatus.EXITED, ProcessStatus.KILLED, ProcessStatus.FAILED):
+        """Escalate termination for a ManagedAsyncProcess using psutil tree-walk."""
+        if record.status in _TERMINAL_STATUSES:
             return
 
-        with contextlib.suppress(ProcessLookupError, PermissionError):
-            _killpg(record.pgid, signal.SIGTERM)
+        pid = record.pid
+        policy_kill = self.policy.kill_followup_timeout_s
 
-        try:
-            await asyncio.wait_for(proc.wait(), timeout=grace_period_s)
-            self._mark_killed(record, proc.returncode)
-            return
-        except TimeoutError:
-            pass
-        except asyncio.CancelledError:
-            pass
+        def _do_terminate() -> bool:
+            try:
+                root = psutil.Process(pid)
+                children = root.children(recursive=True)
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                return False
+            all_procs = [root, *children]
+            for p in all_procs:
+                with contextlib.suppress(psutil.NoSuchProcess, psutil.AccessDenied):
+                    p.terminate()
+            _, alive = psutil.wait_procs(all_procs, timeout=grace_period_s)
+            for p in alive:
+                with contextlib.suppress(psutil.NoSuchProcess, psutil.AccessDenied):
+                    p.kill()
+            _, still_alive = psutil.wait_procs(alive, timeout=policy_kill)
+            return bool(still_alive)
 
-        with contextlib.suppress(ProcessLookupError, PermissionError):
-            _killpg(record.pgid, signal.SIGKILL)
-
-        try:
-            await asyncio.wait_for(proc.wait(), timeout=self.policy.kill_followup_timeout_s)
-            self._mark_killed(record, proc.returncode)
-            return
-        except TimeoutError:
-            pass
-        except asyncio.CancelledError:
-            pass
-
-        logger.error("Process {} (pgid {}) still alive after SIGKILL", record.pid, record.pgid)
-        self._mark_killed(record, proc.returncode)
-        raise ProcessTerminationError(record.pid, record.pgid)
+        loop = asyncio.get_running_loop()
+        still_alive = await loop.run_in_executor(None, _do_terminate)
+        rc = proc.returncode
+        self._mark_killed(record, rc)
+        if still_alive:
+            logger.error("Process {} still alive after kill", pid)
+            raise ProcessTerminationError(record.pid, record.pgid)
 
     def _mark_exited(self, record: ProcessRecord, returncode: int | None) -> None:
-        if record.status in (ProcessStatus.EXITED, ProcessStatus.KILLED, ProcessStatus.FAILED):
+        if record.status in _TERMINAL_STATUSES:
             return
         prev = record.status
         record.status = ProcessStatus.EXITED
@@ -585,7 +541,7 @@ class ProcessManager:
         self._emit(record, prev, ProcessStatus.EXITED)
 
     def _mark_killed(self, record: ProcessRecord, returncode: int | None = None) -> None:
-        if record.status in (ProcessStatus.EXITED, ProcessStatus.KILLED, ProcessStatus.FAILED):
+        if record.status in _TERMINAL_STATUSES:
             return
         prev = record.status
         record.status = ProcessStatus.KILLED
@@ -612,14 +568,6 @@ class ProcessManager:
                 callback(event)
             except Exception:
                 logger.exception("ProcessManager listener raised an exception")
-
-
-def _killpg(pgid: int, sig: signal.Signals) -> None:
-    """Send signal to process group; falls back to os.kill when os.killpg is unavailable."""
-    if hasattr(os, "killpg"):
-        os.killpg(pgid, sig)
-    else:
-        os.kill(pgid, sig)
 
 
 _singleton: ProcessManager | None = None

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib
 import importlib.util
+import json
 from collections import defaultdict
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
@@ -63,6 +64,23 @@ def make_worker_context(
         log_type = module._WorkerLog
         log = log_type(log_dir=log_dir, run_id=run_id)
     return ctx_type(log=log, isolation=isolation)
+
+
+def _seed_artifact(worktree_path: Path) -> None:
+    artifact_dir = worktree_path / ".agent" / "artifacts"
+    artifact_dir.mkdir(parents=True, exist_ok=True)
+    (artifact_dir / "plan.json").write_text(
+        json.dumps(
+            {
+                "name": "plan",
+                "type": "plan",
+                "content": {"summary": "done"},
+                "created_at": "2024-01-01T00:00:00+00:00",
+                "updated_at": "2024-01-01T00:00:00+00:00",
+                "metadata": {},
+            }
+        )
+    )
 
 
 class RecordingDisplay:
@@ -298,30 +316,6 @@ async def test_empty_work_units(tmp_path: Path) -> None:
     assert events == [PipelineEvent.FAN_OUT_STARTED, PipelineEvent.ALL_WORKERS_COMPLETE]
 
 
-async def test_nonzero_exit_emits_worker_failed_event(tmp_path: Path) -> None:
-    run_fan_out = _load_run_fan_out()
-    effect = FanOutDevelopmentEffect(work_units=(make_unit("unit-a"),), max_workers=1)
-    display = RecordingDisplay()
-
-    events = await run_fan_out(
-        effect=effect,
-        executor=FakeAgentExecutor(
-            {
-                "unit-a": FakeRun(outputs=["boom"], exit_code=1, duration_ms=10),
-            }
-        ),
-        display=display,
-        ctx=make_worker_context(),
-    )
-
-    assert PipelineEvent.ALL_WORKERS_COMPLETE not in events
-    assert any(
-        isinstance(event, WorkerFailedEvent) and event.unit_id == "unit-a" and event.exit_code == 1
-        for event in events
-    )
-    assert display.statuses["unit-a"][-1] is WorkerStatus.FAILED
-
-
 async def test_failed_dependency_marks_blocked_unit_failed(tmp_path: Path) -> None:
     run_fan_out = _load_run_fan_out()
     effect = FanOutDevelopmentEffect(
@@ -334,7 +328,12 @@ async def test_failed_dependency_marks_blocked_unit_failed(tmp_path: Path) -> No
         effect=effect,
         executor=FakeAgentExecutor(
             {
-                "unit-a": FakeRun(outputs=["boom"], exit_code=1, duration_ms=10),
+                "unit-a": FakeRun(
+                    outputs=["boom"],
+                    exit_code=1,
+                    duration_ms=0,
+                    raise_on_start=RuntimeError("unit-a failed"),
+                ),
                 "unit-b": FakeRun(outputs=["never runs"], exit_code=0, duration_ms=10),
             }
         ),
@@ -360,6 +359,8 @@ async def test_isolation_creates_worker_session_and_cleans_up_success(tmp_path: 
     display = RecordingDisplay()
     worktree_manager = _RecordingWorktreeManager(tmp_path)
     mcp_factory = _RecordingMcpFactory()
+
+    _seed_artifact(tmp_path / ".worktrees" / "unit-a")
 
     isolation = module._IsolationDeps(  # type: ignore[attr-defined]  # reason: test reaches private fixture type
         worktree_manager=worktree_manager,
@@ -410,6 +411,74 @@ async def test_isolation_preserves_failed_worktree(tmp_path: Path) -> None:
     assert worktree_manager.create_calls == [("unit-a", "main")]
     assert worktree_manager.destroy_calls == []
     assert mcp_factory.handles[0].shutdown_calls == 1
+
+
+async def test_empirical_success_artifact_beats_nonzero_exit(tmp_path: Path) -> None:
+    """Isolated worker with nonzero exit code succeeds when an artifact is present."""
+    module = importlib.import_module("ralph.pipeline.parallel.coordinator")
+    run_fan_out = _load_run_fan_out()
+    unit = make_unit("unit-a")
+    effect = FanOutDevelopmentEffect(work_units=(unit,), max_workers=1)
+    display = RecordingDisplay()
+    worktree_manager = _RecordingWorktreeManager(tmp_path)
+    mcp_factory = _RecordingMcpFactory()
+
+    _seed_artifact(tmp_path / ".worktrees" / "unit-a")
+
+    isolation = module._IsolationDeps(  # type: ignore[attr-defined]
+        worktree_manager=worktree_manager,
+        mcp_factory=mcp_factory,
+        repo_root=tmp_path,
+    )
+
+    events = await run_fan_out(
+        effect=effect,
+        executor=FakeAgentExecutor(
+            {"unit-a": FakeRun(outputs=["done"], exit_code=1, duration_ms=1)}
+        ),
+        display=display,
+        ctx=make_worker_context(isolation=isolation),
+    )
+
+    assert events[-1] is PipelineEvent.ALL_WORKERS_COMPLETE
+    assert display.statuses["unit-a"][-1] is WorkerStatus.SUCCEEDED
+    assert worktree_manager.destroy_calls == ["unit-a"]
+
+
+async def test_empirical_failure_no_artifact_despite_zero_exit(tmp_path: Path) -> None:
+    """Isolated worker with zero exit code fails when no artifact is submitted."""
+    module = importlib.import_module("ralph.pipeline.parallel.coordinator")
+    run_fan_out = _load_run_fan_out()
+    unit = make_unit("unit-a")
+    effect = FanOutDevelopmentEffect(work_units=(unit,), max_workers=1)
+    display = RecordingDisplay()
+    worktree_manager = _RecordingWorktreeManager(tmp_path)
+    mcp_factory = _RecordingMcpFactory()
+
+    isolation = module._IsolationDeps(  # type: ignore[attr-defined]
+        worktree_manager=worktree_manager,
+        mcp_factory=mcp_factory,
+        repo_root=tmp_path,
+    )
+
+    events = await run_fan_out(
+        effect=effect,
+        executor=FakeAgentExecutor(
+            {"unit-a": FakeRun(outputs=["done"], exit_code=0, duration_ms=1)}
+        ),
+        display=display,
+        ctx=make_worker_context(isolation=isolation),
+    )
+
+    assert PipelineEvent.ALL_WORKERS_COMPLETE not in events
+    assert display.statuses["unit-a"][-1] is WorkerStatus.FAILED
+    assert any(
+        isinstance(event, WorkerFailedEvent)
+        and event.unit_id == "unit-a"
+        and "no artifact" in event.error
+        for event in events
+    )
+    assert worktree_manager.destroy_calls == []
 
 
 async def test_activity_router_is_passed_to_subprocess_worker_executor(
@@ -472,6 +541,8 @@ async def test_activity_router_is_passed_to_subprocess_worker_executor(
         "DynamicBindingMcpServerFactory",
         _FakeDynamicBindingMcpServerFactory,
     )
+
+    _seed_artifact(tmp_path / ".worktrees" / "unit-a")
 
     isolation = module._IsolationDeps(  # type: ignore[attr-defined]  # reason: test reaches private fixture type
         worktree_manager=worktree_manager,

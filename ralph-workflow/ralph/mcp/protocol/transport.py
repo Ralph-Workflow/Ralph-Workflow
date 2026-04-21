@@ -6,15 +6,18 @@ HTTP/SSE connections to MCP clients and servers.
 
 from __future__ import annotations
 
+import contextlib
 import json
-import subprocess
 import threading
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from queue import Empty, Queue
+from subprocess import PIPE as _SUBPROCESS_PIPE
 from typing import IO, TYPE_CHECKING, Protocol, cast
 
 from loguru import logger
+
+from ralph.process.manager import ManagedProcess, ProcessTerminationError, get_process_manager
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Callable
@@ -56,12 +59,17 @@ class MCPTransport(ABC):
 
 
 class ProcessLike(Protocol):
-    stdin: IO[bytes] | None
-    stdout: IO[bytes] | None
-    stderr: IO[bytes] | None
+    @property
+    def stdin(self) -> IO[bytes] | None: ...
+
+    @property
+    def stdout(self) -> IO[bytes] | None: ...
+
+    @property
+    def stderr(self) -> IO[bytes] | None: ...
 
     def terminate(self) -> None: ...
-    def wait(self, timeout: float | None = None) -> int | None: ...
+    def wait(self, timeout: float | None = None) -> int: ...
     def kill(self) -> None: ...
 
 
@@ -188,23 +196,27 @@ class StdioTransport(MCPTransport):
             if self._closed:
                 return
             self._closed = True
-        if self._process:
-            self._process.terminate()
-            try:
-                self._process.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                self._process.kill()
+        if self._process is not None:
+            proc = self._process
             self._process = None
+            if isinstance(proc, ManagedProcess):
+                with contextlib.suppress(ProcessTerminationError):
+                    proc.terminate(grace_period_s=5.0)
+            else:
+                proc.terminate()
+                proc.wait()
         logger.info("Closed stdio transport")
 
 
-def _default_process_factory(command: list[str], cwd: str | None) -> subprocess.Popen[bytes]:
-    return subprocess.Popen(
+def _default_process_factory(command: list[str], cwd: str | None) -> ManagedProcess:
+    label = f"mcp-stdio:{command[0]}"
+    return get_process_manager().spawn(
         command,
-        stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
         cwd=cwd,
+        stdin=_SUBPROCESS_PIPE,
+        stdout=_SUBPROCESS_PIPE,
+        stderr=_SUBPROCESS_PIPE,
+        label=label,
     )
 
 
