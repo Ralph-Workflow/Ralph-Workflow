@@ -130,6 +130,8 @@ def test_run_streams_transcript_output_without_dashboard(monkeypatch: pytest.Mon
         config: UnifiedConfig,
         workspace_scope: WorkspaceScope,
         display: ParallelDisplay,
+        *,
+        state: PipelineState | None = None,
     ) -> PipelineEvent:
         assert isinstance(effect, InvokeAgentEffect)
         deps = runner_module._AgentExecutionDeps(
@@ -137,7 +139,9 @@ def test_run_streams_transcript_output_without_dashboard(monkeypatch: pytest.Mon
             agent_invocation_error=RuntimeError,
             agent_registry=_registry_factory(AgentConfig(cmd="fake-agent")),
         )
-        return runner_module._execute_agent_effect(effect, config, deps, workspace_scope, display)
+        return runner_module._execute_agent_effect(
+            effect, config, deps, workspace_scope, display=display, state=state
+        )
 
     _patch_common_runner_dependencies(monkeypatch)
     monkeypatch.setattr(runner_module, "_determine_effect_from_policy", stub_determine_effect)
@@ -187,6 +191,8 @@ def test_single_agent_visual_parity(monkeypatch: pytest.MonkeyPatch) -> None:
         config: UnifiedConfig,
         workspace_scope: WorkspaceScope,
         display: ParallelDisplay,
+        *,
+        state: PipelineState | None = None,
     ) -> PipelineEvent:
         assert isinstance(effect, InvokeAgentEffect)
         deps = runner_module._AgentExecutionDeps(
@@ -194,7 +200,9 @@ def test_single_agent_visual_parity(monkeypatch: pytest.MonkeyPatch) -> None:
             agent_invocation_error=RuntimeError,
             agent_registry=_registry_factory(AgentConfig(cmd="fake-agent")),
         )
-        return runner_module._execute_agent_effect(effect, config, deps, workspace_scope, display)
+        return runner_module._execute_agent_effect(
+            effect, config, deps, workspace_scope, display=display, state=state
+        )
 
     _patch_common_runner_dependencies(monkeypatch)
     monkeypatch.setattr(runner_module, "_determine_effect_from_policy", stub_determine_effect)
@@ -236,8 +244,10 @@ def test_run_notifies_dashboard_subscriber_after_reduce(monkeypatch: pytest.Monk
         config: UnifiedConfig,
         workspace_scope: WorkspaceScope,
         display: ParallelDisplay,
+        *,
+        state: PipelineState | None = None,
     ) -> PipelineEvent:
-        del config, workspace_scope, display
+        del config, workspace_scope, display, state
         assert isinstance(effect, InvokeAgentEffect)
         return PipelineEvent.AGENT_SUCCESS
 
