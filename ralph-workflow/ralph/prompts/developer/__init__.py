@@ -45,6 +45,7 @@ def prompt_developer_iteration_xml_with_context(
         "DEVELOPMENT_RESULT_XSD_PATH": workspace.absolute_path(
             ".agent/artifacts/development_result.schema.json"
         ),
+        "HIDE_ARTIFACT_SUBMISSION_GUIDANCE": "true",
     }
     base_vars.update(
         _current_prompt_variables(

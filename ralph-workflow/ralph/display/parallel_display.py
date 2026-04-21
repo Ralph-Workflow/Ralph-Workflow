@@ -8,6 +8,8 @@ import uuid
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
+from ralph.display.activity_router import ActivityRouter
+from ralph.display.content_condenser import condense_content
 from ralph.display.mode import NARROW_THRESHOLD, detect_mode
 from ralph.display.phase_banner import show_phase_transition
 from ralph.display.plain_renderer import PlainLogRenderer
@@ -20,6 +22,7 @@ if TYPE_CHECKING:
 
     from rich.console import Console
 
+    from ralph.display.activity_model import ActivityEventKind
     from ralph.display.snapshot import PipelineSnapshot
     from ralph.pipeline.worker_state import WorkerStatus
 
@@ -32,10 +35,12 @@ def _strip_markup(line: str) -> str:
 
 class ParallelDisplay:
     __slots__ = (
+        "_activity_router",
         "_console",
         "_mode",
         "_plain_renderer",
         "_subscriber",
+        "_workspace_root",
     )
 
     def __init__(  # noqa: PLR0913
@@ -57,6 +62,11 @@ class ParallelDisplay:
             self._mode = detect_mode(console, resolved_env)
 
         self._plain_renderer = PlainLogRenderer(console)
+        self._workspace_root: Path = workspace_root if workspace_root is not None else Path.cwd()
+
+        self._activity_router: ActivityRouter = ActivityRouter(
+            on_event=self._emit_activity_event
+        )
 
         if subscriber is not None:
             self._subscriber = subscriber
@@ -64,14 +74,30 @@ class ParallelDisplay:
             snapshot_q: queue.Queue[PipelineSnapshot] = queue.Queue(
                 maxsize=_DEFAULT_SNAPSHOT_QUEUE_MAXSIZE
             )
-            effective_root = workspace_root if workspace_root is not None else Path.cwd()
             effective_run_id = run_id if run_id is not None else str(uuid.uuid4())
             self._subscriber = PipelineSubscriber(
                 queue=snapshot_q,
-                workspace_root=effective_root,
+                workspace_root=self._workspace_root,
                 run_id=effective_run_id,
                 on_snapshot=self._plain_renderer.emit_snapshot,
             )
+
+    def _emit_activity_event(
+        self,
+        unit_id: str,
+        kind: ActivityEventKind,
+        content: str | None,
+        raw_ref: str | None,
+    ) -> None:
+        text = content or ""
+        visible, _condensed = condense_content(
+            text, soft_limit=400, hard_limit=4000, overflow_ref=raw_ref
+        )
+        self._plain_renderer.emit_activity_line(unit_id, kind.value, visible)
+
+    @property
+    def activity_router(self) -> ActivityRouter:
+        return self._activity_router
 
     @property
     def mode(self) -> Literal["lines"]:
@@ -88,6 +114,7 @@ class ParallelDisplay:
         return None
 
     def emit(self, unit_id: str | None, line: str) -> None:
+        """Emit a raw line directly. Used as legacy fallback when router is not in play."""
         self._plain_renderer.emit_log_line(unit_id or "activity", line)
 
     def set_status(self, unit_id: str, status: WorkerStatus) -> None:

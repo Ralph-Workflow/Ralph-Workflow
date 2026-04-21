@@ -32,11 +32,12 @@ def test_developer_iteration_prompt_includes_plan_and_unattended_section(tmp_pat
     assert "UNATTENDED MODE" in prompt
     assert workspace.absolute_path(".agent/CURRENT_PROMPT.md") in prompt
     assert plan_text in prompt
-    assert "content_path" in prompt
-    assert "edit `.agent/artifacts/development_result.json`" in prompt
+    assert "ARTIFACT SUBMISSION" not in prompt
+    assert "development_result" not in prompt
+    assert "content_path" not in prompt
 
 
-def test_developer_iteration_continuation_prompt_includes_exact_resubmit_call(tmp_path):
+def test_developer_iteration_continuation_prompt_stays_focused_on_remaining_work(tmp_path):
     context = TemplateContext.default()
     workspace = MemoryWorkspace(root=str(tmp_path))
     session_caps = SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT)
@@ -53,31 +54,8 @@ def test_developer_iteration_continuation_prompt_includes_exact_resubmit_call(tm
     )
 
     assert "continuing a DEVELOPMENT iteration" in prompt
-    assert "content_path" in prompt
-    assert ".agent/artifacts/development_result.json" in prompt
-
-
-def test_developer_iteration_continuation_prompt_uses_prefixed_submit_tool_name(tmp_path):
-    context = TemplateContext.default()
-    workspace = MemoryWorkspace(root=str(tmp_path))
-    session_caps = SessionCapabilities.defaults_for_drain(
-        SessionDrain.DEVELOPMENT,
-        tool_name_prefix="mcp__ralph__",
-    )
-
-    prompt = prompt_developer_iteration_xml_with_context(
-        context=context,
-        inputs=DeveloperPromptInputs(
-            prompt_content="Continue implementing the widget feature",
-            plan_content="1. Finish backend\n2. Finish UI",
-        ),
-        workspace=workspace,
-        session_caps=session_caps,
-        template_name="developer_iteration_continuation.jinja",
-    )
-
-    assert "mcp__ralph__ralph_submit_artifact" in prompt
-    assert "use `ralph_submit_artifact` for the same call" in prompt.lower()
+    assert "content_path" not in prompt
+    assert "development_result" not in prompt
 
 
 def test_planning_prompt_uses_defaults_and_mcp_tools(tmp_path):
@@ -189,7 +167,7 @@ def test_planning_prompt_fallback_uses_prefixed_tool_names(tmp_path):
     assert "{%" not in prompt
 
 
-def test_developer_prompt_fallback_uses_json_result_artifact_contract(tmp_path):
+def test_developer_prompt_fallback_omits_result_artifact_contract(tmp_path):
     context = TemplateContext.default()
     workspace = MemoryWorkspace(root=str(tmp_path))
     session_caps = SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT)
@@ -208,9 +186,9 @@ def test_developer_prompt_fallback_uses_json_result_artifact_contract(tmp_path):
             session_caps=session_caps,
         )
 
-    assert 'artifact_type="development_result"' in prompt
-    assert "development_result.json" in prompt
-    assert "content_path" in prompt
+    assert "development_result" not in prompt
+    assert "content_path" not in prompt
+    assert "ralph_submit_artifact" not in prompt
     assert "<ralph-development-result>" not in prompt
 
 
@@ -239,8 +217,8 @@ def test_developer_prompt_fallback_uses_prefixed_tool_names_and_exec_guidance(tm
     assert "Native agent tools are disabled" in prompt
     assert "mcp__ralph__exec" in prompt
     assert "mcp__ralph__report_progress" in prompt
-    assert "mcp__ralph__ralph_submit_artifact" in prompt
-    assert "or bare `ralph_submit_artifact`" in prompt
+    assert "mcp__ralph__ralph_submit_artifact" not in prompt
+    assert "or bare `ralph_submit_artifact`" not in prompt
     assert workspace.absolute_path(".agent/CURRENT_PROMPT.md") in prompt
     assert str(tmp_path / ".agent" / "tmp" / "prompt_payloads" / "development_plan.txt") in prompt
     assert "{{" not in prompt

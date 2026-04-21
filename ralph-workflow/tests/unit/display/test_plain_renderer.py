@@ -116,7 +116,9 @@ def test_emit_log_line_strips_markup_for_copy_paste() -> None:
 
     renderer.emit_log_line("worker-1", "[bold magenta]hello[/bold magenta]")
 
-    assert stream.getvalue().splitlines() == ["[worker-1] hello"]
+    assert stream.getvalue().splitlines() == [
+        "2026-04-18T12:00:00+00:00 INFO [content][worker-1] hello"
+    ]
 
 
 def test_emit_snapshot_output_has_no_ansi_escape_codes() -> None:

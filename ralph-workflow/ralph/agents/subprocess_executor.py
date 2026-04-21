@@ -4,21 +4,20 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import json
 import os
 import signal
 import time
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ralph.agents.executor import ExecutorError, WorkerResult
-from ralph.display.activity_model import ActivityEventKind, make_event, render_event_line
 from ralph.display.activity_router import ActivityRouter, detect_provider_from_command
 from ralph.display.line_sanitizer import sanitize_display_line
+from ralph.display.raw_overflow import RawOverflowLog
 from ralph.pipeline.worker_state import WorkerStatus
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping, Sequence
-    from pathlib import Path
 
     from ralph.display.activity_model import ActivityProvider
     from ralph.interrupt.asyncio_bridge import SignalBridge
@@ -33,7 +32,7 @@ class SubprocessAgentExecutor:
     process tree on cancellation.
     """
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         command: Sequence[str],
         *,
@@ -41,12 +40,23 @@ class SubprocessAgentExecutor:
         cwd: Path | None = None,
         extra_env: Mapping[str, str] | None = None,
         activity_router: ActivityRouter | None = None,
+        raw_overflow_root: Path | None = None,
     ) -> None:
         self._command = tuple(command)
         self._signal_bridge = signal_bridge
         self._cwd = cwd
         self._extra_env = extra_env
         self.activity_router = activity_router
+        self._raw_overflow_root = raw_overflow_root
+        self._raw_logs: dict[str, RawOverflowLog] = {}
+
+    def _get_raw_log(self, unit_id: str) -> RawOverflowLog:
+        if unit_id not in self._raw_logs:
+            root = self._raw_overflow_root
+            if root is None:
+                root = self._cwd if self._cwd is not None else Path.cwd()
+            self._raw_logs[unit_id] = RawOverflowLog(root, unit_id)
+        return self._raw_logs[unit_id]
 
     async def run(
         self,
@@ -58,7 +68,7 @@ class SubprocessAgentExecutor:
         on_status(WorkerStatus.RUNNING)
         start_time = time.monotonic()
         last_line: str = ""
-        activity_provider = detect_provider_from_command(list(self._command))
+        activity_provider: ActivityProvider = detect_provider_from_command(list(self._command))
 
         env = {**os.environ, **self._extra_env} if self._extra_env else None
         try:
@@ -79,17 +89,26 @@ class SubprocessAgentExecutor:
             assert proc.stdout is not None
             async for raw_line in proc.stdout:
                 line = sanitize_display_line(raw_line.rstrip(b"\n"))
-                on_output(line)
+
                 if self.activity_router is not None:
+                    raw_log = self._get_raw_log(unit.unit_id)
+                    raw_log.append(line)
+                    raw_ref = raw_log.relative_reference(
+                        self._raw_overflow_root or self._cwd or Path.cwd()
+                    )
                     for parsed_line in line.splitlines():
                         stripped_line = parsed_line.strip()
                         if not stripped_line:
                             continue
-                        self._route_activity_line(
-                            unit_id=unit.unit_id,
-                            line=stripped_line,
+                        self.activity_router.push_raw_line(
+                            unit.unit_id,
+                            stripped_line,
                             provider=activity_provider,
+                            raw_reference=raw_ref,
                         )
+                else:
+                    on_output(line)
+
                 last_line = line
 
         if self._signal_bridge is not None:
@@ -117,27 +136,6 @@ class SubprocessAgentExecutor:
             final_message=last_line,
             duration_ms=duration_ms,
         )
-
-    def _route_activity_line(self, *, unit_id: str, line: str, provider: ActivityProvider) -> None:
-        assert self.activity_router is not None
-        try:
-            json.loads(line)
-        except json.JSONDecodeError:
-            error_event = make_event(
-                provider=provider,
-                kind=ActivityEventKind.ERROR,
-                content=f"invalid ndjson: {line}",
-                source=unit_id,
-            )
-            rendered = render_event_line(
-                error_event.kind,
-                error_event.content,
-                timestamp=error_event.timestamp,
-            )
-            self.activity_router.get_buffer(unit_id).enqueue(rendered)
-            return
-
-        self.activity_router.push_raw_line(unit_id, line, provider=provider)
 
 
 __all__ = ["SubprocessAgentExecutor"]

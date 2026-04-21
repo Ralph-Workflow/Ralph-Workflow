@@ -1,0 +1,92 @@
+"""Unit tests for the RawOverflowLog class."""
+
+from __future__ import annotations
+
+import threading
+from pathlib import Path
+
+from ralph.display.raw_overflow import RawOverflowLog
+
+
+def test_append_writes_lines(tmp_path: Path) -> None:
+    log = RawOverflowLog(tmp_path, "unit-1")
+    log.append("line one")
+    log.append("line two")
+    content = log.path.read_text(encoding="utf-8")
+    assert "line one\n" in content
+    assert "line two\n" in content
+
+
+def test_first_write_truncates_previous_content(tmp_path: Path) -> None:
+    log1 = RawOverflowLog(tmp_path, "unit-1")
+    log1.append("run1 line")
+
+    log2 = RawOverflowLog(tmp_path, "unit-1")
+    log2.append("run2 line")
+
+    content = log2.path.read_text(encoding="utf-8")
+    assert "run1 line" not in content
+    assert "run2 line" in content
+
+
+def test_unit_id_sanitization(tmp_path: Path) -> None:
+    log = RawOverflowLog(tmp_path, "unit/with:special chars!")
+    log.append("test")
+    assert log.path.name == "unit_with_special_chars_.log"
+    assert log.path.exists()
+
+
+def test_relative_reference(tmp_path: Path) -> None:
+    log = RawOverflowLog(tmp_path, "unit-1")
+    ref = log.relative_reference(tmp_path)
+    assert ref == ".agent/raw/unit-1.log"
+
+
+def test_relative_reference_absolute_fallback(tmp_path: Path) -> None:
+    log = RawOverflowLog(tmp_path, "unit-1")
+    other_root = Path("/some/other/path")
+    ref = log.relative_reference(other_root)
+    assert ref == log.path.as_posix()
+
+
+def test_silent_noop_when_parent_is_a_file(tmp_path: Path) -> None:
+    # Create a file where the .agent/raw directory should be
+    agent_dir = tmp_path / ".agent"
+    agent_dir.mkdir()
+    raw_file = agent_dir / "raw"
+    raw_file.write_text("not a directory", encoding="utf-8")
+
+    log = RawOverflowLog(tmp_path, "unit-1")
+    # Should not raise even though the path is a file, not a directory
+    log.append("test line")
+    # Black-box check: the per-unit log file should not exist as a regular file
+    # since mkdir failed; the append silently no-oped.
+    assert not log.path.is_file()
+
+
+def test_thread_safety(tmp_path: Path) -> None:
+    log = RawOverflowLog(tmp_path, "unit-1")
+    errors: list[Exception] = []
+
+    def write_lines() -> None:
+        try:
+            for i in range(20):
+                log.append(f"line {i}")
+        except Exception as exc:
+            errors.append(exc)
+
+    threads = [threading.Thread(target=write_lines) for _ in range(5)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert not errors
+
+
+def test_append_strips_trailing_newline(tmp_path: Path) -> None:
+    log = RawOverflowLog(tmp_path, "unit-1")
+    log.append("line with newline\n")
+    content = log.path.read_text(encoding="utf-8")
+    assert content == "line with newline\n"
+    assert not content.endswith("\n\n")

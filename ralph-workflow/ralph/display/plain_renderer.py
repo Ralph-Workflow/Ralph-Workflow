@@ -41,7 +41,32 @@ _TAGS: Final[tuple[str, ...]] = (
     "pr",
     "failure",
     "artifact",
+    "content",
+    "thinking",
+    "tool",
+    "tool-result",
+    "error",
+    "progress",
+    "status-content",
 )
+
+_KIND_TO_TAG: Final[dict[str, str]] = {
+    "text": "content",
+    "thinking": "thinking",
+    "tool_use": "tool",
+    "tool_result": "tool-result",
+    "error": "error",
+    "progress": "progress",
+    "status": "status-content",
+    "lifecycle": "status-content",
+    "raw": "content",
+}
+
+_KIND_TO_LEVEL: Final[dict[str, str]] = {
+    "error": "ERROR",
+    "tool_result": "SUCCESS",
+    "progress": "INFO",
+}
 
 _ANSI_ESCAPE = re.compile(r"\x1b\[[0-9;]*m")
 
@@ -225,9 +250,26 @@ class PlainLogRenderer:
             clean_line = _ANSI_ESCAPE.sub("", line)
             self._console.print(clean_line, markup=False, highlight=False, no_wrap=True)
 
+    def emit_activity_line(
+        self,
+        unit_id: str,
+        kind: str,
+        content: str,
+        *,
+        condensed_ref: str | None = None,
+    ) -> None:
+        """Emit a kind-tagged, level-badged content line."""
+        timestamp = self._clock().isoformat()
+        tag = _KIND_TO_TAG.get(kind, "content")
+        level = _KIND_TO_LEVEL.get(kind, "INFO")
+        sanitized = _sanitize(content)
+        if condensed_ref is not None:
+            sanitized = f"{sanitized} [see {condensed_ref}]"
+        line = f"{timestamp} {level} [{tag}][{unit_id}] {sanitized}"
+        self._console.print(line, markup=False, highlight=False, no_wrap=True)
+
     def emit_log_line(self, unit_id: str, line: str) -> None:
-        sanitized = _sanitize(line)
-        self._console.out(f"[{unit_id}] {sanitized}")
+        self.emit_activity_line(unit_id, "raw", line)
 
     def emit_status_line(self, unit_id: str, status: str) -> None:
         sanitized = _sanitize(status)

@@ -20,6 +20,7 @@ EXECUTION:
 - Use {{REPORT_PROGRESS_TOOL_REFERENCE}} to report status
 {% endif %}
 
+{% if not (HIDE_ARTIFACT_SUBMISSION_GUIDANCE|default(false)) %}
 ARTIFACT SUBMISSION:
 - Use {{SUBMIT_ARTIFACT_TOOL_REFERENCE}} to submit structured results
 - If you are retrying a saved artifact, edit its `.agent/artifacts/*.json` file and resubmit with `content_path` instead of retyping the whole JSON payload
@@ -27,5 +28,6 @@ ARTIFACT SUBMISSION:
 {% if FINALIZE_PLAN_TOOL_NAME %}- Use {{FINALIZE_PLAN_TOOL_REFERENCE}} to finalize a staged plan draft{% endif %}
 {% if GET_PLAN_DRAFT_TOOL_NAME %}- Use {{GET_PLAN_DRAFT_TOOL_REFERENCE}} to inspect a staged plan draft{% endif %}
 {% if DISCARD_PLAN_DRAFT_TOOL_NAME %}- Use {{DISCARD_PLAN_DRAFT_TOOL_REFERENCE}} to discard a staged plan draft and restart{% endif %}
+{% endif %}
 - Use {{DECLARE_COMPLETE_TOOL_REFERENCE}} when finished
 {% endif %}

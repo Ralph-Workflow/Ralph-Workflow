@@ -14,6 +14,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Pipelines now end with a `Pipeline Complete` (or `Pipeline Failed`) summary panel that echoes the plan, decision log, metrics, verification status, commit, PR URL, and open risks that the user saw live.
 
 ### Added
+- Surface agent output as kind-tagged `content`/`thinking`/`tool`/`tool-result` lines distinct from workflow metadata lines; oversized content is condensed with a pointer to `.agent/raw/<unit>.log`. The full raw NDJSON is always preserved in that file.
+- `ralph.display.content_condenser` — predictable head+tail condensation for oversized content lines.
+- `ralph.display.raw_overflow` — per-unit raw NDJSON overflow log writer.
 - `ralph.display.completion_summary` — end-of-run panel renderer reused by the runner for both dashboard and lines modes.
 - `ralph.display.panels.analysis` and `ralph.display.panels.decision_log` — new first-class dashboard regions.
 - `ralph.display.artifact_reader` — tolerant readers for `plan.json` and `*_analysis_decision.json` used by the dashboard subscriber.

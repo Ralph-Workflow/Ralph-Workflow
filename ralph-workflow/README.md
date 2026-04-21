@@ -106,11 +106,10 @@ Use package/module docstrings for API understanding and this README for workflow
 
 Ralph now treats several agent-driven phases as producing explicit evidence, not just a zero exit code.
 
-- `development` must leave behind a fresh `.agent/artifacts/development_result.json`.
 - `review` must leave behind a fresh `.agent/artifacts/issues.json`.
-- `fix` must leave behind a fresh `.agent/artifacts/fix_result.json`.
+- `development` and `fix` are side-effect-driven phases: Ralph judges them by the workspace changes they make, not by whether they submit a structured result artifact.
 - Planning keeps `.agent/artifacts/plan.json` as the canonical machine-readable artifact and mirrors it to `.agent/PLAN.md` as the human/agent handoff.
-- The runner removes those per-phase artifacts before each invocation so a later interrupted run cannot silently reuse stale output from an earlier pass.
+- The runner still removes per-phase artifacts before each invocation so interrupted runs cannot leak stale summaries or review findings into later phases.
 
 Artifact contract:
 - Use `.json` artifacts for Ralph's validation, routing, checkpointing, and other orchestrator-only logic.
@@ -123,7 +122,7 @@ Artifact contract:
   - `.agent/DEVELOPMENT_ANALYSIS_DECISION.md`
   - `.agent/REVIEW_ANALYSIS_DECISION.md`
 
-This hardening is intentionally strict. It adds complexity, but it closes a real unattended-mode failure class where a provider could exit successfully, emit no meaningful work, and still let the pipeline advance because an old artifact was still present on disk.
+This hardening is intentionally selective. Review and planning still rely on explicit artifacts where Ralph needs structured evidence, while development and fix stay focused on producing workspace side effects without extra submission ceremony.
 
 ## Claude/CCS MCP safety note
 
@@ -140,3 +139,44 @@ max_work_units = 50
 ```
 
 See `docs/agents/parallelization.md` for the full guide.
+
+## Transcript layout
+
+Ralph emits every agent output line as a structured plain-text entry in the following format:
+
+```
+<ISO-TS> <LEVEL>  [<tag>][<unit>] <content>
+```
+
+**Tags** indicate the source and type of the line:
+
+| Tag | Meaning |
+|-----|---------|
+| `phase` | Workflow phase transition (planning, development, review, …) |
+| `plan` | Plan summary or scope |
+| `plan-scope` | Plan scope items |
+| `plan-steps` | Step progress |
+| `activity` | Agent activity metadata (tool, path, workdir) |
+| `activity-line` | Last raw activity line from an agent |
+| `analysis` | Phase analysis and decision |
+| `worker` | Parallel worker status update |
+| `result` | Pipeline completion result |
+| `pr` | Pull request URL |
+| `artifact` | Artifact kind/summary |
+| `content` | Agent text output (parsed from NDJSON) |
+| `thinking` | Agent thinking/reasoning content (Claude extended thinking) |
+| `tool` | Tool invocation (tool name) |
+| `tool-result` | Tool result content |
+| `error` | Error or malformed input |
+| `progress` | Progress update |
+| `status-content` | Status or lifecycle event from the agent |
+
+**Levels** are `INFO`, `SUCCESS`, `WARN`, or `ERROR`.
+
+**Oversized content** is condensed to a head+tail excerpt with a pointer:
+
+```
+2026-04-20T12:34:56Z INFO [content][dev-1] AAAAAAA … [+4200 chars, see .agent/raw/dev-1.log] … ZZZZZZZ
+```
+
+The full raw NDJSON output for each work unit is always written to `.agent/raw/<unit-id>.log` so you can inspect the complete output when needed.

@@ -136,6 +136,8 @@ def _render_prompt_for_phase(
             variables["FIX_RESULT_PATH"] = fix_result_path
         if analysis_feedback_path:
             variables["ANALYSIS_FEEDBACK_PATH"] = analysis_feedback_path
+        if phase == "fix":
+            variables["HIDE_ARTIFACT_SUBMISSION_GUIDANCE"] = "true"
         variables.update(_current_prompt_variables(prompt_content, current_prompt_path))
         return render_template(
             template,

@@ -108,4 +108,5 @@ def test_review_and_fix_templates_define_explicit_review_handoff_contracts() -> 
     assert "what_came_up_short" in review_template
     assert "how_to_fix" in review_template
     assert "FIX_RESULT" in review_template
-    assert "fix_result" in fix_template
+    assert "fix_result" not in fix_template
+    assert "submit" not in fix_template.lower()
