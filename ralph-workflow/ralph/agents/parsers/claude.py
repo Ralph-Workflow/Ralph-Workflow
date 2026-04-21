@@ -34,6 +34,7 @@ class ClaudeParser:
     def __init__(self) -> None:
         # Accumulator keyed by (message_id, content_block_index)
         self._text_accumulator: dict[tuple[str, int], _TextAccumulator] = {}
+        self._fallback_accumulator: _TextAccumulator | None = None
         self._current_message_id: str | None = None
         self._seen_content_blocks: set[tuple[str, int]] = set()
 
@@ -50,7 +51,7 @@ class ClaudeParser:
                 continue
 
             try:
-                parsed: object = json.loads(stripped)
+                parsed: object = json.loads(stripped, strict=False)
             except json.JSONDecodeError:
                 yield AgentOutputLine(type="raw", content=stripped, raw=stripped)
                 continue
@@ -231,8 +232,25 @@ class ClaudeParser:
                     acc.raw_lines = [raw] if acc.buffer else []
                 return
 
-        # No active accumulator - yield immediately (fallback for non-indexed deltas)
-        yield AgentOutputLine(type="text", content=text, raw=raw)
+        # No keyed content block context - accumulate in a fallback stream bucket.
+        fallback_acc = self._fallback_accumulator
+        if fallback_acc is None:
+            fallback_acc = _TextAccumulator()
+            self._fallback_accumulator = fallback_acc
+
+        fallback_acc.buffer += text
+        fallback_acc.raw_lines.append(raw)
+
+        if "\n\n" in fallback_acc.buffer:
+            parts = fallback_acc.buffer.split("\n\n", 1)
+            remaining = parts[1]
+            flushed_content = parts[0]
+            if flushed_content:
+                raw_parts = fallback_acc.raw_lines[: len(fallback_acc.raw_lines) - 1]
+                flushed_raw = "\n".join(raw_parts) if raw_parts else ""
+                yield AgentOutputLine(type="text", content=flushed_content, raw=flushed_raw)
+            fallback_acc.buffer = remaining
+            fallback_acc.raw_lines = [raw]
 
     def _flush_accumulator(self, key: tuple[str, int]) -> Iterator[AgentOutputLine]:
         """Flush a single accumulator and remove it."""
@@ -251,10 +269,21 @@ class ClaudeParser:
                 raw=raw_joined,
             )
 
+    def _flush_fallback_accumulator(self) -> Iterator[AgentOutputLine]:
+        if self._fallback_accumulator is None:
+            return
+
+        acc = self._fallback_accumulator
+        self._fallback_accumulator = None
+        if acc.buffer:
+            raw_joined = "\n".join(acc.raw_lines) if acc.raw_lines else ""
+            yield AgentOutputLine(type="text", content=acc.buffer, raw=raw_joined)
+
     def _flush_all_accumulators(self) -> Iterator[AgentOutputLine]:
         """Flush all pending accumulators on message_stop or iterator exhaustion."""
         for key in list(self._text_accumulator.keys()):
             yield from self._flush_accumulator(key)
+        yield from self._flush_fallback_accumulator()
 
     def _parse_result_event(
         self,

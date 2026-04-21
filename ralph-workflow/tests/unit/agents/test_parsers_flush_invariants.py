@@ -17,13 +17,16 @@ import pytest
 from ralph.agents.parsers import (
     ClaudeParser,
     CodexParser,
-    GenericParser,
     GeminiParser,
+    GenericParser,
     OpenCodeParser,
 )
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
+
+EXPECTED_SINGLE_TEXT_RESULT = 1
+EXPECTED_TWO_TEXT_RESULTS = 2
 
 
 def _make_lines(data: list[str]) -> Iterator[str]:
@@ -74,7 +77,10 @@ class TestParagraphBoundaryFlush:
         text_results = [r for r in results if r.type == "text"]
 
         # Should produce exactly 2 text blocks (one per paragraph)
-        assert len(text_results) == 2, f"Expected 2 text results, got {len(text_results)} for {parser_factory.__name__}"
+        assert len(text_results) == EXPECTED_TWO_TEXT_RESULTS, (
+            "Expected 2 text results, got "
+            f"{len(text_results)} for {parser_factory.__name__}"
+        )
         assert text_results[0].content == "Para 1"
         assert text_results[1].content == "Para 2"
 
@@ -126,7 +132,10 @@ class TestIteratorExhaustionFlush:
         text_results = [r for r in results if r.type == "text"]
 
         # Should flush accumulated content on iterator exhaustion
-        assert len(text_results) == 1, f"Expected 1 text result on exhaustion, got {len(text_results)} for {parser_factory.__name__}"
+        assert len(text_results) == EXPECTED_SINGLE_TEXT_RESULT, (
+            "Expected 1 text result on exhaustion, got "
+            f"{len(text_results)} for {parser_factory.__name__}"
+        )
         assert text_results[0].content == "Partial text"
 
 
@@ -146,7 +155,10 @@ class TestEmptyFlushSuppression:
                 '{"type":"message_start","message":{"id":"123"}}',
                 '{"type":"content_block_start","content_block":{"type":"text"}}',
                 '{"type":"content_block_delta","delta":{"type":"text_delta","text":""}}',
-                '{"type":"content_block_delta","delta":{"type":"text_delta","text":"Actual content"}}',
+                (
+                    '{"type":"content_block_delta","delta":'
+                    '{"type":"text_delta","text":"Actual content"}}'
+                ),
                 '{"type":"content_block_stop"}',
                 '{"type":"message_stop"}',
             ]
@@ -180,7 +192,10 @@ class TestEmptyFlushSuppression:
         content_values = [r.content for r in text_results]
 
         # Should not have empty string in content
-        assert "" not in content_values, f"Empty content should not appear for {parser_factory.__name__}"
+        assert "" not in content_values, (
+            "Empty content should not appear for "
+            f"{parser_factory.__name__}"
+        )
         assert "Actual content" in content_values
 
 
@@ -236,5 +251,8 @@ class TestNoMidTokenSplit:
         text_results = [r for r in results if r.type == "text"]
 
         # Should coalesce into one coherent text block
-        assert len(text_results) == 1, f"Expected 1 coherent block, got {len(text_results)} for {parser_factory.__name__}"
+        assert len(text_results) == EXPECTED_SINGLE_TEXT_RESULT, (
+            "Expected 1 coherent block, got "
+            f"{len(text_results)} for {parser_factory.__name__}"
+        )
         assert text_results[0].content == "Hello World!"

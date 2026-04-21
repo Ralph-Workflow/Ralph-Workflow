@@ -70,7 +70,7 @@ class GenericParser:
                 continue
 
             try:
-                parsed: object = json.loads(stripped)
+                parsed: object = json.loads(stripped, strict=False)
             except json.JSONDecodeError:
                 # Not JSON, treat as raw text - flush any pending accumulator first
                 yield from self._flush_accumulator()
@@ -150,12 +150,6 @@ class GenericParser:
 
         # Short content without paragraph boundary -> treat as streaming delta
         if self._is_short_content(content):
-            # If we already have accumulated content, flush it first to avoid
-            # merging independent content fields (e.g., separate content/text/message
-            # fields from different JSON objects)
-            if self._text_accumulator is not None:
-                yield from self._flush_accumulator()
-
             if self._text_accumulator is None:
                 self._text_accumulator = _TextAccumulator()
 

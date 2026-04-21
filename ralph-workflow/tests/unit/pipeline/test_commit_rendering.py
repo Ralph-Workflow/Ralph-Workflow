@@ -10,19 +10,18 @@ from __future__ import annotations
 
 import io
 import json
-from pathlib import Path
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
-from unittest.mock import MagicMock
 
-import pytest
 from rich.console import Console
 
 from ralph.display.artifact_renderer import render_commit_message
-
+from ralph.display.parallel_display import ParallelDisplay
+from ralph.display.plain_renderer import PlainLogRenderer
+from ralph.display.snapshot import PipelineSnapshot
 
 if TYPE_CHECKING:
-    from ralph.display.parallel_display import ParallelDisplay
-    from ralph.pipeline.state import PipelineState
+    from pathlib import Path
 
 
 class TestRenderCommitMessageIntegration:
@@ -51,20 +50,22 @@ class TestRenderCommitMessageIntegration:
         }
         (tmp_dir / "commit_message.json").write_text(json.dumps(artifact), encoding="utf-8")
 
-        console = Console(file=io.StringIO(), force_terminal=True, color_system=None, width=120)
+        output_buffer: io.StringIO = io.StringIO()
+        console = Console(file=output_buffer, force_terminal=True, color_system=None, width=120)
         render_commit_message(tmp_path, console)
 
-        output = console.file.getvalue()
+        output = output_buffer.getvalue()
         assert "COMMIT MESSAGE" in output
         assert "feat: add new feature" in output
 
     def test_render_commit_message_no_output_when_artifact_absent(self, tmp_path: Path) -> None:
         """Verify render_commit_message produces no output when commit is skipped."""
         # No .agent/tmp/commit_message.json - commit was skipped
-        console = Console(file=io.StringIO(), force_terminal=True, color_system=None, width=120)
+        output_buffer: io.StringIO = io.StringIO()
+        console = Console(file=output_buffer, force_terminal=True, color_system=None, width=120)
         render_commit_message(tmp_path, console)
 
-        output = console.file.getvalue()
+        output = output_buffer.getvalue()
         assert output == ""
 
     def test_render_commit_message_no_output_when_artifact_malformed(self, tmp_path: Path) -> None:
@@ -73,10 +74,11 @@ class TestRenderCommitMessageIntegration:
         tmp_dir.mkdir(parents=True)
         (tmp_dir / "commit_message.json").write_text("not valid json{{", encoding="utf-8")
 
-        console = Console(file=io.StringIO(), force_terminal=True, color_system=None, width=120)
+        output_buffer: io.StringIO = io.StringIO()
+        console = Console(file=output_buffer, force_terminal=True, color_system=None, width=120)
         render_commit_message(tmp_path, console)
 
-        output = console.file.getvalue()
+        output = output_buffer.getvalue()
         # Defensive: malformed JSON should not crash and should produce no output
         assert output == ""
 
@@ -105,12 +107,13 @@ class TestRenderCommitMessageIntegration:
         }
         (tmp_dir / "commit_message.json").write_text(json.dumps(artifact), encoding="utf-8")
 
-        console = Console(file=io.StringIO(), force_terminal=True, color_system=None, width=120)
+        output_buffer: io.StringIO = io.StringIO()
+        console = Console(file=output_buffer, force_terminal=True, color_system=None, width=120)
 
         # Simulate the pipeline calling render_commit_message once after a successful commit
         render_commit_message(tmp_path, console)
 
-        output = console.file.getvalue()
+        output = output_buffer.getvalue()
         # Should appear exactly once
         assert output.count("COMMIT MESSAGE") == 1
         assert output.count("fix: correct bug") == 1
@@ -133,8 +136,6 @@ class TestAnalysisDecisionDeDuplication:
         emit_analysis_result. This test is a regression guard against
         accidental double-rendering.
         """
-        from ralph.display.parallel_display import ParallelDisplay
-
         buf = io.StringIO()
         console = Console(file=buf, force_terminal=False, width=120, color_system=None)
         pd = ParallelDisplay(console, {"CI": "1"}, mode="lines")
@@ -154,10 +155,7 @@ class TestAnalysisDecisionDeDuplication:
         Since render_analysis_decision already outputs a titled block for these
         phases, PlainLogRenderer should not also emit a plain [analysis] line.
         """
-        from ralph.display.plain_renderer import PlainLogRenderer
-        from ralph.display.snapshot import PipelineSnapshot
-
-        stream = io.StringIO()
+        stream: io.StringIO = io.StringIO()
         console = Console(file=stream, force_terminal=False, color_system=None, width=200)
         renderer = PlainLogRenderer(console)
 
@@ -182,6 +180,7 @@ class TestAnalysisDecisionDeDuplication:
             prompt_path=None,
             prompt_preview=(),
             run_id=None,
+            created_at=datetime(2026, 4, 18, 12, 0, tzinfo=UTC),
             plan_summary=None,
             plan_scope_items=(),
             plan_total_steps=0,
@@ -202,10 +201,7 @@ class TestAnalysisDecisionDeDuplication:
         Phases like 'review' or 'planning' that don't have their own
         titled block renderer should still get [analysis] lines.
         """
-        from ralph.display.plain_renderer import PlainLogRenderer
-        from ralph.display.snapshot import PipelineSnapshot
-
-        stream = io.StringIO()
+        stream: io.StringIO = io.StringIO()
         console = Console(file=stream, force_terminal=False, color_system=None, width=200)
         renderer = PlainLogRenderer(console)
 
@@ -230,6 +226,7 @@ class TestAnalysisDecisionDeDuplication:
             prompt_path=None,
             prompt_preview=(),
             run_id=None,
+            created_at=datetime(2026, 4, 18, 12, 0, tzinfo=UTC),
             plan_summary=None,
             plan_scope_items=(),
             plan_total_steps=0,

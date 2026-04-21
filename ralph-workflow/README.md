@@ -59,8 +59,14 @@ make verify
 That runs:
 
 - `ruff check ralph/ tests/`
-- `mypy ralph/`
-- `pytest tests/ -v --cov=ralph --cov-report=term-missing --cov-report=html`
+- `uv run python -m mypy ralph/`
+- `uv run python -m ralph.verify_timeout --suite-timeout 30 -- pytest tests/ -q -n 8 --cov=ralph --cov-report=term-missing --cov-report=html --cov-fail-under=80`
+
+For narrower local runs, use:
+
+- `make test` — full pytest suite without coverage
+- `make test-unit` — everything under `tests/` except `tests/integration/`
+- `make test-integration` — `tests/integration/` only
 
 For the dead-code policy tooling, run the separate Vulture audit:
 

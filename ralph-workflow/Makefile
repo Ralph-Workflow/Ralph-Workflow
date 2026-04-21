@@ -1,4 +1,4 @@
-.PHONY: help install dev install-dev test lint typecheck build build-wheel build-sdist publish test-pypi test-pypi-upload clean dist clean-dist fmt format-check ruff-fix mypy-fix pre-commit dist-homebrew verify coverage dist-binary dist-pypi dist-all formula-check dead-code
+.PHONY: help install dev install-dev test test-unit test-integration lint typecheck build build-wheel build-sdist publish test-pypi test-pypi-upload clean dist clean-dist fmt format-check ruff-fix mypy-fix pre-commit dist-homebrew verify coverage dist-binary dist-pypi dist-all formula-check dead-code
 
 PYTEST_WORKERS ?= 8
 COVERAGE_WORKERS ?= 16
@@ -9,7 +9,9 @@ help:
 	@echo "  install         Install package and refresh pipx executable"
 	@echo "  dev             Install package in editable mode with dev dependencies"
 	@echo "  install-dev     Alias for dev"
-	@echo "  test           Run pytest"
+	@echo "  test           Run the full pytest suite without coverage"
+	@echo "  test-unit      Run unit/root tests without tests/integration/"
+	@echo "  test-integration Run tests/integration/ only"
 	@echo "  lint           Run ruff linting"
 	@echo "  typecheck      Run mypy type checking"
 	@echo "  fmt            Format code with ruff"
@@ -47,11 +49,16 @@ install-dev: dev
 test:
 	uv run python -m ralph.verify_timeout --suite-timeout 30 -- pytest tests/ -q -n $(PYTEST_WORKERS)
 
+test-unit:
+	uv run python -m ralph.verify_timeout --suite-timeout 30 -- pytest tests/ -q -n $(PYTEST_WORKERS) --ignore=tests/integration
+
+test-integration:
+	uv run python -m ralph.verify_timeout --suite-timeout 30 -- pytest tests/integration/ -q -n $(PYTEST_WORKERS)
+
 coverage: test-cov
 
 test-cov:
-	uv run python -m ralph.verify_timeout --suite-timeout 30 -- pytest tests/ -q -n $(PYTEST_WORKERS)
-	uv run pytest tests/ -q --cov=ralph --cov-report=term-missing --cov-report=html
+	uv run python -m ralph.verify_timeout --suite-timeout 30 -- pytest tests/ -q -n $(PYTEST_WORKERS) --cov=ralph --cov-report=term-missing --cov-report=html --cov-fail-under=80
 
 # Linting
 lint:
@@ -123,8 +130,7 @@ verify:
 	@echo "Running full verification..."
 	@$(MAKE) lint
 	@$(MAKE) typecheck
-	@$(MAKE) test
-	@$(MAKE) coverage
+	@$(MAKE) test-cov
 
 dist-binary:
 	@echo "Building PyInstaller binary..."

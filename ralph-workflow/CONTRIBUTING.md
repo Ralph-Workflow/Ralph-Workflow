@@ -37,8 +37,11 @@ You can narrow failures with:
 ```bash
 ruff check ralph/ tests/
 ruff format --check ralph/ tests/
-mypy ralph/
-pytest tests/ -v --cov=ralph --cov-report=term-missing --cov-report=html
+uv run python -m mypy ralph/
+uv run python -m ralph.verify_timeout --suite-timeout 30 -- pytest tests/ -q -n 8 --cov=ralph --cov-report=term-missing --cov-report=html --cov-fail-under=80
+make test
+make test-unit
+make test-integration
 ```
 
 ## Documentation expectations

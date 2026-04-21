@@ -1,4 +1,4 @@
-"""Integration tests for ParallelDisplay emit_* helpers and lines-mode parity."""
+"""Behavior tests for ParallelDisplay emit_* helpers and lines-mode parity."""
 
 from __future__ import annotations
 

@@ -54,8 +54,14 @@ make verify
 That runs the current Python verification path:
 
 - `ruff check ralph/ tests/`
-- `mypy ralph/`
-- `pytest tests/ -v --cov=ralph --cov-report=term-missing --cov-report=html`
+- `uv run python -m mypy ralph/`
+- `uv run python -m ralph.verify_timeout --suite-timeout 30 -- pytest tests/ -q -n 8 --cov=ralph --cov-report=term-missing --cov-report=html --cov-fail-under=80`
+
+Useful local narrowing commands:
+
+- `make test` — full suite without coverage
+- `make test-unit` — `tests/` excluding `tests/integration/`
+- `make test-integration` — `tests/integration/` only
 
 ## Repository map
 

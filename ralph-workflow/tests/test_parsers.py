@@ -17,7 +17,6 @@ from ralph.agents.parsers import (
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
-EXPECTED_TEXT_RESULTS = 2
 EXPECTED_TWO_LINES = 2
 
 
@@ -27,7 +26,7 @@ def _make_lines(data: list[str]) -> Iterator[str]:
 
 
 def test_claude_parser_content_block_delta() -> None:
-    """Test Claude parser handles content_block_delta events."""
+    """Claude parser should accumulate orphan content_block_delta text coherently."""
     parser = ClaudeParser()
     lines = [
         '{"type":"content_block_delta","delta":{"type":"text_delta","text":"Hello"}}',
@@ -35,11 +34,9 @@ def test_claude_parser_content_block_delta() -> None:
     ]
     results = list(parser.parse(_make_lines(lines)))
 
-    assert len(results) == EXPECTED_TEXT_RESULTS
-    assert results[0].type == "text"
-    assert results[0].content == "Hello"
-    assert results[1].type == "text"
-    assert results[1].content == " World"
+    text_results = [result for result in results if result.type == "text"]
+    assert len(text_results) == 1
+    assert text_results[0].content == "Hello World"
 
 
 def test_claude_parser_message_stop() -> None:
@@ -281,18 +278,22 @@ def test_opencode_parser_tool_result_preserves_tool_context_and_structured_metad
 
 
 def test_generic_parser_content_fields() -> None:
-    """Test GenericParser extracts content from common fields."""
+    """GenericParser should extract common text fields and flush them on stop markers."""
     parser = GenericParser()
     lines = [
         '{"content":"Hello World"}',
+        '{"type":"done"}',
         '{"text":"Another message"}',
+        '{"type":"done"}',
         '{"message":"Third message"}',
+        '{"type":"done"}',
     ]
     results = list(parser.parse(_make_lines(lines)))
 
-    assert results[0].content == "Hello World"
-    assert results[1].content == "Another message"
-    assert results[2].content == "Third message"
+    text_results = [result for result in results if result.type == "text"]
+    assert text_results[0].content == "Hello World"
+    assert text_results[1].content == "Another message"
+    assert text_results[2].content == "Third message"
 
 
 def test_generic_parser_error_detection() -> None:
