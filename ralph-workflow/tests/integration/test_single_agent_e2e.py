@@ -90,8 +90,8 @@ def test_run_completes_in_serial_mode_without_fan_out(
 
     monkeypatch.setattr(runner_module.ckpt, "save", _save_state)
 
-    def _fake_execute_effect(effect, config, workspace_scope, display, *, verbosity=None):
-        del config, workspace_scope, display, verbosity
+    def _fake_execute_effect(effect, config, workspace_scope, **kwargs: object) -> PipelineEvent:
+        del config, workspace_scope, kwargs
         handled_phases.append(effect.phase)
         return PipelineEvent.AGENT_SUCCESS
 
