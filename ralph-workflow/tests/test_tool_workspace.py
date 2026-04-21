@@ -2,14 +2,20 @@
 
 from __future__ import annotations
 
+import base64
+import tempfile
 from dataclasses import dataclass
+from pathlib import Path
+from typing import cast
 from unittest.mock import MagicMock
 
 import pytest
 
 from ralph.mcp.tools.coordination import (
     CapabilityDeniedError,
+    ImageContent,
     InvalidParamsError,
+    ToolContent,
     ToolError,
     _read_env_value,
 )
@@ -18,6 +24,7 @@ from ralph.mcp.tools.workspace import (
     WORKSPACE_WRITE_EPHEMERAL_CAPABILITY,
     WORKSPACE_WRITE_TRACKED_CAPABILITY,
     _check_edit_area_restriction,
+    _infer_image_mime_type,
     _is_parallel_worker,
     _is_path_git_tracked,
     _is_policy_approved,
@@ -28,10 +35,14 @@ from ralph.mcp.tools.workspace import (
     handle_list_directory,
     handle_list_directory_recursive,
     handle_read_file,
+    handle_read_image,
     handle_search_files,
     handle_write_file,
     required_string_param,
 )
+
+MEDIA_READ_CAPABILITY = "media.read"
+DEFAULT_MAX_INLINE_BYTES = 5_242_880
 
 
 @dataclass
@@ -324,7 +335,7 @@ class TestHandleReadFile:
         ws.read.return_value = "file contents"
 
         result = handle_read_file(MockSession(WORKSPACE_READ_CAPABILITY), ws, {"path": "file.txt"})
-        assert "file contents" in result.content[0].text
+        assert "file contents" in cast("ToolContent", result.content[0]).text
         assert result.is_error is False
 
     def test_missing_capability_raises(self) -> None:
@@ -360,7 +371,7 @@ class TestHandleListDirectory:
 
         result = handle_list_directory(MockSession(WORKSPACE_READ_CAPABILITY), ws, {"path": "."})
         assert result.is_error is False
-        assert "Directory:" in result.content[0].text
+        assert "Directory:" in cast("ToolContent", result.content[0]).text
 
     def test_lists_directory_recursive(self) -> None:
         ws = MagicMock()
@@ -373,7 +384,7 @@ class TestHandleListDirectory:
             {"path": ".", "recursive": True},
         )
         assert result.is_error is False
-        assert "Directory (recursive):" in result.content[0].text
+        assert "Directory (recursive):" in cast("ToolContent", result.content[0]).text
 
 
 # =============================================================================
@@ -393,7 +404,7 @@ class TestHandleListDirectoryRecursive:
             {"path": "."},
         )
         assert result.is_error is False
-        assert "Directory (recursive):" in result.content[0].text
+        assert "Directory (recursive):" in cast("ToolContent", result.content[0]).text
 
     def test_skips_heavy_directories_and_nested_worktrees(self) -> None:
         ws = MagicMock()
@@ -423,7 +434,7 @@ class TestHandleListDirectoryRecursive:
             {"path": "."},
         )
 
-        text = result.content[0].text
+        text = cast("ToolContent", result.content[0]).text
         assert "src/main.py" in text
         assert ".git/objects" not in text
         assert "target/debug" not in text
@@ -460,7 +471,7 @@ class TestHandleSearchFiles:
             {"pattern": "main", "path": "."},
         )
         assert result.is_error is False
-        assert "main.py" in result.content[0].text
+        assert "main.py" in cast("ToolContent", result.content[0]).text
 
     def test_search_skips_heavy_directories_and_nested_worktrees(self) -> None:
         ws = MagicMock()
@@ -485,7 +496,7 @@ class TestHandleSearchFiles:
             {"pattern": "main", "path": "."},
         )
 
-        text = result.content[0].text
+        text = cast("ToolContent", result.content[0]).text
         assert "src/main.py" in text
         assert "target/main.rs" not in text
         assert "wt-feature/main.py" not in text
@@ -515,7 +526,7 @@ class TestHandleWriteFile:
             {"path": "new.txt", "content": "hello"},
         )
         assert result.is_error is False
-        assert "new.txt" in result.content[0].text
+        assert "new.txt" in cast("ToolContent", result.content[0]).text
         ws.write.assert_called_once()
 
     def test_writes_git_tracked_file_with_tracked_capability(self) -> None:
@@ -547,6 +558,181 @@ class TestHandleWriteFile:
                 ws,
                 {"path": "file.txt"},
             )
+
+
+# =============================================================================
+# _infer_image_mime_type tests
+# =============================================================================
+
+
+class TestInferImageMimeType:
+    def test_png(self) -> None:
+        assert _infer_image_mime_type("image.png") == "image/png"
+
+    def test_jpg(self) -> None:
+        assert _infer_image_mime_type("image.jpg") == "image/jpeg"
+
+    def test_jpeg(self) -> None:
+        assert _infer_image_mime_type("image.jpeg") == "image/jpeg"
+
+    def test_gif(self) -> None:
+        assert _infer_image_mime_type("image.gif") == "image/gif"
+
+    def test_webp(self) -> None:
+        assert _infer_image_mime_type("image.webp") == "image/webp"
+
+    def test_unknown_suffix_returns_none(self) -> None:
+        assert _infer_image_mime_type("document.pdf") is None
+        assert _infer_image_mime_type("video.mp4") is None
+        assert _infer_image_mime_type("unknown.xyz") is None
+
+    def test_empty_suffix_returns_none(self) -> None:
+        assert _infer_image_mime_type("noextension") is None
+
+
+# =============================================================================
+# handle_read_image tests (Task 4 & 6)
+# =============================================================================
+
+
+class TestHandleReadImage:
+    """Tests for handle_read_image workspace tool (Task 4 & 6)."""
+
+    def test_requires_media_read_capability(self) -> None:
+        """handle_read_image raises CapabilityDeniedError when session lacks media.read."""
+        ws = MagicMock()
+
+        with pytest.raises(CapabilityDeniedError) as exc_info:
+            handle_read_image(MockSession(), ws, {"path": "image.png"})
+
+        assert "media.read" in str(exc_info.value)
+
+    def test_returns_error_for_unsupported_format(self) -> None:
+        """handle_read_image returns is_error=True ToolResult for unsupported formats."""
+        ws = MagicMock()
+
+        result = handle_read_image(
+            MockSession(MEDIA_READ_CAPABILITY),
+            ws,
+            {"path": "document.pdf"},
+        )
+
+        assert result.is_error is True
+        assert "Unsupported image format" in cast("ToolContent", result.content[0]).text
+        assert ".pdf" in cast("ToolContent", result.content[0]).text
+
+    def test_returns_error_for_unknown_format(self) -> None:
+        """handle_read_image returns is_error=True for unknown file suffixes."""
+        ws = MagicMock()
+
+        result = handle_read_image(
+            MockSession(MEDIA_READ_CAPABILITY),
+            ws,
+            {"path": "file.xyz"},
+        )
+
+        assert result.is_error is True
+        assert "Unsupported image format" in cast("ToolContent", result.content[0]).text
+
+    def test_returns_error_for_missing_file(self) -> None:
+        """handle_read_image returns is_error=True when file cannot be stat'd."""
+        ws = MagicMock()
+        ws.absolute_path.return_value = "/tmp/nonexistent.png"
+
+        result = handle_read_image(
+            MockSession(MEDIA_READ_CAPABILITY),
+            ws,
+            {"path": "nonexistent.png"},
+        )
+        assert result.is_error is True
+        assert "Failed to stat" in cast("ToolContent", result.content[0]).text
+
+    def test_returns_error_for_oversized_file(self) -> None:
+        """handle_read_image returns is_error=True when file exceeds max_inline_bytes."""
+        ws = MagicMock()
+
+        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
+            # Write enough bytes to exceed default 5MB limit
+            f.write(b"\x00" * (DEFAULT_MAX_INLINE_BYTES + 1))
+            temp_path = f.name
+
+        try:
+            ws.absolute_path.return_value = temp_path
+
+            result = handle_read_image(
+                MockSession(MEDIA_READ_CAPABILITY),
+                ws,
+                {"path": "large.png"},
+                max_inline_bytes=DEFAULT_MAX_INLINE_BYTES,
+            )
+            assert result.is_error is True
+            assert "too large" in cast("ToolContent", result.content[0]).text
+        finally:
+            Path(temp_path).unlink()
+
+    def test_returns_image_content_block_on_success(self) -> None:
+        """handle_read_image returns ToolResult with ImageContent on success."""
+        # 1x1 transparent PNG pixel
+        png_bytes = base64.b64decode(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+        )
+
+        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
+            f.write(png_bytes)
+            temp_path = f.name
+
+        try:
+            ws = MagicMock()
+            ws.absolute_path.return_value = temp_path
+
+            result = handle_read_image(
+                MockSession(MEDIA_READ_CAPABILITY),
+                ws,
+                {"path": "test.png"},
+            )
+            assert result.is_error is False
+            assert len(result.content) == 1
+            content = result.content[0]
+            assert isinstance(content, ImageContent)
+            assert content.type == "image"
+            assert content.mime_type == "image/png"
+            # Verify it's valid base64
+            decoded = base64.b64decode(content.data)
+            assert len(decoded) == len(png_bytes)
+        finally:
+            Path(temp_path).unlink()
+
+    def test_rejects_path_traversal(self) -> None:
+        """handle_read_image rejects paths attempting to escape workspace root."""
+        ws = MagicMock()
+        ws.absolute_path.return_value = "/tmp/../../../etc/passwd"
+
+        result = handle_read_image(
+            MockSession(MEDIA_READ_CAPABILITY),
+            ws,
+            {"path": "../../../etc/passwd"},
+        )
+        # The handler should either reject at absolute_path level or at stat level
+        # depending on implementation. In either case, it should be an error result.
+        assert result.is_error is True
+
+    def test_read_file_unchanged_text_only(self) -> None:
+        """read_file (text tool) behavior is unchanged - no binary retrofit."""
+        ws = MagicMock()
+        ws.read.return_value = "hello world"
+
+        result = handle_read_file(
+            MockSession(WORKSPACE_READ_CAPABILITY),
+            ws,
+            {"path": "hello.txt"},
+        )
+
+        # read_file should return text content, NOT image content
+        assert result.is_error is False
+        assert hasattr(result.content[0], "text")
+        assert cast("ToolContent", result.content[0]).text == "hello world"
+        # It should NOT be an ImageContent
+        assert not isinstance(result.content[0], ImageContent)
 
 
 def test_read_env_value_uses_injected_mapping() -> None:

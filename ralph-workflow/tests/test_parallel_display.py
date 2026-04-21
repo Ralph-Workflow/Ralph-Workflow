@@ -310,7 +310,6 @@ def test_drop_warning_debounced_within_one_second(tmp_path: Path) -> None:
 class _AlwaysRaisingParser(AgentParser):
     def parse(self, lines: Iterator[str]) -> Iterator[object]:  # type: ignore[override]
         raise ValueError("simulated parse failure")
-        yield  # make this a generator
 
 
 def test_malformed_input_written_to_overflow_log(tmp_path: Path) -> None:

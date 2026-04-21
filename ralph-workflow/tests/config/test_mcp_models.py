@@ -10,11 +10,15 @@ from pydantic import ValidationError
 from ralph.config.mcp_models import (
     McpConfig,
     McpServerSpec,
+    MediaConfig,
     WebSearchBackendSpec,
     WebSearchConfig,
 )
 
 RALPH_RESERVED_NAME = "ralph"
+
+DEFAULT_MAX_INLINE_BYTES = 5_242_880  # 5 MiB
+_TEN_MIB = 10_485_760  # 10 MiB - used in tests
 
 
 def test_mcp_server_spec_rejects_reserved_name() -> None:
@@ -106,3 +110,68 @@ def test_model_module_exports_all() -> None:
     assert {"McpServerSpec", "WebSearchBackendSpec", "WebSearchConfig", "McpConfig"}.issubset(
         set(module.__all__)
     )
+
+
+# =============================================================================
+# MediaConfig tests (Task 4)
+# =============================================================================
+
+
+class TestMediaConfig:
+    """Tests for MediaConfig model (Task 4)."""
+
+    def test_media_config_defaults(self) -> None:
+        """media config defaults to disabled with sane max_inline_bytes."""
+        config = MediaConfig()
+        assert config.enabled is False
+        assert config.max_inline_bytes == DEFAULT_MAX_INLINE_BYTES
+
+    def test_media_config_enabled_true(self) -> None:
+        """MediaConfig can be enabled explicitly."""
+        config = MediaConfig(enabled=True)
+        assert config.enabled is True
+        assert config.max_inline_bytes == DEFAULT_MAX_INLINE_BYTES
+
+    def test_media_config_custom_max_inline_bytes(self) -> None:
+        """MediaConfig accepts custom max_inline_bytes."""
+        config = MediaConfig(enabled=True, max_inline_bytes=_TEN_MIB)
+        assert config.enabled is True
+        assert config.max_inline_bytes == _TEN_MIB
+
+    def test_media_config_max_inline_bytes_must_be_positive(self) -> None:
+        """MediaConfig rejects non-positive max_inline_bytes."""
+        with pytest.raises(ValidationError, match="greater than 0"):
+            MediaConfig(max_inline_bytes=0)
+        with pytest.raises(ValidationError, match="greater than 0"):
+            MediaConfig(max_inline_bytes=-1)
+
+    def test_media_config_is_frozen(self) -> None:
+        """MediaConfig is immutable (frozen=True)."""
+        config = MediaConfig()
+        with pytest.raises(ValidationError):
+            config.enabled = True
+
+
+class TestMcpConfigMediaIntegration:
+    """Tests for media config integration in McpConfig (Task 4)."""
+
+    def test_mcp_config_has_media_field_with_default(self) -> None:
+        """McpConfig has media field that defaults to disabled MediaConfig."""
+        config = McpConfig()
+        assert hasattr(config, "media")
+        assert isinstance(config.media, MediaConfig)
+        assert config.media.enabled is False
+        assert config.media.max_inline_bytes == DEFAULT_MAX_INLINE_BYTES
+
+    def test_mcp_config_media_enabled_roundtrip(self) -> None:
+        """McpConfig.media round-trips through model_validate."""
+        config = McpConfig(media=MediaConfig(enabled=True, max_inline_bytes=_TEN_MIB))
+        roundtrip = McpConfig.model_validate(config.model_dump())
+        assert roundtrip.media.enabled is True
+        assert roundtrip.media.max_inline_bytes == _TEN_MIB
+
+    def test_mcp_config_without_media_section_yields_default(self) -> None:
+        """Parsing mcp.toml without [media] section yields disabled media config."""
+        config = McpConfig()
+        assert config.media.enabled is False
+        assert config.media.max_inline_bytes == DEFAULT_MAX_INLINE_BYTES

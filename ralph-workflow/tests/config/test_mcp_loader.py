@@ -25,6 +25,9 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
+DEFAULT_MAX_INLINE_BYTES = 5_242_880  # 5 MiB
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -313,3 +316,82 @@ def test_load_mcp_config_api_key_not_in_logs(
     assert config.web_search.backends["tavily"].api_key == secret, "secret must be in model"
     joined = "\n".join(records)
     assert secret not in joined, f"api_key leaked into logs: {joined!r}"
+
+
+# ---------------------------------------------------------------------------
+# Media config tests (Task 4)
+# ---------------------------------------------------------------------------
+
+
+def test_load_mcp_config_media_enabled_in_toml(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Parsing [media] with enabled=true yields enabled MediaConfig."""
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+    cfg = tmp_path / "mcp.toml"
+    cfg.write_text(
+        textwrap.dedent("""\
+            [media]
+            enabled = true
+        """),
+        encoding="utf-8",
+    )
+    config = load_mcp_config(config_path=cfg)
+    assert config.media.enabled is True
+    assert config.media.max_inline_bytes == DEFAULT_MAX_INLINE_BYTES
+
+
+def test_load_mcp_config_media_with_custom_max_inline_bytes(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Parsing [media] with max_inline_bytes round-trips correctly."""
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+    cfg = tmp_path / "mcp.toml"
+    cfg.write_text(
+        textwrap.dedent("""\
+            [media]
+            enabled = true
+            max_inline_bytes = 10485760
+        """),
+        encoding="utf-8",
+    )
+    config = load_mcp_config(config_path=cfg)
+    assert config.media.enabled is True
+    assert config.media.max_inline_bytes == DEFAULT_MAX_INLINE_BYTES * 2
+
+
+def test_load_mcp_config_media_disabled_by_default(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """When no [media] section is present, media is disabled by default."""
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+    cfg = tmp_path / "mcp.toml"
+    cfg.write_text(
+        textwrap.dedent("""\
+            [web_search]
+            enabled = true
+        """),
+        encoding="utf-8",
+    )
+    config = load_mcp_config(config_path=cfg)
+    assert config.media.enabled is False
+    assert config.media.max_inline_bytes == DEFAULT_MAX_INLINE_BYTES
+
+
+def test_load_mcp_config_media_rejects_invalid_max_inline_bytes(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """media.max_inline_bytes must be positive."""
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+    cfg = tmp_path / "mcp.toml"
+    cfg.write_text(
+        textwrap.dedent("""\
+            [media]
+            enabled = true
+            max_inline_bytes = 0
+        """),
+        encoding="utf-8",
+    )
+    with pytest.raises(SystemExit) as exc_info:
+        load_mcp_config(config_path=cfg)
+    assert exc_info.value.code == 1

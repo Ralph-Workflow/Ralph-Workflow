@@ -132,3 +132,249 @@ class TestUpstreamRegistryWarningBehavior:
         assert "broken" in message
         assert "API_KEY" in message
         assert secret not in message
+
+
+# =============================================================================
+# Upstream multimodal boundary rejection tests (Task 6)
+# =============================================================================
+
+
+class TestUpstreamMultimodalBoundary:
+    """Tests for upstream multimodal content rejection policy (Task 6)."""
+
+    def _make_http_client(
+        self, server: UpstreamMcpServer, responses: list[dict[str, object]]
+    ) -> HttpUpstreamClient:
+        """Create an HTTP upstream client that returns pre-programmed responses."""
+        responses_copy = list(responses)
+        index = {"value": 0}
+
+        def caller(method: str, params: dict[str, object]) -> dict[str, object]:
+            idx = index["value"]
+            index["value"] += 1
+            if idx < len(responses_copy):
+                return responses_copy[idx]
+            return {}
+
+        return HttpUpstreamClient(server, caller=caller)
+
+    def test_upstream_image_content_block_raises_upstream_call_error(self) -> None:
+        """Upstream image block raises UpstreamCallError with clear message."""
+        server = UpstreamMcpServer(name="image_server", transport="http", url="http://unused")
+        client = self._make_http_client(
+            server,
+            [
+                {
+                    "tools": [
+                        {
+                            "name": "get_screenshot",
+                            "description": "Screenshot",
+                            "inputSchema": {},
+                        }
+                    ]
+                },
+                {
+                    "content": [
+                        {"type": "text", "text": "Loading..."},
+                        {
+                            "type": "image",
+                            "data": "SGVsbG8gV29ybGQ=",
+                            "mimeType": "image/png",
+                        },
+                    ]
+                },
+            ],
+        )
+
+        # Register tools
+        registry = UpstreamRegistry.build(
+            [server],
+            client_factory=lambda srv: client,  # type: ignore[arg-type]
+        )
+
+        # Attempt to call the tool
+        with pytest.raises(UpstreamCallError) as exc_info:
+            registry.call_tool("ralph_upstream__image_server__get_screenshot", {})
+
+        error_message = str(exc_info.value)
+        # Error must mention multimodal
+        assert "multimodal" in error_message.lower()
+        # Error must identify the problematic type
+        assert "image" in error_message
+        # Error must mention the tool or server
+        assert "get_screenshot" in error_message or "image_server" in error_message
+
+    def test_upstream_video_content_block_raises_upstream_call_error(self) -> None:
+        """Upstream tool returning video content block raises UpstreamCallError."""
+        server = UpstreamMcpServer(name="media_server", transport="http", url="http://unused")
+        client = self._make_http_client(
+            server,
+            [
+                {"tools": [{"name": "get_clip", "description": "Video clip", "inputSchema": {}}]},
+                {
+                    "content": [
+                        {
+                            "type": "video",
+                            "data": "SGVsbG8gV29ybGQ=",
+                            "mimeType": "video/mp4",
+                        }
+                    ]
+                },
+            ],
+        )
+
+        registry = UpstreamRegistry.build(
+            [server],
+            client_factory=lambda srv: client,  # type: ignore[arg-type]
+        )
+
+        with pytest.raises(UpstreamCallError) as exc_info:
+            registry.call_tool("ralph_upstream__media_server__get_clip", {})
+
+        error_message = str(exc_info.value)
+        assert "multimodal" in error_message.lower()
+        assert "video" in error_message
+
+    def test_upstream_embedded_image_in_content_list_raises(self) -> None:
+        """Upstream tool returning content list with non-text block at any index raises error."""
+        server = UpstreamMcpServer(name="mixed_server", transport="http", url="http://unused")
+        client = self._make_http_client(
+            server,
+            [
+                {
+                    "tools": [
+                        {"name": "get_mixed", "description": "Mixed content", "inputSchema": {}}
+                    ]
+                },
+                {
+                    "content": [
+                        {"type": "text", "text": "Here is your result"},
+                        {
+                            "type": "image",
+                            "data": "SGVsbG8gV29ybGQ=",
+                            "mimeType": "image/png",
+                        },
+                    ]
+                },
+            ],
+        )
+
+        registry = UpstreamRegistry.build(
+            [server],
+            client_factory=lambda srv: client,  # type: ignore[arg-type]
+        )
+
+        with pytest.raises(UpstreamCallError) as exc_info:
+            registry.call_tool("ralph_upstream__mixed_server__get_mixed", {})
+
+        # Error should clearly reject the multimodal payload
+        error_message = str(exc_info.value)
+        assert "multimodal" in error_message.lower()
+
+    def test_upstream_text_only_content_passthrough_works(self) -> None:
+        """Upstream tool returning only text content blocks succeeds normally."""
+        server = UpstreamMcpServer(name="text_server", transport="http", url="http://unused")
+        client = self._make_http_client(
+            server,
+            [
+                {
+                    "tools": [{"name": "echo", "description": "Echo text", "inputSchema": {}}]
+                },
+                {"content": [{"type": "text", "text": "hello world"}]},
+            ],
+        )
+
+        registry = UpstreamRegistry.build(
+            [server],
+            client_factory=lambda srv: client,  # type: ignore[arg-type]
+        )
+
+        result = registry.call_tool("ralph_upstream__text_server__echo", {})
+
+        # Should pass through without error
+        assert isinstance(result, dict)
+        content = result.get("content", [])
+        assert len(content) == 1
+        assert content[0].get("type") == "text"
+        assert content[0].get("text") == "hello world"
+
+    def test_upstream_tool_without_content_field_succeeds(self) -> None:
+        """Upstream tool returning result without content field succeeds."""
+        server = UpstreamMcpServer(name="minimal_server", transport="http", url="http://unused")
+        client = self._make_http_client(
+            server,
+            [
+                {"tools": [{"name": "ping", "description": "Ping", "inputSchema": {}}]},
+                {"result": "pong"},
+            ],
+        )
+
+        registry = UpstreamRegistry.build(
+            [server],
+            client_factory=lambda srv: client,  # type: ignore[arg-type]
+        )
+
+        result = registry.call_tool("ralph_upstream__minimal_server__ping", {})
+        assert result == {"result": "pong"}
+
+    def test_upstream_tool_with_empty_content_succeeds(self) -> None:
+        """Upstream tool returning empty content list succeeds."""
+        server = UpstreamMcpServer(name="empty_server", transport="http", url="http://unused")
+        client = self._make_http_client(
+            server,
+            [
+                {"tools": [{"name": "noop", "description": "No-op", "inputSchema": {}}]},
+                {"content": []},
+            ],
+        )
+
+        registry = UpstreamRegistry.build(
+            [server],
+            client_factory=lambda srv: client,  # type: ignore[arg-type]
+        )
+
+        result = registry.call_tool("ralph_upstream__empty_server__noop", {})
+        assert result == {"content": []}
+
+    def test_no_silent_fallback_for_multimodal_content(self) -> None:
+        """There is no silent fallback path that stringifies multimodal content."""
+        server = UpstreamMcpServer(name="strict_server", transport="http", url="http://unused")
+        client = self._make_http_client(
+            server,
+            [
+                {
+                    "tools": [
+                        {
+                            "name": "get_both",
+                            "description": "Text and image",
+                            "inputSchema": {},
+                        }
+                    ]
+                },
+                {
+                    "content": [
+                        {"type": "text", "text": "see image below"},
+                        {
+                            "type": "image",
+                            "data": "SGVsbG8gV29ybGQ=",
+                            "mimeType": "image/png",
+                        },
+                    ]
+                },
+            ],
+        )
+
+        registry = UpstreamRegistry.build(
+            [server],
+            client_factory=lambda srv: client,  # type: ignore[arg-type]
+        )
+
+        # Must raise, NOT silently convert image to string
+        with pytest.raises(UpstreamCallError) as exc_info:
+            registry.call_tool("ralph_upstream__strict_server__get_both", {})
+
+        error_message = str(exc_info.value)
+        # Must NOT have silently stringified the image block
+        assert "SGVsbG8gV29ybGQ=" not in error_message or "multimodal" in error_message.lower()
+        # Must clearly reject
+        assert "not supported" in error_message.lower() or "multimodal" in error_message.lower()
