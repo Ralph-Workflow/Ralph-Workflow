@@ -36,6 +36,8 @@ def _env_dict(kwargs: dict[str, object]) -> dict[str, str]:
 
 
 class _FakeProcess:
+    pid: int = 12345
+
     def __init__(self) -> None:
         self.stdout = iter(["ok\n"])
         self.stderr = SimpleNamespace(read=lambda: "")
@@ -47,7 +49,10 @@ class _FakeProcess:
     def __exit__(self, exc_type: object, exc: object, _tb: object) -> Literal[False]:
         return False
 
-    def wait(self) -> int:
+    def poll(self) -> int | None:
+        return self.returncode
+
+    def wait(self, timeout: float | None = None) -> int:
         return self.returncode
 
 

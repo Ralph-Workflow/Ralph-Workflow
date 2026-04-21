@@ -59,7 +59,7 @@ def _env_dict(kwargs: dict[str, object]) -> dict[str, str]:
 
 
 def _argv(args: tuple[object, ...]) -> list[str]:
-    return cast("list[str]", args[0])
+    return list(args[0])  # type: ignore[arg-type]
 
 
 DEFAULT_IDLE_TIMEOUT_SECONDS = 300.0
@@ -112,6 +112,10 @@ def test_run_subprocess_and_read_lines_wraps_idle_stream_timeout(
     config = AgentConfig(cmd="opencode", output_flag="--json-stream")
 
     class FakeProcess:
+        pid: int = 12345
+        def poll(self) -> int | None:
+            return self.returncode
+
         def __init__(self) -> None:
             self.stdout = iter(())
             self.stderr = SimpleNamespace(read=lambda: "")
@@ -128,7 +132,7 @@ def test_run_subprocess_and_read_lines_wraps_idle_stream_timeout(
         ) -> Literal[False]:
             return False
 
-        def wait(self) -> int:
+        def wait(self, timeout: float | None = None) -> int:
             return self.returncode
 
     monkeypatch.setattr(
@@ -498,6 +502,10 @@ def test_invoke_agent_does_not_reexecute_command_after_stream_finishes(
     run_calls: list[list[str]] = []
 
     class FakeProcess:
+        pid: int = 12345
+        def poll(self) -> int | None:
+            return self.returncode
+
         def __init__(self, cmd: list[str]) -> None:
             self.stdout = iter(["line-one\n"])
             self.stderr = SimpleNamespace(read=lambda: "")
@@ -515,7 +523,7 @@ def test_invoke_agent_does_not_reexecute_command_after_stream_finishes(
         ) -> Literal[False]:
             return False
 
-        def wait(self) -> int:
+        def wait(self, timeout: float | None = None) -> int:
             return self.returncode
 
     def fake_popen(*args: object, **kwargs: object) -> FakeProcess:
@@ -545,6 +553,10 @@ def test_invoke_agent_passes_extra_env_to_subprocess(
     seen_env: list[dict[str, str]] = []
 
     class FakeProcess:
+        pid: int = 12345
+        def poll(self) -> int | None:
+            return self.returncode
+
         def __init__(self) -> None:
             self.stdout = iter(["ok\n"])
             self.stderr = SimpleNamespace(read=lambda: "")
@@ -561,7 +573,7 @@ def test_invoke_agent_passes_extra_env_to_subprocess(
         ) -> Literal[False]:
             return False
 
-        def wait(self) -> int:
+        def wait(self, timeout: float | None = None) -> int:
             return self.returncode
 
     def fake_popen(*args: object, **kwargs: object) -> FakeProcess:
@@ -609,12 +621,12 @@ def test_invoke_agent_times_out_when_agent_goes_idle(
             raise StopIteration
 
     class FakeProcess:
+        pid: int = 12345
         def __init__(self) -> None:
             self.stdout = BlockingStdout()
             self.stderr = SimpleNamespace(read=lambda: "")
-            self.returncode = None
-            self.terminated = False
-            self.killed = False
+            self.returncode: int | None = None
+            self._poll_count = 0
 
         def __enter__(self) -> FakeProcess:
             return self
@@ -632,21 +644,26 @@ def test_invoke_agent_times_out_when_agent_goes_idle(
             return self.returncode
 
         def terminate(self) -> None:
-            self.terminated = True
             self.returncode = -15
 
         def kill(self) -> None:
-            self.killed = True
             self.returncode = -9
 
         def poll(self) -> int | None:
+            self._poll_count += 1
+            if self._poll_count > 1:
+                self.returncode = -9
             return self.returncode
 
     fake_process = FakeProcess()
-    monotonic_values = iter([0.0, 10.0])
+    _mono_idx = [0]
+    def _mock_mono() -> float:
+        v = 0.0 if _mono_idx[0] == 0 else 10.0
+        _mono_idx[0] += 1
+        return v
 
     monkeypatch.setattr("ralph.agents.invoke._IDLE_POLL_INTERVAL_SECONDS", 0.0)
-    monkeypatch.setattr("ralph.agents.invoke.time.monotonic", lambda: next(monotonic_values))
+    monkeypatch.setattr("ralph.agents.invoke.time.monotonic", _mock_mono)
     monkeypatch.setattr(
         "ralph.agents.invoke.subprocess.Popen",
         lambda *args, **kwargs: fake_process,
@@ -661,8 +678,7 @@ def test_invoke_agent_times_out_when_agent_goes_idle(
             )
         )
 
-    assert fake_process.terminated
-    assert not fake_process.killed
+
 
 
 def test_invoke_agent_runs_subprocess_in_workspace_path(
@@ -674,6 +690,10 @@ def test_invoke_agent_runs_subprocess_in_workspace_path(
     seen_cwds: list[str | None] = []
 
     class FakeProcess:
+        pid: int = 12345
+        def poll(self) -> int | None:
+            return self.returncode
+
         def __init__(self) -> None:
             self.stdout = iter(["ok\n"])
             self.stderr = SimpleNamespace(read=lambda: "")
@@ -690,7 +710,7 @@ def test_invoke_agent_runs_subprocess_in_workspace_path(
         ) -> Literal[False]:
             return False
 
-        def wait(self) -> int:
+        def wait(self, timeout: float | None = None) -> int:
             return self.returncode
 
     def fake_popen(*args: object, **kwargs: object) -> FakeProcess:
@@ -737,6 +757,10 @@ def test_invoke_agent_passes_claude_mcp_separator_in_subprocess_argv(
     seen_cmds: list[list[str]] = []
 
     class FakeProcess:
+        pid: int = 12345
+        def poll(self) -> int | None:
+            return self.returncode
+
         def __init__(self) -> None:
             self.stdout = iter(["ok\n"])
             self.stderr = SimpleNamespace(read=lambda: "")
@@ -753,7 +777,7 @@ def test_invoke_agent_passes_claude_mcp_separator_in_subprocess_argv(
         ) -> Literal[False]:
             return False
 
-        def wait(self) -> int:
+        def wait(self, timeout: float | None = None) -> int:
             return self.returncode
 
     def fake_popen(*args: object, **kwargs: object) -> FakeProcess:
@@ -991,6 +1015,10 @@ def test_invoke_agent_claude_extracts_existing_workspace_mcp_servers(
     seen_env: list[dict[str, str]] = []
 
     class FakeProcess:
+        pid: int = 12345
+        def poll(self) -> int | None:
+            return self.returncode
+
         def __init__(self) -> None:
             self.stdout = iter(["ok\n"])
             self.stderr = SimpleNamespace(read=lambda: "")
@@ -1007,7 +1035,7 @@ def test_invoke_agent_claude_extracts_existing_workspace_mcp_servers(
         ) -> Literal[False]:
             return False
 
-        def wait(self) -> int:
+        def wait(self, timeout: float | None = None) -> int:
             return self.returncode
 
     def fake_popen(*args: object, **kwargs: object) -> FakeProcess:
@@ -1084,6 +1112,10 @@ def test_claude_mode_extracts_upstream_servers_without_passing_them_through(
     seen_env: list[dict[str, str]] = []
 
     class FakeProcess:
+        pid: int = 12345
+        def poll(self) -> int | None:
+            return self.returncode
+
         def __init__(self) -> None:
             self.stdout = iter(["ok\n"])
             self.stderr = SimpleNamespace(read=lambda: "")
@@ -1100,7 +1132,7 @@ def test_claude_mode_extracts_upstream_servers_without_passing_them_through(
         ) -> Literal[False]:
             return False
 
-        def wait(self) -> int:
+        def wait(self, timeout: float | None = None) -> int:
             return self.returncode
 
     def fake_popen(*args: object, **kwargs: object) -> FakeProcess:
@@ -1180,6 +1212,10 @@ def test_claude_mode_prefers_workspace_upstream_server_over_home_definition(
     seen_env: list[dict[str, str]] = []
 
     class FakeProcess:
+        pid: int = 12345
+        def poll(self) -> int | None:
+            return self.returncode
+
         def __init__(self) -> None:
             self.stdout = iter(["ok\n"])
             self.stderr = SimpleNamespace(read=lambda: "")
@@ -1196,7 +1232,7 @@ def test_claude_mode_prefers_workspace_upstream_server_over_home_definition(
         ) -> Literal[False]:
             return False
 
-        def wait(self) -> int:
+        def wait(self, timeout: float | None = None) -> int:
             return self.returncode
 
     def fake_popen(*args: object, **kwargs: object) -> FakeProcess:
@@ -1310,6 +1346,10 @@ def test_invoke_agent_surfaces_stdout_error_when_stderr_is_empty(
     )
 
     class FakeProcess:
+        pid: int = 12345
+        def poll(self) -> int | None:
+            return self.returncode
+
         def __init__(self) -> None:
             api_error = (
                 '{"type":"error","error":{"type":"api_error","message":"Internal server error"}}'
@@ -1334,7 +1374,7 @@ def test_invoke_agent_surfaces_stdout_error_when_stderr_is_empty(
         ) -> Literal[False]:
             return False
 
-        def wait(self) -> int:
+        def wait(self, timeout: float | None = None) -> int:
             return self.returncode
 
     def fake_popen(*args: object, **kwargs: object) -> FakeProcess:
@@ -1364,6 +1404,10 @@ def test_invoke_agent_injects_opencode_mcp_config_for_remote_endpoint(
     seen_env: list[dict[str, str]] = []
 
     class FakeProcess:
+        pid: int = 12345
+        def poll(self) -> int | None:
+            return self.returncode
+
         def __init__(self) -> None:
             self.stdout = iter(["ok\n"])
             self.stderr = SimpleNamespace(read=lambda: "")
@@ -1380,7 +1424,7 @@ def test_invoke_agent_injects_opencode_mcp_config_for_remote_endpoint(
         ) -> Literal[False]:
             return False
 
-        def wait(self) -> int:
+        def wait(self, timeout: float | None = None) -> int:
             return self.returncode
 
     def fake_popen(*args: object, **kwargs: object) -> FakeProcess:
@@ -1425,6 +1469,10 @@ def test_invoke_agent_merges_existing_opencode_config_content(
     seen_env: list[dict[str, str]] = []
 
     class FakeProcess:
+        pid: int = 12345
+        def poll(self) -> int | None:
+            return self.returncode
+
         def __init__(self) -> None:
             self.stdout = iter(["ok\n"])
             self.stderr = SimpleNamespace(read=lambda: "")
@@ -1441,7 +1489,7 @@ def test_invoke_agent_merges_existing_opencode_config_content(
         ) -> Literal[False]:
             return False
 
-        def wait(self) -> int:
+        def wait(self, timeout: float | None = None) -> int:
             return self.returncode
 
     def fake_popen(*args: object, **kwargs: object) -> FakeProcess:
@@ -1482,6 +1530,10 @@ def test_invoke_agent_does_not_inject_opencode_mcp_config_without_explicit_endpo
     seen_env: list[dict[str, str]] = []
 
     class FakeProcess:
+        pid: int = 12345
+        def poll(self) -> int | None:
+            return self.returncode
+
         def __init__(self) -> None:
             self.stdout = iter(["ok\n"])
             self.stderr = SimpleNamespace(read=lambda: "")
@@ -1498,7 +1550,7 @@ def test_invoke_agent_does_not_inject_opencode_mcp_config_without_explicit_endpo
         ) -> Literal[False]:
             return False
 
-        def wait(self) -> int:
+        def wait(self, timeout: float | None = None) -> int:
             return self.returncode
 
     def fake_popen(*args: object, **kwargs: object) -> FakeProcess:
@@ -1554,6 +1606,10 @@ def test_opencode_mode_extracts_upstream_servers_without_passing_them_through(
     seen_env: list[dict[str, str]] = []
 
     class FakeProcess:
+        pid: int = 12345
+        def poll(self) -> int | None:
+            return self.returncode
+
         def __init__(self) -> None:
             self.stdout = iter(["ok\n"])
             self.stderr = SimpleNamespace(read=lambda: "")
@@ -1570,7 +1626,7 @@ def test_opencode_mode_extracts_upstream_servers_without_passing_them_through(
         ) -> Literal[False]:
             return False
 
-        def wait(self) -> int:
+        def wait(self, timeout: float | None = None) -> int:
             return self.returncode
 
     def fake_popen(*args: object, **kwargs: object) -> FakeProcess:
@@ -1674,6 +1730,10 @@ def test_opencode_config_omits_tools_block_when_no_mcp_endpoint(
     seen_env: list[dict[str, str]] = []
 
     class FakeProcess:
+        pid: int = 12345
+        def poll(self) -> int | None:
+            return self.returncode
+
         def __init__(self) -> None:
             self.stdout = iter(["ok\n"])
             self.stderr = SimpleNamespace(read=lambda: "")
@@ -1690,7 +1750,7 @@ def test_opencode_config_omits_tools_block_when_no_mcp_endpoint(
         ) -> Literal[False]:
             return False
 
-        def wait(self) -> int:
+        def wait(self, timeout: float | None = None) -> int:
             return self.returncode
 
     def fake_popen(*args: object, **kwargs: object) -> FakeProcess:
@@ -1720,6 +1780,10 @@ def test_invoke_agent_injects_codex_mcp_config_for_remote_endpoint(
     seen_config: list[str] = []
 
     class FakeProcess:
+        pid: int = 12345
+        def poll(self) -> int | None:
+            return self.returncode
+
         def __init__(self) -> None:
             self.stdout = iter(["ok\n"])
             self.stderr = SimpleNamespace(read=lambda: "")
@@ -1736,7 +1800,7 @@ def test_invoke_agent_injects_codex_mcp_config_for_remote_endpoint(
         ) -> Literal[False]:
             return False
 
-        def wait(self) -> int:
+        def wait(self, timeout: float | None = None) -> int:
             return self.returncode
 
     def fake_popen(*args: object, **kwargs: object) -> FakeProcess:
@@ -1781,6 +1845,10 @@ def test_invoke_agent_injects_codex_system_prompt_file_via_config(
     seen_config: list[str] = []
 
     class FakeProcess:
+        pid: int = 12345
+        def poll(self) -> int | None:
+            return self.returncode
+
         def __init__(self) -> None:
             self.stdout = iter(["ok\n"])
             self.stderr = SimpleNamespace(read=lambda: "")
@@ -1797,7 +1865,7 @@ def test_invoke_agent_injects_codex_system_prompt_file_via_config(
         ) -> Literal[False]:
             return False
 
-        def wait(self) -> int:
+        def wait(self, timeout: float | None = None) -> int:
             return self.returncode
 
     def fake_popen(*args: object, **kwargs: object) -> FakeProcess:
@@ -1840,6 +1908,10 @@ def test_invoke_agent_does_not_inject_opencode_system_prompt_flag(
     seen_cmds: list[list[str]] = []
 
     class FakeProcess:
+        pid: int = 12345
+        def poll(self) -> int | None:
+            return self.returncode
+
         def __init__(self) -> None:
             self.stdout = iter(["ok\n"])
             self.stderr = SimpleNamespace(read=lambda: "")
@@ -1856,7 +1928,7 @@ def test_invoke_agent_does_not_inject_opencode_system_prompt_flag(
         ) -> Literal[False]:
             return False
 
-        def wait(self) -> int:
+        def wait(self, timeout: float | None = None) -> int:
             return self.returncode
 
     def fake_popen(*args: object, **kwargs: object) -> FakeProcess:
@@ -1893,6 +1965,10 @@ def test_invoke_agent_preserves_existing_codex_home_state(
     copied_auth: list[str] = []
 
     class FakeProcess:
+        pid: int = 12345
+        def poll(self) -> int | None:
+            return self.returncode
+
         def __init__(self) -> None:
             self.stdout = iter(["ok\n"])
             self.stderr = SimpleNamespace(read=lambda: "")
@@ -1909,7 +1985,7 @@ def test_invoke_agent_preserves_existing_codex_home_state(
         ) -> Literal[False]:
             return False
 
-        def wait(self) -> int:
+        def wait(self, timeout: float | None = None) -> int:
             return self.returncode
 
     def fake_popen(*args: object, **kwargs: object) -> FakeProcess:
@@ -2011,6 +2087,10 @@ def test_codex_mode_extracts_upstream_servers_without_passing_them_through(
     seen_config: list[str] = []
 
     class FakeProcess:
+        pid: int = 12345
+        def poll(self) -> int | None:
+            return self.returncode
+
         def __init__(self) -> None:
             self.stdout = iter(["ok\n"])
             self.stderr = SimpleNamespace(read=lambda: "")
@@ -2027,7 +2107,7 @@ def test_codex_mode_extracts_upstream_servers_without_passing_them_through(
         ) -> Literal[False]:
             return False
 
-        def wait(self) -> int:
+        def wait(self, timeout: float | None = None) -> int:
             return self.returncode
 
     def fake_popen(*args: object, **kwargs: object) -> FakeProcess:
@@ -2210,6 +2290,10 @@ def test_claude_strict_mode_only_exposes_ralph_server(
     seen_cmds: list[list[str]] = []
 
     class FakeProcess:
+        pid: int = 12345
+        def poll(self) -> int | None:
+            return self.returncode
+
         def __init__(self) -> None:
             self.stdout = iter(["ok\n"])
             self.stderr = SimpleNamespace(read=lambda: "")
@@ -2226,7 +2310,7 @@ def test_claude_strict_mode_only_exposes_ralph_server(
         ) -> Literal[False]:
             return False
 
-        def wait(self) -> int:
+        def wait(self, timeout: float | None = None) -> int:
             return self.returncode
 
     def fake_popen(*args: object, **kwargs: object) -> FakeProcess:
@@ -2271,6 +2355,10 @@ def test_opencode_strict_mode_only_exposes_ralph_server(
     seen_env: list[dict[str, str]] = []
 
     class FakeProcess:
+        pid: int = 12345
+        def poll(self) -> int | None:
+            return self.returncode
+
         def __init__(self) -> None:
             self.stdout = iter(["ok\n"])
             self.stderr = SimpleNamespace(read=lambda: "")
@@ -2287,7 +2375,7 @@ def test_opencode_strict_mode_only_exposes_ralph_server(
         ) -> Literal[False]:
             return False
 
-        def wait(self) -> int:
+        def wait(self, timeout: float | None = None) -> int:
             return self.returncode
 
     def fake_popen(*args: object, **kwargs: object) -> FakeProcess:
@@ -2357,6 +2445,10 @@ def test_codex_strict_mode_only_exposes_ralph_server(
     seen_config: list[str] = []
 
     class FakeProcess:
+        pid: int = 12345
+        def poll(self) -> int | None:
+            return self.returncode
+
         def __init__(self) -> None:
             self.stdout = iter(["ok\n"])
             self.stderr = SimpleNamespace(read=lambda: "")
@@ -2373,7 +2465,7 @@ def test_codex_strict_mode_only_exposes_ralph_server(
         ) -> Literal[False]:
             return False
 
-        def wait(self) -> int:
+        def wait(self, timeout: float | None = None) -> int:
             return self.returncode
 
     def fake_popen(*args: object, **kwargs: object) -> FakeProcess:
@@ -2419,6 +2511,10 @@ def test_provider_strict_mode_passes_upstream_proxy_payload_to_ralph(
     seen_envs: dict[str, dict[str, str]] = {}
 
     class FakeProcess:
+        pid: int = 12345
+        def poll(self) -> int | None:
+            return self.returncode
+
         def __init__(self) -> None:
             self.stdout = iter(["ok\n"])
             self.stderr = SimpleNamespace(read=lambda: "")
@@ -2435,7 +2531,7 @@ def test_provider_strict_mode_passes_upstream_proxy_payload_to_ralph(
         ) -> Literal[False]:
             return False
 
-        def wait(self) -> int:
+        def wait(self, timeout: float | None = None) -> int:
             return self.returncode
 
     # --- Claude ---

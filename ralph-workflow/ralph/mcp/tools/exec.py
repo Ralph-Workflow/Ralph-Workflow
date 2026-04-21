@@ -21,6 +21,7 @@ from ralph.mcp.tools.coordination import (
     ToolResult,
     require_capability,
 )
+from ralph.process.manager import get_process_manager
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -50,8 +51,19 @@ _REMOTE_NETWORK_COMMANDS = {"ssh", "scp", "rsync"}
 _CONTAINER_COMMANDS = {"docker", "podman", "chroot", "nsenter", "unshare"}
 _PACKAGE_MANAGERS = {"apt", "yum", "dnf", "pacman", "brew"}
 
-type CommandRunner = Callable[[list[str], Path, float | None], subprocess.CompletedProcess[bytes]]
 type CwdProvider = Callable[[], Path]
+
+
+@dataclass(frozen=True)
+class _CompletedProcessAdapter:
+    """Adapter exposing stdout/stderr/returncode like subprocess.CompletedProcess."""
+
+    stdout: bytes
+    stderr: bytes
+    returncode: int
+
+
+type CommandRunner = Callable[[list[str], Path, float | None], _CompletedProcessAdapter]
 
 
 class ExecutionError(ToolError):
@@ -386,7 +398,7 @@ def run_command(
     workspace: object,
     timeout_ms: int,
     deps: ExecRunDeps | None = None,
-) -> subprocess.CompletedProcess[bytes]:
+) -> _CompletedProcessAdapter:
     """Execute a subprocess in the workspace root."""
     resolved_deps = deps or ExecRunDeps()
     cwd_provider = resolved_deps.cwd_provider or Path.cwd
@@ -409,20 +421,30 @@ def run_command(
 
 def _run_subprocess(
     command: list[str], cwd: Path, timeout_seconds: float | None
-) -> subprocess.CompletedProcess[bytes]:
-    return subprocess.run(
+) -> _CompletedProcessAdapter:
+    handle = get_process_manager().spawn(
         command,
-        cwd=cwd,
-        capture_output=True,
-        check=False,
-        timeout=timeout_seconds,
+        cwd=str(cwd),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        label=f"mcp-exec:{command[0]}",
+    )
+    try:
+        stdout, stderr = handle.communicate(timeout=timeout_seconds)
+    except subprocess.TimeoutExpired:
+        handle.terminate(grace_period_s=0)
+        raise
+    return _CompletedProcessAdapter(
+        stdout=stdout or b"",
+        stderr=stderr or b"",
+        returncode=handle.returncode or 0,
     )
 
 
 def format_exec_result(
     command: str,
     args: list[str],
-    output: subprocess.CompletedProcess[bytes],
+    output: _CompletedProcessAdapter,
     timeout_ms: int,
 ) -> str:
     """Format subprocess output to match the Rust tool response."""

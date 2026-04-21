@@ -19,7 +19,6 @@ import subprocess
 import sys
 import threading
 import time
-from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
@@ -47,6 +46,7 @@ from ralph.mcp.transport.common import (
     set_upstream_mcp_config,
 )
 from ralph.mcp.transport.opencode import build_opencode_provider_config
+from ralph.process.manager import ManagedProcess, get_process_manager
 
 _MODELED_FLAG_PARTS = 2
 _IDLE_POLL_INTERVAL_SECONDS = 0.05
@@ -91,6 +91,7 @@ class _BuildCommandOptions:
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
+    from typing import IO
 
     from ralph.config.models import AgentConfig
 
@@ -398,20 +399,24 @@ def _run_subprocess_and_read_lines(  # noqa: PLR0913
     Yields:
         Output lines from the subprocess.
     """
-    with subprocess.Popen(
+    handle = get_process_manager().spawn(
         cmd,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
-        text=True,
-        bufsize=1,
-        env=_subprocess_env(extra_env),
+        stdin=None,
         cwd=str(workspace_path) if workspace_path is not None else None,
-    ) as proc:
-        if proc.stdout is None:
+        env=_subprocess_env(extra_env),
+        start_new_session=True,
+        label=f"invoke:{_agent_command_name(config)}",
+        text=True,
+    )
+    with handle:
+        stdout_pipe = handle.stdout
+        if stdout_pipe is None:
             msg = "Failed to capture stdout"
             raise AgentInvocationError(_agent_command_name(config), -1, msg)
 
-        lines_iter = _read_lines_from_process(proc, idle_timeout_seconds=idle_timeout_seconds)
+        lines_iter = _read_lines_from_process(handle, idle_timeout_seconds=idle_timeout_seconds)
         parsed_output: list[str] = []
         if show_progress:
             agent_name = _agent_command_name(config)
@@ -447,8 +452,8 @@ def _run_subprocess_and_read_lines(  # noqa: PLR0913
                     parsed_output,
                 ) from exc
 
-        proc.wait()
-        _check_process_result(proc, _agent_command_name(config), parsed_output)
+        handle.wait()
+        _check_process_result(handle, _agent_command_name(config), parsed_output)
 
 
 def _subprocess_env(extra_env: dict[str, str] | None) -> dict[str, str]:
@@ -520,29 +525,30 @@ def _agent_command_name(config: AgentConfig) -> str:
 
 
 def _read_lines_from_process(
-    proc: subprocess.Popen[str],
+    handle: ManagedProcess,
     *,
     idle_timeout_seconds: float | None = None,
 ) -> Iterator[str]:
     """Read lines from subprocess stdout in a background thread.
 
     Args:
-        proc: Running subprocess.
+        handle: Running managed process.
         idle_timeout_seconds: Optional maximum idle time without output.
 
     Yields:
         Lines from stdout.
     """
+    stdout_pipe = cast("IO[str] | None", handle.stdout)
     lines_queue: list[str] = []
     lines_lock = threading.Lock()
     lines_event = threading.Event()
     last_activity = time.monotonic()
 
     def read_lines_thread() -> None:
-        if proc.stdout is None:
+        if stdout_pipe is None:
             return
         try:
-            for line in proc.stdout:
+            for line in stdout_pipe:
                 with lines_lock:
                     lines_queue.append(line)
         except Exception:
@@ -571,42 +577,12 @@ def _read_lines_from_process(
             idle_timeout_seconds is not None
             and time.monotonic() - last_activity >= idle_timeout_seconds
         ):
-            _terminate_subprocess(proc)
+            handle.terminate(grace_period_s=0)
             raise _IdleStreamTimeoutError(idle_timeout_seconds)
 
         lines_event.wait(_IDLE_POLL_INTERVAL_SECONDS)
 
     reader.join(timeout=10)
-
-
-def _terminate_subprocess(proc: subprocess.Popen[str]) -> None:
-    if _process_poll(proc) is not None:
-        return
-
-    with suppress(Exception):
-        proc.terminate()
-    _process_wait(proc, timeout=1)
-
-    if _process_poll(proc) is not None:
-        return
-
-    with suppress(Exception):
-        proc.kill()
-
-
-def _process_poll(proc: subprocess.Popen[str]) -> int | None:
-    with suppress(Exception):
-        return proc.poll()
-    return None
-
-
-def _process_wait(proc: subprocess.Popen[str], *, timeout: float) -> None:
-    try:
-        proc.wait(timeout=timeout)
-    except TypeError:
-        return
-    except Exception:
-        return
 
 
 def _log_workspace_completion(monitor: WorkspaceMonitor | None) -> None:
@@ -625,22 +601,22 @@ def _log_workspace_completion(monitor: WorkspaceMonitor | None) -> None:
 
 
 def _check_process_result(
-    proc: subprocess.Popen[str], agent_name: str, parsed_output: list[str] | None = None
+    handle: ManagedProcess, agent_name: str, parsed_output: list[str] | None = None
 ) -> None:
     """Check subprocess return code and raise error if non-zero.
 
     Args:
-        proc: Completed subprocess.
+        handle: Completed managed process.
         agent_name: Name of the agent.
 
     Raises:
         AgentInvocationError: If process exited with non-zero code.
     """
-    returncode = int(proc.returncode)
+    returncode = int(handle.returncode or 0)
     if returncode == 0:
         return
 
-    stderr_pipe = proc.stderr
+    stderr_pipe = cast("IO[str] | None", handle.stderr)
     stderr = stderr_pipe.read() if stderr_pipe is not None else "(unable to read stderr)"
     logger.error("Agent exited with code {}: {}", returncode, stderr)
     raise AgentInvocationError(agent_name, returncode, stderr, parsed_output)
@@ -907,13 +883,13 @@ def check_agent_available(config: AgentConfig) -> bool:
     """
     try:
         cmd = config.cmd.split()
-        result = subprocess.run(
+        handle = get_process_manager().spawn(
             ["which", cmd[0]],
-            capture_output=True,
-            text=True,
-            check=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
         )
-        return result.returncode == 0
+        handle.wait(timeout=5)
+        return (handle.returncode or 1) == 0
     except Exception as exc:
         logger.warning("Failed to check agent availability: {}", exc)
         return False
