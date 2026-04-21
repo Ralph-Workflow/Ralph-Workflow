@@ -18,6 +18,7 @@ from ralph.display.phase_banner import (
     show_phase_start_from_state,
     show_phase_transition,
 )
+from ralph.display.plain_renderer import RunStartOrientation
 from ralph.display.progress import RalphProgress, get_progress
 from ralph.display.status import display_phase, display_progress
 from ralph.display.tables import show_agents, show_config, show_providers
@@ -25,6 +26,7 @@ from ralph.display.tables import show_agents, show_config, show_providers
 __all__ = [
     "PhaseStartContext",
     "RalphProgress",
+    "RunStartOrientation",
     "display_phase",
     "display_progress",
     "get_progress",

@@ -587,6 +587,7 @@ def _run_pipeline_step(  # noqa: PLR0913
                 workspace=workspace,
                 workspace_scope=workspace_scope,
                 display=display,
+                verbosity=verbosity,
             )
 
         next_state, _ = reducer_reduce(state, event, policy_bundle.pipeline)
@@ -814,6 +815,36 @@ def run(  # noqa: PLR0913
     _prev_phase = state.phase
     try:
         with active_display:
+            if not is_quiet and hasattr(active_display, "emit_run_start"):
+                with suppress(Exception):
+                    from ralph.display.plain_renderer import RunStartOrientation  # noqa: PLC0415
+
+                    _prompt_path: str | None = None
+                    if effective_pipeline_subscriber is not None:
+                        _prompt_path = getattr(effective_pipeline_subscriber, "_prompt_path", None)
+                    _pe = getattr(policy_bundle.pipeline, "parallel_execution", None)
+                    _parallel_max_workers: int | None = (
+                        int(getattr(_pe, "max_parallel_workers", 0)) if _pe is not None else None
+                    )
+                    _plan_present = (
+                        workspace_scope.root / ".agent" / "artifacts" / "plan.json"
+                    ).exists()
+                    _orientation = RunStartOrientation(
+                        prompt_path=_prompt_path,
+                        developer_agent=getattr(config, "developer_agent", None),
+                        developer_model=getattr(config, "developer_model", None),
+                        reviewer_agent=getattr(config, "reviewer_agent", None),
+                        reviewer_model=getattr(config, "reviewer_model", None),
+                        developer_iters=config.general.developer_iters,
+                        reviewer_reviews=config.general.reviewer_reviews,
+                        parallel_max_workers=_parallel_max_workers,
+                        plan_present=_plan_present,
+                        verbosity=str(effective_verbosity.value)
+                        if hasattr(effective_verbosity, "value")
+                        else str(effective_verbosity),
+                        workspace_root=str(workspace_scope.root),
+                    )
+                    cast("ParallelDisplay", active_display).emit_run_start(_orientation)
             _notify_pipeline_subscriber(effective_pipeline_subscriber, state)
             try:
                 while state.phase != PHASE_COMPLETE:
@@ -1457,6 +1488,7 @@ def _phase_event_after_agent_run(  # noqa: PLR0913
     workspace: FsWorkspace,
     workspace_scope: WorkspaceScope | None = None,
     display: ParallelDisplay | _LegacyConsoleDisplay | None = None,
+    verbosity: Verbosity = Verbosity.VERBOSE,
 ) -> Event:
     ctx = PhaseContext.model_construct(
         workspace=workspace,
@@ -1493,6 +1525,7 @@ def _phase_event_after_agent_run(  # noqa: PLR0913
             event,
             Path(workspace.absolute_path(".")),
             display,
+            verbosity=verbosity,
         )
 
     if (
@@ -1525,20 +1558,70 @@ def _render_phase_artifact_handoff(
     event: Event,
     workspace_root: Path,
     display: ParallelDisplay | _LegacyConsoleDisplay | None,
+    *,
+    verbosity: Verbosity = Verbosity.VERBOSE,
 ) -> None:
     console_obj = _display_console(display)
 
     if phase == "planning" and event == PipelineEvent.AGENT_SUCCESS:
         render_plan_artifact(workspace_root, console_obj)
+        if verbosity != Verbosity.QUIET and hasattr(display, "emit_phase_close"):
+            with suppress(Exception):
+                from ralph.display.artifact_reader import read_plan_artifact  # noqa: PLC0415
+
+                plan = read_plan_artifact(workspace_root)
+                if plan is not None:
+                    produced = f"plan: {plan.total_steps} step(s), {len(plan.risks_mitigations)} risk(s)"
+                else:
+                    produced = "plan: (no plan artifact on disk)"
+                cast("ParallelDisplay", display).emit_phase_close(phase, produced)
         return
     if phase == "development" and event == PipelineEvent.AGENT_SUCCESS:
         render_development_artifact(workspace_root, console_obj)
+        if verbosity != Verbosity.QUIET and hasattr(display, "emit_phase_close"):
+            with suppress(Exception):
+                dev_result_path = workspace_root / ".agent" / "artifacts" / "development_result.json"
+                produced = (
+                    "development: result artifact present"
+                    if dev_result_path.exists()
+                    else "development: no result artifact"
+                )
+                cast("ParallelDisplay", display).emit_phase_close(phase, produced)
         return
     if phase == "review" and event == PipelineEvent.AGENT_SUCCESS:
         render_review_artifact(workspace_root, console_obj)
+        if verbosity != Verbosity.QUIET and hasattr(display, "emit_phase_close"):
+            with suppress(Exception):
+                import json  # noqa: PLC0415
+
+                issues_path = workspace_root / ".agent" / "artifacts" / "issues.json"
+                issue_count = 0
+                if issues_path.exists():
+                    try:
+                        issues_data = json.loads(issues_path.read_text(encoding="utf-8"))
+                        content_obj = (
+                            issues_data.get("content")
+                            if isinstance(issues_data, dict)
+                            else issues_data
+                        )
+                        issues_list = (
+                            content_obj.get("issues")
+                            if isinstance(content_obj, dict)
+                            else content_obj
+                        )
+                        if isinstance(issues_list, list):
+                            issue_count = len(issues_list)
+                    except Exception:
+                        pass
+                cast("ParallelDisplay", display).emit_phase_close(
+                    phase, f"review: {issue_count} issue(s)"
+                )
         return
     if phase == "fix" and event == PipelineEvent.AGENT_SUCCESS:
         render_fix_artifact(workspace_root, console_obj)
+        if verbosity != Verbosity.QUIET and hasattr(display, "emit_phase_close"):
+            with suppress(Exception):
+                cast("ParallelDisplay", display).emit_phase_close(phase, "fix: applied")
         return
     if phase in {"development_analysis", "review_analysis"}:
         render_analysis_decision(workspace_root, phase, console_obj)
@@ -1586,7 +1669,8 @@ def _execute_effect(  # noqa: PLR0913
         )
     if isinstance(effect, CommitEffect):
         return _execute_commit_effect(
-            effect, create_commit, stage_all, workspace_scope.root, display
+            effect, create_commit, stage_all, workspace_scope.root, display,
+            verbosity=verbosity,
         )
     if isinstance(effect, SaveCheckpointEffect):
         return PipelineEvent.CHECKPOINT_SAVED
@@ -1893,6 +1977,8 @@ def _execute_commit_effect(
     stage_all: Callable[[str], None],
     repo_root: Path,
     display: ParallelDisplay | _LegacyConsoleDisplay | None = None,
+    *,
+    verbosity: Verbosity = Verbosity.VERBOSE,
 ) -> PipelineEvent:
     try:
         message = _read_commit_effect_message(effect)
@@ -1908,6 +1994,9 @@ def _execute_commit_effect(
         logger.info("Created commit: {}", sha[:8])
         with suppress(Exception):
             render_commit_message(repo_root, _display_console(display))
+        if verbosity != Verbosity.QUIET and hasattr(display, "emit_phase_close"):
+            with suppress(Exception):
+                cast("ParallelDisplay", display).emit_phase_close("commit", "commit: prepared")
         _cleanup_commit_message_artifacts(repo_root)
     except Exception as exc:
         logger.error("Commit failed: {}", exc)

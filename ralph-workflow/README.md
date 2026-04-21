@@ -170,6 +170,7 @@ Ralph emits every agent output line as a structured plain-text entry in the foll
 | Tag | Category | Meaning |
 |-----|----------|---------|
 | `phase` | META | Workflow phase transition |
+| `phase-close` | META | Compact single-line recap emitted at the end of each phase |
 | `plan` | META | Plan summary or scope |
 | `plan-scope` | META | Plan scope items |
 | `plan-steps` | META | Step progress |
@@ -181,6 +182,7 @@ Ralph emits every agent output line as a structured plain-text entry in the foll
 | `pr` | META | Pull request URL |
 | `artifact` | META | Artifact kind/summary |
 | `progress` | META | Progress update |
+| `run-start` | META | One-time pipeline orientation emitted at run start |
 | `content` | CONT | Agent text output (one-shot, non-streaming) |
 | `content-start` | CONT | Start of a streaming text block |
 | `content-continue` | CONT | Continuation line in a streaming text block |
@@ -209,18 +211,28 @@ When a content block exceeds the soft limit and is condensed, the full text is p
 ### Reading a transcript at a glance
 
 ```
-2026-04-21T12:00:00+00:00 MILESTONE META [phase] ◆ development               # major phase transition
-2026-04-21T12:00:01+00:00 INFO META [plan] (no plan loaded yet)              # empty-state placeholder
-2026-04-21T12:00:02+00:00 INFO META [activity] agent=claude tool=bash        # metadata about what agent is doing
-2026-04-21T12:00:03+00:00 INFO CONT [content-start][dev-1] ↳ summary: Refactored parser to accept streaming deltas  # default-on deterministic headline layer
-2026-04-21T12:00:03+00:00 INFO CONT [content-start][dev-1] Refactored parser to…  # start of streaming content block
-2026-04-21T12:00:04+00:00 INFO CONT [content-continue#2][dev-1] next chunk   # second fragment in the same block
-2026-04-21T12:00:05+00:00 INFO CONT [content-end][dev-1] (2 fragments, 850 chars) Refactored parser to accept streaming deltas  # block closed with fragment count, char total, headline
-2026-04-21T12:00:06+00:00 INFO CONT [thinking-start][dev-1] I need to check the tests before…  # reasoning/thinking line, distinct tag
-2026-04-21T12:00:07+00:00 SUCCESS CONT [tool-result][dev-1] ok               # tool result (SUCCESS level on CONT content)
-2026-04-21T12:00:08+00:00 WARN META [progress][dev-1] dropped 3 lines since last flush  # debounced warn when buffer drops
-2026-04-21T12:00:09+00:00 INFO CONT [content][dev-1] AAAAA… (+4200 chars, see .agent/raw/dev-1.log) …ZZZZZZZ  # head+tail condensation with overflow reference
+2026-04-21T12:00:00+00:00 MILESTONE META [run-start] ◆ Ralph run start
+2026-04-21T12:00:00+00:00 INFO META [run-start] prompt=PROMPT.md
+2026-04-21T12:00:00+00:00 INFO META [run-start] developer=claude model=claude-3-5-sonnet
+2026-04-21T12:00:00+00:00 INFO META [run-start] reviewer=claude model=claude-3-5-haiku
+2026-04-21T12:00:00+00:00 INFO META [run-start] iterations=dev:3 reviewer:1
+2026-04-21T12:00:00+00:00 INFO META [run-start] plan=ready
+2026-04-21T12:00:00+00:00 INFO META [run-start] verbosity=verbose
+2026-04-21T12:00:00+00:00 INFO META [run-start] workspace=/workspace
+2026-04-21T12:00:00+00:00 MILESTONE META [phase] ◆ development
+2026-04-21T12:00:01+00:00 INFO META [plan] (no plan loaded yet)
+2026-04-21T12:00:02+00:00 INFO META [activity] agent=claude tool=bash
+2026-04-21T12:00:03+00:00 INFO CONT [content-start][dev-1] Refactored parser to accept streaming deltas
+2026-04-21T12:00:04+00:00 INFO CONT [content-continue#2][dev-1] next chunk
+2026-04-21T12:00:05+00:00 INFO CONT [content-end][dev-1] (2 fragments, 850 chars) Refactored parser to accept streaming deltas
+2026-04-21T12:00:05+00:00 INFO META [phase-close] phase=development development: result artifact present
+2026-04-21T12:00:06+00:00 INFO CONT [thinking-start][dev-1] I need to check the tests before…
+2026-04-21T12:00:07+00:00 SUCCESS CONT [tool-result][dev-1] ok
+2026-04-21T12:00:08+00:00 WARN META [progress][dev-1] dropped 3 lines since last flush
+2026-04-21T12:00:09+00:00 INFO CONT [content][dev-1] AAAAA… (+4200 chars, see .agent/raw/dev-1.log) …ZZZZZZZ
 ```
+
+The `[run-start]` block is emitted once at pipeline start and the `[phase-close]` line is emitted once at the end of each phase's artifact rendering; both are suppressed when running with `--quiet`.
 
 Tags starting with `content-`, `thinking-`, `tool`, `tool-result`, `error`, or `status-content` are CONT (agent-produced); everything else is META (workflow). Streaming blocks are always closed with a `-end` line before a different unit or a different kind is emitted. A `↳ summary:` line preceding condensed content is an additional, deterministic headline layer — not a replacement for the content itself; the full text is always available at `.agent/raw/<unit>.log`.
 

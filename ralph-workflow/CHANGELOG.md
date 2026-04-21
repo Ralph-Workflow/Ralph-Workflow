@@ -41,6 +41,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Empty-state placeholders** for plan and activity sections. When no plan has been loaded yet the log emits `INFO META [plan] (no plan loaded yet)` once; when no agent is active it emits `INFO META [activity] (no active agent yet)` once, so the log never looks broken at startup.
 - **`theme.log.*` styles** in `RALPH_THEME` — `theme.log.info`, `theme.log.success`, `theme.log.warn`, `theme.log.error`, and `theme.log.milestone` give Rich TTY output visually distinct level badges while plain ANSI-free output continues to emit literal level strings unchanged.
 - **`show_phase_start_from_state(state, phase)`** in `ralph.display.phase_banner` and re-exported from `ralph.display` — convenience helper that extracts iteration, reviewer pass, and analysis iteration counters from any state-like object and delegates to `show_phase_start`.
+- **`[run-start]` orientation line** emitted once at pipeline start (MILESTONE header plus INFO continuation lines for prompt path, developer/reviewer agent+model, iterations, parallel worker budget, plan presence, workspace root). Suppressed by `--quiet`.
+- **`[phase-close]` single-line recap** emitted after each phase's artifact blocks summarising what the phase produced (e.g. `plan: 5 step(s), 2 risk(s)`; `review: 3 issue(s)`). Suppressed by `--quiet`.
 
 ### Migration
 - Users relying on the previously silent default behavior should now pass `--quiet` (or `-q`) explicitly.

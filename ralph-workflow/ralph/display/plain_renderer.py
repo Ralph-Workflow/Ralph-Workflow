@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import re
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Final
 
@@ -32,6 +33,7 @@ LEVELS: Final[dict[str, str]] = {
 # Closed set of tags for structured log lines
 _TAGS: Final[tuple[str, ...]] = (
     "phase",
+    "phase-close",
     "plan",
     "plan-scope",
     "plan-steps",
@@ -49,6 +51,7 @@ _TAGS: Final[tuple[str, ...]] = (
     "tool-result",
     "error",
     "progress",
+    "run-start",
     "status-content",
     "content-start",
     "content-continue",
@@ -86,6 +89,7 @@ _KIND_TO_LEVEL: Final[dict[str, str]] = {
 # Maps tag to display category prefix META or CONT
 _TAG_CATEGORY: Final[dict[str, str]] = {
     "phase": "META",
+    "phase-close": "META",
     "plan": "META",
     "plan-scope": "META",
     "plan-steps": "META",
@@ -98,6 +102,7 @@ _TAG_CATEGORY: Final[dict[str, str]] = {
     "failure": "META",
     "artifact": "META",
     "progress": "META",
+    "run-start": "META",
     "content": "CONT",
     "thinking": "CONT",
     "tool": "CONT",
@@ -149,6 +154,23 @@ def _sanitize(text: str) -> str:
 def _checkpoints_enabled() -> bool:
     flag = os.environ.get("RALPH_STREAMING_CHECKPOINTS", "").lower().strip()
     return flag not in _CHECKPOINTS_DISABLED_VALUES
+
+
+@dataclass(frozen=True)
+class RunStartOrientation:
+    """Orientation data emitted once at pipeline start as a structured block."""
+
+    prompt_path: str | None = None
+    developer_agent: str | None = None
+    developer_model: str | None = None
+    reviewer_agent: str | None = None
+    reviewer_model: str | None = None
+    developer_iters: int | None = None
+    reviewer_reviews: int | None = None
+    parallel_max_workers: int | None = None
+    plan_present: bool = False
+    verbosity: str | None = None
+    workspace_root: str | None = None
 
 
 class PlainLogRenderer:
@@ -353,6 +375,108 @@ class PlainLogRenderer:
             clean_line = _ANSI_ESCAPE.sub("", line)
             self._console.print(clean_line, markup=False, highlight=False, no_wrap=True)
 
+    def emit_run_start(self, orientation: RunStartOrientation) -> None:
+        """Emit a one-time MILESTONE orientation block at pipeline start."""
+        timestamp = self._clock().isoformat()
+        self._console.print(
+            f"{timestamp} MILESTONE META [run-start] ◆ Ralph run start",
+            markup=False,
+            highlight=False,
+            no_wrap=True,
+        )
+
+        if orientation.prompt_path is not None:
+            val = _sanitize(orientation.prompt_path)
+            self._console.print(
+                f"{timestamp} INFO META [run-start] prompt={val}",
+                markup=False,
+                highlight=False,
+                no_wrap=True,
+            )
+
+        dev_parts: list[str] = []
+        if orientation.developer_agent is not None:
+            dev_parts.append(f"developer={_sanitize(orientation.developer_agent)}")
+        if orientation.developer_model is not None:
+            dev_parts.append(f"model={_sanitize(orientation.developer_model)}")
+        if dev_parts:
+            self._console.print(
+                f"{timestamp} INFO META [run-start] {' '.join(dev_parts)}",
+                markup=False,
+                highlight=False,
+                no_wrap=True,
+            )
+
+        rev_parts: list[str] = []
+        if orientation.reviewer_agent is not None:
+            rev_parts.append(f"reviewer={_sanitize(orientation.reviewer_agent)}")
+        if orientation.reviewer_model is not None:
+            rev_parts.append(f"model={_sanitize(orientation.reviewer_model)}")
+        if rev_parts:
+            self._console.print(
+                f"{timestamp} INFO META [run-start] {' '.join(rev_parts)}",
+                markup=False,
+                highlight=False,
+                no_wrap=True,
+            )
+
+        iter_parts: list[str] = []
+        if orientation.developer_iters is not None:
+            iter_parts.append(f"dev:{orientation.developer_iters}")
+        if orientation.reviewer_reviews is not None:
+            iter_parts.append(f"reviewer:{orientation.reviewer_reviews}")
+        if iter_parts:
+            self._console.print(
+                f"{timestamp} INFO META [run-start] iterations={' '.join(iter_parts)}",
+                markup=False,
+                highlight=False,
+                no_wrap=True,
+            )
+
+        if orientation.parallel_max_workers is not None:
+            self._console.print(
+                f"{timestamp} INFO META [run-start] parallel=max_workers={orientation.parallel_max_workers}",
+                markup=False,
+                highlight=False,
+                no_wrap=True,
+            )
+
+        plan_val = "ready" if orientation.plan_present else "absent"
+        self._console.print(
+            f"{timestamp} INFO META [run-start] plan={plan_val}",
+            markup=False,
+            highlight=False,
+            no_wrap=True,
+        )
+
+        if orientation.verbosity is not None:
+            self._console.print(
+                f"{timestamp} INFO META [run-start] verbosity={orientation.verbosity}",
+                markup=False,
+                highlight=False,
+                no_wrap=True,
+            )
+
+        if orientation.workspace_root is not None:
+            val = _sanitize(orientation.workspace_root)
+            self._console.print(
+                f"{timestamp} INFO META [run-start] workspace={val}",
+                markup=False,
+                highlight=False,
+                no_wrap=True,
+            )
+
+    def emit_phase_close(self, phase: str, produced: str) -> None:
+        """Emit a single-line recap after a phase's artifact blocks are rendered."""
+        self.flush_blocks()
+        timestamp = self._clock().isoformat()
+        clean_produced = _sanitize(produced).strip()
+        if clean_produced:
+            line = f"{timestamp} INFO META [phase-close] phase={phase} {clean_produced}"
+        else:
+            line = f"{timestamp} INFO META [phase-close] phase={phase}"
+        self._console.print(line, markup=False, highlight=False, no_wrap=True)
+
     def _close_block(self, unit_id: str, timestamp: str) -> None:
         """Close an active streaming block, emitting the end-line and optional AI summary."""
         if unit_id not in self._active_block:
@@ -550,4 +674,4 @@ class PlainModeAdapter:
         )
 
 
-__all__ = ["LEVELS", "_TAGS", "PlainLogRenderer", "PlainModeAdapter"]
+__all__ = ["LEVELS", "RunStartOrientation", "_TAGS", "PlainLogRenderer", "PlainModeAdapter"]
