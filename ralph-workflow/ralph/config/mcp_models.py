@@ -8,6 +8,8 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from ralph.mcp.tools.names import RALPH_MCP_SERVER_NAME
 
+_DEFAULT_MAX_INLINE_BYTES = 5_242_880  # 5 MiB
+
 
 class McpServerSpec(BaseModel):  # type: ignore[explicit-any]
     """Schema for a single MCP server entry in `mcp.toml`."""
@@ -85,6 +87,21 @@ class WebSearchConfig(BaseModel):  # type: ignore[explicit-any]
     backends: dict[str, WebSearchBackendSpec] = Field(default_factory=dict)
 
 
+class MediaConfig(BaseModel):  # type: ignore[explicit-any]
+    """Opt-in multimodal media support config in `mcp.toml`.
+
+    Multimodal support is disabled by default. Enable via [media] section:
+        [media]
+        enabled = true
+        max_inline_bytes = 5242880
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    enabled: bool = False
+    max_inline_bytes: int = Field(default=_DEFAULT_MAX_INLINE_BYTES, gt=0)
+
+
 class McpConfig(BaseModel):  # type: ignore[explicit-any]
     """Top-level `mcp.toml` document."""
 
@@ -92,6 +109,13 @@ class McpConfig(BaseModel):  # type: ignore[explicit-any]
 
     mcp_servers: dict[str, McpServerSpec] = Field(default_factory=dict)
     web_search: WebSearchConfig = Field(default_factory=WebSearchConfig)
+    media: MediaConfig = Field(default_factory=MediaConfig)
 
 
-__all__ = ["McpConfig", "McpServerSpec", "WebSearchBackendSpec", "WebSearchConfig"]
+__all__ = [
+    "McpConfig",
+    "McpServerSpec",
+    "MediaConfig",
+    "WebSearchBackendSpec",
+    "WebSearchConfig",
+]

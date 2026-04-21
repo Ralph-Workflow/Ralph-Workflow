@@ -62,6 +62,45 @@ When working on `ralph/pipeline/runner.py`, `ralph/phases/`, or Claude/CCS agent
 
 This logic is more complex than a naive "agent exited 0" flow, but it exists to prevent silent no-op runs in unattended mode. If you change it, update tests and docs together.
 
+## MCP multimodal compatibility contract
+
+When modifying the MCP tool surface, maintain these invariants:
+
+### Existing text-only tools unchanged
+
+All existing MCP tools (`read_file`, `write_file`, `list_directory`, etc.) must continue returning text content blocks with the same JSON shape. Any change that alters the wire format of existing text tools is a breaking change.
+
+### Multimodal support is opt-in
+
+The `read_image` tool and associated `MediaRead` capability:
+
+- Default to disabled (`media.enabled = false`)
+- Require explicit opt-in via `[media]` section in `mcp.toml`
+- Are gated at registration time (tool only registered when `media.enabled = true`)
+
+### Client capability filtering
+
+When a client sends `initialize` without declaring multimodal support (`capabilities.image`, `capabilities.media`, or `capabilities.multimodal`), multimodal-only tools must not appear in `tools/list`.
+
+This is enforced by:
+1. Capturing client capabilities from the `initialize` params at connection time
+2. Filtering tools marked `is_multimodal=True` when building `tools/list` for text-only clients
+
+### Upstream multimodal boundary
+
+When an upstream MCP server returns a non-text content block, Ralph must reject it with a clear error rather than silently stringify or drop the block. The error message must identify the server, tool, and block type.
+
+This prevents silent data loss in text-only downstream flows and makes incompatibility visible rather than隐性.
+
+### Dead code policy
+
+Any MCP code that is proven unused during feature work must be either:
+
+1. Wired into the maintained runtime with tests proving real use, or
+2. Deleted along with its imports and stale tests/docs
+
+Do not leave "reserved for later" MCP scaffolding behind. If in doubt, remove it — it can be restored from git if needed later.
+
 ## Release notes
 
 Builds and publishing are defined in `pyproject.toml` and the repo automation. For local validation, build from this directory:

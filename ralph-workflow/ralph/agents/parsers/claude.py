@@ -386,13 +386,16 @@ class ClaudeParser:
                 continue
 
             if block_type == "tool_result":
-                tool_result = self._stringify_tool_content(block_obj.get("content", ""))
-                yield AgentOutputLine(
-                    type="tool_result",
-                    content=tool_result,
-                    raw=raw,
-                    metadata=block_obj,
-                )
+                yield from self._parse_tool_result(block_obj, raw)
+                continue
+
+            # Non-text, non-tool block types (e.g., image) are rejected
+            yield AgentOutputLine(
+                type="error",
+                content=f"unsupported content block type '{block_type}' in agent output",
+                raw=raw,
+                metadata=block_obj,
+            )
 
     def _parse_prefixed_transcript_line(self, raw: str) -> list[AgentOutputLine] | None:
         if raw.startswith("[claude]:"):
@@ -467,13 +470,64 @@ class ClaudeParser:
             return
 
         if block_type == "tool_result":
-            tool_result = self._stringify_tool_content(content_block.get("content", ""))
+            yield from self._parse_tool_result(content_block, raw)
+            return
+
+        # Non-text, non-tool block types (e.g., image) are rejected
+        yield AgentOutputLine(
+            type="error",
+            content=f"unsupported content block type '{block_type}' in agent output",
+            raw=raw,
+            metadata=content_block,
+        )
+
+    def _parse_tool_result(
+        self,
+        block: dict[str, object],
+        raw: str,
+    ) -> Iterator[AgentOutputLine]:
+        """Parse a tool_result content block, rejecting multimodal content."""
+        content = block.get("content")
+        if content is None:
+            yield AgentOutputLine(type="tool_result", content="", raw=raw, metadata=block)
+            return
+
+        # Check if content is a list with non-text blocks
+        if isinstance(content, list):
+            has_multimodal = False
+            for item in content:
+                if not isinstance(item, dict):
+                    continue
+                item_type = str(item.get("type", ""))
+                if item_type != "text":
+                    has_multimodal = True
+                    break
+
+            if has_multimodal:
+                yield AgentOutputLine(
+                    type="error",
+                    content=(
+                        "multimodal content in tool_result not supported: "
+                        "Ralph agents do not support image/audio/video tool results. "
+                        "Use a text-only tool or disable multimodal capabilities."
+                    ),
+                    raw=raw,
+                    metadata=block,
+                )
+                return
+
+            # Extract text from text blocks only
+            tool_result = self._stringify_tool_content(content)
             yield AgentOutputLine(
                 type="tool_result",
                 content=tool_result,
                 raw=raw,
-                metadata=content_block,
+                metadata=block,
             )
+            return
+
+        # String content is passed through
+        yield AgentOutputLine(type="tool_result", content=str(content), raw=raw, metadata=block)
 
     def _stringify_tool_content(self, content: object) -> str:
         if isinstance(content, str):

@@ -30,6 +30,7 @@ from ralph.mcp.tools.names import (
     LIST_DIRECTORY_TOOL,
     READ_ENV_TOOL,
     READ_FILE_TOOL,
+    READ_IMAGE_TOOL,
     REPORT_PROGRESS_TOOL,
     SUBMIT_ARTIFACT_TOOL,
     SUBMIT_PLAN_SECTION_TOOL,
@@ -89,6 +90,7 @@ class ToolMetadata:
     definition: ToolDefinition
     required_capability: str
     is_mutating: bool | None = None
+    is_multimodal: bool = False
 
 
 @dataclass(frozen=True)
@@ -161,6 +163,11 @@ class ToolBridge:
     def __init__(self, session: object | None = None) -> None:
         self._tools: dict[str, RegisteredTool] = {}
         self._session = session
+        self._client_capabilities: set[str] | None = None
+
+    def set_client_capabilities(self, capabilities: set[str] | None) -> None:
+        """Set the client declared capabilities from MCP initialize handshake."""
+        self._client_capabilities = capabilities
 
     def register(self, metadata: ToolMetadata, handler: RegistrationHandler) -> None:
         """Register a tool definition and handler."""
@@ -199,7 +206,7 @@ class ToolBridge:
         return [
             tool.metadata
             for tool in self._tools.values()
-            if self._is_tool_allowed(tool.metadata)
+            if self._is_tool_allowed(tool.metadata) and self._is_tool_visible(tool.metadata)
         ]
 
     def list_definitions(self) -> list[ToolDefinition]:
@@ -207,7 +214,7 @@ class ToolBridge:
         return [
             tool.metadata.definition
             for tool in self._tools.values()
-            if self._is_tool_allowed(tool.metadata)
+            if self._is_tool_allowed(tool.metadata) and self._is_tool_visible(tool.metadata)
         ]
 
     def dispatch(
@@ -231,6 +238,23 @@ class ToolBridge:
             raise
         except Exception as exc:
             raise ToolDispatchError(f"Tool '{name}' failed: {exc}") from exc
+
+    def _is_tool_visible(self, metadata: ToolMetadata) -> bool:
+        """Check if a tool is visible to the client based on multimodal flags."""
+        if not metadata.is_multimodal:
+            return True
+
+        if self._client_capabilities is None:
+            return False
+
+        client_caps = self._client_capabilities
+        return (
+            "image" in client_caps
+            or "media" in client_caps
+            or "multimodal" in client_caps
+            or "MediaRead" in client_caps
+            or "media.read" in client_caps
+        )
 
     def _is_tool_allowed(
         self, metadata: ToolMetadata, session: object | None = None
@@ -274,6 +298,7 @@ def _metadata(
     description: str,
     input_schema: JsonObject,
     required_capability: str,
+    is_multimodal: bool = False,
 ) -> ToolMetadata:
     return ToolMetadata(
         definition=ToolDefinition(
@@ -282,6 +307,7 @@ def _metadata(
             input_schema=input_schema,
         ),
         required_capability=required_capability,
+        is_multimodal=is_multimodal,
     )
 
 
@@ -950,6 +976,39 @@ def _tool_specs(mcp_config: McpConfig) -> tuple[ToolSpec, ...]:
                 handler_name="handle_web_search",
             ),
         )
+    if mcp_config.media.enabled:
+        _specs.append(
+            ToolSpec(
+                metadata=_metadata(
+                    name=READ_IMAGE_TOOL,
+                    description=(
+                        "Read an image file and return it as a base64-encoded content block. "
+                        "Requires MediaRead capability and explicit media support enablement. "
+                        "Required param: path (string, relative or absolute path). "
+                        "Returns an image content block with type, base64 data, and MIME type. "
+                        "Supported formats: png, jpg, jpeg, gif, webp. "
+                        'Example: {"path": "docs/screenshot.png"} returns the image as base64.'
+                    ),
+                    input_schema={
+                        "type": "object",
+                        "properties": {
+                            "path": {
+                                "type": "string",
+                                "description": (
+                                    "File path as a string, relative or absolute inside "
+                                    "the workspace (example values: 'docs/screenshot.png')."
+                                ),
+                            },
+                        },
+                        "required": ["path"],
+                    },
+                    required_capability="media.read",
+                    is_multimodal=True,
+                ),
+                module_name="ralph.mcp.tools.workspace",
+                handler_name="handle_read_image",
+            ),
+        )
     return tuple(_specs)
 
 
@@ -995,6 +1054,10 @@ def build_ralph_tool_registry(
             spec.module_name == "ralph.mcp.tools.websearch"
             and spec.handler_name == "handle_web_search"
         )
+        is_read_image = (
+            spec.module_name == "ralph.mcp.tools.workspace"
+            and spec.handler_name == "handle_read_image"
+        )
         if is_websearch:
             bridge.register(
                 spec.metadata,
@@ -1004,6 +1067,17 @@ def build_ralph_tool_registry(
                     session=session,
                     workspace=workspace,
                     extra_kwargs={"web_search_config": mcp_cfg.web_search},
+                ),
+            )
+        elif is_read_image:
+            bridge.register(
+                spec.metadata,
+                LazyToolHandler(
+                    module_name=spec.module_name,
+                    handler_name=spec.handler_name,
+                    session=session,
+                    workspace=workspace,
+                    extra_kwargs={"max_inline_bytes": mcp_cfg.media.max_inline_bytes},
                 ),
             )
         else:

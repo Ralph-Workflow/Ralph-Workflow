@@ -145,3 +145,8 @@ exclude_lines = [
   "if TYPE_CHECKING:",
   "raise NotImplementedError",
 ]
+
+[dependency-groups]
+dev = [
+    "mypy>=1.20.1",
+]

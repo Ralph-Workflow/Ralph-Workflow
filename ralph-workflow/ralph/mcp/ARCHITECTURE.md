@@ -27,7 +27,7 @@ Ralph acts as an **MCP server** when advertising tools to connected AI agents.
 |------|---------|
 | `names.py` | Tool name constants (`RALPH_MCP_SERVER_NAME`, `READ_FILE_TOOL`, etc.) |
 | `bridge.py` | `ToolBridge` registry and `build_ralph_tool_registry` |
-| `workspace.py` | `handle_read_file`, `handle_write_file`, `handle_list_directory`, etc. |
+| `workspace.py` | `handle_read_file`, `handle_write_file`, `handle_list_directory`, `handle_read_image`, etc. |
 | `git_read.py` | `handle_git_status`, `handle_git_diff`, `handle_git_log`, `handle_git_show` |
 | `exec.py` | `handle_exec_command` with command blacklist |
 | `artifact.py` | `handle_submit_artifact`, `handle_submit_plan_section`, `handle_finalize_plan`, etc. |
@@ -79,6 +79,106 @@ The standalone `ralph-mcp` runtime (not changed in this reorganization).
 | `__main__.py` | Entry point |
 
 **Canonical import path:** `from ralph.mcp.server import ...` or `from ralph.mcp.server.<module> import ...`
+
+## Capability System
+
+### Ralph Capabilities
+
+Ralph uses an internal capability vocabulary for session access control:
+
+| Capability | Value | Description |
+|------------|-------|-------------|
+| `workspace.read` | `workspace.read` | Read files and list directories |
+| `workspace.write_ephemeral` | `workspace.write_ephemeral` | Write to non-git-tracked files |
+| `workspace.write_tracked` | `workspace.write_tracked` | Write to git-tracked files |
+| `process.exec_bounded` | `process.exec_bounded` | Execute bounded shell commands |
+| `process.exec_unbounded` | `process.exec_unbounded` | Execute shell commands without limits |
+| `artifact.submit` | `artifact.submit` | Submit structured artifacts |
+| `run.report_progress` | `run.report_progress` | Report progress to pipeline |
+| `git.status_read` | `git.status_read` | Read git status and history |
+| `git.diff_read` | `git.diff_read` | Read git diffs |
+| `git.write` | `git.write` | Perform git operations |
+| `env.read` | `env.read` | Read environment variables |
+| `env.write` | `env.write` | Write environment variables |
+| `upstream.tool_use` | `upstream.tool_use` | Use upstream MCP tools |
+| `web.search` | `web.search` | Search the web |
+| `media.read` | `media.read` | Read image files (opt-in) |
+
+### MCP Capability Mapping
+
+MCP capabilities are mapped to Ralph capabilities:
+
+| MCP Capability | Ralph Capability |
+|----------------|-------------------|
+| `FileRead` | `workspace.read` |
+| `WorkspaceRead` | `workspace.read` |
+| `WorkspaceWriteEphemeral` | `workspace.write_ephemeral` |
+| `WorkspaceWriteTracked` | `workspace.write_tracked` |
+| `WorkspaceWriteAny` | Composite (ephemeral OR tracked) |
+| `GitStatusRead` | `git.status_read` |
+| `GitRead` | `git.status_read` |
+| `GitWrite` | `git.write` |
+| `ProcessExec` | `process.exec_bounded` |
+| `ProcessExecBounded` | `process.exec_bounded` |
+| `ProcessExecUnbounded` | `process.exec_unbounded` |
+| `ArtifactSubmit` | `artifact.submit` |
+| `EnvRead` | `env.read` |
+| `EnvWrite` | `env.write` |
+| `UpstreamToolUse` | `upstream.tool_use` |
+| `WebSearch` | `web.search` |
+| `MediaRead` | `media.read` |
+
+### Multimodal Capability (MediaRead)
+
+The `MediaRead` capability gates access to the `read_image` tool. It is:
+
+- **Opt-in** via `media.enabled = true` in `mcp.toml`
+- **Suppressed from clients** that don't declare multimodal support in `initialize`
+- **Enforced at runtime** via session capability check
+
+## Multimodal MCP Support
+
+Ralph supports image-reading MCP tools as an opt-in, capability-gated feature.
+
+### Enabling Multimodal Support
+
+```toml
+[media]
+enabled = true
+max_inline_bytes = 5242880  # 5 MiB default
+```
+
+### Client Capability Filtering
+
+When a client sends the MCP `initialize` request, Ralph captures declared capabilities from `params.capabilities`. The following signals indicate multimodal support:
+
+- `capabilities.image` (any truthy value)
+- `capabilities.media` (any truthy value)
+- `capabilities.multimodal` (any truthy value)
+
+If none are present, the client is treated as text-only.
+
+When building `tools/list` responses, Ralph filters out tools marked `is_multimodal=True` for text-only clients. This ensures:
+
+1. **Backward compatibility** — existing text-only clients never see multimodal tools
+2. **Opt-in visibility** — multimodal tools only appear when the client declares support
+3. **Consistent wire format** — text content blocks remain `{"type": "text", "text": ...}`
+
+### Upstream Multimodal Rejection Policy
+
+When an upstream MCP server returns a content block with `type != "text"`, Ralph rejects it with a clear error rather than silently stringifying or dropping the block.
+
+Error format:
+```
+upstream server '<name>' tool '<tool>' returned multimodal content block (type='<type>') 
+which is not supported in Ralph's text-only passthrough at index <idx>. 
+Upstream multimodal payloads must be rejected rather than passed through.
+```
+
+This policy:
+- Prevents silent data loss in text-only downstream flows
+- Makes incompatibility visible rather than隐性
+- Maintains a clear boundary between supported and unsupported upstream features
 
 ## Canonical Import Paths
 
@@ -185,3 +285,13 @@ upstream/ (Ralph as client)
 ├── upstream/registry.py
 └── upstream/validation.py
 ```
+
+## Dead Code Cleanup Outcome
+
+During the multimodal MCP implementation, the following previously-dormant MCP paths were evaluated:
+
+- **Upstream multimodal content handling** — Previously would have silently stringified non-text blocks. Now explicitly rejected with clear error message. No dead code removed; behavior corrected.
+- **MediaRead capability** — Was defined but not wired to any tool. Now integrated with `read_image` tool registration and client capability filtering.
+- **Client capability extraction** — Was not implemented. Now captures client `capabilities` from MCP `initialize` handshake and uses it to filter multimodal tools.
+
+The MCP subsystem now has zero dormant paths: every defined capability is either used by a registered tool or explicitly documented as not applicable to the maintained implementation.

@@ -47,13 +47,15 @@ class HttpUpstreamClient:
 
     def call_tool(self, name: str, arguments: JsonObject) -> object:
         try:
-            return self._caller("tools/call", {"name": name, "arguments": arguments})
+            result = self._caller("tools/call", {"name": name, "arguments": arguments})
         except UpstreamCallError:
             raise
         except Exception as exc:
             raise UpstreamCallError(
                 f"upstream server '{self._server.name}' tool '{name}' failed: {exc}"
             ) from exc
+        _check_upstream_content_blocks(result, self._server.name, name)
+        return result
 
 
 class StdioUpstreamClient:
@@ -79,13 +81,15 @@ class StdioUpstreamClient:
 
     def call_tool(self, name: str, arguments: JsonObject) -> object:
         try:
-            return self._caller("tools/call", {"name": name, "arguments": arguments})
+            result = self._caller("tools/call", {"name": name, "arguments": arguments})
         except UpstreamCallError:
             raise
         except Exception as exc:
             raise UpstreamCallError(
                 f"upstream server '{self._server.name}' tool '{name}' failed: {exc}"
             ) from exc
+        _check_upstream_content_blocks(result, self._server.name, name)
+        return result
 
 
 def make_upstream_client(
@@ -132,6 +136,44 @@ def _json_rpc_result(raw: object, context: str) -> JsonObject:
     if isinstance(result, Mapping):
         return dict(cast("Mapping[str, object]", result))
     return {}
+
+
+def _get_content_list(result: JsonObject) -> list[object] | None:
+    """Extract content list from result, returning None if not a valid list of blocks."""
+    content = result.get("content")
+    if not isinstance(content, list):
+        return None
+    return list(content)
+
+
+def _check_upstream_content_blocks(
+    result: JsonObject, server_name: str, tool_name: str
+) -> None:
+    """Check upstream tool result for multimodal content blocks and reject if found.
+
+    This enforces the boundary policy: upstream multimodal payloads are not
+    supported in Ralph's text-only passthrough. Non-text content blocks are
+    rejected with a clear error rather than silently stringified or dropped.
+    """
+    content_blocks = _get_content_list(result)
+    if content_blocks is None:
+        return
+
+    for idx, block in enumerate(content_blocks):
+        if not isinstance(block, Mapping):
+            continue
+        block_type = block.get("type")
+        if block_type is None:
+            continue
+        if not isinstance(block_type, str):
+            continue
+        if block_type != "text":
+            raise UpstreamCallError(
+                f"upstream server '{server_name}' tool '{tool_name}' returned "
+                f"multimodal content block (type='{block_type}') which is not "
+                f"supported in Ralph's text-only passthrough at index {idx}. "
+                "Upstream multimodal payloads must be rejected rather than passed through."
+            )
 
 
 def _make_http_caller(url: str) -> JsonRpcCaller:

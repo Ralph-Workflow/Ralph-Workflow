@@ -65,6 +65,71 @@ transport = "http"
 url = "https://mcp.example.com/docs"
 ```
 
+## Multimodal MCP Support (opt-in)
+
+Ralph supports multimodal MCP tools (image reading) as an opt-in feature. This support is **disabled by default** to ensure backward compatibility with text-only clients.
+
+### Enabling multimodal support
+
+Add a `[media]` section to your `mcp.toml`:
+
+```toml
+[media]
+enabled = true
+max_inline_bytes = 5242880  # 5 MiB, default limit
+```
+
+### How read_image works
+
+When `media.enabled = true`, Ralph registers a `read_image` tool that:
+
+- Reads binary image files (PNG, JPEG, GIF, WebP)
+- Returns base64-encoded content in MCP image content blocks
+- Enforces a size limit (`max_inline_bytes`) to prevent memory issues
+- Requires `MediaRead` capability from the session
+
+### What text-only clients see
+
+When a client connects without declaring multimodal support, the `read_image` tool is **automatically suppressed** from `tools/list` even if `media.enabled = true`. This ensures:
+
+- Existing text-only clients continue to work unchanged
+- The `read_image` tool only appears for clients that declare image/media capability
+
+### Client capability declaration
+
+Clients declare multimodal support in the MCP `initialize` handshake via `capabilities`. Ralph extracts the following signals:
+
+- `capabilities.image` — any truthy value
+- `capabilities.media` — any truthy value
+- `capabilities.multimodal` — any truthy value
+
+If no signal is present, Ralph treats the client as text-only.
+
+### Content block format
+
+Text content uses the standard MCP text block:
+
+```json
+{"type": "text", "text": "..."}
+```
+
+Image content uses the MCP image block:
+
+```json
+{"type": "image", "data": "<base64>", "mimeType": "image/png"}
+```
+
+## Upstream multimodal boundary policy
+
+When an upstream MCP server returns a non-text content block (e.g., an image), Ralph **rejects it with a clear error** rather than silently stringifying or dropping the block. This prevents silent data loss in text-only downstream clients.
+
+Error message format:
+```
+upstream server '<name>' tool '<tool>' returned multimodal content block (type='<type>') 
+which is not supported in Ralph's text-only passthrough at index <idx>. 
+Upstream multimodal payloads must be rejected rather than passed through.
+```
+
 ## Collision policy
 
 If a server name exists in **both** `mcp.toml` **and** an agent's native config (`~/.claude.json`, `~/.codex/config.toml`, etc.), the `mcp.toml` entry wins and a warning is logged at startup:

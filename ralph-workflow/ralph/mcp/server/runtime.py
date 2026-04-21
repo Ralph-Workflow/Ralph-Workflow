@@ -176,20 +176,36 @@ def _run_async(awaitable: Coroutine[object, object, object]) -> object:
 
 def _serialize_content_blocks(content_blocks: object) -> list[dict[str, object]]:
     if not isinstance(content_blocks, list | tuple):
-        return [{"type": "text", "text": str(content_blocks)}]
+        raise TypeError(
+            f"content_blocks must be a list or tuple, got {type(content_blocks).__name__}. "
+            "Use ToolContent.text_content() or ImageContent() to wrap content."
+        )
 
     serialized: list[dict[str, object]] = []
-    for block in content_blocks:
+    blocks = cast("list[object]", content_blocks)
+    for idx, block in enumerate(blocks):
         if isinstance(block, dict):
             serialized.append(cast("dict[str, object]", block))
             continue
 
+        # Check for to_dict() first (ToolContent, ImageContent dataclasses)
+        to_dict = cast("_ToDict | None", getattr(block, "to_dict", None))
+        if callable(to_dict):
+            serialized.append(to_dict())
+            continue
+
+        # Check for model_dump() (Pydantic models)
         model_dump = cast("_ModelDump | None", getattr(block, "model_dump", None))
         if callable(model_dump):
             serialized.append(model_dump(exclude_none=True, by_alias=True))
             continue
 
-        serialized.append({"type": "text", "text": str(block)})
+        raise TypeError(
+            f"Unsupported content block type at index {idx}: "
+            f"{type(block).__name__}. "
+            "Content blocks must be dict, ToolContent, ImageContent, or a Pydantic model "
+            "with to_dict() or model_dump() methods."
+        )
 
     return serialized
 
@@ -213,11 +229,36 @@ def _decode_json_payload_from_content(content_blocks: object) -> dict[str, objec
     return cast("dict[str, object]", decoded)
 
 
+def _extract_client_capabilities(params: dict[str, object] | None) -> set[str]:
+    """Extract client capabilities from MCP initialize params.
+
+    The client capabilities can come in various shapes:
+    - {"capabilities": {"image": {}, "media": {}}}
+    - {"capabilities": {"image": True}}
+    - {"clientInfo": {...}}
+    """
+    if not params:
+        return set()
+
+    capabilities: object = params.get("capabilities", {})
+    if not isinstance(capabilities, dict):
+        return set()
+
+    result: set[str] = set()
+
+    for key in capabilities:
+        if key in ("image", "media", "multimodal"):
+            result.add(key)
+
+    return result
+
+
 class McpServer:
     def __init__(self, session: AgentSession, workspace: FsWorkspace, registry: ToolBridge) -> None:
         self._session = session
         self._workspace = workspace
         self._registry = registry
+        self._client_capabilities: set[str] | None = None
 
     def handle_request(
         self, request: JsonRpcRequest, state: ServerState
@@ -242,6 +283,9 @@ class McpServer:
         return (JsonRpcResponse(jsonrpc="2.0", error=error, msg_id=request.msg_id), state)
 
     def _handle_initialize(self, request: JsonRpcRequest) -> tuple[JsonRpcResponse, ServerState]:
+        self._client_capabilities = _extract_client_capabilities(request.params)
+        self._registry.set_client_capabilities(self._client_capabilities)
+
         result = {
             "protocolVersion": "2024-11-05",
             "capabilities": {

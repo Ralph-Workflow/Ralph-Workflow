@@ -125,11 +125,50 @@ Artifact contract:
 
 This hardening is intentionally strict. It adds complexity, but it closes a real unattended-mode failure class where a provider could exit successfully, emit no meaningful work, and still let the pipeline advance because an old artifact was still present on disk.
 
-## Claude/CCS MCP safety note
+## Multimodal MCP Support (opt-in)
+
+Ralph supports image-reading MCP tools via the `read_image` tool. This feature is **disabled by default** to maintain backward compatibility with text-only clients.
+
+### Enabling Multimodal Support
+
+Add a `[media]` section to `.agent/mcp.toml`:
+
+```toml
+[media]
+enabled = true
+max_inline_bytes = 5242880  # 5 MiB, default
+```
+
+### How read_image Works
+
+When enabled, `read_image` is available with these characteristics:
+
+- **Supported formats**: PNG, JPEG, GIF, WebP
+- **Returns**: MCP image content block with base64-encoded data
+- **Size guard**: Enforces `max_inline_bytes` limit (default 5 MiB)
+- **Capability required**: `MediaRead` (granted by session policy)
+
+### Compatibility Contract
+
+The multimodal support is designed with strict backward compatibility:
+
+1. **Text-only clients unchanged** — Existing tools (`read_file`, `write_file`, etc.) continue to return text content blocks with the same shape.
+2. **Client capability filtering** — `read_image` only appears in `tools/list` for clients that declare multimodal/image/media capability in the MCP `initialize` handshake.
+3. **Upstream multimodal rejection** — If an upstream MCP server returns a non-text content block, Ralph rejects it with a clear error rather than silently passing it through.
+
+### What Text-Only Clients See
+
+When a client connects without declaring multimodal support, `read_image` is **not visible** in `tools/list`, even if `media.enabled = true`. The text-only tool set is byte-equivalent to pre-multimodal behavior.
+
+### What Multimodal Clients See
+
+Clients that declare `capabilities.image`, `capabilities.media`, or `capabilities.multimodal` in the `initialize` request will see `read_image` in `tools/list` when `media.enabled = true`.
+
+## Claude/CCS MCP Safety Note
 
 Claude-compatible transports such as `claude` and `ccs` run through a stricter MCP path. Ralph still uses `--mcp-config` plus `--strict-mcp-config`, but it only emits `--tools ""` / `--allowedTools ...` when live MCP tool discovery succeeds with a non-empty allowlist. That avoids a brittle edge case in non-interactive Claude/CCS runs where empty-tool configurations and MCP bootstrapping can produce misleadingly successful no-op executions.
 
-## Parallel mode
+## Parallel Mode
 
 When your planning phase produces two or more work units, Ralph fans development out across multiple git worktrees simultaneously. Configure it in your pipeline policy:
 

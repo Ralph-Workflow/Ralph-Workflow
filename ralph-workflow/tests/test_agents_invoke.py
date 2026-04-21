@@ -138,8 +138,8 @@ def test_run_subprocess_and_read_lines_wraps_idle_stream_timeout(
 
     def fake_read_lines_from_process(*args: object, **kwargs: object):
         del args, kwargs
+        yield "idle line\n"
         raise invoke_module._IdleStreamTimeoutError(0.05)
-        yield ""  # pragma: no cover
 
     monkeypatch.setattr(
         "ralph.agents.invoke._read_lines_from_process",

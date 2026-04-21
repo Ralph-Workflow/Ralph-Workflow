@@ -36,7 +36,7 @@ class CapabilityDeniedError(ToolError):
 
 @dataclass(frozen=True)
 class ToolContent:
-    """Single tool response content block."""
+    """Single text tool response content block."""
 
     type: str
     text: str
@@ -52,10 +52,26 @@ class ToolContent:
 
 
 @dataclass(frozen=True)
+class ImageContent:
+    """Single image tool response content block."""
+
+    data: str
+    mime_type: str
+    type: str = "image"
+
+    def to_dict(self) -> dict[str, str]:
+        """Serialize the image content block to an MCP-compatible dictionary."""
+        return {"type": self.type, "data": self.data, "mimeType": self.mime_type}
+
+
+type ContentBlock = ToolContent | ImageContent
+
+
+@dataclass(frozen=True)
 class ToolResult:
     """Serializable MCP tool result."""
 
-    content: list[ToolContent]
+    content: list[ContentBlock]
     is_error: bool | None = None
 
     def to_dict(self) -> dict[str, object]:
@@ -229,6 +245,8 @@ __all__ = [
     "ENV_READ_CAPABILITY",
     "RUN_REPORT_PROGRESS_CAPABILITY",
     "CapabilityDeniedError",
+    "ContentBlock",
+    "ImageContent",
     "InvalidParamsError",
     "SessionLike",
     "ToolContent",

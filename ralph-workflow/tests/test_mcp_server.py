@@ -563,7 +563,7 @@ def test_proxied_upstream_tool_call_is_forwarded_after_policy_check(tmp_path: Pa
             return {"tools": [{"name": "ping", "description": "Ping tool", "inputSchema": {}}]}  # type: ignore[return-value]
         if method == "tools/call":
             calls_received.append(dict(params))
-            return {"result": "pong"}  # type: ignore[return-value]
+            return {"content": [{"type": "text", "text": "pong"}]}  # type: ignore[return-value]
         return {}
 
     upstream_registry = UpstreamRegistry.build(

@@ -7,12 +7,14 @@ session capabilities and edit area policies.
 
 from __future__ import annotations
 
-from pathlib import PurePosixPath
+import base64
+from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, cast
 
 from ralph.mcp.artifacts.policy_outcomes import is_policy_approved
 from ralph.mcp.tools.coordination import (
     CapabilityDeniedError,
+    ImageContent,
     InvalidParamsError,
     SessionLike,
     ToolContent,
@@ -29,6 +31,8 @@ if TYPE_CHECKING:
 WORKSPACE_READ_CAPABILITY = "WorkspaceRead"
 WORKSPACE_WRITE_TRACKED_CAPABILITY = "WorkspaceWriteTracked"
 WORKSPACE_WRITE_EPHEMERAL_CAPABILITY = "WorkspaceWriteEphemeral"
+MEDIA_READ_CAPABILITY = "media.read"
+
 _RECURSIVE_SKIP_DIRECTORY_NAMES = frozenset(
     {
         ".git",
@@ -43,6 +47,14 @@ _RECURSIVE_SKIP_DIRECTORY_NAMES = frozenset(
         "target",
     }
 )
+
+_SUPPORTED_IMAGE_MIME_TYPES: dict[str, str] = {
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".gif": "image/gif",
+    ".webp": "image/webp",
+}
 
 
 def _attribute_value(
@@ -273,10 +285,81 @@ def handle_write_file(
     )
 
 
+def _infer_image_mime_type(path: str) -> str | None:
+    suffix = PurePosixPath(path).suffix.lower()
+    return _SUPPORTED_IMAGE_MIME_TYPES.get(suffix)
+
+
+def handle_read_image(
+    session: SessionLike,
+    workspace: Workspace,
+    params: dict[str, object],
+    *,
+    max_inline_bytes: int = 5_242_880,
+) -> ToolResult:
+    """Read an image file and return it as a base64-encoded content block.
+
+    Requires MediaRead capability. Enforces size limit and supported MIME types.
+    """
+    require_capability(session, MEDIA_READ_CAPABILITY, "Image read")
+    path = required_string_param(params, "path")
+    normalized = _normalize_relative_path(path)
+
+    mime_type = _infer_image_mime_type(normalized or path)
+    if mime_type is None:
+        suffix = PurePosixPath(path).suffix.lower() or "(none)"
+        return ToolResult(
+            content=[
+                ToolContent.text_content(
+                    f"Unsupported image format '{suffix}'. "
+                    f"Supported: {', '.join(sorted(_SUPPORTED_IMAGE_MIME_TYPES.keys()))}"
+                )
+            ],
+            is_error=True,
+        )
+
+    abs_path = workspace.absolute_path(normalized or path)
+    try:
+        file_size = Path(abs_path).stat().st_size
+    except OSError as exc:
+        return ToolResult(
+            content=[ToolContent.text_content(f"Failed to stat image file '{path}': {exc}")],
+            is_error=True,
+        )
+
+    if file_size > max_inline_bytes:
+        return ToolResult(
+            content=[
+                ToolContent.text_content(
+                    f"Image file '{path}' is too large ({file_size} bytes). "
+                    f"Maximum allowed: {max_inline_bytes} bytes."
+                )
+            ],
+            is_error=True,
+        )
+
+    try:
+        with Path(abs_path).open("rb") as fh:
+            raw_bytes = fh.read()
+    except OSError as exc:
+        return ToolResult(
+            content=[ToolContent.text_content(f"Failed to read image file '{path}': {exc}")],
+            is_error=True,
+        )
+
+    encoded = base64.b64encode(raw_bytes).decode("ascii")
+    return ToolResult(
+        content=[ImageContent(data=encoded, mime_type=mime_type)],
+        is_error=False,
+    )
+
+
 __all__ = [
+    "MEDIA_READ_CAPABILITY",
     "handle_list_directory",
     "handle_list_directory_recursive",
     "handle_read_file",
+    "handle_read_image",
     "handle_search_files",
     "handle_write_file",
     "required_string_param",

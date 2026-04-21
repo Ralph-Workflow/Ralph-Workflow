@@ -1611,6 +1611,11 @@ web-search = [
     { name = "tavily-python" },
 ]
 
+[package.dev-dependencies]
+dev = [
+    { name = "mypy" },
+]
+
 [package.metadata]
 requires-dist = [
     { name = "brave-search-python-client", marker = "extra == 'web-search'", specifier = ">=0.4.27" },
@@ -1641,6 +1646,9 @@ requires-dist = [
     { name = "watchdog", specifier = ">=4.0" },
 ]
 provides-extras = ["bundle", "dev", "web-search"]
+
+[package.metadata.requires-dev]
+dev = [{ name = "mypy", specifier = ">=1.20.1" }]
 
 [[package]]
 name = "referencing"
