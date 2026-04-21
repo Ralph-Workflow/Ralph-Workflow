@@ -6,7 +6,6 @@ Returns a MergeResult describing success or conflict outcome.
 
 from __future__ import annotations
 
-import subprocess
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
@@ -17,6 +16,7 @@ if TYPE_CHECKING:
     from ralph.git.executor import GitExecutor
     from ralph.pipeline.worker_state import WorkerState
 
+from ralph.git.subprocess_runner import GitRunResult, run_git
 from ralph.pipeline.events import Event, PipelineEvent, WorkersMergeConflictEvent
 from ralph.pipeline.worker_state import WorkerStatus
 
@@ -67,12 +67,11 @@ async def integrate(
     for unit_id in succeeded_ids:
         branch_name = f"ralph/unit-{unit_id}"
 
-        def _merge(branch: str = branch_name) -> subprocess.CompletedProcess[str]:
-            return subprocess.run(
-                ["git", "merge", "--no-ff", branch],
+        def _merge(branch: str = branch_name, _uid: str = unit_id) -> GitRunResult:
+            return run_git(
+                ["merge", "--no-ff", branch],
                 cwd=repo_root,
-                capture_output=True,
-                text=True,
+                label=f"git-merge:{_uid}",
                 check=False,
             )
 
@@ -87,12 +86,11 @@ async def integrate(
                     f"{result.stderr.strip() or result.stdout.strip()}"
                 )
 
-            def _abort() -> subprocess.CompletedProcess[str]:
-                return subprocess.run(
-                    ["git", "merge", "--abort"],
+            def _abort(_uid: str = unit_id) -> GitRunResult:
+                return run_git(
+                    ["merge", "--abort"],
                     cwd=repo_root,
-                    capture_output=True,
-                    text=True,
+                    label=f"git-merge:abort:{_uid}",
                     check=False,
                 )
 

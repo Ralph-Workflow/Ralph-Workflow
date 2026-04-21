@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-import subprocess
-from typing import TYPE_CHECKING, TypeVar
+from typing import TYPE_CHECKING, Any, TypeVar
 from unittest.mock import MagicMock
 
 from ralph.config.enums import PHASE_DEVELOPMENT, PHASE_FAILED, PHASE_MERGE_INTEGRATION
 from ralph.git.executor import GitExecutor
+from ralph.git.subprocess_runner import GitRunResult
 from ralph.pipeline.effects import FanOutDevelopmentEffect
 from ralph.pipeline.events import PipelineEvent, WorkerCompletedEvent
 from ralph.pipeline.runner import _execute_fan_out_sync
@@ -14,7 +14,7 @@ from ralph.pipeline.work_units import WorkUnit
 from ralph.pipeline.worker_state import WorkerState, WorkerStatus
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Sequence
     from pathlib import Path
 
     import pytest
@@ -47,10 +47,6 @@ class _ImmediateGitExecutor(GitExecutor):
         return op()
 
 
-def _completed_process(args: list[str], returncode: int = 0) -> subprocess.CompletedProcess[str]:
-    return subprocess.CompletedProcess(args=args, returncode=returncode, stdout="", stderr="")
-
-
 class _FakeDisplay:
     def emit(self, unit_id: str | None, line: str) -> None:
         del unit_id, line
@@ -63,6 +59,28 @@ class _FakeDisplay:
 
     def __exit__(self, *args: object) -> None:
         del args
+
+
+def _fake_run_git_factory(
+    *,
+    failing_branches: set[str],
+    failure_returncode: int = 1,
+    failure_stdout: str = "CONFLICT (content): Merge conflict in file.txt",
+    failure_stderr: str = "",
+) -> Callable[[Sequence[str]], GitRunResult]:
+    def _fake(args: Sequence[str], **_kwargs: Any) -> GitRunResult:
+        cmd = ("git", *args)
+        branch = args[-1] if args else ""
+        if list(args[:2]) == ["merge", "--no-ff"] and branch in failing_branches:
+            return GitRunResult(
+                args=cmd,
+                returncode=failure_returncode,
+                stdout=failure_stdout,
+                stderr=failure_stderr,
+            )
+        return GitRunResult(args=cmd, returncode=0, stdout="", stderr="")
+
+    return _fake
 
 
 def test_non_conflict_merge_failure_enters_recovery_state(
@@ -94,24 +112,6 @@ def test_non_conflict_merge_failure_enters_recovery_state(
             PipelineEvent.ALL_WORKERS_COMPLETE,
         ]
 
-    def _fake_subprocess_run(
-        args: list[str],
-        *,
-        cwd: Path,
-        capture_output: bool,
-        text: bool,
-        check: bool,
-    ) -> subprocess.CompletedProcess[str]:
-        del cwd, capture_output, text, check
-        if args == ["git", "merge", "--no-ff", "ralph/unit-worker-2"]:
-            return subprocess.CompletedProcess(
-                args=args,
-                returncode=2,
-                stdout="",
-                stderr="fatal: merge failed unexpectedly",
-            )
-        return _completed_process(args)
-
     monkeypatch.setattr(
         "ralph.agents.subprocess_executor.SubprocessAgentExecutor",
         MagicMock,
@@ -129,8 +129,13 @@ def test_non_conflict_merge_failure_enters_recovery_state(
         _ImmediateGitExecutor,
     )
     monkeypatch.setattr(
-        "ralph.pipeline.parallel.merge_integrator.subprocess.run",
-        _fake_subprocess_run,
+        "ralph.pipeline.parallel.merge_integrator.run_git",
+        _fake_run_git_factory(
+            failing_branches={"ralph/unit-worker-2"},
+            failure_returncode=2,
+            failure_stdout="",
+            failure_stderr="fatal: merge failed unexpectedly",
+        ),
     )
     monkeypatch.setattr(
         "ralph.pipeline.checkpoint.save",
@@ -198,24 +203,6 @@ def test_merge_conflict_fails_phase_and_preserves_worktrees(
             PipelineEvent.ALL_WORKERS_COMPLETE,
         ]
 
-    def _fake_subprocess_run(
-        args: list[str],
-        *,
-        cwd: Path,
-        capture_output: bool,
-        text: bool,
-        check: bool,
-    ) -> subprocess.CompletedProcess[str]:
-        del cwd, capture_output, text, check
-        if args == ["git", "merge", "--no-ff", "ralph/unit-worker-2"]:
-            return subprocess.CompletedProcess(
-                args=args,
-                returncode=1,
-                stdout="CONFLICT (content): Merge conflict in file.txt",
-                stderr="",
-            )
-        return _completed_process(args)
-
     monkeypatch.setattr(
         "ralph.agents.subprocess_executor.SubprocessAgentExecutor",
         MagicMock,
@@ -233,8 +220,8 @@ def test_merge_conflict_fails_phase_and_preserves_worktrees(
         _ImmediateGitExecutor,
     )
     monkeypatch.setattr(
-        "ralph.pipeline.parallel.merge_integrator.subprocess.run",
-        _fake_subprocess_run,
+        "ralph.pipeline.parallel.merge_integrator.run_git",
+        _fake_run_git_factory(failing_branches={"ralph/unit-worker-2"}),
     )
     monkeypatch.setattr(
         "ralph.pipeline.checkpoint.save",

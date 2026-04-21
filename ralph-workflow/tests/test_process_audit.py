@@ -13,28 +13,7 @@ FORBIDDEN_PATTERNS = [
     "asyncio.create_subprocess_shell(",
 ]
 
-ALLOWLIST: list[tuple[str, str]] = [
-    (
-        "diagnostics/__init__.py",
-        "Short-lived diagnostic probes (git version, which) not part of tracked lifecycle; "
-        "deferred to follow-up refactor.",
-    ),
-    (
-        "exit_pause/__init__.py",
-        "Windows-only PowerShell parent-process detection; platform-specific one-shot probe "
-        "not appropriate for tracked lifecycle; deferred to follow-up.",
-    ),
-    (
-        "mcp/tools/git_read.py",
-        "DI-based runner interface (GitRunner type alias); _run_git_subprocess is the default "
-        "injectable; refactor deferred to keep this PR small.",
-    ),
-    (
-        "pipeline/parallel/merge_integrator.py",
-        "Async git operations via GitExecutor.arun; requires async run_git which is out of scope "
-        "for this PR; deferred to follow-up.",
-    ),
-]
+ALLOWLIST: list[tuple[str, str]] = []
 
 
 def _allowed(rel_path: str) -> bool:

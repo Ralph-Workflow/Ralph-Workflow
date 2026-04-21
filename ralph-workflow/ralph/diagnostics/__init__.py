@@ -10,11 +10,14 @@ from __future__ import annotations
 
 import os
 import platform
+import shutil
 import subprocess
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
+
+from ralph.git.subprocess_runner import run_git
 
 if TYPE_CHECKING:
     from ralph.agents.registry import AgentRegistry
@@ -100,13 +103,7 @@ def _run_git_command(args: list[str]) -> str | None:
         Command output stripped of whitespace, or None if command failed.
     """
     try:
-        result = subprocess.run(
-            ["git", *args],
-            capture_output=True,
-            text=True,
-            timeout=5,
-            check=False,
-        )
+        result = run_git(args, cwd=None, label="git-diagnostics", timeout=5, check=False)
         if result.returncode == 0:
             return result.stdout.strip()
     except (OSError, subprocess.TimeoutExpired):
@@ -222,17 +219,7 @@ def _is_agent_available(cmd: str) -> bool:
     if not cmd:
         return False
     command = cmd.split(maxsplit=1)[0]
-    try:
-        result = subprocess.run(
-            ["which", command],
-            capture_output=True,
-            text=True,
-            timeout=5,
-            check=False,
-        )
-        return result.returncode == 0
-    except (OSError, subprocess.TimeoutExpired):
-        return False
+    return shutil.which(command) is not None
 
 
 @dataclass

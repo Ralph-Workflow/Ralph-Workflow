@@ -6,10 +6,11 @@ Ported from ralph-workflow/src/exit_pause/io.rs.
 from __future__ import annotations
 
 import os
-import subprocess
 import sys
 from dataclasses import dataclass
 from enum import StrEnum
+
+import psutil
 
 
 class ExitOutcome(StrEnum):
@@ -127,25 +128,14 @@ def detect_launch_context() -> LaunchContext:
 
 
 def _detect_parent_on_windows() -> str | None:
-    """Detect parent process name on Windows using PowerShell."""
+    """Detect parent process name using psutil."""
     try:
-        script = (
-            f"$p=(Get-CimInstance Win32_Process -Filter 'ProcessId = {os.getpid()}')."
-            f"ParentProcessId; if ($p) {{ (Get-Process -Id $p -ErrorAction "
-            f"SilentlyContinue).ProcessName }}"
-        )
-        result = subprocess.run(
-            ["powershell", "-NoProfile", "-NonInteractive", "-Command", script],
-            capture_output=True,
-            text=True,
-            timeout=5,
-            check=False,
-        )
-        if result.returncode == 0 and result.stdout.strip():
-            return result.stdout.strip()
+        parent = psutil.Process(os.getpid()).parent()
+        if parent is None:
+            return None
+        return parent.name()
     except Exception:
-        pass
-    return None
+        return None
 
 
 def exit_pause(mode: PauseOnExitMode = PauseOnExitMode.AUTO) -> None:
