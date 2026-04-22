@@ -43,6 +43,12 @@ from ralph.mcp.artifacts.store import (
     delete_artifact,
     submit_artifact,
 )
+from ralph.mcp.artifacts.typed_artifacts import (
+    TypedArtifactValidationError,
+    normalize_analysis_decision_content,
+    normalize_fix_result_content,
+    normalize_issues_content,
+)
 from ralph.mcp.tools.coordination import (
     ARTIFACT_SUBMIT_CAPABILITY,
     InvalidParamsError,
@@ -55,6 +61,10 @@ from ralph.mcp.tools.coordination import (
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+
+_TYPED_ARTIFACT_TYPES = frozenset(
+    {"issues", "fix_result", "development_analysis_decision", "review_analysis_decision"}
+)
 
 
 def _noop_now_iso() -> str:
@@ -317,14 +327,6 @@ def _artifact_dir(workspace: WorkspaceLike) -> Path:
 
 CanonicalArtifactType = Literal["commit_message", "plan", "development_result"]
 
-# Required fields for artifact types that have no dedicated Pydantic normalizer.
-_TYPED_ARTIFACT_REQUIRED_FIELDS: dict[str, list[str]] = {
-    "issues": ["status", "summary", "issues", "what_came_up_short", "how_to_fix"],
-    "fix_result": ["summary", "files_changed"],
-    "development_analysis_decision": ["status", "summary", "what_came_up_short", "how_to_fix"],
-    "review_analysis_decision": ["status", "summary", "what_came_up_short", "how_to_fix"],
-}
-
 
 def _prepare_artifact_submission(
     params: dict[str, object],
@@ -474,14 +476,9 @@ def _normalize_artifact_payload(
         return _normalize_development_result_payload(
             parsed_content, workspace_root=workspace_root, backend=backend
         )
-    required_fields = _TYPED_ARTIFACT_REQUIRED_FIELDS.get(artifact_type)
-    if required_fields is not None:
+    if artifact_type in _TYPED_ARTIFACT_TYPES:
         return _normalize_typed_artifact_payload(
-            artifact_type,
-            parsed_content,
-            required_fields=required_fields,
-            workspace_root=workspace_root,
-            backend=backend,
+            artifact_type, parsed_content, workspace_root=workspace_root, backend=backend
         )
     return parsed_content
 
@@ -533,19 +530,22 @@ def _normalize_typed_artifact_payload(
     artifact_type: str,
     parsed_content: dict[str, object],
     *,
-    required_fields: list[str],
     workspace_root: Path | None = None,
     backend: FileBackend = DEFAULT_FILE_BACKEND,
 ) -> dict[str, object]:
-    missing = [f for f in required_fields if f not in parsed_content]
-    if missing:
-        exc = InvalidParamsError(
-            f"Artifact '{artifact_type}' is missing required fields: {', '.join(missing)}"
-        )
+    normalizers = {
+        "issues": normalize_issues_content,
+        "fix_result": normalize_fix_result_content,
+        "development_analysis_decision": normalize_analysis_decision_content,
+        "review_analysis_decision": normalize_analysis_decision_content,
+    }
+    normalize = normalizers[artifact_type]
+    try:
+        return normalize(parsed_content)
+    except TypedArtifactValidationError as exc:
         if workspace_root is not None:
             _raise_format_doc_error(artifact_type, workspace_root, backend, exc)
-        raise exc
-    return parsed_content
+        raise InvalidParamsError(str(exc)) from exc
 
 
 def _raise_format_doc_error(
