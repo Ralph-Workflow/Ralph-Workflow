@@ -46,6 +46,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
     from ralph.policy.models import PipelinePolicy
+    from ralph.recovery.controller import RecoveryController
 
 # Maximum number of agent retries before giving up
 _MAX_AGENT_RETRIES = 3
@@ -94,21 +95,77 @@ def _restore_work_units(
 
 
 def _dispatch_worker_event(
-    state: PipelineState, event: Event
+    state: PipelineState,
+    event: Event,
+    recovery: RecoveryController | None = None,
 ) -> tuple[PipelineState, list[Effect]] | None:
-    """Handle worker events, returning None if the event is not a worker event."""
+    """Handle worker events, returning None if the event is not a worker event.
+
+    When a RecoveryController is supplied, WorkerFailedEvent and WorkersMergeConflictEvent
+    are routed through it for classification-aware recovery (intelligent attribution,
+    budget management). This ensures worker failures are attributed to the phase's
+    active agent and can trigger retry or fallover behavior.
+
+    Terminal worker events (WorkerStartedEvent, WorkerCompletedEvent) do not go through
+    RecoveryController as they represent normal lifecycle events.
+    """
     if isinstance(event, WorkerStartedEvent):
         new_state, effects = _handle_worker_started(state, event)
         return _restore_work_units(state, new_state), effects
     if isinstance(event, WorkerCompletedEvent):
         new_state, effects = _handle_worker_completed(state, event)
         return _restore_work_units(state, new_state), effects
+
+    # Worker failure events route through RecoveryController when available
+    # for proper attribution and recovery decision-making.
     if isinstance(event, WorkerFailedEvent):
+        if recovery is not None:
+            # Route through RecoveryController for classification and attribution.
+            # The phase from state is used since worker failures are attributed
+            # to the current phase's active agent.
+            phase_failure = PhaseFailureEvent(
+                phase=state.phase,
+                reason=event.error or f"Worker {event.unit_id} failed: exit code {event.exit_code}",
+                recoverable=True,
+            )
+            new_state, effects, _ = recovery.handle(
+                state,
+                phase_failure.reason,
+                phase=phase_failure.phase,
+                agent=state.current_agent(),
+            )
+            # Also mark the individual worker as FAILED in state.
+            updated = state.worker_states[event.unit_id].copy_with(
+                status=WorkerStatus.FAILED,
+                exit_code=event.exit_code,
+                error_message=event.error,
+                finished_at=datetime.now(UTC),
+            )
+            new_state = new_state.copy_with(
+                worker_states={**new_state.worker_states, event.unit_id: updated}
+            )
+            return _restore_work_units(state, new_state), effects
+        # No recovery controller - use legacy direct handling
         new_state, effects = _handle_worker_failed(state, event)
         return _restore_work_units(state, new_state), effects
+
     if isinstance(event, WorkersMergeConflictEvent):
+        if recovery is not None:
+            # Route through RecoveryController for classification-aware recovery.
+            # Merge conflicts are attributed to the current phase and agent.
+            unit_ids_str = ", ".join(event.conflicting_unit_ids)
+            failure_reason = f"Merge conflict in workers: {unit_ids_str}"
+            new_state, effects, _ = recovery.handle(
+                state,
+                failure_reason,
+                phase=state.phase,
+                agent=state.current_agent(),
+            )
+            return _restore_work_units(state, new_state), effects
+        # No recovery controller - use legacy direct handling
         new_state, effects = _handle_workers_merge_conflict(state, event)
         return _restore_work_units(state, new_state), effects
+
     return None
 
 
@@ -116,6 +173,7 @@ def reduce(
     state: PipelineState,
     event: Event,
     pipeline_policy: PipelinePolicy | None = None,
+    recovery: RecoveryController | None = None,
 ) -> tuple[PipelineState, list[Effect]]:
     """Pure state transition function.
 
@@ -128,17 +186,32 @@ def reduce(
         event: Event to process.
         pipeline_policy: Optional pipeline policy for resolving transitions.
             If None, uses hardcoded transitions for backward compatibility.
+        recovery: Optional RecoveryController. When supplied, PhaseFailureEvents
+            and worker failure events are delegated to it for classification-aware
+            recovery (intelligent attribution, budget management). When None,
+            the legacy retry/fallback logic is used.
 
     Returns:
         Tuple of (new_state, effects). Effects are instructions for the
         effect handler to execute.
     """
-    # Handle PhaseFailureEvent before the generic PipelineEvent dispatch
+    # Handle PhaseFailureEvent before the generic PipelineEvent dispatch.
+    # When a RecoveryController is supplied, delegate to it for classification-aware
+    # recovery (intelligent attribution, budget management). When None, use legacy logic.
     if isinstance(event, PhaseFailureEvent):
+        if recovery is not None:
+            new_state, effects, _ = recovery.handle(
+                state,
+                event.reason or f"(no reason reported for phase={event.phase})",
+                phase=event.phase,
+                agent=state.current_agent(),
+            )
+            return _restore_work_units(state, new_state), effects
         return _handle_phase_failure(state, event)
 
-    # Handle worker events with a unified approach
-    worker_result = _dispatch_worker_event(state, event)
+    # Handle worker events with a unified approach.
+    # Pass recovery to enable classification-aware handling for failure events.
+    worker_result = _dispatch_worker_event(state, event, recovery)
     if worker_result is not None:
         return worker_result
 
@@ -241,6 +314,9 @@ def _handle_agent_success(
     policy: PipelinePolicy | None,
 ) -> tuple[PipelineState, list[Effect]]:
     """Handle successful agent completion."""
+    # Clear pending retry delay since agent succeeded
+    if state.last_retry_delay_ms > 0:
+        state = state.copy_with(last_retry_delay_ms=0)
     if policy is None:
         return _advance_to_terminal(
             state, PHASE_FAILED, "No policy loaded for agent success routing"
@@ -503,7 +579,7 @@ def _handle_review_clean(
 
     When a review is clean (no issues found), the review phase is skipped and
     we advance directly to the post-review commit phase. This is true for both
-    the legacy (no-policy) path and the policy-driven path: REVIEW_CLEAN means
+    the legacy (no policy) path and the policy-driven path: REVIEW_CLEAN means
     the review analysis step was bypassed, so we should not route through
     review_analysis (which would expect a review_analysis_decision artifact
     that was never produced). Instead, we advance directly to review_commit.

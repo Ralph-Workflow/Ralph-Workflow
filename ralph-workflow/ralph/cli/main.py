@@ -387,8 +387,8 @@ def main(  # noqa: PLR0913 - Typer CLI callbacks require many options and branch
         raise typer.Exit(code=exit_code)
 
     if diagnose:
-        diagnose_command(_config_path(config), cli_overrides)
-        raise typer.Exit()
+        exit_code = diagnose_command(_config_path(config), cli_overrides)
+        raise typer.Exit(code=exit_code)
 
     if init is not None:
         init_command(init, _config_path(config))

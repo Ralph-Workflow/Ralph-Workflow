@@ -12,8 +12,14 @@ from rich.console import Console
 from rich.table import Table
 from rich.text import Text
 
+from ralph.agents.registry import AgentRegistry
 from ralph.config.loader import load_config
 from ralph.git.operations import find_repo_root, is_repo_clean
+from ralph.policy.loader import PolicyValidationError, load_policy
+from ralph.policy.validation import (
+    validate_agent_chains_satisfiable,
+    validate_recovery_config,
+)
 from ralph.workspace.scope import WorkspaceScope, resolve_workspace_scope
 
 console = Console()
@@ -22,28 +28,96 @@ console = Console()
 def diagnose_command(
     config_path: Path | None = None,
     cli_overrides: dict[str, object] | None = None,
-) -> None:
+) -> int:
     """Run diagnostics on the Ralph environment.
 
     Args:
         config_path: Optional path to config file.
         cli_overrides: CLI flag overrides.
+
+    Returns:
+        Exit code (0 for success, 1 for errors, 2 for validation failures).
     """
     console.print("\n[cyan bold]Ralph Diagnostics[/cyan bold]\n")
 
     workspace_scope = resolve_workspace_scope()
 
-    _check_git_repo()
-    _check_configuration(config_path, cli_overrides)
-    _check_agents(cli_overrides)
-    _check_mcp_servers(workspace_scope)
-    _check_workspace_files()
+    config_ok = _check_git_repo()
+    config_ok &= _check_configuration(config_path, cli_overrides)
+    config_ok &= _check_agents(cli_overrides)
+    config_ok &= _check_mcp_servers(workspace_scope)
+    config_ok &= _check_workspace_files()
+
+    # Pre-flight validation using policy system
+    validation_ok = _run_preflight_validation(config_path, cli_overrides, workspace_scope)
 
     console.print()
 
+    if not validation_ok:
+        return 2
+    if not config_ok:
+        return 1
+    return 0
 
-def _check_git_repo() -> None:
-    """Check git repository status."""
+
+def _run_preflight_validation(
+    config_path: Path | None,
+    cli_overrides: dict[str, object] | None,
+    workspace_scope: WorkspaceScope,
+) -> bool:
+    """Run pre-flight validation on policy configuration.
+
+    Args:
+        config_path: Optional path to config file.
+        cli_overrides: CLI flag overrides.
+        workspace_scope: Workspace scope.
+
+    Returns:
+        True if validation passes, False otherwise.
+    """
+    table = Table(title="Pre-flight Validation", show_header=False)
+    table.add_column("Check", style="cyan")
+    table.add_column("Status")
+
+    try:
+        # Load UnifiedConfig for agent registry
+        config = load_config(config_path, cli_overrides, workspace_scope=workspace_scope)
+        registry = AgentRegistry.from_config(config)
+
+        # Determine policy directory
+        if config_path is not None:
+            policy_dir = config_path.parent
+        else:
+            policy_dir = workspace_scope.local_config_path
+
+        # Load PolicyBundle for validation
+        bundle = load_policy(policy_dir)
+
+        # Run validators
+        validate_agent_chains_satisfiable(bundle, registry)
+        validate_recovery_config(bundle)
+
+        table.add_row("Agent chains", "[green]Satisfiable[/green]")
+        table.add_row("Recovery config", "[green]Valid[/green]")
+        console.print(table)
+        return True
+
+    except PolicyValidationError as e:
+        table.add_row("Policy validation", _status_text("Failed", e.message, "red"))
+        console.print(table)
+        return False
+    except Exception as e:
+        table.add_row("Pre-flight", _status_text("Error", str(e), "red"))
+        console.print(table)
+        return False
+
+
+def _check_git_repo() -> bool:
+    """Check git repository status.
+
+    Returns:
+        True if check passed, False otherwise.
+    """
     table = Table(title="Git Repository", show_header=False)
     table.add_column("Check", style="cyan")
     table.add_column("Status")
@@ -54,7 +128,7 @@ def _check_git_repo() -> None:
     except Exception as e:
         table.add_row("Repository", _status_text("Error", str(e), "red"))
         console.print(table)
-        return
+        return False
 
     try:
         clean = is_repo_clean(repo_root)
@@ -66,13 +140,18 @@ def _check_git_repo() -> None:
         table.add_row("Working tree", _status_text("Error", str(e), "red"))
 
     console.print(table)
+    return True
 
 
 def _check_configuration(
     config_path: Path | None,
     cli_overrides: dict[str, object] | None,
-) -> None:
-    """Check configuration validity."""
+) -> bool:
+    """Check configuration validity.
+
+    Returns:
+        True if check passed, False otherwise.
+    """
     table = Table(title="Configuration", show_header=False)
     table.add_column("Check", style="cyan")
     table.add_column("Status")
@@ -87,12 +166,19 @@ def _check_configuration(
         table.add_row("Checkpoint enabled", str(config.general.workflow.checkpoint_enabled))
     except Exception as e:
         table.add_row("Config loaded", _status_text("Error", str(e), "red"))
+        console.print(table)
+        return False
 
     console.print(table)
+    return True
 
 
-def _check_agents(cli_overrides: dict[str, object] | None) -> None:
-    """Check agent availability."""
+def _check_agents(cli_overrides: dict[str, object] | None) -> bool:
+    """Check agent availability.
+
+    Returns:
+        True if check passed, False otherwise.
+    """
     table = Table(title="Agents", show_header=False)
     table.add_column("Agent", style="cyan")
     table.add_column("Status")
@@ -106,12 +192,19 @@ def _check_agents(cli_overrides: dict[str, object] | None) -> None:
                 table.add_row(name, _status_text("Configured", agent_config.cmd, "green"))
     except Exception as e:
         table.add_row("Agents", _status_text("Error", str(e), "red"))
+        console.print(table)
+        return False
 
     console.print(table)
+    return True
 
 
-def _check_mcp_servers(workspace_scope: WorkspaceScope) -> None:
-    """Render custom MCP server health and per-agent transport compatibility."""
+def _check_mcp_servers(workspace_scope: WorkspaceScope) -> bool:
+    """Render custom MCP server health and per-agent transport compatibility.
+
+    Returns:
+        True if check passed, False otherwise.
+    """
     from ralph.mcp.transport.common import mcp_toml_as_upstreams  # noqa: PLC0415
     from ralph.mcp.upstream.agent_probe import probe_agent_transports  # noqa: PLC0415
     from ralph.mcp.upstream.validation import validate_upstream_mcp_servers  # noqa: PLC0415
@@ -133,7 +226,7 @@ def _check_mcp_servers(workspace_scope: WorkspaceScope) -> None:
             "-",
         )
         console.print(server_table)
-        return
+        return True
 
     try:
         report = validate_upstream_mcp_servers(upstreams, strict=False)
@@ -146,7 +239,7 @@ def _check_mcp_servers(workspace_scope: WorkspaceScope) -> None:
             "-",
         )
         console.print(server_table)
-        return
+        return False
 
     for entry in report.servers:
         status = "[green]ok[/green]" if entry.ok else "[red]failed[/red]"
@@ -167,7 +260,7 @@ def _check_mcp_servers(workspace_scope: WorkspaceScope) -> None:
     healthy_names = {r.name for r in report.servers if r.ok}
     healthy_servers = tuple(s for s in upstreams if s.name in healthy_names)
     if not healthy_servers:
-        return
+        return True
 
     probe_table = Table(title="Agent Transport Compatibility")
     probe_table.add_column("Server", style="cyan")
@@ -196,10 +289,15 @@ def _check_mcp_servers(workspace_scope: WorkspaceScope) -> None:
         )
 
     console.print(probe_table)
+    return True
 
 
-def _check_workspace_files() -> None:
-    """Check workspace files."""
+def _check_workspace_files() -> bool:
+    """Check workspace files.
+
+    Returns:
+        True if check passed, False otherwise.
+    """
     table = Table(title="Workspace Files", show_header=False)
     table.add_column("File", style="cyan")
     table.add_column("Status")
@@ -221,6 +319,7 @@ def _check_workspace_files() -> None:
             table.add_row(file_label, Text("Not found", style="yellow"))
 
     console.print(table)
+    return True
 
 
 def _status_text(label: str, detail: str, style: str) -> Text:

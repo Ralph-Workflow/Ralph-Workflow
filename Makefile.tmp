@@ -1,0 +1,3 @@
+restore_runner:
+	git checkout HEAD -- ralph-workflow/ralph/pipeline/runner.py
+.PHONY: restore_runner

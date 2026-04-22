@@ -6,9 +6,14 @@ import json
 
 from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.reducer import reduce
-from ralph.pipeline.state import PipelineState
+from ralph.pipeline.state import FalloverRecord, PipelineState
 from ralph.pipeline.work_units import WorkUnit
 from ralph.pipeline.worker_state import WorkerState, WorkerStatus
+
+# Constants for magic values used in tests
+_DEFAULT_RECOVERY_CYCLE_CAP = 200
+_TEST_RECOVERY_CYCLE_COUNT = 3
+_TEST_RECOVERY_CYCLE_CAP = 100
 
 
 def _wu(unit_id: str = "u1", description: str = "A task") -> WorkUnit:
@@ -190,3 +195,43 @@ def test_worker_states_preserved_across_copy_with() -> None:
     new_state = state.copy_with(phase="development")
 
     assert new_state.worker_states == {"u1": ws}
+
+
+def test_recovery_fields_default_values() -> None:
+    """Recovery fields have correct defaults so legacy checkpoints load cleanly."""
+    old_json = json.dumps({"phase": "planning", "iteration": 0})
+
+    state = PipelineState.model_validate_json(old_json)
+
+    assert state.recovery_cycle_count == 0
+    assert state.fallover_history == ()
+    assert state.last_failure_category is None
+    assert state.last_connectivity_state == "unknown"
+    assert state.recovery_cycle_cap == _DEFAULT_RECOVERY_CYCLE_CAP
+
+
+def test_recovery_fields_round_trip() -> None:
+    """Recovery fields round-trip through model_dump_json / model_validate_json."""
+    state = PipelineState(
+        recovery_cycle_count=_TEST_RECOVERY_CYCLE_COUNT,
+        fallover_history=(
+            FalloverRecord(
+                phase="development",
+                from_agent="claude",
+                to_agent="opencode",
+                timestamp_iso="2026-04-21T12:00:00Z",
+            ),
+        ),
+        last_failure_category="agent",
+        last_connectivity_state="online",
+        recovery_cycle_cap=_TEST_RECOVERY_CYCLE_CAP,
+    )
+
+    loaded = PipelineState.model_validate_json(state.model_dump_json())
+
+    assert loaded.recovery_cycle_count == _TEST_RECOVERY_CYCLE_COUNT
+    assert len(loaded.fallover_history) == 1
+    assert loaded.fallover_history[0].from_agent == "claude"
+    assert loaded.last_failure_category == "agent"
+    assert loaded.last_connectivity_state == "online"
+    assert loaded.recovery_cycle_cap == _TEST_RECOVERY_CYCLE_CAP

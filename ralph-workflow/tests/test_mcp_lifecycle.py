@@ -16,15 +16,22 @@ PREFLIGHT_TIMEOUT = 123
 
 
 class FakeProcess:
-    def __init__(self, poll_result: int | None = None) -> None:
+    def __init__(self, poll_result: int | None = None, pid: int = 12345) -> None:
         self._poll_result = poll_result
+        self._pid = pid
         self.terminated = False
+        self.terminated_grace_period: float | None = None
+
+    @property
+    def pid(self) -> int:
+        return self._pid
 
     def poll(self) -> int | None:
         return self._poll_result
 
-    def terminate(self) -> None:
+    def terminate(self, grace_period_s: float = 5.0) -> None:
         self.terminated = True
+        self.terminated_grace_period = grace_period_s
 
     def wait(self, timeout: float | None = None) -> int | None:
         return 0
@@ -51,11 +58,13 @@ def test_start_mcp_server_uses_injected_dependencies(tmp_path: Path) -> None:
         seen["session_file"] = session_file
         return {"RALPH_MCP_SESSION_FILE": str(session_file)}
 
-    def fake_spawn(command: list[str], cwd: Path, env: dict[str, str], *, phase: str | None = None):
+    def fake_spawn(
+        command: list[str], cwd: Path, env: dict[str, str], *, phase: str | None = None
+    ) -> FakeProcess:
         seen["command"] = command
         seen["cwd"] = cwd
         seen["env"] = env
-        return FakeProcess()
+        return FakeProcess(pid=9999)
 
     def fake_preflight(endpoint: str, required_tools: list[str], timeout: timedelta) -> None:
         seen["endpoint"] = endpoint

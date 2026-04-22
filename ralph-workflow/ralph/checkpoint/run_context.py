@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from typing import TypedDict
 from uuid import uuid4
 
@@ -13,6 +13,9 @@ class RunContextDict(TypedDict):
     resume_count: int
     actual_developer_runs: int
     actual_reviewer_runs: int
+    recovery_cycle_count: int
+    fallover_history: list[dict[str, object]]
+    last_failure_category: str | None
 
 
 @dataclass(frozen=True)
@@ -24,6 +27,9 @@ class RunContext:
     resume_count: int = 0
     actual_developer_runs: int = 0
     actual_reviewer_runs: int = 0
+    recovery_cycle_count: int = 0
+    fallover_history: list[dict[str, object]] = field(default_factory=list)
+    last_failure_category: str | None = None
 
     @classmethod
     def new(cls) -> RunContext:
@@ -39,6 +45,9 @@ class RunContext:
             resume_count=previous.resume_count + 1,
             actual_developer_runs=previous.actual_developer_runs,
             actual_reviewer_runs=previous.actual_reviewer_runs,
+            recovery_cycle_count=previous.recovery_cycle_count,
+            fallover_history=list(previous.fallover_history),
+            last_failure_category=previous.last_failure_category,
         )
 
     def record_developer_iteration(self) -> RunContext:
@@ -57,4 +66,7 @@ class RunContext:
             "resume_count": self.resume_count,
             "actual_developer_runs": self.actual_developer_runs,
             "actual_reviewer_runs": self.actual_reviewer_runs,
+            "recovery_cycle_count": self.recovery_cycle_count,
+            "fallover_history": list(self.fallover_history),
+            "last_failure_category": self.last_failure_category,
         }

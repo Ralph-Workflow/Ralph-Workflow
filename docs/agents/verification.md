@@ -69,3 +69,24 @@ uv run pytest -q tests/integration/test_parallel_resume.py
 uv run pytest -q tests/integration/test_runner_fanout_wiring.py
 uv run pytest -q tests/integration/test_old_checkpoint_loads.py
 ```
+
+## Recovery tests
+
+When working on or verifying the failure recovery feature:
+
+```bash
+cd ralph-workflow
+uv run pytest -x --timeout=10 tests/recovery/
+uv run pytest -x --timeout=10 tests/test_recovery_first_invariant.py tests/test_reducer.py tests/test_pipeline_runner.py tests/test_asyncio_bridge.py tests/test_checkpoint.py
+```
+
+Recovery tests cover:
+- Network loss / connectivity monitoring (environmental failures do not count against budget)
+- Agent empty output / idle timeout (agent failures count against budget, trigger fallover)
+- Agent chain exhaustion (full chain → PHASE_FAILED, fallover history populated)
+- Recovery cycle cap (global cap prevents infinite loops, emits ExitFailureEffect)
+- Worker failures and merge conflicts (do not terminate pipeline, route through recovery)
+- Pre-flight validation (invalid chain / missing agent caught at startup with exit code 2)
+- User interrupt (first SIGINT → ordered shutdown; second → os._exit(130))
+
+All recovery tests run in under 10 seconds each and use injectable fake clocks, fake sleep, and fake probes — no real network I/O in tests.

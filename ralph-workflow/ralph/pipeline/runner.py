@@ -126,6 +126,16 @@ class _AgentRegistryFactory(Protocol):
     def from_config(cls, config: UnifiedConfig) -> _RegistryLike: ...
 
 
+class _PhaseAwareDisplay(Protocol):
+    def begin_phase(self, phase: str) -> None: ...
+
+
+class _RunEndDisplay(Protocol):
+    def emit_run_end(
+        self, *, phase: str, total_agent_calls: int, pr_url: str | None = None
+    ) -> None: ...
+
+
 console = Console()
 _VERBOSE_LOG_LEVEL = 2
 _AGENT_ACTIVITY_LOG_LEVEL = 1
@@ -560,41 +570,10 @@ def _run_pipeline_step(  # noqa: PLR0913
                 pipeline_subscriber=pipeline_subscriber,
             )
 
-<<<<<<< HEAD
         with process_phase_scope(state.phase):
             workspace = FsWorkspace(
                 workspace_scope.root,
                 allowed_roots=workspace_scope.allowed_roots,
-=======
-        workspace = FsWorkspace(
-            workspace_scope.root,
-            allowed_roots=workspace_scope.allowed_roots,
-        )
-        _materialize_agent_prompt_if_needed(
-            effect,
-            workspace,
-            policy_bundle.pipeline,
-            registry,
-            workspace_scope,
-        )
-        event = _invoke_execute_effect_with_optional_display(
-            effect,
-            config,
-            workspace_scope,
-            display=display,
-            verbosity=verbosity,
-            state=state,
-        )
-        if isinstance(effect, InvokeAgentEffect) and event == PipelineEvent.AGENT_SUCCESS:
-            event = _phase_event_after_agent_run(
-                effect=effect,
-                config=config,
-                policy_bundle=policy_bundle,
-                workspace=workspace,
-                workspace_scope=workspace_scope,
-                display=display,
-                verbosity=verbosity,
->>>>>>> wt-81-display
             )
             _materialize_agent_prompt_if_needed(
                 effect,
@@ -619,6 +598,7 @@ def _run_pipeline_step(  # noqa: PLR0913
                     workspace=workspace,
                     workspace_scope=workspace_scope,
                     display=display,
+                    verbosity=verbosity,
                 )
 
         next_state, _ = reducer_reduce(state, event, policy_bundle.pipeline)
@@ -877,7 +857,7 @@ def run(  # noqa: PLR0913
                     cast("ParallelDisplay", active_display).emit_run_start(_orientation)
             if hasattr(active_display, "begin_phase"):
                 with suppress(Exception):
-                    active_display.begin_phase(state.phase)
+                    cast("_PhaseAwareDisplay", active_display).begin_phase(state.phase)
             _notify_pipeline_subscriber(effective_pipeline_subscriber, state)
             try:
                 while state.phase != PHASE_COMPLETE:
@@ -902,7 +882,7 @@ def run(  # noqa: PLR0913
                     )
                     if hasattr(active_display, "begin_phase"):
                         with suppress(Exception):
-                            active_display.begin_phase(state.phase)
+                            cast("_PhaseAwareDisplay", active_display).begin_phase(state.phase)
 
             except KeyboardInterrupt:
                 logger.warning("Interrupted by user; saving checkpoint.")
@@ -928,7 +908,7 @@ def run(  # noqa: PLR0913
             if not is_quiet and hasattr(active_display, "emit_run_end"):
                 with suppress(Exception):
                     total_agent_calls = getattr(state.metrics, "total_agent_calls", 0)
-                    active_display.emit_run_end(
+                    cast("_RunEndDisplay", active_display).emit_run_end(
                         phase=state.phase,
                         total_agent_calls=total_agent_calls,
                         pr_url=state.pr_url,
@@ -2313,3 +2293,4 @@ def _prompt_session_drain_for_phase(drain: str | None) -> SessionDrain:
     if drain is not None:
         return SessionDrain(drain)
     return SessionDrain("cli")
+

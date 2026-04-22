@@ -686,13 +686,7 @@ class PlainLogRenderer:
                 # Global single-block invariant: close any block from a different unit first.
                 other_units = [uid for uid in self._active_block if uid != unit_id]
                 for other_uid in other_units:
-<<<<<<< HEAD
-                    end_line = self._close_block(other_uid, timestamp)
-                    if end_line:
-                        self._console.print(end_line, markup=False, highlight=False, no_wrap=True)
-=======
                     self._close_block(other_uid, timestamp)
->>>>>>> wt-81-display
                 if unit_id not in self._active_block:
                     # Open new block
                     self._active_block[unit_id] = (base_tag, [content])

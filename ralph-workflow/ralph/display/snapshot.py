@@ -81,6 +81,12 @@ class PipelineSnapshot:
     analysis_decision: str | None = None
     analysis_reason: str | None = None
     decision_log: tuple[tuple[str, str, str, str], ...] = field(default_factory=tuple)
+    # Recovery observability fields
+    recovery_cycle_count: int = 0
+    recovery_cycle_cap: int = 200
+    fallover_history: tuple[tuple[str, str, str, str], ...] = field(default_factory=tuple)
+    last_failure_category: str | None = None
+    last_connectivity_state: str = "unknown"
 
 
 def snapshot_from_state(  # noqa: PLR0913
@@ -109,6 +115,13 @@ def snapshot_from_state(  # noqa: PLR0913
 
     created_at = datetime.now(UTC)
     workers = _snapshot_workers(state)
+
+    # Convert fallover_history to tuple of tuples for frozen dataclass
+    fallover_tuples = tuple(
+        (fo.phase, fo.from_agent, fo.to_agent, fo.timestamp_iso)
+        for fo in state.fallover_history
+    )
+
     return PipelineSnapshot(
         phase=state.phase,
         previous_phase=state.previous_phase,
@@ -145,6 +158,11 @@ def snapshot_from_state(  # noqa: PLR0913
         analysis_decision=analysis_decision,
         analysis_reason=analysis_reason,
         decision_log=tuple(decision_log),
+        recovery_cycle_count=state.recovery_cycle_count,
+        recovery_cycle_cap=state.recovery_cycle_cap,
+        fallover_history=fallover_tuples,
+        last_failure_category=state.last_failure_category,
+        last_connectivity_state=state.last_connectivity_state,
     )
 
 

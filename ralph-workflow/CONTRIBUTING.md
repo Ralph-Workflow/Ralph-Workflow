@@ -92,7 +92,7 @@ This is enforced by:
 
 When an upstream MCP server returns a non-text content block, Ralph must reject it with a clear error rather than silently stringify or drop the block. The error message must identify the server, tool, and block type.
 
-This prevents silent data loss in text-only downstream flows and makes incompatibility visible rather than隐性.
+This prevents silent data loss in text-only downstream flows and makes incompatibility visible rather than implicit.
 
 ### Dead code policy
 
@@ -102,6 +102,10 @@ Any MCP code that is proven unused during feature work must be either:
 2. Deleted along with its imports and stale tests/docs
 
 Do not leave "reserved for later" MCP scaffolding behind. If in doubt, remove it — it can be restored from git if needed later.
+
+## Recovery architecture contract
+
+Recovery, failure classification, retry counting, and chain fallover each have a single conceptual owner in `ralph/recovery/`. Extend the owner, do not add handlers at call sites. New failure modes are added by extending the `FailureClassifier` in `ralph/recovery/classifier.py`, not by sprinkling classification logic at invoke sites.
 
 ## Release notes
 
