@@ -57,7 +57,12 @@ def _build_agent_availability_content(
                 if is_available:
                     avail_lines.append(Text(f"  • {name}: [green]on PATH[/green]"))
                 else:
-                    avail_lines.append(Text(f"  • {name}: [yellow]⚠ missing (not on PATH)[/yellow]"))
+                    avail_lines.append(
+                        Text(
+                            f"  • {name}: "
+                            "[yellow]⚠ missing (not on PATH)[/yellow]"
+                        )
+                    )
             if avail_lines:
                 content.append(Text("[bold cyan]Detected agents:[/bold cyan]"))
                 content.extend(avail_lines)
@@ -79,6 +84,30 @@ def _build_regenerate_summary(results: list[BootstrapResult]) -> Text | None:
     if backup_count > 0:
         text.append(f" ([yellow]{backup_count} backup(s) saved with .bak suffix[/yellow])")
     return text
+
+
+def _partition_config_files(results: list[BootstrapResult]) -> tuple[list[str], list[str]]:
+    """Split created config file names into global and local display groups."""
+    global_files: list[str] = []
+    local_files: list[str] = []
+    for result in results:
+        if result.action == "skipped":
+            continue
+        path_str = str(result.path)
+        filename = result.path.name
+        if ".agent" in path_str or path_str.startswith("."):
+            local_files.append(filename)
+        else:
+            global_files.append(filename)
+    return global_files, local_files
+
+
+def _append_file_section(content: list[object], heading: str, files: list[str]) -> None:
+    """Append a headed bullet list of config files when present."""
+    if not files:
+        return
+    content.append(Text(heading))
+    content.extend(Text(f"  • {name}") for name in files)
 
 
 def emit_first_run_welcome(
@@ -113,30 +142,9 @@ def emit_first_run_welcome(
             content.append(summary)
             content.append(Text())  # blank line
 
-    # Config files grouped by scope - use simple text lines for reliability
-    global_files: list[str] = []
-    local_files: list[str] = []
-    for result in results:
-        if result.action == "skipped":
-            continue
-        path_str = str(result.path)
-        # Use path.name for cleaner display
-        filename = result.path.name
-        if ".agent" in path_str or path_str.startswith("."):
-            local_files.append(filename)
-        else:
-            global_files.append(filename)
-
-    # Group files by scope with clear headings
-    if global_files:
-        content.append(Text("[bold cyan]Global config files:[/bold cyan]"))
-        for f in global_files:
-            content.append(Text(f"  • {f}"))
-
-    if local_files:
-        content.append(Text("[bold cyan]Local config files:[/bold cyan]"))
-        for f in local_files:
-            content.append(Text(f"  • {f}"))
+    global_files, local_files = _partition_config_files(results)
+    _append_file_section(content, "[bold cyan]Global config files:[/bold cyan]", global_files)
+    _append_file_section(content, "[bold cyan]Local config files:[/bold cyan]", local_files)
 
     # Agent availability (not shown during regenerate since it's first-run info)
     if not is_regenerate:
