@@ -8,10 +8,13 @@ fanout remains orchestrator-owned.
 from __future__ import annotations
 
 import re
-from collections.abc import Mapping  # noqa: TC003
 from pathlib import PurePosixPath
+from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
 
 
 class WorkUnitsValidationError(ValueError):

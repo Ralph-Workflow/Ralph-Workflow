@@ -4,12 +4,11 @@ from __future__ import annotations
 
 import asyncio
 
-import pytest
-
 from ralph.config.enums import PHASE_DEVELOPMENT
 from ralph.pipeline.events import PhaseFailureEvent
 from ralph.pipeline.reducer import reduce
 from ralph.pipeline.state import AgentChainState, PipelineState
+from ralph.recovery.budget import AgentBudgetRegistry
 from ralph.recovery.connectivity import ConnectivityState
 from ralph.recovery.controller import RecoveryController
 from ralph.recovery.events import FailureEvent, FailureEventBus
@@ -175,7 +174,7 @@ def test_offline_inhibits_agent_invocation_via_recovery_controller() -> None:
     collected_events: list[FailureEvent] = []
 
     bus = FailureEventBus()
-    bus.subscribe(lambda evt: collected_events.append(evt) if isinstance(evt, FailureEvent) else None)
+    bus.subscribe(lambda evt: collected_events.append(evt) if isinstance(evt, FailureEvent) else None)  # noqa: E501
 
     registry = AgentBudgetRegistry().set_budget(PHASE_DEVELOPMENT, "claude", max_retries=3)
     controller = RecoveryController(cycle_cap=10, event_bus=bus, budget_registry=registry)
@@ -205,7 +204,7 @@ def test_offline_inhibits_agent_invocation_via_recovery_controller() -> None:
 
     # Now simulate an invocation after going back online
     # This should succeed without any offline penalty
-    new_state, effects, evt = controller.handle(
+    _, _, evt = controller.handle(
         state,
         ConnectionError("pre-existing connection reset"),
         phase=PHASE_DEVELOPMENT,
@@ -220,7 +219,7 @@ def test_offline_inhibits_agent_invocation_via_recovery_controller() -> None:
     budget = controller.budget_registry.get(PHASE_DEVELOPMENT, "claude")
     assert budget is not None
     assert budget.consumed == 0
-    assert budget.remaining == 3
+    assert budget.remaining == 3  # noqa: PLR2004
 
 
 def test_offline_period_does_not_debit_budget_on_recovery_resume() -> None:
@@ -259,17 +258,11 @@ def test_offline_period_does_not_debit_budget_on_recovery_resume() -> None:
     # Budget still intact
     budget = controller.budget_registry.get(PHASE_DEVELOPMENT, "claude")
     assert budget is not None
-    assert budget.remaining == 3
+    assert budget.remaining == 3  # noqa: PLR2004
 
     # Now simulate a successful agent invocation after resume
     # (no failure - just a state update showing no budget consumed)
     new_state = state.copy_with(last_retry_delay_ms=0)
     assert new_state.phase == PHASE_DEVELOPMENT
     # No budget was consumed during offline period
-    assert budget.remaining == 3
-
-
-# ---------------------------------------------------------------------------
-# Import for type hint only
-# ---------------------------------------------------------------------------
-from ralph.recovery.budget import AgentBudgetRegistry
+    assert budget.remaining == 3  # noqa: PLR2004

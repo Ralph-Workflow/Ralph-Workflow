@@ -2240,7 +2240,9 @@ class TestExecuteEffect:
     def test_commit_effect_delegates_to_commit_handler(self, monkeypatch) -> None:
         captured: dict[str, bool] = {}
 
-        def stub_commit(effect, create_commit, stage_all, repo_root, display=None):
+        def stub_commit(  # noqa: PLR0913
+            effect, create_commit, stage_all, repo_root, display=None, *, verbosity=None
+        ):
             captured["called"] = True
             captured["message_file"] = effect.message_file
             return PipelineEvent.COMMIT_SUCCESS

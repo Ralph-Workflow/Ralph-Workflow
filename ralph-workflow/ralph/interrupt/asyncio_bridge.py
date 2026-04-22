@@ -16,7 +16,6 @@ from __future__ import annotations
 import contextlib
 import os
 import signal
-from collections.abc import Callable  # noqa: TC003
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
@@ -26,6 +25,7 @@ from ralph.process.manager import ProcessEvent, ProcessStatus, get_process_manag
 
 if TYPE_CHECKING:
     import asyncio
+    from collections.abc import Callable
 
 
 @dataclass

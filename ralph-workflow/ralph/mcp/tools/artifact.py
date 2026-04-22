@@ -6,7 +6,7 @@ import json
 from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal, cast
+from typing import TYPE_CHECKING, Literal, NoReturn, cast
 
 from ralph.mcp.artifacts.commit_message import (
     COMMIT_MESSAGE_TYPE,
@@ -20,6 +20,7 @@ from ralph.mcp.artifacts.development_result import (
     normalize_development_result_content,
 )
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
+from ralph.mcp.artifacts.format_docs import has_format_doc, materialize_format_doc
 from ralph.mcp.artifacts.handoffs import delete_markdown_handoff, sync_markdown_handoff
 from ralph.mcp.artifacts.plan import (
     PLAN_ARTIFACT_TYPE,
@@ -316,6 +317,14 @@ def _artifact_dir(workspace: WorkspaceLike) -> Path:
 
 CanonicalArtifactType = Literal["commit_message", "plan", "development_result"]
 
+# Required fields for artifact types that have no dedicated Pydantic normalizer.
+_TYPED_ARTIFACT_REQUIRED_FIELDS: dict[str, list[str]] = {
+    "issues": ["status", "summary", "issues", "what_came_up_short", "how_to_fix"],
+    "fix_result": ["summary", "files_changed"],
+    "development_analysis_decision": ["status", "summary", "what_came_up_short", "how_to_fix"],
+    "review_analysis_decision": ["status", "summary", "what_came_up_short", "how_to_fix"],
+}
+
 
 def _prepare_artifact_submission(
     params: dict[str, object],
@@ -334,9 +343,23 @@ def _prepare_artifact_submission(
         base_path=base_path,
         backend=backend,
     )
-    parsed_content = _unwrap_persisted_artifact_payload(artifact_type, _parse_content(raw_content))
 
-    return artifact_type, _normalize_artifact_payload(artifact_type, parsed_content)
+    try:
+        parsed_content = _unwrap_persisted_artifact_payload(
+            artifact_type, _parse_content(raw_content)
+        )
+    except InvalidParamsError as exc:
+        if (
+            base_path is not None
+            and artifact_type != PLAN_ARTIFACT_TYPE
+            and has_format_doc(artifact_type)
+        ):
+            _raise_format_doc_error(artifact_type, base_path, backend, exc)
+        raise
+
+    return artifact_type, _normalize_artifact_payload(
+        artifact_type, parsed_content, workspace_root=base_path, backend=backend
+    )
 
 
 def _resolve_artifact_content_source(
@@ -435,26 +458,53 @@ def _session_drain(session: SessionLike) -> str | None:
 
 
 def _normalize_artifact_payload(
-    artifact_type: str, parsed_content: dict[str, object]
+    artifact_type: str,
+    parsed_content: dict[str, object],
+    *,
+    workspace_root: Path | None = None,
+    backend: FileBackend = DEFAULT_FILE_BACKEND,
 ) -> dict[str, object]:
     if artifact_type == COMMIT_MESSAGE_TYPE:
-        return _normalize_commit_message_payload(parsed_content)
+        return _normalize_commit_message_payload(
+            parsed_content, workspace_root=workspace_root, backend=backend
+        )
     if artifact_type == PLAN_ARTIFACT_TYPE:
         return _normalize_plan_payload(parsed_content)
     if artifact_type == DEVELOPMENT_RESULT_ARTIFACT_TYPE:
-        return _normalize_development_result_payload(parsed_content)
+        return _normalize_development_result_payload(
+            parsed_content, workspace_root=workspace_root, backend=backend
+        )
+    required_fields = _TYPED_ARTIFACT_REQUIRED_FIELDS.get(artifact_type)
+    if required_fields is not None:
+        return _normalize_typed_artifact_payload(
+            artifact_type,
+            parsed_content,
+            required_fields=required_fields,
+            workspace_root=workspace_root,
+            backend=backend,
+        )
     return parsed_content
 
 
-def _normalize_commit_message_payload(parsed_content: dict[str, object]) -> dict[str, object]:
+def _normalize_commit_message_payload(
+    parsed_content: dict[str, object],
+    *,
+    workspace_root: Path | None = None,
+    backend: FileBackend = DEFAULT_FILE_BACKEND,
+) -> dict[str, object]:
     if "message" in parsed_content:
-        raise InvalidParamsError(
+        exc = InvalidParamsError(
             "commit_message artifacts must use the structured commit_message schema; "
             "legacy 'message' payloads are no longer accepted"
         )
+        if workspace_root is not None:
+            _raise_format_doc_error(COMMIT_MESSAGE_TYPE, workspace_root, backend, exc)
+        raise exc
     try:
         return normalize_commit_message_content(parsed_content)
     except ValueError as exc:
+        if workspace_root is not None:
+            _raise_format_doc_error(COMMIT_MESSAGE_TYPE, workspace_root, backend, exc)
         raise InvalidParamsError(str(exc)) from exc
 
 
@@ -465,11 +515,69 @@ def _normalize_plan_payload(parsed_content: dict[str, object]) -> dict[str, obje
         raise InvalidParamsError(str(exc)) from exc
 
 
-def _normalize_development_result_payload(parsed_content: dict[str, object]) -> dict[str, object]:
+def _normalize_development_result_payload(
+    parsed_content: dict[str, object],
+    *,
+    workspace_root: Path | None = None,
+    backend: FileBackend = DEFAULT_FILE_BACKEND,
+) -> dict[str, object]:
     try:
         return normalize_development_result_content(parsed_content)
     except DevelopmentResultValidationError as exc:
+        if workspace_root is not None:
+            _raise_format_doc_error(DEVELOPMENT_RESULT_ARTIFACT_TYPE, workspace_root, backend, exc)
         raise InvalidParamsError(str(exc)) from exc
+
+
+def _normalize_typed_artifact_payload(
+    artifact_type: str,
+    parsed_content: dict[str, object],
+    *,
+    required_fields: list[str],
+    workspace_root: Path | None = None,
+    backend: FileBackend = DEFAULT_FILE_BACKEND,
+) -> dict[str, object]:
+    missing = [f for f in required_fields if f not in parsed_content]
+    if missing:
+        exc = InvalidParamsError(
+            f"Artifact '{artifact_type}' is missing required fields: {', '.join(missing)}"
+        )
+        if workspace_root is not None:
+            _raise_format_doc_error(artifact_type, workspace_root, backend, exc)
+        raise exc
+    return parsed_content
+
+
+def _raise_format_doc_error(
+    artifact_type: str,
+    workspace_root: Path,
+    backend: FileBackend,
+    original_exc: Exception,
+) -> NoReturn:
+    try:
+        relative_path = materialize_format_doc(workspace_root, artifact_type, backend=backend)
+        if relative_path is not None:
+            msg = (
+                f"Artifact '{artifact_type}' failed validation. "
+                f"The exact format is documented at '{relative_path}' inside the workspace. "
+                "Read that file and rebuild your submission before retrying. "
+                "Do NOT rely on the raw error text for format guidance."
+            )
+        else:
+            msg = (
+                f"Artifact '{artifact_type}' failed validation. "
+                f"(note: could not write the reference file; "
+                f"read ralph/mcp/artifacts/format_docs/{artifact_type}.md "
+                "in the ralph package source instead)"
+            )
+    except OSError:
+        msg = (
+            f"Artifact '{artifact_type}' failed validation. "
+            f"(note: could not write the reference file; "
+            f"read ralph/mcp/artifacts/format_docs/{artifact_type}.md "
+            "in the ralph package source instead)"
+        )
+    raise InvalidParamsError(msg) from original_exc
 
 
 def _run_pre_submit_side_effect(

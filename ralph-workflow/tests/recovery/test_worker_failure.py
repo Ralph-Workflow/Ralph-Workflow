@@ -115,7 +115,7 @@ def test_worker_failure_routes_through_recovery_controller() -> None:
 
     # Environmental error - should not change phase
     event = WorkerFailedEvent(unit_id="w1", exit_code=1, error="connection reset by peer")
-    new_state, effects = reduce(state, event, None, recovery=controller)
+    new_state, _ = reduce(state, event, None, recovery=controller)
 
     # Worker is marked FAILED
     assert new_state.worker_states["w1"].status == WorkerStatus.FAILED
@@ -142,8 +142,12 @@ def test_worker_failure_with_agent_timeout_routes_through_recovery() -> None:
     state = _make_state_with_workers_and_chain(["w1"], agents=["claude"])
 
     # Agent-style error - would be classified as AGENT if it matched the timeout pattern
-    event = WorkerFailedEvent(unit_id="w1", exit_code=1, error="AgentInactivityTimeoutError: agent idle")
-    new_state, effects = reduce(state, event, None, recovery=controller)
+    event = WorkerFailedEvent(
+        unit_id="w1",
+        exit_code=1,
+        error="AgentInactivityTimeoutError: agent idle",
+    )
+    new_state, _ = reduce(state, event, None, recovery=controller)
 
     # Worker is marked FAILED
     assert new_state.worker_states["w1"].status == WorkerStatus.FAILED
@@ -169,7 +173,7 @@ def test_merge_conflict_routes_through_recovery_controller() -> None:
     state = _make_state_with_workers_and_chain(["w1", "w2"], agents=["claude"])
 
     event = WorkersMergeConflictEvent(conflicting_unit_ids=["w1", "w2"])
-    new_state, effects = reduce(state, event, None, recovery=controller)
+    _, _ = reduce(state, event, None, recovery=controller)
 
     # Merge conflict failure event was published
     assert len(collected) == 1

@@ -94,14 +94,14 @@ class _LoadResult(NamedTuple):
 app = typer.Typer(help="Run the Ralph pipeline")
 
 
-@app.command()
-def run(  # type: ignore[override]
+@app.command()  # type: ignore[misc]
+def run(
     config_path: pathlib.Path | None = typer.Option(  # noqa: B008
         None, "--config", "-c", help="Path to configuration file"
     ),
-    dry_run: bool = typer.Option(False, "--dry-run", help="Run without invoking agents"),  # noqa: B008
-    resume: bool = typer.Option(False, "--resume", help="Resume from checkpoint"),  # noqa: B008
-    no_resume: bool = typer.Option(False, "--no-resume", help="Start fresh, ignoring checkpoint"),  # noqa: B008
+    dry_run: bool = typer.Option(False, "--dry-run", help="Run without invoking agents"),
+    resume: bool = typer.Option(False, "--resume", help="Resume from checkpoint"),
+    no_resume: bool = typer.Option(False, "--no-resume", help="Start fresh, ignoring checkpoint"),
     verbosity: Verbosity | None = typer.Option(  # noqa: B008
         None, "--verbosity", "-v", help="Verbosity level"
     ),

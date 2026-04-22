@@ -47,6 +47,7 @@ Persistent artifact storage and per-type validators. Used by **both** Ralph's se
 | `plan.py` | `PlanArtifact`, `validate_plan_artifact`, `finalize_plan_draft`, etc. |
 | `commit_message.py` | Commit message artifact helpers |
 | `development_result.py` | Development result validation |
+| `format_docs/` | Package of bundled dumb-proof Markdown reference docs — `load_bundled_format_doc`, `materialize_format_doc`, `FORMAT_DOC_ARTIFACT_TYPES`; one `.md` per non-plan artifact type loaded via `importlib.resources` |
 | `policy_outcomes.py` | `is_policy_approved` — shared policy interpretation |
 | `audit_adapter.py` | `RalphAuditSinkAdapter`, audit record translation |
 | `bridge.py` | `MCPBridge`, `BridgeConfig` — phase system ↔ MCP bridge |
@@ -79,6 +80,12 @@ The standalone `ralph-mcp` runtime (not changed in this reorganization).
 | `__main__.py` | Entry point |
 
 **Canonical import path:** `from ralph.mcp.server import ...` or `from ralph.mcp.server.<module> import ...`
+
+## Artifact Submission Error Contract
+
+For every non-plan artifact type, when validation fails Ralph materializes a Markdown reference into `.agent/artifact-formats/<type>.md` and the `InvalidParamsError` message points the agent at that file instead of returning raw validator text. Agents must re-read the reference file before retrying.
+
+Plan submission errors are exempt: per-section planning validation already surfaces section-specific, executor-ready messages via `handle_submit_plan_section`/`handle_finalize_plan`.
 
 ## Capability System
 
@@ -213,6 +220,7 @@ The following table lists the canonical import path for each public symbol:
 | `is_policy_approved` | `from ralph.mcp.artifacts.policy_outcomes import ...` |
 | `commit_message_artifact_path`, etc. | `from ralph.mcp.artifacts.commit_message import ...` |
 | `normalize_development_result_content` | `from ralph.mcp.artifacts.development_result import ...` |
+| `FORMAT_DOC_ARTIFACT_TYPES`, `materialize_format_doc`, etc. | `from ralph.mcp.artifacts.format_docs import ...` |
 
 ## Package Directory Structure
 
@@ -227,6 +235,14 @@ ralph/mcp/
 │   ├── commit_message.py
 │   ├── development_result.py
 │   ├── file_backend.py
+│   ├── format_docs/     # Package: bundled Markdown reference docs (one per artifact type)
+│   │   ├── __init__.py  # Public API: FORMAT_DOC_ARTIFACT_TYPES, materialize_format_doc, etc.
+│   │   ├── commit_message.md
+│   │   ├── development_result.md
+│   │   ├── issues.md
+│   │   ├── fix_result.md
+│   │   ├── development_analysis_decision.md
+│   │   └── review_analysis_decision.md
 │   ├── plan.py
 │   ├── policy_outcomes.py
 │   └── store.py

@@ -8,6 +8,7 @@ run-start → phase transitions → streaming content → phase-close → comple
 
 from __future__ import annotations
 
+import contextlib
 import json
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -93,13 +94,16 @@ def _install_runner_stubs(
         msg = f"Unexpected effect: {type(effect)!r}"
         raise AssertionError(msg)
 
-    def fake_phase_event_after_agent_run(*, effect, **_kwargs):
+    def fake_phase_event_after_agent_run(*, effect, display=None, **_kwargs):
         if effect.phase in {"development_analysis", "review_analysis"}:
             return PipelineEvent.ANALYSIS_SUCCESS
+        if display is not None and hasattr(display, "emit_phase_close"):
+            with contextlib.suppress(Exception):
+                display.emit_phase_close(effect.phase, f"{effect.phase}: done")
         return PipelineEvent.AGENT_SUCCESS
 
     captured_console = Console(
-        record=True, force_terminal=False, width=120, color_system=None
+        record=True, force_terminal=False, width=300, color_system=None
     )
     monkeypatch.setattr(runner_module, "console", captured_console)
     monkeypatch.setattr(runner_module, "resolve_workspace_scope", lambda: WorkspaceScope(tmp_path))

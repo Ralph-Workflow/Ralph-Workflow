@@ -181,29 +181,41 @@ def test_prepare_artifact_submission_reads_content_from_file_path(tmp_path: Path
 
 
 def test_prepare_artifact_submission_maps_generic_analysis_decision_to_development_drain() -> None:
+    payload = {
+        "status": "completed",
+        "summary": "Implementation looks correct.",
+        "what_came_up_short": [],
+        "how_to_fix": [],
+    }
     artifact_type, parsed_content = _prepare_artifact_submission(
         {
             "artifact_type": "analysis_decision",
-            "content": _content({"status": "completed"}),
+            "content": _content(payload),
         },
         session_drain="development_analysis",
     )
 
     assert artifact_type == "development_analysis_decision"
-    assert parsed_content == {"status": "completed"}
+    assert parsed_content["status"] == "completed"
 
 
 def test_prepare_artifact_submission_maps_generic_analysis_decision_to_review_drain() -> None:
+    payload = {
+        "status": "request_changes",
+        "summary": "Changes needed.",
+        "what_came_up_short": ["Missing tests"],
+        "how_to_fix": ["Add unit tests"],
+    }
     artifact_type, parsed_content = _prepare_artifact_submission(
         {
             "artifact_type": "analysis_decision",
-            "content": _content({"status": "request_changes"}),
+            "content": _content(payload),
         },
         session_drain="review_analysis",
     )
 
     assert artifact_type == "review_analysis_decision"
-    assert parsed_content == {"status": "request_changes"}
+    assert parsed_content["status"] == "request_changes"
 
 
 def test_prepare_artifact_submission_rejects_generic_analysis_decision_outside_analysis_drain() -> (
@@ -373,8 +385,10 @@ def test_handle_submit_artifact_normalizes_commit_alias_type_to_commit_message(
     assert artifact_file.exists()
 
 
-def test_handle_submit_artifact_rejects_legacy_message_only_payload(tmp_path: Path) -> None:
-    with pytest.raises(InvalidParamsError, match="must use the structured commit_message schema"):
+def test_legacy_commit_message_payload_points_to_format_doc(tmp_path: Path) -> None:
+    with pytest.raises(
+        InvalidParamsError, match=r"\.agent/artifact-formats/commit_message\.md"
+    ):
         handle_submit_artifact(
             MockSession(),
             MockWorkspace(tmp_path),
@@ -383,10 +397,13 @@ def test_handle_submit_artifact_rejects_legacy_message_only_payload(tmp_path: Pa
                 "content": _content({"message": "fix: old format"}),
             },
         )
+    assert (tmp_path / ".agent" / "artifact-formats" / "commit_message.md").exists()
 
 
 def test_handle_submit_artifact_rejects_commit_payload_without_subject(tmp_path: Path) -> None:
-    with pytest.raises(InvalidParamsError, match="require a non-empty 'subject'"):
+    with pytest.raises(
+        InvalidParamsError, match=r"\.agent/artifact-formats/commit_message\.md"
+    ):
         handle_submit_artifact(
             MockSession(),
             MockWorkspace(tmp_path),
@@ -398,7 +415,9 @@ def test_handle_submit_artifact_rejects_commit_payload_without_subject(tmp_path:
 
 
 def test_handle_submit_artifact_rejects_body_and_detailed_fields_together(tmp_path: Path) -> None:
-    with pytest.raises(InvalidParamsError, match="Use either 'body' or the detailed body fields"):
+    with pytest.raises(
+        InvalidParamsError, match=r"\.agent/artifact-formats/commit_message\.md"
+    ):
         handle_submit_artifact(
             MockSession(),
             MockWorkspace(tmp_path),
@@ -419,7 +438,9 @@ def test_handle_submit_artifact_rejects_body_and_detailed_fields_together(tmp_pa
 def test_handle_submit_artifact_rejects_commit_payload_with_non_conventional_subject(
     tmp_path: Path,
 ) -> None:
-    with pytest.raises(InvalidParamsError, match="conventional commit format"):
+    with pytest.raises(
+        InvalidParamsError, match=r"\.agent/artifact-formats/commit_message\.md"
+    ):
         handle_submit_artifact(
             MockSession(),
             MockWorkspace(tmp_path),
@@ -436,7 +457,9 @@ def test_handle_submit_artifact_rejects_commit_payload_with_non_conventional_sub
 
 
 def test_handle_submit_artifact_rejects_non_object_excluded_files_entries(tmp_path: Path) -> None:
-    with pytest.raises(InvalidParamsError, match="excluded_files' entries must be objects"):
+    with pytest.raises(
+        InvalidParamsError, match=r"\.agent/artifact-formats/commit_message\.md"
+    ):
         handle_submit_artifact(
             MockSession(),
             MockWorkspace(tmp_path),
@@ -818,6 +841,156 @@ def test_handle_submit_artifact_rolls_back_json_and_markdown_when_handoff_sync_f
     assert backend.exists(workspace_root / ".agent/FIX_RESULT.md") is False
 
 
+def test_handle_submit_artifact_rejects_partial_development_result_without_next_steps(
+    tmp_path: Path,
+) -> None:
+    with pytest.raises(
+        InvalidParamsError, match=r"\.agent/artifact-formats/development_result\.md"
+    ):
+        handle_submit_artifact(
+            MockSession(),
+            MockWorkspace(tmp_path),
+            {
+                "artifact_type": "development_result",
+                "content": _content(
+                    {
+                        "status": "partial",
+                        "summary": "Some work is done.",
+                        "files_changed": "- src/example.py",
+                    }
+                ),
+            },
+        )
+    assert (tmp_path / ".agent" / "artifact-formats" / "development_result.md").exists()
+
+
+def test_handle_submit_artifact_invalid_issues_points_to_format_doc(tmp_path: Path) -> None:
+    with pytest.raises(InvalidParamsError, match=r"\.agent/artifact-formats/issues\.md"):
+        handle_submit_artifact(
+            MockSession(drain="review"),
+            MockWorkspace(tmp_path),
+            {
+                "artifact_type": "issues",
+                "content": "[]",
+            },
+        )
+    assert (tmp_path / ".agent" / "artifact-formats" / "issues.md").exists()
+
+
+def test_handle_submit_artifact_invalid_fix_result_points_to_format_doc(tmp_path: Path) -> None:
+    with pytest.raises(InvalidParamsError, match=r"\.agent/artifact-formats/fix_result\.md"):
+        handle_submit_artifact(
+            MockSession(drain="fix"),
+            MockWorkspace(tmp_path),
+            {
+                "artifact_type": "fix_result",
+                "content": _content({"garbage": "value"}),
+            },
+        )
+    assert (tmp_path / ".agent" / "artifact-formats" / "fix_result.md").exists()
+    content = (tmp_path / ".agent" / "artifact-formats" / "fix_result.md").read_text(
+        encoding="utf-8"
+    )
+    assert content.startswith("# fix_result artifact format")
+
+
+def test_handle_submit_artifact_invalid_development_analysis_decision_points_to_format_doc(
+    tmp_path: Path,
+) -> None:
+    with pytest.raises(
+        InvalidParamsError,
+        match=r"\.agent/artifact-formats/development_analysis_decision\.md",
+    ):
+        handle_submit_artifact(
+            MockSession(drain="development_analysis"),
+            MockWorkspace(tmp_path),
+            {
+                "artifact_type": "development_analysis_decision",
+                "content": _content({"garbage": "value"}),
+            },
+        )
+    assert (
+        tmp_path / ".agent" / "artifact-formats" / "development_analysis_decision.md"
+    ).exists()
+    content = (
+        tmp_path / ".agent" / "artifact-formats" / "development_analysis_decision.md"
+    ).read_text(encoding="utf-8")
+    assert content.startswith("# development_analysis_decision artifact format")
+
+
+def test_handle_submit_artifact_invalid_review_analysis_decision_points_to_format_doc(
+    tmp_path: Path,
+) -> None:
+    with pytest.raises(
+        InvalidParamsError,
+        match=r"\.agent/artifact-formats/review_analysis_decision\.md",
+    ):
+        handle_submit_artifact(
+            MockSession(drain="review_analysis"),
+            MockWorkspace(tmp_path),
+            {
+                "artifact_type": "review_analysis_decision",
+                "content": _content({"garbage": "value"}),
+            },
+        )
+    assert (tmp_path / ".agent" / "artifact-formats" / "review_analysis_decision.md").exists()
+    content = (
+        tmp_path / ".agent" / "artifact-formats" / "review_analysis_decision.md"
+    ).read_text(encoding="utf-8")
+    assert content.startswith("# review_analysis_decision artifact format")
+
+
+def test_plan_validation_error_is_not_redirected_through_format_doc(tmp_path: Path) -> None:
+    with pytest.raises(InvalidParamsError, match="verification_strategy"):
+        handle_submit_artifact(
+            MockSession(),
+            MockWorkspace(tmp_path),
+            {
+                "artifact_type": "plan",
+                "content": _content(
+                    {
+                        "summary": {
+                            "context": "Too short.",
+                            "scope_items": [
+                                {"text": "One"},
+                                {"text": "Two"},
+                                {"text": "Three"},
+                            ],
+                        },
+                        "steps": [
+                            {"number": 1, "title": "Missing sections", "content": "No verify"}
+                        ],
+                        "critical_files": {"primary_files": [{"path": "x", "action": "modify"}]},
+                        "risks_mitigations": [{"risk": "Oops", "mitigation": "Fix it"}],
+                    }
+                ),
+            },
+        )
+    assert not (tmp_path / ".agent" / "artifact-formats" / "plan.md").exists()
+
+
+def test_format_doc_materialization_failure_still_raises_pointer_error(tmp_path: Path) -> None:
+    format_doc_path = tmp_path / ".agent" / "artifact-formats" / "commit_message.md"
+    backend = FailingArtifactBackend(format_doc_path, message="read-only workspace")
+    deps = _memory_handler_deps(backend)
+
+    with pytest.raises(InvalidParamsError) as exc_info:
+        handle_submit_artifact(
+            MockSession(),
+            MockWorkspace(tmp_path),
+            {
+                "artifact_type": "commit_message",
+                "content": _content({"message": "fix: old format"}),
+            },
+            deps=deps,
+        )
+
+    error_msg = str(exc_info.value)
+    assert "commit_message" in error_msg
+    assert "could not write the reference file" in error_msg
+    assert not format_doc_path.exists()
+
+
 def _full_plan_payload() -> dict[str, object]:
     return {
         "summary": {
@@ -1053,23 +1226,3 @@ def test_full_plan_submission_clears_existing_draft(tmp_path: Path) -> None:
 
     assert not draft_path.exists()
     assert (tmp_path / ".agent" / "artifacts" / "plan.json").exists()
-
-
-def test_handle_submit_artifact_rejects_partial_development_result_without_next_steps(
-    tmp_path: Path,
-) -> None:
-    with pytest.raises(InvalidParamsError, match="next_steps"):
-        handle_submit_artifact(
-            MockSession(),
-            MockWorkspace(tmp_path),
-            {
-                "artifact_type": "development_result",
-                "content": _content(
-                    {
-                        "status": "partial",
-                        "summary": "Some work is done.",
-                        "files_changed": "- src/example.py",
-                    }
-                ),
-            },
-        )

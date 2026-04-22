@@ -154,12 +154,12 @@ def handle_phase(
 
 
 # Import and register all built-in handlers (imported for side effects only)
-from ralph.phases import analysis as _analysis  # noqa: F401,E402
-from ralph.phases import commit as _commit  # noqa: F401,E402
-from ralph.phases import development as _development  # noqa: F401,E402
-from ralph.phases import fix as _fix  # noqa: F401,E402
-from ralph.phases import planning as _planning  # noqa: F401,E402
-from ralph.phases import review as _review  # noqa: F401,E402
+from ralph.phases import analysis as _analysis  # noqa: E402, F401
+from ralph.phases import commit as _commit  # noqa: E402, F401
+from ralph.phases import development as _development  # noqa: E402, F401
+from ralph.phases import fix as _fix  # noqa: E402, F401
+from ralph.phases import planning as _planning  # noqa: E402, F401
+from ralph.phases import review as _review  # noqa: E402, F401
 
 __all__ = [
     "HANDLERS",

@@ -169,7 +169,7 @@ def _handle_regenerate_config() -> None:
         console.print("[dim]No configs found to regenerate[/dim]")
 
 
-def main(  # noqa: PLR0913 - Typer CLI callbacks require many options and branches
+def main(  # noqa: PLR0913
     ctx: typer.Context,
     config: Annotated[
         str | None,

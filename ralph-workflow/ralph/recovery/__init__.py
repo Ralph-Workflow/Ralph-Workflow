@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
-from ralph.recovery.budget import AgentBudgetRegistry, BudgetState, FailureBudget, seed_budget_registry
+from ralph.recovery.budget import (
+    AgentBudgetRegistry,
+    BudgetState,
+    FailureBudget,
+    seed_budget_registry,
+)
 from ralph.recovery.classifier import (
     ClassifiedFailure,
     FailureCategory,

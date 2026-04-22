@@ -29,7 +29,7 @@ def compute_backoff_ms(base_ms: int, attempt: int, max_ms: int = 30_000) -> int:
     Returns:
         Delay in milliseconds, capped at max_ms.
     """
-    return min(base_ms * (2 ** attempt), max_ms)
+    return min(base_ms * (2 ** attempt), max_ms)  # type: ignore[misc, no-any-return]
 
 
 class RecoveryController:
@@ -39,7 +39,7 @@ class RecoveryController:
     Delegates nothing to the reducer's internal retry counter when active.
     """
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         *,
         cycle_cap: int = 200,
@@ -165,7 +165,7 @@ class RecoveryController:
             )
             logger.error("Recovery cycle cap exceeded: {}", exit_reason)
             # Cycle exceeded: no retry delay
-            return new_state.copy_with(last_retry_delay_ms=0), [ExitFailureEffect(reason=exit_reason)], failure_evt
+            return new_state.copy_with(last_retry_delay_ms=0), [ExitFailureEffect(reason=exit_reason)], failure_evt  # noqa: E501
 
         return new_state, effects, failure_evt
 

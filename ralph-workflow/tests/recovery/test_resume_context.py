@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-import pytest
-
 from ralph.config.enums import PHASE_DEVELOPMENT, PHASE_FAILED
 from ralph.pipeline.state import AgentChainState, FalloverRecord, PipelineState
 from ralph.recovery.budget import AgentBudgetRegistry
@@ -54,7 +52,7 @@ def test_fallover_history_preserved_in_state() -> None:
 def test_recovery_cycle_count_preserved() -> None:
     """Recovery cycle count is preserved in state."""
     state = _make_state_with_recovery_context(recovery_cycle_count=3)
-    assert state.recovery_cycle_count == 3
+    assert state.recovery_cycle_count == 3  # noqa: PLR2004
 
 
 def test_last_failure_category_preserved() -> None:
@@ -120,13 +118,13 @@ def test_controller_budget_registry_seed_from_checkpoint() -> None:
     )
 
     controller = RecoveryController(cycle_cap=10, budget_registry=registry)
-    state = _make_state_with_recovery_context(recovery_cycle_count=1)
+    _make_state_with_recovery_context(recovery_cycle_count=1)
 
     # Verify budget state reflects checkpoint
     budget = controller.budget_registry.get(PHASE_DEVELOPMENT, "claude")
     assert budget is not None
     assert budget.consumed == 1
-    assert budget.remaining == 2
+    assert budget.remaining == 2  # noqa: PLR2004
 
 
 def test_resume_after_single_agent_chain_exhaustion_increments_count() -> None:
@@ -240,4 +238,4 @@ def test_last_failure_category_round_trip() -> None:
     restored = PipelineState.model_validate_json(json_data)
 
     assert restored.last_failure_category == "ambiguous"
-    assert restored.recovery_cycle_count == 2
+    assert restored.recovery_cycle_count == 2  # noqa: PLR2004

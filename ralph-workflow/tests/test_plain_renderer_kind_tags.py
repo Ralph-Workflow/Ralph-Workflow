@@ -380,9 +380,9 @@ def test_streaming_checkpoint_every_20_fragments() -> None:
 
 def test_streaming_checkpoint_every_4000_chars() -> None:
     renderer, buf = _make_renderer()
-    # 3 fragments of ~1500 chars: total 4500 chars, crosses 4000
-    for _ in range(3):
-        renderer.emit_activity_line("u", "text", "a" * 1500)
+    # 3 distinct fragments of ~1500 chars: total 4500 chars, crosses 4000
+    for i in range(3):
+        renderer.emit_activity_line("u", "text", "a" * 1499 + str(i))
     out = buf.getvalue()
     assert "[content-checkpoint#" in out
 
@@ -536,8 +536,8 @@ def test_content_end_emits_ai_summary_when_hook_set() -> None:
     try:
         with patch.dict(os.environ, {"RALPH_LONG_CONTENT_AI_SUMMARY": "1"}):
             # Accumulate > 4000 chars so should_summarize returns True
-            for _ in range(3):
-                renderer.emit_activity_line("u", "text", "x" * 1500)
+            for i in range(3):
+                renderer.emit_activity_line("u", "text", "x" * 1499 + str(i))
             buf.truncate(0)
             buf.seek(0)
             renderer.flush_blocks()

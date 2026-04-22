@@ -131,10 +131,10 @@ def seed_budget_registry(bundle: PolicyBundle) -> AgentBudgetRegistry:
     for chain_name, chain_config in bundle.agents.agent_chains.items():
         max_retries = chain_config.max_retries
         for phase_name, drain_name in phase_to_drain.items():
-            drain_config = bundle.agents.agent_drains.get(drain_name)
-            if drain_config is None:
+            drain_config = bundle.agents.agent_drains.get(drain_name)  # type: ignore[call-overload, misc]
+            if drain_config is None:  # type: ignore[misc]
                 continue
-            if drain_config.chain != chain_name:
+            if drain_config.chain != chain_name:  # type: ignore[misc]
                 continue
             # This phase uses this chain - seed budgets for each agent in the chain
             for agent_name in chain_config.agents:

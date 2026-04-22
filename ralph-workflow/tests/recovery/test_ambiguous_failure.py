@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-import pytest
+import io
+
+from loguru import logger
 
 from ralph.config.enums import PHASE_DEVELOPMENT
 from ralph.pipeline.state import AgentChainState, PipelineState
@@ -100,22 +102,23 @@ def test_ambiguous_failure_is_flagged_in_reason() -> None:
     assert FailureCategory.AMBIGUOUS in failure.reason or "flagged" in failure.reason.lower()
 
 
-def test_ambiguous_failure_emits_warning_log(caplog: pytest.LogCaptureFixture) -> None:
+def test_ambiguous_failure_emits_warning_log() -> None:
     """Ambiguous failures emit a warning log flagged for review."""
-    classifier = FailureClassifier()
-
-    with caplog.at_level("WARNING", logger="ralph.recovery.classifier"):
+    sink = io.StringIO()
+    handler_id = logger.add(sink, level="WARNING", format="{level} {message}")
+    try:
+        classifier = FailureClassifier()
         failure = classifier.classify(
             RuntimeError("unrelated failure"),
             phase=PHASE_DEVELOPMENT,
             agent="claude",
         )
-
-    assert failure.category == FailureCategory.AMBIGUOUS
-    assert failure.counts_against_budget is False
-    # Warning should be emitted with flagged_for_review
-    assert any("flagged_for_review" in record.message.lower() or "ambiguous" in record.message.lower()
-               for record in caplog.records)
+        assert failure.category == FailureCategory.AMBIGUOUS
+        assert failure.counts_against_budget is False
+        log_output = sink.getvalue()
+        assert "flagged_for_review" in log_output.lower() or "ambiguous" in log_output.lower()
+    finally:
+        logger.remove(handler_id)
 
 
 def test_connection_refused_is_not_ambiguous() -> None:

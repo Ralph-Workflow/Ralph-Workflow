@@ -3,6 +3,10 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
+import os
+
+import pytest  # noqa: TC002
 
 from ralph.interrupt.asyncio_bridge import SignalBridge, install_signal_handlers
 from ralph.recovery.connectivity import ConnectivityState
@@ -94,6 +98,13 @@ def test_first_interrupt_saves_state_second_exits() -> None:
     assert callable(install_signal_handlers)
 
 
+def _cancel_task_and_close(loop: asyncio.AbstractEventLoop, task: asyncio.Task) -> None:
+    task.cancel()
+    with contextlib.suppress(Exception):
+        loop.run_until_complete(asyncio.gather(task, return_exceptions=True))
+    loop.close()
+
+
 def test_second_sigint_calls_os_exit(monkeypatch: pytest.MonkeyPatch) -> None:
     """Second SIGINT must call os._exit(130) immediately with no cleanup.
 
@@ -108,49 +119,29 @@ def test_second_sigint_calls_os_exit(monkeypatch: pytest.MonkeyPatch) -> None:
         # Raise to stop execution - this simulates os._exit not returning
         raise SystemExit(code)
 
-    import os
     monkeypatch.setattr(os, "_exit", _fake_os_exit)
 
     bridge = SignalBridge()
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
+    root_task = loop.create_task(asyncio.sleep(10))
 
     try:
-        # Create a task using the loop (valid - loop is current)
-        root_task = loop.create_task(asyncio.sleep(10))
-
         install_signal_handlers(loop, root_task, bridge)
 
-        # Manually trigger _first_sigint to advance interrupt count and register _second_sigint
-        # We access the internal handler by directly manipulating bridge state and calling
-        # the second sigint handler logic.
-        # First, trigger the first sigint to advance count to 1 and install second handler
-        bridge._interrupt_count = 1
-
-        # Now trigger _second_sigint directly - it calls os._exit(130)
-        # We need to find and call it. Looking at install_signal_handlers:
-        # _first_sigint() sets bridge._interrupt_count += 1 and schedules cleanup,
-        # then replaces itself with _second_sigint.
-        # After first SIGINT, interrupt_count is 1. On second SIGINT, _second_sigint is called.
-        # Simulate second sigint by directly calling the registered handler.
-
-        # The second handler calls os._exit(130). We can trigger it by
-        # calling the second_sigint closure directly.
-        # We need to simulate: bridge._interrupt_count was already incremented by first sigint.
-        # Second sigint just calls os._exit(130).
         bridge._interrupt_count = 2
 
         # Call os._exit directly (the second sigint handler does this)
         try:
             os._exit(130)
         except SystemExit as e:
-            assert e.code == 130
+            assert e.code == 130  # noqa: PLR2004
 
         # Assert os._exit was called with 130
         assert exit_calls == [(130,)]
 
     finally:
-        loop.close()
+        _cancel_task_and_close(loop, root_task)
 
 
 def test_second_sigint_handler_installed_after_first(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -161,33 +152,25 @@ def test_second_sigint_handler_installed_after_first(monkeypatch: pytest.MonkeyP
         exit_calls.append((code,))
         raise SystemExit(code)
 
-    import os
     monkeypatch.setattr(os, "_exit", _fake_os_exit)
 
     bridge = SignalBridge()
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
+    root_task = loop.create_task(asyncio.sleep(10))
 
     try:
-        root_task = loop.create_task(asyncio.sleep(10))
         install_signal_handlers(loop, root_task, bridge)
 
-        # After install, first handler is active (SIGINT -> _first_sigint)
-        # When _first_sigint runs (simulated here), it increments count and
-        # replaces the handler with _second_sigint
         bridge._interrupt_count = 1  # simulate first SIGINT happened
 
-        # Simulate calling _second_sigint (what SIGINT would call after first interrupt)
-        # The second handler should call os._exit(130)
-        try:
+        with contextlib.suppress(SystemExit):
             os._exit(130)
-        except SystemExit:
-            pass
 
         assert exit_calls == [(130,)]
 
     finally:
-        loop.close()
+        _cancel_task_and_close(loop, root_task)
 
 
 def test_signal_bridge_interrupt_count() -> None:
@@ -201,7 +184,7 @@ def test_signal_bridge_interrupt_count() -> None:
 
     # Increment again
     bridge._interrupt_count += 1
-    assert bridge._interrupt_count == 2
+    assert bridge._interrupt_count == 2  # noqa: PLR2004
 
 
 def test_signal_bridge_pid_tracking() -> None:
@@ -211,12 +194,12 @@ def test_signal_bridge_pid_tracking() -> None:
     bridge.register_pid(123)
     bridge.register_pid(456)
 
-    assert 123 in bridge.pids
-    assert 456 in bridge.pids
+    assert 123 in bridge.pids  # noqa: PLR2004
+    assert 456 in bridge.pids  # noqa: PLR2004
 
     bridge.deregister_pid(123)
-    assert 123 not in bridge.pids
-    assert 456 in bridge.pids
+    assert 123 not in bridge.pids  # noqa: PLR2004
+    assert 456 in bridge.pids  # noqa: PLR2004
 
 
 def test_fake_monitor_default_state_online() -> None:

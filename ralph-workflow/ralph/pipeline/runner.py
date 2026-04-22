@@ -755,7 +755,7 @@ def _emit_final_summary(
         logger.debug("Failed to emit completion summary", exc_info=True)
 
 
-def run(  # noqa: PLR0913
+def run(  # noqa: PLR0912, PLR0913, PLR0915
     config: UnifiedConfig,
     initial_state: PipelineState | None = None,
     display: ParallelDisplay | None = None,
@@ -832,19 +832,19 @@ def run(  # noqa: PLR0913
                     _prompt_path: str | None = None
                     if effective_pipeline_subscriber is not None:
                         _prompt_path = getattr(effective_pipeline_subscriber, "_prompt_path", None)
-                    _pe = getattr(policy_bundle.pipeline, "parallel_execution", None)
+                    _pe = getattr(policy_bundle.pipeline, "parallel_execution", None)  # type: ignore[misc]
                     _parallel_max_workers: int | None = (
-                        int(getattr(_pe, "max_parallel_workers", 0)) if _pe is not None else None
+                        int(getattr(_pe, "max_parallel_workers", 0)) if _pe is not None else None  # type: ignore[misc]
                     )
                     _plan_present = (
                         workspace_scope.root / ".agent" / "artifacts" / "plan.json"
                     ).exists()
                     _orientation = RunStartOrientation(
                         prompt_path=_prompt_path,
-                        developer_agent=getattr(config, "developer_agent", None),
-                        developer_model=getattr(config, "developer_model", None),
-                        reviewer_agent=getattr(config, "reviewer_agent", None),
-                        reviewer_model=getattr(config, "reviewer_model", None),
+                        developer_agent=getattr(config, "developer_agent", None),  # type: ignore[misc]
+                        developer_model=getattr(config, "developer_model", None),  # type: ignore[misc]
+                        reviewer_agent=getattr(config, "reviewer_agent", None),  # type: ignore[misc]
+                        reviewer_model=getattr(config, "reviewer_model", None),  # type: ignore[misc]
                         developer_iters=config.general.developer_iters,
                         reviewer_reviews=config.general.reviewer_reviews,
                         parallel_max_workers=_parallel_max_workers,
@@ -907,10 +907,10 @@ def run(  # noqa: PLR0913
                 exit_code = 1
             if not is_quiet and hasattr(active_display, "emit_run_end"):
                 with suppress(Exception):
-                    total_agent_calls = getattr(state.metrics, "total_agent_calls", 0)
+                    total_agent_calls = getattr(state.metrics, "total_agent_calls", 0)  # type: ignore[misc]
                     cast("_RunEndDisplay", active_display).emit_run_end(
                         phase=state.phase,
-                        total_agent_calls=total_agent_calls,
+                        total_agent_calls=total_agent_calls,  # type: ignore[misc]
                         pr_url=state.pr_url,
                     )
     finally:
@@ -1576,7 +1576,7 @@ def _phase_event_after_agent_run(  # noqa: PLR0913
     return event
 
 
-def _render_phase_artifact_handoff(
+def _render_phase_artifact_handoff(  # noqa: PLR0912
     phase: str,
     event: Event,
     workspace_root: Path,
@@ -1625,11 +1625,11 @@ def _render_phase_artifact_handoff(
                 issue_count = 0
                 if issues_path.exists():
                     try:
-                        issues_data = json.loads(issues_path.read_text(encoding="utf-8"))
+                        issues_data = json.loads(issues_path.read_text(encoding="utf-8"))  # type: ignore[misc]
                         content_obj = (
                             issues_data.get("content")
-                            if isinstance(issues_data, dict)
-                            else issues_data
+                            if isinstance(issues_data, dict)  # type: ignore[misc]
+                            else issues_data  # type: ignore[misc]
                         )
                         issues_list = (
                             content_obj.get("issues")
@@ -2002,7 +2002,7 @@ def _default_mcp_capabilities_for_phase(phase: str) -> set[str]:
     return base
 
 
-def _execute_commit_effect(
+def _execute_commit_effect(  # noqa: PLR0913
     effect: CommitEffect,
     create_commit: Callable[[str, str], str],
     stage_all: Callable[[str], None],

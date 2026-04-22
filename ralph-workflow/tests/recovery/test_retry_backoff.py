@@ -2,13 +2,20 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
-
-import pytest
+import asyncio
 
 from ralph.config.enums import PHASE_DEVELOPMENT
 from ralph.pipeline.state import AgentChainState, PipelineState
-from ralph.policy.models import AgentChainConfig, AgentsPolicy, PolicyBundle, PipelinePolicy
+from ralph.policy.models import (
+    AgentChainConfig,
+    AgentDrainConfig,
+    AgentsPolicy,
+    ArtifactsPolicy,
+    PhaseDefinition,
+    PhaseTransition,
+    PipelinePolicy,
+    PolicyBundle,
+)
 from ralph.recovery.budget import AgentBudgetRegistry
 from ralph.recovery.controller import RecoveryController, compute_backoff_ms
 
@@ -22,11 +29,10 @@ def _make_state(agents: list[str]) -> PipelineState:
 
 def _make_bundle_with_retry_delay(
     chain_name: str = "development",
-    agents: list[str] = None,
+    agents: list[str] | None = None,
     retry_delay_ms: int = 1000,
     max_retries: int = 3,
 ) -> PolicyBundle:
-    """Create a PolicyBundle with a specific retry_delay_ms for testing backoff."""
     if agents is None:
         agents = ["claude"]
     return PolicyBundle(
@@ -39,41 +45,35 @@ def _make_bundle_with_retry_delay(
                 )
             },
             agent_drains={
-                "development": type("DrainConfig", (), {"chain": chain_name})(),
+                "development": AgentDrainConfig(chain=chain_name),
             },
         ),
         pipeline=PipelinePolicy(
             phases={
-                "development": type("PhaseDef", (), {
-                    "drain": "development",
-                    "transitions": type("Transitions", (), {
-                        "on_success": "complete",
-                        "on_failure": None,
-                        "on_loopback": None,
-                    })(),
-                    "requires_commit": False,
-                    "embeds_analysis": False,
-                })(),
+                "development": PhaseDefinition(
+                    drain="development",
+                    transitions=PhaseTransition(on_success="complete"),
+                ),
             },
             entry_phase="development",
             terminal_phase="complete",
         ),
-        artifacts=type("ArtifactsPolicy", (), {"artifacts": {}})(),
+        artifacts=ArtifactsPolicy(artifacts={}),
     )
 
 
 def test_compute_backoff_ms_doubles_each_attempt() -> None:
     """Backoff doubles with each retry attempt."""
-    assert compute_backoff_ms(base_ms=1000, attempt=0, max_ms=30_000) == 1000
-    assert compute_backoff_ms(base_ms=1000, attempt=1, max_ms=30_000) == 2000
-    assert compute_backoff_ms(base_ms=1000, attempt=2, max_ms=30_000) == 4000
-    assert compute_backoff_ms(base_ms=1000, attempt=3, max_ms=30_000) == 8000
+    assert compute_backoff_ms(base_ms=1000, attempt=0, max_ms=30_000) == 1000  # noqa: PLR2004
+    assert compute_backoff_ms(base_ms=1000, attempt=1, max_ms=30_000) == 2000  # noqa: PLR2004
+    assert compute_backoff_ms(base_ms=1000, attempt=2, max_ms=30_000) == 4000  # noqa: PLR2004
+    assert compute_backoff_ms(base_ms=1000, attempt=3, max_ms=30_000) == 8000  # noqa: PLR2004
 
 
 def test_compute_backoff_ms_caps_at_max() -> None:
     """Backoff is capped at max_ms."""
-    assert compute_backoff_ms(base_ms=1000, attempt=10, max_ms=30_000) == 30_000
-    assert compute_backoff_ms(base_ms=1000, attempt=100, max_ms=30_000) == 30_000
+    assert compute_backoff_ms(base_ms=1000, attempt=10, max_ms=30_000) == 30_000  # noqa: PLR2004
+    assert compute_backoff_ms(base_ms=1000, attempt=100, max_ms=30_000) == 30_000  # noqa: PLR2004
 
 
 def test_retry_delay_ms_zero_without_policy_bundle() -> None:
@@ -146,14 +146,20 @@ def test_backoff_attempts_tracked_per_agent() -> None:
     _AgentTimeoutError.__name__ = "AgentInactivityTimeoutError"
 
     # Fail with claude twice
-    controller.handle(state, _AgentTimeoutError("claude idle 1"), phase=PHASE_DEVELOPMENT, agent="claude")
-    controller.handle(state, _AgentTimeoutError("claude idle 2"), phase=PHASE_DEVELOPMENT, agent="claude")
+    controller.handle(
+        state, _AgentTimeoutError("claude idle 1"), phase=PHASE_DEVELOPMENT, agent="claude"
+    )
+    controller.handle(
+        state, _AgentTimeoutError("claude idle 2"), phase=PHASE_DEVELOPMENT, agent="claude"
+    )
 
     # Fail with opencode once
-    controller.handle(state, _AgentTimeoutError("opencode idle"), phase=PHASE_DEVELOPMENT, agent="opencode")
+    controller.handle(
+        state, _AgentTimeoutError("opencode idle"), phase=PHASE_DEVELOPMENT, agent="opencode"
+    )
 
     # Verify backoff attempts
-    assert controller._backoff_attempts.get(f"{PHASE_DEVELOPMENT}:claude") == 2
+    assert controller._backoff_attempts.get(f"{PHASE_DEVELOPMENT}:claude") == 2  # noqa: PLR2004
     assert controller._backoff_attempts.get(f"{PHASE_DEVELOPMENT}:opencode") == 1
 
 
@@ -207,7 +213,7 @@ def test_retry_delay_ms_from_policy_bundle() -> None:
     )
 
     # retry_delay_ms should be 500 (base delay for first attempt)
-    assert evt.retry_delay_ms == 500
+    assert evt.retry_delay_ms == 500  # noqa: PLR2004
 
 
 def test_retry_delay_ms_doubles_on_subsequent_failure() -> None:
@@ -228,7 +234,7 @@ def test_retry_delay_ms_doubles_on_subsequent_failure() -> None:
         phase=PHASE_DEVELOPMENT,
         agent="claude",
     )
-    assert evt1.retry_delay_ms == 500
+    assert evt1.retry_delay_ms == 500  # noqa: PLR2004
 
     # Second failure (attempt 1 -> base_ms * 2^1 = 1000)
     _, _, evt2 = controller.handle(
@@ -237,7 +243,7 @@ def test_retry_delay_ms_doubles_on_subsequent_failure() -> None:
         phase=PHASE_DEVELOPMENT,
         agent="claude",
     )
-    assert evt2.retry_delay_ms == 1000
+    assert evt2.retry_delay_ms == 1000  # noqa: PLR2004
 
     # Third failure (attempt 2 -> base_ms * 2^2 = 2000)
     _, _, evt3 = controller.handle(
@@ -246,7 +252,7 @@ def test_retry_delay_ms_doubles_on_subsequent_failure() -> None:
         phase=PHASE_DEVELOPMENT,
         agent="claude",
     )
-    assert evt3.retry_delay_ms == 2000
+    assert evt3.retry_delay_ms == 2000  # noqa: PLR2004
 
 
 def test_retry_delay_ms_caps_at_max_backoff() -> None:
@@ -272,8 +278,8 @@ def test_retry_delay_ms_caps_at_max_backoff() -> None:
     # The backoff_attempts key for this agent should have count=10
     # compute_backoff_ms(1000, 10, 30000) = min(1000 * 2^10, 30000) = 30000
     key = f"{PHASE_DEVELOPMENT}:claude"
-    assert controller._backoff_attempts.get(key) == 10
-    assert compute_backoff_ms(1000, 10, 30_000) == 30_000
+    assert controller._backoff_attempts.get(key) == 10  # noqa: PLR2004
+    assert compute_backoff_ms(1000, 10, 30_000) == 30_000  # noqa: PLR2004
 
 
 def test_retry_delay_ms_reset_after_successful_invocation() -> None:
@@ -293,7 +299,7 @@ def test_retry_delay_ms_reset_after_successful_invocation() -> None:
 
     # Verify backoff is at attempt 2
     key = f"{PHASE_DEVELOPMENT}:claude"
-    assert controller._backoff_attempts.get(key) == 2
+    assert controller._backoff_attempts.get(key) == 2  # noqa: PLR2004
 
     # Reset backoff (simulate successful invocation)
     controller.reset_backoff(PHASE_DEVELOPMENT, "claude")
@@ -308,7 +314,7 @@ def test_retry_delay_ms_reset_after_successful_invocation() -> None:
         phase=PHASE_DEVELOPMENT,
         agent="claude",
     )
-    assert evt.retry_delay_ms == 500  # back to base, not 2000
+    assert evt.retry_delay_ms == 500  # back to base, not 2000  # noqa: PLR2004
 
 
 def test_retry_delay_ms_applied_via_injected_sleep() -> None:
@@ -339,7 +345,7 @@ def test_retry_delay_ms_applied_via_injected_sleep() -> None:
     )
 
     # The event carries the correct computed delay
-    assert evt.retry_delay_ms == 1000
+    assert evt.retry_delay_ms == 1000  # noqa: PLR2004
 
     # Simulate the runner applying the delay via injected sleep
     sleep_calls: list[float] = []
@@ -354,7 +360,7 @@ def test_retry_delay_ms_applied_via_injected_sleep() -> None:
 
     asyncio.run(_simulate_retry())
 
-    assert sleep_calls == [1.0]  # 1000ms = 1.0s
+    assert sleep_calls == [1.0]
 
 
 def test_zero_retry_delay_skips_sleep() -> None:
@@ -389,9 +395,3 @@ def test_zero_retry_delay_skips_sleep() -> None:
     asyncio.run(_simulate_retry())
 
     assert sleep_calls == []  # No sleep when delay is 0
-
-
-# ---------------------------------------------------------------------------
-# Import asyncio for async tests
-# ---------------------------------------------------------------------------
-import asyncio

@@ -21,7 +21,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-def _make_snapshot(  # noqa: PLR0913 - test helper exposes many kwargs for coverage
+def _make_snapshot(  # noqa: PLR0913
     *,
     phase: str = "complete",
     plan_summary: str | None = "Implement the feature",

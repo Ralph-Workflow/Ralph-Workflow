@@ -94,7 +94,7 @@ def _restore_work_units(
     return new_state
 
 
-def _dispatch_worker_event(
+def _dispatch_worker_event(  # noqa: PLR0911
     state: PipelineState,
     event: Event,
     recovery: RecoveryController | None = None,
