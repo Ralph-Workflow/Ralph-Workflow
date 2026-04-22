@@ -25,6 +25,7 @@ if TYPE_CHECKING:
     from rich.console import Console
 
     from ralph.display.activity_model import ActivityEventKind
+    from ralph.display.plain_renderer import RunStartOrientation
     from ralph.display.snapshot import PipelineSnapshot
     from ralph.pipeline.worker_state import WorkerStatus
 
@@ -154,7 +155,7 @@ class ParallelDisplay:
 
         # Condenser runs without overflow_ref so it does not embed the path.
         # The renderer receives condensed_ref and appends [see path] when condensed.
-        visible, condensed_flag, summary_line = condense_content(
+        visible, condensed_flag, summary_line, ai_summary_line = condense_content(
             text, soft_limit=400, hard_limit=4000, summary=True
         )
 
@@ -169,6 +170,7 @@ class ParallelDisplay:
             condensed_ref=overflow_ref if condensed_flag else None,
             condensed_flag=condensed_flag,
             summary_line=summary_line,
+            ai_summary_line=ai_summary_line,
         )
 
         self._emit_drop_warning(unit_id)
@@ -217,6 +219,44 @@ class ParallelDisplay:
         show_phase_transition(from_phase, to_phase, console=self._console)
         try:
             self._subscriber.record_phase_transition(from_phase, to_phase)
+        except Exception:
+            return None
+
+    def emit_run_start(self, orientation: RunStartOrientation) -> None:
+        """Emit a one-time run-start orientation block at pipeline start."""
+        try:
+            self._plain_renderer.emit_run_start(orientation)
+        except Exception:
+            return None
+
+    def begin_phase(self, phase: str) -> None:
+        """Start timing a new phase and reset its counters."""
+        try:
+            self._plain_renderer.begin_phase(phase)
+        except Exception:
+            return None
+
+    def emit_phase_close(self, phase: str, produced: str) -> None:
+        """Emit a single-line recap at the end of a phase."""
+        try:
+            self._plain_renderer.emit_phase_close(phase, produced)
+        except Exception:
+            return None
+
+    def emit_run_end(
+        self,
+        *,
+        phase: str,
+        total_agent_calls: int = 0,
+        pr_url: str | None = None,
+    ) -> None:
+        """Emit a one-time run-end orientation block at pipeline stop."""
+        try:
+            self._plain_renderer.emit_run_end(
+                phase=phase,
+                total_agent_calls=total_agent_calls,
+                pr_url=pr_url,
+            )
         except Exception:
             return None
 

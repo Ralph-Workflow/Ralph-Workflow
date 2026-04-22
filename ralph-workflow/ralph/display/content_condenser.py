@@ -7,7 +7,11 @@ from typing import Literal, overload
 
 from rich.cells import cell_len
 
-from ralph.display.long_content_summary import build_content_summary, should_summarize
+from ralph.display.long_content_summary import (
+    build_ai_summary,
+    build_headline_or_placeholder,
+    should_summarize,
+)
 
 _SOFT_LIMIT = 400
 _HARD_LIMIT = 4000
@@ -45,7 +49,7 @@ def condense_content(
     hard_limit: int = ...,
     overflow_ref: str | None = ...,
     summary: Literal[True],
-) -> tuple[str, bool, str | None]: ...
+) -> tuple[str, bool, str | None, str | None]: ...
 
 
 def condense_content(  # noqa: PLR0911, PLR0912
@@ -55,13 +59,15 @@ def condense_content(  # noqa: PLR0911, PLR0912
     hard_limit: int = _HARD_LIMIT,
     overflow_ref: str | None = None,
     summary: bool = False,
-) -> tuple[str, bool] | tuple[str, bool, str | None]:
+) -> tuple[str, bool] | tuple[str, bool, str | None, str | None]:
     """Condense *text* so it fits within display limits.
 
     Returns ``(visible, condensed_flag)`` when *summary* is False (default).
-    Returns ``(visible, condensed_flag, summary_line)`` when *summary* is True,
-    where ``summary_line`` is a non-None headline string only when
-    should_summarize() returns True for the content.
+    Returns ``(visible, condensed_flag, summary_line, ai_summary_line)`` when
+    *summary* is True, where ``summary_line`` is a non-None headline string only
+    when should_summarize() returns True for the content, and ``ai_summary_line``
+    is a non-None AI-generated summary only when the AI hook is configured and
+    RALPH_LONG_CONTENT_AI_SUMMARY=1.
 
     Truncation suffixes use parentheses ``(...)`` rather than brackets to avoid
     being misinterpreted as Rich markup tags by downstream renderers.
@@ -72,25 +78,25 @@ def condense_content(  # noqa: PLR0911, PLR0912
     reference via ``PlainLogRenderer.emit_activity_line(condensed_ref=...)``.
 
     Rules:
-    - If ``cell_len(text) <= soft_limit``: return ``(text, False[, None])``
+    - If ``cell_len(text) <= soft_limit``: return ``(text, False[, None, None])``
     - If ``cell_len(text) <= hard_limit``: head-only truncation with suffix
     - If ``cell_len(text) > hard_limit``: head + tail with middle elided
     """
     if not text:
         if summary:
-            return ("", False, None)
+            return ("", False, None, None)
         return ("", False)
 
     try:
         total = cell_len(text)
     except Exception:
         if summary:
-            return (text, False, None)
+            return (text, False, None, None)
         return (text, False)
 
     if total <= soft_limit:
         if summary:
-            return (text, False, None)
+            return (text, False, None, None)
         return (text, False)
 
     if total <= hard_limit:
@@ -102,12 +108,13 @@ def condense_content(  # noqa: PLR0911, PLR0912
             suffix = " … (truncated)"
         visible = head + suffix
         if summary:
-            summary_line = (
-                build_content_summary(text, max_chars=200)
-                if should_summarize(text, os.environ)
-                else None
-            )
-            return (visible, True, summary_line)
+            if should_summarize(text, os.environ):
+                summary_line: str | None = build_headline_or_placeholder(text, max_chars=200)
+                ai_summary_line: str | None = build_ai_summary(text, os.environ)
+            else:
+                summary_line = None
+                ai_summary_line = None
+            return (visible, True, summary_line, ai_summary_line)
         return (visible, True)
 
     # hard_limit exceeded: head + tail
@@ -132,12 +139,13 @@ def condense_content(  # noqa: PLR0911, PLR0912
         middle = f" … (+{omitted} chars truncated) … "
     visible = head + middle + tail
     if summary:
-        summary_line = (
-            build_content_summary(text, max_chars=200)
-            if should_summarize(text, os.environ)
-            else None
-        )
-        return (visible, True, summary_line)
+        if should_summarize(text, os.environ):
+            summary_line = build_headline_or_placeholder(text, max_chars=200)
+            ai_summary_line = build_ai_summary(text, os.environ)
+        else:
+            summary_line = None
+            ai_summary_line = None
+        return (visible, True, summary_line, ai_summary_line)
     return (visible, True)
 
 

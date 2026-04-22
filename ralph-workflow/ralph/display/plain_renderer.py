@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
+import os
 import re
+import time
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Final
 
 from rich.text import Text
 
-from ralph.display.long_content_summary import build_content_summary
+from ralph.display.long_content_summary import build_ai_summary, build_headline_or_placeholder
 from ralph.display.snapshot import PipelineSnapshot, snapshot_from_state
 
 if TYPE_CHECKING:
@@ -31,6 +34,7 @@ LEVELS: Final[dict[str, str]] = {
 # Closed set of tags for structured log lines
 _TAGS: Final[tuple[str, ...]] = (
     "phase",
+    "phase-close",
     "plan",
     "plan-scope",
     "plan-steps",
@@ -48,13 +52,17 @@ _TAGS: Final[tuple[str, ...]] = (
     "tool-result",
     "error",
     "progress",
+    "run-start",
+    "run-end",
     "status-content",
     "content-start",
     "content-continue",
     "content-end",
+    "content-checkpoint",
     "thinking-start",
     "thinking-continue",
     "thinking-end",
+    "thinking-checkpoint",
 )
 
 # Maps activity kind strings to their log tag
@@ -83,6 +91,7 @@ _KIND_TO_LEVEL: Final[dict[str, str]] = {
 # Maps tag to display category prefix META or CONT
 _TAG_CATEGORY: Final[dict[str, str]] = {
     "phase": "META",
+    "phase-close": "META",
     "plan": "META",
     "plan-scope": "META",
     "plan-steps": "META",
@@ -95,6 +104,8 @@ _TAG_CATEGORY: Final[dict[str, str]] = {
     "failure": "META",
     "artifact": "META",
     "progress": "META",
+    "run-start": "META",
+    "run-end": "META",
     "content": "CONT",
     "thinking": "CONT",
     "tool": "CONT",
@@ -104,9 +115,11 @@ _TAG_CATEGORY: Final[dict[str, str]] = {
     "content-start": "CONT",
     "content-continue": "CONT",
     "content-end": "CONT",
+    "content-checkpoint": "CONT",
     "thinking-start": "CONT",
     "thinking-continue": "CONT",
     "thinking-end": "CONT",
+    "thinking-checkpoint": "CONT",
 }
 
 # Kinds that form streaming blocks
@@ -122,6 +135,15 @@ _ANSI_ESCAPE = re.compile(r"\x1b\[[0-9;]*m")
 
 _EMPTY_PLAN_SIGNATURE: tuple[None, tuple[str, ...], int] = (None, (), 0)
 
+# Streaming checkpoint thresholds
+_STREAMING_CHECKPOINT_FRAGMENTS: Final[int] = 20
+_STREAMING_CHECKPOINT_CHARS: Final[int] = 4000
+
+_CHECKPOINTS_DISABLED_VALUES: frozenset[str] = frozenset({"0", "false", "no", "off"})
+
+# Identical consecutive fragment dedup
+_DEDUP_DISABLED_VALUES: Final[frozenset[str]] = frozenset({"0", "false", "no", "off"})
+
 
 def _strip_markup(text: str) -> str:
     try:
@@ -133,6 +155,44 @@ def _strip_markup(text: str) -> str:
 def _sanitize(text: str) -> str:
     """Strip both Rich markup and ANSI escapes for copy-paste safety."""
     return _ANSI_ESCAPE.sub("", _strip_markup(text))
+
+
+def _checkpoints_enabled() -> bool:
+    flag = os.environ.get("RALPH_STREAMING_CHECKPOINTS", "").lower().strip()
+    return flag not in _CHECKPOINTS_DISABLED_VALUES
+
+
+def _dedup_enabled() -> bool:
+    flag = os.environ.get("RALPH_STREAMING_DEDUP", "").lower().strip()
+    return flag not in _DEDUP_DISABLED_VALUES
+
+
+@dataclass
+class _PhaseCounters:
+    """Per-phase activity counters."""
+
+    content_blocks: int = 0
+    thinking_blocks: int = 0
+    tool_calls: int = 0
+    errors: int = 0
+    start_time: float = 0.0
+
+
+@dataclass(frozen=True)
+class RunStartOrientation:
+    """Orientation data emitted once at pipeline start as a structured block."""
+
+    prompt_path: str | None = None
+    developer_agent: str | None = None
+    developer_model: str | None = None
+    reviewer_agent: str | None = None
+    reviewer_model: str | None = None
+    developer_iters: int | None = None
+    reviewer_reviews: int | None = None
+    parallel_max_workers: int | None = None
+    plan_present: bool = False
+    verbosity: str | None = None
+    workspace_root: str | None = None
 
 
 class PlainLogRenderer:
@@ -166,10 +226,16 @@ class PlainLogRenderer:
         # _active_block maps unit_id -> (base_tag, accumulated_content).
         # Invariant: len(_active_block) <= 1.
         self._active_block: dict[str, tuple[str, list[str]]] = {}
+        # Per-unit char count at the last emitted checkpoint
+        self._last_checkpoint_chars: dict[str, int] = {}
         # One-shot flags for empty-state placeholders
         self._emitted_empty_plan: bool = False
         self._emitted_empty_activity: bool = False
         self._emitted_empty_decision_log: bool = False
+        # Per-phase activity counters
+        self._phase_counters: _PhaseCounters | None = None
+        self._run_start_time: float | None = None
+        self._run_counters: _PhaseCounters = _PhaseCounters()
 
     def snapshot_lines(self, snapshot: PipelineSnapshot) -> list[str]:
         timestamp = self._clock().isoformat()
@@ -331,33 +397,255 @@ class PlainLogRenderer:
             clean_line = _ANSI_ESCAPE.sub("", line)
             self._console.print(clean_line, markup=False, highlight=False, no_wrap=True)
 
-    def _close_block(self, unit_id: str, timestamp: str) -> str | None:
-        """Close an active streaming block and return the end-line, or None if no block."""
+    def emit_run_start(self, orientation: RunStartOrientation) -> None:  # noqa: PLR0912
+        """Emit a one-time MILESTONE orientation block at pipeline start."""
+        timestamp = self._clock().isoformat()
+        self._console.print(
+            f"{timestamp} MILESTONE META [run-start] ◆ Ralph run start",
+            markup=False,
+            highlight=False,
+            no_wrap=True,
+        )
+
+        if orientation.prompt_path is not None:
+            val = _sanitize(orientation.prompt_path)
+            self._console.print(
+                f"{timestamp} INFO META [run-start] prompt={val}",
+                markup=False,
+                highlight=False,
+                no_wrap=True,
+            )
+
+        dev_parts: list[str] = []
+        if orientation.developer_agent is not None:
+            dev_parts.append(f"developer={_sanitize(orientation.developer_agent)}")
+        if orientation.developer_model is not None:
+            dev_parts.append(f"model={_sanitize(orientation.developer_model)}")
+        if dev_parts:
+            self._console.print(
+                f"{timestamp} INFO META [run-start] {' '.join(dev_parts)}",
+                markup=False,
+                highlight=False,
+                no_wrap=True,
+            )
+
+        rev_parts: list[str] = []
+        if orientation.reviewer_agent is not None:
+            rev_parts.append(f"reviewer={_sanitize(orientation.reviewer_agent)}")
+        if orientation.reviewer_model is not None:
+            rev_parts.append(f"model={_sanitize(orientation.reviewer_model)}")
+        if rev_parts:
+            self._console.print(
+                f"{timestamp} INFO META [run-start] {' '.join(rev_parts)}",
+                markup=False,
+                highlight=False,
+                no_wrap=True,
+            )
+
+        iter_parts: list[str] = []
+        if orientation.developer_iters is not None:
+            iter_parts.append(f"dev:{orientation.developer_iters}")
+        if orientation.reviewer_reviews is not None:
+            iter_parts.append(f"reviewer:{orientation.reviewer_reviews}")
+        if iter_parts:
+            self._console.print(
+                f"{timestamp} INFO META [run-start] iterations={' '.join(iter_parts)}",
+                markup=False,
+                highlight=False,
+                no_wrap=True,
+            )
+
+        if orientation.parallel_max_workers is not None:
+            self._console.print(
+                f"{timestamp} INFO META [run-start] "
+                f"parallel=max_workers={orientation.parallel_max_workers}",
+                markup=False,
+                highlight=False,
+                no_wrap=True,
+            )
+
+        plan_val = "ready" if orientation.plan_present else "absent"
+        self._console.print(
+            f"{timestamp} INFO META [run-start] plan={plan_val}",
+            markup=False,
+            highlight=False,
+            no_wrap=True,
+        )
+
+        if orientation.verbosity is not None:
+            self._console.print(
+                f"{timestamp} INFO META [run-start] verbosity={orientation.verbosity}",
+                markup=False,
+                highlight=False,
+                no_wrap=True,
+            )
+
+        if orientation.workspace_root is not None:
+            val = _sanitize(orientation.workspace_root)
+            self._console.print(
+                f"{timestamp} INFO META [run-start] workspace={val}",
+                markup=False,
+                highlight=False,
+                no_wrap=True,
+            )
+
+    def begin_phase(self, phase: str) -> None:
+        """Start timing a new phase and reset its counters to zero."""
+        self._phase_counters = _PhaseCounters(start_time=time.monotonic())
+        if self._run_start_time is None:
+            self._run_start_time = time.monotonic()
+
+    def emit_phase_close(self, phase: str, produced: str) -> None:
+        """Emit a single-line recap after a phase's artifact blocks are rendered."""
+        self.flush_blocks()
+        timestamp = self._clock().isoformat()
+        clean_produced = _sanitize(produced).strip()
+        counters = self._phase_counters
+        if counters is not None:
+            elapsed_s = round(max(0.0, time.monotonic() - counters.start_time), 1)
+        else:
+            elapsed_s = 0.0
+            counters = _PhaseCounters()
+        suffix = (
+            f" (elapsed={elapsed_s}s, content_blocks={counters.content_blocks},"
+            f" thinking_blocks={counters.thinking_blocks}, tool_calls={counters.tool_calls},"
+            f" errors={counters.errors})"
+        )
+        if clean_produced:
+            line = f"{timestamp} INFO META [phase-close] phase={phase} {clean_produced}{suffix}"
+        else:
+            line = f"{timestamp} INFO META [phase-close] phase={phase}{suffix}"
+        self._console.print(line, markup=False, highlight=False, no_wrap=True)
+        self._phase_counters = None
+
+    def _update_counters(self, kind: str, is_new_block: bool) -> None:
+        """Increment activity counters for a new streaming block.
+
+        Run-level counters (_run_counters) are always updated for qualifying events.
+        Phase-level counters (_phase_counters) are updated only when inside an active phase.
+        """
+        if kind == "text" and is_new_block:
+            self._run_counters.content_blocks += 1
+            if self._phase_counters is not None:
+                self._phase_counters.content_blocks += 1
+        elif kind == "thinking" and is_new_block:
+            self._run_counters.thinking_blocks += 1
+            if self._phase_counters is not None:
+                self._phase_counters.thinking_blocks += 1
+        elif kind == "tool_use":
+            self._run_counters.tool_calls += 1
+            if self._phase_counters is not None:
+                self._phase_counters.tool_calls += 1
+        elif kind == "error":
+            self._run_counters.errors += 1
+            if self._phase_counters is not None:
+                self._phase_counters.errors += 1
+
+    def emit_run_end(
+        self,
+        *,
+        phase: str,
+        total_agent_calls: int = 0,
+        pr_url: str | None = None,
+    ) -> None:
+        """Emit a one-time MILESTONE orientation block at pipeline stop."""
+        self.flush_blocks()
+        timestamp = self._clock().isoformat()
+        total_elapsed_s = 0.0
+        if self._run_start_time is not None:
+            total_elapsed_s = round(max(0.0, time.monotonic() - self._run_start_time), 1)
+        self._console.print(
+            f"{timestamp} MILESTONE META [run-end] ◆ Ralph run end",
+            markup=False,
+            highlight=False,
+            no_wrap=True,
+        )
+        self._console.print(
+            f"{timestamp} INFO META [run-end] phase={phase}",
+            markup=False,
+            highlight=False,
+            no_wrap=True,
+        )
+        self._console.print(
+            f"{timestamp} INFO META [run-end] elapsed={total_elapsed_s}s",
+            markup=False,
+            highlight=False,
+            no_wrap=True,
+        )
+        self._console.print(
+            f"{timestamp} INFO META [run-end] content_blocks={self._run_counters.content_blocks}",
+            markup=False,
+            highlight=False,
+            no_wrap=True,
+        )
+        self._console.print(
+            f"{timestamp} INFO META [run-end] thinking_blocks={self._run_counters.thinking_blocks}",
+            markup=False,
+            highlight=False,
+            no_wrap=True,
+        )
+        self._console.print(
+            f"{timestamp} INFO META [run-end] tool_calls={self._run_counters.tool_calls}",
+            markup=False,
+            highlight=False,
+            no_wrap=True,
+        )
+        self._console.print(
+            f"{timestamp} INFO META [run-end] errors={self._run_counters.errors}",
+            markup=False,
+            highlight=False,
+            no_wrap=True,
+        )
+        self._console.print(
+            f"{timestamp} INFO META [run-end] agent_calls={total_agent_calls}",
+            markup=False,
+            highlight=False,
+            no_wrap=True,
+        )
+        if pr_url is not None:
+            self._console.print(
+                f"{timestamp} INFO META [run-end] pr={_sanitize(pr_url)}",
+                markup=False,
+                highlight=False,
+                no_wrap=True,
+            )
+
+    def _close_block(self, unit_id: str, timestamp: str) -> None:
+        """Close an active streaming block, emitting the end-line and optional AI summary."""
         if unit_id not in self._active_block:
-            return None
+            return
         base_tag, accumulated = self._active_block.pop(unit_id)
+        self._last_checkpoint_chars.pop(unit_id, None)
         block_tags = _STREAMING_BLOCK_TAGS.get(base_tag)
         if block_tags is None:
-            return None
+            return
         end_tag = block_tags[2]
         n = len(accumulated)
         chars = sum(len(x) for x in accumulated)
-        summary = build_content_summary(" ".join(accumulated), max_chars=120)
+        joined = " ".join(accumulated)
+        headline = build_headline_or_placeholder(joined, max_chars=120)
         prefix = f"{timestamp} INFO CONT [{end_tag}][{unit_id}] ({n} fragments, {chars} chars)"
-        if summary:
-            return f"{prefix} {summary}"
-        return prefix
+        self._console.print(f"{prefix} {headline}", markup=False, highlight=False, no_wrap=True)
+
+        # Optional AI summary on block close — only when hook + env are configured
+        ai_summary = build_ai_summary(joined, os.environ)
+        if ai_summary:
+            ai_text = _sanitize(ai_summary)
+            self._console.print(
+                f"{timestamp} INFO CONT [{end_tag}][{unit_id}] ↳ ai-summary: {ai_text}",
+                markup=False,
+                highlight=False,
+                no_wrap=True,
+            )
 
     def flush_blocks(self) -> None:
         """Close all open streaming blocks. Call on phase transitions and stop."""
         timestamp = self._clock().isoformat()
         unit_ids = list(self._active_block.keys())
         for unit_id in unit_ids:
-            end_line = self._close_block(unit_id, timestamp)
-            if end_line:
-                self._console.print(end_line, markup=False, highlight=False, no_wrap=True)
+            self._close_block(unit_id, timestamp)
 
-    def emit_activity_line(  # noqa: PLR0912, PLR0913
+    def emit_activity_line(  # noqa: PLR0912, PLR0913, PLR0915
         self,
         unit_id: str,
         kind: str,
@@ -366,8 +654,23 @@ class PlainLogRenderer:
         condensed_ref: str | None = None,
         condensed_flag: bool = False,
         summary_line: str | None = None,
+        ai_summary_line: str | None = None,
     ) -> None:
-        """Emit a kind-tagged, level-badged content line."""
+        """Emit a kind-tagged, level-badged content line.
+
+        Identical consecutive streaming fragments are suppressed by default;
+        set RALPH_STREAMING_DEDUP=0 to disable.
+
+        Optional AI-generated summary emitted on its own line labelled ai-summary.
+        When both summary_line and ai_summary_line are given, summary_line is
+        printed first, then ai_summary_line.
+
+        summary_line semantics:
+        - None: summarization was not applicable (disabled or below threshold) — no line emitted.
+        - "": summarization was applicable but no headline extracted — placeholder emitted when
+          condensed_flag is True.
+        - non-empty str: the actual headline — emitted as-is.
+        """
         timestamp = self._clock().isoformat()
         base_tag = _KIND_TO_TAG.get(kind, "content")
         level = _KIND_TO_LEVEL.get(kind, "INFO")
@@ -383,45 +686,94 @@ class PlainLogRenderer:
                 # Global single-block invariant: close any block from a different unit first.
                 other_units = [uid for uid in self._active_block if uid != unit_id]
                 for other_uid in other_units:
+<<<<<<< HEAD
                     end_line = self._close_block(other_uid, timestamp)
                     if end_line:
                         self._console.print(end_line, markup=False, highlight=False, no_wrap=True)
+=======
+                    self._close_block(other_uid, timestamp)
+>>>>>>> wt-81-display
                 if unit_id not in self._active_block:
                     # Open new block
                     self._active_block[unit_id] = (base_tag, [content])
+                    self._last_checkpoint_chars[unit_id] = 0
                     tag = start_tag
+                    self._update_counters(kind, is_new_block=True)
                 else:
                     existing_base_tag, accumulated = self._active_block[unit_id]
                     if existing_base_tag != base_tag:
                         # Different kind: close old block first
-                        end_line = self._close_block(unit_id, timestamp)
-                        if end_line:
-                            self._console.print(
-                                end_line, markup=False, highlight=False, no_wrap=True
-                            )
+                        self._close_block(unit_id, timestamp)
                         # Open new block
                         self._active_block[unit_id] = (base_tag, [content])
+                        self._last_checkpoint_chars[unit_id] = 0
                         tag = start_tag
+                        self._update_counters(kind, is_new_block=True)
                     else:
-                        # Sequence number: 1-based, computed before appending
+                        # Same block continuation — check dedup BEFORE mutating state
+                        if _dedup_enabled() and accumulated and accumulated[-1] == content:
+                            return
                         seq = len(accumulated) + 1
                         accumulated.append(content)
                         tag = f"{continue_tag}#{seq}"
+
+                        if _checkpoints_enabled():
+                            total_chars = sum(len(x) for x in accumulated)
+                            last_cp = self._last_checkpoint_chars.get(unit_id, 0)
+                            emit_checkpoint = (
+                                seq % _STREAMING_CHECKPOINT_FRAGMENTS == 0
+                                or total_chars - last_cp >= _STREAMING_CHECKPOINT_CHARS
+                            )
+                            if emit_checkpoint:
+                                self._last_checkpoint_chars[unit_id] = total_chars
+                                headline = build_headline_or_placeholder(
+                                    " ".join(accumulated), max_chars=120
+                                )
+                                cp_tag = f"{base_tag}-checkpoint#{seq}"
+                                cp_line = (
+                                    f"{timestamp} INFO CONT [{cp_tag}][{unit_id}]"
+                                    f" ({seq} fragments, {total_chars} chars) {headline}"
+                                )
+                                self._console.print(
+                                    cp_line, markup=False, highlight=False, no_wrap=True
+                                )
             else:
                 tag = base_tag
+                self._update_counters(kind, is_new_block=False)
         else:
             # Non-streaming kind: close ALL open blocks (any unit) before emitting.
             all_units = list(self._active_block.keys())
             for uid in all_units:
-                end_line = self._close_block(uid, timestamp)
-                if end_line:
-                    self._console.print(end_line, markup=False, highlight=False, no_wrap=True)
+                self._close_block(uid, timestamp)
             tag = base_tag
+            self._update_counters(kind, is_new_block=False)
 
+        # Emit summary line.
+        # summary_line=None means "not applicable" — nothing emitted.
+        # summary_line="" means "applicable but no headline" — placeholder when condensed.
+        # summary_line=<non-empty> means the actual headline.
         if summary_line is not None:
-            summary_text = _sanitize(summary_line)
+            if summary_line:
+                summary_text = _sanitize(summary_line)
+                self._console.print(
+                    f"{timestamp} INFO {cat} [{tag}][{unit_id}] ↳ summary: {summary_text}",
+                    markup=False,
+                    highlight=False,
+                    no_wrap=True,
+                )
+            elif condensed_flag:
+                self._console.print(
+                    f"{timestamp} INFO {cat} [{tag}][{unit_id}] ↳ summary: (no headline available)",
+                    markup=False,
+                    highlight=False,
+                    no_wrap=True,
+                )
+
+        # Emit optional AI-generated summary line after the deterministic headline
+        if ai_summary_line:
+            ai_text = _sanitize(ai_summary_line)
             self._console.print(
-                f"{timestamp} INFO {cat} [{tag}][{unit_id}] ↳ summary: {summary_text}",
+                f"{timestamp} INFO {cat} [{tag}][{unit_id}] ↳ ai-summary: {ai_text}",
                 markup=False,
                 highlight=False,
                 no_wrap=True,
@@ -469,4 +821,4 @@ class PlainModeAdapter:
         )
 
 
-__all__ = ["LEVELS", "_TAGS", "PlainLogRenderer", "PlainModeAdapter"]
+__all__ = ["LEVELS", "_TAGS", "PlainLogRenderer", "PlainModeAdapter", "RunStartOrientation"]
