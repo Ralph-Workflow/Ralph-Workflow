@@ -170,7 +170,7 @@ Ralph emits every agent output line as a structured plain-text entry in the foll
 | Tag | Category | Meaning |
 |-----|----------|---------|
 | `phase` | META | Workflow phase transition |
-| `phase-close` | META | Compact single-line recap emitted at the end of each phase |
+| `phase-close` | META | Compact single-line recap with elapsed time and per-phase counters |
 | `plan` | META | Plan summary or scope |
 | `plan-scope` | META | Plan scope items |
 | `plan-steps` | META | Step progress |
@@ -183,6 +183,7 @@ Ralph emits every agent output line as a structured plain-text entry in the foll
 | `artifact` | META | Artifact kind/summary |
 | `progress` | META | Progress update |
 | `run-start` | META | One-time pipeline orientation emitted at run start |
+| `run-end` | META | One-time pipeline close emitted at run end |
 | `content` | CONT | Agent text output (one-shot, non-streaming) |
 | `content-start` | CONT | Start of a streaming text block |
 | `content-continue` | CONT | Continuation line in a streaming text block |
@@ -225,14 +226,14 @@ When a content block exceeds the soft limit and is condensed, the full text is p
 2026-04-21T12:00:03+00:00 INFO CONT [content-start][dev-1] Refactored parser to accept streaming deltas
 2026-04-21T12:00:04+00:00 INFO CONT [content-continue#2][dev-1] next chunk
 2026-04-21T12:00:05+00:00 INFO CONT [content-end][dev-1] (2 fragments, 850 chars) Refactored parser to accept streaming deltas
-2026-04-21T12:00:05+00:00 INFO META [phase-close] phase=development development: result artifact present
+2026-04-21T12:00:05+00:00 INFO META [phase-close] phase=development development: result artifact present (elapsed=12.4s, content_blocks=2, thinking_blocks=1, tool_calls=3, errors=0)
 2026-04-21T12:00:06+00:00 INFO CONT [thinking-start][dev-1] I need to check the tests before…
 2026-04-21T12:00:07+00:00 SUCCESS CONT [tool-result][dev-1] ok
 2026-04-21T12:00:08+00:00 WARN META [progress][dev-1] dropped 3 lines since last flush
 2026-04-21T12:00:09+00:00 INFO CONT [content][dev-1] AAAAA… (+4200 chars, see .agent/raw/dev-1.log) …ZZZZZZZ
 ```
 
-The `[run-start]` block is emitted once at pipeline start and the `[phase-close]` line is emitted once at the end of each phase's artifact rendering; both are suppressed when running with `--quiet`.
+The `[run-start]` block is emitted once at pipeline start , the `[phase-close]` line is emitted once at the end of each phase's artifact rendering, and the `[run-end]` block is emitted once at pipeline stop; all three are suppressed when running with `--quiet`.
 
 Tags starting with `content-`, `thinking-`, `tool`, `tool-result`, `error`, or `status-content` are CONT (agent-produced); everything else is META (workflow). Streaming blocks are always closed with a `-end` line before a different unit or a different kind is emitted. A `↳ summary:` line preceding condensed content is an additional, deterministic headline layer — not a replacement for the content itself; the full text is always available at `.agent/raw/<unit>.log`.
 
@@ -305,4 +306,27 @@ For very long streaming blocks, Ralph emits a `[content-checkpoint#N]` orientati
 2026-04-20T12:34:56Z INFO CONT [content-checkpoint#20][dev-1] (20 fragments, 4500 chars) My running headline.
 ```
 
+
+### Example [run-end] block
+
+```
+2026-04-21T12:05:00+00:00 MILESTONE META [run-end] ◆ Ralph run end
+2026-04-21T12:05:00+00:00 INFO META [run-end] phase=complete
+2026-04-21T12:05:00+00:00 INFO META [run-end] elapsed=42.3s
+2026-04-21T12:05:00+00:00 INFO META [run-end] content_blocks=12
+2026-04-21T12:05:00+00:00 INFO META [run-end] thinking_blocks=4
+2026-04-21T12:05:00+00:00 INFO META [run-end] tool_calls=28
+2026-04-21T12:05:00+00:00 INFO META [run-end] errors=0
+2026-04-21T12:05:00+00:00 INFO META [run-end] agent_calls=7
+2026-04-21T12:05:00+00:00 INFO META [run-end] pr=https://github.com/test/repo/pull/123
+```
+
+### Environment variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `RALPH_STREAMING_DEDUP` | `1` | Set to `0` to disable identical-consecutive-fragment suppression |
+| `RALPH_STREAMING_CHECKPOINTS` | `1` | Set to `0` to disable mid-stream checkpoint lines |
+| `RALPH_LONG_CONTENT_SUMMARY` | `1` | Set to `0` to disable the deterministic headline summary layer |
+| `RALPH_LONG_CONTENT_AI_SUMMARY` | `0` | Set to `1` to enable the optional AI summary layer (requires hook registration) |
 To disable checkpoints, set `RALPH_STREAMING_CHECKPOINTS=0`.

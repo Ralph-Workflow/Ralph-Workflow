@@ -229,10 +229,34 @@ class ParallelDisplay:
         except Exception:
             return None
 
+    def begin_phase(self, phase: str) -> None:
+        """Start timing a new phase and reset its counters."""
+        try:
+            self._plain_renderer.begin_phase(phase)
+        except Exception:
+            return None
+
     def emit_phase_close(self, phase: str, produced: str) -> None:
         """Emit a single-line recap at the end of a phase."""
         try:
             self._plain_renderer.emit_phase_close(phase, produced)
+        except Exception:
+            return None
+
+    def emit_run_end(
+        self,
+        *,
+        phase: str,
+        total_agent_calls: int = 0,
+        pr_url: str | None = None,
+    ) -> None:
+        """Emit a one-time run-end orientation block at pipeline stop."""
+        try:
+            self._plain_renderer.emit_run_end(
+                phase=phase,
+                total_agent_calls=total_agent_calls,
+                pr_url=pr_url,
+            )
         except Exception:
             return None
 

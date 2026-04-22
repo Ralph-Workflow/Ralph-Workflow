@@ -42,7 +42,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`theme.log.*` styles** in `RALPH_THEME` — `theme.log.info`, `theme.log.success`, `theme.log.warn`, `theme.log.error`, and `theme.log.milestone` give Rich TTY output visually distinct level badges while plain ANSI-free output continues to emit literal level strings unchanged.
 - **`show_phase_start_from_state(state, phase)`** in `ralph.display.phase_banner` and re-exported from `ralph.display` — convenience helper that extracts iteration, reviewer pass, and analysis iteration counters from any state-like object and delegates to `show_phase_start`.
 - **`[run-start]` orientation line** emitted once at pipeline start (MILESTONE header plus INFO continuation lines for prompt path, developer/reviewer agent+model, iterations, parallel worker budget, plan presence, workspace root). Suppressed by `--quiet`.
-- **`[phase-close]` single-line recap** emitted after each phase's artifact blocks summarising what the phase produced (e.g. `plan: 5 step(s), 2 risk(s)`; `review: 3 issue(s)`). Suppressed by `--quiet`.
+- **`[phase-close]` now reports timing and activity counters.** Each phase-close line includes elapsed=<N>s and the count of content/thinking/tool_call/error events emitted during that phase (e.g. `plan: 5 step(s), 2 risk(s)`; `review: 3 issue(s)`). Suppressed by `--quiet`.
+
+- **`[run-end]` MILESTONE block** emitted once at pipeline stop with total elapsed and aggregate counters (content_blocks, thinking_blocks, tool_calls, errors, agent_calls). Suppressed by `--quiet`.
+- **Same-content streaming fragment suppression (default-on).** Identical consecutive text/thinking deltas no longer emit duplicate `[content-continue#N]` lines. Set `RALPH_STREAMING_DEDUP=0` to disable.
 
 ### Migration
 - Users relying on the previously silent default behavior should now pass `--quiet` (or `-q`) explicitly.

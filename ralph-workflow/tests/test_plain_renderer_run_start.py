@@ -6,7 +6,7 @@ from io import StringIO
 
 from rich.console import Console
 
-from ralph.display.plain_renderer import PlainLogRenderer, RunStartOrientation, _TAG_CATEGORY, _TAGS
+from ralph.display.plain_renderer import _TAG_CATEGORY, _TAGS, PlainLogRenderer, RunStartOrientation
 
 
 def _make_renderer() -> tuple[PlainLogRenderer, StringIO]:

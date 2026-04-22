@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import re
+import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Final
@@ -52,6 +53,7 @@ _TAGS: Final[tuple[str, ...]] = (
     "error",
     "progress",
     "run-start",
+    "run-end",
     "status-content",
     "content-start",
     "content-continue",
@@ -103,6 +105,7 @@ _TAG_CATEGORY: Final[dict[str, str]] = {
     "artifact": "META",
     "progress": "META",
     "run-start": "META",
+    "run-end": "META",
     "content": "CONT",
     "thinking": "CONT",
     "tool": "CONT",
@@ -138,6 +141,9 @@ _STREAMING_CHECKPOINT_CHARS: Final[int] = 4000
 
 _CHECKPOINTS_DISABLED_VALUES: frozenset[str] = frozenset({"0", "false", "no", "off"})
 
+# Identical consecutive fragment dedup
+_DEDUP_DISABLED_VALUES: Final[frozenset[str]] = frozenset({"0", "false", "no", "off"})
+
 
 def _strip_markup(text: str) -> str:
     try:
@@ -154,6 +160,22 @@ def _sanitize(text: str) -> str:
 def _checkpoints_enabled() -> bool:
     flag = os.environ.get("RALPH_STREAMING_CHECKPOINTS", "").lower().strip()
     return flag not in _CHECKPOINTS_DISABLED_VALUES
+
+
+def _dedup_enabled() -> bool:
+    flag = os.environ.get("RALPH_STREAMING_DEDUP", "").lower().strip()
+    return flag not in _DEDUP_DISABLED_VALUES
+
+
+@dataclass
+class _PhaseCounters:
+    """Per-phase activity counters."""
+
+    content_blocks: int = 0
+    thinking_blocks: int = 0
+    tool_calls: int = 0
+    errors: int = 0
+    start_time: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -210,6 +232,12 @@ class PlainLogRenderer:
         self._emitted_empty_plan: bool = False
         self._emitted_empty_activity: bool = False
         self._emitted_empty_decision_log: bool = False
+        # Per-phase activity counters
+        self._phase_counters: _PhaseCounters | None = None
+        self._run_start_time: float | None = None
+        self._run_counters: _PhaseCounters = _PhaseCounters()
+        # Tracks whether any phase has ever been active (for counter initialization)
+        self._has_ever_had_phase: bool = False
 
     def snapshot_lines(self, snapshot: PipelineSnapshot) -> list[str]:
         timestamp = self._clock().isoformat()
@@ -300,9 +328,7 @@ class PlainLogRenderer:
         if activity_parts:
             lines.append(f"{timestamp} INFO META [activity] {' '.join(activity_parts)}")
         if snapshot.last_activity_line:
-            lines.append(
-                f"{timestamp} INFO META [activity-line] {snapshot.last_activity_line}"
-            )
+            lines.append(f"{timestamp} INFO META [activity-line] {snapshot.last_activity_line}")
         return lines
 
     def _analysis_lines(self, snapshot: PipelineSnapshot, timestamp: str) -> list[str]:
@@ -345,9 +371,7 @@ class PlainLogRenderer:
             previous_status = self._last_worker_states.get(worker.unit_id)
             if previous_status == worker.status:
                 continue
-            lines.append(
-                f"{timestamp} INFO META [worker] {worker.unit_id} {worker.status}"
-            )
+            lines.append(f"{timestamp} INFO META [worker] {worker.unit_id} {worker.status}")
             self._last_worker_states[worker.unit_id] = worker.status
         return lines
 
@@ -375,7 +399,7 @@ class PlainLogRenderer:
             clean_line = _ANSI_ESCAPE.sub("", line)
             self._console.print(clean_line, markup=False, highlight=False, no_wrap=True)
 
-    def emit_run_start(self, orientation: RunStartOrientation) -> None:
+    def emit_run_start(self, orientation: RunStartOrientation) -> None:  # noqa: PLR0912
         """Emit a one-time MILESTONE orientation block at pipeline start."""
         timestamp = self._clock().isoformat()
         self._console.print(
@@ -435,7 +459,8 @@ class PlainLogRenderer:
 
         if orientation.parallel_max_workers is not None:
             self._console.print(
-                f"{timestamp} INFO META [run-start] parallel=max_workers={orientation.parallel_max_workers}",
+                f"{timestamp} INFO META [run-start] "
+                f"parallel=max_workers={orientation.parallel_max_workers}",
                 markup=False,
                 highlight=False,
                 no_wrap=True,
@@ -466,16 +491,143 @@ class PlainLogRenderer:
                 no_wrap=True,
             )
 
+    def begin_phase(self, phase: str) -> None:
+        """Start timing a new phase and reset its counters.
+
+        If this is the first phase after pre-phase activity, preserve the run-level
+        counters so that pre-phase activity is not lost.
+        """
+        if not self._has_ever_had_phase and self._run_counters.content_blocks > 0:
+            # First phase after pre-phase activity: preserve run counters
+            self._phase_counters = _PhaseCounters(
+                content_blocks=self._run_counters.content_blocks,
+                thinking_blocks=self._run_counters.thinking_blocks,
+                tool_calls=self._run_counters.tool_calls,
+                errors=self._run_counters.errors,
+                start_time=time.monotonic(),
+            )
+            self._has_ever_had_phase = True
+        else:
+            # Subsequent phases or first phase with no pre-phase activity: start fresh
+            self._phase_counters = _PhaseCounters(start_time=time.monotonic())
+            self._has_ever_had_phase = True
+        if self._run_start_time is None:
+            self._run_start_time = time.monotonic()
+
     def emit_phase_close(self, phase: str, produced: str) -> None:
         """Emit a single-line recap after a phase's artifact blocks are rendered."""
         self.flush_blocks()
         timestamp = self._clock().isoformat()
         clean_produced = _sanitize(produced).strip()
-        if clean_produced:
-            line = f"{timestamp} INFO META [phase-close] phase={phase} {clean_produced}"
+        counters = self._phase_counters
+        if counters is not None:
+            elapsed_s = round(max(0.0, time.monotonic() - counters.start_time), 1)
         else:
-            line = f"{timestamp} INFO META [phase-close] phase={phase}"
+            elapsed_s = 0.0
+            counters = _PhaseCounters()
+        suffix = (
+            f" (elapsed={elapsed_s}s, content_blocks={counters.content_blocks},"
+            f" thinking_blocks={counters.thinking_blocks}, tool_calls={counters.tool_calls},"
+            f" errors={counters.errors})"
+        )
+        if clean_produced:
+            line = f"{timestamp} INFO META [phase-close] phase={phase} {clean_produced}{suffix}"
+        else:
+            line = f"{timestamp} INFO META [phase-close] phase={phase}{suffix}"
         self._console.print(line, markup=False, highlight=False, no_wrap=True)
+        self._phase_counters = None
+
+    def _update_counters(self, kind: str, is_new_block: bool) -> None:
+        """Increment activity counters for a new streaming block.
+
+        Run-level counters (_run_counters) are always updated for qualifying events.
+        Phase-level counters (_phase_counters) are updated only when inside an active phase.
+        """
+        if kind == "text" and is_new_block:
+            self._run_counters.content_blocks += 1
+            if self._phase_counters is not None:
+                self._phase_counters.content_blocks += 1
+        elif kind == "thinking" and is_new_block:
+            self._run_counters.thinking_blocks += 1
+            if self._phase_counters is not None:
+                self._phase_counters.thinking_blocks += 1
+        elif kind == "tool_use":
+            self._run_counters.tool_calls += 1
+            if self._phase_counters is not None:
+                self._phase_counters.tool_calls += 1
+        elif kind == "error":
+            self._run_counters.errors += 1
+            if self._phase_counters is not None:
+                self._phase_counters.errors += 1
+
+    def emit_run_end(
+        self,
+        *,
+        phase: str,
+        total_agent_calls: int = 0,
+        pr_url: str | None = None,
+    ) -> None:
+        """Emit a one-time MILESTONE orientation block at pipeline stop."""
+        self.flush_blocks()
+        timestamp = self._clock().isoformat()
+        total_elapsed_s = 0.0
+        if self._run_start_time is not None:
+            total_elapsed_s = round(max(0.0, time.monotonic() - self._run_start_time), 1)
+        self._console.print(
+            f"{timestamp} MILESTONE META [run-end] ◆ Ralph run end",
+            markup=False,
+            highlight=False,
+            no_wrap=True,
+        )
+        self._console.print(
+            f"{timestamp} INFO META [run-end] phase={phase}",
+            markup=False,
+            highlight=False,
+            no_wrap=True,
+        )
+        self._console.print(
+            f"{timestamp} INFO META [run-end] elapsed={total_elapsed_s}s",
+            markup=False,
+            highlight=False,
+            no_wrap=True,
+        )
+        self._console.print(
+            f"{timestamp} INFO META [run-end] content_blocks={self._run_counters.content_blocks}",
+            markup=False,
+            highlight=False,
+            no_wrap=True,
+        )
+        self._console.print(
+            f"{timestamp} INFO META [run-end] thinking_blocks={self._run_counters.thinking_blocks}",
+            markup=False,
+            highlight=False,
+            no_wrap=True,
+        )
+        self._console.print(
+            f"{timestamp} INFO META [run-end] tool_calls={self._run_counters.tool_calls}",
+            markup=False,
+            highlight=False,
+            no_wrap=True,
+        )
+        self._console.print(
+            f"{timestamp} INFO META [run-end] errors={self._run_counters.errors}",
+            markup=False,
+            highlight=False,
+            no_wrap=True,
+        )
+        self._console.print(
+            f"{timestamp} INFO META [run-end] agent_calls={total_agent_calls}",
+            markup=False,
+            highlight=False,
+            no_wrap=True,
+        )
+        if pr_url is not None:
+            self._console.print(
+                f"{timestamp} INFO META [run-end] pr={_sanitize(pr_url)}",
+                markup=False,
+                highlight=False,
+                no_wrap=True,
+            )
 
     def _close_block(self, unit_id: str, timestamp: str) -> None:
         """Close an active streaming block, emitting the end-line and optional AI summary."""
@@ -525,6 +677,9 @@ class PlainLogRenderer:
     ) -> None:
         """Emit a kind-tagged, level-badged content line.
 
+        Identical consecutive streaming fragments are suppressed by default;
+        set RALPH_STREAMING_DEDUP=0 to disable.
+
         Optional AI-generated summary emitted on its own line labelled ai-summary.
         When both summary_line and ai_summary_line are given, summary_line is
         printed first, then ai_summary_line.
@@ -556,6 +711,7 @@ class PlainLogRenderer:
                     self._active_block[unit_id] = (base_tag, [content])
                     self._last_checkpoint_chars[unit_id] = 0
                     tag = start_tag
+                    self._update_counters(kind, is_new_block=True)
                 else:
                     existing_base_tag, accumulated = self._active_block[unit_id]
                     if existing_base_tag != base_tag:
@@ -565,8 +721,11 @@ class PlainLogRenderer:
                         self._active_block[unit_id] = (base_tag, [content])
                         self._last_checkpoint_chars[unit_id] = 0
                         tag = start_tag
+                        self._update_counters(kind, is_new_block=True)
                     else:
-                        # Sequence number: 1-based, computed before appending
+                        # Same block continuation — check dedup BEFORE mutating state
+                        if _dedup_enabled() and accumulated and accumulated[-1] == content:
+                            return
                         seq = len(accumulated) + 1
                         accumulated.append(content)
                         tag = f"{continue_tag}#{seq}"
@@ -593,12 +752,14 @@ class PlainLogRenderer:
                                 )
             else:
                 tag = base_tag
+                self._update_counters(kind, is_new_block=False)
         else:
             # Non-streaming kind: close ALL open blocks (any unit) before emitting.
             all_units = list(self._active_block.keys())
             for uid in all_units:
                 self._close_block(uid, timestamp)
             tag = base_tag
+            self._update_counters(kind, is_new_block=False)
 
         # Emit summary line.
         # summary_line=None means "not applicable" — nothing emitted.
@@ -615,8 +776,7 @@ class PlainLogRenderer:
                 )
             elif condensed_flag:
                 self._console.print(
-                    f"{timestamp} INFO {cat} [{tag}][{unit_id}]"
-                    f" ↳ summary: (no headline available)",
+                    f"{timestamp} INFO {cat} [{tag}][{unit_id}] ↳ summary: (no headline available)",
                     markup=False,
                     highlight=False,
                     no_wrap=True,
@@ -674,4 +834,4 @@ class PlainModeAdapter:
         )
 
 
-__all__ = ["LEVELS", "RunStartOrientation", "_TAGS", "PlainLogRenderer", "PlainModeAdapter"]
+__all__ = ["LEVELS", "_TAGS", "PlainLogRenderer", "PlainModeAdapter", "RunStartOrientation"]

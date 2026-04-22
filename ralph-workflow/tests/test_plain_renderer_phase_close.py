@@ -6,7 +6,7 @@ from io import StringIO
 
 from rich.console import Console
 
-from ralph.display.plain_renderer import PlainLogRenderer, _TAG_CATEGORY, _TAGS
+from ralph.display.plain_renderer import _TAG_CATEGORY, _TAGS, PlainLogRenderer
 
 
 def _make_renderer() -> tuple[PlainLogRenderer, StringIO]:
@@ -61,6 +61,7 @@ def test_phase_close_trims_empty_produced() -> None:
     lines = [ln for ln in buf.getvalue().splitlines() if ln.strip()]
     assert len(lines) == 1
     line = lines[0]
-    # Line should end with 'phase=planning' with no trailing whitespace
-    assert line.endswith("phase=planning")
-    assert "phase=planning " not in line
+    # Line should contain 'phase=planning' and end with the suffix
+    assert "phase=planning" in line
+    suffix = "(elapsed=0.0s, content_blocks=0, thinking_blocks=0, tool_calls=0, errors=0)"
+    assert line.endswith(suffix), f"expected line to end with {suffix}, got: {line}"

@@ -499,7 +499,6 @@ def _notify_pipeline_subscriber(
     _notify_dashboard_subscriber(pipeline_subscriber, state)
 
 
-
 def _reduce_runtime_recovery(
     state: PipelineState,
     pipeline_policy: PipelinePolicy,
@@ -595,8 +594,7 @@ def _run_pipeline_step(  # noqa: PLR0913
         _save_checkpoint_or_log(
             next_state,
             message=(
-                "Checkpoint save failed in phase={phase}: {err} "
-                "-- continuing without checkpoint"
+                "Checkpoint save failed in phase={phase}: {err} -- continuing without checkpoint"
             ),
         )
         return next_state
@@ -845,6 +843,9 @@ def run(  # noqa: PLR0913
                         workspace_root=str(workspace_scope.root),
                     )
                     cast("ParallelDisplay", active_display).emit_run_start(_orientation)
+            if hasattr(active_display, "begin_phase"):
+                with suppress(Exception):
+                    active_display.begin_phase(state.phase)
             _notify_pipeline_subscriber(effective_pipeline_subscriber, state)
             try:
                 while state.phase != PHASE_COMPLETE:
@@ -867,6 +868,9 @@ def run(  # noqa: PLR0913
                         state,
                         verbosity=effective_verbosity,
                     )
+                    if hasattr(active_display, "begin_phase"):
+                        with suppress(Exception):
+                            active_display.begin_phase(state.phase)
 
             except KeyboardInterrupt:
                 logger.warning("Interrupted by user; saving checkpoint.")
@@ -889,6 +893,14 @@ def run(  # noqa: PLR0913
                     _status_text("Pipeline failed", state.last_error or "Unknown error", "red"),
                 )
                 exit_code = 1
+            if not is_quiet and hasattr(active_display, "emit_run_end"):
+                with suppress(Exception):
+                    total_agent_calls = getattr(state.metrics, "total_agent_calls", 0)
+                    active_display.emit_run_end(
+                        phase=state.phase,
+                        total_agent_calls=total_agent_calls,
+                        pr_url=state.pr_url,
+                    )
     finally:
         _emit_final_summary(
             state,
@@ -1055,8 +1067,7 @@ async def _run_fan_out_async(  # noqa: PLR0913
         _save_checkpoint_or_log(
             recovered,
             message=(
-                "Checkpoint save failed while recording fan-out recovery in phase={phase}: "
-                "{err}"
+                "Checkpoint save failed while recording fan-out recovery in phase={phase}: {err}"
             ),
         )
         return recovered
@@ -1571,7 +1582,9 @@ def _render_phase_artifact_handoff(
 
                 plan = read_plan_artifact(workspace_root)
                 if plan is not None:
-                    produced = f"plan: {plan.total_steps} step(s), {len(plan.risks_mitigations)} risk(s)"
+                    produced = (
+                        f"plan: {plan.total_steps} step(s), {len(plan.risks_mitigations)} risk(s)"
+                    )
                 else:
                     produced = "plan: (no plan artifact on disk)"
                 cast("ParallelDisplay", display).emit_phase_close(phase, produced)
@@ -1580,7 +1593,9 @@ def _render_phase_artifact_handoff(
         render_development_artifact(workspace_root, console_obj)
         if verbosity != Verbosity.QUIET and hasattr(display, "emit_phase_close"):
             with suppress(Exception):
-                dev_result_path = workspace_root / ".agent" / "artifacts" / "development_result.json"
+                dev_result_path = (
+                    workspace_root / ".agent" / "artifacts" / "development_result.json"
+                )
                 produced = (
                     "development: result artifact present"
                     if dev_result_path.exists()
@@ -1627,7 +1642,6 @@ def _render_phase_artifact_handoff(
         render_analysis_decision(workspace_root, phase, console_obj)
 
 
-
 def _commit_effect(workspace_root: Path) -> CommitEffect:
     return CommitEffect(message_file=str(workspace_root / COMMIT_MESSAGE_ARTIFACT))
 
@@ -1669,7 +1683,11 @@ def _execute_effect(  # noqa: PLR0913
         )
     if isinstance(effect, CommitEffect):
         return _execute_commit_effect(
-            effect, create_commit, stage_all, workspace_scope.root, display,
+            effect,
+            create_commit,
+            stage_all,
+            workspace_scope.root,
+            display,
             verbosity=verbosity,
         )
     if isinstance(effect, SaveCheckpointEffect):
