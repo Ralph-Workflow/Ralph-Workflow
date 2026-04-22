@@ -159,19 +159,33 @@ def test_tool_use_counts_across_phases() -> None:
     assert "tool_calls=1" in out2
 
 
-def test_run_counters_accumulate_without_active_phase() -> None:
-    """Run-level counters are updated even when _phase_counters is None."""
+def test_pre_phase_activity_does_not_leak_into_first_phase_close() -> None:
+    """Pre-phase activity shows up only in emit_run_end aggregates, never in first [phase-close]."""
     renderer, buf = _make_renderer()
-    # Emit activity without begin_phase
+    # Emit activity BEFORE any begin_phase call — this updates _run_counters only
     renderer.emit_activity_line("u", "text", "content before phase")
     renderer.emit_activity_line("u", "tool_use", "bash")
 
-    # Now begin phase and close it - run counters should have the pre-phase activity
+    # Start the first phase and close it immediately with no in-phase activity
     renderer.begin_phase("development")
     buf.truncate(0)
     buf.seek(0)
     renderer.emit_phase_close("development", "")
-    out = buf.getvalue()
-    # Both pre-phase and in-phase activity should be counted in run counters
-    assert "content_blocks=1" in out
-    assert "tool_calls=1" in out
+    phase_close_out = buf.getvalue()
+    # First [phase-close] must report ZERO for everything because no in-phase activity
+    assert "content_blocks=0" in phase_close_out, (
+        f"first phase must not inherit pre-phase counters, got: {phase_close_out}"
+    )
+    assert "tool_calls=0" in phase_close_out
+    assert "thinking_blocks=0" in phase_close_out
+    assert "errors=0" in phase_close_out
+
+    # emit_run_end must still reflect the pre-phase activity in aggregate counters
+    buf.truncate(0)
+    buf.seek(0)
+    renderer.emit_run_end(phase="complete", total_agent_calls=0)
+    run_end_out = buf.getvalue()
+    assert "content_blocks=1" in run_end_out, (
+        f"run-end must aggregate pre-phase activity, got: {run_end_out}"
+    )
+    assert "tool_calls=1" in run_end_out

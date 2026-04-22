@@ -236,8 +236,6 @@ class PlainLogRenderer:
         self._phase_counters: _PhaseCounters | None = None
         self._run_start_time: float | None = None
         self._run_counters: _PhaseCounters = _PhaseCounters()
-        # Tracks whether any phase has ever been active (for counter initialization)
-        self._has_ever_had_phase: bool = False
 
     def snapshot_lines(self, snapshot: PipelineSnapshot) -> list[str]:
         timestamp = self._clock().isoformat()
@@ -492,25 +490,8 @@ class PlainLogRenderer:
             )
 
     def begin_phase(self, phase: str) -> None:
-        """Start timing a new phase and reset its counters.
-
-        If this is the first phase after pre-phase activity, preserve the run-level
-        counters so that pre-phase activity is not lost.
-        """
-        if not self._has_ever_had_phase and self._run_counters.content_blocks > 0:
-            # First phase after pre-phase activity: preserve run counters
-            self._phase_counters = _PhaseCounters(
-                content_blocks=self._run_counters.content_blocks,
-                thinking_blocks=self._run_counters.thinking_blocks,
-                tool_calls=self._run_counters.tool_calls,
-                errors=self._run_counters.errors,
-                start_time=time.monotonic(),
-            )
-            self._has_ever_had_phase = True
-        else:
-            # Subsequent phases or first phase with no pre-phase activity: start fresh
-            self._phase_counters = _PhaseCounters(start_time=time.monotonic())
-            self._has_ever_had_phase = True
+        """Start timing a new phase and reset its counters to zero."""
+        self._phase_counters = _PhaseCounters(start_time=time.monotonic())
         if self._run_start_time is None:
             self._run_start_time = time.monotonic()
 
