@@ -561,34 +561,35 @@ def _run_pipeline_step(  # noqa: PLR0913
                 pipeline_subscriber=pipeline_subscriber,
             )
 
-        workspace = FsWorkspace(
-            workspace_scope.root,
-            allowed_roots=workspace_scope.allowed_roots,
-        )
-        _materialize_agent_prompt_if_needed(
-            effect,
-            workspace,
-            policy_bundle.pipeline,
-            registry,
-            workspace_scope,
-        )
-        event = _invoke_execute_effect_with_optional_display(
-            effect,
-            config,
-            workspace_scope,
-            display=display,
-            verbosity=verbosity,
-            state=state,
-        )
-        if isinstance(effect, InvokeAgentEffect) and event == PipelineEvent.AGENT_SUCCESS:
-            event = _phase_event_after_agent_run(
-                effect=effect,
-                config=config,
-                policy_bundle=policy_bundle,
-                workspace=workspace,
-                workspace_scope=workspace_scope,
-                display=display,
+        with process_phase_scope(state.phase):
+            workspace = FsWorkspace(
+                workspace_scope.root,
+                allowed_roots=workspace_scope.allowed_roots,
             )
+            _materialize_agent_prompt_if_needed(
+                effect,
+                workspace,
+                policy_bundle.pipeline,
+                registry,
+                workspace_scope,
+            )
+            event = _invoke_execute_effect_with_optional_display(
+                effect,
+                config,
+                workspace_scope,
+                display=display,
+                verbosity=verbosity,
+                state=state,
+            )
+            if isinstance(effect, InvokeAgentEffect) and event == PipelineEvent.AGENT_SUCCESS:
+                event = _phase_event_after_agent_run(
+                    effect=effect,
+                    config=config,
+                    policy_bundle=policy_bundle,
+                    workspace=workspace,
+                    workspace_scope=workspace_scope,
+                    display=display,
+                )
 
         next_state, _ = reducer_reduce(state, event, policy_bundle.pipeline)
         _notify_pipeline_subscriber(pipeline_subscriber, next_state)
@@ -1582,11 +1583,10 @@ def _execute_effect(  # noqa: PLR0913
     )
 
     if isinstance(effect, InvokeAgentEffect):
-        with process_phase_scope(effect.phase):
-            return _execute_agent_effect(
-                effect, config, deps, workspace_scope,
-                display=display, verbosity=verbosity, state=state,
-            )
+        return _execute_agent_effect(
+            effect, config, deps, workspace_scope,
+            display=display, verbosity=verbosity, state=state,
+        )
     if isinstance(effect, CommitEffect):
         return _execute_commit_effect(
             effect, create_commit, stage_all, workspace_scope.root, display
