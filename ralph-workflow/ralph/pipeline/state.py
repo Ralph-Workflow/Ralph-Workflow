@@ -151,6 +151,7 @@ class PipelineState(BaseModel):  # type: ignore[explicit-any]
         last_failure_category: Category of the most recent classified failure.
         last_connectivity_state: Last observed connectivity state string.
         recovery_cycle_cap: Maximum recovery cycles before pipeline exits.
+        last_retry_delay_ms: Pending retry delay in ms (set by controller, consumed by runner).
     """
 
     model_config = ConfigDict(frozen=True)
@@ -202,6 +203,8 @@ class PipelineState(BaseModel):  # type: ignore[explicit-any]
     last_failure_category: str | None = None
     last_connectivity_state: str = "unknown"
     recovery_cycle_cap: int = Field(default=200, ge=1)
+    # Runner-managed delay: not persisted to checkpoint; consumed and cleared by the main loop
+    last_retry_delay_ms: int = 0
 
     @field_validator("work_units", mode="before")
     @classmethod

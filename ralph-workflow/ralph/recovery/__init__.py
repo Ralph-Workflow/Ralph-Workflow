@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from ralph.recovery.budget import AgentBudgetRegistry, BudgetState, FailureBudget
+from ralph.recovery.budget import AgentBudgetRegistry, BudgetState, FailureBudget, seed_budget_registry
 from ralph.recovery.classifier import (
     ClassifiedFailure,
     FailureCategory,
@@ -10,7 +10,7 @@ from ralph.recovery.classifier import (
     is_retryable_without_budget,
 )
 from ralph.recovery.connectivity import ConnectivityMonitor, ConnectivityState
-from ralph.recovery.controller import RecoveryController
+from ralph.recovery.controller import RecoveryController, compute_backoff_ms
 from ralph.recovery.cycle_cap import CycleCap
 from ralph.recovery.events import FailureEvent, FailureEventBus, FalloverEvent
 
@@ -28,5 +28,7 @@ __all__ = [
     "FailureEventBus",
     "FalloverEvent",
     "RecoveryController",
+    "compute_backoff_ms",
     "is_retryable_without_budget",
+    "seed_budget_registry",
 ]

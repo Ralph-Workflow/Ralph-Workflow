@@ -1,0 +1,3 @@
+.PHONY: restore
+restore:
+	git show d3154db93:ralph-workflow/ralph/pipeline/runner.py > ralph/pipeline/runner.py

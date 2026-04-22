@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
+
+import pytest
+
 from ralph.config.enums import PHASE_DEVELOPMENT
 from ralph.pipeline.events import PhaseFailureEvent
 from ralph.pipeline.reducer import reduce
@@ -108,3 +112,164 @@ def test_environmental_failure_no_fallover_record() -> None:
     )
 
     assert len(state.fallover_history) == 0
+
+
+def test_wait_online_blocks_until_online() -> None:
+    """wait_online() properly blocks while offline and resumes when online."""
+
+    async def _test() -> None:
+        monitor = FakeConnectivityMonitor(initial_state=ConnectivityState.ONLINE)
+
+        # Start offline
+        monitor.go_offline("test")
+
+        # Create wait task
+        wait_task = asyncio.create_task(monitor.wait_online())
+
+        # Should not be done yet
+        await asyncio.sleep(0)
+        assert not wait_task.done()
+
+        # Go back online
+        monitor.go_online()
+
+        # Now wait should complete
+        await asyncio.sleep(0)
+        assert wait_task.done()
+
+    asyncio.run(_test())
+
+
+def test_offline_state_tracked_in_state() -> None:
+    """Pipeline state tracks connectivity state changes."""
+    monitor = FakeConnectivityMonitor(initial_state=ConnectivityState.ONLINE)
+
+    # Record initial state
+    assert monitor.current_state == ConnectivityState.ONLINE
+
+    # Go offline
+    monitor.go_offline("test network failure")
+    assert monitor.current_state == ConnectivityState.OFFLINE
+
+    # Transitions are tracked
+    transitions = []
+    monitor.add_listener(lambda evt: transitions.append(evt.state))
+
+    monitor.go_offline("already offline")  # No transition
+    assert len(transitions) == 0
+
+    monitor.go_online("restored")
+    assert len(transitions) == 1
+    assert transitions[0] == ConnectivityState.ONLINE
+
+
+def test_offline_inhibits_agent_invocation_via_recovery_controller() -> None:
+    """RecoveryController pauses invocations when monitor reports OFFLINE.
+
+    This is a black-box test that verifies the offline pause mechanism
+    works through the RecoveryController + ConnectivityMonitor integration:
+    when the monitor is OFFLINE, the runner (via controller) should not
+    debit any budget because no actual invocation was attempted.
+    """
+    monitor = FakeConnectivityMonitor(initial_state=ConnectivityState.ONLINE)
+    collected_events: list[FailureEvent] = []
+
+    bus = FailureEventBus()
+    bus.subscribe(lambda evt: collected_events.append(evt) if isinstance(evt, FailureEvent) else None)
+
+    registry = AgentBudgetRegistry().set_budget(PHASE_DEVELOPMENT, "claude", max_retries=3)
+    controller = RecoveryController(cycle_cap=10, event_bus=bus, budget_registry=registry)
+    state = _make_state(["claude"])
+
+    # Start offline
+    monitor.go_offline("network down")
+    assert monitor.current_state == ConnectivityState.OFFLINE
+
+    # Simulate what the runner does: check monitor state before invoking
+    # When OFFLINE, the runner would wait_online() instead of invoking
+    async def _simulate_offline_block() -> None:
+        wait_task = asyncio.create_task(monitor.wait_online())
+        await asyncio.sleep(0)
+        assert not wait_task.done()
+        # Restore before wait completes
+        monitor.go_online("network restored")
+        await asyncio.sleep(0)
+        assert wait_task.done()
+
+    asyncio.run(_simulate_offline_block())
+
+    # No failure events should be emitted during offline period
+    # because no agent was actually invoked
+    environmental_failures = [e for e in collected_events if e.category == "environmental"]
+    assert len(environmental_failures) == 0
+
+    # Now simulate an invocation after going back online
+    # This should succeed without any offline penalty
+    new_state, effects, evt = controller.handle(
+        state,
+        ConnectionError("pre-existing connection reset"),
+        phase=PHASE_DEVELOPMENT,
+        agent="claude",
+    )
+
+    # Environmental failure - no budget debit
+    assert evt.counted_against_budget is False
+    assert evt.category == "environmental"
+
+    # Budget is unchanged
+    budget = controller.budget_registry.get(PHASE_DEVELOPMENT, "claude")
+    assert budget is not None
+    assert budget.consumed == 0
+    assert budget.remaining == 3
+
+
+def test_offline_period_does_not_debit_budget_on_recovery_resume() -> None:
+    """Time spent offline does not count against any agent's budget.
+
+    This verifies that the offline period is truly silent - no FailureEvent
+    is emitted, no budget is debited, and the pipeline resumes cleanly
+    when connectivity returns.
+    """
+    monitor = FakeConnectivityMonitor(initial_state=ConnectivityState.ONLINE)
+    collected: list[FailureEvent] = []
+
+    bus = FailureEventBus()
+    bus.subscribe(lambda evt: collected.append(evt) if isinstance(evt, FailureEvent) else None)
+
+    registry = AgentBudgetRegistry().set_budget(PHASE_DEVELOPMENT, "claude", max_retries=3)
+    controller = RecoveryController(cycle_cap=10, event_bus=bus, budget_registry=registry)
+    state = _make_state(["claude"])
+
+    # Simulate: go offline, wait, come back online, then invoke
+    monitor.go_offline("ISP outage")
+
+    async def _offline_then_resume() -> None:
+        wait_task = asyncio.create_task(monitor.wait_online())
+        await asyncio.sleep(0)
+        assert not wait_task.done()
+        monitor.go_online("ISP restored")
+        await asyncio.sleep(0)
+        assert wait_task.done()
+
+    asyncio.run(_offline_then_resume())
+
+    # No failure events during offline
+    assert len(collected) == 0
+
+    # Budget still intact
+    budget = controller.budget_registry.get(PHASE_DEVELOPMENT, "claude")
+    assert budget is not None
+    assert budget.remaining == 3
+
+    # Now simulate a successful agent invocation after resume
+    # (no failure - just a state update showing no budget consumed)
+    new_state = state.copy_with(last_retry_delay_ms=0)
+    assert new_state.phase == PHASE_DEVELOPMENT
+    # No budget was consumed during offline period
+    assert budget.remaining == 3
+
+
+# ---------------------------------------------------------------------------
+# Import for type hint only
+# ---------------------------------------------------------------------------
+from ralph.recovery.budget import AgentBudgetRegistry

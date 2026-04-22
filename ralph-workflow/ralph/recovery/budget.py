@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from ralph.policy.models import PolicyBundle
     from ralph.recovery.classifier import ClassifiedFailure
 
 
@@ -105,3 +106,38 @@ class AgentBudgetRegistry:
         if state is None:
             return False
         return state.exhausted
+
+
+def seed_budget_registry(bundle: PolicyBundle) -> AgentBudgetRegistry:
+    """Seed the budget registry from policy bundle configuration.
+
+    This is the single place where budgets are initialized from policy.
+    It iterates over all chains and all phases bound to those chains,
+    using each chain's max_retries as the budget.
+
+    Args:
+        bundle: The loaded policy bundle.
+
+    Returns:
+        AgentBudgetRegistry seeded with all chain budgets.
+    """
+    registry = AgentBudgetRegistry()
+
+    # Map phases to their drain names for lookup
+    phase_to_drain: dict[str, str] = {}
+    for phase_name, phase_def in bundle.pipeline.phases.items():
+        phase_to_drain[phase_name] = phase_def.drain
+
+    for chain_name, chain_config in bundle.agents.agent_chains.items():
+        max_retries = chain_config.max_retries
+        for phase_name, drain_name in phase_to_drain.items():
+            drain_config = bundle.agents.agent_drains.get(drain_name)
+            if drain_config is None:
+                continue
+            if drain_config.chain != chain_name:
+                continue
+            # This phase uses this chain - seed budgets for each agent in the chain
+            for agent_name in chain_config.agents:
+                registry = registry.set_budget(phase_name, agent_name, max_retries)
+
+    return registry

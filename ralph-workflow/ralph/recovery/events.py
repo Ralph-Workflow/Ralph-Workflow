@@ -22,6 +22,7 @@ class FailureEvent:
     counted_against_budget: bool
     chain_capacity_remaining: int
     recovery_cycle: int
+    retry_delay_ms: int = 0
 
 
 @dataclass(frozen=True)

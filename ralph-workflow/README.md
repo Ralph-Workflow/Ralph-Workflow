@@ -200,15 +200,24 @@ Failure events are emitted as structured log entries with `recovery=true`:
 
 ```toml
 [agents]
-# Per-chain retry budget
+# Per-chain retry budget and backoff
 [agents.chains.development]
 agents = ["claude", "opencode"]
-max_retries = 3  # per-agent retry budget
+max_retries = 3          # per-agent retry budget
+retry_delay_ms = 1000    # base delay before retry (exponential backoff, capped at 30s)
 
 # Global recovery cycle cap (default: 200)
 [pipeline]
 recovery_cycle_cap = 200
 ```
+
+**`retry_delay_ms`** controls the base delay between retries for agent-attributable failures. The delay uses exponential backoff: each retry doubles the delay (base_ms × 2^attempt), capped at 30 seconds. For example, with `retry_delay_ms = 1000`:
+- Retry 1: 1 s delay
+- Retry 2: 2 s delay
+- Retry 3: 4 s delay
+- Subsequent retries: capped at 30 s
+
+Environmental and ambiguous failures always retry with 0 delay (immediately). The delay resets to base after a successful agent invocation or a chain fallover to the next agent.
 
 Connectivity probe interval can be configured in code via `ConnectivityMonitor(probe_interval_s=10.0)`.
 

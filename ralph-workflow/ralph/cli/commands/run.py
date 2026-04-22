@@ -7,21 +7,31 @@ from __future__ import annotations
 
 import importlib
 from inspect import signature
+from pathlib import Path
 from typing import TYPE_CHECKING, NamedTuple, Protocol, cast
 
+import typer
 from loguru import logger
 from rich.text import Text
 
+from ralph.agents.registry import AgentRegistry
 from ralph.config.loader import load_config
 from ralph.pipeline import checkpoint as ckpt
+from ralph.pipeline.state import PipelineState
+from ralph.policy.loader import load_policy
+from ralph.policy.validation import (
+    CheckpointPolicyMismatchError,
+    PolicyValidationError,
+    validate_agent_chains_satisfiable,
+    validate_checkpoint_against_policy,
+    validate_recovery_config,
+)
 from ralph.workspace.scope import WorkspaceScope, resolve_workspace_scope
 
 if TYPE_CHECKING:
-    from pathlib import Path
-
     from ralph.config.enums import Verbosity
     from ralph.config.models import UnifiedConfig
-    from ralph.pipeline.state import PipelineState
+    from ralph.policy.models import PolicyBundle
 
 
 class _RunnerFunc(Protocol):
@@ -29,6 +39,7 @@ class _RunnerFunc(Protocol):
         self,
         config: UnifiedConfig,
         initial_state: PipelineState | None,
+        policy_bundle: PolicyBundle | None = None,
         **kwargs: object,
     ) -> int: ...
 
@@ -70,50 +81,78 @@ console: _ConsoleLike = _create_console()
 _EXIT_SUCCESS = 0
 _EXIT_CONFIG_ERROR = 1
 _EXIT_INTERRUPT = 130
+_EXIT_PREFLIGHT = 2
 
 
 class _LoadResult(NamedTuple):
     config: UnifiedConfig
-    workspace_scope: WorkspaceScope | None
+    workspace_scope: WorkspaceScope
     initial_state: PipelineState | None
+    policy_bundle: PolicyBundle | None
 
 
-def run_pipeline(
-    config_path: Path | None = None,
-    cli_overrides: ConfigOverrides | None = None,
-    dry_run: bool = False,
-    resume: bool = False,
-    verbosity: Verbosity | None = None,
+# Module-level typer app for test injection
+app = typer.Typer(help="Run the Ralph pipeline")
+
+
+@app.command()
+def run(  # type: ignore[override]
+    config_path: Path | None = typer.Option(
+        None, "--config", "-c", help="Path to configuration file"
+    ),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Run without invoking agents"),
+    resume: bool = typer.Option(False, "--resume", help="Resume from checkpoint"),
+    no_resume: bool = typer.Option(False, "--no-resume", help="Start fresh, ignoring checkpoint"),
+    verbosity: Verbosity | None = typer.Option(
+        None, "--verbosity", "-v", help="Verbosity level"
+    ),
 ) -> int:
     """Run the Ralph pipeline.
 
     Args:
         config_path: Path to configuration file.
-        cli_overrides: CLI flag overrides for config.
         dry_run: If True, run without invoking agents.
         resume: If True, resume from checkpoint.
+        no_resume: If True, ignore any checkpoint and start fresh.
         verbosity: Optional explicit verbosity passed through to the runner.
 
     Returns:
         Exit code (0 for success, non-zero for failure).
     """
+    cli_overrides: ConfigOverrides = {}
+
     # Phase 1: Load configuration
-    load_result = _load_configuration(config_path, cli_overrides, resume)
+    load_result = _load_configuration(config_path, cli_overrides, resume and not no_resume)
     if isinstance(load_result, int):
         return load_result
 
-    # Phase 2: Handle dry-run
+    # Phase 2: Preflight validation (before any pipeline activity)
+    preflight_result = _run_preflight_checks(
+        load_result.config,
+        load_result.workspace_scope,
+        load_result.policy_bundle,
+        load_result.initial_state,
+    )
+    if preflight_result != _EXIT_SUCCESS:
+        return preflight_result
+
+    # Phase 3: Handle dry-run
     if dry_run:
         _print_dry_run(load_result.initial_state, load_result.config)
         return _EXIT_SUCCESS
 
-    # Phase 3: Execute pipeline
-    return _execute_pipeline(load_result.config, load_result.initial_state, verbosity)
+    # Phase 4: Execute pipeline
+    return _execute_pipeline(
+        load_result.config,
+        load_result.initial_state,
+        load_result.policy_bundle,
+        verbosity,
+    )
 
 
 def _load_configuration(
     config_path: Path | None,
-    cli_overrides: ConfigOverrides | None,
+    cli_overrides: ConfigOverrides,
     resume: bool,
 ) -> _LoadResult | int:
     """Load configuration and resolve workspace scope.
@@ -129,12 +168,86 @@ def _load_configuration(
         return _EXIT_CONFIG_ERROR
 
     initial_state: PipelineState | None = None
+    policy_bundle: PolicyBundle | None = None
+
+    if workspace_scope is not None:
+        try:
+            policy_bundle = load_policy(workspace_scope.root / ".agent")
+        except Exception as e:
+            logger.warning("Failed to load policy bundle: {}", e)
+
     if resume:
         initial_state = ckpt.load()
         if initial_state is None:
             console.print("[yellow]No checkpoint found to resume from[/yellow]")
 
-    return _LoadResult(config=config, workspace_scope=workspace_scope, initial_state=initial_state)
+    return _LoadResult(
+        config=config,
+        workspace_scope=workspace_scope,
+        initial_state=initial_state,
+        policy_bundle=policy_bundle,
+    )
+
+
+def _run_preflight_checks(
+    config: UnifiedConfig,
+    workspace_scope: WorkspaceScope | None,
+    policy_bundle: object,
+    initial_state: PipelineState | None,
+) -> int:
+    """Run all preflight validation checks.
+
+    Returns:
+        _EXIT_SUCCESS if all checks pass, _EXIT_PREFLIGHT if any check fails.
+    """
+    from ralph.policy.models import PolicyBundle  # noqa: PLC0415
+    from ralph.policy.validation import validate_required_inputs  # noqa: PLC0415
+
+    # validate_required_inputs requires workspace_scope
+    if workspace_scope is not None:
+        try:
+            validate_required_inputs(workspace_scope)
+        except PolicyValidationError as e:
+            console.print(f"[red]Preflight error: {e.message}[/red]")
+            return _EXIT_PREFLIGHT
+
+    # Only run policy-based validations if we have a policy bundle
+    if policy_bundle is not None and isinstance(policy_bundle, PolicyBundle):
+        # validate_drain_contracts
+        try:
+            from ralph.policy.validation import validate_drain_contracts  # noqa: PLC0415
+            validate_drain_contracts(policy_bundle)
+        except PolicyValidationError as e:
+            console.print(f"[red]Preflight error: {e.message}[/red]")
+            return _EXIT_PREFLIGHT
+
+        # validate_agent_chains_satisfiable requires agent registry
+        try:
+            agent_registry = AgentRegistry.discover()
+            validate_agent_chains_satisfiable(policy_bundle, agent_registry)
+        except PolicyValidationError as e:
+            console.print(f"[red]Preflight error: {e.message}[/red]")
+            return _EXIT_PREFLIGHT
+
+        # validate_recovery_config
+        try:
+            validate_recovery_config(policy_bundle)
+        except PolicyValidationError as e:
+            console.print(f"[red]Preflight error: {e.message}[/red]")
+            return _EXIT_PREFLIGHT
+
+        # validate_checkpoint_against_policy
+        if initial_state is not None:
+            try:
+                validate_checkpoint_against_policy(initial_state, policy_bundle)
+            except CheckpointPolicyMismatchError as e:
+                console.print(f"[red]Checkpoint mismatch: {e}[/red]")
+                return _EXIT_PREFLIGHT
+            except PolicyValidationError as e:
+                console.print(f"[red]Preflight error: {e.message}[/red]")
+                return _EXIT_PREFLIGHT
+
+    return _EXIT_SUCCESS
 
 
 def _print_dry_run(initial_state: PipelineState | None, config: UnifiedConfig) -> None:
@@ -148,6 +261,7 @@ def _print_dry_run(initial_state: PipelineState | None, config: UnifiedConfig) -
 def _execute_pipeline(
     config: UnifiedConfig,
     initial_state: PipelineState | None,
+    policy_bundle: object,
     verbosity: Verbosity | None,
 ) -> int:
     """Execute the pipeline.
@@ -164,12 +278,18 @@ def _execute_pipeline(
         kwargs: dict[str, object] = {}
         if verbosity is not None and "verbosity" in signature(_run_func).parameters:
             kwargs["verbosity"] = verbosity
-        return _run_func(config, initial_state, **kwargs)
+        return _run_func(config, initial_state, policy_bundle=policy_bundle, **kwargs)
     except KeyboardInterrupt:
         console.print("\n[yellow]Interrupted by user[/yellow]")
         if initial_state is not None:
             _save_interrupt_checkpoint(initial_state)
         return _EXIT_INTERRUPT
+    except CheckpointPolicyMismatchError as e:
+        console.print(f"[red]Checkpoint mismatch: {e}[/red]")
+        return _EXIT_PREFLIGHT
+    except PolicyValidationError as e:
+        console.print(f"[red]Pipeline configuration error: {e.message}[/red]")
+        return _EXIT_PREFLIGHT
     except Exception as e:
         logger.exception("Pipeline execution failed: {}")
         console.print(_status_text("Pipeline failed", str(e), "red"))
@@ -199,3 +319,52 @@ def _detail_text(label: str, detail: str) -> Text:
     text.append(f"  {label}: ")
     text.append(detail)
     return text
+
+
+# Backward compatibility: expose run_pipeline for direct invocation
+def run_pipeline(
+    config_path: Path | None = None,
+    cli_overrides: ConfigOverrides | None = None,
+    dry_run: bool = False,
+    resume: bool = False,
+    verbosity: Verbosity | None = None,
+) -> int:
+    """Run the Ralph pipeline (backward compatibility wrapper).
+
+    Args:
+        config_path: Path to configuration file.
+        cli_overrides: CLI flag overrides for config.
+        dry_run: If True, run without invoking agents.
+        resume: If True, resume from checkpoint.
+        verbosity: Optional explicit verbosity passed through to the runner.
+
+    Returns:
+        Exit code (0 for success, non-zero for failure).
+    """
+    # Phase 1: Load configuration
+    load_result = _load_configuration(config_path, cli_overrides or {}, resume)
+    if isinstance(load_result, int):
+        return load_result
+
+    # Phase 2: Preflight validation (before any pipeline activity)
+    preflight_result = _run_preflight_checks(
+        load_result.config,
+        load_result.workspace_scope,
+        load_result.policy_bundle,
+        load_result.initial_state,
+    )
+    if preflight_result != _EXIT_SUCCESS:
+        return preflight_result
+
+    # Phase 3: Handle dry-run
+    if dry_run:
+        _print_dry_run(load_result.initial_state, load_result.config)
+        return _EXIT_SUCCESS
+
+    # Phase 4: Execute pipeline
+    return _execute_pipeline(
+        load_result.config,
+        load_result.initial_state,
+        load_result.policy_bundle,
+        verbosity,
+    )
