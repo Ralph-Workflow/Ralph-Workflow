@@ -42,7 +42,23 @@ class ProcessLike(Protocol):
     def pid(self) -> int: ...
 
 
-type SpawnProcess = Callable[[list[str], Path, dict[str, str]], ProcessLike]
+class SpawnProcess(Protocol):
+    """Callable that spawns the MCP server subprocess.
+
+    The ``phase`` keyword argument, when set, is used to label the process
+    ``phase:<phase>:mcp-server`` so it is reaped by the phase-scope cleanup.
+    """
+
+    def __call__(
+        self,
+        command: list[str],
+        cwd: Path,
+        env: dict[str, str],
+        *,
+        phase: str | None = None,
+    ) -> ProcessLike: ...
+
+
 type PreflightFn = Callable[[str, list[str], timedelta], None]
 
 
@@ -83,6 +99,7 @@ def start_mcp_server(
     *,
     upstream_registry: UpstreamRegistry | None = None,
     deps: LifecycleDeps | None = None,
+    phase: str | None = None,
 ) -> SessionBridgeLike:
     """Start a standalone Ralph MCP HTTP subprocess and verify tool reachability."""
     lifecycle_deps = deps or _default_lifecycle_deps()
@@ -105,6 +122,7 @@ def start_mcp_server(
         ],
         root,
         env,
+        phase=phase,
     )
     bridge = StandaloneMcpProcess(endpoint=endpoint, process=process, session_file=session_file)
 
@@ -167,7 +185,10 @@ def _subprocess_env(session_file: Path) -> dict[str, str]:
     return env
 
 
-def _spawn_process(command: list[str], cwd: Path, env: dict[str, str]) -> ManagedProcess:
+def _spawn_process(
+    command: list[str], cwd: Path, env: dict[str, str], *, phase: str | None = None
+) -> ManagedProcess:
+    label = f"phase:{phase}:mcp-server" if phase else "mcp-server"
     return get_process_manager().spawn(
         command,
         cwd=str(cwd),
@@ -175,7 +196,7 @@ def _spawn_process(command: list[str], cwd: Path, env: dict[str, str]) -> Manage
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
         start_new_session=True,
-        label="mcp-server",
+        label=label,
     )
 
 

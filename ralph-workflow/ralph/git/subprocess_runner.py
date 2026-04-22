@@ -26,6 +26,7 @@ def run_git(  # noqa: PLR0913
     *,
     cwd: Path | None,
     label: str,
+    phase: str | None = None,
     timeout: float | None = None,
     env: Mapping[str, str] | None = None,
     check: bool = False,
@@ -34,9 +35,14 @@ def run_git(  # noqa: PLR0913
 ) -> GitRunResult:
     """Spawn a git subprocess through ProcessManager and return the result.
 
+    When ``phase`` is provided, the process is labeled ``phase:<phase>:git:<label>``
+    so that :func:`~ralph.process.manager.process_phase_scope` can terminate it
+    when the phase completes.
+
     Raises subprocess.TimeoutExpired if timeout is exceeded.
     Raises subprocess.CalledProcessError if check=True and returncode != 0.
     """
+    effective_label = f"phase:{phase}:git:{label}" if phase is not None else label
     cmd = ("git", *args)
     proc = get_process_manager().spawn(
         cmd,
@@ -44,7 +50,7 @@ def run_git(  # noqa: PLR0913
         env=dict(env) if env is not None else None,
         stdout=subprocess.PIPE if capture_output else None,
         stderr=subprocess.PIPE if capture_output else None,
-        label=label,
+        label=effective_label,
         text=text,
     )
     try:

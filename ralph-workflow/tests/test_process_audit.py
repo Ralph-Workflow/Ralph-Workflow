@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 RALPH_ROOT = Path(__file__).parent.parent / "ralph"
+TESTS_ROOT = Path(__file__).parent
 
 FORBIDDEN_PATTERNS = [
     "subprocess.run(",
@@ -13,7 +14,31 @@ FORBIDDEN_PATTERNS = [
     "asyncio.create_subprocess_shell(",
 ]
 
+POSIX_FORBIDDEN = [
+    "os.killpg(",
+    "os.setsid(",
+]
+
+# Files under RALPH_ROOT that are allowed to use subprocess directly.
 ALLOWLIST: list[tuple[str, str]] = []
+
+# Files under TESTS_ROOT that are allowed to use subprocess directly.
+# Each entry should have a comment explaining why it's allowlisted.
+TESTS_ALLOWLIST: set[str] = {
+    "test_process_audit.py",           # defines pattern strings as literals
+    "test_process_cross_platform.py",  # defines forbidden token strings as literals for inspection
+    "test_process_manager.py",         # drives ProcessManager; subprocess.run is test infra
+    "test_parallel_coordinator.py",    # git repo setup via subprocess.run in test fixtures
+    "test_git_rebase.py",              # git repo setup via subprocess.run in test fixtures
+    "test_git_rebase_continuation.py", # git repo setup via subprocess.run in test fixtures
+    "test_asyncio_bridge.py",          # patches os.killpg; no real call
+    # MCP e2e fixtures that spawn external servers — tracked for follow-up refactor
+    "test_fake_http_mcp_fixture.py",   # MCP e2e test fixture; subprocess.Popen for server
+    "test_fake_stdio_mcp_fixture.py",  # MCP e2e test fixture; subprocess.Popen for server
+    "test_mcp_e2e.py",                 # MCP e2e integration test; subprocess.Popen for server
+    "test_validate_custom_mcp_http_e2e.py",  # MCP e2e test; subprocess.Popen for server
+    "test_custom_mcp_roundtrip.py",    # MCP roundtrip test; subprocess.Popen for server
+}
 
 
 def _allowed(rel_path: str) -> bool:
@@ -33,5 +58,29 @@ def test_no_direct_subprocess_calls_outside_process_manager() -> None:
 
     assert not violations, (
         "Direct subprocess calls found outside ralph/process/manager.py:\n"
+        + "\n".join(violations)
+    )
+
+
+def test_no_direct_subprocess_calls_in_tests() -> None:
+    """Assert no test file uses subprocess or POSIX kill APIs directly.
+
+    Allowlisted files are test-infrastructure uses (git setup, pattern literals,
+    MCP e2e fixtures). New test files must not bypass ProcessManager.
+    """
+    all_patterns = FORBIDDEN_PATTERNS + POSIX_FORBIDDEN
+    violations = [
+        f"{py_file.relative_to(TESTS_ROOT).as_posix()}: contains '{pattern}'"
+        for py_file in sorted(TESTS_ROOT.rglob("*.py"))
+        # Skip files that are under RALPH_ROOT (already scanned above) or allowlisted
+        if not any(py_file.is_relative_to(p) for p in [RALPH_ROOT])
+        for rel in [py_file.name]
+        if rel not in TESTS_ALLOWLIST
+        for pattern in all_patterns
+        if pattern in py_file.read_text(encoding="utf-8")
+    ]
+
+    assert not violations, (
+        "Direct subprocess/POSIX calls found in tests/ outside the allowlist:\n"
         + "\n".join(violations)
     )

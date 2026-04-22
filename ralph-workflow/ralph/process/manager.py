@@ -11,14 +11,18 @@ Invariants:
   relying on POSIX signals or process groups.
 - Listener exceptions never propagate into the spawn/terminate call path; they
   are logged via loguru and skipped.
+- Lifecycle transitions are logged by default and thus always observable.
+- atexit guarantees no orphaned children at interpreter shutdown.
 """
 
 from __future__ import annotations
 
 import asyncio
+import atexit
 import contextlib
 import os
 import subprocess
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import Enum, auto
@@ -28,7 +32,7 @@ import psutil
 from loguru import logger
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Sequence
+    from collections.abc import Callable, Generator, Sequence
     from typing import IO
 
 
@@ -70,6 +74,7 @@ class ProcessEvent:
 class ProcessManagerPolicy:
     default_grace_period_s: float = 5.0
     kill_followup_timeout_s: float = 2.0
+    log_events: bool = True
 
 
 class ProcessTerminationError(RuntimeError):
@@ -249,6 +254,8 @@ class ProcessManager:
         self._sync_procs: dict[int, subprocess.Popen[bytes]] = {}
         self._listeners: dict[int, Callable[[ProcessEvent], None]] = {}
         self._listener_counter = 0
+        if self.policy.log_events:
+            self.register_listener(_loguru_event_listener)
 
     def register_listener(
         self, callback: Callable[[ProcessEvent], None]
@@ -575,14 +582,52 @@ class ProcessManager:
                 logger.exception("ProcessManager listener raised an exception")
 
 
+def _loguru_event_listener(event: ProcessEvent) -> None:
+    """Default listener: log process lifecycle transitions via loguru."""
+    record = event.record
+    new_status = event.new_status
+    bound = logger.bind(component="process", pid=record.pid, label=record.label)
+    if new_status in (ProcessStatus.SPAWNED, ProcessStatus.RUNNING):
+        bound.debug(
+            "process {} {} rc={}", record.pid, new_status.name, record.returncode
+        )
+    elif new_status == ProcessStatus.EXITED:
+        bound.info(
+            "process {} {} rc={}", record.pid, new_status.name, record.returncode
+        )
+    elif new_status == ProcessStatus.KILLED:
+        bound.warning(
+            "process {} {} rc={}", record.pid, new_status.name, record.returncode
+        )
+    elif new_status == ProcessStatus.FAILED:
+        bound.error(
+            "process {} {} rc={}", record.pid, new_status.name, record.returncode
+        )
+
+
 _singleton: ProcessManager | None = None
+_atexit_registered: bool = False
+
+
+def _atexit_shutdown() -> None:
+    """Last-resort safety net: terminate all tracked children at interpreter exit."""
+    try:
+        pm = _singleton
+        if pm is None:
+            return
+        pm.shutdown_all(grace_period_s=0.5)
+    except BaseException:
+        pass
 
 
 def get_process_manager(*, policy: ProcessManagerPolicy | None = None) -> ProcessManager:
     """Return the module-level ProcessManager singleton, creating it on first call."""
-    global _singleton  # noqa: PLW0603
+    global _singleton, _atexit_registered  # noqa: PLW0603
     if _singleton is None:
         _singleton = ProcessManager(policy=policy)
+    if not _atexit_registered:
+        atexit.register(_atexit_shutdown)
+        _atexit_registered = True
     return _singleton
 
 
@@ -590,6 +635,26 @@ def reset_process_manager() -> None:
     """Replace the singleton with a fresh instance.  Call from test teardown."""
     global _singleton  # noqa: PLW0603
     _singleton = None
+
+
+@contextmanager
+def process_phase_scope(phase_name: str) -> Generator[None, None, None]:
+    """Context manager that tears down all processes labeled 'phase:<phase_name>' on exit.
+
+    Logs a warning on ProcessTerminationError — cleanup always completes regardless.
+    """
+    try:
+        yield
+    finally:
+        try:
+            get_process_manager().shutdown_all_for_label(
+                f"phase:{phase_name}",
+                grace_period_s=get_process_manager().policy.default_grace_period_s,
+            )
+        except ProcessTerminationError as exc:
+            logger.warning(
+                "phase:{} cleanup could not terminate all processes: {}", phase_name, exc
+            )
 
 
 __all__ = [
@@ -602,5 +667,6 @@ __all__ = [
     "ProcessStatus",
     "ProcessTerminationError",
     "get_process_manager",
+    "process_phase_scope",
     "reset_process_manager",
 ]

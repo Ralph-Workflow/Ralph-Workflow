@@ -2,7 +2,8 @@
 
 Every subprocess Ralph spawns flows through :class:`ProcessManager`.  The
 manager records lifecycle transitions, emits observable events, and owns
-escalating termination (SIGTERM → SIGKILL of the process group).
+escalating termination via psutil for cross-platform process-tree teardown
+(Linux, macOS, and Windows). No POSIX-only APIs are used.
 """
 
 from ralph.process.manager import (
@@ -15,6 +16,7 @@ from ralph.process.manager import (
     ProcessStatus,
     ProcessTerminationError,
     get_process_manager,
+    process_phase_scope,
     reset_process_manager,
 )
 
@@ -28,5 +30,6 @@ __all__ = [
     "ProcessStatus",
     "ProcessTerminationError",
     "get_process_manager",
+    "process_phase_scope",
     "reset_process_manager",
 ]

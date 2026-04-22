@@ -51,7 +51,7 @@ def test_start_mcp_server_uses_injected_dependencies(tmp_path: Path) -> None:
         seen["session_file"] = session_file
         return {"RALPH_MCP_SESSION_FILE": str(session_file)}
 
-    def fake_spawn(command: list[str], cwd: Path, env: dict[str, str]):
+    def fake_spawn(command: list[str], cwd: Path, env: dict[str, str], *, phase: str | None = None):
         seen["command"] = command
         seen["cwd"] = cwd
         seen["env"] = env
@@ -102,7 +102,9 @@ def test_start_mcp_server_preflight_includes_upstream_tool_names(tmp_path: Path)
     def fake_subprocess_env(session_file: Path) -> dict[str, str]:
         return {"RALPH_MCP_SESSION_FILE": str(session_file)}
 
-    def fake_spawn(command: list[str], cwd: Path, env: dict[str, str]) -> FakeProcess:
+    def fake_spawn(
+        command: list[str], cwd: Path, env: dict[str, str], *, phase: str | None = None
+    ) -> FakeProcess:
         return FakeProcess()
 
     def fake_preflight(endpoint: str, required_tools: list[str], timeout: timedelta) -> None:

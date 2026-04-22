@@ -2,12 +2,10 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import importlib
-import importlib.util
-import os
-import signal
 import time
 from typing import TYPE_CHECKING
+
+import psutil
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -21,8 +19,8 @@ from ralph.pipeline.parallel import coordinator
 from ralph.pipeline.state import PipelineState
 from ralph.pipeline.work_units import WorkUnit
 from ralph.pipeline.worker_state import WorkerStatus
+from ralph.process.manager import get_process_manager, reset_process_manager
 
-_HAS_PSUTIL = importlib.util.find_spec("psutil") is not None
 _NUM_WORKERS = 3
 
 
@@ -37,7 +35,6 @@ class _FakeDisplay:
 class SleeperExecutor:
     def __init__(self) -> None:
         self.pids: list[int] = []
-        self.cleanup_tasks: list[asyncio.Task[int]] = []
 
     async def run(
         self,
@@ -49,22 +46,22 @@ class SleeperExecutor:
         del on_output
         on_status(WorkerStatus.RUNNING)
         start_time = time.monotonic()
-        proc = await asyncio.create_subprocess_exec("sleep", "30", start_new_session=True)
-        self.pids.append(proc.pid)
+        handle = await get_process_manager().spawn_async(
+            ["sleep", "30"], label=f"agent:{unit.unit_id}"
+        )
+        self.pids.append(handle.record.pid)
 
         try:
-            await proc.wait()
+            await handle.wait()
         except asyncio.CancelledError:
             on_status(WorkerStatus.CANCELLED)
-            with contextlib.suppress(ProcessLookupError):
-                os.killpg(proc.pid, signal.SIGKILL)
-            self.cleanup_tasks.append(asyncio.create_task(proc.wait()))
+            await asyncio.shield(handle.terminate(grace_period_s=0))
             raise
 
         on_status(WorkerStatus.SUCCEEDED)
         return WorkerResult(
             unit_id=unit.unit_id,
-            exit_code=proc.returncode if proc.returncode is not None else 0,
+            exit_code=handle.record.returncode if handle.record.returncode is not None else 0,
             final_message="",
             duration_ms=int((time.monotonic() - start_time) * 1000),
         )
@@ -75,16 +72,7 @@ def _make_work_unit(unit_id: str) -> WorkUnit:
 
 
 def _pid_gone(pid: int) -> bool:
-    if _HAS_PSUTIL:
-        psutil = importlib.import_module("psutil")
-        return not bool(psutil.pid_exists(pid))
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
-        return True
-    except PermissionError:
-        return False
-    return False
+    return not bool(psutil.pid_exists(pid))
 
 
 def _wait_for_pids_gone(pids: list[int], timeout_s: float = 0.5) -> bool:
@@ -117,40 +105,39 @@ async def _run_with_cancel(
     )
     asyncio.get_running_loop().call_later(0.2, task.cancel)
 
-    try:
+    with contextlib.suppress(TimeoutError, asyncio.CancelledError):
         async with asyncio.timeout(1.5):
             await task
-    except (TimeoutError, asyncio.CancelledError):
-        pass
-
-    if executor.cleanup_tasks:
-        await asyncio.gather(*executor.cleanup_tasks, return_exceptions=True)
 
 
 def test_parallel_hard_kill(tmp_path: Path) -> None:
-    units = tuple(_make_work_unit(f"unit-{index}") for index in range(_NUM_WORKERS))
-    executor = SleeperExecutor()
-    effect = FanOutDevelopmentEffect(work_units=units, max_workers=_NUM_WORKERS)
-    state = PipelineState(phase=PHASE_DEVELOPMENT, work_units=units)
-    checkpoint_path = tmp_path / "checkpoint.json"
-    worktree_dirs = [tmp_path / unit.unit_id for unit in units]
+    reset_process_manager()
+    try:
+        units = tuple(_make_work_unit(f"unit-{index}") for index in range(_NUM_WORKERS))
+        executor = SleeperExecutor()
+        effect = FanOutDevelopmentEffect(work_units=units, max_workers=_NUM_WORKERS)
+        state = PipelineState(phase=PHASE_DEVELOPMENT, work_units=units)
+        checkpoint_path = tmp_path / "checkpoint.json"
+        worktree_dirs = [tmp_path / unit.unit_id for unit in units]
 
-    for worktree_dir in worktree_dirs:
-        worktree_dir.mkdir()
+        for worktree_dir in worktree_dirs:
+            worktree_dir.mkdir()
 
-    asyncio.run(_run_with_cancel(effect, state, executor, checkpoint_path))
+        asyncio.run(_run_with_cancel(effect, state, executor, checkpoint_path))
 
-    assert len(executor.pids) == _NUM_WORKERS
-    assert _wait_for_pids_gone(executor.pids)
+        assert len(executor.pids) == _NUM_WORKERS
+        assert _wait_for_pids_gone(executor.pids, timeout_s=1.5)
 
-    interrupted_state = PipelineState(
-        phase=PHASE_DEVELOPMENT,
-        work_units=units,
-        interrupted_by_user=True,
-    )
-    checkpoint.save(interrupted_state, checkpoint_path)
-    loaded = checkpoint.load(checkpoint_path)
+        interrupted_state = PipelineState(
+            phase=PHASE_DEVELOPMENT,
+            work_units=units,
+            interrupted_by_user=True,
+        )
+        checkpoint.save(interrupted_state, checkpoint_path)
+        loaded = checkpoint.load(checkpoint_path)
 
-    assert loaded is not None
-    assert loaded.interrupted_by_user is True
-    assert all(path.exists() for path in worktree_dirs)
+        assert loaded is not None
+        assert loaded.interrupted_by_user is True
+        assert all(path.exists() for path in worktree_dirs)
+    finally:
+        reset_process_manager()
