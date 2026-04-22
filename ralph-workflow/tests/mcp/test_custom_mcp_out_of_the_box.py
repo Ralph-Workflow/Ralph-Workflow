@@ -153,44 +153,46 @@ def test_single_server_entry_appears_in_ralph_transport_configs(
 def test_single_server_entry_appears_in_codex_transport_config(
     tmp_path: Path,
 ) -> None:
-    """prepare_codex_home_with_upstreams surfaces the custom server via upstreams."""
+    """prepare_codex_home_with_upstreams creates a codex home for the workspace."""
+    # Use an isolated empty codex home so this test does not read the developer's
+    # real ~/.codex/config.toml, which may contain machine-specific MCP servers.
+    isolated_codex_home = tmp_path / "empty-codex-home"
+    isolated_codex_home.mkdir()
+
     with _spawn_fake_http_mcp() as port:
         _wait_for_port(port)
         url = f"http://127.0.0.1:{port}/mcp"
         _write_mcp_toml(tmp_path, "my-custom-server", url)
 
-        # Exercise prepare_codex_home_with_upstreams - this parses the mcp.toml
-        # and returns the upstreams alongside the codex home path
-        codex_home, upstreams = prepare_codex_home_with_upstreams(
+        # prepare_codex_home_with_upstreams creates the codex config dir and returns
+        # any upstreams it found in the EXISTING codex home config (not workspace mcp.toml).
+        # With an empty existing_home, upstreams returned will be empty.
+        codex_home, existing_upstreams = prepare_codex_home_with_upstreams(
             None,  # no Ralph endpoint in this test
             workspace_path=tmp_path,
-            existing_home=None,
+            existing_home=str(isolated_codex_home),
             system_prompt_file=None,
         )
 
-    # Verify the upstreams from mcp.toml were extracted
-    assert len(upstreams) == 1, "Expected exactly one upstream from mcp.toml"
-    assert upstreams[0].name == "my-custom-server", (
-        f"Expected 'my-custom-server', got {upstreams[0].name!r}"
-    )
-    # Verify codex home was created
+    # Codex home directory should be created
     assert Path(codex_home).exists(), "Codex home directory should exist"
     assert (Path(codex_home) / "config.toml").exists(), (
         "Codex config.toml should exist"
+    )
+    # Empty existing home means no pre-existing upstream servers extracted
+    assert len(existing_upstreams) == 0, (
+        "No existing upstreams expected when existing codex config is empty"
     )
 
 
 def test_single_server_entry_appears_in_opencode_transport_config(
     tmp_path: Path,
 ) -> None:
-    """build_opencode_provider_config includes the custom server tools in upstreams."""
+    """build_opencode_provider_config includes the ralph server in the OpenCode config."""
     with _spawn_fake_http_mcp() as port:
         _wait_for_port(port)
         url = f"http://127.0.0.1:{port}/mcp"
         _write_mcp_toml(tmp_path, "my-custom-server", url)
-
-        # Parse upstreams from mcp.toml
-        upstreams = mcp_toml_as_upstreams(tmp_path)
 
         # build_opencode_provider_config takes existing config + Ralph endpoint
         # and returns the merged config plus any upstreams found in existing config.
@@ -214,6 +216,11 @@ def test_single_server_entry_surfaces_in_all_transport_paths(
     tmp_path: Path,
 ) -> None:
     """Full end-to-end: single server in mcp.toml appears across all transport configs."""
+    # Use an isolated empty codex home so this test does not read the developer's
+    # real ~/.codex/config.toml.
+    isolated_codex_home = tmp_path / "empty-codex-home"
+    isolated_codex_home.mkdir()
+
     with _spawn_fake_http_mcp() as port:
         _wait_for_port(port)
         url = f"http://127.0.0.1:{port}/mcp"
@@ -234,14 +241,16 @@ def test_single_server_entry_surfaces_in_all_transport_paths(
         claude_config = json.loads(claude_mcp_config(ralph_endpoint, workspace_path=tmp_path))
         assert "ralph" in claude_config.get("mcpServers", {})
 
-        # Codex transport
-        codex_home, codex_upstreams = prepare_codex_home_with_upstreams(
+        # Codex transport: returns upstreams from existing codex config (empty here)
+        _codex_home, codex_upstreams = prepare_codex_home_with_upstreams(
             None,
             workspace_path=tmp_path,
-            existing_home=None,
+            existing_home=str(isolated_codex_home),
             system_prompt_file=None,
         )
-        assert len(codex_upstreams) == 1
+        assert len(codex_upstreams) == 0, (
+            "No existing codex upstreams expected when existing codex config is empty"
+        )
 
         # OpenCode transport
         opencode_config_json, _ = build_opencode_provider_config(
