@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from types import SimpleNamespace
 from typing import TYPE_CHECKING
 
 from ralph.cli.commands import run as run_module
+from ralph.config.models import UnifiedConfig
 from ralph.pipeline.state import PipelineState
 from ralph.workspace.scope import WorkspaceScope
 
@@ -21,10 +21,15 @@ class _CaptureConsole:
         self.lines.append(" ".join(str(arg) for arg in args))
 
 
-def _fake_config(developer_iters: int = 1, reviewer_reviews: int = 1) -> SimpleNamespace:
-    return SimpleNamespace(
-        general=SimpleNamespace(developer_iters=developer_iters, reviewer_reviews=reviewer_reviews)
+def _fake_config(developer_iters: int = 1, reviewer_reviews: int = 1) -> UnifiedConfig:
+    config = UnifiedConfig()
+    general = config.general.model_copy(
+        update={
+            "developer_iters": developer_iters,
+            "reviewer_reviews": reviewer_reviews,
+        }
     )
+    return config.model_copy(update={"general": general})
 
 
 def test_run_pipeline_load_config_failure(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -75,6 +80,35 @@ def test_run_pipeline_dry_run_reports_summary(monkeypatch: pytest.MonkeyPatch) -
     assert "Review passes: 2" in console.lines[3]
 
 
+class _RegistryWithFromConfigOnly:
+    called_with: object | None = None
+
+    @classmethod
+    def from_config(cls, config: object) -> _RegistryWithFromConfigOnly:
+        cls.called_with = config
+        return cls()
+
+    def get(self, _name: str) -> object:
+        return object()
+
+
+def test_run_pipeline_builds_preflight_registry_from_config(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = _fake_config()
+    console = _CaptureConsole()
+
+    monkeypatch.setattr(run_module, "load_config", lambda *args, **kwargs: config)
+    monkeypatch.setattr(run_module, "console", console)
+    monkeypatch.setattr(run_module, "AgentRegistry", _RegistryWithFromConfigOnly)
+    monkeypatch.setattr(run_module, "_run_func", lambda *_args, **_kwargs: 0)
+
+    _RegistryWithFromConfigOnly.called_with = None
+
+    assert run_module.run_pipeline() == 0
+    assert _RegistryWithFromConfigOnly.called_with is config
+
+
 def test_run_pipeline_runner_unavailable(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(run_module, "load_config", lambda *args, **kwargs: _fake_config())
     console = _CaptureConsole()
@@ -115,11 +149,13 @@ def test_run_pipeline_runner_exception(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_run_pipeline_injects_workspace_scope_when_config_path_is_implicit(
     monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
 ) -> None:
     captured: dict[str, object] = {}
-    scope = WorkspaceScope("/tmp/worktree")
+    (tmp_path / "PROMPT.md").write_text("Prompt\n")
+    scope = WorkspaceScope(tmp_path)
 
-    def fake_load_config(*args: object, **kwargs: object) -> SimpleNamespace:
+    def fake_load_config(*args: object, **kwargs: object) -> UnifiedConfig:
         captured["kwargs"] = kwargs
         return _fake_config()
 

@@ -6,8 +6,8 @@ This module implements the main pipeline execution command.
 from __future__ import annotations
 
 import importlib
+import pathlib  # noqa: TC003
 from inspect import signature
-from pathlib import Path
 from typing import TYPE_CHECKING, NamedTuple, Protocol, cast
 
 import typer
@@ -15,9 +15,10 @@ from loguru import logger
 from rich.text import Text
 
 from ralph.agents.registry import AgentRegistry
+from ralph.config.enums import Verbosity  # noqa: TC001
 from ralph.config.loader import load_config
 from ralph.pipeline import checkpoint as ckpt
-from ralph.pipeline.state import PipelineState
+from ralph.pipeline.state import PipelineState  # noqa: TC001
 from ralph.policy.loader import load_policy
 from ralph.policy.validation import (
     CheckpointPolicyMismatchError,
@@ -29,7 +30,6 @@ from ralph.policy.validation import (
 from ralph.workspace.scope import WorkspaceScope, resolve_workspace_scope
 
 if TYPE_CHECKING:
-    from ralph.config.enums import Verbosity
     from ralph.config.models import UnifiedConfig
     from ralph.policy.models import PolicyBundle
 
@@ -39,7 +39,6 @@ class _RunnerFunc(Protocol):
         self,
         config: UnifiedConfig,
         initial_state: PipelineState | None,
-        policy_bundle: PolicyBundle | None = None,
         **kwargs: object,
     ) -> int: ...
 
@@ -86,7 +85,7 @@ _EXIT_PREFLIGHT = 2
 
 class _LoadResult(NamedTuple):
     config: UnifiedConfig
-    workspace_scope: WorkspaceScope
+    workspace_scope: WorkspaceScope | None
     initial_state: PipelineState | None
     policy_bundle: PolicyBundle | None
 
@@ -97,13 +96,13 @@ app = typer.Typer(help="Run the Ralph pipeline")
 
 @app.command()
 def run(  # type: ignore[override]
-    config_path: Path | None = typer.Option(
+    config_path: pathlib.Path | None = typer.Option(  # noqa: B008
         None, "--config", "-c", help="Path to configuration file"
     ),
-    dry_run: bool = typer.Option(False, "--dry-run", help="Run without invoking agents"),
-    resume: bool = typer.Option(False, "--resume", help="Resume from checkpoint"),
-    no_resume: bool = typer.Option(False, "--no-resume", help="Start fresh, ignoring checkpoint"),
-    verbosity: Verbosity | None = typer.Option(
+    dry_run: bool = typer.Option(False, "--dry-run", help="Run without invoking agents"),  # noqa: B008
+    resume: bool = typer.Option(False, "--resume", help="Resume from checkpoint"),  # noqa: B008
+    no_resume: bool = typer.Option(False, "--no-resume", help="Start fresh, ignoring checkpoint"),  # noqa: B008
+    verbosity: Verbosity | None = typer.Option(  # noqa: B008
         None, "--verbosity", "-v", help="Verbosity level"
     ),
 ) -> int:
@@ -151,7 +150,7 @@ def run(  # type: ignore[override]
 
 
 def _load_configuration(
-    config_path: Path | None,
+    config_path: pathlib.Path | None,
     cli_overrides: ConfigOverrides,
     resume: bool,
 ) -> _LoadResult | int:
@@ -175,6 +174,8 @@ def _load_configuration(
             policy_bundle = load_policy(workspace_scope.root / ".agent")
         except Exception as e:
             logger.warning("Failed to load policy bundle: {}", e)
+            console.print(f"[red]Preflight error: {e}[/red]")
+            return _EXIT_PREFLIGHT
 
     if resume:
         initial_state = ckpt.load()
@@ -189,7 +190,7 @@ def _load_configuration(
     )
 
 
-def _run_preflight_checks(
+def _run_preflight_checks(  # noqa: PLR0911
     config: UnifiedConfig,
     workspace_scope: WorkspaceScope | None,
     policy_bundle: object,
@@ -223,7 +224,7 @@ def _run_preflight_checks(
 
         # validate_agent_chains_satisfiable requires agent registry
         try:
-            agent_registry = AgentRegistry.discover()
+            agent_registry = AgentRegistry.from_config(config)
             validate_agent_chains_satisfiable(policy_bundle, agent_registry)
         except PolicyValidationError as e:
             console.print(f"[red]Preflight error: {e.message}[/red]")
@@ -276,9 +277,12 @@ def _execute_pipeline(
 
     try:
         kwargs: dict[str, object] = {}
-        if verbosity is not None and "verbosity" in signature(_run_func).parameters:
+        runner_params = signature(_run_func).parameters
+        if verbosity is not None and "verbosity" in runner_params:
             kwargs["verbosity"] = verbosity
-        return _run_func(config, initial_state, policy_bundle=policy_bundle, **kwargs)
+        if policy_bundle is not None and "policy_bundle" in runner_params:
+            kwargs["policy_bundle"] = policy_bundle
+        return _run_func(config, initial_state, **kwargs)
     except KeyboardInterrupt:
         console.print("\n[yellow]Interrupted by user[/yellow]")
         if initial_state is not None:
@@ -323,7 +327,7 @@ def _detail_text(label: str, detail: str) -> Text:
 
 # Backward compatibility: expose run_pipeline for direct invocation
 def run_pipeline(
-    config_path: Path | None = None,
+    config_path: pathlib.Path | None = None,
     cli_overrides: ConfigOverrides | None = None,
     dry_run: bool = False,
     resume: bool = False,
