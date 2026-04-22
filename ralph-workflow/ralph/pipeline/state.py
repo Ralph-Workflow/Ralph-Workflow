@@ -94,6 +94,17 @@ class RunMetrics(BaseModel):  # type: ignore[explicit-any]
     total_retries: int = 0
 
 
+class FalloverRecord(BaseModel):  # type: ignore[explicit-any]
+    """A record of a single agent fallover event persisted in pipeline state."""
+
+    model_config = ConfigDict(frozen=True)
+
+    phase: str
+    from_agent: str
+    to_agent: str
+    timestamp_iso: str
+
+
 class PipelineState(BaseModel):  # type: ignore[explicit-any]
     """Immutable snapshot of pipeline execution state.
 
@@ -135,6 +146,11 @@ class PipelineState(BaseModel):  # type: ignore[explicit-any]
         max_development_analysis_iterations: Maximum development analysis loop budget.
         review_analysis_iteration: Current review analysis loop iteration.
         max_review_analysis_iterations: Maximum review analysis loop budget.
+        recovery_cycle_count: Number of full-chain exhaustion recovery cycles.
+        fallover_history: History of agent fallover events.
+        last_failure_category: Category of the most recent classified failure.
+        last_connectivity_state: Last observed connectivity state string.
+        recovery_cycle_cap: Maximum recovery cycles before pipeline exits.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -180,6 +196,13 @@ class PipelineState(BaseModel):  # type: ignore[explicit-any]
     work_units: tuple[WorkUnit, ...] = Field(default_factory=tuple)
     worker_states: dict[str, WorkerState] = Field(default_factory=dict)
 
+    # Recovery observability fields — all have defaults so legacy checkpoints load cleanly
+    recovery_cycle_count: int = 0
+    fallover_history: tuple[FalloverRecord, ...] = Field(default_factory=tuple)
+    last_failure_category: str | None = None
+    last_connectivity_state: str = "unknown"
+    recovery_cycle_cap: int = Field(default=200, ge=1)
+
     @field_validator("work_units", mode="before")
     @classmethod
     def _coerce_work_units(cls, v: object) -> tuple[WorkUnit, ...]:
@@ -199,6 +222,20 @@ class PipelineState(BaseModel):  # type: ignore[explicit-any]
         if isinstance(v, dict):
             return v
         raise TypeError(f"Expected dict for worker_states, got {type(v).__name__!r}")
+
+    @field_validator("fallover_history", mode="before")
+    @classmethod
+    def _coerce_fallover_history(cls, v: object) -> tuple[FalloverRecord, ...]:
+        if v is None:
+            return ()
+        if isinstance(v, list):
+            return tuple(
+                FalloverRecord.model_validate(item) if isinstance(item, dict) else item
+                for item in v
+            )
+        if isinstance(v, tuple):
+            return v
+        raise TypeError(f"Expected list or tuple for fallover_history, got {type(v).__name__!r}")
 
     def is_complete(self) -> bool:
         """Check if pipeline has reached a terminal success state.

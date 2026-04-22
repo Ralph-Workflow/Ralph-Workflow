@@ -10,12 +10,10 @@ failed with 'Unknown failure' bypassing the retry/fallback chain.
 
 from __future__ import annotations
 
-from typing import cast
-
 import pytest
 
 from ralph.config.enums import PHASE_DEVELOPMENT, PHASE_FAILED
-from ralph.pipeline.effects import ExitFailureEffect
+from ralph.pipeline.effects import Effect, ExitFailureEffect
 from ralph.pipeline.events import PhaseFailureEvent
 from ralph.pipeline.reducer import reduce as reducer_reduce
 from ralph.pipeline.state import AgentChainState, PipelineState
@@ -27,9 +25,9 @@ _EXPECTED_TOTAL_RETRIES = 6
 
 def _reduce(
     state: PipelineState,
-    event: object,
-) -> tuple[PipelineState, list[object]]:
-    return reducer_reduce(state, cast("object", event), None)
+    event: PhaseFailureEvent,
+) -> tuple[PipelineState, list[Effect]]:
+    return reducer_reduce(state, event, None)
 
 
 class TestRecoveryFirstBehavior:
@@ -82,6 +80,7 @@ class TestRecoveryFirstBehavior:
         # Final crash on agent 1 (chain exhausted): PHASE_FAILED with descriptive reason
         state, effects = _reduce(state, crash_event)
         assert state.phase == PHASE_FAILED
+        assert state.last_error is not None
         assert "Phase handler crashed: RuntimeError: boom" in state.last_error
         assert state.last_error != "Unknown failure"
         assert state.metrics.total_retries == _EXPECTED_TOTAL_RETRIES

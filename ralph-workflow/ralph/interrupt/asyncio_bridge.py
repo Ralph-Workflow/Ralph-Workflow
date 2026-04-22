@@ -16,6 +16,7 @@ from __future__ import annotations
 import contextlib
 import os
 import signal
+from collections.abc import Callable  # noqa: TC003
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
@@ -32,6 +33,7 @@ class SignalBridge:
     pids: set[int] = field(default_factory=set)
     _interrupt_count: int = field(default=0, init=False)
     _unsubscribe: object = field(default=None, init=False)
+    _connectivity_stop: Callable[[], None] | None = field(default=None, init=False)
 
     def register_pid(self, pid: int) -> None:
         self.pids.add(pid)
@@ -67,6 +69,9 @@ def install_signal_handlers(
         for pid in list(bridge.pids):
             with contextlib.suppress(ProcessLookupError, PermissionError):
                 os.killpg(pid, signal.SIGKILL)
+        if bridge._connectivity_stop is not None:
+            with contextlib.suppress(Exception):
+                bridge._connectivity_stop()
         root_task.cancel()
         loop.add_signal_handler(signal.SIGINT, _second_sigint)
 

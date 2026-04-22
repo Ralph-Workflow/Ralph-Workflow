@@ -46,6 +46,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
     from ralph.policy.models import PipelinePolicy
+    from ralph.recovery.controller import RecoveryController
 
 # Maximum number of agent retries before giving up
 _MAX_AGENT_RETRIES = 3
@@ -116,6 +117,7 @@ def reduce(
     state: PipelineState,
     event: Event,
     pipeline_policy: PipelinePolicy | None = None,
+    recovery: RecoveryController | None = None,
 ) -> tuple[PipelineState, list[Effect]]:
     """Pure state transition function.
 
@@ -128,13 +130,26 @@ def reduce(
         event: Event to process.
         pipeline_policy: Optional pipeline policy for resolving transitions.
             If None, uses hardcoded transitions for backward compatibility.
+        recovery: Optional RecoveryController. When supplied, PhaseFailureEvents
+            are delegated to it for classification-aware recovery. When None,
+            the legacy retry/fallback logic in _handle_agent_failure is used.
 
     Returns:
         Tuple of (new_state, effects). Effects are instructions for the
         effect handler to execute.
     """
-    # Handle PhaseFailureEvent before the generic PipelineEvent dispatch
+    # Handle PhaseFailureEvent before the generic PipelineEvent dispatch.
+    # When a RecoveryController is supplied, delegate to it for classification-aware
+    # recovery (intelligent attribution, budget management). When None, use legacy logic.
     if isinstance(event, PhaseFailureEvent):
+        if recovery is not None:
+            new_state, effects, _ = recovery.handle(
+                state,
+                event.reason or f"(no reason reported for phase={event.phase})",
+                phase=event.phase,
+                agent=state.current_agent(),
+            )
+            return _restore_work_units(state, new_state), effects
         return _handle_phase_failure(state, event)
 
     # Handle worker events with a unified approach

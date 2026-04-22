@@ -10,8 +10,11 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from ralph.agents.registry import AgentRegistry
+    from ralph.pipeline.state import PipelineState
     from ralph.pipeline.work_units import WorkUnitsPlan
     from ralph.policy.models import DrainName, PipelinePolicy, PolicyBundle
+    from ralph.workspace.scope import WorkspaceScope
 
 
 class CheckpointPolicyMismatchError(Exception):
@@ -228,3 +231,102 @@ def validate_work_units_against_policy(
                 raise PolicyValidationError(
                     f"Work unit '{unit.unit_id}' must declare allowed_directories"
                 )
+
+
+def validate_agent_chains_satisfiable(
+    bundle: PolicyBundle,
+    agent_registry: AgentRegistry,
+) -> None:
+    """Validate that every agent referenced in every chain exists in the registry.
+
+    This catches references to unregistered agents at startup rather than
+    at runtime. Config consistency check only — not binary presence on PATH.
+
+    Args:
+        bundle: Currently loaded policy bundle.
+        agent_registry: Populated agent registry to check against.
+
+    Raises:
+        PolicyValidationError: If any chain references an unknown agent.
+    """
+    unknown_agents: list[str] = []
+    for chain_name, chain_config in bundle.agents.agent_chains.items():
+        unknown_agents.extend(
+            f"chain '{chain_name}' references unknown agent '{agent_name}'"
+            for agent_name in chain_config.agents
+            if agent_registry.get(agent_name) is None
+        )
+    if unknown_agents:
+        raise PolicyValidationError(
+            "Agent chains reference unknown agents (check configuration, not PATH): "
+            + "; ".join(unknown_agents)
+        )
+
+
+def validate_recovery_config(bundle: PolicyBundle) -> None:
+    """Validate recovery-related configuration in the policy bundle.
+
+    Args:
+        bundle: Currently loaded policy bundle.
+
+    Raises:
+        PolicyValidationError: If recovery config is invalid.
+    """
+    for chain_name, chain_config in bundle.agents.agent_chains.items():
+        if chain_config.max_retries < 0:
+            raise PolicyValidationError(
+                f"Chain '{chain_name}' has invalid "
+                f"max_retries={chain_config.max_retries}; must be >= 0"
+            )
+
+
+def validate_checkpoint_against_policy(
+    state: PipelineState,
+    bundle: PolicyBundle,
+) -> None:
+    """Validate a checkpoint state against the current policy bundle.
+
+    Validates the phase exists and, if a drain is set, that it is bound.
+
+    Args:
+        state: Pipeline state loaded from checkpoint.
+        bundle: Currently loaded policy bundle.
+
+    Raises:
+        CheckpointPolicyMismatchError: If the checkpoint phase is unknown.
+        PolicyValidationError: If the checkpoint drain is not bound.
+    """
+    validate_phase_exists_in_policy(state.phase, bundle.pipeline)
+    if state.current_drain is not None and state.current_drain not in bundle.agents.agent_drains:
+        raise PolicyValidationError(
+            f"Checkpoint references drain '{state.current_drain}' which is not bound "
+            f"in agents.toml. Available drains: {sorted(bundle.agents.agent_drains.keys())}"
+        )
+
+
+def validate_required_inputs(workspace_scope: WorkspaceScope) -> None:
+    """Validate that required input files exist and are readable.
+
+    Checks that PROMPT.md exists in the workspace root, as it is required
+    for the pipeline to run.
+
+    Args:
+        workspace_scope: The workspace scope containing the root path.
+
+    Raises:
+        PolicyValidationError: If required inputs are missing or unreadable.
+    """
+    prompt_path = workspace_scope.root / "PROMPT.md"
+    if not prompt_path.exists():
+        raise PolicyValidationError(
+            f"Required input file not found: {prompt_path}. "
+            "The pipeline requires PROMPT.md to exist in the workspace root."
+        )
+    if not prompt_path.is_file():
+        raise PolicyValidationError(
+            f"Required input is not a file: {prompt_path}"
+        )
+    if not prompt_path.stat().st_size > 0:
+        raise PolicyValidationError(
+            f"Required input file is empty: {prompt_path}"
+        )

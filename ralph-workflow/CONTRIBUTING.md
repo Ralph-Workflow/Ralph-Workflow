@@ -62,6 +62,10 @@ When working on `ralph/pipeline/runner.py`, `ralph/phases/`, or Claude/CCS agent
 
 This logic is more complex than a naive "agent exited 0" flow, but it exists to prevent silent no-op runs in unattended mode without forcing side-effect-driven phases to produce busywork artifacts. If you change it, update tests and docs together.
 
+## Recovery architecture contract
+
+Recovery, failure classification, retry counting, and chain fallover each have a single conceptual owner in `ralph/recovery/`. Extend the owner, do not add handlers at call sites. New failure modes are added by extending the `FailureClassifier` in `ralph/recovery/classifier.py`, not by sprinkling classification logic at invoke sites.
+
 ## Release notes
 
 Builds and publishing are defined in `pyproject.toml` and the repo automation. For local validation, build from this directory:

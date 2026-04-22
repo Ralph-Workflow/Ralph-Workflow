@@ -101,6 +101,7 @@ if TYPE_CHECKING:
     from ralph.pipeline.parallel import coordinator as parallel_coordinator
     from ralph.pipeline.work_units import WorkUnit
     from ralph.policy.models import AgentsPolicy, PhaseDefinition, PipelinePolicy, PolicyBundle
+    from ralph.recovery.controller import RecoveryController
 
     class _PipelineSubscriber(Protocol):
         def notify(self, state: PipelineState) -> None: ...
@@ -505,13 +506,14 @@ def _reduce_runtime_recovery(
     pipeline_policy: PipelinePolicy,
     *,
     reason: str,
+    recovery: RecoveryController | None = None,
 ) -> PipelineState:
     failure_event = PhaseFailureEvent(
         phase=state.phase,
         reason=reason,
         recoverable=True,
     )
-    recovered_state, _ = reducer_reduce(state, failure_event, pipeline_policy)
+    recovered_state, _ = reducer_reduce(state, failure_event, pipeline_policy, recovery)
     return recovered_state
 
 
@@ -536,6 +538,7 @@ def _run_pipeline_step(  # noqa: PLR0913
     verbosity: Verbosity,
     registry: _RegistryLike,
     pipeline_subscriber: _PipelineSubscriber | None,
+    recovery: RecoveryController | None = None,
 ) -> PipelineState | int:
     try:
         effect = _call_determine_effect_from_policy(state, policy_bundle, workspace_scope, config)
@@ -558,6 +561,7 @@ def _run_pipeline_step(  # noqa: PLR0913
                 policy_bundle=policy_bundle,
                 workspace_scope=workspace_scope,
                 pipeline_subscriber=pipeline_subscriber,
+                recovery=recovery,
             )
 
         workspace = FsWorkspace(
@@ -611,6 +615,7 @@ def _run_pipeline_step(  # noqa: PLR0913
             state,
             policy_bundle.pipeline,
             reason=f"Pipeline step crashed: {type(exc).__name__}: {exc}",
+            recovery=recovery,
         )
         _notify_pipeline_subscriber(pipeline_subscriber, recovered_state)
         _save_checkpoint_or_log(
@@ -810,6 +815,9 @@ def run(  # noqa: PLR0913
             getattr(active_display, "subscriber", None),
         )
 
+    from ralph.recovery.controller import RecoveryController  # noqa: PLC0415
+
+    recovery_controller = RecoveryController()
     exit_code = 0
     _prev_phase = state.phase
     try:
@@ -826,6 +834,7 @@ def run(  # noqa: PLR0913
                         verbosity=effective_verbosity,
                         registry=registry,
                         pipeline_subscriber=effective_pipeline_subscriber,
+                        recovery=recovery_controller,
                     )
                     if isinstance(step_result, int):
                         return step_result
@@ -948,6 +957,7 @@ async def _run_fan_out_async(  # noqa: PLR0913
     repo_root: Path,
     git_exec: GitExecutor,
     pipeline_subscriber: _PipelineSubscriber | None,
+    recovery: RecoveryController | None = None,
 ) -> PipelineState:
     import asyncio  # noqa: PLC0415
 
@@ -1019,6 +1029,7 @@ async def _run_fan_out_async(  # noqa: PLR0913
             current,
             policy_bundle.pipeline,
             reason=f"Fan-out execution crashed: {type(exc).__name__}: {exc}",
+            recovery=recovery,
         )
         _notify_pipeline_subscriber(pipeline_subscriber, recovered)
         _save_checkpoint_or_log(
@@ -1040,6 +1051,7 @@ def _execute_fan_out_sync(  # noqa: PLR0913
     workspace_scope: WorkspaceScope,
     pipeline_subscriber: _PipelineSubscriber | None = None,
     dashboard_subscriber: _PipelineSubscriber | None = None,
+    recovery: RecoveryController | None = None,
 ) -> PipelineState:
     """Execute fan-out development synchronously by wrapping asyncio.run()."""
     import asyncio  # noqa: PLC0415
@@ -1061,6 +1073,7 @@ def _execute_fan_out_sync(  # noqa: PLR0913
             repo_root=workspace_scope.root,
             git_exec=GitExecutor(),
             pipeline_subscriber=effective_pipeline_subscriber,
+            recovery=recovery,
         )
     )
 

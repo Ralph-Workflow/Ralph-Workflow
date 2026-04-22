@@ -7,14 +7,14 @@ from __future__ import annotations
 
 import importlib
 from inspect import signature
-from typing import TYPE_CHECKING, Protocol, cast
+from typing import TYPE_CHECKING, NamedTuple, Protocol, cast
 
 from loguru import logger
 from rich.text import Text
 
 from ralph.config.loader import load_config
 from ralph.pipeline import checkpoint as ckpt
-from ralph.workspace.scope import resolve_workspace_scope
+from ralph.workspace.scope import WorkspaceScope, resolve_workspace_scope
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -66,6 +66,18 @@ def _create_console() -> _ConsoleLike:
 console: _ConsoleLike = _create_console()
 
 
+# Exit codes
+_EXIT_SUCCESS = 0
+_EXIT_CONFIG_ERROR = 1
+_EXIT_INTERRUPT = 130
+
+
+class _LoadResult(NamedTuple):
+    config: UnifiedConfig
+    workspace_scope: WorkspaceScope | None
+    initial_state: PipelineState | None
+
+
 def run_pipeline(
     config_path: Path | None = None,
     cli_overrides: ConfigOverrides | None = None,
@@ -85,54 +97,93 @@ def run_pipeline(
     Returns:
         Exit code (0 for success, non-zero for failure).
     """
-    # Load configuration
+    # Phase 1: Load configuration
+    load_result = _load_configuration(config_path, cli_overrides, resume)
+    if isinstance(load_result, int):
+        return load_result
+
+    # Phase 2: Handle dry-run
+    if dry_run:
+        _print_dry_run(load_result.initial_state, load_result.config)
+        return _EXIT_SUCCESS
+
+    # Phase 3: Execute pipeline
+    return _execute_pipeline(load_result.config, load_result.initial_state, verbosity)
+
+
+def _load_configuration(
+    config_path: Path | None,
+    cli_overrides: ConfigOverrides | None,
+    resume: bool,
+) -> _LoadResult | int:
+    """Load configuration and resolve workspace scope.
+
+    Returns:
+        _LoadResult on success, or int error code on failure.
+    """
     try:
         workspace_scope = None if config_path is not None else resolve_workspace_scope()
         config = load_config(config_path, cli_overrides, workspace_scope=workspace_scope)
     except Exception as e:
         logger.error("Failed to load configuration: {}", e)
-        return 1
+        return _EXIT_CONFIG_ERROR
 
-    # Check for checkpoint if resume is requested
     initial_state: PipelineState | None = None
     if resume:
         initial_state = ckpt.load()
         if initial_state is None:
             console.print("[yellow]No checkpoint found to resume from[/yellow]")
-            resume = False
 
-    # In dry-run mode, just initialize and exit
-    if dry_run:
-        console.print("[cyan]Dry run mode[/cyan]")
-        console.print(_detail_text("Phase", initial_state.phase if initial_state else "planning"))
-        console.print(_detail_text("Iterations", str(config.general.developer_iters)))
-        console.print(_detail_text("Review passes", str(config.general.reviewer_reviews)))
-        return 0
+    return _LoadResult(config=config, workspace_scope=workspace_scope, initial_state=initial_state)
 
-    # Run the actual pipeline
+
+def _print_dry_run(initial_state: PipelineState | None, config: UnifiedConfig) -> None:
+    """Print dry-run information."""
+    console.print("[cyan]Dry run mode[/cyan]")
+    console.print(_detail_text("Phase", initial_state.phase if initial_state else "planning"))
+    console.print(_detail_text("Iterations", str(config.general.developer_iters)))
+    console.print(_detail_text("Review passes", str(config.general.reviewer_reviews)))
+
+
+def _execute_pipeline(
+    config: UnifiedConfig,
+    initial_state: PipelineState | None,
+    verbosity: Verbosity | None,
+) -> int:
+    """Execute the pipeline.
+
+    Returns:
+        Exit code from pipeline runner.
+    """
     if _run_func is None:
         logger.error("Pipeline runner is unavailable")
         console.print("[red]Pipeline runner is unavailable[/red]")
-        return 1
+        return _EXIT_CONFIG_ERROR
 
     try:
         kwargs: dict[str, object] = {}
         if verbosity is not None and "verbosity" in signature(_run_func).parameters:
             kwargs["verbosity"] = verbosity
-        exit_code = _run_func(config, initial_state, **kwargs)
-        return exit_code
+        return _run_func(config, initial_state, **kwargs)
     except KeyboardInterrupt:
         console.print("\n[yellow]Interrupted by user[/yellow]")
-        # Save checkpoint on interrupt
         if initial_state is not None:
-            update_data: ConfigOverrides = {"interrupted_by_user": True}
-            interrupted_state = initial_state.model_copy(update=update_data)
-            ckpt.save(interrupted_state)
-        return 130
+            _save_interrupt_checkpoint(initial_state)
+        return _EXIT_INTERRUPT
     except Exception as e:
         logger.exception("Pipeline execution failed: {}")
         console.print(_status_text("Pipeline failed", str(e), "red"))
-        return 1
+        return _EXIT_CONFIG_ERROR
+
+
+def _save_interrupt_checkpoint(initial_state: PipelineState) -> None:
+    """Save checkpoint on interrupt."""
+    try:
+        update_data: ConfigOverrides = {"interrupted_by_user": True}
+        interrupted_state = initial_state.model_copy(update=update_data)
+        ckpt.save(interrupted_state)
+    except Exception:
+        logger.warning("Checkpoint save failed during interrupt", exc_info=True)
 
 
 def _status_text(label: str, detail: str, style: str) -> Text:
