@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import socket
@@ -18,6 +19,7 @@ from ralph.mcp.protocol import startup
 from ralph.mcp.tools.names import WEB_SEARCH_TOOL, upstream_proxy_tool_name
 from ralph.mcp.transport.common import merge_mcp_toml_into_upstreams
 from ralph.mcp.upstream.config import UpstreamMcpServer
+from ralph.process.manager import ManagedProcess, ProcessTerminationError, get_process_manager
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -29,20 +31,22 @@ pytestmark = pytest.mark.timeout_seconds(2.5)
 
 
 class _RunningServer:
-    def __init__(self, process: subprocess.Popen[str], endpoint: str) -> None:
-        self.process = process
+    def __init__(self, handle: ManagedProcess, endpoint: str) -> None:
+        self.handle = handle
         self.endpoint = endpoint
 
     def stop(self) -> tuple[str, str]:
-        if self.process.poll() is None:
-            self.process.terminate()
-            try:
-                self.process.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                self.process.kill()
-                self.process.wait(timeout=5)
-        stdout, stderr = self.process.communicate()
-        return stdout, stderr
+        if self.handle.poll() is None:
+            with contextlib.suppress(ProcessTerminationError):
+                self.handle.terminate(grace_period_s=5.0)
+        raw_out, raw_err = self.handle.communicate()
+
+        def _s(v: object) -> str:
+            if isinstance(v, bytes):
+                return v.decode()
+            return v if isinstance(v, str) else ""
+
+        return _s(raw_out), _s(raw_err)
 
 
 @pytest.fixture(autouse=True)
@@ -87,15 +91,16 @@ def _run_server(
         bootstrap.write_text(bootstrap_text, encoding="utf-8")
         command = [sys.executable, str(bootstrap), str(workspace), str(port)]
 
-    process = subprocess.Popen(
+    handle = get_process_manager().spawn(
         command,
         cwd=str(PACKAGE_ROOT),
         env=env,
-        text=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
+        text=True,
+        label="test:mcp-e2e-server",
     )
-    server = _RunningServer(process=process, endpoint=endpoint)
+    server = _RunningServer(handle=handle, endpoint=endpoint)
     try:
         _wait_for_server(server.endpoint)
         yield server

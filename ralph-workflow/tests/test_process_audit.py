@@ -32,12 +32,14 @@ TESTS_ALLOWLIST: set[str] = {
     "test_git_rebase.py",              # git repo setup via subprocess.run in test fixtures
     "test_git_rebase_continuation.py", # git repo setup via subprocess.run in test fixtures
     "test_asyncio_bridge.py",          # patches os.killpg; no real call
-    # MCP e2e fixtures that spawn external servers — tracked for follow-up refactor
-    "test_fake_http_mcp_fixture.py",   # MCP e2e test fixture; subprocess.Popen for server
-    "test_fake_stdio_mcp_fixture.py",  # MCP e2e test fixture; subprocess.Popen for server
-    "test_mcp_e2e.py",                 # MCP e2e integration test; subprocess.Popen for server
-    "test_validate_custom_mcp_http_e2e.py",  # MCP e2e test; subprocess.Popen for server
-    "test_custom_mcp_roundtrip.py",    # MCP roundtrip test; subprocess.Popen for server
+}
+
+_MCP_FIXTURE_FILES = {
+    "test_fake_http_mcp_fixture.py",
+    "test_fake_stdio_mcp_fixture.py",
+    "test_mcp_e2e.py",
+    "test_validate_custom_mcp_http_e2e.py",
+    "test_custom_mcp_roundtrip.py",
 }
 
 
@@ -65,8 +67,8 @@ def test_no_direct_subprocess_calls_outside_process_manager() -> None:
 def test_no_direct_subprocess_calls_in_tests() -> None:
     """Assert no test file uses subprocess or POSIX kill APIs directly.
 
-    Allowlisted files are test-infrastructure uses (git setup, pattern literals,
-    MCP e2e fixtures). New test files must not bypass ProcessManager.
+    Allowlisted files are test-infrastructure uses (git setup, pattern literals).
+    New test files must not bypass ProcessManager.
     """
     all_patterns = FORBIDDEN_PATTERNS + POSIX_FORBIDDEN
     violations = [
@@ -83,4 +85,13 @@ def test_no_direct_subprocess_calls_in_tests() -> None:
     assert not violations, (
         "Direct subprocess/POSIX calls found in tests/ outside the allowlist:\n"
         + "\n".join(violations)
+    )
+
+
+def test_mcp_fixtures_no_longer_allowlisted() -> None:
+    """Assert that the migrated MCP fixture files are not in TESTS_ALLOWLIST."""
+    regressions = _MCP_FIXTURE_FILES & TESTS_ALLOWLIST
+    assert not regressions, (
+        "MCP fixture files were re-added to TESTS_ALLOWLIST:\n"
+        + "\n".join(sorted(regressions))
     )
