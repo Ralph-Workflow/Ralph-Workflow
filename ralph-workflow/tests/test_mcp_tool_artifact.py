@@ -43,6 +43,7 @@ class _Workspace:
 def test_submit_artifact_rejects_missing_content_source_with_actionable_guidance(
     tmp_path: Path,
 ) -> None:
+    """When content is missing and workspace is available, error redirects to format doc."""
     session = _ApprovedSession()
     workspace = _Workspace(tmp_path)
 
@@ -54,15 +55,15 @@ def test_submit_artifact_rejects_missing_content_source_with_actionable_guidance
         )
 
     message = str(exc_info.value)
-    assert "Provide exactly one of 'content' or 'content_path'" in message
-    assert DEVELOPMENT_FRESH_SUBMIT_EXAMPLE in message
-    assert "Use 'content' for a freshly generated JSON string." in message
-    assert CONTENT_PATH_GUIDANCE in message
+    # When workspace is available, we redirect to the format doc
+    # The redirect message includes the path to the format doc
+    assert ".agent/artifact-formats/development_analysis_decision.md" in message
 
 
 def test_submit_artifact_rejects_both_content_and_content_path_with_actionable_guidance(
     tmp_path: Path,
 ) -> None:
+    """When both content and content_path are set and workspace is available, error redirects."""
     session = _ApprovedSession()
     workspace = _Workspace(tmp_path)
 
@@ -78,6 +79,5 @@ def test_submit_artifact_rejects_both_content_and_content_path_with_actionable_g
         )
 
     message = str(exc_info.value)
-    assert "Provide exactly one of 'content' or 'content_path'" in message
-    assert REVIEW_FRESH_SUBMIT_EXAMPLE in message
-    assert "Never send both 'content' and 'content_path' in the same call." in message
+    # When workspace is available, we redirect to the format doc
+    assert ".agent/artifact-formats/review_analysis_decision.md" in message

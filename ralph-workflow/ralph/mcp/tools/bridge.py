@@ -305,6 +305,17 @@ def _metadata(
     )
 
 
+_SUBMIT_ARTIFACT_DESCRIPTION = (
+    "Submit a structured artifact (plan, development_result, issues, etc.). "
+    "Required param: artifact_type (string). Optional params: content (JSON) "
+    "or content_path (path to JSON file). Returns confirmation on success. "
+    'Example: {"artifact_type": "plan", "content": {"summary": "placeholder"}} '
+    "submits a plan artifact. On error, read the format doc at "
+    ".agent/artifact-formats/<type>.md (or .agent/artifact-formats/artifact_formats_index.md "
+    "if artifact_type is unknown) before retrying."
+)
+
+
 def _tool_specs(mcp_config: McpConfig) -> tuple[ToolSpec, ...]:
     _specs: list[ToolSpec] = [
         ToolSpec(
@@ -597,15 +608,7 @@ def _tool_specs(mcp_config: McpConfig) -> tuple[ToolSpec, ...]:
         ToolSpec(
             metadata=_metadata(
                 name=SUBMIT_ARTIFACT_TOOL,
-                description=(
-                    "Submit a structured artifact (plan, development_result, issues, etc.). "
-                    "Required param: artifact_type (string). Optional params: content "
-                    "(JSON string) or content_path (string, path to JSON file). "
-                    "Returns confirmation on success. "
-                    'Example: {"artifact_type": "plan", "content": '
-                    + _EXAMPLE_PLAN_CONTENT
-                    + "} submits a plan artifact."
-                ),
+                description=_SUBMIT_ARTIFACT_DESCRIPTION,
                 input_schema={
                     "type": "object",
                     "properties": {

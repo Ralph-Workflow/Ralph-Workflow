@@ -40,3 +40,11 @@ Call the `ralph_submit_artifact` tool with `artifact_type` set to `fix_result` a
 - Do NOT submit a plain string as `content` — the content must be a JSON object
 - Do NOT add extra fields that are not listed above
 - Do NOT use `status` — fix_result does not have a status field; just describe the work in `summary`
+
+## Dumb-proof checklist
+
+- Did you set `artifact_type` to `"fix_result"`?
+- Did you write a non-empty `summary` describing what was fixed?
+- Did you write a non-empty `files_changed` listing every file you modified?
+- Did you NOT add a `status` field (fix_result does not use it)?
+- Did you stringify the content object into a JSON string for the `content` field?

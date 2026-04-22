@@ -16,12 +16,17 @@ from ralph.mcp.artifacts.file_backend import FileBackend
 from ralph.mcp.artifacts.format_docs import (
     FORMAT_DOC_ARTIFACT_TYPES,
     format_doc_workspace_path,
+    format_index_workspace_path,
     load_bundled_format_doc,
+    load_bundled_format_index,
     materialize_all_format_docs,
     materialize_format_doc,
+    materialize_format_index,
 )
 from ralph.mcp.tools.artifact import handle_submit_artifact
 from ralph.mcp.tools.coordination import InvalidParamsError
+
+MIN_CHECKLIST_BULLETS = 3
 
 
 class MemoryBackend(FileBackend):
@@ -166,11 +171,15 @@ def test_materialize_all_format_docs_materializes_every_supported_type() -> None
 
     paths = materialize_all_format_docs(workspace_root, backend=backend)
 
-    assert len(paths) == len(FORMAT_DOC_ARTIFACT_TYPES)
+    # 6 per-type docs + 1 index doc = 7
+    assert len(paths) == len(FORMAT_DOC_ARTIFACT_TYPES) + 1
     for artifact_type in FORMAT_DOC_ARTIFACT_TYPES:
         expected_path = format_doc_workspace_path(artifact_type)
         assert expected_path in paths
         assert backend.exists(workspace_root / expected_path)
+    # Index doc is also included
+    assert format_index_workspace_path() in paths
+    assert backend.exists(workspace_root / format_index_workspace_path())
 
 
 def test_bundled_examples_validate_through_real_normalizers(tmp_path: Path) -> None:
@@ -248,3 +257,216 @@ def test_handle_submit_artifact_invalid_commit_message_points_to_format_doc(
         encoding="utf-8"
     )
     assert content.startswith("# commit_message artifact format")
+
+
+# --- New parametric redirect tests (Steps 9 & 10) ---
+
+
+@pytest.mark.parametrize("artifact_type", FORMAT_DOC_ARTIFACT_TYPES)
+def test_every_supported_artifact_type_redirects_on_bad_payload(
+    artifact_type: str,
+    tmp_path: Path,
+) -> None:
+    """Each known artifact type redirects to its format doc on validation failure."""
+    with pytest.raises(InvalidParamsError) as exc_info:
+        handle_submit_artifact(
+            MockSession(),
+            MockWorkspace(tmp_path / artifact_type),
+            {"artifact_type": artifact_type, "content": "{}"},
+        )
+    message = str(exc_info.value)
+    expected_path = f".agent/artifact-formats/{artifact_type}.md"
+    assert expected_path in message, f"Expected {expected_path} in message: {message}"
+    # Raw validator text should NOT appear in the user-facing message
+    assert "Field required" not in message
+    assert "model_validate" not in message
+    # Format doc was materialized
+    doc_path = (
+        tmp_path / artifact_type / ".agent" / "artifact-formats" / f"{artifact_type}.md"
+    )
+    assert doc_path.exists()
+
+
+def test_unknown_artifact_type_redirects_to_index(tmp_path: Path) -> None:
+    """Unknown artifact_type redirects to the index doc."""
+    with pytest.raises(InvalidParamsError) as exc_info:
+        handle_submit_artifact(
+            MockSession(),
+            MockWorkspace(tmp_path),
+            {"artifact_type": "not_a_real_type", "content": "{}"},
+        )
+    message = str(exc_info.value)
+    assert ".agent/artifact-formats/artifact_formats_index.md" in message
+    assert (tmp_path / ".agent" / "artifact-formats" / "artifact_formats_index.md").exists()
+
+
+def test_missing_artifact_type_redirects_to_index(tmp_path: Path) -> None:
+    """Missing artifact_type redirects to the index doc."""
+    with pytest.raises(InvalidParamsError) as exc_info:
+        handle_submit_artifact(
+            MockSession(),
+            MockWorkspace(tmp_path),
+            {"content": "{}"},
+        )
+    message = str(exc_info.value)
+    assert ".agent/artifact-formats/artifact_formats_index.md" in message
+    assert (tmp_path / ".agent" / "artifact-formats" / "artifact_formats_index.md").exists()
+
+
+@pytest.mark.parametrize("artifact_type", ["issues", "development_result"])
+def test_content_and_content_path_both_redirect_to_format_doc(
+    artifact_type: str,
+    tmp_path: Path,
+) -> None:
+    """Both content and content_path set redirects to per-type format doc."""
+    payload_path = tmp_path / "artifact.json"
+    payload_path.write_text("{}", encoding="utf-8")
+    with pytest.raises(InvalidParamsError) as exc_info:
+        handle_submit_artifact(
+            MockSession(),
+            MockWorkspace(tmp_path),
+            {
+                "artifact_type": artifact_type,
+                "content": "{}",
+                "content_path": str(payload_path),
+            },
+        )
+    message = str(exc_info.value)
+    expected_path = f".agent/artifact-formats/{artifact_type}.md"
+    assert expected_path in message, f"Expected {expected_path} in message: {message}"
+    assert (tmp_path / ".agent" / "artifact-formats" / f"{artifact_type}.md").exists()
+
+
+@pytest.mark.parametrize("artifact_type", ["issues", "development_result"])
+def test_neither_content_nor_content_path_redirects_to_format_doc(
+    artifact_type: str,
+    tmp_path: Path,
+) -> None:
+    """Neither content nor content_path set redirects to per-type format doc."""
+    with pytest.raises(InvalidParamsError) as exc_info:
+        handle_submit_artifact(
+            MockSession(),
+            MockWorkspace(tmp_path),
+            {"artifact_type": artifact_type},
+        )
+    message = str(exc_info.value)
+    expected_path = f".agent/artifact-formats/{artifact_type}.md"
+    assert expected_path in message, f"Expected {expected_path} in message: {message}"
+    assert (tmp_path / ".agent" / "artifact-formats" / f"{artifact_type}.md").exists()
+
+
+def test_analysis_decision_without_drain_points_to_index(tmp_path: Path) -> None:
+    """analysis_decision used outside of an analysis drain redirects to index."""
+    with pytest.raises(InvalidParamsError) as exc_info:
+        handle_submit_artifact(
+            MockSession(drain=""),  # empty drain - not an analysis drain
+            MockWorkspace(tmp_path),
+            {"artifact_type": "analysis_decision", "content": '{"status": "completed"}'},
+        )
+    message = str(exc_info.value)
+    assert ".agent/artifact-formats/artifact_formats_index.md" in message
+    # Both analysis decision docs should be materialized
+    assert (
+        tmp_path / ".agent" / "artifact-formats" / "development_analysis_decision.md"
+    ).exists()
+    assert (
+        tmp_path / ".agent" / "artifact-formats" / "review_analysis_decision.md"
+    ).exists()
+    assert (tmp_path / ".agent" / "artifact-formats" / "artifact_formats_index.md").exists()
+
+
+# --- Index materialization tests (Step 10) ---
+
+
+def test_materialize_format_index_writes_umbrella_doc() -> None:
+    """materialize_format_index writes the index doc to the workspace."""
+    backend = MemoryBackend()
+    workspace_root = Path("/virtual-ws")
+
+    relative_path = materialize_format_index(workspace_root, backend=backend)
+
+    assert relative_path == ".agent/artifact-formats/artifact_formats_index.md"
+    index_path = workspace_root / ".agent" / "artifact-formats" / "artifact_formats_index.md"
+    content = backend.read_text(index_path)
+    assert len(content) > 0
+    assert "Artifact Formats Index" in content
+    assert "commit_message" in content
+    assert "development_result" in content
+
+
+def test_materialize_all_format_docs_includes_index() -> None:
+    """materialize_all_format_docs returns paths including the index doc."""
+    backend = MemoryBackend()
+    workspace_root = Path("/virtual-ws")
+
+    paths = materialize_all_format_docs(workspace_root, backend=backend)
+
+    index_path = ".agent/artifact-formats/artifact_formats_index.md"
+    assert index_path in paths
+
+
+def test_load_bundled_format_index_returns_index_content() -> None:
+    """load_bundled_format_index returns non-empty content with required sections."""
+    content = load_bundled_format_index()
+    assert len(content) > 0
+    assert "Artifact Formats Index" in content
+    # The index lists all the valid artifact types
+    for artifact_type in FORMAT_DOC_ARTIFACT_TYPES:
+        assert artifact_type in content
+
+
+# --- Uniform structure tests (Step 10) ---
+
+
+REQUIRED_SECTIONS = [
+    "## What you are doing",
+    "## How to submit",
+    "## Required fields",
+    "## Optional fields",
+    "## Complete example",
+    "## Common mistakes",
+]
+
+
+@pytest.mark.parametrize("artifact_type", FORMAT_DOC_ARTIFACT_TYPES)
+def test_every_format_doc_has_uniform_structure(artifact_type: str) -> None:
+    """Each per-type format doc has all six required section headings."""
+    doc = load_bundled_format_doc(artifact_type)
+    assert doc is not None
+    for section in REQUIRED_SECTIONS:
+        assert section in doc, f"Doc {artifact_type!r} missing section: {section}"
+
+
+def test_index_doc_has_required_sections() -> None:
+    """The index doc has the required section headings."""
+    content = load_bundled_format_index()
+    assert "## What you are doing" in content
+    assert "## How to submit" in content
+    assert "## Required fields" in content
+    assert "## Optional fields" in content
+    assert "## Complete example" in content
+    assert "## Common mistakes" in content
+    assert "## Dumb-proof checklist" in content
+
+
+@pytest.mark.parametrize("artifact_type", FORMAT_DOC_ARTIFACT_TYPES)
+def test_every_format_doc_has_dumb_proof_checklist(artifact_type: str) -> None:
+    """Each per-type format doc has a Dumb-proof checklist section."""
+    doc = load_bundled_format_doc(artifact_type)
+    assert doc is not None
+    assert "## Dumb-proof checklist" in doc, (
+        f"Doc {artifact_type!r} missing '## Dumb-proof checklist' section"
+    )
+    # The checklist should have some bullet points
+    parts = doc.split("## Dumb-proof checklist")
+    assert len(parts) > 1
+    checklist_content = parts[1]
+    # Check for at least MIN_CHECKLIST_BULLETS bullet points (lines starting with - or *)
+    bullet_lines = [
+        line.strip()
+        for line in checklist_content.split("\n")
+        if line.strip().startswith(("* ", "- "))
+    ]
+    assert (
+        len(bullet_lines) >= MIN_CHECKLIST_BULLETS
+    ), f"Doc {artifact_type!r} checklist has fewer than {MIN_CHECKLIST_BULLETS} bullets"

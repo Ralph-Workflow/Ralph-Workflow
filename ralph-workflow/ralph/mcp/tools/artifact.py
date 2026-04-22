@@ -20,7 +20,11 @@ from ralph.mcp.artifacts.development_result import (
     normalize_development_result_content,
 )
 from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND, FileBackend
-from ralph.mcp.artifacts.format_docs import has_format_doc, materialize_format_doc
+from ralph.mcp.artifacts.format_docs import (
+    has_format_doc,
+    materialize_format_doc,
+    materialize_format_index,
+)
 from ralph.mcp.artifacts.handoffs import delete_markdown_handoff, sync_markdown_handoff
 from ralph.mcp.artifacts.plan import (
     PLAN_ARTIFACT_TYPE,
@@ -64,6 +68,11 @@ if TYPE_CHECKING:
 
 _TYPED_ARTIFACT_TYPES = frozenset(
     {"issues", "fix_result", "development_analysis_decision", "review_analysis_decision"}
+)
+
+_KNOWN_ARTIFACT_TYPES = frozenset(
+    {PLAN_ARTIFACT_TYPE, COMMIT_MESSAGE_TYPE, DEVELOPMENT_RESULT_ARTIFACT_TYPE}
+    | _TYPED_ARTIFACT_TYPES
 )
 
 
@@ -190,7 +199,7 @@ def handle_finalize_plan(
 ) -> ToolResult:
     """Validate the staged draft as a whole plan and write plan.json."""
     require_capability(session, ARTIFACT_SUBMIT_CAPABILITY, "Plan finalization")
-    del params  # no params
+    del params
     resolved_deps = deps or DEFAULT_ARTIFACT_HANDLER_DEPS
 
     artifact_dir = _artifact_dir(workspace)
@@ -328,6 +337,20 @@ def _artifact_dir(workspace: WorkspaceLike) -> Path:
 CanonicalArtifactType = Literal["commit_message", "plan", "development_result"]
 
 
+def _raise_index_format_error(
+    workspace_root: Path,
+    backend: FileBackend,
+    reason: str,
+) -> NoReturn:
+    """Raise an InvalidParamsError pointing to the artifact formats index."""
+    materialize_format_index(workspace_root, backend=backend)
+    raise InvalidParamsError(
+        f"{reason} Read '.agent/artifact-formats/artifact_formats_index.md' inside the workspace "
+        "for the list of valid artifact_type values and how to submit each one. "
+        "Do NOT rely on the raw error text."
+    ) from None
+
+
 def _prepare_artifact_submission(
     params: dict[str, object],
     *,
@@ -335,10 +358,55 @@ def _prepare_artifact_submission(
     base_path: Path | None = None,
     backend: FileBackend = DEFAULT_FILE_BACKEND,
 ) -> tuple[str, dict[str, object]]:
-    artifact_type = _canonical_artifact_type(
-        _required_string(params, "artifact_type"),
-        session_drain=session_drain,
-    )
+    # Handle missing artifact_type
+    try:
+        raw_artifact_type = _required_string(params, "artifact_type")
+    except InvalidParamsError:
+        if base_path is not None:
+            _raise_index_format_error(
+                base_path,
+                backend,
+                "Missing required field artifact_type.",
+            )
+        raise
+
+    # Canonicalize artifact_type (handles aliases like "commit", "analysis_decision")
+    canonical_exc = None
+    try:
+        artifact_type = _canonical_artifact_type(
+            raw_artifact_type,
+            session_drain=session_drain,
+        )
+    except InvalidParamsError as exc:
+        canonical_exc = exc
+
+    if canonical_exc is not None:
+        if base_path is not None:
+            if raw_artifact_type == "analysis_decision":
+                # Materialize the relevant docs and index before raising
+                materialize_format_doc(
+                    base_path, "development_analysis_decision", backend=backend
+                )
+                materialize_format_doc(base_path, "review_analysis_decision", backend=backend)
+                materialize_format_index(base_path, backend=backend)
+                raise InvalidParamsError(
+                    "artifact_type 'analysis_decision' can only be used inside a "
+                    "development_analysis or review_analysis drain session. "
+                    "Submit artifact_type 'development_analysis_decision' or "
+                    "'review_analysis_decision' directly instead. "
+                    "Read '.agent/artifact-formats/artifact_formats_index.md' "
+                    "for the full list of valid artifact_type values. "
+                    "Do NOT rely on the raw error text."
+                ) from None
+            elif raw_artifact_type not in _KNOWN_ARTIFACT_TYPES:
+                # Unknown artifact type - redirect to index
+                _raise_index_format_error(
+                    base_path,
+                    backend,
+                    f"Unknown artifact_type {raw_artifact_type!r}.",
+                )
+        raise canonical_exc
+
     raw_content = _resolve_artifact_content_source(
         params,
         artifact_type=artifact_type,
@@ -365,7 +433,11 @@ def _prepare_artifact_submission(
 
 
 def _resolve_artifact_content_source(
-    params: dict[str, object], *, artifact_type: str, base_path: Path | None, backend: FileBackend
+    params: dict[str, object],
+    *,
+    artifact_type: str,
+    base_path: Path | None,
+    backend: FileBackend,
 ) -> str:
     raw_content = params.get("content")
     raw_content_path = params.get("content_path")
@@ -373,18 +445,41 @@ def _resolve_artifact_content_source(
     has_content_path = isinstance(raw_content_path, str)
 
     if has_content == has_content_path:
-        raise InvalidParamsError(_artifact_content_format_error(artifact_type))
+        exc = InvalidParamsError(_artifact_content_format_error(artifact_type))
+        if (
+            base_path is not None
+            and artifact_type != PLAN_ARTIFACT_TYPE
+            and has_format_doc(artifact_type)
+        ):
+            _raise_format_doc_error(artifact_type, base_path, backend, exc)
+        raise exc
 
     if has_content:
         return cast("str", raw_content)
 
-    content_path = _resolve_content_path(cast("str", raw_content_path), base_path=base_path)
+    content_path = _resolve_content_path(
+        cast("str", raw_content_path), base_path=base_path
+    )
     try:
         return backend.read_text(content_path)
     except FileNotFoundError as exc:
-        raise InvalidParamsError(f"Content file does not exist: {content_path}") from exc
+        err = InvalidParamsError(f"Content file does not exist: {content_path}")
+        if (
+            base_path is not None
+            and artifact_type != PLAN_ARTIFACT_TYPE
+            and has_format_doc(artifact_type)
+        ):
+            _raise_format_doc_error(artifact_type, base_path, backend, err)
+        raise err from exc
     except OSError as exc:
-        raise InvalidParamsError(f"Failed to read content file '{content_path}': {exc}") from exc
+        err = InvalidParamsError(f"Failed to read content file '{content_path}': {exc}")
+        if (
+            base_path is not None
+            and artifact_type != PLAN_ARTIFACT_TYPE
+            and has_format_doc(artifact_type)
+        ):
+            _raise_format_doc_error(artifact_type, base_path, backend, err)
+        raise err from exc
 
 
 def _resolve_content_path(raw_path: str, *, base_path: Path | None) -> Path:
@@ -425,11 +520,17 @@ def _unwrap_persisted_artifact_payload(
     return parsed_content
 
 
-def _canonical_artifact_type(artifact_type: str, *, session_drain: str | None = None) -> str:
+def _canonical_artifact_type(
+    artifact_type: str,
+    *,
+    session_drain: str | None = None,
+) -> str:
     if artifact_type in {"commit", "skip"}:
         return COMMIT_MESSAGE_TYPE
     if artifact_type == "analysis_decision":
         return _analysis_decision_artifact_type(session_drain)
+    if artifact_type not in _KNOWN_ARTIFACT_TYPES:
+        raise InvalidParamsError(f"Unknown artifact_type {artifact_type!r}.")
     return artifact_type
 
 
@@ -522,7 +623,9 @@ def _normalize_development_result_payload(
         return normalize_development_result_content(parsed_content)
     except DevelopmentResultValidationError as exc:
         if workspace_root is not None:
-            _raise_format_doc_error(DEVELOPMENT_RESULT_ARTIFACT_TYPE, workspace_root, backend, exc)
+            _raise_format_doc_error(
+                DEVELOPMENT_RESULT_ARTIFACT_TYPE, workspace_root, backend, exc
+            )
         raise InvalidParamsError(str(exc)) from exc
 
 
@@ -555,7 +658,9 @@ def _raise_format_doc_error(
     original_exc: Exception,
 ) -> NoReturn:
     try:
-        relative_path = materialize_format_doc(workspace_root, artifact_type, backend=backend)
+        relative_path = materialize_format_doc(
+            workspace_root, artifact_type, backend=backend
+        )
         if relative_path is not None:
             msg = (
                 f"Artifact '{artifact_type}' failed validation. "
@@ -604,13 +709,17 @@ def _rollback_submit_side_effect(
     deps: ArtifactHandlerDeps,
 ) -> None:
     if artifact_type == COMMIT_MESSAGE_TYPE:
-        delete_commit_message_artifacts(_workspace_root(workspace), backend=deps.backend)
+        delete_commit_message_artifacts(
+            _workspace_root(workspace), backend=deps.backend
+        )
         with suppress(Exception):
             delete_artifact(artifact_dir, artifact_type, backend=deps.backend)
         return
 
     with suppress(Exception):
-        delete_markdown_handoff(_workspace_root(workspace), artifact_type, backend=deps.backend)
+        delete_markdown_handoff(
+            _workspace_root(workspace), artifact_type, backend=deps.backend
+        )
     with suppress(Exception):
         delete_artifact(artifact_dir, artifact_type, backend=deps.backend)
 

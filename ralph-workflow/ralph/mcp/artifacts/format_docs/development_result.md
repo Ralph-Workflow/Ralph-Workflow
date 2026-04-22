@@ -42,3 +42,12 @@ Call the `ralph_submit_artifact` tool with `artifact_type` set to `development_r
 - Do NOT leave `files_changed` empty — list every file that was modified
 - The `continuation` field must be an object like `{"prior_session_id": "<your-session-id>"}`, not just a string
 - Do NOT use any status other than `"completed"` or `"partial"`
+
+## Dumb-proof checklist
+
+- Did you set `artifact_type` to `"development_result"`?
+- Did you set `status` to either `"completed"` or `"partial"` (not something else)?
+- Did you write a non-empty `summary` describing what you did?
+- Did you write a non-empty `files_changed` listing every file you modified?
+- If `status` is `"partial"`, did you also include `next_steps` and `continuation`?
+- Did you stringify the content object into a JSON string for the `content` field?

@@ -46,3 +46,14 @@ There are no optional fields; all fields listed above are expected.
 - Do NOT submit a plain string as `content` — the content must be a JSON object
 - Do NOT use non-standard severity values; stick to `"high"`, `"medium"`, or `"low"`
 - Do NOT omit `path` in an issue object — even if the issue is general, use the most relevant file path
+
+## Dumb-proof checklist
+
+- Did you set `artifact_type` to `"issues"`?
+- Did you set `status` to `"issues_found"` or `"no_issues"`?
+- Did you write a non-empty `summary`?
+- Is `issues` an array of objects (not a flat list of strings)?
+- Does each issue object have `path`, `severity`, and `summary`?
+- Is `severity` one of: `"high"`, `"medium"`, `"low"`?
+- Did you include non-empty `what_came_up_short` and `how_to_fix` arrays?
+- Did you stringify the content object into a JSON string for the `content` field?

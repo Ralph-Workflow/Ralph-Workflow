@@ -46,3 +46,11 @@ Call the `ralph_submit_artifact` tool with `artifact_type` set to `commit_messag
 - Do NOT write the conventional-commit prefix in `type` — the prefix goes in `subject` like `fix(scope): description`
 - Do NOT use both `body` and `body_summary`/`body_details`/`body_footer` in the same payload
 - The `subject` must follow conventional commit format: `<type>(<scope>): <description>` where `<type>` is one of feat, fix, docs, refactor, test, style, perf, build, ci, chore
+
+## Dumb-proof checklist
+
+- Did you set `artifact_type` to `"commit_message"`?
+- Did you put `{"type": "commit", ...}` or `{"type": "skip", ...}` inside the content JSON string?
+- Did you use `"subject"` (not `"message"`) for the commit message text?
+- Did you spell the conventional commit prefix in `subject` like `fix(scope):` not just `fix:`?
+- Did you stringify the content object into a JSON string for the `content` field?

@@ -9,12 +9,12 @@ from typing import Literal, cast
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-_ANALYSIS_STATUSES = frozenset({"completed", "request_changes"})
+_ANALYSIS_STATUSES = frozenset({"completed", "request_changes", "failed"})
 _ISSUE_SEVERITIES = frozenset({"high", "medium", "low"})
 _ISSUES_STATUSES = frozenset({"issues_found", "no_issues"})
 
 
-class _IssueEntry(BaseModel):
+class _IssueEntry(BaseModel):  # type: ignore[explicit-any]
     model_config = ConfigDict(extra="forbid")
 
     path: str = Field(..., min_length=1)
@@ -22,8 +22,7 @@ class _IssueEntry(BaseModel):
     summary: str = Field(..., min_length=1)
 
 
-class Issues(BaseModel):
-    """type: ignore[explicit-any]"""
+class Issues(BaseModel):  # type: ignore[explicit-any]
     model_config = ConfigDict(extra="forbid")
 
     status: Literal["issues_found", "no_issues"]
@@ -33,8 +32,7 @@ class Issues(BaseModel):
     how_to_fix: list[str]
 
 
-class FixResult(BaseModel):
-    """type: ignore[explicit-any]"""
+class FixResult(BaseModel):  # type: ignore[explicit-any]
     model_config = ConfigDict(extra="forbid")
 
     summary: str = Field(..., min_length=1)
@@ -42,14 +40,13 @@ class FixResult(BaseModel):
     next_steps: str | None = None
 
 
-class AnalysisDecision(BaseModel):
-    """type: ignore[explicit-any]"""
+class AnalysisDecision(BaseModel):  # type: ignore[explicit-any]
     model_config = ConfigDict(extra="forbid")
 
-    status: Literal["completed", "request_changes"]
+    status: Literal["completed", "request_changes", "failed"]
     summary: str = Field(..., min_length=1)
-    what_came_up_short: list[str]
-    how_to_fix: list[str]
+    what_came_up_short: list[str] | None = None
+    how_to_fix: list[str] | None = None
 
 
 class TypedArtifactValidationError(ValueError):
