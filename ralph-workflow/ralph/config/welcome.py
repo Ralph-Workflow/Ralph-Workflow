@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from rich.console import Group
 from rich.panel import Panel
-from rich.table import Table
 from rich.text import Text
 
 if TYPE_CHECKING:
@@ -53,21 +52,33 @@ def _build_agent_availability_content(
     if agent_registry is not None:
         try:
             availability = _check_agent_availability(agent_registry)
-            avail_table = Table(show_header=True, header_style="bold cyan", box=None)
-            avail_table.add_column("Agent", style="white")
-            avail_table.add_column("Status", style="white")
+            avail_lines: list[Text] = []
             for name, is_available in availability:
                 if is_available:
-                    status = "[green]on PATH[/green]"
+                    avail_lines.append(Text(f"  • {name}: [green]on PATH[/green]"))
                 else:
-                    status = "[yellow]⚠ missing (not on PATH)[/yellow]"
-                avail_table.add_row(name, status)
-            content.append(avail_table)
-            return content
+                    avail_lines.append(Text(f"  • {name}: [yellow]⚠ missing (not on PATH)[/yellow]"))
+            if avail_lines:
+                content.append(Text("[bold cyan]Detected agents:[/bold cyan]"))
+                content.extend(avail_lines)
+                return content
         except Exception:
             pass
     content.append(Text("Ensure your AI agents are on PATH (e.g., `claude`, `opencode`)"))
     return content
+
+
+def _build_regenerate_summary(results: list[BootstrapResult]) -> Text | None:
+    """Build summary text for regenerate operation showing backup info."""
+    regenerated = [r for r in results if r.action == "regenerated"]
+    if not regenerated:
+        return None
+    backup_count = sum(1 for r in regenerated if r.backup is not None)
+    text = Text()
+    text.append(f"Regenerated {len(regenerated)} config file(s)")
+    if backup_count > 0:
+        text.append(f" ([yellow]{backup_count} backup(s) saved with .bak suffix[/yellow])")
+    return text
 
 
 def emit_first_run_welcome(
@@ -75,6 +86,7 @@ def emit_first_run_welcome(
     results: list[BootstrapResult],
     *,
     agent_registry: _HasListAgents | None = None,
+    is_regenerate: bool = False,
 ) -> None:
     """Print a structured first-run welcome panel.
 
@@ -82,6 +94,7 @@ def emit_first_run_welcome(
         console: A rich.console.Console-like object with a .print() method.
         results: Bootstrap results from a bootstrap operation.
         agent_registry: Optional agent registry for availability checking.
+        is_regenerate: Whether this is a regenerate (--regenerate-config) operation.
     """
     # No-op when everything was skipped (subsequent runs)
     if all(r.action == "skipped" for r in results):
@@ -93,37 +106,49 @@ def emit_first_run_welcome(
 
     content: list[object] = []
 
-    # Config files table
+    # For regenerate, show summary line first
+    if is_regenerate:
+        summary = _build_regenerate_summary(results)
+        if summary:
+            content.append(summary)
+            content.append(Text())  # blank line
+
+    # Config files grouped by scope - use simple text lines for reliability
     global_files: list[str] = []
     local_files: list[str] = []
     for result in results:
         if result.action == "skipped":
             continue
         path_str = str(result.path)
+        # Use path.name for cleaner display
+        filename = result.path.name
         if ".agent" in path_str or path_str.startswith("."):
-            local_files.append(path_str)
+            local_files.append(filename)
         else:
-            global_files.append(path_str)
+            global_files.append(filename)
 
-    if global_files or local_files:
-        table = Table(show_header=True, header_style="bold cyan", box=None)
-        table.add_column("Scope", style="dim")
-        table.add_column("File", style="white")
+    # Group files by scope with clear headings
+    if global_files:
+        content.append(Text("[bold cyan]Global config files:[/bold cyan]"))
         for f in global_files:
-            table.add_row("global", f)
-        for f in local_files:
-            table.add_row("local", f)
-        content.append(table)
+            content.append(Text(f"  • {f}"))
 
-    # Agent availability
-    content.extend(_build_agent_availability_content(agent_registry))
+    if local_files:
+        content.append(Text("[bold cyan]Local config files:[/bold cyan]"))
+        for f in local_files:
+            content.append(Text(f"  • {f}"))
+
+    # Agent availability (not shown during regenerate since it's first-run info)
+    if not is_regenerate:
+        content.extend(_build_agent_availability_content(agent_registry))
 
     # Next steps
-    next_steps = Text("\n[bold]Next steps:[/bold]\n", style="cyan")
-    next_steps.append("1. Edit [cyan]PROMPT.md[/cyan] with your implementation task\n")
-    next_steps.append("2. Install AI agents if missing (e.g., `claude`, `opencode`)\n")
-    next_steps.append("3. Run [cyan]ralph[/cyan] to start the pipeline\n")
-    next_steps.append("4. Run [cyan]ralph --regenerate-config[/cyan] to reset configs")
+    next_steps = Text()
+    next_steps.append("[bold cyan]Next steps:[/bold cyan]\n")
+    next_steps.append("  1. Edit [cyan]PROMPT.md[/cyan] with your implementation task\n")
+    next_steps.append("  2. Install AI agents if missing (e.g., `claude`, `opencode`)\n")
+    next_steps.append("  3. Run [cyan]ralph[/cyan] to start the pipeline\n")
+    next_steps.append("  4. Run [cyan]ralph --regenerate-config[/cyan] to reset configs")
     content.append(next_steps)
 
     panel = Panel(

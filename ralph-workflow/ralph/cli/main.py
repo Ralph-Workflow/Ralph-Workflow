@@ -159,7 +159,7 @@ def _handle_regenerate_config() -> None:
     if results:
         created_or_regenerated = [r for r in results if r.action in {"created", "regenerated"}]
         if created_or_regenerated:
-            emit_first_run_welcome(console, results)
+            emit_first_run_welcome(console, results, is_regenerate=True)
         else:
             # All skipped - show minimal summary
             console.print(
