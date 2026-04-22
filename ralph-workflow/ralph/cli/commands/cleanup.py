@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import subprocess
 from typing import TYPE_CHECKING, Annotated
 
 import typer
@@ -10,8 +9,8 @@ import typer
 if TYPE_CHECKING:
     from pathlib import Path
 
-from ralph.git.executor import GitExecutor
 from ralph.git.operations import find_repo_root
+from ralph.git.subprocess_runner import run_git
 from ralph.git.worktree_manager import WorktreeManager
 
 
@@ -57,27 +56,25 @@ def cleanup(
             typer.echo("Aborted")
             raise typer.Exit(0)
 
-    git = GitExecutor()
-    manager = WorktreeManager(repo_root, git)
+    manager = WorktreeManager(repo_root)
     removed = 0
     for unit_id in orphaned:
         branch = f"ralph/{unit_id}"
         manager.destroy(unit_id)
-        _delete_branch(git, repo_root, branch)
+        _delete_branch(repo_root, branch)
         removed += 1
 
     typer.echo(f"Removed {removed} worktree(s)")
 
 
-def _delete_branch(git: GitExecutor, repo_root: Path, branch: str) -> None:
-    result = git.run(
-        lambda: subprocess.run(
-            ["git", "branch", "-D", branch],
-            cwd=repo_root,
-            check=False,
-            capture_output=True,
-            text=True,
-        )
+def _delete_branch(repo_root: Path, branch: str) -> None:
+    result = run_git(
+        ["branch", "-D", branch],
+        cwd=repo_root,
+        label="git-cleanup",
+        capture_output=True,
+        text=True,
+        check=False,
     )
     if result.returncode != 0:
         detail = result.stderr.strip() or result.stdout.strip()

@@ -109,8 +109,8 @@ def test_execute_fan_out_sync_wires_signal_handlers_and_isolation(monkeypatch, t
             executor_calls.append({"command": tuple(command), "signal_bridge": signal_bridge})
 
     class _FakeWorktreeManager:
-        def __init__(self, repo_root, git) -> None:
-            worktree_manager_calls.append({"repo_root": repo_root, "git": git})
+        def __init__(self, repo_root) -> None:
+            worktree_manager_calls.append({"repo_root": repo_root})
 
     class _FakeMcpFactory:
         def __init__(self, workspace) -> None:
@@ -167,8 +167,8 @@ def test_execute_fan_out_sync_converts_unexpected_coordinator_error_to_failed_re
             del command, signal_bridge
 
     class _FakeWorktreeManager:
-        def __init__(self, repo_root, git) -> None:
-            del repo_root, git
+        def __init__(self, repo_root) -> None:
+            del repo_root
 
     class _FakeMcpFactory:
         def __init__(self, workspace) -> None:
@@ -228,8 +228,8 @@ def test_execute_fan_out_sync_requeues_running_workers_via_reducer_event(
             del command, signal_bridge
 
     class _FakeWorktreeManager:
-        def __init__(self, repo_root, git) -> None:
-            del repo_root, git
+        def __init__(self, repo_root) -> None:
+            del repo_root
 
     class _FakeMcpFactory:
         def __init__(self, workspace) -> None:
@@ -295,8 +295,8 @@ def test_execute_fan_out_sync_uses_parallel_display_subscriber_when_not_provided
             del command, signal_bridge
 
     class _FakeWorktreeManager:
-        def __init__(self, repo_root, git) -> None:
-            del repo_root, git
+        def __init__(self, repo_root) -> None:
+            del repo_root
 
     class _FakeMcpFactory:
         def __init__(self, workspace) -> None:
@@ -360,8 +360,8 @@ def test_execute_fan_out_sync_notifies_dashboard_subscriber_after_each_reduce(
             del command, signal_bridge
 
     class _FakeWorktreeManager:
-        def __init__(self, repo_root, git) -> None:
-            del repo_root, git
+        def __init__(self, repo_root) -> None:
+            del repo_root
 
     class _FakeMcpFactory:
         def __init__(self, workspace) -> None:

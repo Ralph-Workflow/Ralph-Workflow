@@ -23,6 +23,7 @@ from ralph.mcp.tools.coordination import (
     ToolResult,
     require_capability,
 )
+from ralph.process.manager import get_process_manager
 
 GIT_STATUS_READ_CAPABILITY = "GitStatusRead"
 GIT_DIFF_READ_CAPABILITY = "GitDiffRead"
@@ -156,7 +157,16 @@ def run_git_command_lenient(
 
 
 def _run_git_subprocess(command: list[str], cwd: Path) -> subprocess.CompletedProcess[bytes]:
-    return subprocess.run(command, cwd=cwd, capture_output=True, check=False)
+    proc = get_process_manager().spawn(
+        command,
+        cwd=str(cwd),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        label="git-mcp-read",
+    )
+    stdout, stderr = proc.communicate()
+    returncode = proc.returncode if proc.returncode is not None else 0
+    return subprocess.CompletedProcess(command, returncode, stdout or b"", stderr or b"")
 
 
 def handle_git_status(

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from unittest.mock import MagicMock
 
@@ -31,6 +33,23 @@ def _fake_executor_for(unit_ids: list[str]) -> FakeAgentExecutor:
     return FakeAgentExecutor(runs)
 
 
+def _seed_worktree_artifact(wt_path: Path) -> None:
+    artifact_dir = wt_path / ".agent" / "artifacts"
+    artifact_dir.mkdir(parents=True, exist_ok=True)
+    (artifact_dir / "plan.json").write_text(
+        json.dumps(
+            {
+                "name": "plan",
+                "type": "plan",
+                "content": {"summary": "done"},
+                "created_at": "2024-01-01T00:00:00+00:00",
+                "updated_at": "2024-01-01T00:00:00+00:00",
+                "metadata": {},
+            }
+        )
+    )
+
+
 class _FakeDisplay:
     def emit(self, unit_id: str | None, line: str) -> None:
         pass
@@ -60,6 +79,8 @@ def _setup_patches(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Any,
     fake_executor: FakeAgentExecutor,
+    *,
+    artifact_unit_ids: set[str] | None = None,
 ) -> None:
     monkeypatch.setattr(
         "ralph.agents.subprocess_executor.SubprocessAgentExecutor",
@@ -85,9 +106,23 @@ def _setup_patches(
         "ralph.git.executor.GitExecutor",
         MagicMock,
     )
+
+    def _fake_worktree_manager_cls(*args: object, **kwargs: object) -> MagicMock:
+        mgr = MagicMock()
+
+        def _create(unit_id: str, base_branch: str) -> Path:
+            wt_path = Path(tmp_path) / ".worktrees" / unit_id
+            wt_path.mkdir(parents=True, exist_ok=True)
+            if artifact_unit_ids is None or unit_id in artifact_unit_ids:
+                _seed_worktree_artifact(wt_path)
+            return wt_path
+
+        mgr.create.side_effect = _create
+        return mgr
+
     monkeypatch.setattr(
         "ralph.git.worktree_manager.WorktreeManager",
-        lambda *args, **kwargs: MagicMock(),
+        _fake_worktree_manager_cls,
     )
     monkeypatch.setattr(
         "ralph.mcp.server.factory_impl.DynamicBindingMcpServerFactory",
@@ -119,7 +154,12 @@ class TestParallelResume:
         scope = MagicMock()
         scope.root = tmp_path
 
-        _setup_patches(monkeypatch, tmp_path, fake_executor)
+        _setup_patches(
+            monkeypatch,
+            tmp_path,
+            fake_executor,
+            artifact_unit_ids={"unit-2", "unit-3", "unit-4"},
+        )
 
         _execute_fan_out_sync(
             effect=effect,
@@ -155,7 +195,12 @@ class TestParallelResume:
         scope = MagicMock()
         scope.root = tmp_path
 
-        _setup_patches(monkeypatch, tmp_path, fake_executor)
+        _setup_patches(
+            monkeypatch,
+            tmp_path,
+            fake_executor,
+            artifact_unit_ids={"unit-0", "unit-1", "unit-2"},
+        )
 
         _execute_fan_out_sync(
             effect=effect,
@@ -192,7 +237,12 @@ class TestParallelResume:
         scope = MagicMock()
         scope.root = tmp_path
 
-        _setup_patches(monkeypatch, tmp_path, fake_executor)
+        _setup_patches(
+            monkeypatch,
+            tmp_path,
+            fake_executor,
+            artifact_unit_ids={"unit-2", "unit-3", "unit-4"},
+        )
 
         final_state = _execute_fan_out_sync(
             effect=effect,

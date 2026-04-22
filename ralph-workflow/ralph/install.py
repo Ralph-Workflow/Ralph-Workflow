@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import shutil
-import subprocess
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
+
+from ralph.executor.process import ProcessExecutionError, run_process
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -17,7 +18,13 @@ class RunCommand(Protocol):
 
 
 def _run_command(command: Sequence[str], *, cwd: Path) -> None:
-    subprocess.run(list(command), cwd=cwd, check=True)
+    cmd = tuple(command)
+    result = run_process(cmd[0], cmd[1:], cwd=cwd)
+    if not result.succeeded:
+        raise ProcessExecutionError(
+            cmd,
+            f"Command failed with exit code {result.returncode}: {' '.join(cmd)}",
+        )
 
 
 def install_current_checkout(

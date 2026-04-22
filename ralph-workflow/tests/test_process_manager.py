@@ -9,11 +9,16 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import os
+import pathlib
+import subprocess
 import sys
+import tempfile
 import time
+from unittest.mock import patch
 
+import psutil
 import pytest
+from loguru import logger
 
 from ralph.process import (
     ProcessEvent,
@@ -21,8 +26,10 @@ from ralph.process import (
     ProcessManagerPolicy,
     ProcessStatus,
     get_process_manager,
+    process_phase_scope,
     reset_process_manager,
 )
+from ralph.process.manager import ProcessTerminationError
 
 _FAST_POLICY = ProcessManagerPolicy(default_grace_period_s=0.3, kill_followup_timeout_s=0.5)
 
@@ -145,16 +152,8 @@ def test_shutdown_all_kills_multiple_children() -> None:
     for h in handles:
         assert h.record.status in (ProcessStatus.KILLED, ProcessStatus.EXITED)
 
-    if hasattr(os, "kill"):
-        for pid in pids:
-            try:
-                os.kill(pid, 0)
-                gone = False
-            except ProcessLookupError:
-                gone = True
-            except PermissionError:
-                gone = True
-            assert gone, f"PID {pid} still alive after shutdown_all"
+    for pid in pids:
+        assert not psutil.pid_exists(pid), f"PID {pid} still alive after shutdown_all"
 
 
 # ---------------------------------------------------------------------------
@@ -247,11 +246,10 @@ def test_raising_listener_does_not_break_lifecycle() -> None:
 
 
 # ---------------------------------------------------------------------------
-# 10. process group teardown assertion (POSIX only)
+# 10. process teardown via psutil (cross-platform, no killpg dependency)
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.skipif(not hasattr(os, "killpg"), reason="POSIX only")
 def test_process_group_is_torn_down_on_terminate() -> None:
     pm = _make_pm()
     handle = pm.spawn(
@@ -259,22 +257,55 @@ def test_process_group_is_torn_down_on_terminate() -> None:
         start_new_session=True,
     )
     pid = handle.record.pid
-    pgid = handle.record.pgid
-    assert pgid > 0
+    assert pid > 0
 
     handle.terminate(grace_period_s=0.2)
 
+    assert handle.record.status == ProcessStatus.KILLED
+
     deadline = time.monotonic() + 1.0
     while time.monotonic() < deadline:
-        try:
-            os.kill(pid, 0)
-            time.sleep(0.02)
-        except ProcessLookupError:
+        if not psutil.pid_exists(pid):
             break
-        except PermissionError:
-            break
+        time.sleep(0.02)
     else:
         pytest.fail(f"Process {pid} still alive after terminate")
+
+
+# ---------------------------------------------------------------------------
+# 11. Recursive process-tree teardown: parent + grandchild both die
+# ---------------------------------------------------------------------------
+
+
+def test_recursive_process_tree_teardown() -> None:
+    """Both the parent and its forked grandchild are gone after shutdown_all_for_label."""
+    pm = _make_pm()
+    code = (
+        "import subprocess, sys, time; "
+        "subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(30)']); "
+        "time.sleep(30)"
+    )
+    handle = pm.spawn([PYTHON, "-c", code], label="tree-kill-test")
+    parent_pid = handle.record.pid
+
+    # Give the grandchild a moment to spawn before teardown.
+    time.sleep(0.3)
+
+    grandchild_pid: int | None = None
+    try:
+        root = psutil.Process(parent_pid)
+        children = root.children(recursive=True)
+        grandchild_pid = children[0].pid if children else None
+    except (psutil.NoSuchProcess, psutil.AccessDenied):
+        pass
+
+    pm.shutdown_all_for_label("tree-kill-test", grace_period_s=0.3)
+
+    assert not psutil.pid_exists(parent_pid), f"Parent {parent_pid} still alive after teardown"
+    if grandchild_pid is not None:
+        assert not psutil.pid_exists(grandchild_pid), (
+            f"Grandchild {grandchild_pid} still alive after teardown"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -296,3 +327,125 @@ def test_end_to_end_sigterm_trap_child() -> None:
     handle.terminate(grace_period_s=0.2)
     assert handle.record.status == ProcessStatus.KILLED
     assert handle.record.cause == "killed"
+
+
+# ---------------------------------------------------------------------------
+# 12. atexit safety net: grandchild is reaped when the host process exits
+# ---------------------------------------------------------------------------
+
+
+def test_atexit_reaps_grandchild() -> None:
+    """ProcessManager atexit hook terminates tracked children at interpreter exit."""
+
+    script = (
+        "import sys, time; "
+        "sys.path.insert(0, sys.argv[1]); "
+        "from ralph.process.manager import get_process_manager; "
+        "pm = get_process_manager(); "
+        "h = pm.spawn([sys.executable, '-c', 'import time; time.sleep(30)']); "
+        "open(sys.argv[2], 'w').write(str(h.record.pid)); "
+        "sys.exit(0)"
+    )
+
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as f:
+        pid_file = pathlib.Path(f.name)
+
+    ralph_src = (pathlib.Path(__file__).parent.parent).as_posix()
+    result = subprocess.run(
+        [PYTHON, "-c", script, ralph_src, str(pid_file)],
+        timeout=10,
+        check=False,
+    )
+    assert result.returncode == 0
+
+    grandchild_pid_text = pid_file.read_text(encoding="utf-8").strip()
+    pid_file.unlink(missing_ok=True)
+    grandchild_pid = int(grandchild_pid_text)
+
+    deadline = time.monotonic() + 5.0
+    while time.monotonic() < deadline:
+        if not psutil.pid_exists(grandchild_pid):
+            break
+        time.sleep(0.1)
+    else:
+        pytest.fail(f"Grandchild {grandchild_pid} still alive after atexit should have killed it")
+
+
+# ---------------------------------------------------------------------------
+# 13. log_events=False suppresses default loguru listener; =True emits lines
+# ---------------------------------------------------------------------------
+
+
+def test_log_events_false_suppresses_loguru_output() -> None:
+    """log_events=False produces no process log lines; True produces them."""
+    records: list[str] = []
+    sink_id = logger.add(lambda msg: records.append(str(msg)), level="DEBUG", format="{message}")
+    try:
+        # No log events when disabled
+        pm_silent = ProcessManager(
+            policy=ProcessManagerPolicy(
+                default_grace_period_s=0.1,
+                kill_followup_timeout_s=0.2,
+                log_events=False,
+            )
+        )
+        handle = pm_silent.spawn([PYTHON, "-c", "pass"])
+        handle.wait()
+        pid_str = str(handle.record.pid)
+        process_lines_silent = [r for r in records if "process " in r and pid_str in r]
+        assert process_lines_silent == [], (
+            f"Expected no process log lines with log_events=False, got: {process_lines_silent}"
+        )
+
+        records.clear()
+
+        # Log events when enabled
+        pm_loud = ProcessManager(
+            policy=ProcessManagerPolicy(
+                default_grace_period_s=0.1,
+                kill_followup_timeout_s=0.2,
+                log_events=True,
+            )
+        )
+        handle2 = pm_loud.spawn([PYTHON, "-c", "pass"])
+        handle2.wait()
+        pid2_str = str(handle2.record.pid)
+        process_lines_loud = [r for r in records if "process " in r and pid2_str in r]
+        assert len(process_lines_loud) >= 1, (
+            f"Expected process log lines with log_events=True, got none. records={records}"
+        )
+    finally:
+        logger.remove(sink_id)
+
+
+# ---------------------------------------------------------------------------
+# 14. process_phase_scope logs a warning on ProcessTerminationError
+# ---------------------------------------------------------------------------
+
+
+def test_process_phase_scope_warns_on_termination_error() -> None:
+    """process_phase_scope emits a loguru warning when cleanup fails, but exits cleanly."""
+
+    def _raise_termination_error(label_prefix: str, *, grace_period_s: float | None = None) -> None:
+        raise ProcessTerminationError(pid=99999, pgid=99999)
+
+    pm = get_process_manager()
+
+    warning_messages: list[str] = []
+    sink_id = logger.add(
+        lambda msg: warning_messages.append(str(msg)) if "WARNING" in str(msg) else None,
+        level="WARNING",
+        format="{level} {message}",
+    )
+    try:
+        with (
+            patch.object(pm, "shutdown_all_for_label", _raise_termination_error),
+            process_phase_scope("test-phase"),
+        ):
+            pass
+    finally:
+        logger.remove(sink_id)
+
+    assert any("test-phase" in msg for msg in warning_messages), (
+        f"Expected warning mentioning 'test-phase', got: {warning_messages}"
+    )

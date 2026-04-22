@@ -4,19 +4,26 @@ import json
 import subprocess
 import sys
 
+from ralph.process.manager import get_process_manager
+
 
 class TestFakeStdioMcp:
     TOOLS_LIST_ID = 2
 
     def test_initialize_then_tools_list_roundtrip(self) -> None:
-        proc = subprocess.Popen(
+        handle = get_process_manager().spawn(
             [sys.executable, "-m", "tests.fixtures.fake_stdio_mcp"],
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
+            label="test:fake-stdio-mcp",
         )
-        with proc, proc.stdin as stdin, proc.stdout as stdout:
+        stdin = handle.stdin
+        stdout = handle.stdout
+        assert stdin is not None
+        assert stdout is not None
+        with handle, stdin, stdout:
             initialize_request = {
                 "jsonrpc": "2.0",
                 "id": 1,

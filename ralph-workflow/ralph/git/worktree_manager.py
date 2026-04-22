@@ -3,10 +3,8 @@
 import subprocess
 from collections.abc import Sequence
 from pathlib import Path
-from typing import TYPE_CHECKING
 
-if TYPE_CHECKING:
-    from ralph.git.executor import GitExecutor
+from ralph.git.subprocess_runner import run_git
 
 
 class WorktreeExistsError(FileExistsError):
@@ -16,9 +14,8 @@ class WorktreeExistsError(FileExistsError):
 class WorktreeManager:
     """Create, remove, and enumerate per-unit git worktrees."""
 
-    def __init__(self, repo_root: Path, git: "GitExecutor") -> None:
+    def __init__(self, repo_root: Path) -> None:
         self.repo_root = repo_root
-        self.git = git
         self.worktrees_root = repo_root / ".worktrees"
 
     def create(self, unit_id: str, base_branch: str) -> Path:
@@ -77,14 +74,19 @@ class WorktreeManager:
         *,
         capture_output: bool = False,
     ) -> subprocess.CompletedProcess[str]:
-        return self.git.run(
-            lambda: subprocess.run(
-                ["git", *args],
-                cwd=self.repo_root,
-                check=True,
-                capture_output=capture_output,
-                text=True,
-            )
+        operation = args[1] if len(args) > 1 else args[0] if args else "unknown"
+        result = run_git(
+            args,
+            cwd=self.repo_root,
+            label=f"git-worktree:{operation}",
+            capture_output=capture_output,
+            check=True,
+        )
+        return subprocess.CompletedProcess(
+            args=list(result.args),
+            returncode=result.returncode,
+            stdout=result.stdout,
+            stderr=result.stderr,
         )
 
     @staticmethod

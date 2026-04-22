@@ -10,6 +10,8 @@ from loguru import logger
 
 from ralph import logging as ralph_logging
 from ralph.agents import subprocess_executor
+from ralph.executor.process import run_process_async
+from ralph.mcp.artifacts.store import list_artifacts
 from ralph.mcp.server import factory_impl
 from ralph.pipeline.events import (
     Event,
@@ -178,10 +180,25 @@ def _flatten_worker_failures(
     return failures, unexpected
 
 
-def _nonzero_exit_error(result: WorkerResult) -> str:
-    if result.final_message:
-        return result.final_message
-    return f"Worker {result.unit_id} exited with code {result.exit_code}"
+async def _has_empirical_evidence(worktree_path: Path) -> bool:
+    """Return True if the worktree has artifact evidence OR git workspace changes.
+
+    Artifacts are checked first. If none are found, a `git status --porcelain`
+    query on the worktree serves as the fallback signal. A worker is considered
+    successful when either signal is present; only when both are absent is the
+    worker treated as having produced no output.
+    """
+    artifact_dir = worktree_path / ".agent" / "artifacts"
+    if artifact_dir.exists() and list_artifacts(artifact_dir):
+        return True
+
+    try:
+        result = await run_process_async(
+            "git", ["-C", str(worktree_path), "status", "--porcelain"]
+        )
+        return bool(result.stdout.strip())
+    except Exception:
+        return False
 
 
 def _prepare_executor(
@@ -189,7 +206,7 @@ def _prepare_executor(
     executor: AgentExecutor,
     isolation: _IsolationDeps | None,
     activity_router: ActivityRouter | None = None,
-) -> tuple[AgentExecutor, WorkerSessionBundle | None]:
+) -> tuple[AgentExecutor, WorkerSessionBundle | None, Path | None]:
     if isolation is None:
         # Inject the activity router if the executor supports it and a router is available.
         # This ensures the non-isolated path also routes output through the activity model.
@@ -197,14 +214,14 @@ def _prepare_executor(
             executor, subprocess_executor.SubprocessAgentExecutor
         ):
             executor.activity_router = activity_router
-        return executor, None
+        return executor, None, None
 
     worktree_path = isolation.worktree_manager.create(unit.unit_id, base_branch="main")
     worker_scope = WorkspaceScope(worktree_path)
     if isolation.executor_command is None:
         return executor, worker_session.build_worker_session(
             unit, isolation.mcp_factory, worker_scope
-        )
+        ), worktree_path
 
     worker_workspace = fs.FsWorkspace(worktree_path)
     worker_mcp_factory = factory_impl.DynamicBindingMcpServerFactory(workspace=worker_workspace)
@@ -222,6 +239,7 @@ def _prepare_executor(
             ),
         ),
         bundle,
+        worktree_path,
     )
 
 
@@ -336,7 +354,7 @@ async def _run_worker(
             display.set_status(unit.unit_id, status)
 
         try:
-            active_executor, bundle = _prepare_executor(
+            active_executor, bundle, worktree_path = _prepare_executor(
                 unit,
                 executor,
                 isolation,
@@ -357,13 +375,25 @@ async def _run_worker(
                     raise _WorkerFailureError(unit.unit_id, 1, str(exc)) from exc
                 raise
 
-            if result.exit_code != 0:
-                raise _WorkerFailureError(
-                    unit_id=unit.unit_id,
-                    exit_code=result.exit_code,
-                    error=_nonzero_exit_error(result),
-                )
+            # For isolated workers (worktree + MCP bundle), success is determined by
+            # empirical evidence: submitted artifacts OR workspace changes (git status).
+            # Exit code is kept as diagnostic info only and never decides success/failure.
+            if (
+                bundle is not None
+                and worktree_path is not None
+                and not await _has_empirical_evidence(worktree_path)
+            ):
+                    display.set_status(unit.unit_id, WorkerStatus.FAILED)
+                    raise _WorkerFailureError(
+                        unit_id=unit.unit_id,
+                        exit_code=result.exit_code,
+                        error=(
+                            f"Worker {unit.unit_id!r} produced no artifact and no workspace "
+                            f"changes (exit_code={result.exit_code})"
+                        ),
+                    )
 
+            display.set_status(unit.unit_id, WorkerStatus.SUCCEEDED)
             await completion_queue.put(result)
             worker_succeeded = True
         finally:

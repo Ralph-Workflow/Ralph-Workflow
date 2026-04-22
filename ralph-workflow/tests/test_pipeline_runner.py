@@ -589,7 +589,7 @@ def test_execute_agent_effect_uses_single_workspace_root(monkeypatch, tmp_path: 
 
     seen: dict[str, object] = {}
 
-    def fake_start_mcp_server(session, workspace):
+    def fake_start_mcp_server(session, workspace, **_kwargs):
         seen["workspace_root"] = workspace.root
 
         class Bridge:
@@ -1498,7 +1498,7 @@ class TestExecuteAgentEffect:
             def endpoint_uri(self) -> str:
                 return "tcp://127.0.0.1:12345"
 
-        def fake_start_mcp_server(session, workspace):
+        def fake_start_mcp_server(session, workspace, **_kwargs):
             bridge = FakeBridge()
             bridge.start()
             return bridge

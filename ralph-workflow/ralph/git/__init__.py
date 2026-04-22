@@ -29,6 +29,7 @@ from ralph.git.operations import (
     push,
     stage_all,
 )
+from ralph.git.subprocess_runner import GitRunResult, run_git
 
 from .wrapper import (
     GitHelpers,
@@ -42,6 +43,7 @@ __all__ = [
     "RALPH_HOOK_NAMES",
     "GitHelpers",
     "GitOperationError",
+    "GitRunResult",
     "append_to_gitignore",
     "create_commit",
     "detect_unauthorized_commit",
@@ -57,6 +59,7 @@ __all__ = [
     "merge_base",
     "push",
     "reinstall_hooks_if_tampered",
+    "run_git",
     "stage_all",
     "start_agent_phase",
     "uninstall_hooks",

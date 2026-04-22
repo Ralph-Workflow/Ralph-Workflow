@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import socket
 import subprocess
 import sys
@@ -15,6 +16,7 @@ import pytest
 from loguru import logger
 
 from ralph.pipeline import runner as runner_module
+from ralph.process.manager import ProcessTerminationError, get_process_manager
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -37,32 +39,31 @@ def _short_preflight_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @contextmanager
 def _spawn_fake_http_mcp() -> Iterator[int]:
-    proc = subprocess.Popen(
+    handle = get_process_manager().spawn(
         [sys.executable, "-m", "tests.fixtures.fake_http_mcp"],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
+        label="test:fake-http-mcp-validate",
     )
     try:
-        assert proc.stdout is not None
-        port_line = proc.stdout.readline().strip()
+        stdout = handle.stdout
+        assert stdout is not None
+        port_line = stdout.readline().strip()
         if not port_line:
             raise AssertionError("fake_http_mcp did not print its port before exiting")
         port = int(port_line)
         _wait_for_port(port)
         yield port
     finally:
-        if proc.poll() is None:
-            proc.terminate()
-            try:
-                proc.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                proc.kill()
-                proc.wait(timeout=5)
-        if proc.stdout is not None:
-            proc.stdout.close()
-        if proc.stderr is not None:
-            proc.stderr.close()
+        with contextlib.suppress(ProcessTerminationError):
+            handle.terminate(grace_period_s=5.0)
+        if handle.stdout is not None:
+            with contextlib.suppress(Exception):
+                handle.stdout.close()
+        if handle.stderr is not None:
+            with contextlib.suppress(Exception):
+                handle.stderr.close()
 
 
 def _wait_for_port(port: int) -> None:

@@ -15,11 +15,13 @@ from ralph.git.rebase.rebase import (
     RebaseConflicts,
     RebaseNoOp,
     RebaseOperationError,
+    SubprocessExecutor,
     abort_rebase,
     continue_rebase,
     get_conflicted_files,
     rebase_onto,
 )
+from ralph.process.manager import ProcessStatus, get_process_manager, reset_process_manager
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
@@ -279,6 +281,45 @@ def test_verify_rebase_completed_at_rejects_detached_head(tmp_git_repo: Path) ->
 
     with pytest.raises(RebaseVerificationError, match="HEAD is detached"):
         verify_rebase_completed_at(tmp_git_repo, "main")
+
+
+def _assert_full_lifecycle(events: list, label_prefix: str) -> None:
+    """Assert each PID with the given label prefix emitted SPAWNED->RUNNING->EXITED."""
+    labeled = [
+        e for e in events if e.record.label and e.record.label.startswith(label_prefix)
+    ]
+    assert labeled, f"Expected events with label prefix '{label_prefix}'"
+
+    pids = dict.fromkeys(e.record.pid for e in labeled)
+    assert pids, f"Expected at least one tracked spawn with label prefix '{label_prefix}'"
+
+    for pid in pids:
+        pid_events = [e for e in labeled if e.record.pid == pid]
+        transitions = [(e.previous_status, e.new_status) for e in pid_events]
+        assert (ProcessStatus.SPAWNED, ProcessStatus.RUNNING) in transitions, (
+            f"Process {pid} (label {label_prefix!r}) missing SPAWNED->RUNNING; "
+            f"got {transitions}"
+        )
+        assert (ProcessStatus.RUNNING, ProcessStatus.EXITED) in transitions, (
+            f"Process {pid} (label {label_prefix!r}) missing RUNNING->EXITED; "
+            f"got {transitions}"
+        )
+
+
+def test_subprocess_executor_emits_process_manager_events(tmp_git_repo: Path) -> None:
+    """Real SubprocessExecutor routes git calls through ProcessManager with full lifecycle."""
+    reset_process_manager()
+    events: list = []
+    unsubscribe = get_process_manager().register_listener(events.append)
+
+    try:
+        executor = SubprocessExecutor()
+        get_conflicted_files(repo_root=tmp_git_repo, executor=executor)
+    finally:
+        unsubscribe()
+        reset_process_manager()
+
+    _assert_full_lifecycle(events, "git-rebase:")
 
 
 def _setup_conflicted_rebase(repo_root: Path, feature_branch: str = "feature") -> str:

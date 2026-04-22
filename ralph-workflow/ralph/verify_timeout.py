@@ -48,10 +48,11 @@ from __future__ import annotations
 
 import argparse
 import os
-import subprocess
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
+
+from ralph.executor.process import ProcessExecutionError, ProcessResult, run_process
 
 DEFAULT_TEST_TIMEOUT_SECONDS = 1.0
 DEFAULT_SUITE_TIMEOUT_SECONDS = 30.0
@@ -140,19 +141,20 @@ def run_command_with_timeout(
     cwd: Path,
     env: Mapping[str, str] | None = None,
     suite_timeout_seconds: float = DEFAULT_SUITE_TIMEOUT_SECONDS,
-) -> subprocess.CompletedProcess[str]:
+) -> ProcessResult:
+    cmd = tuple(command)
     try:
-        return subprocess.run(
-            list(command),
-            cwd=str(cwd),
-            env=dict(env or os.environ),
-            text=True,
-            check=False,
-            capture_output=True,
+        return run_process(
+            cmd[0],
+            cmd[1:],
+            cwd=cwd,
+            env=dict(env) if env is not None else None,
             timeout=suite_timeout_seconds,
         )
-    except subprocess.TimeoutExpired as exc:
-        raise SuiteTimeoutError(suite_timeout_seconds) from exc
+    except ProcessExecutionError as exc:
+        if exc.timed_out:
+            raise SuiteTimeoutError(suite_timeout_seconds) from exc
+        raise
 
 
 def _parse_args(argv: Sequence[str]) -> tuple[float, list[str]]:

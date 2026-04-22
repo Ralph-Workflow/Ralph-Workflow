@@ -2,18 +2,18 @@
 
 from __future__ import annotations
 
-import subprocess
 from typing import TYPE_CHECKING, Any, TypeVar
 
 import pytest
 
 from ralph.git.executor import GitExecutor
+from ralph.git.subprocess_runner import GitRunResult
 from ralph.pipeline.events import PipelineEvent, WorkersMergeConflictEvent
 from ralph.pipeline.parallel.merge_integrator import integrate
 from ralph.pipeline.worker_state import WorkerState, WorkerStatus
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Sequence
     from pathlib import Path
 
 
@@ -25,46 +25,36 @@ class _ImmediateGitExecutor(GitExecutor):
         return op()
 
 
-def _completed_process(args: list[str], returncode: int = 0) -> subprocess.CompletedProcess[str]:
-    return subprocess.CompletedProcess(args=args, returncode=returncode, stdout="", stderr="")
-
-
 def _make_worker_state(
     unit_id: str, status: WorkerStatus, *, worktree_path: str | None = None
 ) -> WorkerState:
     return WorkerState(unit_id=unit_id, status=status, worktree_path=worktree_path)
 
 
-def _recording_subprocess_run(*, failing_branches: set[str]) -> tuple[list[list[str]], Any]:
+def _recording_run_git(*, failing_branches: set[str]) -> tuple[list[list[str]], Any]:
     calls: list[list[str]] = []
 
-    def _run(
-        args: list[str],
-        *,
-        cwd: Path,
-        capture_output: bool,
-        text: bool,
-        check: bool,
-    ) -> subprocess.CompletedProcess[str]:
-        del cwd, capture_output, text, check
-        calls.append(args)
-        if args[:3] == ["git", "merge", "--no-ff"] and args[3] in failing_branches:
-            return subprocess.CompletedProcess(
-                args=args,
+    def _fake(args: Sequence[str], **_kwargs: Any) -> GitRunResult:
+        cmd = ["git", *args]
+        calls.append(cmd)
+        branch = args[-1] if args else ""
+        if list(args[:2]) == ["merge", "--no-ff"] and branch in failing_branches:
+            return GitRunResult(
+                args=tuple(cmd),
                 returncode=1,
                 stdout="CONFLICT (content): Merge conflict in file.txt",
                 stderr="",
             )
-        return _completed_process(args)
+        return GitRunResult(args=tuple(cmd), returncode=0, stdout="", stderr="")
 
-    return calls, _run
+    return calls, _fake
 
 
 @pytest.mark.asyncio
 async def test_happy_three_way(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """Three workers with non-overlapping files all merge cleanly."""
-    calls, fake_run = _recording_subprocess_run(failing_branches=set())
-    monkeypatch.setattr("ralph.pipeline.parallel.merge_integrator.subprocess.run", fake_run)
+    calls, fake_run_git = _recording_run_git(failing_branches=set())
+    monkeypatch.setattr("ralph.pipeline.parallel.merge_integrator.run_git", fake_run_git)
 
     worker_states = {
         "alpha": _make_worker_state("alpha", WorkerStatus.SUCCEEDED),
@@ -92,8 +82,8 @@ async def test_happy_three_way(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) 
 @pytest.mark.asyncio
 async def test_conflict_detected(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """Two workers that modify the same file produce a conflict."""
-    calls, fake_run = _recording_subprocess_run(failing_branches={"ralph/unit-worker2"})
-    monkeypatch.setattr("ralph.pipeline.parallel.merge_integrator.subprocess.run", fake_run)
+    calls, fake_run_git = _recording_run_git(failing_branches={"ralph/unit-worker2"})
+    monkeypatch.setattr("ralph.pipeline.parallel.merge_integrator.run_git", fake_run_git)
 
     worker_states = {
         "worker1": _make_worker_state("worker1", WorkerStatus.SUCCEEDED),
@@ -119,8 +109,8 @@ async def test_conflict_preserves_worktrees(
     tmp_path: Path,
 ) -> None:
     """On conflict, worktrees are NOT destroyed — caller handles cleanup."""
-    calls, fake_run = _recording_subprocess_run(failing_branches={"ralph/unit-b"})
-    monkeypatch.setattr("ralph.pipeline.parallel.merge_integrator.subprocess.run", fake_run)
+    calls, fake_run_git = _recording_run_git(failing_branches={"ralph/unit-b"})
+    monkeypatch.setattr("ralph.pipeline.parallel.merge_integrator.run_git", fake_run_git)
 
     worktree_a = tmp_path / "worktree_a"
     worktree_b = tmp_path / "worktree_b"
@@ -154,8 +144,8 @@ async def test_only_succeeded_workers_merged(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     """FAILED, CANCELLED, PENDING, and RUNNING workers are skipped."""
-    calls, fake_run = _recording_subprocess_run(failing_branches=set())
-    monkeypatch.setattr("ralph.pipeline.parallel.merge_integrator.subprocess.run", fake_run)
+    calls, fake_run_git = _recording_run_git(failing_branches=set())
+    monkeypatch.setattr("ralph.pipeline.parallel.merge_integrator.run_git", fake_run_git)
 
     worker_states = {
         "good": _make_worker_state("good", WorkerStatus.SUCCEEDED),
@@ -180,8 +170,8 @@ async def test_only_succeeded_workers_merged(
 @pytest.mark.asyncio
 async def test_empty_succeeded_workers(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """No SUCCEEDED workers → immediate ALL_WORKERS_COMPLETE with no merges."""
-    calls, fake_run = _recording_subprocess_run(failing_branches=set())
-    monkeypatch.setattr("ralph.pipeline.parallel.merge_integrator.subprocess.run", fake_run)
+    calls, fake_run_git = _recording_run_git(failing_branches=set())
+    monkeypatch.setattr("ralph.pipeline.parallel.merge_integrator.run_git", fake_run_git)
 
     worker_states = {
         "failed1": _make_worker_state("failed1", WorkerStatus.FAILED),
@@ -207,8 +197,8 @@ async def test_workers_merged_in_deterministic_order(
     tmp_path: Path,
 ) -> None:
     """Workers are merged sorted by unit_id for deterministic ordering."""
-    calls, fake_run = _recording_subprocess_run(failing_branches=set())
-    monkeypatch.setattr("ralph.pipeline.parallel.merge_integrator.subprocess.run", fake_run)
+    calls, fake_run_git = _recording_run_git(failing_branches=set())
+    monkeypatch.setattr("ralph.pipeline.parallel.merge_integrator.run_git", fake_run_git)
 
     worker_states = {
         "zzz": _make_worker_state("zzz", WorkerStatus.SUCCEEDED),

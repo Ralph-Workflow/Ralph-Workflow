@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import subprocess
 import sys
@@ -22,6 +23,7 @@ from ralph.mcp.transport.opencode import build_opencode_provider_config
 from ralph.mcp.upstream.agent_probe import probe_agent_transports
 from ralph.mcp.upstream.config import UpstreamMcpServer
 from ralph.mcp.upstream.registry import UpstreamRegistry
+from ralph.process.manager import ProcessTerminationError, get_process_manager
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -37,29 +39,28 @@ pytestmark = pytest.mark.timeout_seconds(20)
 
 @contextmanager
 def _spawn_fake_http_mcp() -> Iterator[int]:
-    proc = subprocess.Popen(
+    handle = get_process_manager().spawn(
         [sys.executable, str(FAKE_HTTP_MCP)],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
+        label="test:fake-http-mcp-roundtrip",
     )
     try:
-        assert proc.stdout is not None
-        port_line = proc.stdout.readline().strip()
+        stdout = handle.stdout
+        assert stdout is not None
+        port_line = stdout.readline().strip()
         assert port_line, "fake_http_mcp did not print its port"
         yield int(port_line)
     finally:
-        if proc.poll() is None:
-            proc.terminate()
-            try:
-                proc.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                proc.kill()
-                proc.wait(timeout=5)
-        if proc.stdout:
-            proc.stdout.close()
-        if proc.stderr:
-            proc.stderr.close()
+        with contextlib.suppress(ProcessTerminationError):
+            handle.terminate(grace_period_s=5.0)
+        if handle.stdout is not None:
+            with contextlib.suppress(Exception):
+                handle.stdout.close()
+        if handle.stderr is not None:
+            with contextlib.suppress(Exception):
+                handle.stderr.close()
 
 
 def _write_mcp_toml(workspace: Path, server_name: str, url: str) -> None:

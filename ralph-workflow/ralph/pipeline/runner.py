@@ -75,6 +75,7 @@ from ralph.pipeline.reducer import reduce as reducer_reduce
 from ralph.pipeline.state import AgentChainState, CommitState, PipelineState, RebaseState
 from ralph.pipeline.worker_state import WorkerStatus
 from ralph.policy.loader import load_policy_or_die
+from ralph.process.manager import process_phase_scope
 from ralph.prompts.materialize import (
     materialize_prompt_for_phase,
     prompt_file_for_phase,
@@ -559,34 +560,35 @@ def _run_pipeline_step(  # noqa: PLR0913
                 pipeline_subscriber=pipeline_subscriber,
             )
 
-        workspace = FsWorkspace(
-            workspace_scope.root,
-            allowed_roots=workspace_scope.allowed_roots,
-        )
-        _materialize_agent_prompt_if_needed(
-            effect,
-            workspace,
-            policy_bundle.pipeline,
-            registry,
-            workspace_scope,
-        )
-        event = _invoke_execute_effect_with_optional_display(
-            effect,
-            config,
-            workspace_scope,
-            display=display,
-            verbosity=verbosity,
-            state=state,
-        )
-        if isinstance(effect, InvokeAgentEffect) and event == PipelineEvent.AGENT_SUCCESS:
-            event = _phase_event_after_agent_run(
-                effect=effect,
-                config=config,
-                policy_bundle=policy_bundle,
-                workspace=workspace,
-                workspace_scope=workspace_scope,
-                display=display,
+        with process_phase_scope(state.phase):
+            workspace = FsWorkspace(
+                workspace_scope.root,
+                allowed_roots=workspace_scope.allowed_roots,
             )
+            _materialize_agent_prompt_if_needed(
+                effect,
+                workspace,
+                policy_bundle.pipeline,
+                registry,
+                workspace_scope,
+            )
+            event = _invoke_execute_effect_with_optional_display(
+                effect,
+                config,
+                workspace_scope,
+                display=display,
+                verbosity=verbosity,
+                state=state,
+            )
+            if isinstance(effect, InvokeAgentEffect) and event == PipelineEvent.AGENT_SUCCESS:
+                event = _phase_event_after_agent_run(
+                    effect=effect,
+                    config=config,
+                    policy_bundle=policy_bundle,
+                    workspace=workspace,
+                    workspace_scope=workspace_scope,
+                    display=display,
+                )
 
         next_state, _ = reducer_reduce(state, event, policy_bundle.pipeline)
         _notify_pipeline_subscriber(pipeline_subscriber, next_state)
@@ -910,7 +912,7 @@ def _fan_out_worker_context(
             run_id=str(uuid.uuid4()),
         ),
         isolation=coordinator._IsolationDeps(
-            worktree_manager=WorktreeManager(repo_root, git_exec),
+            worktree_manager=WorktreeManager(repo_root),
             mcp_factory=DynamicBindingMcpServerFactory(workspace=workspace),
             repo_root=repo_root,
             executor_command=_parallel_worker_command(),
@@ -1578,7 +1580,8 @@ def _execute_effect(  # noqa: PLR0913
 
     if isinstance(effect, InvokeAgentEffect):
         return _execute_agent_effect(
-            effect, config, deps, workspace_scope, display=display, verbosity=verbosity, state=state
+            effect, config, deps, workspace_scope,
+            display=display, verbosity=verbosity, state=state,
         )
     if isinstance(effect, CommitEffect):
         return _execute_commit_effect(
@@ -1638,7 +1641,7 @@ def _execute_agent_effect(  # noqa: PLR0913
                 allowed_roots=workspace_scope.allowed_roots,
             )
             _clear_phase_output_artifacts(workspace, effect.phase)
-            bridge = start_mcp_server(session, workspace)
+            bridge = start_mcp_server(session, workspace, phase=effect.phase)
 
             options = InvokeOptions(
                 verbose=config.general.verbosity >= _VERBOSE_LOG_LEVEL,

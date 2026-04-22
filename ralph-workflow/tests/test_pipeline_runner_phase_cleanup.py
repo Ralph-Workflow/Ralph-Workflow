@@ -1,0 +1,222 @@
+"""Runner-level integration test: phase scope kills phase-labeled processes on exit.
+
+This test drives the real runner path — runner_module.run() — to verify
+that process_phase_scope (at the _run_pipeline_step boundary) cleans up
+all phase-labeled child processes when the phase finishes.
+"""
+
+from __future__ import annotations
+
+import contextlib
+import sys
+import time
+from typing import TYPE_CHECKING
+from unittest.mock import MagicMock
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+import psutil
+import pytest
+
+import ralph.process.manager as _mgr
+from ralph.config.enums import PHASE_COMPLETE, Verbosity
+from ralph.pipeline import runner as runner_module
+from ralph.pipeline.effects import InvokeAgentEffect
+from ralph.pipeline.events import PipelineEvent
+from ralph.pipeline.state import PipelineState
+from ralph.process.manager import (
+    ProcessManager,
+    ProcessManagerPolicy,
+    ProcessStatus,
+    get_process_manager,
+    reset_process_manager,
+)
+from ralph.workspace.scope import WorkspaceScope
+
+_FAST_POLICY = ProcessManagerPolicy(
+    default_grace_period_s=0.3, kill_followup_timeout_s=0.5, log_events=False
+)
+
+PYTHON = sys.executable
+_TEST_PHASE = "fake-phase"
+
+
+@pytest.fixture(autouse=True)
+def _reset_pm() -> None:
+    reset_process_manager()
+    yield
+    with contextlib.suppress(Exception):
+        get_process_manager().shutdown_all(grace_period_s=0)
+    reset_process_manager()
+
+
+def _pid_gone(pid: int, timeout_s: float = 0.5) -> bool:
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        if not psutil.pid_exists(pid):
+            return True
+        time.sleep(0.02)
+    return not psutil.pid_exists(pid)
+
+
+def _stub_determine_effect(effects: list[object]) -> object:
+    def stub(
+        state: object,
+        policy_bundle: object,
+        workspace_scope: object = None,
+        *,
+        config: object = None,
+    ) -> object:
+        return effects.pop(0)
+
+    return stub
+
+
+def _apply_runner_stubs(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    effects: list[object],
+    *,
+    fake_execute_agent_effect: object,
+) -> None:
+    complete_state = PipelineState(phase=PHASE_COMPLETE)
+    monkeypatch.setattr(
+        runner_module, "resolve_workspace_scope", lambda: WorkspaceScope(tmp_path)
+    )
+    monkeypatch.setattr(runner_module, "_write_start_commit_if_absent", lambda _: None)
+    monkeypatch.setattr(runner_module, "_validate_custom_mcp_servers", lambda _: 0)
+    monkeypatch.setattr(runner_module, "load_policy_or_die", lambda _: MagicMock())
+    monkeypatch.setattr(runner_module, "AgentRegistry", MagicMock())
+    monkeypatch.setattr(
+        runner_module, "_determine_effect_from_policy", _stub_determine_effect(effects)
+    )
+    monkeypatch.setattr(runner_module, "_execute_agent_effect", fake_execute_agent_effect)
+    monkeypatch.setattr(
+        runner_module, "_materialize_agent_prompt_if_needed", lambda *a, **kw: None
+    )
+    monkeypatch.setattr(
+        runner_module, "_phase_event_after_agent_run", lambda **kw: PipelineEvent.AGENT_SUCCESS
+    )
+    monkeypatch.setattr(
+        runner_module, "reducer_reduce", lambda *a, **kw: (complete_state, [])
+    )
+    monkeypatch.setattr(runner_module.ckpt, "save", lambda _: None)
+
+
+def test_runner_phase_scope_kills_phase_labeled_child(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """_run_pipeline_step wraps phase body in process_phase_scope(state.phase).
+
+    A process spawned inside _execute_agent_effect with label 'phase:<phase>:worker'
+    must be dead after runner.run() exits, because the phase scope tears it down.
+    """
+    pm = ProcessManager(policy=_FAST_POLICY)
+    spawned_pid: list[int] = []
+
+    def fake_execute_agent_effect(
+        effect: object, config: object, deps: object, workspace_scope: object, **kwargs: object
+    ) -> PipelineEvent:
+        handle = get_process_manager().spawn(
+            [PYTHON, "-c", "import time; time.sleep(30)"],
+            label=f"phase:{_TEST_PHASE}:worker",
+        )
+        spawned_pid.append(handle.record.pid)
+        return PipelineEvent.AGENT_SUCCESS
+
+    effects: list[object] = [
+        InvokeAgentEffect(
+            agent_name="fake-agent",
+            phase=_TEST_PHASE,
+            prompt_file="/dev/null",
+        ),
+    ]
+    _apply_runner_stubs(
+        monkeypatch, tmp_path, effects, fake_execute_agent_effect=fake_execute_agent_effect
+    )
+
+    initial_state = MagicMock()
+    initial_state.phase = _TEST_PHASE
+    initial_state.recovery_epoch = 0
+
+    original_singleton = _mgr._singleton
+    _mgr._singleton = pm
+    try:
+        exit_code = runner_module.run(
+            MagicMock(), initial_state=initial_state, verbosity=Verbosity.QUIET
+        )
+    finally:
+        _mgr._singleton = original_singleton
+
+    assert exit_code == 0
+    assert spawned_pid, "Fake handler must have spawned a process"
+    assert _pid_gone(spawned_pid[0]), (
+        f"PID {spawned_pid[0]} must be gone after runner exits the phase scope"
+    )
+
+
+def test_runner_phase_scope_does_not_kill_other_labels(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """process_phase_scope only kills processes whose label starts with 'phase:<phase_name>'."""
+    pm = ProcessManager(policy=_FAST_POLICY)
+    spawned: dict[str, int] = {}
+
+    def fake_execute_agent_effect(
+        effect: object, config: object, deps: object, workspace_scope: object, **kwargs: object
+    ) -> PipelineEvent:
+        phase_handle = get_process_manager().spawn(
+            [PYTHON, "-c", "import time; time.sleep(30)"],
+            label=f"phase:{_TEST_PHASE}:worker",
+        )
+        bystander_handle = get_process_manager().spawn(
+            [PYTHON, "-c", "import time; time.sleep(30)"],
+            label="other:unrelated",
+        )
+        spawned["phase"] = phase_handle.record.pid
+        spawned["bystander"] = bystander_handle.record.pid
+        return PipelineEvent.AGENT_SUCCESS
+
+    effects: list[object] = [
+        InvokeAgentEffect(
+            agent_name="fake-agent",
+            phase=_TEST_PHASE,
+            prompt_file="/dev/null",
+        ),
+    ]
+    _apply_runner_stubs(
+        monkeypatch, tmp_path, effects, fake_execute_agent_effect=fake_execute_agent_effect
+    )
+
+    initial_state = MagicMock()
+    initial_state.phase = _TEST_PHASE
+    initial_state.recovery_epoch = 0
+
+    original_singleton = _mgr._singleton
+    _mgr._singleton = pm
+    try:
+        exit_code = runner_module.run(
+            MagicMock(), initial_state=initial_state, verbosity=Verbosity.QUIET
+        )
+    finally:
+        _mgr._singleton = original_singleton
+        bystander_pid = spawned.get("bystander")
+        if bystander_pid is not None:
+            bystander_record = pm._records.get(bystander_pid)
+            if (
+                bystander_record is not None
+                and bystander_record.status == ProcessStatus.RUNNING
+            ):
+                bystander_proc = pm._sync_procs.get(bystander_pid)
+                if bystander_proc is not None:
+                    with contextlib.suppress(Exception):
+                        pm._escalate_termination_sync(bystander_record, bystander_proc, 0)
+
+    assert exit_code == 0
+    assert spawned, "Fake handler must have spawned processes"
+    assert _pid_gone(spawned["phase"]), (
+        f"Phase-labeled PID {spawned['phase']} must be gone after scope exits"
+    )

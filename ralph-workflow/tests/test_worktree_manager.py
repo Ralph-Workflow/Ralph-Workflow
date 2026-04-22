@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from ralph.git.worktree_manager import WorktreeExistsError, WorktreeManager
+from ralph.process.manager import ProcessStatus, get_process_manager, reset_process_manager
 
 
 def _fake_run_git_factory(repo_root: Path) -> callable:
@@ -44,7 +45,7 @@ def _fake_run_git_factory(repo_root: Path) -> callable:
 
 
 def test_create_and_list_worktree(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    manager = WorktreeManager(repo_root=tmp_path, git=None)  # type: ignore[arg-type]
+    manager = WorktreeManager(repo_root=tmp_path)
     fake_run_git = _fake_run_git_factory(tmp_path)
     monkeypatch.setattr(manager, "_run_git", fake_run_git)
 
@@ -57,7 +58,7 @@ def test_create_and_list_worktree(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
 
 
 def test_create_raises_when_worktree_path_exists(tmp_path: Path) -> None:
-    manager = WorktreeManager(repo_root=tmp_path, git=None)  # type: ignore[arg-type]
+    manager = WorktreeManager(repo_root=tmp_path)
     existing_path = tmp_path / ".worktrees" / "alpha"
     existing_path.mkdir(parents=True)
 
@@ -69,7 +70,7 @@ def test_destroy_removes_worktree_and_list_entry(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    manager = WorktreeManager(repo_root=tmp_path, git=None)  # type: ignore[arg-type]
+    manager = WorktreeManager(repo_root=tmp_path)
     monkeypatch.setattr(manager, "_run_git", _fake_run_git_factory(tmp_path))
     manager.create(unit_id="alpha", base_branch="main")
 
@@ -77,3 +78,44 @@ def test_destroy_removes_worktree_and_list_entry(
 
     assert not (tmp_path / ".worktrees" / "alpha").exists()
     assert manager.list() == []
+
+
+def _assert_full_lifecycle(events: list, label_prefix: str) -> None:
+    """Assert each PID with the given label prefix emitted SPAWNED->RUNNING->EXITED."""
+    labeled = [
+        e for e in events if e.record.label and e.record.label.startswith(label_prefix)
+    ]
+    assert labeled, f"Expected events with label prefix '{label_prefix}'"
+
+    pids = dict.fromkeys(e.record.pid for e in labeled)
+    assert pids, f"Expected at least one tracked spawn with label prefix '{label_prefix}'"
+
+    for pid in pids:
+        pid_events = [e for e in labeled if e.record.pid == pid]
+        transitions = [(e.previous_status, e.new_status) for e in pid_events]
+        assert (ProcessStatus.SPAWNED, ProcessStatus.RUNNING) in transitions, (
+            f"Process {pid} (label {label_prefix!r}) missing SPAWNED->RUNNING; "
+            f"got {transitions}"
+        )
+        assert (ProcessStatus.RUNNING, ProcessStatus.EXITED) in transitions, (
+            f"Process {pid} (label {label_prefix!r}) missing RUNNING->EXITED; "
+            f"got {transitions}"
+        )
+
+
+def test_worktree_operations_emit_process_manager_events(tmp_git_repo: Path) -> None:
+    """Real worktree add+remove produces SPAWNED->RUNNING->EXITED events per spawn."""
+    reset_process_manager()
+    events = []
+    unsubscribe = get_process_manager().register_listener(events.append)
+
+    try:
+        manager = WorktreeManager(repo_root=tmp_git_repo)
+        worktree_path = manager.create(unit_id="pm-test", base_branch="main")
+        manager.destroy(unit_id="pm-test")
+    finally:
+        unsubscribe()
+        reset_process_manager()
+
+    assert not worktree_path.exists()
+    _assert_full_lifecycle(events, "git-worktree:")
