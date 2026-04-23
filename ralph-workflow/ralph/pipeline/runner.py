@@ -12,6 +12,8 @@ from __future__ import annotations
 import os
 import shutil
 import sys
+import threading
+import time
 import uuid
 from collections.abc import Callable
 from contextlib import suppress
@@ -102,9 +104,20 @@ if TYPE_CHECKING:
     from ralph.pipeline.parallel import coordinator as parallel_coordinator
     from ralph.pipeline.work_units import WorkUnit
     from ralph.policy.models import AgentsPolicy, PhaseDefinition, PipelinePolicy, PolicyBundle
+    from ralph.recovery.connectivity import ConnectivityState
+    from ralph.recovery.controller import RecoveryController
 
     class _PipelineSubscriber(Protocol):
         def notify(self, state: PipelineState) -> None: ...
+
+
+class _ConnectivityMonitorLike(Protocol):
+    @property
+    def current_state(self) -> ConnectivityState: ...
+
+    def add_listener(
+        self, cb: Callable[[object], None]
+    ) -> Callable[[], None]: ...
 
 
 class _InvokeAgentFn(Protocol):
@@ -515,14 +528,17 @@ def _reduce_runtime_recovery(
     pipeline_policy: PipelinePolicy,
     *,
     reason: str,
-) -> PipelineState:
+    recovery: RecoveryController | None = None,
+) -> tuple[PipelineState, list[Effect]]:
     failure_event = PhaseFailureEvent(
         phase=state.phase,
         reason=reason,
         recoverable=True,
     )
-    recovered_state, _ = reducer_reduce(state, failure_event, pipeline_policy)
-    return recovered_state
+    recovered_state, effects = reducer_reduce(
+        state, failure_event, pipeline_policy, recovery=recovery
+    )
+    return recovered_state, effects
 
 
 def _save_checkpoint_or_log(
@@ -546,6 +562,7 @@ def _run_pipeline_step(  # noqa: PLR0913
     verbosity: Verbosity,
     registry: _RegistryLike,
     pipeline_subscriber: _PipelineSubscriber | None,
+    recovery_controller: RecoveryController | None = None,
 ) -> PipelineState | int:
     try:
         effect = _call_determine_effect_from_policy(state, policy_bundle, workspace_scope, config)
@@ -618,11 +635,18 @@ def _run_pipeline_step(  # noqa: PLR0913
             phase=state.phase,
             err=exc,
         )
-        recovered_state = _reduce_runtime_recovery(
+        recovered_state, _recv_effects = _reduce_runtime_recovery(
             state,
             policy_bundle.pipeline,
             reason=f"Pipeline step crashed: {type(exc).__name__}: {exc}",
+            recovery=recovery_controller,
         )
+        for _eff in _recv_effects:
+            if isinstance(_eff, ExitFailureEffect):
+                _emit_display_line(
+                    display, None, _status_text("Recovery exhausted", _eff.reason, "red")
+                )
+                return 1
         _notify_pipeline_subscriber(pipeline_subscriber, recovered_state)
         _save_checkpoint_or_log(
             recovered_state,
@@ -763,6 +787,8 @@ def run(  # noqa: PLR0912, PLR0913, PLR0915
     *,
     dashboard_subscriber: _PipelineSubscriber | None = None,
     verbosity: Verbosity | None = None,
+    connectivity_monitor: _ConnectivityMonitorLike | None = None,
+    _recovery_sleep: Callable[[float], None] | None = None,
 ) -> int:
     """Execute the pipeline event loop.
 
@@ -796,6 +822,32 @@ def run(  # noqa: PLR0912, PLR0913, PLR0915
         verbosity if verbosity is not None else config.general.verbosity
     )
     is_quiet = _verbosity_rank(effective_verbosity) <= _VERBOSITY_RANK[Verbosity.QUIET]
+
+    from ralph.recovery.controller import RecoveryController as _RecoveryController  # noqa: PLC0415
+    from ralph.recovery.events import FailureEvent as _FailureEvent  # noqa: PLC0415
+    from ralph.recovery.events import FalloverEvent as _FalloverEvent  # noqa: PLC0415
+    _sleep = _recovery_sleep or time.sleep
+    _cycle_cap: int = 200
+    _raw_cycle_cap: object = getattr(state, "recovery_cycle_cap", 200)
+    if isinstance(_raw_cycle_cap, int) and _raw_cycle_cap >= 1:
+        _cycle_cap = _raw_cycle_cap
+    _controller = _RecoveryController(cycle_cap=_cycle_cap, policy_bundle=policy_bundle)
+
+    def _log_recovery_event(evt: object) -> None:
+        if isinstance(evt, _FailureEvent):
+            logger.bind(recovery=True).info(
+                "FAILURE phase={} agent={} category={} counted={}"
+                " chain_cap={} cycle={} delay_ms={}",
+                evt.phase, evt.agent, evt.category, evt.counted_against_budget,
+                evt.chain_capacity_remaining, evt.recovery_cycle, evt.retry_delay_ms,
+            )
+        elif isinstance(evt, _FalloverEvent):
+            logger.bind(recovery=True).info(
+                "FALLOVER phase={} from={} to={} reason={}",
+                evt.phase, evt.from_agent, evt.to_agent, evt.reason,
+            )
+
+    _unsubscribe_bus = _controller.event_bus.subscribe(_log_recovery_event)
 
     logger.info(
         "Starting pipeline: phase={}, iterations={}, reviews={}",
@@ -861,6 +913,8 @@ def run(  # noqa: PLR0912, PLR0913, PLR0915
             _notify_pipeline_subscriber(effective_pipeline_subscriber, state)
             try:
                 while state.phase != PHASE_COMPLETE:
+                    if connectivity_monitor is not None:
+                        state = _apply_connectivity_check(state, connectivity_monitor)
                     step_result = _run_pipeline_step(
                         state=state,
                         policy_bundle=policy_bundle,
@@ -870,10 +924,15 @@ def run(  # noqa: PLR0912, PLR0913, PLR0915
                         verbosity=effective_verbosity,
                         registry=registry,
                         pipeline_subscriber=effective_pipeline_subscriber,
+                        recovery_controller=_controller,
                     )
                     if isinstance(step_result, int):
                         return step_result
                     state = step_result
+                    delay_ms = state.last_retry_delay_ms
+                    if isinstance(delay_ms, int) and delay_ms > 0:
+                        state = state.copy_with(last_retry_delay_ms=0)
+                        _sleep(delay_ms / 1000.0)
                     _prev_phase = _emit_phase_transition_if_changed(
                         active_display,
                         _prev_phase,
@@ -914,12 +973,58 @@ def run(  # noqa: PLR0912, PLR0913, PLR0915
                         pr_url=state.pr_url,
                     )
     finally:
+        with suppress(Exception):
+            _unsubscribe_bus()
         _emit_final_summary(
             state,
             workspace_scope.root,
             subscriber=cast("PipelineSubscriber | None", effective_pipeline_subscriber),
         )
     return exit_code
+
+
+
+def _apply_connectivity_check(
+    state: PipelineState, monitor: _ConnectivityMonitorLike
+) -> PipelineState:
+    """Check connectivity state and block synchronously if offline.
+
+    Uses a threading.Event driven by monitor.add_listener() so this works in the
+    synchronous runner without an event loop; compatible with FakeConnectivityMonitor
+    (tests) and ConnectivityMonitor (production, started externally).
+    """
+    from ralph.recovery.connectivity import ConnectivityState  # noqa: PLC0415
+
+    current = monitor.current_state
+    new_state = state
+    if str(current) != state.last_connectivity_state:
+        new_state = state.copy_with(last_connectivity_state=str(current))
+
+    if current != ConnectivityState.OFFLINE:
+        return new_state
+
+    logger.bind(recovery=True).warning(
+        "Pipeline paused: network offline, waiting for connectivity to restore..."
+    )
+    wake = threading.Event()
+
+    def _on_transition(evt: object) -> None:
+        from ralph.recovery.connectivity import ConnectivityEvent  # noqa: PLC0415
+        from ralph.recovery.connectivity import ConnectivityState as _ConnState  # noqa: PLC0415
+
+        if isinstance(evt, ConnectivityEvent) and evt.state == _ConnState.ONLINE:
+            wake.set()
+
+    unsub = monitor.add_listener(_on_transition)
+    try:
+        if monitor.current_state != ConnectivityState.OFFLINE:
+            wake.set()
+        wake.wait()
+    finally:
+        unsub()
+
+    logger.bind(recovery=True).info("Connectivity restored, resuming pipeline")
+    return new_state.copy_with(last_connectivity_state=str(ConnectivityState.ONLINE))
 
 
 def _fan_out_display_and_subscriber(
@@ -1070,7 +1175,7 @@ async def _run_fan_out_async(  # noqa: PLR0913
             phase=current.phase,
             err=exc,
         )
-        recovered = _reduce_runtime_recovery(
+        recovered, _ = _reduce_runtime_recovery(
             current,
             policy_bundle.pipeline,
             reason=f"Fan-out execution crashed: {type(exc).__name__}: {exc}",

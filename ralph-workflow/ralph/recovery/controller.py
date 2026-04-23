@@ -123,8 +123,8 @@ class RecoveryController:
                 phase,
                 failure.reason[:200],
             )
-            # Environmental failures retry immediately: delay is 0
-            return new_state, [], failure_evt
+            # Environmental failures retry immediately without debiting budget or retries.
+            return new_state.copy_with(last_error=failure.reason), [], failure_evt
 
         if failure.category == FailureCategory.AMBIGUOUS:
             logger.info(
@@ -132,7 +132,9 @@ class RecoveryController:
                 phase,
                 failure.reason[:200],
             )
-            # Ambiguous retry immediately: delay is 0
+            # Ambiguous retries track retry count (but no budget debit).
+            new_state = new_state.copy_with(last_error=failure.reason)
+            new_state = self._increment_chain_retries(new_state, phase)
             return new_state, [], failure_evt
 
         if failure.category == FailureCategory.USER_CONFIG:
@@ -168,6 +170,20 @@ class RecoveryController:
             return new_state.copy_with(last_retry_delay_ms=0), [ExitFailureEffect(reason=exit_reason)], failure_evt  # noqa: E501
 
         return new_state, effects, failure_evt
+
+    def _increment_chain_retries(self, state: PipelineState, phase: str) -> PipelineState:
+        """Increment chain.retries for the given phase without debiting the budget."""
+        from ralph.pipeline.state import AgentChainState  # noqa: PLC0415
+
+        chain = state.chain_for_phase(phase)
+        if chain is None:
+            return state
+        new_chain = AgentChainState(
+            agents=chain.agents,
+            current_index=chain.current_index,
+            retries=chain.retries + 1,
+        )
+        return state.with_phase_chain(phase, new_chain)
 
     def _compute_retry_delay(
         self,
