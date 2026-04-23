@@ -2,6 +2,11 @@
 
 The runner must keep looping through recovery cycles when an agent always fails,
 and exit with code 1 only when the configured CycleCap is exceeded — never before.
+
+This test uses a two-agent chain to also verify fallover behavior:
+- First agent (claude) fails and exhausts budget → falls over to second agent (opencode)
+- Second agent (opencode) fails and exhausts budget → chain exhausted, PHASE_FAILED
+- Recovery cycle completes; runner loops until CycleCap is hit
 """
 
 from __future__ import annotations
@@ -33,14 +38,15 @@ if TYPE_CHECKING:
 
     import pytest
 
-_CYCLE_CAP = 2
+_CYCLE_CAP = 3
 
 
 def _make_policy_bundle() -> PolicyBundle:
+    """Build a policy bundle with a two-agent chain for fallover testing."""
     agents = AgentsPolicy(
         agent_chains={
             "dev-chain": AgentChainConfig(
-                agents=["claude"],
+                agents=["claude", "opencode"],
                 max_retries=1,
                 retry_delay_ms=0,
             )
@@ -92,17 +98,19 @@ def test_runner_exits_via_cycle_cap_not_premature_termination(
 ) -> None:
     """Runner loops through recovery until CycleCap is hit, then exits with code 1.
 
-    With a single-agent chain (max_retries=1) and CycleCap=2:
-    - Cycle 1: agent fails → budget exhausted → chain exhausted → PHASE_FAILED (count=1)
+    With a two-agent chain (claude → opencode, each with max_retries=1) and CycleCap=3:
+    - Cycle 1: claude fails → budget exhausted → fallover to opencode → opencode fails → chain exhausted → PHASE_FAILED (count=1)
     - Recovery: PreparePromptEffect → back to development
-    - Cycle 2: agent fails again → chain exhausted → PHASE_FAILED (count=2)
-    - Cap check: count(2) >= cap(2) → ExitFailureEffect → runner returns 1
+    - Cycle 2: same sequence → PHASE_FAILED (count=2)
+    - Cycle 3: same sequence → PHASE_FAILED (count=3) → Cap check: count(3) >= cap(3) → ExitFailureEffect → runner returns 1
+
+    Total invocations: 6 (2 agents × 3 cycles).
     """
     bundle = _make_policy_bundle()
 
     initial_state = PipelineState(
         phase="development",
-        dev_chain=AgentChainState(agents=["claude"], current_index=0, retries=0),
+        dev_chain=AgentChainState(agents=["claude", "opencode"], current_index=0, retries=0),
         policy_entry_phase="development",
         recovery_cycle_cap=_CYCLE_CAP,
     )
@@ -113,7 +121,7 @@ def test_runner_exits_via_cycle_cap_not_premature_termination(
     def _fake_execute(*args: Any, **kwargs: Any) -> None:
         nonlocal invocation_count
         invocation_count += 1
-        raise AgentInactivityTimeoutError("claude", 30.0)
+        raise AgentInactivityTimeoutError("agent timed out", 30.0)
 
     _common_monkeypatches(monkeypatch, tmp_git_repo, bundle, _fake_execute, saved_states.append)
 
@@ -128,19 +136,26 @@ def test_runner_exits_via_cycle_cap_not_premature_termination(
     )
 
     assert exit_code == 1
-    assert invocation_count == _CYCLE_CAP, (
-        f"Expected {_CYCLE_CAP} agent invocations (one per cycle), got {invocation_count}"
+    # Two agents per cycle × _CYCLE_CAP cycles
+    expected_invocations = 2 * _CYCLE_CAP
+    assert invocation_count == expected_invocations, (
+        f"Expected {expected_invocations} agent invocations (2 agents × {_CYCLE_CAP} cycles), "
+        f"got {invocation_count}"
     )
 
 
-def test_runner_cycle_cap_emits_failure_events_per_cycle(
+def test_runner_cycle_cap_emits_failure_events_and_fallover_events(
     tmp_git_repo: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Each recovery cycle records a FailureEvent on the internal event bus.
+    """Each recovery cycle records FailureEvents for both agents and a FalloverEvent.
 
     Captured by subscribing to the controller's bus via patching
     ralph.recovery.controller.FailureEventBus (the class used at construction time).
+
+    With a two-agent chain:
+    - Each cycle produces 2 FailureEvents (one per agent) + 1 FalloverEvent
+    - Total: 2 × _CYCLE_CAP FailureEvents + _CYCLE_CAP FalloverEvents
     """
     from ralph.recovery import controller as recovery_controller_module  # noqa: PLC0415
 
@@ -148,7 +163,7 @@ def test_runner_cycle_cap_emits_failure_events_per_cycle(
 
     initial_state = PipelineState(
         phase="development",
-        dev_chain=AgentChainState(agents=["claude"], current_index=0, retries=0),
+        dev_chain=AgentChainState(agents=["claude", "opencode"], current_index=0, retries=0),
         policy_entry_phase="development",
         recovery_cycle_cap=_CYCLE_CAP,
     )
@@ -174,7 +189,7 @@ def test_runner_cycle_cap_emits_failure_events_per_cycle(
     monkeypatch.setattr(recovery_controller_module, "FailureEventBus", _CapturingBus)
 
     def _fake_execute(*args: Any, **kwargs: Any) -> None:
-        raise AgentInactivityTimeoutError("claude", 30.0)
+        raise AgentInactivityTimeoutError("agent timed out", 30.0)
 
     _common_monkeypatches(monkeypatch, tmp_git_repo, bundle, _fake_execute)
 
@@ -189,18 +204,82 @@ def test_runner_cycle_cap_emits_failure_events_per_cycle(
     )
 
     assert exit_code == 1
-    assert len(captured_failure_events) == _CYCLE_CAP, (
-        f"Expected {_CYCLE_CAP} FailureEvents (one per cycle), "
+    # 2 FailureEvents per cycle (one per agent)
+    expected_failure_events = 2 * _CYCLE_CAP
+    assert len(captured_failure_events) == expected_failure_events, (
+        f"Expected {expected_failure_events} FailureEvents (2 agents × {_CYCLE_CAP} cycles), "
         f"got {len(captured_failure_events)}"
     )
     for evt in captured_failure_events:
         assert evt.category == "agent"
         assert evt.counted_against_budget is True
         assert evt.phase == "development"
-        assert evt.agent == "claude"
+        assert evt.agent in ("claude", "opencode")
+
+    # 1 FalloverEvent per cycle (claude → opencode)
+    assert len(captured_fallover_events) == _CYCLE_CAP, (
+        f"Expected {_CYCLE_CAP} FalloverEvents (one per cycle), "
+        f"got {len(captured_fallover_events)}"
+    )
+    for evt in captured_fallover_events:
+        assert evt.from_agent == "claude"
+        assert evt.to_agent == "opencode"
+        assert evt.phase == "development"
 
 
-def test_runner_cycle_cap_recovery_count_matches_cap(
+def test_runner_fallover_history_reflects_agent_transitions(
+    tmp_git_repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The fallover_history in final state shows all agent transitions."""
+    bundle = _make_policy_bundle()
+
+    initial_state = PipelineState(
+        phase="development",
+        dev_chain=AgentChainState(agents=["claude", "opencode"], current_index=0, retries=0),
+        policy_entry_phase="development",
+        recovery_cycle_cap=_CYCLE_CAP,
+    )
+
+    saved_states: list[PipelineState] = []
+
+    def _fake_execute(*args: Any, **kwargs: Any) -> None:
+        raise AgentInactivityTimeoutError("agent timed out", 30.0)
+
+    _common_monkeypatches(monkeypatch, tmp_git_repo, bundle, _fake_execute, saved_states.append)
+
+    monitor = FakeConnectivityMonitor(initial_state=ConnectivityState.ONLINE)
+
+    exit_code = runner_module.run(
+        MagicMock(),
+        initial_state=initial_state,
+        verbosity=Verbosity.QUIET,
+        connectivity_monitor=monitor,
+        _recovery_sleep=lambda _: None,
+    )
+
+    assert exit_code == 1
+    assert len(saved_states) > 0, "Expected at least one saved checkpoint"
+
+    # Find the final saved state (last one with non-zero recovery_cycle_count)
+    final_state = None
+    for state in reversed(saved_states):
+        if isinstance(state, PipelineState) and state.recovery_cycle_count > 0:
+            final_state = state
+            break
+
+    assert final_state is not None, "No state found with recovery_cycle_count > 0"
+    # _CYCLE_CAP fallover records should be present (one per recovery cycle)
+    assert len(final_state.fallover_history) == _CYCLE_CAP, (
+        f"Expected {_CYCLE_CAP} fallover records, got {len(final_state.fallover_history)}"
+    )
+    for record in final_state.fallover_history:
+        assert record.from_agent == "claude"
+        assert record.to_agent == "opencode"
+        assert record.phase == "development"
+
+
+def test_runner_recovery_cycle_count_reaches_cap(
     tmp_git_repo: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -209,7 +288,7 @@ def test_runner_cycle_cap_recovery_count_matches_cap(
 
     initial_state = PipelineState(
         phase="development",
-        dev_chain=AgentChainState(agents=["claude"], current_index=0, retries=0),
+        dev_chain=AgentChainState(agents=["claude", "opencode"], current_index=0, retries=0),
         policy_entry_phase="development",
         recovery_cycle_cap=_CYCLE_CAP,
     )
@@ -217,7 +296,7 @@ def test_runner_cycle_cap_recovery_count_matches_cap(
     saved_states: list[PipelineState] = []
 
     def _fake_execute(*args: Any, **kwargs: Any) -> None:
-        raise AgentInactivityTimeoutError("claude", 30.0)
+        raise AgentInactivityTimeoutError("agent timed out", 30.0)
 
     _common_monkeypatches(monkeypatch, tmp_git_repo, bundle, _fake_execute, saved_states.append)
 

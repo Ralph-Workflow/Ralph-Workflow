@@ -186,8 +186,9 @@ def test_offline_window_produces_no_failure_events(
     The offline period must be completely silent — no budget debits,
     no failure events, no fallover records.
     """
+    import ralph.recovery.controller as recovery_controller_module  # noqa: PLC0415
     from ralph.pipeline.events import PipelineEvent  # noqa: PLC0415
-    from ralph.recovery import events as recovery_events_module  # noqa: PLC0415
+    from ralph.recovery.events import FailureEventBus  # noqa: PLC0415
 
     bundle = _make_policy_bundle()
 
@@ -200,7 +201,7 @@ def test_offline_window_produces_no_failure_events(
 
     captured_failure_events: list[FailureEvent] = []
 
-    class _CapturingBus(recovery_events_module.FailureEventBus):  # type: ignore[misc]
+    class _CapturingBus(FailureEventBus):  # type: ignore[misc]
         def __init__(self) -> None:
             super().__init__()
             self.subscribe(
@@ -211,7 +212,7 @@ def test_offline_window_produces_no_failure_events(
                 )
             )
 
-    monkeypatch.setattr(recovery_events_module, "FailureEventBus", _CapturingBus)
+    monkeypatch.setattr(recovery_controller_module, "FailureEventBus", _CapturingBus)
 
     def _fake_execute(*args: Any, **kwargs: Any) -> PipelineEvent:
         return PipelineEvent.AGENT_SUCCESS

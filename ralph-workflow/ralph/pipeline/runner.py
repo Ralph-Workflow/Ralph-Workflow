@@ -890,11 +890,22 @@ def run(  # noqa: PLR0912, PLR0913, PLR0915
 
     def _log_recovery_event(evt: object) -> None:
         if isinstance(evt, _FailureEvent):
+            # Get remaining budget for this phase/agent from the controller snapshot
+            remaining: int | None = None
+            if evt.agent:
+                snap = _controller.snapshot()
+                budgets = snap.get("budgets")
+                if isinstance(budgets, dict):
+                    key = f"{evt.phase}:{evt.agent}"
+                    budget_info = budgets.get(key)
+                    if isinstance(budget_info, dict):
+                        remaining = budget_info.get("remaining")
             logger.bind(recovery=True).info(
                 "FAILURE phase={} agent={} category={} counted={}"
-                " chain_cap={} cycle={} delay_ms={}",
+                " chain_cap={} cycle={} delay_ms={} remaining={}",
                 evt.phase, evt.agent, evt.category, evt.counted_against_budget,
                 evt.chain_capacity_remaining, evt.recovery_cycle, evt.retry_delay_ms,
+                remaining,
             )
         elif isinstance(evt, _FalloverEvent):
             logger.bind(recovery=True).info(
@@ -1046,14 +1057,14 @@ def run(  # noqa: PLR0912, PLR0913, PLR0915
 def _apply_connectivity_check(
     state: PipelineState, monitor: _ConnectivityMonitorLike
 ) -> PipelineState:
-    """Block synchronously if offline; return state unchanged when online.
+    """Block synchronously if offline; return updated state when online.
 
     Uses a threading.Event driven by monitor.add_listener() so this works in the
     synchronous runner without an event loop; compatible with FakeConnectivityMonitor
     (tests) and ConnectivityMonitor (production, started externally).
 
-    State is only modified on transition back from OFFLINE so callers that use
-    MagicMock or plain PipelineState objects are not affected by normal (online) runs.
+    Records last_connectivity_state='offline' before blocking so checkpoints written
+    during an interrupt while paused accurately reflect the offline condition.
     """
     from ralph.recovery.connectivity import ConnectivityState  # noqa: PLC0415
 
@@ -1063,6 +1074,8 @@ def _apply_connectivity_check(
     logger.bind(recovery=True).warning(
         "Pipeline paused: network offline, waiting for connectivity to restore..."
     )
+    # Record offline before blocking so any checkpoint saved during the wait reflects reality.
+    offline_state = state.copy_with(last_connectivity_state=str(ConnectivityState.OFFLINE))
     wake = threading.Event()
 
     def _on_transition(evt: object) -> None:
@@ -1074,14 +1087,21 @@ def _apply_connectivity_check(
 
     unsub = monitor.add_listener(_on_transition)
     try:
-        if monitor.current_state != ConnectivityState.OFFLINE:
-            wake.set()  # type: ignore[unreachable]
-        wake.wait()
+        # Capture state AFTER listener registration to handle the race where
+        # state changed to ONLINE between the top-of-function check and now.
+        # Mypy flags this as unreachable because it sees current_state as
+        # invariant, but in FakeConnectivityMonitor (test) another thread can
+        # call go_online() between checks. This is a genuine race guard.
+        _was_online_at_registration = monitor.current_state != ConnectivityState.OFFLINE
+        if _was_online_at_registration:
+            wake.set()
+        else:
+            wake.wait()
     finally:
         unsub()
 
     logger.bind(recovery=True).info("Connectivity restored, resuming pipeline")
-    return state.copy_with(last_connectivity_state=str(ConnectivityState.ONLINE))
+    return offline_state.copy_with(last_connectivity_state=str(ConnectivityState.ONLINE))
 
 
 def _fan_out_display_and_subscriber(
