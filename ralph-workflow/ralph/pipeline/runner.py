@@ -529,14 +529,28 @@ def _reduce_runtime_recovery(
     *,
     reason: str,
     recovery: RecoveryController | None = None,
+    exc: BaseException | None = None,
 ) -> tuple[PipelineState, list[Effect]]:
+    if recovery is not None:
+        # Pass the raw exception so the classifier sees the exception type, not just a
+        # string reason. This preserves AgentInvocationError → AGENT classification.
+        raw_failure: BaseException | str = exc if exc is not None else reason
+        new_state, effects, _ = recovery.handle(
+            state,
+            raw_failure,
+            phase=state.phase,
+            agent=state.current_agent(),
+        )
+        if state.work_units and not new_state.work_units:
+            new_state = new_state.copy_with(work_units=state.work_units)
+        return new_state, effects
     failure_event = PhaseFailureEvent(
         phase=state.phase,
         reason=reason,
         recoverable=True,
     )
     recovered_state, effects = reducer_reduce(
-        state, failure_event, pipeline_policy, recovery=recovery
+        state, failure_event, pipeline_policy, recovery=None
     )
     return recovered_state, effects
 
@@ -563,6 +577,7 @@ def _run_pipeline_step(  # noqa: PLR0913
     registry: _RegistryLike,
     pipeline_subscriber: _PipelineSubscriber | None,
     recovery_controller: RecoveryController | None = None,
+    _monitor_stop_cb: Callable[[], None] | None = None,
 ) -> PipelineState | int:
     try:
         effect = _call_determine_effect_from_policy(state, policy_bundle, workspace_scope, config)
@@ -585,6 +600,7 @@ def _run_pipeline_step(  # noqa: PLR0913
                 policy_bundle=policy_bundle,
                 workspace_scope=workspace_scope,
                 pipeline_subscriber=pipeline_subscriber,
+                _monitor_stop_cb=_monitor_stop_cb,
             )
 
         with process_phase_scope(state.phase):
@@ -608,6 +624,8 @@ def _run_pipeline_step(  # noqa: PLR0913
                 state=state,
             )
             if isinstance(effect, InvokeAgentEffect) and event == PipelineEvent.AGENT_SUCCESS:
+                if recovery_controller is not None:
+                    recovery_controller.reset_backoff(effect.phase, effect.agent_name)
                 event = _phase_event_after_agent_run(
                     effect=effect,
                     config=config,
@@ -640,6 +658,7 @@ def _run_pipeline_step(  # noqa: PLR0913
             policy_bundle.pipeline,
             reason=f"Pipeline step crashed: {type(exc).__name__}: {exc}",
             recovery=recovery_controller,
+            exc=exc,
         )
         for _eff in _recv_effects:
             if isinstance(_eff, ExitFailureEffect):
@@ -823,6 +842,7 @@ def run(  # noqa: PLR0912, PLR0913, PLR0915
     )
     is_quiet = _verbosity_rank(effective_verbosity) <= _VERBOSITY_RANK[Verbosity.QUIET]
 
+    from ralph.recovery.budget import seed_budget_registry as _seed_budget_registry  # noqa: PLC0415
     from ralph.recovery.controller import RecoveryController as _RecoveryController  # noqa: PLC0415
     from ralph.recovery.events import FailureEvent as _FailureEvent  # noqa: PLC0415
     from ralph.recovery.events import FalloverEvent as _FalloverEvent  # noqa: PLC0415
@@ -831,7 +851,42 @@ def run(  # noqa: PLR0912, PLR0913, PLR0915
     _raw_cycle_cap: object = getattr(state, "recovery_cycle_cap", 200)
     if isinstance(_raw_cycle_cap, int) and _raw_cycle_cap >= 1:
         _cycle_cap = _raw_cycle_cap
-    _controller = _RecoveryController(cycle_cap=_cycle_cap, policy_bundle=policy_bundle)
+    _monitor_stop: Callable[[], None] | None = None
+    if connectivity_monitor is None:
+        import asyncio as _asyncio_mon  # noqa: PLC0415
+
+        from ralph.recovery.connectivity import ConnectivityMonitor as _ConnMon  # noqa: PLC0415
+        _real_monitor = _ConnMon()
+        connectivity_monitor = _real_monitor
+        _mon_loop = _asyncio_mon.new_event_loop()
+        _mon_thread_started = threading.Event()
+
+        def _run_mon_thread() -> None:
+            _asyncio_mon.set_event_loop(_mon_loop)
+            _mon_loop.run_until_complete(_real_monitor.start())
+            _mon_thread_started.set()
+            _mon_loop.run_forever()
+            _mon_loop.close()
+
+        _mon_thread = threading.Thread(
+            target=_run_mon_thread, daemon=True, name="connectivity-probe"
+        )
+        _mon_thread.start()
+
+        def _stop_mon() -> None:
+            import asyncio as _asyncio_stop  # noqa: PLC0415
+            future = _asyncio_stop.run_coroutine_threadsafe(_real_monitor.stop(), _mon_loop)
+            with suppress(Exception):
+                future.result(timeout=2.0)
+            _mon_loop.call_soon_threadsafe(_mon_loop.stop)
+            _mon_thread.join(timeout=3.0)
+
+        _monitor_stop = _stop_mon
+    _controller = _RecoveryController(
+        cycle_cap=_cycle_cap,
+        policy_bundle=policy_bundle,
+        budget_registry=_seed_budget_registry(policy_bundle),
+    )
 
     def _log_recovery_event(evt: object) -> None:
         if isinstance(evt, _FailureEvent):
@@ -925,6 +980,7 @@ def run(  # noqa: PLR0912, PLR0913, PLR0915
                         registry=registry,
                         pipeline_subscriber=effective_pipeline_subscriber,
                         recovery_controller=_controller,
+                        _monitor_stop_cb=_monitor_stop,
                     )
                     if isinstance(step_result, int):
                         return step_result
@@ -975,6 +1031,9 @@ def run(  # noqa: PLR0912, PLR0913, PLR0915
     finally:
         with suppress(Exception):
             _unsubscribe_bus()
+        if _monitor_stop is not None:
+            with suppress(Exception):
+                _monitor_stop()
         _emit_final_summary(
             state,
             workspace_scope.root,
@@ -987,21 +1046,19 @@ def run(  # noqa: PLR0912, PLR0913, PLR0915
 def _apply_connectivity_check(
     state: PipelineState, monitor: _ConnectivityMonitorLike
 ) -> PipelineState:
-    """Check connectivity state and block synchronously if offline.
+    """Block synchronously if offline; return state unchanged when online.
 
     Uses a threading.Event driven by monitor.add_listener() so this works in the
     synchronous runner without an event loop; compatible with FakeConnectivityMonitor
     (tests) and ConnectivityMonitor (production, started externally).
+
+    State is only modified on transition back from OFFLINE so callers that use
+    MagicMock or plain PipelineState objects are not affected by normal (online) runs.
     """
     from ralph.recovery.connectivity import ConnectivityState  # noqa: PLC0415
 
-    current = monitor.current_state
-    new_state = state
-    if str(current) != state.last_connectivity_state:
-        new_state = state.copy_with(last_connectivity_state=str(current))
-
-    if current != ConnectivityState.OFFLINE:
-        return new_state
+    if monitor.current_state != ConnectivityState.OFFLINE:
+        return state
 
     logger.bind(recovery=True).warning(
         "Pipeline paused: network offline, waiting for connectivity to restore..."
@@ -1018,13 +1075,13 @@ def _apply_connectivity_check(
     unsub = monitor.add_listener(_on_transition)
     try:
         if monitor.current_state != ConnectivityState.OFFLINE:
-            wake.set()
+            wake.set()  # type: ignore[unreachable]
         wake.wait()
     finally:
         unsub()
 
     logger.bind(recovery=True).info("Connectivity restored, resuming pipeline")
-    return new_state.copy_with(last_connectivity_state=str(ConnectivityState.ONLINE))
+    return state.copy_with(last_connectivity_state=str(ConnectivityState.ONLINE))
 
 
 def _fan_out_display_and_subscriber(
@@ -1108,6 +1165,7 @@ async def _run_fan_out_async(  # noqa: PLR0913
     repo_root: Path,
     git_exec: GitExecutor,
     pipeline_subscriber: _PipelineSubscriber | None,
+    _monitor_stop_cb: Callable[[], None] | None = None,
 ) -> PipelineState:
     import asyncio  # noqa: PLC0415
 
@@ -1121,6 +1179,8 @@ async def _run_fan_out_async(  # noqa: PLR0913
     try:
         loop = asyncio.get_running_loop()
         bridge = SignalBridge()
+        if _monitor_stop_cb is not None:
+            bridge._connectivity_stop = _monitor_stop_cb
         root_task = cast("asyncio.Task[object] | None", asyncio.current_task())
         assert root_task is not None
         install_signal_handlers(loop, root_task, bridge)
@@ -1199,6 +1259,7 @@ def _execute_fan_out_sync(  # noqa: PLR0913
     workspace_scope: WorkspaceScope,
     pipeline_subscriber: _PipelineSubscriber | None = None,
     dashboard_subscriber: _PipelineSubscriber | None = None,
+    _monitor_stop_cb: Callable[[], None] | None = None,
 ) -> PipelineState:
     """Execute fan-out development synchronously by wrapping asyncio.run()."""
     import asyncio  # noqa: PLC0415
@@ -1220,6 +1281,7 @@ def _execute_fan_out_sync(  # noqa: PLR0913
             repo_root=workspace_scope.root,
             git_exec=GitExecutor(),
             pipeline_subscriber=effective_pipeline_subscriber,
+            _monitor_stop_cb=_monitor_stop_cb,
         )
     )
 

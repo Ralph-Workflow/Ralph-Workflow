@@ -129,7 +129,9 @@ class FailureClassifier:
             raw_message = exc
             original: BaseException | None = None
         else:
-            raw_message = str(exc)
+            exc_msg = str(exc)
+            type_name = type(exc).__name__
+            raw_message = f"{type_name}: {exc_msg}" if exc_msg else type_name
             original = exc
 
         exc_obj = exc if isinstance(exc, BaseException) else None

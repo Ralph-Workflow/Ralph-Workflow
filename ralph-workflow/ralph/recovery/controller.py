@@ -319,6 +319,22 @@ class RecoveryController:
 
         return chain_config.max_retries
 
+    def snapshot(self) -> dict[str, object]:
+        """Return a runtime observability snapshot of recovery state."""
+        return {
+            "cycle_cap": self._cap.cap,
+            "budgets": {
+                f"{phase}:{agent}": {
+                    "max_retries": budget.max_retries,
+                    "consumed": budget.consumed,
+                    "remaining": budget.remaining,
+                    "exhausted": budget.exhausted,
+                }
+                for (phase, agent), budget in self._registry._budgets.items()
+            },
+            "backoff_attempts": dict(self._backoff_attempts),
+        }
+
     def _enter_phase_failed(
         self,
         state: PipelineState,
