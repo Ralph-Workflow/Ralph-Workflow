@@ -6,10 +6,15 @@ This module provides progress and status display using rich.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
-from rich.console import Console
 from rich.progress import BarColumn, Progress, SpinnerColumn, TaskProgressColumn, TextColumn
 from rich.table import Table
+
+from ralph.display.theme import make_console
+
+if TYPE_CHECKING:
+    from rich.console import Console
 
 
 @dataclass(frozen=True)
@@ -33,8 +38,8 @@ def display_phase(phase: str, iteration: int, total: int, console: Console | Non
         total: Total iterations.
         console: Rich console for output.
     """
-    c = console or Console()
-    c.print(f"[cyan bold]Phase:[/cyan bold] {phase}")
+    c = console or make_console()
+    c.print(f"[theme.cat.meta]Phase:[/theme.cat.meta] {phase}")
     c.print(f"[dim]Iteration {iteration} of {total}[/dim]")
 
 
@@ -55,7 +60,7 @@ def display_progress(
     Returns:
         Progress bar instance.
     """
-    c = console or Console()
+    c = console or make_console()
     progress = Progress(
         SpinnerColumn(),
         TextColumn("[progress.description]{task.description}"),
@@ -63,7 +68,7 @@ def display_progress(
         TaskProgressColumn(),
         console=c,
     )
-    progress.add_task(f"[cyan]{phase}[/cyan]", total=total, completed=current)
+    progress.add_task(f"[theme.cat.meta]{phase}[/theme.cat.meta]", total=total, completed=current)
     return progress
 
 
@@ -77,10 +82,10 @@ def display_status_summary(
         summary: Status summary data.
         console: Rich console for output.
     """
-    c = console or Console()
+    c = console or make_console()
 
     table = Table(title="Pipeline Status", show_header=False)
-    table.add_column("Property", style="cyan")
+    table.add_column("Property", style="theme.cat.meta")
     table.add_column("Value")
 
     table.add_row("Phase", summary.phase)

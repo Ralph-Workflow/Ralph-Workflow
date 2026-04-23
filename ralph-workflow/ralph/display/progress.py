@@ -20,9 +20,13 @@ from importlib import import_module
 from io import TextIOBase
 from typing import TYPE_CHECKING, Protocol, cast
 
+from ralph.display.theme import RALPH_THEME
+
 if TYPE_CHECKING:
     from collections.abc import Iterator
     from types import ModuleType
+
+    from rich.theme import Theme
 
 TaskID = int
 
@@ -66,7 +70,7 @@ class _TqdmProto(Protocol):
 
 
 class _ConsoleFactory(Protocol):
-    def __call__(self, *, stderr: bool) -> _ConsoleProto: ...
+    def __call__(self, *, stderr: bool, theme: Theme | None = ...) -> _ConsoleProto: ...
 
 
 class _ColumnFactory(Protocol):
@@ -224,10 +228,10 @@ class RalphProgress:
             remaining_column,
         ) = columns
 
-        console = console_factory(stderr=True)
+        console = console_factory(stderr=True, theme=RALPH_THEME)
         progress = progress_factory(
             spinner_column(),
-            text_column("[bold cyan]{task.description}[/bold cyan]"),
+            text_column("[theme.cat.meta]{task.description}[/theme.cat.meta]"),
             bar_column(),
             task_progress_column(),
             mofn_column(),

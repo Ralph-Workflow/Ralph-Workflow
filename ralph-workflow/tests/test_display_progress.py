@@ -243,7 +243,7 @@ def test_ralph_progress_is_tty_considers_rich_and_stderr(monkeypatch):
 def test_rich_progress_context_manager_sets_state(monkeypatch):
     dummy = _DummyRichProgress()
 
-    def console_factory(*, stderr: bool) -> str:
+    def console_factory(*, stderr: bool, theme: object = None) -> str:
         assert stderr
         return "console"
 

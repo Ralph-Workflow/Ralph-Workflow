@@ -9,11 +9,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
+from ralph.display.theme import make_console
+
 if TYPE_CHECKING:
+    from rich.console import Console
+
     from ralph.config.models import UnifiedConfig
 
 
@@ -43,11 +46,11 @@ def show_agents(config: UnifiedConfig, console: Console | None = None) -> None:
         config: Unified configuration containing agent definitions.
         console: Rich console for output.
     """
-    c = console or Console()
+    c = console or make_console()
     table = Table(title="Configured Agents", show_header=True)
-    table.add_column("Name", style="cyan")
+    table.add_column("Name", style="theme.cat.meta")
     table.add_column("Command")
-    table.add_column("Parser", style="magenta")
+    table.add_column("Parser", style="theme.cat.cont")
     table.add_column("Can Commit", justify="center")
 
     if not config.agents:
@@ -71,16 +74,16 @@ def show_providers(providers: list[str], console: Console | None = None) -> None
         providers: List of provider names.
         console: Rich console for output.
     """
-    c = console or Console()
+    c = console or make_console()
     table = Table(title="Available Providers", show_header=True)
-    table.add_column("Provider", style="cyan")
+    table.add_column("Provider", style="theme.cat.meta")
     table.add_column("Status", justify="center")
 
     if not providers:
         table.add_row("[dim]No providers available[/dim]", "")
     else:
         for provider in providers:
-            table.add_row(provider, "[green]Available[/green]")
+            table.add_row(provider, "[theme.status.success]Available[/theme.status.success]")
 
     c.print(table)
 
@@ -92,9 +95,15 @@ def show_config(config: UnifiedConfig, console: Console | None = None) -> None:
         config: Unified configuration.
         console: Rich console for output.
     """
-    c = console or Console()
+    c = console or make_console()
     config_json = config.model_dump_json(indent=2)
-    c.print(Panel(config_json, title="Effective Configuration", border_style="blue"))
+    c.print(
+        Panel(
+            config_json,
+            title="Effective Configuration",
+            border_style="theme.phase.planning",
+        )
+    )
 
 
 def show_metrics(
@@ -107,10 +116,10 @@ def show_metrics(
         metrics: Dictionary of metric name to value.
         console: Rich console for output.
     """
-    c = console or Console()
+    c = console or make_console()
     table = Table(title="Pipeline Metrics", show_header=True)
-    table.add_column("Metric", style="cyan")
-    table.add_column("Value", justify="right", style="green")
+    table.add_column("Metric", style="theme.cat.meta")
+    table.add_column("Value", justify="right", style="theme.status.success")
 
     for name, value in metrics.items():
         table.add_row(name, str(value))
@@ -128,9 +137,9 @@ def show_checkpoint_summary(
         options: Checkpoint summary options.
         console: Rich console for output.
     """
-    c = console or Console()
+    c = console or make_console()
     table = Table(title="Checkpoint Summary", show_header=False)
-    table.add_column("Property", style="cyan")
+    table.add_column("Property", style="theme.cat.meta")
     table.add_column("Value")
 
     table.add_row("Phase", options.phase)

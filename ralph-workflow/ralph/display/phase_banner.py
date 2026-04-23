@@ -7,22 +7,28 @@ so the user can easily follow the flow of planning → development → review �
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
-from rich.console import Console
 from rich.rule import Rule
 from rich.text import Text
 
+from ralph.display.theme import make_console
+
+if TYPE_CHECKING:
+    from rich.console import Console
+
 _PHASE_STYLES: dict[str, str] = {
-    "planning": "cyan",
-    "development": "green",
-    "development_analysis": "magenta",
-    "development_commit": "blue",
-    "review": "yellow",
-    "review_analysis": "magenta",
-    "review_commit": "blue",
-    "fix": "red",
-    "complete": "bold green",
-    "failed": "bold red",
+    "planning": "theme.phase.planning",
+    "development": "theme.phase.development",
+    "development_analysis": "theme.phase.development_analysis",
+    "development_commit": "theme.phase.development_commit",
+    "review": "theme.phase.review",
+    "review_analysis": "theme.phase.review_analysis",
+    "review_commit": "theme.phase.review_commit",
+    "commit": "theme.phase.commit",
+    "fix": "theme.phase.fix",
+    "complete": "theme.phase.complete",
+    "failed": "theme.phase.failed",
 }
 
 _MAJOR_TRANSITIONS: frozenset[tuple[str, str]] = frozenset(
@@ -97,7 +103,7 @@ def show_phase_transition(
         context: Optional key-value context to display alongside the transition.
         console: Rich console for output.
     """
-    c = console or Console()
+    c = console or make_console()
 
     style = _phase_style(to_phase)
     from_label = _phase_label(from_phase)
@@ -112,7 +118,7 @@ def show_phase_transition(
         banner = Text()
         banner.append(f"  {from_label}", style="dim")
         banner.append(" → ", style="bold")
-        banner.append(to_label, style=f"bold {style}")
+        banner.append(to_label, style=style)
         if context:
             detail = "  ".join(f"{k}={v}" for k, v in context.items())
             banner.append(f"  ({detail})", style="dim")
@@ -167,13 +173,13 @@ def show_phase_start(
         agent_name: Name of the agent being invoked (shortcut; also settable via ctx).
         console: Rich console for output.
     """
-    c = console or Console()
+    c = console or make_console()
     style = _phase_style(phase)
     label = _phase_label(phase)
 
     line = Text()
-    line.append("▶ ", style=f"bold {style}")
-    line.append(label, style=f"bold {style}")
+    line.append("▶ ", style=style)
+    line.append(label, style=style)
 
     if ctx is not None:
         if ctx.iteration is not None and ctx.total_iterations is not None:
@@ -264,12 +270,12 @@ def show_phase_complete(
         decision: Optional decision (e.g. 'approved', 'needs changes').
         console: Rich console for output.
     """
-    c = console or Console()
+    c = console or make_console()
     style = _phase_style(phase)
     label = _phase_label(phase)
 
     line = Text()
-    line.append("✓ ", style=f"bold {style}")
+    line.append("✓ ", style=style)
     line.append(f"{label} complete", style=style)
     if decision is not None:
         line.append(f" — {decision}", style="bold")

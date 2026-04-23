@@ -28,6 +28,13 @@ _DECISION_LABELS: dict[str, str] = {
     "failed": "FAIL",
 }
 
+_BADGE_THEME_KEYS: dict[str, str] = {
+    "PASS": "theme.status.success",
+    "INFO": "theme.level.info",
+    "WARN": "theme.level.warn",
+    "FAIL": "theme.status.failure",
+}
+
 
 def _artifact_content(parsed: dict[str, object]) -> dict[str, object]:
     content = parsed.get("content")
@@ -100,6 +107,15 @@ def _dropped_count_line(dropped: int) -> str:
     if dropped <= 0:
         return ""
     return f"Snapshots dropped: {dropped}"
+
+
+def _make_badge_text(badge: str, rest: str) -> Text:
+    """Build a Text object with a themed badge label followed by plain rest text."""
+    theme_key = _BADGE_THEME_KEYS.get(badge, "theme.level.info")
+    t = Text("  ")
+    t.append(f"[{badge}]", style=theme_key)
+    t.append(rest)
+    return t
 
 
 def render_completion_summary(
@@ -201,9 +217,12 @@ def render_completion_summary_group(  # noqa: PLR0912
     if snapshot.decision_log:
         for phase, decision, reason, _ts in snapshot.decision_log:
             badge = _DECISION_LABELS.get(decision.lower(), "INFO")
-            reason_part = f" — {reason}" if reason else ""
+            reason_part = f": {decision}" + (f" — {reason}" if reason else "")
             renderables.append(
-                Text(f"  [{badge}] {phase.replace('_', ' ').title()}: {decision}{reason_part}")
+                _make_badge_text(
+                    badge,
+                    f" {phase.replace('_', ' ').title()}{reason_part}",
+                )
             )
     else:
         renderables.append(Text("  (none recorded)"))

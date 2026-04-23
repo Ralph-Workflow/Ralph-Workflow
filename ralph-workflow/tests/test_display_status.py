@@ -1,13 +1,14 @@
 from rich.console import Console
 
 from ralph.display import status
+from ralph.display.theme import RALPH_THEME
 
 _PROGRESS_COMPLETED = 2
 _PROGRESS_TOTAL = 5
 
 
 def test_display_phase_shows_phase_and_iteration() -> None:
-    console = Console(record=True)
+    console = Console(record=True, theme=RALPH_THEME)
     status.display_phase("Planning", iteration=1, total=3, console=console)
 
     output = console.export_text()
@@ -28,7 +29,7 @@ def test_display_progress_sets_task_state() -> None:
 
     assert task.completed == _PROGRESS_COMPLETED
     assert task.total == _PROGRESS_TOTAL
-    assert "[cyan]Execution[/cyan]" in task.description
+    assert "[theme.cat.meta]Execution[/theme.cat.meta]" in task.description
 
 
 def test_display_status_summary_renders_metrics() -> None:
@@ -41,7 +42,7 @@ def test_display_status_summary_renders_metrics() -> None:
         metrics={"Success": 7, "Failure": 2},
     )
 
-    console = Console(record=True)
+    console = Console(record=True, theme=RALPH_THEME)
     status.display_status_summary(summary, console=console)
 
     output = console.export_text()

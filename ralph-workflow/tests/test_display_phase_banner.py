@@ -69,12 +69,12 @@ def test_phase_label_converts_underscore_names() -> None:
 
 
 def test_phase_style_returns_correct_styles() -> None:
-    assert _phase_style("planning") == "cyan"
-    assert _phase_style("development") == "green"
-    assert _phase_style("review") == "yellow"
-    assert _phase_style("fix") == "red"
-    assert _phase_style("complete") == "bold green"
-    assert _phase_style("failed") == "bold red"
+    assert _phase_style("planning") == "theme.phase.planning"
+    assert _phase_style("development") == "theme.phase.development"
+    assert _phase_style("review") == "theme.phase.review"
+    assert _phase_style("fix") == "theme.phase.fix"
+    assert _phase_style("complete") == "theme.phase.complete"
+    assert _phase_style("failed") == "theme.phase.failed"
 
 
 def test_show_phase_start_without_counters() -> None:
