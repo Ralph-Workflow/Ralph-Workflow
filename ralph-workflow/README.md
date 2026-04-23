@@ -308,6 +308,10 @@ Ralph emits every agent output line as a structured plain-text entry in the foll
 | `ERROR` | Fatal error or malformed input |
 | `MILESTONE` | Major phase transition (planning, development, review, fix) |
 
+#### Level badges (TTY only)
+
+When stderr is a TTY, level tokens are rendered in themed colors using the Okabe-Ito palette (blue for INFO, bold green for SUCCESS, bold orange for WARN, bold red for ERROR, bold sky-blue for MILESTONE). Under `NO_COLOR` or when piping to a file the tokens remain plain uppercase text — copy-paste safe.
+
 **Categories** (`CAT`) group tags into two buckets:
 
 | Category | Meaning |
@@ -363,6 +367,7 @@ When a content block exceeds the soft limit and is condensed, the full text is p
 
 ```
 2026-04-21T12:00:00+00:00 MILESTONE META [run-start] ◆ Ralph run start
+2026-04-21T12:00:00+00:00 INFO META [run-start] legend: LEVEL (INFO/SUCCESS/WARN/ERROR/MILESTONE)  CAT (META/CONT)  [tag][unit] message
 2026-04-21T12:00:00+00:00 INFO META [run-start] prompt=PROMPT.md
 2026-04-21T12:00:00+00:00 INFO META [run-start] developer=claude model=claude-3-5-sonnet
 2026-04-21T12:00:00+00:00 INFO META [run-start] reviewer=claude model=claude-3-5-haiku
@@ -471,6 +476,15 @@ For very long streaming blocks, Ralph emits a `[content-checkpoint#N]` orientati
 2026-04-21T12:05:00+00:00 INFO META [run-end] pr=https://github.com/test/repo/pull/123
 ```
 
+
+### Pipeline Complete / Pipeline Failed panel
+
+For terminal phases ( and ), Ralph prints a Rich summary panel
+immediately after the  block. The panel title is **Pipeline Complete**
+or **Pipeline Failed** and echoes the plan, decision log, metrics,
+verification status, commit, PR URL, and open risks seen during the run.
+Non-terminal phases (e.g. , ) do not produce a panel.
+
 ### Environment variables
 
 | Variable | Default | Description |
@@ -479,4 +493,6 @@ For very long streaming blocks, Ralph emits a `[content-checkpoint#N]` orientati
 | `RALPH_STREAMING_CHECKPOINTS` | `1` | Set to `0` to disable mid-stream checkpoint lines |
 | `RALPH_LONG_CONTENT_SUMMARY` | `1` | Set to `0` to disable the deterministic headline summary layer |
 | `RALPH_LONG_CONTENT_AI_SUMMARY` | `0` | Set to `1` to enable the optional AI summary layer (requires hook registration) |
+| `NO_COLOR` | unset | Disable all ANSI color output; level/category badges remain plain text. Honored by `make_console`. |
+| `FORCE_COLOR` | unset | Force ANSI color output even when not a TTY. Honored by `make_console`. |
 To disable checkpoints, set `RALPH_STREAMING_CHECKPOINTS=0`.

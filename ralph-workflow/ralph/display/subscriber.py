@@ -103,6 +103,11 @@ class PipelineSubscriber:
     def plan_risks(self) -> tuple[str, ...]:
         return self._plan_risks
 
+    @property
+    def last_state(self) -> PipelineState | None:
+        with self._lock:
+            return self._last_state
+
     def notify(self, state: PipelineState) -> None:
         """Build a PipelineSnapshot from state and enqueue it non-blocking.
 

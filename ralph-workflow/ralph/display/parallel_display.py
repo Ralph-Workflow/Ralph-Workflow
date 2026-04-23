@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import os
 import queue
 import time
@@ -10,6 +11,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
 from ralph.display.activity_router import ActivityRouter
+from ralph.display.completion_summary import emit_completion_summary
 from ralph.display.content_condenser import condense_content
 from ralph.display.mode import NARROW_THRESHOLD, detect_mode
 from ralph.display.phase_banner import show_phase_transition
@@ -113,7 +115,7 @@ class ParallelDisplay:
         """Emit a single WARN and disable the log if it exceeds the size guard."""
         if unit_id in self._overflow_warned:
             return
-        try:
+        with contextlib.suppress(OSError):
             if overflow.path.exists() and overflow.path.stat().st_size >= _MAX_OVERFLOW_FILE_BYTES:
                 self._overflow_warned.add(unit_id)
                 overflow.disable()
@@ -122,8 +124,6 @@ class ParallelDisplay:
                     "progress",
                     f"[overflow log full, raw content for {unit_id} discarded]",
                 )
-        except OSError:
-            pass
 
     def _emit_drop_warning(self, unit_id: str) -> None:
         """Check and emit a debounced WARN for dropped ring-buffer lines."""
@@ -209,39 +209,29 @@ class ParallelDisplay:
         # Only record to decision_log via subscriber; the titled block is rendered
         # by render_analysis_decision in the phase handler (development.py/review.py).
         # This avoids double-rendering both a plain [analysis] line and a titled block.
-        try:
+        with contextlib.suppress(Exception):
             self._subscriber.record_analysis(phase, decision, reason)
-        except Exception:
-            return None
 
     def emit_phase_transition(self, from_phase: str, to_phase: str) -> None:
         self._plain_renderer.flush_blocks()
         show_phase_transition(from_phase, to_phase, console=self._console)
-        try:
+        with contextlib.suppress(Exception):
             self._subscriber.record_phase_transition(from_phase, to_phase)
-        except Exception:
-            return None
 
     def emit_run_start(self, orientation: RunStartOrientation) -> None:
         """Emit a one-time run-start orientation block at pipeline start."""
-        try:
+        with contextlib.suppress(Exception):
             self._plain_renderer.emit_run_start(orientation)
-        except Exception:
-            return None
 
     def begin_phase(self, phase: str) -> None:
         """Start timing a new phase and reset its counters."""
-        try:
+        with contextlib.suppress(Exception):
             self._plain_renderer.begin_phase(phase)
-        except Exception:
-            return None
 
     def emit_phase_close(self, phase: str, produced: str) -> None:
         """Emit a single-line recap at the end of a phase."""
-        try:
+        with contextlib.suppress(Exception):
             self._plain_renderer.emit_phase_close(phase, produced)
-        except Exception:
-            return None
 
     def emit_run_end(
         self,
@@ -251,14 +241,24 @@ class ParallelDisplay:
         pr_url: str | None = None,
     ) -> None:
         """Emit a one-time run-end orientation block at pipeline stop."""
-        try:
+        with contextlib.suppress(Exception):
             self._plain_renderer.emit_run_end(
                 phase=phase,
                 total_agent_calls=total_agent_calls,
                 pr_url=pr_url,
             )
-        except Exception:
-            return None
+        if phase in {"complete", "failed"}:
+            last_state = self._subscriber.last_state
+            if last_state is not None:
+                with contextlib.suppress(Exception):
+                    snapshot = self._subscriber.build_snapshot(last_state)
+                    if snapshot is not None:
+                        emit_completion_summary(
+                            self._console,
+                            snapshot,
+                            workspace_root=self._workspace_root,
+                            dropped_count=self._subscriber.dropped_count,
+                        )
 
     @property
     def console(self) -> Console:

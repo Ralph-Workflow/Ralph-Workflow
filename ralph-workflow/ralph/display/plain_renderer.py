@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 import re
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Final
 
@@ -122,6 +122,21 @@ _TAG_CATEGORY: Final[dict[str, str]] = {
     "thinking-checkpoint": "CONT",
 }
 
+# Theme keys for level badge styling
+_LEVEL_THEME_KEYS: Final[dict[str, str]] = {
+    "INFO": "theme.level.info",
+    "SUCCESS": "theme.level.success",
+    "WARN": "theme.level.warn",
+    "ERROR": "theme.level.error",
+    "MILESTONE": "theme.level.milestone",
+}
+
+# Theme keys for category badge styling
+_CAT_THEME_KEYS: Final[dict[str, str]] = {
+    "META": "theme.cat.meta",
+    "CONT": "theme.cat.cont",
+}
+
 # Kinds that form streaming blocks
 _STREAMING_KINDS: Final[frozenset[str]] = frozenset({"text", "thinking"})
 
@@ -193,6 +208,7 @@ class RunStartOrientation:
     plan_present: bool = False
     verbosity: str | None = None
     workspace_root: str | None = None
+    legend_enabled: bool = field(default=True)
 
 
 class PlainLogRenderer:
@@ -237,35 +253,52 @@ class PlainLogRenderer:
         self._run_start_time: float | None = None
         self._run_counters: _PhaseCounters = _PhaseCounters()
 
-    def snapshot_lines(self, snapshot: PipelineSnapshot) -> list[str]:
-        timestamp = self._clock().isoformat()
-        lines: list[str] = []
-        lines.extend(self._phase_lines(snapshot, timestamp))
-        lines.extend(self._plan_lines(snapshot, timestamp))
-        lines.extend(self._activity_lines(snapshot, timestamp))
-        lines.extend(self._analysis_lines(snapshot, timestamp))
-        lines.extend(self._decision_log_lines(snapshot, timestamp))
-        lines.extend(self._worker_lines(snapshot, timestamp))
-        lines.extend(self._result_lines(snapshot, timestamp))
-        return lines
+    def _build_line(self, timestamp: str, level: str, cat: str, suffix: str) -> Text:
+        """Build a styled Text line with level and category badge segments."""
+        t = Text()
+        t.append(timestamp + " ")
+        t.append(level, style=_LEVEL_THEME_KEYS.get(level, ""))
+        t.append(" ")
+        t.append(cat, style=_CAT_THEME_KEYS.get(cat, ""))
+        t.append(" ")
+        t.append(suffix)
+        return t
 
-    def _phase_lines(self, snapshot: PipelineSnapshot, timestamp: str) -> list[str]:
+    def _snapshot_texts(self, snapshot: PipelineSnapshot) -> list[Text]:
+        timestamp = self._clock().isoformat()
+        texts: list[Text] = []
+        texts.extend(self._phase_lines(snapshot, timestamp))
+        texts.extend(self._plan_lines(snapshot, timestamp))
+        texts.extend(self._activity_lines(snapshot, timestamp))
+        texts.extend(self._analysis_lines(snapshot, timestamp))
+        texts.extend(self._decision_log_lines(snapshot, timestamp))
+        texts.extend(self._worker_lines(snapshot, timestamp))
+        texts.extend(self._result_lines(snapshot, timestamp))
+        return texts
+
+    def snapshot_lines(self, snapshot: PipelineSnapshot) -> list[str]:
+        return [t.plain for t in self._snapshot_texts(snapshot)]
+
+    def _phase_lines(self, snapshot: PipelineSnapshot, timestamp: str) -> list[Text]:
         if snapshot.phase != self._last_phase:
             self._last_phase = snapshot.phase
             self._last_iteration = snapshot.iteration
             level = LEVELS.get(snapshot.phase, "INFO")
-            cat = "META"
             marker = "◆ " if level == "MILESTONE" else ""
-            return [f"{timestamp} {level} {cat} [phase] {marker}{snapshot.phase}"]
+            return [self._build_line(timestamp, level, "META", f"[phase] {marker}{snapshot.phase}")]
         if snapshot.iteration != self._last_iteration:
             self._last_iteration = snapshot.iteration
             return [
-                f"{timestamp} INFO META [progress] iteration "
-                f"{snapshot.iteration}/{snapshot.total_iterations}"
+                self._build_line(
+                    timestamp,
+                    "INFO",
+                    "META",
+                    f"[progress] iteration {snapshot.iteration}/{snapshot.total_iterations}",
+                )
             ]
         return []
 
-    def _plan_lines(self, snapshot: PipelineSnapshot, timestamp: str) -> list[str]:
+    def _plan_lines(self, snapshot: PipelineSnapshot, timestamp: str) -> list[Text]:
         plan_signature: tuple[str | None, tuple[str, ...], int] = (
             snapshot.plan_summary,
             snapshot.plan_scope_items,
@@ -277,22 +310,30 @@ class PlainLogRenderer:
 
         if plan_signature == _EMPTY_PLAN_SIGNATURE and not self._emitted_empty_plan:
             self._emitted_empty_plan = True
-            return [f"{timestamp} INFO META [plan] (no plan loaded yet)"]
+            return [self._build_line(timestamp, "INFO", "META", "[plan] (no plan loaded yet)")]
 
-        lines: list[str] = []
+        texts: list[Text] = []
         if snapshot.plan_summary:
-            lines.append(f"{timestamp} INFO META [plan] {snapshot.plan_summary}")
-        if snapshot.plan_scope_items:
-            scope = " | ".join(snapshot.plan_scope_items)
-            lines.append(f"{timestamp} INFO META [plan-scope] {scope}")
-        if snapshot.plan_total_steps > 0:
-            lines.append(
-                f"{timestamp} INFO META [plan-steps] "
-                f"{snapshot.plan_current_step or '—'}/{snapshot.plan_total_steps}"
+            texts.append(
+                self._build_line(
+                    timestamp, "INFO", "META", f"[plan] {_sanitize(snapshot.plan_summary)}"
+                )
             )
-        return lines
+        if snapshot.plan_scope_items:
+            scope = " | ".join(_sanitize(item) for item in snapshot.plan_scope_items)
+            texts.append(self._build_line(timestamp, "INFO", "META", f"[plan-scope] {scope}"))
+        if snapshot.plan_total_steps > 0:
+            texts.append(
+                self._build_line(
+                    timestamp,
+                    "INFO",
+                    "META",
+                    f"[plan-steps] {snapshot.plan_current_step or '—'}/{snapshot.plan_total_steps}",
+                )
+            )
+        return texts
 
-    def _activity_lines(self, snapshot: PipelineSnapshot, timestamp: str) -> list[str]:
+    def _activity_lines(self, snapshot: PipelineSnapshot, timestamp: str) -> list[Text]:
         activity_signature = (
             snapshot.active_agent,
             snapshot.active_tool,
@@ -308,28 +349,39 @@ class PlainLogRenderer:
         all_none = all(v is None for v in activity_signature)
         if all_none and not self._emitted_empty_activity:
             self._emitted_empty_activity = True
-            return [f"{timestamp} INFO META [activity] (no active agent yet)"]
+            return [self._build_line(timestamp, "INFO", "META", "[activity] (no active agent yet)")]
 
         activity_parts: list[str] = []
         if snapshot.active_agent:
-            activity_parts.append(f"agent={snapshot.active_agent}")
+            activity_parts.append(f"agent={_sanitize(snapshot.active_agent)}")
         if snapshot.active_tool:
-            activity_parts.append(f"tool={snapshot.active_tool}")
+            activity_parts.append(f"tool={_sanitize(snapshot.active_tool)}")
         if snapshot.active_path:
-            activity_parts.append(f"path={snapshot.active_path}")
+            activity_parts.append(f"path={_sanitize(snapshot.active_path)}")
         if snapshot.active_workdir:
-            activity_parts.append(f"workdir={snapshot.active_workdir}")
+            activity_parts.append(f"workdir={_sanitize(snapshot.active_workdir)}")
         if snapshot.active_command:
-            activity_parts.append(f"command={snapshot.active_command}")
+            activity_parts.append(f"command={_sanitize(snapshot.active_command)}")
 
-        lines: list[str] = []
+        texts: list[Text] = []
         if activity_parts:
-            lines.append(f"{timestamp} INFO META [activity] {' '.join(activity_parts)}")
+            texts.append(
+                self._build_line(
+                    timestamp, "INFO", "META", f"[activity] {' '.join(activity_parts)}"
+                )
+            )
         if snapshot.last_activity_line:
-            lines.append(f"{timestamp} INFO META [activity-line] {snapshot.last_activity_line}")
-        return lines
+            texts.append(
+                self._build_line(
+                    timestamp,
+                    "INFO",
+                    "META",
+                    f"[activity-line] {_sanitize(snapshot.last_activity_line)}",
+                )
+            )
+        return texts
 
-    def _analysis_lines(self, snapshot: PipelineSnapshot, timestamp: str) -> list[str]:
+    def _analysis_lines(self, snapshot: PipelineSnapshot, timestamp: str) -> list[Text]:
         analysis_signature = (
             snapshot.analysis_phase,
             snapshot.analysis_decision,
@@ -347,13 +399,17 @@ class PlainLogRenderer:
         if snapshot.analysis_phase in ("development_analysis", "review_analysis"):
             return []
 
-        reason = f" — {snapshot.analysis_reason}" if snapshot.analysis_reason else ""
+        reason = f" — {_sanitize(snapshot.analysis_reason)}" if snapshot.analysis_reason else ""
         return [
-            f"{timestamp} INFO META [analysis] "
-            f"{snapshot.analysis_phase} {snapshot.analysis_decision}{reason}"
+            self._build_line(
+                timestamp,
+                "INFO",
+                "META",
+                f"[analysis] {snapshot.analysis_phase} {snapshot.analysis_decision}{reason}",
+            )
         ]
 
-    def _decision_log_lines(self, snapshot: PipelineSnapshot, timestamp: str) -> list[str]:
+    def _decision_log_lines(self, snapshot: PipelineSnapshot, timestamp: str) -> list[Text]:
         if snapshot.decision_log:
             return []
         if snapshot.phase in ("development_analysis", "review_analysis"):
@@ -361,28 +417,43 @@ class PlainLogRenderer:
         if self._emitted_empty_decision_log:
             return []
         self._emitted_empty_decision_log = True
-        return [f"{timestamp} INFO META [analysis] (no decisions recorded yet)"]
+        return [
+            self._build_line(timestamp, "INFO", "META", "[analysis] (no decisions recorded yet)")
+        ]
 
-    def _worker_lines(self, snapshot: PipelineSnapshot, timestamp: str) -> list[str]:
-        lines: list[str] = []
+    def _worker_lines(self, snapshot: PipelineSnapshot, timestamp: str) -> list[Text]:
+        texts: list[Text] = []
         for worker in snapshot.workers:
             previous_status = self._last_worker_states.get(worker.unit_id)
             if previous_status == worker.status:
                 continue
-            lines.append(f"{timestamp} INFO META [worker] {worker.unit_id} {worker.status}")
+            texts.append(
+                self._build_line(
+                    timestamp, "INFO", "META", f"[worker] {worker.unit_id} {worker.status}"
+                )
+            )
             self._last_worker_states[worker.unit_id] = worker.status
-        return lines
+        return texts
 
-    def _result_lines(self, snapshot: PipelineSnapshot, timestamp: str) -> list[str]:
+    def _result_lines(self, snapshot: PipelineSnapshot, timestamp: str) -> list[Text]:
         if snapshot.phase == "failed" and snapshot.last_error:
-            return [f"{timestamp} ERROR META [failure] {snapshot.last_error}"]
+            return [
+                self._build_line(
+                    timestamp,
+                    "ERROR",
+                    "META",
+                    f"[failure] {_sanitize(snapshot.last_error)}",
+                )
+            ]
         if snapshot.phase != "complete":
             return []
 
-        lines = [f"{timestamp} SUCCESS META [result] pipeline complete"]
+        texts = [self._build_line(timestamp, "SUCCESS", "META", "[result] pipeline complete")]
         if snapshot.pr_url:
-            lines.append(f"{timestamp} SUCCESS META [pr] {snapshot.pr_url}")
-        return lines
+            texts.append(
+                self._build_line(timestamp, "SUCCESS", "META", f"[pr] {_sanitize(snapshot.pr_url)}")
+            )
+        return texts
 
     @staticmethod
     def strip_markup(text: str) -> str:
@@ -392,25 +463,37 @@ class PlainLogRenderer:
         return _ANSI_ESCAPE.sub("", stripped)
 
     def emit_snapshot(self, snapshot: PipelineSnapshot) -> None:
-        for line in self.snapshot_lines(snapshot):
-            # Strip any ANSI escapes to ensure copy-paste safety
-            clean_line = _ANSI_ESCAPE.sub("", line)
-            self._console.print(clean_line, markup=False, highlight=False, no_wrap=True)
+        for text in self._snapshot_texts(snapshot):
+            self._console.print(text, markup=False, highlight=False, no_wrap=True)
 
     def emit_run_start(self, orientation: RunStartOrientation) -> None:  # noqa: PLR0912
         """Emit a one-time MILESTONE orientation block at pipeline start."""
         timestamp = self._clock().isoformat()
         self._console.print(
-            f"{timestamp} MILESTONE META [run-start] ◆ Ralph run start",
+            self._build_line(timestamp, "MILESTONE", "META", "[run-start] ◆ Ralph run start"),
             markup=False,
             highlight=False,
             no_wrap=True,
         )
 
+        if orientation.legend_enabled:
+            self._console.print(
+                self._build_line(
+                    timestamp,
+                    "INFO",
+                    "META",
+                    "[run-start] legend: LEVEL (INFO/SUCCESS/WARN/ERROR/MILESTONE)"
+                    "  CAT (META/CONT)  [tag][unit] message",
+                ),
+                markup=False,
+                highlight=False,
+                no_wrap=True,
+            )
+
         if orientation.prompt_path is not None:
             val = _sanitize(orientation.prompt_path)
             self._console.print(
-                f"{timestamp} INFO META [run-start] prompt={val}",
+                self._build_line(timestamp, "INFO", "META", f"[run-start] prompt={val}"),
                 markup=False,
                 highlight=False,
                 no_wrap=True,
@@ -423,7 +506,7 @@ class PlainLogRenderer:
             dev_parts.append(f"model={_sanitize(orientation.developer_model)}")
         if dev_parts:
             self._console.print(
-                f"{timestamp} INFO META [run-start] {' '.join(dev_parts)}",
+                self._build_line(timestamp, "INFO", "META", f"[run-start] {' '.join(dev_parts)}"),
                 markup=False,
                 highlight=False,
                 no_wrap=True,
@@ -436,7 +519,7 @@ class PlainLogRenderer:
             rev_parts.append(f"model={_sanitize(orientation.reviewer_model)}")
         if rev_parts:
             self._console.print(
-                f"{timestamp} INFO META [run-start] {' '.join(rev_parts)}",
+                self._build_line(timestamp, "INFO", "META", f"[run-start] {' '.join(rev_parts)}"),
                 markup=False,
                 highlight=False,
                 no_wrap=True,
@@ -449,7 +532,12 @@ class PlainLogRenderer:
             iter_parts.append(f"reviewer:{orientation.reviewer_reviews}")
         if iter_parts:
             self._console.print(
-                f"{timestamp} INFO META [run-start] iterations={' '.join(iter_parts)}",
+                self._build_line(
+                    timestamp,
+                    "INFO",
+                    "META",
+                    f"[run-start] iterations={' '.join(iter_parts)}",
+                ),
                 markup=False,
                 highlight=False,
                 no_wrap=True,
@@ -457,8 +545,12 @@ class PlainLogRenderer:
 
         if orientation.parallel_max_workers is not None:
             self._console.print(
-                f"{timestamp} INFO META [run-start] "
-                f"parallel=max_workers={orientation.parallel_max_workers}",
+                self._build_line(
+                    timestamp,
+                    "INFO",
+                    "META",
+                    f"[run-start] parallel=max_workers={orientation.parallel_max_workers}",
+                ),
                 markup=False,
                 highlight=False,
                 no_wrap=True,
@@ -466,7 +558,7 @@ class PlainLogRenderer:
 
         plan_val = "ready" if orientation.plan_present else "absent"
         self._console.print(
-            f"{timestamp} INFO META [run-start] plan={plan_val}",
+            self._build_line(timestamp, "INFO", "META", f"[run-start] plan={plan_val}"),
             markup=False,
             highlight=False,
             no_wrap=True,
@@ -474,7 +566,9 @@ class PlainLogRenderer:
 
         if orientation.verbosity is not None:
             self._console.print(
-                f"{timestamp} INFO META [run-start] verbosity={orientation.verbosity}",
+                self._build_line(
+                    timestamp, "INFO", "META", f"[run-start] verbosity={orientation.verbosity}"
+                ),
                 markup=False,
                 highlight=False,
                 no_wrap=True,
@@ -483,7 +577,7 @@ class PlainLogRenderer:
         if orientation.workspace_root is not None:
             val = _sanitize(orientation.workspace_root)
             self._console.print(
-                f"{timestamp} INFO META [run-start] workspace={val}",
+                self._build_line(timestamp, "INFO", "META", f"[run-start] workspace={val}"),
                 markup=False,
                 highlight=False,
                 no_wrap=True,
@@ -512,10 +606,15 @@ class PlainLogRenderer:
             f" errors={counters.errors})"
         )
         if clean_produced:
-            line = f"{timestamp} INFO META [phase-close] phase={phase} {clean_produced}{suffix}"
+            line_suffix = f"[phase-close] phase={phase} {clean_produced}{suffix}"
         else:
-            line = f"{timestamp} INFO META [phase-close] phase={phase}{suffix}"
-        self._console.print(line, markup=False, highlight=False, no_wrap=True)
+            line_suffix = f"[phase-close] phase={phase}{suffix}"
+        self._console.print(
+            self._build_line(timestamp, "INFO", "META", line_suffix),
+            markup=False,
+            highlight=False,
+            no_wrap=True,
+        )
         self._phase_counters = None
 
     def _update_counters(self, kind: str, is_new_block: bool) -> None:
@@ -555,56 +654,81 @@ class PlainLogRenderer:
         if self._run_start_time is not None:
             total_elapsed_s = round(max(0.0, time.monotonic() - self._run_start_time), 1)
         self._console.print(
-            f"{timestamp} MILESTONE META [run-end] ◆ Ralph run end",
+            self._build_line(timestamp, "MILESTONE", "META", "[run-end] ◆ Ralph run end"),
             markup=False,
             highlight=False,
             no_wrap=True,
         )
         self._console.print(
-            f"{timestamp} INFO META [run-end] phase={phase}",
+            self._build_line(timestamp, "INFO", "META", f"[run-end] phase={phase}"),
             markup=False,
             highlight=False,
             no_wrap=True,
         )
         self._console.print(
-            f"{timestamp} INFO META [run-end] elapsed={total_elapsed_s}s",
+            self._build_line(timestamp, "INFO", "META", f"[run-end] elapsed={total_elapsed_s}s"),
             markup=False,
             highlight=False,
             no_wrap=True,
         )
         self._console.print(
-            f"{timestamp} INFO META [run-end] content_blocks={self._run_counters.content_blocks}",
+            self._build_line(
+                timestamp,
+                "INFO",
+                "META",
+                f"[run-end] content_blocks={self._run_counters.content_blocks}",
+            ),
             markup=False,
             highlight=False,
             no_wrap=True,
         )
         self._console.print(
-            f"{timestamp} INFO META [run-end] thinking_blocks={self._run_counters.thinking_blocks}",
+            self._build_line(
+                timestamp,
+                "INFO",
+                "META",
+                f"[run-end] thinking_blocks={self._run_counters.thinking_blocks}",
+            ),
             markup=False,
             highlight=False,
             no_wrap=True,
         )
         self._console.print(
-            f"{timestamp} INFO META [run-end] tool_calls={self._run_counters.tool_calls}",
+            self._build_line(
+                timestamp,
+                "INFO",
+                "META",
+                f"[run-end] tool_calls={self._run_counters.tool_calls}",
+            ),
             markup=False,
             highlight=False,
             no_wrap=True,
         )
         self._console.print(
-            f"{timestamp} INFO META [run-end] errors={self._run_counters.errors}",
+            self._build_line(
+                timestamp,
+                "INFO",
+                "META",
+                f"[run-end] errors={self._run_counters.errors}",
+            ),
             markup=False,
             highlight=False,
             no_wrap=True,
         )
         self._console.print(
-            f"{timestamp} INFO META [run-end] agent_calls={total_agent_calls}",
+            self._build_line(
+                timestamp,
+                "INFO",
+                "META",
+                f"[run-end] agent_calls={total_agent_calls}",
+            ),
             markup=False,
             highlight=False,
             no_wrap=True,
         )
         if pr_url is not None:
             self._console.print(
-                f"{timestamp} INFO META [run-end] pr={_sanitize(pr_url)}",
+                self._build_line(timestamp, "INFO", "META", f"[run-end] pr={_sanitize(pr_url)}"),
                 markup=False,
                 highlight=False,
                 no_wrap=True,
@@ -624,15 +748,29 @@ class PlainLogRenderer:
         chars = sum(len(x) for x in accumulated)
         joined = " ".join(accumulated)
         headline = build_headline_or_placeholder(joined, max_chars=120)
-        prefix = f"{timestamp} INFO CONT [{end_tag}][{unit_id}] ({n} fragments, {chars} chars)"
-        self._console.print(f"{prefix} {headline}", markup=False, highlight=False, no_wrap=True)
+        self._console.print(
+            self._build_line(
+                timestamp,
+                "INFO",
+                "CONT",
+                f"[{end_tag}][{unit_id}] ({n} fragments, {chars} chars) {headline}",
+            ),
+            markup=False,
+            highlight=False,
+            no_wrap=True,
+        )
 
         # Optional AI summary on block close — only when hook + env are configured
         ai_summary = build_ai_summary(joined, os.environ)
         if ai_summary:
             ai_text = _sanitize(ai_summary)
             self._console.print(
-                f"{timestamp} INFO CONT [{end_tag}][{unit_id}] ↳ ai-summary: {ai_text}",
+                self._build_line(
+                    timestamp,
+                    "INFO",
+                    "CONT",
+                    f"[{end_tag}][{unit_id}] ↳ ai-summary: {ai_text}",
+                ),
                 markup=False,
                 highlight=False,
                 no_wrap=True,
@@ -724,12 +862,17 @@ class PlainLogRenderer:
                                     " ".join(accumulated), max_chars=120
                                 )
                                 cp_tag = f"{base_tag}-checkpoint#{seq}"
-                                cp_line = (
-                                    f"{timestamp} INFO CONT [{cp_tag}][{unit_id}]"
-                                    f" ({seq} fragments, {total_chars} chars) {headline}"
-                                )
                                 self._console.print(
-                                    cp_line, markup=False, highlight=False, no_wrap=True
+                                    self._build_line(
+                                        timestamp,
+                                        "INFO",
+                                        "CONT",
+                                        f"[{cp_tag}][{unit_id}]"
+                                        f" ({seq} fragments, {total_chars} chars) {headline}",
+                                    ),
+                                    markup=False,
+                                    highlight=False,
+                                    no_wrap=True,
                                 )
             else:
                 tag = base_tag
@@ -750,14 +893,24 @@ class PlainLogRenderer:
             if summary_line:
                 summary_text = _sanitize(summary_line)
                 self._console.print(
-                    f"{timestamp} INFO {cat} [{tag}][{unit_id}] ↳ summary: {summary_text}",
+                    self._build_line(
+                        timestamp,
+                        "INFO",
+                        cat,
+                        f"[{tag}][{unit_id}] ↳ summary: {summary_text}",
+                    ),
                     markup=False,
                     highlight=False,
                     no_wrap=True,
                 )
             elif condensed_flag:
                 self._console.print(
-                    f"{timestamp} INFO {cat} [{tag}][{unit_id}] ↳ summary: (no headline available)",
+                    self._build_line(
+                        timestamp,
+                        "INFO",
+                        cat,
+                        f"[{tag}][{unit_id}] ↳ summary: (no headline available)",
+                    ),
                     markup=False,
                     highlight=False,
                     no_wrap=True,
@@ -767,14 +920,23 @@ class PlainLogRenderer:
         if ai_summary_line:
             ai_text = _sanitize(ai_summary_line)
             self._console.print(
-                f"{timestamp} INFO {cat} [{tag}][{unit_id}] ↳ ai-summary: {ai_text}",
+                self._build_line(
+                    timestamp,
+                    "INFO",
+                    cat,
+                    f"[{tag}][{unit_id}] ↳ ai-summary: {ai_text}",
+                ),
                 markup=False,
                 highlight=False,
                 no_wrap=True,
             )
 
-        line = f"{timestamp} {level} {cat} [{tag}][{unit_id}] {sanitized}"
-        self._console.print(line, markup=False, highlight=False, no_wrap=True)
+        self._console.print(
+            self._build_line(timestamp, level, cat, f"[{tag}][{unit_id}] {sanitized}"),
+            markup=False,
+            highlight=False,
+            no_wrap=True,
+        )
 
     def emit_log_line(self, unit_id: str, line: str) -> None:
         self.emit_activity_line(unit_id, "raw", line)
@@ -786,16 +948,29 @@ class PlainLogRenderer:
     def emit_artifact(self, kind: str, summary: str) -> None:
         """Emit an artifact summary line for copy-paste-safe transcripts."""
         timestamp = self._clock().isoformat()
-        line = f"{timestamp} INFO META [artifact] kind={kind} summary={summary}"
-        clean_line = _ANSI_ESCAPE.sub("", line)
-        self._console.out(clean_line)
+        sanitized_summary = _sanitize(summary)
+        self._console.print(
+            self._build_line(
+                timestamp,
+                "INFO",
+                "META",
+                f"[artifact] kind={kind} summary={sanitized_summary}",
+            ),
+            markup=False,
+            highlight=False,
+            no_wrap=True,
+        )
 
     def emit_warn_line(self, unit_id: str, tag: str, message: str) -> None:
         """Emit a WARN META line for a specific tag."""
         timestamp = self._clock().isoformat()
         cat = _TAG_CATEGORY.get(tag, "META")
-        line = f"{timestamp} WARN {cat} [{tag}][{unit_id}] {message}"
-        self._console.print(line, markup=False, highlight=False, no_wrap=True)
+        self._console.print(
+            self._build_line(timestamp, "WARN", cat, f"[{tag}][{unit_id}] {message}"),
+            markup=False,
+            highlight=False,
+            no_wrap=True,
+        )
 
 
 class PlainModeAdapter:

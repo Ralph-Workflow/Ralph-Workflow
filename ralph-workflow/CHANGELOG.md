@@ -22,6 +22,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`WARN META [progress]` for dropped ring-buffer lines.** The debounced dropped-line notification is now emitted at `WARN` level (not `INFO`) to match its documented severity and the changelog entry below.
 
 ### Added
+- display: colorize LEVEL and CAT badges on TTY; plain text preserved under NO_COLOR/non-TTY.
+- display: emit one-line legend inside the [run-start] block describing LEVEL/CAT/[tag] format.
+- logging: register SUCCESS (25) and MILESTONE (35) loguru levels aligned with the transcript vocabulary.
+- display: print the Rich completion panel at pipeline stop alongside the existing [run-end] lines.
 - Surface agent output as kind-tagged `content`/`thinking`/`tool`/`tool-result` lines distinct from workflow metadata lines; oversized content is condensed with a pointer to `.agent/raw/<unit>.log`. Only condensed content and malformed parser input are written to that file — short, non-condensed output is not preserved there.
 - `ralph.display.content_condenser` — predictable head+tail condensation for oversized content lines.
 - `ralph.display.raw_overflow` — per-unit raw NDJSON overflow log writer.

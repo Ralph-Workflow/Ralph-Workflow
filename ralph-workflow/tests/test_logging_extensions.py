@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 from typing import TYPE_CHECKING
 
+from loguru import logger
+
 from ralph.logging import configure_logging
 
 if TYPE_CHECKING:
@@ -12,6 +14,8 @@ if TYPE_CHECKING:
 
 
 ROTATED_FILE_COUNT_MINIMUM = 2
+_SUCCESS_LEVEL_NO = 25
+_MILESTONE_LEVEL_NO = 35
 
 
 def test_configure_logging_creates_per_run_directory_and_structured_log(tmp_path: Path) -> None:
@@ -80,3 +84,21 @@ def test_ralph_logger_emits_structured_phase_events(tmp_path: Path) -> None:
     assert extra["event"] == "phase_start"
     assert extra["phase"] == "planning"
     assert extra["drain"] == "planner"
+
+
+def test_configure_logging_registers_success_level() -> None:
+    configure_logging()
+    lvl = logger.level("SUCCESS")
+    assert lvl.no == _SUCCESS_LEVEL_NO
+
+
+def test_configure_logging_registers_milestone_level() -> None:
+    configure_logging()
+    lvl = logger.level("MILESTONE")
+    assert lvl.no == _MILESTONE_LEVEL_NO
+
+
+def test_success_and_milestone_methods_on_ralph_logger() -> None:
+    session = configure_logging(verbosity=2)
+    session.ralph.success("test success message")
+    session.ralph.milestone("test milestone message")

@@ -7,6 +7,10 @@ Log levels map to verbosity as follows:
     2 (VERBOSE) -> INFO
     3 (FULL)   -> DEBUG
     4+ (DEBUG) -> TRACE
+
+Custom levels registered on first configure_logging() call:
+    SUCCESS (25): between INFO (20) and WARNING (30)
+    MILESTONE (35): between WARNING (30) and ERROR (40)
 """
 
 from __future__ import annotations
@@ -29,6 +33,19 @@ _VERBOSITY_LEVELS = {
     3: "DEBUG",
     4: "TRACE",
 }
+
+_CUSTOM_LEVELS: tuple[tuple[str, int, str], ...] = (
+    ("SUCCESS", 25, "<green>"),
+    ("MILESTONE", 35, "<cyan>"),
+)
+
+
+def _ensure_custom_levels() -> None:
+    for name, no, color in _CUSTOM_LEVELS:
+        try:
+            logger.level(name)
+        except ValueError:
+            logger.level(name, no=no, color=color)
 
 
 @dataclass(frozen=True)
@@ -94,6 +111,7 @@ def configure_logging(
     )
 
     logger.remove()
+    _ensure_custom_levels()
 
     level = _VERBOSITY_LEVELS.get(verbosity, "TRACE")
     bound_logger = logger.bind(**_build_base_extra(run_id))
@@ -324,3 +342,9 @@ class RalphLogger:
             phase=phase,
             error=error,
         )
+
+    def success(self, message: str, **extra: object) -> None:
+        self._logger.bind(**extra).log("SUCCESS", message)
+
+    def milestone(self, message: str, **extra: object) -> None:
+        self._logger.bind(**extra).log("MILESTONE", message)

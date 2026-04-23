@@ -24,10 +24,17 @@ STATUS_STYLES: Final[dict[str, tuple[str, str, str]]] = {
     "error": (f"bold {VERMILLION}", "✗", "FAIL"),
     "skipped": (YELLOW, "○", "SKIP"),
     "pending": ("dim", "○", "WAIT"),
-    "info": (BLUE, "\u2139", "INFO"),
+    "info": (BLUE, "ℹ", "INFO"),  # noqa: RUF001
 }
 
 _THEME_STYLES: Final[dict[str, str]] = {
+    "theme.level.info": BLUE,
+    "theme.level.success": f"bold {BLUISH_GREEN}",
+    "theme.level.warn": f"bold {ORANGE}",
+    "theme.level.error": f"bold {VERMILLION}",
+    "theme.level.milestone": f"bold {SKY_BLUE}",
+    "theme.cat.meta": "dim",
+    "theme.cat.cont": BLUE,
     "theme.log.error": f"bold {VERMILLION}",
     "theme.log.info": BLUE,
     "theme.log.milestone": f"bold {SKY_BLUE}",
