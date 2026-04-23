@@ -23,6 +23,7 @@ from ralph.agents.invoke import (
     _BuildCommandOptions,
     _command_for_log,
     _provider_allowed_mcp_tool_names,
+    check_agent_available,
     invoke_agent,
 )
 from ralph.config.enums import AgentTransport, JsonParserType
@@ -2710,3 +2711,28 @@ def test_claude_strict_mode_command_for_log_shows_path_not_content(tmp_path: Pat
 
     assert str(prompt_file) in log_line
     assert prompt_text.strip() not in log_line
+
+
+def test_check_agent_available_found(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("ralph.agents.invoke.shutil.which", lambda name: f"/usr/bin/{name}")
+    config = AgentConfig(cmd="claude")
+    assert check_agent_available(config) is True
+
+
+def test_check_agent_available_not_found(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("ralph.agents.invoke.shutil.which", lambda name: None)
+    config = AgentConfig(cmd="nonexistent-xyz")
+    assert check_agent_available(config) is False
+
+
+def test_check_agent_available_empty_cmd(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[str] = []
+
+    def recording_which(name: str) -> str | None:
+        calls.append(name)
+        return None
+
+    monkeypatch.setattr("ralph.agents.invoke.shutil.which", recording_which)
+    config = AgentConfig(cmd="")
+    assert check_agent_available(config) is False
+    assert calls == []

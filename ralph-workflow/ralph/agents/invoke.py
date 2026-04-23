@@ -15,6 +15,7 @@ from __future__ import annotations
 import json
 import os
 import shlex
+import shutil
 import subprocess
 import sys
 import threading
@@ -881,15 +882,7 @@ def check_agent_available(config: AgentConfig) -> bool:
     Returns:
         True if agent command exists and is executable.
     """
-    try:
-        cmd = config.cmd.split()
-        handle = get_process_manager().spawn(
-            ["which", cmd[0]],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-        )
-        handle.wait(timeout=5)
-        return (handle.returncode or 1) == 0
-    except Exception as exc:
-        logger.warning("Failed to check agent availability: {}", exc)
+    cmd = config.cmd.split()
+    if not cmd:
         return False
+    return shutil.which(cmd[0]) is not None
