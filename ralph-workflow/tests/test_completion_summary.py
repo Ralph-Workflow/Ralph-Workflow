@@ -108,11 +108,19 @@ def test_render_metrics_line_included() -> None:
     assert "pushes=2" in text
 
 
-def test_render_verification_missing_artifact_falls_back_to_state(tmp_path: Path) -> None:
+def test_render_verification_missing_artifact_shows_not_verified(tmp_path: Path) -> None:
     snapshot = _make_snapshot()
     text = _render_plain(snapshot, workspace_root=tmp_path)
     assert "Verification" in text
-    assert "passed" in text
+    assert "not verified" in text
+
+
+def test_render_verification_missing_artifact_never_claims_passed(tmp_path: Path) -> None:
+    # A missing verification artifact must not report 'passed' — the pipeline's
+    # own phase/error state is not a substitute for actual verification evidence.
+    snapshot = _make_snapshot(phase="complete", last_error=None)
+    text = _render_plain(snapshot, workspace_root=tmp_path)
+    assert "Verification: passed" not in text
 
 
 def test_render_verification_reads_artifact_when_present(tmp_path: Path) -> None:

@@ -81,16 +81,16 @@ def _commit_message_lines(workspace_root: Path | None) -> list[str]:
     return rendered
 
 
-def _verification_line(
-    snapshot: PipelineSnapshot,
-    workspace_root: Path | None,
-    *,
-    failed: bool,
-) -> str:
+def _verification_line(workspace_root: Path | None) -> str:
+    """Return a human-readable verification status line.
+
+    Only reports a positive status when the verification artifact is present and
+    readable. A missing or unreadable artifact yields 'not verified' — the
+    pipeline's own phase/error state is not used as a proxy for verification.
+    """
     status, reason = _read_verification_status(workspace_root)
     if status == "unknown":
-        derived_ok = not failed and snapshot.last_error is None
-        return "Verification: passed" if derived_ok else "Verification: not verified"
+        return "Verification: not verified"
     suffix = f" — {reason}" if reason else ""
     return f"Verification: {status}{suffix}"
 
@@ -134,7 +134,7 @@ def render_completion_summary(
     else:
         lines.append("Decisions: (none recorded)")
 
-    lines.append(_verification_line(snapshot, workspace_root, failed=failed))
+    lines.append(_verification_line(workspace_root))
     lines.extend(_commit_message_lines(workspace_root))
 
     sha = _commit_sha_from_snapshot(snapshot)
@@ -210,7 +210,7 @@ def render_completion_summary_group(  # noqa: PLR0912
 
     # Verification section
     renderables.append(Rule("Verification", style=style))
-    renderables.append(Text(f"  {_verification_line(snapshot, workspace_root, failed=failed)}"))
+    renderables.append(Text(f"  {_verification_line(workspace_root)}"))
 
     # Activity Summary section
     renderables.append(Rule("Activity Summary", style=style))

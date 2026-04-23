@@ -250,7 +250,7 @@ class ParallelDisplay:
         if phase in {"complete", "failed"}:
             last_state = self._subscriber.last_state
             if last_state is not None:
-                with contextlib.suppress(Exception):
+                try:
                     snapshot = self._subscriber.build_snapshot(last_state)
                     if snapshot is not None:
                         emit_completion_summary(
@@ -259,6 +259,12 @@ class ParallelDisplay:
                             workspace_root=self._workspace_root,
                             dropped_count=self._subscriber.dropped_count,
                         )
+                except Exception as exc:
+                    self._plain_renderer.emit_warn_line(
+                        "run",
+                        "run-end",
+                        f"completion panel failed: {exc}",
+                    )
 
     @property
     def console(self) -> Console:

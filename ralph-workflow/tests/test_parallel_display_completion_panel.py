@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from queue import Queue
 from typing import TYPE_CHECKING
+from unittest.mock import patch
 
 from rich.console import Console
 
@@ -78,6 +79,15 @@ def test_emit_run_end_does_not_crash_on_summary_error(tmp_path: Path) -> None:
     display, console = _make_display(tmp_path)
     state = PipelineState(phase="complete")
     display.subscriber.notify(state)
-    display.emit_run_end(phase="complete", total_agent_calls=0)
+
+    with patch(
+        "ralph.display.parallel_display.emit_completion_summary",
+        side_effect=RuntimeError("panel boom"),
+    ):
+        display.emit_run_end(phase="complete", total_agent_calls=0)
+
     out = console.export_text()
+    # The [run-end] block still appears despite the summary failure
     assert "[run-end]" in out
+    # An observable diagnostic is emitted instead of silently swallowing the error
+    assert "completion panel failed" in out

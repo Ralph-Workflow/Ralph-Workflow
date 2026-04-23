@@ -479,11 +479,11 @@ For very long streaming blocks, Ralph emits a `[content-checkpoint#N]` orientati
 
 ### Pipeline Complete / Pipeline Failed panel
 
-For terminal phases ( and ), Ralph prints a Rich summary panel
-immediately after the  block. The panel title is **Pipeline Complete**
+For terminal phases (`complete` and `failed`), Ralph prints a Rich summary panel
+immediately after the `[run-end]` block. The panel title is **Pipeline Complete**
 or **Pipeline Failed** and echoes the plan, decision log, metrics,
 verification status, commit, PR URL, and open risks seen during the run.
-Non-terminal phases (e.g. , ) do not produce a panel.
+Non-terminal phases (e.g. `development`, `review`) do not produce a panel.
 
 ### Environment variables
 
