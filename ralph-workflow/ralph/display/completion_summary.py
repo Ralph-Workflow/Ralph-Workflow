@@ -28,6 +28,13 @@ _DECISION_LABELS: dict[str, str] = {
     "failed": "FAIL",
 }
 
+_BADGE_THEME_KEYS: dict[str, str] = {
+    "PASS": "theme.status.success",
+    "INFO": "theme.level.info",
+    "WARN": "theme.level.warn",
+    "FAIL": "theme.status.failure",
+}
+
 
 def _artifact_content(parsed: dict[str, object]) -> dict[str, object]:
     content = parsed.get("content")
@@ -81,16 +88,16 @@ def _commit_message_lines(workspace_root: Path | None) -> list[str]:
     return rendered
 
 
-def _verification_line(
-    snapshot: PipelineSnapshot,
-    workspace_root: Path | None,
-    *,
-    failed: bool,
-) -> str:
+def _verification_line(workspace_root: Path | None) -> str:
+    """Return a human-readable verification status line.
+
+    Only reports a positive status when the verification artifact is present and
+    readable. A missing or unreadable artifact yields 'not verified' — the
+    pipeline's own phase/error state is not used as a proxy for verification.
+    """
     status, reason = _read_verification_status(workspace_root)
     if status == "unknown":
-        derived_ok = not failed and snapshot.last_error is None
-        return "Verification: passed" if derived_ok else "Verification: not verified"
+        return "Verification: not verified"
     suffix = f" — {reason}" if reason else ""
     return f"Verification: {status}{suffix}"
 
@@ -100,6 +107,15 @@ def _dropped_count_line(dropped: int) -> str:
     if dropped <= 0:
         return ""
     return f"Snapshots dropped: {dropped}"
+
+
+def _make_badge_text(badge: str, rest: str) -> Text:
+    """Build a Text object with a themed badge label followed by plain rest text."""
+    theme_key = _BADGE_THEME_KEYS.get(badge, "theme.level.info")
+    t = Text("  ")
+    t.append(f"[{badge}]", style=theme_key)
+    t.append(rest)
+    return t
 
 
 def render_completion_summary(
@@ -134,7 +150,7 @@ def render_completion_summary(
     else:
         lines.append("Decisions: (none recorded)")
 
-    lines.append(_verification_line(snapshot, workspace_root, failed=failed))
+    lines.append(_verification_line(workspace_root))
     lines.extend(_commit_message_lines(workspace_root))
 
     sha = _commit_sha_from_snapshot(snapshot)
@@ -201,16 +217,19 @@ def render_completion_summary_group(  # noqa: PLR0912
     if snapshot.decision_log:
         for phase, decision, reason, _ts in snapshot.decision_log:
             badge = _DECISION_LABELS.get(decision.lower(), "INFO")
-            reason_part = f" — {reason}" if reason else ""
+            reason_part = f": {decision}" + (f" — {reason}" if reason else "")
             renderables.append(
-                Text(f"  [{badge}] {phase.replace('_', ' ').title()}: {decision}{reason_part}")
+                _make_badge_text(
+                    badge,
+                    f" {phase.replace('_', ' ').title()}{reason_part}",
+                )
             )
     else:
         renderables.append(Text("  (none recorded)"))
 
     # Verification section
     renderables.append(Rule("Verification", style=style))
-    renderables.append(Text(f"  {_verification_line(snapshot, workspace_root, failed=failed)}"))
+    renderables.append(Text(f"  {_verification_line(workspace_root)}"))
 
     # Activity Summary section
     renderables.append(Rule("Activity Summary", style=style))

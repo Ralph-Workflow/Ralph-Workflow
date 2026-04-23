@@ -24,10 +24,17 @@ STATUS_STYLES: Final[dict[str, tuple[str, str, str]]] = {
     "error": (f"bold {VERMILLION}", "✗", "FAIL"),
     "skipped": (YELLOW, "○", "SKIP"),
     "pending": ("dim", "○", "WAIT"),
-    "info": (BLUE, "\u2139", "INFO"),
+    "info": (BLUE, "ℹ", "INFO"),  # noqa: RUF001
 }
 
 _THEME_STYLES: Final[dict[str, str]] = {
+    "theme.level.info": BLUE,
+    "theme.level.success": f"bold {BLUISH_GREEN}",
+    "theme.level.warn": f"bold {ORANGE}",
+    "theme.level.error": f"bold {VERMILLION}",
+    "theme.level.milestone": f"bold {SKY_BLUE}",
+    "theme.cat.meta": "dim",
+    "theme.cat.cont": BLUE,
     "theme.log.error": f"bold {VERMILLION}",
     "theme.log.info": BLUE,
     "theme.log.milestone": f"bold {SKY_BLUE}",
@@ -38,10 +45,14 @@ _THEME_STYLES: Final[dict[str, str]] = {
     "theme.phase.commit": BLUE,
     "theme.phase.complete": f"bold {BLUISH_GREEN}",
     "theme.phase.development": BLUISH_GREEN,
+    "theme.phase.development_analysis": REDDISH_PURPLE,
+    "theme.phase.development_commit": BLUE,
     "theme.phase.failed": f"bold {VERMILLION}",
     "theme.phase.fix": VERMILLION,
     "theme.phase.planning": SKY_BLUE,
     "theme.phase.review": ORANGE,
+    "theme.phase.review_analysis": REDDISH_PURPLE,
+    "theme.phase.review_commit": BLUE,
     "theme.status.error": f"bold {VERMILLION}",
     "theme.status.info": BLUE,
     "theme.status.pending": "dim",

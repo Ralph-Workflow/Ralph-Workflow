@@ -16,6 +16,7 @@ from ralph.display.tables import (
     show_metrics,
     show_providers,
 )
+from ralph.display.theme import RALPH_THEME
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -29,7 +30,7 @@ UnifiedConfig.model_rebuild()
 
 def _capture_output(func: Callable[..., None], *args: Any, **kwargs: Any) -> str:
     stream = io.StringIO()
-    console = Console(file=stream, color_system=None, force_terminal=False)
+    console = Console(file=stream, color_system=None, force_terminal=False, theme=RALPH_THEME)
     kwargs.setdefault("console", console)
     func(*args, **kwargs)
     return stream.getvalue()
