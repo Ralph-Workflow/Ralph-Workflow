@@ -98,13 +98,16 @@ def test_runner_exits_via_cycle_cap_not_premature_termination(
 ) -> None:
     """Runner loops through recovery until CycleCap is hit, then exits with code 1.
 
-    With a two-agent chain (claude → opencode, each with max_retries=1) and CycleCap=3:
-    - Cycle 1: claude fails → budget exhausted → fallover to opencode → opencode fails → chain exhausted → PHASE_FAILED (count=1)
-    - Recovery: PreparePromptEffect → back to development
-    - Cycle 2: same sequence → PHASE_FAILED (count=2)
-    - Cycle 3: same sequence → PHASE_FAILED (count=3) → Cap check: count(3) >= cap(3) → ExitFailureEffect → runner returns 1
+    With a two-agent chain (claude -> opencode, each with max_retries=1)
+    and CycleCap=3:
+    - Cycle 1: claude fails -> budget exhausted -> fallover to opencode ->
+      opencode fails -> chain exhausted -> PHASE_FAILED (count=1)
+    - Recovery: PreparePromptEffect -> back to development
+    - Cycle 2: same sequence -> PHASE_FAILED (count=2)
+    - Cycle 3: same sequence -> PHASE_FAILED (count=3) ->
+      Cap check: count(3) >= cap(3) -> ExitFailureEffect -> runner returns 1
 
-    Total invocations: 6 (2 agents × 3 cycles).
+    Total invocations: 6 (2 agents x 3 cycles).
     """
     bundle = _make_policy_bundle()
 
@@ -136,10 +139,12 @@ def test_runner_exits_via_cycle_cap_not_premature_termination(
     )
 
     assert exit_code == 1
-    # Two agents per cycle × _CYCLE_CAP cycles
+    # Two agents per cycle x _CYCLE_CAP cycles
     expected_invocations = 2 * _CYCLE_CAP
     assert invocation_count == expected_invocations, (
-        f"Expected {expected_invocations} agent invocations (2 agents × {_CYCLE_CAP} cycles), "
+        "Expected "
+        f"{expected_invocations} agent invocations "
+        f"(2 agents x {_CYCLE_CAP} cycles), "
         f"got {invocation_count}"
     )
 
@@ -155,7 +160,7 @@ def test_runner_cycle_cap_emits_failure_events_and_fallover_events(
 
     With a two-agent chain:
     - Each cycle produces 2 FailureEvents (one per agent) + 1 FalloverEvent
-    - Total: 2 × _CYCLE_CAP FailureEvents + _CYCLE_CAP FalloverEvents
+    - Total: 2 x _CYCLE_CAP FailureEvents + _CYCLE_CAP FalloverEvents
     """
     from ralph.recovery import controller as recovery_controller_module  # noqa: PLC0415
 
@@ -207,7 +212,9 @@ def test_runner_cycle_cap_emits_failure_events_and_fallover_events(
     # 2 FailureEvents per cycle (one per agent)
     expected_failure_events = 2 * _CYCLE_CAP
     assert len(captured_failure_events) == expected_failure_events, (
-        f"Expected {expected_failure_events} FailureEvents (2 agents × {_CYCLE_CAP} cycles), "
+        "Expected "
+        f"{expected_failure_events} FailureEvents "
+        f"(2 agents x {_CYCLE_CAP} cycles), "
         f"got {len(captured_failure_events)}"
     )
     for evt in captured_failure_events:

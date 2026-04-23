@@ -523,6 +523,26 @@ def _notify_pipeline_subscriber(
     _notify_dashboard_subscriber(pipeline_subscriber, state)
 
 
+def _reset_phase_chain_for_recovery(
+    state: PipelineState,
+    target_phase: str,
+) -> PipelineState:
+    """Reset the target phase chain when re-entering after PHASE_FAILED.
+
+    Recovery from PHASE_FAILED should restart the configured agent chain from its
+    first agent. Without this reset, a recovered phase can resume on the last
+    exhausted fallback agent and skip earlier agents on subsequent cycles.
+    """
+    chain = state.chain_for_phase(target_phase)
+    if chain is None:
+        return state
+
+    return state.with_phase_chain(
+        target_phase,
+        AgentChainState(agents=chain.agents, current_index=0, retries=0),
+    )
+
+
 def _reduce_runtime_recovery(
     state: PipelineState,
     pipeline_policy: PipelinePolicy,
@@ -1330,7 +1350,10 @@ def _handle_inline_effect(  # noqa: PLR0913
 
     if isinstance(effect, PreparePromptEffect):
         _materialize_prepared_prompt(effect, pipeline_policy, workspace_scope)
-        updated_state = state.copy_with(
+        prepared_state = state
+        if state.phase == PHASE_FAILED:
+            prepared_state = _reset_phase_chain_for_recovery(state, effect.phase)
+        updated_state = prepared_state.copy_with(
             phase=effect.phase,
             iteration=effect.iteration,
             current_drain=effect.drain or resolve_phase_drain(effect.phase, pipeline_policy),

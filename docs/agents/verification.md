@@ -76,8 +76,8 @@ When working on or verifying the failure recovery feature:
 
 ```bash
 cd ralph-workflow
-uv run pytest -x --timeout=10 tests/recovery/
-uv run pytest -x --timeout=10 tests/test_recovery_first_invariant.py tests/test_reducer.py tests/test_pipeline_runner.py tests/test_asyncio_bridge.py tests/test_checkpoint.py
+uv run pytest -x tests/recovery/
+uv run pytest -x tests/test_recovery_first_invariant.py tests/test_reducer.py tests/test_pipeline_runner.py tests/test_asyncio_bridge.py tests/test_checkpoint.py
 ```
 
 Recovery tests cover:

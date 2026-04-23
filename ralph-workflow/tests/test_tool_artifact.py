@@ -25,7 +25,7 @@ from ralph.mcp.tools.artifact import (
     handle_submit_artifact,
     handle_submit_plan_section,
 )
-from ralph.mcp.tools.coordination import InvalidParamsError
+from ralph.mcp.tools.coordination import InvalidParamsError, ToolContent
 
 
 class MemoryBackend(FileBackend):
@@ -339,7 +339,7 @@ def test_handle_submit_artifact_normalizes_commit_alias_type_to_commit_message(
     )
 
     assert result.is_error is False
-    assert result.content[0].text == "Artifact submitted: commit_message"
+    assert cast("ToolContent", result.content[0]).text == "Artifact submitted: commit_message"
     artifact_file = tmp_path / ".agent" / "tmp" / "commit_message.json"
     assert artifact_file.exists()
 
@@ -1078,13 +1078,13 @@ def test_get_plan_draft_reports_staged_sections(tmp_path: Path) -> None:
 
     result = handle_get_plan_draft(MockSession(), MockWorkspace(tmp_path), {})
 
-    payload = json.loads(result.content[0].text)
+    payload = json.loads(cast("ToolContent", result.content[0]).text)
     assert sorted(payload["staged_sections"]) == ["steps", "summary"]
 
 
 def test_get_plan_draft_when_absent_returns_empty_list(tmp_path: Path) -> None:
     result = handle_get_plan_draft(MockSession(), MockWorkspace(tmp_path), {})
-    payload = json.loads(result.content[0].text)
+    payload = json.loads(cast("ToolContent", result.content[0]).text)
     assert payload == {"staged_sections": []}
 
 
@@ -1122,7 +1122,7 @@ def test_plan_draft_handlers_support_injected_persistence_without_real_filesyste
         handle_submit_plan_section(MockSession(), workspace, params, deps=deps)
 
     draft_result = handle_get_plan_draft(MockSession(), workspace, {}, deps=deps)
-    draft_payload = json.loads(draft_result.content[0].text)
+    draft_payload = json.loads(cast("ToolContent", draft_result.content[0]).text)
     assert sorted(draft_payload["staged_sections"]) == [
         "critical_files",
         "risks_mitigations",
