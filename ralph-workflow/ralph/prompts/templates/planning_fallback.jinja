@@ -25,9 +25,6 @@ Unless the plan is genuinely short, submit each required section separately.
 - Use {{DISCARD_PLAN_DRAFT_TOOL_REFERENCE}} only if you need to throw away the draft and restart from section 1.
 
 For genuinely short plans, you may submit atomically via {{SUBMIT_ARTIFACT_TOOL_REFERENCE}} with artifact_type="plan".
-Ralph will persist the submitted artifact at `.agent/artifacts/plan.json` for the next phase.
-If a submitted plan must be corrected end-to-end, edit `.agent/artifacts/plan.json` and resubmit with `content_path` using this exact call:
-`{{SUBMIT_ARTIFACT_TOOL_NAME}}({"artifact_type":"plan","content_path":".agent/artifacts/plan.json"})`
 {{SUBMIT_ARTIFACT_BARE_HINT}}
 The `content` argument must be a JSON string whose decoded object is the RAW plan payload, not an outer artifact wrapper.
 Do NOT send `{ "type": "plan", "content": ... }`.

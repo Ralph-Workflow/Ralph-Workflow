@@ -19,11 +19,6 @@ REVIEW_FRESH_SUBMIT_EXAMPLE = (
     '"artifact_type":"review_analysis_decision",'
     '"content":"{\\"status\\":\\"completed\\",\\"summary\\":\\"...\\"}"'
 )
-CONTENT_PATH_GUIDANCE = (
-    "Use 'content_path' only when resubmitting a JSON file that already exists on disk."
-)
-
-
 class _ApprovedSession:
     session_id = "session-1"
 
@@ -60,10 +55,8 @@ def test_submit_artifact_rejects_missing_content_source_with_actionable_guidance
     assert ".agent/artifact-formats/development_analysis_decision.md" in message
 
 
-def test_submit_artifact_rejects_both_content_and_content_path_with_actionable_guidance(
-    tmp_path: Path,
-) -> None:
-    """When both content and content_path are set and workspace is available, error redirects."""
+def test_submit_artifact_rejects_content_path_with_actionable_guidance(tmp_path: Path) -> None:
+    """content_path is not part of the agent-facing contract and redirects to the format doc."""
     session = _ApprovedSession()
     workspace = _Workspace(tmp_path)
 
@@ -73,11 +66,9 @@ def test_submit_artifact_rejects_both_content_and_content_path_with_actionable_g
             workspace,
             {
                 "artifact_type": "review_analysis_decision",
-                "content": '{"status":"completed","summary":"ok"}',
                 "content_path": ".agent/artifacts/review_analysis_decision.json",
             },
         )
 
     message = str(exc_info.value)
-    # When workspace is available, we redirect to the format doc
     assert ".agent/artifact-formats/review_analysis_decision.md" in message

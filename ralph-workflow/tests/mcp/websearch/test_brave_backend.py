@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import builtins
 import os
 import sys
 from importlib import import_module
@@ -114,21 +113,14 @@ def test_error_does_not_leak_key(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_import_error_message_points_to_extras(monkeypatch: pytest.MonkeyPatch) -> None:
     brave_backend = _import_brave_module()
-    original_import = builtins.__import__
 
-    def fake_import(
-        name: str,
-        globals: dict[str, object] | None = None,
-        locals: dict[str, object] | None = None,
-        fromlist: tuple[str, ...] = (),
-        level: int = 0,
-    ):
+    def fake_import_module(name: str) -> ModuleType:
         if name == CLIENT_MODULE_NAME:
             raise ImportError("missing brave client")
-        return original_import(name, globals, locals, fromlist, level)
+        raise AssertionError(f"unexpected import: {name}")
 
     monkeypatch.delitem(sys.modules, CLIENT_MODULE_NAME, raising=False)
-    monkeypatch.setattr(builtins, "__import__", fake_import)
+    monkeypatch.setattr(brave_backend, "import_module", fake_import_module)
 
     with pytest.raises(brave_backend.WebSearchError, match=IMPORT_ERROR_MATCH):
         brave_backend.BraveBackend(api_key=API_KEY).search("python")

@@ -307,9 +307,9 @@ def _metadata(
 
 _SUBMIT_ARTIFACT_DESCRIPTION = (
     "Submit a structured artifact (plan, development_result, issues, etc.). "
-    "Required param: artifact_type (string). Optional params: content (JSON) "
-    "or content_path (path to JSON file). Returns confirmation on success. "
-    'Example: {"artifact_type": "plan", "content": {"summary": "placeholder"}} '
+    "Required params: artifact_type (string) and content (JSON string). "
+    "Returns confirmation on success. "
+    'Example: {"artifact_type": "plan", "content": "{\\"summary\\": {}}"} '
     "submits a plan artifact. On error, read the format doc at "
     ".agent/artifact-formats/<type>.md (or .agent/artifact-formats/artifact_formats_index.md "
     "if artifact_type is unknown) before retrying."
@@ -632,17 +632,8 @@ def _tool_specs(mcp_config: McpConfig) -> tuple[ToolSpec, ...]:
                                 + ")."
                             ),
                         },
-                        "content_path": {
-                            "type": "string",
-                            "description": (
-                                "Path to a JSON file containing the artifact payload, "
-                                "use instead of content to submit from disk "
-                                "(example values: '.agent/artifacts/plan.json', "
-                                "'tmp/result.json')."
-                            ),
-                        },
                     },
-                    "required": ["artifact_type"],
+                    "required": ["artifact_type", "content"],
                 },
                 required_capability="ArtifactSubmit",
             ),

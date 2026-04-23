@@ -314,11 +314,14 @@ def test_missing_artifact_type_redirects_to_index(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize("artifact_type", ["issues", "development_result"])
-def test_content_and_content_path_both_redirect_to_format_doc(
+def test_content_path_redirects_to_format_doc(
     artifact_type: str,
     tmp_path: Path,
 ) -> None:
-    """Both content and content_path set redirects to per-type format doc."""
+    """content_path is not part of the agent-facing contract.
+
+    It should redirect to the per-type format doc.
+    """
     payload_path = tmp_path / "artifact.json"
     payload_path.write_text("{}", encoding="utf-8")
     with pytest.raises(InvalidParamsError) as exc_info:
@@ -327,7 +330,6 @@ def test_content_and_content_path_both_redirect_to_format_doc(
             MockWorkspace(tmp_path),
             {
                 "artifact_type": artifact_type,
-                "content": "{}",
                 "content_path": str(payload_path),
             },
         )
@@ -338,11 +340,11 @@ def test_content_and_content_path_both_redirect_to_format_doc(
 
 
 @pytest.mark.parametrize("artifact_type", ["issues", "development_result"])
-def test_neither_content_nor_content_path_redirects_to_format_doc(
+def test_missing_content_redirects_to_format_doc(
     artifact_type: str,
     tmp_path: Path,
 ) -> None:
-    """Neither content nor content_path set redirects to per-type format doc."""
+    """Missing content redirects to per-type format doc."""
     with pytest.raises(InvalidParamsError) as exc_info:
         handle_submit_artifact(
             MockSession(),

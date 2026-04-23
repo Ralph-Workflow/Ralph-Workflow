@@ -340,7 +340,8 @@ def test_build_fastmcp_server_preserves_registry_input_schema(tmp_path: Path) ->
     submit_artifact_schema = cast("dict[str, object]", tools["ralph_submit_artifact"].parameters)
     submit_properties = cast("dict[str, object]", submit_artifact_schema["properties"])
     assert "partial" not in submit_properties
-    assert "content_path" in submit_properties
+    assert "content_path" not in submit_properties
+    assert submit_artifact_schema["required"] == ["artifact_type", "content"]
 
 
 def test_runtime_main_launches_streamable_http_server(monkeypatch, tmp_path: Path) -> None:

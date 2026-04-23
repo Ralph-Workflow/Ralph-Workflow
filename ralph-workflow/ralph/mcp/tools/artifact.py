@@ -372,6 +372,7 @@ def _prepare_artifact_submission(
 
     # Canonicalize artifact_type (handles aliases like "commit", "analysis_decision")
     canonical_exc = None
+    artifact_type: str | None = None
     try:
         artifact_type = _canonical_artifact_type(
             raw_artifact_type,
@@ -407,6 +408,9 @@ def _prepare_artifact_submission(
                 )
         raise canonical_exc
 
+    if artifact_type is None:
+        raise canonical_exc or InvalidParamsError("Missing 'artifact_type' parameter")
+
     raw_content = _resolve_artifact_content_source(
         params,
         artifact_type=artifact_type,
@@ -441,10 +445,8 @@ def _resolve_artifact_content_source(
 ) -> str:
     raw_content = params.get("content")
     raw_content_path = params.get("content_path")
-    has_content = isinstance(raw_content, str)
-    has_content_path = isinstance(raw_content_path, str)
 
-    if has_content == has_content_path:
+    if isinstance(raw_content_path, str):
         exc = InvalidParamsError(_artifact_content_format_error(artifact_type))
         if (
             base_path is not None
@@ -454,39 +456,17 @@ def _resolve_artifact_content_source(
             _raise_format_doc_error(artifact_type, base_path, backend, exc)
         raise exc
 
-    if has_content:
-        return cast("str", raw_content)
-
-    content_path = _resolve_content_path(
-        cast("str", raw_content_path), base_path=base_path
-    )
-    try:
-        return backend.read_text(content_path)
-    except FileNotFoundError as exc:
-        err = InvalidParamsError(f"Content file does not exist: {content_path}")
+    if not isinstance(raw_content, str):
+        exc = InvalidParamsError("Missing 'content' parameter")
         if (
             base_path is not None
             and artifact_type != PLAN_ARTIFACT_TYPE
             and has_format_doc(artifact_type)
         ):
-            _raise_format_doc_error(artifact_type, base_path, backend, err)
-        raise err from exc
-    except OSError as exc:
-        err = InvalidParamsError(f"Failed to read content file '{content_path}': {exc}")
-        if (
-            base_path is not None
-            and artifact_type != PLAN_ARTIFACT_TYPE
-            and has_format_doc(artifact_type)
-        ):
-            _raise_format_doc_error(artifact_type, base_path, backend, err)
-        raise err from exc
+            _raise_format_doc_error(artifact_type, base_path, backend, exc)
+        raise exc
 
-
-def _resolve_content_path(raw_path: str, *, base_path: Path | None) -> Path:
-    candidate = Path(raw_path).expanduser()
-    if candidate.is_absolute() or base_path is None:
-        return candidate
-    return (base_path / candidate).resolve()
+    return raw_content
 
 
 def _artifact_content_format_error(artifact_type: str) -> str:
@@ -494,17 +474,11 @@ def _artifact_content_format_error(artifact_type: str) -> str:
         f'{{"artifact_type":"{artifact_type}",'
         '"content":"{\\"status\\":\\"completed\\",\\"summary\\":\\"...\\"}"}'
     )
-    resubmit_example = (
-        f'{{"artifact_type":"{artifact_type}",'
-        f'"content_path":".agent/artifacts/{artifact_type}.json"}}'
-    )
     return (
-        "Provide exactly one of 'content' or 'content_path'. "
-        "Use 'content' for a freshly generated JSON string. "
-        "Use 'content_path' only when resubmitting a JSON file that already exists on disk. "
-        "Never send both 'content' and 'content_path' in the same call. "
-        f"Example fresh submit: {fresh_submit_example}. "
-        f"Example resubmit from disk: {resubmit_example}."
+        "Artifact submission requires the 'content' field. "
+        "Use 'content' with a freshly generated JSON string. "
+        "Do not use 'content_path' in agent-facing artifact submissions. "
+        f"Example submit: {fresh_submit_example}."
     )
 
 

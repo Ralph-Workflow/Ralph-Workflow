@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import builtins
+import importlib.util
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, cast
 
 from ralph import install as install_module
 
@@ -62,6 +64,38 @@ def test_install_current_checkout_skips_pipx_when_not_available() -> None:
     assert commands == [
         ((sys.executable, "-m", "pip", "install", "-e", ".[dev]"), package_dir),
     ]
+
+
+def test_install_module_imports_without_process_manager_dependency(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module_path = Path(__file__).resolve().parents[1] / "ralph" / "install.py"
+    original_import = builtins.__import__
+
+    def fail_on_missing_psutil(
+        name: str,
+        globals_dict: dict[str, object] | None = None,
+        locals_dict: dict[str, object] | None = None,
+        fromlist: tuple[str, ...] = (),
+        level: int = 0,
+    ) -> Any:
+        if name == "psutil":
+            raise ModuleNotFoundError(f"No module named {name}")
+        return original_import(name, globals_dict, locals_dict, fromlist, level)
+
+    monkeypatch.setattr(builtins, "__import__", fail_on_missing_psutil)
+
+    spec = importlib.util.spec_from_file_location("bootstrap_safe_install_module", module_path)
+    assert spec is not None
+    assert spec.loader is not None
+
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    loaded_module = cast("Any", module)
+
+    assert callable(loaded_module.install_current_checkout)
+    assert callable(loaded_module.main)
+
 
 
 def test_main_uses_repo_directory_and_path_lookup(monkeypatch: pytest.MonkeyPatch) -> None:

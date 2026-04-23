@@ -98,7 +98,7 @@ _POLICY_FIX_MESSAGE = (
     "\n"
     "DONE when ALL hold:\n"
     "  [ ] Every test finishes in < 1 s\n"
-    "  [ ] Full suite finishes in < 10 s wall-clock\n"
+    "  [ ] Full suite finishes in < 30 s wall-clock\n"
     "  [ ] No test calls sleep() or polls real wall-clock time\n"
     "  [ ] No test crosses a real I/O boundary\n"
     "  [ ] Every assertion targets observable behavior\n"
