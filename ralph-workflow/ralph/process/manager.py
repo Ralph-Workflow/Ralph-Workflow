@@ -26,14 +26,37 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import Enum, auto
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
-import psutil
 from loguru import logger
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Generator, Sequence
-    from typing import IO
+    from typing import IO, Protocol
+
+    class _PsutilProcessLike(Protocol):
+        def children(self, recursive: bool = False) -> list[_PsutilProcessLike]: ...
+        def terminate(self) -> None: ...
+        def kill(self) -> None: ...
+
+    class _PsutilModuleLike(Protocol):
+        NoSuchProcess: type[BaseException]
+        AccessDenied: type[BaseException]
+        Process: Callable[[int], _PsutilProcessLike]
+
+        def wait_procs(
+            self,
+            procs: list[_PsutilProcessLike],
+            timeout: float | None = None,
+        ) -> tuple[list[_PsutilProcessLike], list[_PsutilProcessLike]]: ...
+
+psutil: _PsutilModuleLike | None
+try:
+    import psutil as _psutil
+except ModuleNotFoundError:
+    psutil = None
+else:
+    psutil = cast("_PsutilModuleLike", _psutil)
 
 
 class ProcessStatus(Enum):
@@ -438,12 +461,60 @@ class ProcessManager:
                 else:
                     self._terminate_by_pid(record, gp)
 
+    def _terminate_root_only_sync(
+        self,
+        record: ProcessRecord,
+        proc: subprocess.Popen[bytes],
+        grace_period_s: float,
+    ) -> None:
+        with contextlib.suppress(ProcessLookupError):
+            proc.terminate()
+        try:
+            rc = proc.wait(timeout=grace_period_s)
+        except subprocess.TimeoutExpired:
+            with contextlib.suppress(ProcessLookupError):
+                proc.kill()
+            try:
+                rc = proc.wait(timeout=self.policy.kill_followup_timeout_s)
+            except subprocess.TimeoutExpired:
+                self._mark_killed(record, proc.poll())
+                logger.error("Process {} still alive after kill", record.pid)
+                raise ProcessTerminationError(record.pid, record.pgid) from None
+        self._mark_killed(record, rc)
+
+    async def _terminate_root_only_async(
+        self,
+        record: ProcessRecord,
+        proc: asyncio.subprocess.Process,
+        grace_period_s: float,
+    ) -> None:
+        with contextlib.suppress(ProcessLookupError):
+            proc.terminate()
+        try:
+            rc = await asyncio.wait_for(proc.wait(), timeout=grace_period_s)
+        except TimeoutError:
+            with contextlib.suppress(ProcessLookupError):
+                proc.kill()
+            try:
+                rc = await asyncio.wait_for(
+                    proc.wait(), timeout=self.policy.kill_followup_timeout_s
+                )
+            except TimeoutError:
+                self._mark_killed(record, proc.returncode)
+                logger.error("Process {} still alive after kill", record.pid)
+                raise ProcessTerminationError(record.pid, record.pgid) from None
+        self._mark_killed(record, rc)
+
     def _terminate_by_pid(self, record: ProcessRecord, grace_period_s: float) -> None:
         """Kill a process tree given only its PID (no Popen handle available).
 
         Raises ProcessTerminationError if the process tree is still alive after
         escalating through graceful terminate → forceful kill.
         """
+        if psutil is None:
+            self._mark_killed(record)
+            return
+
         try:
             root = psutil.Process(record.pid)
             children = root.children(recursive=True)
@@ -475,6 +546,10 @@ class ProcessManager:
     ) -> None:
         """Escalate termination for a ManagedProcess using psutil tree-walk."""
         if record.status in _TERMINAL_STATUSES:
+            return
+
+        if psutil is None:
+            self._terminate_root_only_sync(record, proc, grace_period_s)
             return
 
         try:
@@ -511,24 +586,30 @@ class ProcessManager:
         if record.status in _TERMINAL_STATUSES:
             return
 
+        if psutil is None:
+            await self._terminate_root_only_async(record, proc, grace_period_s)
+            return
+
         pid = record.pid
         policy_kill = self.policy.kill_followup_timeout_s
+        psutil_module = psutil
+        assert psutil_module is not None
 
         def _do_terminate() -> bool:
             try:
-                root = psutil.Process(pid)
+                root = psutil_module.Process(pid)
                 children = root.children(recursive=True)
-            except (psutil.NoSuchProcess, psutil.AccessDenied):
+            except (psutil_module.NoSuchProcess, psutil_module.AccessDenied):
                 return False
             all_procs = [root, *children]
             for p in all_procs:
-                with contextlib.suppress(psutil.NoSuchProcess, psutil.AccessDenied):
+                with contextlib.suppress(psutil_module.NoSuchProcess, psutil_module.AccessDenied):
                     p.terminate()
-            _, alive = psutil.wait_procs(all_procs, timeout=grace_period_s)
+            _, alive = psutil_module.wait_procs(all_procs, timeout=grace_period_s)
             for p in alive:
-                with contextlib.suppress(psutil.NoSuchProcess, psutil.AccessDenied):
+                with contextlib.suppress(psutil_module.NoSuchProcess, psutil_module.AccessDenied):
                     p.kill()
-            _, still_alive = psutil.wait_procs(alive, timeout=policy_kill)
+            _, still_alive = psutil_module.wait_procs(alive, timeout=policy_kill)
             return bool(still_alive)
 
         loop = asyncio.get_running_loop()

@@ -53,8 +53,6 @@ Default submission flow:
 
 Atomic fallback for short plans:
 - If the plan is genuinely short, you may call {{SUBMIT_ARTIFACT_TOOL_REFERENCE}} with artifact_type="plan" and content as a JSON string conforming to the plan schema.
-- If a fully submitted plan must be corrected end-to-end, edit `.agent/artifacts/plan.json` and resubmit with `content_path` using this exact call:
-  `{{SUBMIT_ARTIFACT_TOOL_NAME}}({"artifact_type":"plan","content_path":".agent/artifacts/plan.json"})`
 {{SUBMIT_ARTIFACT_BARE_HINT}}
 
 The `content` argument must be a JSON string whose decoded object is the RAW plan payload.

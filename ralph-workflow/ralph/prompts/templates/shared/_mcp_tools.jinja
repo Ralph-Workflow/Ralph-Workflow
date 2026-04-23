@@ -22,8 +22,7 @@ EXECUTION:
 
 {% if not (HIDE_ARTIFACT_SUBMISSION_GUIDANCE|default(false)) %}
 ARTIFACT SUBMISSION:
-- Use {{SUBMIT_ARTIFACT_TOOL_REFERENCE}} to submit structured results
-- If you are retrying a saved artifact, edit its `.agent/artifacts/*.json` file and resubmit with `content_path` instead of retyping the whole JSON payload
+- Use {{SUBMIT_ARTIFACT_TOOL_REFERENCE}} to submit structured results with a fresh `content` JSON string
 {% if SUBMIT_PLAN_SECTION_TOOL_NAME %}- Use {{SUBMIT_PLAN_SECTION_TOOL_REFERENCE}} to stage plan sections incrementally{% endif %}
 {% if FINALIZE_PLAN_TOOL_NAME %}- Use {{FINALIZE_PLAN_TOOL_REFERENCE}} to finalize a staged plan draft{% endif %}
 {% if GET_PLAN_DRAFT_TOOL_NAME %}- Use {{GET_PLAN_DRAFT_TOOL_REFERENCE}} to inspect a staged plan draft{% endif %}

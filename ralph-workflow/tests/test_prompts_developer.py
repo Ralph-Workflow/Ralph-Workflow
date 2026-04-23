@@ -96,8 +96,8 @@ def test_planning_prompt_describes_detailed_raw_plan_payload_contract(tmp_path):
     assert "Use `ralph_get_plan_draft`" in prompt
     assert "Use `ralph_discard_plan_draft`" in prompt
     assert "Use `ralph_finalize_plan`" in prompt
-    assert "edit `.agent/artifacts/plan.json`" in prompt
-    assert "resubmit with `content_path`" in prompt
+    assert "edit `.agent/artifacts/plan.json`" not in prompt
+    assert "resubmit with `content_path`" not in prompt
     assert "The `content` argument must be a JSON string whose decoded object" in prompt
     assert "Do NOT wrap the payload in outer `type` or `content` fields" in prompt
     assert '"summary": {' in prompt
@@ -128,8 +128,8 @@ def test_planning_prompt_fallback_uses_json_plan_artifact_contract(tmp_path):
     assert "Unless the plan is genuinely short" in prompt
     assert "ralph_submit_plan_section" in prompt
     assert "ralph_finalize_plan" in prompt
-    assert "plan.json" in prompt
-    assert "content_path" in prompt
+    assert "plan.json" not in prompt
+    assert "content_path" not in prompt
     assert "<ralph-plan>" not in prompt
 
 

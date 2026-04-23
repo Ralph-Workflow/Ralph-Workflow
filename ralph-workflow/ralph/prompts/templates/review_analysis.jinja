@@ -1,6 +1,6 @@
 REVIEW ANALYSIS MODE
 
-Decide whether the review results should approve the work, request changes, or reject it.
+Decide whether the review results should accept the work, request changes, or fail the review analysis.
 
 {% from 'shared/_payload_section.j2' import render_payload_section %}
 
@@ -21,15 +21,13 @@ Not submitting the analysis artifact is a FAILURE.
 
 Return a JSON object.
 
-- If the review is clean, use `{"status":"approved","summary":"..."}` or `{"status":"completed","summary":"..."}`.
+- If the review is clean, use `{"status":"completed","summary":"..."}`.
 - After preparing the JSON payload, submit it with {{SUBMIT_ARTIFACT_TOOL_REFERENCE}} and only then call {{DECLARE_COMPLETE_TOOL_REFERENCE}}.
 - Use `content` for a freshly generated JSON string.
-- Use `content_path` only when resubmitting a JSON file that already exists on disk.
-- Never send both `content` and `content_path` in the same call.
-- Valid fresh-submit example: `{"artifact_type":"review_analysis_decision","content":"{\"status\":\"completed\",\"summary\":\"...\"}"}`.
-- Valid resubmit-from-disk example: `{"artifact_type":"review_analysis_decision","content_path":".agent/artifacts/review_analysis_decision.json"}`.
+- Submit the payload directly as fresh JSON content.
+- Valid submit example: `{"artifact_type":"review_analysis_decision","content":"{\"status\":\"completed\",\"summary\":\"...\"}"}`.
 - If changes are required, use `{"status":"request_changes","summary":"...","what_came_up_short":[...],"how_to_fix":[...]}`.
-- If the work must be rejected, use `{"status":"reject","summary":"...","what_came_up_short":[...],"how_to_fix":[...]}`.
+- If the review itself could not be completed, use `{"status":"failed","summary":"...","what_came_up_short":[...],"how_to_fix":[...]}`.
 
 For any non-passing review analysis, the following two fields are mandatory and must be as detailed as possible:
 
