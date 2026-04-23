@@ -2,12 +2,34 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
+
+from ralph.mcp.tools.artifact import handle_submit_artifact
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 PROMPTS_ROOT = REPO_ROOT / "ralph" / "prompts"
 TEMPLATES_ROOT = PROMPTS_ROOT / "templates"
 SHARED_ROOT = TEMPLATES_ROOT / "shared"
+
+
+class _ApprovedSession:
+    session_id = "session-1"
+
+    def __init__(self, *, drain: str = "development_analysis") -> None:
+        self.drain = drain
+
+    def check_capability(self, capability: str) -> object:
+        assert capability == "artifact.submit"
+        return "approved"
+
+
+class _Workspace:
+    def __init__(self, root: Path) -> None:
+        self._root = root
+
+    def absolute_path(self, path: str) -> str:
+        return str((self._root / path).resolve())
 
 
 def test_legacy_prompt_families_have_file_backed_jinja_templates() -> None:
@@ -86,9 +108,6 @@ def test_all_top_level_templates_include_unattended_partial() -> None:
     assert missing == []
 
 
-ANALYSIS_CONTENT_PATH_GUIDANCE = (
-    "Use `content_path` only when resubmitting a JSON file that already exists on disk."
-)
 ANALYSIS_EXHAUSTIVE_FAILURE_GUIDANCE = "Include every issue that contributed to the failing status."
 ANALYSIS_OMISSION_GUIDANCE = (
     "If you omit a real failure cause, the analysis artifact is incomplete."
@@ -122,12 +141,12 @@ def test_analysis_templates_require_exact_artifact_types_and_detailed_fix_sectio
     assert "Not submitting the analysis artifact is a FAILURE." in review_analysis
     assert "SUBMIT_ARTIFACT_TOOL_REFERENCE" in development_analysis
     assert "SUBMIT_ARTIFACT_TOOL_REFERENCE" in review_analysis
+    assert "approved" not in review_analysis
+    assert "reject" not in review_analysis
     assert "Use `content` for a freshly generated JSON string." in development_analysis
     assert "Use `content` for a freshly generated JSON string." in review_analysis
-    assert ANALYSIS_CONTENT_PATH_GUIDANCE in development_analysis
-    assert ANALYSIS_CONTENT_PATH_GUIDANCE in review_analysis
-    assert "Never send both `content` and `content_path` in the same call." in development_analysis
-    assert "Never send both `content` and `content_path` in the same call." in review_analysis
+    assert "content_path" not in development_analysis
+    assert "content_path" not in review_analysis
     assert DEVELOPMENT_ANALYSIS_FRESH_SUBMIT_EXAMPLE in development_analysis
     assert REVIEW_ANALYSIS_FRESH_SUBMIT_EXAMPLE in review_analysis
     assert ANALYSIS_EXHAUSTIVE_FAILURE_GUIDANCE in development_analysis
@@ -148,3 +167,87 @@ def test_review_and_fix_templates_define_explicit_review_handoff_contracts() -> 
     assert "FIX_RESULT" in review_template
     assert "fix_result" not in fix_template
     assert "submit" not in fix_template.lower()
+
+
+def test_development_analysis_prompt_taught_variants_submit_successfully(tmp_path: Path) -> None:
+    session = _ApprovedSession(drain="development_analysis")
+    workspace = _Workspace(tmp_path)
+    payloads = [
+        {"status": "completed", "summary": "Implementation looks correct."},
+        {
+            "status": "request_changes",
+            "summary": "Implementation needs another pass.",
+            "what_came_up_short": ["A required verification step is missing."],
+            "how_to_fix": ["Add the missing verification step and rerun checks."],
+        },
+        {
+            "status": "failed",
+            "summary": "The analysis could not complete.",
+            "what_came_up_short": ["The required evidence was unavailable."],
+            "how_to_fix": ["Reproduce the evidence and rerun the analysis."],
+        },
+    ]
+
+    for index, payload in enumerate(payloads):
+        result = handle_submit_artifact(
+            session,
+            workspace,
+            {
+                "artifact_type": "development_analysis_decision",
+                "content": json.dumps(payload),
+            },
+        )
+        assert result.is_error is False, f"payload #{index} should submit successfully"
+
+
+
+def test_review_analysis_prompt_taught_variants_submit_successfully(tmp_path: Path) -> None:
+    session = _ApprovedSession(drain="review_analysis")
+    workspace = _Workspace(tmp_path)
+    payloads = [
+        {"status": "completed", "summary": "Review looks good."},
+        {
+            "status": "request_changes",
+            "summary": "Fixes are required.",
+            "what_came_up_short": ["A regression test is still missing."],
+            "how_to_fix": ["Add the regression test and rerun review verification."],
+        },
+        {
+            "status": "failed",
+            "summary": "The review analysis could not complete.",
+            "what_came_up_short": ["The review evidence was incomplete."],
+            "how_to_fix": ["Regenerate the evidence and rerun review analysis."],
+        },
+    ]
+
+    for index, payload in enumerate(payloads):
+        result = handle_submit_artifact(
+            session,
+            workspace,
+            {
+                "artifact_type": "review_analysis_decision",
+                "content": json.dumps(payload),
+            },
+        )
+        assert result.is_error is False, f"payload #{index} should submit successfully"
+
+
+
+def test_commit_prompt_taught_variants_submit_successfully(tmp_path: Path) -> None:
+    session = _ApprovedSession(drain="development_commit")
+    workspace = _Workspace(tmp_path)
+    payloads = [
+        {"type": "commit", "subject": "fix(parser): preserve prefixes"},
+        {"type": "skip", "reason": "No task-related changes to commit."},
+    ]
+
+    for index, payload in enumerate(payloads):
+        result = handle_submit_artifact(
+            session,
+            workspace,
+            {
+                "artifact_type": "commit_message",
+                "content": json.dumps(payload),
+            },
+        )
+        assert result.is_error is False, f"payload #{index} should submit successfully"
