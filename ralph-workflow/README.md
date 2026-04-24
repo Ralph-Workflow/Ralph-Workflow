@@ -1,6 +1,8 @@
 # Ralph Workflow (Python)
 
-Ralph Workflow is a Python 3.12+ CLI for unattended multi-agent development loops. The installable package lives in this directory and exposes two entry points:
+> An opinionated AI agent orchestration framework.
+
+Ralph Workflow is a Python 3.12+ CLI and framework for configurable, opinionated AI agent orchestration. It began as a take on the Ralph loop, and the maintained package now turns that philosophy into configurable workflow, agent, and policy primitives. The installable package lives in this directory and exposes two entry points:
 
 - `ralph` — the main CLI
 - `ralph-mcp` — the standalone MCP server runtime

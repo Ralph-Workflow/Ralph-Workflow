@@ -1,6 +1,8 @@
 # Ralph Workflow
 
-Ralph Workflow is a Python orchestration framework for unattended AI-assisted software delivery. The maintained implementation lives in `ralph-workflow/` and centers on a configurable pipeline instead of a single fixed “Ralph loop”.
+> An opinionated AI agent orchestration framework.
+
+Ralph Workflow began as a take on the Ralph loop and has evolved into a configurable Python framework for opinionated AI agent orchestration. The maintained implementation lives in `ralph-workflow/` and centers on a configurable pipeline rather than a single fixed loop.
 
 At a high level, Ralph combines:
 
@@ -59,7 +61,7 @@ ralph
 
 ## What Ralph orchestrates
 
-Ralph is now a configurable orchestration layer, not just a single prompt loop.
+Ralph still reflects the original Ralph-loop philosophy, but it now exposes that philosophy through configurable orchestration primitives instead of a single hard-coded prompt loop.
 
 ### 1. Layered configuration
 

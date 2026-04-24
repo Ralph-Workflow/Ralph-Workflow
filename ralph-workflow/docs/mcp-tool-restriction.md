@@ -4,7 +4,7 @@ Ralph enforces MCP-only tooling by disabling native agent tools at the CLI and c
 
 ## 1. Overview
 
-Ralph is designed to run agentic loops where every tool call produces an auditable action with a traceable identity. Native agent tools like `Read`, `Write`, `Edit`, and `Bash` bypass the MCP bridge and therefore break Ralph's audit trail, capability mapping, and policy enforcement.
+Ralph Workflow is designed as an opinionated AI agent orchestration framework rooted in the Ralph loop, where every tool call should produce an auditable action with a traceable identity. Native agent tools like `Read`, `Write`, `Edit`, and `Bash` bypass the MCP bridge and therefore break Ralph's audit trail, capability mapping, and policy enforcement.
 
 Ralph's prompts claim "Native agent tools are DISABLED". This document describes how the CLI and config layer enforces that claim at invocation time for each supported backend, and where config preservation is separate from strict policy enforcement:
 

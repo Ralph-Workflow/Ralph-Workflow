@@ -1,5 +1,7 @@
 # Remote Build Server
 
+> **Legacy Rust-era reference:** This document describes an archived remote-build workflow for the retired `cargo xtask`-based implementation. The maintained Ralph Workflow product is now the Python package in `ralph-workflow/`, so treat this file as historical tooling guidance unless you are intentionally working with the old Rust-era infrastructure.
+
 All `cargo xtask` subcommands automatically run on the least-loaded available build server (`rw-build-server` or `rw-build-server-2`). No flags, no setup beyond SSH key auth on both servers.
 
 **Use `cargo xtask` for everything.** Direct `cargo test`, `cargo clippy`, `cargo check`, etc. run locally and overheat your laptop. `cargo xtask` auto-dispatches to the best available remote build server. The only exception is `cargo build` for producing a local macOS executable (e.g., via Makefile).

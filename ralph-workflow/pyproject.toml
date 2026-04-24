@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "ralph-workflow"
 dynamic = ["version"]
-description = "Ralph Workflow is an unattended multi-agent AI development workflows with extensive customization options based on the original Ralph concept."
+description = "Ralph Workflow is an opinionated AI agent orchestration framework."
 readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "AGPL-3.0-or-later" }

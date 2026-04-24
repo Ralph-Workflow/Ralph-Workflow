@@ -1,6 +1,6 @@
 # Agent Compatibility Guide
 
-This guide documents compatibility between Ralph and various AI coding agents for the review process. Ralph's review phase is designed to be agent-agnostic in its prompts, but different agents may have varying levels of success due to differences in JSON output format, tool execution behavior, and other agent-specific quirks.
+This guide documents compatibility between Ralph Workflow and various AI coding agents in its configurable review orchestration. Ralph's review phase is designed to be agent-agnostic in its prompts, but different agents may have varying levels of success due to differences in JSON output format, tool execution behavior, and other agent-specific quirks.
 
 > **⚠️ Important Compatibility Note**: GLM, ZhipuAI, Qwen, and DeepSeek agents have known compatibility issues with review tasks. While Ralph automatically applies workarounds (universal prompt), success rates may vary. **For best results, consider using Claude Code or Codex as the reviewer.** You can override the reviewer agent with `--reviewer-agent claude` or `--reviewer-agent codex`.
 
@@ -45,7 +45,7 @@ These agents have been tested and work well with Ralph's review process:
 
 **Configuration**:
 ```toml
-# In ~/.config/ralph-workflow.toml or .agent/config.toml
+# In ~/.config/ralph-workflow.toml or .agent/ralph-workflow.toml
 [agents.claude]
 name = "claude"
 command = "claude"
@@ -546,8 +546,8 @@ And specifies: "If no issues found, write exactly: `No issues found.`"
 If you want to force the Universal Prompt for a different agent, you can:
 
 1. **Environment variable**: Set `RALPH_REVIEWER_UNIVERSAL_PROMPT=1` to force universal prompt for all agents
-2. **Config file**: Add `force_universal_prompt = true` to the `[general]` section in `~/.config/ralph-workflow.toml`
-3. **Source code**: Modify the `should_use_universal_prompt` function in `src/phases/review.rs`
+2. **Config file**: Add `force_universal_prompt = true` to the `[general.execution]` section in `~/.config/ralph-workflow.toml` or `.agent/ralph-workflow.toml`
+3. **Source code**: Modify the universal-review selection logic in the Python package under `ralph-workflow/ralph/`
 
 Example:
 ```bash
