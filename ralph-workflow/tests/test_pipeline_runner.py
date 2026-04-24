@@ -1685,7 +1685,9 @@ class TestExecuteAgentEffect:
         printed = "\n".join(
             " ".join(str(arg) for arg in call.args) for call in console_mock.print.call_args_list
         )
-        assert "message_start" in printed
+        # Lifecycle events (thread.started) are suppressed — no noise in output
+        assert "message_start" not in printed
+        # Meaningful events still stream
         assert "plan complete" in printed
         assert "stop" in printed
 

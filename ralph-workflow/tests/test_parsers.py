@@ -683,3 +683,58 @@ def test_get_parser_unknown_raises() -> None:
     """Test get_parser raises ValueError for unknown type."""
     with pytest.raises(ValueError, match="Unknown parser type"):
         get_parser("unknown_parser")
+
+
+# --- Cross-parser lifecycle noise parity tests ---
+
+
+def test_codex_lifecycle_noise_is_suppressed() -> None:
+    """Codex thread.started / turn.started / message_start carry no user payload."""
+    parser = CodexParser()
+    lines = [
+        '{"type":"thread.started","id":"thread-1"}',
+        '{"type":"turn.started","id":"turn-1"}',
+        '{"type":"message_start","message":{"id":"msg-1"}}',
+    ]
+    results = list(parser.parse(_make_lines(lines)))
+    # None of these should produce text, error, or message_start outputs
+    leaking = [r for r in results if r.type in {"text", "error", "message_start"}]
+    assert leaking == [], f"Lifecycle noise leaked: {leaking}"
+
+
+def test_opencode_lifecycle_noise_does_not_emit_text_or_error() -> None:
+    """OpenCode step_start / step_finish / done carry no user text payload."""
+    parser = OpenCodeParser()
+    lines = [
+        '{"type":"step_start","id":"step-1"}',
+        '{"type":"step_finish","id":"step-1"}',
+    ]
+    results = list(parser.parse(_make_lines(lines)))
+    leaking = [r for r in results if r.type in {"text", "error"}]
+    assert leaking == [], f"Lifecycle noise leaked: {leaking}"
+
+
+def test_gemini_lifecycle_noise_does_not_emit_text_or_error() -> None:
+    """Gemini done / stop / message_end carry no user text payload on their own."""
+    parser = GeminiParser()
+    lines = [
+        'data: {"type":"done"}',
+        'data: {"type":"stop"}',
+        'data: {"type":"message_end"}',
+    ]
+    results = list(parser.parse(_make_lines(lines)))
+    leaking = [r for r in results if r.type in {"text", "error"}]
+    assert leaking == [], f"Lifecycle noise leaked: {leaking}"
+
+
+def test_generic_lifecycle_noise_does_not_emit_text_or_error() -> None:
+    """GenericParser stop/done/complete should not leak as text or error events."""
+    parser = GenericParser()
+    lines = [
+        '{"type":"stop"}',
+        '{"type":"done"}',
+        '{"type":"complete"}',
+    ]
+    results = list(parser.parse(_make_lines(lines)))
+    leaking = [r for r in results if r.type in {"text", "error"}]
+    assert leaking == [], f"Lifecycle noise leaked: {leaking}"

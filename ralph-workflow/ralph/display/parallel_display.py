@@ -19,6 +19,7 @@ from ralph.display.plain_renderer import PlainLogRenderer
 from ralph.display.raw_overflow import RawOverflowLog
 from ralph.display.subscriber import PipelineSubscriber
 from ralph.display.theme import make_console as _make_console
+from ralph.display.tool_args import format_tool_input
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -148,8 +149,19 @@ class ParallelDisplay:
         kind: ActivityEventKind,
         content: str | None,
         raw_ref: str | None,
+        metadata: dict[str, object],
     ) -> None:
+        from ralph.display.activity_model import ActivityEventKind as _Kind  # noqa: PLC0415
+
         text = content or ""
+
+        # For tool_use events, append formatted input args so the reader can see what ran.
+        if kind is _Kind.TOOL_USE:
+            input_obj = metadata.get("input")
+            args_str = format_tool_input(input_obj)
+            if args_str:
+                text = f"{text} {args_str}"
+
         overflow = self._get_overflow_log(unit_id)
         overflow_ref = overflow.relative_reference(self._workspace_root)
 
@@ -258,6 +270,11 @@ class ParallelDisplay:
                             snapshot,
                             workspace_root=self._workspace_root,
                             dropped_count=self._subscriber.dropped_count,
+                            content_block_count=self._plain_renderer.content_blocks_count,
+                            thinking_block_count=self._plain_renderer.thinking_blocks_count,
+                            tool_call_count=self._plain_renderer.tool_calls_count,
+                            error_count=self._plain_renderer.errors_count,
+                            elapsed_seconds=self._plain_renderer.run_elapsed_seconds,
                         )
                 except Exception as exc:
                     self._plain_renderer.emit_warn_line(

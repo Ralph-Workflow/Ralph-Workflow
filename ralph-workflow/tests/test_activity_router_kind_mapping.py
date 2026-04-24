@@ -19,6 +19,7 @@ def _make_router(
         kind: ActivityEventKind,
         content: str | None,
         raw_ref: str | None,
+        _metadata: dict[str, object],
     ) -> None:
         events.append((unit_id, kind, content, raw_ref))
 
@@ -89,7 +90,7 @@ def test_unknown_maps_to_unknown() -> None:
 
     router = ActivityRouter(  # type: ignore[arg-type]
         parser_factory=unknown_factory,
-        on_event=lambda u, k, c, r: events.append((u, k, c, r)),
+        on_event=lambda u, k, c, r, _m: events.append((u, k, c, r)),
     )
 
     router.push_raw_line("u", "anything", provider=ActivityProvider.GENERIC)

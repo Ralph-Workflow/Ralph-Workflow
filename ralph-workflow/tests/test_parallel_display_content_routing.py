@@ -117,7 +117,9 @@ def test_raw_log_written_via_subprocess_executor(tmp_path: Path) -> None:
 
     received: list[str] = []
 
-    router = ActivityRouter(on_event=lambda uid, kind, content, ref: received.append(content or ""))
+    router = ActivityRouter(
+        on_event=lambda uid, kind, content, ref, meta: received.append(content or "")
+    )
 
     executor = SubprocessAgentExecutor(
         [
@@ -172,3 +174,71 @@ def test_condensed_ref_appears_in_output_with_overflow_root(tmp_path: Path) -> N
     out = buf.getvalue()
     assert "[content" in out
     assert ".agent/raw/u.log" in out
+
+
+def test_tool_use_input_metadata_is_surfaced_on_rendered_line(tmp_path: Path) -> None:
+    """tool_use with input metadata renders path= on the [tool] line."""
+    pd, buf = _make_display(tmp_path)
+    event = json.dumps(
+        {
+            "type": "content_block_start",
+            "content_block": {
+                "type": "tool_use",
+                "name": "mcp__ralph__read_file",
+                "input": {"path": "ralph-workflow/ralph/x.py"},
+            },
+        }
+    )
+    pd.activity_router.push_raw_line("u", event, provider=ActivityProvider.CLAUDE)
+    out = buf.getvalue()
+    assert "mcp__ralph__read_file" in out
+    assert "path=ralph-workflow/ralph/x.py" in out
+
+
+def test_activity_snapshot_does_not_duplicate_activity_line(tmp_path: Path) -> None:
+    """Snapshot with active_tool + last_activity_line emits exactly ONE [activity tagged line."""
+    from datetime import UTC, datetime  # noqa: PLC0415
+    from io import StringIO  # noqa: PLC0415
+
+    from rich.console import Console  # noqa: PLC0415
+
+    from ralph.display.plain_renderer import PlainLogRenderer  # noqa: PLC0415
+    from ralph.display.snapshot import PipelineSnapshot  # noqa: PLC0415
+
+    buf = StringIO()
+    console = Console(file=buf, force_terminal=False, color_system=None, width=200)
+    renderer = PlainLogRenderer(console)
+
+    snapshot = PipelineSnapshot(
+        phase="development",
+        previous_phase=None,
+        iteration=1,
+        total_iterations=3,
+        reviewer_pass=0,
+        total_reviewer_passes=1,
+        review_issues_found=False,
+        interrupted_by_user=False,
+        last_error=None,
+        pr_url=None,
+        push_count=0,
+        total_agent_calls=0,
+        total_continuations=0,
+        total_fallbacks=0,
+        total_retries=0,
+        workers=(),
+        prompt_path=None,
+        prompt_preview=(),
+        run_id=None,
+        created_at=datetime.now(UTC),
+        active_tool="mcp__ralph__read_file",
+        last_activity_line="claude/sonnet tool: mcp__ralph__read_file (path=x.py)",
+    )
+    renderer.emit_snapshot(snapshot)
+    out = buf.getvalue()
+
+    # Count occurrences of any [activity tag
+    activity_line_count = out.count("[activity-line]")
+    activity_tag_count = out.count("[activity]")
+    # Only one of the two should be non-zero, and total occurrences == 1
+    total = activity_line_count + activity_tag_count
+    assert total == 1, f"Expected 1 activity line, got {total}. Output:\n{out}"

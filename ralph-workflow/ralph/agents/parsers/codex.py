@@ -31,6 +31,11 @@ class CodexParser:
         {"turn.completed", "message_stop", "done", "stop", "response.completed"}
     )
 
+    # Lifecycle-only events that carry no user payload — suppress silently.
+    _LIFECYCLE_EVENT_TYPES: Final[frozenset[str]] = frozenset(
+        {"thread.started", "turn.started", "message_start"}
+    )
+
     def __init__(self) -> None:
         # Accumulator keyed by response id or synthetic stream key
         self._text_accumulator: dict[str, _TextAccumulator] = {}
@@ -77,6 +82,10 @@ class CodexParser:
             yield AgentOutputLine(type="stop", raw=stripped, metadata=obj)
             return
 
+        # Suppress known lifecycle events that carry no user payload
+        if event_type in self._LIFECYCLE_EVENT_TYPES:
+            return
+
         handler_map = {
             "text": self._parse_text_content,
             "content": self._parse_text_content,
@@ -98,10 +107,6 @@ class CodexParser:
         handler = handler_map.get(event_type)
         if handler:
             yield from handler(obj, stripped)
-            return
-
-        if event_type in {"thread.started", "turn.started", "message_start"}:
-            yield AgentOutputLine(type="message_start", raw=stripped, metadata=obj)
             return
 
         yield AgentOutputLine(type=event_type, raw=stripped, metadata=obj)

@@ -74,6 +74,32 @@ def _render_group(
     return buf.getvalue()
 
 
+def _render_group_full(  # noqa: PLR0913
+    snapshot: PipelineSnapshot,
+    *,
+    content_block_count: int = 0,
+    thinking_block_count: int = 0,
+    tool_call_count: int = 0,
+    error_count: int = 0,
+    elapsed_seconds: float | None = None,
+    overflow_path: str | None = None,
+) -> str:
+    """Render group with all activity counter parameters."""
+    buf = StringIO()
+    console = Console(file=buf, force_terminal=False, width=120, color_system=None)
+    group = render_completion_summary_group(
+        snapshot,
+        content_block_count=content_block_count,
+        thinking_block_count=thinking_block_count,
+        tool_call_count=tool_call_count,
+        error_count=error_count,
+        elapsed_seconds=elapsed_seconds,
+        overflow_path=overflow_path,
+    )
+    console.print(group, markup=False, highlight=False)
+    return buf.getvalue()
+
+
 def test_group_contains_pipeline_complete_title() -> None:
     out = _render_group(_make_snapshot())
     assert "Pipeline Complete" in out
@@ -183,11 +209,6 @@ def test_group_activity_summary_shows_thinking_blocks_when_nonzero() -> None:
     assert "thinking_blocks=7" in out
 
 
-def test_group_activity_summary_no_thinking_line_when_zero() -> None:
-    out = _render_group(_make_snapshot(), thinking_block_count=0)
-    assert "thinking_blocks=0" not in out
-
-
 def test_group_activity_summary_shows_overflow_path_when_provided() -> None:
     out = _render_group(_make_snapshot(), overflow_path=".agent/raw/unit-1.log")
     assert "raw_overflow=.agent/raw/unit-1.log" in out
@@ -215,3 +236,60 @@ def test_emit_completion_summary_accepts_thinking_and_overflow_params() -> None:
     out = buf.getvalue()
     assert "thinking_blocks=3" in out
     assert "raw_overflow=.agent/raw/u.log" in out
+
+
+# --- New Activity Summary counter tests (parity with run-end block) ---
+
+
+def test_completion_panel_renders_elapsed_seconds_when_provided() -> None:
+    """elapsed_seconds renders as elapsed=<value>s when provided."""
+    out = _render_group_full(_make_snapshot(), elapsed_seconds=12.4)
+    assert "elapsed=12.4s" in out
+
+
+def test_completion_panel_skips_elapsed_when_none() -> None:
+    """elapsed_seconds=None produces no elapsed= line."""
+    out = _render_group_full(_make_snapshot(), elapsed_seconds=None)
+    assert "elapsed=" not in out
+
+
+def test_completion_panel_renders_content_blocks_even_when_zero() -> None:
+    """content_block_count=0 renders content_blocks=0 (not hidden)."""
+    out = _render_group_full(_make_snapshot(), content_block_count=0)
+    assert "content_blocks=0" in out
+
+
+def test_completion_panel_renders_thinking_blocks_even_when_zero() -> None:
+    """thinking_block_count=0 renders thinking_blocks=0 (not hidden)."""
+    out = _render_group_full(_make_snapshot(), thinking_block_count=0)
+    assert "thinking_blocks=0" in out
+
+
+def test_completion_panel_renders_tool_calls() -> None:
+    """tool_call_count=7 renders tool_calls=7."""
+    out = _render_group_full(_make_snapshot(), tool_call_count=7)
+    assert "tool_calls=7" in out
+
+
+def test_completion_panel_renders_errors_even_when_zero() -> None:
+    """error_count=0 renders errors=0 (not hidden)."""
+    out = _render_group_full(_make_snapshot(), error_count=0)
+    assert "errors=0" in out
+
+
+def test_completion_panel_parity_with_run_end() -> None:
+    """Activity Summary shows all five counter fields that run-end emits."""
+    out = _render_group_full(
+        _make_snapshot(),
+        content_block_count=3,
+        thinking_block_count=2,
+        tool_call_count=7,
+        error_count=0,
+        elapsed_seconds=12.4,
+    )
+    assert "elapsed=12.4s" in out
+    assert "content_blocks=3" in out
+    assert "thinking_blocks=2" in out
+    assert "tool_calls=7" in out
+    assert "errors=0" in out
+    assert "agent_calls=4" in out

@@ -81,7 +81,9 @@ class ActivityRouter:
         *,
         parser_factory: Callable[[ActivityProvider], AgentParser] | None = None,
         buffer_factory: Callable[[], RingBuffer] | None = None,
-        on_event: Callable[[str, ActivityEventKind, str | None, str | None], None] | None = None,
+        on_event: (
+            Callable[[str, ActivityEventKind, str | None, str | None, dict[str, object]], None] | None  # noqa: E501
+        ) = None,
         raw_overflow_callback: Callable[[str, str], None] | None = None,
     ) -> None:
         self._parser_factory = parser_factory or _default_parser_factory
@@ -129,7 +131,7 @@ class ActivityRouter:
                 rendered = render_event_line(event.kind, event.content, timestamp=event.timestamp)
                 buffer.enqueue(rendered)
                 if self._on_event is not None:
-                    self._on_event(unit_id, kind, event.content, raw_reference)
+                    self._on_event(unit_id, kind, event.content, raw_reference, out.metadata or {})
         except Exception as exc:
             if self._raw_overflow_callback is not None:
                 with contextlib.suppress(Exception):
@@ -145,7 +147,9 @@ class ActivityRouter:
             )
             buffer.enqueue(rendered)
             if self._on_event is not None:
-                self._on_event(unit_id, ActivityEventKind.ERROR, error_event.content, raw_reference)
+                self._on_event(
+                    unit_id, ActivityEventKind.ERROR, error_event.content, raw_reference, {}
+                )
 
 
 __all__ = [

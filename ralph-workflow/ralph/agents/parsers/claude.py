@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Final, cast
 
@@ -10,6 +11,13 @@ from ralph.agents.parsers.base import AgentOutputLine
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
+
+# Matches "claude" or "claude/<model>" at line start, followed by space, colon, or end.
+_CLAUDE_PREFIX_RE: Final[re.Pattern[str]] = re.compile(r"^claude(?:/[^:\s]+)?(?=[ :]|$)")
+
+# Lifecycle markers emitted by Claude CLI that carry no user payload.
+# Unknown free-text after "claude/<model>: " defaults to type='text' (safe default).
+_LIFECYCLE_MARKERS: Final[frozenset[str]] = frozenset({"message_delta", "user", "thinking"})
 
 
 @dataclass
@@ -491,23 +499,48 @@ class ClaudeParser:
                 metadata=block_obj,
             )
 
-    def _parse_prefixed_transcript_line(self, raw: str) -> list[AgentOutputLine] | None:
+    def _parse_prefixed_transcript_line(self, raw: str) -> list[AgentOutputLine] | None:  # noqa: PLR0911
         if raw.startswith("[claude]:"):
             return []
 
-        if raw.startswith("claude: "):
-            return [AgentOutputLine(type="text", content=raw.removeprefix("claude: "), raw=raw)]
+        m = _CLAUDE_PREFIX_RE.match(raw)
+        if m is None:
+            return None
 
-        if raw.startswith("claude tool: "):
-            return self._parse_prefixed_tool_line(raw)
+        remainder = raw[m.end():]
 
-        if raw.startswith("claude message_delta:") or raw.startswith("claude system: status="):
+        # "claude: text" or "claude/<model>: text"
+        if remainder.startswith(": "):
+            text = remainder[2:]
+            # Suppress known lifecycle markers (carry no user payload)
+            if text in _LIFECYCLE_MARKERS or text.startswith("system (status="):
+                return []
+            return [AgentOutputLine(type="text", content=text, raw=raw)]
+
+        # "claude tool: ..." or "claude/<model> tool: ..."
+        if remainder.startswith(" tool: "):
+            payload = remainder[7:]
+            return self._parse_prefixed_tool_line(raw, payload)
+
+        # "claude user: message=..." or "claude/<model> user: message=..."
+        for role in ("user", "assistant"):
+            role_prefix = f" {role}: message="
+            if remainder.startswith(role_prefix):
+                return self._parse_prefixed_message_line(raw, remainder[len(role_prefix):])
+
+        # "claude message_delta:..." (old bare format) → suppress
+        if remainder.startswith(" message_delta") or remainder.startswith(" system: status="):
             return []
 
-        return self._parse_prefixed_message_line(raw)
+        # "claude/<model> ✗: error text" → error
+        if remainder.startswith(" ✗: "):
+            error_text = remainder[4:]
+            return [AgentOutputLine(type="error", content=error_text, raw=raw)]
 
-    def _parse_prefixed_tool_line(self, raw: str) -> list[AgentOutputLine]:
-        payload = raw.removeprefix("claude tool: ").strip()
+        return None
+
+    def _parse_prefixed_tool_line(self, raw: str, payload: str) -> list[AgentOutputLine]:
+        payload = payload.strip()
         tool_name, has_details, detail_suffix = payload.partition(" (")
         metadata: dict[str, object] = {}
         if has_details and detail_suffix.endswith(")"):
@@ -521,27 +554,22 @@ class ClaudeParser:
             )
         ]
 
-    def _parse_prefixed_message_line(self, raw: str) -> list[AgentOutputLine] | None:
-        for role in ("user", "assistant"):
-            prefix = f"claude {role}: message="
-            if not raw.startswith(prefix):
-                continue
+    def _parse_prefixed_message_line(
+        self, raw: str, json_payload: str
+    ) -> list[AgentOutputLine] | None:
+        try:
+            parsed: object = json.loads(json_payload)
+        except json.JSONDecodeError:
+            return None
 
-            try:
-                parsed: object = json.loads(raw.removeprefix(prefix))
-            except json.JSONDecodeError:
-                return None
+        if not isinstance(parsed, dict):
+            return None
 
-            if not isinstance(parsed, dict):
-                return None
+        content = parsed.get("content")
+        if not isinstance(content, list):
+            return []
 
-            content = parsed.get("content")
-            if not isinstance(content, list):
-                return []
-
-            return list(self._parse_message_content(content, raw))
-
-        return None
+        return list(self._parse_message_content(content, raw))
 
     def _parse_content_block(
         self,
@@ -567,7 +595,11 @@ class ClaudeParser:
             yield from self._parse_tool_result(content_block, raw)
             return
 
-        # Non-text, non-tool block types (e.g., image) are rejected
+        # thinking blocks are handled via delta accumulation; no emission at block_start
+        if block_type == "thinking":
+            return
+
+        # Non-text, non-tool, non-thinking block types (e.g., image) are rejected
         yield AgentOutputLine(
             type="error",
             content=f"unsupported content block type '{block_type}' in agent output",

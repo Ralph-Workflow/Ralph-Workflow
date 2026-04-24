@@ -90,7 +90,7 @@ That runs:
 
 - `ruff check ralph/ tests/`
 - `uv run python -m mypy ralph/`
-- `uv run python -m ralph.verify_timeout --suite-timeout 30 -- pytest tests/ -q -n 8 --cov=ralph --cov-report=term-missing --cov-report=html --cov-fail-under=80`
+- `uv run python -m ralph.verify_timeout --suite-timeout 30 -- pytest tests/ -q -n 8 --cov=ralph --cov-report=term-missing --cov-report=html --cov-fail-under 80`
 
 For narrower local runs, use:
 
@@ -198,6 +198,8 @@ Clients that declare `capabilities.image`, `capabilities.media`, or `capabilitie
 ## Claude/CCS MCP Safety Note
 
 Claude-compatible transports such as `claude` and `ccs` run through a stricter MCP path. Ralph still uses `--mcp-config` plus `--strict-mcp-config`, but it only emits `--tools ""` / `--allowedTools ...` when live MCP tool discovery succeeds with a non-empty allowlist. That avoids a brittle edge case in non-interactive Claude/CCS runs where empty-tool configurations and MCP bootstrapping can produce misleadingly successful no-op executions.
+
+Ralph's Claude parser accepts both bare (`claude: ...`) and model-qualified (`claude/<model>: ...`) transcript prefixes emitted by the Claude CLI. Lifecycle-only markers (`message_delta`, `user`, `system (status=...)`, `thinking` without a payload) are automatically suppressed so they never appear as noise in the activity log. Free-form text and tool lines after the prefix are parsed normally.
 
 ## Parallel Mode
 
@@ -328,8 +330,8 @@ When stderr is a TTY, level tokens are rendered in themed colors using the Okabe
 | `plan` | META | Plan summary or scope |
 | `plan-scope` | META | Plan scope items |
 | `plan-steps` | META | Step progress |
-| `activity` | META | Agent activity metadata (tool, path, workdir) |
-| `activity-line` | META | Last raw activity line from an agent |
+| `activity` | META | Agent activity metadata (tool, path, workdir) — emitted when no free-form activity line is available |
+| `activity-line` | META | Last raw activity line from an agent — emitted instead of `activity` when the agent produced a structured transcript line |
 | `analysis` | META | Phase analysis and decision |
 | `worker` | META | Parallel worker status update |
 | `result` | META | Pipeline completion result |
@@ -377,7 +379,8 @@ When a content block exceeds the soft limit and is condensed, the full text is p
 2026-04-21T12:00:00+00:00 INFO META [run-start] workspace=/workspace
 2026-04-21T12:00:00+00:00 MILESTONE META [phase] ◆ development
 2026-04-21T12:00:01+00:00 INFO META [plan] (no plan loaded yet)
-2026-04-21T12:00:02+00:00 INFO META [activity] agent=claude tool=bash
+2026-04-21T12:00:02+00:00 INFO META [activity-line] claude/sonnet tool: mcp__ralph__read_file (path=ralph-workflow/ralph/x.py)
+2026-04-21T12:00:02+00:00 INFO CONT [tool][dev-1] mcp__ralph__read_file (path=ralph-workflow/ralph/x.py)
 2026-04-21T12:00:03+00:00 INFO CONT [content-start][dev-1] Refactored parser to accept streaming deltas
 2026-04-21T12:00:04+00:00 INFO CONT [content-continue#2][dev-1] next chunk
 2026-04-21T12:00:05+00:00 INFO CONT [content-end][dev-1] (2 fragments, 850 chars) Refactored parser to accept streaming deltas
@@ -484,6 +487,10 @@ immediately after the `[run-end]` block. The panel title is **Pipeline Complete*
 or **Pipeline Failed** and echoes the plan, decision log, metrics,
 verification status, commit, PR URL, and open risks seen during the run.
 Non-terminal phases (e.g. `development`, `review`) do not produce a panel.
+
+The panel includes an **Activity Summary** section that mirrors the `[run-end]` block counters:
+`elapsed`, `content_blocks`, `thinking_blocks`, `tool_calls`, `errors`, and `agent_calls`.
+The `raw_overflow` path is shown when an overflow log was written.
 
 ### Environment variables
 

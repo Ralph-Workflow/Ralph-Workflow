@@ -118,11 +118,16 @@ def _make_badge_text(badge: str, rest: str) -> Text:
     return t
 
 
-def render_completion_summary(
+def render_completion_summary(  # noqa: PLR0913
     snapshot: PipelineSnapshot,
     *,
     workspace_root: Path | None = None,
     dropped_count: int = 0,
+    content_block_count: int = 0,
+    thinking_block_count: int = 0,
+    tool_call_count: int = 0,
+    error_count: int = 0,
+    elapsed_seconds: float | None = None,
 ) -> Text:
     failed = snapshot.phase == "failed"
     lines: list[str] = ["Pipeline Failed" if failed else "Pipeline Complete"]
@@ -140,6 +145,15 @@ def render_completion_summary(
         f"retries={snapshot.total_retries} "
         f"pushes={snapshot.push_count}"
     )
+
+    activity_parts: list[str] = []
+    if elapsed_seconds is not None:
+        activity_parts.append(f"elapsed={round(elapsed_seconds, 1)}s")
+    activity_parts.append(f"content_blocks={content_block_count}")
+    activity_parts.append(f"thinking_blocks={thinking_block_count}")
+    activity_parts.append(f"tool_calls={tool_call_count}")
+    activity_parts.append(f"errors={error_count}")
+    lines.append("Activity: " + " ".join(activity_parts))
 
     if snapshot.decision_log:
         lines.append("Decisions:")
@@ -171,13 +185,17 @@ def render_completion_summary(
     return Text("\n".join(lines))
 
 
-def render_completion_summary_group(  # noqa: PLR0912
+def render_completion_summary_group(  # noqa: PLR0912, PLR0913, PLR0915
     snapshot: PipelineSnapshot,
     *,
     workspace_root: Path | None = None,
     dropped_count: int = 0,
     thinking_block_count: int = 0,
     overflow_path: str | None = None,
+    content_block_count: int = 0,
+    tool_call_count: int = 0,
+    error_count: int = 0,
+    elapsed_seconds: float | None = None,
 ) -> Group:
     """Render the completion summary as a Rich Group with rule-delimited sections.
 
@@ -233,9 +251,13 @@ def render_completion_summary_group(  # noqa: PLR0912
 
     # Activity Summary section
     renderables.append(Rule("Activity Summary", style=style))
+    if elapsed_seconds is not None:
+        renderables.append(Text(f"  elapsed={round(elapsed_seconds, 1)}s"))
     renderables.append(Text(f"  agent_calls={snapshot.total_agent_calls}"))
-    if thinking_block_count > 0:
-        renderables.append(Text(f"  thinking_blocks={thinking_block_count}"))
+    renderables.append(Text(f"  content_blocks={content_block_count}"))
+    renderables.append(Text(f"  thinking_blocks={thinking_block_count}"))
+    renderables.append(Text(f"  tool_calls={tool_call_count}"))
+    renderables.append(Text(f"  errors={error_count}"))
     if overflow_path is not None:
         renderables.append(Text(f"  raw_overflow={overflow_path}"))
 
@@ -278,6 +300,10 @@ def emit_completion_summary(  # noqa: PLR0913
     dropped_count: int = 0,
     thinking_block_count: int = 0,
     overflow_path: str | None = None,
+    content_block_count: int = 0,
+    tool_call_count: int = 0,
+    error_count: int = 0,
+    elapsed_seconds: float | None = None,
 ) -> None:
     console.print(
         render_completion_summary_group(
@@ -286,6 +312,10 @@ def emit_completion_summary(  # noqa: PLR0913
             dropped_count=dropped_count,
             thinking_block_count=thinking_block_count,
             overflow_path=overflow_path,
+            content_block_count=content_block_count,
+            tool_call_count=tool_call_count,
+            error_count=error_count,
+            elapsed_seconds=elapsed_seconds,
         ),
         markup=False,
         highlight=False,

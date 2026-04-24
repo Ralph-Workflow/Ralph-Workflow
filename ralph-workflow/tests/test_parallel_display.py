@@ -173,7 +173,7 @@ def test_oversized_content_written_to_overflow_log(tmp_path: Path) -> None:
     pd = ParallelDisplay(console, {}, workspace_root=tmp_path)
 
     big_content = "A" * 5000  # exceeds hard_limit=4000
-    pd._emit_activity_event("unit-1", ActivityEventKind.TEXT, big_content, None)
+    pd._emit_activity_event("unit-1", ActivityEventKind.TEXT, big_content, None, {})
 
     overflow_log = tmp_path / ".agent" / "raw" / "unit-1.log"
     assert overflow_log.exists(), "overflow log should be created for oversized content"
@@ -189,7 +189,7 @@ def test_soft_limit_content_overflow_ref_appears_in_output(tmp_path: Path) -> No
     # 500 chars: above soft_limit(400), below hard_limit(4000)
     # renderer appends [see .agent/raw/unit-1.log] via condensed_ref
     soft_limit_content = "B" * 500
-    pd._emit_activity_event("unit-1", ActivityEventKind.TEXT, soft_limit_content, None)
+    pd._emit_activity_event("unit-1", ActivityEventKind.TEXT, soft_limit_content, None, {})
 
     rendered = buf.getvalue()
     assert "unit-1.log" in rendered
@@ -201,7 +201,7 @@ def test_condensed_ref_in_renderer_not_in_condenser(tmp_path: Path) -> None:
     pd = ParallelDisplay(console, {}, workspace_root=tmp_path)
 
     soft_limit_content = "C" * 500
-    pd._emit_activity_event("unit-1", ActivityEventKind.TEXT, soft_limit_content, None)
+    pd._emit_activity_event("unit-1", ActivityEventKind.TEXT, soft_limit_content, None, {})
 
     rendered = buf.getvalue()
     # Renderer suffix uses [see ...] brackets
@@ -215,7 +215,7 @@ def test_short_content_not_written_to_overflow(tmp_path: Path) -> None:
     pd = ParallelDisplay(console, {}, workspace_root=tmp_path)
 
     small_content = "hello world"
-    pd._emit_activity_event("unit-1", ActivityEventKind.TEXT, small_content, None)
+    pd._emit_activity_event("unit-1", ActivityEventKind.TEXT, small_content, None, {})
 
     overflow_log = tmp_path / ".agent" / "raw" / "unit-1.log"
     assert not overflow_log.exists(), "short content should not trigger overflow log"
@@ -225,7 +225,7 @@ def test_stop_flushes_streaming_blocks(tmp_path: Path) -> None:
     console, buf = _make_wide_console()
     pd = ParallelDisplay(console, {}, workspace_root=tmp_path)
 
-    pd._emit_activity_event("unit-1", ActivityEventKind.TEXT, "partial output", None)
+    pd._emit_activity_event("unit-1", ActivityEventKind.TEXT, "partial output", None, {})
     pd.stop()
 
     rendered = buf.getvalue()
@@ -236,7 +236,7 @@ def test_emit_phase_transition_flushes_blocks(tmp_path: Path) -> None:
     console, buf = _make_wide_console()
     pd = ParallelDisplay(console, {}, workspace_root=tmp_path)
 
-    pd._emit_activity_event("unit-1", ActivityEventKind.TEXT, "some content", None)
+    pd._emit_activity_event("unit-1", ActivityEventKind.TEXT, "some content", None, {})
     pd.emit_phase_transition("planning", "development")
 
     rendered = buf.getvalue()
@@ -261,7 +261,7 @@ def test_drop_warning_emitted_when_ring_buffer_drops(tmp_path: Path) -> None:
     pd._activity_router._buffers["unit-drop"] = tiny_buf
 
     # Trigger the event emission path which calls _emit_drop_warning
-    pd._emit_activity_event("unit-drop", ActivityEventKind.TEXT, "new content", None)
+    pd._emit_activity_event("unit-drop", ActivityEventKind.TEXT, "new content", None, {})
 
     rendered = buf.getvalue()
     assert "dropped" in rendered
@@ -283,7 +283,7 @@ def test_drop_warning_debounced_within_one_second(tmp_path: Path) -> None:
     # Force a drop warning to be emitted now
     with patch("ralph.display.parallel_display.time") as mock_time:
         mock_time.monotonic.return_value = 100.0
-        pd._emit_activity_event("unit-x", ActivityEventKind.TEXT, "first", None)
+        pd._emit_activity_event("unit-x", ActivityEventKind.TEXT, "first", None, {})
 
     first_rendered = buf.getvalue()
 
@@ -296,7 +296,7 @@ def test_drop_warning_debounced_within_one_second(tmp_path: Path) -> None:
 
     with patch("ralph.display.parallel_display.time") as mock_time:
         mock_time.monotonic.return_value = 100.5  # still within debounce window
-        pd._emit_activity_event("unit-x", ActivityEventKind.TEXT, "second", None)
+        pd._emit_activity_event("unit-x", ActivityEventKind.TEXT, "second", None, {})
 
     second_rendered = buf.getvalue()
     # First emission had a drop warning; second should NOT (still in debounce window)

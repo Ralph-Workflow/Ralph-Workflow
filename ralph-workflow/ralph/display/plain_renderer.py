@@ -351,6 +351,18 @@ class PlainLogRenderer:
             self._emitted_empty_activity = True
             return [self._build_line(timestamp, "INFO", "META", "[activity] (no active agent yet)")]
 
+        # Prefer the richer free-form last_activity_line over the structured fields.
+        # Only one line is emitted per snapshot diff to avoid duplication noise.
+        if snapshot.last_activity_line:
+            return [
+                self._build_line(
+                    timestamp,
+                    "INFO",
+                    "META",
+                    f"[activity-line] {_sanitize(snapshot.last_activity_line)}",
+                )
+            ]
+
         activity_parts: list[str] = []
         if snapshot.active_agent:
             activity_parts.append(f"agent={_sanitize(snapshot.active_agent)}")
@@ -363,23 +375,13 @@ class PlainLogRenderer:
         if snapshot.active_command:
             activity_parts.append(f"command={_sanitize(snapshot.active_command)}")
 
-        texts: list[Text] = []
         if activity_parts:
-            texts.append(
+            return [
                 self._build_line(
                     timestamp, "INFO", "META", f"[activity] {' '.join(activity_parts)}"
                 )
-            )
-        if snapshot.last_activity_line:
-            texts.append(
-                self._build_line(
-                    timestamp,
-                    "INFO",
-                    "META",
-                    f"[activity-line] {_sanitize(snapshot.last_activity_line)}",
-                )
-            )
-        return texts
+            ]
+        return []
 
     def _analysis_lines(self, snapshot: PipelineSnapshot, timestamp: str) -> list[Text]:
         analysis_signature = (
@@ -733,6 +735,28 @@ class PlainLogRenderer:
                 highlight=False,
                 no_wrap=True,
             )
+
+    @property
+    def content_blocks_count(self) -> int:
+        return self._run_counters.content_blocks
+
+    @property
+    def thinking_blocks_count(self) -> int:
+        return self._run_counters.thinking_blocks
+
+    @property
+    def tool_calls_count(self) -> int:
+        return self._run_counters.tool_calls
+
+    @property
+    def errors_count(self) -> int:
+        return self._run_counters.errors
+
+    @property
+    def run_elapsed_seconds(self) -> float | None:
+        if self._run_start_time is None:
+            return None
+        return max(0.0, time.monotonic() - self._run_start_time)
 
     def _close_block(self, unit_id: str, timestamp: str) -> None:
         """Close an active streaming block, emitting the end-line and optional AI summary."""

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import time
 from io import StringIO
 
 from rich.console import Console
@@ -189,3 +190,53 @@ def test_pre_phase_activity_does_not_leak_into_first_phase_close() -> None:
         f"run-end must aggregate pre-phase activity, got: {run_end_out}"
     )
     assert "tool_calls=1" in run_end_out
+
+
+def test_plain_renderer_exposes_run_counter_properties() -> None:
+    """Public properties expose run-level counter values for the completion panel."""
+    renderer, _buf = _make_renderer()
+    renderer.begin_phase("development")
+
+    # Two text fragments from the same unit form ONE streaming block.
+    # Switching to a different kind (thinking) closes the text block and opens a new one.
+    renderer.emit_activity_line("u", "text", "content block 1")
+    renderer.emit_activity_line("u", "text", "content block 2")  # same block, no new count
+    renderer.emit_activity_line("u", "thinking", "thinking 1")  # closes text, opens thinking
+    renderer.emit_activity_line("u", "tool_use", "bash ls")
+    renderer.emit_activity_line("u", "tool_use", "bash pwd")
+    renderer.emit_activity_line("u", "error", "some error")
+
+    # Check public read-only properties
+    assert renderer.content_blocks_count == 1, (
+        f"Expected content_blocks_count=1, got {renderer.content_blocks_count}"
+    )
+    assert renderer.thinking_blocks_count == 1, (
+        f"Expected thinking_blocks_count=1, got {renderer.thinking_blocks_count}"
+    )
+    assert renderer.tool_calls_count == 2, (  # noqa: PLR2004
+        f"Expected tool_calls_count=2, got {renderer.tool_calls_count}"
+    )
+    assert renderer.errors_count == 1, (
+        f"Expected errors_count=1, got {renderer.errors_count}"
+    )
+
+    elapsed = renderer.run_elapsed_seconds
+    assert elapsed is not None, "run_elapsed_seconds should not be None after begin_phase"
+    assert elapsed >= 0.0, f"run_elapsed_seconds should be non-negative, got {elapsed}"
+
+
+def test_run_elapsed_seconds_is_none_before_run_start() -> None:
+    """run_elapsed_seconds returns None when no run has started."""
+    renderer, _buf = _make_renderer()
+    assert renderer.run_elapsed_seconds is None
+
+
+def test_run_elapsed_seconds_reflects_elapsed_time() -> None:
+    """run_elapsed_seconds returns elapsed time since run start."""
+    renderer, _buf = _make_renderer()
+    renderer.begin_phase("development")
+    # Small delay to ensure elapsed time > 0
+    time.sleep(0.01)
+    elapsed = renderer.run_elapsed_seconds
+    assert elapsed is not None
+    assert elapsed >= 0.01, f"Expected elapsed >= 0.01s, got {elapsed}"  # noqa: PLR2004
