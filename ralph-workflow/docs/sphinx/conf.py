@@ -8,10 +8,13 @@ from pathlib import Path
 # Add the ralph-workflow package to sys.path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
+from ralph import __version__
+
 project = "Ralph Workflow"
 copyright = "2024, Ralph Workflow Contributors"  # noqa: A001
 author = "Ralph Workflow Contributors"
-release = "0.1.0"
+version = __version__
+release = __version__
 
 extensions = [
     "sphinx.ext.autodoc",

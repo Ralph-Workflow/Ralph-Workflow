@@ -12,7 +12,8 @@ Verification passes only when all checks complete successfully with **no ERROR/W
 `make verify` runs:
 1. `make lint` (`ruff check`)
 2. `make typecheck` (`mypy --strict`)
-3. `make test-cov` (`pytest` with coverage gate)
+3. `make docs` (`sphinx-build -W --keep-going` into `docs/sphinx/_build/html`)
+4. `make test-cov` (`pytest` with coverage gate)
 
 If any step fails, fix the issue immediately and rerun verification.
 
@@ -40,11 +41,12 @@ make test
 make test-unit
 make test-integration
 make test-cov
+make docs
 python -m ralph --help
 python -m ralph --version
 ```
 
-`make test` runs the full suite without coverage. `make test-unit` excludes `tests/integration/`. `make test-integration` runs only `tests/integration/`. `make test-cov` is the single authoritative covered suite used by `make verify`.
+`make test` runs the full suite without coverage. `make test-unit` excludes `tests/integration/`. `make test-integration` runs only `tests/integration/`. `make test-cov` is the single authoritative covered suite used by `make verify`. `make docs` builds the Sphinx HTML docs into `docs/sphinx/_build/html` with warnings treated as errors.
 
 ---
 

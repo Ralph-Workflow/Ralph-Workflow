@@ -28,14 +28,24 @@ def _target_body(name: str) -> list[str]:
     return body
 
 
-def test_verify_runs_single_covered_suite_instead_of_repeating_pytest() -> None:
+def test_verify_runs_docs_and_single_covered_suite() -> None:
     verify_body = _target_body("verify")
 
     assert "@$(MAKE) lint" in verify_body
     assert "@$(MAKE) typecheck" in verify_body
+    assert "@$(MAKE) docs" in verify_body
     assert "@$(MAKE) test-cov" in verify_body
     assert "@$(MAKE) test" not in verify_body
     assert "@$(MAKE) coverage" not in verify_body
+
+
+def test_docs_target_builds_html_into_single_canonical_output_tree() -> None:
+    docs_body = _target_body("docs")
+
+    assert len(docs_body) == 1
+    assert "uv run --extra docs sphinx-build" in docs_body[0]
+    assert " docs/sphinx docs/sphinx/_build/html " in f" {docs_body[0]} "
+    assert "docs/sphinx/build/html" not in docs_body[0]
 
 
 def test_test_cov_runs_pytest_once_with_coverage() -> None:

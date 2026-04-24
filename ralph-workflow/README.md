@@ -90,10 +90,12 @@ That runs:
 
 - `ruff check ralph/ tests/`
 - `uv run python -m mypy ralph/`
+- `uv run --extra docs sphinx-build -b html docs/sphinx docs/sphinx/_build/html -W --keep-going`
 - `uv run python -m ralph.verify_timeout --suite-timeout 30 -- pytest tests/ -q -n 8 --cov=ralph --cov-report=term-missing --cov-report=html --cov-fail-under 80`
 
 For narrower local runs, use:
 
+- `make docs` — build Sphinx HTML into `docs/sphinx/_build/html` with warnings treated as errors
 - `make test` — full pytest suite without coverage
 - `make test-unit` — everything under `tests/` except `tests/integration/`
 - `make test-integration` — `tests/integration/` only
