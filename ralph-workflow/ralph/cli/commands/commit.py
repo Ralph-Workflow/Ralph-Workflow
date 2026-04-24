@@ -14,7 +14,6 @@ from typing import TYPE_CHECKING, cast
 
 from git import Repo
 from rich.console import Console
-from rich.panel import Panel
 from rich.text import Text
 
 from ralph.agents.invoke import (
@@ -31,7 +30,6 @@ from ralph.display.artifact_renderer import render_commit_message
 from ralph.git.operations import (
     create_commit,
     find_repo_root,
-    get_staged_files,
     has_staged_changes,
     stage_all,
 )
@@ -80,9 +78,19 @@ class CommitAgentAttempt:
 
 @dataclass(frozen=True)
 class CommitAttemptContext:
+    """Runtime context threaded into each commit agent invocation attempt.
+
+    Attributes:
+        repo_root: Repository root path.
+        verbose: Whether verbose output is enabled.
+        extra_env: Extra environment variables for the agent subprocess.
+        agent_idle_timeout_seconds: Maximum idle time before killing a stalled agent.
+    """
+
     repo_root: Path
     verbose: bool
     extra_env: dict[str, str]
+    agent_idle_timeout_seconds: float = 300.0
 
 
 @dataclass(frozen=True)
@@ -189,6 +197,7 @@ def _handle_agent_commit_generation(
         registry=registry,
         agents=agents,
         verbose=config.general.verbosity >= _VERBOSE_THRESHOLD,
+        agent_idle_timeout_seconds=config.general.agent_idle_timeout_seconds,
     )
 
     if result.skipped:
@@ -227,109 +236,6 @@ def _handle_agent_commit_generation(
             console.print(
                 _styled_commit_status("Commit failed", str(e), "red", leading_newline=True)
             )
-
-
-def _handle_show_or_generate(
-    repo_root: Path,
-    generate: bool,
-    apply: bool,
-    git_user_name: str | None,
-    git_user_email: str | None,
-) -> None:
-    """Handle commit message generation and display.
-
-    Args:
-        repo_root: Repository root path.
-        generate: Whether to generate commit message.
-        apply: Whether to apply (commit) the changes.
-        git_user_name: Git user name for commit.
-        git_user_email: Git user email for commit.
-    """
-    staged_files = get_staged_files(repo_root)
-
-    if not staged_files:
-        console.print("[yellow]No staged files[/yellow]")
-        return
-
-    console.print(_styled_commit_status("Staged files", str(len(staged_files)), "cyan"))
-    for f in staged_files[:_MAX_DISPLAY_FILES]:
-        staged_file_text = Text()
-        staged_file_text.append("  - ")
-        staged_file_text.append(f)
-        console.print(staged_file_text)
-    if len(staged_files) > _MAX_DISPLAY_FILES:
-        console.print(f"  ... and {len(staged_files) - _MAX_DISPLAY_FILES} more")
-
-    if generate:
-        # Generate commit message
-        message = _generate_commit_message(staged_files, repo_root)
-        console.print("\n[green]Generated commit message:[/green]")
-        console.print(Panel(message, border_style="green"))
-
-        if apply:
-            try:
-                sha = create_commit(
-                    repo_root,
-                    message,
-                    author_name=git_user_name,
-                    author_email=git_user_email,
-                )
-                delete_commit_message_artifacts(repo_root)
-                console.print(
-                    _styled_commit_status("Created commit", sha[:8], "green", leading_newline=True)
-                )
-            except Exception as e:
-                console.print(
-                    _styled_commit_status("Commit failed", str(e), "red", leading_newline=True)
-                )
-
-
-def _generate_commit_message(files: list[str], repo_root: Path) -> str:
-    """Generate a commit message from staged files.
-
-    Args:
-        files: List of staged file paths.
-        repo_root: Repository root path.
-
-    Returns:
-        Generated commit message.
-    """
-    # Simple heuristic commit message generation
-
-    if not files:
-        return "Update files"
-
-    # Group files by type
-    added: list[str] = []
-    modified: list[str] = []
-    deleted: list[str] = []
-
-    for f in files:
-        if f.startswith("src/"):
-            added.append(f)
-        elif f.startswith("tests/"):
-            modified.append(f)
-        else:
-            added.append(f)
-
-    parts: list[str] = []
-
-    if added:
-        count = len(added)
-        parts.append(f"Update {count} file{'s' if count > 1 else ''}")
-
-    if modified:
-        count = len(modified)
-        parts.append(f"Modify {count} file{'s' if count > 1 else ''}")
-
-    if deleted:
-        count = len(deleted)
-        parts.append(f"Remove {count} file{'s' if count > 1 else ''}")
-
-    if not parts:
-        parts = ["Update files"]
-
-    return ": ".join(parts)
 
 
 def _resolve_commit_message_agents(config: UnifiedConfig, registry: AgentRegistry) -> list[str]:
@@ -430,13 +336,14 @@ def _submit_artifact_tool_names_for_transport(
     return (SUBMIT_ARTIFACT_TOOL,)
 
 
-def _generate_commit_message_with_chain(
+def _generate_commit_message_with_chain(  # noqa: PLR0913
     *,
     diff: str,
     repo_root: Path,
     registry: AgentRegistry,
     agents: list[str],
     verbose: bool,
+    agent_idle_timeout_seconds: float = 300.0,
 ) -> CommitAgentResult:
     template_dirs = (repo_root / ".agent" / "prompts" / "commit", *default_template_dirs(repo_root))
     template_registry = TemplateRegistry(template_dirs=template_dirs)
@@ -462,6 +369,7 @@ def _generate_commit_message_with_chain(
                 prompt_file=prompt_file,
                 verbose=verbose,
                 extra_env=extra_env,
+                agent_idle_timeout_seconds=agent_idle_timeout_seconds,
             )
             failure_details.extend(result.failure_details)
 
@@ -475,19 +383,21 @@ def _generate_commit_message_with_chain(
     return CommitAgentResult(failure_details=failure_details)
 
 
-def _generate_commit_message_with_agent(
+def _generate_commit_message_with_agent(  # noqa: PLR0913
     agent: AgentConfig,
     *,
     repo_root: Path,
     prompt_file: str,
     verbose: bool,
     extra_env: dict[str, str],
+    agent_idle_timeout_seconds: float = 300.0,
 ) -> CommitAgentResult:
     failure_details: list[str] = []
     attempt_context = CommitAttemptContext(
         repo_root=repo_root,
         verbose=verbose,
         extra_env=extra_env,
+        agent_idle_timeout_seconds=agent_idle_timeout_seconds,
     )
     initial_attempt = _invoke_commit_agent_attempt(
         agent,
@@ -560,6 +470,7 @@ def _invoke_commit_agent_attempt(
                 extra_env=attempt_context.extra_env,
                 pure=_is_opencode_agent(agent),
                 session_id=session_id,
+                idle_timeout_seconds=attempt_context.agent_idle_timeout_seconds,
                 system_prompt_file=materialize_system_prompt(
                     workspace_root=attempt_context.repo_root,
                     name="commit",

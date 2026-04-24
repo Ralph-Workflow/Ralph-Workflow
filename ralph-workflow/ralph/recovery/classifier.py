@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import errno
 import socket
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import StrEnum
 
 from loguru import logger
@@ -36,6 +36,12 @@ _ENV_ERRNOS: frozenset[int] = frozenset(
     }
 )
 
+# Substrings that indicate a stale/invalid agent session ID was used for resume.
+# These originate from Claude Code when --resume is passed with an unknown session.
+_SESSION_NOT_FOUND_SUBSTRINGS: tuple[str, ...] = (
+    "No conversation found with session ID:",
+)
+
 
 class FailureCategory(StrEnum):
     """Categories of pipeline failures for attribution and routing."""
@@ -48,7 +54,19 @@ class FailureCategory(StrEnum):
 
 @dataclass(frozen=True)
 class ClassifiedFailure:
-    """A failure with its category, attribution, and budget-counting decision."""
+    """A failure with its category, attribution, and budget-counting decision.
+
+    Attributes:
+        category: Failure category for routing decisions.
+        reason: Human-readable failure description.
+        attributed_agent: Agent name when category is AGENT, else None.
+        attributed_phase: Pipeline phase where the failure occurred.
+        counts_against_budget: Whether this failure debits the agent retry budget.
+        original_exception: Original exception object, if available.
+        raw_message: Raw error message string.
+        reset_session: When True the agent session ID is stale and must be cleared
+            before the next retry attempt.
+    """
 
     category: FailureCategory
     reason: str
@@ -57,6 +75,7 @@ class ClassifiedFailure:
     counts_against_budget: bool
     original_exception: BaseException | None
     raw_message: str
+    reset_session: bool = field(default=False)
 
 
 def _is_environmental_exc(exc: BaseException) -> bool:
@@ -122,6 +141,11 @@ def _is_missing_artifact_message(raw_message: str) -> bool:
     return any(s in raw_message for s in _MISSING_ARTIFACT_SUBSTRINGS)
 
 
+def _is_stale_session_message(raw_message: str) -> bool:
+    """Return True if the message indicates a stale agent session ID was used."""
+    return any(s in raw_message for s in _SESSION_NOT_FOUND_SUBSTRINGS)
+
+
 class FailureClassifier:
     """Classify failures into categories for intelligent recovery routing.
 
@@ -156,7 +180,7 @@ class FailureClassifier:
             original = exc
 
         exc_obj = exc if isinstance(exc, BaseException) else None
-        category, counts = self._categorize(exc_obj, raw_message)
+        category, counts, reset_session = self._categorize(exc_obj, raw_message)
 
         if category == FailureCategory.AMBIGUOUS:
             logger.warning(
@@ -175,48 +199,59 @@ class FailureClassifier:
             counts_against_budget=counts,
             original_exception=original,
             raw_message=raw_message,
+            reset_session=reset_session,
         )
 
     def _categorize_exc(
         self,
         exc: BaseException,
         raw_message: str,
-    ) -> tuple[FailureCategory, bool] | None:
-        """Try to categorize based on exception type. Returns None if uncategorized."""
+    ) -> tuple[FailureCategory, bool, bool] | None:
+        """Try to categorize based on exception type.
+
+        Args:
+            exc: Exception to classify.
+            raw_message: Formatted message string.
+
+        Returns:
+            Tuple of (category, counts_against_budget, reset_session) or None if uncategorized.
+        """
         if _is_user_config_exc(exc):
-            return FailureCategory.USER_CONFIG, False
+            return FailureCategory.USER_CONFIG, False, False
         if _is_environmental_exc(exc):
-            return FailureCategory.ENVIRONMENTAL, False
+            return FailureCategory.ENVIRONMENTAL, False, False
         type_name = type(exc).__name__
         if type_name == "AgentInactivityTimeoutError":
-            return FailureCategory.AGENT, True
+            return FailureCategory.AGENT, True, False
         if type_name == "AgentInvocationError":
+            if _is_stale_session_message(raw_message):
+                return FailureCategory.AGENT, True, True
             msg_lower = raw_message.lower()
             if not _message_looks_environmental(raw_message) and (
                 "empty" in msg_lower
                 or "no output" in msg_lower
                 or "timed out" in msg_lower
             ):
-                return FailureCategory.AGENT, True
+                return FailureCategory.AGENT, True, False
         return None
 
     def _categorize(
         self,
         exc: BaseException | None,
         raw_message: str,
-    ) -> tuple[FailureCategory, bool]:
-        """Return (category, counts_against_budget) for a failure."""
+    ) -> tuple[FailureCategory, bool, bool]:
+        """Return (category, counts_against_budget, reset_session) for a failure."""
         if exc is not None:
             result = self._categorize_exc(exc, raw_message)
             if result is not None:
                 return result
         if _message_looks_environmental(raw_message):
-            return FailureCategory.ENVIRONMENTAL, False
+            return FailureCategory.ENVIRONMENTAL, False, False
         if _is_user_config_message(raw_message):
-            return FailureCategory.USER_CONFIG, False
+            return FailureCategory.USER_CONFIG, False, False
         if _is_missing_artifact_message(raw_message):
-            return FailureCategory.AMBIGUOUS, False
-        return FailureCategory.AMBIGUOUS, False
+            return FailureCategory.AMBIGUOUS, False, False
+        return FailureCategory.AMBIGUOUS, False, False
 
     def _build_reason(self, category: FailureCategory, raw_message: str) -> str:
         prefix_map = {

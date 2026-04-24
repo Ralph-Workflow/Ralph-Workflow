@@ -1,0 +1,1023 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ralph.agents.invoke &mdash; Ralph Workflow 0.1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/css/theme.css?v=9edc463e" />
+
+  
+      <script src="../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../_static/documentation_options.js?v=01f34227"></script>
+      <script src="../../../_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="../../../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            Ralph Workflow
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../modules.html">API Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../versioning.html">Release &amp; Versioning</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">Ralph Workflow</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">ralph.agents.invoke</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for ralph.agents.invoke</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;Subprocess-based agent invocation with streaming NDJSON parsing.</span>
+
+<span class="sd">This module handles invoking AI agents as subprocesses, parsing their</span>
+<span class="sd">streaming NDJSON output, and managing the lifecycle of the process.</span>
+
+<span class="sd">Key features:</span>
+<span class="sd">- Line-by-line streaming from subprocess stdout to parser</span>
+<span class="sd">- tqdm progress bar (or rich when TTY)</span>
+<span class="sd">- loguru structured logging for every NDJSON line</span>
+<span class="sd">- watchdog workspace monitoring for file-change events during execution</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">json</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">shlex</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">shutil</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">subprocess</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">sys</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">threading</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">time</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">dataclasses</span><span class="w"> </span><span class="kn">import</span> <span class="n">dataclass</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">TYPE_CHECKING</span><span class="p">,</span> <span class="n">Protocol</span><span class="p">,</span> <span class="n">cast</span><span class="p">,</span> <span class="n">runtime_checkable</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">loguru</span><span class="w"> </span><span class="kn">import</span> <span class="n">logger</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">tqdm</span><span class="w"> </span><span class="kn">import</span> <span class="n">tqdm</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">ralph.config.enums</span><span class="w"> </span><span class="kn">import</span> <span class="n">AgentTransport</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">ralph.mcp.protocol.startup</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">PreflightError</span><span class="p">,</span>
+    <span class="n">ensure_no_preflight_error</span><span class="p">,</span>
+    <span class="n">extract_preflight_tool_names</span><span class="p">,</span>
+    <span class="n">initialize_request</span><span class="p">,</span>
+    <span class="n">initialized_notification</span><span class="p">,</span>
+    <span class="n">parse_http_endpoint</span><span class="p">,</span>
+    <span class="n">post_http_jsonrpc_with_session</span><span class="p">,</span>
+    <span class="n">tools_list_request</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">ralph.mcp.tools.names</span><span class="w"> </span><span class="kn">import</span> <span class="n">claude_tool_name</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">ralph.mcp.transport.claude</span><span class="w"> </span><span class="kn">import</span> <span class="n">claude_mcp_config</span><span class="p">,</span> <span class="n">load_existing_claude_upstream_servers</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">ralph.mcp.transport.codex</span><span class="w"> </span><span class="kn">import</span> <span class="n">prepare_codex_home_with_upstreams</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">ralph.mcp.transport.common</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">mcp_toml_as_upstreams</span><span class="p">,</span>
+    <span class="n">merge_mcp_toml_into_upstreams</span><span class="p">,</span>
+    <span class="n">set_upstream_mcp_config</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">ralph.mcp.transport.opencode</span><span class="w"> </span><span class="kn">import</span> <span class="n">build_opencode_provider_config</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">ralph.process.manager</span><span class="w"> </span><span class="kn">import</span> <span class="n">ManagedProcess</span><span class="p">,</span> <span class="n">get_process_manager</span>
+
+<span class="n">_MODELED_FLAG_PARTS</span> <span class="o">=</span> <span class="mi">2</span>
+<span class="n">_IDLE_POLL_INTERVAL_SECONDS</span> <span class="o">=</span> <span class="mf">0.05</span>
+
+
+<div class="viewcode-block" id="InvokeOptions">
+<a class="viewcode-back" href="../../../modules.html#ralph.agents.invoke.InvokeOptions">[docs]</a>
+<span class="nd">@dataclass</span><span class="p">(</span><span class="n">frozen</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">InvokeOptions</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Options for agent invocation.</span>
+
+<span class="sd">    Attributes:</span>
+<span class="sd">        model_flag: Optional model override flag string.</span>
+<span class="sd">        session_id: Optional session identifier for resume-capable agents.</span>
+<span class="sd">        verbose: Whether to pass verbose flag to agent.</span>
+<span class="sd">        show_progress: Whether to show tqdm progress bar.</span>
+<span class="sd">        workspace_path: Optional path to workspace for file-change monitoring.</span>
+<span class="sd">        extra_env: Optional environment overrides for the subprocess.</span>
+<span class="sd">        idle_timeout_seconds: Optional maximum idle time without agent output.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">model_flag</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">session_id</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">verbose</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span>
+    <span class="n">show_progress</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span>
+    <span class="n">workspace_path</span><span class="p">:</span> <span class="n">Path</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">extra_env</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">idle_timeout_seconds</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">pure</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span>
+    <span class="n">system_prompt_file</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span></div>
+
+
+
+<span class="nd">@dataclass</span><span class="p">(</span><span class="n">frozen</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">_BuildCommandOptions</span><span class="p">:</span>
+    <span class="n">model_flag</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">session_id</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">verbose</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span>
+    <span class="n">pure</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span>
+    <span class="n">mcp_endpoint</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">allowed_mcp_tool_names</span><span class="p">:</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]</span> <span class="o">=</span> <span class="p">()</span>
+    <span class="n">system_prompt_file</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">workspace_path</span><span class="p">:</span> <span class="n">Path</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+
+
+<span class="k">if</span> <span class="n">TYPE_CHECKING</span><span class="p">:</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">collections.abc</span><span class="w"> </span><span class="kn">import</span> <span class="n">Iterator</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">IO</span>
+
+    <span class="kn">from</span><span class="w"> </span><span class="nn">ralph.config.models</span><span class="w"> </span><span class="kn">import</span> <span class="n">AgentConfig</span>
+
+<span class="c1"># Runtime imports with graceful fallback when watchdog is not available</span>
+<span class="k">try</span><span class="p">:</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">watchdog.events</span><span class="w"> </span><span class="kn">import</span> <span class="n">FileSystemEventHandler</span> <span class="k">as</span> <span class="n">_WatchdogFileSystemEventHandlerClass</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">watchdog.observers</span><span class="w"> </span><span class="kn">import</span> <span class="n">Observer</span> <span class="k">as</span> <span class="n">_WatchdogObserverClass</span>
+
+    <span class="n">_WATCHDOG_EVENTS_AVAILABLE</span> <span class="o">=</span> <span class="kc">True</span>
+<span class="k">except</span> <span class="ne">ImportError</span><span class="p">:</span>
+    <span class="n">_WatchdogObserverClass</span> <span class="o">=</span> <span class="kc">None</span>  <span class="c1"># type: ignore[assignment]  # watchdog is optional; None when not installed</span>
+    <span class="n">_WatchdogFileSystemEventHandlerClass</span> <span class="o">=</span> <span class="kc">None</span>  <span class="c1"># type: ignore[assignment,misc]  # watchdog is optional; None when not installed</span>
+    <span class="n">_WATCHDOG_EVENTS_AVAILABLE</span> <span class="o">=</span> <span class="kc">False</span>
+
+
+<span class="k">class</span><span class="w"> </span><span class="nc">_HasStop</span><span class="p">(</span><span class="n">Protocol</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Protocol for watchdog Observer-like objects that have a stop method.&quot;&quot;&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">stop</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">join</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">timeout</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>
+
+
+<span class="nd">@runtime_checkable</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">_HasSrcPath</span><span class="p">(</span><span class="n">Protocol</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Protocol for watchdog events that expose a source path.&quot;&quot;&quot;</span>
+
+    <span class="n">src_path</span><span class="p">:</span> <span class="nb">str</span>
+
+
+<span class="k">class</span><span class="w"> </span><span class="nc">_ObserverProtocol</span><span class="p">(</span><span class="n">_HasStop</span><span class="p">,</span> <span class="n">Protocol</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Protocol for watchdog Observer-like objects used by this module.&quot;&quot;&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">schedule</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">_event_handler</span><span class="p">:</span> <span class="nb">object</span><span class="p">,</span> <span class="n">path</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">:</span> <span class="nb">object</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">start</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>
+
+
+<span class="k">class</span><span class="w"> </span><span class="nc">_IdleStreamTimeoutError</span><span class="p">(</span><span class="ne">RuntimeError</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Raised when an agent process stops producing output for too long.&quot;&quot;&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">timeout_seconds</span><span class="p">:</span> <span class="nb">float</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">timeout_seconds</span> <span class="o">=</span> <span class="n">timeout_seconds</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Agent produced no output for </span><span class="si">{</span><span class="n">timeout_seconds</span><span class="si">:</span><span class="s2">.0f</span><span class="si">}</span><span class="s2">s&quot;</span><span class="p">)</span>
+
+
+<div class="viewcode-block" id="AgentInvocationError">
+<a class="viewcode-back" href="../../../modules.html#ralph.agents.invoke.AgentInvocationError">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">AgentInvocationError</span><span class="p">(</span><span class="ne">Exception</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Raised when agent invocation fails.</span>
+
+<span class="sd">    Attributes:</span>
+<span class="sd">        agent_name: Name of the agent that failed.</span>
+<span class="sd">        returncode: Process exit code.</span>
+<span class="sd">        stderr: Standard error output.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">agent_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+        <span class="n">returncode</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+        <span class="n">stderr</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span><span class="p">,</span>
+        <span class="n">parsed_output</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Initialize invocation error.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            agent_name: Name of the agent.</span>
+<span class="sd">            returncode: Process exit code.</span>
+<span class="sd">            stderr: Standard error output.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">agent_name</span> <span class="o">=</span> <span class="n">agent_name</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">returncode</span> <span class="o">=</span> <span class="n">returncode</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">stderr</span> <span class="o">=</span> <span class="n">stderr</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">parsed_output</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">parsed_output</span><span class="p">)</span> <span class="k">if</span> <span class="n">parsed_output</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="p">[]</span>
+        <span class="n">detail</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_detail_message</span><span class="p">()</span>
+        <span class="n">suffix</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;: </span><span class="si">{</span><span class="n">detail</span><span class="si">}</span><span class="s2">&quot;</span> <span class="k">if</span> <span class="n">detail</span> <span class="k">else</span> <span class="s2">&quot;&quot;</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Agent &#39;</span><span class="si">{</span><span class="n">agent_name</span><span class="si">}</span><span class="s2">&#39; failed with code </span><span class="si">{</span><span class="n">returncode</span><span class="si">}{</span><span class="n">suffix</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_detail_message</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+        <span class="n">stderr</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">stderr</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">stderr</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">stderr</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">parsed_output</span><span class="p">:</span>
+            <span class="k">return</span> <span class="s2">&quot; | &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">parsed_output</span><span class="p">)</span>
+        <span class="k">return</span> <span class="s2">&quot;&quot;</span></div>
+
+
+
+<div class="viewcode-block" id="AgentInactivityTimeoutError">
+<a class="viewcode-back" href="../../../modules.html#ralph.agents.invoke.AgentInactivityTimeoutError">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">AgentInactivityTimeoutError</span><span class="p">(</span><span class="n">AgentInvocationError</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Raised when an agent stalls without producing output.&quot;&quot;&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">agent_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+        <span class="n">timeout_seconds</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
+        <span class="n">parsed_output</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">timeout_seconds</span> <span class="o">=</span> <span class="n">timeout_seconds</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span>
+            <span class="n">agent_name</span><span class="p">,</span>
+            <span class="o">-</span><span class="mi">1</span><span class="p">,</span>
+            <span class="sa">f</span><span class="s2">&quot;Agent produced no output for </span><span class="si">{</span><span class="n">timeout_seconds</span><span class="si">:</span><span class="s2">.0f</span><span class="si">}</span><span class="s2">s&quot;</span><span class="p">,</span>
+            <span class="n">parsed_output</span><span class="p">,</span>
+        <span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="UnsupportedMcpTransportError">
+<a class="viewcode-back" href="../../../modules.html#ralph.agents.invoke.UnsupportedMcpTransportError">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">UnsupportedMcpTransportError</span><span class="p">(</span><span class="ne">RuntimeError</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Raised when MCP-backed execution is requested for an unsupported transport.&quot;&quot;&quot;</span></div>
+
+
+
+<div class="viewcode-block" id="extract_session_id">
+<a class="viewcode-back" href="../../../modules.html#ralph.agents.invoke.extract_session_id">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">extract_session_id</span><span class="p">(</span><span class="n">raw_output</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Extract a nested session identifier from raw NDJSON output lines.&quot;&quot;&quot;</span>
+    <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="n">raw_output</span><span class="p">:</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">parsed</span> <span class="o">=</span> <span class="n">cast</span><span class="p">(</span><span class="s2">&quot;object&quot;</span><span class="p">,</span> <span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">line</span><span class="p">))</span>
+        <span class="k">except</span> <span class="n">json</span><span class="o">.</span><span class="n">JSONDecodeError</span><span class="p">:</span>
+            <span class="k">continue</span>
+        <span class="n">session_id</span> <span class="o">=</span> <span class="n">_find_session_id</span><span class="p">(</span><span class="n">parsed</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">session_id</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">session_id</span>
+    <span class="k">return</span> <span class="kc">None</span></div>
+
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_find_session_id</span><span class="p">(</span><span class="n">value</span><span class="p">:</span> <span class="nb">object</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
+        <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">&quot;session_id&quot;</span><span class="p">,</span> <span class="s2">&quot;sessionId&quot;</span><span class="p">):</span>
+            <span class="n">session_id</span> <span class="o">=</span> <span class="n">value</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">key</span><span class="p">)</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">session_id</span><span class="p">,</span> <span class="nb">str</span><span class="p">)</span> <span class="ow">and</span> <span class="n">session_id</span><span class="p">:</span>
+                <span class="k">return</span> <span class="n">session_id</span>
+        <span class="k">for</span> <span class="n">nested</span> <span class="ow">in</span> <span class="n">value</span><span class="o">.</span><span class="n">values</span><span class="p">():</span>
+            <span class="n">session_id</span> <span class="o">=</span> <span class="n">_find_session_id</span><span class="p">(</span><span class="n">nested</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">session_id</span><span class="p">:</span>
+                <span class="k">return</span> <span class="n">session_id</span>
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">value</span><span class="p">,</span> <span class="nb">list</span><span class="p">):</span>
+        <span class="k">for</span> <span class="n">item</span> <span class="ow">in</span> <span class="n">value</span><span class="p">:</span>
+            <span class="n">session_id</span> <span class="o">=</span> <span class="n">_find_session_id</span><span class="p">(</span><span class="n">item</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">session_id</span><span class="p">:</span>
+                <span class="k">return</span> <span class="n">session_id</span>
+    <span class="k">return</span> <span class="kc">None</span>
+
+
+<div class="viewcode-block" id="WorkspaceMonitor">
+<a class="viewcode-back" href="../../../modules.html#ralph.agents.invoke.WorkspaceMonitor">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">WorkspaceMonitor</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Monitors workspace directory for file changes during agent execution.</span>
+
+<span class="sd">    This allows the pipeline to detect when an agent has completed significant</span>
+<span class="sd">    work by watching for file modifications in the workspace.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">workspace_path</span><span class="p">:</span> <span class="n">Path</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Initialize workspace monitor.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            workspace_path: Path to the workspace directory to monitor.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_workspace</span> <span class="o">=</span> <span class="n">workspace_path</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_observer</span><span class="p">:</span> <span class="n">_HasStop</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_event_count</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_seen_files</span><span class="p">:</span> <span class="nb">set</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
+
+<div class="viewcode-block" id="WorkspaceMonitor.start">
+<a class="viewcode-back" href="../../../modules.html#ralph.agents.invoke.WorkspaceMonitor.start">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">start</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Start monitoring the workspace for file changes.&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="p">(</span>
+            <span class="n">_WatchdogObserverClass</span> <span class="ow">is</span> <span class="kc">None</span>
+            <span class="ow">or</span> <span class="n">_WatchdogFileSystemEventHandlerClass</span> <span class="ow">is</span> <span class="kc">None</span>
+            <span class="ow">or</span> <span class="ow">not</span> <span class="n">_WATCHDOG_EVENTS_AVAILABLE</span>
+        <span class="p">):</span>
+            <span class="k">return</span>
+
+        <span class="k">class</span><span class="w"> </span><span class="nc">ChangeTracker</span><span class="p">(</span><span class="n">_WatchdogFileSystemEventHandlerClass</span><span class="p">):</span>
+            <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">monitor</span><span class="p">:</span> <span class="n">WorkspaceMonitor</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_monitor</span> <span class="o">=</span> <span class="n">monitor</span>
+
+            <span class="k">def</span><span class="w"> </span><span class="nf">on_any_event</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">event</span><span class="p">:</span> <span class="nb">object</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">event</span><span class="p">,</span> <span class="n">_HasSrcPath</span><span class="p">):</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">_monitor</span><span class="o">.</span><span class="n">record_event</span><span class="p">(</span><span class="n">event</span><span class="o">.</span><span class="n">src_path</span><span class="p">)</span>
+
+        <span class="n">handler</span> <span class="o">=</span> <span class="n">ChangeTracker</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_observer</span> <span class="o">=</span> <span class="n">cast</span><span class="p">(</span><span class="s2">&quot;_ObserverProtocol&quot;</span><span class="p">,</span> <span class="n">_WatchdogObserverClass</span><span class="p">())</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_observer</span><span class="o">.</span><span class="n">schedule</span><span class="p">(</span><span class="n">handler</span><span class="p">,</span> <span class="nb">str</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_workspace</span><span class="p">),</span> <span class="n">recursive</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_observer</span><span class="o">.</span><span class="n">start</span><span class="p">()</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s2">&quot;Started workspace monitoring: </span><span class="si">{}</span><span class="s2">&quot;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_workspace</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="WorkspaceMonitor.record_event">
+<a class="viewcode-back" href="../../../modules.html#ralph.agents.invoke.WorkspaceMonitor.record_event">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">record_event</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">src_path</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Record a file change event.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            src_path: Path to the changed file.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_seen_files</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">src_path</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_event_count</span> <span class="o">+=</span> <span class="mi">1</span></div>
+
+
+<div class="viewcode-block" id="WorkspaceMonitor.stop">
+<a class="viewcode-back" href="../../../modules.html#ralph.agents.invoke.WorkspaceMonitor.stop">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">stop</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Stop monitoring the workspace.&quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_observer</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_observer</span><span class="o">.</span><span class="n">stop</span><span class="p">()</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_observer</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">timeout</span><span class="o">=</span><span class="mi">5</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_observer</span> <span class="o">=</span> <span class="kc">None</span>
+            <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span>
+                <span class="s2">&quot;Stopped workspace monitoring: </span><span class="si">{}</span><span class="s2"> (</span><span class="si">{}</span><span class="s2"> events)&quot;</span><span class="p">,</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_workspace</span><span class="p">,</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_event_count</span><span class="p">,</span>
+            <span class="p">)</span></div>
+
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">event_count</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Number of file change events detected.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_event_count</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">changed_files</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">set</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Set of file paths that changed during monitoring.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_seen_files</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span></div>
+
+
+
+<div class="viewcode-block" id="invoke_agent">
+<a class="viewcode-back" href="../../../modules.html#ralph.agents.invoke.invoke_agent">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">invoke_agent</span><span class="p">(</span>
+    <span class="n">config</span><span class="p">:</span> <span class="n">AgentConfig</span><span class="p">,</span>
+    <span class="n">prompt_file</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="o">*</span><span class="p">,</span>
+    <span class="n">options</span><span class="p">:</span> <span class="n">InvokeOptions</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Iterator</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Invoke agent, yield parsed output lines as they arrive.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        config: Agent configuration specifying command and flags.</span>
+<span class="sd">        prompt_file: Path to PROMPT.md file to pass to agent.</span>
+<span class="sd">        options: Optional invocation options.</span>
+
+<span class="sd">    Yields:</span>
+<span class="sd">        Raw agent output lines (before parsing).</span>
+
+<span class="sd">    Raises:</span>
+<span class="sd">        AgentInvocationError: If agent exits with non-zero code.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">opts</span> <span class="o">=</span> <span class="n">options</span> <span class="ow">or</span> <span class="n">InvokeOptions</span><span class="p">()</span>
+    <span class="n">runtime_env</span> <span class="o">=</span> <span class="n">_runtime_extra_env</span><span class="p">(</span>
+        <span class="n">config</span><span class="p">,</span>
+        <span class="n">opts</span><span class="o">.</span><span class="n">extra_env</span><span class="p">,</span>
+        <span class="n">opts</span><span class="o">.</span><span class="n">workspace_path</span><span class="p">,</span>
+        <span class="n">system_prompt_file</span><span class="o">=</span><span class="n">opts</span><span class="o">.</span><span class="n">system_prompt_file</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">mcp_endpoint</span> <span class="o">=</span> <span class="p">(</span><span class="n">runtime_env</span> <span class="ow">or</span> <span class="p">{})</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;RALPH_MCP_ENDPOINT&quot;</span><span class="p">)</span>
+    <span class="n">allowed_mcp_tool_names</span> <span class="o">=</span> <span class="n">_provider_allowed_mcp_tool_names</span><span class="p">(</span><span class="n">config</span><span class="p">,</span> <span class="n">mcp_endpoint</span><span class="p">)</span>
+    <span class="n">cmd</span> <span class="o">=</span> <span class="n">_build_command</span><span class="p">(</span>
+        <span class="n">config</span><span class="p">,</span>
+        <span class="n">prompt_file</span><span class="p">,</span>
+        <span class="n">options</span><span class="o">=</span><span class="n">_BuildCommandOptions</span><span class="p">(</span>
+            <span class="n">model_flag</span><span class="o">=</span><span class="n">opts</span><span class="o">.</span><span class="n">model_flag</span><span class="p">,</span>
+            <span class="n">session_id</span><span class="o">=</span><span class="n">opts</span><span class="o">.</span><span class="n">session_id</span><span class="p">,</span>
+            <span class="n">verbose</span><span class="o">=</span><span class="n">opts</span><span class="o">.</span><span class="n">verbose</span><span class="p">,</span>
+            <span class="n">pure</span><span class="o">=</span><span class="n">opts</span><span class="o">.</span><span class="n">pure</span><span class="p">,</span>
+            <span class="n">mcp_endpoint</span><span class="o">=</span><span class="n">mcp_endpoint</span><span class="p">,</span>
+            <span class="n">allowed_mcp_tool_names</span><span class="o">=</span><span class="n">allowed_mcp_tool_names</span><span class="p">,</span>
+            <span class="n">system_prompt_file</span><span class="o">=</span><span class="n">opts</span><span class="o">.</span><span class="n">system_prompt_file</span><span class="p">,</span>
+            <span class="n">workspace_path</span><span class="o">=</span><span class="n">opts</span><span class="o">.</span><span class="n">workspace_path</span><span class="p">,</span>
+        <span class="p">),</span>
+    <span class="p">)</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;Invoking agent: </span><span class="si">{}</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">_command_for_log</span><span class="p">(</span><span class="n">config</span><span class="p">,</span> <span class="n">cmd</span><span class="p">,</span> <span class="n">prompt_file</span><span class="p">))</span>
+
+    <span class="n">monitor</span> <span class="o">=</span> <span class="n">_start_workspace_monitor</span><span class="p">(</span><span class="n">opts</span><span class="o">.</span><span class="n">workspace_path</span><span class="p">)</span>
+
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">lines_iter</span> <span class="o">=</span> <span class="n">_run_subprocess_and_read_lines</span><span class="p">(</span>
+            <span class="n">cmd</span><span class="p">,</span>
+            <span class="n">config</span><span class="p">,</span>
+            <span class="n">opts</span><span class="o">.</span><span class="n">show_progress</span><span class="p">,</span>
+            <span class="n">runtime_env</span><span class="p">,</span>
+            <span class="n">opts</span><span class="o">.</span><span class="n">workspace_path</span><span class="p">,</span>
+            <span class="n">idle_timeout_seconds</span><span class="o">=</span><span class="n">opts</span><span class="o">.</span><span class="n">idle_timeout_seconds</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="k">yield from</span> <span class="n">lines_iter</span>
+
+        <span class="n">_log_workspace_completion</span><span class="p">(</span><span class="n">monitor</span><span class="p">)</span>
+    <span class="k">finally</span><span class="p">:</span>
+        <span class="n">_stop_workspace_monitor</span><span class="p">(</span><span class="n">monitor</span><span class="p">)</span></div>
+
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_start_workspace_monitor</span><span class="p">(</span><span class="n">workspace_path</span><span class="p">:</span> <span class="n">Path</span> <span class="o">|</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">WorkspaceMonitor</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Start workspace monitoring if path provided.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        workspace_path: Optional path to workspace.</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        WorkspaceMonitor instance or None.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">workspace_path</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">None</span>
+    <span class="n">monitor</span> <span class="o">=</span> <span class="n">WorkspaceMonitor</span><span class="p">(</span><span class="n">workspace_path</span><span class="p">)</span>
+    <span class="n">monitor</span><span class="o">.</span><span class="n">start</span><span class="p">()</span>
+    <span class="k">return</span> <span class="n">monitor</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_run_subprocess_and_read_lines</span><span class="p">(</span>  <span class="c1"># noqa: PLR0913</span>
+    <span class="n">cmd</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span>
+    <span class="n">config</span><span class="p">:</span> <span class="n">AgentConfig</span><span class="p">,</span>
+    <span class="n">show_progress</span><span class="p">:</span> <span class="nb">bool</span><span class="p">,</span>
+    <span class="n">extra_env</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">workspace_path</span><span class="p">:</span> <span class="n">Path</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="o">*</span><span class="p">,</span>
+    <span class="n">idle_timeout_seconds</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Iterator</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Run subprocess and yield output lines.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        cmd: Command to execute.</span>
+<span class="sd">        config: Agent configuration.</span>
+<span class="sd">        show_progress: Whether to show progress bar.</span>
+
+<span class="sd">    Yields:</span>
+<span class="sd">        Output lines from the subprocess.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">handle</span> <span class="o">=</span> <span class="n">get_process_manager</span><span class="p">()</span><span class="o">.</span><span class="n">spawn</span><span class="p">(</span>
+        <span class="n">cmd</span><span class="p">,</span>
+        <span class="n">stdout</span><span class="o">=</span><span class="n">subprocess</span><span class="o">.</span><span class="n">PIPE</span><span class="p">,</span>
+        <span class="n">stderr</span><span class="o">=</span><span class="n">subprocess</span><span class="o">.</span><span class="n">PIPE</span><span class="p">,</span>
+        <span class="n">stdin</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">cwd</span><span class="o">=</span><span class="nb">str</span><span class="p">(</span><span class="n">workspace_path</span><span class="p">)</span> <span class="k">if</span> <span class="n">workspace_path</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">env</span><span class="o">=</span><span class="n">_subprocess_env</span><span class="p">(</span><span class="n">extra_env</span><span class="p">),</span>
+        <span class="n">start_new_session</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+        <span class="n">label</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;invoke:</span><span class="si">{</span><span class="n">_agent_command_name</span><span class="p">(</span><span class="n">config</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span>
+        <span class="n">text</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="k">with</span> <span class="n">handle</span><span class="p">:</span>
+        <span class="n">stdout_pipe</span> <span class="o">=</span> <span class="n">handle</span><span class="o">.</span><span class="n">stdout</span>
+        <span class="k">if</span> <span class="n">stdout_pipe</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">msg</span> <span class="o">=</span> <span class="s2">&quot;Failed to capture stdout&quot;</span>
+            <span class="k">raise</span> <span class="n">AgentInvocationError</span><span class="p">(</span><span class="n">_agent_command_name</span><span class="p">(</span><span class="n">config</span><span class="p">),</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="n">msg</span><span class="p">)</span>
+
+        <span class="n">lines_iter</span> <span class="o">=</span> <span class="n">_read_lines_from_process</span><span class="p">(</span><span class="n">handle</span><span class="p">,</span> <span class="n">idle_timeout_seconds</span><span class="o">=</span><span class="n">idle_timeout_seconds</span><span class="p">)</span>
+        <span class="n">parsed_output</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">if</span> <span class="n">show_progress</span><span class="p">:</span>
+            <span class="n">agent_name</span> <span class="o">=</span> <span class="n">_agent_command_name</span><span class="p">(</span><span class="n">config</span><span class="p">)</span>
+            <span class="n">progress_iter</span> <span class="o">=</span> <span class="n">cast</span><span class="p">(</span>
+                <span class="s2">&quot;Iterator[str]&quot;</span><span class="p">,</span>
+                <span class="n">tqdm</span><span class="p">(</span>
+                    <span class="n">lines_iter</span><span class="p">,</span>
+                    <span class="n">desc</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;[</span><span class="si">{</span><span class="n">agent_name</span><span class="si">}</span><span class="s2">]&quot;</span><span class="p">,</span>
+                    <span class="n">unit</span><span class="o">=</span><span class="s2">&quot;line&quot;</span><span class="p">,</span>
+                    <span class="n">leave</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+                    <span class="n">file</span><span class="o">=</span><span class="n">sys</span><span class="o">.</span><span class="n">stdout</span><span class="p">,</span>
+                <span class="p">),</span>
+            <span class="p">)</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="n">progress_iter</span><span class="p">:</span>
+                    <span class="n">parsed_output</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">line</span><span class="o">.</span><span class="n">rstrip</span><span class="p">())</span>
+                    <span class="k">yield</span> <span class="n">line</span>
+            <span class="k">except</span> <span class="n">_IdleStreamTimeoutError</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="n">AgentInactivityTimeoutError</span><span class="p">(</span>
+                    <span class="n">_agent_command_name</span><span class="p">(</span><span class="n">config</span><span class="p">),</span>
+                    <span class="n">exc</span><span class="o">.</span><span class="n">timeout_seconds</span><span class="p">,</span>
+                    <span class="n">parsed_output</span><span class="p">,</span>
+                <span class="p">)</span> <span class="kn">from</span><span class="w"> </span><span class="nn">exc</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="n">lines_iter</span><span class="p">:</span>
+                    <span class="n">parsed_output</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">line</span><span class="o">.</span><span class="n">rstrip</span><span class="p">())</span>
+                    <span class="k">yield</span> <span class="n">line</span>
+            <span class="k">except</span> <span class="n">_IdleStreamTimeoutError</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="n">AgentInactivityTimeoutError</span><span class="p">(</span>
+                    <span class="n">_agent_command_name</span><span class="p">(</span><span class="n">config</span><span class="p">),</span>
+                    <span class="n">exc</span><span class="o">.</span><span class="n">timeout_seconds</span><span class="p">,</span>
+                    <span class="n">parsed_output</span><span class="p">,</span>
+                <span class="p">)</span> <span class="kn">from</span><span class="w"> </span><span class="nn">exc</span>
+
+        <span class="n">handle</span><span class="o">.</span><span class="n">wait</span><span class="p">()</span>
+        <span class="n">_check_process_result</span><span class="p">(</span><span class="n">handle</span><span class="p">,</span> <span class="n">_agent_command_name</span><span class="p">(</span><span class="n">config</span><span class="p">),</span> <span class="n">parsed_output</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_subprocess_env</span><span class="p">(</span><span class="n">extra_env</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]:</span>
+    <span class="n">env</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+    <span class="k">if</span> <span class="n">extra_env</span><span class="p">:</span>
+        <span class="n">env</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">extra_env</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">env</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_runtime_extra_env</span><span class="p">(</span>
+    <span class="n">config</span><span class="p">:</span> <span class="n">AgentConfig</span><span class="p">,</span>
+    <span class="n">extra_env</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">workspace_path</span><span class="p">:</span> <span class="n">Path</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="o">*</span><span class="p">,</span>
+    <span class="n">system_prompt_file</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
+    <span class="n">runtime_env</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">extra_env</span> <span class="ow">or</span> <span class="p">{})</span>
+    <span class="n">endpoint</span> <span class="o">=</span> <span class="n">runtime_env</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;RALPH_MCP_ENDPOINT&quot;</span><span class="p">)</span>
+
+    <span class="n">transport</span> <span class="o">=</span> <span class="n">_agent_transport</span><span class="p">(</span><span class="n">config</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">transport</span> <span class="o">==</span> <span class="n">AgentTransport</span><span class="o">.</span><span class="n">OPENCODE</span><span class="p">:</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">endpoint</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">runtime_env</span> <span class="ow">or</span> <span class="kc">None</span>
+        <span class="n">provider_config</span><span class="p">,</span> <span class="n">upstreams</span> <span class="o">=</span> <span class="n">build_opencode_provider_config</span><span class="p">(</span>
+            <span class="n">runtime_env</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;OPENCODE_CONFIG_CONTENT&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;OPENCODE_CONFIG_CONTENT&quot;</span><span class="p">),</span>
+            <span class="n">endpoint</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="n">runtime_env</span><span class="p">[</span><span class="s2">&quot;OPENCODE_CONFIG_CONTENT&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">provider_config</span>
+        <span class="n">mcp_toml</span> <span class="o">=</span> <span class="n">mcp_toml_as_upstreams</span><span class="p">(</span><span class="n">workspace_path</span><span class="p">)</span>
+        <span class="n">set_upstream_mcp_config</span><span class="p">(</span><span class="n">runtime_env</span><span class="p">,</span> <span class="n">merge_mcp_toml_into_upstreams</span><span class="p">(</span><span class="n">upstreams</span><span class="p">,</span> <span class="n">mcp_toml</span><span class="p">))</span>
+        <span class="k">return</span> <span class="n">runtime_env</span>
+    <span class="k">if</span> <span class="n">transport</span> <span class="o">==</span> <span class="n">AgentTransport</span><span class="o">.</span><span class="n">CODEX</span><span class="p">:</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">endpoint</span> <span class="ow">and</span> <span class="n">system_prompt_file</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">runtime_env</span> <span class="ow">or</span> <span class="kc">None</span>
+        <span class="n">codex_home</span><span class="p">,</span> <span class="n">upstreams</span> <span class="o">=</span> <span class="n">prepare_codex_home_with_upstreams</span><span class="p">(</span>
+            <span class="n">endpoint</span><span class="p">,</span>
+            <span class="n">workspace_path</span><span class="o">=</span><span class="n">workspace_path</span><span class="p">,</span>
+            <span class="n">existing_home</span><span class="o">=</span><span class="n">runtime_env</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;CODEX_HOME&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;CODEX_HOME&quot;</span><span class="p">),</span>
+            <span class="n">system_prompt_file</span><span class="o">=</span><span class="n">system_prompt_file</span><span class="p">,</span>
+        <span class="p">)</span>
+        <span class="n">runtime_env</span><span class="p">[</span><span class="s2">&quot;CODEX_HOME&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">codex_home</span>
+        <span class="n">mcp_toml</span> <span class="o">=</span> <span class="n">mcp_toml_as_upstreams</span><span class="p">(</span><span class="n">workspace_path</span><span class="p">)</span>
+        <span class="n">set_upstream_mcp_config</span><span class="p">(</span><span class="n">runtime_env</span><span class="p">,</span> <span class="n">merge_mcp_toml_into_upstreams</span><span class="p">(</span><span class="n">upstreams</span><span class="p">,</span> <span class="n">mcp_toml</span><span class="p">))</span>
+        <span class="k">return</span> <span class="n">runtime_env</span>
+    <span class="k">if</span> <span class="n">transport</span> <span class="o">==</span> <span class="n">AgentTransport</span><span class="o">.</span><span class="n">CLAUDE</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">endpoint</span><span class="p">:</span>
+            <span class="n">existing</span> <span class="o">=</span> <span class="n">load_existing_claude_upstream_servers</span><span class="p">(</span><span class="n">workspace_path</span><span class="p">)</span>
+            <span class="n">mcp_toml</span> <span class="o">=</span> <span class="n">mcp_toml_as_upstreams</span><span class="p">(</span><span class="n">workspace_path</span><span class="p">)</span>
+            <span class="n">set_upstream_mcp_config</span><span class="p">(</span><span class="n">runtime_env</span><span class="p">,</span> <span class="n">merge_mcp_toml_into_upstreams</span><span class="p">(</span><span class="n">existing</span><span class="p">,</span> <span class="n">mcp_toml</span><span class="p">))</span>
+        <span class="k">return</span> <span class="n">runtime_env</span>
+
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">endpoint</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">runtime_env</span> <span class="ow">or</span> <span class="kc">None</span>
+
+    <span class="k">raise</span> <span class="n">UnsupportedMcpTransportError</span><span class="p">(</span>
+        <span class="sa">f</span><span class="s2">&quot;Agent transport &#39;</span><span class="si">{</span><span class="n">transport</span><span class="si">}</span><span class="s2">&#39; does not declare how to receive Ralph MCP wiring&quot;</span>
+    <span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_agent_transport</span><span class="p">(</span><span class="n">config</span><span class="p">:</span> <span class="n">AgentConfig</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">AgentTransport</span><span class="p">:</span>
+    <span class="n">transport</span> <span class="o">=</span> <span class="n">config</span><span class="o">.</span><span class="n">transport</span>
+    <span class="k">if</span> <span class="n">transport</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">AgentTransport</span><span class="o">.</span><span class="n">GENERIC</span>
+    <span class="k">return</span> <span class="n">transport</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_agent_command_name</span><span class="p">(</span><span class="n">config</span><span class="p">:</span> <span class="n">AgentConfig</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+    <span class="k">return</span> <span class="n">config</span><span class="o">.</span><span class="n">cmd</span><span class="o">.</span><span class="n">split</span><span class="p">()[</span><span class="mi">0</span><span class="p">]</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_read_lines_from_process</span><span class="p">(</span>
+    <span class="n">handle</span><span class="p">:</span> <span class="n">ManagedProcess</span><span class="p">,</span>
+    <span class="o">*</span><span class="p">,</span>
+    <span class="n">idle_timeout_seconds</span><span class="p">:</span> <span class="nb">float</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Iterator</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Read lines from subprocess stdout in a background thread.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        handle: Running managed process.</span>
+<span class="sd">        idle_timeout_seconds: Optional maximum idle time without output.</span>
+
+<span class="sd">    Yields:</span>
+<span class="sd">        Lines from stdout.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">stdout_pipe</span> <span class="o">=</span> <span class="n">cast</span><span class="p">(</span><span class="s2">&quot;IO[str] | None&quot;</span><span class="p">,</span> <span class="n">handle</span><span class="o">.</span><span class="n">stdout</span><span class="p">)</span>
+    <span class="n">lines_queue</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">lines_lock</span> <span class="o">=</span> <span class="n">threading</span><span class="o">.</span><span class="n">Lock</span><span class="p">()</span>
+    <span class="n">lines_event</span> <span class="o">=</span> <span class="n">threading</span><span class="o">.</span><span class="n">Event</span><span class="p">()</span>
+    <span class="n">last_activity</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">monotonic</span><span class="p">()</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">read_lines_thread</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">stdout_pipe</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">return</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="n">stdout_pipe</span><span class="p">:</span>
+                <span class="k">with</span> <span class="n">lines_lock</span><span class="p">:</span>
+                    <span class="n">lines_queue</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">line</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+            <span class="k">pass</span>
+        <span class="k">finally</span><span class="p">:</span>
+            <span class="n">lines_event</span><span class="o">.</span><span class="n">set</span><span class="p">()</span>
+
+    <span class="n">reader</span> <span class="o">=</span> <span class="n">threading</span><span class="o">.</span><span class="n">Thread</span><span class="p">(</span><span class="n">target</span><span class="o">=</span><span class="n">read_lines_thread</span><span class="p">,</span> <span class="n">daemon</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">reader</span><span class="o">.</span><span class="n">start</span><span class="p">()</span>
+
+    <span class="k">while</span> <span class="kc">True</span><span class="p">:</span>
+        <span class="n">queued_line</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="k">with</span> <span class="n">lines_lock</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">lines_queue</span><span class="p">:</span>
+                <span class="n">queued_line</span> <span class="o">=</span> <span class="n">lines_queue</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">queued_line</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">last_activity</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">monotonic</span><span class="p">()</span>
+            <span class="k">yield</span> <span class="n">queued_line</span>
+            <span class="k">continue</span>
+
+        <span class="k">if</span> <span class="n">lines_event</span><span class="o">.</span><span class="n">is_set</span><span class="p">():</span>
+            <span class="k">break</span>
+
+        <span class="k">if</span> <span class="p">(</span>
+            <span class="n">idle_timeout_seconds</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+            <span class="ow">and</span> <span class="n">time</span><span class="o">.</span><span class="n">monotonic</span><span class="p">()</span> <span class="o">-</span> <span class="n">last_activity</span> <span class="o">&gt;=</span> <span class="n">idle_timeout_seconds</span>
+        <span class="p">):</span>
+            <span class="n">handle</span><span class="o">.</span><span class="n">terminate</span><span class="p">(</span><span class="n">grace_period_s</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+            <span class="k">raise</span> <span class="n">_IdleStreamTimeoutError</span><span class="p">(</span><span class="n">idle_timeout_seconds</span><span class="p">)</span>
+
+        <span class="n">lines_event</span><span class="o">.</span><span class="n">wait</span><span class="p">(</span><span class="n">_IDLE_POLL_INTERVAL_SECONDS</span><span class="p">)</span>
+
+    <span class="n">reader</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">timeout</span><span class="o">=</span><span class="mi">10</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_log_workspace_completion</span><span class="p">(</span><span class="n">monitor</span><span class="p">:</span> <span class="n">WorkspaceMonitor</span> <span class="o">|</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Log workspace changes if monitoring.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        monitor: Workspace monitor instance.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">monitor</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">return</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span>
+        <span class="s2">&quot;Agent completed. Workspace changes: </span><span class="si">{}</span><span class="s2"> files, </span><span class="si">{}</span><span class="s2"> events&quot;</span><span class="p">,</span>
+        <span class="nb">len</span><span class="p">(</span><span class="n">monitor</span><span class="o">.</span><span class="n">changed_files</span><span class="p">),</span>
+        <span class="n">monitor</span><span class="o">.</span><span class="n">event_count</span><span class="p">,</span>
+    <span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_check_process_result</span><span class="p">(</span>
+    <span class="n">handle</span><span class="p">:</span> <span class="n">ManagedProcess</span><span class="p">,</span> <span class="n">agent_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">parsed_output</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Check subprocess return code and raise error if non-zero.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        handle: Completed managed process.</span>
+<span class="sd">        agent_name: Name of the agent.</span>
+
+<span class="sd">    Raises:</span>
+<span class="sd">        AgentInvocationError: If process exited with non-zero code.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">returncode</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">handle</span><span class="o">.</span><span class="n">returncode</span> <span class="ow">or</span> <span class="mi">0</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">returncode</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="k">return</span>
+
+    <span class="n">stderr_pipe</span> <span class="o">=</span> <span class="n">cast</span><span class="p">(</span><span class="s2">&quot;IO[str] | None&quot;</span><span class="p">,</span> <span class="n">handle</span><span class="o">.</span><span class="n">stderr</span><span class="p">)</span>
+    <span class="n">stderr</span> <span class="o">=</span> <span class="n">stderr_pipe</span><span class="o">.</span><span class="n">read</span><span class="p">()</span> <span class="k">if</span> <span class="n">stderr_pipe</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="s2">&quot;(unable to read stderr)&quot;</span>
+    <span class="n">logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="s2">&quot;Agent exited with code </span><span class="si">{}</span><span class="s2">: </span><span class="si">{}</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">returncode</span><span class="p">,</span> <span class="n">stderr</span><span class="p">)</span>
+    <span class="k">raise</span> <span class="n">AgentInvocationError</span><span class="p">(</span><span class="n">agent_name</span><span class="p">,</span> <span class="n">returncode</span><span class="p">,</span> <span class="n">stderr</span><span class="p">,</span> <span class="n">parsed_output</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_stop_workspace_monitor</span><span class="p">(</span><span class="n">monitor</span><span class="p">:</span> <span class="n">WorkspaceMonitor</span> <span class="o">|</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Stop workspace monitoring.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        monitor: Workspace monitor to stop.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">monitor</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">monitor</span><span class="o">.</span><span class="n">stop</span><span class="p">()</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_build_command</span><span class="p">(</span>
+    <span class="n">config</span><span class="p">:</span> <span class="n">AgentConfig</span><span class="p">,</span>
+    <span class="n">prompt_file</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="o">*</span><span class="p">,</span>
+    <span class="n">options</span><span class="p">:</span> <span class="n">_BuildCommandOptions</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Build the command line for agent invocation.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        config: Agent configuration.</span>
+<span class="sd">        prompt_file: Path to prompt file.</span>
+<span class="sd">        model_flag: Optional model flag override.</span>
+<span class="sd">        session_id: Optional session ID for session-enabled agents.</span>
+<span class="sd">        verbose: Whether to include verbose flag.</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        List of command arguments.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">build_options</span> <span class="o">=</span> <span class="n">options</span> <span class="ow">or</span> <span class="n">_BuildCommandOptions</span><span class="p">()</span>
+    <span class="n">transport</span> <span class="o">=</span> <span class="n">_agent_transport</span><span class="p">(</span><span class="n">config</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">build_options</span><span class="o">.</span><span class="n">mcp_endpoint</span> <span class="ow">and</span> <span class="n">transport</span> <span class="o">==</span> <span class="n">AgentTransport</span><span class="o">.</span><span class="n">GENERIC</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="n">UnsupportedMcpTransportError</span><span class="p">(</span>
+            <span class="s2">&quot;Ralph MCP endpoint provided for agent without a supported transport adapter&quot;</span>
+        <span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">transport</span> <span class="o">==</span> <span class="n">AgentTransport</span><span class="o">.</span><span class="n">OPENCODE</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">_build_opencode_command</span><span class="p">(</span>
+            <span class="n">config</span><span class="p">,</span>
+            <span class="n">prompt_file</span><span class="p">,</span>
+            <span class="n">options</span><span class="o">=</span><span class="n">build_options</span><span class="p">,</span>
+        <span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">transport</span> <span class="o">==</span> <span class="n">AgentTransport</span><span class="o">.</span><span class="n">CODEX</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">_build_codex_command</span><span class="p">(</span>
+            <span class="n">config</span><span class="p">,</span>
+            <span class="n">prompt_file</span><span class="p">,</span>
+            <span class="n">options</span><span class="o">=</span><span class="n">build_options</span><span class="p">,</span>
+        <span class="p">)</span>
+
+    <span class="n">cmd</span> <span class="o">=</span> <span class="n">config</span><span class="o">.</span><span class="n">cmd</span><span class="o">.</span><span class="n">split</span><span class="p">()</span>
+    <span class="n">cmd</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">config</span><span class="o">.</span><span class="n">output_flag</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">config</span><span class="o">.</span><span class="n">print_flag</span><span class="p">:</span>
+        <span class="n">cmd</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">config</span><span class="o">.</span><span class="n">print_flag</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">config</span><span class="o">.</span><span class="n">streaming_flag</span><span class="p">:</span>
+        <span class="n">cmd</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">config</span><span class="o">.</span><span class="n">streaming_flag</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">config</span><span class="o">.</span><span class="n">session_flag</span> <span class="ow">and</span> <span class="n">build_options</span><span class="o">.</span><span class="n">session_id</span><span class="p">:</span>
+        <span class="n">cmd</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">config</span><span class="o">.</span><span class="n">session_flag</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">build_options</span><span class="o">.</span><span class="n">session_id</span><span class="p">)</span><span class="o">.</span><span class="n">split</span><span class="p">())</span>
+
+    <span class="n">cmd</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">_split_optional_flag</span><span class="p">(</span><span class="n">config</span><span class="o">.</span><span class="n">yolo_flag</span><span class="p">))</span>
+
+    <span class="k">if</span> <span class="n">build_options</span><span class="o">.</span><span class="n">verbose</span> <span class="ow">and</span> <span class="n">config</span><span class="o">.</span><span class="n">verbose_flag</span><span class="p">:</span>
+        <span class="n">cmd</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">config</span><span class="o">.</span><span class="n">verbose_flag</span><span class="p">)</span>
+
+    <span class="n">_extend_claude_transport_flags</span><span class="p">(</span><span class="n">cmd</span><span class="p">,</span> <span class="n">transport</span><span class="p">,</span> <span class="n">build_options</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">transport</span> <span class="o">==</span> <span class="n">AgentTransport</span><span class="o">.</span><span class="n">CLAUDE</span> <span class="ow">and</span> <span class="n">build_options</span><span class="o">.</span><span class="n">system_prompt_file</span><span class="p">:</span>
+        <span class="n">cmd</span><span class="o">.</span><span class="n">extend</span><span class="p">([</span><span class="s2">&quot;--append-system-prompt-file&quot;</span><span class="p">,</span> <span class="n">build_options</span><span class="o">.</span><span class="n">system_prompt_file</span><span class="p">])</span>
+
+    <span class="n">effective_model</span> <span class="o">=</span> <span class="n">build_options</span><span class="o">.</span><span class="n">model_flag</span> <span class="ow">or</span> <span class="n">config</span><span class="o">.</span><span class="n">model_flag</span>
+    <span class="k">if</span> <span class="n">effective_model</span><span class="p">:</span>
+        <span class="n">cmd</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">effective_model</span><span class="o">.</span><span class="n">split</span><span class="p">())</span>
+
+    <span class="n">_append_transport_prompt_arg</span><span class="p">(</span><span class="n">cmd</span><span class="p">,</span> <span class="n">transport</span><span class="p">,</span> <span class="n">prompt_file</span><span class="p">,</span> <span class="n">build_options</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">cmd</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_extend_claude_transport_flags</span><span class="p">(</span>
+    <span class="n">cmd</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span>
+    <span class="n">transport</span><span class="p">:</span> <span class="n">AgentTransport</span><span class="p">,</span>
+    <span class="n">build_options</span><span class="p">:</span> <span class="n">_BuildCommandOptions</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+    <span class="k">if</span> <span class="n">transport</span> <span class="o">!=</span> <span class="n">AgentTransport</span><span class="o">.</span><span class="n">CLAUDE</span> <span class="ow">or</span> <span class="n">build_options</span><span class="o">.</span><span class="n">mcp_endpoint</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">return</span>
+
+    <span class="c1"># Claude/CCS non-interactive MCP mode is brittle around `--tools &quot;&quot;` combined</span>
+    <span class="c1"># with `--allowedTools`. We only emit the tool restriction flags when live MCP</span>
+    <span class="c1"># tool discovery succeeds and yields a non-empty allowlist; otherwise we keep the</span>
+    <span class="c1"># strict MCP server isolation but avoid the known empty-tool edge case entirely.</span>
+    <span class="n">cmd</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span>
+        <span class="p">[</span>
+            <span class="s2">&quot;--mcp-config&quot;</span><span class="p">,</span>
+            <span class="n">claude_mcp_config</span><span class="p">(</span>
+                <span class="n">build_options</span><span class="o">.</span><span class="n">mcp_endpoint</span><span class="p">,</span>
+                <span class="n">workspace_path</span><span class="o">=</span><span class="n">build_options</span><span class="o">.</span><span class="n">workspace_path</span><span class="p">,</span>
+            <span class="p">),</span>
+            <span class="s2">&quot;--strict-mcp-config&quot;</span><span class="p">,</span>
+        <span class="p">]</span>
+    <span class="p">)</span>
+    <span class="k">if</span> <span class="n">build_options</span><span class="o">.</span><span class="n">allowed_mcp_tool_names</span><span class="p">:</span>
+        <span class="n">cmd</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span>
+            <span class="p">[</span>
+                <span class="s2">&quot;--tools&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;--allowedTools&quot;</span><span class="p">,</span>
+                <span class="s2">&quot;,&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">build_options</span><span class="o">.</span><span class="n">allowed_mcp_tool_names</span><span class="p">),</span>
+            <span class="p">]</span>
+        <span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_resolve_prompt_path</span><span class="p">(</span><span class="n">prompt_file</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">workspace_path</span><span class="p">:</span> <span class="n">Path</span> <span class="o">|</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Path</span><span class="p">:</span>
+    <span class="n">prompt_path</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">prompt_file</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">prompt_path</span><span class="o">.</span><span class="n">is_absolute</span><span class="p">()</span> <span class="ow">or</span> <span class="n">workspace_path</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">prompt_path</span>
+    <span class="k">return</span> <span class="n">workspace_path</span> <span class="o">/</span> <span class="n">prompt_path</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_append_transport_prompt_arg</span><span class="p">(</span>
+    <span class="n">cmd</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span>
+    <span class="n">transport</span><span class="p">:</span> <span class="n">AgentTransport</span><span class="p">,</span>
+    <span class="n">prompt_file</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">build_options</span><span class="p">:</span> <span class="n">_BuildCommandOptions</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+    <span class="k">if</span> <span class="n">transport</span> <span class="o">==</span> <span class="n">AgentTransport</span><span class="o">.</span><span class="n">CLAUDE</span> <span class="ow">and</span> <span class="n">build_options</span><span class="o">.</span><span class="n">mcp_endpoint</span><span class="p">:</span>
+        <span class="n">cmd</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">&quot;--&quot;</span><span class="p">)</span>
+        <span class="n">resolved_prompt</span> <span class="o">=</span> <span class="n">_resolve_prompt_path</span><span class="p">(</span><span class="n">prompt_file</span><span class="p">,</span> <span class="n">build_options</span><span class="o">.</span><span class="n">workspace_path</span><span class="p">)</span>
+        <span class="n">cmd</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">resolved_prompt</span><span class="o">.</span><span class="n">read_text</span><span class="p">(</span><span class="n">encoding</span><span class="o">=</span><span class="s2">&quot;utf-8&quot;</span><span class="p">))</span>
+        <span class="k">return</span>
+    <span class="n">cmd</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">prompt_file</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_provider_allowed_mcp_tool_names</span><span class="p">(</span>
+    <span class="n">config</span><span class="p">:</span> <span class="n">AgentConfig</span><span class="p">,</span>
+    <span class="n">endpoint</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]:</span>
+    <span class="k">if</span> <span class="n">endpoint</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">_agent_transport</span><span class="p">(</span><span class="n">config</span><span class="p">)</span> <span class="o">!=</span> <span class="n">AgentTransport</span><span class="o">.</span><span class="n">CLAUDE</span><span class="p">:</span>
+        <span class="k">return</span> <span class="p">()</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">visible_tool_names</span> <span class="o">=</span> <span class="n">_discover_http_mcp_tool_names</span><span class="p">(</span><span class="n">endpoint</span><span class="p">)</span>
+    <span class="k">except</span> <span class="p">(</span><span class="n">PreflightError</span><span class="p">,</span> <span class="ne">ValueError</span><span class="p">)</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
+        <span class="n">logger</span><span class="o">.</span><span class="n">warning</span><span class="p">(</span><span class="s2">&quot;Failed to discover Ralph MCP tools for provider allowlist: </span><span class="si">{}</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">exc</span><span class="p">)</span>
+        <span class="k">return</span> <span class="p">()</span>
+    <span class="k">return</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">claude_tool_name</span><span class="p">(</span><span class="n">tool_name</span><span class="p">)</span> <span class="k">for</span> <span class="n">tool_name</span> <span class="ow">in</span> <span class="n">visible_tool_names</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_discover_http_mcp_tool_names</span><span class="p">(</span><span class="n">endpoint</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
+    <span class="n">target</span> <span class="o">=</span> <span class="n">parse_http_endpoint</span><span class="p">(</span><span class="n">endpoint</span><span class="p">)</span>
+    <span class="n">initialize_response</span><span class="p">,</span> <span class="n">session_id</span> <span class="o">=</span> <span class="n">post_http_jsonrpc_with_session</span><span class="p">(</span>
+        <span class="n">endpoint</span><span class="p">,</span>
+        <span class="n">target</span><span class="p">,</span>
+        <span class="n">initialize_request</span><span class="p">(),</span>
+    <span class="p">)</span>
+    <span class="n">ensure_no_preflight_error</span><span class="p">(</span><span class="s2">&quot;HTTP MCP initialize&quot;</span><span class="p">,</span> <span class="n">initialize_response</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;error&quot;</span><span class="p">))</span>
+    <span class="n">initialized_response</span><span class="p">,</span> <span class="n">session_id</span> <span class="o">=</span> <span class="n">post_http_jsonrpc_with_session</span><span class="p">(</span>
+        <span class="n">endpoint</span><span class="p">,</span>
+        <span class="n">target</span><span class="p">,</span>
+        <span class="n">initialized_notification</span><span class="p">(),</span>
+        <span class="n">session_id</span><span class="o">=</span><span class="n">session_id</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">ensure_no_preflight_error</span><span class="p">(</span>
+        <span class="s2">&quot;HTTP MCP notifications/initialized&quot;</span><span class="p">,</span> <span class="n">initialized_response</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;error&quot;</span><span class="p">)</span>
+    <span class="p">)</span>
+    <span class="n">tools_response</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">post_http_jsonrpc_with_session</span><span class="p">(</span>
+        <span class="n">endpoint</span><span class="p">,</span>
+        <span class="n">target</span><span class="p">,</span>
+        <span class="n">tools_list_request</span><span class="p">(),</span>
+        <span class="n">session_id</span><span class="o">=</span><span class="n">session_id</span><span class="p">,</span>
+    <span class="p">)</span>
+    <span class="n">ensure_no_preflight_error</span><span class="p">(</span><span class="s2">&quot;HTTP MCP tools/list&quot;</span><span class="p">,</span> <span class="n">tools_response</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;error&quot;</span><span class="p">))</span>
+    <span class="k">return</span> <span class="n">extract_preflight_tool_names</span><span class="p">(</span><span class="n">tools_response</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;result&quot;</span><span class="p">),</span> <span class="s2">&quot;HTTP MCP&quot;</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_build_opencode_command</span><span class="p">(</span>
+    <span class="n">config</span><span class="p">:</span> <span class="n">AgentConfig</span><span class="p">,</span>
+    <span class="n">prompt_file</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="o">*</span><span class="p">,</span>
+    <span class="n">options</span><span class="p">:</span> <span class="n">_BuildCommandOptions</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
+    <span class="n">prompt_text</span> <span class="o">=</span> <span class="n">_resolve_prompt_path</span><span class="p">(</span><span class="n">prompt_file</span><span class="p">,</span> <span class="n">options</span><span class="o">.</span><span class="n">workspace_path</span><span class="p">)</span><span class="o">.</span><span class="n">read_text</span><span class="p">(</span>
+        <span class="n">encoding</span><span class="o">=</span><span class="s2">&quot;utf-8&quot;</span>
+    <span class="p">)</span>
+    <span class="n">cmd</span> <span class="o">=</span> <span class="p">[</span><span class="n">_agent_command_name</span><span class="p">(</span><span class="n">config</span><span class="p">),</span> <span class="s2">&quot;run&quot;</span><span class="p">]</span>
+    <span class="k">if</span> <span class="n">options</span><span class="o">.</span><span class="n">pure</span><span class="p">:</span>
+        <span class="n">cmd</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s2">&quot;--pure&quot;</span><span class="p">)</span>
+    <span class="n">cmd</span><span class="o">.</span><span class="n">extend</span><span class="p">([</span><span class="s2">&quot;--format&quot;</span><span class="p">,</span> <span class="s2">&quot;json&quot;</span><span class="p">])</span>
+
+    <span class="k">if</span> <span class="n">config</span><span class="o">.</span><span class="n">session_flag</span> <span class="ow">and</span> <span class="n">options</span><span class="o">.</span><span class="n">session_id</span><span class="p">:</span>
+        <span class="n">cmd</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">config</span><span class="o">.</span><span class="n">session_flag</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">options</span><span class="o">.</span><span class="n">session_id</span><span class="p">)</span><span class="o">.</span><span class="n">split</span><span class="p">())</span>
+
+    <span class="n">cmd</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">_split_optional_flag</span><span class="p">(</span><span class="n">config</span><span class="o">.</span><span class="n">yolo_flag</span><span class="p">))</span>
+
+    <span class="k">if</span> <span class="n">options</span><span class="o">.</span><span class="n">verbose</span> <span class="ow">and</span> <span class="n">config</span><span class="o">.</span><span class="n">verbose_flag</span><span class="p">:</span>
+        <span class="n">cmd</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">config</span><span class="o">.</span><span class="n">verbose_flag</span><span class="p">)</span>
+
+    <span class="n">effective_model</span> <span class="o">=</span> <span class="n">options</span><span class="o">.</span><span class="n">model_flag</span> <span class="ow">or</span> <span class="n">config</span><span class="o">.</span><span class="n">model_flag</span>
+    <span class="k">if</span> <span class="n">effective_model</span><span class="p">:</span>
+        <span class="n">cmd</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">_normalize_opencode_model_flag</span><span class="p">(</span><span class="n">effective_model</span><span class="p">))</span>
+
+    <span class="n">cmd</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">prompt_text</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">cmd</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_build_codex_command</span><span class="p">(</span>
+    <span class="n">config</span><span class="p">:</span> <span class="n">AgentConfig</span><span class="p">,</span>
+    <span class="n">prompt_file</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="o">*</span><span class="p">,</span>
+    <span class="n">options</span><span class="p">:</span> <span class="n">_BuildCommandOptions</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
+    <span class="n">prompt_text</span> <span class="o">=</span> <span class="n">_resolve_prompt_path</span><span class="p">(</span><span class="n">prompt_file</span><span class="p">,</span> <span class="n">options</span><span class="o">.</span><span class="n">workspace_path</span><span class="p">)</span><span class="o">.</span><span class="n">read_text</span><span class="p">(</span>
+        <span class="n">encoding</span><span class="o">=</span><span class="s2">&quot;utf-8&quot;</span>
+    <span class="p">)</span>
+    <span class="n">cmd</span> <span class="o">=</span> <span class="n">config</span><span class="o">.</span><span class="n">cmd</span><span class="o">.</span><span class="n">split</span><span class="p">()</span>
+    <span class="n">cmd</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">config</span><span class="o">.</span><span class="n">output_flag</span><span class="p">)</span>
+
+    <span class="n">cmd</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">_split_optional_flag</span><span class="p">(</span><span class="n">config</span><span class="o">.</span><span class="n">yolo_flag</span><span class="p">))</span>
+
+    <span class="n">effective_model</span> <span class="o">=</span> <span class="n">options</span><span class="o">.</span><span class="n">model_flag</span> <span class="ow">or</span> <span class="n">config</span><span class="o">.</span><span class="n">model_flag</span>
+    <span class="k">if</span> <span class="n">effective_model</span><span class="p">:</span>
+        <span class="n">cmd</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">effective_model</span><span class="o">.</span><span class="n">split</span><span class="p">())</span>
+
+    <span class="n">cmd</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">prompt_text</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">cmd</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_command_for_log</span><span class="p">(</span><span class="n">config</span><span class="p">:</span> <span class="n">AgentConfig</span><span class="p">,</span> <span class="n">cmd</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span> <span class="n">prompt_file</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+    <span class="n">logged_cmd</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">cmd</span><span class="p">)</span>
+    <span class="k">if</span> <span class="p">(</span>
+        <span class="n">_agent_transport</span><span class="p">(</span><span class="n">config</span><span class="p">)</span>
+        <span class="ow">in</span> <span class="p">{</span><span class="n">AgentTransport</span><span class="o">.</span><span class="n">OPENCODE</span><span class="p">,</span> <span class="n">AgentTransport</span><span class="o">.</span><span class="n">CODEX</span><span class="p">,</span> <span class="n">AgentTransport</span><span class="o">.</span><span class="n">CLAUDE</span><span class="p">}</span>
+        <span class="ow">and</span> <span class="n">logged_cmd</span>
+    <span class="p">):</span>
+        <span class="n">logged_cmd</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="n">prompt_file</span>
+    <span class="k">return</span> <span class="s2">&quot; &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">logged_cmd</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_normalize_opencode_model_flag</span><span class="p">(</span><span class="n">model_flag</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
+    <span class="n">parts</span> <span class="o">=</span> <span class="n">model_flag</span><span class="o">.</span><span class="n">split</span><span class="p">()</span>
+    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">parts</span><span class="p">)</span> <span class="o">==</span> <span class="n">_MODELED_FLAG_PARTS</span> <span class="ow">and</span> <span class="n">parts</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="ow">in</span> <span class="p">{</span><span class="s2">&quot;-m&quot;</span><span class="p">,</span> <span class="s2">&quot;--model&quot;</span><span class="p">}:</span>
+        <span class="k">return</span> <span class="p">[</span><span class="n">parts</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">parts</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">removeprefix</span><span class="p">(</span><span class="s2">&quot;opencode/&quot;</span><span class="p">)]</span>
+    <span class="k">return</span> <span class="n">parts</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_split_optional_flag</span><span class="p">(</span><span class="n">flag</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">flag</span><span class="p">:</span>
+        <span class="k">return</span> <span class="p">[]</span>
+    <span class="k">return</span> <span class="n">shlex</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="n">flag</span><span class="p">)</span>
+
+
+<div class="viewcode-block" id="check_agent_available">
+<a class="viewcode-back" href="../../../modules.html#ralph.agents.invoke.check_agent_available">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">check_agent_available</span><span class="p">(</span><span class="n">config</span><span class="p">:</span> <span class="n">AgentConfig</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Check if an agent command is available.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        config: Agent configuration.</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        True if agent command exists and is executable.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">cmd</span> <span class="o">=</span> <span class="n">config</span><span class="o">.</span><span class="n">cmd</span><span class="o">.</span><span class="n">split</span><span class="p">()</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">cmd</span><span class="p">:</span>
+        <span class="k">return</span> <span class="kc">False</span>
+    <span class="k">return</span> <span class="n">shutil</span><span class="o">.</span><span class="n">which</span><span class="p">(</span><span class="n">cmd</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span></div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2024, Ralph Workflow Contributors.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

@@ -128,7 +128,7 @@ class _ConnectivityMonitorLike(Protocol):
     def current_state(self) -> ConnectivityState: ...
 
     def add_listener(
-        self, cb: Callable[[object], None]
+        self, _cb: Callable[[object], None]
     ) -> Callable[[], None]: ...
 
 
@@ -177,8 +177,6 @@ _MAX_TOOL_RESULT_BRIEF = 80
 _TOOL_RESULT_BRIEF_THRESHOLD = 500
 _MAX_METADATA_SUMMARY_LENGTH = 120
 _LEGACY_EXECUTE_EFFECT_ARITY = 3
-_DEFAULT_AGENT_IDLE_TIMEOUT_SECONDS = 120.0
-_AGENT_IDLE_TIMEOUT_ENV = "RALPH_AGENT_IDLE_TIMEOUT_SECONDS"
 _RECOVERY_CONTEXT_LINES = 12
 _TRANSIENT_CONNECTIVITY_MARKERS = (
     "connection refused",
@@ -2027,7 +2025,7 @@ def _execute_agent_effect(  # noqa: PLR0913
                     MCP_ENDPOINT_ENV: bridge.agent_endpoint_uri(),
                     MCP_RUN_ID_ENV: session.run_id,
                 },
-                idle_timeout_seconds=_agent_idle_timeout_seconds(),
+                idle_timeout_seconds=config.general.agent_idle_timeout_seconds,
                 session_id=resume_session_id,
                 system_prompt_file=materialize_system_prompt(
                     workspace_root=workspace_scope.root,
@@ -2085,16 +2083,6 @@ def _same_agent_recovery_attempts(config: UnifiedConfig) -> int:
     raw = cast("object", getattr(config.general, "max_same_agent_retries", 1))
     return raw if isinstance(raw, int) and raw >= 0 else 1
 
-
-def _agent_idle_timeout_seconds() -> float | None:
-    raw = os.environ.get(_AGENT_IDLE_TIMEOUT_ENV)
-    if raw is None:
-        return _DEFAULT_AGENT_IDLE_TIMEOUT_SECONDS
-    try:
-        parsed = float(raw)
-    except ValueError:
-        return _DEFAULT_AGENT_IDLE_TIMEOUT_SECONDS
-    return parsed if parsed > 0 else None
 
 
 def _build_agent_recovery_plan(  # noqa: PLR0913

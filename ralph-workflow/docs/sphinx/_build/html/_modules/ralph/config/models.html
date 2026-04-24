@@ -1,0 +1,434 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ralph.config.models &mdash; Ralph Workflow 0.1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/css/theme.css?v=9edc463e" />
+
+  
+      <script src="../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../_static/documentation_options.js?v=01f34227"></script>
+      <script src="../../../_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="../../../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            Ralph Workflow
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../modules.html">API Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../versioning.html">Release &amp; Versioning</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">Ralph Workflow</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">ralph.config.models</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for ralph.config.models</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;Pydantic v2 models for ralph configuration.</span>
+
+<span class="sd">This module contains all configuration models that mirror the UnifiedConfig</span>
+<span class="sd">structure from the Rust implementation.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">pathlib</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">pydantic</span><span class="w"> </span><span class="kn">import</span> <span class="n">BaseModel</span><span class="p">,</span> <span class="n">ConfigDict</span><span class="p">,</span> <span class="n">Field</span><span class="p">,</span> <span class="n">HttpUrl</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">ralph.config.enums</span><span class="w"> </span><span class="kn">import</span> <span class="n">AgentTransport</span><span class="p">,</span> <span class="n">JsonParserType</span><span class="p">,</span> <span class="n">ReviewDepth</span>
+
+<span class="n">PATH_RUNTIME_CLASS</span> <span class="o">=</span> <span class="n">pathlib</span><span class="o">.</span><span class="n">Path</span>
+
+
+<div class="viewcode-block" id="AgentConfig">
+<a class="viewcode-back" href="../../../modules.html#ralph.config.models.AgentConfig">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">AgentConfig</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>  <span class="c1"># type: ignore[explicit-any]</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Configuration for a single AI agent.</span>
+
+<span class="sd">    Attributes:</span>
+<span class="sd">        cmd: Base command to run the agent.</span>
+<span class="sd">        output_flag: Output format flag for streaming JSON.</span>
+<span class="sd">        yolo_flag: Optional autonomous/non-interactive flag string.</span>
+<span class="sd">        verbose_flag: Flag for verbose output.</span>
+<span class="sd">        can_commit: Whether the agent can run git commit.</span>
+<span class="sd">        json_parser: Which JSON parser to use for agent output.</span>
+<span class="sd">        model_flag: Optional model/provider flag.</span>
+<span class="sd">        print_flag: Optional print flag for non-interactive output mode.</span>
+<span class="sd">        streaming_flag: Optional streaming flag for partial JSON messages.</span>
+<span class="sd">        session_flag: Optional session continuation flag template.</span>
+<span class="sd">        display_name: Human-readable display name for UI/UX.</span>
+<span class="sd">        transport: Invocation/MCP transport type for the agent runtime.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">model_config</span> <span class="o">=</span> <span class="n">ConfigDict</span><span class="p">(</span><span class="n">frozen</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+    <span class="n">cmd</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="n">output_flag</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;--json-stream&quot;</span>
+    <span class="n">yolo_flag</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">verbose_flag</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">can_commit</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span>
+    <span class="n">json_parser</span><span class="p">:</span> <span class="n">JsonParserType</span> <span class="o">=</span> <span class="n">JsonParserType</span><span class="o">.</span><span class="n">GENERIC</span>
+    <span class="n">model_flag</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">print_flag</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">streaming_flag</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">session_flag</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">display_name</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">transport</span><span class="p">:</span> <span class="n">AgentTransport</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+
+<div class="viewcode-block" id="AgentConfig.model_post_init">
+<a class="viewcode-back" href="../../../modules.html#ralph.config.models.AgentConfig.model_post_init">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">model_post_init</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">_context</span><span class="p">:</span> <span class="nb">object</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">transport</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">return</span>
+
+        <span class="n">parser_to_transport</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="n">JsonParserType</span><span class="o">.</span><span class="n">CLAUDE</span><span class="p">:</span> <span class="n">AgentTransport</span><span class="o">.</span><span class="n">CLAUDE</span><span class="p">,</span>
+            <span class="n">JsonParserType</span><span class="o">.</span><span class="n">CODEX</span><span class="p">:</span> <span class="n">AgentTransport</span><span class="o">.</span><span class="n">CODEX</span><span class="p">,</span>
+            <span class="n">JsonParserType</span><span class="o">.</span><span class="n">OPENCODE</span><span class="p">:</span> <span class="n">AgentTransport</span><span class="o">.</span><span class="n">OPENCODE</span><span class="p">,</span>
+        <span class="p">}</span>
+        <span class="n">command_to_transport</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="s2">&quot;claude&quot;</span><span class="p">:</span> <span class="n">AgentTransport</span><span class="o">.</span><span class="n">CLAUDE</span><span class="p">,</span>
+            <span class="s2">&quot;codex&quot;</span><span class="p">:</span> <span class="n">AgentTransport</span><span class="o">.</span><span class="n">CODEX</span><span class="p">,</span>
+            <span class="s2">&quot;opencode&quot;</span><span class="p">:</span> <span class="n">AgentTransport</span><span class="o">.</span><span class="n">OPENCODE</span><span class="p">,</span>
+        <span class="p">}</span>
+        <span class="n">command_name</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">cmd</span><span class="o">.</span><span class="n">split</span><span class="p">()[</span><span class="mi">0</span><span class="p">]</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">cmd</span> <span class="k">else</span> <span class="s2">&quot;&quot;</span>
+        <span class="n">inferred_transport</span> <span class="o">=</span> <span class="n">parser_to_transport</span><span class="o">.</span><span class="n">get</span><span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">json_parser</span><span class="p">,</span>
+            <span class="n">command_to_transport</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">command_name</span><span class="p">,</span> <span class="n">AgentTransport</span><span class="o">.</span><span class="n">GENERIC</span><span class="p">),</span>
+        <span class="p">)</span>
+        <span class="nb">object</span><span class="o">.</span><span class="fm">__setattr__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">&quot;transport&quot;</span><span class="p">,</span> <span class="n">inferred_transport</span><span class="p">)</span></div>
+</div>
+
+
+
+<div class="viewcode-block" id="CloudConfig">
+<a class="viewcode-back" href="../../../modules.html#ralph.config.models.CloudConfig">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">CloudConfig</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>  <span class="c1"># type: ignore[explicit-any]</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Optional cloud reporting configuration.</span>
+
+<span class="sd">    Attributes:</span>
+<span class="sd">        enabled: Whether cloud reporting is enabled.</span>
+<span class="sd">        api_url: Base URL for the cloud API.</span>
+<span class="sd">        api_key: API key for authentication.</span>
+<span class="sd">        timeout_secs: Request timeout in seconds.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">model_config</span> <span class="o">=</span> <span class="n">ConfigDict</span><span class="p">(</span><span class="n">frozen</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+    <span class="n">enabled</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span>
+    <span class="n">api_url</span><span class="p">:</span> <span class="n">HttpUrl</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">api_key</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">timeout_secs</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">30</span></div>
+
+
+
+<div class="viewcode-block" id="GeneralBehaviorFlags">
+<a class="viewcode-back" href="../../../modules.html#ralph.config.models.GeneralBehaviorFlags">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">GeneralBehaviorFlags</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>  <span class="c1"># type: ignore[explicit-any]</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;General configuration behavioral flags.</span>
+
+<span class="sd">    Attributes:</span>
+<span class="sd">        interactive: Interactive mode (keep agent in foreground).</span>
+<span class="sd">        auto_detect_stack: Auto-detect project stack for review guidelines.</span>
+<span class="sd">        strict_validation: Strict PROMPT.md validation.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">model_config</span> <span class="o">=</span> <span class="n">ConfigDict</span><span class="p">(</span><span class="n">frozen</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+    <span class="n">interactive</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span>
+    <span class="n">auto_detect_stack</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span>
+    <span class="n">strict_validation</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span></div>
+
+
+
+<div class="viewcode-block" id="GeneralWorkflowFlags">
+<a class="viewcode-back" href="../../../modules.html#ralph.config.models.GeneralWorkflowFlags">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">GeneralWorkflowFlags</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>  <span class="c1"># type: ignore[explicit-any]</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;General configuration workflow automation flags.</span>
+
+<span class="sd">    Attributes:</span>
+<span class="sd">        checkpoint_enabled: Enable checkpoint/resume functionality.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">model_config</span> <span class="o">=</span> <span class="n">ConfigDict</span><span class="p">(</span><span class="n">frozen</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+    <span class="n">checkpoint_enabled</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span></div>
+
+
+
+<div class="viewcode-block" id="GeneralExecutionFlags">
+<a class="viewcode-back" href="../../../modules.html#ralph.config.models.GeneralExecutionFlags">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">GeneralExecutionFlags</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>  <span class="c1"># type: ignore[explicit-any]</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;General configuration execution behavior flags.</span>
+
+<span class="sd">    Attributes:</span>
+<span class="sd">        force_universal_prompt: Force universal review prompt for all agents.</span>
+<span class="sd">        isolation_mode: Isolation mode (prevent context contamination).</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">model_config</span> <span class="o">=</span> <span class="n">ConfigDict</span><span class="p">(</span><span class="n">frozen</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+    <span class="n">force_universal_prompt</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span>
+    <span class="n">isolation_mode</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span></div>
+
+
+
+<div class="viewcode-block" id="GeneralConfig">
+<a class="viewcode-back" href="../../../modules.html#ralph.config.models.GeneralConfig">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">GeneralConfig</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>  <span class="c1"># type: ignore[explicit-any]</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;[general] section of ralph-workflow.toml.</span>
+
+<span class="sd">    Attributes:</span>
+<span class="sd">        verbosity: Verbosity level (0-4).</span>
+<span class="sd">        behavior: Behavioral flags (interactive, auto-detect, strict validation).</span>
+<span class="sd">        workflow: Workflow automation flags (checkpoint, auto-rebase).</span>
+<span class="sd">        execution: Execution behavior flags (universal prompt, isolation mode).</span>
+<span class="sd">        developer_iters: Number of developer iterations.</span>
+<span class="sd">        reviewer_reviews: Number of reviewer re-review passes.</span>
+<span class="sd">        max_development_analysis_iterations: Max development analysis loop budget.</span>
+<span class="sd">        max_review_analysis_iterations: Max review analysis loop budget.</span>
+<span class="sd">        developer_context: Developer context level.</span>
+<span class="sd">        reviewer_context: Reviewer context level.</span>
+<span class="sd">        review_depth: Review depth level.</span>
+<span class="sd">        prompt_path: Path to save last prompt.</span>
+<span class="sd">        templates_dir: User templates directory for custom template overrides.</span>
+<span class="sd">        git_user_name: Git user name for commits.</span>
+<span class="sd">        git_user_email: Git user email for commits.</span>
+<span class="sd">        provider_fallback: Provider/model fallbacks keyed by agent name.</span>
+<span class="sd">        max_same_agent_retries: Maximum same-agent retry attempts.</span>
+<span class="sd">        max_commit_residual_retries: Maximum additional residual commit retries.</span>
+<span class="sd">        max_retries: Maximum retries per agent.</span>
+<span class="sd">        retry_delay_ms: Base delay between agent retries in milliseconds.</span>
+<span class="sd">        backoff_multiplier: Multiplier for exponential retry backoff.</span>
+<span class="sd">        max_backoff_ms: Maximum retry backoff delay in milliseconds.</span>
+<span class="sd">        max_cycles: Maximum number of full fallback cycles through a drain.</span>
+<span class="sd">        execution_history_limit: Maximum execution history entries to keep in memory.</span>
+<span class="sd">        agent_idle_timeout_seconds: Maximum idle seconds before killing a stalled agent process.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">model_config</span> <span class="o">=</span> <span class="n">ConfigDict</span><span class="p">(</span><span class="n">frozen</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+    <span class="n">verbosity</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">2</span>
+    <span class="n">behavior</span><span class="p">:</span> <span class="n">GeneralBehaviorFlags</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">default_factory</span><span class="o">=</span><span class="n">GeneralBehaviorFlags</span><span class="p">)</span>
+    <span class="n">workflow</span><span class="p">:</span> <span class="n">GeneralWorkflowFlags</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">default_factory</span><span class="o">=</span><span class="n">GeneralWorkflowFlags</span><span class="p">)</span>
+    <span class="n">execution</span><span class="p">:</span> <span class="n">GeneralExecutionFlags</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">default_factory</span><span class="o">=</span><span class="n">GeneralExecutionFlags</span><span class="p">)</span>
+    <span class="n">developer_iters</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">default</span><span class="o">=</span><span class="mi">5</span><span class="p">,</span> <span class="n">ge</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+    <span class="n">reviewer_reviews</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">default</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span> <span class="n">ge</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+    <span class="n">max_development_analysis_iterations</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">default</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span> <span class="n">ge</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+    <span class="n">max_review_analysis_iterations</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">default</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span> <span class="n">ge</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+    <span class="n">developer_context</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">default</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">ge</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+    <span class="n">reviewer_context</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">default</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">ge</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+    <span class="n">review_depth</span><span class="p">:</span> <span class="n">ReviewDepth</span> <span class="o">=</span> <span class="n">ReviewDepth</span><span class="o">.</span><span class="n">STANDARD</span>
+    <span class="n">prompt_path</span><span class="p">:</span> <span class="n">pathlib</span><span class="o">.</span><span class="n">Path</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">templates_dir</span><span class="p">:</span> <span class="n">pathlib</span><span class="o">.</span><span class="n">Path</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">git_user_name</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">git_user_email</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">provider_fallback</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]]</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">default_factory</span><span class="o">=</span><span class="nb">dict</span><span class="p">)</span>
+    <span class="n">max_same_agent_retries</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">default</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span> <span class="n">ge</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+    <span class="n">max_commit_residual_retries</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">default</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span> <span class="n">ge</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+    <span class="n">max_retries</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">default</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span> <span class="n">ge</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+    <span class="n">retry_delay_ms</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">default</span><span class="o">=</span><span class="mi">1000</span><span class="p">,</span> <span class="n">ge</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+    <span class="n">backoff_multiplier</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">default</span><span class="o">=</span><span class="mf">2.0</span><span class="p">,</span> <span class="n">ge</span><span class="o">=</span><span class="mf">1.0</span><span class="p">)</span>
+    <span class="n">max_backoff_ms</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">default</span><span class="o">=</span><span class="mi">60000</span><span class="p">,</span> <span class="n">ge</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+    <span class="n">max_cycles</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">default</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span> <span class="n">ge</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+    <span class="n">execution_history_limit</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">default</span><span class="o">=</span><span class="mi">1000</span><span class="p">,</span> <span class="n">ge</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+    <span class="n">agent_idle_timeout_seconds</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span>
+        <span class="n">default</span><span class="o">=</span><span class="mf">300.0</span><span class="p">,</span>
+        <span class="n">gt</span><span class="o">=</span><span class="mf">0.0</span><span class="p">,</span>
+        <span class="n">description</span><span class="o">=</span><span class="p">(</span>
+            <span class="s2">&quot;Maximum seconds of no-output idle time allowed during an agent&quot;</span>
+            <span class="s2">&quot; invocation before the process is killed.&quot;</span>
+        <span class="p">),</span>
+    <span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="CcsConfig">
+<a class="viewcode-back" href="../../../modules.html#ralph.config.models.CcsConfig">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">CcsConfig</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>  <span class="c1"># type: ignore[explicit-any]</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;CCS (Claude Code Switch) defaults configuration.</span>
+
+<span class="sd">    Attributes:</span>
+<span class="sd">        output_flag: Output-format flag for CCS.</span>
+<span class="sd">        yolo_flag: Default autonomous/non-interactive flag for CCS aliases.</span>
+<span class="sd">        verbose_flag: Flag for verbose output.</span>
+<span class="sd">        print_flag: Print flag for non-interactive mode.</span>
+<span class="sd">        streaming_flag: Streaming flag for JSON output with -p.</span>
+<span class="sd">        json_parser: Which JSON parser to use for CCS output.</span>
+<span class="sd">        session_flag: Session continuation flag template.</span>
+<span class="sd">        can_commit: Whether CCS can run workflow tools.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">model_config</span> <span class="o">=</span> <span class="n">ConfigDict</span><span class="p">(</span><span class="n">frozen</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+    <span class="n">output_flag</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;--output-format=stream-json&quot;</span>
+    <span class="n">yolo_flag</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;--permission-mode auto&quot;</span>
+    <span class="n">verbose_flag</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;--verbose&quot;</span>
+    <span class="n">print_flag</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;--print&quot;</span>
+    <span class="n">streaming_flag</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;--include-partial-messages&quot;</span>
+    <span class="n">json_parser</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;claude&quot;</span>
+    <span class="n">session_flag</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;--resume </span><span class="si">{}</span><span class="s2">&quot;</span>
+    <span class="n">can_commit</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span></div>
+
+
+
+<div class="viewcode-block" id="CcsAliasConfig">
+<a class="viewcode-back" href="../../../modules.html#ralph.config.models.CcsAliasConfig">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">CcsAliasConfig</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>  <span class="c1"># type: ignore[explicit-any]</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Per-alias CCS configuration (table form).</span>
+
+<span class="sd">    Attributes:</span>
+<span class="sd">        cmd: Base CCS command to run.</span>
+<span class="sd">        output_flag: Optional output flag override.</span>
+<span class="sd">        yolo_flag: Optional yolo flag override.</span>
+<span class="sd">        verbose_flag: Optional verbose flag override.</span>
+<span class="sd">        print_flag: Optional print flag override.</span>
+<span class="sd">        streaming_flag: Optional streaming flag override.</span>
+<span class="sd">        json_parser: Optional JSON parser override.</span>
+<span class="sd">        can_commit: Optional can_commit override.</span>
+<span class="sd">        model_flag: Optional model flag appended to the command.</span>
+<span class="sd">        session_flag: Optional session continuation flag.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">model_config</span> <span class="o">=</span> <span class="n">ConfigDict</span><span class="p">(</span><span class="n">frozen</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+    <span class="n">cmd</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="n">output_flag</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">yolo_flag</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">verbose_flag</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">print_flag</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">streaming_flag</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">json_parser</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">can_commit</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">model_flag</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">session_flag</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span></div>
+
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_default_agent_chains</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]]:</span>
+    <span class="k">return</span> <span class="p">{</span>
+        <span class="s2">&quot;planning&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;claude&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;development&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;claude&quot;</span><span class="p">,</span> <span class="s2">&quot;opencode&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;analysis&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;claude&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;review&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;claude&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;fix&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;claude&quot;</span><span class="p">],</span>
+        <span class="s2">&quot;commit&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;claude&quot;</span><span class="p">],</span>
+    <span class="p">}</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_default_agent_drains</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]:</span>
+    <span class="k">return</span> <span class="p">{</span>
+        <span class="s2">&quot;planning&quot;</span><span class="p">:</span> <span class="s2">&quot;planning&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;development&quot;</span><span class="p">:</span> <span class="s2">&quot;development&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;analysis&quot;</span><span class="p">:</span> <span class="s2">&quot;analysis&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;review&quot;</span><span class="p">:</span> <span class="s2">&quot;review&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;fix&quot;</span><span class="p">:</span> <span class="s2">&quot;fix&quot;</span><span class="p">,</span>
+        <span class="s2">&quot;commit&quot;</span><span class="p">:</span> <span class="s2">&quot;commit&quot;</span><span class="p">,</span>
+    <span class="p">}</span>
+
+
+<div class="viewcode-block" id="UnifiedConfig">
+<a class="viewcode-back" href="../../../modules.html#ralph.config.models.UnifiedConfig">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">UnifiedConfig</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>  <span class="c1"># type: ignore[explicit-any]</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Top-level merged configuration (global + local + CLI overrides).</span>
+
+<span class="sd">    This is the sole source of truth for Ralph configuration,</span>
+<span class="sd">    located at `~/.config/ralph-workflow.toml` or `.agent/ralph-workflow.toml`.</span>
+
+<span class="sd">    Attributes:</span>
+<span class="sd">        general: General settings.</span>
+<span class="sd">        ccs: CCS defaults for aliases.</span>
+<span class="sd">        agents: Agent definitions.</span>
+<span class="sd">        ccs_aliases: CCS alias mappings.</span>
+<span class="sd">        agent_chains: Named reusable chain definitions.</span>
+<span class="sd">        agent_drains: Drain-to-chain bindings for built-in drains.</span>
+<span class="sd">        cloud: Optional cloud reporting configuration.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">model_config</span> <span class="o">=</span> <span class="n">ConfigDict</span><span class="p">(</span><span class="n">frozen</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+    <span class="n">general</span><span class="p">:</span> <span class="n">GeneralConfig</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">default_factory</span><span class="o">=</span><span class="n">GeneralConfig</span><span class="p">)</span>
+    <span class="n">ccs</span><span class="p">:</span> <span class="n">CcsConfig</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">default_factory</span><span class="o">=</span><span class="n">CcsConfig</span><span class="p">)</span>
+    <span class="n">agents</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">AgentConfig</span><span class="p">]</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">default_factory</span><span class="o">=</span><span class="nb">dict</span><span class="p">)</span>
+    <span class="n">ccs_aliases</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">CcsAliasConfig</span><span class="p">]</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">default_factory</span><span class="o">=</span><span class="nb">dict</span><span class="p">)</span>
+    <span class="n">agent_chains</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]]</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">default_factory</span><span class="o">=</span><span class="n">_default_agent_chains</span><span class="p">)</span>
+    <span class="n">agent_drains</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">default_factory</span><span class="o">=</span><span class="n">_default_agent_drains</span><span class="p">)</span>
+    <span class="n">cloud</span><span class="p">:</span> <span class="n">CloudConfig</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">default_factory</span><span class="o">=</span><span class="n">CloudConfig</span><span class="p">)</span></div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2024, Ralph Workflow Contributors.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

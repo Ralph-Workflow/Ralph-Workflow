@@ -63,10 +63,8 @@ def _argv(args: tuple[object, ...]) -> list[str]:
     return list(args[0])  # type: ignore[arg-type]
 
 
-DEFAULT_IDLE_TIMEOUT_SECONDS = 300.0
 
-
-def test_invoke_agent_uses_five_minute_default_idle_timeout(
+def test_invoke_agent_passes_idle_timeout_to_subprocess(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     config = AgentConfig(cmd="opencode", output_flag="--json-stream")
@@ -91,6 +89,7 @@ def test_invoke_agent_uses_five_minute_default_idle_timeout(
         captured["idle_timeout_seconds"] = idle_timeout_seconds
         return []
 
+    _expected_idle_timeout = 300.0
     monkeypatch.setattr(
         "ralph.agents.invoke._run_subprocess_and_read_lines",
         fake_run_subprocess_and_read_lines,
@@ -100,11 +99,15 @@ def test_invoke_agent_uses_five_minute_default_idle_timeout(
         invoke_agent(
             config,
             str(prompt_file),
-            options=InvokeOptions(show_progress=False, workspace_path=tmp_path),
+            options=InvokeOptions(
+                show_progress=False,
+                workspace_path=tmp_path,
+                idle_timeout_seconds=_expected_idle_timeout,
+            ),
         )
     )
 
-    assert captured["idle_timeout_seconds"] == DEFAULT_IDLE_TIMEOUT_SECONDS
+    assert captured["idle_timeout_seconds"] == _expected_idle_timeout
 
 
 def test_run_subprocess_and_read_lines_wraps_idle_stream_timeout(

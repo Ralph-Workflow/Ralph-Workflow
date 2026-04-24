@@ -22,7 +22,7 @@ import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
+from typing import IO, TYPE_CHECKING, Protocol, cast, runtime_checkable
 
 from loguru import logger
 from tqdm import tqdm
@@ -73,7 +73,7 @@ class InvokeOptions:
     show_progress: bool = True
     workspace_path: Path | None = None
     extra_env: dict[str, str] | None = None
-    idle_timeout_seconds: float | None = 300.0
+    idle_timeout_seconds: float | None = None
     pure: bool = False
     system_prompt_file: str | None = None
 
@@ -92,7 +92,6 @@ class _BuildCommandOptions:
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
-    from typing import IO
 
     from ralph.config.models import AgentConfig
 
@@ -112,7 +111,7 @@ class _HasStop(Protocol):
     """Protocol for watchdog Observer-like objects that have a stop method."""
 
     def stop(self) -> None: ...
-    def join(self, timeout: float | None = None) -> None: ...
+    def join(self, _timeout: float | None = None) -> None: ...
 
 
 @runtime_checkable
@@ -125,7 +124,7 @@ class _HasSrcPath(Protocol):
 class _ObserverProtocol(_HasStop, Protocol):
     """Protocol for watchdog Observer-like objects used by this module."""
 
-    def schedule(self, _event_handler: object, path: str, **kwargs: object) -> None: ...
+    def schedule(self, _event_handler: object, path: str, **_kwargs: object) -> None: ...
     def start(self) -> None: ...
 
 
@@ -284,7 +283,7 @@ class WorkspaceMonitor:
         """Stop monitoring the workspace."""
         if self._observer is not None:
             self._observer.stop()
-            self._observer.join(timeout=5)
+            self._observer.join(5)
             self._observer = None
             logger.debug(
                 "Stopped workspace monitoring: {} ({} events)",
@@ -539,7 +538,7 @@ def _read_lines_from_process(
     Yields:
         Lines from stdout.
     """
-    stdout_pipe = cast("IO[str] | None", handle.stdout)
+    stdout_pipe: IO[str] | None = handle.stdout  # type: ignore[assignment]
     lines_queue: list[str] = []
     lines_lock = threading.Lock()
     lines_event = threading.Event()
@@ -617,7 +616,7 @@ def _check_process_result(
     if returncode == 0:
         return
 
-    stderr_pipe = cast("IO[str] | None", handle.stderr)
+    stderr_pipe: IO[str] | None = handle.stderr  # type: ignore[assignment]
     stderr = stderr_pipe.read() if stderr_pipe is not None else "(unable to read stderr)"
     logger.error("Agent exited with code {}: {}", returncode, stderr)
     raise AgentInvocationError(agent_name, returncode, stderr, parsed_output)

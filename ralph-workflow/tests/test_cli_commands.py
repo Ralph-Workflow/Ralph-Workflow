@@ -44,6 +44,7 @@ def _simple_config() -> SimpleNamespace:
             git_user_name="user",
             git_user_email="user@example.com",
             verbosity=2,
+            agent_idle_timeout_seconds=300.0,
         ),
         agent_drains={"commit": "commit_chain", "review": "review_chain"},
         agent_chains={"commit_chain": ["commit_agent"], "review_chain": ["review_agent"]},
@@ -1275,88 +1276,6 @@ def test_generate_commit_msg_accepts_raw_commit_payload_written_by_agent(
     output = stream.getvalue()
     assert "Generated commit message" in output
     assert "fix(cli): salvage commit fallback" in output
-
-
-def test_handle_show_or_generate_displays_staged_files(monkeypatch: pytest.MonkeyPatch) -> None:
-    stream = _attach_console(monkeypatch, commit_module)
-    files = [f"file_{i}" for i in range(commit_module._MAX_DISPLAY_FILES + 2)]
-    monkeypatch.setattr(commit_module, "get_staged_files", lambda root: files)
-    monkeypatch.setattr(commit_module, "_generate_commit_message", lambda _staged, root: "auto msg")
-
-    def fail_commit(*args: object, **kwargs: object) -> Path:
-        raise AssertionError("Should not commit when apply=False")
-
-    monkeypatch.setattr(commit_module, "create_commit", fail_commit)
-
-    commit_module._handle_show_or_generate(
-        repo_root=Path("/tmp"),
-        generate=True,
-        apply=False,
-        git_user_name="user",
-        git_user_email="user@example.com",
-    )
-
-    output = stream.getvalue()
-    assert "Staged files" in output
-    assert "... and 2 more" in output
-    assert "auto msg" in output
-    assert "Generated commit message" in output
-
-
-def test_handle_show_or_generate_applies_commit_success(monkeypatch: pytest.MonkeyPatch) -> None:
-    stream = _attach_console(monkeypatch, commit_module)
-    monkeypatch.setattr(commit_module, "get_staged_files", lambda root: ["src/app.py"])
-    monkeypatch.setattr(commit_module, "_generate_commit_message", lambda _staged, root: "auto msg")
-    recorded: list[str] = []
-
-    def fake_create(
-        repo_root: Path, message: str, author_name: str | None, author_email: str | None
-    ) -> str:
-        recorded.append(repo_root.as_posix())
-        return "deadbeef1234"
-
-    monkeypatch.setattr(commit_module, "create_commit", fake_create)
-    commit_module._handle_show_or_generate(
-        repo_root=Path("/tmp"),
-        generate=True,
-        apply=True,
-        git_user_name="user",
-        git_user_email="user@example.com",
-    )
-
-    assert recorded
-    output = stream.getvalue()
-    assert "Created commit" in output
-    assert "deadbeef" in output
-
-
-def test_handle_show_or_generate_applies_commit_failure(monkeypatch: pytest.MonkeyPatch) -> None:
-    stream = _attach_console(monkeypatch, commit_module)
-    monkeypatch.setattr(commit_module, "get_staged_files", lambda root: ["src/app.py"])
-    monkeypatch.setattr(commit_module, "_generate_commit_message", lambda _staged, root: "auto msg")
-
-    def raise_commit(*args: object, **kwargs: object) -> str:
-        raise RuntimeError("boom")
-
-    monkeypatch.setattr(commit_module, "create_commit", raise_commit)
-    commit_module._handle_show_or_generate(
-        repo_root=Path("/tmp"),
-        generate=True,
-        apply=True,
-        git_user_name="user",
-        git_user_email="user@example.com",
-    )
-
-    assert "Commit failed" in stream.getvalue()
-
-
-def test_generate_commit_message_synthesizes_sections() -> None:
-    assert commit_module._generate_commit_message([], Path("/tmp")) == "Update files"
-    message = commit_module._generate_commit_message(
-        ["src/one.py", "tests/two.py", "docs/three.md"], Path("/tmp")
-    )
-    assert "Update 2 files" in message
-    assert "Modify 1 file" in message
 
 
 def test_check_git_repo_errors(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -1,4 +1,4 @@
-.PHONY: help install dev install-dev test test-unit test-integration lint typecheck build build-wheel build-sdist publish test-pypi test-pypi-upload clean dist clean-dist fmt format-check ruff-fix mypy-fix pre-commit dist-homebrew verify coverage dist-binary dist-pypi dist-all formula-check dead-code
+.PHONY: help install dev install-dev test test-unit test-integration lint typecheck build build-wheel build-sdist publish test-pypi test-pypi-upload clean dist clean-dist fmt format-check ruff-fix mypy-fix pre-commit dist-homebrew verify coverage dist-binary dist-pypi dist-all formula-check dead-code docs
 
 PYTEST_WORKERS ?= 8
 COVERAGE_WORKERS ?= 16
@@ -32,6 +32,7 @@ help:
 	@echo "  dist-all       Build both binary and PyPI distributions"
 	@echo "  formula-check  Validate Homebrew formula syntax"
 	@echo "  dead-code      Run Vulture dead-code audit (fails while backlog exists)"
+	@echo "  docs           Build Sphinx HTML documentation (not part of verify)"
 	@echo ""
 	@echo "  run            Run ralph CLI directly"
 	@echo "  check          Run all checks (lint, typecheck, test)"
@@ -155,6 +156,9 @@ formula-check:
 
 dead-code:
 	uv run --with vulture python -m vulture --config pyproject.toml
+
+docs:
+	uv run --with sphinx --with sphinx-rtd-theme --with myst-parser sphinx-build -b html docs/sphinx docs/sphinx/_build/html -W --keep-going
 
 # Development helpers
 run:

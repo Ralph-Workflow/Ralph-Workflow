@@ -158,6 +158,7 @@ class GeneralConfig(BaseModel):  # type: ignore[explicit-any]
         max_backoff_ms: Maximum retry backoff delay in milliseconds.
         max_cycles: Maximum number of full fallback cycles through a drain.
         execution_history_limit: Maximum execution history entries to keep in memory.
+        agent_idle_timeout_seconds: Maximum idle seconds before killing a stalled agent process.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -186,6 +187,14 @@ class GeneralConfig(BaseModel):  # type: ignore[explicit-any]
     max_backoff_ms: int = Field(default=60000, ge=0)
     max_cycles: int = Field(default=3, ge=1)
     execution_history_limit: int = Field(default=1000, ge=1)
+    agent_idle_timeout_seconds: float = Field(
+        default=300.0,
+        gt=0.0,
+        description=(
+            "Maximum seconds of no-output idle time allowed during an agent"
+            " invocation before the process is killed."
+        ),
+    )
 
 
 class CcsConfig(BaseModel):  # type: ignore[explicit-any]

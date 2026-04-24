@@ -56,6 +56,11 @@ web-search = [
   "exa-py>=2.12.0",
   "brave-search-python-client>=0.4.27",
 ]
+docs = [
+  "sphinx>=7",
+  "sphinx-rtd-theme",
+  "myst-parser",
+]
 bundle = ["pyinstaller>=6.0"]
 
 [project.scripts]

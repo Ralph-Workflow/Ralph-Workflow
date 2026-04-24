@@ -107,12 +107,16 @@ Do not leave "reserved for later" MCP scaffolding behind. If in doubt, remove it
 
 Recovery, failure classification, retry counting, and chain fallover each have a single conceptual owner in `ralph/recovery/`. Extend the owner, do not add handlers at call sites. New failure modes are added by extending the `FailureClassifier` in `ralph/recovery/classifier.py`, not by sprinkling classification logic at invoke sites.
 
-## Release notes
+## Release & Versioning
 
-Builds and publishing are defined in `pyproject.toml` and the repo automation. For local validation, build from this directory:
+For the complete release process — version bumping, building, validating, and publishing
+to PyPI — see [docs/sphinx/versioning.md](docs/sphinx/versioning.md).
+
+For local validation only:
 
 ```bash
+cd ralph-workflow
 rm -rf dist
-hatch build
-python -m twine check dist/*
+uv run hatch build
+uv run python -m twine check dist/*
 ```

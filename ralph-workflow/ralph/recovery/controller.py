@@ -154,6 +154,18 @@ class RecoveryController:
             ), [], failure_evt
 
         # AGENT category: debit budget and handle chain progression
+        if failure.reset_session:
+            logger.warning(
+                "Stale session detected in phase={} (session id invalid): {}",
+                phase,
+                failure.reason[:200],
+            )
+            new_state = new_state.copy_with(
+                last_agent_session_id=None,
+                session_preserve_retry_pending=False,
+            )
+            self._write_session_reset_hint(phase, failure)
+
         if agent is not None:
             self._registry = self._registry.debit(phase, agent, failure)
             # Track backoff attempt
@@ -227,6 +239,36 @@ class RecoveryController:
         """Reset backoff counter for a phase/agent after successful invocation."""
         key = f"{phase}:{agent}" if agent else phase
         self._backoff_attempts.pop(key, None)
+
+    def _write_session_reset_hint(
+        self,
+        phase: str,
+        failure: ClassifiedFailure,
+    ) -> None:
+        """Write a retry hint file describing the stale-session failure.
+
+        Args:
+            phase: Pipeline phase where the failure occurred.
+            failure: Classified failure with stale-session detail.
+        """
+        from pathlib import Path  # noqa: PLC0415
+
+        from ralph.phases.required_artifacts import (  # noqa: PLC0415
+            build_retry_hint,
+            retry_hint_path,
+        )
+
+        detail = (
+            "Previous session id was invalid; restart with fresh session."
+            f" Original failure: {failure.raw_message}"
+        )
+        hint_content = build_retry_hint(phase, detail)
+        hint_file = Path(retry_hint_path(phase))
+        try:
+            hint_file.parent.mkdir(parents=True, exist_ok=True)
+            hint_file.write_text(hint_content, encoding="utf-8")
+        except OSError:
+            logger.warning("Failed to write session reset hint to {}", hint_file)
 
     def _handle_agent_budget_exhaustion(
         self,
