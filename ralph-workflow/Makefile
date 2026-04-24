@@ -1,4 +1,4 @@
-.PHONY: help install dev install-dev test test-unit test-integration lint typecheck build build-wheel build-sdist publish test-pypi test-pypi-upload twine-upload twine-upload-testpypi clean dist clean-dist fmt format-check ruff-fix mypy-fix pre-commit dist-homebrew verify coverage dist-binary dist-pypi dist-all formula-check dead-code docs
+.PHONY: help install dev install-dev test test-unit test-integration lint typecheck build build-wheel build-sdist publish test-pypi test-pypi-upload twine-upload twine-upload-testpypi clean dist clean-dist fmt format-check ruff-fix mypy-fix pre-commit dist-homebrew verify coverage dist-binary dist-pypi dist-all formula-check dead-code docs serve-docs
 
 PYTEST_WORKERS ?= 8
 COVERAGE_WORKERS ?= 16
@@ -35,6 +35,7 @@ help:
 	@echo "  formula-check  Validate Homebrew formula syntax"
 	@echo "  dead-code      Run Vulture dead-code audit (fails while backlog exists)"
 	@echo "  docs           Build Sphinx HTML documentation (not part of verify)"
+	@echo "  serve-docs     Build and serve docs at http://localhost:8080"
 	@echo ""
 	@echo "  run            Run ralph CLI directly"
 	@echo "  check          Run all checks (lint, typecheck, test)"
@@ -168,6 +169,10 @@ dead-code:
 
 docs:
 	uv run --extra docs sphinx-build -b html docs/sphinx docs/sphinx/_build/html -W --keep-going
+
+serve-docs: docs
+	@echo "Serving docs at http://localhost:8080"
+	cd docs/sphinx/_build/html && python -m http.server 8080
 
 # Development helpers
 run:

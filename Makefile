@@ -3,7 +3,7 @@
 
 PY_DIR := ralph-workflow
 
-.PHONY: all build verify lint format format-check typecheck test test-unit test-integration test-cov clean install dev install-dev publish test-pypi twine-upload twine-upload-testpypi help
+.PHONY: all build verify lint format format-check typecheck test test-unit test-integration test-cov clean install dev install-dev publish test-pypi twine-upload twine-upload-testpypi help docs serve-docs
 
 all: verify
 
@@ -61,6 +61,12 @@ dev:
 install-dev:
 	$(MAKE) -C $(PY_DIR) install-dev
 
+docs:
+	$(MAKE) -C $(PY_DIR) docs
+
+serve-docs:
+	$(MAKE) -C $(PY_DIR) serve-docs
+
 help:
 	@echo "Ralph (Python) root targets"
 	@echo "  make verify      - lint + typecheck + tests with coverage"
@@ -78,3 +84,5 @@ help:
 	@echo "  make install     - install package and refresh pipx executable"
 	@echo "  make dev         - editable install with dev deps"
 	@echo "  make install-dev - alias for make dev"
+	@echo "  make docs        - build Sphinx HTML documentation"
+	@echo "  make serve-docs  - build and serve docs at http://localhost:8080"
