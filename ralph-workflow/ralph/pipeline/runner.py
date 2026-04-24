@@ -2031,6 +2031,7 @@ def _execute_agent_effect(  # noqa: PLR0913
                     workspace_root=workspace_scope.root,
                     name=str(effect.phase),
                 ),
+                phase=str(effect.phase),
             )
             output_lines = deps.invoke_agent(agent_config, attempt_prompt_file, options=options)
             if _verbosity_rank(verbosity) >= _VERBOSITY_RANK[Verbosity.NORMAL]:
@@ -2104,6 +2105,14 @@ def _build_agent_recovery_plan(  # noqa: PLR0913
     if reason is None:
         return None
 
+    resumable_session_id = cast("object", getattr(exc, "resumable_session_id", None))
+    if isinstance(resumable_session_id, str) and resumable_session_id:
+        return _AgentRecoveryPlan(
+            prompt_file=effect.prompt_file,
+            session_id=resumable_session_id,
+            reason=reason,
+        )
+
     if extracted_session_id:
         return _AgentRecoveryPlan(
             prompt_file=effect.prompt_file,
@@ -2130,8 +2139,12 @@ def _retryable_agent_failure_reason(
     if isinstance(exc, inactivity_error_type):
         return "an inactivity timeout"
 
+    if type(exc).__name__ == "OpenCodeResumableExitError":
+        return "OpenCode exited without submitting a required completion artifact"
+
     raw_details = "\n".join(_recovery_error_parts(exc))
-    if "No conversation found with session ID:" in raw_details:
+    from ralph.recovery.classifier import _SESSION_NOT_FOUND_SUBSTRINGS  # noqa: PLC0415
+    if any(s in raw_details for s in _SESSION_NOT_FOUND_SUBSTRINGS):
         return "a stale session ID (fresh session required)"
 
     details = raw_details.lower()

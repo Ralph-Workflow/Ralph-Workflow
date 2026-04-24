@@ -82,6 +82,7 @@ def test_invoke_agent_passes_idle_timeout_to_subprocess(
         workspace_path: Path | None,
         *,
         idle_timeout_seconds: float | None = None,
+        **_extra_kwargs: object,
     ) -> list[str]:
         captured["cmd"] = cmd
         captured["config"] = cfg

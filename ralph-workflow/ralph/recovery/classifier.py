@@ -37,9 +37,13 @@ _ENV_ERRNOS: frozenset[int] = frozenset(
 )
 
 # Substrings that indicate a stale/invalid agent session ID was used for resume.
-# These originate from Claude Code when --resume is passed with an unknown session.
+# Claude Code uses "No conversation found with session ID:"; OpenCode uses
+# "Session not found", "Unknown session", and "session does not exist".
 _SESSION_NOT_FOUND_SUBSTRINGS: tuple[str, ...] = (
     "No conversation found with session ID:",
+    "Session not found",
+    "Unknown session",
+    "session does not exist",
 )
 
 
