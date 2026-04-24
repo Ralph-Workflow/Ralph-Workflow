@@ -32,6 +32,11 @@ class TemplateRenderingError(Exception):
     """Raised when a template cannot be rendered."""
 
 
+def _raise_template_error(message: str) -> str:
+    """Global callable for Jinja2 macros to raise a rendering error explicitly."""
+    raise TemplateRenderingError(message)
+
+
 def render_template(
     template_text: str,
     variables: Mapping[str, str],
@@ -53,6 +58,8 @@ def render_template(
         )
         filters = cast("dict[str, object]", environment.filters)
         filters["split_items"] = split_loop_items
+        globals_dict = environment.globals
+        globals_dict["raise_error"] = _raise_template_error
 
         template = environment.get_template("__main__.j2")
         return template.render(**dict(variables))

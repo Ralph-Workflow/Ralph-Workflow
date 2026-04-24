@@ -65,6 +65,7 @@ def handle_development(effect: Effect, ctx: PhaseContext) -> list[Event]:
                     phase="development",
                     reason=f"Missing planning artifact at {planning_artifact_path}",
                     recoverable=True,
+                    retry_in_session=True,
                 )
             ]
 
@@ -98,6 +99,7 @@ def handle_development(effect: Effect, ctx: PhaseContext) -> list[Event]:
                     phase="development",
                     reason=f"Invalid development evidence: {exc}",
                     recoverable=True,
+                    retry_in_session=True,
                 )
             ]
 
@@ -135,6 +137,7 @@ def _missing_analysis_artifact_event(phase: str, artifact_path: str) -> PhaseFai
             f"{phase}_decision before declaring completion"
         ),
         recoverable=True,
+        retry_in_session=True,
     )
 
 

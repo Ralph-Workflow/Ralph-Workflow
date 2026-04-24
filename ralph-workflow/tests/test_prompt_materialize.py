@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 from git import Repo as GitRepo
 
 import ralph.prompts.materialize as materialize_module
+from ralph.pipeline.cycle_baseline import write_cycle_baseline
 from ralph.policy.loader import load_policy
 from ralph.prompts.materialize import materialize_prompt_for_phase, prompt_file_for_phase
 from ralph.prompts.types import SessionCapabilities, SessionDrain
@@ -454,3 +455,21 @@ def test_git_diff_falls_back_to_head_when_start_commit_absent(tmp_git_repo: Path
     diff = materialize_module._git_diff(tmp_git_repo)
 
     assert "work.py" in diff
+
+
+def test_git_diff_cumulative_across_multiple_mid_cycle_commits(tmp_git_repo: Path) -> None:
+    repo = GitRepo(tmp_git_repo)
+    baseline_sha = repo.head.commit.hexsha
+    (tmp_git_repo / "file_a.py").write_text("a = 1\n")
+    repo.index.add(["file_a.py"])
+    repo.index.commit("mid-cycle commit 1")
+    (tmp_git_repo / "file_b.py").write_text("b = 2\n")
+    repo.index.add(["file_b.py"])
+    repo.index.commit("mid-cycle commit 2")
+    (tmp_git_repo / "file_c.py").write_text("c = 3\n")
+    repo.index.add(["file_c.py"])
+    write_cycle_baseline(tmp_git_repo, baseline_sha)
+    diff = materialize_module._git_diff(tmp_git_repo)
+    assert "file_a.py" in diff
+    assert "file_b.py" in diff
+    assert "file_c.py" in diff

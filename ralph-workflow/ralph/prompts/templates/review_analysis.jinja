@@ -2,7 +2,7 @@ REVIEW ANALYSIS MODE
 
 Decide whether the review results should accept the work, request changes, or fail the review analysis.
 
-{% from 'shared/_payload_section.j2' import render_payload_section %}
+{% from 'shared/_payload_section.j2' import render_payload_section, render_payload_path %}
 
 {% include 'shared/_unattended_mode.j2' %}
 
@@ -10,9 +10,9 @@ Decide whether the review results should accept the work, request changes, or fa
 
 {% include 'shared/_mcp_tools.j2' %}
 
-{{ render_payload_section('PROMPT', PROMPT, PROMPT_PATH) }}
+{{ render_payload_path('PROMPT', PROMPT_PATH) }}
 
-{{ render_payload_section('PLAN', PLAN, PLAN_PATH) }}
+{{ render_payload_path('PLAN', PLAN_PATH) }}
 
 {{ render_payload_section('LATEST ARTIFACT', LATEST_ARTIFACT, LATEST_ARTIFACT_PATH) }}
 

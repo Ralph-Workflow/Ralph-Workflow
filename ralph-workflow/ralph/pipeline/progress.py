@@ -48,6 +48,8 @@ def advance_phase(
     updates: dict[str, object] = {
         "phase": target_phase,
         "previous_phase": state.phase,
+        "last_agent_session_id": None,
+        "session_preserve_retry_pending": False,
     }
 
     if target_phase in (DEVELOPMENT_COMMIT_PHASE, REVIEW_COMMIT_PHASE):

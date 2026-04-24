@@ -2,7 +2,7 @@ ANALYSIS MODE
 
 Review the latest implementation result and determine whether development should continue, loop back, or proceed to commit/review.
 
-{% from 'shared/_payload_section.j2' import render_payload_section %}
+{% from 'shared/_payload_section.j2' import render_payload_section, render_payload_path %}
 
 {% include 'shared/_unattended_mode.j2' %}
 
@@ -10,9 +10,9 @@ Review the latest implementation result and determine whether development should
 
 {% include 'shared/_mcp_tools.j2' %}
 
-{{ render_payload_section('PROMPT', PROMPT, PROMPT_PATH) }}
+{{ render_payload_path('PROMPT', PROMPT_PATH) }}
 
-{{ render_payload_section('PLAN', PLAN, PLAN_PATH) }}
+{{ render_payload_path('PLAN', PLAN_PATH) }}
 
 {{ render_payload_section('LATEST ARTIFACT', LATEST_ARTIFACT, LATEST_ARTIFACT_PATH) }}
 

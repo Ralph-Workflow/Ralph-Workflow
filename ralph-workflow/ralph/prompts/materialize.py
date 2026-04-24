@@ -14,6 +14,7 @@ from ralph.mcp.artifacts.handoffs import (
     handoff_path_for_artifact,
 )
 from ralph.mcp.tools.names import SUBMIT_ARTIFACT_TOOL, claude_tool_name_prefix
+from ralph.pipeline.cycle_baseline import read_cycle_baseline
 from ralph.prompts.commit import CommitPromptPayloadConfig, prompt_commit_message
 from ralph.prompts.debug_dump import dump_rendered_prompt, prompt_dump_path
 from ralph.prompts.developer import (
@@ -32,6 +33,8 @@ if TYPE_CHECKING:
     from ralph.pipeline.work_units import WorkUnit
     from ralph.policy.models import PipelinePolicy
     from ralph.workspace.protocol import Workspace
+
+_ANALYSIS_PHASES = frozenset({"development_analysis", "review_analysis"})
 
 
 def materialize_prompt_for_phase(
@@ -139,6 +142,17 @@ def _render_prompt_for_phase(
         if phase == "fix":
             variables["HIDE_ARTIFACT_SUBMISSION_GUIDANCE"] = "true"
         variables.update(_current_prompt_variables(prompt_content, current_prompt_path))
+        # For analysis phases, PROMPT and PLAN are SECONDARY context: force path
+        # references regardless of content size so they are never inlined.
+        if phase in _ANALYSIS_PHASES:
+            variables.update(
+                _force_plan_path_for_analysis(
+                    workspace_root=workspace_root,
+                    phase=phase,
+                    plan_content=plan_content,
+                    plan_path=variables.get("PLAN_PATH", ""),
+                )
+            )
         return render_template(
             template,
             _merged_variables(variables, session_caps),
@@ -159,6 +173,30 @@ def _render_prompt_for_phase(
         )
     msg = f"Unsupported phase '{phase}' for prompt materialization"
     raise ValueError(msg)
+
+
+def _force_plan_path_for_analysis(
+    *,
+    workspace_root: Path,
+    phase: str,
+    plan_content: str | None,
+    plan_path: str,
+) -> dict[str, str]:
+    """Return PLAN/PLAN_PATH variables that always use a file reference.
+
+    Called only for analysis phases where PLAN is secondary context. If
+    plan_path is already set (handoff file exists), we preserve it. When
+    plan_path is absent, we write the content to a temp file so the template
+    macro always has a non-empty path to reference.
+    """
+    if plan_path:
+        return {"PLAN": "", "PLAN_PATH": plan_path}
+    content = plan_content or "(no plan available)"
+    output_dir = workspace_root / ".agent" / "tmp" / "prompt_payloads"
+    written_path = write_payload_to_directory(
+        output_dir, f"{phase}_plan.txt", content
+    )
+    return {"PLAN": "", "PLAN_PATH": written_path}
 
 
 def _merged_variables(base: dict[str, str], session_caps: SessionCapabilities) -> dict[str, str]:
@@ -502,12 +540,23 @@ def _latest_artifact_content(workspace: Workspace, phase: str) -> tuple[str, str
 
 
 def _git_diff(workspace_root: Path) -> str:
+    """Return the cumulative diff from the dev-cycle baseline through the working tree.
+
+    When a baseline SHA is recorded in .agent/start_commit, the diff includes:
+    - All commits landed since the baseline (baseline..HEAD)
+    - Any uncommitted changes on top (HEAD vs working tree)
+
+    This is correct whether the user commits once per dev cycle or once per
+    individual dev iteration within a cycle.
+    """
     try:
         repo = Repo(workspace_root)
-        start_commit_path = workspace_root / ".agent" / "start_commit"
-        if start_commit_path.exists():
-            baseline_sha = start_commit_path.read_text().strip()
-            return cast("str", repo.git.diff(baseline_sha))
+        baseline_sha = read_cycle_baseline(workspace_root)
+        if baseline_sha:
+            committed = cast("str", repo.git.diff(baseline_sha, "HEAD"))
+            uncommitted = cast("str", repo.git.diff("HEAD"))
+            parts = [p for p in (committed, uncommitted) if p]
+            return "\n".join(parts) if parts else "(no diff available)"
         return cast("str", repo.git.diff("HEAD"))
     except Exception:
         return "(no diff available)"
