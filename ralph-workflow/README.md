@@ -332,8 +332,7 @@ When stderr is a TTY, level tokens are rendered in themed colors using the Okabe
 | `plan` | META | Plan summary or scope |
 | `plan-scope` | META | Plan scope items |
 | `plan-steps` | META | Step progress |
-| `activity` | META | Agent activity metadata (tool, path, workdir) — emitted when no free-form activity line is available |
-| `activity-line` | META | Last raw activity line from an agent — emitted instead of `activity` when the agent produced a structured transcript line |
+| `activity` | META | Agent activity snapshot: free-form activity line from the agent when available, otherwise structured key=value fields (tool, path, workdir) |
 | `analysis` | META | Phase analysis and decision |
 | `worker` | META | Parallel worker status update |
 | `result` | META | Pipeline completion result |
@@ -359,6 +358,12 @@ When stderr is a TTY, level tokens are rendered in themed colors using the Okabe
 
 **Streaming blocks**: consecutive `text` or `thinking` activity lines from the same worker are grouped into `start`/`continue`/`end` sequences so progressive output feels coherent. When a different kind or a lifecycle event arrives, the open block is automatically closed with a `content-end` (or `thinking-end`) line whose content is a one-line headline summary of the accumulated block.
 
+**Thinking previews**: Thinking blocks emit a `↳ preview:` line on open, on each checkpoint, and on close so you can see what the agent is reasoning about without waiting for the block to finish.
+
+**Tool result summaries**: Tool results with substantial content (>=80 characters) emit a `↳ summary:` line above the result so you can see what the tool returned at a glance.
+
+**META [activity] deduplication**: When a `[tool]` CONT line has already been emitted for a unit, the following structured `[activity]` META line is suppressed to avoid redundant noise. The free-form activity line path is unaffected.
+
 **Oversized content** is condensed to a head+tail excerpt with a pointer:
 
 ```
@@ -381,21 +386,21 @@ When a content block exceeds the soft limit and is condensed, the full text is p
 2026-04-21T12:00:00+00:00 INFO META [run-start] workspace=/workspace
 2026-04-21T12:00:00+00:00 MILESTONE META [phase] ◆ development
 2026-04-21T12:00:01+00:00 INFO META [plan] (no plan loaded yet)
-2026-04-21T12:00:02+00:00 INFO META [activity-line] claude/sonnet tool: mcp__ralph__read_file (path=ralph-workflow/ralph/x.py)
 2026-04-21T12:00:02+00:00 INFO CONT [tool][dev-1] mcp__ralph__read_file (path=ralph-workflow/ralph/x.py)
-2026-04-21T12:00:03+00:00 INFO CONT [content-start][dev-1] Refactored parser to accept streaming deltas
-2026-04-21T12:00:04+00:00 INFO CONT [content-continue#2][dev-1] next chunk
-2026-04-21T12:00:05+00:00 INFO CONT [content-end][dev-1] (2 fragments, 850 chars) Refactored parser to accept streaming deltas
-2026-04-21T12:00:05+00:00 INFO META [phase-close] phase=development development: result artifact present (elapsed=12.4s, content_blocks=2, thinking_blocks=1, tool_calls=3, errors=0)
-2026-04-21T12:00:06+00:00 INFO CONT [thinking-start][dev-1] I need to check the tests before…
-2026-04-21T12:00:07+00:00 SUCCESS CONT [tool-result][dev-1] ok
-2026-04-21T12:00:08+00:00 WARN META [progress][dev-1] dropped 3 lines since last flush
-2026-04-21T12:00:09+00:00 INFO CONT [content][dev-1] AAAAA… (+4200 chars, see .agent/raw/dev-1.log) …ZZZZZZZ
+2026-04-21T12:00:03+00:00 INFO CONT [thinking-start][dev-1] ↳ preview: Let me investigate the codebase first.
+2026-04-21T12:00:04+00:00 INFO CONT [content-start][dev-1] Refactored parser to accept streaming deltas
+2026-04-21T12:00:05+00:00 INFO CONT [content-continue#2][dev-1] next chunk
+2026-04-21T12:00:06+00:00 INFO CONT [content-end][dev-1] (2 fragments, 850 chars) Refactored parser to accept streaming deltas
+2026-04-21T12:00:06+00:00 INFO CONT [thinking-end][dev-1] (1 fragments, 45 chars) Let me investigate the codebase first.
+2026-04-21T12:00:06+00:00 INFO CONT [thinking-end][dev-1] ↳ preview: Let me investigate the codebase first.
+2026-04-21T12:00:07+00:00 SUCCESS CONT [tool-result][dev-1] ↳ summary: # Template Registry...
+2026-04-21T12:00:07+00:00 SUCCESS CONT [tool-result][dev-1] # Template Registry\n\nThis module manages...
+2026-04-21T12:00:08+00:00 INFO META [phase-close] phase=development development: result artifact present (elapsed=12.4s, content_blocks=2, thinking_blocks=1, tool_calls=3, errors=0)
 ```
 
 The `[run-start]` block is emitted once at pipeline start , the `[phase-close]` line is emitted once at the end of each phase's artifact rendering, and the `[run-end]` block is emitted once at pipeline stop; all three are suppressed when running with `--quiet`.
 
-Tags starting with `content-`, `thinking-`, `tool`, `tool-result`, `error`, or `status-content` are CONT (agent-produced); everything else is META (workflow). Streaming blocks are always closed with a `-end` line before a different unit or a different kind is emitted. A `↳ summary:` line preceding condensed content is an additional, deterministic headline layer — not a replacement for the content itself; the full text is always available at `.agent/raw/<unit>.log`.
+Tags starting with `content-`, `thinking-`, `tool`, `tool-result`, `error`, or `status-content` are CONT (agent-produced); everything else is META (workflow). Streaming blocks are always closed with a `-end` line before a different unit or a different kind is emitted. A `↳ summary:` line preceding condensed content is an additional, deterministic headline layer — not a replacement for the content itself; the full text is always available at `.agent/raw/<unit>.log`. Similarly, `↳ preview:` lines for thinking blocks surface the reasoning headline at open, checkpoint, and close.
 
 ## Long-content display
 
@@ -428,6 +433,8 @@ For content blocks exceeding 4000 display cells, Ralph emits a `↳ summary:` li
 ```
 
 When no extractable headline exists (all lines are blank, markdown-only, or empty after stripping), the placeholder `(no headline available)` is emitted instead so the summary line is never silently dropped for oversized content.
+
+For tool results with substantial content (>=80 characters) that are below the 4000-cell condensation threshold, Ralph also emits a `↳ summary:` line using the same headline extraction logic, giving you a preview without requiring condensation.
 
 To **disable** the summary layer, set `RALPH_LONG_CONTENT_SUMMARY` to one of: `0`, `false`, `no`, `off` (case-insensitive):
 
@@ -464,6 +471,13 @@ For very long streaming blocks, Ralph emits a `[content-checkpoint#N]` orientati
 
 ```
 2026-04-20T12:34:56Z INFO CONT [content-checkpoint#20][dev-1] (20 fragments, 4500 chars) My running headline.
+```
+
+For thinking blocks, a `↳ preview:` line is also emitted at each checkpoint so you can see the accumulated reasoning so far:
+
+```
+2026-04-20T12:34:56Z INFO CONT [thinking-checkpoint#20][dev-1] (20 fragments, 4500 chars) Investigating the codebase structure...
+2026-04-20T12:34:56Z INFO CONT [thinking-checkpoint#20][dev-1] ↳ preview: Investigating the codebase structure...
 ```
 
 

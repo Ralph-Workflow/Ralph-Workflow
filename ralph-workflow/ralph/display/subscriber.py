@@ -14,6 +14,7 @@ from ralph.display.artifact_reader import (
     read_latest_analysis_decision,
     read_plan_artifact,
 )
+from ralph.display.lifecycle_filter import is_bare_lifecycle
 from ralph.display.prompt_reader import find_prompt_path, read_prompt_preview
 from ralph.display.snapshot import PipelineSnapshot, snapshot_from_state
 
@@ -77,8 +78,10 @@ class PipelineSubscriber:
         self._active_agent: str | None = None
         self._active_tool: str | None = None
         self._active_path: str | None = None
+        self._active_unit_id: str | None = None
         self._active_workdir: str | None = None
         self._active_command: str | None = None
+        self._active_pattern: str | None = None
         self._last_activity_line: str | None = None
         self._analysis_phase: str | None = None
         self._analysis_decision: str | None = None
@@ -101,12 +104,25 @@ class PipelineSubscriber:
 
     @property
     def plan_risks(self) -> tuple[str, ...]:
-        return self._plan_risks
+        with self._lock:
+            return self._plan_risks
 
     @property
     def last_state(self) -> PipelineState | None:
         with self._lock:
             return self._last_state
+
+    @property
+    def last_tool_name(self) -> str | None:
+        """The most recently recorded tool name."""
+        with self._lock:
+            return self._active_tool
+
+    @property
+    def last_tool_path(self) -> str | None:
+        """The most recently recorded tool path argument."""
+        with self._lock:
+            return self._active_path
 
     def notify(self, state: PipelineState) -> None:
         """Build a PipelineSnapshot from state and enqueue it non-blocking.
@@ -137,16 +153,17 @@ class PipelineSubscriber:
     def record_activity(  # noqa: PLR0913
         self,
         unit_id: str,
-        agent_name: str,
         line: str,
+        agent_name: str = "",
         tool_name: str | None = None,
         path: str | None = None,
         workdir: str | None = None,
         command: str | None = None,
+        pattern: str | None = None,
     ) -> None:
         """Record a lightweight agent-activity event and push a fresh snapshot."""
-        del unit_id
         with self._lock:
+            self._active_unit_id = unit_id
             self._active_agent = agent_name or self._active_agent
             if tool_name is not None:
                 self._active_tool = tool_name
@@ -156,7 +173,12 @@ class PipelineSubscriber:
                 self._active_workdir = workdir
             if command:
                 self._active_command = command
-            self._last_activity_line = line
+            if pattern:
+                self._active_pattern = pattern
+            # Never store bare lifecycle markers as the last activity line —
+            # they carry no user payload and would overwrite a richer previous value.
+            if line and not is_bare_lifecycle(line):
+                self._last_activity_line = line
             snapshot = self._build_snapshot_locked(self._last_state)
         if snapshot is not None:
             self._publish(snapshot)
@@ -290,8 +312,10 @@ class PipelineSubscriber:
             active_agent=self._active_agent,
             active_tool=self._active_tool,
             active_path=self._active_path,
+            active_unit_id=self._active_unit_id,
             active_workdir=self._active_workdir,
             active_command=self._active_command,
+            active_pattern=self._active_pattern,
             last_activity_line=self._last_activity_line,
             analysis_phase=self._analysis_phase,
             analysis_decision=self._analysis_decision,

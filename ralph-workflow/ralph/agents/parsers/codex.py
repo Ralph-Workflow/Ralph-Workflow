@@ -33,7 +33,7 @@ class CodexParser:
 
     # Lifecycle-only events that carry no user payload — suppress silently.
     _LIFECYCLE_EVENT_TYPES: Final[frozenset[str]] = frozenset(
-        {"thread.started", "turn.started", "message_start"}
+        {"thread.started", "turn.started", "message_start", "ping", "heartbeat", "ready"}
     )
 
     def __init__(self) -> None:
@@ -241,7 +241,12 @@ class CodexParser:
         item_type = str(item_obj.get("type", "unknown"))
         text = str(item_obj.get("text", ""))
 
-        if item_type in {"agent_message", "reasoning"} and text:
+        # reasoning items map to 'thinking' so the display applies the thinking-preview treatment.
+        if item_type == "reasoning" and text:
+            yield AgentOutputLine(type="thinking", content=text, raw=stripped, metadata=item_obj)
+            return
+
+        if item_type == "agent_message" and text:
             yield AgentOutputLine(type="text", content=text, raw=stripped, metadata=item_obj)
             return
 

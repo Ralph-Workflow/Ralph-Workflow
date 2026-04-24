@@ -166,13 +166,16 @@ def test_emit_snapshot_includes_plan_activity_and_analysis_context() -> None:
     assert any(
         "[plan-scope] Render all events | Keep output copy-pasteable" in line for line in lines
     )
-    # When last_activity_line is present, only [activity-line] is emitted (no duplicate [activity]).
+    # When last_activity_line is present, exactly one [activity] line is emitted.
     # Structured fields (agent=, tool=, path=, workdir=, command=) are not separately emitted.
     assert not any("[activity] agent=planner" in line for line in lines), (
         "[activity] structured fields must be suppressed when last_activity_line is set"
     )
     assert any(
-        "[activity-line] Inspecting PROMPT.md for visibility requirements" in line for line in lines
+        "[activity] Inspecting PROMPT.md for visibility requirements" in line for line in lines
+    ), "Expected [activity] line with last_activity_line content"
+    assert "[activity-line]" not in stream.getvalue(), (
+        "[activity-line] tag must not appear; use [activity] instead"
     )
     assert any(
         "[analysis] review revise — The current dashboard drops key state" in line for line in lines

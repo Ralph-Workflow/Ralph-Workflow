@@ -18,6 +18,21 @@ class _TextAccumulator:
     raw_lines: list[str] = field(default_factory=list)
 
 
+# Structured JSON event types that carry only lifecycle metadata — suppress silently.
+_LIFECYCLE_EVENT_TYPES: Final[frozenset[str]] = frozenset(
+    {
+        "thread.started",
+        "turn.started",
+        "message_start",
+        "heartbeat",
+        "ping",
+        "ready",
+        "assistant",
+        "user",
+    }
+)
+
+
 class OpenCodeParser:
     """Parser for OpenCode's NDJSON streaming output with robust delta accumulation.
 
@@ -61,6 +76,10 @@ class OpenCodeParser:
     def _parse_object(self, obj: dict[str, object], stripped: str) -> Iterator[AgentOutputLine]:
         """Parse a JSON object into AgentOutputLine instances."""
         event_type = str(obj.get("type", "unknown"))
+
+        # Suppress lifecycle-only events that carry no user payload.
+        if event_type in _LIFECYCLE_EVENT_TYPES:
+            return
 
         # Handle lifecycle events
         if event_type == "step_start":

@@ -98,3 +98,73 @@ def test_claude_assistant_message_with_thinking_block_does_not_emit_error() -> N
     thinking = [r for r in results if r.type == "thinking"]
     assert len(thinking) == 1
     assert thinking[0].content == "weighing options"
+
+
+def test_whitespace_only_thinking_delta_is_suppressed() -> None:
+    """thinking_delta with whitespace-only content must produce zero thinking lines."""
+    parser = ClaudeParser()
+    ws_delta = (
+        '{"type":"content_block_delta","index":0,'
+        '"delta":{"type":"thinking_delta","thinking":"   "}}'
+    )
+    lines = [
+        '{"type":"message_start","message":{"id":"msg-ws-1"}}',
+        '{"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":""}}',
+        ws_delta,
+        '{"type":"content_block_stop","index":0}',
+        '{"type":"message_stop"}',
+    ]
+    results = list(parser.parse(iter(lines)))
+    thinking = [r for r in results if r.type == "thinking"]
+    assert thinking == [], f"Expected no thinking output for whitespace delta, got: {thinking}"
+
+
+def test_empty_thinking_delta_is_suppressed() -> None:
+    """thinking_delta with empty string must produce zero thinking lines."""
+    parser = ClaudeParser()
+    lines = [
+        '{"type":"message_start","message":{"id":"msg-empty-1"}}',
+        '{"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":""}}',
+        '{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":""}}',
+        '{"type":"content_block_stop","index":0}',
+        '{"type":"message_stop"}',
+    ]
+    results = list(parser.parse(iter(lines)))
+    thinking = [r for r in results if r.type == "thinking"]
+    assert thinking == [], f"Expected no thinking output for empty delta, got: {thinking}"
+
+
+def test_non_empty_thinking_delta_is_still_emitted() -> None:
+    """Real thinking content must still be emitted after the whitespace guard."""
+    parser = ClaudeParser()
+    real_delta = (
+        '{"type":"content_block_delta","index":0,'
+        '"delta":{"type":"thinking_delta","thinking":"deep reasoning"}}'
+    )
+    lines = [
+        '{"type":"message_start","message":{"id":"msg-real-1"}}',
+        '{"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":""}}',
+        real_delta,
+        '{"type":"content_block_stop","index":0}',
+        '{"type":"message_stop"}',
+    ]
+    results = list(parser.parse(iter(lines)))
+    thinking = [r for r in results if r.type == "thinking"]
+    assert len(thinking) == 1, f"Expected one thinking result, got: {thinking}"
+    assert thinking[0].content == "deep reasoning"
+
+
+def test_whitespace_only_thinking_in_assistant_message_is_suppressed() -> None:
+    """assistant message with whitespace-only thinking block must not produce thinking lines."""
+    import json  # noqa: PLC0415
+
+    parser = ClaudeParser()
+    line = json.dumps({
+        "type": "assistant",
+        "message": {
+            "content": [{"type": "thinking", "thinking": "   "}]
+        },
+    })
+    results = list(parser.parse(iter([line])))
+    thinking = [r for r in results if r.type == "thinking"]
+    assert thinking == [], f"Expected no thinking for whitespace content, got: {thinking}"

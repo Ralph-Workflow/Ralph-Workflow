@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Final, cast
 
 from ralph.agents.parsers.base import AgentOutputLine
 
@@ -28,6 +28,28 @@ class _TextAccumulator:
 # is treated as a streaming delta and accumulated.
 # Content at or above this threshold is treated as a standalone message.
 _SHORT_CONTENT_THRESHOLD = 200
+
+# Bare JSON event type values that carry no user payload — suppress silently.
+# Only exact matches after str.lower() on the "type" field are suppressed;
+# longer strings like "starting the analysis" are never touched.
+_LIFECYCLE_EVENT_TYPES: Final[frozenset[str]] = frozenset(
+    {
+        "start",
+        "begin",
+        "ready",
+        "thread.started",
+        "turn.started",
+        "message_start",
+        "message_stop",
+        "heartbeat",
+        "content_block_start",
+        "content_block_stop",
+        "user",
+        "assistant",
+        "thinking",
+        "message_delta",
+    }
+)
 
 
 class GenericParser:
@@ -48,6 +70,10 @@ class GenericParser:
     Short content (below threshold) that doesn't end with ``\\n\\n`` is treated
     as a streaming delta and accumulated. Content at or above the threshold,
     or ending with ``\\n\\n``, is emitted immediately.
+
+    Field priority for content extraction:
+    1. content, text, message, output, response, result (type='text')
+    2. thought, reasoning (type='thinking') — only when no higher-priority field matches
     """
 
     _STOP_TYPES: frozenset[str] = frozenset({"stop", "done", "complete", "finish", "end"})
@@ -85,6 +111,11 @@ class GenericParser:
 
             obj = cast("dict[str, object]", parsed)
 
+            # Suppress lifecycle-only events that carry no user payload.
+            type_val = str(obj.get("type", "")).lower()
+            if type_val in _LIFECYCLE_EVENT_TYPES:
+                continue
+
             # Check for stop/done markers first
             if self._is_stop(obj):
                 yield from self._flush_accumulator()
@@ -104,10 +135,17 @@ class GenericParser:
                 )
                 continue
 
-            # Look for text content in common fields
+            # Look for text content in high-priority fields
             content = self._extract_content(obj)
             if content:
                 yield from self._process_content(content, stripped)
+                continue
+
+            # thought/reasoning fields map to 'thinking' — lower priority than text fields
+            thinking = self._extract_thinking_content(obj)
+            if thinking:
+                yield from self._flush_accumulator()
+                yield AgentOutputLine(type="thinking", content=thinking, raw=stripped, metadata=obj)
                 continue
 
             # If no content was extracted but we have valid JSON, store metadata
@@ -195,7 +233,7 @@ class GenericParser:
         yield from self._flush_accumulator()
 
     def _extract_content(self, obj: dict[str, object]) -> str:
-        """Extract text content from JSON object.
+        """Extract text content from JSON object using high-priority fields.
 
         Args:
             obj: Parsed JSON object.
@@ -203,7 +241,6 @@ class GenericParser:
         Returns:
             Extracted text content or empty string.
         """
-        # Check common content fields in order of preference
         for field_name in ("content", "text", "message", "output", "response", "result"):
             value = obj.get(field_name)
             if isinstance(value, str) and value:
@@ -213,6 +250,23 @@ class GenericParser:
                 nested = value.get("text") or value.get("content")
                 if isinstance(nested, str) and nested:
                     return nested
+        return ""
+
+    def _extract_thinking_content(self, obj: dict[str, object]) -> str:
+        """Extract reasoning/thought text from low-priority fields.
+
+        Only called when no high-priority content field matched.
+
+        Args:
+            obj: Parsed JSON object.
+
+        Returns:
+            Thinking content string, or empty string if not present.
+        """
+        for field_name in ("thought", "reasoning"):
+            value = obj.get(field_name)
+            if isinstance(value, str) and value:
+                return value
         return ""
 
     def _is_error(self, obj: dict[str, object]) -> bool:

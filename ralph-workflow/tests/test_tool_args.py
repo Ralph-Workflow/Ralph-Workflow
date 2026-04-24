@@ -62,3 +62,95 @@ def test_format_tool_input_total_length_bounded_for_many_values() -> None:
     # Each value truncated at 120 chars + "…" = 121, plus key names and separators
     # 5 * (121 + ~8) = ~645, well under a hard limit of 900
     assert len(result) < 900  # noqa: PLR2004
+
+
+def test_friendly_tool_name_strips_mcp_ralph_prefix() -> None:
+    from ralph.display.tool_args import friendly_tool_name  # noqa: PLC0415
+
+    assert friendly_tool_name("mcp__ralph__read_file") == "ralph.read_file"
+    assert friendly_tool_name("mcp__ralph__exec") == "ralph.exec"
+    assert friendly_tool_name("mcp__ralph__write_file") == "ralph.write_file"
+
+
+def test_friendly_tool_name_leaves_other_names_unchanged() -> None:
+    from ralph.display.tool_args import friendly_tool_name  # noqa: PLC0415
+
+    assert friendly_tool_name("bash") == "bash"
+    assert friendly_tool_name("mcp__other__read") == "mcp__other__read"
+    assert friendly_tool_name("") == ""
+    assert friendly_tool_name("read_file") == "read_file"
+
+
+def test_tool_use_renders_friendly_name_in_parallel_display(tmp_path):  # type: ignore[no-untyped-def]
+    """tool_use with mcp__ralph__ prefix renders with ralph. in output."""
+    import json  # noqa: PLC0415
+    from io import StringIO  # noqa: PLC0415
+
+    from rich.console import Console  # noqa: PLC0415
+
+    from ralph.display.activity_model import ActivityProvider  # noqa: PLC0415
+    from ralph.display.parallel_display import ParallelDisplay  # noqa: PLC0415
+
+    buf = StringIO()
+    console = Console(file=buf, force_terminal=False, color_system=None, width=2000)
+    pd = ParallelDisplay(console, {"CI": "1"}, workspace_root=tmp_path)
+
+    event = json.dumps({
+        "type": "content_block_start",
+        "content_block": {
+            "type": "tool_use",
+            "name": "mcp__ralph__read_file",
+            "input": {"path": "ralph-workflow/ralph/x.py"},
+        },
+    })
+    pd.activity_router.push_raw_line("u", event, provider=ActivityProvider.CLAUDE)
+    out = buf.getvalue()
+
+    assert "ralph.read_file" in out, f"Expected 'ralph.read_file' in output:\n{out}"
+    assert "path=ralph-workflow/ralph/x.py" in out
+
+
+def test_tool_use_metadata_preserves_original_name() -> None:
+    """Metadata must still hold the original mcp__ralph__ name after friendly rendering.
+
+    The friendly_tool_name transform is render-only: the router's on_event callback
+    receives the original parser content and metadata untransformed.
+    """
+    import json  # noqa: PLC0415
+
+    from ralph.display.activity_model import ActivityEventKind, ActivityProvider  # noqa: PLC0415
+    from ralph.display.activity_router import ActivityRouter  # noqa: PLC0415
+
+    received: list[tuple[str | None, dict[str, object]]] = []
+
+    def capture_event(
+        unit_id: str,
+        kind: ActivityEventKind,
+        content: str | None,
+        raw_ref: str | None,
+        metadata: dict[str, object],
+    ) -> None:
+        if kind == ActivityEventKind.TOOL_USE:
+            received.append((content, dict(metadata)))
+
+    router = ActivityRouter(on_event=capture_event)
+
+    event = json.dumps({
+        "type": "content_block_start",
+        "content_block": {
+            "type": "tool_use",
+            "name": "mcp__ralph__read_file",
+            "input": {"path": "x.py"},
+        },
+    })
+    router.push_raw_line("u", event, provider=ActivityProvider.CLAUDE)
+
+    assert len(received) == 1, f"Expected 1 TOOL_USE event, got {len(received)}"
+    content, metadata = received[0]
+    assert content == "mcp__ralph__read_file", (
+        f"Router on_event must receive original tool name in content, got {content!r}"
+    )
+    assert metadata.get("name") == "mcp__ralph__read_file", (
+        f"Router on_event must receive original tool name in metadata['name'],"
+        f" got {metadata.get('name')!r}"
+    )

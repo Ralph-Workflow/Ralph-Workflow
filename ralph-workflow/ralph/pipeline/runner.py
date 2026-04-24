@@ -390,7 +390,7 @@ def _emit_display_line(
     if isinstance(display, _LegacyConsoleDisplay):
         display.emit(unit_id, line)
         return
-    display.emit(unit_id, line.plain if isinstance(line, Text) else line)
+    display.emit(unit_id or "run", line.plain if isinstance(line, Text) else line)
 
 
 def _resolve_display(
@@ -1079,7 +1079,7 @@ def run(  # noqa: PLR0912, PLR0913, PLR0915
                 return 130
 
             if state.phase == PHASE_COMPLETE:
-                active_display.emit(None, "[green]Pipeline completed successfully.[/green]")
+                active_display.emit("run", "[green]Pipeline completed successfully.[/green]")
                 exit_code = 0
             else:
                 _emit_display_line(

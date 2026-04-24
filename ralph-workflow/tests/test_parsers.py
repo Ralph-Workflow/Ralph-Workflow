@@ -738,3 +738,299 @@ def test_generic_lifecycle_noise_does_not_emit_text_or_error() -> None:
     results = list(parser.parse(_make_lines(lines)))
     leaking = [r for r in results if r.type in {"text", "error"}]
     assert leaking == [], f"Lifecycle noise leaked: {leaking}"
+
+
+# --- Focused lifecycle suppression tests for Gemini _LIFECYCLE_EVENT_TYPES ---
+
+
+def test_gemini_thread_started_is_suppressed() -> None:
+    """Gemini thread.started must produce no output."""
+    parser = GeminiParser()
+    results = list(parser.parse(_make_lines(['data: {"type":"thread.started"}'])))
+    assert results == [], f"Expected empty list for thread.started, got: {results}"
+
+
+def test_gemini_turn_started_is_suppressed() -> None:
+    """Gemini turn.started must produce no output."""
+    parser = GeminiParser()
+    results = list(parser.parse(_make_lines(['data: {"type":"turn.started"}'])))
+    assert results == [], f"Expected empty list for turn.started, got: {results}"
+
+
+def test_gemini_message_start_is_suppressed() -> None:
+    """Gemini message_start must produce no output."""
+    parser = GeminiParser()
+    results = list(parser.parse(_make_lines(['data: {"type":"message_start"}'])))
+    assert results == [], f"Expected empty list for message_start, got: {results}"
+
+
+def test_gemini_heartbeat_is_suppressed() -> None:
+    """Gemini heartbeat must produce no output."""
+    parser = GeminiParser()
+    results = list(parser.parse(_make_lines(['data: {"type":"heartbeat"}'])))
+    assert results == [], f"Expected empty list for heartbeat, got: {results}"
+
+
+def test_gemini_ping_is_suppressed() -> None:
+    """Gemini ping must produce no output."""
+    parser = GeminiParser()
+    results = list(parser.parse(_make_lines(['data: {"type":"ping"}'])))
+    assert results == [], f"Expected empty list for ping, got: {results}"
+
+
+def test_gemini_ready_is_suppressed() -> None:
+    """Gemini ready must produce no output."""
+    parser = GeminiParser()
+    results = list(parser.parse(_make_lines(['data: {"type":"ready"}'])))
+    assert results == [], f"Expected empty list for ready, got: {results}"
+
+
+def test_gemini_start_event_type_is_suppressed() -> None:
+    """Gemini start event type must produce no output."""
+    parser = GeminiParser()
+    results = list(parser.parse(_make_lines(['data: {"type":"start"}'])))
+    assert results == [], f"Expected empty list for start event, got: {results}"
+
+
+def test_gemini_all_lifecycle_event_types_suppressed_before_real_content() -> None:
+    """All _LIFECYCLE_EVENT_TYPES suppressed; real content still emits."""
+    parser = GeminiParser()
+    lines = [
+        'data: {"type":"thread.started"}',
+        'data: {"type":"turn.started"}',
+        'data: {"type":"heartbeat"}',
+        'data: {"type":"ping"}',
+        'data: {"type":"ready"}',
+        'data: {"type":"start"}',
+        'data: {"type":"text","content":"real output"}',
+        'data: {"type":"done"}',
+    ]
+    results = list(parser.parse(_make_lines(lines)))
+    text_results = [r for r in results if r.type == "text"]
+    assert len(text_results) == 1
+    assert text_results[0].content == "real output"
+    leaking = [r for r in results if r.type in {"thread.started", "turn.started", "heartbeat",
+                                                  "ping", "ready", "start"}]
+    assert leaking == [], f"Lifecycle events leaked: {leaking}"
+
+
+# --- Focused lifecycle suppression tests for OpenCode _LIFECYCLE_EVENT_TYPES ---
+
+
+def test_opencode_heartbeat_is_suppressed() -> None:
+    """OpenCode heartbeat must produce no output."""
+    parser = OpenCodeParser()
+    results = list(parser.parse(_make_lines(['{"type":"heartbeat"}'])))
+    assert results == [], f"Expected empty list for heartbeat, got: {results}"
+
+
+def test_opencode_ping_is_suppressed() -> None:
+    """OpenCode ping must produce no output."""
+    parser = OpenCodeParser()
+    results = list(parser.parse(_make_lines(['{"type":"ping"}'])))
+    assert results == [], f"Expected empty list for ping, got: {results}"
+
+
+def test_opencode_ready_is_suppressed() -> None:
+    """OpenCode ready must produce no output."""
+    parser = OpenCodeParser()
+    results = list(parser.parse(_make_lines(['{"type":"ready"}'])))
+    assert results == [], f"Expected empty list for ready, got: {results}"
+
+
+# --- Focused lifecycle suppression tests for Generic _LIFECYCLE_EVENT_TYPES ---
+
+
+def test_generic_start_type_is_suppressed() -> None:
+    """Generic JSON event with type=start must produce no output."""
+    parser = GenericParser()
+    results = list(parser.parse(_make_lines(['{"type":"start"}'])))
+    assert results == [], f"Expected empty list for type=start, got: {results}"
+
+
+def test_generic_begin_type_is_suppressed() -> None:
+    """Generic JSON event with type=begin must produce no output."""
+    parser = GenericParser()
+    results = list(parser.parse(_make_lines(['{"type":"begin"}'])))
+    assert results == [], f"Expected empty list for type=begin, got: {results}"
+
+
+def test_generic_ready_type_is_suppressed() -> None:
+    """Generic JSON event with type=ready must produce no output."""
+    parser = GenericParser()
+    results = list(parser.parse(_make_lines(['{"type":"ready"}'])))
+    assert results == [], f"Expected empty list for type=ready, got: {results}"
+
+
+def test_generic_heartbeat_type_is_suppressed() -> None:
+    """Generic JSON event with type=heartbeat must produce no output."""
+    parser = GenericParser()
+    results = list(parser.parse(_make_lines(['{"type":"heartbeat"}'])))
+    assert results == [], f"Expected empty list for type=heartbeat, got: {results}"
+
+
+def test_generic_thread_started_type_is_suppressed() -> None:
+    """Generic JSON event with type=thread.started must produce no output."""
+    parser = GenericParser()
+    results = list(parser.parse(_make_lines(['{"type":"thread.started"}'])))
+    assert results == [], f"Expected empty list for thread.started, got: {results}"
+
+
+def test_generic_non_json_content_line_is_not_suppressed() -> None:
+    """Non-JSON text like 'starting the analysis' must NOT be suppressed."""
+    parser = GenericParser()
+    results = list(parser.parse(_make_lines(["starting the analysis"])))
+    raw_results = [r for r in results if r.type == "raw"]
+    assert len(raw_results) == 1, f"Expected raw output for non-JSON text, got: {results}"
+    assert raw_results[0].content == "starting the analysis"
+
+
+def test_generic_long_content_with_start_word_is_not_suppressed() -> None:
+    """JSON with a content field containing 'start' substring must NOT be suppressed."""
+    parser = GenericParser()
+    results = list(parser.parse(_make_lines(['{"content":"starting the analysis phase"}'])))
+    text_results = [r for r in results if r.type == "text"]
+    assert len(text_results) == 1
+    assert "starting the analysis phase" in text_results[0].content
+
+
+def test_generic_all_lifecycle_types_suppressed_real_content_passes() -> None:
+    """All _LIFECYCLE_EVENT_TYPES are suppressed; real content still reaches output."""
+    parser = GenericParser()
+    lines = [
+        '{"type":"start"}',
+        '{"type":"begin"}',
+        '{"type":"ready"}',
+        '{"type":"heartbeat"}',
+        '{"type":"thread.started"}',
+        '{"type":"turn.started"}',
+        '{"type":"message_start"}',
+        '{"content":"real content here","type":"data"}',
+        '{"type":"done"}',
+    ]
+    results = list(parser.parse(_make_lines(lines)))
+    text_results = [r for r in results if r.type == "text"]
+    assert len(text_results) == 1
+    assert text_results[0].content == "real content here"
+
+
+# --- New parity tests for expanded lifecycle suppression ---
+
+
+def test_codex_ping_is_suppressed() -> None:
+    """Codex ping must produce no output."""
+    parser = CodexParser()
+    results = list(parser.parse(_make_lines(['{"type":"ping"}'])))
+    assert results == [], f"Expected empty, got: {results}"
+
+
+def test_codex_heartbeat_is_suppressed() -> None:
+    """Codex heartbeat must produce no output."""
+    parser = CodexParser()
+    results = list(parser.parse(_make_lines(['{"type":"heartbeat"}'])))
+    assert results == [], f"Expected empty, got: {results}"
+
+
+def test_codex_ready_is_suppressed() -> None:
+    """Codex ready must produce no output."""
+    parser = CodexParser()
+    results = list(parser.parse(_make_lines(['{"type":"ready"}'])))
+    assert results == [], f"Expected empty, got: {results}"
+
+
+def test_opencode_assistant_type_is_suppressed() -> None:
+    """OpenCode assistant event type must produce no output."""
+    parser = OpenCodeParser()
+    results = list(parser.parse(_make_lines(['{"type":"assistant"}'])))
+    assert results == [], f"Expected empty, got: {results}"
+
+
+def test_opencode_user_type_is_suppressed() -> None:
+    """OpenCode user event type must produce no output."""
+    parser = OpenCodeParser()
+    results = list(parser.parse(_make_lines(['{"type":"user"}'])))
+    assert results == [], f"Expected empty, got: {results}"
+
+
+def test_generic_message_stop_type_is_suppressed() -> None:
+    """Generic message_stop event type must produce no output."""
+    parser = GenericParser()
+    results = list(parser.parse(_make_lines(['{"type":"message_stop"}'])))
+    assert results == [], f"Expected empty, got: {results}"
+
+
+def test_generic_content_block_start_type_is_suppressed() -> None:
+    """Generic content_block_start event type must produce no output."""
+    parser = GenericParser()
+    results = list(parser.parse(_make_lines(['{"type":"content_block_start"}'])))
+    assert results == [], f"Expected empty, got: {results}"
+
+
+def test_generic_content_block_stop_type_is_suppressed() -> None:
+    """Generic content_block_stop event type must produce no output."""
+    parser = GenericParser()
+    results = list(parser.parse(_make_lines(['{"type":"content_block_stop"}'])))
+    assert results == [], f"Expected empty, got: {results}"
+
+
+def test_generic_user_type_is_suppressed() -> None:
+    """Generic user event type must produce no output."""
+    parser = GenericParser()
+    results = list(parser.parse(_make_lines(['{"type":"user"}'])))
+    assert results == [], f"Expected empty, got: {results}"
+
+
+def test_generic_assistant_type_is_suppressed() -> None:
+    """Generic assistant event type must produce no output."""
+    parser = GenericParser()
+    results = list(parser.parse(_make_lines(['{"type":"assistant"}'])))
+    assert results == [], f"Expected empty, got: {results}"
+
+
+def test_generic_thinking_type_is_suppressed() -> None:
+    """Generic thinking event type must produce no output."""
+    parser = GenericParser()
+    results = list(parser.parse(_make_lines(['{"type":"thinking"}'])))
+    assert results == [], f"Expected empty, got: {results}"
+
+
+def test_generic_message_delta_type_is_suppressed() -> None:
+    """Generic message_delta event type must produce no output."""
+    parser = GenericParser()
+    results = list(parser.parse(_make_lines(['{"type":"message_delta"}'])))
+    assert results == [], f"Expected empty, got: {results}"
+
+
+def test_claude_prefixed_assistant_is_suppressed() -> None:
+    """claude/sonnet: assistant must be suppressed as a lifecycle marker."""
+    parser = ClaudeParser()
+    results = list(parser.parse(_make_lines(["claude/sonnet: assistant"])))
+    assert results == [], f"Expected empty, got: {results}"
+
+
+def test_claude_prefixed_message_start_is_suppressed() -> None:
+    """claude/sonnet: message_start must be suppressed as a lifecycle marker."""
+    parser = ClaudeParser()
+    results = list(parser.parse(_make_lines(["claude/sonnet: message_start"])))
+    assert results == [], f"Expected empty, got: {results}"
+
+
+def test_claude_prefixed_message_stop_is_suppressed() -> None:
+    """claude/sonnet: message_stop must be suppressed as a lifecycle marker."""
+    parser = ClaudeParser()
+    results = list(parser.parse(_make_lines(["claude/sonnet: message_stop"])))
+    assert results == [], f"Expected empty, got: {results}"
+
+
+def test_claude_prefixed_content_block_start_is_suppressed() -> None:
+    """claude/sonnet: content_block_start must be suppressed as a lifecycle marker."""
+    parser = ClaudeParser()
+    results = list(parser.parse(_make_lines(["claude/sonnet: content_block_start"])))
+    assert results == [], f"Expected empty, got: {results}"
+
+
+def test_claude_prefixed_content_block_stop_is_suppressed() -> None:
+    """claude/sonnet: content_block_stop must be suppressed as a lifecycle marker."""
+    parser = ClaudeParser()
+    results = list(parser.parse(_make_lines(["claude/sonnet: content_block_stop"])))
+    assert results == [], f"Expected empty, got: {results}"

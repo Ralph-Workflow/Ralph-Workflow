@@ -191,12 +191,12 @@ def test_tool_use_input_metadata_is_surfaced_on_rendered_line(tmp_path: Path) ->
     )
     pd.activity_router.push_raw_line("u", event, provider=ActivityProvider.CLAUDE)
     out = buf.getvalue()
-    assert "mcp__ralph__read_file" in out
+    assert "ralph.read_file" in out
     assert "path=ralph-workflow/ralph/x.py" in out
 
 
 def test_activity_snapshot_does_not_duplicate_activity_line(tmp_path: Path) -> None:
-    """Snapshot with active_tool + last_activity_line emits exactly ONE [activity tagged line."""
+    """Snapshot with active_tool + last_activity_line emits exactly ONE [activity] tagged line."""
     from datetime import UTC, datetime  # noqa: PLC0415
     from io import StringIO  # noqa: PLC0415
 
@@ -236,12 +236,10 @@ def test_activity_snapshot_does_not_duplicate_activity_line(tmp_path: Path) -> N
     renderer.emit_snapshot(snapshot)
     out = buf.getvalue()
 
-    # Count occurrences of any [activity tag
-    activity_line_count = out.count("[activity-line]")
-    activity_tag_count = out.count("[activity]")
-    # Only one of the two should be non-zero, and total occurrences == 1
-    total = activity_line_count + activity_tag_count
-    assert total == 1, f"Expected 1 activity line, got {total}. Output:\n{out}"
+    # Exactly one [activity] line; no [activity-line] tag
+    activity_count = out.count("[activity]")
+    assert "[activity-line]" not in out, f"[activity-line] tag must not appear:\n{out}"
+    assert activity_count == 1, f"Expected 1 [activity] line, got {activity_count}. Output:\n{out}"
 
 
 def test_lifecycle_thinking_prefix_is_suppressed_end_to_end(tmp_path: Path) -> None:
@@ -257,6 +255,31 @@ def test_lifecycle_thinking_prefix_is_suppressed_end_to_end(tmp_path: Path) -> N
     assert "[content][main]" not in out
     assert "[thinking][main]" not in out
 
+
+def test_emit_parsed_event_drops_bare_lifecycle_structured_content(tmp_path: Path) -> None:
+    """emit_parsed_event with LIFECYCLE kind and bare lifecycle content emits nothing."""
+    from ralph.display.activity_model import ActivityEventKind  # noqa: PLC0415
+
+    pd, buf = _make_display(tmp_path)
+    pd.emit_parsed_event("main", ActivityEventKind.LIFECYCLE, "claude/sonnet: thinking", {})
+    pd.emit_parsed_event("main", ActivityEventKind.LIFECYCLE, "system (status=requesting)", {})
+    pd.emit_parsed_event("main", ActivityEventKind.LIFECYCLE, "message_delta", {})
+    pd.stop()
+    out = buf.getvalue()
+    assert "[status-content][main]" not in out
+    assert "system (status=requesting)" not in out
+    assert "message_delta" not in out
+
+
+def test_emit_parsed_event_passes_through_non_lifecycle_content(tmp_path: Path) -> None:
+    """emit_parsed_event with TEXT kind and real content renders normally."""
+    from ralph.display.activity_model import ActivityEventKind  # noqa: PLC0415
+
+    pd, buf = _make_display(tmp_path)
+    pd.emit_parsed_event("main", ActivityEventKind.TEXT, "actual agent output here", {})
+    pd.stop()
+    out = buf.getvalue()
+    assert "actual agent output here" in out
 
 
 def test_stream_parsed_agent_activity_thinking_routes_to_structured_path(tmp_path: Path) -> None:
@@ -324,5 +347,5 @@ def test_stream_parsed_agent_activity_tool_use_routes_to_structured_path(tmp_pat
 
     out = buf.getvalue()
     assert "[content][activity]" not in out
-    assert "mcp__ralph__read_file" in out
-    assert out.count("mcp__ralph__read_file") == 1
+    assert "ralph.read_file" in out
+    assert out.count("ralph.read_file") == 1

@@ -26,6 +26,21 @@ class _TextAccumulator:
     raw_lines: list[str] = field(default_factory=list)
 
 
+# Structured JSON event types that carry only lifecycle metadata — suppress silently.
+_LIFECYCLE_EVENT_TYPES: Final[frozenset[str]] = frozenset(
+    {
+        "thread.started",
+        "turn.started",
+        "message_start",
+        "message_started",
+        "heartbeat",
+        "ping",
+        "ready",
+        "start",
+    }
+)
+
+
 class GeminiParser:
     """Parser for Gemini's SSE+JSON streaming output with robust delta accumulation.
 
@@ -87,6 +102,10 @@ class GeminiParser:
         """
         event_type = str(obj.get("type", obj.get("event", "unknown")))
 
+        # Suppress lifecycle-only events that carry no user payload.
+        if event_type in _LIFECYCLE_EVENT_TYPES:
+            return
+
         # Handle stop events - flush accumulators first
         if event_type in self._STOP_EVENT_TYPES:
             yield from self._flush_all_accumulators()
@@ -107,6 +126,9 @@ class GeminiParser:
             yield AgentOutputLine(type=event_type, raw=stripped, metadata=obj)
         elif event_type in ("message", "server_message"):
             yield from self._parse_message(obj, stripped)
+        elif "candidates" in obj:
+            # Gemini API response format: {candidates: [{content: {parts: [...]}}]}
+            yield from self._parse_candidates_response(obj, stripped)
         else:
             yield AgentOutputLine(type=event_type, raw=stripped, metadata=obj)
 
@@ -225,7 +247,11 @@ class GeminiParser:
                     part_dict = cast("JsonDict", part)
                     text = str(part_dict.get("text", ""))
                     if text:
-                        yield AgentOutputLine(type="text", content=text, raw=stripped)
+                        # thought=True parts are reasoning tokens, not user-visible text.
+                        if part_dict.get("thought") is True:
+                            yield AgentOutputLine(type="thinking", content=text, raw=stripped)
+                        else:
+                            yield AgentOutputLine(type="text", content=text, raw=stripped)
                     function_call_obj = part_dict.get("function_call")
                     func: JsonDict | None = (
                         cast("JsonDict", function_call_obj)
@@ -244,6 +270,36 @@ class GeminiParser:
         content = str(obj.get("content", ""))
         if content:
             yield AgentOutputLine(type="text", content=content, raw=stripped)
+
+    def _parse_candidates_response(self, obj: JsonDict, stripped: str) -> Iterator[AgentOutputLine]:
+        """Parse a Gemini API candidates-style response.
+
+        Handles: {"candidates": [{"content": {"parts": [{"text": "...", "thought": true}]}}]}
+        Parts with thought=True are emitted as 'thinking'; others as 'text'.
+        """
+        candidates_val = obj.get("candidates")
+        if not isinstance(candidates_val, list) or not candidates_val:
+            return
+        candidate = candidates_val[0]
+        if not isinstance(candidate, dict):
+            return
+        content_val = cast("JsonDict", candidate).get("content")
+        if not isinstance(content_val, dict):
+            return
+        parts_val = cast("JsonDict", content_val).get("parts")
+        if not isinstance(parts_val, list):
+            return
+        for part in parts_val:
+            if not isinstance(part, dict):
+                continue
+            part_dict = cast("JsonDict", part)
+            text = str(part_dict.get("text", ""))
+            if not text:
+                continue
+            if part_dict.get("thought") is True:
+                yield AgentOutputLine(type="thinking", content=text, raw=stripped)
+            else:
+                yield AgentOutputLine(type="text", content=text, raw=stripped)
 
     def _extract_first_part_text(self, obj: JsonDict) -> str:
         """Return the text for the first part entry, if present."""

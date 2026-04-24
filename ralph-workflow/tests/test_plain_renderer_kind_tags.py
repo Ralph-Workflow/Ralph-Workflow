@@ -584,8 +584,8 @@ def test_content_end_no_ai_summary_when_env_not_set() -> None:
 # --- Activity line dedup and path-suffix tests ---
 
 
-def test_activity_line_and_activity_not_emitted_together() -> None:
-    """Snapshot A emits [activity]; snapshot B emits only [activity-line]."""
+def test_activity_tag_not_emitted_twice_across_snapshots() -> None:
+    """Snapshot A emits [activity]; snapshot B emits exactly one [activity] line."""
     from datetime import UTC, datetime  # noqa: PLC0415
 
     from ralph.display.snapshot import PipelineSnapshot  # noqa: PLC0415
@@ -630,7 +630,7 @@ def test_activity_line_and_activity_not_emitted_together() -> None:
     buf.truncate(0)
     buf.seek(0)
 
-    # Snapshot B: last_activity_line set — expect only [activity-line], no extra [activity] line
+    # Snapshot B: last_activity_line set — expect exactly one [activity] line
     snapshot_b = PipelineSnapshot(
         active_agent="claude/sonnet",
         active_tool="mcp__ralph__read_file",
@@ -639,14 +639,14 @@ def test_activity_line_and_activity_not_emitted_together() -> None:
     )
     renderer.emit_snapshot(snapshot_b)
     out_b = buf.getvalue()
-    activity_line_count = out_b.count("[activity-line]")
-    activity_tag_count = out_b.count("[activity] ")
-    assert activity_line_count == 1, f"Expected 1 [activity-line], got {activity_line_count}"
-    assert activity_tag_count == 0, f"Expected 0 extra [activity], got {activity_tag_count}"
+    activity_count = out_b.count("[activity]")
+    assert activity_count == 1, f"Expected 1 [activity], got {activity_count}"
+    assert "[activity-line]" not in out_b
+    assert "claude/sonnet tool: mcp__ralph__read_file" in out_b
 
 
-def test_activity_line_appends_path_when_missing() -> None:
-    """[activity-line] appends (path=...) when active_path is not in last_activity_line."""
+def test_activity_appends_path_when_missing() -> None:
+    """[activity] appends (path=...) when active_path is not in last_activity_line."""
     from datetime import UTC, datetime  # noqa: PLC0415
 
     from ralph.display.snapshot import PipelineSnapshot  # noqa: PLC0415
@@ -681,8 +681,8 @@ def test_activity_line_appends_path_when_missing() -> None:
     assert "(path=ralph-workflow/ralph/x.py)" in out
 
 
-def test_activity_line_does_not_double_append_path_when_already_present() -> None:
-    """[activity-line] must NOT append (path=...) when active_path is already in the line."""
+def test_activity_does_not_double_append_path_when_already_present() -> None:
+    """[activity] must NOT append (path=...) when active_path is already in the line."""
     from datetime import UTC, datetime  # noqa: PLC0415
 
     from ralph.display.snapshot import PipelineSnapshot  # noqa: PLC0415
@@ -719,3 +719,99 @@ def test_activity_line_does_not_double_append_path_when_already_present() -> Non
     out = buf.getvalue()
     # Path should appear exactly once, not duplicated
     assert out.count("ralph-workflow/ralph/x.py") == 1
+
+
+# --- Whitespace-only thinking suppression tests ---
+
+
+def test_whitespace_only_thinking_emits_nothing() -> None:
+    """emit_activity_line with kind='thinking' and whitespace-only content emits nothing."""
+    renderer, buf = _make_renderer()
+    renderer.emit_activity_line("u", "thinking", "   ")
+    out = buf.getvalue()
+    assert out == "", f"Expected empty output, got: {out!r}"
+
+
+def test_tab_only_thinking_emits_nothing() -> None:
+    """emit_activity_line with kind='thinking' and tab-only content emits nothing."""
+    renderer, buf = _make_renderer()
+    renderer.emit_activity_line("u", "thinking", "\t\n  ")
+    out = buf.getvalue()
+    assert out == "", f"Expected empty output, got: {out!r}"
+
+
+def test_non_empty_thinking_still_emits_thinking_start() -> None:
+    """Non-whitespace thinking content still opens a [thinking-start] block."""
+    renderer, buf = _make_renderer()
+    renderer.emit_activity_line("u", "thinking", "deep thought")
+    out = buf.getvalue()
+    assert "[thinking-start]" in out
+    assert "deep thought" in out
+
+
+def test_whitespace_thinking_does_not_open_block() -> None:
+    """A whitespace-only thinking fragment must not create an active block."""
+    renderer, buf = _make_renderer()
+    renderer.emit_activity_line("u", "thinking", "   ")
+    buf.truncate(0)
+    buf.seek(0)
+    renderer.flush_blocks()
+    # flush_blocks on an empty block set should produce nothing
+    assert buf.getvalue() == ""
+
+
+def test_whitespace_text_fragment_still_emits() -> None:
+    """Whitespace suppression applies only to 'thinking' kind, not 'text'."""
+    renderer, buf = _make_renderer()
+    renderer.emit_activity_line("u", "text", "   ")
+    out = buf.getvalue()
+    assert "[content-start]" in out
+
+
+# --- Thinking preview headline tests ---
+
+
+def test_thinking_start_shows_preview_headline() -> None:
+    """[thinking-start] line must contain a preview headline from the first fragment."""
+    renderer, buf = _make_renderer()
+    renderer.emit_activity_line(
+        "u",
+        "thinking",
+        "I need to check whether the parser handles X correctly before Y",
+    )
+    out = buf.getvalue()
+    assert "[thinking-start]" in out
+    assert "↓ preview: I need to check whether the parser handles X correctly" in out or (
+        "preview: I need to check whether the parser handles X correctly" in out
+    )
+
+
+def test_thinking_start_preview_uses_arrow_prefix() -> None:
+    """[thinking-start] must use the ↓ preview: prefix for the headline."""
+    renderer, buf = _make_renderer()
+    renderer.emit_activity_line("u", "thinking", "First checking the file contents")
+    out = buf.getvalue()
+    assert "preview:" in out
+    assert "[thinking-start]" in out
+
+
+def test_thinking_continue_does_not_have_preview_prefix() -> None:
+    """[thinking-continue] fragments must NOT have the preview prefix."""
+    renderer, buf = _make_renderer()
+    renderer.emit_activity_line("u", "thinking", "first thought")
+    buf.truncate(0)
+    buf.seek(0)
+    renderer.emit_activity_line("u", "thinking", "second thought")
+    out = buf.getvalue()
+    assert "[thinking-continue#" in out
+    assert "preview:" not in out
+
+
+def test_thinking_start_with_short_content_still_shows_preview() -> None:
+    """Even short thinking fragments must show preview on [thinking-start]."""
+    renderer, buf = _make_renderer()
+    renderer.emit_activity_line("u", "thinking", "short thought")
+    out = buf.getvalue()
+    assert "[thinking-start]" in out
+    assert "preview:" in out
+    assert "short thought" in out

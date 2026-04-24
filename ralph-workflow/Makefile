@@ -61,7 +61,7 @@ test-integration:
 coverage: test-cov
 
 test-cov:
-	uv run python -m ralph.verify_timeout --suite-timeout 30 -- pytest tests/ -q -n $(PYTEST_WORKERS) --cov=ralph --cov-report=term-missing --cov-report=html --cov-fail-under=80
+	uv run python -m ralph.verify_timeout --suite-timeout 30 -- pytest tests/ -q -n $(PYTEST_WORKERS) --cov=ralph --cov-report=term-missing --cov-fail-under=80
 
 # Linting
 lint:
