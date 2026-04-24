@@ -209,6 +209,16 @@ class ParallelDisplay:
         """Emit a raw line directly. Used as legacy fallback when router is not in play."""
         self._plain_renderer.emit_log_line(unit_id or "activity", line)
 
+    def emit_parsed_event(
+        self,
+        unit_id: str,
+        kind: ActivityEventKind,
+        content: str | None,
+        metadata: dict[str, object],
+    ) -> None:
+        """Route a pre-parsed agent event through the structured activity path."""
+        self._emit_activity_event(unit_id, kind, content, None, metadata)
+
     def set_status(self, unit_id: str, status: WorkerStatus) -> None:
         self._plain_renderer.emit_status_line(unit_id, str(status))
 

@@ -354,13 +354,13 @@ class PlainLogRenderer:
         # Prefer the richer free-form last_activity_line over the structured fields.
         # Only one line is emitted per snapshot diff to avoid duplication noise.
         if snapshot.last_activity_line:
+            line_text = _sanitize(snapshot.last_activity_line)
+            if snapshot.active_path:
+                sanitized_path = _sanitize(snapshot.active_path)
+                if sanitized_path not in line_text:
+                    line_text = f"{line_text} (path={sanitized_path})"
             return [
-                self._build_line(
-                    timestamp,
-                    "INFO",
-                    "META",
-                    f"[activity-line] {_sanitize(snapshot.last_activity_line)}",
-                )
+                self._build_line(timestamp, "INFO", "META", f"[activity-line] {line_text}")
             ]
 
         activity_parts: list[str] = []

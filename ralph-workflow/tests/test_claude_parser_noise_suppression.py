@@ -79,3 +79,22 @@ def test_claude_error_prefix_emits_error() -> None:
     assert len(results) == 1
     assert results[0].type == "error"
     assert "unsupported" in results[0].content
+
+
+def test_claude_assistant_message_with_thinking_block_does_not_emit_error() -> None:
+    """Assistant event with message.content thinking block must not produce an error."""
+    import json  # noqa: PLC0415
+
+    parser = ClaudeParser()
+    line = json.dumps({
+        "type": "assistant",
+        "message": {
+            "content": [{"type": "thinking", "thinking": "weighing options"}]
+        },
+    })
+    results = list(parser.parse(iter([line])))
+    errors = [r for r in results if r.type == "error"]
+    assert errors == [], f"Unexpected error results: {errors}"
+    thinking = [r for r in results if r.type == "thinking"]
+    assert len(thinking) == 1
+    assert thinking[0].content == "weighing options"

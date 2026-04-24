@@ -491,7 +491,15 @@ class ClaudeParser:
                 yield from self._parse_tool_result(block_obj, raw)
                 continue
 
-            # Non-text, non-tool block types (e.g., image) are rejected
+            if block_type == "thinking":
+                text = str(block_obj.get("thinking", block_obj.get("text", "")))
+                if text:
+                    yield AgentOutputLine(
+                        type="thinking", content=text, raw=raw, metadata=block_obj
+                    )
+                continue
+
+            # Non-text, non-tool, non-thinking block types (e.g., image) are rejected
             yield AgentOutputLine(
                 type="error",
                 content=f"unsupported content block type '{block_type}' in agent output",

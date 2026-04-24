@@ -579,3 +579,143 @@ def test_content_end_no_ai_summary_when_env_not_set() -> None:
     out = buf.getvalue()
     assert "[content-end][u]" in out
     assert "↳ ai-summary:" not in out
+
+
+# --- Activity line dedup and path-suffix tests ---
+
+
+def test_activity_line_and_activity_not_emitted_together() -> None:
+    """Snapshot A emits [activity]; snapshot B emits only [activity-line]."""
+    from datetime import UTC, datetime  # noqa: PLC0415
+
+    from ralph.display.snapshot import PipelineSnapshot  # noqa: PLC0415
+
+    renderer, buf = _make_renderer()
+
+    base_kwargs = {
+        "phase": "development",
+        "previous_phase": None,
+        "iteration": 1,
+        "total_iterations": 3,
+        "reviewer_pass": 0,
+        "total_reviewer_passes": 1,
+        "review_issues_found": False,
+        "interrupted_by_user": False,
+        "last_error": None,
+        "pr_url": None,
+        "push_count": 0,
+        "total_agent_calls": 0,
+        "total_continuations": 0,
+        "total_fallbacks": 0,
+        "total_retries": 0,
+        "workers": (),
+        "prompt_path": None,
+        "prompt_preview": (),
+        "run_id": None,
+        "created_at": datetime.now(UTC),
+    }
+
+    # Snapshot A: no last_activity_line — expect [activity] with agent= field
+    snapshot_a = PipelineSnapshot(
+        active_agent="claude/sonnet",
+        last_activity_line=None,
+        **base_kwargs,  # type: ignore[arg-type]
+    )
+    renderer.emit_snapshot(snapshot_a)
+    out_a = buf.getvalue()
+    assert "[activity]" in out_a
+    assert "agent=claude/sonnet" in out_a
+    assert "[activity-line]" not in out_a
+
+    buf.truncate(0)
+    buf.seek(0)
+
+    # Snapshot B: last_activity_line set — expect only [activity-line], no extra [activity] line
+    snapshot_b = PipelineSnapshot(
+        active_agent="claude/sonnet",
+        active_tool="mcp__ralph__read_file",
+        last_activity_line="claude/sonnet tool: mcp__ralph__read_file (path=x.py)",
+        **base_kwargs,  # type: ignore[arg-type]
+    )
+    renderer.emit_snapshot(snapshot_b)
+    out_b = buf.getvalue()
+    activity_line_count = out_b.count("[activity-line]")
+    activity_tag_count = out_b.count("[activity] ")
+    assert activity_line_count == 1, f"Expected 1 [activity-line], got {activity_line_count}"
+    assert activity_tag_count == 0, f"Expected 0 extra [activity], got {activity_tag_count}"
+
+
+def test_activity_line_appends_path_when_missing() -> None:
+    """[activity-line] appends (path=...) when active_path is not in last_activity_line."""
+    from datetime import UTC, datetime  # noqa: PLC0415
+
+    from ralph.display.snapshot import PipelineSnapshot  # noqa: PLC0415
+
+    renderer, buf = _make_renderer()
+    snapshot = PipelineSnapshot(
+        phase="development",
+        previous_phase=None,
+        iteration=1,
+        total_iterations=3,
+        reviewer_pass=0,
+        total_reviewer_passes=1,
+        review_issues_found=False,
+        interrupted_by_user=False,
+        last_error=None,
+        pr_url=None,
+        push_count=0,
+        total_agent_calls=0,
+        total_continuations=0,
+        total_fallbacks=0,
+        total_retries=0,
+        workers=(),
+        prompt_path=None,
+        prompt_preview=(),
+        run_id=None,
+        created_at=datetime.now(UTC),
+        active_path="ralph-workflow/ralph/x.py",
+        last_activity_line="claude/sonnet tool: mcp__ralph__read_file",
+    )
+    renderer.emit_snapshot(snapshot)
+    out = buf.getvalue()
+    assert "(path=ralph-workflow/ralph/x.py)" in out
+
+
+def test_activity_line_does_not_double_append_path_when_already_present() -> None:
+    """[activity-line] must NOT append (path=...) when active_path is already in the line."""
+    from datetime import UTC, datetime  # noqa: PLC0415
+
+    from ralph.display.snapshot import PipelineSnapshot  # noqa: PLC0415
+
+    renderer, buf = _make_renderer()
+    snapshot = PipelineSnapshot(
+        phase="development",
+        previous_phase=None,
+        iteration=1,
+        total_iterations=3,
+        reviewer_pass=0,
+        total_reviewer_passes=1,
+        review_issues_found=False,
+        interrupted_by_user=False,
+        last_error=None,
+        pr_url=None,
+        push_count=0,
+        total_agent_calls=0,
+        total_continuations=0,
+        total_fallbacks=0,
+        total_retries=0,
+        workers=(),
+        prompt_path=None,
+        prompt_preview=(),
+        run_id=None,
+        created_at=datetime.now(UTC),
+        active_path="ralph-workflow/ralph/x.py",
+        last_activity_line=(
+            "claude/sonnet tool: mcp__ralph__read_file"
+            " (path=ralph-workflow/ralph/x.py)"
+        ),
+    )
+    renderer.emit_snapshot(snapshot)
+    out = buf.getvalue()
+    # Path should appear exactly once, not duplicated
+    assert out.count("ralph-workflow/ralph/x.py") == 1

@@ -54,7 +54,7 @@ def detect_provider_from_command(command: list[str]) -> ActivityProvider:
     return ActivityProvider.GENERIC
 
 
-def _map_kind(parser_type: str) -> ActivityEventKind:
+def map_parser_type_to_kind(parser_type: str) -> ActivityEventKind:
     mapping: dict[str, ActivityEventKind] = {
         "text": ActivityEventKind.TEXT,
         "thinking": ActivityEventKind.THINKING,
@@ -120,7 +120,7 @@ class ActivityRouter:
             lines = list(parser.parse(iter([raw_line])))
 
             for out in lines:
-                kind = _map_kind(out.type)
+                kind = map_parser_type_to_kind(out.type)
                 event = make_event(
                     provider=provider,
                     kind=kind,
@@ -156,4 +156,5 @@ __all__ = [
     "PARSERS",
     "ActivityRouter",
     "detect_provider_from_command",
+    "map_parser_type_to_kind",
 ]

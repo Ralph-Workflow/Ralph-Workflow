@@ -2276,7 +2276,10 @@ def _record_activity_on_subscriber(
     agent_name: str,
 ) -> None:
     try:
-        line_text = "" if rendered is None else rendered.plain
+        if parsed_line.type == "thinking" and parsed_line.content.strip():
+            line_text = parsed_line.content.strip()
+        else:
+            line_text = "" if rendered is None else rendered.plain
         metadata = parsed_line.metadata
         tool_name: str | None = None
         metadata_tool = metadata.get("tool")
@@ -2320,12 +2323,20 @@ def _stream_parsed_agent_activity(  # noqa: PLR0913
                 raw_output_sink.append(text)
             yield text
 
+    from ralph.display.activity_router import map_parser_type_to_kind  # noqa: PLC0415
+    from ralph.display.parallel_display import ParallelDisplay as _ParallelDisplay  # noqa: PLC0415
+
     subscriber = _subscriber_for_display(display)
     for parsed_line in parser.parse(_iter_lines()):
         rendered = _render_agent_activity_line(parsed_line, agent_name)
-        if rendered is not None:
-            if rendered_output_sink is not None:
-                rendered_output_sink.append(rendered.plain)
+        if rendered is not None and rendered_output_sink is not None:
+            rendered_output_sink.append(rendered.plain)
+        if isinstance(display, _ParallelDisplay):
+            kind = map_parser_type_to_kind(parsed_line.type)
+            display.emit_parsed_event(
+                agent_name, kind, parsed_line.content, parsed_line.metadata or {}
+            )
+        elif rendered is not None:
             _emit_display_line(display, None, rendered)
         if subscriber is not None:
             _record_activity_on_subscriber(subscriber, parsed_line, rendered, agent_name)
@@ -2349,6 +2360,7 @@ def _truncate(text: str, max_length: int) -> str:
 def _render_agent_activity_line(output: AgentOutputLine, agent_name: str) -> Text | None:
     content_renderers: dict[str, Callable[[], Text | None]] = {
         "text": lambda: _render_text_line(agent_name, output.content, "white"),
+        "thinking": lambda: _render_text_line(agent_name, output.content, "dim"),
         "assistant": lambda: _render_text_line(agent_name, output.content, "dim"),
         "result": lambda: _render_text_line(agent_name, output.content, "dim"),
         "tool_use": lambda: _render_tool_use_line(agent_name, output),

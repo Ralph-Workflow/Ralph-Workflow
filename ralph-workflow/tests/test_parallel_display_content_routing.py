@@ -242,3 +242,87 @@ def test_activity_snapshot_does_not_duplicate_activity_line(tmp_path: Path) -> N
     # Only one of the two should be non-zero, and total occurrences == 1
     total = activity_line_count + activity_tag_count
     assert total == 1, f"Expected 1 activity line, got {total}. Output:\n{out}"
+
+
+def test_lifecycle_thinking_prefix_is_suppressed_end_to_end(tmp_path: Path) -> None:
+    """Lifecycle prefix 'claude/sonnet: thinking' must not produce [content] output."""
+    pd, buf = _make_display(tmp_path)
+    pd.activity_router.push_raw_line(
+        "main",
+        "claude/sonnet: thinking",
+        provider=ActivityProvider.CLAUDE,
+    )
+    pd.stop()
+    out = buf.getvalue()
+    assert "[content][main]" not in out
+    assert "[thinking][main]" not in out
+
+
+
+def test_stream_parsed_agent_activity_thinking_routes_to_structured_path(tmp_path: Path) -> None:
+    """_stream_parsed_agent_activity must not emit [content][activity] for thinking events."""
+    import json  # noqa: PLC0415
+
+    from ralph.pipeline.runner import _stream_parsed_agent_activity  # noqa: PLC0415
+
+    pd, buf = _make_display(tmp_path)
+
+    thinking_line = json.dumps(
+        {
+            "type": "content_block_start",
+            "index": 0,
+            "content_block": {"type": "thinking", "thinking": ""},
+        }
+    )
+    thinking_delta = json.dumps(
+        {
+            "type": "content_block_delta",
+            "index": 0,
+            "delta": {"type": "thinking_delta", "thinking": "deep reasoning here"},
+        }
+    )
+    stop_line = json.dumps({"type": "content_block_stop", "index": 0})
+
+    _stream_parsed_agent_activity(
+        [thinking_line, thinking_delta, stop_line],
+        parser_type="claude",
+        agent_name="claude/sonnet",
+        display=pd,
+    )
+
+    out = buf.getvalue()
+    assert "[content][activity]" not in out
+    assert "deep reasoning here" in out
+    assert "[thinking" in out
+
+
+def test_stream_parsed_agent_activity_tool_use_routes_to_structured_path(tmp_path: Path) -> None:
+    """_stream_parsed_agent_activity routes tool_use via emit_parsed_event with no duplication."""
+    import json  # noqa: PLC0415
+
+    from ralph.pipeline.runner import _stream_parsed_agent_activity  # noqa: PLC0415
+
+    pd, buf = _make_display(tmp_path)
+
+    tool_line = json.dumps(
+        {
+            "type": "content_block_start",
+            "content_block": {
+                "type": "tool_use",
+                "name": "mcp__ralph__read_file",
+                "input": {"path": "ralph-workflow/ralph/x.py"},
+            },
+        }
+    )
+
+    _stream_parsed_agent_activity(
+        [tool_line],
+        parser_type="claude",
+        agent_name="claude/sonnet",
+        display=pd,
+    )
+
+    out = buf.getvalue()
+    assert "[content][activity]" not in out
+    assert "mcp__ralph__read_file" in out
+    assert out.count("mcp__ralph__read_file") == 1
