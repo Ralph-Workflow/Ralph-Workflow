@@ -66,6 +66,7 @@ def test_format_tool_input_total_length_bounded_for_many_values() -> None:
 
 def test_friendly_tool_name_strips_mcp_ralph_prefix() -> None:
     from ralph.display.tool_args import friendly_tool_name  # noqa: PLC0415
+
     assert friendly_tool_name("mcp__ralph__read_file") == "ralph.read_file"
     assert friendly_tool_name("mcp__ralph__exec") == "ralph.exec"
     assert friendly_tool_name("mcp__ralph__write_file") == "ralph.write_file"
@@ -73,13 +74,14 @@ def test_friendly_tool_name_strips_mcp_ralph_prefix() -> None:
 
 def test_friendly_tool_name_leaves_other_names_unchanged() -> None:
     from ralph.display.tool_args import friendly_tool_name  # noqa: PLC0415
+
     assert friendly_tool_name("bash") == "bash"
     assert friendly_tool_name("mcp__other__read") == "mcp__other__read"
     assert friendly_tool_name("") == ""
     assert friendly_tool_name("read_file") == "read_file"
 
 
-def test_tool_use_renders_friendly_name_in_parallel_display(tmp_path):
+def test_tool_use_renders_friendly_name_in_parallel_display(tmp_path):  # type: ignore[no-untyped-def]
     """tool_use with mcp__ralph__ prefix renders with ralph. in output."""
     import json  # noqa: PLC0415
     from io import StringIO  # noqa: PLC0415
@@ -108,19 +110,29 @@ def test_tool_use_renders_friendly_name_in_parallel_display(tmp_path):
     assert "path=ralph-workflow/ralph/x.py" in out
 
 
-def test_tool_use_metadata_preserves_original_name(tmp_path):
-    """Metadata must still hold the original mcp__ralph__ name after friendly rendering."""
+def test_tool_use_metadata_preserves_original_name() -> None:
+    """Metadata must still hold the original mcp__ralph__ name after friendly rendering.
+
+    The friendly_tool_name transform is render-only: the router's on_event callback
+    receives the original parser content and metadata untransformed.
+    """
     import json  # noqa: PLC0415
 
     from ralph.display.activity_model import ActivityEventKind, ActivityProvider  # noqa: PLC0415
-
-    received_metadata: list[dict] = []
-
-    def capture_event(unit_id, kind, content, raw_ref, metadata):
-        if kind == ActivityEventKind.TOOL_USE:
-            received_metadata.append(dict(metadata))
-
     from ralph.display.activity_router import ActivityRouter  # noqa: PLC0415
+
+    received: list[tuple[str | None, dict[str, object]]] = []
+
+    def capture_event(
+        unit_id: str,
+        kind: ActivityEventKind,
+        content: str | None,
+        raw_ref: str | None,
+        metadata: dict[str, object],
+    ) -> None:
+        if kind == ActivityEventKind.TOOL_USE:
+            received.append((content, dict(metadata)))
+
     router = ActivityRouter(on_event=capture_event)
 
     event = json.dumps({
@@ -133,7 +145,12 @@ def test_tool_use_metadata_preserves_original_name(tmp_path):
     })
     router.push_raw_line("u", event, provider=ActivityProvider.CLAUDE)
 
-    # Metadata routed through on_event must preserve original name
-    # (The router routes the parsed content which is the tool name)
-    # The content passed to on_event is the original tool name from the parser
-    assert any("mcp__ralph__read_file" in str(m) or True for m in received_metadata)
+    assert len(received) == 1, f"Expected 1 TOOL_USE event, got {len(received)}"
+    content, metadata = received[0]
+    assert content == "mcp__ralph__read_file", (
+        f"Router on_event must receive original tool name in content, got {content!r}"
+    )
+    assert metadata.get("name") == "mcp__ralph__read_file", (
+        f"Router on_event must receive original tool name in metadata['name'],"
+        f" got {metadata.get('name')!r}"
+    )
