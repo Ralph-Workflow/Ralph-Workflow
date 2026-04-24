@@ -2,16 +2,18 @@
 
 > An opinionated AI agent orchestration framework for dependable unattended execution.
 
-Ralph Workflow is for developers who want more than an AI chat window.
-It is built for teams and power users who want AI to execute real software-delivery work with **explicit guardrails, verification, and configurable workflow policy**.
+Ralph Workflow is for experienced developers who want more than an AI chat window.
+It is built for technical founders, senior product engineers, and other high-context users who want AI to execute real software-delivery work with **explicit guardrails, verification, and configurable workflow policy**.
 
-Most AI dev tools are good at helping in the moment. Fewer are good at running unattended without constant supervision, hidden behavior, or hand-wavy success criteria. Ralph exists to make that workflow more dependable.
+Most AI dev tools are good at helping in the moment. Fewer are good at running unattended without constant supervision, hidden behavior, or hand-wavy success criteria. Ralph exists to make that workflow more dependable — but also to make the risks visible.
 
 Ralph Workflow began as a take on the Ralph loop and has evolved into a configurable Python framework for **bounded autonomy**: opinionated about process, configurable in how that process is expressed.
 
 ## Why this helps
 
 Ralph is useful when you want AI to do more of the work **without asking you to trust it blindly**.
+
+It is also a tool to use with caution. Unattended execution is powerful, but it is not beginner-safe by default: it assumes you can review outputs critically, understand the workflow you configured, and notice when the system is doing the wrong thing confidently.
 
 It helps by giving you:
 
@@ -23,6 +25,7 @@ It helps by giving you:
 
 If you want AI to brainstorm in a sidebar, there are many tools for that.
 If you want AI to operate within a repeatable, inspectable engineering workflow, that is where Ralph fits.
+If you are still learning how to evaluate AI-generated code and decisions, more hands-on tooling is usually the better starting point.
 
 ## What Ralph is
 
@@ -46,12 +49,16 @@ Ralph is a good fit if you want:
 - configurable workflow behavior that still has a strong opinion about process
 - auditable handoffs, explicit artifacts, and predictable recovery behavior
 - a tool that fits disciplined engineering workflows rather than bypassing them
+- a system you can supervise as an experienced operator, not just consume passively
 
 Ralph is probably not the best fit if you want:
 
 - instant one-shot code generation with minimal setup
 - opaque agent behavior that "just does something"
 - a general-purpose chat assistant as the primary experience
+- a first AI development tool for junior developers still building judgment around code review, debugging, and verification
+
+For junior developers, more hands-on AI tooling is usually a better fit: tools that keep the human tightly in the loop, encourage active learning, and make it easier to inspect each step before moving on.
 
 ## What is current
 
