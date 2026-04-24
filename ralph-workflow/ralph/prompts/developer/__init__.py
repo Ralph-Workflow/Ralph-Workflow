@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from ralph.mcp.artifacts.plan import PLAN_ARTIFACT_PATH
+from ralph.phases.required_artifacts import DEV_RESULT_ARTIFACT_JSON_PATH
 from ralph.prompts import template_engine
 from ralph.prompts.payload_refs import build_prompt_payload_variables, write_payload_to_directory
 from ralph.prompts.template_engine import TemplateRenderingError, render_template
@@ -26,6 +28,13 @@ class DeveloperPromptInputs:
     plan_path: str = ""
     analysis_feedback_path: str = ""
     prompt_name_prefix: str = "development"
+    last_retry_error: str = ""
+
+
+@dataclass(frozen=True)
+class PlanningPromptInputs:
+    prompt_content: str | None
+    last_retry_error: str = ""
 
 
 def prompt_developer_iteration_xml_with_context(
@@ -39,13 +48,12 @@ def prompt_developer_iteration_xml_with_context(
     template_content = context.registry.get_template(template_name)
 
     base_vars: dict[str, str] = {
-        "DEVELOPMENT_RESULT_XML_PATH": workspace.absolute_path(
-            ".agent/artifacts/development_result.json"
-        ),
+        "DEVELOPMENT_RESULT_XML_PATH": workspace.absolute_path(DEV_RESULT_ARTIFACT_JSON_PATH),
         "DEVELOPMENT_RESULT_XSD_PATH": workspace.absolute_path(
             ".agent/artifacts/development_result.schema.json"
         ),
         "HIDE_ARTIFACT_SUBMISSION_GUIDANCE": "true",
+        "LAST_RETRY_ERROR": inputs.last_retry_error,
     }
     base_vars.update(
         _current_prompt_variables(
@@ -110,7 +118,7 @@ def prompt_developer_iteration_xml_with_context(
 
 def prompt_planning_xml_with_context(
     context: TemplateContext,
-    prompt_content: str | None,
+    inputs: PlanningPromptInputs,
     workspace: Workspace,
     session_caps: SessionCapabilities,
     *,
@@ -118,14 +126,14 @@ def prompt_planning_xml_with_context(
 ) -> str:
     template_content = context.registry.get_template(template_name)
 
-    prompt_md = prompt_content or "No requirements provided"
     base_vars: dict[str, str] = {
-        "PLAN_XML_PATH": workspace.absolute_path(".agent/artifacts/plan.json"),
+        "PLAN_XML_PATH": workspace.absolute_path(PLAN_ARTIFACT_PATH),
         "PLAN_XSD_PATH": workspace.absolute_path(".agent/artifacts/plan.schema.json"),
+        "LAST_RETRY_ERROR": inputs.last_retry_error,
     }
     base_vars.update(
         _current_prompt_variables(
-            prompt_content,
+            inputs.prompt_content,
             workspace.absolute_path(".agent/CURRENT_PROMPT.md"),
         )
     )
@@ -146,7 +154,7 @@ def prompt_planning_xml_with_context(
             "planning_fallback.jinja",
             {
                 **capability_vars,
-                "PROMPT": prompt_md,
+                "PROMPT": inputs.prompt_content or "No requirements provided",
                 "PROMPT_PATH": workspace.absolute_path(".agent/CURRENT_PROMPT.md"),
             },
         )

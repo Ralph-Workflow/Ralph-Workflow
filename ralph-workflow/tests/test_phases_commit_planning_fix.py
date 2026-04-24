@@ -477,8 +477,7 @@ def test_handle_planning_accepts_noop_plan() -> None:
 def test_handle_development_reads_wrapped_plan_artifact_and_validates_schema() -> None:
     ctx = _stub_context_no_exists()
     workspace = cast("MagicMock", ctx.workspace)
-    workspace.exists.side_effect = lambda path: path == ".agent/artifacts/plan.json"
-    workspace.read.return_value = (
+    plan_json = (
         '{"type":"plan","content":{"summary":{"context":"Plan MCP rollout","scope_items":['
         '{"text":"Update validation"},{"text":"Add tests"},{"text":"Update prompts"}]},'
         '"steps":[{"number":1,"title":"Validate plan","content":"Do the work"}],'
@@ -486,14 +485,24 @@ def test_handle_development_reads_wrapped_plan_artifact_and_validates_schema() -
         '"risks_mitigations":[{"risk":"Schema drift","mitigation":"HTTP tests"}],'
         '"verification_strategy":[{"method":"pytest","expected_outcome":"passes"}]}}'
     )
+    dev_result_json = (
+        '{"type":"development_result","content":{"status":"completed",'
+        '"summary":"Done.","files_changed":"- src/a.py"}}'
+    )
+    workspace.exists.side_effect = lambda path: path in {
+        ".agent/artifacts/plan.json",
+        ".agent/artifacts/development_result.json",
+    }
+    workspace.read.side_effect = lambda path: (
+        dev_result_json if path == ".agent/artifacts/development_result.json" else plan_json
+    )
 
     effect = InvokeAgentEffect(
         agent_name="developer", phase="development", prompt_file="development.txt"
     )
 
     assert handle_development(effect, ctx) == [PipelineEvent.AGENT_SUCCESS]
-    workspace.read.assert_called_once_with(".agent/artifacts/plan.json")
-
+    workspace.read.assert_any_call(".agent/artifacts/plan.json")
 
 def test_handle_development_skips_when_plan_is_noop() -> None:
     ctx = _stub_context_no_exists()

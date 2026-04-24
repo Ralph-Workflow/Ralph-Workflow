@@ -10,6 +10,12 @@ Review the latest implementation result and determine whether development should
 
 {% include 'shared/_mcp_tools.j2' %}
 
+{% if LAST_RETRY_ERROR %}
+IMPORTANT: The previous attempt did not submit the required artifact before declaring completion.
+
+{{ render_payload_section('PREVIOUS ATTEMPT ERROR', LAST_RETRY_ERROR, '') }}
+{% endif %}
+
 {{ render_payload_path('PROMPT', PROMPT_PATH) }}
 
 {{ render_payload_path('PLAN', PLAN_PATH) }}

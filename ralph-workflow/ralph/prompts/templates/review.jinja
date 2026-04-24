@@ -5,6 +5,12 @@ Your only job is to analyze the implementation, not to edit code or commit chang
 
 {% include 'shared/_unattended_mode.j2' %}
 
+{% if LAST_RETRY_ERROR %}
+IMPORTANT: The previous attempt did not submit the required artifact before declaring completion.
+
+{{ render_payload_section('PREVIOUS ATTEMPT ERROR', LAST_RETRY_ERROR, '') }}
+{% endif %}
+
 Read the changed files and compare the implementation against the plan and requirements.
 
 {{ render_payload_section('PLAN', PLAN, PLAN_PATH) }}
@@ -17,10 +23,12 @@ Submit review findings using `artifact_type="issues"`.
 
 Return a JSON object.
 
-- If the implementation is clean, use `{"status":"clean","summary":"...","issues":[]}`.
+- If the implementation passes review, use `{"status":"no_issues","summary":"<one-sentence summary of the review>","issues":[],"what_came_up_short":[],"how_to_fix":[]}`.
 - If the implementation needs fixes, use `{"status":"issues_found","summary":"...","issues":[...],"what_came_up_short":[...],"how_to_fix":[...]}`.
 
-For any non-clean review, the following two fields are mandatory and must be as detailed as possible:
+Valid status values are `"no_issues"` and `"issues_found"`.
+
+For any review that finds issues, the following two fields are mandatory and must be as detailed as possible:
 
 1. `what_came_up_short`
    - Enumerate every defect, regression, missing requirement, unsafe change, or verification gap.
@@ -31,6 +39,9 @@ For any non-clean review, the following two fields are mandatory and must be as 
    - Provide detailed, ordered remediation steps that would allow the implementation to pass review on the next attempt.
    - Include exact files to change, what to update in each file, which tests/checks to run, and what outcomes must be observed.
    - Make the instructions comprehensive enough that the fixer can execute them directly.
+
+When `status` is `"no_issues"`, `issues`, `what_came_up_short`, and `how_to_fix` may be empty arrays.
+When `status` is `"issues_found"`, all three arrays must be non-empty.
 
 Example issues artifact:
 

@@ -17,14 +17,18 @@ Call the `ralph_submit_artifact` tool with `artifact_type` set to `issues` and `
 
 ## Required fields (inside content)
 
-- `status` — a string describing the overall outcome, such as `"issues_found"` or `"no_issues"`
+- `status` — either `"issues_found"` or `"no_issues"`
 - `summary` — a non-empty string describing the overall review result
-- `issues` — an array of issue objects; each object must have:
+
+When `status` is `"issues_found"`, the following are also required:
+- `issues` — a non-empty array of issue objects; each object must have:
   - `path` — the file path where the issue is found
-  - `severity` — how bad the issue is (e.g. `"high"`, `"medium"`, `"low"`)
+  - `severity` — how bad the issue is (`"high"`, `"medium"`, or `"low"`)
   - `summary` — a short description of the specific problem
-- `what_came_up_short` — an array of strings describing what is missing or wrong overall
-- `how_to_fix` — an array of strings with concrete steps to resolve the problems
+- `what_came_up_short` — a non-empty array of strings describing what is missing or wrong overall
+- `how_to_fix` — a non-empty array of strings with concrete steps to resolve the problems
+
+When `status` is `"no_issues"`, `issues`, `what_came_up_short`, and `how_to_fix` may be empty arrays.
 
 ## Optional fields
 
@@ -36,6 +40,17 @@ There are no optional fields; all fields listed above are expected.
 {
   "artifact_type": "issues",
   "content": "{\"status\": \"issues_found\", \"summary\": \"Found issues.\", \"issues\": [{\"path\": \"src/main.py\", \"severity\": \"high\", \"summary\": \"Missing validation\"}], \"what_came_up_short\": [\"No input validation\"], \"how_to_fix\": [\"Add validation\"]}"
+}
+```
+
+## Clean review example
+
+When the review passes without issues:
+
+```json
+{
+  "artifact_type": "issues",
+  "content": "{\"status\": \"no_issues\", \"summary\": \"The implementation is correct and all tests pass.\", \"issues\": [], \"what_came_up_short\": [], \"how_to_fix\": []}"
 }
 ```
 
@@ -52,8 +67,8 @@ There are no optional fields; all fields listed above are expected.
 - Did you set `artifact_type` to `"issues"`?
 - Did you set `status` to `"issues_found"` or `"no_issues"`?
 - Did you write a non-empty `summary`?
-- Is `issues` an array of objects (not a flat list of strings)?
+- If `status` is `"issues_found"`: is `issues` a non-empty array of objects?
 - Does each issue object have `path`, `severity`, and `summary`?
 - Is `severity` one of: `"high"`, `"medium"`, `"low"`?
-- Did you include non-empty `what_came_up_short` and `how_to_fix` arrays?
+- If `status` is `"issues_found"`: are `what_came_up_short` and `how_to_fix` non-empty?
 - Did you stringify the content object into a JSON string for the `content` field?
