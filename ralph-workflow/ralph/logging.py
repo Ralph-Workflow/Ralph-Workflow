@@ -1,14 +1,16 @@
 """Logging configuration for Ralph.
 
 This module configures loguru for structured logging throughout the Ralph CLI.
-Log levels map to verbosity as follows:
+Log levels map to verbosity as follows::
+
     0 (QUIET)  -> ERROR only
     1 (NORMAL) -> WARNING
     2 (VERBOSE) -> INFO
     3 (FULL)   -> DEBUG
     4+ (DEBUG) -> TRACE
 
-Custom levels registered on first configure_logging() call:
+Custom levels registered on first configure_logging() call::
+
     SUCCESS (25): between INFO (20) and WARNING (30)
     MILESTONE (35): between WARNING (30) and ERROR (40)
 """

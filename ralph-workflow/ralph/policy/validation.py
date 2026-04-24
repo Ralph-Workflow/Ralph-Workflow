@@ -320,6 +320,7 @@ def validate_required_inputs(workspace_scope: WorkspaceScope) -> None:
     if not prompt_path.exists():
         raise PolicyValidationError(
             f"Required input file not found: {prompt_path}. "
+            "PROMPT.md is the goal/acceptance-criteria document Ralph reads as its task input. "
             "Run `ralph --init` to scaffold PROMPT.md and project config files, "
             "then edit PROMPT.md with the task you want Ralph to run."
         )
@@ -329,7 +330,8 @@ def validate_required_inputs(workspace_scope: WorkspaceScope) -> None:
         )
     if not prompt_path.stat().st_size > 0:
         raise PolicyValidationError(
-            f"Required input file is empty: {prompt_path}"
+            f"Required input file is empty: {prompt_path}. "
+            "Run `ralph --init` to scaffold a starter template, then edit it with your task."
         )
     from ralph.cli.commands.init import STARTER_PROMPT_SENTINEL  # noqa: PLC0415
 
@@ -338,5 +340,6 @@ def validate_required_inputs(workspace_scope: WorkspaceScope) -> None:
         raise PolicyValidationError(
             f"PROMPT.md at {prompt_path} is still the `ralph --init` starter template. "
             "Edit it to describe YOUR task (remove the `<!-- ralph:starter-prompt ... -->` "
-            "marker at the top once you have replaced the example content), then re-run `ralph`."
+            "marker at the top once you have replaced the example content), then re-run `ralph`. "
+            "See docs/sphinx/concepts.md for what a good PROMPT.md should contain."
         )

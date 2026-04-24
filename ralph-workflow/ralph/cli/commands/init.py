@@ -1,7 +1,7 @@
 """Init command for Ralph CLI.
 
 This module implements the initialization command that sets up
-Ralph in a repository.
+Ralph Workflow in a repository.
 """
 
 from __future__ import annotations
@@ -36,7 +36,7 @@ def init_command(
     template: str | None = None,
     config_path: Path | None = None,
 ) -> None:
-    """Initialize Ralph in the current working directory.
+    """Initialize Ralph Workflow in the current working directory.
 
     Args:
         template: Optional template name (e.g. 'default').
@@ -52,6 +52,9 @@ def init_command(
         prompt_path.write_text(
             STARTER_PROMPT_SENTINEL
             + "\n\n"
+            "PROMPT.md is the goal and acceptance-criteria document that Ralph Workflow reads "
+            "as its task input. Replace the example content below with YOUR task description, "
+            "then remove the sentinel comment at the top before running `ralph`.\n\n"
             "# Goal\n\n"
             "Add a /health endpoint to the example API that returns HTTP 200 with a JSON body"
             ' `{"status": "ok"}`.\n'
@@ -68,9 +71,13 @@ def init_command(
             "- Response body is valid JSON with `status` == `ok`\n"
             "- A new test in `tests/` covers the new endpoint\n\n"
             "## Notes\n\n"
-            "- Ralph reads this file as PROMPT.md from the workspace root —"
-            " edit it to describe YOUR task before re-running `ralph`.\n"
-            "- Keep the prompt scoped — one user-visible outcome per run works best.\n",
+            "- Keep the prompt scoped — one user-visible outcome per run works best.\n"
+            "- Describe constraints (language, framework, test style) in Context above.\n\n"
+            "---\n\n"
+            "**Next steps**\n\n"
+            "1. Edit the sections above to describe YOUR task and remove the sentinel comment.\n"
+            "2. Run `ralph --diagnose` to verify agents, MCP servers, and config.\n"
+            "3. Run `ralph` to start the planning → development → review → fix pipeline.\n",
             encoding="utf-8",
         )
         console.print(_status_text("Created", str(prompt_path), "green"))
@@ -114,28 +121,41 @@ def _try_load_registry() -> AgentRegistry | None:
 def _print_fallback_next_steps(target: Path, template: str | None) -> None:
     """Print next steps when all configs were skipped (re-running init)."""
     template_label = template or "default"
-    console.print(_status_text("Ralph initialized in", str(target), "cyan"))
+    console.print(_status_text("Ralph Workflow initialized in", str(target), "cyan"))
     console.print(f"  [dim]Template:[/dim] {template_label}")
+    console.print(
+        "\nRalph Workflow orchestrates AI coding agents through a"
+        " [cyan]planning → development → review → fix[/cyan] loop driven by PROMPT.md."
+    )
+    console.print(
+        "[dim]Docs:[/dim] run [cyan]make docs && make serve-docs[/cyan] from ralph-workflow/"
+        " for the full HTML reference."
+        " Or browse inline: [cyan]python -m pydoc ralph[/cyan]"
+    )
     console.print("\n[dim]Next steps:[/dim]")
     console.print("  1. Edit [cyan]PROMPT.md[/cyan] with your implementation task")
     console.print(
-        "  2. (Optional) Override defaults in [cyan].agent/ralph-workflow.toml[/cyan]"
+        "  2. (Optional) Read the concepts guide at"
+        " [cyan]docs/sphinx/concepts.md[/cyan] (or the built HTML docs)"
+    )
+    console.print(
+        "  3. (Optional) Override defaults in [cyan].agent/ralph-workflow.toml[/cyan]"
         " or [cyan]~/.config/ralph-workflow.toml[/cyan]"
     )
     console.print(
-        "  3. (Optional) Configure MCP servers in [cyan].agent/mcp.toml[/cyan]"
+        "  4. (Optional) Configure MCP servers in [cyan].agent/mcp.toml[/cyan]"
         " or [cyan]~/.config/ralph-workflow-mcp.toml[/cyan]"
     )
     console.print(
-        "  4. (Optional) Review agent chains in [cyan].agent/agents.toml[/cyan],"
+        "  5. (Optional) Review agent chains in [cyan].agent/agents.toml[/cyan],"
         " pipeline in [cyan].agent/pipeline.toml[/cyan],"
         " and artifacts in [cyan].agent/artifacts.toml[/cyan]"
     )
     console.print(
-        "  5. (Optional) Run [cyan]ralph --diagnose[/cyan] to verify agents,"
+        "  6. (Optional) Run [cyan]ralph --diagnose[/cyan] to verify agents,"
         " MCP servers, and config"
     )
-    console.print("  6. Run [cyan]ralph[/cyan] to start the pipeline")
+    console.print("  7. Run [cyan]ralph[/cyan] to start the pipeline")
     console.print("\n[dim]To reset configs later: [cyan]ralph --regenerate-config[/cyan][/dim]")
 
 

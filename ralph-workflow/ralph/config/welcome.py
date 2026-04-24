@@ -183,6 +183,23 @@ def emit_first_run_welcome(
 
     content: list[object] = []
 
+    # Elevator pitch and docs pointer for new users
+    content.append(
+        Text.from_markup(
+            "Ralph Workflow orchestrates AI coding agents through a "
+            "[cyan]planning → development → review → fix[/cyan] loop "
+            "driven by your PROMPT.md."
+        )
+    )
+    content.append(
+        Text.from_markup(
+            "[dim]Learn more: [cyan]python -m pydoc ralph[/cyan] · "
+            "run [cyan]make serve-docs[/cyan] from ralph-workflow/ "
+            "for the full HTML reference.[/dim]"
+        )
+    )
+    content.append(Text())  # blank line
+
     # For regenerate, show summary line first
     if is_regenerate:
         summary = _build_regenerate_summary(results)
@@ -190,13 +207,13 @@ def emit_first_run_welcome(
             content.append(summary)
             content.append(Text())  # blank line
 
+    # Agent availability (shown before config file lists; not shown during regenerate)
+    if not is_regenerate:
+        content.extend(_build_agent_availability_content(agent_registry))
+
     global_files, local_files = _partition_config_files(results)
     _append_file_section(content, "[bold cyan]Global config files:[/bold cyan]", global_files)
     _append_file_section(content, "[bold cyan]Local config files:[/bold cyan]", local_files)
-
-    # Agent availability (not shown during regenerate since it's first-run info)
-    if not is_regenerate:
-        content.extend(_build_agent_availability_content(agent_registry))
 
     # Next steps
     next_steps = Text.from_markup(
@@ -212,7 +229,7 @@ def emit_first_run_welcome(
 
     panel = Panel(
         Group(*content),  # type: ignore[arg-type]
-        title="Ralph first-run setup",
+        title="Ralph Workflow first-run setup",
         border_style="cyan",
         padding=(1, 2),
     )

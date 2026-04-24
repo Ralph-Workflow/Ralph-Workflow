@@ -99,6 +99,24 @@ For custom upstream MCP servers in `.agent/mcp.toml`, Ralph now supports both cu
 
 This matters because `/sse` is not just a different path — it uses the older MCP HTTP+SSE flow, where Ralph must open an SSE stream first and then POST JSON-RPC messages to the advertised message endpoint.
 
+## Documentation
+
+The full reference documentation lives in `docs/sphinx/`. Build and browse it locally:
+
+```bash
+cd ralph-workflow
+make docs          # build HTML into docs/sphinx/_build/html/
+make serve-docs    # serve on http://localhost:8000
+```
+
+Key pages:
+
+- [`docs/sphinx/quickstart.md`](docs/sphinx/quickstart.md) — install, init, and run in five minutes
+- [`docs/sphinx/concepts.md`](docs/sphinx/concepts.md) — terminology: phases, drains, agents, MCP artifacts, checkpoints
+- [`docs/sphinx/cli.md`](docs/sphinx/cli.md) — all CLI flags and sub-commands
+- [`docs/sphinx/configuration.md`](docs/sphinx/configuration.md) — config files, precedence, and FAQ
+- [`docs/sphinx/modules.rst`](docs/sphinx/modules.rst) — full Python API reference (autodoc)
+
 ## Verification
 
 ```bash

@@ -159,6 +159,7 @@ class RalphProgress:
     """Multi-task progress display for Ralph pipeline.
 
     RalphProgress manages a hierarchy of progress tasks:
+
     1. Pipeline-level progress (overall completion)
     2. Phase-level progress (current phase advancement)
     3. Agent-level progress (agent output lines/events)
@@ -166,7 +167,8 @@ class RalphProgress:
     Uses rich.Progress when running in a TTY environment,
     falls back to tqdm when running in non-TTY (CI, redirected output).
 
-    Example:
+    Example::
+
         with RalphProgress() as progress:
             pipeline_task = progress.add_task("Pipeline", total=100)
             with progress.phase(pipeline_task, "Planning"):

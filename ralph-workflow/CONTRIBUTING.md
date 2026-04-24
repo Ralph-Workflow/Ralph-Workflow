@@ -51,6 +51,7 @@ make test-integration
 - Update user-facing Markdown when workflows or commands change.
 - Update public module/package docstrings when APIs change.
 - Keep exported package docstrings self-sufficient enough for `pydoc` users.
+- New public subpackages added under `ralph/` must have an `.. automodule::` entry in `docs/sphinx/modules.rst`. The test `tests/test_sphinx_modules_coverage.py` enforces this — update `_EXCLUDED` in that test if the subpackage is intentionally private.
 - When changing pipeline hardening around artifacts or agent success criteria, document both the behavior change and the failure mode it prevents. Future contributors need to understand why the stricter contract exists.
 
 ## Agent hardening contract
