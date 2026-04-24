@@ -1,4 +1,4 @@
-"""Diagnose command for Ralph CLI.
+"""Diagnose command for Ralph Workflow CLI.
 
 This module implements diagnostic commands to check the
 environment and configuration.
@@ -12,6 +12,7 @@ from rich.console import Console
 from rich.table import Table
 from rich.text import Text
 
+from ralph.agents.availability import check_agent_availability
 from ralph.agents.registry import AgentRegistry
 from ralph.config.loader import load_config
 from ralph.git.operations import find_repo_root, is_repo_clean
@@ -29,7 +30,7 @@ def diagnose_command(
     config_path: Path | None = None,
     cli_overrides: dict[str, object] | None = None,
 ) -> int:
-    """Run diagnostics on the Ralph environment.
+    """Run diagnostics on the Ralph Workflow environment.
 
     Args:
         config_path: Optional path to config file.
@@ -38,7 +39,7 @@ def diagnose_command(
     Returns:
         Exit code (0 for success, 1 for errors, 2 for validation failures).
     """
-    console.print("\n[cyan bold]Ralph Diagnostics[/cyan bold]\n")
+    console.print("\n[cyan bold]Ralph Workflow Diagnostics[/cyan bold]\n")
 
     workspace_scope = resolve_workspace_scope()
 
@@ -174,24 +175,37 @@ def _check_configuration(
 
 
 def _check_agents(cli_overrides: dict[str, object] | None) -> bool:
-    """Check agent availability.
+    """Check agent availability, including PATH presence.
 
     Returns:
         True if check passed, False otherwise.
     """
-    table = Table(title="Agents", show_header=False)
+    table = Table(title="Agents")
     table.add_column("Agent", style="cyan")
-    table.add_column("Status")
+    table.add_column("Config")
+    table.add_column("PATH")
 
     try:
         config = load_config(None, cli_overrides, workspace_scope=resolve_workspace_scope())
-        if not config.agents:
-            table.add_row("No agents", "[yellow]No agents configured[/yellow]")
+        registry = AgentRegistry.from_config(config)
+        agent_names = registry.list_agents()
+        if not agent_names:
+            table.add_row("(none)", "[yellow]No agents configured[/yellow]", "-")
         else:
-            for name, agent_config in config.agents.items():
-                table.add_row(name, _status_text("Configured", agent_config.cmd, "green"))
+            availability = check_agent_availability(registry)
+            path_by_name: dict[str, str] = {
+                name: "[green]on PATH[/green]" if status == "available"
+                else "[yellow]missing[/yellow]"
+                for name, status in availability
+            }
+            for name in agent_names:
+                agent = registry.get(name)
+                cmd = agent.cmd if agent else ""
+                path_status = path_by_name.get(name, "[yellow]missing[/yellow]")
+                config_cell = _status_text("Configured", cmd, "green")
+                table.add_row(name, config_cell, path_status)
     except Exception as e:
-        table.add_row("Agents", _status_text("Error", str(e), "red"))
+        table.add_row("Agents", _status_text("Error", str(e), "red"), "-")
         console.print(table)
         return False
 

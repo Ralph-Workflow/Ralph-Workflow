@@ -5,13 +5,13 @@
 Ralph Workflow is for experienced developers who want more than an AI chat window.
 It is built for technical founders, senior product engineers, and other high-context users who want AI to execute real software-delivery work with **explicit guardrails, verification, and configurable workflow policy**.
 
-Most AI dev tools are good at helping in the moment. Fewer are good at running unattended without constant supervision, hidden behavior, or hand-wavy success criteria. Ralph exists to make that workflow more dependable — but also to make the risks visible.
+Most AI dev tools are good at helping in the moment. Fewer are good at running unattended without constant supervision, hidden behavior, or hand-wavy success criteria. Ralph Workflow exists to make that workflow more dependable — but also to make the risks visible.
 
 Ralph Workflow began as a take on the Ralph loop and has evolved into a configurable Python framework for **bounded autonomy**: opinionated about process, configurable in how that process is expressed.
 
 ## Why this helps
 
-Ralph is useful when you want AI to do more of the work **without asking you to trust it blindly**.
+Ralph Workflow is useful when you want AI to do more of the work **without asking you to trust it blindly**.
 
 It is also a tool to use with caution. Unattended execution is powerful, but it is not beginner-safe by default: it assumes you can review outputs critically, understand the workflow you configured, and notice when the system is doing the wrong thing confidently.
 
@@ -24,10 +24,10 @@ It helps by giving you:
 - **A maintainable operating model instead of one-off magic** — you can adapt the workflow to your team without giving up an opinionated delivery structure.
 
 If you want AI to brainstorm in a sidebar, there are many tools for that.
-If you want AI to operate within a repeatable, inspectable engineering workflow, that is where Ralph fits.
+If you want AI to operate within a repeatable, inspectable engineering workflow, that is where Ralph Workflow fits.
 If you are still learning how to evaluate AI-generated code and decisions, more hands-on tooling is usually the better starting point.
 
-## What Ralph is
+## What Ralph Workflow is
 
 The maintained product in this repository is the Python package in `ralph-workflow/`.
 It provides:
@@ -43,7 +43,7 @@ This repository also keeps legacy design material from the retired Rust implemen
 
 ## Who it is for
 
-Ralph is a good fit if you want:
+Ralph Workflow is a good fit if you want:
 
 - unattended or semi-unattended AI execution with clear boundaries
 - configurable workflow behavior that still has a strong opinion about process
@@ -51,7 +51,7 @@ Ralph is a good fit if you want:
 - a tool that fits disciplined engineering workflows rather than bypassing them
 - a system you can supervise as an experienced operator, not just consume passively
 
-Ralph is probably not the best fit if you want:
+Ralph Workflow is probably not the best fit if you want:
 
 - instant one-shot code generation with minimal setup
 - opaque agent behavior that "just does something"
@@ -102,15 +102,15 @@ ralph --init feature-spec
 ralph
 ```
 
-`ralph --init` seeds the project-local framework files under `.agent/`, including workflow policy, agent-chain, MCP, and artifact configuration. On first run Ralph also bootstraps user-global config in `~/.config/` and can regenerate the defaults later if you want to reset the setup.
+`ralph --init` seeds the project-local framework files under `.agent/`, including workflow policy, agent-chain, MCP, and artifact configuration. On first run Ralph Workflow also bootstraps user-global config in `~/.config/` and can regenerate the defaults later if you want to reset the setup.
 
-## How Ralph works
+## How Ralph Workflow works
 
-Ralph still reflects the original Ralph-loop philosophy, but the maintained package exposes that philosophy through configurable orchestration primitives instead of a single fixed loop.
+Ralph Workflow still reflects the original Ralph-loop philosophy, but the maintained package exposes that philosophy through configurable orchestration primitives instead of a single fixed loop.
 
 ### 1. Layered configuration
 
-Ralph loads embedded defaults, then user-global config, then project-local config, then CLI overrides. The main surfaces are:
+Ralph Workflow loads embedded defaults, then user-global config, then project-local config, then CLI overrides. The main surfaces are:
 
 - `~/.config/ralph-workflow.toml` — user-global runtime defaults
 - `~/.config/ralph-workflow-mcp.toml` — user-global MCP and web-search config
@@ -137,11 +137,11 @@ That means you can tune how planning, development, review, fix, checkpoint, and 
 
 ### 3. Agent chains and fallback behavior
 
-Agent execution is configurable through ordered chains and drain bindings. Ralph can route a phase through one agent, retry it within budget, then fall over to the next configured agent when needed. The maintained package also supports provider/model fallback and dynamic agent forms such as model-qualified agent aliases.
+Agent execution is configurable through ordered chains and drain bindings. Ralph Workflow can route a phase through one agent, retry it within budget, then fall over to the next configured agent when needed. The maintained package also supports provider/model fallback and dynamic agent forms such as model-qualified agent aliases.
 
 ### 4. Artifact contracts and handoffs
 
-Ralph treats important phase outputs as explicit artifacts, not just process exit codes. Structured JSON artifacts are used for orchestration logic, while mirrored Markdown handoffs keep results readable for users and downstream agents.
+Ralph Workflow treats important phase outputs as explicit artifacts, not just process exit codes. Structured JSON artifacts are used for orchestration logic, while mirrored Markdown handoffs keep results readable for users and downstream agents.
 
 ### 5. MCP bridge and tool runtime
 
@@ -149,11 +149,11 @@ The package includes both the main orchestration CLI and the standalone `ralph-m
 
 ### 6. Recovery, resume, and parallel work
 
-Recovery is a first-class part of the framework. Ralph supports checkpoint/resume flows, failure classification, retry budgets, connectivity-aware pause/resume behavior, and optional parallel worktree fan-out when the plan yields multiple work units.
+Recovery is a first-class part of the framework. Ralph Workflow supports checkpoint/resume flows, failure classification, retry budgets, connectivity-aware pause/resume behavior, and optional parallel worktree fan-out when the plan yields multiple work units.
 
 ## User-facing workflows
 
-The maintained CLI covers more than a single run command. Depending on the workflow, Ralph supports:
+The maintained CLI covers more than a single run command. Depending on the workflow, Ralph Workflow supports:
 
 - project initialization and config bootstrap
 - unattended runs from `PROMPT.md`

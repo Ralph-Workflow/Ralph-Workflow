@@ -1,7 +1,7 @@
 API Reference
 =============
 
-This section documents every public Ralph subpackage. The structure mirrors
+This section documents every public Ralph Workflow subpackage. The structure mirrors
 the package map in ``ralph-workflow/README.md``.
 
 .. contents:: Subpackages
@@ -98,6 +98,13 @@ ralph.agents
 ~~~~~~~~~~~~
 
 .. automodule:: ralph.agents
+   :members:
+   :show-inheritance:
+
+ralph.agents.availability
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.agents.availability
    :members:
    :show-inheritance:
 

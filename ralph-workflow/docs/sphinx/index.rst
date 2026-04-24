@@ -16,11 +16,24 @@ implementation tasks to AI coding agents. New users should start with the
 
 .. toctree::
    :maxdepth: 2
+   :caption: Operations:
+
+   recovery
+   parallel-mode
+
+.. toctree::
+   :maxdepth: 2
    :caption: Reference:
 
    cli
    configuration
    modules
+
+.. toctree::
+   :maxdepth: 1
+   :caption: Troubleshooting:
+
+   troubleshooting
 
 .. toctree::
    :maxdepth: 1

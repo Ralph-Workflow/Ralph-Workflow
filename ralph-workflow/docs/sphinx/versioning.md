@@ -81,7 +81,7 @@ uv run --with twine python -m twine upload dist/*
 
 ## 6. Tag the release
 
-After publishing, generate and commit the release tag using Ralph itself:
+After publishing, generate and commit the release tag using Ralph Workflow itself:
 
 ```bash
 ralph --generate-commit

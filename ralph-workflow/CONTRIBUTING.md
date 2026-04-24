@@ -91,7 +91,7 @@ This is enforced by:
 
 ### Upstream multimodal boundary
 
-When an upstream MCP server returns a non-text content block, Ralph must reject it with a clear error rather than silently stringify or drop the block. The error message must identify the server, tool, and block type.
+When an upstream MCP server returns a non-text content block, Ralph Workflow must reject it with a clear error rather than silently stringify or drop the block. The error message must identify the server, tool, and block type.
 
 This prevents silent data loss in text-only downstream flows and makes incompatibility visible rather than implicit.
 

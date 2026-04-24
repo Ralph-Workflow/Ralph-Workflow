@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-import shutil
-from typing import TYPE_CHECKING, Literal, Protocol, runtime_checkable
+from typing import TYPE_CHECKING
 
 from rich.console import Group
 from rich.panel import Panel
 from rich.text import Text
 
+from ralph.agents.availability import HasListAgents, check_agent_availability
 from ralph.banner import show_banner
 
 if TYPE_CHECKING:
@@ -19,64 +19,15 @@ _KNOWN_AGENT_INSTALL_URLS: dict[str, str] = {
     "opencode": "https://opencode.ai",
 }
 
-_AgentStatus = Literal["available", "missing_on_path", "no_cmd"]
-
-
-class _AgentEntry(Protocol):
-    """Minimal agent config interface for availability checks."""
-
-    cmd: str
-    display_name: str | None
-
-
-@runtime_checkable
-class _HasListAgents(Protocol):
-    """Protocol for agent registries used in availability checks."""
-
-    def list_agents(self) -> list[str]:
-        ...
-
-    def get(self, name: str) -> _AgentEntry | None:
-        ...
-
-
-def _check_agent_availability(
-    registry: _HasListAgents,
-) -> list[tuple[str, _AgentStatus]]:
-    """Check which agents are available on PATH.
-
-    Args:
-        registry: Object implementing list_agents() and get(name) for agent resolution.
-
-    Returns:
-        List of (display_name, status) tuples.
-    """
-    results: list[tuple[str, _AgentStatus]] = []
-    for name in registry.list_agents():
-        agent = registry.get(name)
-        if agent is None:
-            continue
-        cmd = agent.cmd
-        if not cmd:
-            results.append((agent.display_name or name, "no_cmd"))
-            continue
-        first_word = cmd.split(maxsplit=1)[0]
-        display = agent.display_name or first_word
-        status: _AgentStatus = (
-            "available" if shutil.which(first_word) is not None else "missing_on_path"
-        )
-        results.append((display, status))
-    return results
-
 
 def _build_agent_availability_content(
-    agent_registry: _HasListAgents | None,
+    agent_registry: HasListAgents | None,
 ) -> list[object]:
     """Build agent availability content or generic PATH message."""
     content: list[object] = []
     if agent_registry is not None:
         try:
-            availability = _check_agent_availability(agent_registry)
+            availability = check_agent_availability(agent_registry)
             avail_lines: list[Text] = []
             for name, status in availability:
                 if status == "available":
@@ -160,7 +111,7 @@ def emit_first_run_welcome(
     console: object,
     results: list[BootstrapResult],
     *,
-    agent_registry: _HasListAgents | None = None,
+    agent_registry: HasListAgents | None = None,
     is_regenerate: bool = False,
 ) -> None:
     """Print a structured first-run welcome panel.

@@ -320,9 +320,10 @@ def validate_required_inputs(workspace_scope: WorkspaceScope) -> None:
     if not prompt_path.exists():
         raise PolicyValidationError(
             f"Required input file not found: {prompt_path}. "
-            "PROMPT.md is the goal/acceptance-criteria document Ralph reads as its task input. "
+            "PROMPT.md is the goal/acceptance-criteria document "
+            "Ralph Workflow reads as its task input. "
             "Run `ralph --init` to scaffold PROMPT.md and project config files, "
-            "then edit PROMPT.md with the task you want Ralph to run."
+            "then edit PROMPT.md with the task you want Ralph Workflow to run."
         )
     if not prompt_path.is_file():
         raise PolicyValidationError(

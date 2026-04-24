@@ -1331,8 +1331,10 @@ def test_check_configuration_failure(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_check_agents_no_agents(monkeypatch: pytest.MonkeyPatch) -> None:
     stream = _attach_console(monkeypatch, diagnose_module)
+    fake_registry = SimpleNamespace(list_agents=lambda: [])
+    monkeypatch.setattr(diagnose_module, "load_config", lambda *args, **kwargs: SimpleNamespace())
     monkeypatch.setattr(
-        diagnose_module, "load_config", lambda *args, **kwargs: SimpleNamespace(agents={})
+        diagnose_module, "AgentRegistry", SimpleNamespace(from_config=lambda c: fake_registry)
     )
     diagnose_module._check_agents({})
     assert "No agents configured" in stream.getvalue()
@@ -1341,10 +1343,16 @@ def test_check_agents_no_agents(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_check_agents_with_configured_agent(monkeypatch: pytest.MonkeyPatch) -> None:
     stream = _attach_console(monkeypatch, diagnose_module)
     agent = AgentConfig(cmd="agent", can_commit=True)
+    fake_registry = SimpleNamespace(
+        list_agents=lambda: ["alpha"],
+        get=lambda name: agent,
+    )
+    monkeypatch.setattr(diagnose_module, "load_config", lambda *args, **kwargs: SimpleNamespace())
     monkeypatch.setattr(
-        diagnose_module,
-        "load_config",
-        lambda *args, **kwargs: SimpleNamespace(agents={"alpha": agent}),
+        diagnose_module, "AgentRegistry", SimpleNamespace(from_config=lambda c: fake_registry)
+    )
+    monkeypatch.setattr(
+        diagnose_module, "check_agent_availability", lambda r: [("alpha", "available")]
     )
     diagnose_module._check_agents({})
     output = stream.getvalue()

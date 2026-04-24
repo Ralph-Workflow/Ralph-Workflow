@@ -1,4 +1,4 @@
-"""Progress display utilities for Ralph pipeline.
+"""Progress display utilities for Ralph Workflow pipeline.
 
 This module provides a RalphProgress context manager that wraps rich.Progress
 for multi-task display, with tqdm fallback for non-TTY environments.
@@ -156,7 +156,7 @@ _IPYTHON_AVAILABLE = _GET_IPYTHON is not None
 
 
 class RalphProgress:
-    """Multi-task progress display for Ralph pipeline.
+    """Multi-task progress display for Ralph Workflow pipeline.
 
     RalphProgress manages a hierarchy of progress tasks:
 
@@ -264,7 +264,7 @@ class RalphProgress:
             raise RuntimeError("tqdm is unavailable")
 
         bar = tqdm_factory(
-            desc="Ralph",
+            desc="Ralph Workflow",
             unit="iter",
             file=sys.stderr,
             leave=True,

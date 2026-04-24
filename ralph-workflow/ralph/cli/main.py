@@ -1,6 +1,6 @@
-"""Ralph CLI entry point - typer application with rich-click help styling.
+"""Ralph Workflow CLI entry point - typer application with rich-click help styling.
 
-This module provides the main CLI application for Ralph, using typer
+This module provides the main CLI application for Ralph Workflow, using typer
 for argument parsing and rich-click for enhanced help output.
 """
 
@@ -89,8 +89,8 @@ click.rich_click.USE_MARKDOWN = True
 
 app = typer.Typer(
     name="ralph",
-    help="[bold]Ralph[/bold] - Multi-agent AI orchestration pipeline.\n\n"
-    "Ralph orchestrates AI coding agents to implement changes based on PROMPT.md.\n"
+    help="[bold]Ralph Workflow[/bold] - Multi-agent AI orchestration pipeline.\n\n"
+    "Ralph Workflow orchestrates AI coding agents to implement changes based on PROMPT.md.\n"
     "It runs a developer agent for code implementation, then a reviewer agent for\n"
     "review and fixes, automatically staging and committing the final result.",
     add_completion=True,
@@ -104,7 +104,7 @@ def version_callback(version: bool) -> None:
     """Print version information."""
     if version:
         version_text = Text()
-        version_text.append("Ralph", style="cyan")
+        version_text.append("Ralph Workflow", style="cyan")
         version_text.append(" version ")
         version_text.append(__version__, style="green")
         console.print(version_text)
@@ -128,7 +128,7 @@ def _resolve_effective_verbosity(
     """Compute the verbosity to use for the run.
 
     ``--quiet`` and ``--debug`` take precedence. Absent those, the default
-    is ``Verbosity.VERBOSE`` so Ralph is visibly active by default. The
+    is ``Verbosity.VERBOSE`` so Ralph Workflow is visibly active by default. The
     legacy ``--verbosity normal`` input is mapped to VERBOSE to preserve
     wrapper scripts that passed ``normal`` explicitly.
     """
@@ -316,7 +316,7 @@ def main(  # noqa: PLR0913
         typer.Option(
             "--init",
             help=(
-                "Initialize Ralph in the current directory (scaffolds PROMPT.md and"
+                "Initialize Ralph Workflow in the current directory (scaffolds PROMPT.md and"
                 " .agent/ configs). Accepts any label for backward compatibility;"
                 " all labels currently produce the same starter content."
             ),
@@ -363,7 +363,7 @@ def main(  # noqa: PLR0913
         typer.Option("--version", "-V", help="Show version"),
     ] = False,
 ) -> None:
-    """Run the Ralph multi-agent pipeline or execute a sub-operation."""
+    """Run the Ralph Workflow multi-agent pipeline or execute a sub-operation."""
     # Handle version flag
     if version:
         version_callback(version)
