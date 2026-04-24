@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import pytest
 from typer.testing import CliRunner
 
 from ralph.banner import WELCOME_MESSAGE
+from ralph.cli.commands.init import STARTER_PROMPT_SENTINEL
 from ralph.cli.main import app
+from ralph.policy.validation import PolicyValidationError, validate_required_inputs
 
 _MIN_PROMPT_SIZE_BYTES = 200
 
@@ -193,3 +196,30 @@ def test_cli_init_creates_self_teaching_prompt_md(
     assert len(content.encode("utf-8")) > _MIN_PROMPT_SIZE_BYTES, (
         f"PROMPT.md must be at least {_MIN_PROMPT_SIZE_BYTES} bytes"
     )
+
+
+def test_cli_init_embeds_starter_sentinel_in_prompt_md(
+    clean_env: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """ralph --init embeds the sentinel; validate_required_inputs refuses the unedited file."""
+    runner = CliRunner()
+    monkeypatch.chdir(tmp_path)
+
+    result = runner.invoke(app, ["--init", "default"], catch_exceptions=False)
+    assert result.exit_code == 0, f"Expected exit 0, got {result.exit_code}: {result.output}"
+
+    prompt_path = tmp_path / "PROMPT.md"
+    assert prompt_path.exists(), "PROMPT.md was not created"
+
+    content = prompt_path.read_text()
+    assert STARTER_PROMPT_SENTINEL in content, "Sentinel must be present in generated PROMPT.md"
+    assert content.index(STARTER_PROMPT_SENTINEL) < content.index("# Goal"), (
+        "Sentinel must appear before '# Goal' heading"
+    )
+
+    scope = MagicMock()
+    scope.root = tmp_path
+    with pytest.raises(PolicyValidationError):
+        validate_required_inputs(scope)

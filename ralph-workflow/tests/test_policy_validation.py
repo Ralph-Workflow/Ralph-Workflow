@@ -17,6 +17,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from ralph.cli.commands.init import STARTER_PROMPT_SENTINEL
 from ralph.pipeline.work_units import parse_work_units_from_artifact
 from ralph.policy.loader import PolicyValidationError as LoaderPolicyValidationError
 from ralph.policy.loader import load_policy
@@ -786,4 +787,35 @@ class TestValidateRequiredInputs:
         scope = MagicMock()
         scope.root = tmp_path
         with pytest.raises(PolicyValidationError, match="empty"):
+            validate_required_inputs(scope)
+
+    def test_starter_sentinel_prompt_md_raises(self, tmp_path: Path) -> None:
+        """A PROMPT.md with the starter sentinel raises PolicyValidationError."""
+        (tmp_path / "PROMPT.md").write_text(
+            STARTER_PROMPT_SENTINEL + "\n\n# Goal\n\nExample body\n"
+        )
+        scope = MagicMock()
+        scope.root = tmp_path
+        with pytest.raises(PolicyValidationError) as exc_info:
+            validate_required_inputs(scope)
+        msg = str(exc_info.value)
+        assert "starter template" in msg
+        assert "ralph" in msg
+        assert str(tmp_path) in msg
+
+    def test_edited_prompt_md_passes(self, tmp_path: Path) -> None:
+        """A PROMPT.md without the sentinel passes validation."""
+        (tmp_path / "PROMPT.md").write_text("# Goal\n\nBuild a real feature here.\n")
+        scope = MagicMock()
+        scope.root = tmp_path
+        validate_required_inputs(scope)  # must not raise
+
+    def test_sentinel_anywhere_in_prompt_raises(self, tmp_path: Path) -> None:
+        """Sentinel on any line in PROMPT.md raises PolicyValidationError."""
+        (tmp_path / "PROMPT.md").write_text(
+            "# Goal\n\nMy task.\n\n" + STARTER_PROMPT_SENTINEL + "\n"
+        )
+        scope = MagicMock()
+        scope.root = tmp_path
+        with pytest.raises(PolicyValidationError):
             validate_required_inputs(scope)

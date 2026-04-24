@@ -26,6 +26,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Streaming continue tags now carry a 1-based sequence number.** `[content-continue]` is now emitted as `[content-continue#2]`, `[content-continue#3]`, etc. so readers can track the progression of a streaming block.
 - **`WARN META [progress]` for dropped ring-buffer lines.** The debounced dropped-line notification is now emitted at `WARN` level (not `INFO`) to match its documented severity and the changelog entry below.
 
+- **Preflight guards unedited starter PROMPT.md.** When running `ralph` with a `PROMPT.md` that still contains the `<!-- ralph:starter-prompt ... -->` marker emitted by `ralph --init`, preflight now fails fast with an error that tells the user to edit the file first, preventing an accidental pipeline run against the example task.
+- **`--init` help text and README Quick start corrected.** The `--init` flag no longer advertises non-existent template names (e.g. `starter-template`, `feature-spec`); the README Quick start example now uses `ralph --init default` and explicitly notes the template label is cosmetic today.
+
 ### Added
 - display: colorize LEVEL and CAT badges on TTY; plain text preserved under NO_COLOR/non-TTY.
 - display: emit one-line legend inside the [run-start] block describing LEVEL/CAT/[tag] format.

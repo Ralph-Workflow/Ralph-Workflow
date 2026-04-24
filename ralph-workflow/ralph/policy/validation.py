@@ -331,3 +331,12 @@ def validate_required_inputs(workspace_scope: WorkspaceScope) -> None:
         raise PolicyValidationError(
             f"Required input file is empty: {prompt_path}"
         )
+    from ralph.cli.commands.init import STARTER_PROMPT_SENTINEL  # noqa: PLC0415
+
+    content = prompt_path.read_text(encoding="utf-8")
+    if STARTER_PROMPT_SENTINEL in content:
+        raise PolicyValidationError(
+            f"PROMPT.md at {prompt_path} is still the `ralph --init` starter template. "
+            "Edit it to describe YOUR task (remove the `<!-- ralph:starter-prompt ... -->` "
+            "marker at the top once you have replaced the example content), then re-run `ralph`."
+        )

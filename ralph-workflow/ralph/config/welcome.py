@@ -13,7 +13,6 @@ from ralph.banner import show_banner
 
 if TYPE_CHECKING:
     from ralph.config.bootstrap import BootstrapResult
-    from ralph.config.models import AgentConfig
 
 _KNOWN_AGENT_INSTALL_URLS: dict[str, str] = {
     "claude": "https://docs.claude.com/claude-code",
@@ -23,11 +22,21 @@ _KNOWN_AGENT_INSTALL_URLS: dict[str, str] = {
 _AgentStatus = Literal["available", "missing_on_path", "no_cmd"]
 
 
+class _AgentEntry(Protocol):
+    """Minimal agent config interface for availability checks."""
+
+    cmd: str
+    display_name: str | None
+
+
 @runtime_checkable
 class _HasListAgents(Protocol):
-    """Protocol for objects with a list_agents method."""
+    """Protocol for agent registries used in availability checks."""
 
-    def list_agents(self) -> list[AgentConfig]:
+    def list_agents(self) -> list[str]:
+        ...
+
+    def get(self, name: str) -> _AgentEntry | None:
         ...
 
 
@@ -37,26 +46,26 @@ def _check_agent_availability(
     """Check which agents are available on PATH.
 
     Args:
-        registry: Object with list_agents() method returning iterable of
-            AgentConfig-like objects with a .cmd attribute.
+        registry: Object implementing list_agents() and get(name) for agent resolution.
 
     Returns:
-        List of (agent_name, status) tuples where status is one of
-        'available', 'missing_on_path', or 'no_cmd'.
+        List of (display_name, status) tuples.
     """
     results: list[tuple[str, _AgentStatus]] = []
-    agents = registry.list_agents()
-    for agent in agents:
+    for name in registry.list_agents():
+        agent = registry.get(name)
+        if agent is None:
+            continue
         cmd = agent.cmd
         if not cmd:
-            results.append((agent.display_name or "unknown", "no_cmd"))
+            results.append((agent.display_name or name, "no_cmd"))
             continue
         first_word = cmd.split(maxsplit=1)[0]
-        name = agent.display_name or first_word
+        display = agent.display_name or first_word
         status: _AgentStatus = (
             "available" if shutil.which(first_word) is not None else "missing_on_path"
         )
-        results.append((name, status))
+        results.append((display, status))
     return results
 
 

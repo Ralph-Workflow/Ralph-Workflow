@@ -43,6 +43,7 @@ from ralph.workspace.scope import resolve_workspace_scope
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
+    from ralph.agents.registry import AgentRegistry
     from ralph.config.models import AgentConfig
 
 
@@ -140,10 +141,24 @@ def _resolve_effective_verbosity(
     return verbosity
 
 
+def _try_load_registry() -> AgentRegistry | None:
+    """Attempt to load the agent registry; returns None on failure."""
+    from ralph.agents.registry import AgentRegistry  # noqa: PLC0415
+
+    try:
+        cfg = load_config(None, {})
+        return AgentRegistry.from_config(cfg)
+    except Exception:
+        return None
+
+
 def _bootstrap_global_configs() -> None:
     """Create user-global config files from bundled templates if they don't exist."""
     results = [ensure_global_config(), ensure_global_mcp_config()]
-    emit_first_run_welcome(console, results)
+    registry = None
+    if any(r.action in {"created", "regenerated"} for r in results):
+        registry = _try_load_registry()
+    emit_first_run_welcome(console, results, agent_registry=registry)
 
 
 def _handle_regenerate_config() -> None:
@@ -298,7 +313,14 @@ def main(  # noqa: PLR0913
     ] = False,
     init: Annotated[
         str | None,
-        typer.Option("--init", help="Initialize Ralph with a template (e.g. starter-template)"),
+        typer.Option(
+            "--init",
+            help=(
+                "Initialize Ralph in the current directory (scaffolds PROMPT.md and"
+                " .agent/ configs). Accepts any label for backward compatibility;"
+                " all labels currently produce the same starter content."
+            ),
+        ),
     ] = None,
     regenerate_config: Annotated[
         bool,

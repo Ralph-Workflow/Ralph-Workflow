@@ -9,7 +9,9 @@ from typing import TYPE_CHECKING
 from rich.console import Console, Group
 from rich.panel import Panel
 
+from ralph.agents.registry import AgentRegistry
 from ralph.config.bootstrap import BootstrapResult
+from ralph.config.models import UnifiedConfig
 from ralph.config.welcome import emit_first_run_welcome
 
 if TYPE_CHECKING:
@@ -37,17 +39,24 @@ class _FakeAgent:
 
     def __init__(self, cmd: str, display_name: str | None = None) -> None:
         self.cmd = cmd
-        self.display_name = display_name or cmd.split(maxsplit=1)[0]
+        self.display_name = display_name
 
 
 class _FakeRegistry:
-    """Fake agent registry for testing availability checks."""
+    """Fake agent registry for testing availability checks.
 
-    def __init__(self, agents: list[_FakeAgent]) -> None:
+    Implements list_agents() -> list[str] and get(name) -> _FakeAgent | None
+    to match the _HasListAgents protocol used by emit_first_run_welcome.
+    """
+
+    def __init__(self, agents: dict[str, _FakeAgent]) -> None:
         self._agents = agents
 
-    def list_agents(self) -> list[_FakeAgent]:
-        return self._agents
+    def list_agents(self) -> list[str]:
+        return list(self._agents.keys())
+
+    def get(self, name: str) -> _FakeAgent | None:
+        return self._agents.get(name)
 
 
 def _make_console() -> tuple[StringIO, Console]:
@@ -119,7 +128,9 @@ def test_emit_first_run_welcome_flags_missing_agent() -> None:
     console = StringIO()
     rich_console = Console(file=console, force_terminal=True)
     results = [BootstrapResult(Path("/global/ralph-workflow.toml"), "created", None)]
-    registry = _FakeRegistry([_FakeAgent("definitely-not-a-real-binary-xyz", "MissingAgent")])
+    registry = _FakeRegistry(
+        {"missing-agent": _FakeAgent("definitely-not-a-real-binary-xyz", "MissingAgent")}
+    )
 
     emit_first_run_welcome(rich_console, results, agent_registry=registry)
 
@@ -134,7 +145,7 @@ def test_emit_first_run_welcome_marks_available_agent() -> None:
     rich_console = Console(file=console, force_terminal=True)
     results = [BootstrapResult(Path("/global/ralph-workflow.toml"), "created", None)]
     # Use 'python' as it's guaranteed to be on PATH in CI
-    registry = _FakeRegistry([_FakeAgent("python", "Python")])
+    registry = _FakeRegistry({"python": _FakeAgent("python", "Python")})
 
     emit_first_run_welcome(rich_console, results, agent_registry=registry)
 
@@ -258,7 +269,7 @@ def test_no_raw_markup_tokens_with_detected_agents(monkeypatch: pytest.MonkeyPat
 
     buf, rich_console = _make_console()
     results = [BootstrapResult(Path("/global/ralph-workflow.toml"), "created", None)]
-    registry = _FakeRegistry([_FakeAgent("claude", "claude")])
+    registry = _FakeRegistry({"claude": _FakeAgent("claude", "claude")})
 
     emit_first_run_welcome(rich_console, results, agent_registry=registry)
 
@@ -274,7 +285,7 @@ def test_install_hint_shown_for_claude_missing(monkeypatch: pytest.MonkeyPatch) 
 
     buf, rich_console = _make_console()
     results = [BootstrapResult(Path("/global/ralph-workflow.toml"), "created", None)]
-    registry = _FakeRegistry([_FakeAgent("claude", "claude")])
+    registry = _FakeRegistry({"claude": _FakeAgent("claude", "claude")})
 
     emit_first_run_welcome(rich_console, results, agent_registry=registry)
 
@@ -290,7 +301,7 @@ def test_install_hint_shown_for_opencode_missing(monkeypatch: pytest.MonkeyPatch
 
     buf, rich_console = _make_console()
     results = [BootstrapResult(Path("/global/ralph-workflow.toml"), "created", None)]
-    registry = _FakeRegistry([_FakeAgent("opencode", "opencode")])
+    registry = _FakeRegistry({"opencode": _FakeAgent("opencode", "opencode")})
 
     emit_first_run_welcome(rich_console, results, agent_registry=registry)
 
@@ -308,7 +319,7 @@ def test_install_hint_not_shown_for_unknown_agent_missing(
 
     buf, rich_console = _make_console()
     results = [BootstrapResult(Path("/global/ralph-workflow.toml"), "created", None)]
-    registry = _FakeRegistry([_FakeAgent("foocoder", "foocoder")])
+    registry = _FakeRegistry({"foocoder": _FakeAgent("foocoder", "foocoder")})
 
     emit_first_run_welcome(rich_console, results, agent_registry=registry)
 
@@ -325,7 +336,7 @@ def test_install_hint_not_shown_when_agent_on_path(monkeypatch: pytest.MonkeyPat
 
     buf, rich_console = _make_console()
     results = [BootstrapResult(Path("/global/ralph-workflow.toml"), "created", None)]
-    registry = _FakeRegistry([_FakeAgent("claude", "claude")])
+    registry = _FakeRegistry({"claude": _FakeAgent("claude", "claude")})
 
     emit_first_run_welcome(rich_console, results, agent_registry=registry)
 
@@ -339,14 +350,55 @@ def test_no_cmd_agent_does_not_show_install_hint() -> None:
     buf, rich_console = _make_console()
     results = [BootstrapResult(Path("/global/ralph-workflow.toml"), "created", None)]
     # Agent with empty cmd named "claude" — must NOT trigger install URL lookup
-    agent = _FakeAgent.__new__(_FakeAgent)
-    agent.cmd = ""
-    agent.display_name = "claude"
-    registry = _FakeRegistry([agent])
+    agent = _FakeAgent(cmd="", display_name="claude")
+    registry = _FakeRegistry({"claude-no-cmd": agent})
 
     emit_first_run_welcome(rich_console, results, agent_registry=registry)
 
     output = buf.getvalue()
     assert "claude" in output
     assert "install:" not in output
+    _assert_no_raw_markup(output)
+
+
+def test_real_registry_missing_claude_shows_install_url(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Real AgentRegistry with missing claude produces install URL in welcome output."""
+    monkeypatch.setattr("shutil.which", lambda cmd: None)
+
+    cfg = UnifiedConfig()
+    registry = AgentRegistry.from_config(cfg)
+
+    buf, rich_console = _make_console()
+    results = [BootstrapResult(Path("/global/ralph-workflow.toml"), "created", None)]
+
+    emit_first_run_welcome(rich_console, results, agent_registry=registry)
+
+    output = buf.getvalue()
+    assert "claude" in output
+    assert "docs.claude.com" in output
+    assert "opencode" in output
+    assert "opencode.ai" in output
+    _assert_no_raw_markup(output)
+
+
+def test_real_registry_generic_fallback_only_for_unknown_agents(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Real AgentRegistry: generic fallback does NOT appear when known agents are detected."""
+    monkeypatch.setattr("shutil.which", lambda cmd: None)
+
+    cfg = UnifiedConfig()
+    registry = AgentRegistry.from_config(cfg)
+
+    buf, rich_console = _make_console()
+    results = [BootstrapResult(Path("/global/ralph-workflow.toml"), "created", None)]
+
+    emit_first_run_welcome(rich_console, results, agent_registry=registry)
+
+    output = buf.getvalue()
+    # The generic fallback message should NOT appear since known agents were detected
+    assert "Ensure your AI agents are on PATH" not in output
+    assert "Detected agents:" in output
     _assert_no_raw_markup(output)

@@ -45,10 +45,12 @@ the current checkout instead of a stale deleted worktree.
 
 ```bash
 cd /path/to/your/project
-ralph --init feature-spec
+ralph --init default
 # edit PROMPT.md
 ralph
 ```
+
+The value after `--init` is a label; today every label generates the same starter PROMPT.md and set of config files.
 
 ### First-run configuration
 
