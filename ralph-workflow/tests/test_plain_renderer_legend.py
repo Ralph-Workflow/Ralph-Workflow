@@ -31,7 +31,7 @@ def test_run_start_legend_can_be_disabled() -> None:
     renderer.emit_run_start(RunStartOrientation(legend_enabled=False))
     out = buf.getvalue()
     assert "legend: LEVEL" not in out
-    assert "◆ Ralph run start" in out
+    assert "◆ Ralph Workflow run start" in out
 
 
 def test_run_start_legend_contains_cat_format() -> None:
@@ -52,4 +52,4 @@ def test_run_start_legend_appears_after_milestone_header() -> None:
     renderer, buf = _make_renderer()
     renderer.emit_run_start(RunStartOrientation())
     out = buf.getvalue()
-    assert out.index("◆ Ralph run start") < out.index("legend: LEVEL")
+    assert out.index("◆ Ralph Workflow run start") < out.index("legend: LEVEL")

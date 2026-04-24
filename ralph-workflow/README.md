@@ -340,7 +340,7 @@ When a content block exceeds the soft limit and is condensed, the full text is p
 ### Reading a transcript at a glance
 
 ```
-2026-04-21T12:00:00+00:00 MILESTONE META [run-start] ◆ Ralph run start
+2026-04-21T12:00:00+00:00 MILESTONE META [run-start] ◆ Ralph Workflow run start
 2026-04-21T12:00:00+00:00 INFO META [run-start] legend: LEVEL (INFO/SUCCESS/WARN/ERROR/MILESTONE)  CAT (META/CONT)  [tag][unit] message
 2026-04-21T12:00:00+00:00 INFO META [run-start] prompt=PROMPT.md
 2026-04-21T12:00:00+00:00 INFO META [run-start] developer=claude model=claude-3-5-sonnet
@@ -449,7 +449,7 @@ For thinking blocks, a `↳ preview:` line is also emitted at each checkpoint so
 ### Example [run-end] block
 
 ```
-2026-04-21T12:05:00+00:00 MILESTONE META [run-end] ◆ Ralph run end
+2026-04-21T12:05:00+00:00 MILESTONE META [run-end] ◆ Ralph Workflow run end
 2026-04-21T12:05:00+00:00 INFO META [run-end] phase=complete
 2026-04-21T12:05:00+00:00 INFO META [run-end] elapsed=42.3s
 2026-04-21T12:05:00+00:00 INFO META [run-end] content_blocks=12

@@ -9,6 +9,8 @@ from typer.testing import CliRunner
 
 from ralph.cli.main import app
 
+KNOWN_DEFAULT_AGENTS = ("claude", "opencode")
+
 
 @pytest.fixture
 def clean_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, str]:
@@ -28,7 +30,7 @@ def test_diagnose_renders_agent_path_column(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """ralph --diagnose must render an agent name with a PATH status column."""
+    """ralph --diagnose must render an agent name with a PATH status on the same row."""
     runner = CliRunner()
     monkeypatch.chdir(tmp_path)
 
@@ -38,14 +40,18 @@ def test_diagnose_renders_agent_path_column(
     result = runner.invoke(app, ["--diagnose"], catch_exceptions=False)
 
     output = result.output
-    # The diagnose output should contain "on PATH" or "missing" for at least one agent
-    has_path_status = "on PATH" in output or "missing" in output
-    assert has_path_status, (
-        f"Expected diagnose output to contain 'on PATH' or 'missing' "
-        f"for agent PATH status column, got:\n{output}"
-    )
+    lines = output.splitlines()
 
-    # The agents section header should be present
-    assert "Agents" in output, (
-        f"Expected 'Agents' table in diagnose output, got:\n{output}"
+    # At least one line must contain both a known default agent name
+    # and a PATH status token on the same line.
+    path_tokens = ("on PATH", "missing")
+    found = any(
+        any(agent in line for agent in KNOWN_DEFAULT_AGENTS)
+        and any(token in line for token in path_tokens)
+        for line in lines
+    )
+    assert found, (
+        "Expected at least one output line to contain both an agent name "
+        f"({', '.join(KNOWN_DEFAULT_AGENTS)}) and a PATH status "
+        f"({', '.join(path_tokens)}).\nFull output:\n{output}"
     )

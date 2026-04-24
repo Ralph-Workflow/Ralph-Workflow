@@ -51,7 +51,7 @@ def test_emit_run_end_without_last_state_still_emits_run_end_lines(tmp_path: Pat
     display.emit_run_end(phase="complete", total_agent_calls=0)
     out = console.export_text()
     assert "[run-end]" in out
-    assert "◆ Ralph run end" in out
+    assert "◆ Ralph Workflow run end" in out
 
 
 def test_emit_run_end_failed_state_prints_pipeline_failed_panel(tmp_path: Path) -> None:
