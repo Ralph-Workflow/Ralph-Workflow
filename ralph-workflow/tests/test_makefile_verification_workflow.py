@@ -66,3 +66,17 @@ def test_makefile_exposes_explicit_unit_and_integration_targets() -> None:
     assert "pytest tests/ -q" in unit_body[0]
     assert "--ignore=tests/integration" in unit_body[0]
     assert "pytest tests/integration/ -q" in integration_body[0]
+
+
+def test_makefile_exposes_explicit_twine_upload_targets() -> None:
+    twine_upload_body = _target_body("twine-upload")
+    twine_upload_testpypi_body = _target_body("twine-upload-testpypi")
+    publish_body = _target_body("publish")
+    test_pypi_body = _target_body("test-pypi")
+
+    assert twine_upload_body == ["uv run --with twine python -m twine upload dist/*"]
+    assert twine_upload_testpypi_body == [
+        "uv run --with twine python -m twine upload --repository testpypi dist/*"
+    ]
+    assert publish_body == twine_upload_body
+    assert test_pypi_body == twine_upload_testpypi_body

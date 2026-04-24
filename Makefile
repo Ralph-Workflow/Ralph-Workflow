@@ -3,7 +3,7 @@
 
 PY_DIR := ralph-workflow
 
-.PHONY: all build verify lint format format-check typecheck test test-unit test-integration test-cov clean install dev install-dev help
+.PHONY: all build verify lint format format-check typecheck test test-unit test-integration test-cov clean install dev install-dev publish test-pypi twine-upload twine-upload-testpypi help
 
 all: verify
 
@@ -40,6 +40,18 @@ test-cov:
 clean:
 	$(MAKE) -C $(PY_DIR) clean
 
+publish:
+	$(MAKE) -C $(PY_DIR) publish
+
+test-pypi:
+	$(MAKE) -C $(PY_DIR) test-pypi
+
+twine-upload:
+	$(MAKE) -C $(PY_DIR) twine-upload
+
+twine-upload-testpypi:
+	$(MAKE) -C $(PY_DIR) twine-upload-testpypi
+
 install:
 	$(MAKE) -C $(PY_DIR) install
 
@@ -59,6 +71,10 @@ help:
 	@echo "  make test-integration - run tests/integration/ only"
 	@echo "  make test-cov    - run the full pytest suite with coverage"
 	@echo "  make build       - build Python distribution"
+	@echo "  make publish     - upload dist/* to PyPI via Twine"
+	@echo "  make test-pypi   - upload dist/* to Test PyPI via Twine"
+	@echo "  make twine-upload - explicit PyPI Twine upload target"
+	@echo "  make twine-upload-testpypi - explicit Test PyPI Twine upload target"
 	@echo "  make install     - install package and refresh pipx executable"
 	@echo "  make dev         - editable install with dev deps"
 	@echo "  make install-dev - alias for make dev"

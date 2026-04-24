@@ -46,7 +46,8 @@ Upload to [Test PyPI](https://test.pypi.org/) to verify the release before
 touching the production index:
 
 ```bash
-uv run python -m twine upload --repository testpypi dist/*
+uv run --with twine python -m twine upload --repository testpypi dist/*
+# or: make twine-upload-testpypi
 ```
 
 Credentials are read from `~/.pypirc`. A minimal configuration:
@@ -74,7 +75,8 @@ Prefer API tokens over passwords; never commit credentials to version control.
 After confirming the Test PyPI release looks correct:
 
 ```bash
-uv run python -m twine upload dist/*
+uv run --with twine python -m twine upload dist/*
+# or: make twine-upload
 ```
 
 ## 6. Tag the release

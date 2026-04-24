@@ -1,4 +1,4 @@
-.PHONY: help install dev install-dev test test-unit test-integration lint typecheck build build-wheel build-sdist publish test-pypi test-pypi-upload clean dist clean-dist fmt format-check ruff-fix mypy-fix pre-commit dist-homebrew verify coverage dist-binary dist-pypi dist-all formula-check dead-code docs
+.PHONY: help install dev install-dev test test-unit test-integration lint typecheck build build-wheel build-sdist publish test-pypi test-pypi-upload twine-upload twine-upload-testpypi clean dist clean-dist fmt format-check ruff-fix mypy-fix pre-commit dist-homebrew verify coverage dist-binary dist-pypi dist-all formula-check dead-code docs
 
 PYTEST_WORKERS ?= 8
 COVERAGE_WORKERS ?= 16
@@ -20,9 +20,11 @@ help:
 	@echo "  build          Build wheel and sdist"
 	@echo "  build-wheel    Build wheel only"
 	@echo "  build-sdist    Build sdist only"
-	@echo "  publish        Publish to PyPI (requires TWINE_PASSWORD)"
-	@echo "  test-pypi      Publish to Test PyPI"
-	@echo "  test-pypi-upload Publish wheel to Test PyPI"
+	@echo "  twine-upload   Upload dist/* to PyPI via Twine"
+	@echo "  twine-upload-testpypi Upload dist/* to Test PyPI via Twine"
+	@echo "  publish        Alias for twine-upload"
+	@echo "  test-pypi      Alias for twine-upload-testpypi"
+	@echo "  test-pypi-upload Alias for twine-upload-testpypi"
 	@echo "  clean          Clean build artifacts"
 	@echo "  clean-dist     Clean dist folder"
 	@echo "  dist-homebrew  Build Homebrew distribution"
@@ -95,14 +97,20 @@ build-sdist: clean-dist
 	python -m build --sdist
 
 # Publishing
+twine-upload: dist
+	uv run --with twine python -m twine upload dist/*
+
+twine-upload-testpypi: dist
+	uv run --with twine python -m twine upload --repository testpypi dist/*
+
 publish: dist
-	twine upload dist/*
+	uv run --with twine python -m twine upload dist/*
 
 test-pypi: dist
-	twine upload --repository testpypi dist/*
+	uv run --with twine python -m twine upload --repository testpypi dist/*
 
 test-pypi-upload: dist
-	twine upload --repository testpypi dist/*
+	uv run --with twine python -m twine upload --repository testpypi dist/*
 
 # Cleaning
 clean:
