@@ -78,6 +78,7 @@ class PipelineSubscriber:
         self._active_agent: str | None = None
         self._active_tool: str | None = None
         self._active_path: str | None = None
+        self._active_unit_id: str | None = None
         self._active_workdir: str | None = None
         self._active_command: str | None = None
         self._active_pattern: str | None = None
@@ -161,8 +162,8 @@ class PipelineSubscriber:
         pattern: str | None = None,
     ) -> None:
         """Record a lightweight agent-activity event and push a fresh snapshot."""
-        del unit_id
         with self._lock:
+            self._active_unit_id = unit_id
             self._active_agent = agent_name or self._active_agent
             if tool_name is not None:
                 self._active_tool = tool_name
@@ -311,6 +312,7 @@ class PipelineSubscriber:
             active_agent=self._active_agent,
             active_tool=self._active_tool,
             active_path=self._active_path,
+            active_unit_id=self._active_unit_id,
             active_workdir=self._active_workdir,
             active_command=self._active_command,
             active_pattern=self._active_pattern,

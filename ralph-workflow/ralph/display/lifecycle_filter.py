@@ -49,6 +49,9 @@ BARE_LIFECYCLE_TOKENS: Final[frozenset[str]] = frozenset(
         "start",
         "step_start",
         "step_finish",
+        # Generic parser stop types
+        "finish",
+        "end",
     }
 )
 

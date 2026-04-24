@@ -152,6 +152,9 @@ _EMPTY_PLAN_SIGNATURE: tuple[None, tuple[str, ...], int] = (None, (), 0)
 _STREAMING_CHECKPOINT_FRAGMENTS: Final[int] = 20
 _STREAMING_CHECKPOINT_CHARS: Final[int] = 4000
 
+# Minimum content length to trigger thinking preview on continuation fragments
+_THINKING_PREVIEW_MIN_CHARS: Final[int] = 80
+
 _CHECKPOINTS_DISABLED_VALUES: frozenset[str] = frozenset({"0", "false", "no", "off"})
 
 # Identical consecutive fragment dedup
@@ -360,7 +363,7 @@ class PlainLogRenderer:
         # CONT [tool] line for the same unit_id. Only suppress the structured
         # activity_parts-derived branch (not the free-form last_activity_line path).
         if structured_text and snapshot.active_tool and snapshot.active_path:
-            tool_sig = self._last_emitted_tool_signature.get(snapshot.active_agent or "")
+            tool_sig = self._last_emitted_tool_signature.get(snapshot.active_unit_id or "")
             if tool_sig is not None:
                 last_tool, last_path = tool_sig
                 if last_tool == snapshot.active_tool and last_path == snapshot.active_path:
@@ -969,9 +972,14 @@ class PlainLogRenderer:
                                         highlight=False,
                                         no_wrap=True,
                                     )
+                        # Step 2: For long thinking continuation, replace with preview headline.
+                        if kind == "thinking" and len(content) >= _THINKING_PREVIEW_MIN_CHARS:
+                            preview = build_headline_or_placeholder(content, max_chars=120)
+                            sanitized = f"↳ preview: {_sanitize(preview)}"
             else:
                 tag = base_tag
                 self._update_counters(kind, is_new_block=False)
+
         else:
             # Non-streaming kind: close ALL open blocks (any unit) before emitting.
             all_units = list(self._active_block.keys())

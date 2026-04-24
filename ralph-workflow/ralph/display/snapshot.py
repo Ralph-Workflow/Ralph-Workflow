@@ -74,6 +74,7 @@ class PipelineSnapshot:
     active_agent: str | None = None
     active_tool: str | None = None
     active_path: str | None = None
+    active_unit_id: str | None = None
     active_workdir: str | None = None
     active_command: str | None = None
     active_pattern: str | None = None
@@ -104,6 +105,7 @@ def snapshot_from_state(  # noqa: PLR0913
     active_agent: str | None = None,
     active_tool: str | None = None,
     active_path: str | None = None,
+    active_unit_id: str | None = None,
     active_workdir: str | None = None,
     active_command: str | None = None,
     active_pattern: str | None = None,
@@ -153,6 +155,7 @@ def snapshot_from_state(  # noqa: PLR0913
         active_agent=active_agent,
         active_tool=active_tool,
         active_path=active_path,
+        active_unit_id=active_unit_id,
         active_workdir=active_workdir,
         active_command=active_command,
         active_pattern=active_pattern,
