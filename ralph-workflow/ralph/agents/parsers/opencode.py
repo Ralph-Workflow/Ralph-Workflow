@@ -20,7 +20,16 @@ class _TextAccumulator:
 
 # Structured JSON event types that carry only lifecycle metadata — suppress silently.
 _LIFECYCLE_EVENT_TYPES: Final[frozenset[str]] = frozenset(
-    {"thread.started", "turn.started", "message_start", "heartbeat", "ping", "ready"}
+    {
+        "thread.started",
+        "turn.started",
+        "message_start",
+        "heartbeat",
+        "ping",
+        "ready",
+        "assistant",
+        "user",
+    }
 )
 
 

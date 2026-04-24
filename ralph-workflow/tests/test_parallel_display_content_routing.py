@@ -191,7 +191,7 @@ def test_tool_use_input_metadata_is_surfaced_on_rendered_line(tmp_path: Path) ->
     )
     pd.activity_router.push_raw_line("u", event, provider=ActivityProvider.CLAUDE)
     out = buf.getvalue()
-    assert "mcp__ralph__read_file" in out
+    assert "ralph.read_file" in out
     assert "path=ralph-workflow/ralph/x.py" in out
 
 
@@ -349,5 +349,5 @@ def test_stream_parsed_agent_activity_tool_use_routes_to_structured_path(tmp_pat
 
     out = buf.getvalue()
     assert "[content][activity]" not in out
-    assert "mcp__ralph__read_file" in out
-    assert out.count("mcp__ralph__read_file") == 1
+    assert "ralph.read_file" in out
+    assert out.count("ralph.read_file") == 1

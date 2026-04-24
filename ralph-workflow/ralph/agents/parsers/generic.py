@@ -33,7 +33,22 @@ _SHORT_CONTENT_THRESHOLD = 200
 # Only exact matches after str.lower() on the "type" field are suppressed;
 # longer strings like "starting the analysis" are never touched.
 _LIFECYCLE_EVENT_TYPES: Final[frozenset[str]] = frozenset(
-    {"start", "begin", "ready", "thread.started", "turn.started", "message_start", "heartbeat"}
+    {
+        "start",
+        "begin",
+        "ready",
+        "thread.started",
+        "turn.started",
+        "message_start",
+        "message_stop",
+        "heartbeat",
+        "content_block_start",
+        "content_block_stop",
+        "user",
+        "assistant",
+        "thinking",
+        "message_delta",
+    }
 )
 
 

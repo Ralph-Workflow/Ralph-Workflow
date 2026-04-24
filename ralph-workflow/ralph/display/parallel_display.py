@@ -5,22 +5,22 @@ from __future__ import annotations
 import contextlib
 import os
 import queue
-import re
 import time
 import uuid
 from pathlib import Path
-from typing import TYPE_CHECKING, Final, Literal
+from typing import TYPE_CHECKING, Literal
 
 from ralph.display.activity_router import ActivityRouter
 from ralph.display.completion_summary import emit_completion_summary
 from ralph.display.content_condenser import condense_content
+from ralph.display.lifecycle_filter import is_bare_lifecycle as _is_bare_lifecycle
 from ralph.display.mode import NARROW_THRESHOLD, detect_mode
 from ralph.display.phase_banner import show_phase_transition
 from ralph.display.plain_renderer import PlainLogRenderer
 from ralph.display.raw_overflow import RawOverflowLog
 from ralph.display.subscriber import PipelineSubscriber
 from ralph.display.theme import make_console as _make_console
-from ralph.display.tool_args import format_tool_input
+from ralph.display.tool_args import format_tool_input, friendly_tool_name
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -37,44 +37,6 @@ _DEFAULT_SNAPSHOT_QUEUE_MAXSIZE: int = 64
 _MAX_OVERFLOW_FILE_BYTES: int = 50 * 1024 * 1024  # 50 MB guard
 _DROP_DEBOUNCE_SECONDS: float = 1.0
 _NEVER_WARNED: float = float("-inf")
-
-# Bare lifecycle token values — exact matches after stripping a provider prefix.
-# These carry no user payload and must never surface as display content.
-_BARE_LIFECYCLE_TOKENS: Final[frozenset[str]] = frozenset(
-    {
-        "message_delta",
-        "message_start",
-        "message_stop",
-        "content_block_start",
-        "content_block_stop",
-        "thinking",
-        "user",
-        "assistant",
-        "turn.started",
-        "turn.completed",
-        "thread.started",
-        "response.completed",
-        "done",
-        "complete",
-        "stop",
-    }
-)
-
-# Matches "system (status=<word>)" lifecycle lines.
-_SYSTEM_STATUS_RE: Final[re.Pattern[str]] = re.compile(r"^system \(status=\w+\)$")
-
-# Matches an optional "<provider>/<model>: " prefix on transcript lines.
-_PROVIDER_PREFIX_RE: Final[re.Pattern[str]] = re.compile(r"^[a-zA-Z][a-zA-Z0-9_.-]*/[^:]+: ")
-
-
-def _is_bare_lifecycle(line: str) -> bool:
-    """Return True when *line* is a bare lifecycle token with no user payload.
-
-    Strips an optional "<provider>/<model>: " prefix before checking.
-    Only exact token matches are suppressed; longer content strings pass through.
-    """
-    remainder = _PROVIDER_PREFIX_RE.sub("", line, count=1)
-    return remainder in _BARE_LIFECYCLE_TOKENS or bool(_SYSTEM_STATUS_RE.match(remainder))
 
 
 def _strip_markup(line: str) -> str:
@@ -194,8 +156,9 @@ class ParallelDisplay:
 
         text = content or ""
 
-        # For tool_use events, append formatted input args so the reader can see what ran.
+        # For tool_use events, render the tool name in friendly form and append input args.
         if kind is _Kind.TOOL_USE:
+            text = friendly_tool_name(text)
             input_obj = metadata.get("input")
             args_str = format_tool_input(input_obj)
             if args_str:

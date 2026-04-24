@@ -17,7 +17,18 @@ _CLAUDE_PREFIX_RE: Final[re.Pattern[str]] = re.compile(r"^claude(?:/[^:\s]+)?(?=
 
 # Lifecycle markers emitted by Claude CLI that carry no user payload.
 # Unknown free-text after "claude/<model>: " defaults to type='text' (safe default).
-_LIFECYCLE_MARKERS: Final[frozenset[str]] = frozenset({"message_delta", "user", "thinking"})
+_LIFECYCLE_MARKERS: Final[frozenset[str]] = frozenset(
+    {
+        "message_delta",
+        "user",
+        "thinking",
+        "assistant",
+        "message_start",
+        "message_stop",
+        "content_block_start",
+        "content_block_stop",
+    }
+)
 
 
 @dataclass

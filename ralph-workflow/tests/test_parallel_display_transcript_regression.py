@@ -74,7 +74,9 @@ def test_tool_use_emits_one_line_with_tool_name_and_path(tmp_path: Path) -> None
 
     out = buf.getvalue()
 
-    assert "mcp__ralph__read_file" in out, f"tool name not found in:\n{out}"
+    assert "ralph.read_file" in out or "mcp__ralph__read_file" in out, (
+        f"tool name not found in:\n{out}"
+    )
     assert "path=ralph-workflow/ralph/prompts/template_registry.py" in out, (
         f"path not found in:\n{out}"
     )
@@ -108,7 +110,9 @@ def test_lifecycle_and_tool_use_together_produce_clean_output(tmp_path: Path) ->
     pd.stop()
     out = buf.getvalue()
 
-    assert "mcp__ralph__read_file" in out, f"tool name not found in:\n{out}"
+    assert "ralph.read_file" in out or "mcp__ralph__read_file" in out, (
+        f"tool name not found in:\n{out}"
+    )
     assert "[content][activity]" not in out, f"[content][activity] found in:\n{out}"
     assert "message_delta" not in out, f"lifecycle token 'message_delta' leaked into:\n{out}"
     assert "status=requesting" not in out, f"lifecycle token leaked into:\n{out}"

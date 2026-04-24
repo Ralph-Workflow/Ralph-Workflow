@@ -14,6 +14,7 @@ from ralph.display.artifact_reader import (
     read_latest_analysis_decision,
     read_plan_artifact,
 )
+from ralph.display.lifecycle_filter import is_bare_lifecycle
 from ralph.display.prompt_reader import find_prompt_path, read_prompt_preview
 from ralph.display.snapshot import PipelineSnapshot, snapshot_from_state
 
@@ -156,7 +157,10 @@ class PipelineSubscriber:
                 self._active_workdir = workdir
             if command:
                 self._active_command = command
-            self._last_activity_line = line
+            # Never store bare lifecycle markers as the last activity line —
+            # they carry no user payload and would overwrite a richer previous value.
+            if line and not is_bare_lifecycle(line):
+                self._last_activity_line = line
             snapshot = self._build_snapshot_locked(self._last_state)
         if snapshot is not None:
             self._publish(snapshot)

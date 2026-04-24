@@ -33,7 +33,7 @@ class CodexParser:
 
     # Lifecycle-only events that carry no user payload — suppress silently.
     _LIFECYCLE_EVENT_TYPES: Final[frozenset[str]] = frozenset(
-        {"thread.started", "turn.started", "message_start"}
+        {"thread.started", "turn.started", "message_start", "ping", "heartbeat", "ready"}
     )
 
     def __init__(self) -> None:

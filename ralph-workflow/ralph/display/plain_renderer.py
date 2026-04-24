@@ -857,6 +857,9 @@ class PlainLogRenderer:
                     self._last_checkpoint_chars[unit_id] = 0
                     tag = start_tag
                     self._update_counters(kind, is_new_block=True)
+                    if kind == "thinking":
+                        headline = build_headline_or_placeholder(content, max_chars=120)
+                        sanitized = f"↳ preview: {_sanitize(headline)}"
                 else:
                     existing_base_tag, accumulated = self._active_block[unit_id]
                     if existing_base_tag != base_tag:
@@ -867,6 +870,9 @@ class PlainLogRenderer:
                         self._last_checkpoint_chars[unit_id] = 0
                         tag = start_tag
                         self._update_counters(kind, is_new_block=True)
+                        if kind == "thinking":
+                            headline = build_headline_or_placeholder(content, max_chars=120)
+                            sanitized = f"↳ preview: {_sanitize(headline)}"
                     else:
                         # Same block continuation — check dedup BEFORE mutating state
                         if _dedup_enabled() and accumulated and accumulated[-1] == content:

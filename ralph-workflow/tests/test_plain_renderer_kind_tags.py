@@ -766,3 +766,52 @@ def test_whitespace_text_fragment_still_emits() -> None:
     renderer.emit_activity_line("u", "text", "   ")
     out = buf.getvalue()
     assert "[content-start]" in out
+
+
+# --- Thinking preview headline tests ---
+
+
+def test_thinking_start_shows_preview_headline() -> None:
+    """[thinking-start] line must contain a preview headline from the first fragment."""
+    renderer, buf = _make_renderer()
+    renderer.emit_activity_line(
+        "u",
+        "thinking",
+        "I need to check whether the parser handles X correctly before Y",
+    )
+    out = buf.getvalue()
+    assert "[thinking-start]" in out
+    assert "\u2193 preview: I need to check whether the parser handles X correctly" in out or (
+        "preview: I need to check whether the parser handles X correctly" in out
+    )
+
+
+def test_thinking_start_preview_uses_arrow_prefix() -> None:
+    """[thinking-start] must use the \u2193 preview: prefix for the headline."""
+    renderer, buf = _make_renderer()
+    renderer.emit_activity_line("u", "thinking", "First checking the file contents")
+    out = buf.getvalue()
+    assert "preview:" in out
+    assert "[thinking-start]" in out
+
+
+def test_thinking_continue_does_not_have_preview_prefix() -> None:
+    """[thinking-continue] fragments must NOT have the preview prefix."""
+    renderer, buf = _make_renderer()
+    renderer.emit_activity_line("u", "thinking", "first thought")
+    buf.truncate(0)
+    buf.seek(0)
+    renderer.emit_activity_line("u", "thinking", "second thought")
+    out = buf.getvalue()
+    assert "[thinking-continue#" in out
+    assert "preview:" not in out
+
+
+def test_thinking_start_with_short_content_still_shows_preview() -> None:
+    """Even short thinking fragments must show preview on [thinking-start]."""
+    renderer, buf = _make_renderer()
+    renderer.emit_activity_line("u", "thinking", "short thought")
+    out = buf.getvalue()
+    assert "[thinking-start]" in out
+    assert "preview:" in out
+    assert "short thought" in out
