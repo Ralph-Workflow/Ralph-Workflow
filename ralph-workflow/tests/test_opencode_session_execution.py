@@ -19,6 +19,7 @@ from ralph.agents.execution_state import (
 )
 from ralph.agents.invoke import (
     AgentInvocationError,
+    InvokeOptions,
     OpenCodeResumableExitError,
     _build_opencode_command,
     _BuildCommandOptions,
@@ -34,6 +35,7 @@ from ralph.recovery.classifier import FailureCategory, FailureClassifier
 from ralph.workspace.scope import WorkspaceScope
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
     from pathlib import Path
 
 
@@ -239,7 +241,7 @@ def _runner_config(*, max_retries: int = 1) -> MagicMock:
     return config
 
 
-def _registry_factory_for(agent_config: AgentConfig) -> type:
+def _registry_factory_for(agent_config: AgentConfig):
     class _Instance:
         def get(self, name: str) -> AgentConfig | None:
             del name
@@ -279,18 +281,16 @@ class TestRunnerSessionContinuation:
 
         def fake_invoke_agent(
             config: AgentConfig,
-            pf: str,
+            prompt_file: str,
             *,
-            options: object = None,
-        ) -> object:
-            del config, pf
-            session = getattr(options, "session_id", None)
-            phase = getattr(options, "phase", None)
-            seen_session_ids.append(session)
-            seen_phases.append(phase)
+            options: InvokeOptions | None = None,
+        ) -> Iterator[object]:
+            del config, prompt_file
+            seen_session_ids.append(options.session_id if options is not None else None)
+            seen_phases.append(options.phase if options is not None else None)
             if len(seen_session_ids) == 1:
 
-                def _first() -> object:
+                def _first() -> Iterator[object]:
                     yield '{"type":"text"}'
                     raise OpenCodeResumableExitError("opencode", session_id="sess-1")
 
@@ -335,11 +335,14 @@ class TestRunnerSessionContinuation:
         )
 
         def fake_invoke_agent(
-            config: AgentConfig, pf: str, *, options: object = None
-        ) -> object:
-            del config, pf, options
+            config: AgentConfig,
+            prompt_file: str,
+            *,
+            options: InvokeOptions | None = None,
+        ) -> Iterator[object]:
+            del config, prompt_file, options
 
-            def _first() -> object:
+            def _first() -> Iterator[object]:
                 yield '{"type":"text"}'
                 raise OpenCodeResumableExitError("opencode", session_id="sess-1")
 
