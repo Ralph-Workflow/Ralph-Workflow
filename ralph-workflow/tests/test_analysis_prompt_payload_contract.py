@@ -26,12 +26,12 @@ def _load(name: str) -> str:
 
 class TestAnalysisTemplatePayloadContract:
     @pytest.mark.parametrize("name", _ANALYSIS_TEMPLATES)
-    def test_prompt_uses_render_payload_path(self, name: str) -> None:
+    def test_prompt_uses_render_payload_path_exact_form(self, name: str) -> None:
         source = _load(name)
         assert (
-            "render_payload_path('PROMPT'" in source
-            or 'render_payload_path("PROMPT"' in source
-        ), f"{name}: PROMPT must use render_payload_path"
+            "render_payload_path('PROMPT', PROMPT_PATH)" in source
+            or 'render_payload_path("PROMPT", PROMPT_PATH)' in source
+        ), f"{name}: PROMPT must use render_payload_path('PROMPT', PROMPT_PATH)"
 
     @pytest.mark.parametrize("name", _ANALYSIS_TEMPLATES)
     def test_prompt_does_not_use_render_payload_section(self, name: str) -> None:
@@ -44,12 +44,12 @@ class TestAnalysisTemplatePayloadContract:
         )
 
     @pytest.mark.parametrize("name", _ANALYSIS_TEMPLATES)
-    def test_plan_uses_render_payload_path(self, name: str) -> None:
+    def test_plan_uses_render_payload_path_exact_form(self, name: str) -> None:
         source = _load(name)
         assert (
-            "render_payload_path('PLAN'" in source
-            or 'render_payload_path("PLAN"' in source
-        ), f"{name}: PLAN must use render_payload_path"
+            "render_payload_path('PLAN', PLAN_PATH)" in source
+            or 'render_payload_path("PLAN", PLAN_PATH)' in source
+        ), f"{name}: PLAN must use render_payload_path('PLAN', PLAN_PATH)"
 
     @pytest.mark.parametrize("name", _ANALYSIS_TEMPLATES)
     def test_plan_does_not_use_render_payload_section(self, name: str) -> None:
@@ -62,12 +62,17 @@ class TestAnalysisTemplatePayloadContract:
         )
 
     @pytest.mark.parametrize("name", _ANALYSIS_TEMPLATES)
-    def test_latest_artifact_uses_render_payload_section(self, name: str) -> None:
+    def test_latest_artifact_uses_render_payload_section_with_path(self, name: str) -> None:
         source = _load(name)
         assert (
-            "render_payload_section('LATEST ARTIFACT'" in source
-            or 'render_payload_section("LATEST ARTIFACT"' in source
-        ), f"{name}: LATEST ARTIFACT must use render_payload_section"
+            "render_payload_section('LATEST ARTIFACT', LATEST_ARTIFACT, LATEST_ARTIFACT_PATH)"
+            in source
+            or 'render_payload_section("LATEST ARTIFACT", LATEST_ARTIFACT, LATEST_ARTIFACT_PATH)'
+            in source
+        ), (
+            f"{name}: LATEST ARTIFACT must use "
+            "render_payload_section('LATEST ARTIFACT', LATEST_ARTIFACT, LATEST_ARTIFACT_PATH)"
+        )
 
 
 class TestRetryHintGuardInTemplates:

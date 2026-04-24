@@ -19,6 +19,7 @@ from ralph.phases.artifacts import (
     load_phase_artifact,
     unwrap_phase_artifact_content,
 )
+from ralph.phases.required_artifacts import REQUIRED_ARTIFACTS
 
 if TYPE_CHECKING:
     from ralph.phases import PhaseContext
@@ -47,7 +48,8 @@ def parse_analysis_decision(
         AnalysisDecision enum value. Defaults to FAILURE if parsing fails.
     """
     artifact_type = f"{drain_name}_decision"
-    artifact_path = f".agent/artifacts/{artifact_type}.json"
+    ra = REQUIRED_ARTIFACTS.get(drain_name)
+    artifact_path = ra.json_path if ra is not None else f".agent/artifacts/{artifact_type}.json"
 
     if not ctx.workspace.exists(artifact_path):
         logger.warning(

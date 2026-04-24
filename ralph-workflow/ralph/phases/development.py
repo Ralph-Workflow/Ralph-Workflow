@@ -32,6 +32,7 @@ from ralph.phases.artifacts import (
 )
 from ralph.phases.required_artifacts import (
     DEV_ANALYSIS_DECISION_JSON_PATH,
+    DEV_RESULT_ARTIFACT_JSON_PATH,
     build_missing_input_hint,
     build_retry_hint,
     retry_hint_path,
@@ -61,6 +62,81 @@ def _write_missing_input_hint(
         ctx.workspace.write(hint_path, hint)
 
 
+def _validate_plan_artifact(ctx: PhaseContext) -> list[Event] | None:
+    """Validate the plan artifact. Returns failure events on error, None on success."""
+    planning_artifact_path = PLAN_ARTIFACT_PATH
+    if not ctx.workspace.exists(planning_artifact_path):
+        reason = f"Missing planning artifact at {planning_artifact_path}"
+        logger.warning(
+            "Development phase missing required planning artifact at {}", planning_artifact_path
+        )
+        _write_missing_input_hint(ctx, "development", "planning", planning_artifact_path)
+        return [PhaseFailureEvent(
+            phase="development", reason=reason, recoverable=True, retry_in_session=True,
+        )]
+    try:
+        artifact_wrapper = load_phase_artifact(ctx.workspace, planning_artifact_path)
+        artifact_content = unwrap_phase_artifact_content(artifact_wrapper, expected_type="plan")
+        if is_noop_plan(artifact_content):
+            return []  # empty list signals "noop — skip"
+        artifact = (
+            artifact_content
+            if _is_legacy_work_units_payload(artifact_content)
+            else normalize_plan_artifact_content(artifact_content)
+        )
+        parsed = parse_work_units_from_artifact(artifact)
+        if parsed is not None:
+            validate_work_units_against_policy(parsed, ctx.pipeline_policy)
+    except (
+        json.JSONDecodeError,
+        PlanArtifactValidationError,
+        PhaseArtifactError,
+        ValueError,
+        WorkUnitsValidationError,
+        PolicyValidationError,
+    ) as exc:
+        logger.warning("Invalid development phase evidence: {}", exc)
+        return [PhaseFailureEvent(
+            phase="development",
+            reason=f"Invalid development evidence: {exc}",
+            recoverable=True,
+            retry_in_session=True,
+        )]
+    return None  # success
+
+
+def _validate_dev_result_artifact(ctx: PhaseContext) -> list[Event] | None:
+    """Validate the development_result artifact. Returns failure events, None on success."""
+    dev_result_path = DEV_RESULT_ARTIFACT_JSON_PATH
+    if not ctx.workspace.exists(dev_result_path):
+        detail = (
+            f"Missing required artifact at {dev_result_path}; "
+            "the agent must submit development_result before declaring completion"
+        )
+        logger.warning(
+            "Development phase missing required development_result artifact at {}",
+            dev_result_path,
+        )
+        _write_retry_hint(ctx, "development", detail)
+        return [PhaseFailureEvent(
+            phase="development", reason=detail, recoverable=True, retry_in_session=True,
+        )]
+    try:
+        dev_result_wrapper = load_phase_artifact(ctx.workspace, dev_result_path)
+        unwrap_phase_artifact_content(dev_result_wrapper, expected_type="development_result")
+    except (json.JSONDecodeError, PhaseArtifactError, ValueError) as exc:
+        detail = str(exc)
+        logger.warning("Invalid development_result artifact: {}", detail)
+        _write_retry_hint(ctx, "development", detail)
+        return [PhaseFailureEvent(
+            phase="development",
+            reason=f"Invalid development_result artifact: {detail}",
+            recoverable=True,
+            retry_in_session=True,
+        )]
+    return None  # success
+
+
 @register_handler("development")
 def handle_development(effect: Effect, ctx: PhaseContext) -> list[Event]:
     """Handle the development phase.
@@ -73,64 +149,17 @@ def handle_development(effect: Effect, ctx: PhaseContext) -> list[Event]:
         List of events to emit.
     """
     if isinstance(effect, PreparePromptEffect):
-        logger.info(
-            "Development phase: preparing prompt (iteration={})",
-            effect.iteration,
-        )
+        logger.info("Development phase: preparing prompt (iteration={})", effect.iteration)
         return [PipelineEvent.PROMPT_PREPARED]
 
     if isinstance(effect, InvokeAgentEffect):
         logger.info("Development phase: validating planning artifact after agent run")
-        planning_artifact_path = PLAN_ARTIFACT_PATH
-        if not ctx.workspace.exists(planning_artifact_path):
-            reason = f"Missing planning artifact at {planning_artifact_path}"
-            logger.warning(
-                "Development phase missing required planning artifact at {}", planning_artifact_path
-            )
-            _write_missing_input_hint(ctx, "development", "planning", planning_artifact_path)
-            return [
-                PhaseFailureEvent(
-                    phase="development",
-                    reason=reason,
-                    recoverable=True,
-                    retry_in_session=True,
-                )
-            ]
-
-        try:
-            artifact_wrapper = load_phase_artifact(ctx.workspace, planning_artifact_path)
-            artifact_content = unwrap_phase_artifact_content(
-                artifact_wrapper,
-                expected_type="plan",
-            )
-            if is_noop_plan(artifact_content):
-                logger.info("Development phase: plan is a no-op — skipping dev iteration")
-                return [PipelineEvent.AGENT_SUCCESS]
-            if _is_legacy_work_units_payload(artifact_content):
-                artifact = artifact_content
-            else:
-                artifact = normalize_plan_artifact_content(artifact_content)
-            parsed = parse_work_units_from_artifact(artifact)
-            if parsed is not None:
-                validate_work_units_against_policy(parsed, ctx.pipeline_policy)
-        except (
-            json.JSONDecodeError,
-            PlanArtifactValidationError,
-            PhaseArtifactError,
-            ValueError,
-            WorkUnitsValidationError,
-            PolicyValidationError,
-        ) as exc:
-            logger.warning("Invalid development phase evidence: {}", exc)
-            return [
-                PhaseFailureEvent(
-                    phase="development",
-                    reason=f"Invalid development evidence: {exc}",
-                    recoverable=True,
-                    retry_in_session=True,
-                )
-            ]
-
+        plan_result = _validate_plan_artifact(ctx)
+        if plan_result is not None:
+            return plan_result if plan_result else [PipelineEvent.AGENT_SUCCESS]
+        dev_result = _validate_dev_result_artifact(ctx)
+        if dev_result is not None:
+            return dev_result
         return [PipelineEvent.AGENT_SUCCESS]
 
     return []

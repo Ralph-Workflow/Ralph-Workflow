@@ -3,11 +3,6 @@
 Every phase that demands a typed artifact as output is registered here.
 Importing from this module (rather than duplicating string constants) is the
 single source of truth for artifact paths and types.
-
-Note: Only phases that *produce* a required artifact (checked after the agent
-runs) are listed here.  The development phase reads the plan as an upstream
-*input*; it is intentionally absent because it does not submit a new artifact
-of its own.
 """
 
 from __future__ import annotations
@@ -15,6 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from ralph.mcp.artifacts.development_result import normalize_development_result_content
 from ralph.mcp.artifacts.plan import PLAN_ARTIFACT_PATH
 from ralph.mcp.artifacts.typed_artifacts import (
     normalize_fix_result_content,
@@ -51,6 +47,13 @@ REQUIRED_ARTIFACTS: dict[str, RequiredArtifact] = {
         json_path=_PLAN_ARTIFACT_JSON_PATH,
         markdown_path=".agent/PLAN.md",
         normalizer=None,
+    ),
+    "development": RequiredArtifact(
+        phase="development",
+        artifact_type="development_result",
+        json_path=DEV_RESULT_ARTIFACT_JSON_PATH,
+        markdown_path=".agent/DEVELOPMENT_RESULT.md",
+        normalizer=normalize_development_result_content,
     ),
     "development_analysis": RequiredArtifact(
         phase="development_analysis",

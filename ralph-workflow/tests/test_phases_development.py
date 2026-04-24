@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from io import StringIO
 from unittest.mock import MagicMock
 
@@ -13,6 +14,21 @@ from ralph.phases.development import (
 )
 from ralph.pipeline.effects import Effect, InvokeAgentEffect, PreparePromptEffect
 from ralph.pipeline.events import PhaseFailureEvent, PipelineEvent
+
+_VALID_PLAN_JSON = json.dumps({
+    "work_units": [
+        {"unit_id": "u1", "description": "A", "allowed_directories": ["src"]}
+    ]
+})
+
+_VALID_DEV_RESULT_JSON = json.dumps({
+    "type": "development_result",
+    "content": {
+        "status": "completed",
+        "summary": "Done.",
+        "files_changed": "- src/a.py",
+    },
+})
 
 
 class TestHandleDevelopment:
@@ -47,7 +63,7 @@ class TestHandleDevelopment:
     ) -> None:
         effect = MagicMock(spec=InvokeAgentEffect)
         ctx = self._make_context()
-        ctx.workspace.exists.return_value = True
+        ctx.workspace.exists.side_effect = lambda path: path == ".agent/artifacts/plan.json"
         ctx.workspace.read.return_value = (
             '{"work_units":[{"unit_id":"u1","description":"A","allowed_directories":["src"],'
             '"dependencies":["missing"]}]}'
@@ -64,9 +80,14 @@ class TestHandleDevelopment:
     def test_invoke_agent_effect_with_valid_work_units_returns_agent_success(self) -> None:
         effect = MagicMock(spec=InvokeAgentEffect)
         ctx = self._make_context()
-        ctx.workspace.exists.side_effect = lambda path: path == ".agent/artifacts/plan.json"
-        ctx.workspace.read.return_value = (
-            '{"work_units":[{"unit_id":"u1","description":"A","allowed_directories":["src"]}]}'
+        ctx.workspace.exists.side_effect = lambda path: path in {
+            ".agent/artifacts/plan.json",
+            ".agent/artifacts/development_result.json",
+        }
+        ctx.workspace.read.side_effect = lambda path: (
+            _VALID_DEV_RESULT_JSON
+            if path == ".agent/artifacts/development_result.json"
+            else _VALID_PLAN_JSON
         )
 
         parallel_execution = MagicMock()
@@ -80,9 +101,14 @@ class TestHandleDevelopment:
     def test_invoke_agent_effect_succeeds_even_when_console_is_present(self) -> None:
         effect = MagicMock(spec=InvokeAgentEffect)
         ctx = self._make_context()
-        ctx.workspace.exists.side_effect = lambda path: path == ".agent/artifacts/plan.json"
-        ctx.workspace.read.return_value = (
-            '{"work_units":[{"unit_id":"u1","description":"A","allowed_directories":["src"]}]}'
+        ctx.workspace.exists.side_effect = lambda path: path in {
+            ".agent/artifacts/plan.json",
+            ".agent/artifacts/development_result.json",
+        }
+        ctx.workspace.read.side_effect = lambda path: (
+            _VALID_DEV_RESULT_JSON
+            if path == ".agent/artifacts/development_result.json"
+            else _VALID_PLAN_JSON
         )
         ctx.console = Console(file=StringIO(), force_terminal=True, color_system=None, width=120)
 
@@ -94,15 +120,13 @@ class TestHandleDevelopment:
         result = handle_development(effect, ctx)
         assert result == [PipelineEvent.AGENT_SUCCESS]
 
-    def test_invoke_agent_effect_without_development_result_still_returns_agent_success(
+    def test_invoke_agent_effect_without_development_result_returns_phase_failure(
         self,
     ) -> None:
         effect = MagicMock(spec=InvokeAgentEffect)
         ctx = self._make_context()
         ctx.workspace.exists.side_effect = lambda path: path == ".agent/artifacts/plan.json"
-        ctx.workspace.read.return_value = (
-            '{"work_units":[{"unit_id":"u1","description":"A","allowed_directories":["src"]}]}'
-        )
+        ctx.workspace.read.return_value = _VALID_PLAN_JSON
 
         parallel_execution = MagicMock()
         parallel_execution.max_parallel_workers = 8
@@ -110,7 +134,12 @@ class TestHandleDevelopment:
         ctx.pipeline_policy.parallel_execution = parallel_execution
 
         result = handle_development(effect, ctx)
-        assert result == [PipelineEvent.AGENT_SUCCESS]
+        assert len(result) == 1
+        event = result[0]
+        assert isinstance(event, PhaseFailureEvent)
+        assert event.phase == "development"
+        assert event.recoverable is True
+        assert "development_result" in event.reason
 
     def test_other_effect_returns_empty_list(self) -> None:
         effect = MagicMock(spec=Effect)

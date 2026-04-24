@@ -1859,9 +1859,7 @@ def _render_phase_artifact_handoff(  # noqa: PLR0912
         render_development_artifact(workspace_root, console_obj)
         if verbosity != Verbosity.QUIET and hasattr(display, "emit_phase_close"):
             with suppress(Exception):
-                dev_result_path = (
-                    workspace_root / ".agent" / "artifacts" / "development_result.json"
-                )
+                dev_result_path = workspace_root / DEV_RESULT_ARTIFACT_JSON_PATH
                 produced = (
                     "development: result artifact present"
                     if dev_result_path.exists()

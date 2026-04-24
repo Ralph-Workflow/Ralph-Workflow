@@ -6,8 +6,11 @@ Covers the contract:
 2. When materialize_prompt is called for the same phase, it reads the hint,
    surfaces it as LAST_RETRY_ERROR, and deletes the file so it doesn't leak
 3. Parameterized over REQUIRED_ARTIFACTS so new phases are auto-covered
-4. The development phase writes a "missing input" hint (not a "missing output"
-   hint) because the plan is a planning-phase output, not a development submission.
+4. The development phase writes a "missing input" hint when the plan is absent
+   (plan is a planning-phase output, not a development submission), and a
+   "missing output" hint when development_result is absent.
+5. End-to-end retry flow: missing artifact → hint written → prompt includes
+   LAST_RETRY_ERROR → second attempt with valid artifact → phase advances.
 """
 
 from __future__ import annotations
@@ -15,6 +18,9 @@ from __future__ import annotations
 import json
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock, patch
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 import pytest
 
@@ -25,14 +31,11 @@ from ralph.phases.planning import handle_planning
 from ralph.phases.required_artifacts import REQUIRED_ARTIFACTS, build_retry_hint, retry_hint_path
 from ralph.phases.review import handle_review, handle_review_analysis
 from ralph.pipeline.effects import InvokeAgentEffect
-from ralph.pipeline.events import PhaseFailureEvent
+from ralph.pipeline.events import PhaseFailureEvent, PipelineEvent
 from ralph.policy.loader import load_policy
 from ralph.prompts.materialize import _read_and_clear_retry_hint
 from ralph.prompts.types import SessionCapabilities, SessionDrain
 from ralph.workspace.memory import MemoryWorkspace
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 _PHASE_TO_HANDLER = {
     "planning": handle_planning,
@@ -41,6 +44,93 @@ _PHASE_TO_HANDLER = {
     "review": handle_review,
     "review_analysis": handle_review_analysis,
     "fix": handle_fix,
+}
+
+# Legacy plan format: no "summary" key → _is_legacy_work_units_payload returns True,
+# skipping full PlanArtifact pydantic validation in the development handler.
+_VALID_PLAN_JSON_LEGACY = json.dumps({
+    "work_units": [
+        {"unit_id": "u1", "description": "do stuff", "allowed_directories": ["src"]}
+    ]
+})
+
+# Full PlanArtifact-compliant JSON for use in tests that also call materialize_prompt,
+# which triggers plan markdown handoff rendering via normalize_plan_artifact_content.
+_VALID_PLAN_JSON_FULL = json.dumps({
+    "type": "plan",
+    "content": {
+        "summary": {
+            "context": "test context",
+            "scope_items": [
+                {"text": "item one"},
+                {"text": "item two"},
+                {"text": "item three"},
+            ],
+        },
+        "steps": [
+            {"number": 1, "title": "test step", "content": "do something"},
+        ],
+        "critical_files": {
+            "primary_files": [{"path": "src/a.py", "action": "modify"}],
+        },
+        "risks_mitigations": [
+            {"risk": "test risk", "mitigation": "test mitigation"},
+        ],
+        "verification_strategy": [
+            {"method": "run tests", "expected_outcome": "tests pass"},
+        ],
+        "work_units": [
+            {"unit_id": "u1", "description": "do stuff", "allowed_directories": ["src"]},
+        ],
+    },
+})
+
+_VALID_DEV_RESULT_JSON = json.dumps({
+    "type": "development_result",
+    "content": {
+        "status": "completed",
+        "summary": "Done.",
+        "files_changed": "- src/a.py",
+    },
+})
+
+_VALID_ISSUES_JSON = json.dumps({
+    "type": "issues",
+    "content": {
+        "status": "no_issues",
+        "summary": "Everything looks good.",
+        "issues": [],
+        "what_came_up_short": [],
+        "how_to_fix": [],
+    },
+})
+
+_VALID_FIX_RESULT_JSON = json.dumps({
+    "type": "fix_result",
+    "content": {
+        "status": "completed",
+        "summary": "Fixed.",
+        "files_changed": "- src/a.py",
+    },
+})
+
+_VALID_DEV_ANALYSIS_JSON = json.dumps({
+    "type": "development_analysis_decision",
+    "content": {"status": "completed"},
+})
+
+_VALID_REVIEW_ANALYSIS_JSON = json.dumps({
+    "type": "review_analysis_decision",
+    "content": {"status": "completed"},
+})
+
+_PHASE_VALID_ARTIFACT: dict[str, str] = {
+    "planning": json.dumps({"type": "plan", "content": {"summary": "x"}}),
+    "development": _VALID_DEV_RESULT_JSON,
+    "development_analysis": _VALID_DEV_ANALYSIS_JSON,
+    "review": _VALID_ISSUES_JSON,
+    "review_analysis": _VALID_REVIEW_ANALYSIS_JSON,
+    "fix": _VALID_FIX_RESULT_JSON,
 }
 
 
@@ -54,12 +144,26 @@ def _invoke_effect() -> MagicMock:
     return MagicMock(spec=InvokeAgentEffect)
 
 
+def _setup_phase_prerequisites(
+    workspace: MemoryWorkspace, phase: str, *, full_plan: bool = False
+) -> None:
+    """Write required input artifacts for a phase so we test the *output* contract."""
+    plan_json = _VALID_PLAN_JSON_FULL if full_plan else _VALID_PLAN_JSON_LEGACY
+    if phase == "development":
+        workspace.write(".agent/artifacts/plan.json", plan_json)
+    elif phase == "development_analysis":
+        workspace.write(".agent/artifacts/development_result.json", _VALID_DEV_RESULT_JSON)
+    elif phase in {"review_analysis", "fix"}:
+        workspace.write(".agent/artifacts/issues.json", _VALID_ISSUES_JSON)
+
+
 @pytest.mark.parametrize(
     "phase",
-    [p for p in REQUIRED_ARTIFACTS if p not in {"planning", "development"}],
+    [p for p in REQUIRED_ARTIFACTS if p != "planning"],
 )
 def test_missing_artifact_writes_retry_hint(phase: str) -> None:
     workspace = MemoryWorkspace()
+    _setup_phase_prerequisites(workspace, phase)
     ctx = _make_ctx(workspace)
 
     handler = _PHASE_TO_HANDLER[phase]
@@ -117,18 +221,34 @@ def test_development_missing_plan_hint_names_upstream_planning_phase() -> None:
     handle_development(_invoke_effect(), ctx)
 
     hint_content = workspace.read(retry_hint_path("development"))
-    # Must reference the upstream producer, not blame the development agent
     assert "planning" in hint_content.lower(), (
         "Development retry hint must name the 'planning' phase as the upstream producer"
     )
-    # Must NOT contain wording that implies development should submit the plan
     assert "did not submit" not in hint_content, (
         "Development retry hint must not claim the development agent failed to submit the plan"
     )
-    # Must indicate this is a missing input (not missing output)
     assert "input" in hint_content.lower() or "PIPELINE INPUT MISSING" in hint_content, (
         "Development retry hint must indicate the plan is a missing upstream input"
     )
+
+
+def test_development_missing_dev_result_writes_retry_hint() -> None:
+    """When development_result is missing, development must write a retry hint."""
+    workspace = MemoryWorkspace()
+    workspace.write(".agent/artifacts/plan.json", _VALID_PLAN_JSON_LEGACY)
+    ctx = _make_ctx(workspace)
+
+    events = handle_development(_invoke_effect(), ctx)
+
+    failure_events = [e for e in events if isinstance(e, PhaseFailureEvent)]
+    assert failure_events, "Expected PhaseFailureEvent when development_result is missing"
+    assert failure_events[0].recoverable is True
+    assert "development_result" in failure_events[0].reason
+
+    hint_path = retry_hint_path("development")
+    assert workspace.exists(hint_path)
+    hint_content = workspace.read(hint_path)
+    assert "development_result" in hint_content
 
 
 def test_read_and_clear_retry_hint_returns_content_and_deletes_file() -> None:
@@ -149,7 +269,7 @@ def test_read_and_clear_retry_hint_returns_empty_when_absent() -> None:
 
 @pytest.mark.parametrize(
     "phase",
-    [p for p in REQUIRED_ARTIFACTS if p not in {"planning", "development"}],
+    [p for p in REQUIRED_ARTIFACTS if p not in {"planning"}],
 )
 def test_retry_hint_content_includes_artifact_info(phase: str) -> None:
     ra = REQUIRED_ARTIFACTS[phase]
@@ -185,17 +305,12 @@ def test_materialize_review_prompt_includes_last_retry_error(tmp_path: Path) -> 
 def test_materialize_development_analysis_prompt_includes_last_retry_error(
     tmp_path: Path,
 ) -> None:
-    from ralph.phases.required_artifacts import DEV_RESULT_ARTIFACT_JSON_PATH  # noqa: PLC0415
-
     policy = load_policy(tmp_path / ".agent")
     workspace = MemoryWorkspace(root=str(tmp_path))
     workspace.write("PROMPT.md", "implement the plan")
     workspace.write(
-        DEV_RESULT_ARTIFACT_JSON_PATH,
-        json.dumps({
-            "type": "development_result",
-            "content": {"status": "completed", "summary": "Done.", "files_changed": "- a.py"},
-        }),
+        ".agent/artifacts/development_result.json",
+        _VALID_DEV_RESULT_JSON,
     )
     workspace.write(
         retry_hint_path("development_analysis"),
@@ -214,3 +329,70 @@ def test_materialize_development_analysis_prompt_includes_last_retry_error(
     rendered = workspace.read(prompt_path)
     assert "PREVIOUS ATTEMPT FAILED" in rendered
     assert not workspace.exists(retry_hint_path("development_analysis"))
+
+
+@pytest.mark.parametrize(
+    "phase,drain",
+    [
+        ("development", SessionDrain.DEVELOPMENT),
+        ("review", SessionDrain.REVIEW),
+        ("fix", SessionDrain.FIX),
+        ("development_analysis", SessionDrain.DEVELOPMENT),
+        ("review_analysis", SessionDrain.REVIEW),
+    ],
+)
+def test_end_to_end_retry_flow(tmp_path: Path, phase: str, drain: SessionDrain) -> None:
+    """Full retry flow: missing artifact → hint written → prompt includes error → success on retry.
+
+    Drives:
+    1. First attempt: handler returns PhaseFailureEvent + writes hint file
+    2. Prompt materialization: reads hint, exposes as LAST_RETRY_ERROR, deletes file
+    3. Second attempt: handler succeeds with valid artifact present
+    """
+    policy = load_policy(tmp_path / ".agent")
+    workspace = MemoryWorkspace(root=str(tmp_path))
+    workspace.write("PROMPT.md", "do the work")
+    # Use full plan format for tests that call materialize_prompt (triggers handoff rendering)
+    _setup_phase_prerequisites(workspace, phase, full_plan=True)
+
+    ctx = _make_ctx(workspace)
+    handler = _PHASE_TO_HANDLER[phase]
+
+    # Step 1: first attempt with missing required output artifact
+    events = handler(_invoke_effect(), ctx)
+    failure_events = [e for e in events if isinstance(e, PhaseFailureEvent)]
+    assert failure_events, f"Phase {phase}: expected PhaseFailureEvent on first attempt"
+    assert failure_events[0].recoverable is True
+    assert workspace.exists(retry_hint_path(phase)), f"Phase {phase}: hint file must be written"
+
+    # Step 2: write valid artifact, then materialize prompt which surfaces hint as LAST_RETRY_ERROR
+    ra = REQUIRED_ARTIFACTS[phase]
+    workspace.write(ra.json_path, _PHASE_VALID_ARTIFACT[phase])
+
+    with patch.object(materialize_module, "_git_diff", return_value="diff"):
+        prompt_path = materialize_module.materialize_prompt_for_phase(
+            phase=phase,
+            workspace=workspace,
+            pipeline_policy=policy.pipeline,
+            session_caps=SessionCapabilities.defaults_for_drain(drain),
+            workspace_root=tmp_path,
+        )
+
+    rendered = workspace.read(prompt_path)
+    assert "PREVIOUS ATTEMPT FAILED" in rendered, (
+        f"Phase {phase}: rendered prompt must include LAST_RETRY_ERROR from hint file"
+    )
+    assert not workspace.exists(retry_hint_path(phase)), (
+        f"Phase {phase}: hint file must be deleted after materialize reads it"
+    )
+
+    # Step 3: second attempt with valid artifact now present → must advance
+    ctx2 = _make_ctx(workspace)
+    events2 = handler(_invoke_effect(), ctx2)
+    success_events = [
+        e for e in events2
+        if e in (PipelineEvent.AGENT_SUCCESS, PipelineEvent.ANALYSIS_SUCCESS)
+    ]
+    assert success_events, (
+        f"Phase {phase}: second attempt must succeed when valid artifact is present"
+    )
