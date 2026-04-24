@@ -14,6 +14,7 @@ from ralph.display.activity_router import ActivityRouter
 from ralph.display.completion_summary import emit_completion_summary
 from ralph.display.content_condenser import condense_content
 from ralph.display.lifecycle_filter import is_bare_lifecycle as _is_bare_lifecycle
+from ralph.display.long_content_summary import build_headline_or_placeholder
 from ralph.display.mode import NARROW_THRESHOLD, detect_mode
 from ralph.display.phase_banner import show_phase_transition
 from ralph.display.plain_renderer import PlainLogRenderer
@@ -37,6 +38,8 @@ _DEFAULT_SNAPSHOT_QUEUE_MAXSIZE: int = 64
 _MAX_OVERFLOW_FILE_BYTES: int = 50 * 1024 * 1024  # 50 MB guard
 _DROP_DEBOUNCE_SECONDS: float = 1.0
 _NEVER_WARNED: float = float("-inf")
+# Minimum content length to trigger headline summarization for tool_result
+_TOOL_RESULT_HEADLINE_MIN_CHARS: int = 80
 
 
 def _strip_markup(line: str) -> str:
@@ -156,6 +159,8 @@ class ParallelDisplay:
 
         text = content or ""
 
+        tool_signature: tuple[str, str] | None = None
+
         # For tool_use events, render the tool name in friendly form and append input args.
         # Also forward to the subscriber so the next snapshot reflects the current tool call.
         if kind is _Kind.TOOL_USE:
@@ -172,6 +177,7 @@ class ParallelDisplay:
             tool_workdir = str(input_dict.get("workdir", "") or "")
             tool_command = str(input_dict.get("command", "") or "")
             tool_pattern = str(input_dict.get("pattern", "") or "")
+            tool_signature = (original_name, tool_path)
             with contextlib.suppress(Exception):
                 self._subscriber.record_activity(
                     unit_id=unit_id,
@@ -196,14 +202,27 @@ class ParallelDisplay:
             self._check_overflow_size(unit_id, overflow)
             overflow.append(text)
 
+        # Step 3: For tool_result, if condense_content returned summary_line is None
+        # but content has at least one non-blank line AND len(content) >= threshold,
+        # compute a headline for the result.
+        effective_summary_line = summary_line
+        if (
+            kind is _Kind.TOOL_RESULT
+            and summary_line is None
+            and text.strip()
+            and len(text) >= _TOOL_RESULT_HEADLINE_MIN_CHARS
+        ):
+            effective_summary_line = build_headline_or_placeholder(text, max_chars=120)
+
         self._plain_renderer.emit_activity_line(
             unit_id,
             kind.value,
             visible,
             condensed_ref=overflow_ref if condensed_flag else None,
             condensed_flag=condensed_flag,
-            summary_line=summary_line,
+            summary_line=effective_summary_line,
             ai_summary_line=ai_summary_line,
+            _tool_signature=tool_signature,
         )
 
         self._emit_drop_warning(unit_id)

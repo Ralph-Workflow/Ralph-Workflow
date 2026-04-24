@@ -1,4 +1,18 @@
-"""Shared lifecycle-line filter used by all display intake paths."""
+"""Shared lifecycle-line filter used by all display intake paths.
+
+The BARE_LIFECYCLE_TOKENS set is the union of all provider parsers' lifecycle tokens:
+- Claude parser: message_delta, message_start, message_stop, content_block_start,
+                content_block_stop, thinking, user, assistant
+- Codex parser: thread.started, turn.started, message_start, ping, heartbeat, ready,
+                turn.completed, response.completed, done, complete, stop
+- Gemini parser: thread.started, turn.started, message_start, message_started,
+                 heartbeat, ping, ready, start, done, stop, message_end
+- OpenCode parser: thread.started, turn.started, message_start, heartbeat, ping,
+                   ready, assistant, user, step_start, step_finish, done
+- Generic parser: start, begin, ready, thread.started, turn.started, message_start,
+                  message_stop, heartbeat, content_block_start, content_block_stop,
+                  user, assistant, thinking, message_delta, stop, done, complete
+"""
 
 from __future__ import annotations
 
@@ -9,6 +23,7 @@ from typing import Final
 # These carry no user payload and must never surface as display content.
 BARE_LIFECYCLE_TOKENS: Final[frozenset[str]] = frozenset(
     {
+        # Claude lifecycle markers
         "message_delta",
         "message_start",
         "message_stop",
@@ -17,6 +32,7 @@ BARE_LIFECYCLE_TOKENS: Final[frozenset[str]] = frozenset(
         "thinking",
         "user",
         "assistant",
+        # Shared across providers
         "turn.started",
         "turn.completed",
         "thread.started",
@@ -24,6 +40,15 @@ BARE_LIFECYCLE_TOKENS: Final[frozenset[str]] = frozenset(
         "done",
         "complete",
         "stop",
+        "message_end",
+        "message_started",
+        "heartbeat",
+        "ping",
+        "ready",
+        "begin",
+        "start",
+        "step_start",
+        "step_finish",
     }
 )
 

@@ -251,6 +251,8 @@ class PlainLogRenderer:
         self._phase_counters: _PhaseCounters | None = None
         self._run_start_time: float | None = None
         self._run_counters: _PhaseCounters = _PhaseCounters()
+        # Step 4: Track last emitted tool signature per unit to deduplicate META [activity] line
+        self._last_emitted_tool_signature: dict[str, tuple[str, str]] = {}
 
     def _build_line(self, timestamp: str, level: str, cat: str, suffix: str) -> Text:
         """Build a styled Text line with level and category badge segments."""
@@ -353,6 +355,16 @@ class PlainLogRenderer:
         # Compute structured fields text for dedup and rendering
         activity_parts = self._build_activity_parts(snapshot)
         structured_text = " ".join(activity_parts) if activity_parts else None
+
+        # Step 4: Suppress META [activity] line when it duplicates the just-emitted
+        # CONT [tool] line for the same unit_id. Only suppress the structured
+        # activity_parts-derived branch (not the free-form last_activity_line path).
+        if structured_text and snapshot.active_tool and snapshot.active_path:
+            tool_sig = self._last_emitted_tool_signature.get(snapshot.active_agent or "")
+            if tool_sig is not None:
+                last_tool, last_path = tool_sig
+                if last_tool == snapshot.active_tool and last_path == snapshot.active_path:
+                    return []
 
         # For signature deduplication: use structured_text when available as the
         # canonical identifier for this activity. This ensures that a snapshot with
@@ -801,6 +813,17 @@ class PlainLogRenderer:
             no_wrap=True,
         )
 
+        # Step 2: For thinking blocks, emit a preview line showing the reasoning content
+        if base_tag == "thinking":
+            preview = build_headline_or_placeholder(joined, max_chars=120)
+            preview_suffix = f"[{end_tag}][{unit_id}] ↳ preview: {_sanitize(preview)}"
+            self._console.print(
+                self._build_line(timestamp, "INFO", "CONT", preview_suffix),
+                markup=False,
+                highlight=False,
+                no_wrap=True,
+            )
+
         # Optional AI summary on block close — only when hook + env are configured
         ai_summary = build_ai_summary(joined, os.environ)
         if ai_summary:
@@ -823,6 +846,8 @@ class PlainLogRenderer:
         unit_ids = list(self._active_block.keys())
         for unit_id in unit_ids:
             self._close_block(unit_id, timestamp)
+        # Step 4: Clear tool signatures on phase transitions
+        self._last_emitted_tool_signature.clear()
 
     def emit_activity_line(  # noqa: PLR0912, PLR0913, PLR0915
         self,
@@ -834,6 +859,7 @@ class PlainLogRenderer:
         condensed_flag: bool = False,
         summary_line: str | None = None,
         ai_summary_line: str | None = None,
+        _tool_signature: tuple[str, str] | None = None,
     ) -> None:
         """Emit a kind-tagged, level-badged content line.
 
@@ -849,6 +875,9 @@ class PlainLogRenderer:
         - "": summarization was applicable but no headline extracted — placeholder emitted when
           condensed_flag is True.
         - non-empty str: the actual headline — emitted as-is.
+
+        _tool_signature: Optional (tool_name, path) tuple used to track tool calls for
+        META [activity] line deduplication.
         """
         timestamp = self._clock().isoformat()
         base_tag = _KIND_TO_TAG.get(kind, "content")
@@ -911,18 +940,35 @@ class PlainLogRenderer:
                                     " ".join(accumulated), max_chars=120
                                 )
                                 cp_tag = f"{base_tag}-checkpoint#{seq}"
+                                cp_suffix = (
+                                    f"[{cp_tag}][{unit_id}]"
+                                    f" ({seq} fragments, {total_chars} chars) {headline}"
+                                )
                                 self._console.print(
                                     self._build_line(
-                                        timestamp,
-                                        "INFO",
-                                        "CONT",
-                                        f"[{cp_tag}][{unit_id}]"
-                                        f" ({seq} fragments, {total_chars} chars) {headline}",
+                                        timestamp, "INFO", "CONT", cp_suffix
                                     ),
                                     markup=False,
                                     highlight=False,
                                     no_wrap=True,
                                 )
+                                # Step 2: Emit a preview line after checkpoint
+                                if kind == "thinking":
+                                    preview = build_headline_or_placeholder(
+                                        " ".join(accumulated), max_chars=120
+                                    )
+                                    preview_suffix = (
+                                        f"[{cp_tag}][{unit_id}] ↳ preview: "
+                                        f"{_sanitize(preview)}"
+                                    )
+                                    self._console.print(
+                                        self._build_line(
+                                            timestamp, "INFO", "CONT", preview_suffix
+                                        ),
+                                        markup=False,
+                                        highlight=False,
+                                        no_wrap=True,
+                                    )
             else:
                 tag = base_tag
                 self._update_counters(kind, is_new_block=False)
@@ -933,6 +979,11 @@ class PlainLogRenderer:
                 self._close_block(uid, timestamp)
             tag = base_tag
             self._update_counters(kind, is_new_block=False)
+
+        # Step 4: Record tool signature when emitting a tool_use
+        if kind == "tool_use" and _tool_signature is not None:
+            tool_name, tool_path = _tool_signature
+            self._last_emitted_tool_signature[unit_id] = (tool_name, tool_path)
 
         # Emit summary line.
         # summary_line=None means "not applicable" — nothing emitted.
