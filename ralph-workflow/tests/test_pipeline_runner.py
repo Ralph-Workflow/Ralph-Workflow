@@ -2538,9 +2538,9 @@ class TestStartCommitCapture:
 
         written: list[tuple[str, str]] = []
 
-        def _spy_write(workspace_root, sha):
+        def _spy_write(workspace_root, sha, *, force: bool = False):
             written.append((str(workspace_root), sha))
-            _real_write(workspace_root, sha)
+            _real_write(workspace_root, sha, force=force)
 
         monkeypatch.setattr(runner_module, "write_cycle_baseline", _spy_write)
         monkeypatch.setattr(
@@ -2589,9 +2589,9 @@ class TestStartCommitCapture:
 
         written: list[tuple[str, str]] = []
 
-        def _spy_write(workspace_root, sha):
+        def _spy_write(workspace_root, sha, *, force: bool = False):
             written.append((str(workspace_root), sha))
-            _real_write(workspace_root, sha)
+            _real_write(workspace_root, sha, force=force)
 
         monkeypatch.setattr(runner_module, "write_cycle_baseline", _spy_write)
         monkeypatch.setattr(

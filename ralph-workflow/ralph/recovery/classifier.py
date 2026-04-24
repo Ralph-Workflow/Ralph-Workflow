@@ -101,6 +101,27 @@ def _is_user_config_message(raw_message: str) -> bool:
     return any(s in raw_message for s in config_substrings)
 
 
+_MISSING_ARTIFACT_SUBSTRINGS: frozenset[str] = frozenset(
+    {
+        "Missing required artifact",
+        "Artifact not found at .agent/artifacts/",
+        "required_artifact_missing",
+        "Missing/invalid issues artifact",
+        "Missing required analysis artifact",
+        "Missing fix_result artifact",
+    }
+)
+
+
+def _is_missing_artifact_message(raw_message: str) -> bool:
+    """Return True if the message indicates a missing required artifact.
+
+    These failures are classified as AMBIGUOUS so they do not debit the agent
+    budget — the retry-hint mechanism nudges the agent to submit the artifact.
+    """
+    return any(s in raw_message for s in _MISSING_ARTIFACT_SUBSTRINGS)
+
+
 class FailureClassifier:
     """Classify failures into categories for intelligent recovery routing.
 
@@ -193,6 +214,8 @@ class FailureClassifier:
             return FailureCategory.ENVIRONMENTAL, False
         if _is_user_config_message(raw_message):
             return FailureCategory.USER_CONFIG, False
+        if _is_missing_artifact_message(raw_message):
+            return FailureCategory.AMBIGUOUS, False
         return FailureCategory.AMBIGUOUS, False
 
     def _build_reason(self, category: FailureCategory, raw_message: str) -> str:

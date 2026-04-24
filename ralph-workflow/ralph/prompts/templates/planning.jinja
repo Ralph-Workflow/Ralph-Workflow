@@ -10,6 +10,12 @@ You are in PLANNING MODE. Create a detailed, structured implementation plan.
 
 {% if HAS_GIT_WRITE %}{% else %}{% include 'shared/_no_git_commit.j2' %}{% endif %}
 
+{% if LAST_RETRY_ERROR %}
+IMPORTANT: The previous attempt did not submit the required artifact before declaring completion.
+
+{{ render_payload_section('PREVIOUS ATTEMPT ERROR', LAST_RETRY_ERROR, '') }}
+{% endif %}
+
 CRITICAL: This is a READ-ONLY planning task. You are STRICTLY PROHIBITED from:
 - Creating, modifying, or deleting any files
 - Running any commands that modify system state

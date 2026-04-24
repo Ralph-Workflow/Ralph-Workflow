@@ -5,6 +5,7 @@ from unittest.mock import patch
 
 from ralph.prompts.developer import (
     DeveloperPromptInputs,
+    PlanningPromptInputs,
     prompt_developer_iteration_xml_with_context,
     prompt_planning_xml_with_context,
 )
@@ -65,7 +66,7 @@ def test_planning_prompt_uses_defaults_and_mcp_tools(tmp_path):
 
     prompt = prompt_planning_xml_with_context(
         context=context,
-        prompt_content=None,
+        inputs=PlanningPromptInputs(prompt_content=None),
         workspace=workspace,
         session_caps=session_caps,
     )
@@ -84,7 +85,7 @@ def test_planning_prompt_describes_detailed_raw_plan_payload_contract(tmp_path):
 
     prompt = prompt_planning_xml_with_context(
         context=context,
-        prompt_content="Plan the unattended pipeline fix",
+        inputs=PlanningPromptInputs(prompt_content="Plan the unattended pipeline fix"),
         workspace=workspace,
         session_caps=session_caps,
     )
@@ -119,7 +120,7 @@ def test_planning_prompt_fallback_uses_json_plan_artifact_contract(tmp_path):
     ):
         prompt = prompt_planning_xml_with_context(
             context=context,
-            prompt_content="Plan the MCP work",
+            inputs=PlanningPromptInputs(prompt_content="Plan the MCP work"),
             workspace=workspace,
             session_caps=session_caps,
         )
@@ -147,7 +148,7 @@ def test_planning_prompt_fallback_uses_prefixed_tool_names(tmp_path):
     ):
         prompt = prompt_planning_xml_with_context(
             context=context,
-            prompt_content="Plan the MCP work",
+            inputs=PlanningPromptInputs(prompt_content="Plan the MCP work"),
             workspace=workspace,
             session_caps=session_caps,
         )

@@ -54,9 +54,26 @@ class Issues(BaseModel):  # type: ignore[explicit-any]
 
     status: Literal["issues_found", "no_issues"]
     summary: str = Field(..., min_length=1)
-    issues: list[_IssueEntry]
-    what_came_up_short: list[str]
-    how_to_fix: list[str]
+    issues: list[_IssueEntry] = Field(default_factory=list)
+    what_came_up_short: list[str] = Field(default_factory=list)
+    how_to_fix: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _check_remediation_when_issues_found(self) -> Issues:
+        if self.status == "issues_found":
+            if not self.issues:
+                raise ValueError(
+                    'issues must be non-empty when status is "issues_found"'
+                )
+            if not self.what_came_up_short:
+                raise ValueError(
+                    'what_came_up_short must be non-empty when status is "issues_found"'
+                )
+            if not self.how_to_fix:
+                raise ValueError(
+                    'how_to_fix must be non-empty when status is "issues_found"'
+                )
+        return self
 
 
 class FixResult(BaseModel):  # type: ignore[explicit-any]

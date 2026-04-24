@@ -10,6 +10,12 @@ You are in IMPLEMENTATION MODE. Execute the plan and make progress.
 
 {% if HAS_GIT_WRITE %}{% else %}{% include 'shared/_no_git_commit.j2' %}{% endif %}
 
+{% if LAST_RETRY_ERROR %}
+IMPORTANT: The previous attempt did not submit the required artifact before declaring completion.
+
+{{ render_payload_section('PREVIOUS ATTEMPT ERROR', LAST_RETRY_ERROR, '') }}
+{% endif %}
+
 ORIGINAL REQUEST:
 {{ render_payload_section('PROMPT', PROMPT, PROMPT_PATH) }}
 
@@ -20,4 +26,3 @@ ANALYSIS FEEDBACK:
 {{ render_payload_section('ANALYSIS FEEDBACK', ANALYSIS_FEEDBACK|default(''), ANALYSIS_FEEDBACK_PATH) }}
 
 {% include 'shared/_developer_iteration_guidance.j2' %}
-

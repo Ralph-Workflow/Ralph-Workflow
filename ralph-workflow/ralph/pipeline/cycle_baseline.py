@@ -17,9 +17,16 @@ if TYPE_CHECKING:
 _BASELINE_FILENAME = ".agent/start_commit"
 
 
-def write_cycle_baseline(workspace_root: Path, sha: str) -> None:
-    """Record ``sha`` as the diff baseline for the current dev cycle."""
+def write_cycle_baseline(workspace_root: Path, sha: str, *, force: bool = False) -> None:
+    """Record ``sha`` as the diff baseline for the current dev cycle.
+
+    When ``force`` is False (the default), an existing baseline is preserved
+    and this call is a no-op. Callers that open a fresh cycle must pass
+    ``force=True`` to overwrite any stale baseline.
+    """
     baseline_path = workspace_root / _BASELINE_FILENAME
+    if not force and baseline_path.exists():
+        return
     baseline_path.parent.mkdir(parents=True, exist_ok=True)
     baseline_path.write_text(sha.strip() + "\n", encoding="utf-8")
 

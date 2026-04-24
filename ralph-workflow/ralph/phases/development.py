@@ -12,6 +12,7 @@ without invoking the development agent for a plan that asked for nothing.
 from __future__ import annotations
 
 import json
+from contextlib import suppress
 
 from loguru import logger
 
@@ -29,10 +30,35 @@ from ralph.phases.artifacts import (
     load_phase_artifact,
     unwrap_phase_artifact_content,
 )
+from ralph.phases.required_artifacts import (
+    DEV_ANALYSIS_DECISION_JSON_PATH,
+    build_missing_input_hint,
+    build_retry_hint,
+    retry_hint_path,
+)
 from ralph.pipeline.effects import Effect, InvokeAgentEffect, PreparePromptEffect
 from ralph.pipeline.events import Event, PhaseFailureEvent, PipelineEvent
 from ralph.pipeline.work_units import WorkUnitsValidationError, parse_work_units_from_artifact
 from ralph.policy.validation import PolicyValidationError, validate_work_units_against_policy
+
+
+def _write_retry_hint(ctx: PhaseContext, phase: str, detail: str) -> None:
+    hint_path = retry_hint_path(phase)
+    hint = build_retry_hint(phase, detail)
+    with suppress(Exception):
+        ctx.workspace.write(hint_path, hint)
+
+
+def _write_missing_input_hint(
+    ctx: PhaseContext,
+    phase: str,
+    upstream_phase: str,
+    artifact_path: str,
+) -> None:
+    hint_path = retry_hint_path(phase)
+    hint = build_missing_input_hint(phase, upstream_phase, artifact_path)
+    with suppress(Exception):
+        ctx.workspace.write(hint_path, hint)
 
 
 @register_handler("development")
@@ -57,13 +83,15 @@ def handle_development(effect: Effect, ctx: PhaseContext) -> list[Event]:
         logger.info("Development phase: validating planning artifact after agent run")
         planning_artifact_path = PLAN_ARTIFACT_PATH
         if not ctx.workspace.exists(planning_artifact_path):
+            reason = f"Missing planning artifact at {planning_artifact_path}"
             logger.warning(
                 "Development phase missing required planning artifact at {}", planning_artifact_path
             )
+            _write_missing_input_hint(ctx, "development", "planning", planning_artifact_path)
             return [
                 PhaseFailureEvent(
                     phase="development",
-                    reason=f"Missing planning artifact at {planning_artifact_path}",
+                    reason=reason,
                     recoverable=True,
                     retry_in_session=True,
                 )
@@ -180,12 +208,18 @@ def handle_development_analysis(effect: Effect, ctx: PhaseContext) -> list[Event
         logger.info("Development analysis: plan is a no-op — skipping analysis")
         return [PipelineEvent.ANALYSIS_SUCCESS]
 
-    artifact_path = ".agent/artifacts/development_analysis_decision.json"
+    artifact_path = DEV_ANALYSIS_DECISION_JSON_PATH
     if not ctx.workspace.exists(artifact_path):
+        detail = (
+            "Missing required analysis artifact at "
+            f"{artifact_path}; the agent must submit "
+            "development_analysis_decision before declaring completion"
+        )
         logger.warning(
             "Development analysis completed without required artifact at {}",
             artifact_path,
         )
+        _write_retry_hint(ctx, "development_analysis", detail)
         return [_missing_analysis_artifact_event("development_analysis", artifact_path)]
 
     decision = parse_analysis_decision(ctx, "development_analysis")

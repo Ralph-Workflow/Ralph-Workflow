@@ -8,6 +8,12 @@ Apply the required fixes based on the review issues and current plan.
 
 {% include 'shared/_mcp_tools.j2' %}
 
+{% if LAST_RETRY_ERROR %}
+IMPORTANT: The previous attempt ended without producing the required artifact before declaring completion.
+
+{{ render_payload_section('PREVIOUS ATTEMPT ERROR', LAST_RETRY_ERROR, '') }}
+{% endif %}
+
 {{ render_payload_section('PROMPT', PROMPT, PROMPT_PATH) }}
 
 {{ render_payload_section('PLAN', PLAN, PLAN_PATH) }}
@@ -15,4 +21,3 @@ Apply the required fixes based on the review issues and current plan.
 {{ render_payload_section('ISSUES', ISSUES, ISSUES_PATH) }}
 
 {{ render_payload_section('ANALYSIS FEEDBACK', ANALYSIS_FEEDBACK, ANALYSIS_FEEDBACK_PATH) }}
-

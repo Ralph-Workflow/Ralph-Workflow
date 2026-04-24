@@ -60,6 +60,13 @@ from ralph.mcp.protocol.capability_mapping import DrainClass, drain_class_for_se
 from ralph.mcp.protocol.session import MCP_ENDPOINT_ENV, MCP_RUN_ID_ENV, AgentSession
 from ralph.mcp.server.lifecycle import shutdown_mcp_server, start_mcp_server
 from ralph.phases import PhaseContext, handle_phase
+from ralph.phases.required_artifacts import (
+    DEV_ANALYSIS_DECISION_JSON_PATH,
+    DEV_RESULT_ARTIFACT_JSON_PATH,
+    FIX_RESULT_ARTIFACT_JSON_PATH,
+    ISSUES_ARTIFACT_JSON_PATH,
+    REVIEW_ANALYSIS_DECISION_JSON_PATH,
+)
 from ralph.pipeline import checkpoint as ckpt
 from ralph.pipeline.cycle_baseline import (
     clear_cycle_baseline,
@@ -258,7 +265,7 @@ def _write_start_commit_if_absent(workspace_root: Path) -> None:
         return
     if not repo.head.is_valid():
         return
-    write_cycle_baseline(workspace_root, repo.head.commit.hexsha)
+    write_cycle_baseline(workspace_root, repo.head.commit.hexsha, force=True)
 
 
 def _set_last_captured_session_id(session_id: str | None) -> None:
@@ -2215,19 +2222,19 @@ def _clear_phase_output_artifacts(workspace: FsWorkspace, phase: str) -> None:
 def _phase_output_artifact_paths(phase: str) -> tuple[str, ...]:
     phase_artifacts = {
         "development": (
-            ".agent/artifacts/development_result.json",
+            DEV_RESULT_ARTIFACT_JSON_PATH,
             ".agent/DEVELOPMENT_RESULT.md",
         ),
         "development_analysis": (
-            ".agent/artifacts/development_analysis_decision.json",
+            DEV_ANALYSIS_DECISION_JSON_PATH,
             ".agent/DEVELOPMENT_ANALYSIS_DECISION.md",
         ),
-        "review": (".agent/artifacts/issues.json", ".agent/ISSUES.md"),
+        "review": (ISSUES_ARTIFACT_JSON_PATH, ".agent/ISSUES.md"),
         "review_analysis": (
-            ".agent/artifacts/review_analysis_decision.json",
+            REVIEW_ANALYSIS_DECISION_JSON_PATH,
             ".agent/REVIEW_ANALYSIS_DECISION.md",
         ),
-        "fix": (".agent/artifacts/fix_result.json", ".agent/FIX_RESULT.md"),
+        "fix": (FIX_RESULT_ARTIFACT_JSON_PATH, ".agent/FIX_RESULT.md"),
         "development_commit": (COMMIT_MESSAGE_ARTIFACT,),
         "review_commit": (COMMIT_MESSAGE_ARTIFACT,),
     }

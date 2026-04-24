@@ -15,6 +15,7 @@ changes are substantive.
 from __future__ import annotations
 
 import json
+from contextlib import suppress
 from pathlib import Path
 
 from git import InvalidGitRepositoryError
@@ -29,11 +30,17 @@ from ralph.phases.artifacts import (
     load_phase_artifact,
     unwrap_phase_artifact_content,
 )
+from ralph.phases.required_artifacts import (
+    ISSUES_ARTIFACT_JSON_PATH,
+    REVIEW_ANALYSIS_DECISION_JSON_PATH,
+    build_retry_hint,
+    retry_hint_path,
+)
 from ralph.pipeline.effects import Effect, InvokeAgentEffect, PreparePromptEffect
 from ralph.pipeline.events import Event, PhaseFailureEvent, PipelineEvent
 
 REVIEW_BASELINE_MARKER = ".agent/tmp/last_reviewed_sha.txt"
-REVIEW_ISSUES_ARTIFACT_PATH = ".agent/artifacts/issues.json"
+REVIEW_ISSUES_ARTIFACT_PATH = ISSUES_ARTIFACT_JSON_PATH
 
 
 def _workspace_absolute_path(ctx: PhaseContext, rel: str) -> str | None:
@@ -89,6 +96,13 @@ def _has_new_commits_since_baseline(ctx: PhaseContext, baseline: str) -> bool:
         return True
 
 
+def _write_retry_hint(ctx: PhaseContext, phase: str, detail: str) -> None:
+    hint_path = retry_hint_path(phase)
+    hint = build_retry_hint(phase, detail)
+    with suppress(Exception):
+        ctx.workspace.write(hint_path, hint)
+
+
 @register_handler("review")
 def handle_review(effect: Effect, ctx: PhaseContext) -> list[Event]:
     """Handle the review phase.
@@ -123,11 +137,13 @@ def handle_review(effect: Effect, ctx: PhaseContext) -> list[Event]:
                 expected_type="issues",
             )
         except (json.JSONDecodeError, PhaseArtifactError, TypeError, ValueError) as exc:
-            logger.warning("Review phase missing fresh issues artifact: {}", exc)
+            detail = str(exc)
+            logger.warning("Review phase missing fresh issues artifact: {}", detail)
+            _write_retry_hint(ctx, "review", detail)
             return [
                 PhaseFailureEvent(
                     phase="review",
-                    reason=f"Missing/invalid issues artifact: {exc}",
+                    reason=f"Missing/invalid issues artifact: {detail}",
                     recoverable=True,
                     retry_in_session=True,
                 )
@@ -156,20 +172,22 @@ def handle_review_analysis(effect: Effect, ctx: PhaseContext) -> list[Event]:
         List of events to emit.
     """
     if isinstance(effect, InvokeAgentEffect):
-        artifact_path = ".agent/artifacts/review_analysis_decision.json"
+        artifact_path = REVIEW_ANALYSIS_DECISION_JSON_PATH
         if not ctx.workspace.exists(artifact_path):
+            detail = (
+                "Missing required analysis artifact at "
+                f"{artifact_path}; the agent must submit "
+                "review_analysis_decision before declaring completion"
+            )
             logger.warning(
                 "Review analysis completed without required artifact at {}",
                 artifact_path,
             )
+            _write_retry_hint(ctx, "review_analysis", detail)
             return [
                 PhaseFailureEvent(
                     phase="review_analysis",
-                    reason=(
-                        "Missing required analysis artifact at "
-                        f"{artifact_path}; the agent must submit "
-                        "review_analysis_decision before declaring completion"
-                    ),
+                    reason=detail,
                     recoverable=True,
                     retry_in_session=True,
                 )

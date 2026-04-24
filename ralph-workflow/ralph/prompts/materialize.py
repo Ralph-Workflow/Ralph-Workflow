@@ -13,12 +13,22 @@ from ralph.mcp.artifacts.handoffs import (
     ensure_markdown_handoff_from_artifact,
     handoff_path_for_artifact,
 )
+from ralph.mcp.artifacts.plan import PLAN_ARTIFACT_PATH
 from ralph.mcp.tools.names import SUBMIT_ARTIFACT_TOOL, claude_tool_name_prefix
+from ralph.phases.required_artifacts import (
+    DEV_ANALYSIS_DECISION_JSON_PATH,
+    DEV_RESULT_ARTIFACT_JSON_PATH,
+    FIX_RESULT_ARTIFACT_JSON_PATH,
+    ISSUES_ARTIFACT_JSON_PATH,
+    REVIEW_ANALYSIS_DECISION_JSON_PATH,
+    retry_hint_path,
+)
 from ralph.pipeline.cycle_baseline import read_cycle_baseline
 from ralph.prompts.commit import CommitPromptPayloadConfig, prompt_commit_message
 from ralph.prompts.debug_dump import dump_rendered_prompt, prompt_dump_path
 from ralph.prompts.developer import (
     DeveloperPromptInputs,
+    PlanningPromptInputs,
     prompt_developer_iteration_xml_with_context,
     prompt_planning_xml_with_context,
 )
@@ -67,6 +77,19 @@ def _template_name_for_phase(phase: str, pipeline_policy: PipelinePolicy) -> str
     return phase_def.prompt_template
 
 
+def _read_and_clear_retry_hint(workspace: Workspace, phase: str) -> str:
+    """Read the retry hint file for a phase and delete it after reading."""
+    path = retry_hint_path(phase)
+    if not workspace.exists(path):
+        return ""
+    try:
+        hint = workspace.read(path)
+        workspace.remove(path)
+        return hint
+    except Exception:
+        return ""
+
+
 def _render_prompt_for_phase(
     phase: str,
     workspace: Workspace,
@@ -80,9 +103,13 @@ def _render_prompt_for_phase(
     current_prompt_path = _persist_current_prompt(workspace_root, prompt_content)
     plan_content, plan_path = _resolve_plan_handoff(workspace)
     if phase == "planning":
+        last_retry_error = _read_and_clear_retry_hint(workspace, phase)
         return prompt_planning_xml_with_context(
             context=context,
-            prompt_content=prompt_content,
+            inputs=PlanningPromptInputs(
+                prompt_content=prompt_content,
+                last_retry_error=last_retry_error,
+            ),
             workspace=workspace,
             session_caps=session_caps,
             template_name=template_name,
@@ -92,6 +119,7 @@ def _render_prompt_for_phase(
             workspace,
             phase,
         )
+        last_retry_error = _read_and_clear_retry_hint(workspace, phase)
         return prompt_developer_iteration_xml_with_context(
             context=context,
             inputs=DeveloperPromptInputs(
@@ -101,6 +129,7 @@ def _render_prompt_for_phase(
                 plan_path=plan_path,
                 analysis_feedback_path=analysis_feedback_path,
                 prompt_name_prefix=phase,
+                last_retry_error=last_retry_error,
             ),
             workspace=workspace,
             session_caps=session_caps,
@@ -116,6 +145,7 @@ def _render_prompt_for_phase(
             workspace,
             phase,
         )
+        last_retry_error = _read_and_clear_retry_hint(workspace, phase)
         variables = _phase_payload_variables(
             phase=phase,
             workspace_root=workspace_root,
@@ -153,6 +183,7 @@ def _render_prompt_for_phase(
                     plan_path=variables.get("PLAN_PATH", ""),
                 )
             )
+        variables["LAST_RETRY_ERROR"] = last_retry_error
         return render_template(
             template,
             _merged_variables(variables, session_caps),
@@ -280,7 +311,7 @@ def _resolve_plan_handoff(workspace: Workspace) -> tuple[str | None, str]:
     return _resolve_agent_handoff(
         workspace,
         artifact_type="plan",
-        artifact_path=".agent/artifacts/plan.json",
+        artifact_path=PLAN_ARTIFACT_PATH,
         fallback_formatter=_format_plan_for_execution,
     )
 
@@ -483,7 +514,7 @@ def _resolve_issues_content(workspace: Workspace) -> tuple[str, str]:
     content, path = _resolve_agent_handoff(
         workspace,
         artifact_type="issues",
-        artifact_path=".agent/artifacts/issues.json",
+        artifact_path=ISSUES_ARTIFACT_JSON_PATH,
     )
     return content or "(no review issues available)", path
 
@@ -492,7 +523,7 @@ def _resolve_fix_result_content(workspace: Workspace) -> tuple[str, str]:
     content, path = _resolve_agent_handoff(
         workspace,
         artifact_type="fix_result",
-        artifact_path=".agent/artifacts/fix_result.json",
+        artifact_path=FIX_RESULT_ARTIFACT_JSON_PATH,
     )
     return content or "(no fix result available)", path
 
@@ -501,11 +532,11 @@ def _resolve_loopback_analysis_feedback(workspace: Workspace, phase: str) -> tup
     sources = {
         "development": (
             "development_analysis_decision",
-            ".agent/artifacts/development_analysis_decision.json",
+            DEV_ANALYSIS_DECISION_JSON_PATH,
         ),
         "fix": (
             "review_analysis_decision",
-            ".agent/artifacts/review_analysis_decision.json",
+            REVIEW_ANALYSIS_DECISION_JSON_PATH,
         ),
     }
     source = sources.get(phase)
@@ -522,10 +553,10 @@ def _resolve_loopback_analysis_feedback(workspace: Workspace, phase: str) -> tup
 
 def _latest_artifact_content(workspace: Workspace, phase: str) -> tuple[str, str]:
     handoff_sources = {
-        "development_analysis": ("development_result", ".agent/artifacts/development_result.json"),
-        "review_analysis": ("issues", ".agent/artifacts/issues.json"),
-        "fix": ("issues", ".agent/artifacts/issues.json"),
-        "review": ("development_result", ".agent/artifacts/development_result.json"),
+        "development_analysis": ("development_result", DEV_RESULT_ARTIFACT_JSON_PATH),
+        "review_analysis": ("issues", ISSUES_ARTIFACT_JSON_PATH),
+        "fix": ("issues", ISSUES_ARTIFACT_JSON_PATH),
+        "review": ("development_result", DEV_RESULT_ARTIFACT_JSON_PATH),
     }
     source = handoff_sources.get(phase)
     if source is None:

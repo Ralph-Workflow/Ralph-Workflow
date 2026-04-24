@@ -13,6 +13,7 @@ execution.
 from __future__ import annotations
 
 import json
+from contextlib import suppress
 from datetime import datetime
 from pathlib import Path
 
@@ -28,10 +29,18 @@ from ralph.mcp.artifacts.plan import (
 )
 from ralph.phases import PhaseContext, register_handler
 from ralph.phases.artifacts import load_phase_artifact, unwrap_phase_artifact_content
+from ralph.phases.required_artifacts import build_retry_hint, retry_hint_path
 from ralph.pipeline.effects import Effect, InvokeAgentEffect, PreparePromptEffect
 from ralph.pipeline.events import Event, PhaseFailureEvent, PipelineEvent
 from ralph.pipeline.work_units import WorkUnitsValidationError, parse_work_units_from_artifact
 from ralph.policy.validation import PolicyValidationError, validate_work_units_against_policy
+
+
+def _write_retry_hint(ctx: PhaseContext, phase: str, detail: str) -> None:
+    hint_path = retry_hint_path(phase)
+    hint = build_retry_hint(phase, detail)
+    with suppress(Exception):
+        ctx.workspace.write(hint_path, hint)
 
 
 @register_handler("planning")
@@ -57,14 +66,16 @@ def handle_planning(effect: Effect, ctx: PhaseContext) -> list[Event]:
         logger.info("Planning phase: validating planning artifact after agent run")
         planning_artifact_path = PLAN_ARTIFACT_PATH
         if not ctx.workspace.exists(planning_artifact_path):
+            detail = (
+                f"Missing required plan artifact at {planning_artifact_path}; "
+                "the agent must submit plan before declaring completion"
+            )
             logger.warning("Planning agent completed without producing {}", planning_artifact_path)
+            _write_retry_hint(ctx, "planning", detail)
             return [
                 PhaseFailureEvent(
                     phase="planning",
-                    reason=(
-                        f"Missing required plan artifact at {planning_artifact_path}; "
-                        "the agent must submit plan before declaring completion"
-                    ),
+                    reason=detail,
                     recoverable=True,
                     retry_in_session=True,
                 )
