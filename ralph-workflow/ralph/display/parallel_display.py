@@ -262,6 +262,14 @@ class ParallelDisplay:
         metadata: dict[str, object],
     ) -> None:
         """Route a pre-parsed agent event through the structured activity path."""
+        from ralph.display.activity_model import ActivityEventKind as _Kind  # noqa: PLC0415
+
+        if (
+            kind in (_Kind.LIFECYCLE, _Kind.UNKNOWN)
+            and content is not None
+            and _is_bare_lifecycle(content)
+        ):
+            return
         self._emit_activity_event(unit_id, kind, content, None, metadata)
 
     def set_status(self, unit_id: str, status: WorkerStatus) -> None:

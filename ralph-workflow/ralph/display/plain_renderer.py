@@ -842,6 +842,8 @@ class PlainLogRenderer:
             sanitized = f"{sanitized} [see {condensed_ref}]"
 
         if kind in _STREAMING_KINDS:
+            if kind == "thinking" and not content.strip():
+                return
             block_tags = _STREAMING_BLOCK_TAGS.get(base_tag)
             if block_tags is not None:
                 start_tag, continue_tag, _end_tag = block_tags

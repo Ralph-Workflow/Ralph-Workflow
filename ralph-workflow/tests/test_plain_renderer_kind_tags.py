@@ -719,3 +719,50 @@ def test_activity_line_does_not_double_append_path_when_already_present() -> Non
     out = buf.getvalue()
     # Path should appear exactly once, not duplicated
     assert out.count("ralph-workflow/ralph/x.py") == 1
+
+
+# --- Whitespace-only thinking suppression tests ---
+
+
+def test_whitespace_only_thinking_emits_nothing() -> None:
+    """emit_activity_line with kind='thinking' and whitespace-only content emits nothing."""
+    renderer, buf = _make_renderer()
+    renderer.emit_activity_line("u", "thinking", "   ")
+    out = buf.getvalue()
+    assert out == "", f"Expected empty output, got: {out!r}"
+
+
+def test_tab_only_thinking_emits_nothing() -> None:
+    """emit_activity_line with kind='thinking' and tab-only content emits nothing."""
+    renderer, buf = _make_renderer()
+    renderer.emit_activity_line("u", "thinking", "\t\n  ")
+    out = buf.getvalue()
+    assert out == "", f"Expected empty output, got: {out!r}"
+
+
+def test_non_empty_thinking_still_emits_thinking_start() -> None:
+    """Non-whitespace thinking content still opens a [thinking-start] block."""
+    renderer, buf = _make_renderer()
+    renderer.emit_activity_line("u", "thinking", "deep thought")
+    out = buf.getvalue()
+    assert "[thinking-start]" in out
+    assert "deep thought" in out
+
+
+def test_whitespace_thinking_does_not_open_block() -> None:
+    """A whitespace-only thinking fragment must not create an active block."""
+    renderer, buf = _make_renderer()
+    renderer.emit_activity_line("u", "thinking", "   ")
+    buf.truncate(0)
+    buf.seek(0)
+    renderer.flush_blocks()
+    # flush_blocks on an empty block set should produce nothing
+    assert buf.getvalue() == ""
+
+
+def test_whitespace_text_fragment_still_emits() -> None:
+    """Whitespace suppression applies only to 'thinking' kind, not 'text'."""
+    renderer, buf = _make_renderer()
+    renderer.emit_activity_line("u", "text", "   ")
+    out = buf.getvalue()
+    assert "[content-start]" in out

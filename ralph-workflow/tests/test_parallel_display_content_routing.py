@@ -258,6 +258,31 @@ def test_lifecycle_thinking_prefix_is_suppressed_end_to_end(tmp_path: Path) -> N
     assert "[thinking][main]" not in out
 
 
+def test_emit_parsed_event_drops_bare_lifecycle_structured_content(tmp_path: Path) -> None:
+    """emit_parsed_event with LIFECYCLE kind and bare lifecycle content emits nothing."""
+    from ralph.display.activity_model import ActivityEventKind  # noqa: PLC0415
+
+    pd, buf = _make_display(tmp_path)
+    pd.emit_parsed_event("main", ActivityEventKind.LIFECYCLE, "claude/sonnet: thinking", {})
+    pd.emit_parsed_event("main", ActivityEventKind.LIFECYCLE, "system (status=requesting)", {})
+    pd.emit_parsed_event("main", ActivityEventKind.LIFECYCLE, "message_delta", {})
+    pd.stop()
+    out = buf.getvalue()
+    assert "[status-content][main]" not in out
+    assert "system (status=requesting)" not in out
+    assert "message_delta" not in out
+
+
+def test_emit_parsed_event_passes_through_non_lifecycle_content(tmp_path: Path) -> None:
+    """emit_parsed_event with TEXT kind and real content renders normally."""
+    from ralph.display.activity_model import ActivityEventKind  # noqa: PLC0415
+
+    pd, buf = _make_display(tmp_path)
+    pd.emit_parsed_event("main", ActivityEventKind.TEXT, "actual agent output here", {})
+    pd.stop()
+    out = buf.getvalue()
+    assert "actual agent output here" in out
+
 
 def test_stream_parsed_agent_activity_thinking_routes_to_structured_path(tmp_path: Path) -> None:
     """_stream_parsed_agent_activity must not emit [content][activity] for thinking events."""
