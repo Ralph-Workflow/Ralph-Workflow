@@ -266,8 +266,18 @@ Then add it to `.agent/mcp.toml`:
 ```toml
 [mcp_servers.docs-mcp]
 transport = "http"
-url = "http://localhost:6280"
+url = "http://localhost:6280/mcp"
 ```
+
+Ralph also supports the legacy HTTP+SSE endpoint shape used by some docs-mcp setups:
+
+```toml
+[mcp_servers.docs-mcp]
+transport = "http"
+url = "http://localhost:6280/sse"
+```
+
+Prefer `/mcp` when you control the server config. Use `/sse` only when the server exposes the older HTTP+SSE flow.
 
 The server must be running before `ralph` (or `ralph --check-mcp`) starts. Ralph will fail startup validation if the server is unreachable. Use `RALPH_MCP_STRICT=0` during development if the docs server is optional.
 

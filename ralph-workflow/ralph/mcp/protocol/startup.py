@@ -11,7 +11,7 @@ from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from datetime import timedelta
 from typing import TYPE_CHECKING, Protocol, cast
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
 import httpx
 
@@ -231,6 +231,103 @@ def preflight_http_mcp_server_tools(
     )
 
 
+def looks_like_legacy_sse_endpoint(endpoint: str) -> bool:
+    parsed = urlparse(endpoint)
+    return (parsed.path or "/").rstrip("/").endswith("/sse")
+
+
+def legacy_sse_jsonrpc_exchange(
+    endpoint: str,
+    requests: Iterable[JsonRpcResponse],
+    *,
+    timeout_s: float,
+) -> list[JsonRpcResponse]:
+    timeout = httpx.Timeout(timeout_s, connect=min(timeout_s, 5.0))
+    responses: list[JsonRpcResponse] = []
+    with httpx.Client(timeout=timeout) as client, client.stream(
+        "GET", endpoint, headers={"Accept": "text/event-stream"}
+    ) as stream:
+        if stream.status_code != _HTTP_OK:
+            raise PermanentPreflightError(
+                f"legacy SSE connect failed with status '{stream.status_code}': {stream.text}"
+            )
+        lines = stream.iter_lines()
+        message_endpoint = _read_legacy_sse_message_endpoint(endpoint, lines)
+        for request in requests:
+            post_response = client.post(
+                message_endpoint,
+                json=request,
+                headers={"Accept": "application/json, text/event-stream"},
+            )
+            if post_response.status_code not in {_HTTP_OK, _HTTP_ACCEPTED}:
+                raise PermanentPreflightError(
+                    "legacy SSE POST failed with status "
+                    f"'{post_response.status_code}': {post_response.text}"
+                )
+            if "id" not in request:
+                continue
+            responses.append(_read_legacy_sse_jsonrpc_message(lines))
+    return responses
+
+
+def _read_legacy_sse_message_endpoint(endpoint: str, lines: Iterable[str]) -> str:
+    while True:
+        event, data = _read_sse_event(lines)
+        if event == "endpoint":
+            return _resolve_legacy_sse_message_endpoint(endpoint, data)
+
+
+
+def _resolve_legacy_sse_message_endpoint(endpoint: str, advertised_endpoint: str) -> str:
+    if not advertised_endpoint:
+        raise PermanentPreflightError("legacy SSE endpoint event missing data")
+    resolved = urlparse(urljoin(endpoint, advertised_endpoint))
+    endpoint_target = parse_http_endpoint(endpoint)
+    resolved_target = parse_http_endpoint(resolved.geturl())
+    if (
+        resolved_target.address != endpoint_target.address
+        or resolved_target.host_header != endpoint_target.host_header
+    ):
+        raise PermanentPreflightError(
+            "legacy SSE endpoint event advertised cross-origin message URL"
+        )
+    return resolved.geturl()
+
+
+
+def _read_legacy_sse_jsonrpc_message(lines: Iterable[str]) -> JsonRpcResponse:
+    while True:
+        event, data = _read_sse_event(lines)
+        if event == "message":
+            try:
+                payload = cast("object", json.loads(data))
+            except json.JSONDecodeError as exc:
+                raise PermanentPreflightError(
+                    f"failed to parse legacy SSE JSON-RPC payload: {exc}"
+                ) from exc
+            if not isinstance(payload, dict):
+                raise PermanentPreflightError("legacy SSE JSON-RPC payload is not an object")
+            return cast("JsonRpcResponse", payload)
+
+
+def _read_sse_event(lines: Iterable[str]) -> tuple[str | None, str]:
+    event_name: str | None = None
+    data_parts: list[str] = []
+    for line in lines:
+        if line == "":
+            if event_name is not None or data_parts:
+                return event_name, "\n".join(data_parts)
+            continue
+        if line.startswith(":"):
+            continue
+        if line.startswith("event:"):
+            event_name = line.partition(":")[2].strip() or None
+            continue
+        if line.startswith("data:"):
+            data_parts.append(line.partition(":")[2].strip())
+    raise PermanentPreflightError("legacy SSE stream ended before expected event")
+
+
 def run_preflight_loop(
     endpoint: str,
     timeout: timedelta,
@@ -289,6 +386,19 @@ def preflight_http_attempt(
     *,
     post_with_session_fn: HttpJsonRpcWithSessionFn | None = None,
 ) -> None:
+    if looks_like_legacy_sse_endpoint(endpoint):
+        responses = legacy_sse_jsonrpc_exchange(
+            endpoint,
+            (initialize_request(), initialized_notification(), tools_list_request()),
+            timeout_s=max(remaining.total_seconds(), 0.001),
+        )
+        initialize_response = responses[0]
+        tools_response = responses[-1]
+        ensure_no_preflight_error("HTTP MCP initialize", initialize_response.get("error"))
+        ensure_no_preflight_error("HTTP MCP tools/list", tools_response.get("error"))
+        tools = extract_preflight_tool_names(tools_response.get("result"), "HTTP MCP")
+        ensure_required_tools(required_tools, tools)
+        return
     post_fn = post_with_session_fn or post_http_jsonrpc_with_session
     initialize_response, session_id = post_fn(endpoint, target, initialize_request())
     ensure_no_preflight_error("HTTP MCP initialize", initialize_response.get("error"))

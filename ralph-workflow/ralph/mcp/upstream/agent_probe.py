@@ -27,8 +27,13 @@ import ralph.mcp.transport.opencode as _opencode_transport
 from ralph.config.enums import AgentTransport
 from ralph.mcp.protocol.startup import (
     PreflightError,
+    initialize_request,
+    initialized_notification,
+    legacy_sse_jsonrpc_exchange,
+    looks_like_legacy_sse_endpoint,
     parse_http_endpoint,
     post_http_jsonrpc_with_session,
+    tools_list_request,
 )
 from ralph.mcp.tools.names import RALPH_MCP_SERVER_NAME
 from ralph.mcp.upstream.client import make_upstream_client
@@ -245,37 +250,34 @@ def _probe_opencode(server: UpstreamMcpServer, workspace_path: Path | None) -> A
 
 
 def _http_handshake(endpoint: str) -> None:
+    if looks_like_legacy_sse_endpoint(endpoint):
+        responses = legacy_sse_jsonrpc_exchange(
+            endpoint,
+            (initialize_request(), initialized_notification(), tools_list_request()),
+            timeout_s=30.0,
+        )
+        initialize_response = responses[0]
+        err = initialize_response.get("error")
+        if err is not None:
+            raise AgentTransportProbeError(f"initialize failed: {err}")
+        tools_response = responses[-1]
+        err = tools_response.get("error")
+        if err is not None:
+            raise AgentTransportProbeError(f"tools/list failed: {err}")
+        return
     target = parse_http_endpoint(endpoint)
-    initialize_payload: dict[str, object] = {
-        "jsonrpc": "2.0",
-        "id": 1,
-        "method": "initialize",
-        "params": {
-            "protocolVersion": "2024-11-05",
-            "capabilities": {},
-            "clientInfo": {"name": "ralph-agent-probe", "version": "0"},
-        },
-    }
+    initialize_payload = initialize_request()
     initialize_response, session_id = post_http_jsonrpc_with_session(
         endpoint, target, initialize_payload
     )
     err = initialize_response.get("error")
     if err is not None:
         raise AgentTransportProbeError(f"initialize failed: {err}")
-    initialized_payload: dict[str, object] = {
-        "jsonrpc": "2.0",
-        "method": "notifications/initialized",
-        "params": {},
-    }
+    initialized_payload = initialized_notification()
     _, session_id = post_http_jsonrpc_with_session(
         endpoint, target, initialized_payload, session_id=session_id
     )
-    tools_payload: dict[str, object] = {
-        "jsonrpc": "2.0",
-        "id": 2,
-        "method": "tools/list",
-        "params": {},
-    }
+    tools_payload = tools_list_request()
     tools_response, _ = post_http_jsonrpc_with_session(
         endpoint, target, tools_payload, session_id=session_id
     )

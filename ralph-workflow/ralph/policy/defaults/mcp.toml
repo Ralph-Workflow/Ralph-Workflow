@@ -53,11 +53,18 @@
 # Docs MCP server running locally (arabold/docs-mcp-server).
 # Start with: npx -y docs-mcp-server  (listens on port 6280 by default).
 # See https://github.com/arabold/docs-mcp-server for setup instructions.
+# Ralph supports both the modern streamable HTTP endpoint (`/mcp`) and the
+# legacy SSE endpoint (`/sse`) used by some clients such as OpenCode configs.
+# Prefer `/mcp` when you control the config; `/sse` is supported for
+# compatibility.
 # @EXAMPLE-START
 # [mcp_servers.docs-mcp]
 # transport = "http"
-# url = "http://localhost:6280"
+# url = "http://localhost:6280/mcp"
 # @EXAMPLE-END
+#
+# Legacy-compatible alternative:
+# url = "http://localhost:6280/sse"
 
 # @EXAMPLE-START
 # [web_search]

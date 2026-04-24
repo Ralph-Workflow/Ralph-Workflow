@@ -44,6 +44,8 @@ from ralph.mcp.upstream.config import (
     load_upstream_mcp_servers,
 )
 
+_EXPECTED_DESCENDANT_LIVENESS_CHECKS = 2
+
 
 def _json_object(raw: str) -> dict[str, object]:
     return cast("dict[str, object]", json.loads(raw))
@@ -686,6 +688,89 @@ def test_invoke_agent_times_out_when_agent_goes_idle(
                 options=InvokeOptions(show_progress=False, idle_timeout_seconds=5),
             )
         )
+
+
+def test_invoke_agent_defers_idle_timeout_while_descendants_remain_active(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    prompt_file = tmp_path / "PROMPT.md"
+    prompt_file.write_text("hello", encoding="utf-8")
+    config = AgentConfig(cmd="opencode", output_flag="--json-stream")
+
+    class BlockingStdout:
+        def __iter__(self) -> BlockingStdout:
+            return self
+
+        def __next__(self) -> str:
+            threading.Event().wait(60)
+            raise StopIteration
+
+    class FakeProcess:
+        pid: int = 12345
+
+        def __init__(self) -> None:
+            self.stdout = BlockingStdout()
+            self.stderr = SimpleNamespace(read=lambda: "")
+            self.returncode: int | None = None
+            self.terminate_calls = 0
+
+        def __enter__(self) -> FakeProcess:
+            return self
+
+        def __exit__(
+            self,
+            _exc_type: object,
+            exc: object,
+            _tb: object,
+        ) -> Literal[False]:
+            return False
+
+        def wait(self, timeout: float | None = None) -> int | None:
+            del timeout
+            return self.returncode
+
+        def terminate(self) -> None:
+            self.terminate_calls += 1
+            self.returncode = -15
+
+        def kill(self) -> None:
+            self.returncode = -9
+
+        def poll(self) -> int | None:
+            return self.returncode
+
+    fake_process = FakeProcess()
+    monotonic_values = iter([0.0, 10.0, 10.0, 20.0, 20.0])
+    descendant_states = iter([True, False])
+    descendant_checks = {"count": 0}
+
+    monkeypatch.setattr("ralph.agents.invoke._IDLE_POLL_INTERVAL_SECONDS", 0.0)
+    monkeypatch.setattr("ralph.agents.invoke.time.monotonic", lambda: next(monotonic_values))
+    monkeypatch.setattr(
+        "ralph.agents.invoke.subprocess.Popen",
+        lambda *args, **kwargs: fake_process,
+    )
+
+    def _has_live_descendants(_self: object) -> bool:
+        descendant_checks["count"] += 1
+        return next(descendant_states)
+
+    monkeypatch.setattr(
+        "ralph.process.manager.ManagedProcess.has_live_descendants",
+        _has_live_descendants,
+        raising=False,
+    )
+
+    with pytest.raises(AgentInactivityTimeoutError, match="produced no output"):
+        list(
+            invoke_agent(
+                config,
+                str(prompt_file),
+                options=InvokeOptions(show_progress=False, idle_timeout_seconds=5),
+            )
+        )
+
+    assert descendant_checks["count"] == _EXPECTED_DESCENDANT_LIVENESS_CHECKS
 
 
 def test_invoke_agent_runs_subprocess_in_workspace_path(

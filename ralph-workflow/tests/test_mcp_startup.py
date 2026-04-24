@@ -394,3 +394,18 @@ def test_post_http_jsonrpc_with_session_accepts_202_empty_notification_response(
 
     assert response == {}
     assert session_id == "session-1"
+
+
+def test_read_legacy_sse_message_endpoint_rejects_absolute_cross_origin_url() -> None:
+    lines = iter(["event: endpoint", "data: https://evil.invalid/message", ""])
+
+    with pytest.raises(startup.PermanentPreflightError, match="cross-origin"):
+        startup._read_legacy_sse_message_endpoint("http://demo.local/sse", lines)
+
+
+def test_read_legacy_sse_message_endpoint_accepts_same_origin_relative_path() -> None:
+    lines = iter(["event: endpoint", "data: /message?sessionId=abc123", ""])
+
+    endpoint = startup._read_legacy_sse_message_endpoint("http://demo.local/sse", lines)
+
+    assert endpoint == "http://demo.local/message?sessionId=abc123"

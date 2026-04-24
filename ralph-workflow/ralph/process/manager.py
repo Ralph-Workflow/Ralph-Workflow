@@ -38,6 +38,8 @@ if TYPE_CHECKING:
         def children(self, recursive: bool = False) -> list[_PsutilProcessLike]: ...
         def terminate(self) -> None: ...
         def kill(self) -> None: ...
+        def is_running(self) -> bool: ...
+        def status(self) -> str: ...
 
     class _PsutilModuleLike(Protocol):
         NoSuchProcess: type[BaseException]
@@ -183,6 +185,28 @@ class ManagedProcess:
 
     def kill(self) -> None:
         self._manager._escalate_termination_sync(self._record, self._proc, 0.0)
+
+    def has_live_descendants(self) -> bool:
+        """Return True when this process currently has live descendants.
+
+        This is used by higher-level liveness checks so a quiet parent process is
+        not mistaken for an idle one while spawned child work is still running.
+        """
+        if psutil is None:
+            return False
+        try:
+            root = psutil.Process(self.pid)
+            descendants = root.children(recursive=True)
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            return False
+
+        for child in descendants:
+            try:
+                if child.is_running() and child.status() != "zombie":
+                    return True
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                continue
+        return False
 
     def __enter__(self) -> ManagedProcess:
         return self

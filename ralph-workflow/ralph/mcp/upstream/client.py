@@ -8,6 +8,12 @@ from typing import TYPE_CHECKING, Protocol, cast
 
 import httpx
 
+from ralph.mcp.protocol.startup import (
+    initialize_request,
+    initialized_notification,
+    legacy_sse_jsonrpc_exchange,
+    looks_like_legacy_sse_endpoint,
+)
 from ralph.mcp.upstream.models import UpstreamCallError, UpstreamTool
 from ralph.process.manager import get_process_manager
 
@@ -179,10 +185,17 @@ def _make_http_caller(url: str) -> JsonRpcCaller:
     def _call(method: str, params: JsonObject) -> JsonObject:
         payload_obj: dict[str, object] = {
             "jsonrpc": "2.0",
-            "id": 1,
+            "id": 2,
             "method": method,
             "params": params,
         }
+        if looks_like_legacy_sse_endpoint(url):
+            responses = legacy_sse_jsonrpc_exchange(
+                url,
+                (initialize_request(), initialized_notification(), payload_obj),
+                timeout_s=30.0,
+            )
+            return _json_rpc_result(responses[-1], f"'{url}'")
         try:
             response = httpx.post(
                 url,

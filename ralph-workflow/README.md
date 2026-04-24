@@ -82,6 +82,15 @@ ralph --regenerate-config
 
 The first-run welcome banner shows which files were created and checks whether your AI agents are on PATH.
 
+### Upstream MCP HTTP endpoint compatibility
+
+For custom upstream MCP servers in `.agent/mcp.toml`, Ralph now supports both current streamable HTTP endpoints and legacy HTTP+SSE endpoints under `transport = "http"`.
+
+- Prefer `http://host:port/mcp` for modern streamable HTTP servers.
+- Legacy endpoints such as docs-mcp `http://host:6280/sse` are also supported end to end.
+
+This matters because `/sse` is not just a different path — it uses the older MCP HTTP+SSE flow, where Ralph must open an SSE stream first and then POST JSON-RPC messages to the advertised message endpoint.
+
 ## Verification
 
 ```bash

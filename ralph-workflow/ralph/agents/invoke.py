@@ -95,6 +95,9 @@ if TYPE_CHECKING:
 
     from ralph.config.models import AgentConfig
 
+    class _HasLiveDescendants(Protocol):
+        def has_live_descendants(self) -> bool: ...
+
 # Runtime imports with graceful fallback when watchdog is not available
 try:
     from watchdog.events import FileSystemEventHandler as _WatchdogFileSystemEventHandlerClass
@@ -524,6 +527,21 @@ def _agent_command_name(config: AgentConfig) -> str:
     return config.cmd.split()[0]
 
 
+def _process_has_active_descendants(handle: ManagedProcess) -> bool:
+    """Return True when a quiet process still has live descendant work.
+
+    This prevents agent idle detection from killing a parent process that is
+    legitimately waiting on spawned child work.
+    """
+    candidate = cast("object", handle)
+    if not hasattr(candidate, "has_live_descendants"):
+        return False
+    try:
+        return bool(cast("_HasLiveDescendants", candidate).has_live_descendants())
+    except Exception:
+        return False
+
+
 def _read_lines_from_process(
     handle: ManagedProcess,
     *,
@@ -577,6 +595,9 @@ def _read_lines_from_process(
             idle_timeout_seconds is not None
             and time.monotonic() - last_activity >= idle_timeout_seconds
         ):
+            if _process_has_active_descendants(handle):
+                last_activity = time.monotonic()
+                continue
             handle.terminate(grace_period_s=0)
             raise _IdleStreamTimeoutError(idle_timeout_seconds)
 
