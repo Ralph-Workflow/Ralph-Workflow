@@ -45,7 +45,13 @@ def _base_snapshot(**kwargs: object) -> PipelineSnapshot:
 
 
 def test_plain_renderer_emits_single_activity_tag_across_snapshots() -> None:
-    """Two-snapshot sequence for the same tool call produces exactly one [activity] line."""
+    """Two-snapshot sequence for the same tool call produces exactly one [activity] line total.
+
+    Snapshot N has structured fields only (no last_activity_line).
+    Snapshot N+1 has the same structured fields PLUS last_activity_line.
+    The renderer must emit exactly ONE [activity] line across BOTH snapshots,
+    proving that the second snapshot is deduplicated against the first.
+    """
     renderer, buf = _make_renderer()
 
     # Snapshot N: structured fields only, no last_activity_line
@@ -56,15 +62,6 @@ def test_plain_renderer_emits_single_activity_tag_across_snapshots() -> None:
         last_activity_line=None,
     )
     renderer.emit_snapshot(snap_n)
-    out_n = buf.getvalue()
-
-    activity_count_n = out_n.count("[activity]")
-    assert activity_count_n == 1, f"Expected 1 [activity] in snapshot N, got {activity_count_n}"
-    assert "[activity-line]" not in out_n
-    assert "ralph.read_file" in out_n or "mcp__ralph__read_file" in out_n or "read_file" in out_n
-
-    buf.truncate(0)
-    buf.seek(0)
 
     # Snapshot N+1: same structured fields, now with last_activity_line
     activity_line = (
@@ -77,16 +74,18 @@ def test_plain_renderer_emits_single_activity_tag_across_snapshots() -> None:
         last_activity_line=activity_line,
     )
     renderer.emit_snapshot(snap_n1)
-    out_n1 = buf.getvalue()
 
-    activity_count_n1 = out_n1.count("[activity]")
-    assert activity_count_n1 == 1, (
-        f"Expected 1 [activity] in snapshot N+1, got {activity_count_n1}. Output:\n{out_n1}"
+    # Combined output from both snapshots - must have exactly ONE [activity] line
+    out = buf.getvalue()
+    activity_count = out.count("[activity]")
+    assert activity_count == 1, (
+        f"Expected exactly 1 [activity] line across both snapshots, got {activity_count}. "
+        f"Output:\n{out}"
     )
-    assert "[activity-line]" not in out_n1
-    # The free-form line must be preferred and contain the friendly tool name
-    assert "mcp__ralph__read_file" in out_n1 or "ralph.read_file" in out_n1
-    assert "ralph/pipeline/runner.py" in out_n1
+    assert "[activity-line]" not in out, f"[activity-line] must not appear:\n{out}"
+    # The free-form line must be preferred and contain the friendly tool name and path
+    assert "mcp__ralph__read_file" in out or "ralph.read_file" in out
+    assert "ralph/pipeline/runner.py" in out
 
 
 def test_activity_line_content_uses_last_activity_line_when_set() -> None:

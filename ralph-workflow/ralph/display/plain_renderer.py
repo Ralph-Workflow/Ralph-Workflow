@@ -1,4 +1,4 @@
-"""Plain line renderer for non-TTY environments and copy-paste-safe transcripts."""
+"""Plain line renderer for non-TY environments and copy-paste-safe transcripts."""
 
 from __future__ import annotations
 
@@ -232,6 +232,7 @@ class PlainLogRenderer:
                 str | None,
                 str | None,
                 str | None,
+                str | None,
             ]
             | None
         ) = None
@@ -331,47 +332,65 @@ class PlainLogRenderer:
             )
         return texts
 
+    def _build_activity_parts(self, snapshot: PipelineSnapshot) -> list[str]:
+        """Build activity key=value parts from structured fields."""
+        parts: list[str] = []
+        if snapshot.active_agent:
+            parts.append(f"agent={_sanitize(snapshot.active_agent)}")
+        if snapshot.active_tool:
+            parts.append(f"tool={_sanitize(snapshot.active_tool)}")
+        if snapshot.active_path:
+            parts.append(f"path={_sanitize(snapshot.active_path)}")
+        if snapshot.active_workdir:
+            parts.append(f"workdir={_sanitize(snapshot.active_workdir)}")
+        if snapshot.active_command:
+            parts.append(f"command={_sanitize(snapshot.active_command)}")
+        if snapshot.active_pattern:
+            parts.append(f"pattern={_sanitize(snapshot.active_pattern)}")
+        return parts
+
     def _activity_lines(self, snapshot: PipelineSnapshot, timestamp: str) -> list[Text]:
+        # Compute structured fields text for dedup and rendering
+        activity_parts = self._build_activity_parts(snapshot)
+        structured_text = " ".join(activity_parts) if activity_parts else None
+
+        # For signature deduplication: use structured_text when available as the
+        # canonical identifier for this activity. This ensures that a snapshot with
+        # just structured fields (snapshot N) and a later snapshot with the same
+        # structured fields PLUS last_activity_line (snapshot N+1) both produce
+        # the same signature, so the second snapshot is correctly deduplicated.
+        effective_activity_for_sig = structured_text
+
         activity_signature = (
             snapshot.active_agent,
             snapshot.active_tool,
             snapshot.active_path,
             snapshot.active_workdir,
             snapshot.active_command,
-            snapshot.last_activity_line,
+            snapshot.active_pattern,
+            effective_activity_for_sig,
         )
         if activity_signature == self._last_activity_signature:
             return []
         self._last_activity_signature = activity_signature
 
-        all_none = all(v is None for v in activity_signature)
-        if all_none and not self._emitted_empty_activity:
+        all_none = all(v is None for v in (
+            snapshot.active_agent, snapshot.active_tool, snapshot.active_path,
+            snapshot.active_workdir, snapshot.active_command, snapshot.active_pattern,
+        ))
+        if all_none and not snapshot.last_activity_line and not self._emitted_empty_activity:
             self._emitted_empty_activity = True
             return [self._build_line(timestamp, "INFO", "META", "[activity] (no active agent yet)")]
 
         # Single canonical [activity] line: prefer the richer free-form last_activity_line
-        # over structured fields. Only one line is emitted per snapshot diff.
+        # over structured fields for rendering. Only one line is emitted per snapshot diff.
         if snapshot.last_activity_line:
             line_text = _sanitize(snapshot.last_activity_line)
             if snapshot.active_path:
                 sanitized_path = _sanitize(snapshot.active_path)
                 if sanitized_path not in line_text:
                     line_text = f"{line_text} (path={sanitized_path})"
-            return [
-                self._build_line(timestamp, "INFO", "META", f"[activity] {line_text}")
-            ]
-
-        activity_parts: list[str] = []
-        if snapshot.active_agent:
-            activity_parts.append(f"agent={_sanitize(snapshot.active_agent)}")
-        if snapshot.active_tool:
-            activity_parts.append(f"tool={_sanitize(snapshot.active_tool)}")
-        if snapshot.active_path:
-            activity_parts.append(f"path={_sanitize(snapshot.active_path)}")
-        if snapshot.active_workdir:
-            activity_parts.append(f"workdir={_sanitize(snapshot.active_workdir)}")
-        if snapshot.active_command:
-            activity_parts.append(f"command={_sanitize(snapshot.active_command)}")
+            return [self._build_line(timestamp, "INFO", "META", f"[activity] {line_text}")]
 
         if activity_parts:
             return [

@@ -90,8 +90,8 @@ def test_parallel_display_tool_use_forwards_to_subscriber(tmp_path: Path) -> Non
     # (c) rendered output contains exactly one [activity] line from the snapshot
     out = buf.getvalue()
     activity_lines = [line for line in out.splitlines() if "[activity]" in line]
-    assert len(activity_lines) >= 1, (
-        f"Expected at least one [activity] line in output:\n{out}"
+    assert len(activity_lines) == 1, (
+        f"Expected exactly one [activity] line in output, got {len(activity_lines)}:\n{out}"
     )
     assert "[activity-line]" not in out, f"[activity-line] must not appear:\n{out}"
 
@@ -140,3 +140,28 @@ def test_tool_use_workdir_and_command_forwarded(tmp_path: Path) -> None:
     assert subscriber.last_tool_name == "mcp__ralph__exec"
     assert subscriber._active_command == "make verify"
     assert subscriber._active_workdir == "/project"
+
+
+def test_tool_use_pattern_forwarded(tmp_path: Path) -> None:
+    """pattern from tool input is forwarded to the subscriber."""
+    pd, _buf = _make_display(tmp_path)
+    subscriber = pd.subscriber
+
+    state = _make_mock_state()
+    subscriber.notify(state)
+
+    event = json.dumps(
+        {
+            "type": "content_block_start",
+            "content_block": {
+                "type": "tool_use",
+                "name": "mcp__ralph__read_file",
+                "input": {"path": "src", "pattern": "*.py"},
+            },
+        }
+    )
+    pd.activity_router.push_raw_line("u", event, provider=ActivityProvider.CLAUDE)
+
+    assert subscriber.last_tool_name == "mcp__ralph__read_file"
+    assert subscriber._active_pattern == "*.py"
+    assert subscriber.last_tool_path == "src"

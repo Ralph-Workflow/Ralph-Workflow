@@ -80,6 +80,7 @@ class PipelineSubscriber:
         self._active_path: str | None = None
         self._active_workdir: str | None = None
         self._active_command: str | None = None
+        self._active_pattern: str | None = None
         self._last_activity_line: str | None = None
         self._analysis_phase: str | None = None
         self._analysis_decision: str | None = None
@@ -102,7 +103,8 @@ class PipelineSubscriber:
 
     @property
     def plan_risks(self) -> tuple[str, ...]:
-        return self._plan_risks
+        with self._lock:
+            return self._plan_risks
 
     @property
     def last_state(self) -> PipelineState | None:
@@ -156,6 +158,7 @@ class PipelineSubscriber:
         path: str | None = None,
         workdir: str | None = None,
         command: str | None = None,
+        pattern: str | None = None,
     ) -> None:
         """Record a lightweight agent-activity event and push a fresh snapshot."""
         del unit_id
@@ -169,6 +172,8 @@ class PipelineSubscriber:
                 self._active_workdir = workdir
             if command:
                 self._active_command = command
+            if pattern:
+                self._active_pattern = pattern
             # Never store bare lifecycle markers as the last activity line —
             # they carry no user payload and would overwrite a richer previous value.
             if line and not is_bare_lifecycle(line):
@@ -308,6 +313,7 @@ class PipelineSubscriber:
             active_path=self._active_path,
             active_workdir=self._active_workdir,
             active_command=self._active_command,
+            active_pattern=self._active_pattern,
             last_activity_line=self._last_activity_line,
             analysis_phase=self._analysis_phase,
             analysis_decision=self._analysis_decision,

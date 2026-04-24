@@ -171,6 +171,7 @@ class ParallelDisplay:
             tool_path = str(input_dict.get("path", "") or "")
             tool_workdir = str(input_dict.get("workdir", "") or "")
             tool_command = str(input_dict.get("command", "") or "")
+            tool_pattern = str(input_dict.get("pattern", "") or "")
             with contextlib.suppress(Exception):
                 self._subscriber.record_activity(
                     unit_id=unit_id,
@@ -179,6 +180,7 @@ class ParallelDisplay:
                     path=tool_path or None,
                     workdir=tool_workdir or None,
                     command=tool_command or None,
+                    pattern=tool_pattern or None,
                 )
 
         overflow = self._get_overflow_log(unit_id)
