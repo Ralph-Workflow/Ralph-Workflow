@@ -281,7 +281,8 @@ class ClaudeParser:
     ) -> Iterator[AgentOutputLine]:
         # thinking_delta uses field key "thinking" (not "text")
         text = str(delta.get("thinking", delta.get("text", "")))
-        if not text:
+        # Skip whitespace-only deltas with no paragraph-boundary markers.
+        if not text.strip() and "\n\n" not in text:
             return
 
         index = obj.get("index")
@@ -350,7 +351,7 @@ class ClaudeParser:
         buffer = acc.buffer
         raw_lines = acc.raw_lines
 
-        if buffer:
+        if buffer.strip():
             raw_joined = "\n".join(raw_lines) if raw_lines else ""
             yield AgentOutputLine(
                 type="thinking",
@@ -374,7 +375,7 @@ class ClaudeParser:
 
         acc = self._fallback_thinking_accumulator
         self._fallback_thinking_accumulator = None
-        if acc.buffer:
+        if acc.buffer.strip():
             raw_joined = "\n".join(acc.raw_lines) if acc.raw_lines else ""
             yield AgentOutputLine(type="thinking", content=acc.buffer, raw=raw_joined)
 
@@ -493,7 +494,8 @@ class ClaudeParser:
 
             if block_type == "thinking":
                 text = str(block_obj.get("thinking", block_obj.get("text", "")))
-                if text:
+                # Skip whitespace-only thinking content — carries no user payload.
+                if text.strip():
                     yield AgentOutputLine(
                         type="thinking", content=text, raw=raw, metadata=block_obj
                     )

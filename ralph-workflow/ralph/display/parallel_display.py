@@ -5,10 +5,11 @@ from __future__ import annotations
 import contextlib
 import os
 import queue
+import re
 import time
 import uuid
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Final, Literal
 
 from ralph.display.activity_router import ActivityRouter
 from ralph.display.completion_summary import emit_completion_summary
@@ -36,6 +37,44 @@ _DEFAULT_SNAPSHOT_QUEUE_MAXSIZE: int = 64
 _MAX_OVERFLOW_FILE_BYTES: int = 50 * 1024 * 1024  # 50 MB guard
 _DROP_DEBOUNCE_SECONDS: float = 1.0
 _NEVER_WARNED: float = float("-inf")
+
+# Bare lifecycle token values — exact matches after stripping a provider prefix.
+# These carry no user payload and must never surface as display content.
+_BARE_LIFECYCLE_TOKENS: Final[frozenset[str]] = frozenset(
+    {
+        "message_delta",
+        "message_start",
+        "message_stop",
+        "content_block_start",
+        "content_block_stop",
+        "thinking",
+        "user",
+        "assistant",
+        "turn.started",
+        "turn.completed",
+        "thread.started",
+        "response.completed",
+        "done",
+        "complete",
+        "stop",
+    }
+)
+
+# Matches "system (status=<word>)" lifecycle lines.
+_SYSTEM_STATUS_RE: Final[re.Pattern[str]] = re.compile(r"^system \(status=\w+\)$")
+
+# Matches an optional "<provider>/<model>: " prefix on transcript lines.
+_PROVIDER_PREFIX_RE: Final[re.Pattern[str]] = re.compile(r"^[a-zA-Z][a-zA-Z0-9_.-]*/[^:]+: ")
+
+
+def _is_bare_lifecycle(line: str) -> bool:
+    """Return True when *line* is a bare lifecycle token with no user payload.
+
+    Strips an optional "<provider>/<model>: " prefix before checking.
+    Only exact token matches are suppressed; longer content strings pass through.
+    """
+    remainder = _PROVIDER_PREFIX_RE.sub("", line, count=1)
+    return remainder in _BARE_LIFECYCLE_TOKENS or bool(_SYSTEM_STATUS_RE.match(remainder))
 
 
 def _strip_markup(line: str) -> str:
@@ -205,9 +244,15 @@ class ParallelDisplay:
     def stop(self) -> None:
         self._plain_renderer.flush_blocks()
 
-    def emit(self, unit_id: str | None, line: str) -> None:
-        """Emit a raw line directly. Used as legacy fallback when router is not in play."""
-        self._plain_renderer.emit_log_line(unit_id or "activity", line)
+    def emit(self, unit_id: str, line: str) -> None:
+        """Emit a raw line directly to the plain renderer.
+
+        Bare lifecycle tokens (e.g. prefixed transcript noise) are silently
+        dropped before reaching the renderer.
+        """
+        if _is_bare_lifecycle(line):
+            return
+        self._plain_renderer.emit_log_line(unit_id, line)
 
     def emit_parsed_event(
         self,

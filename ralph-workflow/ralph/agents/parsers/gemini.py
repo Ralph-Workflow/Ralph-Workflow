@@ -26,6 +26,21 @@ class _TextAccumulator:
     raw_lines: list[str] = field(default_factory=list)
 
 
+# Structured JSON event types that carry only lifecycle metadata — suppress silently.
+_LIFECYCLE_EVENT_TYPES: Final[frozenset[str]] = frozenset(
+    {
+        "thread.started",
+        "turn.started",
+        "message_start",
+        "message_started",
+        "heartbeat",
+        "ping",
+        "ready",
+        "start",
+    }
+)
+
+
 class GeminiParser:
     """Parser for Gemini's SSE+JSON streaming output with robust delta accumulation.
 
@@ -86,6 +101,10 @@ class GeminiParser:
             AgentOutputLine instances.
         """
         event_type = str(obj.get("type", obj.get("event", "unknown")))
+
+        # Suppress lifecycle-only events that carry no user payload.
+        if event_type in _LIFECYCLE_EVENT_TYPES:
+            return
 
         # Handle stop events - flush accumulators first
         if event_type in self._STOP_EVENT_TYPES:

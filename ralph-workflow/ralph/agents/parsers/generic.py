@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Final, cast
 
 from ralph.agents.parsers.base import AgentOutputLine
 
@@ -28,6 +28,13 @@ class _TextAccumulator:
 # is treated as a streaming delta and accumulated.
 # Content at or above this threshold is treated as a standalone message.
 _SHORT_CONTENT_THRESHOLD = 200
+
+# Bare JSON event type values that carry no user payload — suppress silently.
+# Only exact matches after str.lower() on the "type" field are suppressed;
+# longer strings like "starting the analysis" are never touched.
+_LIFECYCLE_EVENT_TYPES: Final[frozenset[str]] = frozenset(
+    {"start", "begin", "ready", "thread.started", "turn.started", "message_start", "heartbeat"}
+)
 
 
 class GenericParser:
@@ -84,6 +91,11 @@ class GenericParser:
                 continue
 
             obj = cast("dict[str, object]", parsed)
+
+            # Suppress lifecycle-only events that carry no user payload.
+            type_val = str(obj.get("type", "")).lower()
+            if type_val in _LIFECYCLE_EVENT_TYPES:
+                continue
 
             # Check for stop/done markers first
             if self._is_stop(obj):
