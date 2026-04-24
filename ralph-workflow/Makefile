@@ -158,7 +158,7 @@ dead-code:
 	uv run --with vulture python -m vulture --config pyproject.toml
 
 docs:
-	uv run --with sphinx --with sphinx-rtd-theme --with myst-parser sphinx-build -b html docs/sphinx docs/sphinx/_build/html -W --keep-going
+	uv run --with sphinx --with sphinx-rtd-theme --with myst-parser sphinx-build -b html docs/sphinx docs/sphinx/build/html -W --keep-going
 
 # Development helpers
 run:

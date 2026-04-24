@@ -2130,7 +2130,11 @@ def _retryable_agent_failure_reason(
     if isinstance(exc, inactivity_error_type):
         return "an inactivity timeout"
 
-    details = "\n".join(_recovery_error_parts(exc)).lower()
+    raw_details = "\n".join(_recovery_error_parts(exc))
+    if "No conversation found with session ID:" in raw_details:
+        return "a stale session ID (fresh session required)"
+
+    details = raw_details.lower()
     for marker in _TRANSIENT_CONNECTIVITY_MARKERS:
         if marker in details:
             return "a transient connectivity failure"
