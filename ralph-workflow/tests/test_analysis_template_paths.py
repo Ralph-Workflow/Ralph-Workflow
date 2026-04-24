@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING
+from pathlib import Path
 from unittest.mock import patch
 
 import ralph.prompts.materialize as materialize_module
@@ -11,9 +11,6 @@ from ralph.policy.loader import load_policy
 from ralph.prompts.materialize import materialize_prompt_for_phase
 from ralph.prompts.types import SessionCapabilities, SessionDrain
 from ralph.workspace.memory import MemoryWorkspace
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 _TINY_PROMPT = "Implement the feature."
 _LARGE_CONTENT = "X" * (100 * 1024 + 1)
@@ -41,6 +38,11 @@ _MINIMAL_ISSUES = json.dumps(
         },
     }
 )
+
+_TEMPLATES_DIR = (
+    Path(__file__).parent.parent / "ralph" / "prompts" / "templates"
+)
+_MIN_EXPECTED_ANALYSIS_TEMPLATES = 2
 
 
 def _render_development_analysis(
@@ -137,3 +139,56 @@ class TestReviewAnalysisNeverInlinesPromptOrPlan:
         has_inline = "Minor issue." in rendered or "lint" in rendered
         has_path = "ISSUES.md" in rendered
         assert has_inline or has_path, "LATEST ARTIFACT must be present (inline or path ref)"
+
+
+class TestAnalysisTemplatesStructuralInvariants:
+    """Verify analysis template source never uses render_payload_section for PROMPT or PLAN.
+
+    These tests read the raw .jinja source files and assert structural invariants that
+    protect against regression — even if the rendered output happens to look correct.
+    """
+
+    def _analysis_templates(self) -> list[Path]:
+        return sorted(_TEMPLATES_DIR.glob("*_analysis.jinja"))
+
+    def test_at_least_two_analysis_templates_exist(self) -> None:
+        templates = self._analysis_templates()
+        count = len(templates)
+        assert count >= _MIN_EXPECTED_ANALYSIS_TEMPLATES, (
+            f"Expected >={_MIN_EXPECTED_ANALYSIS_TEMPLATES} *_analysis.jinja templates,"
+            f" found: {templates}"
+        )
+
+    def test_prompt_uses_render_payload_path_not_section(self) -> None:
+        for template in self._analysis_templates():
+            source = template.read_text(encoding="utf-8")
+            uses_path = (
+                "render_payload_path('PROMPT'" in source
+                or 'render_payload_path("PROMPT"' in source
+            )
+            assert uses_path, (
+                f"{template.name}: PROMPT must use render_payload_path"
+            )
+            assert "render_payload_section('PROMPT'" not in source, (
+                f"{template.name}: render_payload_section('PROMPT' is forbidden"
+            )
+            assert 'render_payload_section("PROMPT"' not in source, (
+                f'{template.name}: render_payload_section("PROMPT" is forbidden'
+            )
+
+    def test_plan_uses_render_payload_path_not_section(self) -> None:
+        for template in self._analysis_templates():
+            source = template.read_text(encoding="utf-8")
+            uses_path = (
+                "render_payload_path('PLAN'" in source
+                or 'render_payload_path("PLAN"' in source
+            )
+            assert uses_path, (
+                f"{template.name}: PLAN must use render_payload_path"
+            )
+            assert "render_payload_section('PLAN'" not in source, (
+                f"{template.name}: render_payload_section('PLAN' is forbidden"
+            )
+            assert 'render_payload_section("PLAN"' not in source, (
+                f'{template.name}: render_payload_section("PLAN" is forbidden'
+            )

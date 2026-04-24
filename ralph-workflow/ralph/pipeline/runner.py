@@ -683,6 +683,11 @@ def _run_pipeline_step(  # noqa: PLR0913
                     verbosity=verbosity,
                 )
 
+        if isinstance(effect, CommitEffect) and state.phase == "development_commit" and event in (
+            PipelineEvent.COMMIT_SUCCESS,
+            PipelineEvent.COMMIT_SKIPPED,
+        ):
+            clear_cycle_baseline(workspace_scope.root)
         next_state, _ = reducer_reduce(state, event, policy_bundle.pipeline)
         _notify_pipeline_subscriber(pipeline_subscriber, next_state)
         _save_checkpoint_or_log(
@@ -1097,6 +1102,8 @@ def run(  # noqa: PLR0912, PLR0913, PLR0915
             workspace_scope.root,
             subscriber=cast("PipelineSubscriber | None", effective_pipeline_subscriber),
         )
+        with suppress(Exception):
+            clear_cycle_baseline(workspace_scope.root)
     return exit_code
 
 

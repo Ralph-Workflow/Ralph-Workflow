@@ -7,9 +7,8 @@ from __future__ import annotations
 
 from typing import Literal, cast
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
-_ANALYSIS_STATUSES = frozenset({"completed", "request_changes", "failed"})
 _ISSUE_SEVERITIES = frozenset({"high", "medium", "low"})
 _ISSUES_STATUSES = frozenset({"issues_found", "no_issues"})
 
@@ -41,12 +40,33 @@ class FixResult(BaseModel):  # type: ignore[explicit-any]
 
 
 class AnalysisDecision(BaseModel):  # type: ignore[explicit-any]
+    """Validation model for analysis decision artifacts.
+
+    Enforces the documented artifact contract from format_docs/:
+    - status must be "completed", "request_changes", or "failed"
+    - what_came_up_short and how_to_fix are required when status is
+      "request_changes" or "failed", and must be omitted when "completed"
+    """
+
     model_config = ConfigDict(extra="forbid")
 
     status: Literal["completed", "request_changes", "failed"]
     summary: str = Field(..., min_length=1)
     what_came_up_short: list[str] | None = None
     how_to_fix: list[str] | None = None
+
+    @model_validator(mode="after")
+    def _check_remediation_fields(self) -> AnalysisDecision:
+        if self.status in ("request_changes", "failed"):
+            if not self.what_came_up_short:
+                raise ValueError(
+                    f'what_came_up_short is required when status is "{self.status}"'
+                )
+            if not self.how_to_fix:
+                raise ValueError(
+                    f'how_to_fix is required when status is "{self.status}"'
+                )
+        return self
 
 
 class TypedArtifactValidationError(ValueError):

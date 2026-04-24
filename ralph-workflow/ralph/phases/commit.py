@@ -17,9 +17,10 @@ from git import InvalidGitRepositoryError
 from loguru import logger
 
 from ralph.git.operations import GitOperationError, has_uncommitted_changes
+from ralph.mcp.artifacts.commit_message import COMMIT_MESSAGE_ARTIFACT
 from ralph.phases import PhaseContext, register_handler
 from ralph.pipeline.effects import Effect, InvokeAgentEffect, PreparePromptEffect
-from ralph.pipeline.events import PipelineEvent
+from ralph.pipeline.events import PhaseFailureEvent, PipelineEvent
 
 if TYPE_CHECKING:
     from ralph.pipeline.events import Event
@@ -59,6 +60,25 @@ def handle_development_commit(effect: Effect, ctx: PhaseContext) -> list[Event]:
         if _has_no_diff(ctx):
             logger.info("Development commit: no diff to commit — skipping")
             return [PipelineEvent.COMMIT_SKIPPED]
+        # Validate the commit_message artifact was submitted by the agent.
+        # The runner clears COMMIT_MESSAGE_ARTIFACT before agent invocation, so absence
+        # here means the agent completed without submitting the required artifact.
+        if not ctx.workspace.exists(COMMIT_MESSAGE_ARTIFACT):
+            logger.warning(
+                "Development commit agent completed without producing {}",
+                COMMIT_MESSAGE_ARTIFACT,
+            )
+            return [
+                PhaseFailureEvent(
+                    phase="development_commit",
+                    reason=(
+                        f"Missing commit_message artifact at {COMMIT_MESSAGE_ARTIFACT}; "
+                        "the agent must submit commit_message before declaring completion"
+                    ),
+                    recoverable=True,
+                    retry_in_session=True,
+                )
+            ]
         logger.info("Development commit: deferring commit execution to runner")
         return []
 
@@ -77,6 +97,25 @@ def handle_review_commit(effect: Effect, ctx: PhaseContext) -> list[Event]:
         if _has_no_diff(ctx):
             logger.info("Review commit: no diff to commit — skipping")
             return [PipelineEvent.COMMIT_SKIPPED]
+        # Validate the commit_message artifact was submitted by the agent.
+        # The runner clears COMMIT_MESSAGE_ARTIFACT before agent invocation, so absence
+        # here means the agent completed without submitting the required artifact.
+        if not ctx.workspace.exists(COMMIT_MESSAGE_ARTIFACT):
+            logger.warning(
+                "Review commit agent completed without producing {}",
+                COMMIT_MESSAGE_ARTIFACT,
+            )
+            return [
+                PhaseFailureEvent(
+                    phase="review_commit",
+                    reason=(
+                        f"Missing commit_message artifact at {COMMIT_MESSAGE_ARTIFACT}; "
+                        "the agent must submit commit_message before declaring completion"
+                    ),
+                    recoverable=True,
+                    retry_in_session=True,
+                )
+            ]
         logger.info("Review commit: deferring commit execution to runner")
         return []
 

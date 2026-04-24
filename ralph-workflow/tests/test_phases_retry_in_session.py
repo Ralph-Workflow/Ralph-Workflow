@@ -233,3 +233,29 @@ class TestPhaseHandlerRetryInSessionFlags:
         failure_events = [e for e in events if isinstance(e, PhaseFailureEvent)]
         assert len(failure_events) == 1
         assert failure_events[0].retry_in_session is True
+
+    def test_planning_missing_plan_artifact_is_retry_in_session(self) -> None:
+        from ralph.phases.planning import handle_planning  # noqa: PLC0415
+
+        effect = MagicMock(spec=InvokeAgentEffect)
+        ctx = MagicMock()
+        ctx.workspace.exists.return_value = False
+
+        events = handle_planning(effect, ctx)
+
+        failure_events = [e for e in events if isinstance(e, PhaseFailureEvent)]
+        assert len(failure_events) == 1
+        assert failure_events[0].retry_in_session is True
+
+    def test_fix_missing_fix_result_artifact_is_retry_in_session(self) -> None:
+        from ralph.phases.fix import handle_fix  # noqa: PLC0415
+
+        effect = MagicMock(spec=InvokeAgentEffect)
+        ctx = MagicMock()
+        ctx.workspace.exists.return_value = False
+
+        events = handle_fix(effect, ctx)
+
+        failure_events = [e for e in events if isinstance(e, PhaseFailureEvent)]
+        assert len(failure_events) == 1
+        assert failure_events[0].retry_in_session is True

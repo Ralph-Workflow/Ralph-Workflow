@@ -2534,6 +2534,15 @@ class TestStartCommitCapture:
     def test_run_pipeline_writes_start_commit_on_first_invocation(
         self, monkeypatch: MonkeyPatch, tmp_git_repo: Path
     ) -> None:
+        from ralph.pipeline.cycle_baseline import write_cycle_baseline as _real_write  # noqa: PLC0415, I001
+
+        written: list[tuple[str, str]] = []
+
+        def _spy_write(workspace_root, sha):
+            written.append((str(workspace_root), sha))
+            _real_write(workspace_root, sha)
+
+        monkeypatch.setattr(runner_module, "write_cycle_baseline", _spy_write)
         monkeypatch.setattr(
             runner_module,
             "resolve_workspace_scope",
@@ -2552,10 +2561,11 @@ class TestStartCommitCapture:
 
         runner_module.run(MagicMock(), initial_state=state, verbosity=Verbosity.QUIET)
 
-        start_commit_path = tmp_git_repo / ".agent" / "start_commit"
-        assert start_commit_path.exists(), ".agent/start_commit was not written by run()"
         expected_sha = GitRepo(tmp_git_repo).head.commit.hexsha
-        assert start_commit_path.read_text().strip() == expected_sha
+        assert written, ".agent/start_commit was not written during run()"
+        assert written[0][1] == expected_sha, (
+            f"Expected SHA {expected_sha!r}, got {written[0][1]!r}"
+        )
 
     def test_run_pipeline_does_not_overwrite_existing_start_commit(
         self, monkeypatch: MonkeyPatch, tmp_git_repo: Path
@@ -2563,6 +2573,8 @@ class TestStartCommitCapture:
         # Pre-write a sentinel SHA so run() sees the file as already present.
         # We make a second commit so the current HEAD differs from the sentinel,
         # ensuring a buggy "always-write" implementation would be caught.
+        from ralph.pipeline.cycle_baseline import write_cycle_baseline as _real_write  # noqa: PLC0415, I001
+
         repo = GitRepo(tmp_git_repo)
         sentinel_sha = repo.head.commit.hexsha
 
@@ -2575,6 +2587,13 @@ class TestStartCommitCapture:
         agent_dir.mkdir(parents=True, exist_ok=True)
         (agent_dir / "start_commit").write_text(sentinel_sha + "\n")
 
+        written: list[tuple[str, str]] = []
+
+        def _spy_write(workspace_root, sha):
+            written.append((str(workspace_root), sha))
+            _real_write(workspace_root, sha)
+
+        monkeypatch.setattr(runner_module, "write_cycle_baseline", _spy_write)
         monkeypatch.setattr(
             runner_module,
             "resolve_workspace_scope",
@@ -2593,8 +2612,7 @@ class TestStartCommitCapture:
 
         runner_module.run(MagicMock(), initial_state=state, verbosity=Verbosity.QUIET)
 
-        start_commit_path = tmp_git_repo / ".agent" / "start_commit"
-        assert start_commit_path.read_text().strip() == sentinel_sha, (
+        assert not written, (
             "run() must not overwrite an existing .agent/start_commit"
         )
 
@@ -2833,3 +2851,143 @@ def test_phase_start_banner_emitted_to_parallel_display_console(
     out = buf.getvalue()
     assert "Development" in out
     assert "iteration 1/3" in out
+
+
+class TestCycleBaselineLifecycle:
+    """Regression tests: cycle baseline is cleared at dev-cycle boundaries."""
+
+    def test_run_clears_baseline_at_teardown_on_success(
+        self, monkeypatch: MonkeyPatch, tmp_git_repo: Path
+    ) -> None:
+        from ralph.pipeline.cycle_baseline import write_cycle_baseline  # noqa: PLC0415
+
+        write_cycle_baseline(
+            tmp_git_repo, GitRepo(tmp_git_repo).head.commit.hexsha
+        )
+        assert (tmp_git_repo / ".agent" / "start_commit").exists()
+
+        monkeypatch.setattr(
+            runner_module,
+            "resolve_workspace_scope",
+            lambda: WorkspaceScope(tmp_git_repo),
+        )
+        monkeypatch.setattr(
+            runner_module,
+            "_determine_effect_from_policy",
+            lambda _state, _bundle, _scope: ExitSuccessEffect(),
+        )
+        monkeypatch.setattr(runner_module.ckpt, "save", MagicMock())
+        monkeypatch.setattr(runner_module, "console", MagicMock())
+
+        state = MagicMock()
+        state.phase = "planning"
+
+        runner_module.run(MagicMock(), initial_state=state, verbosity=Verbosity.QUIET)
+
+        assert not (tmp_git_repo / ".agent" / "start_commit").exists(), (
+            "run() must clear .agent/start_commit at pipeline teardown"
+        )
+
+    def test_run_clears_baseline_at_teardown_on_failure(
+        self, monkeypatch: MonkeyPatch, tmp_git_repo: Path
+    ) -> None:
+        from ralph.pipeline.cycle_baseline import write_cycle_baseline  # noqa: PLC0415
+
+        write_cycle_baseline(
+            tmp_git_repo, GitRepo(tmp_git_repo).head.commit.hexsha
+        )
+        baseline_path = tmp_git_repo / ".agent" / "start_commit"
+        assert baseline_path.exists()
+
+        cleared: list[bool] = []
+
+        def _spy_clear(workspace_root):
+            cleared.append(True)
+            baseline_path.unlink(missing_ok=True)
+
+        monkeypatch.setattr(
+            runner_module,
+            "resolve_workspace_scope",
+            lambda: WorkspaceScope(tmp_git_repo),
+        )
+        monkeypatch.setattr(
+            runner_module,
+            "_determine_effect_from_policy",
+            lambda _state, _bundle, _scope: ExitSuccessEffect(),
+        )
+        monkeypatch.setattr(runner_module.ckpt, "save", MagicMock())
+        monkeypatch.setattr(runner_module, "console", MagicMock())
+        monkeypatch.setattr(runner_module, "clear_cycle_baseline", _spy_clear)
+
+        state = MagicMock()
+        state.phase = "planning"
+
+        runner_module.run(MagicMock(), initial_state=state, verbosity=Verbosity.QUIET)
+
+        assert cleared, (
+            "run() must call clear_cycle_baseline in its finally/teardown block"
+        )
+
+    def test_run_pipeline_step_clears_baseline_after_development_commit_success(
+        self, monkeypatch: MonkeyPatch, tmp_git_repo: Path
+    ) -> None:
+        from ralph.pipeline.cycle_baseline import write_cycle_baseline  # noqa: PLC0415
+
+        write_cycle_baseline(
+            tmp_git_repo, GitRepo(tmp_git_repo).head.commit.hexsha
+        )
+        baseline_path = tmp_git_repo / ".agent" / "start_commit"
+        assert baseline_path.exists()
+
+        cleared: list[bool] = []
+
+        def _spy_clear(workspace_root):
+            cleared.append(True)
+            baseline_path.unlink(missing_ok=True)
+
+        commit_effect = CommitEffect(message_file="/dev/null")
+        call_count = {"n": 0}
+
+        def _fake_determine_effect(_state, _bundle, _scope):
+            call_count["n"] += 1
+            if call_count["n"] == 1:
+                return commit_effect
+            return ExitSuccessEffect()
+
+        state = MagicMock()
+        state.phase = "development_commit"
+        state.copy_with = MagicMock(return_value=state)
+        state.session_preserve_retry_pending = False
+
+        monkeypatch.setattr(
+            runner_module, "_determine_effect_from_policy", _fake_determine_effect
+        )
+        monkeypatch.setattr(
+            runner_module,
+            "resolve_workspace_scope",
+            lambda: WorkspaceScope(tmp_git_repo),
+        )
+        monkeypatch.setattr(runner_module.ckpt, "save", MagicMock())
+        monkeypatch.setattr(runner_module, "console", MagicMock())
+        monkeypatch.setattr(
+            runner_module,
+            "_execute_commit_effect",
+            lambda *_args, **_kwargs: PipelineEvent.COMMIT_SUCCESS,
+        )
+        monkeypatch.setattr(
+            runner_module,
+            "_materialize_agent_prompt_if_needed",
+            lambda *_args, **_kwargs: None,
+        )
+        monkeypatch.setattr(runner_module, "clear_cycle_baseline", _spy_clear)
+        monkeypatch.setattr(
+            runner_module,
+            "reducer_reduce",
+            lambda _state, _event, _policy: (state, []),
+        )
+
+        runner_module.run(MagicMock(), initial_state=state, verbosity=Verbosity.QUIET)
+
+        assert cleared, (
+            "clear_cycle_baseline must be called after development_commit COMMIT_SUCCESS"
+        )

@@ -473,3 +473,27 @@ def test_git_diff_cumulative_across_multiple_mid_cycle_commits(tmp_git_repo: Pat
     assert "file_a.py" in diff
     assert "file_b.py" in diff
     assert "file_c.py" in diff
+
+def test_git_diff_zero_mid_cycle_commits_only_uncommitted(tmp_git_repo: Path) -> None:
+    repo = GitRepo(tmp_git_repo)
+    baseline_sha = repo.head.commit.hexsha
+    write_cycle_baseline(tmp_git_repo, baseline_sha)
+    (tmp_git_repo / "uncommitted.py").write_text("u = 99\n")
+    repo.index.add(["uncommitted.py"])
+    diff = materialize_module._git_diff(tmp_git_repo)
+    assert "uncommitted.py" in diff
+
+
+def test_git_diff_many_mid_cycle_commits_no_uncommitted(tmp_git_repo: Path) -> None:
+    repo = GitRepo(tmp_git_repo)
+    baseline_sha = repo.head.commit.hexsha
+    (tmp_git_repo / "commit_only_a.py").write_text("a = 1\n")
+    repo.index.add(["commit_only_a.py"])
+    repo.index.commit("mid-cycle commit A")
+    (tmp_git_repo / "commit_only_b.py").write_text("b = 2\n")
+    repo.index.add(["commit_only_b.py"])
+    repo.index.commit("mid-cycle commit B")
+    write_cycle_baseline(tmp_git_repo, baseline_sha)
+    diff = materialize_module._git_diff(tmp_git_repo)
+    assert "commit_only_a.py" in diff
+    assert "commit_only_b.py" in diff
