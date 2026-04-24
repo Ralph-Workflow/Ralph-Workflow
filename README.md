@@ -1,19 +1,57 @@
 # Ralph Workflow
 
-> An opinionated AI agent orchestration framework.
+> An opinionated AI agent orchestration framework for dependable unattended execution.
 
-Ralph Workflow began as a take on the Ralph loop and has evolved into a configurable Python framework for opinionated AI agent orchestration. The maintained implementation lives in `ralph-workflow/` and centers on a configurable pipeline rather than a single fixed loop.
+Ralph Workflow is for developers who want more than an AI chat window.
+It is built for teams and power users who want AI to execute real software-delivery work with **explicit guardrails, verification, and configurable workflow policy**.
 
-At a high level, Ralph combines:
+Most AI dev tools are good at helping in the moment. Fewer are good at running unattended without constant supervision, hidden behavior, or hand-wavy success criteria. Ralph exists to make that workflow more dependable.
+
+Ralph Workflow began as a take on the Ralph loop and has evolved into a configurable Python framework for **bounded autonomy**: opinionated about process, configurable in how that process is expressed.
+
+## Why this helps
+
+Ralph is useful when you want AI to do more of the work **without asking you to trust it blindly**.
+
+It helps by giving you:
+
+- **A structured workflow instead of a loose prompt loop** — planning, development, review, fix, checkpoint, and completion are modeled explicitly.
+- **Configurable policy instead of hidden behavior** — phase routing, agent chains, MCP access, artifact expectations, and recovery rules are expressed in config.
+- **Verification instead of wishful success** — important phases are judged by evidence, artifacts, and real checks, not just a zero exit code.
+- **Recovery instead of brittle failure** — retries, fallover, checkpoint/resume, and offline-aware pause/resume are first-class parts of the runtime.
+- **A maintainable operating model instead of one-off magic** — you can adapt the workflow to your team without giving up an opinionated delivery structure.
+
+If you want AI to brainstorm in a sidebar, there are many tools for that.
+If you want AI to operate within a repeatable, inspectable engineering workflow, that is where Ralph fits.
+
+## What Ralph is
+
+The maintained product in this repository is the Python package in `ralph-workflow/`.
+It provides:
 
 - layered user-global and project-local configuration
 - policy-driven phase orchestration
 - agent chains with retry and fallover behavior
-- explicit artifact contracts and markdown handoffs
+- explicit artifact contracts and Markdown handoffs
 - MCP integration, including a standalone `ralph-mcp` runtime
-- recovery, checkpoint/resume, and optional parallel worktree execution
+- checkpoint/resume, recovery budgets, and optional parallel worktree execution
 
 This repository also keeps legacy design material from the retired Rust implementation, but the current product is the Python package in `ralph-workflow/`.
+
+## Who it is for
+
+Ralph is a good fit if you want:
+
+- unattended or semi-unattended AI execution with clear boundaries
+- configurable workflow behavior that still has a strong opinion about process
+- auditable handoffs, explicit artifacts, and predictable recovery behavior
+- a tool that fits disciplined engineering workflows rather than bypassing them
+
+Ralph is probably not the best fit if you want:
+
+- instant one-shot code generation with minimal setup
+- opaque agent behavior that "just does something"
+- a general-purpose chat assistant as the primary experience
 
 ## What is current
 
@@ -59,9 +97,9 @@ ralph
 
 `ralph --init` seeds the project-local framework files under `.agent/`, including workflow policy, agent-chain, MCP, and artifact configuration. On first run Ralph also bootstraps user-global config in `~/.config/` and can regenerate the defaults later if you want to reset the setup.
 
-## What Ralph orchestrates
+## How Ralph works
 
-Ralph still reflects the original Ralph-loop philosophy, but it now exposes that philosophy through configurable orchestration primitives instead of a single hard-coded prompt loop.
+Ralph still reflects the original Ralph-loop philosophy, but the maintained package exposes that philosophy through configurable orchestration primitives instead of a single fixed loop.
 
 ### 1. Layered configuration
 
@@ -88,7 +126,7 @@ The framework exposes configurable workflow structure instead of baking one rigi
 - parallel execution limits
 - per-drain artifact expectations
 
-That means you can tune how planning, development, review, fix, checkpoint, and completion behavior flow through the pipeline rather than treating the tool as one hard-coded loop.
+That means you can tune how planning, development, review, fix, checkpoint, and completion behavior flow through the pipeline rather than treating the tool as an opaque automation box.
 
 ### 3. Agent chains and fallback behavior
 
@@ -96,7 +134,7 @@ Agent execution is configurable through ordered chains and drain bindings. Ralph
 
 ### 4. Artifact contracts and handoffs
 
-Ralph treats important phase outputs as explicit artifacts, not just process exit codes. Structured JSON artifacts are used for orchestration logic, while mirrored Markdown handoffs keep the results readable for users and downstream agents.
+Ralph treats important phase outputs as explicit artifacts, not just process exit codes. Structured JSON artifacts are used for orchestration logic, while mirrored Markdown handoffs keep results readable for users and downstream agents.
 
 ### 5. MCP bridge and tool runtime
 
@@ -118,7 +156,7 @@ The maintained CLI covers more than a single run command. Depending on the workf
 - commit-message generation/apply/show plumbing
 - standalone MCP runtime via `ralph-mcp`
 
-For the installable package’s fuller command and behavior reference, see `ralph-workflow/README.md`.
+For the installable package's fuller command and behavior reference, see `ralph-workflow/README.md`.
 
 ## Verification
 
@@ -126,6 +164,8 @@ For the installable package’s fuller command and behavior reference, see `ralp
 cd ralph-workflow
 make verify
 ```
+
+Verification passes only when all required checks succeed with **no ERROR/WARNING diagnostics**.
 
 That runs the current Python verification path:
 
