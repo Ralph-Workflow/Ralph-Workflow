@@ -54,13 +54,8 @@ prompt_template = "fix_mode.jinja"
 drain = "development_analysis"
 artifact_type = "development_analysis_decision"
 decision_vocabulary = [
-    "continue",
-    "success",
     "completed",
-    "loopback",
-    "retry",
     "request_changes",
-    "fail",
     "failed",
 ]
 prompt_template = "development_analysis.jinja"
@@ -73,12 +68,9 @@ prompt_template = "development_analysis.jinja"
 drain = "review_analysis"
 artifact_type = "review_analysis_decision"
 decision_vocabulary = [
-    "approve",
-    "approved",
     "completed",
     "request_changes",
-    "reject",
-    "loopback",
+    "failed",
 ]
 prompt_template = "review_analysis.jinja"
 

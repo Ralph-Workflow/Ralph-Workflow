@@ -71,6 +71,7 @@ class RecoveryController:
         *,
         phase: str,
         agent: str | None,
+        retry_in_session: bool = False,
     ) -> tuple[PipelineState, list[Effect], FailureEvent]:
         """Classify a failure and compute the recovery transition.
 
@@ -79,6 +80,9 @@ class RecoveryController:
             raw_failure: The raw exception or string error message.
             phase: Pipeline phase where the failure occurred.
             agent: Current agent name, if known.
+            retry_in_session: When True and state carries a captured session ID,
+                the AGENT-category retry path sets session_preserve_retry_pending
+                so the runner reuses the agent session rather than cold-starting.
 
         Returns:
             Tuple of (new_state, effects, failure_event).
@@ -135,6 +139,8 @@ class RecoveryController:
             # Ambiguous retries track retry count (but no budget debit).
             new_state = new_state.copy_with(last_error=failure.reason)
             new_state = self._increment_chain_retries(new_state, phase)
+            if retry_in_session and new_state.last_agent_session_id:
+                new_state = new_state.copy_with(session_preserve_retry_pending=True)
             return new_state, [], failure_evt
 
         if failure.category == FailureCategory.USER_CONFIG:
@@ -156,7 +162,7 @@ class RecoveryController:
                 self._backoff_attempts[key] = self._backoff_attempts.get(key, 0) + 1
 
         new_state, effects = self._handle_agent_budget_exhaustion(
-            new_state, failure, phase, agent
+            new_state, failure, phase, agent, retry_in_session=retry_in_session
         )
 
         if self._cap.is_exceeded(new_state.recovery_cycle_count):
@@ -228,6 +234,8 @@ class RecoveryController:
         failure: ClassifiedFailure,
         phase: str,
         agent: str | None,
+        *,
+        retry_in_session: bool = False,
     ) -> tuple[PipelineState, list[Effect]]:
         """Handle agent failure with budget debit and chain progression."""
         from ralph.pipeline.state import AgentChainState, FalloverRecord  # noqa: PLC0415
@@ -254,14 +262,24 @@ class RecoveryController:
                         current_index=chain.current_index,
                         retries=chain.retries + 1,
                     )
-                    return state.with_phase_chain(phase, new_chain), []
+                    retried_state = state.with_phase_chain(phase, new_chain)
+                    if retry_in_session and state.last_agent_session_id:
+                        retried_state = retried_state.copy_with(
+                            session_preserve_retry_pending=True
+                        )
+                    return retried_state, []
             elif chain.retries < max_retries:
                 new_chain = AgentChainState(
                     agents=chain.agents,
                     current_index=chain.current_index,
                     retries=chain.retries + 1,
                 )
-                return state.with_phase_chain(phase, new_chain), []
+                retried_state = state.with_phase_chain(phase, new_chain)
+                if retry_in_session and state.last_agent_session_id:
+                    retried_state = retried_state.copy_with(
+                        session_preserve_retry_pending=True
+                    )
+                return retried_state, []
 
         if chain.current_index + 1 < len(chain.agents):
             next_agent = chain.agents[chain.current_index + 1]

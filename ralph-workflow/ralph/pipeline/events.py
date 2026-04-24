@@ -45,11 +45,16 @@ class PhaseFailureEvent:
         reason: Human-readable description of what caused the failure.
         recoverable: Whether this failure should trigger retry/fallback (True)
             or act as a terminal decision (False).
+        retry_in_session: When True and the agent's transport supports session
+            resume, the recovery path should preserve the active session ID so
+            the next retry continues in the same agent session rather than
+            starting from scratch. Only meaningful when recoverable=True.
     """
 
     phase: str
     reason: str
     recoverable: bool
+    retry_in_session: bool = False
 
 
 @dataclass(frozen=True)

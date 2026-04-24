@@ -205,6 +205,7 @@ def reduce(
                 event.reason or f"(no reason reported for phase={event.phase})",
                 phase=event.phase,
                 agent=state.current_agent(),
+                retry_in_session=event.retry_in_session,
             )
             return _restore_work_units(state, new_state), effects
         return _handle_phase_failure(state, event)
@@ -303,6 +304,8 @@ def _handle_phase_failure(
         # Inject the failure message into state.last_error so that
         # _handle_agent_failure preserves it when it transitions to PHASE_FAILED.
         state_with_error = state.copy_with(last_error=failure_message)
+        if event.retry_in_session and state.last_agent_session_id:
+            state_with_error = state_with_error.copy_with(session_preserve_retry_pending=True)
         return _handle_agent_failure(state_with_error)
     # Non-recoverable failures now enter centralized recovery instead of
     # terminating the process.

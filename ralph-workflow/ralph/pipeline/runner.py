@@ -61,6 +61,11 @@ from ralph.mcp.protocol.session import MCP_ENDPOINT_ENV, MCP_RUN_ID_ENV, AgentSe
 from ralph.mcp.server.lifecycle import shutdown_mcp_server, start_mcp_server
 from ralph.phases import PhaseContext, handle_phase
 from ralph.pipeline import checkpoint as ckpt
+from ralph.pipeline.cycle_baseline import (
+    clear_cycle_baseline,
+    read_cycle_baseline,
+    write_cycle_baseline,
+)
 from ralph.pipeline.effects import (
     CommitEffect,
     Effect,
@@ -150,6 +155,11 @@ class _RunEndDisplay(Protocol):
 
 
 console = Console()
+class _SessionCapture(threading.local):
+    session_id: str | None = None
+
+
+_session_capture_local = _SessionCapture()
 _VERBOSE_LOG_LEVEL = 2
 _AGENT_ACTIVITY_LOG_LEVEL = 1
 _MAX_METADATA_PARTS = 3
@@ -240,8 +250,7 @@ class _AgentRecoveryPlan:
 
 
 def _write_start_commit_if_absent(workspace_root: Path) -> None:
-    start_commit_path = workspace_root / ".agent" / "start_commit"
-    if start_commit_path.exists():
+    if read_cycle_baseline(workspace_root) is not None:
         return
     try:
         repo = Repo(workspace_root)
@@ -249,8 +258,17 @@ def _write_start_commit_if_absent(workspace_root: Path) -> None:
         return
     if not repo.head.is_valid():
         return
-    start_commit_path.parent.mkdir(parents=True, exist_ok=True)
-    start_commit_path.write_text(repo.head.commit.hexsha + "\n")
+    write_cycle_baseline(workspace_root, repo.head.commit.hexsha)
+
+
+def _set_last_captured_session_id(session_id: str | None) -> None:
+    _session_capture_local.session_id = session_id
+
+
+def _pop_last_captured_session_id() -> str | None:
+    session_id = _session_capture_local.session_id
+    _session_capture_local.session_id = None
+    return session_id
 
 
 def _validate_custom_mcp_servers(workspace_root: Path) -> int:
@@ -643,6 +661,15 @@ def _run_pipeline_step(  # noqa: PLR0913
                 verbosity=verbosity,
                 state=state,
             )
+            if isinstance(effect, InvokeAgentEffect):
+                captured_session_id = _pop_last_captured_session_id()
+                if captured_session_id:
+                    state = state.copy_with(
+                        last_agent_session_id=captured_session_id,
+                        session_preserve_retry_pending=False,
+                    )
+                elif state.session_preserve_retry_pending is True:
+                    state = state.copy_with(session_preserve_retry_pending=False)
             if isinstance(effect, InvokeAgentEffect) and event == PipelineEvent.AGENT_SUCCESS:
                 if recovery_controller is not None:
                     recovery_controller.reset_backoff(effect.phase, effect.agent_name)
@@ -656,6 +683,11 @@ def _run_pipeline_step(  # noqa: PLR0913
                     verbosity=verbosity,
                 )
 
+        if isinstance(effect, CommitEffect) and state.phase == "development_commit" and event in (
+            PipelineEvent.COMMIT_SUCCESS,
+            PipelineEvent.COMMIT_SKIPPED,
+        ):
+            clear_cycle_baseline(workspace_scope.root)
         next_state, _ = reducer_reduce(state, event, policy_bundle.pipeline)
         _notify_pipeline_subscriber(pipeline_subscriber, next_state)
         _save_checkpoint_or_log(
@@ -1070,6 +1102,8 @@ def run(  # noqa: PLR0912, PLR0913, PLR0915
             workspace_scope.root,
             subscriber=cast("PipelineSubscriber | None", effective_pipeline_subscriber),
         )
+        with suppress(Exception):
+            clear_cycle_baseline(workspace_scope.root)
     return exit_code
 
 
@@ -1353,6 +1387,9 @@ def _handle_inline_effect(  # noqa: PLR0913
         prepared_state = state
         if state.phase == PHASE_FAILED:
             prepared_state = _reset_phase_chain_for_recovery(state, effect.phase)
+            if effect.phase == PHASE_DEVELOPMENT:
+                clear_cycle_baseline(workspace_scope.root)
+                _write_start_commit_if_absent(workspace_scope.root)
         updated_state = prepared_state.copy_with(
             phase=effect.phase,
             iteration=effect.iteration,
@@ -1948,7 +1985,15 @@ def _execute_agent_effect(  # noqa: PLR0913
     )
 
     attempt_prompt_file = effect.prompt_file
-    resume_session_id: str | None = None
+    resume_session_id: str | None = (
+        state.last_agent_session_id
+        if (
+            state is not None
+            and state.session_preserve_retry_pending
+            and state.last_agent_session_id
+        )
+        else None
+    )
     max_recovery_attempts = _same_agent_recovery_attempts(config)
 
     for attempt_index in range(max_recovery_attempts + 1):
@@ -1996,6 +2041,7 @@ def _execute_agent_effect(  # noqa: PLR0913
                 )
             else:
                 raw_output.extend(str(line) for line in output_lines)
+            _set_last_captured_session_id(extract_session_id(raw_output))
             return PipelineEvent.AGENT_SUCCESS
         except deps.agent_invocation_error as exc:
             recovery_plan = _build_agent_recovery_plan(

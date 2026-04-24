@@ -11,6 +11,7 @@ from ralph.config.enums import (
     PHASE_PLANNING,
     PHASE_REVIEW_COMMIT,
 )
+from ralph.mcp.artifacts.commit_message import COMMIT_MESSAGE_ARTIFACT
 from ralph.phases import (
     HANDLERS,
     PhaseContext,
@@ -36,7 +37,23 @@ from ralph.pipeline.events import Event, PhaseFailureEvent, PipelineEvent
 from ralph.workspace.fs import FsWorkspace
 
 
-def _stub_context() -> PhaseContext:
+def _stub_context(*, commit_message_present: bool = False) -> PhaseContext:
+    workspace = MagicMock()
+    workspace.exists.side_effect = lambda path: (
+        commit_message_present and path == COMMIT_MESSAGE_ARTIFACT
+    )
+    return PhaseContext.construct(
+        workspace=workspace,
+        registry=object(),
+        chain_manager=object(),
+        pipeline_policy=object(),
+        agents_policy=object(),
+        artifacts_policy=object(),
+    )
+
+
+def _stub_context_no_exists() -> PhaseContext:
+    """Stub context where nothing exists."""
     workspace = MagicMock()
     workspace.exists.return_value = False
     return PhaseContext.construct(
@@ -49,8 +66,15 @@ def _stub_context() -> PhaseContext:
     )
 
 
-def _fs_context(root: Path) -> PhaseContext:
+def _fs_context(root: Path, *, write_commit_message: bool = False) -> PhaseContext:
     workspace = FsWorkspace(root)
+    if write_commit_message:
+        commit_msg_path = root / COMMIT_MESSAGE_ARTIFACT
+        commit_msg_path.parent.mkdir(parents=True, exist_ok=True)
+        commit_msg_path.write_text(
+            '{"type":"commit_message","content":{"subject":"feat: test commit"}}',
+            encoding="utf-8",
+        )
     return PhaseContext.construct(
         workspace=workspace,
         registry=object(),
@@ -62,7 +86,7 @@ def _fs_context(root: Path) -> PhaseContext:
 
 
 def test_development_commit_defers_to_runner_on_invoke_agent() -> None:
-    ctx = _stub_context()
+    ctx = _stub_context(commit_message_present=True)
     effect = InvokeAgentEffect(
         agent_name="dev",
         phase=PHASE_DEVELOPMENT_COMMIT,
@@ -73,7 +97,7 @@ def test_development_commit_defers_to_runner_on_invoke_agent() -> None:
 
 
 def test_development_commit_ignores_prepare_prompt_effect() -> None:
-    ctx = _stub_context()
+    ctx = _stub_context_no_exists()
     effect = PreparePromptEffect(
         phase=PHASE_DEVELOPMENT_COMMIT,
         iteration=1,
@@ -83,7 +107,7 @@ def test_development_commit_ignores_prepare_prompt_effect() -> None:
 
 
 def test_review_commit_defers_to_runner_on_invoke_agent() -> None:
-    ctx = _stub_context()
+    ctx = _stub_context(commit_message_present=True)
     effect = InvokeAgentEffect(
         agent_name="review",
         phase=PHASE_REVIEW_COMMIT,
@@ -106,7 +130,7 @@ def test_development_commit_emits_skip_when_no_diff(tmp_git_repo: Path) -> None:
 
 def test_development_commit_defers_when_diff_exists(tmp_git_repo: Path) -> None:
     (tmp_git_repo / "README.md").write_text("dirty")
-    ctx = _fs_context(tmp_git_repo)
+    ctx = _fs_context(tmp_git_repo, write_commit_message=True)
     effect = InvokeAgentEffect(
         agent_name="dev",
         phase=PHASE_DEVELOPMENT_COMMIT,
@@ -114,6 +138,26 @@ def test_development_commit_defers_when_diff_exists(tmp_git_repo: Path) -> None:
     )
 
     assert handle_development_commit(effect, ctx) == []
+
+
+def test_development_commit_missing_commit_message_emits_retry_in_session(
+    tmp_git_repo: Path,
+) -> None:
+    (tmp_git_repo / "README.md").write_text("dirty")
+    ctx = _fs_context(tmp_git_repo)  # no commit_message written
+    effect = InvokeAgentEffect(
+        agent_name="dev",
+        phase=PHASE_DEVELOPMENT_COMMIT,
+        prompt_file="dev-plan.txt",
+    )
+
+    result = handle_development_commit(effect, ctx)
+    assert len(result) == 1
+    event = result[0]
+    assert isinstance(event, PhaseFailureEvent)
+    assert event.phase == "development_commit"
+    assert event.recoverable is True
+    assert event.retry_in_session is True
 
 
 def test_review_commit_emits_skip_when_no_diff(tmp_git_repo: Path) -> None:
@@ -129,7 +173,7 @@ def test_review_commit_emits_skip_when_no_diff(tmp_git_repo: Path) -> None:
 
 def test_review_commit_defers_when_diff_exists(tmp_git_repo: Path) -> None:
     (tmp_git_repo / "README.md").write_text("dirty")
-    ctx = _fs_context(tmp_git_repo)
+    ctx = _fs_context(tmp_git_repo, write_commit_message=True)
     effect = InvokeAgentEffect(
         agent_name="review",
         phase=PHASE_REVIEW_COMMIT,
@@ -139,8 +183,28 @@ def test_review_commit_defers_when_diff_exists(tmp_git_repo: Path) -> None:
     assert handle_review_commit(effect, ctx) == []
 
 
+def test_review_commit_missing_commit_message_emits_retry_in_session(
+    tmp_git_repo: Path,
+) -> None:
+    (tmp_git_repo / "README.md").write_text("dirty")
+    ctx = _fs_context(tmp_git_repo)  # no commit_message written
+    effect = InvokeAgentEffect(
+        agent_name="review",
+        phase=PHASE_REVIEW_COMMIT,
+        prompt_file="review-plan.txt",
+    )
+
+    result = handle_review_commit(effect, ctx)
+    assert len(result) == 1
+    event = result[0]
+    assert isinstance(event, PhaseFailureEvent)
+    assert event.phase == "review_commit"
+    assert event.recoverable is True
+    assert event.retry_in_session is True
+
+
 def test_handle_commit_delegates_based_on_phase() -> None:
-    ctx = _stub_context()
+    ctx = _stub_context(commit_message_present=True)
     effect = InvokeAgentEffect(
         agent_name="dev",
         phase=PHASE_DEVELOPMENT_COMMIT,
@@ -151,7 +215,7 @@ def test_handle_commit_delegates_based_on_phase() -> None:
 
 
 def test_handle_commit_returns_empty_for_prepare_prompt_and_review_phase() -> None:
-    ctx = _stub_context()
+    ctx = _stub_context_no_exists()
     effect = PreparePromptEffect(
         phase=PHASE_REVIEW_COMMIT,
         iteration=2,
@@ -161,14 +225,14 @@ def test_handle_commit_returns_empty_for_prepare_prompt_and_review_phase() -> No
 
 
 def test_handle_commit_returns_empty_for_unknown_phase() -> None:
-    ctx = _stub_context()
+    ctx = _stub_context_no_exists()
     effect = PreparePromptEffect(phase="custom", iteration=0)
 
     assert handle_commit(effect, ctx) == []
 
 
 def test_handle_planning_prepares_prompt_and_advances() -> None:
-    ctx = _stub_context()
+    ctx = _stub_context_no_exists()
     effect = PreparePromptEffect(phase=PHASE_PLANNING, iteration=3)
 
     assert handle_planning(effect, ctx) == [PipelineEvent.PROMPT_PREPARED]
@@ -285,7 +349,7 @@ def test_handle_planning_prepare_prompt_clears_draft_when_final_plan_is_newer(
 
 
 def test_handle_planning_invokes_agent_successfully() -> None:
-    ctx = _stub_context()
+    ctx = _stub_context_no_exists()
     workspace = cast("MagicMock", ctx.workspace)
     workspace.exists.side_effect = lambda path: path == ".agent/artifacts/plan.json"
     workspace.read.return_value = (
@@ -306,8 +370,8 @@ def test_handle_planning_invokes_agent_successfully() -> None:
     assert handle_planning(effect, ctx) == [PipelineEvent.AGENT_SUCCESS]
 
 
-def test_handle_planning_missing_plan_artifact_returns_agent_failure() -> None:
-    ctx = _stub_context()
+def test_handle_planning_missing_plan_artifact_emits_retry_in_session() -> None:
+    ctx = _stub_context_no_exists()
     workspace = cast("MagicMock", ctx.workspace)
     workspace.exists.return_value = False
 
@@ -317,11 +381,17 @@ def test_handle_planning_missing_plan_artifact_returns_agent_failure() -> None:
         prompt_file="planning.txt",
     )
 
-    assert handle_planning(effect, ctx) == [PipelineEvent.AGENT_FAILURE]
+    result = handle_planning(effect, ctx)
+    assert len(result) == 1
+    event = result[0]
+    assert isinstance(event, PhaseFailureEvent)
+    assert event.phase == "planning"
+    assert event.recoverable is True
+    assert event.retry_in_session is True
 
 
-def test_handle_planning_invalid_work_units_returns_agent_failure() -> None:
-    ctx = _stub_context()
+def test_handle_planning_invalid_work_units_emits_retry_in_session() -> None:
+    ctx = _stub_context_no_exists()
     workspace = cast("MagicMock", ctx.workspace)
     workspace.exists.return_value = True
     workspace.read.return_value = (
@@ -335,11 +405,17 @@ def test_handle_planning_invalid_work_units_returns_agent_failure() -> None:
         prompt_file="planning.txt",
     )
 
-    assert handle_planning(effect, ctx) == [PipelineEvent.AGENT_FAILURE]
+    result = handle_planning(effect, ctx)
+    assert len(result) == 1
+    event = result[0]
+    assert isinstance(event, PhaseFailureEvent)
+    assert event.phase == "planning"
+    assert event.recoverable is True
+    assert event.retry_in_session is True
 
 
 def test_handle_planning_reads_plan_artifact_path_and_validates_schema() -> None:
-    ctx = _stub_context()
+    ctx = _stub_context_no_exists()
     workspace = cast("MagicMock", ctx.workspace)
     workspace.exists.side_effect = lambda path: path == ".agent/artifacts/plan.json"
     workspace.read.return_value = (
@@ -359,8 +435,8 @@ def test_handle_planning_reads_plan_artifact_path_and_validates_schema() -> None
     workspace.read.assert_called_once_with(".agent/artifacts/plan.json")
 
 
-def test_handle_planning_invalid_plan_schema_returns_agent_failure() -> None:
-    ctx = _stub_context()
+def test_handle_planning_invalid_plan_schema_emits_retry_in_session() -> None:
+    ctx = _stub_context_no_exists()
     workspace = cast("MagicMock", ctx.workspace)
     workspace.exists.side_effect = lambda path: path == ".agent/artifacts/plan.json"
     workspace.read.return_value = (
@@ -376,11 +452,17 @@ def test_handle_planning_invalid_plan_schema_returns_agent_failure() -> None:
         agent_name="planner", phase=PHASE_PLANNING, prompt_file="planning.txt"
     )
 
-    assert handle_planning(effect, ctx) == [PipelineEvent.AGENT_FAILURE]
+    result = handle_planning(effect, ctx)
+    assert len(result) == 1
+    event = result[0]
+    assert isinstance(event, PhaseFailureEvent)
+    assert event.phase == "planning"
+    assert event.recoverable is True
+    assert event.retry_in_session is True
 
 
 def test_handle_planning_accepts_noop_plan() -> None:
-    ctx = _stub_context()
+    ctx = _stub_context_no_exists()
     workspace = cast("MagicMock", ctx.workspace)
     workspace.exists.side_effect = lambda path: path == ".agent/artifacts/plan.json"
     workspace.read.return_value = '{"type":"plan","content":{"noop":true}}'
@@ -393,7 +475,7 @@ def test_handle_planning_accepts_noop_plan() -> None:
 
 
 def test_handle_development_reads_wrapped_plan_artifact_and_validates_schema() -> None:
-    ctx = _stub_context()
+    ctx = _stub_context_no_exists()
     workspace = cast("MagicMock", ctx.workspace)
     workspace.exists.side_effect = lambda path: path == ".agent/artifacts/plan.json"
     workspace.read.return_value = (
@@ -414,7 +496,7 @@ def test_handle_development_reads_wrapped_plan_artifact_and_validates_schema() -
 
 
 def test_handle_development_skips_when_plan_is_noop() -> None:
-    ctx = _stub_context()
+    ctx = _stub_context_no_exists()
     workspace = cast("MagicMock", ctx.workspace)
     workspace.exists.side_effect = lambda path: path == ".agent/artifacts/plan.json"
     workspace.read.return_value = '{"type":"plan","content":{"noop":true}}'
@@ -427,21 +509,28 @@ def test_handle_development_skips_when_plan_is_noop() -> None:
 
 
 def test_handle_planning_ignores_unrelated_effects() -> None:
-    ctx = _stub_context()
+    ctx = _stub_context_no_exists()
     effect = CommitEffect(message_file="message.txt")
 
     assert handle_planning(effect, ctx) == []
 
 
 def test_handle_fix_prepares_prompt_with_iteration_context() -> None:
-    ctx = _stub_context()
+    ctx = _stub_context_no_exists()
     effect = PreparePromptEffect(phase=PHASE_FIX, iteration=5)
 
     assert handle_fix(effect, ctx) == [PipelineEvent.PROMPT_PREPARED]
 
 
-def test_handle_fix_invokes_agent_successfully() -> None:
-    ctx = _stub_context()
+def test_handle_fix_invokes_agent_successfully(tmp_path: Path) -> None:
+    ctx = _fs_context(tmp_path)
+    artifact_dir = tmp_path / ".agent" / "artifacts"
+    artifact_dir.mkdir(parents=True, exist_ok=True)
+    (artifact_dir / "fix_result.json").write_text(
+        '{"type":"fix_result","content":{"summary":"Fixed the issue",'
+        '"files_changed":"- src/a.py"}}',
+        encoding="utf-8",
+    )
     effect = InvokeAgentEffect(
         agent_name="fixer",
         phase=PHASE_FIX,
@@ -451,26 +540,32 @@ def test_handle_fix_invokes_agent_successfully() -> None:
     assert handle_fix(effect, ctx) == [PipelineEvent.AGENT_SUCCESS]
 
 
-def test_handle_fix_succeeds_without_fix_result_artifact() -> None:
-    ctx = _stub_context()
+def test_handle_fix_missing_artifact_emits_retry_in_session() -> None:
+    ctx = _stub_context_no_exists()
     effect = InvokeAgentEffect(
         agent_name="fixer",
         phase=PHASE_FIX,
         prompt_file="fix.txt",
     )
 
-    assert handle_fix(effect, ctx) == [PipelineEvent.AGENT_SUCCESS]
+    result = handle_fix(effect, ctx)
+    assert len(result) == 1
+    event = result[0]
+    assert isinstance(event, PhaseFailureEvent)
+    assert event.phase == "fix"
+    assert event.recoverable is True
+    assert event.retry_in_session is True
 
 
 def test_handle_fix_ignores_unrelated_effects() -> None:
-    ctx = _stub_context()
+    ctx = _stub_context_no_exists()
     effect = CommitEffect(message_file="irrelevant.txt")
 
     assert handle_fix(effect, ctx) == []
 
 
 def test_handle_phase_dispatches_to_registered_handler() -> None:
-    ctx = _stub_context()
+    ctx = _stub_context_no_exists()
 
     @register_handler("custom_phase")
     def _custom_handler(effect: Effect, context: PhaseContext) -> list[Event]:
@@ -487,7 +582,7 @@ def test_handle_phase_dispatches_to_registered_handler() -> None:
 
 
 def test_handle_phase_raises_when_handler_missing() -> None:
-    ctx = _stub_context()
+    ctx = _stub_context_no_exists()
     effect = CommitEffect(message_file="missing.txt")
 
     with pytest.raises(PhaseHandlerNotFoundError) as excinfo:
@@ -498,7 +593,7 @@ def test_handle_phase_raises_when_handler_missing() -> None:
 
 def test_handle_development_analysis_skips_when_plan_is_noop() -> None:
     """handle_development_analysis must short-circuit with ANALYSIS_SUCCESS when plan is a no-op."""
-    ctx = _stub_context()
+    ctx = _stub_context_no_exists()
     workspace = cast("MagicMock", ctx.workspace)
     workspace.exists.side_effect = lambda path: path == ".agent/artifacts/plan.json"
     workspace.read.return_value = '{"type":"plan","content":{"noop":true}}'
@@ -515,7 +610,7 @@ def test_handle_development_analysis_skips_when_plan_is_noop() -> None:
 def test_handle_development_analysis_skips_empty_steps_plan() -> None:
     """handle_development_analysis must short-circuit when plan has empty steps
     AND empty work_units."""
-    ctx = _stub_context()
+    ctx = _stub_context_no_exists()
     workspace = cast("MagicMock", ctx.workspace)
     workspace.exists.side_effect = lambda path: path == ".agent/artifacts/plan.json"
     # is_noop_plan fallback requires BOTH steps AND work_units to be empty lists
@@ -537,7 +632,7 @@ def test_handle_dev_analysis_non_noop_missing_decision_is_recoverable() -> None:
     development_analysis_decision.json, Ralph should treat that as an incomplete
     agent attempt and route it through normal retry/fallback handling.
     """
-    ctx = _stub_context()
+    ctx = _stub_context_no_exists()
     workspace = cast("MagicMock", ctx.workspace)
     # plan.json exists but is NOT a no-op
     workspace.exists.side_effect = lambda path: path == ".agent/artifacts/plan.json"

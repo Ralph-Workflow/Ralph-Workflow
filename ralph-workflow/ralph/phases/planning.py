@@ -29,7 +29,7 @@ from ralph.mcp.artifacts.plan import (
 from ralph.phases import PhaseContext, register_handler
 from ralph.phases.artifacts import load_phase_artifact, unwrap_phase_artifact_content
 from ralph.pipeline.effects import Effect, InvokeAgentEffect, PreparePromptEffect
-from ralph.pipeline.events import Event, PipelineEvent
+from ralph.pipeline.events import Event, PhaseFailureEvent, PipelineEvent
 from ralph.pipeline.work_units import WorkUnitsValidationError, parse_work_units_from_artifact
 from ralph.policy.validation import PolicyValidationError, validate_work_units_against_policy
 
@@ -58,7 +58,17 @@ def handle_planning(effect: Effect, ctx: PhaseContext) -> list[Event]:
         planning_artifact_path = PLAN_ARTIFACT_PATH
         if not ctx.workspace.exists(planning_artifact_path):
             logger.warning("Planning agent completed without producing {}", planning_artifact_path)
-            return [PipelineEvent.AGENT_FAILURE]
+            return [
+                PhaseFailureEvent(
+                    phase="planning",
+                    reason=(
+                        f"Missing required plan artifact at {planning_artifact_path}; "
+                        "the agent must submit plan before declaring completion"
+                    ),
+                    recoverable=True,
+                    retry_in_session=True,
+                )
+            ]
 
         try:
             artifact_wrapper = load_phase_artifact(ctx.workspace, planning_artifact_path)
@@ -78,7 +88,14 @@ def handle_planning(effect: Effect, ctx: PhaseContext) -> list[Event]:
             PolicyValidationError,
         ) as exc:
             logger.warning("Invalid planning artifact: {}", exc)
-            return [PipelineEvent.AGENT_FAILURE]
+            return [
+                PhaseFailureEvent(
+                    phase="planning",
+                    reason=f"Invalid plan artifact: {exc}",
+                    recoverable=True,
+                    retry_in_session=True,
+                )
+            ]
 
         return [PipelineEvent.AGENT_SUCCESS]
 

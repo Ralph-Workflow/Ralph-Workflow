@@ -76,6 +76,28 @@ _KNOWN_ARTIFACT_TYPES = frozenset(
 )
 
 
+@dataclass(frozen=True)
+class _SubmitOp:
+    """An ordered submit step paired with its rollback action."""
+
+    run: Callable[[], object]
+    undo: Callable[[], None]
+
+
+def _execute_ops_with_rollback(ops: list[_SubmitOp]) -> None:
+    """Execute a sequence of ops; on failure roll back all completed ops in reverse."""
+    completed: list[_SubmitOp] = []
+    try:
+        for op in ops:
+            op.run()
+            completed.append(op)
+    except Exception:
+        for completed_op in reversed(completed):
+            with suppress(Exception):
+                completed_op.undo()
+        raise
+
+
 def _noop_now_iso() -> str:
     return DEFAULT_ARTIFACT_PERSISTENCE.now_iso()
 
@@ -110,28 +132,15 @@ def handle_submit_artifact(
     )
 
     artifact_dir = _artifact_dir(workspace)
-    try:
-        _run_pre_submit_side_effect(artifact_type, workspace, parsed_content, deps=resolved_deps)
-        submit_artifact(
-            artifact_dir,
-            name=artifact_type,
-            artifact_type=artifact_type,
-            content=parsed_content,
-            options=ArtifactSubmitOptions(
-                overwrite=True,
-                persistence=resolved_deps.artifact_persistence,
-            ),
-        )
-        _run_post_submit_side_effect(
+    _execute_ops_with_rollback(
+        _submit_ops_for_artifact(
             artifact_type,
-            workspace,
+            _workspace_root(workspace),
             artifact_dir,
             parsed_content,
             deps=resolved_deps,
         )
-    except Exception:
-        _rollback_submit_side_effect(artifact_type, workspace, artifact_dir, deps=resolved_deps)
-        raise
+    )
 
     return ToolResult(
         content=[ToolContent.text_content(f"Artifact submitted: {artifact_type}")],
@@ -215,31 +224,18 @@ def handle_finalize_plan(
     except PlanArtifactValidationError as exc:
         raise InvalidParamsError(str(exc)) from exc
 
-    try:
-        # Keep the structured JSON artifact for Ralph's validation/routing, but
-        # always mirror agent/user-consumed artifacts into Markdown handoffs so
-        # downstream phases never need to read raw JSON directly.
-        submit_artifact(
-            artifact_dir,
-            name=PLAN_ARTIFACT_TYPE,
-            artifact_type=PLAN_ARTIFACT_TYPE,
-            content=normalized,
-            options=ArtifactSubmitOptions(
-                overwrite=True,
-                persistence=resolved_deps.artifact_persistence,
-            ),
-        )
-        sync_markdown_handoff(
-            _workspace_root(workspace),
+    # Keep the structured JSON artifact for Ralph's validation/routing, but
+    # always mirror agent/user-consumed artifacts into Markdown handoffs so
+    # downstream phases never need to read raw JSON directly.
+    _execute_ops_with_rollback(
+        _submit_ops_for_artifact(
             PLAN_ARTIFACT_TYPE,
+            _workspace_root(workspace),
+            artifact_dir,
             normalized,
-            backend=resolved_deps.backend,
+            deps=resolved_deps,
         )
-        delete_plan_draft(artifact_dir, backend=resolved_deps.backend)
-    except Exception:
-        with suppress(Exception):
-            delete_artifact(artifact_dir, PLAN_ARTIFACT_TYPE, backend=resolved_deps.backend)
-        raise
+    )
 
     return ToolResult(
         content=[ToolContent.text_content(f"Artifact submitted: {PLAN_ARTIFACT_TYPE}")],
@@ -659,67 +655,65 @@ def _raise_format_doc_error(
     raise InvalidParamsError(msg) from original_exc
 
 
-def _run_pre_submit_side_effect(
+def _submit_ops_for_artifact(
     artifact_type: str,
-    workspace: WorkspaceLike,
-    parsed_content: dict[str, object],
-    *,
-    deps: ArtifactHandlerDeps,
-) -> None:
-    if artifact_type == COMMIT_MESSAGE_TYPE:
-        write_commit_message_artifact(
-            _workspace_root(workspace),
-            parsed_content,
-            backend=deps.backend,
-            now_iso=deps.now_iso,
-        )
-
-
-def _rollback_submit_side_effect(
-    artifact_type: str,
-    workspace: WorkspaceLike,
-    artifact_dir: Path,
-    *,
-    deps: ArtifactHandlerDeps,
-) -> None:
-    if artifact_type == COMMIT_MESSAGE_TYPE:
-        delete_commit_message_artifacts(
-            _workspace_root(workspace), backend=deps.backend
-        )
-        with suppress(Exception):
-            delete_artifact(artifact_dir, artifact_type, backend=deps.backend)
-        return
-
-    with suppress(Exception):
-        delete_markdown_handoff(
-            _workspace_root(workspace), artifact_type, backend=deps.backend
-        )
-    with suppress(Exception):
-        delete_artifact(artifact_dir, artifact_type, backend=deps.backend)
-
-
-def _run_post_submit_side_effect(
-    artifact_type: str,
-    workspace: WorkspaceLike,
+    workspace_root: Path,
     artifact_dir: Path,
     parsed_content: dict[str, object],
     *,
     deps: ArtifactHandlerDeps,
-) -> None:
-    sync_markdown_handoff(
-        _workspace_root(workspace),
-        artifact_type,
-        parsed_content,
-        backend=deps.backend,
-    )
+) -> list[_SubmitOp]:
+    """Return the ordered (op, undo) pairs for a complete artifact submit."""
+    ops: list[_SubmitOp] = []
+
+    if artifact_type == COMMIT_MESSAGE_TYPE:
+        _content = parsed_content
+        ops.append(_SubmitOp(
+            run=lambda: write_commit_message_artifact(
+                workspace_root, _content, backend=deps.backend, now_iso=deps.now_iso
+            ),
+            undo=lambda: delete_commit_message_artifacts(workspace_root, backend=deps.backend),
+        ))
+
+    _options = ArtifactSubmitOptions(overwrite=True, persistence=deps.artifact_persistence)
+    _at = artifact_type
+    _content2 = parsed_content
+    ops.append(_SubmitOp(
+        run=lambda: submit_artifact(
+            artifact_dir,
+            name=_at,
+            artifact_type=_at,
+            content=_content2,
+            options=_options,
+        ),
+        undo=lambda: delete_artifact(artifact_dir, _at, backend=deps.backend),
+    ))
+
+    _content3 = parsed_content
+    ops.append(_SubmitOp(
+        run=lambda: sync_markdown_handoff(
+            workspace_root, _at, _content3, backend=deps.backend
+        ),
+        undo=lambda: delete_markdown_handoff(workspace_root, _at, backend=deps.backend),
+    ))
+
     if artifact_type == PLAN_ARTIFACT_TYPE:
-        # Atomic full-plan submission supersedes any partial draft.
-        delete_plan_draft(artifact_dir, backend=deps.backend)
+        ops.append(_SubmitOp(
+            run=lambda: delete_plan_draft(artifact_dir, backend=deps.backend),
+            undo=lambda: None,
+        ))
+
+    return ops
+
+
 
 
 __all__ = [
     "ArtifactHandlerDeps",
+    "_SubmitOp",
+    "_execute_ops_with_rollback",
     "_prepare_artifact_submission",
+    "_submit_ops_for_artifact",
     "handle_discard_plan_draft",
     "handle_finalize_plan",
     "handle_get_plan_draft",

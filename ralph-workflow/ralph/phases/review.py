@@ -129,6 +129,7 @@ def handle_review(effect: Effect, ctx: PhaseContext) -> list[Event]:
                     phase="review",
                     reason=f"Missing/invalid issues artifact: {exc}",
                     recoverable=True,
+                    retry_in_session=True,
                 )
             ]
 
@@ -170,6 +171,7 @@ def handle_review_analysis(effect: Effect, ctx: PhaseContext) -> list[Event]:
                         "review_analysis_decision before declaring completion"
                     ),
                     recoverable=True,
+                    retry_in_session=True,
                 )
             ]
 

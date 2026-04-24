@@ -137,14 +137,14 @@ class TestHandleDevelopmentAnalysis:
         result = handle_development_analysis(effect, ctx)
         assert result == [PipelineEvent.ANALYSIS_SUCCESS]
 
-    def test_complete_decision_returns_analysis_success(self) -> None:
+    def test_unknown_status_returns_analysis_loopback(self) -> None:
         effect = self._mock_invoke_effect()
         ctx = self._make_context()
         ctx.workspace.exists.return_value = True
-        ctx.workspace.read.return_value = '{"status": "unknown"}'  # maps to COMPLETE
+        ctx.workspace.read.return_value = '{"status": "unknown"}'
 
         result = handle_development_analysis(effect, ctx)
-        assert result == [PipelineEvent.ANALYSIS_SUCCESS]
+        assert result == [PipelineEvent.ANALYSIS_LOOPBACK]
 
     def test_revise_decision_returns_analysis_loopback(self) -> None:
         effect = self._mock_invoke_effect()

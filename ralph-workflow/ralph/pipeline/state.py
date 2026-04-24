@@ -205,6 +205,11 @@ class PipelineState(BaseModel):  # type: ignore[explicit-any]
     recovery_cycle_cap: int = Field(default=200, ge=1)
     # Runner-managed delay: not persisted to checkpoint; consumed and cleared by the main loop
     last_retry_delay_ms: int = 0
+    # Session-preserving retry fields — default to safe values so legacy checkpoints load cleanly.
+    # last_agent_session_id: session identifier from the most recent successful agent invocation.
+    # session_preserve_retry_pending: set when the next retry should resume the captured session.
+    last_agent_session_id: str | None = None
+    session_preserve_retry_pending: bool = False
 
     @field_validator("work_units", mode="before")
     @classmethod
