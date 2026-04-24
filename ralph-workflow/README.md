@@ -47,10 +47,12 @@ the current checkout instead of a stale deleted worktree.
 
 ```bash
 cd /path/to/your/project
-ralph --init feature-spec
+ralph --init default
 # edit PROMPT.md
 ralph
 ```
+
+The value after `--init` is a label; today every label generates the same starter PROMPT.md and set of config files.
 
 ### First-run configuration
 
@@ -81,6 +83,12 @@ ralph --regenerate-config
 ```
 
 The first-run welcome banner shows which files were created and checks whether your AI agents are on PATH.
+
+The first-run panel now also:
+
+- Displays the Ralph ASCII banner above the setup panel.
+- Recommends running `ralph --diagnose` to validate agents, MCP servers, and config before the first pipeline run.
+- Lists install URLs next to any known missing agent (`claude`, `opencode`) so you know where to get them.
 
 ### Upstream MCP HTTP endpoint compatibility
 

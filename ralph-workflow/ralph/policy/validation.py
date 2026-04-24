@@ -320,7 +320,8 @@ def validate_required_inputs(workspace_scope: WorkspaceScope) -> None:
     if not prompt_path.exists():
         raise PolicyValidationError(
             f"Required input file not found: {prompt_path}. "
-            "The pipeline requires PROMPT.md to exist in the workspace root."
+            "Run `ralph --init` to scaffold PROMPT.md and project config files, "
+            "then edit PROMPT.md with the task you want Ralph to run."
         )
     if not prompt_path.is_file():
         raise PolicyValidationError(
@@ -329,4 +330,13 @@ def validate_required_inputs(workspace_scope: WorkspaceScope) -> None:
     if not prompt_path.stat().st_size > 0:
         raise PolicyValidationError(
             f"Required input file is empty: {prompt_path}"
+        )
+    from ralph.cli.commands.init import STARTER_PROMPT_SENTINEL  # noqa: PLC0415
+
+    content = prompt_path.read_text(encoding="utf-8")
+    if STARTER_PROMPT_SENTINEL in content:
+        raise PolicyValidationError(
+            f"PROMPT.md at {prompt_path} is still the `ralph --init` starter template. "
+            "Edit it to describe YOUR task (remove the `<!-- ralph:starter-prompt ... -->` "
+            "marker at the top once you have replaced the example content), then re-run `ralph`."
         )

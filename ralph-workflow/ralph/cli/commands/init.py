@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import shutil
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from rich.console import Console
 from rich.text import Text
@@ -21,6 +22,13 @@ from ralph.config.bootstrap import (
 )
 from ralph.config.welcome import emit_first_run_welcome
 
+if TYPE_CHECKING:
+    from ralph.agents.registry import AgentRegistry
+
+STARTER_PROMPT_SENTINEL = (
+    "<!-- ralph:starter-prompt: edit this file before running `ralph` -->"
+)
+
 console = Console()
 
 
@@ -31,9 +39,8 @@ def init_command(
     """Initialize Ralph in the current working directory.
 
     Args:
-        template: Optional template name (e.g. 'starter-template').
-              Selects which PROMPT.md content to generate.
-              Currently all templates use the same starter content.
+        template: Optional template name (e.g. 'default').
+              All labels currently produce the same starter content.
         config_path: Optional path for config file.
     """
     target = Path.cwd()
@@ -43,14 +50,27 @@ def init_command(
     prompt_path = target / "PROMPT.md"
     if not prompt_path.exists():
         prompt_path.write_text(
-            "# Implementation Prompt\n\n"
-            "Describe what you want to implement here.\n\n"
-            "## Requirements\n\n"
-            "- Requirement 1\n"
-            "- Requirement 2\n\n"
-            "## Acceptance Criteria\n\n"
-            "- Criterion 1\n"
-            "- Criterion 2\n",
+            STARTER_PROMPT_SENTINEL
+            + "\n\n"
+            "# Goal\n\n"
+            "Add a /health endpoint to the example API that returns HTTP 200 with a JSON body"
+            ' `{"status": "ok"}`.\n'
+            "This endpoint should be unauthenticated and return a Content-Type of"
+            " application/json.\n"
+            "It is used by load balancers and uptime monitors to verify the service is"
+            " running.\n\n"
+            "## Context\n\n"
+            "- Main API entry point: `src/api/app.py`\n"
+            "- Existing route examples: `src/api/routes/`\n"
+            "- Dependencies and external services: see `README.md`\n\n"
+            "## Acceptance criteria\n\n"
+            "- GET /health returns HTTP 200\n"
+            "- Response body is valid JSON with `status` == `ok`\n"
+            "- A new test in `tests/` covers the new endpoint\n\n"
+            "## Notes\n\n"
+            "- Ralph reads this file as PROMPT.md from the workspace root —"
+            " edit it to describe YOUR task before re-running `ralph`.\n"
+            "- Keep the prompt scoped — one user-visible outcome per run works best.\n",
             encoding="utf-8",
         )
         console.print(_status_text("Created", str(prompt_path), "green"))
@@ -72,10 +92,23 @@ def init_command(
         # Show welcome banner if anything was created/regenerated
         created_or_regenerated = [r for r in all_results if r.action in {"created", "regenerated"}]
         if created_or_regenerated:
-            emit_first_run_welcome(console, all_results)
+            registry = _try_load_registry()
+            emit_first_run_welcome(console, all_results, agent_registry=registry)
         else:
             # All skipped - show fallback next steps
             _print_fallback_next_steps(target, template)
+
+
+def _try_load_registry() -> AgentRegistry | None:
+    """Attempt to load the agent registry; returns None on failure."""
+    from ralph.agents.registry import AgentRegistry  # noqa: PLC0415
+    from ralph.config.loader import load_config  # noqa: PLC0415
+
+    try:
+        cfg = load_config(None, {})
+        return AgentRegistry.from_config(cfg)
+    except Exception:
+        return None
 
 
 def _print_fallback_next_steps(target: Path, template: str | None) -> None:
@@ -98,7 +131,11 @@ def _print_fallback_next_steps(target: Path, template: str | None) -> None:
         " pipeline in [cyan].agent/pipeline.toml[/cyan],"
         " and artifacts in [cyan].agent/artifacts.toml[/cyan]"
     )
-    console.print("  5. Run [cyan]ralph[/cyan] to start the pipeline")
+    console.print(
+        "  5. (Optional) Run [cyan]ralph --diagnose[/cyan] to verify agents,"
+        " MCP servers, and config"
+    )
+    console.print("  6. Run [cyan]ralph[/cyan] to start the pipeline")
     console.print("\n[dim]To reset configs later: [cyan]ralph --regenerate-config[/cyan][/dim]")
 
 
