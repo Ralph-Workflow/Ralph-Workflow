@@ -3,15 +3,24 @@
 from __future__ import annotations
 
 import shutil
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Literal, Protocol, runtime_checkable
 
 from rich.console import Group
 from rich.panel import Panel
 from rich.text import Text
 
+from ralph.banner import show_banner
+
 if TYPE_CHECKING:
     from ralph.config.bootstrap import BootstrapResult
     from ralph.config.models import AgentConfig
+
+_KNOWN_AGENT_INSTALL_URLS: dict[str, str] = {
+    "claude": "https://docs.claude.com/claude-code",
+    "opencode": "https://opencode.ai",
+}
+
+_AgentStatus = Literal["available", "missing_on_path", "no_cmd"]
 
 
 @runtime_checkable
@@ -22,7 +31,9 @@ class _HasListAgents(Protocol):
         ...
 
 
-def _check_agent_availability(registry: _HasListAgents) -> list[tuple[str, bool]]:
+def _check_agent_availability(
+    registry: _HasListAgents,
+) -> list[tuple[str, _AgentStatus]]:
     """Check which agents are available on PATH.
 
     Args:
@@ -30,17 +41,22 @@ def _check_agent_availability(registry: _HasListAgents) -> list[tuple[str, bool]
             AgentConfig-like objects with a .cmd attribute.
 
     Returns:
-        List of (agent_name, is_available) tuples.
+        List of (agent_name, status) tuples where status is one of
+        'available', 'missing_on_path', or 'no_cmd'.
     """
-    results: list[tuple[str, bool]] = []
+    results: list[tuple[str, _AgentStatus]] = []
     agents = registry.list_agents()
     for agent in agents:
         cmd = agent.cmd
         if not cmd:
-            results.append((agent.display_name or agent.cmd or "unknown", False))
+            results.append((agent.display_name or "unknown", "no_cmd"))
             continue
         first_word = cmd.split(maxsplit=1)[0]
-        results.append((agent.display_name or first_word, shutil.which(first_word) is not None))
+        name = agent.display_name or first_word
+        status: _AgentStatus = (
+            "available" if shutil.which(first_word) is not None else "missing_on_path"
+        )
+        results.append((name, status))
     return results
 
 
@@ -53,18 +69,36 @@ def _build_agent_availability_content(
         try:
             availability = _check_agent_availability(agent_registry)
             avail_lines: list[Text] = []
-            for name, is_available in availability:
-                if is_available:
-                    avail_lines.append(Text(f"  • {name}: [green]on PATH[/green]"))
-                else:
+            for name, status in availability:
+                if status == "available":
                     avail_lines.append(
-                        Text(
-                            f"  • {name}: "
-                            "[yellow]⚠ missing (not on PATH)[/yellow]"
+                        Text.from_markup(f"  • {name}: [green]on PATH[/green]")
+                    )
+                elif status == "missing_on_path":
+                    install_url = _KNOWN_AGENT_INSTALL_URLS.get(name.lower())
+                    if install_url:
+                        avail_lines.append(
+                            Text.from_markup(
+                                f"  • {name}: "
+                                "[yellow]⚠ missing (not on PATH)[/yellow] "
+                                f"[dim]install: {install_url}[/dim]"
+                            )
+                        )
+                    else:
+                        avail_lines.append(
+                            Text.from_markup(
+                                f"  • {name}: "
+                                "[yellow]⚠ missing (not on PATH)[/yellow]"
+                            )
+                        )
+                else:  # no_cmd
+                    avail_lines.append(
+                        Text.from_markup(
+                            f"  • {name}: [yellow]⚠ missing (not on PATH)[/yellow]"
                         )
                     )
             if avail_lines:
-                content.append(Text("[bold cyan]Detected agents:[/bold cyan]"))
+                content.append(Text.from_markup("[bold cyan]Detected agents:[/bold cyan]"))
                 content.extend(avail_lines)
                 return content
         except Exception:
@@ -79,10 +113,13 @@ def _build_regenerate_summary(results: list[BootstrapResult]) -> Text | None:
     if not regenerated:
         return None
     backup_count = sum(1 for r in regenerated if r.backup is not None)
-    text = Text()
-    text.append(f"Regenerated {len(regenerated)} config file(s)")
+    text = Text.from_markup(f"Regenerated {len(regenerated)} config file(s)")
     if backup_count > 0:
-        text.append(f" ([yellow]{backup_count} backup(s) saved with .bak suffix[/yellow])")
+        text.append_text(
+            Text.from_markup(
+                f" ([yellow]{backup_count} backup(s) saved with .bak suffix[/yellow])"
+            )
+        )
     return text
 
 
@@ -106,7 +143,7 @@ def _append_file_section(content: list[object], heading: str, files: list[str]) 
     """Append a headed bullet list of config files when present."""
     if not files:
         return
-    content.append(Text(heading))
+    content.append(Text.from_markup(heading))
     content.extend(Text(f"  • {name}") for name in files)
 
 
@@ -133,6 +170,8 @@ def emit_first_run_welcome(
     if not has_new_or_regenerated:
         return
 
+    show_banner(console=console)  # type: ignore[arg-type]
+
     content: list[object] = []
 
     # For regenerate, show summary line first
@@ -151,12 +190,15 @@ def emit_first_run_welcome(
         content.extend(_build_agent_availability_content(agent_registry))
 
     # Next steps
-    next_steps = Text()
-    next_steps.append("[bold cyan]Next steps:[/bold cyan]\n")
-    next_steps.append("  1. Edit [cyan]PROMPT.md[/cyan] with your implementation task\n")
-    next_steps.append("  2. Install AI agents if missing (e.g., `claude`, `opencode`)\n")
-    next_steps.append("  3. Run [cyan]ralph[/cyan] to start the pipeline\n")
-    next_steps.append("  4. Run [cyan]ralph --regenerate-config[/cyan] to reset configs")
+    next_steps = Text.from_markup(
+        "[bold cyan]Next steps:[/bold cyan]\n"
+        "  1. Edit [cyan]PROMPT.md[/cyan] with your implementation task\n"
+        "  2. Install AI agents if missing (e.g., `claude`, `opencode`)\n"
+        "  3. (Optional) Run [cyan]ralph --diagnose[/cyan] to verify agents,"
+        " MCP servers, and config\n"
+        "  4. Run [cyan]ralph[/cyan] to start the pipeline\n"
+        "  5. Run [cyan]ralph --regenerate-config[/cyan] to reset configs"
+    )
     content.append(next_steps)
 
     panel = Panel(

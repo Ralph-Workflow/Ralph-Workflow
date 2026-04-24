@@ -7,7 +7,24 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
+from ralph.banner import WELCOME_MESSAGE
 from ralph.cli.main import app
+
+_MIN_PROMPT_SIZE_BYTES = 200
+
+# Raw markup tokens that must never appear in rendered terminal output.
+_RAW_MARKUP_TOKENS = (
+    "[bold cyan]",
+    "[/bold cyan]",
+    "[yellow]",
+    "[/yellow]",
+    "[dim]",
+    "[/dim]",
+    "[green]",
+    "[/green]",
+    "[cyan]",
+    "[/cyan]",
+)
 
 
 @pytest.fixture
@@ -28,7 +45,7 @@ def test_cli_first_run_shows_welcome_banner(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """First invocation should show the 'Ralph first-run setup' banner."""
+    """First invocation should show the 'Ralph first-run setup' banner and ASCII banner."""
     runner = CliRunner()
 
     # chdir to the temp path so .agent is created there
@@ -40,6 +57,13 @@ def test_cli_first_run_shows_welcome_banner(
     assert "Ralph first-run setup" in result.output, (
         f"Expected 'Ralph first-run setup' in output, got: {result.output}"
     )
+    assert WELCOME_MESSAGE in result.output, (
+        f"Expected '{WELCOME_MESSAGE}' in output, got: {result.output}"
+    )
+    for token in _RAW_MARKUP_TOKENS:
+        assert token not in result.output, (
+            f"Raw markup token {token!r} found in CLI output: {result.output!r}"
+        )
 
 
 def test_cli_first_run_banner_not_shown_on_second_run(
@@ -65,6 +89,9 @@ def test_cli_first_run_banner_not_shown_on_second_run(
     assert "Ralph first-run setup" in result1.output
     assert "Ralph first-run setup" not in result2.output, (
         f"Welcome banner should not appear on second run. Output was: {result2.output}"
+    )
+    assert WELCOME_MESSAGE not in result2.output, (
+        f"ASCII banner should not appear on second run. Output was: {result2.output}"
     )
 
 
@@ -113,6 +140,10 @@ def test_cli_init_shows_welcome_banner(
     assert "Ralph first-run setup" in result.output, (
         f"Expected 'Ralph first-run setup' in output, got: {result.output}"
     )
+    for token in _RAW_MARKUP_TOKENS:
+        assert token not in result.output, (
+            f"Raw markup token {token!r} found in --init output: {result.output!r}"
+        )
 
 
 def test_cli_init_idempotent_no_banner_on_second_run(
@@ -137,4 +168,28 @@ def test_cli_init_idempotent_no_banner_on_second_run(
     # Banner should not appear on second run
     assert "Ralph first-run setup" not in result2.output, (
         f"Welcome banner should not appear on second init. Output was: {result2.output}"
+    )
+
+
+def test_cli_init_creates_self_teaching_prompt_md(
+    clean_env: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """ralph --init should seed PROMPT.md with a concrete, self-teaching template."""
+    runner = CliRunner()
+    monkeypatch.chdir(tmp_path)
+
+    result = runner.invoke(app, ["--init", "default"], catch_exceptions=False)
+    assert result.exit_code == 0, f"Expected exit 0, got {result.exit_code}: {result.output}"
+
+    prompt_path = tmp_path / "PROMPT.md"
+    assert prompt_path.exists(), "PROMPT.md was not created"
+
+    content = prompt_path.read_text()
+    assert "# Goal" in content, "PROMPT.md must contain '# Goal'"
+    assert "## Acceptance criteria" in content, "PROMPT.md must contain '## Acceptance criteria'"
+    assert "PROMPT.md" in content, "PROMPT.md must contain a self-referential mention of PROMPT.md"
+    assert len(content.encode("utf-8")) > _MIN_PROMPT_SIZE_BYTES, (
+        f"PROMPT.md must be at least {_MIN_PROMPT_SIZE_BYTES} bytes"
     )

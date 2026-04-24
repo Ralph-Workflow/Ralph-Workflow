@@ -43,14 +43,25 @@ def init_command(
     prompt_path = target / "PROMPT.md"
     if not prompt_path.exists():
         prompt_path.write_text(
-            "# Implementation Prompt\n\n"
-            "Describe what you want to implement here.\n\n"
-            "## Requirements\n\n"
-            "- Requirement 1\n"
-            "- Requirement 2\n\n"
-            "## Acceptance Criteria\n\n"
-            "- Criterion 1\n"
-            "- Criterion 2\n",
+            "# Goal\n\n"
+            "Add a /health endpoint to the example API that returns HTTP 200 with a JSON body"
+            ' `{"status": "ok"}`.\n'
+            "This endpoint should be unauthenticated and return a Content-Type of"
+            " application/json.\n"
+            "It is used by load balancers and uptime monitors to verify the service is"
+            " running.\n\n"
+            "## Context\n\n"
+            "- Main API entry point: `src/api/app.py`\n"
+            "- Existing route examples: `src/api/routes/`\n"
+            "- Dependencies and external services: see `README.md`\n\n"
+            "## Acceptance criteria\n\n"
+            "- GET /health returns HTTP 200\n"
+            "- Response body is valid JSON with `status` == `ok`\n"
+            "- A new test in `tests/` covers the new endpoint\n\n"
+            "## Notes\n\n"
+            "- Ralph reads this file as PROMPT.md from the workspace root —"
+            " edit it to describe YOUR task before re-running `ralph`.\n"
+            "- Keep the prompt scoped — one user-visible outcome per run works best.\n",
             encoding="utf-8",
         )
         console.print(_status_text("Created", str(prompt_path), "green"))
@@ -98,7 +109,11 @@ def _print_fallback_next_steps(target: Path, template: str | None) -> None:
         " pipeline in [cyan].agent/pipeline.toml[/cyan],"
         " and artifacts in [cyan].agent/artifacts.toml[/cyan]"
     )
-    console.print("  5. Run [cyan]ralph[/cyan] to start the pipeline")
+    console.print(
+        "  5. (Optional) Run [cyan]ralph --diagnose[/cyan] to verify agents,"
+        " MCP servers, and config"
+    )
+    console.print("  6. Run [cyan]ralph[/cyan] to start the pipeline")
     console.print("\n[dim]To reset configs later: [cyan]ralph --regenerate-config[/cyan][/dim]")
 
 

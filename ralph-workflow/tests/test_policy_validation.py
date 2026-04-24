@@ -40,6 +40,7 @@ from ralph.policy.validation import (
     validate_drain_bound,
     validate_drain_contracts,
     validate_phase_exists_in_policy,
+    validate_required_inputs,
     validate_work_units_against_policy,
 )
 
@@ -757,3 +758,32 @@ class TestValidateWorkUnitsAgainstPolicy:
 
         with pytest.raises(PolicyValidationError, match="exceeds cap"):
             validate_work_units_against_policy(rejected_work_units, pipeline)
+
+
+class TestValidateRequiredInputs:
+    """Tests for validate_required_inputs."""
+
+    def test_missing_prompt_md_raises_with_init_hint(self, tmp_path: Path) -> None:
+        """Missing PROMPT.md error must mention both the structural prefix and ralph --init."""
+        scope = MagicMock()
+        scope.root = tmp_path
+        with pytest.raises(PolicyValidationError) as exc_info:
+            validate_required_inputs(scope)
+        msg = str(exc_info.value)
+        assert "Required input file not found" in msg
+        assert "ralph --init" in msg
+
+    def test_present_prompt_md_does_not_raise(self, tmp_path: Path) -> None:
+        """A non-empty PROMPT.md passes validation without error."""
+        (tmp_path / "PROMPT.md").write_text("# Goal\n\nDo something.\n")
+        scope = MagicMock()
+        scope.root = tmp_path
+        validate_required_inputs(scope)  # should not raise
+
+    def test_empty_prompt_md_raises(self, tmp_path: Path) -> None:
+        """An empty PROMPT.md raises PolicyValidationError."""
+        (tmp_path / "PROMPT.md").write_text("")
+        scope = MagicMock()
+        scope.root = tmp_path
+        with pytest.raises(PolicyValidationError, match="empty"):
+            validate_required_inputs(scope)
