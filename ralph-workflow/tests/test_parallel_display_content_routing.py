@@ -196,7 +196,7 @@ def test_tool_use_input_metadata_is_surfaced_on_rendered_line(tmp_path: Path) ->
 
 
 def test_activity_snapshot_does_not_duplicate_activity_line(tmp_path: Path) -> None:
-    """Snapshot with active_tool + last_activity_line emits exactly ONE [activity tagged line."""
+    """Snapshot with active_tool + last_activity_line emits exactly ONE [activity] tagged line."""
     from datetime import UTC, datetime  # noqa: PLC0415
     from io import StringIO  # noqa: PLC0415
 
@@ -236,12 +236,10 @@ def test_activity_snapshot_does_not_duplicate_activity_line(tmp_path: Path) -> N
     renderer.emit_snapshot(snapshot)
     out = buf.getvalue()
 
-    # Count occurrences of any [activity tag
-    activity_line_count = out.count("[activity-line]")
-    activity_tag_count = out.count("[activity]")
-    # Only one of the two should be non-zero, and total occurrences == 1
-    total = activity_line_count + activity_tag_count
-    assert total == 1, f"Expected 1 activity line, got {total}. Output:\n{out}"
+    # Exactly one [activity] line; no [activity-line] tag
+    activity_count = out.count("[activity]")
+    assert "[activity-line]" not in out, f"[activity-line] tag must not appear:\n{out}"
+    assert activity_count == 1, f"Expected 1 [activity] line, got {activity_count}. Output:\n{out}"
 
 
 def test_lifecycle_thinking_prefix_is_suppressed_end_to_end(tmp_path: Path) -> None:

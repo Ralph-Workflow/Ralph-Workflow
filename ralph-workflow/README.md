@@ -330,8 +330,7 @@ When stderr is a TTY, level tokens are rendered in themed colors using the Okabe
 | `plan` | META | Plan summary or scope |
 | `plan-scope` | META | Plan scope items |
 | `plan-steps` | META | Step progress |
-| `activity` | META | Agent activity metadata (tool, path, workdir) — emitted when no free-form activity line is available |
-| `activity-line` | META | Last raw activity line from an agent — emitted instead of `activity` when the agent produced a structured transcript line |
+| `activity` | META | Agent activity snapshot: free-form activity line from the agent when available, otherwise structured key=value fields (tool, path, workdir) |
 | `analysis` | META | Phase analysis and decision |
 | `worker` | META | Parallel worker status update |
 | `result` | META | Pipeline completion result |
@@ -379,7 +378,7 @@ When a content block exceeds the soft limit and is condensed, the full text is p
 2026-04-21T12:00:00+00:00 INFO META [run-start] workspace=/workspace
 2026-04-21T12:00:00+00:00 MILESTONE META [phase] ◆ development
 2026-04-21T12:00:01+00:00 INFO META [plan] (no plan loaded yet)
-2026-04-21T12:00:02+00:00 INFO META [activity-line] claude/sonnet tool: mcp__ralph__read_file (path=ralph-workflow/ralph/x.py)
+2026-04-21T12:00:02+00:00 INFO META [activity] mcp__ralph__read_file path=ralph-workflow/ralph/x.py
 2026-04-21T12:00:02+00:00 INFO CONT [tool][dev-1] mcp__ralph__read_file (path=ralph-workflow/ralph/x.py)
 2026-04-21T12:00:03+00:00 INFO CONT [content-start][dev-1] Refactored parser to accept streaming deltas
 2026-04-21T12:00:04+00:00 INFO CONT [content-continue#2][dev-1] next chunk

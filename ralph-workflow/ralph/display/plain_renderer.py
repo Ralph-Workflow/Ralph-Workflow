@@ -39,7 +39,6 @@ _TAGS: Final[tuple[str, ...]] = (
     "plan-scope",
     "plan-steps",
     "activity",
-    "activity-line",
     "analysis",
     "worker",
     "result",
@@ -96,7 +95,6 @@ _TAG_CATEGORY: Final[dict[str, str]] = {
     "plan-scope": "META",
     "plan-steps": "META",
     "activity": "META",
-    "activity-line": "META",
     "worker": "META",
     "analysis": "META",
     "result": "META",
@@ -351,8 +349,8 @@ class PlainLogRenderer:
             self._emitted_empty_activity = True
             return [self._build_line(timestamp, "INFO", "META", "[activity] (no active agent yet)")]
 
-        # Prefer the richer free-form last_activity_line over the structured fields.
-        # Only one line is emitted per snapshot diff to avoid duplication noise.
+        # Single canonical [activity] line: prefer the richer free-form last_activity_line
+        # over structured fields. Only one line is emitted per snapshot diff.
         if snapshot.last_activity_line:
             line_text = _sanitize(snapshot.last_activity_line)
             if snapshot.active_path:
@@ -360,7 +358,7 @@ class PlainLogRenderer:
                 if sanitized_path not in line_text:
                     line_text = f"{line_text} (path={sanitized_path})"
             return [
-                self._build_line(timestamp, "INFO", "META", f"[activity-line] {line_text}")
+                self._build_line(timestamp, "INFO", "META", f"[activity] {line_text}")
             ]
 
         activity_parts: list[str] = []

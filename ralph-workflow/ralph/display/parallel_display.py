@@ -8,7 +8,7 @@ import queue
 import time
 import uuid
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Literal, cast
 
 from ralph.display.activity_router import ActivityRouter
 from ralph.display.completion_summary import emit_completion_summary
@@ -157,12 +157,29 @@ class ParallelDisplay:
         text = content or ""
 
         # For tool_use events, render the tool name in friendly form and append input args.
+        # Also forward to the subscriber so the next snapshot reflects the current tool call.
         if kind is _Kind.TOOL_USE:
+            original_name = text
             text = friendly_tool_name(text)
             input_obj = metadata.get("input")
             args_str = format_tool_input(input_obj)
             if args_str:
                 text = f"{text} {args_str}"
+            input_dict: dict[str, object] = (
+                cast("dict[str, object]", input_obj) if isinstance(input_obj, dict) else {}
+            )
+            tool_path = str(input_dict.get("path", "") or "")
+            tool_workdir = str(input_dict.get("workdir", "") or "")
+            tool_command = str(input_dict.get("command", "") or "")
+            with contextlib.suppress(Exception):
+                self._subscriber.record_activity(
+                    unit_id=unit_id,
+                    line=text,
+                    tool_name=original_name,
+                    path=tool_path or None,
+                    workdir=tool_workdir or None,
+                    command=tool_command or None,
+                )
 
         overflow = self._get_overflow_log(unit_id)
         overflow_ref = overflow.relative_reference(self._workspace_root)

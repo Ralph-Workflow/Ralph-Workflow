@@ -80,3 +80,78 @@ def test_stop_event_flushes_accumulator() -> None:
     text_results = [r for r in results if r.type == "text"]
     assert len(text_results) == 1
     assert text_results[0].content == "hello"
+
+
+def test_item_started_reasoning_emits_thinking() -> None:
+    """item.started with item.type=='reasoning' must emit type='thinking'."""
+    parser = CodexParser()
+    event = json.dumps(
+        {
+            "type": "item.started",
+            "item": {"type": "reasoning", "text": "Thinking about X"},
+        }
+    )
+    results = list(parser.parse(iter([event])))
+    thinking = [r for r in results if r.type == "thinking"]
+    assert len(thinking) == 1, f"Expected 1 thinking result, got: {results}"
+    assert thinking[0].content == "Thinking about X"
+
+
+def test_item_completed_reasoning_emits_thinking() -> None:
+    """item.completed with item.type=='reasoning' must emit type='thinking'."""
+    parser = CodexParser()
+    event = json.dumps(
+        {
+            "type": "item.completed",
+            "item": {"type": "reasoning", "text": "Done reasoning about X"},
+        }
+    )
+    results = list(parser.parse(iter([event])))
+    thinking = [r for r in results if r.type == "thinking"]
+    assert len(thinking) == 1, f"Expected 1 thinking result, got: {results}"
+    assert thinking[0].content == "Done reasoning about X"
+
+
+def test_item_started_agent_message_emits_text() -> None:
+    """item.started with item.type=='agent_message' must emit type='text'."""
+    parser = CodexParser()
+    event = json.dumps(
+        {
+            "type": "item.started",
+            "item": {"type": "agent_message", "text": "Hello from agent"},
+        }
+    )
+    results = list(parser.parse(iter([event])))
+    text_results = [r for r in results if r.type == "text"]
+    assert len(text_results) == 1
+    assert text_results[0].content == "Hello from agent"
+
+
+def test_reasoning_preserves_raw_and_metadata() -> None:
+    """Reasoning thinking output must preserve raw and metadata from item object."""
+    parser = CodexParser()
+    event = json.dumps(
+        {
+            "type": "item.started",
+            "item": {"type": "reasoning", "text": "Some thought", "id": "r-1"},
+        }
+    )
+    results = list(parser.parse(iter([event])))
+    thinking = [r for r in results if r.type == "thinking"]
+    assert len(thinking) == 1
+    assert thinking[0].raw is not None
+    assert thinking[0].metadata is not None
+
+
+def test_reasoning_empty_text_produces_no_output() -> None:
+    """Reasoning item with empty text must not emit anything."""
+    parser = CodexParser()
+    event = json.dumps(
+        {
+            "type": "item.started",
+            "item": {"type": "reasoning", "text": ""},
+        }
+    )
+    results = list(parser.parse(iter([event])))
+    thinking = [r for r in results if r.type == "thinking"]
+    assert thinking == [], f"Expected no thinking output for empty text, got: {results}"

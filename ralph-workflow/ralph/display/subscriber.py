@@ -109,6 +109,18 @@ class PipelineSubscriber:
         with self._lock:
             return self._last_state
 
+    @property
+    def last_tool_name(self) -> str | None:
+        """The most recently recorded tool name."""
+        with self._lock:
+            return self._active_tool
+
+    @property
+    def last_tool_path(self) -> str | None:
+        """The most recently recorded tool path argument."""
+        with self._lock:
+            return self._active_path
+
     def notify(self, state: PipelineState) -> None:
         """Build a PipelineSnapshot from state and enqueue it non-blocking.
 
@@ -138,8 +150,8 @@ class PipelineSubscriber:
     def record_activity(  # noqa: PLR0913
         self,
         unit_id: str,
-        agent_name: str,
         line: str,
+        agent_name: str = "",
         tool_name: str | None = None,
         path: str | None = None,
         workdir: str | None = None,

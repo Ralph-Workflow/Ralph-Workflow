@@ -584,8 +584,8 @@ def test_content_end_no_ai_summary_when_env_not_set() -> None:
 # --- Activity line dedup and path-suffix tests ---
 
 
-def test_activity_line_and_activity_not_emitted_together() -> None:
-    """Snapshot A emits [activity]; snapshot B emits only [activity-line]."""
+def test_activity_tag_not_emitted_twice_across_snapshots() -> None:
+    """Snapshot A emits [activity]; snapshot B emits exactly one [activity] line."""
     from datetime import UTC, datetime  # noqa: PLC0415
 
     from ralph.display.snapshot import PipelineSnapshot  # noqa: PLC0415
@@ -630,7 +630,7 @@ def test_activity_line_and_activity_not_emitted_together() -> None:
     buf.truncate(0)
     buf.seek(0)
 
-    # Snapshot B: last_activity_line set — expect only [activity-line], no extra [activity] line
+    # Snapshot B: last_activity_line set — expect exactly one [activity] line
     snapshot_b = PipelineSnapshot(
         active_agent="claude/sonnet",
         active_tool="mcp__ralph__read_file",
@@ -639,14 +639,14 @@ def test_activity_line_and_activity_not_emitted_together() -> None:
     )
     renderer.emit_snapshot(snapshot_b)
     out_b = buf.getvalue()
-    activity_line_count = out_b.count("[activity-line]")
-    activity_tag_count = out_b.count("[activity] ")
-    assert activity_line_count == 1, f"Expected 1 [activity-line], got {activity_line_count}"
-    assert activity_tag_count == 0, f"Expected 0 extra [activity], got {activity_tag_count}"
+    activity_count = out_b.count("[activity]")
+    assert activity_count == 1, f"Expected 1 [activity], got {activity_count}"
+    assert "[activity-line]" not in out_b
+    assert "claude/sonnet tool: mcp__ralph__read_file" in out_b
 
 
-def test_activity_line_appends_path_when_missing() -> None:
-    """[activity-line] appends (path=...) when active_path is not in last_activity_line."""
+def test_activity_appends_path_when_missing() -> None:
+    """[activity] appends (path=...) when active_path is not in last_activity_line."""
     from datetime import UTC, datetime  # noqa: PLC0415
 
     from ralph.display.snapshot import PipelineSnapshot  # noqa: PLC0415
@@ -681,8 +681,8 @@ def test_activity_line_appends_path_when_missing() -> None:
     assert "(path=ralph-workflow/ralph/x.py)" in out
 
 
-def test_activity_line_does_not_double_append_path_when_already_present() -> None:
-    """[activity-line] must NOT append (path=...) when active_path is already in the line."""
+def test_activity_does_not_double_append_path_when_already_present() -> None:
+    """[activity] must NOT append (path=...) when active_path is already in the line."""
     from datetime import UTC, datetime  # noqa: PLC0415
 
     from ralph.display.snapshot import PipelineSnapshot  # noqa: PLC0415
@@ -781,13 +781,13 @@ def test_thinking_start_shows_preview_headline() -> None:
     )
     out = buf.getvalue()
     assert "[thinking-start]" in out
-    assert "\u2193 preview: I need to check whether the parser handles X correctly" in out or (
+    assert "↓ preview: I need to check whether the parser handles X correctly" in out or (
         "preview: I need to check whether the parser handles X correctly" in out
     )
 
 
 def test_thinking_start_preview_uses_arrow_prefix() -> None:
-    """[thinking-start] must use the \u2193 preview: prefix for the headline."""
+    """[thinking-start] must use the ↓ preview: prefix for the headline."""
     renderer, buf = _make_renderer()
     renderer.emit_activity_line("u", "thinking", "First checking the file contents")
     out = buf.getvalue()
