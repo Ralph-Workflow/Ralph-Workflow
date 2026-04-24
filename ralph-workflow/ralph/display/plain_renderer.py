@@ -362,7 +362,9 @@ class PlainLogRenderer:
         # Step 4: Suppress META [activity] line when it duplicates the just-emitted
         # CONT [tool] line for the same unit_id. Only suppress the structured
         # activity_parts-derived branch (not the free-form last_activity_line path).
-        if structured_text and snapshot.active_tool and snapshot.active_path:
+        # Key by tool+path (not structured_text) so dedup works even when active_agent
+        # is None (structured_text would be None but tool+path are sufficient).
+        if snapshot.active_tool and snapshot.active_path:
             tool_sig = self._last_emitted_tool_signature.get(snapshot.active_unit_id or "")
             if tool_sig is not None:
                 last_tool, last_path = tool_sig
