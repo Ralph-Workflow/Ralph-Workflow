@@ -34,7 +34,7 @@ def _reset_loguru() -> Iterator[None]:
 
 @pytest.fixture(autouse=True)
 def _short_preflight_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("RALPH_MCP_PREFLIGHT_TIMEOUT_MS", "2000")
+    monkeypatch.setenv("RALPH_MCP_PREFLIGHT_TIMEOUT_MS", "300")
 
 
 @contextmanager
