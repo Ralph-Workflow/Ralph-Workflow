@@ -1,5 +1,7 @@
 # CLI Reference
 
+> **New to Ralph Workflow?** Start with the [Getting Started](getting-started.md) walkthrough — it explains the same flow with more context.
+
 Ralph Workflow is invoked as `ralph` (or `python -m ralph`). All flags are optional;
 running `ralph` with no flags starts the full pipeline.
 

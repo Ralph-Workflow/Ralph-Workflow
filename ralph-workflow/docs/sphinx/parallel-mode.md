@@ -1,5 +1,7 @@
 # Parallel Mode
 
+> **New to Ralph Workflow?** Start with the [Getting Started](getting-started.md) walkthrough — it explains the same flow with more context.
+
 When the planning phase produces two or more work units, Ralph Workflow fans development
 out across multiple git worktrees simultaneously.
 

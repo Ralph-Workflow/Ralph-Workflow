@@ -14,7 +14,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
-# Files to audit for bare 'Ralph' branding
+# Files to audit for bare 'Ralph' branding (static list)
 _AUDIT_FILES: list[Path] = [
     REPO_ROOT / "ralph" / "policy" / "defaults" / "agents.toml",
     REPO_ROOT / "ralph" / "policy" / "defaults" / "artifacts.toml",
@@ -26,21 +26,47 @@ _AUDIT_FILES: list[Path] = [
     REPO_ROOT / "ralph" / "banner.py",
     REPO_ROOT / "ralph" / "cli" / "commands" / "init.py",
     REPO_ROOT / "ralph" / "cli" / "commands" / "diagnose.py",
+    REPO_ROOT / "ralph" / "cli" / "commands" / "run.py",
+    REPO_ROOT / "ralph" / "cli" / "commands" / "cleanup.py",
+    REPO_ROOT / "ralph" / "cli" / "main.py",
     REPO_ROOT / "ralph" / "config" / "welcome.py",
+    REPO_ROOT / "ralph" / "policy" / "validation.py",
+    REPO_ROOT / "README.md",
+    REPO_ROOT / "CONTRIBUTING.md",
 ]
+
+
+def _sphinx_docs() -> list[Path]:
+    """Return all Sphinx documentation files (*.md and *.rst)."""
+    sphinx_dir = REPO_ROOT / "docs" / "sphinx"
+    if not sphinx_dir.exists():
+        return []
+    return list(sphinx_dir.rglob("*.md")) + list(sphinx_dir.rglob("*.rst"))
+
+
+def _jinja_templates() -> list[Path]:
+    """Return all Jinja template files (*.jinja and *.j2)."""
+    templates_dir = REPO_ROOT / "ralph" / "prompts" / "templates"
+    if not templates_dir.exists():
+        return []
+    return list(templates_dir.rglob("*.jinja")) + list(templates_dir.rglob("*.j2"))
+
 
 # Substrings that make a line acceptable even when it contains bare 'Ralph'.
 # Each entry is a tuple of (substring, reason).
 _ALLOWLIST: list[tuple[str, str]] = [
     # Historical concept reference — "Ralph loop" as a concept name
     ("Ralph loop", "historical concept reference: the Ralph loop"),
-    # ASCII art logo lines — the banner spells out 'Ralphh' as visual art
+    # ASCII art logo lines — the banner spells out 'Ralph' as visual art
     ("|  _ \\", "ASCII art banner line"),
     ("| |_) /", "ASCII art banner line"),
     ("|  _ <", "ASCII art banner line"),
     ("|_| \\_\\", "ASCII art banner line"),
     # WELCOME_MESSAGE constant — the string value itself is 'Welcome to Ralph Workflow'
     # but the constant name 'WELCOME_MESSAGE' appears on a line with 'Ralph Workflow' already
+    # README codeberg repo path — Ralph-Workflow is the repo name, not a project name usage
+    ("Ralph-Workflow.git", "codeberg repository path"),
+    ("Ralph-Workflow/ralph-workflow", "codeberg repository path"),
 ]
 
 # Pattern: a capital-R 'Ralph' word that is NOT followed by ' Workflow'
@@ -56,7 +82,9 @@ def test_no_bare_ralph_in_user_facing_files() -> None:
     """Bare 'Ralph' (project name) must appear as 'Ralph Workflow' in user-facing files."""
     violations: list[str] = []
 
-    for path in _AUDIT_FILES:
+    all_files = _AUDIT_FILES + _sphinx_docs() + _jinja_templates()
+
+    for path in all_files:
         if not path.exists():
             violations.append(f"MISSING FILE: {path.relative_to(REPO_ROOT)}")
             continue

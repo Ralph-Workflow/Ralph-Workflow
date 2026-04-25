@@ -1,5 +1,7 @@
 # Configuration Reference
 
+> **New to Ralph Workflow?** Start with the [Getting Started](getting-started.md) walkthrough — it explains the same flow with more context.
+
 Ralph Workflow uses a layered configuration system. Settings are resolved in this order
 (highest priority first):
 

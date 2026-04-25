@@ -366,3 +366,55 @@ def test_cli_init_fallback_next_steps_includes_getting_started(
     assert "getting-started" in result2.output, (
         f"Expected getting-started reference in fallback next-steps, got: {result2.output}"
     )
+
+
+def test_cli_run_in_fresh_dir_shows_init_hint(
+    clean_env: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Bare `ralph` in a directory with no PROMPT.md and no .agent shows a friendly init hint."""
+    runner = CliRunner()
+    monkeypatch.chdir(tmp_path)
+
+    # Ensure completely fresh directory (no PROMPT.md, no .agent)
+    assert not (tmp_path / "PROMPT.md").exists()
+    assert not (tmp_path / ".agent").exists()
+
+    result = runner.invoke(app, [], catch_exceptions=False)
+
+    assert result.exit_code == 2, (  # noqa: PLR2004
+        f"Expected exit code 2 (preflight), got {result.exit_code}: {result.output}"
+    )
+    assert "not initialized" in result.output.lower(), (
+        f"Expected 'not initialized' in output, got: {result.output}"
+    )
+    assert "ralph --init" in result.output, (
+        f"Expected 'ralph --init' in output, got: {result.output}"
+    )
+    assert "getting-started" in result.output, (
+        f"Expected 'getting-started' in output, got: {result.output}"
+    )
+
+
+def test_cli_run_with_only_prompt_shows_init_hint(
+    clean_env: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Bare `ralph` with only PROMPT.md but no .agent still surfaces `ralph --init` guidance."""
+    runner = CliRunner()
+    monkeypatch.chdir(tmp_path)
+
+    # Create PROMPT.md but no .agent directory
+    (tmp_path / "PROMPT.md").write_text("")
+
+    result = runner.invoke(app, [], catch_exceptions=False)
+
+    # Exit 2 = preflight validation failure (either fresh-state or validation error path)
+    assert result.exit_code == 2, (  # noqa: PLR2004
+        f"Expected exit code 2 (preflight), got {result.exit_code}: {result.output}"
+    )
+    assert "ralph --init" in result.output, (
+        f"Expected 'ralph --init' guidance in output, got: {result.output}"
+    )

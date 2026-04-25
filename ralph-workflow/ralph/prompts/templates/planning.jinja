@@ -21,7 +21,7 @@ CRITICAL: This is a READ-ONLY planning task. You are STRICTLY PROHIBITED from:
 - Running any commands that modify system state
 - Installing dependencies or packages
 
-You MUST submit your plan via Ralph's planning MCP tools.
+You MUST submit your plan via Ralph Workflow's planning MCP tools.
 - Not submitting the plan is a FAILURE.
 - Allowed operations: any non-mutating tools
   (for example file reads/search/listing and image analysis)
@@ -62,7 +62,7 @@ Atomic fallback for short plans:
 {{SUBMIT_ARTIFACT_BARE_HINT}}
 
 The `content` argument must be a JSON string whose decoded object is the RAW plan payload.
-Do NOT wrap the payload in outer `type` or `content` fields. Ralph adds artifact metadata itself.
+Do NOT wrap the payload in outer `type` or `content` fields. Ralph Workflow adds artifact metadata itself.
 
 Your payload must decode to an object shaped like this:
 

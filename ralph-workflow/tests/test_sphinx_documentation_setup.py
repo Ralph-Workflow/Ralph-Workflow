@@ -11,6 +11,16 @@ GITIGNORE_PATH = REPO_ROOT.parent / ".gitignore"
 INDEX_RST_PATH = REPO_ROOT / "docs" / "sphinx" / "index.rst"
 GETTING_STARTED_PATH = REPO_ROOT / "docs" / "sphinx" / "getting-started.md"
 
+# Pages that must cross-link to getting-started.md
+_PAGES_WITH_GETTING_STARTED_LINKS = [
+    "cli.md",
+    "concepts.md",
+    "configuration.md",
+    "recovery.md",
+    "parallel-mode.md",
+    "troubleshooting.md",
+]
+
 
 def test_sphinx_conf_uses_package_version() -> None:
     namespace = runpy.run_path(str(CONF_PATH))
@@ -60,4 +70,37 @@ def test_getting_started_file_exists_and_has_required_content() -> None:
     # Must link to troubleshooting.md
     assert "troubleshooting.md" in content, (
         "getting-started.md must link to troubleshooting.md"
+    )
+
+
+def test_sphinx_pages_link_to_getting_started() -> None:
+    """Each key Sphinx page must contain a link to getting-started.md near the top."""
+    sphinx_dir = REPO_ROOT / "docs" / "sphinx"
+    missing: list[str] = []
+
+    for page in _PAGES_WITH_GETTING_STARTED_LINKS:
+        path = sphinx_dir / page
+        assert path.exists(), f"docs/sphinx/{page} does not exist"
+        # Check within first 1000 characters for the getting-started link
+        content = path.read_text(encoding="utf-8")
+        if "getting-started.md" not in content[:1000]:
+            missing.append(page)
+
+    assert not missing, (
+        "The following Sphinx pages are missing a 'getting-started.md' link "
+        "in the first 1000 characters:\n"
+        + "\n".join(f"  docs/sphinx/{p}" for p in missing)
+    )
+
+
+def test_index_rst_has_navigation_callout() -> None:
+    """index.rst must have both a :doc:`getting-started` reference and a note/callout."""
+    content = INDEX_RST_PATH.read_text(encoding="utf-8")
+
+    assert ":doc:`getting-started`" in content, (
+        "index.rst must contain a :doc:`getting-started` cross-reference"
+    )
+    assert ".. note::" in content or "New here?" in content, (
+        "index.rst must contain a '.. note::' admonition or a 'New here?' callout "
+        "pointing new users to the getting-started page"
     )

@@ -1,4 +1,4 @@
-"""Run pipeline command for Ralph CLI.
+"""Run pipeline command for Ralph Workflow CLI.
 
 This module implements the main pipeline execution command.
 """
@@ -11,6 +11,7 @@ from inspect import signature
 from typing import TYPE_CHECKING, NamedTuple, Protocol, cast
 
 from loguru import logger
+from rich.panel import Panel
 from rich.text import Text
 
 from ralph.agents.registry import AgentRegistry
@@ -130,6 +131,36 @@ def _load_configuration(
     )
 
 
+def _print_not_initialized_panel() -> None:
+    """Print a friendly 'not initialized' panel for completely fresh workspaces."""
+    content = Text()
+    content.append(
+        "Ralph Workflow orchestrates AI coding agents through a "
+        "planning → development → review → fix loop "
+        "driven by your PROMPT.md.\n\n"
+    )
+    content.append("Next steps:\n", style="bold cyan")
+    content.append("  1. Run ")
+    content.append("ralph --init", style="cyan")
+    content.append(" to scaffold PROMPT.md and .agent/ configs\n")
+    content.append("  2. Edit ")
+    content.append("PROMPT.md", style="cyan")
+    content.append(" with your task\n")
+    content.append("  3. Run ")
+    content.append("ralph", style="cyan")
+    content.append(" to start the pipeline\n\n")
+    content.append("Docs: ", style="dim")
+    content.append("docs/sphinx/getting-started.md", style="dim cyan")
+    content.append(" — step-by-step walkthrough for new users", style="dim")
+    panel = Panel(
+        content,
+        title="Ralph Workflow is not initialized here yet",
+        border_style="yellow",
+        padding=(1, 2),
+    )
+    console.print(panel)
+
+
 def _run_preflight_checks(  # noqa: PLR0911
     config: UnifiedConfig,
     workspace_scope: WorkspaceScope | None,
@@ -146,6 +177,13 @@ def _run_preflight_checks(  # noqa: PLR0911
 
     # validate_required_inputs requires workspace_scope
     if workspace_scope is not None:
+        # Fresh-state detection: workspace has neither PROMPT.md nor .agent
+        prompt_path = workspace_scope.root / "PROMPT.md"
+        agent_dir = workspace_scope.root / ".agent"
+        if not prompt_path.exists() and not agent_dir.exists():
+            _print_not_initialized_panel()
+            return _EXIT_PREFLIGHT
+
         try:
             validate_required_inputs(workspace_scope)
         except PolicyValidationError as e:
@@ -273,7 +311,7 @@ def run_pipeline(
     resume: bool = False,
     verbosity: Verbosity | None = None,
 ) -> int:
-    """Run the Ralph pipeline (backward compatibility wrapper).
+    """Run the Ralph Workflow pipeline (backward compatibility wrapper).
 
     Args:
         config_path: Path to configuration file.
