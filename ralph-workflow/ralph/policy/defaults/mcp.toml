@@ -90,3 +90,24 @@
 # [web_search.backends.searxng]
 # url = "https://search.example.com"
 # @EXAMPLE-END
+
+# Built-in URL fetcher that returns readable text from a single page.
+# Requires the optional extras: pip install "ralph-workflow[web-visit]"
+# @EXAMPLE-START
+# [web_visit]
+# enabled = true
+# timeout_ms = 15000
+# max_bytes = 2097152
+# user_agent = "RalphWorkflow/1.0 (+https://ralph-workflow.dev)"
+# allow_private_networks = false
+# extract_links = false
+# @EXAMPLE-END
+
+# Crawl4AI upstream MCP server for advanced web crawling (multi-page, JS-rendered).
+# Install and start: pip install crawl4ai && crawl4ai-mcp  (default port 11235)
+# See https://docs.crawl4ai.com/mcp/server/ for full setup and security notes.
+# @EXAMPLE-START
+# [mcp_servers.crawl4ai]
+# transport = "http"
+# url = "http://localhost:11235/mcp"
+# @EXAMPLE-END

@@ -49,6 +49,7 @@ _REQUIRED_CAPABILITIES = {
     "RunReportProgress",
     "EnvRead",
     "WebSearch",
+    "WebVisit",
 }
 
 
@@ -119,6 +120,7 @@ class TestHttpMcpServer:
             assert "list_directory" in tool_names
             assert "exec" in tool_names
             assert "ralph_submit_artifact" in tool_names
+            assert "visit_url" in tool_names
 
             _assert_tool_descriptions(tools)
 

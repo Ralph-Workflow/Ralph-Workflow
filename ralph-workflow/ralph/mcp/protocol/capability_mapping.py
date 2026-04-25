@@ -119,6 +119,7 @@ class Capability(StrEnum):
     ENV_WRITE = "env.write"
     UPSTREAM_TOOL_USE = "upstream.tool_use"
     WEB_SEARCH = "web.search"
+    WEB_VISIT = "web.visit"
     MEDIA_READ = "media.read"
 
 
@@ -144,6 +145,7 @@ class McpCapability(StrEnum):
     RUN_REPORT_PROGRESS = "RunReportProgress"
     UPSTREAM_TOOL_USE = "UpstreamToolUse"
     WEB_SEARCH = "WebSearch"
+    WEB_VISIT = "WebVisit"
     MEDIA_READ = "MediaRead"
 
 
@@ -181,6 +183,7 @@ MCP_TO_RALPH_CAPABILITY_MAP: dict[McpCapability, Capability] = {
     McpCapability.RUN_REPORT_PROGRESS: Capability.RUN_REPORT_PROGRESS,
     McpCapability.UPSTREAM_TOOL_USE: Capability.UPSTREAM_TOOL_USE,
     McpCapability.WEB_SEARCH: Capability.WEB_SEARCH,
+    McpCapability.WEB_VISIT: Capability.WEB_VISIT,
     McpCapability.MEDIA_READ: Capability.MEDIA_READ,
 }
 
@@ -195,6 +198,8 @@ _RALPH_CAPABILITY_ALIASES: dict[str, Capability] = {
     "git.diff_read": Capability.GIT_DIFF_READ,
     "web.search": Capability.WEB_SEARCH,
     "web_search": Capability.WEB_SEARCH,
+    "web.visit": Capability.WEB_VISIT,
+    "web_visit": Capability.WEB_VISIT,
     "media.read": Capability.MEDIA_READ,
     "media_read": Capability.MEDIA_READ,
 }
@@ -223,6 +228,8 @@ _MCP_CAPABILITY_ALIASES: dict[str, McpCapability] = {
     "upstream_tool_use": McpCapability.UPSTREAM_TOOL_USE,
     "web.search": McpCapability.WEB_SEARCH,
     "web_search": McpCapability.WEB_SEARCH,
+    "web.visit": McpCapability.WEB_VISIT,
+    "web_visit": McpCapability.WEB_VISIT,
     "media.read": McpCapability.MEDIA_READ,
     "media_read": McpCapability.MEDIA_READ,
 }
@@ -495,6 +502,7 @@ def check_mcp_capability_policy(
         McpCapability.RUN_REPORT_PROGRESS,
         McpCapability.UPSTREAM_TOOL_USE,
         McpCapability.WEB_SEARCH,
+        McpCapability.WEB_VISIT,
         McpCapability.MEDIA_READ,
     }:
         return evaluate_mapped_capability(normalized_capability, mapped_outcome)

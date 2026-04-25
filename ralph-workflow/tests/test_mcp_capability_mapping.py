@@ -553,3 +553,85 @@ class TestMediaReadCapability:
             (Capability.MEDIA_READ, {"status": "denied"}),
         )
         assert result.is_allowed() is False
+
+
+# =============================================================================
+# WebVisit capability tests
+# =============================================================================
+
+
+class TestWebVisitCapability:
+    """Tests for WebVisit capability mapping."""
+
+    def test_capability_web_visit_exists(self) -> None:
+        assert hasattr(Capability, "WEB_VISIT")
+        assert Capability.WEB_VISIT == "web.visit"
+
+    def test_mcp_capability_web_visit_exists(self) -> None:
+        assert hasattr(McpCapability, "WEB_VISIT")
+        assert McpCapability.WEB_VISIT == "WebVisit"
+
+    def test_web_visit_alias_dot_notation_in_coerce_capability(self) -> None:
+        result = _coerce_capability("web.visit")
+        assert result == Capability.WEB_VISIT
+
+    def test_web_visit_alias_underscore_notation_in_coerce_capability(self) -> None:
+        result = _coerce_capability("web_visit")
+        assert result == Capability.WEB_VISIT
+
+    def test_web_visit_alias_dot_notation_in_coerce_mcp_capability(self) -> None:
+        result = _coerce_mcp_capability("web.visit")
+        assert result == McpCapability.WEB_VISIT
+
+    def test_web_visit_alias_underscore_notation_in_coerce_mcp_capability(self) -> None:
+        result = _coerce_mcp_capability("web_visit")
+        assert result == McpCapability.WEB_VISIT
+
+    def test_web_visit_alias_capitalized_in_coerce_mcp_capability(self) -> None:
+        result = _coerce_mcp_capability("WebVisit")
+        assert result == McpCapability.WEB_VISIT
+
+    def test_web_visit_maps_to_ralph_capability(self) -> None:
+        result = lookup_ralph_capability("WebVisit")
+        assert result == Capability.WEB_VISIT
+
+    def test_web_visit_in_mcp_to_ralph_map(self) -> None:
+        assert MCP_TO_RALPH_CAPABILITY_MAP[McpCapability.WEB_VISIT] == Capability.WEB_VISIT
+
+    def test_web_visit_policy_allowed(self) -> None:
+        result = check_mcp_capability_policy(
+            "WebVisit",
+            {"status": "denied"},
+            {"status": "denied"},
+            (Capability.WEB_VISIT, {"status": "approved"}),
+        )
+        assert result.is_allowed() is True
+
+    def test_web_visit_policy_denied(self) -> None:
+        result = check_mcp_capability_policy(
+            "WebVisit",
+            {"status": "denied"},
+            {"status": "denied"},
+            (Capability.WEB_VISIT, {"status": "denied"}),
+        )
+        assert result.is_allowed() is False
+
+    def test_evaluate_mapped_capability_web_visit_allowed(self) -> None:
+        result = evaluate_mapped_capability(
+            "WebVisit",
+            (Capability.WEB_VISIT, {"status": "approved"}),
+        )
+        assert result.is_allowed() is True
+
+    def test_evaluate_mapped_capability_web_visit_denied(self) -> None:
+        result = evaluate_mapped_capability(
+            "WebVisit",
+            (Capability.WEB_VISIT, {"status": "denied"}),
+        )
+        assert result.is_allowed() is False
+
+    @pytest.mark.parametrize("drain", list(SessionDrain))
+    def test_web_visit_granted_to_all_drains(self, drain: SessionDrain) -> None:
+        assert CapabilitySet.defaults_for_drain(drain).contains(Capability.WEB_VISIT), (
+            f"SessionDrain.{drain.name} is missing Capability.WEB_VISIT"
+        )

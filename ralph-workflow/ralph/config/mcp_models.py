@@ -87,6 +87,19 @@ class WebSearchConfig(BaseModel):  # type: ignore[explicit-any]  # reason: exter
     backends: dict[str, WebSearchBackendSpec] = Field(default_factory=dict)
 
 
+class WebVisitConfig(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+    """Top-level `web_visit` config in `mcp.toml`."""
+
+    model_config = ConfigDict(frozen=True)
+
+    enabled: bool = True
+    timeout_ms: int = Field(default=15000, gt=0)
+    max_bytes: int = Field(default=2_097_152, gt=0)
+    user_agent: str = "RalphWorkflow/1.0 (+https://ralph-workflow.dev)"
+    allow_private_networks: bool = False
+    extract_links: bool = False
+
+
 class MediaConfig(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     """Opt-in multimodal media support config in `mcp.toml`.
 
@@ -109,6 +122,7 @@ class McpConfig(BaseModel):  # type: ignore[explicit-any]  # reason: external li
 
     mcp_servers: dict[str, McpServerSpec] = Field(default_factory=dict)
     web_search: WebSearchConfig = Field(default_factory=WebSearchConfig)
+    web_visit: WebVisitConfig = Field(default_factory=WebVisitConfig)
     media: MediaConfig = Field(default_factory=MediaConfig)
 
 
@@ -118,4 +132,5 @@ __all__ = [
     "MediaConfig",
     "WebSearchBackendSpec",
     "WebSearchConfig",
+    "WebVisitConfig",
 ]

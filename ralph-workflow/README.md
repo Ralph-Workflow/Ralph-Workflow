@@ -60,7 +60,7 @@ On first run, Ralph Workflow auto-creates seven config files from bundled, fully
 
 **User-global (created once, reused across all projects):**
 - `~/.config/ralph-workflow.toml` — main Ralph Workflow configuration
-- `~/.config/ralph-workflow-mcp.toml` — MCP servers and web search configuration
+- `~/.config/ralph-workflow-mcp.toml` — MCP servers, web search, and web visit configuration
 
 **Project-local (created by `ralph --init`, lives in your project directory):**
 - `.agent/ralph-workflow.toml` — project-local main config override
@@ -198,6 +198,28 @@ Artifact contract:
   - `.agent/REVIEW_ANALYSIS_DECISION.md`
 
 This hardening is intentionally selective. Review and planning still rely on explicit artifacts where Ralph Workflow needs structured evidence, while development and fix workers are judged by the empirical evidence they leave behind (artifacts and/or workspace changes), not by process exit code.
+
+## Built-in web tools
+
+### Web search (`web_search`)
+
+Enabled by default. Uses a multi-backend fallback chain (ddgs, Tavily, Brave, Exa, SearXNG).
+Configure via `[web_search]` in `mcp.toml`. Granted to 8 of 10 drains by default (not `analysis`, not `commit`).
+
+### URL fetching (`visit_url`)
+
+A built-in `visit_url` tool fetches a single HTTP/HTTPS page and returns readable extracted text.
+Requires the optional extras:
+
+```bash
+pip install "ralph-workflow[web-visit]"
+```
+
+Granted to **all 10 session drains** by default. Configure via `[web_visit]` in `mcp.toml`.
+See [`docs/mcp/web-visit.md`](docs/mcp/web-visit.md) for the full reference.
+
+For multi-page or JavaScript-rendered crawling, wire in [Crawl4AI](https://docs.crawl4ai.com/)
+as an upstream MCP server — see [`docs/mcp/mcp-servers.md`](docs/mcp/mcp-servers.md).
 
 ## Multimodal MCP Support (opt-in)
 

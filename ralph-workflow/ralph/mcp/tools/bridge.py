@@ -34,6 +34,7 @@ from ralph.mcp.tools.names import (
     REPORT_PROGRESS_TOOL,
     SUBMIT_ARTIFACT_TOOL,
     SUBMIT_PLAN_SECTION_TOOL,
+    VISIT_URL_TOOL,
     WEB_SEARCH_TOOL,
     WRITE_FILE_TOOL,
 )
@@ -970,6 +971,50 @@ def _tool_specs(mcp_config: McpConfig) -> tuple[ToolSpec, ...]:
                 handler_name="handle_web_search",
             ),
         )
+    if mcp_config.web_visit.enabled:
+        _specs.append(
+            ToolSpec(
+                metadata=_metadata(
+                    name=VISIT_URL_TOOL,
+                    description=(
+                        "Fetch a single URL and return readable extracted text. "
+                        "Required param: url (string, http/https). "
+                        "Optional param: with_links (boolean, default false) to also include "
+                        "up to 100 absolute outbound links. "
+                        "Returns JSON with status, title, effective_url, content_type, text, "
+                        "and optional links. "
+                        "On failure returns is_error=true with a status code "
+                        "(timeout, unreachable, http_error, unsupported_content, too_large, "
+                        "blocked_by_policy, invalid_url)."
+                    ),
+                    input_schema={
+                        "type": "object",
+                        "properties": {
+                            "url": {
+                                "type": "string",
+                                "description": (
+                                    "URL to fetch as a string, must use http or https scheme "
+                                    "(example values: 'https://example.com/', "
+                                    "'https://docs.python.org/3/')."
+                                ),
+                            },
+                            "with_links": {
+                                "type": "boolean",
+                                "description": (
+                                    "Whether to include up to 100 absolute outbound links "
+                                    "extracted from the page (default: false)."
+                                ),
+                                "default": False,
+                            },
+                        },
+                        "required": ["url"],
+                    },
+                    required_capability="WebVisit",
+                ),
+                module_name="ralph.mcp.tools.webvisit",
+                handler_name="handle_visit_url",
+            ),
+        )
     if mcp_config.media.enabled:
         _specs.append(
             ToolSpec(
@@ -1046,6 +1091,10 @@ def build_ralph_tool_registry(
             spec.module_name == "ralph.mcp.tools.websearch"
             and spec.handler_name == "handle_web_search"
         )
+        is_webvisit = (
+            spec.module_name == "ralph.mcp.tools.webvisit"
+            and spec.handler_name == "handle_visit_url"
+        )
         is_read_image = (
             spec.module_name == "ralph.mcp.tools.workspace"
             and spec.handler_name == "handle_read_image"
@@ -1059,6 +1108,17 @@ def build_ralph_tool_registry(
                     session=session,
                     workspace=workspace,
                     extra_kwargs={"web_search_config": mcp_cfg.web_search},
+                ),
+            )
+        elif is_webvisit:
+            bridge.register(
+                spec.metadata,
+                LazyToolHandler(
+                    module_name=spec.module_name,
+                    handler_name=spec.handler_name,
+                    session=session,
+                    workspace=workspace,
+                    extra_kwargs={"web_visit_config": mcp_cfg.web_visit},
                 ),
             )
         elif is_read_image:

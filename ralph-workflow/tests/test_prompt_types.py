@@ -39,6 +39,7 @@ def test_capability_set_defaults_cover_each_drain() -> None:
         Capability.GIT_DIFF_READ,
         Capability.ARTIFACT_SUBMIT,
         Capability.WEB_SEARCH,
+        Capability.WEB_VISIT,
     }
     assert set(development) == {
         Capability.WORKSPACE_READ,
@@ -51,6 +52,7 @@ def test_capability_set_defaults_cover_each_drain() -> None:
         Capability.RUN_REPORT_PROGRESS,
         Capability.ENV_READ,
         Capability.WEB_SEARCH,
+        Capability.WEB_VISIT,
     }
     assert set(fix) == {
         Capability.WORKSPACE_READ,
@@ -62,6 +64,7 @@ def test_capability_set_defaults_cover_each_drain() -> None:
         Capability.RUN_REPORT_PROGRESS,
         Capability.ENV_READ,
         Capability.WEB_SEARCH,
+        Capability.WEB_VISIT,
     }
     assert set(commit) == {
         Capability.WORKSPACE_READ,
@@ -71,6 +74,7 @@ def test_capability_set_defaults_cover_each_drain() -> None:
         Capability.GIT_WRITE,
         Capability.ARTIFACT_SUBMIT,
         Capability.RUN_REPORT_PROGRESS,
+        Capability.WEB_VISIT,
     }
 
 

@@ -289,3 +289,51 @@ ralph_upstream__docs-mcp__fetch_documentation
 ```
 
 (Tool names depend on the docs-mcp-server version; run `ralph --check-mcp` to see the actual list.)
+
+## Worked example: Crawl4AI advanced web crawling
+
+[Crawl4AI](https://docs.crawl4ai.com/) is an MCP server for advanced web crawling — multi-page,
+JavaScript-rendered sites, structured data extraction. It is the recommended choice when the
+built-in `visit_url` tool (which fetches a single static page) is not enough.
+
+### Install and start
+
+```
+pip install crawl4ai
+crawl4ai-mcp
+```
+
+By default the server listens on port 11235. Add it to `.agent/mcp.toml`:
+
+```toml
+[mcp_servers.crawl4ai]
+transport = "http"
+url = "http://localhost:11235/mcp"
+```
+
+Ralph already supports upstream MCP servers, so no additional code is needed. The Crawl4AI tools
+are exposed as:
+
+```
+ralph_upstream__crawl4ai__crawl
+ralph_upstream__crawl4ai__crawl_many
+```
+
+(Exact tool names depend on the installed Crawl4AI version; run `ralph --check-mcp` to see the
+actual list.)
+
+### Security notes
+
+Crawl4AI can execute JavaScript and follow redirects across many pages. Run it on a network
+interface that is not reachable from untrusted sources, or use a dedicated container. The
+built-in `visit_url` SSRF guard does **not** apply to upstream MCP server calls — firewall rules
+at the OS level are the right control for Crawl4AI in production.
+
+### When to use which
+
+| Need | Tool |
+|---|---|
+| Fetch one static HTML page | `visit_url` (built-in, no setup) |
+| JavaScript-rendered SPA | `ralph_upstream__crawl4ai__crawl` |
+| Multi-page crawl / sitemap | `ralph_upstream__crawl4ai__crawl_many` |
+| Structured extraction (CSS/JSON-LD) | `ralph_upstream__crawl4ai__crawl` with extraction schema |

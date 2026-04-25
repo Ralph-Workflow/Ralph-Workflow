@@ -33,6 +33,7 @@ from ralph.mcp.tools.names import (
     SUBMIT_ARTIFACT_TOOL,
     SUBMIT_PLAN_SECTION_TOOL,
     TRACKED_WRITE_TOOLS,
+    WEB_VISIT_TOOLS,
     WORKSPACE_READ_TOOLS,
     WRITE_FILE_TOOL,
     RalphToolName,
@@ -51,15 +52,23 @@ DEFAULT_CAPABILITIES: dict[SessionDrain, tuple[Capability, ...]] = {
         Capability.GIT_DIFF_READ,
         Capability.ARTIFACT_SUBMIT,
         Capability.WEB_SEARCH,
+        Capability.WEB_VISIT,
     ),
-    SessionDrain.DEVELOPMENT_ANALYSIS: (Capability.WEB_SEARCH,),
-    SessionDrain.DEVELOPMENT_COMMIT: (Capability.WEB_SEARCH,),
+    SessionDrain.DEVELOPMENT_ANALYSIS: (
+        Capability.WEB_SEARCH,
+        Capability.WEB_VISIT,
+    ),
+    SessionDrain.DEVELOPMENT_COMMIT: (
+        Capability.WEB_SEARCH,
+        Capability.WEB_VISIT,
+    ),
     SessionDrain.ANALYSIS: (
         Capability.WORKSPACE_READ,
         Capability.WORKSPACE_WRITE_EPHEMERAL,
         Capability.GIT_STATUS_READ,
         Capability.GIT_DIFF_READ,
         Capability.ARTIFACT_SUBMIT,
+        Capability.WEB_VISIT,
     ),
     SessionDrain.REVIEW: (
         Capability.WORKSPACE_READ,
@@ -68,8 +77,12 @@ DEFAULT_CAPABILITIES: dict[SessionDrain, tuple[Capability, ...]] = {
         Capability.GIT_DIFF_READ,
         Capability.ARTIFACT_SUBMIT,
         Capability.WEB_SEARCH,
+        Capability.WEB_VISIT,
     ),
-    SessionDrain.REVIEW_ANALYSIS: (Capability.WEB_SEARCH,),
+    SessionDrain.REVIEW_ANALYSIS: (
+        Capability.WEB_SEARCH,
+        Capability.WEB_VISIT,
+    ),
     SessionDrain.DEVELOPMENT: (
         Capability.WORKSPACE_READ,
         Capability.WORKSPACE_WRITE_EPHEMERAL,
@@ -81,6 +94,7 @@ DEFAULT_CAPABILITIES: dict[SessionDrain, tuple[Capability, ...]] = {
         Capability.RUN_REPORT_PROGRESS,
         Capability.ENV_READ,
         Capability.WEB_SEARCH,
+        Capability.WEB_VISIT,
     ),
     SessionDrain.FIX: (
         Capability.WORKSPACE_READ,
@@ -92,8 +106,12 @@ DEFAULT_CAPABILITIES: dict[SessionDrain, tuple[Capability, ...]] = {
         Capability.RUN_REPORT_PROGRESS,
         Capability.ENV_READ,
         Capability.WEB_SEARCH,
+        Capability.WEB_VISIT,
     ),
-    SessionDrain.REVIEW_COMMIT: (Capability.WEB_SEARCH,),
+    SessionDrain.REVIEW_COMMIT: (
+        Capability.WEB_SEARCH,
+        Capability.WEB_VISIT,
+    ),
     SessionDrain.COMMIT: (
         Capability.WORKSPACE_READ,
         Capability.WORKSPACE_WRITE_EPHEMERAL,
@@ -102,6 +120,7 @@ DEFAULT_CAPABILITIES: dict[SessionDrain, tuple[Capability, ...]] = {
         Capability.GIT_WRITE,
         Capability.ARTIFACT_SUBMIT,
         Capability.RUN_REPORT_PROGRESS,
+        Capability.WEB_VISIT,
     ),
 }
 
@@ -535,6 +554,7 @@ def visible_mcp_tool_names(capabilities: CapabilitySet) -> list[str]:
         (Capability.ARTIFACT_SUBMIT, (*ARTIFACT_TOOLS, *PLANNING_DRAFT_TOOLS)),
         (Capability.RUN_REPORT_PROGRESS, PROGRESS_TOOLS),
         (Capability.ENV_READ, ENV_READ_TOOLS),
+        (Capability.WEB_VISIT, WEB_VISIT_TOOLS),
     )
     for capability, tools in tool_matrix:
         if capabilities.contains(capability):
