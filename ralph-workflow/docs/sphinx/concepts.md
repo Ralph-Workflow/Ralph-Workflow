@@ -47,6 +47,33 @@ When an agent in a chain fails (non-zero exit, timeout, or artifact parse error)
 Ralph Workflow retries with the next agent in the chain up to `max_retries` times.
 Fallover is transparent to the phase logic. See `ralph.agents.chain`.
 
+## Agent Execution
+
+### ExecutionStrategy seam
+
+Each agent transport has an `ExecutionStrategy` that encapsulates how Ralph Workflow interprets
+that agent's lifecycle signals. The strategy is resolved by `strategy_for_transport()`
+in `ralph.agents.execution_state` and is the only place that maps an `AgentTransport`
+to lifecycle semantics.
+
+**GenericExecutionStrategy** is the default for Claude, Codex, and unknown transports.
+It treats a clean process exit (exit code 0) as terminal success regardless of artifact
+presence. It uses OS-level descendant checks for liveness but does not consult the
+`LivenessProbe`.
+
+**OpenCodeExecutionStrategy** is used for the OpenCode transport. It requires explicit
+completion signals — either a required artifact on disk or a `declare_complete` MCP tool
+call — before declaring a run terminal. A clean exit without either signal raises
+`OpenCodeResumableExitError`, which the runner maps to a session-preserving retry
+(threading the existing `session_id` into the next attempt instead of restarting from
+scratch). The strategy also consults the `LivenessProbe` to detect active child agents
+before declaring the parent idle; this prevents misclassifying an OpenCode parent as
+timed-out while child work is still running.
+
+New agent transports that need resumable or child-delegating semantics should extend
+this seam by implementing a new strategy and registering it in `strategy_for_transport()`,
+rather than adding special cases in the generic timeout or idle logic.
+
 ## MCP (Model Context Protocol)
 
 A protocol that lets Ralph Workflow expose tools and resources to agents over a local

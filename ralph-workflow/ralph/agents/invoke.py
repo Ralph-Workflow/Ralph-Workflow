@@ -54,7 +54,7 @@ from ralph.mcp.transport.common import (
     set_upstream_mcp_config,
 )
 from ralph.mcp.transport.opencode import build_opencode_provider_config
-from ralph.process.liveness import DefaultLivenessProbe
+from ralph.process.liveness import DefaultLivenessProbe, LivenessProbe
 from ralph.process.manager import ManagedProcess, get_process_manager
 
 _MODELED_FLAG_PARTS = 2
@@ -426,7 +426,7 @@ def _run_subprocess_and_read_lines(  # noqa: PLR0913
     *,
     idle_timeout_seconds: float | None = None,
     execution_strategy: GenericExecutionStrategy | OpenCodeExecutionStrategy | None = None,
-    liveness_probe: DefaultLivenessProbe | None = None,
+    liveness_probe: LivenessProbe | None = None,
     phase: str | None = None,
 ) -> Iterator[str]:
     """Run subprocess and yield output lines.
@@ -451,7 +451,7 @@ def _run_subprocess_and_read_lines(  # noqa: PLR0913
         text=True,
     )
     strategy = execution_strategy or GenericExecutionStrategy()
-    probe = liveness_probe or DefaultLivenessProbe()
+    probe: LivenessProbe = liveness_probe or DefaultLivenessProbe()
     with handle:
         stdout_pipe = handle.stdout
         if stdout_pipe is None:
@@ -619,7 +619,7 @@ def _read_lines_from_process(
     *,
     idle_timeout_seconds: float | None = None,
     execution_strategy: GenericExecutionStrategy | OpenCodeExecutionStrategy | None = None,
-    liveness_probe: DefaultLivenessProbe | None = None,
+    liveness_probe: LivenessProbe | None = None,
 ) -> Iterator[str]:
     """Read lines from subprocess stdout in a background thread.
 
@@ -670,7 +670,7 @@ def _read_lines_from_process(
             and time.monotonic() - last_activity >= idle_timeout_seconds
         ):
             strategy = execution_strategy or GenericExecutionStrategy()
-            probe = liveness_probe or DefaultLivenessProbe()
+            probe: LivenessProbe = liveness_probe or DefaultLivenessProbe()
             quiet_state = strategy.classify_quiet(handle, probe)
             if quiet_state == AgentExecutionState.WAITING_ON_CHILD:
                 last_activity = time.monotonic()
@@ -739,7 +739,11 @@ def _check_process_result(
         and opts.workspace_path is not None
         and opts.phase is not None
     ):
-        signals = evaluate_completion(opts.workspace_path, opts.phase)
+        signals = evaluate_completion(
+            opts.workspace_path,
+            opts.phase,
+            list(parsed_output) if parsed_output else [],
+        )
         exit_state = opts.execution_strategy.classify_exit(handle, signals)
         if exit_state == AgentExecutionState.RESUMABLE_CONTINUE:
             session_id = extract_session_id(list(parsed_output) if parsed_output else [])

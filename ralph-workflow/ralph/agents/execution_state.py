@@ -1,6 +1,6 @@
 """Transport-aware execution state model for agent lifecycle management.
 
-Provides AgentExecutionState (active/waiting/resumable/terminal/failed),
+Provides AgentExecutionState (active/waiting/resumable/terminal),
 the ExecutionStrategy protocol, and concrete GenericExecutionStrategy and
 OpenCodeExecutionStrategy implementations.
 """
@@ -21,7 +21,6 @@ class AgentExecutionState(StrEnum):
     WAITING_ON_CHILD = "waiting_on_child"
     RESUMABLE_CONTINUE = "resumable_continue"
     TERMINAL_COMPLETE = "terminal_complete"
-    FAILED = "failed"
 
 
 class GenericExecutionStrategy:
@@ -55,6 +54,9 @@ class GenericExecutionStrategy:
         return False
 
 
+_AGENT_LABEL_PREFIX = "agent:"
+
+
 class OpenCodeExecutionStrategy:
     """OpenCode-aware strategy.
 
@@ -64,7 +66,19 @@ class OpenCodeExecutionStrategy:
 
     Exit classification requires explicit completion signals (artifact
     present or explicit_complete flag) before declaring terminal success.
+
+    ``label_scope`` narrows the liveness check to processes whose labels
+    start with ``agent:{label_scope}:``.  When None the check falls back to
+    the global ``agent:`` prefix (production default).
     """
+
+    def __init__(self, *, label_scope: str | None = None) -> None:
+        self._label_scope = label_scope
+
+    def _active_label_prefix(self) -> str:
+        if self._label_scope is not None:
+            return f"{_AGENT_LABEL_PREFIX}{self._label_scope}:"
+        return _AGENT_LABEL_PREFIX
 
     def classify_quiet(
         self,
@@ -73,7 +87,7 @@ class OpenCodeExecutionStrategy:
     ) -> AgentExecutionState:
         # Check for Ralph-tracked parallel agent workers (label prefix "agent:")
         try:
-            if bool(liveness_probe.any_agent_active("agent:")):  # type: ignore[attr-defined, misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+            if bool(liveness_probe.any_agent_active(self._active_label_prefix())):  # type: ignore[attr-defined, misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
                 return AgentExecutionState.WAITING_ON_CHILD
         except Exception:
             pass
