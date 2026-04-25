@@ -76,6 +76,43 @@ When working on `ralph/pipeline/runner.py`, `ralph/phases/`, or Claude/CCS agent
 
 This logic is more complex than a naive "agent exited 0" flow, but it exists to prevent silent no-op runs in unattended mode without forcing side-effect-driven phases to produce busywork artifacts. If you change it, update tests and docs together.
 
+## OpenCode session continuation and completion contract
+
+OpenCode is a session-based agent that may spawn child agents or delegate background work. Ralph Workflow
+models its lifecycle explicitly through `OpenCodeExecutionStrategy` in `ralph/agents/execution_state.py`:
+
+**Completion contract:** An OpenCode run is only declared terminal-complete when at least one of
+these conditions is true:
+
+- The required phase artifact exists on disk (`required_artifact_present=True`), OR
+- The agent explicitly called the `declare_complete` MCP tool (`explicit_complete=True`).
+
+A clean process exit (exit code 0) alone is **not** sufficient for success. If neither signal is
+present, Ralph Workflow raises `OpenCodeResumableExitError` and the runner retries the same OpenCode session
+(preserving `session_id`) rather than restarting from scratch. This prevents silent no-op runs where
+the agent exits early without producing the required output.
+
+Phases with no registered required artifact (not in `REQUIRED_ARTIFACTS`) also return
+`required_artifact_present=False`, so OpenCode agents on such phases must call `declare_complete`
+explicitly. This prevents implicit success from being granted just because a phase has no artifact
+requirement.
+
+**Multi-agent tree liveness:** When an OpenCode parent becomes quiet (stops producing output), Ralph Workflow
+consults the `LivenessProbe` before declaring it idle. If any Ralph Workflow-tracked child agent is still
+active (`LivenessProbe.any_agent_active("agent:")` returns True), the idle clock resets and the
+run continues. Only when the full agent tree is quiet does the idle timeout fire.
+
+**Session continuation:** `OpenCodeResumableExitError.resumable_session_id` carries the session ID
+extracted from the NDJSON output. The runner threads this ID into the next invocation via
+`InvokeOptions.session_id`, and the OpenCode `session_flag` (`--session {}`) ensures the same
+session resumes instead of a new one being created. Budget tracking (`max_same_agent_retries`) caps
+resumable retries the same as ordinary failures.
+
+**Stale session detection:** If OpenCode reports a stale or invalid session (messages containing
+`'Session not found'`, `'Unknown session'`, `'session does not exist'`, or
+`'No conversation found with session ID:'`), `FailureClassifier` maps the failure to
+`FailureCategory.AGENT` with `reset_session=True` so the next attempt starts a fresh session.
+
 ## MCP multimodal compatibility contract
 
 When modifying the MCP tool surface, maintain these invariants:
