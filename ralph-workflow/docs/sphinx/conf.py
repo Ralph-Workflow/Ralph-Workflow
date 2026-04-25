@@ -46,8 +46,9 @@ html_theme_options = {
     "sidebar_hide_name": False,
     "navigation_with_keys": True,
     "light_css_variables": {
-        "color-brand-primary": "#0b6bcb",
-        "color-brand-content": "#0b6bcb",
+        # Light mode: teal brand accent matching ralphworkflow.com
+        "color-brand-primary": "#0891b2",
+        "color-brand-content": "#0891b2",
         "font-stack": "'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif",
         "font-stack--monospace": "'JetBrains Mono', 'Fira Code', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
         "color-background-primary": "#ffffff",
@@ -57,13 +58,14 @@ html_theme_options = {
         "color-foreground-muted": "#6b7280",
         "color-sidebar-background": "#f6f8fa",
         "color-sidebar-background-border": "#e5e7eb",
-        "color-highlight-on-target": "#fff8c5",
-        "color-api-name": "#0b6bcb",
-        "color-api-pre-name": "#0b6bcb",
+        "color-highlight-on-target": "#ecfeff",
+        "color-api-name": "#0891b2",
+        "color-api-pre-name": "#0891b2",
     },
+    # Dark palette: teal #22d3ee accent on dark #0b0d10 background (ralphworkflow.com)
     "dark_css_variables": {
-        "color-brand-primary": "#5eb1ff",
-        "color-brand-content": "#5eb1ff",
+        "color-brand-primary": "#22d3ee",
+        "color-brand-content": "#22d3ee",
         "color-background-primary": "#0b0d10",
         "color-background-secondary": "#11151a",
         "color-foreground-primary": "#e6edf3",
@@ -72,9 +74,9 @@ html_theme_options = {
         "color-sidebar-background": "#0b0d10",
         "color-sidebar-background-border": "#1a1f25",
         "color-sidebar-link-text--top-level": "#e6edf3",
-        "color-highlight-on-target": "#1f2933",
-        "color-api-name": "#5eb1ff",
-        "color-api-pre-name": "#5eb1ff",
+        "color-highlight-on-target": "#0c2a2e",
+        "color-api-name": "#22d3ee",
+        "color-api-pre-name": "#22d3ee",
     },
 }
 html_title = "Ralph Workflow"
