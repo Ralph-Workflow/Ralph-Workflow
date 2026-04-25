@@ -78,7 +78,7 @@ def test_quiet_mode_suppresses_dashboard_header_and_phase_banners(
     constructed_displays: list[object] = []
     real_init = pd_module.ParallelDisplay.__init__
 
-    def spy_init(self, *args, **kwargs):  # type: ignore[no-untyped-def]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+    def spy_init(self: object, *args: object, **kwargs: object) -> None:
         constructed_displays.append(self)
         real_init(self, *args, **kwargs)
 

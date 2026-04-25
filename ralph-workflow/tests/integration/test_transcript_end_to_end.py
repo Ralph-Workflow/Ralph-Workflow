@@ -118,7 +118,7 @@ def _install_runner_stubs(
     # Spy on ParallelDisplay construction to capture the display instance
     real_init = pd_module.ParallelDisplay.__init__
 
-    def spy_init(self, *args, **kwargs):  # type: ignore[no-untyped-def]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+    def spy_init(self: object, *args: object, **kwargs: object) -> None:
         captured_displays.append(self)
         real_init(self, *args, **kwargs)
 

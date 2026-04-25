@@ -58,7 +58,7 @@ def test_default_run_constructs_parallel_display_and_renders_surfaces(
     constructed: list[object] = []
     real_init = pd_module.ParallelDisplay.__init__
 
-    def spy_init(self, *args, **kwargs):  # type: ignore[no-untyped-def]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+    def spy_init(self: object, *args: object, **kwargs: object) -> None:
         constructed.append(self)
         # Force lines mode so the test does not require a real terminal.
         kwargs.setdefault("mode", "lines")
@@ -133,7 +133,7 @@ def test_default_run_propagates_display_subscriber(
     # Use the subscriber notification seam if it exists, otherwise skip assertion
     notify_seam = getattr(runner_module, "_notify_subscriber", None)
 
-    def spy_notify(subscriber, state):  # type: ignore[no-untyped-def]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+    def spy_notify(subscriber: object, state: object) -> None:
         captured_subscribers.append(subscriber)
         if notify_seam is not None:
             notify_seam(subscriber, state)
@@ -150,7 +150,7 @@ def test_default_run_propagates_display_subscriber(
 
     real_init = pd_module.ParallelDisplay.__init__
 
-    def lines_init(self, *args, **kwargs):  # type: ignore[no-untyped-def]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+    def lines_init(self: object, *args: object, **kwargs: object) -> None:
         kwargs.setdefault("mode", "lines")
         real_init(self, *args, **kwargs)
 

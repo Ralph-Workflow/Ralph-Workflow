@@ -5,7 +5,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Any
 
 import httpx
 from loguru import logger
@@ -65,7 +64,7 @@ class ProgressUpdate(BaseModel):  # type: ignore[explicit-any]  # reason: extern
     total_iterations: int | None = None
     review_pass: int | None = None
     total_review_passes: int | None = None
-    metadata: dict[str, Any] = Field(default_factory=dict)  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+    metadata: dict[str, object] = Field(default_factory=dict)
 
 
 class PipelineResult(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
@@ -94,7 +93,7 @@ class TelemetryEvent(BaseModel):  # type: ignore[explicit-any]  # reason: extern
 
     timestamp: datetime
     name: str
-    attributes: dict[str, Any] = Field(default_factory=dict)  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+    attributes: dict[str, object] = Field(default_factory=dict)
 
 
 class MetricSample(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
