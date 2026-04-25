@@ -42,6 +42,8 @@ templates_path = ["_templates"]
 exclude_patterns = ["_build", "build", "Thumbs.db", ".DS_Store"]
 
 html_theme = "furo"
+# Note: 'default_mode' is not supported by Furo 2025.12.19 (not in theme.conf options).
+# Dark/light mode follows system preference via Furo's built-in toggle.
 html_theme_options = {
     "sidebar_hide_name": False,
     "navigation_with_keys": True,
