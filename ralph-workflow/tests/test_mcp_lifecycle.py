@@ -97,6 +97,61 @@ def test_start_mcp_server_uses_injected_dependencies(tmp_path: Path) -> None:
     assert seen["cwd"] == tmp_path
 
 
+def test_start_mcp_server_includes_extra_env_in_subprocess(tmp_path: Path) -> None:
+    seen: dict[str, object] = {}
+
+    def fake_reserve_port() -> int:
+        return 43124
+
+    def fake_create_session_file(root: Path, session: object) -> Path:
+        path = tmp_path / "session-extra-env.json"
+        path.write_text("{}", encoding="utf-8")
+        return path
+
+    def fake_subprocess_env(session_file: Path) -> dict[str, str]:
+        return {"RALPH_MCP_SESSION_FILE": str(session_file)}
+
+    def fake_spawn(
+        command: list[str], cwd: Path, env: dict[str, str], *, phase: str | None = None
+    ) -> FakeProcess:
+        del command, cwd, phase
+        seen["env"] = env
+        return FakeProcess()
+
+    def fake_preflight(endpoint: str, required_tools: list[str], timeout: timedelta) -> None:
+        del endpoint, required_tools, timeout
+
+    deps = lifecycle.LifecycleDeps(
+        reserve_port=fake_reserve_port,
+        create_session_file=fake_create_session_file,
+        subprocess_env=fake_subprocess_env,
+        spawn_process=fake_spawn,
+        preflight=fake_preflight,
+        preflight_timeout=lambda: timedelta(seconds=5),
+    )
+
+    session = AgentSession(
+        session_id="session-extra-env",
+        run_id="run-extra-env",
+        drain="planning",
+        capabilities={"WorkspaceRead", "ArtifactSubmit"},
+    )
+    workspace = lifecycle.FsWorkspace(tmp_path)
+
+    lifecycle.start_mcp_server(
+        session,
+        workspace,
+        deps=deps,
+        extra_env={"RALPH_UPSTREAM_MCP_CONFIG": '[{"name":"docs","transport":"http","url":"http://docs"}]'},
+    )
+
+    env = cast("dict[str, str]", seen["env"])
+    assert env["RALPH_UPSTREAM_MCP_CONFIG"] == (
+        '[{"name":"docs","transport":"http","url":"http://docs"}]'
+    )
+
+
+
 def test_start_mcp_server_preflight_includes_upstream_tool_names(tmp_path: Path) -> None:
     seen: dict[str, object] = {}
 

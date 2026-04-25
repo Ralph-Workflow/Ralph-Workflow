@@ -63,7 +63,7 @@ Each type has a schema; invalid artifacts are rejected. See `ralph.mcp.artifacts
 
 ## Local Web Access
 
-Ralph exposes three distinct web capabilities — search, visit, and crawl — that are
+Ralph Workflow exposes three distinct web capabilities — search, visit, and crawl — that are
 designed to be complementary. Web search finds candidate pages, `visit_url` reads a
 single page directly, and Crawl4AI/Firecrawl can be configured as an upstream local
 crawler for multi-page traversal. See [Local Web Access](local-web-access.md) for the

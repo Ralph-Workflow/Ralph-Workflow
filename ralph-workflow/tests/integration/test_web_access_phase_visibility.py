@@ -465,7 +465,7 @@ def _do_tool_call(
     name: str,
     arguments: dict[str, Any],
 ) -> dict[str, Any]:
-    """Send tools/call request and return the result."""
+    """Send tools/call request and return the JSON-RPC result payload."""
     target = startup.parse_http_endpoint(base_url)
     response, _ = startup.post_http_jsonrpc_with_session(
         base_url,
@@ -478,4 +478,6 @@ def _do_tool_call(
         },
         session_id=session_id,
     )
-    return response
+    result = response["result"]
+    assert isinstance(result, dict)
+    return result

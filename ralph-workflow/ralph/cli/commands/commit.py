@@ -39,6 +39,7 @@ from ralph.mcp.artifacts.commit_message import (
 )
 from ralph.mcp.protocol.session import MCP_ENDPOINT_ENV, MCP_RUN_ID_ENV, AgentSession
 from ralph.mcp.server.lifecycle import SessionBridgeLike, start_mcp_server
+from ralph.mcp.session_plan import build_session_mcp_plan
 from ralph.mcp.tools.names import SUBMIT_ARTIFACT_TOOL, claude_tool_name, claude_tool_name_prefix
 from ralph.prompts.commit import (
     CommitPromptPayloadConfig,
@@ -827,19 +828,19 @@ def _parsed_output_from_invocation_error(exc: AgentInvocationError) -> list[str]
 
 
 def _start_commit_bridge(repo_root: Path) -> SessionBridgeLike:
+    session_mcp_plan = build_session_mcp_plan(
+        transport=None,
+        drain="commit",
+        workspace_path=repo_root,
+    )
     session = AgentSession(
         session_id=f"commit-{uuid.uuid4().hex[:8]}",
         run_id=str(uuid.uuid4()),
         drain="commit",
-        capabilities={
-            "ArtifactSubmit",
-            "RunReportProgress",
-            "WorkspaceRead",
-            "WorkspaceWriteEphemeral",
-        },
+        capabilities=set(session_mcp_plan.capabilities),
     )
     workspace = FsWorkspace(repo_root)
-    return start_mcp_server(session, workspace)
+    return start_mcp_server(session, workspace, extra_env=session_mcp_plan.server_env)
 
 
 def _commit_bridge_env(bridge: SessionBridgeLike) -> dict[str, str]:

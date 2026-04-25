@@ -40,6 +40,7 @@ def test_capability_set_defaults_cover_each_drain() -> None:
         Capability.ARTIFACT_SUBMIT,
         Capability.WEB_SEARCH,
         Capability.WEB_VISIT,
+        Capability.UPSTREAM_TOOL_USE,
     }
     assert set(development) == {
         Capability.WORKSPACE_READ,
@@ -53,6 +54,7 @@ def test_capability_set_defaults_cover_each_drain() -> None:
         Capability.ENV_READ,
         Capability.WEB_SEARCH,
         Capability.WEB_VISIT,
+        Capability.UPSTREAM_TOOL_USE,
     }
     assert set(fix) == {
         Capability.WORKSPACE_READ,
@@ -65,6 +67,7 @@ def test_capability_set_defaults_cover_each_drain() -> None:
         Capability.ENV_READ,
         Capability.WEB_SEARCH,
         Capability.WEB_VISIT,
+        Capability.UPSTREAM_TOOL_USE,
     }
     assert set(commit) == {
         Capability.WORKSPACE_READ,
@@ -75,6 +78,7 @@ def test_capability_set_defaults_cover_each_drain() -> None:
         Capability.ARTIFACT_SUBMIT,
         Capability.RUN_REPORT_PROGRESS,
         Capability.WEB_VISIT,
+        Capability.UPSTREAM_TOOL_USE,
     }
 
 

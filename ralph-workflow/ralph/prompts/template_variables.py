@@ -157,6 +157,11 @@ DEFAULT_POLICY_FLAGS: dict[SessionDrain, tuple[PolicyFlag, ...]] = {
 }
 
 
+def default_capability_identifiers_for_drain(drain: SessionDrain | str) -> set[str]:
+    """Return the canonical default capability identifiers for a drain."""
+    return {cap.value for cap in DEFAULT_CAPABILITIES.get(_default_drain_key(drain), ())}
+
+
 class CapabilitySet:
     """Lightweight set of Ralph capabilities."""
 
@@ -286,9 +291,9 @@ def default_caps_and_flags_for_drain(drain: SessionDrain) -> tuple[CapabilitySet
     return (CapabilitySet.defaults_for_drain(drain), PolicyFlagSet.defaults_for_drain(drain))
 
 
-def _default_drain_key(drain: SessionDrain) -> SessionDrain:
+def _default_drain_key(drain: SessionDrain | str) -> SessionDrain:
     if drain in DEFAULT_CAPABILITIES or drain in DEFAULT_POLICY_FLAGS:
-        return drain
+        return drain if isinstance(drain, SessionDrain) else SessionDrain(drain)
     return SessionDrain(drain_class_for_session(drain).value)
 
 
@@ -658,5 +663,6 @@ __all__ = [
     "SessionCapabilities",
     "capability_template_variables",
     "capability_template_variables_from_session",
+    "default_capability_identifiers_for_drain",
     "default_caps_and_flags_for_drain",
 ]

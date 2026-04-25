@@ -56,9 +56,9 @@ from ralph.mcp.artifacts.commit_message import (
     delete_commit_message_artifacts,
     read_commit_message_from_path,
 )
-from ralph.mcp.protocol.capability_mapping import DrainClass, drain_class_for_session
 from ralph.mcp.protocol.session import MCP_ENDPOINT_ENV, MCP_RUN_ID_ENV, AgentSession
 from ralph.mcp.server.lifecycle import shutdown_mcp_server, start_mcp_server
+from ralph.mcp.session_plan import build_session_mcp_plan
 from ralph.phases import PhaseContext, handle_phase
 from ralph.phases.required_artifacts import (
     DEV_ANALYSIS_DECISION_JSON_PATH,
@@ -2004,18 +2004,32 @@ def _execute_agent_effect(  # noqa: PLR0913
         raw_output: list[str] = []
         rendered_output: list[str] = []
         try:
+            system_prompt_file = materialize_system_prompt(
+                workspace_root=workspace_scope.root,
+                name=str(effect.phase),
+            )
+            session_mcp_plan = build_session_mcp_plan(
+                transport=agent_config.transport,
+                drain=effect.drain or effect.phase,
+                workspace_path=workspace_scope.root,
+            )
             session = AgentSession(
                 session_id=f"{effect.phase}-{uuid.uuid4().hex[:8]}",
                 run_id=str(uuid.uuid4()),
                 drain=effect.drain or effect.phase,
-                capabilities=_default_mcp_capabilities_for_phase(effect.drain or effect.phase),
+                capabilities=set(session_mcp_plan.capabilities),
             )
             workspace = FsWorkspace(
                 workspace_scope.root,
                 allowed_roots=workspace_scope.allowed_roots,
             )
             _clear_phase_output_artifacts(workspace, effect.phase)
-            bridge = start_mcp_server(session, workspace, phase=effect.phase)
+            bridge = start_mcp_server(
+                session,
+                workspace,
+                phase=effect.phase,
+                extra_env=session_mcp_plan.server_env,
+            )
 
             options = InvokeOptions(
                 verbose=config.general.verbosity >= _VERBOSE_LOG_LEVEL,
@@ -2027,10 +2041,7 @@ def _execute_agent_effect(  # noqa: PLR0913
                 },
                 idle_timeout_seconds=config.general.agent_idle_timeout_seconds,
                 session_id=resume_session_id,
-                system_prompt_file=materialize_system_prompt(
-                    workspace_root=workspace_scope.root,
-                    name=str(effect.phase),
-                ),
+                system_prompt_file=system_prompt_file,
                 phase=str(effect.phase),
             )
             output_lines = deps.invoke_agent(agent_config, attempt_prompt_file, options=options)
@@ -2245,27 +2256,13 @@ def _phase_output_artifact_paths(phase: str) -> tuple[str, ...]:
 
 
 def _default_mcp_capabilities_for_phase(phase: str) -> set[str]:
-    drain_class = drain_class_for_session(phase)
-    base = {
-        "workspace.read",
-        "git.status_read",
-        "git.diff_read",
-        "artifact.submit",
-    }
-
-    if drain_class in {DrainClass.PLANNING, DrainClass.ANALYSIS, DrainClass.REVIEW}:
-        return base
-    if drain_class is DrainClass.COMMIT:
-        return base | {"workspace.write_ephemeral", "git.write", "run.report_progress"}
-    if drain_class in {DrainClass.DEVELOPMENT, DrainClass.FIX}:
-        return base | {
-            "workspace.write_ephemeral",
-            "workspace.write_tracked",
-            "process.exec_bounded",
-            "run.report_progress",
-            "env.read",
-        }
-    return base
+    return set(
+        build_session_mcp_plan(
+            transport=None,
+            drain=phase,
+            workspace_path=None,
+        ).capabilities
+    )
 
 
 def _execute_commit_effect(  # noqa: PLR0913

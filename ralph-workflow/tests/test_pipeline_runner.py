@@ -1241,6 +1241,8 @@ class TestExecuteAgentEffect:
             "process.exec_bounded",
             "run.report_progress",
             "env.read",
+            "web.search",
+            "web.visit",
         }
 
     def test_custom_phase_uses_bound_drain_capabilities(self, monkeypatch) -> None:
@@ -1290,6 +1292,8 @@ class TestExecuteAgentEffect:
             "process.exec_bounded",
             "run.report_progress",
             "env.read",
+            "web.search",
+            "web.visit",
         }
 
     def test_returns_failure_when_agent_missing(self) -> None:

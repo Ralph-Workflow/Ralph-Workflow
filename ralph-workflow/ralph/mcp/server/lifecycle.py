@@ -93,13 +93,14 @@ class StandaloneMcpProcess:
         self.session_file.unlink(missing_ok=True)
 
 
-def start_mcp_server(
+def start_mcp_server(  # noqa: PLR0913
     session: SessionLike,
     workspace: WorkspaceLike,
     *,
     upstream_registry: UpstreamRegistry | None = None,
     deps: LifecycleDeps | None = None,
     phase: str | None = None,
+    extra_env: dict[str, str] | None = None,
 ) -> SessionBridgeLike:
     """Start a standalone Ralph MCP HTTP subprocess and verify tool reachability."""
     lifecycle_deps = deps or _default_lifecycle_deps()
@@ -108,6 +109,8 @@ def start_mcp_server(
     endpoint = f"http://127.0.0.1:{port}/mcp"
     session_file = lifecycle_deps.create_session_file(root, session)
     env = lifecycle_deps.subprocess_env(session_file)
+    if extra_env:
+        env.update(extra_env)
     process = lifecycle_deps.spawn_process(
         [
             sys.executable,

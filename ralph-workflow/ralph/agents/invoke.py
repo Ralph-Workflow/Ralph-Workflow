@@ -99,6 +99,13 @@ class _BuildCommandOptions:
     workspace_path: Path | None = None
 
 
+@dataclass(frozen=True)
+class ResolvedInvocationRuntime:
+    agent_env: dict[str, str] | None = None
+    server_env: dict[str, str] | None = None
+    mcp_endpoint: str | None = None
+
+
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
@@ -346,13 +353,14 @@ def invoke_agent(
         AgentInvocationError: If agent exits with non-zero code.
     """
     opts = options or InvokeOptions()
-    runtime_env = _runtime_extra_env(
+    runtime = resolve_invocation_runtime(
         config,
         opts.extra_env,
         opts.workspace_path,
         system_prompt_file=opts.system_prompt_file,
     )
-    mcp_endpoint = (runtime_env or {}).get("RALPH_MCP_ENDPOINT")
+    runtime_env = runtime.agent_env
+    mcp_endpoint = runtime.mcp_endpoint
     allowed_mcp_tool_names = _provider_allowed_mcp_tool_names(config, mcp_endpoint)
     cmd = _build_command(
         config,
@@ -511,31 +519,38 @@ def _subprocess_env(extra_env: dict[str, str] | None) -> dict[str, str]:
     return env
 
 
-def _runtime_extra_env(
+def resolve_invocation_runtime(
     config: AgentConfig,
     extra_env: dict[str, str] | None,
     workspace_path: Path | None,
     *,
     system_prompt_file: str | None = None,
-) -> dict[str, str] | None:
+) -> ResolvedInvocationRuntime:
     runtime_env = dict(extra_env or {})
+    server_env: dict[str, str] = {}
     endpoint = runtime_env.get("RALPH_MCP_ENDPOINT")
 
     transport = _agent_transport(config)
     if transport == AgentTransport.OPENCODE:
         if not endpoint:
-            return runtime_env or None
+            return ResolvedInvocationRuntime(agent_env=runtime_env or None)
         provider_config, upstreams = build_opencode_provider_config(
             runtime_env.get("OPENCODE_CONFIG_CONTENT") or os.environ.get("OPENCODE_CONFIG_CONTENT"),
             endpoint,
         )
         runtime_env["OPENCODE_CONFIG_CONTENT"] = provider_config
         mcp_toml = mcp_toml_as_upstreams(workspace_path)
-        set_upstream_mcp_config(runtime_env, merge_mcp_toml_into_upstreams(upstreams, mcp_toml))
-        return runtime_env
+        merged_upstreams = merge_mcp_toml_into_upstreams(upstreams, mcp_toml)
+        set_upstream_mcp_config(runtime_env, merged_upstreams)
+        set_upstream_mcp_config(server_env, merged_upstreams)
+        return ResolvedInvocationRuntime(
+            agent_env=runtime_env,
+            server_env=server_env or None,
+            mcp_endpoint=endpoint,
+        )
     if transport == AgentTransport.CODEX:
         if not endpoint and system_prompt_file is None:
-            return runtime_env or None
+            return ResolvedInvocationRuntime(agent_env=runtime_env or None)
         codex_home, upstreams = prepare_codex_home_with_upstreams(
             endpoint,
             workspace_path=workspace_path,
@@ -544,21 +559,48 @@ def _runtime_extra_env(
         )
         runtime_env["CODEX_HOME"] = codex_home
         mcp_toml = mcp_toml_as_upstreams(workspace_path)
-        set_upstream_mcp_config(runtime_env, merge_mcp_toml_into_upstreams(upstreams, mcp_toml))
-        return runtime_env
+        merged_upstreams = merge_mcp_toml_into_upstreams(upstreams, mcp_toml)
+        set_upstream_mcp_config(runtime_env, merged_upstreams)
+        set_upstream_mcp_config(server_env, merged_upstreams)
+        return ResolvedInvocationRuntime(
+            agent_env=runtime_env,
+            server_env=server_env or None,
+            mcp_endpoint=endpoint,
+        )
     if transport == AgentTransport.CLAUDE:
         if endpoint:
             existing = load_existing_claude_upstream_servers(workspace_path)
             mcp_toml = mcp_toml_as_upstreams(workspace_path)
-            set_upstream_mcp_config(runtime_env, merge_mcp_toml_into_upstreams(existing, mcp_toml))
-        return runtime_env
+            merged_upstreams = merge_mcp_toml_into_upstreams(existing, mcp_toml)
+            set_upstream_mcp_config(runtime_env, merged_upstreams)
+            set_upstream_mcp_config(server_env, merged_upstreams)
+        return ResolvedInvocationRuntime(
+            agent_env=runtime_env or None,
+            server_env=server_env or None,
+            mcp_endpoint=endpoint,
+        )
 
     if not endpoint:
-        return runtime_env or None
+        return ResolvedInvocationRuntime(agent_env=runtime_env or None)
 
     raise UnsupportedMcpTransportError(
         f"Agent transport '{transport}' does not declare how to receive Ralph MCP wiring"
     )
+
+
+def _runtime_extra_env(
+    config: AgentConfig,
+    extra_env: dict[str, str] | None,
+    workspace_path: Path | None,
+    *,
+    system_prompt_file: str | None = None,
+) -> dict[str, str] | None:
+    return resolve_invocation_runtime(
+        config,
+        extra_env,
+        workspace_path,
+        system_prompt_file=system_prompt_file,
+    ).agent_env
 
 
 def _agent_transport(config: AgentConfig) -> AgentTransport:
