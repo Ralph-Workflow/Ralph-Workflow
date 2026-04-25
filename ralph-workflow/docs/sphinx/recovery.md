@@ -45,10 +45,21 @@ Recovery resumed after offline
 
 ## Recovery-cycle cap
 
-A global `recovery_cycle_cap` (default: 200) bounds the total number of full-chain exhaustion
-recovery cycles. When exceeded, the pipeline exits with a descriptive error referencing the cap
-value and the last failure. This prevents a persistently-failing handler from looping silently
-forever.
+The `[general].max_cycles` setting (default: `3`) limits the total number of full-chain
+exhaustion recovery cycles. When the cap is reached, the pipeline exits with a descriptive
+error showing the cap value and the last failure category. This prevents a
+persistently-failing handler from looping silently forever.
+
+Configure it in `ralph-workflow.toml` (or `.agent/ralph-workflow.toml`):
+
+```toml
+[general]
+max_cycles = 3   # default: 3
+```
+
+Per-chain `max_retries` in `.agent/agents.toml` controls how many times a single agent
+is retried before the chain falls over to the next agent. Only after all agents in a chain
+are exhausted does the recovery cycle count increment.
 
 ## Agent chain fallover
 
@@ -68,17 +79,22 @@ Failure events are emitted as structured log entries with `recovery=true`:
 
 ## Configuration knobs
 
+Agent chain retry budget and backoff are configured in `.agent/agents.toml`:
+
 ```toml
-[agents]
-# Per-chain retry budget and backoff
-[agents.chains.development]
+# .agent/agents.toml
+[agent_chains.development]
 agents = ["claude", "opencode"]
 max_retries = 3          # per-agent retry budget
 retry_delay_ms = 1000    # base delay before retry (exponential backoff, capped at 30s)
+```
 
-# Global recovery cycle cap (default: 200)
-[pipeline]
-recovery_cycle_cap = 200
+The maximum fallback cycles through a drain is configured in `ralph-workflow.toml`:
+
+```toml
+# ralph-workflow.toml or .agent/ralph-workflow.toml
+[general]
+max_cycles = 3   # max full fallback cycles through a drain (default: 3)
 ```
 
 `retry_delay_ms` controls the base delay between retries for agent-attributable failures.

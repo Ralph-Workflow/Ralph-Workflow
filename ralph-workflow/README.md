@@ -101,7 +101,8 @@ This matters because `/sse` is not just a different path — it uses the older M
 
 ## Documentation
 
-The full reference documentation lives in `docs/sphinx/`. Build and browse it locally:
+The full reference documentation lives in `docs/sphinx/` and is published as the
+`/docs` section of <https://ralphworkflow.com>. Build and browse it locally:
 
 ```bash
 cd ralph-workflow

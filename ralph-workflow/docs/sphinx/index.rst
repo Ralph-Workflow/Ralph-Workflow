@@ -19,25 +19,25 @@ Ralph Workflow
 .. grid:: 1 2 2 2
    :gutter: 3
 
-   .. grid-item-card:: Get Started
+   .. grid-item-card:: Get started
       :link: getting-started
       :link-type: doc
 
-      Install, initialise, write your first PROMPT.md, and run the pipeline.
+      Install, initialise, write your first ``PROMPT.md``, and run the pipeline.
 
-   .. grid-item-card:: Operate
-      :link: recovery
+   .. grid-item-card:: Learn the concepts
+      :link: concepts
       :link-type: doc
 
-      Checkpoint, resume, recovery cycles, parallel worktrees.
+      Phases, drains, agents, MCP artifacts, checkpoints, and recovery cycles.
 
-   .. grid-item-card:: Reference
+   .. grid-item-card:: Look up the CLI
       :link: cli
       :link-type: doc
 
       Every CLI flag, config field, MCP tool, and Python API.
 
-   .. grid-item-card:: Troubleshoot
+   .. grid-item-card:: Fix common issues
       :link: troubleshooting
       :link-type: doc
 
@@ -84,6 +84,13 @@ Ralph Workflow
    :caption: Project
 
    versioning
+
+Related Links
+=============
+
+- `Source code on Codeberg <https://codeberg.org/RalphWorkflow/Ralph-Workflow.git>`_
+- `Ralph Workflow website <https://ralphworkflow.com>`_
+- `License (AGPL-3.0) <https://www.gnu.org/licenses/agpl-3.0.html>`_
 
 Indices and tables
 ==================

@@ -27,7 +27,7 @@ Ralph Workflow manages seven config files across two scopes.
 |------|---------|
 | `.agent/ralph-workflow.toml` | Project-specific overrides for the main config |
 | `.agent/mcp.toml` | Project-specific MCP server definitions |
-| `.agent/agents.toml` | Agent definitions, chains, and drain bindings |
+| `.agent/agents.toml` | Agent chain policies and drain bindings |
 | `.agent/pipeline.toml` | Phase sequence and parallel execution settings |
 | `.agent/artifacts.toml` | Artifact type schemas and contracts |
 
@@ -40,7 +40,7 @@ explaining every field. The canonical reference is the file itself:
 
 - `ralph-workflow.toml` — general config (iterations, review depth, verbosity, isolation)
 - `mcp.toml` — empty MCP server list (add custom servers here)
-- `agents.toml` — default agent definitions (`claude`, `opencode`), chains, and drains
+- `agents.toml` — default agent chain policies (`claude`, `opencode`), chains, and drains
 - `pipeline.toml` — default phase sequence and parallel execution policy
 - `artifacts.toml` — artifact type contracts
 
@@ -63,10 +63,11 @@ retry behavior.
 | `review_depth` | `"standard"` | `standard`, `comprehensive`, `security`, or `incremental` |
 | `git_user_name` | (from git config) | Git author name for commits |
 | `git_user_email` | (from git config) | Git author email for commits |
-| `max_retries` | `3` | Max retries per agent attempt |
+| `max_retries` | `3` | Global max retries per agent attempt (overridden by per-chain settings in `agents.toml`) |
 | `retry_delay_ms` | `1000` | Base delay between retries in ms |
 | `backoff_multiplier` | `2.0` | Exponential backoff multiplier |
 | `max_backoff_ms` | `60000` | Maximum retry backoff delay in ms |
+| `max_cycles` | `3` | Max full fallback cycles through a drain before giving up |
 | `agent_idle_timeout_seconds` | `300.0` | Max idle seconds before killing a stalled agent |
 
 ### `[general.behavior]`
@@ -125,17 +126,6 @@ model_flag = "--model claude-sonnet-4"
 can_commit = true
 ```
 
-### `[cloud]`
-
-Optional cloud reporting integration. Leave disabled unless you have an account.
-
-| Key | Default | Description |
-|-----|---------|-------------|
-| `enabled` | `false` | Enable cloud reporting |
-| `api_url` | — | Base URL for cloud API |
-| `api_key` | `""` | API key (prefer `RALPH_CLOUD_API_KEY` env var) |
-| `timeout_secs` | `30` | Request timeout |
-
 ### `[agents.*]`
 
 Per-agent definitions. Each `[agents.<name>]` block defines a named agent with its
@@ -152,33 +142,62 @@ display_name = "Claude"
 
 The canonical field list is in `ralph/policy/defaults/ralph-workflow.toml`.
 
-### `[agent_chains]`
+### `[cloud]`
 
-Named reusable chain definitions. Each key is a chain name and its value is an ordered
-list of agent names tried in sequence (agent fallover). Chains are referenced by drain
-bindings.
+Optional cloud reporting integration. Leave disabled unless you have an account.
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `enabled` | `false` | Enable cloud reporting |
+| `api_url` | — | Base URL for cloud API |
+| `api_key` | `""` | API key (prefer `RALPH_CLOUD_API_KEY` env var) |
+| `timeout_secs` | `30` | Request timeout |
+
+## `.agent/agents.toml` Sections
+
+The agent policy file (`.agent/agents.toml` project-local, or the bundled default at
+`ralph/policy/defaults/agents.toml`) uses an **expanded block format** that is distinct
+from the simple override shortcuts available in `ralph-workflow.toml`. This file controls
+which agents are tried for each pipeline drain and how retries behave per chain.
+
+### `[agent_chains.<name>]`
+
+Named reusable chain definitions. Each block lists an ordered fallback sequence of agent
+names, with per-chain retry settings:
 
 ```toml
-[agent_chains]
-development = ["claude", "opencode"]
-review = ["claude"]
+[agent_chains.development]
+agents = ["claude", "opencode"]
+max_retries = 3          # per-agent retry budget in this chain
+retry_delay_ms = 1000    # base delay before retry (exponential backoff)
+
+[agent_chains.review]
+agents = ["claude"]
+max_retries = 3
+retry_delay_ms = 1000
 ```
 
-### `[agent_drains]`
+Ralph Workflow tries agents in order; if one exhausts its `max_retries` budget, it falls
+over to the next. `retry_delay_ms` controls the base delay with exponential backoff
+(capped at 30 s).
+
+### `[agent_drains.<name>]`
 
 Drain-to-chain bindings for built-in pipeline drains. Maps each phase drain name to a
-chain name defined in `[agent_chains]`.
+chain defined in `[agent_chains.*]`:
 
 ```toml
-[agent_drains]
-planning = "planning"
-development = "development"
-development_analysis = "analysis"
-development_commit = "commit"
-review = "review"
-review_analysis = "analysis"
-review_commit = "commit"
-fix = "fix"
+[agent_drains.planning]
+chain = "planning"
+
+[agent_drains.development]
+chain = "development"
+
+[agent_drains.review]
+chain = "review"
+
+[agent_drains.fix]
+chain = "fix"
 ```
 
 The built-in drain names are: `planning`, `development`, `development_analysis`,
@@ -208,8 +227,8 @@ Then verify with `ralph --diagnose`.
 
 ### I want to use a single agent only
 
-Edit `.agent/agents.toml`. Find the `[agent_chains]` table and set the agent list for
-the relevant chains to just `["your-agent"]`. Remove any fallover entries you do not need.
+Edit `.agent/agents.toml`. Find the `[agent_chains.<name>]` block for the relevant chain
+and set `agents` to just `["your-agent"]`. Remove any fallover entries you do not need.
 
 ### How do I add a custom MCP server
 

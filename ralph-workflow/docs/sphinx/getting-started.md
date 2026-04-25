@@ -10,11 +10,9 @@ Ralph Workflow is an AI agent orchestration framework that automates implementat
 You describe what you want built in a file called `PROMPT.md`, and Ralph Workflow
 coordinates AI coding agents to plan, implement, review, and fix the work for you.
 
-Under the hood, Ralph Workflow runs your AI agents through a structured sequence:
-first a planning agent reads your goal and produces a structured plan, then a developer
-agent writes the code, then a reviewer agent checks the result, and finally a fix agent
-resolves any issues. The cycle repeats until the review passes or the configured limits
-are reached.
+Under the hood, Ralph Workflow runs your AI agents through a structured sequence of
+phases — from planning through development analysis, commit, review, and beyond —
+until the work satisfies the acceptance criteria or the configured limits are reached.
 
 You do not need to understand phrases like "phase", "drain", or "MCP artifact" to get
 started — those are internal terms described in [Concepts](concepts.md) once you are
@@ -118,16 +116,25 @@ panel shows the result.
 
 ## What Happens During a Run
 
-When you run `ralph`, four things happen in sequence:
+When you run `ralph`, the pipeline moves through a sequence of phases:
 
-- **Planning** — a planning agent reads your `PROMPT.md` and produces a structured plan
-- **Development** — a developer agent implements the plan and writes code
-- **Review** — a reviewer agent inspects the implementation for issues
-- **Fix** — a fix agent resolves any issues the reviewer found
+1. **Planning** — a planning agent reads your `PROMPT.md` and produces a structured
+   implementation plan
+2. **Development** — a developer agent implements the plan and writes code (repeated
+   up to `--developer-iters` times if needed)
+3. **Development analysis** — the pipeline evaluates the development output; if more
+   iteration is needed it loops back to development, otherwise it proceeds
+4. **Development commit** — the changes are committed to the repository
+5. **Review** — a reviewer agent inspects the commit and produces an issues artifact
+6. **Review analysis** — the pipeline evaluates the review; if issues remain it routes
+   to fix, otherwise it proceeds
+7. **Fix** — a fix agent resolves issues found during review, then loops back to review
+8. **Review commit** — the final changes are committed
+9. **Complete** — the pipeline ends successfully
 
 If the review finds significant problems, the review → fix cycle repeats up to the
-configured limit (default: 2 times). See [Concepts](concepts.md) for the formal
-definitions of each term.
+configured limit (default: 2 times, set by `--reviewer-reviews`). See
+[Concepts](concepts.md) for the formal definitions of each term.
 
 ## When Something Goes Wrong
 
