@@ -26,7 +26,7 @@ from ralph.agents.invoke import (
 )
 from ralph.agents.registry import _builtin_agents
 from ralph.config.enums import AgentTransport, JsonParserType
-from ralph.config.models import AgentConfig
+from ralph.config.models import AgentConfig, UnifiedConfig
 from ralph.pipeline import runner as runner_module
 from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.events import PipelineEvent
@@ -241,18 +241,30 @@ def _runner_config(*, max_retries: int = 1) -> MagicMock:
     return config
 
 
-def _registry_factory_for(agent_config: AgentConfig):
-    class _Instance:
-        def get(self, name: str) -> AgentConfig | None:
-            del name
-            return agent_config
+class _RegistryInstance:
+    def __init__(self, agent_config: AgentConfig) -> None:
+        self._agent_config = agent_config
 
-    class _Factory:
-        @classmethod
-        def from_config(cls, _config: object) -> _Instance:
-            return _Instance()
+    def get(self, name: str) -> AgentConfig | None:
+        del name
+        return self._agent_config
 
-    return _Factory
+
+class _RegistryFactory:
+    _agent_config: AgentConfig
+
+    @classmethod
+    def from_config(cls, config: UnifiedConfig) -> _RegistryInstance:
+        del config
+        return _RegistryInstance(cls._agent_config)
+
+
+def _registry_factory_for(agent_config: AgentConfig) -> type[_RegistryFactory]:
+    class _Configured(_RegistryFactory):
+        pass
+
+    _Configured._agent_config = agent_config
+    return _Configured
 
 
 class TestRunnerSessionContinuation:
