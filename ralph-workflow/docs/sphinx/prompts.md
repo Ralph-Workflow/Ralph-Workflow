@@ -26,25 +26,22 @@ Shared partials live under `ralph/prompts/templates/shared/` and are included by
 
 ## Payload refs
 
-`ralph.prompts.payload_refs` resolves references to workspace files and artifacts that are embedded in prompts. When a template includes `{{ payload_ref("plan") }}`, the payload ref resolver reads the current plan artifact from `.agent/artifacts/plan.json` and injects its content inline. This keeps templates DRY and ensures agents always see the latest artifact content.
+`ralph.prompts.payload_refs` handles oversized prompt content by replacing large values with file references. When a template variable exceeds the inline size limit, `build_prompt_payload_variables` replaces the content with a path to a written file. This keeps templates DRY and ensures agents can reference large artifacts via file paths rather than inlining them.
+
+Key functions:
+- `build_prompt_payload_variables`: Returns template variables with oversized values replaced by file references
+- `prompt_payload_relative_path`: Generates a normalised relative path for a payload file
+- `write_payload_to_directory`: Writes content to a payload file and returns the absolute path
 
 ## Prompt materialisation
 
-`ralph.prompts.materialize` is the main entry point called by the pipeline phases. Given a drain and a pipeline context, it:
+`ralph.prompts.materialize` is the main entry point for producing rendered prompts. The top-level function is `materialize_prompt_for_phase`, which:
 
-1. Resolves payload refs
-2. Renders the user-turn prompt template
-3. Optionally renders the system prompt
-4. Returns a `MaterializedPrompt` with both strings
+1. Resolves payload refs for oversized content
+2. Renders the appropriate template for the given phase
+3. Returns the rendered prompt string
 
-Phase-specific materialisation functions:
-
-| Function | Phase |
-|---|---|
-| `materialize_planning_prompt` | planning |
-| `materialize_developer_prompt` | development, fix |
-| `materialize_reviewer_prompt` | review |
-| `materialize_commit_prompt` | commit |
+The function routes to phase-specific rendering logic internally based on the `phase` parameter (planning, development, review, fix, commit, etc.).
 
 ## Prompt modules
 
@@ -53,8 +50,8 @@ Phase-specific materialisation functions:
 | `ralph.prompts.template_registry` | Template discovery and loading |
 | `ralph.prompts.template_engine` | Jinja2 rendering engine |
 | `ralph.prompts.system_prompt` | System prompt assembly |
-| `ralph.prompts.payload_refs` | Artifact and file reference injection |
-| `ralph.prompts.materialize` | Top-level materialisation entry point |
+| `ralph.prompts.payload_refs` | Oversized payload file reference handling |
+| `ralph.prompts.materialize` | Top-level prompt materialisation entry point |
 | `ralph.prompts.developer` | Developer prompt helpers |
 | `ralph.prompts.reviewer` | Reviewer prompt helpers |
 | `ralph.prompts.commit` | Commit prompt helpers |
