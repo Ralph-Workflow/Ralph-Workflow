@@ -24,6 +24,27 @@ _PAGES_WITH_GETTING_STARTED_LINKS = [
 ]
 
 
+def _index_toctree_docnames(index_content: str) -> list[str]:
+    docnames: list[str] = []
+    in_toctree = False
+
+    for line in index_content.splitlines():
+        stripped = line.strip()
+        if stripped == ".. toctree::":
+            in_toctree = True
+            continue
+        if not in_toctree:
+            continue
+        if stripped and not line.startswith("   "):
+            in_toctree = False
+            continue
+        if not stripped or stripped.startswith(":"):
+            continue
+        docnames.append(stripped)
+
+    return docnames
+
+
 def test_sphinx_conf_uses_package_version() -> None:
     namespace = runpy.run_path(str(CONF_PATH))
 
@@ -114,4 +135,24 @@ def test_index_rst_has_navigation_callout() -> None:
     assert ".. note::" in content or "New here?" in content, (
         "index.rst must contain a '.. note::' admonition or a 'New here?' callout "
         "pointing new users to the getting-started page"
+    )
+
+
+def test_index_toctree_entries_resolve_to_real_sphinx_pages() -> None:
+    """Every index.rst toctree doc reference must point at an existing page."""
+    content = INDEX_RST_PATH.read_text(encoding="utf-8")
+    sphinx_dir = INDEX_RST_PATH.parent
+
+    missing = [
+        docname
+        for docname in _index_toctree_docnames(content)
+        if not (
+            (sphinx_dir / f"{docname}.md").exists()
+            or (sphinx_dir / f"{docname}.rst").exists()
+        )
+    ]
+
+    assert not missing, (
+        "The following index.rst toctree entries do not resolve to docs/sphinx pages:\n"
+        + "\n".join(f"  {docname}" for docname in missing)
     )
