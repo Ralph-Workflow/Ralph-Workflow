@@ -2,6 +2,11 @@
 
 Frequently asked questions and common issues when using Ralph Workflow.
 
+## I just installed Ralph Workflow and don't know what to do
+
+See the [Getting Started](getting-started.md) walkthrough — it takes you from install
+to your first pipeline run step by step, without assuming any prior knowledge.
+
 ## PROMPT.md still has the starter sentinel
 
 **Symptom:** Running `ralph` fails immediately with an error about the starter template.
@@ -22,7 +27,7 @@ fails when it tries to invoke an agent.
 
 **Fix:** Install the agent binary and ensure it is on your `PATH`:
 
-- **Claude Code**: see <https://docs.anthropic.com/claude-code>
+- **Claude Code**: see <https://docs.claude.com/claude-code>
 - **opencode**: see <https://opencode.ai>
 
 Verify after installation:
@@ -103,6 +108,7 @@ Use `ralph --inspect-checkpoint` to see what the current checkpoint contains bef
 
 ## Related pages
 
+- [Getting Started](getting-started.md) — step-by-step first-run walkthrough
 - [Quickstart](quickstart.md) — initial setup and first run
 - [CLI Reference](cli.md) — all flags and sub-commands
 - [Configuration Reference](configuration.md) — config file structure and FAQ

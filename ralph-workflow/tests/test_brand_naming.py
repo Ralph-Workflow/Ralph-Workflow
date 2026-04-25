@@ -1,0 +1,73 @@
+"""Regression test: bare 'Ralph' (project name) must always appear as 'Ralph Workflow'.
+
+This test walks a set of user-facing source files and asserts that every
+capital-R 'Ralph' occurrence is either:
+  - followed by ' Workflow' (correct full project name), or
+  - part of the historical 'Ralph loop' concept reference (explicitly allowed), or
+  - on an explicitly allowlisted line (e.g. ASCII art, internal CLI command literal).
+"""
+
+from __future__ import annotations
+
+import re
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+
+# Files to audit for bare 'Ralph' branding
+_AUDIT_FILES: list[Path] = [
+    REPO_ROOT / "ralph" / "policy" / "defaults" / "agents.toml",
+    REPO_ROOT / "ralph" / "policy" / "defaults" / "artifacts.toml",
+    REPO_ROOT / "ralph" / "policy" / "defaults" / "mcp.toml",
+    REPO_ROOT / "ralph" / "policy" / "defaults" / "pipeline.toml",
+    REPO_ROOT / "ralph" / "policy" / "defaults" / "ralph-workflow.toml",
+    REPO_ROOT / "ralph" / "policy" / "defaults" / "ralph-workflow-local.toml",
+    REPO_ROOT / "ralph" / "install.py",
+    REPO_ROOT / "ralph" / "banner.py",
+    REPO_ROOT / "ralph" / "cli" / "commands" / "init.py",
+    REPO_ROOT / "ralph" / "cli" / "commands" / "diagnose.py",
+    REPO_ROOT / "ralph" / "config" / "welcome.py",
+]
+
+# Substrings that make a line acceptable even when it contains bare 'Ralph'.
+# Each entry is a tuple of (substring, reason).
+_ALLOWLIST: list[tuple[str, str]] = [
+    # Historical concept reference — "Ralph loop" as a concept name
+    ("Ralph loop", "historical concept reference: the Ralph loop"),
+    # ASCII art logo lines — the banner spells out 'Ralphh' as visual art
+    ("|  _ \\", "ASCII art banner line"),
+    ("| |_) /", "ASCII art banner line"),
+    ("|  _ <", "ASCII art banner line"),
+    ("|_| \\_\\", "ASCII art banner line"),
+    # WELCOME_MESSAGE constant — the string value itself is 'Welcome to Ralph Workflow'
+    # but the constant name 'WELCOME_MESSAGE' appears on a line with 'Ralph Workflow' already
+]
+
+# Pattern: a capital-R 'Ralph' word that is NOT followed by ' Workflow'
+_BARE_RALPH_RE = re.compile(r"\bRalph\b(?! Workflow)")
+
+
+def _line_is_allowed(line: str) -> bool:
+    """Return True if the line is explicitly allowed despite containing bare 'Ralph'."""
+    return any(substring in line for substring, _ in _ALLOWLIST)
+
+
+def test_no_bare_ralph_in_user_facing_files() -> None:
+    """Bare 'Ralph' (project name) must appear as 'Ralph Workflow' in user-facing files."""
+    violations: list[str] = []
+
+    for path in _AUDIT_FILES:
+        if not path.exists():
+            violations.append(f"MISSING FILE: {path.relative_to(REPO_ROOT)}")
+            continue
+
+        text = path.read_text(encoding="utf-8")
+        for lineno, line in enumerate(text.splitlines(), start=1):
+            if _BARE_RALPH_RE.search(line) and not _line_is_allowed(line):
+                rel = path.relative_to(REPO_ROOT)
+                violations.append(f"{rel}:{lineno}: {line.strip()!r}")
+
+    assert not violations, (
+        "The following lines contain bare 'Ralph' (should be 'Ralph Workflow'):\n"
+        + "\n".join(violations)
+    )

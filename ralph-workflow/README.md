@@ -111,6 +111,7 @@ make serve-docs    # serve on http://localhost:8000
 
 Key pages:
 
+- [`docs/sphinx/getting-started.md`](docs/sphinx/getting-started.md) — step-by-step first-run walkthrough for new users
 - [`docs/sphinx/quickstart.md`](docs/sphinx/quickstart.md) — install, init, and run in five minutes
 - [`docs/sphinx/concepts.md`](docs/sphinx/concepts.md) — terminology: phases, drains, agents, MCP artifacts, checkpoints
 - [`docs/sphinx/cli.md`](docs/sphinx/cli.md) — all CLI flags and sub-commands

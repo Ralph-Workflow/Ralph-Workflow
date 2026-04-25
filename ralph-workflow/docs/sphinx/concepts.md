@@ -1,5 +1,7 @@
 # Concepts
 
+> **New to Ralph Workflow?** See [Getting Started](getting-started.md) before reading this page — it introduces the workflow before the terminology.
+
 Key terms and mental models used throughout Ralph Workflow.
 
 ## PROMPT.md

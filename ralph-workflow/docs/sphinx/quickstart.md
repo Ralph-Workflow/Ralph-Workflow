@@ -1,5 +1,7 @@
 # Quickstart
 
+> **New to Ralph Workflow?** Start with the [Getting Started](getting-started.md) walkthrough — it explains the same flow with more context.
+
 Get Ralph Workflow running in a new project in five minutes.
 
 ## Install
@@ -86,6 +88,7 @@ from the last completed phase on the next run.
 
 ## Where to Go Next
 
+- [Getting Started](getting-started.md) — step-by-step first-run walkthrough with more context
 - [Concepts](concepts.md) — terminology and mental models
 - [CLI Reference](cli.md) — all flags and sub-commands
 - [Configuration Reference](configuration.md) — config files and precedence

@@ -1,16 +1,16 @@
 Ralph Workflow Documentation
 ============================
 
-Ralph Workflow is an opinionated AI agent orchestration framework that runs
-your ``PROMPT.md`` through a planning → development → review → fix loop.
-It is designed for developers who want a structured, repeatable way to delegate
-implementation tasks to AI coding agents. New users should start with the
-:doc:`quickstart`.
+Ralph Workflow is an opinionated AI agent orchestration framework that turns a
+``PROMPT.md`` into a verified change set. New users should start with the
+:doc:`getting-started` walkthrough — it explains the same flow with more context.
+Repeat users can jump straight to the :doc:`quickstart`.
 
 .. toctree::
    :maxdepth: 2
    :caption: Getting Started:
 
+   getting-started
    quickstart
    concepts
 

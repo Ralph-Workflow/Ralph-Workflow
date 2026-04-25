@@ -1,4 +1,4 @@
-"""Installation helpers for refreshing Ralph from the current checkout."""
+"""Installation helpers for refreshing Ralph Workflow from the current checkout."""
 
 from __future__ import annotations
 
@@ -53,7 +53,7 @@ def install_current_checkout(
 
 
 def main() -> int:
-    """Refresh Ralph from the current checkout for local and pipx use."""
+    """Refresh Ralph Workflow from the current checkout for local and pipx use."""
     install_current_checkout(
         package_dir=Path(__file__).resolve().parents[1],
         run=_run_command,

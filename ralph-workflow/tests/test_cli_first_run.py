@@ -323,3 +323,25 @@ def test_cli_init_fallback_next_steps_includes_docs_pointer(
     assert "Docs:" in result2.output, (
         f"Expected 'Docs:' docs pointer in fallback next-steps output, got: {result2.output}"
     )
+
+
+def test_cli_init_fallback_next_steps_includes_getting_started(
+    clean_env: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Second `ralph --init` (fallback path) should reference getting-started.md."""
+    runner = CliRunner()
+    monkeypatch.chdir(tmp_path)
+
+    # First init creates everything
+    result1 = runner.invoke(app, ["--init", "default"], catch_exceptions=False)
+    assert result1.exit_code == 0
+
+    # Second init hits the fallback path
+    result2 = runner.invoke(app, ["--init", "default"], catch_exceptions=False)
+    assert result2.exit_code == 0
+
+    assert "getting-started" in result2.output, (
+        f"Expected getting-started reference in fallback next-steps, got: {result2.output}"
+    )
