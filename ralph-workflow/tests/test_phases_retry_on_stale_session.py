@@ -11,7 +11,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from ralph.agents.invoke import AgentInvocationError
+from ralph.agents.invoke import AgentInvocationError, InvokeOptions
 from ralph.config.enums import PHASE_DEVELOPMENT, AgentTransport
 from ralph.config.models import AgentConfig, GeneralConfig, UnifiedConfig
 from ralph.pipeline import runner as runner_module
@@ -62,19 +62,25 @@ class FakeBridge:
         return "http://127.0.0.1:19999/mcp"
 
 
-def _registry_factory(agent_config: AgentConfig) -> object:
-    """Return a registry factory stub that always resolves to agent_config."""
+class _FakeRegistryInstance:
+    """Minimal AgentRegistry instance stub that always returns a fixed config."""
 
-    class _RegistryInstance:
-        def get(self, name: str) -> AgentConfig | None:
-            del name
-            return agent_config
+    def __init__(self, agent_config: AgentConfig) -> None:
+        self._agent_config = agent_config
+
+    def get(self, name: str) -> AgentConfig | None:
+        del name
+        return self._agent_config
+
+
+def _registry_factory(agent_config: AgentConfig):
+    """Return a registry factory class stub that always resolves to agent_config."""
 
     class _Registry:
         @classmethod
-        def from_config(cls, cfg: object) -> _RegistryInstance:
+        def from_config(cls, cfg: object) -> _FakeRegistryInstance:
             del cls, cfg
-            return _RegistryInstance()
+            return _FakeRegistryInstance(agent_config)
 
     return _Registry
 
@@ -120,13 +126,13 @@ def test_runner_stale_session_internal_retry_succeeds(
 
     def fake_invoke_agent(
         config: AgentConfig,
-        pf: str,
+        prompt_file: str,
         *,
-        options: object = None,
+        options: InvokeOptions | None = None,
     ) -> list[str]:
         del config
-        session_id = getattr(options, "session_id", None) if options is not None else None
-        captured_calls.append((session_id, pf))
+        session_id = options.session_id if options is not None else None
+        captured_calls.append((session_id, prompt_file))
         if len(captured_calls) == 1:
             raise AgentInvocationError(
                 "claude",
@@ -202,11 +208,11 @@ def test_runner_stale_session_exhausts_retries_returns_failure(
 
     def fake_invoke_agent(
         config: AgentConfig,
-        pf: str,
+        prompt_file: str,
         *,
-        options: object = None,
+        options: InvokeOptions | None = None,
     ) -> list[str]:
-        del config, pf, options
+        del config, prompt_file, options
         raise AgentInvocationError(
             "claude",
             1,
@@ -276,13 +282,13 @@ def test_runner_opencode_stale_session_internal_retry_succeeds(
 
     def fake_invoke_agent(
         config: AgentConfig,
-        pf: str,
+        prompt_file: str,
         *,
-        options: object = None,
+        options: InvokeOptions | None = None,
     ) -> list[str]:
         del config
-        session_id = getattr(options, "session_id", None) if options is not None else None
-        captured_calls.append((session_id, pf))
+        session_id = options.session_id if options is not None else None
+        captured_calls.append((session_id, prompt_file))
         if len(captured_calls) == 1:
             raise AgentInvocationError(
                 "opencode",
@@ -355,12 +361,12 @@ def test_runner_opencode_unknown_session_stale_message_triggers_retry(
 
     def fake_invoke_agent(
         config: AgentConfig,
-        pf: str,
+        prompt_file: str,
         *,
-        options: object = None,
+        options: InvokeOptions | None = None,
     ) -> list[str]:
-        del config, pf
-        session_id = getattr(options, "session_id", None) if options is not None else None
+        del config, prompt_file
+        session_id = options.session_id if options is not None else None
         captured_calls.append(session_id)
         if len(captured_calls) == 1:
             raise AgentInvocationError("opencode", 1, "Unknown session: deadbeef")
@@ -402,9 +408,7 @@ def test_runner_opencode_unknown_session_stale_message_triggers_retry(
 # ---------------------------------------------------------------------------
 
 
-def test_stale_session_path_full_sequence(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_stale_session_path_full_sequence(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Full sequence: stale-session failure leads to session cleared and retry hint written."""
     monkeypatch.chdir(tmp_path)
     (tmp_path / ".agent" / "tmp").mkdir(parents=True)
@@ -420,9 +424,7 @@ def test_stale_session_path_full_sequence(
     controller = RecoveryController(cycle_cap=10, budget_registry=registry)
     state = _make_state(last_session_id=session_id, session_preserve=True)
 
-    new_state, _, evt = controller.handle(
-        state, exc, phase=PHASE_DEVELOPMENT, agent="claude"
-    )
+    new_state, _, evt = controller.handle(state, exc, phase=PHASE_DEVELOPMENT, agent="claude")
 
     assert evt.counted_against_budget is True
     assert evt.category == "agent"
@@ -460,16 +462,11 @@ def test_stale_session_attempt2_uses_fresh_session(
     controller = RecoveryController(cycle_cap=10, budget_registry=registry)
     state = _make_state(last_session_id=session_id, session_preserve=True)
 
-    new_state, _, _ = controller.handle(
-        state, exc, phase=PHASE_DEVELOPMENT, agent="claude"
-    )
+    new_state, _, _ = controller.handle(state, exc, phase=PHASE_DEVELOPMENT, agent="claude")
 
     resume_session_id = (
         new_state.last_agent_session_id
-        if (
-            new_state.session_preserve_retry_pending
-            and new_state.last_agent_session_id
-        )
+        if (new_state.session_preserve_retry_pending and new_state.last_agent_session_id)
         else None
     )
     assert resume_session_id is None, (
@@ -512,9 +509,7 @@ def test_stale_session_phase_remains_active(
     controller = RecoveryController(cycle_cap=10, budget_registry=registry)
     state = _make_state(last_session_id="xyz")
 
-    new_state, effects, _ = controller.handle(
-        state, exc, phase=PHASE_DEVELOPMENT, agent="claude"
-    )
+    new_state, effects, _ = controller.handle(state, exc, phase=PHASE_DEVELOPMENT, agent="claude")
 
     assert new_state.phase == PHASE_DEVELOPMENT
     assert effects == []
