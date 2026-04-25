@@ -268,11 +268,13 @@ def mock_agent_invoker(
 
 @pytest.fixture(autouse=True)
 def _isolate_global_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Redirect XDG_CONFIG_HOME to a temp dir for every test.
+    """Redirect XDG_CONFIG_HOME to a temp dir and clear upstream MCP env for every test.
 
     Prevents bootstrap helpers from writing to the real ~/.config during tests.
-    Tests that need the real home path must explicitly call monkeypatch.delenv.
-    The directory is not pre-created so individual tests can create it themselves.
+    Clears RALPH_UPSTREAM_MCP_CONFIG so tests don't inherit real upstream server
+    configs from the parent process, which would cause real network I/O.
+    Tests that need specific upstream configs must set them explicitly via monkeypatch.
     """
     config_dir = tmp_path / "xdg-config"
     monkeypatch.setenv("XDG_CONFIG_HOME", str(config_dir))
+    monkeypatch.delenv("RALPH_UPSTREAM_MCP_CONFIG", raising=False)
