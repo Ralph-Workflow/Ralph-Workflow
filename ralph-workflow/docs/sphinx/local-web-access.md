@@ -106,8 +106,9 @@ The canonical tool names exposed through Ralph Workflow's MCP surface are:
 
 Tool aliases are available for clients that use the `mcp__ralph__<tool>` prefix format. See `ralph.mcp.tools.names` for details.
 
-## Further Reading
+## Related pages
 
-For detailed `visit_url` configuration and response formats, see `docs/mcp/web-visit.md`.
-
-For Crawl4AI worked example with cross-phase verification, see `docs/mcp/mcp-servers.md`.
+- [MCP Tools Reference](mcp-tools.md) — full tool list, capability gates, and upstream proxy setup
+- [MCP Architecture](mcp-architecture.md) — how the MCP server is structured
+- [Concepts](concepts.md) — MCP, drains, and local web access terminology
+- [Configuration](configuration.md) — enabling `web.search` and `web.visit` in config

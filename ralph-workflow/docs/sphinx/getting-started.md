@@ -171,3 +171,10 @@ with a `.bak` suffix. See [Configuration](configuration.md) for the full config 
 - [Concepts](concepts.md) — terminology: phases, drains, agents, MCP artifacts, checkpoints
 - [CLI Reference](cli.md) — every flag and sub-command
 - [Configuration](configuration.md) — config files, precedence, and FAQ
+
+## Related pages
+
+- [Quickstart](quickstart.md) — concise reference for repeat use
+- [Concepts](concepts.md) — pipeline phases, drains, agents, and MCP artifacts
+- [CLI Reference](cli.md) — every flag and sub-command
+- [Troubleshooting](troubleshooting.md) — common first-run issues and fixes

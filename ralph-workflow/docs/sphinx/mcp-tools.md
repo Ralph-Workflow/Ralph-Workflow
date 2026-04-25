@@ -133,7 +133,7 @@ callable. The capability strings are:
 See `ralph.mcp.protocol.capability_mapping` for the full capability-to-tool mapping and
 `ralph-workflow/ralph/mcp/ARCHITECTURE.md` for the capability system design.
 
-## Related Pages
+## Related pages
 
 - [Concepts](concepts.md) — MCP, drains, capabilities, and artifact types
 - [Local Web Access](local-web-access.md) — `visit_url` SSRF posture and upstream crawlers

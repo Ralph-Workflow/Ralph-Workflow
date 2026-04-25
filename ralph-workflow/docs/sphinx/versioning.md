@@ -90,3 +90,9 @@ git push origin v<version>
 ```
 
 The tag triggers any configured CI release workflows.
+
+## Related pages
+
+- [Getting Started](getting-started.md) — first-run walkthrough and install
+- [CLI Reference](cli.md) — `--generate-commit` and other flags
+- [Concepts](concepts.md) — pipeline phases and artifact types

@@ -84,3 +84,10 @@ MCP sockets, temp artifacts). Does not remove `.agent/` config files or `PROMPT.
 ```bash
 ralph cleanup
 ```
+
+## Related pages
+
+- [Getting Started](getting-started.md) — step-by-step first-run walkthrough
+- [Configuration](configuration.md) — config files, flags, and precedence
+- [Concepts](concepts.md) — pipeline phases, agents, and drains
+- [Troubleshooting](troubleshooting.md) — common error messages and fixes
