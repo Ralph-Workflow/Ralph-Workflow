@@ -22,7 +22,7 @@ Navigate to your project directory (must be a git repository), then run:
 
 ```bash
 cd <your-project>
-ralph --init default
+ralph --init
 ```
 
 This creates:

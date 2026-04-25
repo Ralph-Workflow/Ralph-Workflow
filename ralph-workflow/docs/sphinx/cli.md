@@ -18,7 +18,7 @@ running `ralph` with no flags starts the full pipeline.
 
 | Flag | Short | Default | Description |
 |------|-------|---------|-------------|
-| `--init <label>` | | `None` | Scaffold `PROMPT.md` and `.agent/` config files; any label is accepted |
+| `--init [label]` | | `None` | Scaffold `PROMPT.md` and `.agent/` config files; `ralph --init` (no label) is the recommended form — any label is deprecated and ignored |
 | `--regenerate-config` | | `False` | Rewrite all configs from bundled defaults (existing files are backed up to `<name>.bak`) |
 
 ## Pipeline Tuning

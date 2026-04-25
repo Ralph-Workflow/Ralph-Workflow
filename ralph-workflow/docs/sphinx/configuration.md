@@ -29,7 +29,7 @@ Ralph Workflow manages seven config files across two scopes.
 | `.agent/pipeline.toml` | Phase sequence and parallel execution settings |
 | `.agent/artifacts.toml` | Artifact type schemas and contracts |
 
-Run `ralph --init default` to create all of these from the bundled templates.
+Run `ralph --init` to create all of these from the bundled templates.
 
 ## Bundled Default Templates
 
@@ -58,7 +58,7 @@ Rewrites all configs from the bundled templates. Existing files are backed up wi
 Ralph Workflow will start but will fail when it tries to invoke an agent. Install at
 least one supported agent:
 
-- **Claude Code**: see <https://docs.anthropic.com/claude-code>
+- **Claude Code**: see <https://docs.claude.com/claude-code>
 - **opencode**: see <https://opencode.ai>
 
 Then verify with `ralph --diagnose`.

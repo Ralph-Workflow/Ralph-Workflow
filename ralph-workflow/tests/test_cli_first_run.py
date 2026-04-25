@@ -303,6 +303,27 @@ def test_cli_first_run_panel_includes_what_is_ralph_pitch(
         )
 
 
+def test_cli_first_run_panel_includes_getting_started_pointer(
+    clean_env: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """First-run welcome panel must point new users to getting-started.md."""
+    runner = CliRunner()
+    monkeypatch.chdir(tmp_path)
+
+    result = runner.invoke(app, ["--check-config"], catch_exceptions=False)
+
+    assert result.exit_code == 0, f"Expected exit 0, got {result.exit_code}: {result.output}"
+    assert "getting-started" in result.output, (
+        f"Expected 'getting-started' reference in first-run welcome panel, got: {result.output}"
+    )
+    for token in _RAW_MARKUP_TOKENS:
+        assert token not in result.output, (
+            f"Raw markup token {token!r} found in first-run output: {result.output!r}"
+        )
+
+
 def test_cli_init_fallback_next_steps_includes_docs_pointer(
     clean_env: dict[str, str],
     monkeypatch: pytest.MonkeyPatch,

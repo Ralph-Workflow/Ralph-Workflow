@@ -151,7 +151,13 @@ def emit_first_run_welcome(
     )
     content.append(
         Text.from_markup(
-            "[dim]Learn more: [cyan]python -m pydoc ralph[/cyan] · "
+            "[dim]New to Ralph Workflow? Read [cyan]docs/sphinx/getting-started.md[/cyan]"
+            " for a step-by-step walkthrough.[/dim]"
+        )
+    )
+    content.append(
+        Text.from_markup(
+            "[dim]Offline docs: [cyan]python -m pydoc ralph[/cyan] · "
             "run [cyan]make serve-docs[/cyan] from ralph-workflow/ "
             "for the full HTML reference.[/dim]"
         )
