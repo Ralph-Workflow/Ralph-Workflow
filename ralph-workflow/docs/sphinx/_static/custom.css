@@ -41,20 +41,48 @@ div.tip {
     border-left: 3px solid var(--color-brand-primary);
 }
 
-/* Hero block */
+/* Hero section container */
 .hero {
+    margin-bottom: 2rem;
+}
+
+/* Hero large headline */
+.hero-headline {
     font-size: 2.75rem;
     font-weight: 700;
     line-height: 1.15;
     letter-spacing: -0.02em;
     margin-bottom: 0.5rem;
+    border-top: none !important;
+    padding-top: 0 !important;
 }
 
-.hero p {
+/* Hero subtitle paragraph */
+.hero-subtitle {
     font-size: 1.125rem;
     color: var(--color-foreground-secondary);
     font-weight: 400;
     line-height: 1.6;
+    margin-top: 0;
+}
+
+/* Hero CTA pill button */
+.hero-cta {
+    display: inline-block;
+    margin-top: 1.5rem;
+    padding: 0.625rem 1.5rem;
+    background: var(--color-brand-primary);
+    color: #fff !important;
+    border-radius: 999px;
+    font-weight: 600;
+    font-size: 0.9rem;
+    text-decoration: none !important;
+    transition: background 150ms, box-shadow 150ms;
+}
+
+.hero-cta:hover {
+    background: var(--color-brand-content);
+    box-shadow: 0 4px 12px rgba(8, 145, 178, 0.35);
 }
 
 /* Headings */
@@ -110,7 +138,7 @@ a:hover {
 
 /* Mobile: prevent horizontal scroll */
 @media (max-width: 48em) {
-    .hero {
+    .hero-headline {
         font-size: 2rem;
     }
 }

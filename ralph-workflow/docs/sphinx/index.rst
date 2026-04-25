@@ -1,15 +1,16 @@
 Ralph Workflow
 ==============
 
-.. rst-class:: hero
+.. raw:: html
 
-   Unattended AI agent orchestration for long-running development pipelines.
-
-   Ralph Workflow drives AI coding agents through a structured
-   **planning → development → review → fix** loop. You describe what you want built in
-   ``PROMPT.md``, and Ralph Workflow handles the rest: planning the implementation,
-   invoking the agent, reviewing the output, applying fixes — all unattended, with full
-   checkpoint and recovery support.
+   <section class="hero">
+     <h1 class="hero-headline">Unattended AI agent orchestration</h1>
+     <p class="hero-subtitle">Ralph Workflow drives AI coding agents through a structured
+     planning → development → review → fix loop. Describe what you want built in
+     <code>PROMPT.md</code> and Ralph Workflow handles the rest —
+     unattended, with full checkpoint and recovery support.</p>
+     <a class="hero-cta" href="getting-started.html">Get started →</a>
+   </section>
 
 .. note::
 
