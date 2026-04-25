@@ -48,6 +48,8 @@ def _builtin_agents() -> dict[str, AgentConfig]:
             output_flag="--json-stream",
             can_commit=False,
             json_parser=JsonParserType.OPENCODE,
+            # opencode run --session <id> resumes an existing session
+            session_flag="--session {}",
             transport=AgentTransport.OPENCODE,
         ),
     }

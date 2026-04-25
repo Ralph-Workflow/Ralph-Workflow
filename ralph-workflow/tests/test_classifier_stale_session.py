@@ -1,0 +1,59 @@
+"""Tests: OpenCode stale-session substrings classify as AGENT + reset_session=True."""
+
+from __future__ import annotations
+
+import pytest
+
+from ralph.config.enums import PHASE_DEVELOPMENT
+from ralph.recovery.classifier import FailureCategory, FailureClassifier
+
+
+class _AgentInvocationError(Exception):
+    """Simulates AgentInvocationError via class name matching."""
+
+
+_AgentInvocationError.__name__ = "AgentInvocationError"
+
+
+_CLASSIFIER = FailureClassifier()
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "Session not found: abc123",
+        "Unknown session: deadbeef",
+        "session does not exist",
+        "Agent 'opencode' failed with code 1: Session not found: xyz",
+        "Agent 'opencode' failed with code 1: Unknown session: 8e9806b7",
+    ],
+)
+def test_opencode_stale_session_message_sets_reset_session_true(message: str) -> None:
+    """OpenCode stale-session substrings trigger reset_session=True and AGENT category."""
+    exc = _AgentInvocationError(message)
+    failure = _CLASSIFIER.classify(exc, phase=PHASE_DEVELOPMENT, agent="opencode")
+
+    assert failure.reset_session is True, (
+        f"Expected reset_session=True for message {message!r}, got False"
+    )
+    assert failure.category == FailureCategory.AGENT, (
+        f"Expected AGENT category for message {message!r}, got {failure.category}"
+    )
+    assert failure.counts_against_budget is True
+
+
+def test_opencode_stale_session_attributed_to_agent() -> None:
+    """OpenCode stale-session failure is attributed to the agent."""
+    exc = _AgentInvocationError("Session not found: abc123")
+    failure = _CLASSIFIER.classify(exc, phase=PHASE_DEVELOPMENT, agent="opencode")
+
+    assert failure.attributed_agent == "opencode"
+    assert failure.attributed_phase == PHASE_DEVELOPMENT
+
+
+def test_unrelated_opencode_error_does_not_trigger_reset_session() -> None:
+    """Non-stale-session OpenCode errors keep reset_session=False."""
+    exc = _AgentInvocationError("Agent 'opencode' failed with code 1: some other error")
+    failure = _CLASSIFIER.classify(exc, phase=PHASE_DEVELOPMENT, agent="opencode")
+
+    assert failure.reset_session is False

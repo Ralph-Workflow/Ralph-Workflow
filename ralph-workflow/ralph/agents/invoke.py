@@ -27,6 +27,13 @@ from typing import IO, TYPE_CHECKING, Protocol, cast, runtime_checkable
 from loguru import logger
 from tqdm import tqdm
 
+from ralph.agents.completion_signals import evaluate_completion
+from ralph.agents.execution_state import (
+    AgentExecutionState,
+    GenericExecutionStrategy,
+    OpenCodeExecutionStrategy,
+    strategy_for_transport,
+)
 from ralph.config.enums import AgentTransport
 from ralph.mcp.protocol.startup import (
     PreflightError,
@@ -47,6 +54,7 @@ from ralph.mcp.transport.common import (
     set_upstream_mcp_config,
 )
 from ralph.mcp.transport.opencode import build_opencode_provider_config
+from ralph.process.liveness import DefaultLivenessProbe
 from ralph.process.manager import ManagedProcess, get_process_manager
 
 _MODELED_FLAG_PARTS = 2
@@ -76,6 +84,7 @@ class InvokeOptions:
     idle_timeout_seconds: float | None = None
     pure: bool = False
     system_prompt_file: str | None = None
+    phase: str | None = None
 
 
 @dataclass(frozen=True)
@@ -94,9 +103,6 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
 
     from ralph.config.models import AgentConfig
-
-    class _HasLiveDescendants(Protocol):
-        def has_live_descendants(self) -> bool: ...
 
 # Runtime imports with graceful fallback when watchdog is not available
 try:
@@ -194,6 +200,21 @@ class AgentInactivityTimeoutError(AgentInvocationError):
             -1,
             f"Agent produced no output for {timeout_seconds:.0f}s",
             parsed_output,
+        )
+
+
+class OpenCodeResumableExitError(AgentInvocationError):
+    """Raised when OpenCode exits with code 0 without producing a required artifact.
+
+    The session can be continued; the runner maps this into a session-preserving retry.
+    """
+
+    def __init__(self, agent_name: str, session_id: str | None = None) -> None:
+        self.resumable_session_id = session_id
+        super().__init__(
+            agent_name,
+            0,
+            "OpenCode exited without submitting a required completion artifact",
         )
 
 
@@ -349,6 +370,8 @@ def invoke_agent(
     )
     logger.info("Invoking agent: {}", _command_for_log(config, cmd, prompt_file))
 
+    execution_strategy = strategy_for_transport(_agent_transport(config))
+    liveness_probe = DefaultLivenessProbe()
     monitor = _start_workspace_monitor(opts.workspace_path)
 
     try:
@@ -359,6 +382,9 @@ def invoke_agent(
             runtime_env,
             opts.workspace_path,
             idle_timeout_seconds=opts.idle_timeout_seconds,
+            execution_strategy=execution_strategy,
+            liveness_probe=liveness_probe,
+            phase=opts.phase,
         )
         yield from lines_iter
 
@@ -391,6 +417,9 @@ def _run_subprocess_and_read_lines(  # noqa: PLR0913
     workspace_path: Path | None,
     *,
     idle_timeout_seconds: float | None = None,
+    execution_strategy: GenericExecutionStrategy | OpenCodeExecutionStrategy | None = None,
+    liveness_probe: DefaultLivenessProbe | None = None,
+    phase: str | None = None,
 ) -> Iterator[str]:
     """Run subprocess and yield output lines.
 
@@ -413,13 +442,20 @@ def _run_subprocess_and_read_lines(  # noqa: PLR0913
         label=f"invoke:{_agent_command_name(config)}",
         text=True,
     )
+    strategy = execution_strategy or GenericExecutionStrategy()
+    probe = liveness_probe or DefaultLivenessProbe()
     with handle:
         stdout_pipe = handle.stdout
         if stdout_pipe is None:
             msg = "Failed to capture stdout"
             raise AgentInvocationError(_agent_command_name(config), -1, msg)
 
-        lines_iter = _read_lines_from_process(handle, idle_timeout_seconds=idle_timeout_seconds)
+        lines_iter = _read_lines_from_process(
+            handle,
+            idle_timeout_seconds=idle_timeout_seconds,
+            execution_strategy=strategy,
+            liveness_probe=probe,
+        )
         parsed_output: list[str] = []
         if show_progress:
             agent_name = _agent_command_name(config)
@@ -456,7 +492,16 @@ def _run_subprocess_and_read_lines(  # noqa: PLR0913
                 ) from exc
 
         handle.wait()
-        _check_process_result(handle, _agent_command_name(config), parsed_output)
+        _check_process_result(
+            handle,
+            _agent_command_name(config),
+            parsed_output,
+            _CompletionCheckOptions(
+                execution_strategy=strategy,
+                workspace_path=workspace_path,
+                phase=phase,
+            ),
+        )
 
 
 def _subprocess_env(extra_env: dict[str, str] | None) -> dict[str, str]:
@@ -527,25 +572,12 @@ def _agent_command_name(config: AgentConfig) -> str:
     return config.cmd.split()[0]
 
 
-def _process_has_active_descendants(handle: ManagedProcess) -> bool:
-    """Return True when a quiet process still has live descendant work.
-
-    This prevents agent idle detection from killing a parent process that is
-    legitimately waiting on spawned child work.
-    """
-    candidate = cast("object", handle)
-    if not hasattr(candidate, "has_live_descendants"):
-        return False
-    try:
-        return bool(cast("_HasLiveDescendants", candidate).has_live_descendants())
-    except Exception:
-        return False
-
-
 def _read_lines_from_process(
     handle: ManagedProcess,
     *,
     idle_timeout_seconds: float | None = None,
+    execution_strategy: GenericExecutionStrategy | OpenCodeExecutionStrategy | None = None,
+    liveness_probe: DefaultLivenessProbe | None = None,
 ) -> Iterator[str]:
     """Read lines from subprocess stdout in a background thread.
 
@@ -595,7 +627,10 @@ def _read_lines_from_process(
             idle_timeout_seconds is not None
             and time.monotonic() - last_activity >= idle_timeout_seconds
         ):
-            if _process_has_active_descendants(handle):
+            strategy = execution_strategy or GenericExecutionStrategy()
+            probe = liveness_probe or DefaultLivenessProbe()
+            quiet_state = strategy.classify_quiet(handle, probe)
+            if quiet_state == AgentExecutionState.WAITING_ON_CHILD:
                 last_activity = time.monotonic()
                 continue
             handle.terminate(grace_period_s=0)
@@ -621,10 +656,23 @@ def _log_workspace_completion(monitor: WorkspaceMonitor | None) -> None:
     )
 
 
+@dataclass(frozen=True)
+class _CompletionCheckOptions:
+    execution_strategy: GenericExecutionStrategy | OpenCodeExecutionStrategy | None = None
+    workspace_path: Path | None = None
+    phase: str | None = None
+
+
 def _check_process_result(
-    handle: ManagedProcess, agent_name: str, parsed_output: list[str] | None = None
+    handle: ManagedProcess,
+    agent_name: str,
+    parsed_output: list[str] | None = None,
+    check_options: _CompletionCheckOptions | None = None,
 ) -> None:
     """Check subprocess return code and raise error if non-zero.
+
+    For OpenCode agents, exit 0 without a required completion artifact raises
+    OpenCodeResumableExitError so the runner can continue the same session.
 
     Args:
         handle: Completed managed process.
@@ -632,15 +680,28 @@ def _check_process_result(
 
     Raises:
         AgentInvocationError: If process exited with non-zero code.
+        OpenCodeResumableExitError: If OpenCode exited without a required artifact.
     """
     returncode = int(handle.returncode or 0)
-    if returncode == 0:
-        return
+    if returncode != 0:
+        stderr_pipe: IO[str] | None = handle.stderr  # type: ignore[assignment]
+        stderr = stderr_pipe.read() if stderr_pipe is not None else "(unable to read stderr)"
+        logger.error("Agent exited with code {}: {}", returncode, stderr)
+        raise AgentInvocationError(agent_name, returncode, stderr, parsed_output)
 
-    stderr_pipe: IO[str] | None = handle.stderr  # type: ignore[assignment]
-    stderr = stderr_pipe.read() if stderr_pipe is not None else "(unable to read stderr)"
-    logger.error("Agent exited with code {}: {}", returncode, stderr)
-    raise AgentInvocationError(agent_name, returncode, stderr, parsed_output)
+    opts = check_options
+    if (
+        opts is not None
+        and opts.execution_strategy is not None
+        and opts.execution_strategy.supports_session_continuation()
+        and opts.workspace_path is not None
+        and opts.phase is not None
+    ):
+        signals = evaluate_completion(opts.workspace_path, opts.phase)
+        exit_state = opts.execution_strategy.classify_exit(handle, signals)
+        if exit_state == AgentExecutionState.RESUMABLE_CONTINUE:
+            session_id = extract_session_id(list(parsed_output) if parsed_output else [])
+            raise OpenCodeResumableExitError(agent_name, session_id=session_id)
 
 
 def _stop_workspace_monitor(monitor: WorkspaceMonitor | None) -> None:
