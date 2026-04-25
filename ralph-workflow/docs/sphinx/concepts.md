@@ -92,6 +92,7 @@ limited filesystem access scoped to the workspace. Isolation behavior is control
 by the `general.behavior` section in `ralph-workflow.toml`. See `ralph.policy.models`
 for the isolation config field.
 
+(parallel-work-units)=
 ## Parallel Work Units
 
 When the planning artifact declares multiple `work_units`, Ralph Workflow runs them

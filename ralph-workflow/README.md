@@ -106,7 +106,7 @@ The full reference documentation lives in `docs/sphinx/`. Build and browse it lo
 ```bash
 cd ralph-workflow
 make docs          # build HTML into docs/sphinx/_build/html/
-make serve-docs    # serve on http://localhost:8000
+make serve-docs    # serve on http://localhost:8080
 ```
 
 Key pages:
