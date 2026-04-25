@@ -99,7 +99,7 @@ def test_emit_first_run_welcome_prints_when_any_created() -> None:
     emit_first_run_welcome(rich_console, results)
 
     output = console.getvalue()
-    assert "Ralph first-run setup" in output
+    assert "Ralph Workflow first-run setup" in output
     assert "ralph-workflow.toml" in output
 
 
@@ -120,7 +120,7 @@ def test_emit_first_run_welcome_prints_when_any_regenerated() -> None:
     emit_first_run_welcome(rich_console, results)
 
     output = console.getvalue()
-    assert "Ralph first-run setup" in output
+    assert "Ralph Workflow first-run setup" in output
 
 
 def test_emit_first_run_welcome_flags_missing_agent() -> None:
@@ -173,7 +173,7 @@ def test_emit_first_run_welcome_with_local_and_global_files(
     emit_first_run_welcome(rich_console, results)
 
     output = console.getvalue()
-    assert "Ralph first-run setup" in output
+    assert "Ralph Workflow first-run setup" in output
     # All file names should appear
     assert "ralph-workflow.toml" in output
     assert "ralph-workflow-mcp.toml" in output
@@ -195,12 +195,12 @@ def test_emit_first_run_welcome_noops_when_no_registry(
     emit_first_run_welcome(rich_console, results, agent_registry=None)
 
     output = console.getvalue()
-    assert "Ralph first-run setup" in output
+    assert "Ralph Workflow first-run setup" in output
     assert "PATH" in output
 
 
 def test_emit_first_run_welcome_banner_printed_before_panel() -> None:
-    """Banner should be printed before the 'Ralph first-run setup' panel."""
+    """Banner should be printed before the 'Ralph Workflow first-run setup' panel."""
     printed: list[object] = []
 
     class _RecordingConsole:
@@ -401,4 +401,67 @@ def test_real_registry_generic_fallback_only_for_unknown_agents(
     # The generic fallback message should NOT appear since known agents were detected
     assert "Ensure your AI agents are on PATH" not in output
     assert "Detected agents:" in output
+    _assert_no_raw_markup(output)
+
+
+def test_emit_first_run_welcome_includes_pitch_sentence() -> None:
+    """Welcome panel must include the elevator-pitch sentence about the pipeline loop."""
+    buf, rich_console = _make_console()
+    results = [BootstrapResult(Path("/global/ralph-workflow.toml"), "created", None)]
+
+    emit_first_run_welcome(rich_console, results)
+
+    output = buf.getvalue()
+    assert "planning" in output, (
+        f"Expected 'planning' (part of pipeline loop pitch) in output, got: {output!r}"
+    )
+    assert "review" in output, (
+        f"Expected 'review' (part of pipeline loop pitch) in output, got: {output!r}"
+    )
+    assert "PROMPT.md" in output, (
+        f"Expected 'PROMPT.md' in pitch output, got: {output!r}"
+    )
+    _assert_no_raw_markup(output)
+
+
+def test_emit_first_run_welcome_docs_pointer_includes_pydoc_ralph() -> None:
+    """Welcome panel docs pointer must include 'python -m pydoc ralph'."""
+    buf, rich_console = _make_console()
+    results = [BootstrapResult(Path("/global/ralph-workflow.toml"), "created", None)]
+
+    emit_first_run_welcome(rich_console, results)
+
+    output = buf.getvalue()
+    assert "pydoc ralph" in output, (
+        f"Expected 'pydoc ralph' in docs pointer output, got: {output!r}"
+    )
+    _assert_no_raw_markup(output)
+
+
+def test_emit_first_run_welcome_agents_section_before_config_files(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Detected agents section must appear before Global/Local config files sections."""
+    monkeypatch.setattr("shutil.which", lambda cmd: None)
+
+    buf, rich_console = _make_console()
+    results = [
+        BootstrapResult(Path("/home/user/.config/ralph-workflow.toml"), "created", None),
+        BootstrapResult(Path(str(tmp_path) + "/.agent/agents.toml"), "created", None),
+    ]
+    registry = _FakeRegistry({"claude": _FakeAgent("claude", "claude")})
+
+    emit_first_run_welcome(rich_console, results, agent_registry=registry)
+
+    output = buf.getvalue()
+    assert "Detected agents:" in output
+    assert "Global config files:" in output
+
+    agents_pos = output.index("Detected agents:")
+    global_pos = output.index("Global config files:")
+    assert agents_pos < global_pos, (
+        "Expected 'Detected agents:' to appear before 'Global config files:' in output, "
+        f"but agents_pos={agents_pos}, global_pos={global_pos}"
+    )
     _assert_no_raw_markup(output)

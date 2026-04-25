@@ -23,7 +23,7 @@ def test_emit_run_end_emits_milestone_header() -> None:
     out = buf.getvalue()
     lines = [ln for ln in out.splitlines() if ln.strip()]
     assert lines, "expected at least one non-empty line"
-    assert "MILESTONE META [run-end] ◆ Ralph run end" in lines[0]
+    assert "MILESTONE META [run-end] ◆ Ralph Workflow run end" in lines[0]
 
 
 def test_emit_run_end_emits_phase_and_elapsed() -> None:

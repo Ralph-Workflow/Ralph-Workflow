@@ -56,10 +56,10 @@ ralph
 
 ### First-run configuration
 
-On first run, Ralph auto-creates seven config files from bundled, fully-commented templates:
+On first run, Ralph Workflow auto-creates seven config files from bundled, fully-commented templates:
 
 **User-global (created once, reused across all projects):**
-- `~/.config/ralph-workflow.toml` — main Ralph configuration
+- `~/.config/ralph-workflow.toml` — main Ralph Workflow configuration
 - `~/.config/ralph-workflow-mcp.toml` — MCP servers and web search configuration
 
 **Project-local (created by `ralph --init`, lives in your project directory):**
@@ -74,7 +74,7 @@ CLI flags → project-local (`.agent/`) → user-global (`~/.config/`) → bundl
 
 These ship with sane defaults — you only need to edit them if you want to override something specific.
 
-**Ralph init:** Run `ralph --init` to seed all project-local files.
+**Ralph Workflow init:** Run `ralph --init` to seed all project-local files.
 
 **Regeneration:** To reset all configs from the bundled defaults (existing files are backed up to `<name>.bak`), run:
 
@@ -86,18 +86,39 @@ The first-run welcome banner shows which files were created and checks whether y
 
 The first-run panel now also:
 
-- Displays the Ralph ASCII banner above the setup panel.
+- Displays the Ralph Workflow ASCII banner above the setup panel.
 - Recommends running `ralph --diagnose` to validate agents, MCP servers, and config before the first pipeline run.
 - Lists install URLs next to any known missing agent (`claude`, `opencode`) so you know where to get them.
 
 ### Upstream MCP HTTP endpoint compatibility
 
-For custom upstream MCP servers in `.agent/mcp.toml`, Ralph now supports both current streamable HTTP endpoints and legacy HTTP+SSE endpoints under `transport = "http"`.
+For custom upstream MCP servers in `.agent/mcp.toml`, Ralph Workflow now supports both current streamable HTTP endpoints and legacy HTTP+SSE endpoints under `transport = "http"`.
 
 - Prefer `http://host:port/mcp` for modern streamable HTTP servers.
 - Legacy endpoints such as docs-mcp `http://host:6280/sse` are also supported end to end.
 
-This matters because `/sse` is not just a different path — it uses the older MCP HTTP+SSE flow, where Ralph must open an SSE stream first and then POST JSON-RPC messages to the advertised message endpoint.
+This matters because `/sse` is not just a different path — it uses the older MCP HTTP+SSE flow, where Ralph Workflow must open an SSE stream first and then POST JSON-RPC messages to the advertised message endpoint.
+
+## Documentation
+
+The full reference documentation lives in `docs/sphinx/`. Build and browse it locally:
+
+```bash
+cd ralph-workflow
+make docs          # build HTML into docs/sphinx/_build/html/
+make serve-docs    # serve on http://localhost:8000
+```
+
+Key pages:
+
+- [`docs/sphinx/quickstart.md`](docs/sphinx/quickstart.md) — install, init, and run in five minutes
+- [`docs/sphinx/concepts.md`](docs/sphinx/concepts.md) — terminology: phases, drains, agents, MCP artifacts, checkpoints
+- [`docs/sphinx/cli.md`](docs/sphinx/cli.md) — all CLI flags and sub-commands
+- [`docs/sphinx/configuration.md`](docs/sphinx/configuration.md) — config files, precedence, and FAQ
+- [`docs/sphinx/recovery.md`](docs/sphinx/recovery.md) — failure classification, retry budgets, and connectivity-aware recovery
+- [`docs/sphinx/parallel-mode.md`](docs/sphinx/parallel-mode.md) — parallel worktree execution for multi-work-unit plans
+- [`docs/sphinx/troubleshooting.md`](docs/sphinx/troubleshooting.md) — common issues and FAQ
+- [`docs/sphinx/modules.rst`](docs/sphinx/modules.rst) — full Python API reference (autodoc)
 
 ## Verification
 
@@ -157,7 +178,7 @@ Use package/module docstrings for API understanding and this README for workflow
 
 ## Phase-output hardening
 
-Ralph now treats several agent-driven phases as producing explicit evidence, not just a zero exit code.
+Ralph Workflow now treats several agent-driven phases as producing explicit evidence, not just a zero exit code.
 
 - `review` must leave behind a fresh `.agent/artifacts/issues.json`.
 - `development` and `fix` workers in isolated parallel runs are judged by empirical evidence: submitted artifacts are checked first; if none are found, workspace changes (untracked or modified files detected by `git status`) serve as the fallback signal. A worker is considered successful when either signal is present, and exit code is retained as diagnostic information only.
@@ -165,7 +186,7 @@ Ralph now treats several agent-driven phases as producing explicit evidence, not
 - The runner still removes per-phase artifacts before each invocation so interrupted runs cannot leak stale summaries or review findings into later phases.
 
 Artifact contract:
-- Use `.json` artifacts for Ralph's validation, routing, checkpointing, and other orchestrator-only logic.
+- Use `.json` artifacts for Ralph Workflow's validation, routing, checkpointing, and other orchestrator-only logic.
 - Use `.md` handoff files when a user or downstream AI agent needs to read the result of an earlier phase.
 - Current mirrored handoffs are:
   - `.agent/PLAN.md`
@@ -175,11 +196,11 @@ Artifact contract:
   - `.agent/DEVELOPMENT_ANALYSIS_DECISION.md`
   - `.agent/REVIEW_ANALYSIS_DECISION.md`
 
-This hardening is intentionally selective. Review and planning still rely on explicit artifacts where Ralph needs structured evidence, while development and fix workers are judged by the empirical evidence they leave behind (artifacts and/or workspace changes), not by process exit code.
+This hardening is intentionally selective. Review and planning still rely on explicit artifacts where Ralph Workflow needs structured evidence, while development and fix workers are judged by the empirical evidence they leave behind (artifacts and/or workspace changes), not by process exit code.
 
 ## Multimodal MCP Support (opt-in)
 
-Ralph supports image-reading MCP tools via the `read_image` tool. This feature is **disabled by default** to maintain backward compatibility with text-only clients.
+Ralph Workflow supports image-reading MCP tools via the `read_image` tool. This feature is **disabled by default** to maintain backward compatibility with text-only clients.
 
 ### Enabling Multimodal Support
 
@@ -206,7 +227,7 @@ The multimodal support is designed with strict backward compatibility:
 
 1. **Text-only clients unchanged** — Existing tools (`read_file`, `write_file`, etc.) continue to return text content blocks with the same shape.
 2. **Client capability filtering** — `read_image` only appears in `tools/list` for clients that declare multimodal/image/media capability in the MCP `initialize` handshake.
-3. **Upstream multimodal rejection** — If an upstream MCP server returns a non-text content block, Ralph rejects it with a clear error rather than silently passing it through.
+3. **Upstream multimodal rejection** — If an upstream MCP server returns a non-text content block, Ralph Workflow rejects it with a clear error rather than silently passing it through.
 
 ### What Text-Only Clients See
 
@@ -218,13 +239,15 @@ Clients that declare `capabilities.image`, `capabilities.media`, or `capabilitie
 
 ## Claude/CCS MCP Safety Note
 
-Claude-compatible transports such as `claude` and `ccs` run through a stricter MCP path. Ralph still uses `--mcp-config` plus `--strict-mcp-config`, but it only emits `--tools ""` / `--allowedTools ...` when live MCP tool discovery succeeds with a non-empty allowlist. That avoids a brittle edge case in non-interactive Claude/CCS runs where empty-tool configurations and MCP bootstrapping can produce misleadingly successful no-op executions.
+Claude-compatible transports such as `claude` and `ccs` run through a stricter MCP path. Ralph Workflow still uses `--mcp-config` plus `--strict-mcp-config`, but it only emits `--tools ""` / `--allowedTools ...` when live MCP tool discovery succeeds with a non-empty allowlist. That avoids a brittle edge case in non-interactive Claude/CCS runs where empty-tool configurations and MCP bootstrapping can produce misleadingly successful no-op executions.
 
-Ralph's Claude parser accepts both bare (`claude: ...`) and model-qualified (`claude/<model>: ...`) transcript prefixes emitted by the Claude CLI. Lifecycle-only markers (`message_delta`, `user`, `system (status=...)`, `thinking` without a payload) are automatically suppressed so they never appear as noise in the activity log. Free-form text and tool lines after the prefix are parsed normally.
+Ralph Workflow's Claude parser accepts both bare (`claude: ...`) and model-qualified (`claude/<model>: ...`) transcript prefixes emitted by the Claude CLI. Lifecycle-only markers (`message_delta`, `user`, `system (status=...)`, `thinking` without a payload) are automatically suppressed so they never appear as noise in the activity log. Free-form text and tool lines after the prefix are parsed normally.
 
 ## Parallel Mode
 
-When your planning phase produces two or more work units, Ralph fans development out across multiple git worktrees simultaneously. Configure it in your pipeline policy:
+When your planning phase produces two or more work units, Ralph Workflow fans development out across multiple git worktrees simultaneously. For the full guide including configuration, work unit structure, and success criteria, see [`docs/sphinx/parallel-mode.md`](docs/sphinx/parallel-mode.md).
+
+Quick configuration:
 
 ```toml
 [pipeline.parallel_execution]
@@ -232,90 +255,13 @@ max_parallel_workers = 4
 max_work_units = 50
 ```
 
-See `docs/agents/parallelization.md` for the full guide.
-
 ## Recovery
 
-Ralph treats failure recovery as a first-class concern. The pipeline is designed to keep running through transient failures, preserve enough context to resume cleanly, and only terminate on user intent or pre-flight validation errors.
-
-### Failure categories
-
-Every failure is classified into one of four categories:
-
-| Category | Description | Counts against budget? |
-|---------|-------------|----------------------|
-| `environmental` | Network outage, upstream service error, transport disconnect | No — retries are free |
-| `agent` | Empty output, idle timeout, malformed tool calls, repeated policy violations | Yes |
-| `user_config` | Invalid config, unbound agent chain, missing required inputs | No — pre-flight should catch these |
-| `ambiguous` | Cannot determine cause | No — flagged for review, counted in recovery cycles |
-
-Attribution is intelligent: a re-prompt caused by a brief outage does not cost the agent a life; an empty-output timeout does. Ambiguous errors default to the safer retry path.
-
-### Offline detection and auto-resume
-
-Ralph actively monitors connectivity. While offline, the pipeline pauses — it makes no progress rather than burning budget or failing noisily. Once connectivity returns, the pipeline resumes automatically and re-prompts the affected iteration without counting the outage against any agent. You will see:
-
-```
-Offline — paused (since HH:MM:SS)
-```
-
-When connectivity is restored:
-
-```
-Recovery resumed after offline
-```
-
-### Two-SIGINT contract
-
-- **First Ctrl+C**: cancels in-flight work, triggers ordered shutdown (kills subprocesses, saves checkpoint), then pauses. The pipeline can be resumed.
-- **Second Ctrl+C**: exits immediately with no cleanup.
-
-### Recovery-cycle cap
-
-A global `recovery_cycle_cap` (default: 200) bounds the total number of full-chain exhaustion recovery cycles. When exceeded, the pipeline exits with a descriptive error referencing the cap value and the last failure. This prevents a persistently-failing handler from looping silently forever.
-
-### Agent chain fallover
-
-Each phase uses an agent chain (e.g., `claude → opencode`). When an agent exhausts its `max_retries` budget, Ralph falls over to the next agent in the chain with a clean state — no silent retries, no double-counting. Chain composition is validated pre-flight.
-
-### How to read failure events in logs
-
-Failure events are emitted as structured log entries with `recovery=true`:
-
-```
-2026-04-21 12:00:00 | DEBUG    | ralph.recovery | category=environmental phase=development agent=claude counted=False
-2026-04-21 12:00:05 | INFO     | ralph.recovery | category=agent phase=development agent=claude counted=True
-2026-04-21 12:00:10 | DEBUG    | ralph.recovery | category=fallover phase=development from_agent=claude to_agent=opencode
-```
-
-### Configuration knobs
-
-```toml
-[agents]
-# Per-chain retry budget and backoff
-[agents.chains.development]
-agents = ["claude", "opencode"]
-max_retries = 3          # per-agent retry budget
-retry_delay_ms = 1000    # base delay before retry (exponential backoff, capped at 30s)
-
-# Global recovery cycle cap (default: 200)
-[pipeline]
-recovery_cycle_cap = 200
-```
-
-**`retry_delay_ms`** controls the base delay between retries for agent-attributable failures. The delay uses exponential backoff: each retry doubles the delay (base_ms × 2^attempt), capped at 30 seconds. For example, with `retry_delay_ms = 1000`:
-- Retry 1: 1 s delay
-- Retry 2: 2 s delay
-- Retry 3: 4 s delay
-- Subsequent retries: capped at 30 s
-
-Environmental and ambiguous failures always retry with 0 delay (immediately). The delay resets to base after a successful agent invocation or a chain fallover to the next agent.
-
-Connectivity probe interval can be configured in code via `ConnectivityMonitor(probe_interval_s=10.0)`.
+Ralph Workflow treats failure recovery as a first-class concern. The pipeline is designed to keep running through transient failures, preserve enough context to resume cleanly, and only terminate on user intent or pre-flight validation errors. For the full guide including failure categories, offline detection, the two-SIGINT contract, and configuration knobs, see [`docs/sphinx/recovery.md`](docs/sphinx/recovery.md).
 
 ## Transcript layout
 
-Ralph emits every agent output line as a structured plain-text entry in the following format:
+Ralph Workflow emits every agent output line as a structured plain-text entry in the following format:
 
 ```
 <ISO-TS> <LEVEL> <CAT> [<tag>][<unit>] <content>
@@ -394,7 +340,7 @@ When a content block exceeds the soft limit and is condensed, the full text is p
 ### Reading a transcript at a glance
 
 ```
-2026-04-21T12:00:00+00:00 MILESTONE META [run-start] ◆ Ralph run start
+2026-04-21T12:00:00+00:00 MILESTONE META [run-start] ◆ Ralph Workflow run start
 2026-04-21T12:00:00+00:00 INFO META [run-start] legend: LEVEL (INFO/SUCCESS/WARN/ERROR/MILESTONE)  CAT (META/CONT)  [tag][unit] message
 2026-04-21T12:00:00+00:00 INFO META [run-start] prompt=PROMPT.md
 2026-04-21T12:00:00+00:00 INFO META [run-start] developer=claude model=claude-3-5-sonnet
@@ -423,11 +369,11 @@ Tags starting with `content-`, `thinking-`, `tool`, `tool-result`, `error`, or `
 
 ## Long-content display
 
-Ralph applies three distinct layers when agent content is large. Each layer is additive — earlier layers remain active when later layers are enabled.
+Ralph Workflow applies three distinct layers when agent content is large. Each layer is additive — earlier layers remain active when later layers are enabled.
 
 ### Layer 1 — condensation (always active)
 
-Condensation is the deterministic default for oversized lines and is always active. Ralph applies two tiers based on the total display-cell count:
+Condensation is the deterministic default for oversized lines and is always active. Ralph Workflow applies two tiers based on the total display-cell count:
 
 - **400–4000 cells (soft limit)** — head-only truncation. The first 400 cells are kept and a `(truncated)` suffix is appended:
 
@@ -444,7 +390,7 @@ Condensation is the deterministic default for oversized lines and is always acti
 The full raw text is always preserved to `.agent/raw/<unit-id>.log` so readers have a path to the complete output.
 ### Layer 2 — deterministic headline `↳ summary:` (default-on)
 
-For content blocks exceeding 4000 display cells, Ralph emits a `↳ summary:` line **before** the condensed excerpt. This deterministic headline layer is **default-on** — no environment variable is needed:
+For content blocks exceeding 4000 display cells, Ralph Workflow emits a `↳ summary:` line **before** the condensed excerpt. This deterministic headline layer is **default-on** — no environment variable is needed:
 
 ```
 2026-04-20T12:34:56Z INFO CONT [content-start][dev-1] ↳ summary: My first non-empty headline sentence.
@@ -453,7 +399,7 @@ For content blocks exceeding 4000 display cells, Ralph emits a `↳ summary:` li
 
 When no extractable headline exists (all lines are blank, markdown-only, or empty after stripping), the placeholder `(no headline available)` is emitted instead so the summary line is never silently dropped for oversized content.
 
-For tool results with substantial content (>=80 characters) that are below the 4000-cell condensation threshold, Ralph also emits a `↳ summary:` line using the same headline extraction logic, giving you a preview without requiring condensation.
+For tool results with substantial content (>=80 characters) that are below the 4000-cell condensation threshold, Ralph Workflow also emits a `↳ summary:` line using the same headline extraction logic, giving you a preview without requiring condensation.
 
 To **disable** the summary layer, set `RALPH_LONG_CONTENT_SUMMARY` to one of: `0`, `false`, `no`, `off` (case-insensitive):
 
@@ -474,7 +420,7 @@ An optional AI-generated summary can be emitted after the deterministic headline
 1. Set `RALPH_LONG_CONTENT_AI_SUMMARY=1` (or `true`/`yes`).
 2. Register a hook via `ralph.display.long_content_summary.set_ai_summary_hook(callable)`.
 
-When both conditions are met and content exceeds the 4000-cell threshold, Ralph calls the hook with the raw text and emits the result on its own labelled line:
+When both conditions are met and content exceeds the 4000-cell threshold, Ralph Workflow calls the hook with the raw text and emits the result on its own labelled line:
 
 ```
 2026-04-20T12:34:56Z INFO CONT [content-start][dev-1] ↳ summary: My first sentence.
@@ -482,11 +428,11 @@ When both conditions are met and content exceeds the 4000-cell threshold, Ralph 
 2026-04-20T12:34:56Z INFO CONT [content-start][dev-1] First 400 chars… (+4200 chars, see .agent/raw/dev-1.log) …last chars
 ```
 
-Hook requirements: the callable must accept `(text: str) -> str | None`. Exceptions are swallowed and treated as None. Output is capped at 400 characters. Ralph provides no built-in hook — integrators supply their own. The hook must be non-blocking.
+Hook requirements: the callable must accept `(text: str) -> str | None`. Exceptions are swallowed and treated as None. Output is capped at 400 characters. Ralph Workflow provides no built-in hook — integrators supply their own. The hook must be non-blocking.
 
 ### Mid-stream checkpoints (default-on)
 
-For very long streaming blocks, Ralph emits a `[content-checkpoint#N]` orientation line every 20 fragments or every 4000 accumulated characters (whichever comes first), with a running fragment count, char total, and deterministic headline:
+For very long streaming blocks, Ralph Workflow emits a `[content-checkpoint#N]` orientation line every 20 fragments or every 4000 accumulated characters (whichever comes first), with a running fragment count, char total, and deterministic headline:
 
 ```
 2026-04-20T12:34:56Z INFO CONT [content-checkpoint#20][dev-1] (20 fragments, 4500 chars) My running headline.
@@ -503,7 +449,7 @@ For thinking blocks, a `↳ preview:` line is also emitted at each checkpoint so
 ### Example [run-end] block
 
 ```
-2026-04-21T12:05:00+00:00 MILESTONE META [run-end] ◆ Ralph run end
+2026-04-21T12:05:00+00:00 MILESTONE META [run-end] ◆ Ralph Workflow run end
 2026-04-21T12:05:00+00:00 INFO META [run-end] phase=complete
 2026-04-21T12:05:00+00:00 INFO META [run-end] elapsed=42.3s
 2026-04-21T12:05:00+00:00 INFO META [run-end] content_blocks=12
@@ -517,7 +463,7 @@ For thinking blocks, a `↳ preview:` line is also emitted at each checkpoint so
 
 ### Pipeline Complete / Pipeline Failed panel
 
-For terminal phases (`complete` and `failed`), Ralph prints a Rich summary panel
+For terminal phases (`complete` and `failed`), Ralph Workflow prints a Rich summary panel
 immediately after the `[run-end]` block. The panel title is **Pipeline Complete**
 or **Pipeline Failed** and echoes the plan, decision log, metrics,
 verification status, commit, PR URL, and open risks seen during the run.

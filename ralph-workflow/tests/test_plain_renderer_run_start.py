@@ -30,7 +30,7 @@ def test_emit_run_start_prints_milestone_header() -> None:
     lines = [ln for ln in out.splitlines() if ln.strip()]
     assert lines, "expected at least one non-empty line"
     assert "MILESTONE META [run-start]" in lines[0]
-    assert "Ralph run start" in lines[0]
+    assert "Ralph Workflow run start" in lines[0]
 
 
 def test_emit_run_start_emits_prompt_line_when_present() -> None:

@@ -51,6 +51,7 @@ make test-integration
 - Update user-facing Markdown when workflows or commands change.
 - Update public module/package docstrings when APIs change.
 - Keep exported package docstrings self-sufficient enough for `pydoc` users.
+- New public subpackages added under `ralph/` must have an `.. automodule::` entry in `docs/sphinx/modules.rst`. The test `tests/test_sphinx_modules_coverage.py` enforces this — update `_EXCLUDED` in that test if the subpackage is intentionally private.
 - When changing pipeline hardening around artifacts or agent success criteria, document both the behavior change and the failure mode it prevents. Future contributors need to understand why the stricter contract exists.
 
 ## Typing suppression policy
@@ -101,7 +102,7 @@ This is enforced by:
 
 ### Upstream multimodal boundary
 
-When an upstream MCP server returns a non-text content block, Ralph must reject it with a clear error rather than silently stringify or drop the block. The error message must identify the server, tool, and block type.
+When an upstream MCP server returns a non-text content block, Ralph Workflow must reject it with a clear error rather than silently stringify or drop the block. The error message must identify the server, tool, and block type.
 
 This prevents silent data loss in text-only downstream flows and makes incompatibility visible rather than implicit.
 

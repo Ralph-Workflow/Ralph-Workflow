@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-import shutil
-from typing import TYPE_CHECKING, Literal, Protocol, runtime_checkable
+from typing import TYPE_CHECKING
 
 from rich.console import Group
 from rich.panel import Panel
 from rich.text import Text
 
+from ralph.agents.availability import HasListAgents, check_agent_availability
 from ralph.banner import show_banner
 
 if TYPE_CHECKING:
@@ -19,76 +19,34 @@ _KNOWN_AGENT_INSTALL_URLS: dict[str, str] = {
     "opencode": "https://opencode.ai",
 }
 
-_AgentStatus = Literal["available", "missing_on_path", "no_cmd"]
-
-
-class _AgentEntry(Protocol):
-    """Minimal agent config interface for availability checks."""
-
-    cmd: str
-    display_name: str | None
-
-
-@runtime_checkable
-class _HasListAgents(Protocol):
-    """Protocol for agent registries used in availability checks."""
-
-    def list_agents(self) -> list[str]:
-        ...
-
-    def get(self, name: str) -> _AgentEntry | None:
-        ...
-
-
-def _check_agent_availability(
-    registry: _HasListAgents,
-) -> list[tuple[str, _AgentStatus]]:
-    """Check which agents are available on PATH.
-
-    Args:
-        registry: Object implementing list_agents() and get(name) for agent resolution.
-
-    Returns:
-        List of (display_name, status) tuples.
-    """
-    results: list[tuple[str, _AgentStatus]] = []
-    for name in registry.list_agents():
-        agent = registry.get(name)
-        if agent is None:
-            continue
-        cmd = agent.cmd
-        if not cmd:
-            results.append((agent.display_name or name, "no_cmd"))
-            continue
-        first_word = cmd.split(maxsplit=1)[0]
-        display = agent.display_name or first_word
-        status: _AgentStatus = (
-            "available" if shutil.which(first_word) is not None else "missing_on_path"
-        )
-        results.append((display, status))
-    return results
-
 
 def _build_agent_availability_content(
-    agent_registry: _HasListAgents | None,
+    agent_registry: HasListAgents | None,
 ) -> list[object]:
     """Build agent availability content or generic PATH message."""
     content: list[object] = []
     if agent_registry is not None:
         try:
-            availability = _check_agent_availability(agent_registry)
+            availability = check_agent_availability(agent_registry)
             avail_lines: list[Text] = []
-            for name, status in availability:
+            for registry_name, status in availability:
+                # Use display_name if available, otherwise show registry name
+                agent = agent_registry.get(registry_name)
+                label = (
+                    (agent.display_name or registry_name)
+                    if agent is not None
+                    else registry_name
+                )
                 if status == "available":
                     avail_lines.append(
-                        Text.from_markup(f"  • {name}: [green]on PATH[/green]")
+                        Text.from_markup(f"  • {label}: [green]on PATH[/green]")
                     )
                 elif status == "missing_on_path":
-                    install_url = _KNOWN_AGENT_INSTALL_URLS.get(name.lower())
+                    install_url = _KNOWN_AGENT_INSTALL_URLS.get(registry_name.lower())
                     if install_url:
                         avail_lines.append(
                             Text.from_markup(
-                                f"  • {name}: "
+                                f"  • {label}: "
                                 "[yellow]⚠ missing (not on PATH)[/yellow] "
                                 f"[dim]install: {install_url}[/dim]"
                             )
@@ -96,14 +54,14 @@ def _build_agent_availability_content(
                     else:
                         avail_lines.append(
                             Text.from_markup(
-                                f"  • {name}: "
+                                f"  • {label}: "
                                 "[yellow]⚠ missing (not on PATH)[/yellow]"
                             )
                         )
                 else:  # no_cmd
                     avail_lines.append(
                         Text.from_markup(
-                            f"  • {name}: [yellow]⚠ missing (not on PATH)[/yellow]"
+                            f"  • {label}: [yellow]⚠ missing (not on PATH)[/yellow]"
                         )
                     )
             if avail_lines:
@@ -160,7 +118,7 @@ def emit_first_run_welcome(
     console: object,
     results: list[BootstrapResult],
     *,
-    agent_registry: _HasListAgents | None = None,
+    agent_registry: HasListAgents | None = None,
     is_regenerate: bool = False,
 ) -> None:
     """Print a structured first-run welcome panel.
@@ -183,6 +141,23 @@ def emit_first_run_welcome(
 
     content: list[object] = []
 
+    # Elevator pitch and docs pointer for new users
+    content.append(
+        Text.from_markup(
+            "Ralph Workflow orchestrates AI coding agents through a "
+            "[cyan]planning → development → review → fix[/cyan] loop "
+            "driven by your PROMPT.md."
+        )
+    )
+    content.append(
+        Text.from_markup(
+            "[dim]Learn more: [cyan]python -m pydoc ralph[/cyan] · "
+            "run [cyan]make serve-docs[/cyan] from ralph-workflow/ "
+            "for the full HTML reference.[/dim]"
+        )
+    )
+    content.append(Text())  # blank line
+
     # For regenerate, show summary line first
     if is_regenerate:
         summary = _build_regenerate_summary(results)
@@ -190,13 +165,13 @@ def emit_first_run_welcome(
             content.append(summary)
             content.append(Text())  # blank line
 
+    # Agent availability (shown before config file lists; not shown during regenerate)
+    if not is_regenerate:
+        content.extend(_build_agent_availability_content(agent_registry))
+
     global_files, local_files = _partition_config_files(results)
     _append_file_section(content, "[bold cyan]Global config files:[/bold cyan]", global_files)
     _append_file_section(content, "[bold cyan]Local config files:[/bold cyan]", local_files)
-
-    # Agent availability (not shown during regenerate since it's first-run info)
-    if not is_regenerate:
-        content.extend(_build_agent_availability_content(agent_registry))
 
     # Next steps
     next_steps = Text.from_markup(
@@ -212,7 +187,7 @@ def emit_first_run_welcome(
 
     panel = Panel(
         Group(*content),  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
-        title="Ralph first-run setup",
+        title="Ralph Workflow first-run setup",
         border_style="cyan",
         padding=(1, 2),
     )

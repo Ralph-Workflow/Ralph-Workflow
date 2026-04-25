@@ -1,47 +1,9 @@
 """Test timeout enforcement wrapper.
 
-==============================================================================
-POLICY FOR AI AGENTS — READ BEFORE TOUCHING ANY TEST
-==============================================================================
-
-YOU **MUST** fix any test that cannot finish within the time limits below.
-Do not raise the limits. Do not skip or quarantine a slow test to hide it.
-A test that exceeds these limits is a **design defect** — fix the design.
-
-  Per-test limit  : 1 second   (DEFAULT_TEST_TIMEOUT_SECONDS)
-  Full-suite limit: 30 seconds (DEFAULT_SUITE_TIMEOUT_SECONDS)
-
-HOW TO FIX A SLOW TEST
------------------------
-1. Replace real I/O with fakes.
-   - Filesystem  → MemoryWorkspace / tmp_path fixture (never real fs in unit tests)
-   - Subprocesses → MockProcessExecutor / monkeypatch (never real processes)
-   - Network     → patch/mock at the boundary (never real HTTP/socket)
-
-2. Eliminate sleep() and real wall-clock waits.
-   - Inject a clock abstraction; advance it in the test.
-   - Never call time.sleep(), asyncio.sleep(), or threading.Event.wait() with
-     a real timeout inside test code.
-
-3. Refactor production code to be testable.
-   - If a test is slow because the production path forces real I/O, that is a
-     coupling problem. Extract I/O behind an interface so the test can inject
-     a fast fake. Do this refactor; do not work around it.
-
-4. Tests must assert on observable behavior, not implementation internals.
-   - If changing the implementation (without changing behavior) would break a
-     test, the test is wrong. Rewrite it to test through the public contract.
-
-WHAT "DONE" MEANS FOR TESTS
-----------------------------
-A test change is complete only when ALL of the following hold:
-  [ ] Every individual test finishes in < 1 s
-  [ ] The full suite finishes in < 30 s wall-clock
-  [ ] No test calls sleep() or polls real wall-clock time
-  [ ] No test crosses a real I/O boundary (filesystem, process, network)
-  [ ] Every assertion targets observable behavior, not internal state
-
-==============================================================================
+This module runs a pytest suite with per-test and full-suite timeout limits.
+Per-test limit is ``DEFAULT_TEST_TIMEOUT_SECONDS`` (1 s); suite limit is
+``DEFAULT_SUITE_TIMEOUT_SECONDS`` (30 s). A test that exceeds these limits is
+a design defect — fix the production coupling, not the timeout.
 """
 
 from __future__ import annotations

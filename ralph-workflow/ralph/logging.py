@@ -1,14 +1,16 @@
-"""Logging configuration for Ralph.
+"""Logging configuration for Ralph Workflow.
 
-This module configures loguru for structured logging throughout the Ralph CLI.
-Log levels map to verbosity as follows:
+This module configures loguru for structured logging throughout the Ralph Workflow CLI.
+Log levels map to verbosity as follows::
+
     0 (QUIET)  -> ERROR only
     1 (NORMAL) -> WARNING
     2 (VERBOSE) -> INFO
     3 (FULL)   -> DEBUG
     4+ (DEBUG) -> TRACE
 
-Custom levels registered on first configure_logging() call:
+Custom levels registered on first configure_logging() call::
+
     SUCCESS (25): between INFO (20) and WARNING (30)
     MILESTONE (35): between WARNING (30) and ERROR (40)
 """
@@ -70,7 +72,7 @@ class LoggingConfig:
 
 @dataclass(frozen=True)
 class LoggingSession:
-    """Configured logger bundle for a single Ralph run."""
+    """Configured logger bundle for a single Ralph Workflow run."""
 
     config: LoggingConfig
     paths: LoggingPaths
@@ -86,7 +88,7 @@ def configure_logging(
     structured: bool = False,
     rotation: str | int | None = "10 MB",
 ) -> LoggingSession:
-    """Configure loguru for Ralph CLI output.
+    """Configure loguru for Ralph Workflow CLI output.
 
     Removes the default handler and adds a new handler with formatting
     based on verbosity level. Higher verbosity shows more detail.
@@ -227,14 +229,14 @@ def get_logger() -> Logger:
 
 
 class RalphLogger:
-    """Structured logger for Ralph pipeline events.
+    """Structured logger for Ralph Workflow pipeline events.
 
     This class provides convenient methods for common logging scenarios
-    in the Ralph pipeline.
+    in the Ralph Workflow pipeline.
     """
 
     def __init__(self, base_logger: Logger | None = None) -> None:
-        """Initialize the Ralph logger."""
+        """Initialize the Ralph Workflow logger."""
         self._logger: Logger = base_logger if base_logger is not None else logger
 
     def phase_start(self, phase: str, drain: str) -> None:

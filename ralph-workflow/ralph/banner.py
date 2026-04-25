@@ -1,4 +1,4 @@
-"""CLI banner display helpers for Ralph."""
+"""CLI banner display helpers for Ralph Workflow."""
 
 from __future__ import annotations
 
@@ -74,12 +74,12 @@ def _load_rich_components() -> tuple[
 
 
 def render_banner(*, version: str = __version__) -> object:
-    """Build the Ralph welcome banner as a rich renderable."""
+    """Build the Ralph Workflow welcome banner as a rich renderable."""
     _, group_cls, panel_cls, text_cls = _load_rich_components()
 
     banner_text = text_cls("\n".join(ASCII_ART), style="bold cyan")
     version_text = text_cls(f"v{version}", style="bold green")
-    title_text = text_cls("Ralph", style="bold white")
+    title_text = text_cls("Ralph Workflow", style="bold white")
     welcome_text = text_cls(WELCOME_MESSAGE, style="bold white")
     tagline_text = text_cls(TAGLINE, style="dim")
 
@@ -95,7 +95,7 @@ def render_banner(*, version: str = __version__) -> object:
 
 
 def show_banner(*, console: SupportsPrint | None = None, version: str = __version__) -> None:
-    """Print the Ralph welcome banner to the provided console."""
+    """Print the Ralph Workflow welcome banner to the provided console."""
     if console is not None:
         console_instance: SupportsPrint = console
     else:

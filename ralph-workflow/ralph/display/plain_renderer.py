@@ -506,7 +506,9 @@ class PlainLogRenderer:
         """Emit a one-time MILESTONE orientation block at pipeline start."""
         timestamp = self._clock().isoformat()
         self._console.print(
-            self._build_line(timestamp, "MILESTONE", "META", "[run-start] ◆ Ralph run start"),
+            self._build_line(
+                timestamp, "MILESTONE", "META", "[run-start] ◆ Ralph Workflow run start"
+            ),
             markup=False,
             highlight=False,
             no_wrap=True,
@@ -690,7 +692,7 @@ class PlainLogRenderer:
         if self._run_start_time is not None:
             total_elapsed_s = round(max(0.0, time.monotonic() - self._run_start_time), 1)
         self._console.print(
-            self._build_line(timestamp, "MILESTONE", "META", "[run-end] ◆ Ralph run end"),
+            self._build_line(timestamp, "MILESTONE", "META", "[run-end] ◆ Ralph Workflow run end"),
             markup=False,
             highlight=False,
             no_wrap=True,
