@@ -125,8 +125,8 @@ When an upstream MCP server returns a non-text content block (e.g., an image), R
 
 Error message format:
 ```
-upstream server '<name>' tool '<tool>' returned multimodal content block (type='<type>') 
-which is not supported in Ralph's text-only passthrough at index <idx>. 
+upstream server '<name>' tool '<tool>' returned multimodal content block (type='<type>')
+which is not supported in Ralph's text-only passthrough at index <idx>.
 Upstream multimodal payloads must be rejected rather than passed through.
 ```
 
@@ -337,3 +337,27 @@ at the OS level are the right control for Crawl4AI in production.
 | JavaScript-rendered SPA | `ralph_upstream__crawl4ai__crawl` |
 | Multi-page crawl / sitemap | `ralph_upstream__crawl4ai__crawl_many` |
 | Structured extraction (CSS/JSON-LD) | `ralph_upstream__crawl4ai__crawl` with extraction schema |
+
+### Firecrawl as a heavier alternative
+
+[Firecrawl](https://firecrawl.dev/) is a self-hosted crawling platform that also ships an MCP
+server. It is viable as a local sidecar for teams that need advanced crawl features, but it is
+**operationally heavier** than Crawl4AI:
+
+- Firecrawl's self-hosted scrape/crawl endpoints are available without cost, but its
+  browser/agent/cloud endpoints require the hosted service and are not available self-hosted.
+- Running Firecrawl self-hosted requires more infrastructure (Docker, memory, CPU) than a
+  lightweight Crawl4AI setup.
+- Firecrawl is best suited for teams that already run Firecrawl in their stack and want to
+  integrate it with Ralph rather than teams adopting a crawler for the first time.
+
+If you already run Firecrawl, configure it like any other HTTP MCP server:
+
+```toml
+[mcp_servers.firecrawl]
+transport = "http"
+url = "http://localhost:3002/mcp"
+```
+
+For new projects, prefer **Crawl4AI** as the recommended local crawler — it is lighter,
+MCP-native, and easier to operate.

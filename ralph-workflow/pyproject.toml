@@ -50,6 +50,8 @@ dev = [
   "pytest-xdist>=3.6",
   "pydantic>=2.7",
   "vulture>=2.16",
+  "readability-lxml>=0.8.1",
+  "selectolax>=0.3.21",
 ]
 web-search = [
   "tavily-python>=0.7.23",

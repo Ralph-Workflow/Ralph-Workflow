@@ -15,6 +15,7 @@ import time
 from http import HTTPStatus
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
+from unittest.mock import MagicMock, patch
 
 import httpx
 import pytest
@@ -27,6 +28,8 @@ from ralph.mcp.server.runtime import (
 from ralph.mcp.tools.bridge import build_ralph_tool_registry
 from ralph.mcp.upstream.client import make_upstream_client
 from ralph.mcp.upstream.config import UpstreamMcpServer
+from ralph.mcp.webvisit.extractor import ExtractedPage
+from ralph.mcp.webvisit.fetcher import FetchOutcome
 from ralph.workspace.fs import FsWorkspace
 
 if TYPE_CHECKING:
@@ -127,9 +130,133 @@ class TestHttpMcpServer:
             _do_read_file_test(base_url, session_id)
         finally:
             # Explicitly close server socket before shutdown to avoid socket leaks
+            httpd = standalone._httpd
+            if httpd is not None:
+                httpd.server_close()
+                httpd.shutdown()
+            thread.join(timeout=5.0)
+            if thread.is_alive():
+                raise AssertionError("Server thread did not shut down within 5 seconds")
+
+    def test_visit_url_tools_call_over_http(self, temp_workspace: Path) -> None:
+        """Wire-level test: tools/call for visit_url returns expected JSON shape."""
+        workspace = FsWorkspace(temp_workspace)
+        session = AgentSession(
+            session_id="test-session",
+            run_id="test-run",
+            drain="test",
+            capabilities=_REQUIRED_CAPABILITIES,
+        )
+        registry = build_ralph_tool_registry(session, workspace)
+        mcp_server = McpServer(session, workspace, registry)
+
+        standalone = _FallbackStandaloneServer("127.0.0.1", 0, mcp_server)
+
+        ready_event = threading.Event()
+        server_port: dict[str, int] = {}
+
+        def run_server() -> None:
+            standalone.run("streamable-http")
+
+        thread = threading.Thread(target=run_server, daemon=True)
+        thread.start()
+
+        deadline = time.monotonic() + _SERVER_START_TIMEOUT
+        while time.monotonic() < deadline:
             if standalone._httpd is not None:
-                standalone._httpd.server_close()
-            standalone._httpd.shutdown()
+                port = standalone._httpd.server_address[1]
+                server_port["port"] = port
+                try:
+                    _wait_for_port(port, timeout=1.0)
+                    ready_event.set()
+                    break
+                except AssertionError:
+                    pass
+            time.sleep(0.05)
+
+        if not ready_event.is_set():
+            raise AssertionError("Server did not start within 10 seconds")
+
+        port = server_port["port"]
+        base_url = f"http://127.0.0.1:{port}/mcp"
+
+        # Mock fetch_url and extract_readable so no real network IO occurs
+        mock_extracted_page = ExtractedPage(
+            title="Example Page",
+            text="Test content",
+            links=("https://example.com/link1",),
+        )
+
+        try:
+            with (
+                patch("ralph.mcp.webvisit.fetcher.httpx") as mock_httpx,
+                patch("ralph.mcp.tools.webvisit.extract_readable", return_value=mock_extracted_page),
+            ):
+                # Build a mock response for httpx.Client context manager
+                mock_response = MagicMock()
+                mock_response.status_code = 200
+                mock_response.url = "https://example.com/page"
+                mock_response.headers = {"content-type": "text/html; charset=utf-8"}
+                mock_response.iter_bytes.return_value = [b"<html><body><p>Test content</p></body></html>"]
+                mock_response.__enter__ = MagicMock(return_value=mock_response)
+                mock_response.__exit__ = MagicMock(return_value=False)
+
+                mock_client = MagicMock()
+                mock_client.__enter__ = MagicMock(return_value=mock_client)
+                mock_client.__exit__ = MagicMock(return_value=False)
+                mock_client.stream.return_value.__enter__ = MagicMock(return_value=mock_response)
+                mock_client.stream.return_value.__exit__ = MagicMock(return_value=False)
+
+                mock_httpx.Client.return_value.__enter__ = MagicMock(return_value=mock_client)
+                mock_httpx.Client.return_value.__exit__ = MagicMock(return_value=False)
+                mock_httpx.Client.return_value.stream.return_value.__enter__ = MagicMock(return_value=mock_response)
+                mock_httpx.Client.return_value.stream.return_value.__exit__ = MagicMock(return_value=False)
+
+                session_id = _do_initialize(base_url)
+                _do_initialized_notification(base_url, session_id)
+                _do_tools_list(base_url, session_id)
+
+                # Call tools/call for visit_url
+                payload = {
+                    "jsonrpc": "2.0",
+                    "id": 4,
+                    "method": "tools/call",
+                    "params": {
+                        "name": "visit_url",
+                        "arguments": {"url": "https://example.com/page"},
+                    },
+                }
+                with httpx.Client(timeout=10.0) as client:
+                    response = client.post(
+                        base_url,
+                        json=payload,
+                        headers={"Mcp-Session-Id": session_id},
+                    )
+
+                assert response.status_code == HTTPStatus.OK.value
+                call_data = _parse_sse_body(response.content)
+                assert "result" in call_data, f"tools/call failed: {call_data}"
+                result = call_data["result"]
+
+                # Should not be an error (fetch succeeds with mocked response)
+                assert result.get("isError") is not True, f"visit_url returned error: {result}"
+
+                content = result.get("content", [])
+                assert len(content) >= 1
+                text_block = content[0]
+                assert text_block.get("type") == "text"
+
+                # Parse the JSON text content
+                inner = json.loads(text_block["text"])
+                assert inner.get("status") == "ok"
+                assert inner.get("title") == "Example Page"
+                assert inner.get("effective_url") == "https://example.com/page"
+                assert "Test content" in inner.get("text", "")
+        finally:
+            httpd = standalone._httpd
+            if httpd is not None:
+                httpd.server_close()
+                httpd.shutdown()
             thread.join(timeout=5.0)
             if thread.is_alive():
                 raise AssertionError("Server thread did not shut down within 5 seconds")
