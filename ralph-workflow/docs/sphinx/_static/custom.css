@@ -1,5 +1,16 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
 
+/* Tighter Inter rendering */
+:root,
+body {
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+}
+
+/* Sidebar chrome matching website */
+aside.sidebar-drawer {
+    box-shadow: inset -1px 0 0 var(--color-sidebar-background-border);
+}
+
 /* Code blocks */
 div[class*="highlight"] {
     border-radius: 8px;
@@ -25,6 +36,22 @@ div.tip {
     border-left: 3px solid var(--color-brand-primary);
 }
 
+/* Hero block */
+.hero {
+    font-size: 2.5rem;
+    font-weight: 700;
+    line-height: 1.15;
+    letter-spacing: -0.02em;
+    margin-bottom: 0.5rem;
+}
+
+.hero p {
+    font-size: 1.125rem;
+    color: var(--color-foreground-secondary);
+    font-weight: 400;
+    line-height: 1.6;
+}
+
 /* Headings */
 h1 {
     font-weight: 700;
@@ -35,6 +62,15 @@ h2 {
     font-weight: 600;
     border-top: 1px solid var(--color-background-border);
     padding-top: 1.5rem;
+}
+
+/* Links */
+a {
+    transition: color 120ms;
+}
+
+a:hover {
+    text-decoration: underline;
 }
 
 /* sphinx-design cards matching homepage card style */

@@ -1,4 +1,4 @@
-.PHONY: help install dev install-dev test test-unit test-integration lint typecheck build build-wheel build-sdist publish test-pypi test-pypi-upload twine-upload twine-upload-testpypi clean dist clean-dist fmt format-check ruff-fix mypy-fix pre-commit dist-homebrew verify coverage dist-binary dist-pypi dist-all formula-check dead-code docs serve-docs
+.PHONY: help install dev install-dev test test-unit test-integration lint typecheck build build-wheel build-sdist publish test-pypi test-pypi-upload twine-upload twine-upload-testpypi clean dist clean-dist fmt format-check ruff-fix mypy-fix pre-commit dist-homebrew verify coverage dist-binary dist-pypi dist-all formula-check dead-code docs docs-linkcheck serve-docs
 
 PYTEST_WORKERS ?= 8
 COVERAGE_WORKERS ?= 16
@@ -28,13 +28,14 @@ help:
 	@echo "  clean          Clean build artifacts"
 	@echo "  clean-dist     Clean dist folder"
 	@echo "  dist-homebrew  Build Homebrew distribution"
-	@echo "  verify         Run full verification (ruff, mypy, pytest with coverage)"
+	@echo "  verify         Run full verification (ruff, mypy, docs, pytest with coverage)"
 	@echo "  dist-binary    Build PyInstaller single-file binary"
 	@echo "  dist-pypi      Build and publish to PyPI via hatch"
 	@echo "  dist-all       Build both binary and PyPI distributions"
 	@echo "  formula-check  Validate Homebrew formula syntax"
 	@echo "  dead-code      Run Vulture dead-code audit (fails while backlog exists)"
-	@echo "  docs           Build Sphinx HTML documentation (not part of verify)"
+	@echo "  docs           Build Sphinx HTML documentation (part of verify)"
+	@echo "  docs-linkcheck Check all hyperlinks in docs (opt-in, not in verify)"
 	@echo "  serve-docs     Build and serve docs at http://localhost:8080"
 	@echo ""
 	@echo "  run            Run ralph CLI directly"
@@ -169,6 +170,9 @@ dead-code:
 
 docs:
 	uv run --extra docs sphinx-build -b html docs/sphinx docs/sphinx/_build/html -W --keep-going
+
+docs-linkcheck:
+	uv run --extra docs sphinx-build -b linkcheck docs/sphinx docs/sphinx/_build/linkcheck
 
 serve-docs: docs
 	@echo "Serving docs at http://localhost:8080"

@@ -76,6 +76,15 @@ ralph.verify_timeout
 .. automodule:: ralph.verify_timeout
    :no-members:
 
+ralph.__main__
+~~~~~~~~~~~~~~
+
+.. Note: ralph.__main__ is the ``python -m ralph`` entry point; using :no-members:
+   since it contains no public API beyond invoking the CLI.
+
+.. automodule:: ralph.__main__
+   :no-members:
+
 ----
 
 CLI
@@ -748,6 +757,15 @@ ralph.mcp.server.runtime
 .. automodule:: ralph.mcp.server.runtime
    :members:
    :show-inheritance:
+
+ralph.mcp.server.__main__
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. Note: ralph.mcp.server.__main__ is the standalone ``ralph-mcp`` entry point;
+   using :no-members: since it contains no public API beyond starting the server.
+
+.. automodule:: ralph.mcp.server.__main__
+   :no-members:
 
 ralph.mcp.session_plan
 ~~~~~~~~~~~~~~~~~~~~~~
@@ -1757,3 +1775,27 @@ ralph.prompts.types
    :members:
    :show-inheritance:
    :exclude-members: CapabilitySet,PolicyFlag,PolicyFlagSet
+
+----
+
+Testing
+-------
+
+.. Note: Every public package under ralph/ must have an autodoc entry here.
+   When adding a new package, add the corresponding ~~~ section.
+
+ralph.testing
+~~~~~~~~~~~~~
+
+.. Note: ralph.testing re-exports timeout helpers from ralph.verify_timeout;
+   using :no-members: avoids duplicate cross-reference warnings.
+
+.. automodule:: ralph.testing
+   :no-members:
+
+ralph.testing.fake_agent_executor
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.testing.fake_agent_executor
+   :members:
+   :show-inheritance:

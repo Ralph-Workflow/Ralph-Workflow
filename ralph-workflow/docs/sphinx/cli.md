@@ -64,8 +64,8 @@ These flags are used by Ralph Workflow's internal commit workflow and by the
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--git-user-name <name>` | (from git config) | Override git user.name for commits made by Ralph Workflow |
-| `--git-user-email <email>` | (from git config) | Override git user.email for commits made by Ralph Workflow |
+| `--git-user-name <name>` | (from git config) | Override git `user.name` for commits made by Ralph Workflow |
+| `--git-user-email <email>` | (from git config) | Override git `user.email` for commits made by Ralph Workflow |
 
 ## Miscellaneous
 

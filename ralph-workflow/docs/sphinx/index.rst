@@ -1,22 +1,51 @@
-Ralph Workflow Documentation
-============================
+Ralph Workflow
+==============
 
-Ralph Workflow is an opinionated AI agent orchestration framework that turns a
-``PROMPT.md`` into a verified change set.
+.. rst-class:: hero
 
-Ralph Workflow drives AI coding agents through a structured
-**planning → development → review → fix** loop. You describe what you want built,
-and Ralph Workflow handles the rest: planning the implementation, running the agent,
-reviewing the output, and applying fixes — all unattended.
+   Unattended AI agent orchestration for long-running development pipelines.
+
+   Ralph Workflow drives AI coding agents through a structured
+   **planning → development → review → fix** loop. You describe what you want built in
+   ``PROMPT.md``, and Ralph Workflow handles the rest: planning the implementation,
+   invoking the agent, reviewing the output, applying fixes — all unattended, with full
+   checkpoint and recovery support.
 
 .. note::
 
    New here? Read :doc:`getting-started` first — it walks you from zero to your first
-   pipeline run in minutes, without assuming any prior knowledge of Ralph Workflow.
+   pipeline run in minutes.
+
+.. grid:: 1 2 2 2
+   :gutter: 3
+
+   .. grid-item-card:: Get Started
+      :link: getting-started
+      :link-type: doc
+
+      Install, initialise, write your first PROMPT.md, and run the pipeline.
+
+   .. grid-item-card:: Operate
+      :link: recovery
+      :link-type: doc
+
+      Checkpoint, resume, recovery cycles, parallel worktrees.
+
+   .. grid-item-card:: Reference
+      :link: cli
+      :link-type: doc
+
+      Every CLI flag, config field, MCP tool, and Python API.
+
+   .. grid-item-card:: Troubleshoot
+      :link: troubleshooting
+      :link-type: doc
+
+      Common errors and how to fix them.
 
 .. toctree::
    :maxdepth: 2
-   :caption: Getting Started:
+   :caption: Get Started
 
    getting-started
    quickstart
@@ -24,60 +53,37 @@ reviewing the output, and applying fixes — all unattended.
 
 .. toctree::
    :maxdepth: 2
-   :caption: Operations:
+   :caption: Operate
 
    recovery
    parallel-mode
 
 .. toctree::
    :maxdepth: 2
-   :caption: Reference:
+   :caption: Reference
 
    cli
    configuration
    mcp-tools
+   mcp-architecture
+   agents
+   artifacts
+   prompts
    transcript
    modules
    local-web-access
 
 .. toctree::
    :maxdepth: 1
-   :caption: Troubleshooting:
+   :caption: Troubleshoot
 
    troubleshooting
 
 .. toctree::
    :maxdepth: 1
-   :caption: Project:
+   :caption: Project
 
    versioning
-
-.. grid:: 1 2 2 2
-   :gutter: 3
-
-   .. grid-item-card:: Getting Started
-      :link: getting-started
-      :link-type: doc
-
-      Step-by-step first-run walkthrough — install, init, edit PROMPT.md, run.
-
-   .. grid-item-card:: Reference
-      :link: cli
-      :link-type: doc
-
-      Every CLI flag, every config field, the full Python API.
-
-   .. grid-item-card:: Operations
-      :link: recovery
-      :link-type: doc
-
-      Checkpoint, resume, recovery cycles, parallel worktrees.
-
-   .. grid-item-card:: Troubleshooting
-      :link: troubleshooting
-      :link-type: doc
-
-      Common errors and how to fix them.
 
 Indices and tables
 ==================

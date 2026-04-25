@@ -50,6 +50,16 @@ html_theme_options = {
         "color-brand-content": "#0b6bcb",
         "font-stack": "'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif",
         "font-stack--monospace": "'JetBrains Mono', 'Fira Code', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
+        "color-background-primary": "#ffffff",
+        "color-background-secondary": "#f6f8fa",
+        "color-foreground-primary": "#0b1320",
+        "color-foreground-secondary": "#4b5563",
+        "color-foreground-muted": "#6b7280",
+        "color-sidebar-background": "#f6f8fa",
+        "color-sidebar-background-border": "#e5e7eb",
+        "color-highlight-on-target": "#fff8c5",
+        "color-api-name": "#0b6bcb",
+        "color-api-pre-name": "#0b6bcb",
     },
     "dark_css_variables": {
         "color-brand-primary": "#5eb1ff",
@@ -61,10 +71,16 @@ html_theme_options = {
         "color-foreground-muted": "#6c7682",
         "color-sidebar-background": "#0b0d10",
         "color-sidebar-background-border": "#1a1f25",
+        "color-sidebar-link-text--top-level": "#e6edf3",
         "color-highlight-on-target": "#1f2933",
+        "color-api-name": "#5eb1ff",
+        "color-api-pre-name": "#5eb1ff",
     },
 }
 html_title = "Ralph Workflow"
+html_show_sourcelink = True
+html_show_sphinx = False
+html_baseurl = "https://ralphworkflow.com/docs/"
 html_static_path = ["_static"]
 html_css_files = ["custom.css"]
 pygments_style = "friendly"
@@ -80,3 +96,11 @@ source_suffix = {
     ".rst": "restructuredtext",
     ".md": "markdown",
 }
+
+# Linkcheck: ignore false positives produced by the MyST linkify extension
+# auto-linking bare words that look like domain names (PROMPT.md → http://PROMPT.md)
+# and known-redirected upstream URLs.
+linkcheck_ignore = [
+    r"http://PROMPT\.md",
+    r"https://docs\.claude\.com/",
+]
