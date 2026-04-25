@@ -3,6 +3,9 @@
 The `visit_url` tool fetches a single URL and returns readable extracted text.
 It is a built-in Ralph MCP tool gated by the `WebVisit` capability.
 
+See [Local Web Access](../sphinx/local-web-access.md) for the product-level overview
+of how `visit_url` fits into Ralph's three web concepts (search, visit, crawl).
+
 ## Requirements
 
 The tool uses two optional Python packages for HTML extraction:
@@ -104,22 +107,55 @@ On failure (`is_error=true`):
 
 ## Capability and default grant
 
-`visit_url` requires the `WebVisit` capability. Unlike `web_search`, which is
-withheld from the `analysis` and `commit` drains, `WebVisit` is granted to
-**all 10 session drains** by default.
+`visit_url` requires the `WebVisit` capability. `WebVisit` is granted to
+**all 10 session drains** by default, meaning `visit_url` is visible and callable
+in every phase. This default exposure is verified by the cross-phase regression test
+`tests/integration/test_web_access_phase_visibility.py`.
 
 ## Private-network access (SSRF guard)
 
-By default, `allow_private_networks=false` blocks any URL that resolves to a
-loopback, private, link-local, multicast, or reserved address. Enable with
-care — only when Ralph runs in a fully isolated environment:
+### Policy decision
+
+By default, Ralph treats localhost/private networks differently from the public internet:
+they are **blocked unless the operator explicitly opts in**. This is an intentional
+security posture — Ralph should not be able to reach internal services unless you
+deliberately enable it.
+
+When `allow_private_networks=false` (the default), `visit_url` blocks any URL that
+resolves to:
+
+| Address class | Examples |
+|---|---|
+| Loopback | `127.0.0.0/8`, `::1` |
+| Private networks | `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16` |
+| Link-local | `169.254.0.0/16`, `fe80::/10` |
+| Multicast | `224.0.0.0/4`, `ff00::/8` |
+| Reserved | `240.0.0.0/4`, `2000::/3` |
+| Unspecified | `0.0.0.0`, `::` |
+| Special hostname | `localhost` |
+
+This list is implemented in `ralph.mcp.webvisit.fetcher._is_private_address` and
+mirrors the SSRF guard logic from established secure HTTP fetch libraries.
+
+### When to enable private-network access
+
+Set `allow_private_networks = true` only when:
+
+- Ralph runs in a dedicated container or VM with network isolation
+- You explicitly want Ralph to fetch from local development servers
+- CI runners have a dedicated network namespace with no internal service exposure
+
+**Trade-off:** Enabling private network access removes the SSRF boundary between Ralph
+and your internal services. Only enable it when your deployment environment is
+appropriately isolated and you understand the implications.
 
 ```toml
 [web_visit]
 allow_private_networks = true
 ```
 
-Failure category is logged at WARNING level; the URL itself is never logged.
+Failure category (`blocked_by_policy`) is logged at WARNING level; the URL itself
+is never logged.
 
 ## Advanced: multi-page and JavaScript-rendered crawling
 

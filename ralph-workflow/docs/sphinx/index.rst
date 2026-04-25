@@ -36,6 +36,7 @@ reviewing the output, and applying fixes — all unattended.
    cli
    configuration
    modules
+   local-web-access
 
 .. toctree::
    :maxdepth: 1
@@ -54,7 +55,7 @@ Section guide
 
 - **Getting Started** — walkthroughs: first run, quickstart, and key concepts
 - **Operations** — recovery behaviour, parallel work units, and checkpoint management
-- **Reference** — complete CLI flag table, configuration file reference, and API docs
+- **Reference** — complete CLI flag table, configuration file reference, API docs, and web access capabilities
 - **Troubleshooting** — common errors and how to fix them
 
 Indices and tables

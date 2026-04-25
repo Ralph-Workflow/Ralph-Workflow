@@ -338,6 +338,30 @@ at the OS level are the right control for Crawl4AI in production.
 | Multi-page crawl / sitemap | `ralph_upstream__crawl4ai__crawl_many` |
 | Structured extraction (CSS/JSON-LD) | `ralph_upstream__crawl4ai__crawl` with extraction schema |
 
+### Verifying cross-phase visibility
+
+After configuring Crawl4AI, verify that its tools are visible across all Ralph phases:
+
+```
+ralph --check-mcp
+```
+
+Expected output:
+
+```
+Custom MCP Servers
+  crawl4ai  http  ok
+
+Agent Transport Compatibility
+  crawl4ai × CLAUDE    ok
+  crawl4ai × CODEX     ok
+  crawl4ai × OPENCODE  ok
+```
+
+If a phase fails to expose `ralph_upstream__crawl4ai__*` tools, run `ralph --diagnose` first — this is the regression failure mode that `tests/integration/test_web_access_phase_visibility.py` guards against.
+
+The upstream proxy tools are registered when the session has `UPSTREAM_TOOL_USE` capability. This capability is granted to **all 10 session drains** by default, so configured upstream crawlers should be visible in every phase without additional configuration.
+
 ### Firecrawl as a heavier alternative
 
 [Firecrawl](https://firecrawl.dev/) is a self-hosted crawling platform that also ships an MCP
