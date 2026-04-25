@@ -38,7 +38,7 @@ class GenericExecutionStrategy:
     ) -> AgentExecutionState:
         if hasattr(handle, "has_live_descendants"):
             try:
-                if bool(handle.has_live_descendants()):  # type: ignore[misc]
+                if bool(handle.has_live_descendants()):  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
                     return AgentExecutionState.WAITING_ON_CHILD
             except Exception:
                 pass
@@ -73,14 +73,14 @@ class OpenCodeExecutionStrategy:
     ) -> AgentExecutionState:
         # Check for Ralph-tracked parallel agent workers (label prefix "agent:")
         try:
-            if bool(liveness_probe.any_agent_active("agent:")):  # type: ignore[attr-defined, misc]
+            if bool(liveness_probe.any_agent_active("agent:")):  # type: ignore[attr-defined, misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
                 return AgentExecutionState.WAITING_ON_CHILD
         except Exception:
             pass
         # Fall back to psutil-based descendant check for non-Ralph-tracked child processes
         if hasattr(handle, "has_live_descendants"):
             try:
-                if bool(handle.has_live_descendants()):  # type: ignore[misc]
+                if bool(handle.has_live_descendants()):  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
                     return AgentExecutionState.WAITING_ON_CHILD
             except Exception:
                 pass
@@ -92,7 +92,7 @@ class OpenCodeExecutionStrategy:
         completion_signals: object,
     ) -> AgentExecutionState:
         try:
-            signals: CompletionSignals = completion_signals  # type: ignore[assignment]
+            signals: CompletionSignals = completion_signals  # type: ignore[assignment]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
             if signals.explicit_complete or signals.required_artifact_present:
                 return AgentExecutionState.TERMINAL_COMPLETE
         except Exception:

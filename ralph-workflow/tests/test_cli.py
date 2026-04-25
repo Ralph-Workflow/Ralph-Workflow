@@ -151,7 +151,7 @@ def test_removed_top_level_flags_are_rejected_after_cleanup(
     """Cleanup should leave the real CLI with no legacy top-level flags."""
     command = get_command(app)
 
-    with pytest.raises(click.exceptions.NoSuchOption):  # type: ignore[attr-defined]
+    with pytest.raises(click.exceptions.NoSuchOption):  # type: ignore[attr-defined]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
         command.make_context("ralph", [flag], resilient_parsing=False)
 
 
@@ -412,7 +412,7 @@ def test_run_pipeline_success(monkeypatch: pytest.MonkeyPatch) -> None:
         dry_run: bool,
         resume: bool,
         verbosity: object = None,
-    ) -> int:  # type: ignore[override]
+    ) -> int:  # type: ignore[override]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
         recorded["config_path"] = config_path
         recorded["cli_overrides"] = cli_overrides
         recorded["dry_run"] = dry_run

@@ -111,8 +111,8 @@ try:
 
     _WATCHDOG_EVENTS_AVAILABLE = True
 except ImportError:
-    _WatchdogObserverClass = None  # type: ignore[assignment]  # watchdog is optional; None when not installed
-    _WatchdogFileSystemEventHandlerClass = None  # type: ignore[assignment,misc]  # watchdog is optional; None when not installed
+    _WatchdogObserverClass = None  # type: ignore[assignment]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+    _WatchdogFileSystemEventHandlerClass = None  # type: ignore[assignment,misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     _WATCHDOG_EVENTS_AVAILABLE = False
 
 
@@ -588,7 +588,7 @@ def _read_lines_from_process(
     Yields:
         Lines from stdout.
     """
-    stdout_pipe: IO[str] | None = handle.stdout  # type: ignore[assignment]
+    stdout_pipe: IO[str] | None = handle.stdout  # type: ignore[assignment]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     lines_queue: list[str] = []
     lines_lock = threading.Lock()
     lines_event = threading.Event()
@@ -684,7 +684,7 @@ def _check_process_result(
     """
     returncode = int(handle.returncode or 0)
     if returncode != 0:
-        stderr_pipe: IO[str] | None = handle.stderr  # type: ignore[assignment]
+        stderr_pipe: IO[str] | None = handle.stderr  # type: ignore[assignment]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
         stderr = stderr_pipe.read() if stderr_pipe is not None else "(unable to read stderr)"
         logger.error("Agent exited with code {}: {}", returncode, stderr)
         raise AgentInvocationError(agent_name, returncode, stderr, parsed_output)

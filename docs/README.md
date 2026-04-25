@@ -9,6 +9,7 @@ Start here for the maintained package:
 - `../ralph-workflow/README.md` — installation, development, and API overview
 - `../ralph-workflow/CONTRIBUTING.md` — contributor workflow for the Python package
 - `agents/verification.md` — required verification commands
+- `agents/type-ignore-policy.md` — suppression policy for `# type: ignore[...]` usage
 - `agents/parallelization.md` — parallel development mode guide
 - package docstrings under `../ralph-workflow/ralph/` — authoritative API-level pydoc
 

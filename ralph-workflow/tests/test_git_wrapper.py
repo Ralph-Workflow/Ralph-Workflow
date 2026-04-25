@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 from git import GitCommandError, Repo
 
-from ralph.git import (  # type: ignore[reportAttributeAccessIssue]
+from ralph.git import (  # type: ignore[reportAttributeAccessIssue]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     detect_unauthorized_commit,
     end_agent_phase,
     start_agent_phase,

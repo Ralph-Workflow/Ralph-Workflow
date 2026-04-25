@@ -150,7 +150,7 @@ async def test_nonzero_exit_with_artifact_is_treated_as_success(tmp_path) -> Non
 
     _seed_artifact(tmp_path / ".worktrees" / "unit-a")
 
-    isolation = module._IsolationDeps(  # type: ignore[attr-defined]
+    isolation = module._IsolationDeps(  # type: ignore[attr-defined]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
         worktree_manager=worktree_manager,
         mcp_factory=mcp_factory,
         repo_root=tmp_path,
@@ -185,7 +185,7 @@ async def test_zero_exit_without_artifact_or_git_changes_is_treated_as_failure(t
     worktree_manager = _RecordingWorktreeManager(tmp_path)
     mcp_factory = _RecordingMcpFactory()
 
-    isolation = module._IsolationDeps(  # type: ignore[attr-defined]
+    isolation = module._IsolationDeps(  # type: ignore[attr-defined]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
         worktree_manager=worktree_manager,
         mcp_factory=mcp_factory,
         repo_root=tmp_path,

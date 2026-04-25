@@ -53,7 +53,7 @@ def _load_mcp_toml(path: Path) -> dict[str, object]:
     with path.open("rb") as fh:
         try:
             data: dict[str, object] = tomllib.load(fh)
-        except tomllib.TOMLDecodeError as exc:  # type: ignore[misc]
+        except tomllib.TOMLDecodeError as exc:  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
             logger.error("MCP config parse error at {}: {}", path, exc)
             raise SystemExit(1) from exc
     return data

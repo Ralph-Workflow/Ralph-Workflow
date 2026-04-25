@@ -11,7 +11,7 @@ from ralph.mcp.tools.names import RALPH_MCP_SERVER_NAME
 _DEFAULT_MAX_INLINE_BYTES = 5_242_880  # 5 MiB
 
 
-class McpServerSpec(BaseModel):  # type: ignore[explicit-any]
+class McpServerSpec(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     """Schema for a single MCP server entry in `mcp.toml`."""
 
     model_config = ConfigDict(frozen=True)
@@ -54,7 +54,7 @@ class McpServerSpec(BaseModel):  # type: ignore[explicit-any]
         return self
 
 
-class WebSearchBackendSpec(BaseModel):  # type: ignore[explicit-any]
+class WebSearchBackendSpec(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     """Backend configuration for built-in web search providers."""
 
     model_config = ConfigDict(frozen=True)
@@ -76,7 +76,7 @@ class WebSearchBackendSpec(BaseModel):  # type: ignore[explicit-any]
         return self
 
 
-class WebSearchConfig(BaseModel):  # type: ignore[explicit-any]
+class WebSearchConfig(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     """Top-level `web_search` config in `mcp.toml`."""
 
     model_config = ConfigDict(frozen=True)
@@ -87,7 +87,7 @@ class WebSearchConfig(BaseModel):  # type: ignore[explicit-any]
     backends: dict[str, WebSearchBackendSpec] = Field(default_factory=dict)
 
 
-class MediaConfig(BaseModel):  # type: ignore[explicit-any]
+class MediaConfig(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     """Opt-in multimodal media support config in `mcp.toml`.
 
     Multimodal support is disabled by default. Enable via [media] section:
@@ -102,7 +102,7 @@ class MediaConfig(BaseModel):  # type: ignore[explicit-any]
     max_inline_bytes: int = Field(default=_DEFAULT_MAX_INLINE_BYTES, gt=0)
 
 
-class McpConfig(BaseModel):  # type: ignore[explicit-any]
+class McpConfig(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     """Top-level `mcp.toml` document."""
 
     model_config = ConfigDict(frozen=True)

@@ -27,7 +27,7 @@ class TestUpstreamRegistryWarningBehavior:
     def _make_tools_caller(self, tools: list[dict[str, object]]) -> object:
         def caller(method: str, params: dict[str, object]) -> dict[str, object]:
             if method == "tools/list":
-                return {"tools": tools}  # type: ignore[return-value]
+                return {"tools": tools}  # type: ignore[return-value]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
             return {}
 
         return caller
@@ -45,7 +45,7 @@ class TestUpstreamRegistryWarningBehavior:
 
         def client_factory(server: UpstreamMcpServer) -> HttpUpstreamClient:
             if server.name == "healthy":
-                return HttpUpstreamClient(server, caller=good_caller)  # type: ignore[arg-type]
+                return HttpUpstreamClient(server, caller=good_caller)  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
             return HttpUpstreamClient(server, caller=bad_caller)
 
         stream = StringIO()
@@ -53,7 +53,7 @@ class TestUpstreamRegistryWarningBehavior:
         try:
             registry = UpstreamRegistry.build(
                 [healthy, broken],
-                client_factory=client_factory,  # type: ignore[arg-type]
+                client_factory=client_factory,  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
                 on_unreachable="warn_and_skip",
             )
         finally:
@@ -86,7 +86,7 @@ class TestUpstreamRegistryWarningBehavior:
 
         def client_factory(server: UpstreamMcpServer) -> HttpUpstreamClient:
             if server.name == "healthy":
-                return HttpUpstreamClient(server, caller=good_caller)  # type: ignore[arg-type]
+                return HttpUpstreamClient(server, caller=good_caller)  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
             return HttpUpstreamClient(server, caller=bad_caller)
 
         stream = StringIO()
@@ -94,7 +94,7 @@ class TestUpstreamRegistryWarningBehavior:
         try:
             UpstreamRegistry.build(
                 [healthy, broken],
-                client_factory=client_factory,  # type: ignore[arg-type]
+                client_factory=client_factory,  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
                 on_unreachable="warn_and_skip",
             )
         finally:
@@ -120,12 +120,12 @@ class TestUpstreamRegistryWarningBehavior:
             raise UpstreamCallError("server unreachable")
 
         def client_factory(server: UpstreamMcpServer) -> HttpUpstreamClient:
-            return HttpUpstreamClient(server, caller=bad_caller)  # type: ignore[arg-type]
+            return HttpUpstreamClient(server, caller=bad_caller)  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
 
         with pytest.raises(UpstreamValidationError) as excinfo:
             UpstreamRegistry.build(
                 [broken],
-                client_factory=client_factory,  # type: ignore[arg-type]
+                client_factory=client_factory,  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
             )
 
         message = str(excinfo.value)
@@ -189,7 +189,7 @@ class TestUpstreamMultimodalBoundary:
         # Register tools
         registry = UpstreamRegistry.build(
             [server],
-            client_factory=lambda srv: client,  # type: ignore[arg-type]
+            client_factory=lambda srv: client,  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
         )
 
         # Attempt to call the tool
@@ -225,7 +225,7 @@ class TestUpstreamMultimodalBoundary:
 
         registry = UpstreamRegistry.build(
             [server],
-            client_factory=lambda srv: client,  # type: ignore[arg-type]
+            client_factory=lambda srv: client,  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
         )
 
         with pytest.raises(UpstreamCallError) as exc_info:
@@ -261,7 +261,7 @@ class TestUpstreamMultimodalBoundary:
 
         registry = UpstreamRegistry.build(
             [server],
-            client_factory=lambda srv: client,  # type: ignore[arg-type]
+            client_factory=lambda srv: client,  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
         )
 
         with pytest.raises(UpstreamCallError) as exc_info:
@@ -284,7 +284,7 @@ class TestUpstreamMultimodalBoundary:
 
         registry = UpstreamRegistry.build(
             [server],
-            client_factory=lambda srv: client,  # type: ignore[arg-type]
+            client_factory=lambda srv: client,  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
         )
 
         result = registry.call_tool("ralph_upstream__text_server__echo", {})
@@ -309,7 +309,7 @@ class TestUpstreamMultimodalBoundary:
 
         registry = UpstreamRegistry.build(
             [server],
-            client_factory=lambda srv: client,  # type: ignore[arg-type]
+            client_factory=lambda srv: client,  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
         )
 
         result = registry.call_tool("ralph_upstream__minimal_server__ping", {})
@@ -328,7 +328,7 @@ class TestUpstreamMultimodalBoundary:
 
         registry = UpstreamRegistry.build(
             [server],
-            client_factory=lambda srv: client,  # type: ignore[arg-type]
+            client_factory=lambda srv: client,  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
         )
 
         result = registry.call_tool("ralph_upstream__empty_server__noop", {})
@@ -364,7 +364,7 @@ class TestUpstreamMultimodalBoundary:
 
         registry = UpstreamRegistry.build(
             [server],
-            client_factory=lambda srv: client,  # type: ignore[arg-type]
+            client_factory=lambda srv: client,  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
         )
 
         # Must raise, NOT silently convert image to string

@@ -21,7 +21,7 @@ def test_check_worktree_supported_returns_true_for_normal_repo(tmp_path: Path) -
         "ralph.git.worktree_preflight._run_git",
         return_value=_make_completed(stdout=f"worktree {tmp_path}\n"),
     ):
-        result = check_worktree_supported(repo_root=tmp_path, git=None)  # type: ignore[arg-type]
+        result = check_worktree_supported(repo_root=tmp_path, git=None)  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
 
     assert result.supported is True
     assert result.reason == ""
@@ -35,7 +35,7 @@ def test_check_worktree_supported_returns_actionable_message_for_shallow_repo(
     shallow_file = git_dir / "shallow"
     shallow_file.write_text("fake-shallow\n")
 
-    result = check_worktree_supported(repo_root=tmp_path, git=None)  # type: ignore[arg-type]
+    result = check_worktree_supported(repo_root=tmp_path, git=None)  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
 
     assert result.supported is False
     assert "unshallow" in result.reason

@@ -103,7 +103,7 @@ def test_parallel_display_mode_frozen_after_init() -> None:
     console = Console(force_terminal=True, width=120)
     pd = ParallelDisplay(console, {})
     try:
-        pd.mode = "lines"  # type: ignore[misc]
+        pd.mode = "lines"  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
         raise AssertionError("Should have raised AttributeError")
     except AttributeError:
         pass
@@ -308,7 +308,7 @@ def test_drop_warning_debounced_within_one_second(tmp_path: Path) -> None:
 
 
 class _AlwaysRaisingParser(AgentParser):
-    def parse(self, lines: Iterator[str]) -> Iterator[object]:  # type: ignore[override]
+    def parse(self, lines: Iterator[str]) -> Iterator[object]:  # type: ignore[override]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
         raise ValueError("simulated parse failure")
 
 

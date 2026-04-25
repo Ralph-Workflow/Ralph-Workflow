@@ -127,7 +127,7 @@ def test_offline_pauses_agent_invocation_and_resume_completes(
         listener_registered.set()
         return unsub
 
-    monitor.add_listener = _intercepted_add_listener  # type: ignore[method-assign]
+    monitor.add_listener = _intercepted_add_listener  # type: ignore[method-assign]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
 
     runner_result: list[int] = []
     runner_exc: list[BaseException] = []
@@ -201,7 +201,7 @@ def test_offline_window_produces_no_failure_events(
 
     captured_failure_events: list[FailureEvent] = []
 
-    class _CapturingBus(FailureEventBus):  # type: ignore[misc]
+    class _CapturingBus(FailureEventBus):  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
         def __init__(self) -> None:
             super().__init__()
             self.subscribe(
@@ -250,7 +250,7 @@ def test_offline_window_produces_no_failure_events(
         listener_registered.set()
         return unsub
 
-    monitor.add_listener = _intercepted_add_listener  # type: ignore[method-assign]
+    monitor.add_listener = _intercepted_add_listener  # type: ignore[method-assign]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
 
     runner_result: list[int] = []
 

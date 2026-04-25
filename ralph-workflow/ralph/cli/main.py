@@ -174,12 +174,12 @@ def _get_command_with_optional_init(typer_instance: typer.Typer) -> click.Comman
                 windows_expand_args=windows_expand_args,
             )
 
-        command.main = patched_main  # type: ignore[assignment,method-assign]
+        command.main = patched_main  # type: ignore[assignment,method-assign]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     return command
 
 
 typer.main.get_command = _get_command_with_optional_init
-typer.testing._get_command = _get_command_with_optional_init  # type: ignore[attr-defined]
+typer.testing._get_command = _get_command_with_optional_init  # type: ignore[attr-defined]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
 
 
 def version_callback(version: bool) -> None:

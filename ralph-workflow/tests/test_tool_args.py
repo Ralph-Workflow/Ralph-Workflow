@@ -81,7 +81,7 @@ def test_friendly_tool_name_leaves_other_names_unchanged() -> None:
     assert friendly_tool_name("read_file") == "read_file"
 
 
-def test_tool_use_renders_friendly_name_in_parallel_display(tmp_path):  # type: ignore[no-untyped-def]
+def test_tool_use_renders_friendly_name_in_parallel_display(tmp_path):  # type: ignore[no-untyped-def]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     """tool_use with mcp__ralph__ prefix renders with ralph. in output."""
     import json  # noqa: PLC0415
     from io import StringIO  # noqa: PLC0415

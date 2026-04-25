@@ -41,7 +41,7 @@ def _base_snapshot(**kwargs: object) -> PipelineSnapshot:
         "created_at": datetime.now(UTC),
     }
     defaults.update(kwargs)
-    return PipelineSnapshot(**defaults)  # type: ignore[arg-type]
+    return PipelineSnapshot(**defaults)  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
 
 
 def test_plain_renderer_emits_single_activity_tag_across_snapshots() -> None:

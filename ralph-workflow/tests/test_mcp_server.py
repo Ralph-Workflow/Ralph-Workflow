@@ -524,12 +524,12 @@ def test_build_fastmcp_server_lists_proxied_upstream_tools(tmp_path: Path) -> No
                         },
                     }
                 ]
-            }  # type: ignore[return-value]
+            }  # type: ignore[return-value]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
         return {}
 
     upstream_registry = UpstreamRegistry.build(
         [upstream],
-        client_factory=lambda srv: HttpUpstreamClient(srv, caller=fake_caller),  # type: ignore[arg-type]
+        client_factory=lambda srv: HttpUpstreamClient(srv, caller=fake_caller),  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     )
 
     workspace = FsWorkspace(tmp_path)
@@ -568,15 +568,15 @@ def test_proxied_upstream_tool_call_is_forwarded_after_policy_check(tmp_path: Pa
 
     def fake_caller(method: str, params: dict[str, object]) -> dict[str, object]:
         if method == "tools/list":
-            return {"tools": [{"name": "ping", "description": "Ping tool", "inputSchema": {}}]}  # type: ignore[return-value]
+            return {"tools": [{"name": "ping", "description": "Ping tool", "inputSchema": {}}]}  # type: ignore[return-value]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
         if method == "tools/call":
             calls_received.append(dict(params))
-            return {"content": [{"type": "text", "text": "pong"}]}  # type: ignore[return-value]
+            return {"content": [{"type": "text", "text": "pong"}]}  # type: ignore[return-value]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
         return {}
 
     upstream_registry = UpstreamRegistry.build(
         [upstream],
-        client_factory=lambda srv: HttpUpstreamClient(srv, caller=fake_caller),  # type: ignore[arg-type]
+        client_factory=lambda srv: HttpUpstreamClient(srv, caller=fake_caller),  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     )
 
     workspace = FsWorkspace(tmp_path)
@@ -614,7 +614,7 @@ def test_upstream_registry_catalog_excludes_unhealthy_upstream_servers() -> None
 
     def good_caller(method: str, params: dict[str, object]) -> dict[str, object]:
         if method == "tools/list":
-            return {"tools": [{"name": "ping", "description": "Ping", "inputSchema": {}}]}  # type: ignore[return-value]
+            return {"tools": [{"name": "ping", "description": "Ping", "inputSchema": {}}]}  # type: ignore[return-value]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
         return {}
 
     def bad_caller(method: str, params: dict[str, object]) -> dict[str, object]:
@@ -627,7 +627,7 @@ def test_upstream_registry_catalog_excludes_unhealthy_upstream_servers() -> None
 
     registry = UpstreamRegistry.build(
         [good, bad],
-        client_factory=client_factory,  # type: ignore[arg-type]
+        client_factory=client_factory,  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
         on_unreachable="warn_and_skip",
     )
     definitions = registry.tool_definitions()
@@ -654,12 +654,12 @@ def test_upstream_policy_blocks_proxied_tools_without_upstream_capability(
         if method == "tools/list":
             return {
                 "tools": [{"name": "do_thing", "description": "Does a thing", "inputSchema": {}}]
-            }  # type: ignore[return-value]
+            }  # type: ignore[return-value]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
         return {}
 
     upstream_registry = UpstreamRegistry.build(
         [upstream],
-        client_factory=lambda srv: HttpUpstreamClient(srv, caller=fake_caller),  # type: ignore[arg-type]
+        client_factory=lambda srv: HttpUpstreamClient(srv, caller=fake_caller),  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     )
     workspace = FsWorkspace(tmp_path)
     bridge = server_runtime.build_ralph_tool_registry(
@@ -701,12 +701,12 @@ def test_upstream_policy_allows_proxied_tools_with_upstream_capability(
         if method == "tools/list":
             return {
                 "tools": [{"name": "do_thing", "description": "Does a thing", "inputSchema": {}}]
-            }  # type: ignore[return-value]
+            }  # type: ignore[return-value]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
         return {}
 
     upstream_registry = UpstreamRegistry.build(
         [upstream],
-        client_factory=lambda srv: HttpUpstreamClient(srv, caller=fake_caller),  # type: ignore[arg-type]
+        client_factory=lambda srv: HttpUpstreamClient(srv, caller=fake_caller),  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     )
     workspace = FsWorkspace(tmp_path)
     bridge = server_runtime.build_ralph_tool_registry(

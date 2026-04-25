@@ -15,7 +15,7 @@ from ralph.config.enums import AgentTransport, JsonParserType, ReviewDepth
 PATH_RUNTIME_CLASS = pathlib.Path
 
 
-class AgentConfig(BaseModel):  # type: ignore[explicit-any]
+class AgentConfig(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     """Configuration for a single AI agent.
 
     Attributes:
@@ -70,7 +70,7 @@ class AgentConfig(BaseModel):  # type: ignore[explicit-any]
         object.__setattr__(self, "transport", inferred_transport)
 
 
-class CloudConfig(BaseModel):  # type: ignore[explicit-any]
+class CloudConfig(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     """Optional cloud reporting configuration.
 
     Attributes:
@@ -88,7 +88,7 @@ class CloudConfig(BaseModel):  # type: ignore[explicit-any]
     timeout_secs: int = 30
 
 
-class GeneralBehaviorFlags(BaseModel):  # type: ignore[explicit-any]
+class GeneralBehaviorFlags(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     """General configuration behavioral flags.
 
     Attributes:
@@ -104,7 +104,7 @@ class GeneralBehaviorFlags(BaseModel):  # type: ignore[explicit-any]
     strict_validation: bool = False
 
 
-class GeneralWorkflowFlags(BaseModel):  # type: ignore[explicit-any]
+class GeneralWorkflowFlags(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     """General configuration workflow automation flags.
 
     Attributes:
@@ -116,7 +116,7 @@ class GeneralWorkflowFlags(BaseModel):  # type: ignore[explicit-any]
     checkpoint_enabled: bool = True
 
 
-class GeneralExecutionFlags(BaseModel):  # type: ignore[explicit-any]
+class GeneralExecutionFlags(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     """General configuration execution behavior flags.
 
     Attributes:
@@ -128,7 +128,7 @@ class GeneralExecutionFlags(BaseModel):  # type: ignore[explicit-any]
     force_universal_prompt: bool = False
 
 
-class GeneralConfig(BaseModel):  # type: ignore[explicit-any]
+class GeneralConfig(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     """[general] section of ralph-workflow.toml.
 
     Attributes:
@@ -195,7 +195,7 @@ class GeneralConfig(BaseModel):  # type: ignore[explicit-any]
     )
 
 
-class CcsConfig(BaseModel):  # type: ignore[explicit-any]
+class CcsConfig(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     """CCS (Claude Code Switch) defaults configuration.
 
     Attributes:
@@ -221,7 +221,7 @@ class CcsConfig(BaseModel):  # type: ignore[explicit-any]
     can_commit: bool = True
 
 
-class CcsAliasConfig(BaseModel):  # type: ignore[explicit-any]
+class CcsAliasConfig(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     """Per-alias CCS configuration (table form).
 
     Attributes:
@@ -273,7 +273,7 @@ def _default_agent_drains() -> dict[str, str]:
     }
 
 
-class UnifiedConfig(BaseModel):  # type: ignore[explicit-any]
+class UnifiedConfig(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     """Top-level merged configuration (global + local + CLI overrides).
 
     This is the sole source of truth for Ralph configuration,

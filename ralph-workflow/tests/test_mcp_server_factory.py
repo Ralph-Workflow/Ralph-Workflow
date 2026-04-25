@@ -21,7 +21,7 @@ def test_mcp_server_handle_is_dataclass() -> None:
 def test_mcp_server_handle_frozen() -> None:
     handle = McpServerHandle(endpoint="http://127.0.0.1:0", pid=1, shutdown=lambda: None)
     with pytest.raises((AttributeError, TypeError)):
-        handle.pid = 2  # type: ignore[misc]
+        handle.pid = 2  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
 
 
 def test_mcp_server_handle_fields() -> None:

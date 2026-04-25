@@ -41,7 +41,7 @@ def _load_analysis_decision_vocabulary() -> frozenset[str]:
 _ANALYSIS_DECISION_VOCABULARY: frozenset[str] = _load_analysis_decision_vocabulary()
 
 
-class _IssueEntry(BaseModel):  # type: ignore[explicit-any]
+class _IssueEntry(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     model_config = ConfigDict(extra="forbid")
 
     path: str = Field(..., min_length=1)
@@ -49,7 +49,7 @@ class _IssueEntry(BaseModel):  # type: ignore[explicit-any]
     summary: str = Field(..., min_length=1)
 
 
-class Issues(BaseModel):  # type: ignore[explicit-any]
+class Issues(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     model_config = ConfigDict(extra="forbid")
 
     status: Literal["issues_found", "no_issues"]
@@ -76,7 +76,7 @@ class Issues(BaseModel):  # type: ignore[explicit-any]
         return self
 
 
-class FixResult(BaseModel):  # type: ignore[explicit-any]
+class FixResult(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     model_config = ConfigDict(extra="forbid")
 
     summary: str = Field(..., min_length=1)
@@ -84,7 +84,7 @@ class FixResult(BaseModel):  # type: ignore[explicit-any]
     next_steps: str | None = None
 
 
-class AnalysisDecision(BaseModel):  # type: ignore[explicit-any]
+class AnalysisDecision(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     """Validation model for analysis decision artifacts.
 
     Enforces the documented artifact contract from format_docs/:

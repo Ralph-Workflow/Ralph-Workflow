@@ -176,7 +176,7 @@ def test_runner_cycle_cap_emits_failure_events_and_fallover_events(
     captured_failure_events: list[FailureEvent] = []
     captured_fallover_events: list[FalloverEvent] = []
 
-    class _CapturingBus(recovery_controller_module.FailureEventBus):  # type: ignore[misc]
+    class _CapturingBus(recovery_controller_module.FailureEventBus):  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
         def __init__(self) -> None:
             super().__init__()
             self.subscribe(

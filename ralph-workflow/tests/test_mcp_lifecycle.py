@@ -123,12 +123,12 @@ def test_start_mcp_server_preflight_includes_upstream_tool_names(tmp_path: Path)
 
     def fake_caller(method: str, params: dict[str, object]) -> dict[str, object]:
         if method == "tools/list":
-            return {"tools": [{"name": "ping", "description": "Ping", "inputSchema": {}}]}  # type: ignore[return-value]
+            return {"tools": [{"name": "ping", "description": "Ping", "inputSchema": {}}]}  # type: ignore[return-value]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
         return {}
 
     upstream_registry = UpstreamRegistry.build(
         [upstream],
-        client_factory=lambda srv: HttpUpstreamClient(srv, caller=fake_caller),  # type: ignore[arg-type]
+        client_factory=lambda srv: HttpUpstreamClient(srv, caller=fake_caller),  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     )
 
     deps = lifecycle.LifecycleDeps(

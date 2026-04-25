@@ -75,7 +75,7 @@ def test_global_mcp_config_path_respects_xdg(
 
 def test_local_mcp_config_path(tmp_path: Path) -> None:
     scope = _FakeScope(tmp_path)
-    path = _local_mcp_config_path(scope)  # type: ignore[arg-type]
+    path = _local_mcp_config_path(scope)  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     assert path == tmp_path / ".agent" / "mcp.toml"
 
 
@@ -171,7 +171,7 @@ def test_load_mcp_config_workspace_scope_local_path(
         encoding="utf-8",
     )
     scope = _FakeScope(tmp_path)
-    config = load_mcp_config(workspace_scope=scope)  # type: ignore[arg-type]
+    config = load_mcp_config(workspace_scope=scope)  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     assert config.web_search.enabled is False
 
 

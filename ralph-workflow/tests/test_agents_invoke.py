@@ -62,7 +62,7 @@ def _env_dict(kwargs: dict[str, object]) -> dict[str, str]:
 
 
 def _argv(args: tuple[object, ...]) -> list[str]:
-    return list(args[0])  # type: ignore[arg-type]
+    return list(args[0])  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
 
 
 

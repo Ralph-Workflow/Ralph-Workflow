@@ -17,14 +17,14 @@ def test_fan_out_effect_frozen() -> None:
     effect = effects.FanOutDevelopmentEffect(work_units=(), max_workers=2)
 
     with pytest.raises(FrozenInstanceError):
-        effect.max_workers = 3  # type: ignore[misc]
+        effect.max_workers = 3  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
 
 
 def test_merge_effect_frozen() -> None:
     effect = effects.MergeIntegrationEffect(worker_states={}, base_branch="main")
 
     with pytest.raises(FrozenInstanceError):
-        effect.base_branch = "develop"  # type: ignore[misc]
+        effect.base_branch = "develop"  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
 
 
 def test_fan_out_effect_fields() -> None:

@@ -31,7 +31,7 @@ class TestWorkerResult:
             duration_ms=0,
         )
         with pytest.raises((AttributeError, TypeError)):
-            result.exit_code = 1  # type: ignore[misc]
+            result.exit_code = 1  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
 
 
 class TestExecutorError:

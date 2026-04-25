@@ -28,7 +28,7 @@ class PlanArtifactValidationError(ValueError):
     """Raised when a planning artifact does not match the formal schema."""
 
 
-class ScopeItem(BaseModel):  # type: ignore[explicit-any]
+class ScopeItem(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     model_config = ConfigDict(extra="forbid")
 
     text: str = Field(..., min_length=1)
@@ -36,28 +36,28 @@ class ScopeItem(BaseModel):  # type: ignore[explicit-any]
     category: str | None = None
 
 
-class Summary(BaseModel):  # type: ignore[explicit-any]
+class Summary(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     model_config = ConfigDict(extra="forbid")
 
     context: str = Field(..., min_length=1)
     scope_items: list[ScopeItem] = Field(..., min_length=3)
 
 
-class SkillsMcp(BaseModel):  # type: ignore[explicit-any]
+class SkillsMcp(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     model_config = ConfigDict(extra="forbid")
 
     skills: list[str] = Field(default_factory=list)
     mcps: list[str] = Field(default_factory=list)
 
 
-class StepTarget(BaseModel):  # type: ignore[explicit-any]
+class StepTarget(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     model_config = ConfigDict(extra="forbid")
 
     path: str = Field(..., min_length=1)
     action: Literal["create", "modify", "delete"]
 
 
-class PlanStep(BaseModel):  # type: ignore[explicit-any]
+class PlanStep(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     model_config = ConfigDict(extra="forbid")
 
     number: int = Field(..., ge=1)
@@ -71,7 +71,7 @@ class PlanStep(BaseModel):  # type: ignore[explicit-any]
     depends_on: list[int] = Field(default_factory=list)
 
 
-class CriticalPrimaryFile(BaseModel):  # type: ignore[explicit-any]
+class CriticalPrimaryFile(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     model_config = ConfigDict(extra="forbid")
 
     path: str = Field(..., min_length=1)
@@ -79,21 +79,21 @@ class CriticalPrimaryFile(BaseModel):  # type: ignore[explicit-any]
     estimated_changes: str | None = None
 
 
-class ReferenceFile(BaseModel):  # type: ignore[explicit-any]
+class ReferenceFile(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     model_config = ConfigDict(extra="forbid")
 
     path: str = Field(..., min_length=1)
     purpose: str = Field(..., min_length=1)
 
 
-class CriticalFiles(BaseModel):  # type: ignore[explicit-any]
+class CriticalFiles(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     model_config = ConfigDict(extra="forbid")
 
     primary_files: list[CriticalPrimaryFile] = Field(..., min_length=1)
     reference_files: list[ReferenceFile] = Field(default_factory=list)
 
 
-class RiskMitigation(BaseModel):  # type: ignore[explicit-any]
+class RiskMitigation(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     model_config = ConfigDict(extra="forbid")
 
     risk: str = Field(..., min_length=1)
@@ -101,21 +101,21 @@ class RiskMitigation(BaseModel):  # type: ignore[explicit-any]
     severity: Literal["low", "medium", "high", "critical"] | None = None
 
 
-class VerificationStep(BaseModel):  # type: ignore[explicit-any]
+class VerificationStep(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     model_config = ConfigDict(extra="forbid")
 
     method: str = Field(..., min_length=1)
     expected_outcome: str = Field(..., min_length=1)
 
 
-class EditArea(BaseModel):  # type: ignore[explicit-any]
+class EditArea(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     model_config = ConfigDict(extra="forbid")
 
     paths: list[str] = Field(default_factory=list)
     directories: list[str] = Field(default_factory=list)
 
 
-class ParallelPlanItem(BaseModel):  # type: ignore[explicit-any]
+class ParallelPlanItem(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     model_config = ConfigDict(extra="forbid")
 
     id: str = Field(..., min_length=1)
@@ -124,7 +124,7 @@ class ParallelPlanItem(BaseModel):  # type: ignore[explicit-any]
     depends_on: list[str] = Field(default_factory=list)
 
 
-class PlanArtifact(BaseModel):  # type: ignore[explicit-any]
+class PlanArtifact(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     model_config = ConfigDict(extra="forbid")
 
     summary: Summary

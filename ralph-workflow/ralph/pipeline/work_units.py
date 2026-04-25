@@ -27,7 +27,7 @@ _UNIT_ID_MAX_LEN = 64
 MAX_DESCRIPTION_CHARS = 4096
 
 
-class WorkUnit(BaseModel):  # type: ignore[explicit-any]
+class WorkUnit(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     """Single planning work unit declaration."""
 
     model_config = ConfigDict(frozen=True)
@@ -61,7 +61,7 @@ class WorkUnit(BaseModel):  # type: ignore[explicit-any]
         return [_validate_relative_subpath(path) for path in v]
 
 
-class WorkUnitsPlan(BaseModel):  # type: ignore[explicit-any]
+class WorkUnitsPlan(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     """Typed representation of work_units[] in planning artifacts."""
 
     model_config = ConfigDict(frozen=True)

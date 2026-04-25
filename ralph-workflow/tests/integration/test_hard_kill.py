@@ -94,7 +94,7 @@ async def _run_with_cancel(
         coordinator.run_fan_out(
             effect=effect,
             executor=executor,
-            display=_FakeDisplay(),  # type: ignore[arg-type]
+            display=_FakeDisplay(),  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
             ctx=coordinator._WorkerContext(
                 log=coordinator._WorkerLog(
                     log_dir=checkpoint_path.parent / "logs",

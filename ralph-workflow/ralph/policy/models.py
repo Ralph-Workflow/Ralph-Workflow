@@ -38,7 +38,7 @@ DrainName = Literal[
 # ---------------------------------------------------------------------------
 
 
-class AgentDrainConfig(BaseModel):  # type: ignore[explicit-any]
+class AgentDrainConfig(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     """Binding from a named drain to an agent chain.
 
     Attributes:
@@ -50,7 +50,7 @@ class AgentDrainConfig(BaseModel):  # type: ignore[explicit-any]
     chain: str = Field(..., description="Agent chain name to bind to this drain")
 
 
-class AgentChainConfig(BaseModel):  # type: ignore[explicit-any]
+class AgentChainConfig(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     """Definition of a named agent fallback chain.
 
     Attributes:
@@ -66,7 +66,7 @@ class AgentChainConfig(BaseModel):  # type: ignore[explicit-any]
     retry_delay_ms: int = Field(default=1000, ge=0, description="Base retry delay in milliseconds")
 
 
-class AgentsPolicy(BaseModel):  # type: ignore[explicit-any]
+class AgentsPolicy(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     """Top-level agents.toml policy document.
 
     Attributes:
@@ -113,7 +113,7 @@ class AgentsPolicy(BaseModel):  # type: ignore[explicit-any]
 # ---------------------------------------------------------------------------
 
 
-class PhaseTransition(BaseModel):  # type: ignore[explicit-any]
+class PhaseTransition(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     """Transition rules from a phase to other phases.
 
     Attributes:
@@ -134,7 +134,7 @@ class PhaseTransition(BaseModel):  # type: ignore[explicit-any]
     )
 
 
-class PhaseDefinition(BaseModel):  # type: ignore[explicit-any]
+class PhaseDefinition(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     """Definition of a single phase in the pipeline graph.
 
     Attributes:
@@ -166,7 +166,7 @@ class PhaseDefinition(BaseModel):  # type: ignore[explicit-any]
     )
 
 
-class PostCommitRouteWhen(BaseModel):  # type: ignore[explicit-any]
+class PostCommitRouteWhen(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     """Condition selector for post-commit budget-guarded routing."""
 
     model_config = ConfigDict(frozen=True)
@@ -181,7 +181,7 @@ class PostCommitRouteWhen(BaseModel):  # type: ignore[explicit-any]
     )
 
 
-class PostCommitRoute(BaseModel):  # type: ignore[explicit-any]
+class PostCommitRoute(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     """Budget-guarded route applied after commit success."""
 
     model_config = ConfigDict(frozen=True)
@@ -190,7 +190,7 @@ class PostCommitRoute(BaseModel):  # type: ignore[explicit-any]
     target: str = Field(..., description="Target phase when condition matches")
 
 
-class ParallelExecutionPolicy(BaseModel):  # type: ignore[explicit-any]
+class ParallelExecutionPolicy(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     """Policy controls for planning-artifact work_units fanout."""
 
     model_config = ConfigDict(frozen=True)
@@ -215,7 +215,7 @@ class ParallelExecutionPolicy(BaseModel):  # type: ignore[explicit-any]
     )
 
 
-class PipelinePolicy(BaseModel):  # type: ignore[explicit-any]
+class PipelinePolicy(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     """Top-level pipeline.toml policy document.
 
     Attributes:
@@ -320,7 +320,7 @@ class PipelinePolicy(BaseModel):  # type: ignore[explicit-any]
 # ---------------------------------------------------------------------------
 
 
-class ArtifactContract(BaseModel):  # type: ignore[explicit-any]
+class ArtifactContract(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     """Contract for an artifact type submitted by an agent at a given drain.
 
     Attributes:
@@ -347,7 +347,7 @@ class ArtifactContract(BaseModel):  # type: ignore[explicit-any]
     )
 
 
-class ArtifactsPolicy(BaseModel):  # type: ignore[explicit-any]
+class ArtifactsPolicy(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     """Top-level artifacts.toml policy document.
 
     Attributes:
@@ -381,7 +381,7 @@ class ArtifactsPolicy(BaseModel):  # type: ignore[explicit-any]
 # ---------------------------------------------------------------------------
 
 
-class PolicyBundle(BaseModel):  # type: ignore[explicit-any]
+class PolicyBundle(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     """Aggregate of all three policy documents.
 
     This is what the loader returns after validating all three TOML files together.

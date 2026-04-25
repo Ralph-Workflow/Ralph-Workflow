@@ -16,7 +16,7 @@ class WorkerStatus(StrEnum):
     CANCELLED = "CANCELLED"
 
 
-class WorkerState(BaseModel):  # type: ignore[explicit-any]
+class WorkerState(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     """Immutable snapshot of a single parallel worker's execution state.
 
     Attributes:

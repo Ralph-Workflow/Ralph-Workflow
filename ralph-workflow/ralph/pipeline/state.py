@@ -28,7 +28,7 @@ if TYPE_CHECKING:
     from ralph.policy.models import DrainName
 
 
-class AgentChainState(BaseModel):  # type: ignore[explicit-any]
+class AgentChainState(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     """State for agent fallback chain management.
 
     Attributes:
@@ -44,7 +44,7 @@ class AgentChainState(BaseModel):  # type: ignore[explicit-any]
     retries: int = 0
 
 
-class RebaseState(BaseModel):  # type: ignore[explicit-any]
+class RebaseState(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     """State for git rebase operations.
 
     Attributes:
@@ -60,7 +60,7 @@ class RebaseState(BaseModel):  # type: ignore[explicit-any]
     completed: bool = False
 
 
-class CommitState(BaseModel):  # type: ignore[explicit-any]
+class CommitState(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     """State for commit operations.
 
     Attributes:
@@ -76,7 +76,7 @@ class CommitState(BaseModel):  # type: ignore[explicit-any]
     agent_invoked: bool = False
 
 
-class RunMetrics(BaseModel):  # type: ignore[explicit-any]
+class RunMetrics(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     """Run-level execution metrics.
 
     Attributes:
@@ -94,7 +94,7 @@ class RunMetrics(BaseModel):  # type: ignore[explicit-any]
     total_retries: int = 0
 
 
-class FalloverRecord(BaseModel):  # type: ignore[explicit-any]
+class FalloverRecord(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     """A record of a single agent fallover event persisted in pipeline state."""
 
     model_config = ConfigDict(frozen=True)
@@ -105,7 +105,7 @@ class FalloverRecord(BaseModel):  # type: ignore[explicit-any]
     timestamp_iso: str
 
 
-class PipelineState(BaseModel):  # type: ignore[explicit-any]
+class PipelineState(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     """Immutable snapshot of pipeline execution state.
 
     This is the checkpoint payload - the single source of truth for pipeline progress.

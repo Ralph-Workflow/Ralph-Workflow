@@ -179,7 +179,7 @@ def emit_first_run_welcome(
     if not has_new_or_regenerated:
         return
 
-    show_banner(console=console)  # type: ignore[arg-type]
+    show_banner(console=console)  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
 
     content: list[object] = []
 
@@ -211,9 +211,9 @@ def emit_first_run_welcome(
     content.append(next_steps)
 
     panel = Panel(
-        Group(*content),  # type: ignore[arg-type]
+        Group(*content),  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
         title="Ralph first-run setup",
         border_style="cyan",
         padding=(1, 2),
     )
-    console.print(panel)  # type: ignore[attr-defined]
+    console.print(panel)  # type: ignore[attr-defined]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library

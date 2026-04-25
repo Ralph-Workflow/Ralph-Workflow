@@ -26,7 +26,7 @@ def _run_fan_out(
         coordinator.run_fan_out(
             effect=effect,
             executor=FakeAgentExecutor(runs),
-            display=_FakeDisplay(),  # type: ignore[arg-type]
+            display=_FakeDisplay(),  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
         )
     )
 

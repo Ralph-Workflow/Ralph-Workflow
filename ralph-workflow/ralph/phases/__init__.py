@@ -33,7 +33,7 @@ if TYPE_CHECKING:
     from ralph.workspace.protocol import Workspace
 
 
-class PhaseContext(BaseModel):  # type: ignore[explicit-any]
+class PhaseContext(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     """Context passed to every phase handler.
 
     Attributes:

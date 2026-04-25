@@ -40,7 +40,7 @@ class _FakeUpstreamClientFactory:
 
     def __call__(self, server: UpstreamMcpServer) -> MagicMock:
         mock = MagicMock()
-        mock.list_tools.return_value = self._tools  # type: ignore[misc]
+        mock.list_tools.return_value = self._tools  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
         return mock
 
 

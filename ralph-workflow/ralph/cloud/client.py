@@ -51,7 +51,7 @@ class ProgressEventType(StrEnum):
     HEARTBEAT = "heartbeat"
 
 
-class ProgressUpdate(BaseModel):  # type: ignore[explicit-any]
+class ProgressUpdate(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     """Progress update payload sent to the cloud API."""
 
     model_config = ConfigDict(frozen=True)
@@ -65,10 +65,10 @@ class ProgressUpdate(BaseModel):  # type: ignore[explicit-any]
     total_iterations: int | None = None
     review_pass: int | None = None
     total_review_passes: int | None = None
-    metadata: dict[str, Any] = Field(default_factory=dict)  # type: ignore[explicit-any]
+    metadata: dict[str, Any] = Field(default_factory=dict)  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
 
 
-class PipelineResult(BaseModel):  # type: ignore[explicit-any]
+class PipelineResult(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     """Final workflow completion payload."""
 
     model_config = ConfigDict(frozen=True)
@@ -87,17 +87,17 @@ class PipelineResult(BaseModel):  # type: ignore[explicit-any]
     error_message: str | None = None
 
 
-class TelemetryEvent(BaseModel):  # type: ignore[explicit-any]
+class TelemetryEvent(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     """Structured telemetry event payload."""
 
     model_config = ConfigDict(frozen=True)
 
     timestamp: datetime
     name: str
-    attributes: dict[str, Any] = Field(default_factory=dict)  # type: ignore[explicit-any]
+    attributes: dict[str, Any] = Field(default_factory=dict)  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
 
 
-class MetricSample(BaseModel):  # type: ignore[explicit-any]
+class MetricSample(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     """Single numeric metric sample."""
 
     model_config = ConfigDict(frozen=True)
@@ -107,7 +107,7 @@ class MetricSample(BaseModel):  # type: ignore[explicit-any]
     tags: dict[str, str] = Field(default_factory=dict)
 
 
-class MetricsReport(BaseModel):  # type: ignore[explicit-any]
+class MetricsReport(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     """Batch of numeric metrics for a workflow run."""
 
     model_config = ConfigDict(frozen=True)
@@ -115,7 +115,7 @@ class MetricsReport(BaseModel):  # type: ignore[explicit-any]
     samples: list[MetricSample] = Field(default_factory=list)
 
 
-class HeartbeatPayload(BaseModel):  # type: ignore[explicit-any]
+class HeartbeatPayload(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     """Heartbeat payload sent to the API."""
 
     model_config = ConfigDict(frozen=True)

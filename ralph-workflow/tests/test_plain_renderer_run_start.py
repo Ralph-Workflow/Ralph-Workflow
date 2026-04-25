@@ -20,7 +20,7 @@ def _orientation(**kwargs: object) -> RunStartOrientation:
         "plan_present": False,
     }
     defaults.update(kwargs)
-    return RunStartOrientation(**defaults)  # type: ignore[arg-type]
+    return RunStartOrientation(**defaults)  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
 
 
 def test_emit_run_start_prints_milestone_header() -> None:

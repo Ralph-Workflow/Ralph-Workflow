@@ -51,7 +51,7 @@ def test_set_status_does_not_call_subscriber_notify() -> None:
 
     q: Queue[object] = Queue(maxsize=64)
     sub = PipelineSubscriber(
-        queue=q,  # type: ignore[arg-type]
+        queue=q,  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
         workspace_root=Path("/tmp"),
         run_id="test-run",
     )
@@ -59,9 +59,9 @@ def test_set_status_does_not_call_subscriber_notify() -> None:
 
     def tracking_notify(state: object) -> None:
         notify_calls.append(state)
-        original_notify(state)  # type: ignore[arg-type]
+        original_notify(state)  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
 
-    sub.notify = tracking_notify  # type: ignore[method-assign]
+    sub.notify = tracking_notify  # type: ignore[method-assign]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
 
     pd = ParallelDisplay(console, {}, mode="lines", subscriber=sub)
     pd.set_status("u1", WorkerStatus.RUNNING)
@@ -87,7 +87,7 @@ def test_injected_subscriber_used_directly() -> None:
     console = Console(force_terminal=True, width=120)
     q: Queue[object] = Queue(maxsize=8)
     sub = PipelineSubscriber(
-        queue=q,  # type: ignore[arg-type]
+        queue=q,  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
         workspace_root=Path("/tmp"),
         run_id="injected",
     )

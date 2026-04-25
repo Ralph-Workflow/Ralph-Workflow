@@ -13,13 +13,13 @@ class DevelopmentResultValidationError(ValueError):
     """Raised when a development_result artifact is malformed."""
 
 
-class Continuation(BaseModel):  # type: ignore[explicit-any]
+class Continuation(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     model_config = ConfigDict(extra="forbid")
 
     prior_session_id: str = Field(..., min_length=1)
 
 
-class DevelopmentResult(BaseModel):  # type: ignore[explicit-any]
+class DevelopmentResult(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     model_config = ConfigDict(extra="forbid")
 
     status: str = Field(..., min_length=1)

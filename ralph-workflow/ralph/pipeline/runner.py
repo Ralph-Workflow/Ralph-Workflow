@@ -1007,19 +1007,19 @@ def run(  # noqa: PLR0912, PLR0913, PLR0915
                     _prompt_path: str | None = None
                     if effective_pipeline_subscriber is not None:
                         _prompt_path = getattr(effective_pipeline_subscriber, "_prompt_path", None)
-                    _pe = getattr(policy_bundle.pipeline, "parallel_execution", None)  # type: ignore[misc]
+                    _pe = getattr(policy_bundle.pipeline, "parallel_execution", None)  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
                     _parallel_max_workers: int | None = (
-                        int(getattr(_pe, "max_parallel_workers", 0)) if _pe is not None else None  # type: ignore[misc]
+                        int(getattr(_pe, "max_parallel_workers", 0)) if _pe is not None else None  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
                     )
                     _plan_present = (
                         workspace_scope.root / ".agent" / "artifacts" / "plan.json"
                     ).exists()
                     _orientation = RunStartOrientation(
                         prompt_path=_prompt_path,
-                        developer_agent=getattr(config, "developer_agent", None),  # type: ignore[misc]
-                        developer_model=getattr(config, "developer_model", None),  # type: ignore[misc]
-                        reviewer_agent=getattr(config, "reviewer_agent", None),  # type: ignore[misc]
-                        reviewer_model=getattr(config, "reviewer_model", None),  # type: ignore[misc]
+                        developer_agent=getattr(config, "developer_agent", None),  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+                        developer_model=getattr(config, "developer_model", None),  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+                        reviewer_agent=getattr(config, "reviewer_agent", None),  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+                        reviewer_model=getattr(config, "reviewer_model", None),  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
                         developer_iters=config.general.developer_iters,
                         reviewer_reviews=config.general.reviewer_reviews,
                         parallel_max_workers=_parallel_max_workers,
@@ -1090,10 +1090,10 @@ def run(  # noqa: PLR0912, PLR0913, PLR0915
                 exit_code = 1
             if not is_quiet and hasattr(active_display, "emit_run_end"):
                 with suppress(Exception):
-                    total_agent_calls = getattr(state.metrics, "total_agent_calls", 0)  # type: ignore[misc]
+                    total_agent_calls = getattr(state.metrics, "total_agent_calls", 0)  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
                     cast("_RunEndDisplay", active_display).emit_run_end(
                         phase=state.phase,
-                        total_agent_calls=total_agent_calls,  # type: ignore[misc]
+                        total_agent_calls=total_agent_calls,  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
                         pr_url=state.pr_url,
                     )
     finally:
@@ -1875,11 +1875,11 @@ def _render_phase_artifact_handoff(  # noqa: PLR0912
                 issue_count = 0
                 if issues_path.exists():
                     try:
-                        issues_data = json.loads(issues_path.read_text(encoding="utf-8"))  # type: ignore[misc]
+                        issues_data = json.loads(issues_path.read_text(encoding="utf-8"))  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
                         content_obj = (
                             issues_data.get("content")
-                            if isinstance(issues_data, dict)  # type: ignore[misc]
-                            else issues_data  # type: ignore[misc]
+                            if isinstance(issues_data, dict)  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+                            else issues_data  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
                         )
                         issues_list = (
                             content_obj.get("issues")

@@ -92,7 +92,7 @@ class TestInstallSignalHandlers:
         bridge = SignalBridge()
 
         first_handler = _install_and_get_first_handler(loop, task, bridge)
-        first_handler()  # type: ignore[operator]
+        first_handler()  # type: ignore[operator]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
 
         task.cancel.assert_called_once()
 
@@ -106,7 +106,7 @@ class TestInstallSignalHandlers:
         first_handler = _install_and_get_first_handler(loop, task, bridge)
 
         with patch("os.killpg") as mock_killpg:
-            first_handler()  # type: ignore[operator]
+            first_handler()  # type: ignore[operator]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
 
         killed_pids = {c[0][0] for c in mock_killpg.call_args_list}
         assert _PID_B in killed_pids
@@ -123,7 +123,7 @@ class TestInstallSignalHandlers:
         first_handler = _install_and_get_first_handler(loop, task, bridge)
 
         with patch("os.killpg", side_effect=ProcessLookupError):
-            first_handler()  # type: ignore[operator]
+            first_handler()  # type: ignore[operator]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
 
         task.cancel.assert_called_once()
 
@@ -136,7 +136,7 @@ class TestInstallSignalHandlers:
         first_handler = _install_and_get_first_handler(loop, task, bridge)
 
         with patch("os.killpg", side_effect=PermissionError):
-            first_handler()  # type: ignore[operator]
+            first_handler()  # type: ignore[operator]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
 
         task.cancel.assert_called_once()
 
@@ -146,7 +146,7 @@ class TestInstallSignalHandlers:
         bridge = SignalBridge()
 
         first_handler = _install_and_get_first_handler(loop, task, bridge)
-        first_handler()  # type: ignore[operator]
+        first_handler()  # type: ignore[operator]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
 
         assert bridge._interrupt_count == 1
 
@@ -156,7 +156,7 @@ class TestInstallSignalHandlers:
         bridge = SignalBridge()
 
         first_handler = _install_and_get_first_handler(loop, task, bridge)
-        first_handler()  # type: ignore[operator]
+        first_handler()  # type: ignore[operator]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
 
         expected_handler_install_count = 2
         assert loop.add_signal_handler.call_count == expected_handler_install_count
@@ -169,7 +169,7 @@ class TestInstallSignalHandlers:
         bridge = SignalBridge()
 
         first_handler = _install_and_get_first_handler(loop, task, bridge)
-        first_handler()  # type: ignore[operator]
+        first_handler()  # type: ignore[operator]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
 
         second_call_args = loop.add_signal_handler.call_args_list[1][0]
         second_handler = second_call_args[1]
@@ -187,6 +187,6 @@ class TestInstallSignalHandlers:
         first_handler = _install_and_get_first_handler(loop, task, bridge)
 
         with patch("os.killpg") as mock_killpg:
-            first_handler()  # type: ignore[operator]
+            first_handler()  # type: ignore[operator]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
 
         mock_killpg.assert_not_called()

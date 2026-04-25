@@ -363,7 +363,7 @@ async def test_isolation_creates_worker_session_and_cleans_up_success(tmp_path: 
 
     _seed_artifact(tmp_path / ".worktrees" / "unit-a")
 
-    isolation = module._IsolationDeps(  # type: ignore[attr-defined]  # reason: test reaches private fixture type
+    isolation = module._IsolationDeps(  # type: ignore[attr-defined]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
         worktree_manager=worktree_manager,
         mcp_factory=mcp_factory,
         repo_root=tmp_path,
@@ -393,7 +393,7 @@ async def test_isolation_preserves_failed_worktree(tmp_path: Path) -> None:
     worktree_manager = _RecordingWorktreeManager(tmp_path)
     mcp_factory = _RecordingMcpFactory()
 
-    isolation = module._IsolationDeps(  # type: ignore[attr-defined]  # reason: test reaches private fixture type
+    isolation = module._IsolationDeps(  # type: ignore[attr-defined]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
         worktree_manager=worktree_manager,
         mcp_factory=mcp_factory,
         repo_root=tmp_path,
@@ -426,7 +426,7 @@ async def test_empirical_success_artifact_beats_nonzero_exit(tmp_path: Path) -> 
 
     _seed_artifact(tmp_path / ".worktrees" / "unit-a")
 
-    isolation = module._IsolationDeps(  # type: ignore[attr-defined]
+    isolation = module._IsolationDeps(  # type: ignore[attr-defined]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
         worktree_manager=worktree_manager,
         mcp_factory=mcp_factory,
         repo_root=tmp_path,
@@ -456,7 +456,7 @@ async def test_empirical_failure_no_artifact_despite_zero_exit(tmp_path: Path) -
     worktree_manager = _RecordingWorktreeManager(tmp_path)
     mcp_factory = _RecordingMcpFactory()
 
-    isolation = module._IsolationDeps(  # type: ignore[attr-defined]
+    isolation = module._IsolationDeps(  # type: ignore[attr-defined]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
         worktree_manager=worktree_manager,
         mcp_factory=mcp_factory,
         repo_root=tmp_path,
@@ -545,7 +545,7 @@ async def test_activity_router_is_passed_to_subprocess_worker_executor(
 
     _seed_artifact(tmp_path / ".worktrees" / "unit-a")
 
-    isolation = module._IsolationDeps(  # type: ignore[attr-defined]  # reason: test reaches private fixture type
+    isolation = module._IsolationDeps(  # type: ignore[attr-defined]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
         worktree_manager=worktree_manager,
         mcp_factory=mcp_factory,
         repo_root=tmp_path,
@@ -609,7 +609,7 @@ async def test_empirical_success_git_changes_no_artifact(tmp_path: Path) -> None
     worktree_path.mkdir(parents=True, exist_ok=True)
     (worktree_path / "result.py").write_text("# work done")
 
-    isolation = module._IsolationDeps(  # type: ignore[attr-defined]
+    isolation = module._IsolationDeps(  # type: ignore[attr-defined]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
         worktree_manager=worktree_manager,
         mcp_factory=mcp_factory,
         repo_root=tmp_path,
