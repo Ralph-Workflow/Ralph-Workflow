@@ -1,5 +1,7 @@
 # Troubleshooting
 
+> **New to Ralph Workflow?** Start with the [Getting Started](getting-started.md) walkthrough — it explains the same flow with more context.
+
 Frequently asked questions and common issues when using Ralph Workflow.
 
 ## I just installed Ralph Workflow and don't know what to do

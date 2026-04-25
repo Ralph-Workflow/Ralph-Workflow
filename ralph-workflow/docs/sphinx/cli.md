@@ -42,11 +42,9 @@ running `ralph` with no flags starts the full pipeline.
 | `--quiet` | `-q` | `False` | Suppress all output except errors |
 | `--debug` | | `False` | Enable trace-level debug output |
 | `--verbosity <level>` | `-v` | `verbose` | Set output verbosity: `quiet`, `normal`, `verbose`, `full`, `debug` |
-| `--no-isolation` | | `False` | Disable isolation mode (useful for debugging) |
 | `--resume` | | `False` | Resume from the saved checkpoint if one exists |
 | `--no-resume` | | `False` | Ignore the checkpoint and restart from the beginning |
 | `--dry-run` | | `False` | Run the pipeline structure without invoking any agents |
-| `--rebase-only` | | `False` | Only rebase, don't run the pipeline |
 
 > **Note:** Verbosity defaults to `verbose` (not `normal`) so Ralph Workflow is visibly
 > active by default. Pass `--quiet` to silence everything except errors in CI.
@@ -59,7 +57,6 @@ These flags are used by Ralph Workflow's internal commit workflow and by the
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--generate-commit-msg` | `False` | Generate a commit message from the current diff |
-| `--apply-commit` | `False` | Apply the previously generated commit message |
 | `--generate-commit` | `False` | Generate a commit message and apply it in one step |
 | `--show-commit-msg` | `False` | Print the most recently generated commit message |
 

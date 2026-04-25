@@ -402,19 +402,43 @@ def test_cli_run_with_only_prompt_shows_init_hint(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """Bare `ralph` with only PROMPT.md but no .agent still surfaces `ralph --init` guidance."""
-    runner = CliRunner()
-    monkeypatch.chdir(tmp_path)
+    """Bare `ralph` with only PROMPT.md but no .agent still surfaces `ralph --init` guidance.
 
-    # Create PROMPT.md but no .agent directory
-    (tmp_path / "PROMPT.md").write_text("")
+    Specifically verifies the validation-error path (PROMPT.md exists but is not configured):
+    the output must explain the problem, point to `ralph --init`, and NOT show the
+    fresh-state 'not initialized' panel (which requires both PROMPT.md and .agent to be absent).
+    """
+    runner = CliRunner()
+
+    # Initialize global configs first so the first-run welcome does not contaminate the output.
+    init_dir = tmp_path / "global_init"
+    init_dir.mkdir()
+    monkeypatch.chdir(init_dir)
+    runner.invoke(app, ["--check-config"], catch_exceptions=False)
+
+    # Switch to a fresh workspace with only an empty PROMPT.md (no .agent).
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    (workspace / "PROMPT.md").write_text("")
+    monkeypatch.chdir(workspace)
 
     result = runner.invoke(app, [], catch_exceptions=False)
 
-    # Exit 2 = preflight validation failure (either fresh-state or validation error path)
+    # Exit 2 = preflight validation failure
     assert result.exit_code == 2, (  # noqa: PLR2004
         f"Expected exit code 2 (preflight), got {result.exit_code}: {result.output}"
     )
+    # Validation error message from validate_required_inputs references ralph --init
     assert "ralph --init" in result.output, (
         f"Expected 'ralph --init' guidance in output, got: {result.output}"
+    )
+    # Must mention PROMPT.md to explain what is wrong
+    assert "PROMPT.md" in result.output, (
+        f"Expected 'PROMPT.md' to be mentioned in output, got: {result.output}"
+    )
+    # Must NOT show the "not initialized" fresh-state panel — PROMPT.md exists so
+    # we are in the validation-error path, not the completely-uninitialized path.
+    assert "not initialized" not in result.output.lower(), (
+        "The 'not initialized' fresh-state panel must NOT appear when PROMPT.md exists; "
+        f"got: {result.output}"
     )

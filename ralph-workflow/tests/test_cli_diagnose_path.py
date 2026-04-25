@@ -14,7 +14,7 @@ from typer.testing import CliRunner
 import ralph.cli.commands.diagnose as diag_mod
 from ralph.agents.availability import check_agent_availability
 from ralph.agents.registry import AgentRegistry
-from ralph.cli.commands.diagnose import _check_agents
+from ralph.cli.commands.diagnose import _build_next_steps, _check_agents
 from ralph.cli.main import app
 from ralph.config.enums import JsonParserType
 from ralph.config.models import AgentConfig, UnifiedConfig
@@ -157,3 +157,126 @@ def test_diagnose_alias_path_status_rendered_in_cli(
             f"python is on PATH but 'my-alias' row shows wrong status: {alias_line!r}\n"
             f"Full output:\n{output}"
         )
+
+
+def test_build_next_steps_no_prompt_recommends_init() -> None:
+    """_build_next_steps must recommend ralph --init when PROMPT.md is absent."""
+    steps = _build_next_steps(
+        validation_ok=True,
+        agent_missing=False,
+        prompt_exists=False,
+        prompt_has_sentinel=False,
+    )
+    combined = " ".join(steps)
+    assert "ralph --init" in combined, (
+        f"Expected 'ralph --init' in next-steps when prompt_exists=False, got: {steps}"
+    )
+
+
+def test_build_next_steps_sentinel_recommends_edit() -> None:
+    """_build_next_steps must recommend editing PROMPT.md when sentinel is present."""
+    steps = _build_next_steps(
+        validation_ok=True,
+        agent_missing=False,
+        prompt_exists=True,
+        prompt_has_sentinel=True,
+    )
+    combined = " ".join(steps)
+    sentinel_mentioned = (
+        "starter-prompt" in combined.lower()
+        or "sentinel" in combined.lower()
+        or "marker" in combined.lower()
+    )
+    assert sentinel_mentioned, (
+        "Expected sentinel/marker reference in next-steps "
+        f"when prompt_has_sentinel=True, got: {steps}"
+    )
+    assert "PROMPT.md" in combined, (
+        f"Expected 'PROMPT.md' in next-steps when prompt_has_sentinel=True, got: {steps}"
+    )
+
+
+def test_build_next_steps_agent_missing_recommends_install() -> None:
+    """_build_next_steps must recommend agent installation when an agent is missing."""
+    steps = _build_next_steps(
+        validation_ok=True,
+        agent_missing=True,
+        prompt_exists=True,
+        prompt_has_sentinel=False,
+    )
+    combined = " ".join(steps)
+    assert "claude" in combined.lower() or "opencode" in combined.lower(), (
+        f"Expected agent name in next-steps when agent_missing=True, got: {steps}"
+    )
+    assert "install" in combined.lower(), (
+        f"Expected 'install' in next-steps when agent_missing=True, got: {steps}"
+    )
+
+
+def test_build_next_steps_validation_failed_recommends_regenerate() -> None:
+    """_build_next_steps must mention regenerate-config when validation failed."""
+    steps = _build_next_steps(
+        validation_ok=False,
+        agent_missing=False,
+        prompt_exists=True,
+        prompt_has_sentinel=False,
+    )
+    combined = " ".join(steps)
+    assert "regenerate-config" in combined or "validation failed" in combined.lower(), (
+        f"Expected regenerate-config hint when validation_ok=False, got: {steps}"
+    )
+
+
+def test_build_next_steps_all_ok_recommends_run() -> None:
+    """_build_next_steps must recommend running ralph when everything is ready."""
+    steps = _build_next_steps(
+        validation_ok=True,
+        agent_missing=False,
+        prompt_exists=True,
+        prompt_has_sentinel=False,
+    )
+    combined = " ".join(steps)
+    assert "ralph" in combined, (
+        f"Expected 'ralph' run recommendation in next-steps when all ok, got: {steps}"
+    )
+
+
+def test_diagnose_next_steps_panel_rendered_in_cli(
+    clean_env: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """ralph --diagnose must render a 'Next steps' panel in its output."""
+    runner = CliRunner()
+    monkeypatch.chdir(tmp_path)
+
+    runner.invoke(app, ["--init", "default"], catch_exceptions=False)
+
+    result = runner.invoke(app, ["--diagnose"], catch_exceptions=False)
+
+    assert "Next steps" in result.output, (
+        f"Expected 'Next steps' panel in --diagnose output, got: {result.output}"
+    )
+    assert "getting-started" in result.output, (
+        "Expected 'getting-started' pointer in --diagnose Next steps panel, "
+        f"got: {result.output}"
+    )
+
+
+def test_diagnose_next_steps_points_to_getting_started_when_no_prompt(
+    clean_env: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """ralph --diagnose next steps must mention ralph --init when PROMPT.md is absent."""
+    runner = CliRunner()
+    monkeypatch.chdir(tmp_path)
+
+    # Initialize global configs but do NOT create PROMPT.md
+    runner.invoke(app, ["--check-config"], catch_exceptions=False)
+
+    result = runner.invoke(app, ["--diagnose"], catch_exceptions=False)
+
+    assert "ralph --init" in result.output, (
+        f"Expected 'ralph --init' in Next steps when PROMPT.md absent, got: {result.output}"
+    )
