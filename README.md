@@ -97,12 +97,12 @@ ralph --version
 
 ```bash
 cd /path/to/your/project
-ralph --init feature-spec
+ralph --init
 # edit PROMPT.md
 ralph
 ```
 
-`ralph --init` seeds the project-local framework files under `.agent/`, including workflow policy, agent-chain, MCP, and artifact configuration. On first run Ralph also bootstraps user-global config in `~/.config/` and can regenerate the defaults later if you want to reset the setup.
+`ralph --init` seeds the project-local framework files under `.agent/`, including workflow policy, agent-chain, MCP, and artifact configuration. Optional compatibility labels are deprecated and ignored; use the bare flag. On first run Ralph also bootstraps user-global config in `~/.config/` and can regenerate the defaults later if you want to reset the setup.
 
 ## How Ralph works
 

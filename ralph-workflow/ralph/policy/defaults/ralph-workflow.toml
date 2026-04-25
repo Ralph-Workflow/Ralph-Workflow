@@ -71,7 +71,6 @@
 # [general.execution] — Execution behavior flags
 [general.execution]
 # force_universal_prompt = false  # force universal review prompt for all agents
-# isolation_mode = true           # prevent context contamination between iterations
 
 # ---------------------------------------------------------------------------
 # [ccs] — Claude Code Switch (CCS) defaults

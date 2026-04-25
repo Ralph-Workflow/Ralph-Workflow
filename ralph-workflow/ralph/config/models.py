@@ -121,13 +121,11 @@ class GeneralExecutionFlags(BaseModel):  # type: ignore[explicit-any]
 
     Attributes:
         force_universal_prompt: Force universal review prompt for all agents.
-        isolation_mode: Isolation mode (prevent context contamination).
     """
 
     model_config = ConfigDict(frozen=True)
 
     force_universal_prompt: bool = False
-    isolation_mode: bool = True
 
 
 class GeneralConfig(BaseModel):  # type: ignore[explicit-any]
@@ -137,7 +135,7 @@ class GeneralConfig(BaseModel):  # type: ignore[explicit-any]
         verbosity: Verbosity level (0-4).
         behavior: Behavioral flags (interactive, auto-detect, strict validation).
         workflow: Workflow automation flags (checkpoint, auto-rebase).
-        execution: Execution behavior flags (universal prompt, isolation mode).
+        execution: Execution behavior flags (universal prompt).
         developer_iters: Number of developer iterations.
         reviewer_reviews: Number of reviewer re-review passes.
         max_development_analysis_iterations: Max development analysis loop budget.

@@ -43,6 +43,15 @@ def init_command(
               All labels currently produce the same starter content.
         config_path: Optional path for config file.
     """
+    if template:
+        console.print(
+            Text(
+                f"Warning: --init label {template!r} is deprecated and ignored; "
+                "use `ralph --init` without a label.",
+                style="yellow",
+            )
+        )
+
     target = Path.cwd()
     agent_dir = target / ".agent"
     agent_dir.mkdir(exist_ok=True)
@@ -113,9 +122,7 @@ def _try_load_registry() -> AgentRegistry | None:
 
 def _print_fallback_next_steps(target: Path, template: str | None) -> None:
     """Print next steps when all configs were skipped (re-running init)."""
-    template_label = template or "default"
     console.print(_status_text("Ralph initialized in", str(target), "cyan"))
-    console.print(f"  [dim]Template:[/dim] {template_label}")
     console.print("\n[dim]Next steps:[/dim]")
     console.print("  1. Edit [cyan]PROMPT.md[/cyan] with your implementation task")
     console.print(

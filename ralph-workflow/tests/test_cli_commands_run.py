@@ -165,3 +165,8 @@ def test_run_pipeline_injects_workspace_scope_when_config_path_is_implicit(
 
     assert run_module.run_pipeline() == 0
     assert captured["kwargs"] == {"workspace_scope": scope}
+
+
+def test_standalone_run_module_is_not_a_cli_surface() -> None:
+    """Cleanup should remove the standalone run.py CLI entry surface."""
+    assert not hasattr(run_module, "app")

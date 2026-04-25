@@ -204,7 +204,7 @@ def test_general_config_defaults() -> None:
     assert config.reviewer_reviews == DEFAULT_REVIEWER_REVIEWS
     assert config.verbosity == DEFAULT_VERBOSITY
     assert config.workflow.checkpoint_enabled is True
-    assert config.execution.isolation_mode is True
+    assert config.execution.force_universal_prompt is False
 
 
 def test_general_config_does_not_expose_removed_field() -> None:

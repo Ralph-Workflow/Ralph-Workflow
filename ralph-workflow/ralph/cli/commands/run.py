@@ -10,7 +10,6 @@ import pathlib  # noqa: TC003
 from inspect import signature
 from typing import TYPE_CHECKING, NamedTuple, Protocol, cast
 
-import typer
 from loguru import logger
 from rich.text import Text
 
@@ -88,65 +87,6 @@ class _LoadResult(NamedTuple):
     workspace_scope: WorkspaceScope | None
     initial_state: PipelineState | None
     policy_bundle: PolicyBundle | None
-
-
-# Module-level typer app for test injection
-app = typer.Typer(help="Run the Ralph pipeline")
-
-
-@app.command()  # type: ignore[misc]
-def run(
-    config_path: pathlib.Path | None = typer.Option(  # noqa: B008
-        None, "--config", "-c", help="Path to configuration file"
-    ),
-    dry_run: bool = typer.Option(False, "--dry-run", help="Run without invoking agents"),
-    resume: bool = typer.Option(False, "--resume", help="Resume from checkpoint"),
-    no_resume: bool = typer.Option(False, "--no-resume", help="Start fresh, ignoring checkpoint"),
-    verbosity: Verbosity | None = typer.Option(  # noqa: B008
-        None, "--verbosity", "-v", help="Verbosity level"
-    ),
-) -> int:
-    """Run the Ralph pipeline.
-
-    Args:
-        config_path: Path to configuration file.
-        dry_run: If True, run without invoking agents.
-        resume: If True, resume from checkpoint.
-        no_resume: If True, ignore any checkpoint and start fresh.
-        verbosity: Optional explicit verbosity passed through to the runner.
-
-    Returns:
-        Exit code (0 for success, non-zero for failure).
-    """
-    cli_overrides: ConfigOverrides = {}
-
-    # Phase 1: Load configuration
-    load_result = _load_configuration(config_path, cli_overrides, resume and not no_resume)
-    if isinstance(load_result, int):
-        return load_result
-
-    # Phase 2: Preflight validation (before any pipeline activity)
-    preflight_result = _run_preflight_checks(
-        load_result.config,
-        load_result.workspace_scope,
-        load_result.policy_bundle,
-        load_result.initial_state,
-    )
-    if preflight_result != _EXIT_SUCCESS:
-        return preflight_result
-
-    # Phase 3: Handle dry-run
-    if dry_run:
-        _print_dry_run(load_result.initial_state, load_result.config)
-        return _EXIT_SUCCESS
-
-    # Phase 4: Execute pipeline
-    return _execute_pipeline(
-        load_result.config,
-        load_result.initial_state,
-        load_result.policy_bundle,
-        verbosity,
-    )
 
 
 def _load_configuration(

@@ -47,12 +47,12 @@ the current checkout instead of a stale deleted worktree.
 
 ```bash
 cd /path/to/your/project
-ralph --init default
+ralph --init
 # edit PROMPT.md
 ralph
 ```
 
-The value after `--init` is a label; today every label generates the same starter PROMPT.md and set of config files.
+`ralph --init` is the canonical form. Compatibility labels such as `default` are deprecated, ignored, and no longer recommended in docs or scripts.
 
 ### First-run configuration
 

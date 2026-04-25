@@ -22,7 +22,7 @@ ralph --version
 
 ```bash
 ralph --help
-ralph --init feature-spec
+ralph --init
 ralph --diagnose
 ralph --list-agents
 ralph --list-providers
@@ -31,7 +31,6 @@ ralph --resume
 ralph --inspect-checkpoint
 ralph --generate-commit-msg
 ralph --show-commit-msg
-ralph --apply-commit
 ralph --generate-commit
 ralph-mcp
 ```

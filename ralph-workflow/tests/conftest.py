@@ -108,7 +108,6 @@ def sample_config_dict() -> dict[str, object]:
             "reviewer_context": 0,
             "review_depth": "standard",
             "checkpoint_enabled": True,
-            "isolation_mode": True,
         },
         "agents": {
             "claude": {

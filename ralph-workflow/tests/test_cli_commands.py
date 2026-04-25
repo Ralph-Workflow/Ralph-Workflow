@@ -9,14 +9,13 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import TYPE_CHECKING
 
-import rich_click as click
 from rich.console import Console
 
 from ralph.cli import options as options_module
 from ralph.cli.commands import commit as commit_module
 from ralph.cli.commands import diagnose as diagnose_module
 from ralph.cli.commands import init as init_module
-from ralph.config.enums import AgentTransport, JsonParserType, ReviewDepth, Verbosity
+from ralph.config.enums import AgentTransport, JsonParserType, ReviewDepth
 from ralph.config.models import AgentConfig, UnifiedConfig
 from ralph.mcp.artifacts.commit_message import write_commit_message_artifact
 from ralph.mcp.protocol.session import AgentSession
@@ -205,6 +204,13 @@ def test_generate_commit_stages_working_tree_changes_when_nothing_is_staged(
     output = stream.getvalue()
     assert "Created commit" in output
     assert "No staged changes to commit" not in output
+
+
+def test_dead_cli_option_helpers_are_not_exposed_by_options_module() -> None:
+    """Cleanup should remove the unused option helper decorators entirely."""
+    assert not hasattr(options_module, "verbose_option")
+    assert not hasattr(options_module, "quiet_option")
+    assert not hasattr(options_module, "config_option")
 
 
 def test_generate_commit_uses_commit_drain_agent_chain(
@@ -1384,7 +1390,7 @@ def test_check_workspace_files_reports_status(
 def test_init_command_creates_files(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     stream = _attach_console(monkeypatch, init_module)
     monkeypatch.chdir(tmp_path)
-    init_module.init_command(template="starter-template")
+    init_module.init_command(template="default")
     assert (tmp_path / "PROMPT.md").exists()
     assert (tmp_path / ".agent" / "ralph-workflow.toml").exists()
     output = stream.getvalue()
@@ -1411,7 +1417,7 @@ def test_init_command_keeps_existing_files(monkeypatch: pytest.MonkeyPatch, tmp_
     (agent_dir / "pipeline.toml").write_text("# pipeline", encoding="utf-8")
     (agent_dir / "artifacts.toml").write_text("# artifacts", encoding="utf-8")
 
-    init_module.init_command(template="starter-template")
+    init_module.init_command(template="default")
     assert prompt.read_text() == "existing"
     assert config.read_text() == "existing config"
     assert "Created" not in stream.getvalue()
@@ -1422,7 +1428,7 @@ def test_init_command_custom_config_path(monkeypatch: pytest.MonkeyPatch, tmp_pa
     monkeypatch.chdir(tmp_path)
     custom = tmp_path / "custom" / "custom.toml"
     custom.parent.mkdir()
-    init_module.init_command(template="starter-template", config_path=custom)
+    init_module.init_command(template="default", config_path=custom)
     assert custom.exists()
     assert "Created" in stream.getvalue()
 
@@ -1433,9 +1439,9 @@ def test_init_command_creates_prompt_in_cwd_not_template_subdir(
 ) -> None:
     _attach_console(monkeypatch, init_module)
     monkeypatch.chdir(tmp_path)
-    init_module.init_command(template="starter-template")
+    init_module.init_command(template="default")
     assert (tmp_path / "PROMPT.md").exists()
-    assert not (tmp_path / "starter-template").exists()
+    assert not (tmp_path / "default").exists()
 
 
 def test_init_command_creates_agent_dir_in_cwd(
@@ -1444,33 +1450,35 @@ def test_init_command_creates_agent_dir_in_cwd(
 ) -> None:
     _attach_console(monkeypatch, init_module)
     monkeypatch.chdir(tmp_path)
-    init_module.init_command(template="starter-template")
+    init_module.init_command(template="default")
     assert (tmp_path / ".agent").is_dir()
     assert (tmp_path / ".agent" / "ralph-workflow.toml").exists()
 
 
-def test_init_command_default_template(
+def test_init_command_fallback_next_steps_do_not_advertise_template_labels(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
+    xdg_dir = tmp_path / "xdg"
+    xdg_dir.mkdir()
+    (xdg_dir / "ralph-workflow.toml").write_text("# global", encoding="utf-8")
+    (xdg_dir / "ralph-workflow-mcp.toml").write_text("# mcp", encoding="utf-8")
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(xdg_dir))
     stream = _attach_console(monkeypatch, init_module)
     monkeypatch.chdir(tmp_path)
+    (tmp_path / "PROMPT.md").write_text("existing")
+    agent_dir = tmp_path / ".agent"
+    agent_dir.mkdir()
+    (agent_dir / "ralph-workflow.toml").write_text("existing config")
+    (agent_dir / "mcp.toml").write_text("# local mcp", encoding="utf-8")
+    (agent_dir / "agents.toml").write_text("# agents", encoding="utf-8")
+    (agent_dir / "pipeline.toml").write_text("# pipeline", encoding="utf-8")
+    (agent_dir / "artifacts.toml").write_text("# artifacts", encoding="utf-8")
+
     init_module.init_command()
-    assert (tmp_path / "PROMPT.md").exists()
+
     output = stream.getvalue()
-    assert "default" in output
-
-
-def test_verbosity_option_processes_values() -> None:
-    ctx = click.Context(click.Command("test"))
-    option = options_module.VerbosityOption(param_decls=["--verbosity"])
-    # Default (None) now maps to VERBOSE: Ralph is verbose by default.
-    assert option.process_value(ctx, None) == Verbosity.VERBOSE
-    assert option.process_value(ctx, Verbosity.FULL) == Verbosity.FULL
-    assert option.process_value(ctx, "debug") == Verbosity.DEBUG
-    assert option.process_value(ctx, "3") == Verbosity.FULL
-    assert option.process_value(ctx, "20") == Verbosity.DEBUG
-    assert option.process_value(ctx, "nonsense") == Verbosity.VERBOSE
+    assert "Template:" not in output
 
 
 def test_display_tables_render() -> None:

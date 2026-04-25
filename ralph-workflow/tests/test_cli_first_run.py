@@ -149,6 +149,56 @@ def test_cli_init_shows_welcome_banner(
         )
 
 
+def test_cli_init_without_label_has_no_deprecation_warning(
+    clean_env: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """`ralph --init` with no label should stay warning-free."""
+    runner = CliRunner()
+
+    monkeypatch.chdir(tmp_path)
+
+    result = runner.invoke(app, ["--init"], catch_exceptions=False)
+
+    assert result.exit_code == 0, f"Expected exit 0, got {result.exit_code}: {result.output}"
+    assert "deprecated" not in result.output.lower(), result.output
+
+
+def test_cli_init_with_default_label_emits_deprecation_warning(
+    clean_env: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """`ralph --init default` should warn that labels are deprecated."""
+    runner = CliRunner()
+
+    monkeypatch.chdir(tmp_path)
+
+    result = runner.invoke(app, ["--init", "default"], catch_exceptions=False)
+
+    assert result.exit_code == 0, f"Expected exit 0, got {result.exit_code}: {result.output}"
+    assert "deprecated" in result.output.lower(), result.output
+
+
+def test_cli_init_with_arbitrary_label_emits_deprecation_warning(
+    clean_env: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Arbitrary `--init` labels should warn that the label is ignored."""
+    runner = CliRunner()
+
+    monkeypatch.chdir(tmp_path)
+
+    result = runner.invoke(app, ["--init", "starter-template"], catch_exceptions=False)
+
+    assert result.exit_code == 0, f"Expected exit 0, got {result.exit_code}: {result.output}"
+    assert "deprecated" in result.output.lower(), result.output
+    assert "starter-template" in result.output, result.output
+    assert "ignored" in result.output.lower(), result.output
+
+
 def test_cli_init_idempotent_no_banner_on_second_run(
     clean_env: dict[str, str],
     monkeypatch: pytest.MonkeyPatch,

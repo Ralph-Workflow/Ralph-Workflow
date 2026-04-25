@@ -27,7 +27,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`WARN META [progress]` for dropped ring-buffer lines.** The debounced dropped-line notification is now emitted at `WARN` level (not `INFO`) to match its documented severity and the changelog entry below.
 
 - **Preflight guards unedited starter PROMPT.md.** When running `ralph` with a `PROMPT.md` that still contains the `<!-- ralph:starter-prompt ... -->` marker emitted by `ralph --init`, preflight now fails fast with an error that tells the user to edit the file first, preventing an accidental pipeline run against the example task.
-- **`--init` help text and README Quick start corrected.** The `--init` flag no longer advertises non-existent template names (e.g. `starter-template`, `feature-spec`); the README Quick start example now uses `ralph --init default` and explicitly notes the template label is cosmetic today.
+- **`--init` docs now use the real contract.** Quick-start examples now use bare `ralph --init`, compatibility labels remain deprecated/ignored, and rerun output no longer prints a fake template selector.
+- **Removed hidden `isolation_mode` compatibility plumbing.** The deprecated `--no-isolation` path is now gone end to end: CLI override input no longer accepts it, config overrides no longer synthesize it, and tests/default guidance only cover the supported execution flags.
 
 ### Added
 - display: colorize LEVEL and CAT badges on TTY; plain text preserved under NO_COLOR/non-TTY.

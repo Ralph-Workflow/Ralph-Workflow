@@ -9,10 +9,11 @@ from __future__ import annotations
 import sys
 from dataclasses import dataclass
 from pathlib import Path as RuntimePath
-from typing import TYPE_CHECKING, Annotated, TypedDict
+from typing import TYPE_CHECKING, Annotated, Protocol, TypedDict
 
 import rich_click as click
 import typer
+import typer.testing
 from loguru import logger
 from rich.console import Console
 from rich.text import Text
@@ -41,7 +42,7 @@ from ralph.pipeline import checkpoint as ckpt
 from ralph.workspace.scope import resolve_workspace_scope
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Mapping, Sequence
 
     from ralph.agents.registry import AgentRegistry
     from ralph.config.models import AgentConfig
@@ -60,7 +61,28 @@ class CLIOverrideInput:
     review_depth: ReviewDepth | None = None
     git_user_name: str | None = None
     git_user_email: str | None = None
-    isolation_mode: bool | None = None
+
+    def __init__(  # noqa: PLR0913
+        self,
+        developer_iters: int | None = None,
+        reviewer_reviews: int | None = None,
+        developer_agent: str | None = None,
+        reviewer_agent: str | None = None,
+        developer_model: str | None = None,
+        reviewer_model: str | None = None,
+        review_depth: ReviewDepth | None = None,
+        git_user_name: str | None = None,
+        git_user_email: str | None = None,
+    ) -> None:
+        object.__setattr__(self, "developer_iters", developer_iters)
+        object.__setattr__(self, "reviewer_reviews", reviewer_reviews)
+        object.__setattr__(self, "developer_agent", developer_agent)
+        object.__setattr__(self, "reviewer_agent", reviewer_agent)
+        object.__setattr__(self, "developer_model", developer_model)
+        object.__setattr__(self, "reviewer_model", reviewer_model)
+        object.__setattr__(self, "review_depth", review_depth)
+        object.__setattr__(self, "git_user_name", git_user_name)
+        object.__setattr__(self, "git_user_email", git_user_email)
 
 
 class GeneralOverrides(TypedDict):
@@ -98,6 +120,66 @@ app = typer.Typer(
     suggest_commands=True,
 )
 console = Console()
+
+_typer_get_command = typer.main.get_command
+
+
+def _prepare_init_args(args: Sequence[str] | None) -> list[str] | None:
+    """Allow bare `--init` by inserting an empty placeholder value."""
+    if args is None:
+        return None
+
+    normalized_args: list[str] = list(args)
+
+    for index, arg in enumerate(normalized_args):
+        if arg == "--init":
+            next_arg = normalized_args[index + 1] if index + 1 < len(normalized_args) else None
+            if next_arg is None or next_arg.startswith("-"):
+                normalized_args.insert(index + 1, "")
+            break
+
+    return normalized_args
+
+
+class _CommandMain(Protocol):
+    def __call__(
+        self,
+        *,
+        args: Sequence[str] | None = None,
+        prog_name: str | None = None,
+        complete_var: str | None = None,
+        standalone_mode: bool = True,
+        windows_expand_args: bool = True,
+    ) -> object: ...
+
+
+def _get_command_with_optional_init(typer_instance: typer.Typer) -> click.Command:
+    command = _typer_get_command(typer_instance)
+    if typer_instance is app:
+        original_main: _CommandMain = command.main
+
+        def patched_main(
+            *,
+            args: Sequence[str] | None = None,
+            prog_name: str | None = None,
+            complete_var: str | None = None,
+            standalone_mode: bool = True,
+            windows_expand_args: bool = True,
+        ) -> object:
+            return original_main(
+                args=_prepare_init_args(args),
+                prog_name=prog_name,
+                complete_var=complete_var,
+                standalone_mode=standalone_mode,
+                windows_expand_args=windows_expand_args,
+            )
+
+        command.main = patched_main  # type: ignore[assignment,method-assign]
+    return command
+
+
+typer.main.get_command = _get_command_with_optional_init
+typer.testing._get_command = _get_command_with_optional_init  # type: ignore[attr-defined]
 
 
 def version_callback(version: bool) -> None:
@@ -261,10 +343,6 @@ def main(  # noqa: PLR0913
         bool,
         typer.Option("--debug", help="Enable debug output"),
     ] = False,
-    no_isolation: Annotated[
-        bool,
-        typer.Option("--no-isolation", help="Disable isolation mode"),
-    ] = False,
     review_depth: Annotated[
         ReviewDepth,
         typer.Option(
@@ -282,7 +360,7 @@ def main(  # noqa: PLR0913
     ] = False,
     inspect_checkpoint: Annotated[
         bool,
-        typer.Option("--inspect-checkpoint", help="Show checkpoint contents"),
+        typer.Option("--inspect-checkpoint", help="Show checkpoint contents as raw JSON"),
     ] = False,
     dry_run: Annotated[
         bool,
@@ -317,8 +395,8 @@ def main(  # noqa: PLR0913
             "--init",
             help=(
                 "Initialize Ralph in the current directory (scaffolds PROMPT.md and"
-                " .agent/ configs). Accepts any label for backward compatibility;"
-                " all labels currently produce the same starter content."
+                " .agent/ configs). Labels are deprecated and ignored; use"
+                " `--init` without a label."
             ),
         ),
     ] = None,
@@ -330,17 +408,9 @@ def main(  # noqa: PLR0913
             " (existing files are backed up to <name>.bak)",
         ),
     ] = False,
-    rebase_only: Annotated[
-        bool,
-        typer.Option("--rebase-only", help="Only rebase, don't run pipeline"),
-    ] = False,
     generate_commit_msg: Annotated[
         bool,
         typer.Option("--generate-commit-msg", help="Generate commit message"),
-    ] = False,
-    apply_commit: Annotated[
-        bool,
-        typer.Option("--apply-commit", help="Apply generated commit"),
     ] = False,
     generate_commit: Annotated[
         bool,
@@ -348,7 +418,13 @@ def main(  # noqa: PLR0913
     ] = False,
     show_commit_msg: Annotated[
         bool,
-        typer.Option("--show-commit-msg", help="Show commit message"),
+        typer.Option(
+            "--show-commit-msg",
+            help=(
+                "Show commit message; may be empty after --generate-commit "
+                "because the artifact is deleted"
+            ),
+        ),
     ] = False,
     git_user_name: Annotated[
         str | None,
@@ -367,6 +443,11 @@ def main(  # noqa: PLR0913
     # Handle version flag
     if version:
         version_callback(version)
+
+    if resume and no_resume:
+        raise click.UsageError(
+            "Conflicting flags: --resume and --no-resume cannot be used together"
+        )
 
     verbosity = _resolve_effective_verbosity(verbosity, quiet=quiet, debug=debug)
 
@@ -387,7 +468,6 @@ def main(  # noqa: PLR0913
             review_depth=review_depth,
             git_user_name=git_user_name,
             git_user_email=git_user_email,
-            isolation_mode=not no_isolation,
         ),
     )
 
@@ -428,7 +508,6 @@ def main(  # noqa: PLR0913
     exit_code = _handle_commit_plumbing(
         CommitPlumbingOptions(
             generate_commit_msg=generate_commit_msg,
-            apply_commit=apply_commit,
             generate_commit=generate_commit,
             show_commit_msg=show_commit_msg,
             config_path=_config_path(config),
@@ -437,10 +516,6 @@ def main(  # noqa: PLR0913
     )
     if exit_code is not None:
         raise typer.Exit(code=exit_code)
-
-    if rebase_only:
-        console.print("[yellow]Rebase-only mode not yet implemented[/yellow]")
-        raise typer.Exit(1)
 
     # If a subcommand was invoked, we're done
     if ctx.invoked_subcommand:
@@ -570,7 +645,6 @@ def _handle_commit_plumbing(
     """
     if not (
         options.generate_commit_msg
-        or options.apply_commit
         or options.generate_commit
         or options.show_commit_msg
     ):
@@ -703,9 +777,6 @@ def _build_cli_overrides(
 
     if input.git_user_email is not None:
         overrides["general"]["git_user_email"] = input.git_user_email
-
-    if input.isolation_mode is not None:
-        overrides["general"]["execution"]["isolation_mode"] = input.isolation_mode
 
     return dict(overrides)
 

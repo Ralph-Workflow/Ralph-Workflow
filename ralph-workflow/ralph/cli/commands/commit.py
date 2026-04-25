@@ -99,7 +99,6 @@ class CommitPlumbingOptions:
 
     Attributes:
         generate_commit_msg: Generate commit message without applying.
-        apply_commit: Apply commit message without generating.
         generate_commit: Generate and apply commit.
         show_commit_msg: Show current commit message.
         config_path: Path to configuration file.
@@ -107,7 +106,6 @@ class CommitPlumbingOptions:
     """
 
     generate_commit_msg: bool = False
-    apply_commit: bool = False
     generate_commit: bool = False
     show_commit_msg: bool = False
     config_path: Path | None = None

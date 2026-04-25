@@ -6,9 +6,11 @@ import os
 from contextlib import contextmanager
 from pathlib import Path
 from types import SimpleNamespace
-from typing import cast
+from typing import Any, cast
 
 import pytest
+import rich_click as click
+from typer.main import get_command
 from typer.testing import CliRunner as TyperCliRunner
 
 import ralph.pipeline.runner as runner_module
@@ -83,6 +85,39 @@ def test_app_help(cli_runner: CliRunner) -> None:
     assert "Multi-agent" in result.stdout
 
 
+def test_app_help_mentions_init_label_deprecation(cli_runner: CliRunner) -> None:
+    """Top-level help should explain that `--init` labels are deprecated."""
+    result = cli_runner.invoke(app, ["--help"])
+    assert result.exit_code == 0
+    assert "--init" in result.stdout
+    assert "deprecated" in result.stdout.lower()
+
+
+def test_app_help_mentions_checkpoint_json_output(cli_runner: CliRunner) -> None:
+    """Top-level help should make checkpoint inspection JSON output explicit."""
+    result = cli_runner.invoke(app, ["--help"])
+    assert result.exit_code == 0
+    assert "--inspect-checkpoint" in result.stdout
+    assert "JSON" in result.stdout
+
+
+def test_app_help_mentions_commit_msg_artifact_deletion(cli_runner: CliRunner) -> None:
+    """Top-level help should explain when --show-commit-msg may show nothing."""
+    result = cli_runner.invoke(app, ["--help"])
+    assert result.exit_code == 0
+    assert "--show-commit-msg" in result.stdout
+    assert "deleted" in result.stdout.lower()
+
+
+def test_app_rejects_conflicting_resume_flags(cli_runner: CliRunner) -> None:
+    """Conflicting resume flags should fail loudly instead of silently preferring one."""
+    result = cli_runner.invoke(app, ["--resume", "--no-resume"])
+    assert result.exit_code == USAGE_ERROR_EXIT_CODE
+    assert "--resume" in result.stderr
+    assert "--no-resume" in result.stderr
+    assert "conflict" in result.stderr.lower()
+
+
 def test_app_version(cli_runner: CliRunner) -> None:
     """Test that --version works."""
     result = cli_runner.invoke(app, ["--version"])
@@ -104,6 +139,20 @@ def test_unknown_option_uses_typer_usage_error(cli_runner: CliRunner) -> None:
     assert result.exit_code == USAGE_ERROR_EXIT_CODE
     assert "No such option: --does-not-exist" in result.stderr
     assert "Usage: ralph [OPTIONS] COMMAND [ARGS]..." in result.stderr
+
+
+@pytest.mark.parametrize(
+    "flag",
+    ["--rebase-only", "--apply-commit", "--no-isolation"],
+)
+def test_removed_top_level_flags_are_rejected_after_cleanup(
+    cli_runner: CliRunner, flag: str
+) -> None:
+    """Cleanup should leave the real CLI with no legacy top-level flags."""
+    command = get_command(app)
+
+    with pytest.raises(click.exceptions.NoSuchOption):  # type: ignore[attr-defined]
+        command.make_context("ralph", [flag], resilient_parsing=False)
 
 
 def test_cleanup_rejects_unexpected_extra_argument(cli_runner: CliRunner) -> None:
@@ -424,7 +473,7 @@ def test_run_pipeline_exception(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_build_cli_overrides_sets_values() -> None:
-    """CLI overrides mirror the provided inputs."""
+    """CLI overrides mirror the supported inputs only."""
 
     cli_input = CLIOverrideInput(
         developer_iters=3,
@@ -436,7 +485,6 @@ def test_build_cli_overrides_sets_values() -> None:
         review_depth=ReviewDepth.SECURITY,
         git_user_name="Jane",
         git_user_email="jane@example.com",
-        isolation_mode=True,
     )
 
     overrides = cast("dict[str, object]", _build_cli_overrides(cli_input))
@@ -447,11 +495,19 @@ def test_build_cli_overrides_sets_values() -> None:
     assert general["review_depth"] == ReviewDepth.SECURITY.value
     assert general["git_user_name"] == "Jane"
     assert general["git_user_email"] == "jane@example.com"
-    assert execution["isolation_mode"] is True
+    assert execution == {}
     assert overrides["developer_agent"] == "dev"
     assert overrides["reviewer_agent"] == "rev"
     assert overrides["developer_model"] == "dev-model"
     assert overrides["reviewer_model"] == "rev-model"
+
+
+def test_cli_override_input_rejects_removed_isolation_mode_field() -> None:
+    """The removed isolation toggle must not remain as hidden compatibility plumbing."""
+
+    factory: Any = CLIOverrideInput
+    with pytest.raises(TypeError):
+        factory(isolation_mode=True)
 
 
 def test_configure_logging_sets_levels(monkeypatch: pytest.MonkeyPatch) -> None:

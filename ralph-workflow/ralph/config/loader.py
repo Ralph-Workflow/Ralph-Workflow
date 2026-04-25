@@ -162,7 +162,7 @@ def _migrate_workflow_flags(data: dict[str, object], general: dict[str, object])
 def _migrate_execution_flags(data: dict[str, object], general: dict[str, object]) -> None:
     """Migrate execution flags."""
     execution: dict[str, object] = {}
-    for field in ("force_universal_prompt", "isolation_mode"):
+    for field in ("force_universal_prompt",):
         if field in data:
             execution[field] = data.pop(field)
     if execution:

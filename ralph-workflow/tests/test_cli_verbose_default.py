@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-import pytest
-
+from ralph.cli import options as options_module
 from ralph.cli.main import _resolve_effective_verbosity
-from ralph.cli.options import VerbosityOption
 from ralph.config.enums import Verbosity
 from ralph.pipeline.runner import _normalize_verbosity, _verbosity_rank
 
@@ -48,43 +46,9 @@ def test_explicit_full_is_preserved() -> None:
     assert _resolve_effective_verbosity(Verbosity.FULL, quiet=False, debug=False) == Verbosity.FULL
 
 
-class _FakeClickContext:
-    """Minimal stand-in for click.Context used only for option.process_value."""
-
-
-def test_verbosity_option_process_value_defaults_to_verbose() -> None:
-    option = VerbosityOption(param_decls=["--verbosity"])
-    assert option.process_value(None, None) == Verbosity.VERBOSE  # type: ignore[arg-type]
-
-
-def test_verbosity_option_process_value_accepts_legacy_normal_string() -> None:
-    option = VerbosityOption(param_decls=["--verbosity"])
-    # "normal" is still valid input — _resolve_effective_verbosity upgrades it.
-    assert (
-        option.process_value(None, "normal")  # type: ignore[arg-type]
-        == Verbosity.NORMAL
-    )
-    # Default (None) should still be VERBOSE.
-    assert option.process_value(None, None) == Verbosity.VERBOSE  # type: ignore[arg-type]
-
-
-def test_verbosity_option_process_value_accepts_numeric_debug_string() -> None:
-    option = VerbosityOption(param_decls=["--verbosity"])
-    assert option.process_value(None, "4") == Verbosity.DEBUG  # type: ignore[arg-type]
-
-
-@pytest.mark.parametrize(
-    "value,expected",
-    [
-        ("quiet", Verbosity.QUIET),
-        ("verbose", Verbosity.VERBOSE),
-        ("full", Verbosity.FULL),
-        ("debug", Verbosity.DEBUG),
-    ],
-)
-def test_verbosity_option_process_value_recognised_strings(value: str, expected: Verbosity) -> None:
-    option = VerbosityOption(param_decls=["--verbosity"])
-    assert option.process_value(None, value) == expected  # type: ignore[arg-type]
+def test_dead_verbosity_option_class_is_not_part_of_cli_surface() -> None:
+    """Cleanup should remove the unused custom option class from the CLI module."""
+    assert not hasattr(options_module, "VerbosityOption")
 
 
 _RANK_QUIET = 0
