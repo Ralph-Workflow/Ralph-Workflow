@@ -10,8 +10,8 @@ from loguru import logger
 from ralph.config.mcp_models import WebVisitConfig
 from ralph.mcp.tools.coordination import (
     CapabilityDeniedError,
+    CoordinationSessionLike,
     InvalidParamsError,
-    SessionLike,
     ToolContent,
     ToolResult,
     require_capability,
@@ -29,7 +29,7 @@ _MAX_TEXT_CHARS_DIVISOR = 4
 
 
 def handle_visit_url(
-    session: SessionLike,
+    session: CoordinationSessionLike,
     _workspace: Workspace,
     params: dict[str, object],
     *,

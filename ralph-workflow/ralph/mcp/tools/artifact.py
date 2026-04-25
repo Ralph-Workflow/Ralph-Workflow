@@ -55,8 +55,8 @@ from ralph.mcp.artifacts.typed_artifacts import (
 )
 from ralph.mcp.tools.coordination import (
     ARTIFACT_SUBMIT_CAPABILITY,
+    CoordinationSessionLike,
     InvalidParamsError,
-    SessionLike,
     ToolContent,
     ToolResult,
     WorkspaceLike,
@@ -116,7 +116,7 @@ DEFAULT_ARTIFACT_HANDLER_DEPS = ArtifactHandlerDeps()
 
 
 def handle_submit_artifact(
-    session: SessionLike,
+    session: CoordinationSessionLike,
     workspace: WorkspaceLike,
     params: dict[str, object],
     *,
@@ -149,7 +149,7 @@ def handle_submit_artifact(
 
 
 def handle_submit_plan_section(
-    session: SessionLike,
+    session: CoordinationSessionLike,
     workspace: WorkspaceLike,
     params: dict[str, object],
     *,
@@ -200,7 +200,7 @@ def handle_submit_plan_section(
 
 
 def handle_finalize_plan(
-    session: SessionLike,
+    session: CoordinationSessionLike,
     workspace: WorkspaceLike,
     params: dict[str, object],
     *,
@@ -244,7 +244,7 @@ def handle_finalize_plan(
 
 
 def handle_get_plan_draft(
-    session: SessionLike,
+    session: CoordinationSessionLike,
     workspace: WorkspaceLike,
     params: dict[str, object],
     *,
@@ -275,7 +275,7 @@ def handle_get_plan_draft(
 
 
 def handle_discard_plan_draft(
-    session: SessionLike,
+    session: CoordinationSessionLike,
     workspace: WorkspaceLike,
     params: dict[str, object],
     *,
@@ -521,7 +521,7 @@ def _accepted_persisted_types(artifact_type: str) -> set[str]:
     return accepted
 
 
-def _session_drain(session: SessionLike) -> str | None:
+def _session_drain(session: CoordinationSessionLike) -> str | None:
     try:
         attributes = cast("dict[str, object]", vars(session))
     except TypeError:

@@ -1,14 +1,16 @@
 """Asyncio signal bridge for hard-kill on SIGINT.
 
-Uses loop.add_signal_handler() — NOT signal.signal() — to stay compatible
-with the asyncio event loop.
+Uses ``loop.add_signal_handler()`` — not ``signal.signal()`` — to stay
+compatible with the asyncio event loop.
 
-First SIGINT: cancels root_task + kills all tracked subprocess process groups
-  via ProcessManager.shutdown_all(grace_period_s=0).
-Second SIGINT: os._exit(130) immediately (no cleanup)
+Signal handling contract:
 
-The bridge.pids set is kept in sync by subscribing to ProcessManager lifecycle
-events; callers must not register or deregister PIDs manually.
+* First ``SIGINT`` cancels ``root_task`` and shuts down tracked subprocesses via
+  ``ProcessManager.shutdown_all(grace_period_s=0)``.
+* Second ``SIGINT`` calls ``os._exit(130)`` immediately with no extra cleanup.
+
+``bridge.pids`` stays synchronized by subscribing to ProcessManager lifecycle
+Events, so callers must not register or deregister PIDs manually.
 """
 
 from __future__ import annotations

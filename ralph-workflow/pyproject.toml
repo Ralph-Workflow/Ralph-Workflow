@@ -66,6 +66,7 @@ docs = [
   "sphinx>=7",
   "furo>=2024.8.6",
   "myst-parser",
+  "linkify-it-py>=2",
   "sphinx-copybutton>=0.5",
   "sphinx-design>=0.5",
 ]

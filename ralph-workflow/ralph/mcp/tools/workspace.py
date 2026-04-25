@@ -14,9 +14,9 @@ from typing import TYPE_CHECKING, cast
 from ralph.mcp.artifacts.policy_outcomes import is_policy_approved
 from ralph.mcp.tools.coordination import (
     CapabilityDeniedError,
+    CoordinationSessionLike,
     ImageContent,
     InvalidParamsError,
-    SessionLike,
     ToolContent,
     ToolError,
     ToolResult,
@@ -196,7 +196,7 @@ def _collect_matching_files(workspace: Workspace, base_path: str, pattern: str) 
 
 
 def handle_read_file(
-    session: SessionLike,
+    session: CoordinationSessionLike,
     workspace: Workspace,
     params: dict[str, object],
 ) -> ToolResult:
@@ -213,7 +213,7 @@ def handle_read_file(
 
 
 def handle_list_directory(
-    session: SessionLike,
+    session: CoordinationSessionLike,
     workspace: Workspace,
     params: dict[str, object],
 ) -> ToolResult:
@@ -236,7 +236,7 @@ def _list_dir_recursive_output(workspace: Workspace, path: str) -> str:
 
 
 def handle_list_directory_recursive(
-    session: SessionLike,
+    session: CoordinationSessionLike,
     workspace: Workspace,
     params: dict[str, object],
 ) -> ToolResult:
@@ -247,7 +247,7 @@ def handle_list_directory_recursive(
 
 
 def handle_search_files(
-    session: SessionLike,
+    session: CoordinationSessionLike,
     workspace: Workspace,
     params: dict[str, object],
 ) -> ToolResult:
@@ -265,7 +265,7 @@ def handle_search_files(
 
 
 def handle_write_file(
-    session: SessionLike,
+    session: CoordinationSessionLike,
     workspace: Workspace,
     params: dict[str, object],
 ) -> ToolResult:
@@ -291,7 +291,7 @@ def _infer_image_mime_type(path: str) -> str | None:
 
 
 def handle_read_image(
-    session: SessionLike,
+    session: CoordinationSessionLike,
     workspace: Workspace,
     params: dict[str, object],
     *,

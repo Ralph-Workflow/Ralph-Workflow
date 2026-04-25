@@ -7,7 +7,13 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import TYPE_CHECKING, cast
 
-from ralph.mcp.protocol.capability_mapping import Capability, SessionDrain, drain_class_for_session
+from ralph.mcp.protocol.capability_mapping import (
+    Capability as RalphCapability,
+)
+from ralph.mcp.protocol.capability_mapping import (
+    SessionDrain,
+    drain_class_for_session,
+)
 from ralph.mcp.tools.names import (
     ARTIFACT_TOOLS,
     COORDINATE_TOOL,
@@ -43,93 +49,93 @@ from ralph.mcp.tools.names import (
 if TYPE_CHECKING:
     from ralph.mcp.protocol.session import AgentSession
 
-DEFAULT_CAPABILITIES: dict[SessionDrain, tuple[Capability, ...]] = {
+DEFAULT_CAPABILITIES: dict[SessionDrain, tuple[RalphCapability, ...]] = {
     SessionDrain.PLANNING: (
-        Capability.WORKSPACE_READ,
-        Capability.WORKSPACE_WRITE_EPHEMERAL,
-        Capability.GIT_STATUS_READ,
-        Capability.GIT_DIFF_READ,
-        Capability.ARTIFACT_SUBMIT,
-        Capability.WEB_SEARCH,
-        Capability.WEB_VISIT,
-        Capability.UPSTREAM_TOOL_USE,
+        RalphCapability.WORKSPACE_READ,
+        RalphCapability.WORKSPACE_WRITE_EPHEMERAL,
+        RalphCapability.GIT_STATUS_READ,
+        RalphCapability.GIT_DIFF_READ,
+        RalphCapability.ARTIFACT_SUBMIT,
+        RalphCapability.WEB_SEARCH,
+        RalphCapability.WEB_VISIT,
+        RalphCapability.UPSTREAM_TOOL_USE,
     ),
     SessionDrain.DEVELOPMENT_ANALYSIS: (
-        Capability.WEB_SEARCH,
-        Capability.WEB_VISIT,
-        Capability.UPSTREAM_TOOL_USE,
+        RalphCapability.WEB_SEARCH,
+        RalphCapability.WEB_VISIT,
+        RalphCapability.UPSTREAM_TOOL_USE,
     ),
     SessionDrain.DEVELOPMENT_COMMIT: (
-        Capability.WEB_SEARCH,
-        Capability.WEB_VISIT,
-        Capability.UPSTREAM_TOOL_USE,
+        RalphCapability.WEB_SEARCH,
+        RalphCapability.WEB_VISIT,
+        RalphCapability.UPSTREAM_TOOL_USE,
     ),
     SessionDrain.ANALYSIS: (
-        Capability.WORKSPACE_READ,
-        Capability.WORKSPACE_WRITE_EPHEMERAL,
-        Capability.GIT_STATUS_READ,
-        Capability.GIT_DIFF_READ,
-        Capability.ARTIFACT_SUBMIT,
-        Capability.WEB_VISIT,
-        Capability.UPSTREAM_TOOL_USE,
+        RalphCapability.WORKSPACE_READ,
+        RalphCapability.WORKSPACE_WRITE_EPHEMERAL,
+        RalphCapability.GIT_STATUS_READ,
+        RalphCapability.GIT_DIFF_READ,
+        RalphCapability.ARTIFACT_SUBMIT,
+        RalphCapability.WEB_VISIT,
+        RalphCapability.UPSTREAM_TOOL_USE,
     ),
     SessionDrain.REVIEW: (
-        Capability.WORKSPACE_READ,
-        Capability.WORKSPACE_WRITE_EPHEMERAL,
-        Capability.GIT_STATUS_READ,
-        Capability.GIT_DIFF_READ,
-        Capability.ARTIFACT_SUBMIT,
-        Capability.WEB_SEARCH,
-        Capability.WEB_VISIT,
-        Capability.UPSTREAM_TOOL_USE,
+        RalphCapability.WORKSPACE_READ,
+        RalphCapability.WORKSPACE_WRITE_EPHEMERAL,
+        RalphCapability.GIT_STATUS_READ,
+        RalphCapability.GIT_DIFF_READ,
+        RalphCapability.ARTIFACT_SUBMIT,
+        RalphCapability.WEB_SEARCH,
+        RalphCapability.WEB_VISIT,
+        RalphCapability.UPSTREAM_TOOL_USE,
     ),
     SessionDrain.REVIEW_ANALYSIS: (
-        Capability.WEB_SEARCH,
-        Capability.WEB_VISIT,
-        Capability.UPSTREAM_TOOL_USE,
+        RalphCapability.WEB_SEARCH,
+        RalphCapability.WEB_VISIT,
+        RalphCapability.UPSTREAM_TOOL_USE,
     ),
     SessionDrain.DEVELOPMENT: (
-        Capability.WORKSPACE_READ,
-        Capability.WORKSPACE_WRITE_EPHEMERAL,
-        Capability.WORKSPACE_WRITE_TRACKED,
-        Capability.GIT_STATUS_READ,
-        Capability.GIT_DIFF_READ,
-        Capability.PROCESS_EXEC_BOUNDED,
-        Capability.ARTIFACT_SUBMIT,
-        Capability.RUN_REPORT_PROGRESS,
-        Capability.ENV_READ,
-        Capability.WEB_SEARCH,
-        Capability.WEB_VISIT,
-        Capability.UPSTREAM_TOOL_USE,
+        RalphCapability.WORKSPACE_READ,
+        RalphCapability.WORKSPACE_WRITE_EPHEMERAL,
+        RalphCapability.WORKSPACE_WRITE_TRACKED,
+        RalphCapability.GIT_STATUS_READ,
+        RalphCapability.GIT_DIFF_READ,
+        RalphCapability.PROCESS_EXEC_BOUNDED,
+        RalphCapability.ARTIFACT_SUBMIT,
+        RalphCapability.RUN_REPORT_PROGRESS,
+        RalphCapability.ENV_READ,
+        RalphCapability.WEB_SEARCH,
+        RalphCapability.WEB_VISIT,
+        RalphCapability.UPSTREAM_TOOL_USE,
     ),
     SessionDrain.FIX: (
-        Capability.WORKSPACE_READ,
-        Capability.WORKSPACE_WRITE_TRACKED,
-        Capability.GIT_STATUS_READ,
-        Capability.GIT_DIFF_READ,
-        Capability.PROCESS_EXEC_BOUNDED,
-        Capability.ARTIFACT_SUBMIT,
-        Capability.RUN_REPORT_PROGRESS,
-        Capability.ENV_READ,
-        Capability.WEB_SEARCH,
-        Capability.WEB_VISIT,
-        Capability.UPSTREAM_TOOL_USE,
+        RalphCapability.WORKSPACE_READ,
+        RalphCapability.WORKSPACE_WRITE_TRACKED,
+        RalphCapability.GIT_STATUS_READ,
+        RalphCapability.GIT_DIFF_READ,
+        RalphCapability.PROCESS_EXEC_BOUNDED,
+        RalphCapability.ARTIFACT_SUBMIT,
+        RalphCapability.RUN_REPORT_PROGRESS,
+        RalphCapability.ENV_READ,
+        RalphCapability.WEB_SEARCH,
+        RalphCapability.WEB_VISIT,
+        RalphCapability.UPSTREAM_TOOL_USE,
     ),
     SessionDrain.REVIEW_COMMIT: (
-        Capability.WEB_SEARCH,
-        Capability.WEB_VISIT,
-        Capability.UPSTREAM_TOOL_USE,
+        RalphCapability.WEB_SEARCH,
+        RalphCapability.WEB_VISIT,
+        RalphCapability.UPSTREAM_TOOL_USE,
     ),
     SessionDrain.COMMIT: (
-        Capability.WORKSPACE_READ,
-        Capability.WORKSPACE_WRITE_EPHEMERAL,
-        Capability.GIT_STATUS_READ,
-        Capability.GIT_DIFF_READ,
-        Capability.GIT_WRITE,
-        Capability.ARTIFACT_SUBMIT,
-        Capability.RUN_REPORT_PROGRESS,
-        Capability.WEB_VISIT,
-        Capability.UPSTREAM_TOOL_USE,
+        RalphCapability.WORKSPACE_READ,
+        RalphCapability.WORKSPACE_WRITE_EPHEMERAL,
+        RalphCapability.GIT_STATUS_READ,
+        RalphCapability.GIT_DIFF_READ,
+        RalphCapability.GIT_WRITE,
+        RalphCapability.ARTIFACT_SUBMIT,
+        RalphCapability.RUN_REPORT_PROGRESS,
+        RalphCapability.WEB_VISIT,
+        RalphCapability.UPSTREAM_TOOL_USE,
     ),
 }
 
@@ -165,22 +171,22 @@ def default_capability_identifiers_for_drain(drain: SessionDrain | str) -> set[s
 class CapabilitySet:
     """Lightweight set of Ralph capabilities."""
 
-    def __init__(self, values: Iterable[Capability] | None = None) -> None:
+    def __init__(self, values: Iterable[RalphCapability] | None = None) -> None:
         self._values = frozenset(values or ())
 
-    def contains(self, capability: Capability) -> bool:
+    def contains(self, capability: RalphCapability) -> bool:
         return capability in self._values
 
-    def insert(self, capability: Capability) -> None:
+    def insert(self, capability: RalphCapability) -> None:
         self._values = frozenset((*self._values, capability))
 
-    def __iter__(self) -> Iterator[Capability]:
+    def __iter__(self) -> Iterator[RalphCapability]:
         return iter(self._values)
 
-    def iter(self) -> Iterable[Capability]:
+    def iter(self) -> Iterable[RalphCapability]:
         return iter(self._values)
 
-    def to_vec(self) -> tuple[Capability, ...]:
+    def to_vec(self) -> tuple[RalphCapability, ...]:
         return tuple(self._values)
 
     @classmethod
@@ -191,10 +197,10 @@ class CapabilitySet:
     def from_identifiers(cls, identifiers: Iterable[str] | None) -> CapabilitySet:
         if not identifiers:
             return cls()
-        values: list[Capability] = []
+        values: list[RalphCapability] = []
         for identifier in identifiers:
             try:
-                values.append(Capability(identifier))
+                values.append(RalphCapability(identifier))
             except ValueError:
                 continue
         return cls(values)
@@ -303,13 +309,13 @@ def capability_template_variables(
     capability_vars: Sequence[tuple[str, str]] = [
         (
             "HAS_WORKSPACE_WRITE",
-            bool_to_string(capabilities.contains(Capability.WORKSPACE_WRITE_TRACKED)),
+            bool_to_string(capabilities.contains(RalphCapability.WORKSPACE_WRITE_TRACKED)),
         ),
         (
             "HAS_PROCESS_EXEC",
-            bool_to_string(capabilities.contains(Capability.PROCESS_EXEC_BOUNDED)),
+            bool_to_string(capabilities.contains(RalphCapability.PROCESS_EXEC_BOUNDED)),
         ),
-        ("HAS_GIT_WRITE", bool_to_string(capabilities.contains(Capability.GIT_WRITE))),
+        ("HAS_GIT_WRITE", bool_to_string(capabilities.contains(RalphCapability.GIT_WRITE))),
     ]
 
     policy_vars: Sequence[tuple[str, str]] = [
@@ -321,14 +327,14 @@ def capability_template_variables(
         ),
     ]
 
-    has_mcp_write = capabilities.contains(Capability.WORKSPACE_WRITE_TRACKED)
-    has_mcp_exec = capabilities.contains(Capability.PROCESS_EXEC_BOUNDED)
+    has_mcp_write = capabilities.contains(RalphCapability.WORKSPACE_WRITE_TRACKED)
+    has_mcp_exec = capabilities.contains(RalphCapability.PROCESS_EXEC_BOUNDED)
     has_mcp_git = any(
         capabilities.contains(cap)
         for cap in (
-            Capability.GIT_STATUS_READ,
-            Capability.GIT_DIFF_READ,
-            Capability.GIT_WRITE,
+            RalphCapability.GIT_STATUS_READ,
+            RalphCapability.GIT_DIFF_READ,
+            RalphCapability.GIT_WRITE,
         )
     )
 
@@ -559,16 +565,16 @@ def bool_to_string(value: bool) -> str:
 
 def visible_mcp_tool_names(capabilities: CapabilitySet) -> list[str]:
     results: list[str] = []
-    tool_matrix: Sequence[tuple[Capability, Sequence[str]]] = (
-        (Capability.WORKSPACE_READ, WORKSPACE_READ_TOOLS),
-        (Capability.GIT_STATUS_READ, GIT_STATUS_READ_TOOLS),
-        (Capability.GIT_DIFF_READ, GIT_DIFF_READ_TOOLS),
-        (Capability.WORKSPACE_WRITE_TRACKED, TRACKED_WRITE_TOOLS),
-        (Capability.PROCESS_EXEC_BOUNDED, PROCESS_EXEC_TOOLS),
-        (Capability.ARTIFACT_SUBMIT, (*ARTIFACT_TOOLS, *PLANNING_DRAFT_TOOLS)),
-        (Capability.RUN_REPORT_PROGRESS, PROGRESS_TOOLS),
-        (Capability.ENV_READ, ["read_env"]),
-        (Capability.WEB_VISIT, WEB_VISIT_TOOLS),
+    tool_matrix: Sequence[tuple[RalphCapability, Sequence[str]]] = (
+        (RalphCapability.WORKSPACE_READ, WORKSPACE_READ_TOOLS),
+        (RalphCapability.GIT_STATUS_READ, GIT_STATUS_READ_TOOLS),
+        (RalphCapability.GIT_DIFF_READ, GIT_DIFF_READ_TOOLS),
+        (RalphCapability.WORKSPACE_WRITE_TRACKED, TRACKED_WRITE_TOOLS),
+        (RalphCapability.PROCESS_EXEC_BOUNDED, PROCESS_EXEC_TOOLS),
+        (RalphCapability.ARTIFACT_SUBMIT, (*ARTIFACT_TOOLS, *PLANNING_DRAFT_TOOLS)),
+        (RalphCapability.RUN_REPORT_PROGRESS, PROGRESS_TOOLS),
+        (RalphCapability.ENV_READ, ["read_env"]),
+        (RalphCapability.WEB_VISIT, WEB_VISIT_TOOLS),
     )
     for capability, tools in tool_matrix:
         if capabilities.contains(capability):
@@ -632,7 +638,7 @@ def format_capability_summary(capabilities: CapabilitySet, policy_flags: PolicyF
     return f"Capabilities:\n{cap_section}\n\nPolicy Flags:\n{flag_section}"
 
 
-def _capability_value(capability: Capability) -> str:
+def _capability_value(capability: RalphCapability) -> str:
     return capability.value
 
 

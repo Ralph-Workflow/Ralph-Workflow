@@ -16,8 +16,8 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
 
 from ralph.mcp.tools.coordination import (
+    CoordinationSessionLike,
     InvalidParamsError,
-    SessionLike,
     ToolContent,
     ToolError,
     ToolResult,
@@ -170,7 +170,7 @@ def _run_git_subprocess(command: list[str], cwd: Path) -> subprocess.CompletedPr
 
 
 def handle_git_status(
-    session: SessionLike,
+    session: CoordinationSessionLike,
     workspace: object,
     _params: Mapping[str, object],
 ) -> ToolResult:
@@ -181,7 +181,7 @@ def handle_git_status(
 
 
 def handle_git_diff(
-    session: SessionLike,
+    session: CoordinationSessionLike,
     workspace: object,
     params: Mapping[str, object],
 ) -> ToolResult:
@@ -193,7 +193,7 @@ def handle_git_diff(
 
 
 def handle_git_log(
-    session: SessionLike,
+    session: CoordinationSessionLike,
     workspace: object,
     params: Mapping[str, object],
 ) -> ToolResult:
@@ -205,7 +205,7 @@ def handle_git_log(
 
 
 def handle_git_show(
-    session: SessionLike,
+    session: CoordinationSessionLike,
     workspace: object,
     params: Mapping[str, object],
 ) -> ToolResult:

@@ -1,21 +1,21 @@
 """Canonical workflow progress accounting.
 
-This module owns all mutations for workflow progress fields:
-- completed outer progress (`iteration`, `reviewer_pass`)
-- inner analysis loop counters
-- routing budgets
-- review issue flags tied to progress boundaries
-- checkpoint-facing progress mirrors derived from canonical state
+This module owns all mutations for workflow progress fields, including completed
+outer progress (``iteration`` and ``reviewer_pass``), inner analysis-loop
+counters, routing budgets, review-issue flags tied to progress boundaries, and
+checkpoint-facing progress mirrors derived from canonical state.
 
 Contract:
-- ``iteration`` counts completed development cycles only
-- ``reviewer_pass`` counts completed review passes only
-- analysis loopbacks mutate only the inner loop counter for the current cycle/pass
-- forced handoff at max analysis preserves outer progress and carries the inner
-  loop counter to the cap until commit outcome
-- skipped commits route onward without incrementing outer progress, but they end
-  the current inner loop and therefore reset the corresponding analysis counter
-- checkpoint mirrors must derive directly from canonical ``PipelineState``
+
+* ``iteration`` counts completed development cycles only.
+* ``reviewer_pass`` counts completed review passes only.
+* Analysis loopbacks mutate only the inner loop counter for the current
+  cycle or pass.
+* Forced handoff at max analysis preserves outer progress and carries the inner
+  loop counter to the cap until commit outcome.
+* Skipped commits route onward without incrementing outer progress, but they end
+  the current inner loop and therefore reset the corresponding analysis counter.
+* Checkpoint mirrors must derive directly from canonical ``PipelineState``.
 """
 
 from __future__ import annotations

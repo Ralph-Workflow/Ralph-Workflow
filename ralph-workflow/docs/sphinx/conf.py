@@ -27,6 +27,10 @@ extensions = [
 ]
 
 autodoc_typehints = "description"
+autodoc_type_aliases = {
+    "Capability": "ralph.mcp.protocol.capability_mapping.Capability",
+    "SessionLike": "ralph.mcp.protocol.startup.SessionLike",
+}
 napoleon_google_docstring = True
 napoleon_numpy_docstring = False
 
@@ -41,10 +45,6 @@ html_theme = "furo"
 html_theme_options = {
     "sidebar_hide_name": False,
     "navigation_with_keys": True,
-    "top_of_page_buttons": ["view", "edit"],
-    "source_repository": "https://codeberg.org/RalphWorkflow/Ralph-Workflow",
-    "source_branch": "main",
-    "source_directory": "ralph-workflow/docs/sphinx/",
     "light_css_variables": {
         "color-brand-primary": "#0b6bcb",
         "color-brand-content": "#0b6bcb",

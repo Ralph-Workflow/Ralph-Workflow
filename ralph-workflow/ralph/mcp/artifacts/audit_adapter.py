@@ -9,12 +9,14 @@ from typing import Protocol
 
 from ralph.mcp.protocol.capability_mapping import (
     AccessDecision,
-    Capability,
     McpCapability,
     PolicyMode,
     PolicyOutcome,
     PolicyOutcomeStatus,
     lookup_ralph_capability,
+)
+from ralph.mcp.protocol.capability_mapping import (
+    Capability as RalphCapability,
 )
 
 
@@ -101,7 +103,7 @@ class RalphAuditRecord:
 
     session_id: AgentSessionId
     timestamp: int
-    capability: Capability
+    capability: RalphCapability
     outcome: PolicyOutcome
     description: str
     duration_ms: int | None = None
@@ -119,13 +121,13 @@ def outcome_from_decision(decision: AccessDecision) -> PolicyOutcome:
     return PolicyOutcome(status=PolicyOutcomeStatus.DENIED, reason=reason)
 
 
-def resolve_audit_capability(record: McpAuditRecord) -> Capability:
+def resolve_audit_capability(record: McpAuditRecord) -> RalphCapability:
     """Map MCP capability to Ralph capability or fall back to workspace read."""
 
     if record.capability is None:
-        return Capability.WORKSPACE_READ
+        return RalphCapability.WORKSPACE_READ
     mapped = lookup_ralph_capability(record.capability)
-    return mapped or Capability.WORKSPACE_READ
+    return mapped or RalphCapability.WORKSPACE_READ
 
 
 def event_type_label(event_type: McpAuditEventType) -> str:
@@ -214,7 +216,6 @@ __all__ = [
     "AuditCorrelation",
     "AuditMetadata",
     "AuditSink",
-    "Capability",
     "McpAuditCorrelation",
     "McpAuditEventType",
     "McpAuditRecord",

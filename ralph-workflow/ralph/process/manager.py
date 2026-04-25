@@ -1,18 +1,21 @@
 """ProcessManager — single source of truth for every child process Ralph spawns.
 
 Invariants:
-- Every spawned process is recorded from start to exit; no transitions are lost.
-- All callers interact through spawn() / spawn_async() / terminate(); no direct
-  subprocess.Popen / asyncio.create_subprocess_exec calls outside this module.
-- Termination escalates via psutil: graceful terminate() to the process and all
-  descendants → wait grace_period_s → forceful kill() survivors → wait
-  kill_followup_timeout_s → raise ProcessTerminationError if still alive.
-- Cross-platform: psutil handles Linux, macOS, and Windows process trees without
-  relying on POSIX signals or process groups.
-- Listener exceptions never propagate into the spawn/terminate call path; they
-  are logged via loguru and skipped.
-- Lifecycle transitions are logged by default and thus always observable.
-- atexit guarantees no orphaned children at interpreter shutdown.
+
+* Every spawned process is recorded from start to exit; no transitions are lost.
+* All callers interact through ``spawn()``, ``spawn_async()``, or
+  ``terminate()``; no direct ``subprocess.Popen`` or
+  ``asyncio.create_subprocess_exec`` calls occur outside this module.
+* Termination escalates via psutil: graceful ``terminate()`` to the process and
+  all descendants, wait ``grace_period_s``, forceful ``kill()`` for survivors,
+  wait ``kill_followup_timeout_s``, then raise ``ProcessTerminationError`` if
+  anything is still alive.
+* Cross-platform behavior relies on psutil for Linux, macOS, and Windows
+  process-tree teardown without direct POSIX signal management.
+* Listener exceptions never propagate into the spawn or terminate call path;
+  they are logged via loguru and skipped.
+* Lifecycle transitions are logged by default and therefore always observable.
+* ``atexit`` guarantees no orphaned children at interpreter shutdown.
 """
 
 from __future__ import annotations

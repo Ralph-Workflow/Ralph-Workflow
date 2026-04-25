@@ -7,8 +7,8 @@ from loguru import logger
 from ralph.config.mcp_models import WebSearchConfig
 from ralph.mcp.tools.coordination import (
     CapabilityDeniedError,
+    CoordinationSessionLike,
     InvalidParamsError,
-    SessionLike,
     ToolContent,
     ToolResult,
     require_capability,
@@ -81,7 +81,7 @@ def _format_results(results: list[SearchResult]) -> str:
 
 
 def handle_web_search(
-    session: SessionLike,
+    session: CoordinationSessionLike,
     _workspace: Workspace,
     params: dict[str, object],
     *,

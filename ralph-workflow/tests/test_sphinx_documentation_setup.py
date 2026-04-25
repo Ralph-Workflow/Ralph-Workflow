@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import runpy
+import tomllib
 from pathlib import Path
 
 from ralph import __version__
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 CONF_PATH = REPO_ROOT / "docs" / "sphinx" / "conf.py"
+PYPROJECT_PATH = REPO_ROOT / "pyproject.toml"
 GITIGNORE_PATH = REPO_ROOT.parent / ".gitignore"
 INDEX_RST_PATH = REPO_ROOT / "docs" / "sphinx" / "index.rst"
 GETTING_STARTED_PATH = REPO_ROOT / "docs" / "sphinx" / "getting-started.md"
@@ -91,6 +93,15 @@ def test_sphinx_pages_link_to_getting_started() -> None:
         "in the first 1000 characters:\n"
         + "\n".join(f"  docs/sphinx/{p}" for p in missing)
     )
+
+
+def test_docs_extra_includes_linkify_dependency_when_sphinx_enables_linkify() -> None:
+    pyproject = tomllib.loads(PYPROJECT_PATH.read_text(encoding="utf-8"))
+    docs_extra = pyproject["project"]["optional-dependencies"]["docs"]
+    namespace = runpy.run_path(str(CONF_PATH))
+
+    assert "linkify" in namespace["myst_enable_extensions"]
+    assert "linkify-it-py>=2" in docs_extra
 
 
 def test_index_rst_has_navigation_callout() -> None:

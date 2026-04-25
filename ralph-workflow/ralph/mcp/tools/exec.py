@@ -14,8 +14,8 @@ from typing import TYPE_CHECKING, Protocol, cast, runtime_checkable
 
 from ralph.mcp.tools.coordination import (
     CapabilityDeniedError,
+    CoordinationSessionLike,
     InvalidParamsError,
-    SessionLike,
     ToolContent,
     ToolError,
     ToolResult,
@@ -463,7 +463,7 @@ def format_exec_result(
 
 
 def handle_exec_command(
-    session: SessionLike,
+    session: CoordinationSessionLike,
     workspace: object,
     params: Mapping[str, object],
 ) -> ToolResult:

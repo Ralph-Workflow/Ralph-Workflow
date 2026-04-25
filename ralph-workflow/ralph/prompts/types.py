@@ -8,8 +8,19 @@ second parallel type system.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
 
+from ralph.mcp.protocol.capability_mapping import Capability, SessionDrain
+from ralph.mcp.tools.names import (
+    ARTIFACT_TOOLS,
+    ENV_READ_TOOLS,
+    GIT_DIFF_READ_TOOLS,
+    GIT_STATUS_READ_TOOLS,
+    PLANNING_DRAFT_TOOLS,
+    PROCESS_EXEC_TOOLS,
+    PROGRESS_TOOLS,
+    TRACKED_WRITE_TOOLS,
+    WORKSPACE_READ_TOOLS,
+)
 from ralph.prompts.template_variables import (
     CapabilitySet,
     PolicyFlag,
@@ -22,33 +33,6 @@ from ralph.prompts.template_variables import (
 from ralph.prompts.template_variables import (
     capability_template_variables as _capability_template_variables,
 )
-
-if TYPE_CHECKING:
-    from ralph.mcp.protocol.capability_mapping import Capability, SessionDrain
-    from ralph.mcp.tools.names import (
-        ARTIFACT_TOOLS,
-        ENV_READ_TOOLS,
-        GIT_DIFF_READ_TOOLS,
-        GIT_STATUS_READ_TOOLS,
-        PLANNING_DRAFT_TOOLS,
-        PROCESS_EXEC_TOOLS,
-        PROGRESS_TOOLS,
-        TRACKED_WRITE_TOOLS,
-        WORKSPACE_READ_TOOLS,
-    )
-else:
-    from ralph.mcp.protocol.capability_mapping import Capability, SessionDrain
-    from ralph.mcp.tools.names import (
-        ARTIFACT_TOOLS,
-        ENV_READ_TOOLS,
-        GIT_DIFF_READ_TOOLS,
-        GIT_STATUS_READ_TOOLS,
-        PLANNING_DRAFT_TOOLS,
-        PROCESS_EXEC_TOOLS,
-        PROGRESS_TOOLS,
-        TRACKED_WRITE_TOOLS,
-        WORKSPACE_READ_TOOLS,
-    )
 
 
 @dataclass(frozen=True)

@@ -1,17 +1,8 @@
 """Shared lifecycle-line filter used by all display intake paths.
 
-The BARE_LIFECYCLE_TOKENS set is the union of all provider parsers' lifecycle tokens:
-- Claude parser: message_delta, message_start, message_stop, content_block_start,
-                content_block_stop, thinking, user, assistant
-- Codex parser: thread.started, turn.started, message_start, ping, heartbeat, ready,
-                turn.completed, response.completed, done, complete, stop
-- Gemini parser: thread.started, turn.started, message_start, message_started,
-                 heartbeat, ping, ready, start, done, stop, message_end
-- OpenCode parser: thread.started, turn.started, message_start, heartbeat, ping,
-                   ready, assistant, user, step_start, step_finish, done
-- Generic parser: start, begin, ready, thread.started, turn.started, message_start,
-                  message_stop, heartbeat, content_block_start, content_block_stop,
-                  user, assistant, thinking, message_delta, stop, done, complete
+``BARE_LIFECYCLE_TOKENS`` is the union of parser-only lifecycle markers from
+Claude, Codex, Gemini, OpenCode, and the generic parser. These markers carry no
+user payload and are suppressed before they can surface as display content.
 """
 
 from __future__ import annotations

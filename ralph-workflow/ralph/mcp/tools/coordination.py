@@ -83,7 +83,7 @@ class ToolResult:
 
 
 @runtime_checkable
-class SessionLike(Protocol):
+class CoordinationSessionLike(Protocol):
     """Minimum session surface required by coordination handlers."""
 
     session_id: str
@@ -135,7 +135,9 @@ def format_progress_text(status: str, note: str, timestamp: int) -> str:
     )
 
 
-def require_capability(session: SessionLike, capability: str, action: str) -> None:
+def require_capability(
+    session: CoordinationSessionLike, capability: str, action: str
+) -> None:
     """Require a capability, raising a capability-denied error when missing."""
     outcome = session.check_capability(capability)
     if _is_approved(outcome):
@@ -145,7 +147,7 @@ def require_capability(session: SessionLike, capability: str, action: str) -> No
 
 
 def handle_report_progress(
-    session: SessionLike,
+    session: CoordinationSessionLike,
     _workspace: WorkspaceLike,
     params: dict[str, object],
     *,
@@ -163,7 +165,7 @@ def handle_report_progress(
 
 
 def handle_declare_complete(
-    session: SessionLike,
+    session: CoordinationSessionLike,
     _workspace: WorkspaceLike,
     params: dict[str, object],
     *,
@@ -199,7 +201,7 @@ def format_coordination_text(
 
 
 def handle_coordinate(
-    session: SessionLike,
+    session: CoordinationSessionLike,
     _workspace: WorkspaceLike,
     params: dict[str, object],
     *,
@@ -222,7 +224,7 @@ def handle_coordinate(
 
 
 def handle_read_env(
-    session: SessionLike,
+    session: CoordinationSessionLike,
     _workspace: WorkspaceLike,
     params: dict[str, object],
 ) -> ToolResult:
@@ -246,9 +248,9 @@ __all__ = [
     "RUN_REPORT_PROGRESS_CAPABILITY",
     "CapabilityDeniedError",
     "ContentBlock",
+    "CoordinationSessionLike",
     "ImageContent",
     "InvalidParamsError",
-    "SessionLike",
     "ToolContent",
     "ToolError",
     "ToolResult",
