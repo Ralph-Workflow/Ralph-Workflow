@@ -1,6 +1,6 @@
 """Transport-aware execution state model for agent lifecycle management.
 
-Provides AgentExecutionState (active/waiting/resumable/terminal/failed),
+Provides AgentExecutionState (active/waiting/resumable/terminal),
 the ExecutionStrategy protocol, and concrete GenericExecutionStrategy and
 OpenCodeExecutionStrategy implementations.
 """
@@ -21,7 +21,6 @@ class AgentExecutionState(StrEnum):
     WAITING_ON_CHILD = "waiting_on_child"
     RESUMABLE_CONTINUE = "resumable_continue"
     TERMINAL_COMPLETE = "terminal_complete"
-    FAILED = "failed"
 
 
 class GenericExecutionStrategy:

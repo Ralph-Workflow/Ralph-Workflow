@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ralph.agents.invoke import AgentInvocationError
-from ralph.config.enums import PHASE_DEVELOPMENT
+from ralph.config.enums import PHASE_DEVELOPMENT, AgentTransport
 from ralph.config.models import AgentConfig, GeneralConfig, UnifiedConfig
 from ralph.pipeline import runner as runner_module
 from ralph.pipeline.effects import InvokeAgentEffect
@@ -234,6 +234,167 @@ def test_runner_stale_session_exhausts_retries_returns_failure(
     )
 
     assert result == PipelineEvent.AGENT_FAILURE
+
+
+# ---------------------------------------------------------------------------
+# OpenCode-specific stale-session runner tests
+# ---------------------------------------------------------------------------
+
+
+def test_runner_opencode_stale_session_internal_retry_succeeds(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """OpenCode stale-session: _execute_agent_effect retries with fresh session after failure.
+
+    OpenCode-specific variant using 'Session not found' stale-session message and
+    OpenCode transport. Proves the runner stale-session detection and session-reset
+    path works end-to-end for OpenCode agents, not only for Claude.
+
+    Assertions:
+    1. First invocation fails with OpenCode stale-session error ('Session not found').
+    2. Second invocation (same _execute_agent_effect call) uses session_id=None.
+    3. AGENT_SUCCESS is returned.
+    """
+    monkeypatch.setattr(runner_module, "start_mcp_server", lambda *a, **kw: FakeBridge())
+    monkeypatch.setattr(runner_module, "shutdown_mcp_server", lambda _: None)
+    monkeypatch.setattr(
+        runner_module,
+        "materialize_system_prompt",
+        lambda *, workspace_root, name: str(tmp_path / "SYS.md"),
+    )
+
+    (tmp_path / ".agent" / "tmp").mkdir(parents=True, exist_ok=True)
+    monkeypatch.chdir(tmp_path)
+
+    prompt_file = tmp_path / "PROMPT.md"
+    prompt_file.write_text("implement the change", encoding="utf-8")
+
+    opencode_stale_session_id = "opencode-stale-abc123"
+
+    captured_calls: list[tuple[str | None, str]] = []  # (session_id, prompt_file)
+
+    def fake_invoke_agent(
+        config: AgentConfig,
+        pf: str,
+        *,
+        options: object = None,
+    ) -> list[str]:
+        del config
+        session_id = getattr(options, "session_id", None) if options is not None else None
+        captured_calls.append((session_id, pf))
+        if len(captured_calls) == 1:
+            raise AgentInvocationError(
+                "opencode",
+                1,
+                f"Session not found: {opencode_stale_session_id}",
+            )
+        return []
+
+    effect = InvokeAgentEffect(
+        agent_name="opencode",
+        phase=PHASE_DEVELOPMENT,
+        prompt_file=str(prompt_file),
+    )
+    config = _make_config()
+    state = _make_state(last_session_id=opencode_stale_session_id, session_preserve=True)
+
+    result = runner_module._execute_agent_effect(
+        effect,
+        config,
+        runner_module._AgentExecutionDeps(
+            invoke_agent=fake_invoke_agent,
+            agent_invocation_error=AgentInvocationError,
+            agent_registry=_registry_factory(
+                AgentConfig(
+                    cmd="opencode",
+                    output_flag="--format json",
+                    session_flag="--session {}",
+                    transport=AgentTransport.OPENCODE,
+                )
+            ),
+        ),
+        WorkspaceScope(tmp_path),
+        state=state,
+    )
+
+    # (3) AGENT_SUCCESS: the internal retry with fresh session succeeded
+    assert result == PipelineEvent.AGENT_SUCCESS
+
+    # (1) + (2) Two invocations: first uses stale session, second uses None
+    assert len(captured_calls) == _EXPECTED_INVOCATION_COUNT, (
+        f"Expected {_EXPECTED_INVOCATION_COUNT} invocations, got {len(captured_calls)}"
+    )
+    second_session_id, _second_prompt = captured_calls[1]
+    assert second_session_id is None, (
+        f"Second invocation must use no resume session_id after stale session reset; "
+        f"got {second_session_id!r}"
+    )
+
+
+def test_runner_opencode_unknown_session_stale_message_triggers_retry(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """OpenCode 'Unknown session' message also triggers stale-session retry with fresh session."""
+    monkeypatch.setattr(runner_module, "start_mcp_server", lambda *a, **kw: FakeBridge())
+    monkeypatch.setattr(runner_module, "shutdown_mcp_server", lambda _: None)
+    monkeypatch.setattr(
+        runner_module,
+        "materialize_system_prompt",
+        lambda *, workspace_root, name: str(tmp_path / "SYS.md"),
+    )
+
+    (tmp_path / ".agent" / "tmp").mkdir(parents=True, exist_ok=True)
+    monkeypatch.chdir(tmp_path)
+
+    prompt_file = tmp_path / "PROMPT.md"
+    prompt_file.write_text("implement the change", encoding="utf-8")
+
+    captured_calls: list[str | None] = []
+
+    def fake_invoke_agent(
+        config: AgentConfig,
+        pf: str,
+        *,
+        options: object = None,
+    ) -> list[str]:
+        del config, pf
+        session_id = getattr(options, "session_id", None) if options is not None else None
+        captured_calls.append(session_id)
+        if len(captured_calls) == 1:
+            raise AgentInvocationError("opencode", 1, "Unknown session: deadbeef")
+        return []
+
+    result = runner_module._execute_agent_effect(
+        InvokeAgentEffect(
+            agent_name="opencode",
+            phase=PHASE_DEVELOPMENT,
+            prompt_file=str(prompt_file),
+        ),
+        _make_config(),
+        runner_module._AgentExecutionDeps(
+            invoke_agent=fake_invoke_agent,
+            agent_invocation_error=AgentInvocationError,
+            agent_registry=_registry_factory(
+                AgentConfig(
+                    cmd="opencode",
+                    output_flag="--format json",
+                    session_flag="--session {}",
+                    transport=AgentTransport.OPENCODE,
+                )
+            ),
+        ),
+        WorkspaceScope(tmp_path),
+        state=_make_state(last_session_id="deadbeef", session_preserve=True),
+    )
+
+    assert result == PipelineEvent.AGENT_SUCCESS
+    assert len(captured_calls) == _EXPECTED_INVOCATION_COUNT
+    assert captured_calls[1] is None, (
+        f"Second call must use session_id=None after Unknown session reset; "
+        f"got {captured_calls[1]!r}"
+    )
 
 
 # ---------------------------------------------------------------------------

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import threading
 import time as _time_module
+from itertools import chain, repeat
 from types import SimpleNamespace
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock, patch
@@ -627,4 +628,111 @@ class TestReadLinesFromProcessIdleClockReset:
         # Handle was terminated once (on ACTIVE, not on WAITING_ON_CHILD)
         assert handle.terminate_count == 1, (
             f"Expected 1 termination; got {handle.terminate_count}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# (m) Quiet parent with live child: positive path — process completes normally
+# ---------------------------------------------------------------------------
+
+
+class TestOpenCodeQuietParentWithLiveChildSuccessPath:
+    """Quiet parent with active liveness probe: clock resets, parent produces output, no timeout."""
+
+    def test_quiet_opencode_parent_with_ralph_tracked_child_resets_idle_clock(
+        self,
+    ) -> None:
+        """OpenCode quiet parent with active liveness probe does not time out.
+
+        Integration path: _read_lines_from_process with OpenCodeExecutionStrategy.
+        When classify_quiet returns WAITING_ON_CHILD (live child tracked by Ralph),
+        last_activity resets; once the parent then produces output and finishes,
+        no _IdleStreamTimeoutError is raised.
+        """
+        output_ready = threading.Event()
+
+        class _BlockingThenOneLineStdout:
+            """Blocks until output_ready is set, then emits one line and finishes."""
+
+            def __init__(self) -> None:
+                self._emitted = False
+
+            def __iter__(self) -> _BlockingThenOneLineStdout:
+                return self
+
+            def __next__(self) -> str:
+                if not self._emitted:
+                    output_ready.wait(10)
+                    self._emitted = True
+                    return '{"type":"result"}\n'
+                raise StopIteration
+
+        class _TestHandle:
+            returncode: int | None = 0
+            stdout = _BlockingThenOneLineStdout()
+            stderr = SimpleNamespace(read=lambda: "")
+            terminate_count: int = 0
+
+            def terminate(self, grace_period_s: float | None = None) -> None:
+                del grace_period_s
+                self.terminate_count += 1
+
+            def __enter__(self) -> _TestHandle:
+                return self
+
+            def __exit__(self, *_: object) -> bool:
+                return False
+
+            def wait(self, timeout: float | None = None) -> int | None:
+                del timeout
+                return self.returncode
+
+            def poll(self) -> int | None:
+                return self.returncode
+
+        class _WaitingThenDoneStrategy(OpenCodeExecutionStrategy):
+            """Returns WAITING_ON_CHILD and unblocks stdout on first classify_quiet call."""
+
+            def __init__(self) -> None:
+                self.call_count = 0
+
+            def classify_quiet(
+                self, handle: object, liveness_probe: object
+            ) -> AgentExecutionState:
+                self.call_count += 1
+                output_ready.set()
+                return AgentExecutionState.WAITING_ON_CHILD
+
+        handle = _TestHandle()
+        strategy = _WaitingThenDoneStrategy()
+        probe = FakeLivenessProbe(active=True)
+
+        # First 3 monotonic values drive the initial timeout trigger and reset.
+        # Unlimited 1.5 values ensure no second timeout fires (1.5 - 1.1 = 0.4 < 1.0).
+        monotonic_vals = chain([0.0, 1.1, 1.1], repeat(1.5))
+
+        with (
+            patch("ralph.agents.invoke._IDLE_POLL_INTERVAL_SECONDS", 0.0),
+            patch.object(
+                _time_module, "monotonic", side_effect=lambda: next(monotonic_vals)
+            ),
+        ):
+            collected = list(
+                _read_lines_from_process(
+                    handle,  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+                    idle_timeout_seconds=1.0,
+                    execution_strategy=strategy,
+                    liveness_probe=probe,
+                )
+            )
+
+        assert collected == ['{"type":"result"}\n'], (
+            f"Expected output line after WAITING_ON_CHILD reset; got {collected!r}"
+        )
+        assert strategy.call_count >= 1, (
+            "classify_quiet must have been called at least once (clock reset happened)"
+        )
+        assert handle.terminate_count == 0, (
+            f"Handle must not be terminated when idle timeout never fires; "
+            f"got {handle.terminate_count} termination(s)"
         )
