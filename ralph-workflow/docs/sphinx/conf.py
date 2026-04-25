@@ -11,7 +11,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from ralph import __version__
 
 project = "Ralph Workflow"
-copyright = "2024, Ralph Workflow Contributors"  # noqa: A001
+copyright = "2026, Ralph Workflow Contributors"  # noqa: A001
 author = "Ralph Workflow Contributors"
 version = __version__
 release = __version__
@@ -22,6 +22,8 @@ extensions = [
     "sphinx.ext.viewcode",
     "sphinx.ext.intersphinx",
     "myst_parser",
+    "sphinx_copybutton",
+    "sphinx_design",
 ]
 
 autodoc_typehints = "description"
@@ -35,9 +37,43 @@ intersphinx_mapping = {
 templates_path = ["_templates"]
 exclude_patterns = ["_build", "build", "Thumbs.db", ".DS_Store"]
 
-html_theme = "sphinx_rtd_theme"
+html_theme = "furo"
+html_theme_options = {
+    "sidebar_hide_name": False,
+    "navigation_with_keys": True,
+    "top_of_page_buttons": ["view", "edit"],
+    "source_repository": "https://codeberg.org/RalphWorkflow/Ralph-Workflow",
+    "source_branch": "main",
+    "source_directory": "ralph-workflow/docs/sphinx/",
+    "light_css_variables": {
+        "color-brand-primary": "#0b6bcb",
+        "color-brand-content": "#0b6bcb",
+        "font-stack": "'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif",
+        "font-stack--monospace": "'JetBrains Mono', 'Fira Code', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
+    },
+    "dark_css_variables": {
+        "color-brand-primary": "#5eb1ff",
+        "color-brand-content": "#5eb1ff",
+        "color-background-primary": "#0b0d10",
+        "color-background-secondary": "#11151a",
+        "color-foreground-primary": "#e6edf3",
+        "color-foreground-secondary": "#9aa4b2",
+        "color-foreground-muted": "#6c7682",
+        "color-sidebar-background": "#0b0d10",
+        "color-sidebar-background-border": "#1a1f25",
+        "color-highlight-on-target": "#1f2933",
+    },
+}
+html_title = "Ralph Workflow"
 html_static_path = ["_static"]
+html_css_files = ["custom.css"]
+pygments_style = "friendly"
+pygments_dark_style = "github-dark"
 
+myst_enable_extensions = ["colon_fence", "deflist", "linkify", "substitution"]
+
+# Suppress only unavoidable autodoc import warnings for modules that rely on
+# optional extras (e.g., Pydantic forward-refs that fail without build-time extras).
 suppress_warnings = ["autodoc.import_object"]
 
 source_suffix = {

@@ -152,10 +152,11 @@ display_name = "Claude"
 
 The canonical field list is in `ralph/policy/defaults/ralph-workflow.toml`.
 
-### `[agent_chains.*]`
+### `[agent_chains]`
 
-Named reusable chain definitions. Each chain is an ordered list of agent names tried
-in sequence (agent fallover). Chains are referenced by drain bindings.
+Named reusable chain definitions. Each key is a chain name and its value is an ordered
+list of agent names tried in sequence (agent fallover). Chains are referenced by drain
+bindings.
 
 ```toml
 [agent_chains]
@@ -163,19 +164,26 @@ development = ["claude", "opencode"]
 review = ["claude"]
 ```
 
-### `[agent_drains.*]`
+### `[agent_drains]`
 
 Drain-to-chain bindings for built-in pipeline drains. Maps each phase drain name to a
 chain name defined in `[agent_chains]`.
 
 ```toml
 [agent_drains]
+planning = "planning"
 development = "development"
+development_analysis = "analysis"
+development_commit = "commit"
 review = "review"
+review_analysis = "analysis"
+review_commit = "commit"
+fix = "fix"
 ```
 
-The canonical list of built-in drain names: `planning`, `development`, `analysis`,
-`review`, `fix`, `commit`. See `ralph.policy.models` for the full drain/chain model.
+The built-in drain names are: `planning`, `development`, `development_analysis`,
+`development_commit`, `review`, `review_analysis`, `review_commit`, `fix`, `commit`.
+See `ralph.policy.models` for the full drain/chain model.
 
 ## Regenerating Configs
 
@@ -200,9 +208,8 @@ Then verify with `ralph --diagnose`.
 
 ### I want to use a single agent only
 
-Edit `.agent/agents.toml`. Find the `[agent_chains.developer]` and
-`[agent_chains.reviewer]` sections and set `agents = ["your-agent"]` in each.
-Remove any fallover entries you do not need.
+Edit `.agent/agents.toml`. Find the `[agent_chains]` table and set the agent list for
+the relevant chains to just `["your-agent"]`. Remove any fallover entries you do not need.
 
 ### How do I add a custom MCP server
 

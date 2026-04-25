@@ -64,8 +64,10 @@ web-visit = [
 ]
 docs = [
   "sphinx>=7",
-  "sphinx-rtd-theme",
+  "furo>=2024.8.6",
   "myst-parser",
+  "sphinx-copybutton>=0.5",
+  "sphinx-design>=0.5",
 ]
 bundle = ["pyinstaller>=6.0"]
 

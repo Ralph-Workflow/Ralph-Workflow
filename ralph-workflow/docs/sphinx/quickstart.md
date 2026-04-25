@@ -75,21 +75,25 @@ Fix any ❌ rows before running the pipeline.
 ralph
 ```
 
-Ralph Workflow runs the pipeline in phases:
+Ralph Workflow runs the pipeline in phases. At a high level:
 
 1. **Planning** — a planning agent reads PROMPT.md and produces a structured plan artifact
 2. **Development** — a developer agent implements the plan, up to `--developer-iters` times
-3. **Review** — a reviewer agent inspects the implementation and produces an issues artifact
-4. **Fix** — a fix agent resolves each issue, up to `--reviewer-reviews` cycles
-5. **Commit** — Ralph Workflow generates a conventional commit message and stages the result
+3. **Development analysis** — the pipeline evaluates the development output; loops back to
+   development if further iteration is needed, then commits when satisfied
+4. **Review** — a reviewer agent inspects the commit and produces an issues artifact
+5. **Review analysis** — the pipeline evaluates the review; routes to fix if issues remain,
+   then commits again when the review passes
 
 Progress is shown inline. If interrupted, Ralph Workflow saves a checkpoint and resumes
 from the last completed phase on the next run.
 
+See [Concepts](concepts.md) for the full phase graph and terminology.
+
 ## Where to Go Next
 
 - [Getting Started](getting-started.md) — step-by-step first-run walkthrough with more context
-- [Concepts](concepts.md) — terminology and mental models
+- [Concepts](concepts.md) — terminology and mental models (phases, drains, checkpoints)
 - [CLI Reference](cli.md) — all flags and sub-commands
 - [Configuration Reference](configuration.md) — config files and precedence
 - [API Reference](modules.rst) — full Python package documentation

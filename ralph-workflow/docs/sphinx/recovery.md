@@ -95,6 +95,66 @@ resets to base after a successful agent invocation or a chain fallover to the ne
 
 Connectivity probe interval can be configured in code via `ConnectivityMonitor(probe_interval_s=10.0)`.
 
+## Checkpoints
+
+Ralph Workflow saves a checkpoint after each phase completes so the pipeline can resume
+from exactly where it left off after an interruption or crash.
+
+### Where the checkpoint lives
+
+```
+.agent/checkpoint.json
+```
+
+The file is written atomically (write to `.agent/checkpoint.json.tmp`, then rename) to
+prevent partial-write corruption. The `.agent/` directory is created automatically if it
+does not exist.
+
+### What is stored
+
+The checkpoint contains:
+
+- **Current phase** — the last successfully completed phase name
+- **Plan artifact reference** — path to the plan artifact so development can reload context
+- **Iteration counts** — how many developer and reviewer iterations have been consumed
+- **Last error** — the most recent failure message (if any) for diagnostic display
+
+### When checkpoints are written
+
+A checkpoint is written after every successful phase transition. If the pipeline is
+interrupted mid-phase, the checkpoint reflects the last *completed* phase, not the
+in-progress one — the interrupted phase is retried from scratch on resume.
+
+### Inspecting the checkpoint
+
+```bash
+ralph --inspect-checkpoint
+```
+
+Prints the checkpoint contents as formatted JSON. Use this to confirm what phase will be
+resumed before running `ralph`.
+
+### Ignoring the checkpoint
+
+```bash
+ralph --no-resume
+```
+
+Starts the pipeline from the beginning, ignoring any existing checkpoint. The checkpoint
+file is not deleted; it is simply skipped.
+
+### Enabling or disabling checkpoints
+
+In `ralph-workflow.toml` (or `.agent/ralph-workflow.toml`):
+
+```toml
+[general.workflow]
+checkpoint_enabled = true   # set false to disable checkpoint writes entirely
+```
+
+When `checkpoint_enabled = false`, the pipeline runs without writing any checkpoint and
+will always restart from the beginning regardless of prior state.
+
 ## Related pages
 
 - [Concepts](concepts.md) — phase, drain, checkpoint, and recovery cycle terminology

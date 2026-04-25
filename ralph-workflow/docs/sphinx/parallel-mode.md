@@ -7,10 +7,10 @@ out across multiple git worktrees simultaneously.
 
 ## Configuration
 
-Enable parallel execution in your pipeline policy:
+Override parallel execution settings in `.agent/pipeline.toml`:
 
 ```toml
-[pipeline.parallel_execution]
+[parallel_execution]
 max_parallel_workers = 4
 max_work_units = 50
 ```

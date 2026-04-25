@@ -35,6 +35,8 @@ reviewing the output, and applying fixes — all unattended.
 
    cli
    configuration
+   mcp-tools
+   transcript
    modules
    local-web-access
 
@@ -50,13 +52,32 @@ reviewing the output, and applying fixes — all unattended.
 
    versioning
 
-Section guide
--------------
+.. grid:: 1 2 2 2
+   :gutter: 3
 
-- **Getting Started** — walkthroughs: first run, quickstart, and key concepts
-- **Operations** — recovery behaviour, parallel work units, and checkpoint management
-- **Reference** — complete CLI flag table, configuration file reference, API docs, and web access capabilities
-- **Troubleshooting** — common errors and how to fix them
+   .. grid-item-card:: Getting Started
+      :link: getting-started
+      :link-type: doc
+
+      Step-by-step first-run walkthrough — install, init, edit PROMPT.md, run.
+
+   .. grid-item-card:: Reference
+      :link: cli
+      :link-type: doc
+
+      Every CLI flag, every config field, the full Python API.
+
+   .. grid-item-card:: Operations
+      :link: recovery
+      :link-type: doc
+
+      Checkpoint, resume, recovery cycles, parallel worktrees.
+
+   .. grid-item-card:: Troubleshooting
+      :link: troubleshooting
+      :link-type: doc
+
+      Common errors and how to fix them.
 
 Indices and tables
 ==================

@@ -16,7 +16,7 @@ the starter sentinel removed before allowing the pipeline to run. See
 
 A named step in the pipeline sequence. The default pipeline has phases:
 `planning`, `development`, `development_analysis`, `development_commit`,
-`review`, `review_analysis`, `review_commit`, `fix`, and `complete`.
+`review`, `review_analysis`, `fix`, `review_commit`, and `complete`.
 Phases are declared in `.agent/pipeline.toml`; the order there defines execution order.
 See `ralph.phases` for phase resolution and `ralph.pipeline` for orchestration.
 
