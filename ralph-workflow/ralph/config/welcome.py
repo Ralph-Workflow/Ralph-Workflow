@@ -29,17 +29,24 @@ def _build_agent_availability_content(
         try:
             availability = check_agent_availability(agent_registry)
             avail_lines: list[Text] = []
-            for name, status in availability:
+            for registry_name, status in availability:
+                # Use display_name if available, otherwise show registry name
+                agent = agent_registry.get(registry_name)
+                label = (
+                    (agent.display_name or registry_name)
+                    if agent is not None
+                    else registry_name
+                )
                 if status == "available":
                     avail_lines.append(
-                        Text.from_markup(f"  • {name}: [green]on PATH[/green]")
+                        Text.from_markup(f"  • {label}: [green]on PATH[/green]")
                     )
                 elif status == "missing_on_path":
-                    install_url = _KNOWN_AGENT_INSTALL_URLS.get(name.lower())
+                    install_url = _KNOWN_AGENT_INSTALL_URLS.get(registry_name.lower())
                     if install_url:
                         avail_lines.append(
                             Text.from_markup(
-                                f"  • {name}: "
+                                f"  • {label}: "
                                 "[yellow]⚠ missing (not on PATH)[/yellow] "
                                 f"[dim]install: {install_url}[/dim]"
                             )
@@ -47,14 +54,14 @@ def _build_agent_availability_content(
                     else:
                         avail_lines.append(
                             Text.from_markup(
-                                f"  • {name}: "
+                                f"  • {label}: "
                                 "[yellow]⚠ missing (not on PATH)[/yellow]"
                             )
                         )
                 else:  # no_cmd
                     avail_lines.append(
                         Text.from_markup(
-                            f"  • {name}: [yellow]⚠ missing (not on PATH)[/yellow]"
+                            f"  • {label}: [yellow]⚠ missing (not on PATH)[/yellow]"
                         )
                     )
             if avail_lines:

@@ -40,8 +40,10 @@ def check_agent_availability(
         registry: Object implementing list_agents() and get(name) for agent resolution.
 
     Returns:
-        List of (display_name, status) tuples where status is one of
+        List of (registry_name, status) tuples where status is one of
         'available', 'missing_on_path', or 'no_cmd'.
+        The key is always the configured registry name so callers can join
+        back to the registry without a secondary display-name lookup.
     """
     results: list[tuple[str, AgentStatus]] = []
     for name in registry.list_agents():
@@ -50,12 +52,11 @@ def check_agent_availability(
             continue
         cmd = agent.cmd
         if not cmd:
-            results.append((agent.display_name or name, "no_cmd"))
+            results.append((name, "no_cmd"))
             continue
         first_word = cmd.split(maxsplit=1)[0]
-        display = agent.display_name or first_word
         status: AgentStatus = (
             "available" if shutil.which(first_word) is not None else "missing_on_path"
         )
-        results.append((display, status))
+        results.append((name, status))
     return results
