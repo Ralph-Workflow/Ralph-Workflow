@@ -128,7 +128,7 @@ class _ConnectivityMonitorLike(Protocol):
     def current_state(self) -> ConnectivityState: ...
 
     def add_listener(
-        self, _cb: Callable[[object], None]
+        self, cb: Callable[[object], None]
     ) -> Callable[[], None]: ...
 
 

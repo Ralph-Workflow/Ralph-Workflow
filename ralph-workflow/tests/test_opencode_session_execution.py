@@ -218,6 +218,68 @@ class TestFullyQuietTreeTimeout:
 
 
 # ---------------------------------------------------------------------------
+# (h-pre) Unrelated agent workers do not suppress OpenCode timeout
+# ---------------------------------------------------------------------------
+
+
+class TestUnrelatedWorkerDoesNotSuppressTimeout:
+    """Session-scoped liveness: unrelated agent: workers must not keep this run alive.
+
+    OpenCodeExecutionStrategy accepts an optional ``label_scope`` that narrows
+    the liveness check from the global ``agent:`` prefix to
+    ``agent:{label_scope}:`` so that concurrent agent workers belonging to a
+    different logical task do not falsely reset the idle clock.
+    """
+
+    def test_unrelated_agent_worker_does_not_suppress_timeout(self) -> None:
+        """Unrelated agent:other-session worker does not keep scoped run alive."""
+        strategy = OpenCodeExecutionStrategy(label_scope="my-session")
+        # Probe: only an unrelated worker with a different session label is active.
+        probe = FakeLivenessProbe(
+            active_labels=frozenset({"agent:other-session:worker1"})
+        )
+        handle = _FakeHandle(has_descendants=False)
+
+        state = strategy.classify_quiet(handle, probe)
+
+        # "agent:other-session:worker1" does NOT start with "agent:my-session:"
+        # so the scoped check returns False → ACTIVE (timeout may fire)
+        assert state == AgentExecutionState.ACTIVE, (
+            f"Unrelated worker must not suppress timeout for scoped run; got {state!r}"
+        )
+
+    def test_related_agent_worker_resets_idle_clock(self) -> None:
+        """Related agent:my-session: worker keeps scoped run alive."""
+        strategy = OpenCodeExecutionStrategy(label_scope="my-session")
+        probe = FakeLivenessProbe(
+            active_labels=frozenset({"agent:my-session:worker1"})
+        )
+        handle = _FakeHandle(has_descendants=False)
+
+        state = strategy.classify_quiet(handle, probe)
+
+        # "agent:my-session:worker1" starts with "agent:my-session:" → WAITING_ON_CHILD
+        assert state == AgentExecutionState.WAITING_ON_CHILD, (
+            f"Related worker must reset idle clock; got {state!r}"
+        )
+
+    def test_unscoped_strategy_still_activates_on_any_agent_label(self) -> None:
+        """Without a scope, the global agent: prefix keeps existing behaviour."""
+        strategy = OpenCodeExecutionStrategy()  # no label_scope
+        probe = FakeLivenessProbe(
+            active_labels=frozenset({"agent:any-run:worker1"})
+        )
+        handle = _FakeHandle(has_descendants=False)
+
+        state = strategy.classify_quiet(handle, probe)
+
+        # Any "agent:" prefix matches the global check → WAITING_ON_CHILD
+        assert state == AgentExecutionState.WAITING_ON_CHILD, (
+            f"Unscoped strategy must match any agent: label; got {state!r}"
+        )
+
+
+# ---------------------------------------------------------------------------
 # (h) Runner threads OpenCodeResumableExitError session_id into the retry
 # ---------------------------------------------------------------------------
 

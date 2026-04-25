@@ -73,13 +73,13 @@ class _FakeRegistryInstance:
         return self._agent_config
 
 
-def _registry_factory(agent_config: AgentConfig):
+def _registry_factory(agent_config: AgentConfig) -> type:
     """Return a registry factory class stub that always resolves to agent_config."""
 
     class _Registry:
         @classmethod
-        def from_config(cls, cfg: object) -> _FakeRegistryInstance:
-            del cls, cfg
+        def from_config(cls, config: UnifiedConfig) -> _FakeRegistryInstance:
+            del cls, config
             return _FakeRegistryInstance(agent_config)
 
     return _Registry

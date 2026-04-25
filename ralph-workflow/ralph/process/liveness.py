@@ -31,13 +31,29 @@ class DefaultLivenessProbe:
 
 
 class FakeLivenessProbe:
-    """Test-only probe that returns a fixed activity answer regardless of label."""
+    """Test-only probe that returns a fixed activity answer.
 
-    def __init__(self, *, active: bool = False) -> None:
+    When ``active_labels`` is provided the probe simulates a specific set of
+    active process labels: ``any_agent_active(prefix)`` returns True only when
+    at least one label in ``active_labels`` starts with ``prefix``.  This lets
+    tests distinguish between related and unrelated agent workers.
+
+    When ``active_labels`` is None the probe falls back to the flat ``active``
+    flag (existing behaviour, unchanged).
+    """
+
+    def __init__(
+        self,
+        *,
+        active: bool = False,
+        active_labels: frozenset[str] | None = None,
+    ) -> None:
         self._active = active
+        self._active_labels = active_labels
 
     def any_agent_active(self, label_prefix: str) -> bool:
-        del label_prefix
+        if self._active_labels is not None:
+            return any(label.startswith(label_prefix) for label in self._active_labels)
         return self._active
 
 
