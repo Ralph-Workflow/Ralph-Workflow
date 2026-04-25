@@ -438,6 +438,20 @@ def test_emit_first_run_welcome_docs_pointer_includes_pydoc_ralph() -> None:
     _assert_no_raw_markup(output)
 
 
+def test_emit_first_run_welcome_panel_includes_getting_started_pointer() -> None:
+    """First-run welcome panel must point new users to getting-started.md."""
+    buf, rich_console = _make_console()
+    results = [BootstrapResult(Path("/global/ralph-workflow.toml"), "created", None)]
+
+    emit_first_run_welcome(rich_console, results)
+
+    output = buf.getvalue()
+    assert "getting-started" in output, (
+        f"Expected 'getting-started' reference in first-run welcome panel, got: {output!r}"
+    )
+    _assert_no_raw_markup(output)
+
+
 def test_emit_first_run_welcome_agents_section_before_config_files(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

@@ -1,5 +1,7 @@
 # Recovery
 
+> **New to Ralph Workflow?** Start with the [Getting Started](getting-started.md) walkthrough — it explains the same flow with more context.
+
 Ralph Workflow treats failure recovery as a first-class concern. The pipeline is designed
 to keep running through transient failures, preserve enough context to resume cleanly, and
 only terminate on user intent or pre-flight validation errors.

@@ -1,5 +1,7 @@
 # Concepts
 
+> **New to Ralph Workflow?** See [Getting Started](getting-started.md) before reading this page — it introduces the workflow before the terminology.
+
 Key terms and mental models used throughout Ralph Workflow.
 
 ## PROMPT.md
@@ -73,11 +75,22 @@ the review phase classifies the issues and triggers a fix phase. This review →
 repeats up to `--reviewer-reviews` times. The recovery controller decides whether to
 continue, escalate, or abort based on issue severity. See `ralph.recovery`.
 
+## Work Unit
+
+A discrete, independently executable sub-task declared in a planning artifact's
+`work_units` list. When the planning agent identifies that tasks can be parallelized,
+it emits multiple work units with distinct `unit_id` values. Ralph Workflow then runs
+each work unit concurrently using its parallel executor, with each unit getting its own
+MCP session and coordination context. Work units are validated against the parallel
+policy (`max_work_units`, `max_parallel_workers`) before execution begins. See
+`ralph.pipeline.work_units` and [Parallel Work Units](#parallel-work-units).
+
 ## Isolation Mode
 
 When enabled (the default), each agent invocation runs in a clean environment with
-limited filesystem access scoped to the workspace. Disable with `--no-isolation` for
-debugging. See `ralph.policy.models` for the isolation config field.
+limited filesystem access scoped to the workspace. Isolation behavior is controlled
+by the `general.behavior` section in `ralph-workflow.toml`. See `ralph.policy.models`
+for the isolation config field.
 
 ## Parallel Work Units
 
@@ -85,6 +98,25 @@ When the planning artifact declares multiple `work_units`, Ralph Workflow runs t
 concurrently using the parallel executor. Each work unit gets its own MCP session and
 coordination context. Parallel execution requires `pipeline.parallel_execution` to be
 configured. See `ralph.pipeline.parallel` and `ralph.mcp.tools` (coordinate tool).
+
+See also: [Parallel Mode](parallel-mode.md) for a detailed walkthrough.
+
+## Ambiguous Failure Category
+
+A failure classification used by the recovery classifier when the cause of a phase
+failure cannot be clearly attributed to a specific category (agent error, environment
+issue, policy violation, etc.). When a failure is classified as `ambiguous`,
+Ralph Workflow retries without counting against the budget debit — the retry proceeds
+but the failure is flagged for review. See `ralph.recovery.classifier.FailureCategory`
+and `ralph.recovery.controller`.
+
+## Connectivity Monitor
+
+A background component that periodically checks whether the host machine has outbound
+network connectivity. When connectivity is lost during a pipeline run, the monitor
+signals the runner to pause or abort gracefully rather than let agent invocations time
+out silently. In tests, a `FakeConnectivityMonitor` is used. See
+`ralph.recovery.connectivity.ConnectivityMonitor` and `ralph.recovery`.
 
 ## Transcript Layout
 

@@ -1,6 +1,6 @@
-# User-global Ralph configuration.
+# User-global Ralph Workflow configuration.
 #
-# Ralph manages five config files in total:
+# Ralph Workflow manages seven config files in total:
 #   1. ~/.config/ralph-workflow.toml          (user-global, this file)
 #   2. ~/.config/ralph-workflow-mcp.toml      (user-global MCP config)
 #   3. .agent/ralph-workflow.toml             (project-local override)

@@ -9,6 +9,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from rich.console import Console
+from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
@@ -45,12 +46,32 @@ def diagnose_command(
 
     config_ok = _check_git_repo()
     config_ok &= _check_configuration(config_path, cli_overrides)
-    config_ok &= _check_agents(cli_overrides)
+    agent_missing = _check_agents_returning_missing(cli_overrides)
+    config_ok &= not agent_missing
     config_ok &= _check_mcp_servers(workspace_scope)
     config_ok &= _check_workspace_files()
 
     # Pre-flight validation using policy system
     validation_ok = _run_preflight_validation(config_path, cli_overrides, workspace_scope)
+
+    # Build and print next steps
+    prompt_path = workspace_scope.root / "PROMPT.md"
+    prompt_exists = prompt_path.exists()
+    prompt_has_sentinel = False
+    if prompt_exists:
+        try:
+            from ralph.cli.commands.init import STARTER_PROMPT_SENTINEL  # noqa: PLC0415
+            prompt_has_sentinel = STARTER_PROMPT_SENTINEL in prompt_path.read_text(encoding="utf-8")
+        except Exception:
+            pass
+
+    next_steps = _build_next_steps(
+        validation_ok=validation_ok,
+        agent_missing=agent_missing,
+        prompt_exists=prompt_exists,
+        prompt_has_sentinel=prompt_has_sentinel,
+    )
+    _print_next_steps_panel(next_steps)
 
     console.print()
 
@@ -59,6 +80,67 @@ def diagnose_command(
     if not config_ok:
         return 1
     return 0
+
+
+def _build_next_steps(
+    *,
+    validation_ok: bool,
+    agent_missing: bool,
+    prompt_exists: bool,
+    prompt_has_sentinel: bool,
+) -> list[str]:
+    """Build the list of remediation steps based on current diagnostic state.
+
+    Args:
+        validation_ok: Whether pre-flight validation passed.
+        agent_missing: Whether any configured agent is missing from PATH.
+        prompt_exists: Whether PROMPT.md exists in the workspace.
+        prompt_has_sentinel: Whether PROMPT.md still contains the starter sentinel.
+
+    Returns:
+        List of human-readable remediation lines.
+    """
+    steps: list[str] = []
+
+    if not prompt_exists:
+        steps.append("Run `ralph --init` to scaffold PROMPT.md and project config files.")
+    elif prompt_has_sentinel:
+        steps.append(
+            "Edit PROMPT.md to remove the `<!-- ralph:starter-prompt ... -->` marker "
+            "and describe your task."
+        )
+
+    if agent_missing:
+        steps.append(
+            "Install at least one supported agent: "
+            "Claude Code (https://docs.claude.com/claude-code) "
+            "or OpenCode (https://opencode.ai)."
+        )
+
+    if not validation_ok:
+        steps.append(
+            "Pre-flight validation failed: see the Pre-flight Validation table above. "
+            "Fix policy errors with `ralph --regenerate-config` if config files were edited."
+        )
+
+    if not steps:
+        steps.append("Run `ralph` to start the pipeline.")
+
+    return steps
+
+
+def _print_next_steps_panel(steps: list[str]) -> None:
+    """Print the Next steps panel to the console."""
+    content = Text()
+    for i, step in enumerate(steps):
+        if i > 0:
+            content.append("\n")
+        content.append(f"  • {step}")
+    content.append("\n\n")
+    content.append("New to Ralph Workflow? ", style="dim")
+    content.append("docs/sphinx/getting-started.md", style="dim cyan")
+    content.append(" — step-by-step walkthrough.", style="dim")
+    console.print(Panel(content, title="Next steps", border_style="cyan", padding=(1, 2)))
 
 
 def _run_preflight_validation(
@@ -180,11 +262,21 @@ def _check_agents(cli_overrides: dict[str, object] | None) -> bool:
     Returns:
         True if check passed, False otherwise.
     """
+    return not _check_agents_returning_missing(cli_overrides)
+
+
+def _check_agents_returning_missing(cli_overrides: dict[str, object] | None) -> bool:
+    """Check agent availability and return True if any agent is missing from PATH.
+
+    Returns:
+        True if at least one agent is missing from PATH, False otherwise.
+    """
     table = Table(title="Agents")
     table.add_column("Agent", style="cyan")
     table.add_column("Config")
     table.add_column("PATH")
 
+    any_missing = False
     try:
         config = load_config(None, cli_overrides, workspace_scope=resolve_workspace_scope())
         registry = AgentRegistry.from_config(config)
@@ -193,11 +285,13 @@ def _check_agents(cli_overrides: dict[str, object] | None) -> bool:
             table.add_row("(none)", "[yellow]No agents configured[/yellow]", "-")
         else:
             availability = check_agent_availability(registry)
-            path_by_name: dict[str, str] = {
-                name: "[green]on PATH[/green]" if status == "available"
-                else "[yellow]missing[/yellow]"
-                for name, status in availability
-            }
+            path_by_name: dict[str, str] = {}
+            for name, status in availability:
+                if status == "available":
+                    path_by_name[name] = "[green]on PATH[/green]"
+                else:
+                    path_by_name[name] = "[yellow]missing[/yellow]"
+                    any_missing = True
             for name in agent_names:
                 agent = registry.get(name)
                 cmd = agent.cmd if agent else ""
@@ -207,10 +301,10 @@ def _check_agents(cli_overrides: dict[str, object] | None) -> bool:
     except Exception as e:
         table.add_row("Agents", _status_text("Error", str(e), "red"), "-")
         console.print(table)
-        return False
+        return True
 
     console.print(table)
-    return True
+    return any_missing
 
 
 def _check_mcp_servers(workspace_scope: WorkspaceScope) -> bool:

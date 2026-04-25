@@ -1,5 +1,7 @@
 # Configuration Reference
 
+> **New to Ralph Workflow?** Start with the [Getting Started](getting-started.md) walkthrough — it explains the same flow with more context.
+
 Ralph Workflow uses a layered configuration system. Settings are resolved in this order
 (highest priority first):
 
@@ -29,7 +31,7 @@ Ralph Workflow manages seven config files across two scopes.
 | `.agent/pipeline.toml` | Phase sequence and parallel execution settings |
 | `.agent/artifacts.toml` | Artifact type schemas and contracts |
 
-Run `ralph --init default` to create all of these from the bundled templates.
+Run `ralph --init` to create all of these from the bundled templates.
 
 ## Bundled Default Templates
 
@@ -41,6 +43,139 @@ explaining every field. The canonical reference is the file itself:
 - `agents.toml` — default agent definitions (`claude`, `opencode`), chains, and drains
 - `pipeline.toml` — default phase sequence and parallel execution policy
 - `artifacts.toml` — artifact type contracts
+
+## `ralph-workflow.toml` Sections
+
+The main config file (`~/.config/ralph-workflow.toml` and `.agent/ralph-workflow.toml`)
+is organized into the following sections. All fields are optional; commented-out fields
+use their documented defaults automatically.
+
+### `[general]`
+
+Core workflow settings: iteration counts, verbosity, review depth, git identity, and
+retry behavior.
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `verbosity` | `2` | Output verbosity: 0=quiet, 1=normal, 2=verbose, 3=full, 4=debug |
+| `developer_iters` | `5` | Developer agent iterations per run |
+| `reviewer_reviews` | `2` | Review-fix cycles (0 = skip review) |
+| `review_depth` | `"standard"` | `standard`, `comprehensive`, `security`, or `incremental` |
+| `git_user_name` | (from git config) | Git author name for commits |
+| `git_user_email` | (from git config) | Git author email for commits |
+| `max_retries` | `3` | Max retries per agent attempt |
+| `retry_delay_ms` | `1000` | Base delay between retries in ms |
+| `backoff_multiplier` | `2.0` | Exponential backoff multiplier |
+| `max_backoff_ms` | `60000` | Maximum retry backoff delay in ms |
+| `agent_idle_timeout_seconds` | `300.0` | Max idle seconds before killing a stalled agent |
+
+### `[general.behavior]`
+
+Behavioral flags that control optional runtime features.
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `interactive` | `false` | Keep agent in foreground (interactive mode) |
+| `auto_detect_stack` | `true` | Auto-detect project stack for review guidelines |
+| `strict_validation` | `false` | Strict PROMPT.md validation |
+
+### `[general.workflow]`
+
+Workflow automation flags.
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `checkpoint_enabled` | `true` | Enable checkpoint/resume functionality |
+
+### `[general.execution]`
+
+Execution behavior flags.
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `force_universal_prompt` | `false` | Force universal review prompt for all agents |
+
+### `[ccs]`
+
+Claude Code Switch (CCS) defaults — controls how Ralph Workflow invokes Claude Code
+agent binaries. These fields mirror the flags that `claude` accepts.
+
+| Key | Description |
+|-----|-------------|
+| `output_flag` | Flag to request JSON streaming output |
+| `yolo_flag` | Flag to set permission mode |
+| `verbose_flag` | Flag for verbose agent output |
+| `print_flag` | Flag for print/non-interactive mode |
+| `streaming_flag` | Flag to include partial messages |
+| `json_parser` | Parser to use: `"claude"` or `"opencode"` |
+| `session_flag` | Flag template for session resume |
+| `can_commit` | Whether this agent type is allowed to make commits |
+
+### `[ccs_aliases]`
+
+Maps named agent identifiers to their CCS settings. Supports two forms:
+
+- **Simple string form** — use a built-in named alias: `ccs_aliases = { claude = "claude", opencode = "opencode" }`
+- **Table form** — override per-alias CCS settings individually:
+
+```toml
+[ccs_aliases.claude]
+cmd = "claude"
+model_flag = "--model claude-sonnet-4"
+can_commit = true
+```
+
+### `[cloud]`
+
+Optional cloud reporting integration. Leave disabled unless you have an account.
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `enabled` | `false` | Enable cloud reporting |
+| `api_url` | — | Base URL for cloud API |
+| `api_key` | `""` | API key (prefer `RALPH_CLOUD_API_KEY` env var) |
+| `timeout_secs` | `30` | Request timeout |
+
+### `[agents.*]`
+
+Per-agent definitions. Each `[agents.<name>]` block defines a named agent with its
+invocation command and flags. Example:
+
+```toml
+[agents.claude]
+cmd = "claude"
+output_flag = "--output-format=stream-json"
+yolo_flag = "--permission-mode auto"
+can_commit = true
+display_name = "Claude"
+```
+
+The canonical field list is in `ralph/policy/defaults/ralph-workflow.toml`.
+
+### `[agent_chains.*]`
+
+Named reusable chain definitions. Each chain is an ordered list of agent names tried
+in sequence (agent fallover). Chains are referenced by drain bindings.
+
+```toml
+[agent_chains]
+development = ["claude", "opencode"]
+review = ["claude"]
+```
+
+### `[agent_drains.*]`
+
+Drain-to-chain bindings for built-in pipeline drains. Maps each phase drain name to a
+chain name defined in `[agent_chains]`.
+
+```toml
+[agent_drains]
+development = "development"
+review = "review"
+```
+
+The canonical list of built-in drain names: `planning`, `development`, `analysis`,
+`review`, `fix`, `commit`. See `ralph.policy.models` for the full drain/chain model.
 
 ## Regenerating Configs
 
@@ -58,7 +193,7 @@ Rewrites all configs from the bundled templates. Existing files are backed up wi
 Ralph Workflow will start but will fail when it tries to invoke an agent. Install at
 least one supported agent:
 
-- **Claude Code**: see <https://docs.anthropic.com/claude-code>
+- **Claude Code**: see <https://docs.claude.com/claude-code>
 - **opencode**: see <https://opencode.ai>
 
 Then verify with `ralph --diagnose`.

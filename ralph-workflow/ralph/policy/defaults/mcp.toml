@@ -1,6 +1,6 @@
-# Bundled default MCP configuration for Ralph.
+# Bundled default MCP configuration for Ralph Workflow.
 #
-# Ralph manages five config files in total:
+# Ralph Workflow manages seven config files in total:
 #   1. ~/.config/ralph-workflow.toml          (user-global main config)
 #   2. ~/.config/ralph-workflow-mcp.toml      (user-global MCP config, this file)
 #   3. .agent/ralph-workflow.toml             (project-local override)
@@ -53,7 +53,7 @@
 # Docs MCP server running locally (arabold/docs-mcp-server).
 # Start with: npx -y docs-mcp-server  (listens on port 6280 by default).
 # See https://github.com/arabold/docs-mcp-server for setup instructions.
-# Ralph supports both the modern streamable HTTP endpoint (`/mcp`) and the
+# Ralph Workflow supports both the modern streamable HTTP endpoint (`/mcp`) and the
 # legacy SSE endpoint (`/sse`) used by some clients such as OpenCode configs.
 # Prefer `/mcp` when you control the config; `/sse` is supported for
 # compatibility.

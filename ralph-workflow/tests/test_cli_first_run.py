@@ -303,6 +303,27 @@ def test_cli_first_run_panel_includes_what_is_ralph_pitch(
         )
 
 
+def test_cli_first_run_panel_includes_getting_started_pointer(
+    clean_env: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """First-run welcome panel must point new users to getting-started.md."""
+    runner = CliRunner()
+    monkeypatch.chdir(tmp_path)
+
+    result = runner.invoke(app, ["--check-config"], catch_exceptions=False)
+
+    assert result.exit_code == 0, f"Expected exit 0, got {result.exit_code}: {result.output}"
+    assert "getting-started" in result.output, (
+        f"Expected 'getting-started' reference in first-run welcome panel, got: {result.output}"
+    )
+    for token in _RAW_MARKUP_TOKENS:
+        assert token not in result.output, (
+            f"Raw markup token {token!r} found in first-run output: {result.output!r}"
+        )
+
+
 def test_cli_init_fallback_next_steps_includes_docs_pointer(
     clean_env: dict[str, str],
     monkeypatch: pytest.MonkeyPatch,
@@ -322,4 +343,102 @@ def test_cli_init_fallback_next_steps_includes_docs_pointer(
 
     assert "Docs:" in result2.output, (
         f"Expected 'Docs:' docs pointer in fallback next-steps output, got: {result2.output}"
+    )
+
+
+def test_cli_init_fallback_next_steps_includes_getting_started(
+    clean_env: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Second `ralph --init` (fallback path) should reference getting-started.md."""
+    runner = CliRunner()
+    monkeypatch.chdir(tmp_path)
+
+    # First init creates everything
+    result1 = runner.invoke(app, ["--init", "default"], catch_exceptions=False)
+    assert result1.exit_code == 0
+
+    # Second init hits the fallback path
+    result2 = runner.invoke(app, ["--init", "default"], catch_exceptions=False)
+    assert result2.exit_code == 0
+
+    assert "getting-started" in result2.output, (
+        f"Expected getting-started reference in fallback next-steps, got: {result2.output}"
+    )
+
+
+def test_cli_run_in_fresh_dir_shows_init_hint(
+    clean_env: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Bare `ralph` in a directory with no PROMPT.md and no .agent shows a friendly init hint."""
+    runner = CliRunner()
+    monkeypatch.chdir(tmp_path)
+
+    # Ensure completely fresh directory (no PROMPT.md, no .agent)
+    assert not (tmp_path / "PROMPT.md").exists()
+    assert not (tmp_path / ".agent").exists()
+
+    result = runner.invoke(app, [], catch_exceptions=False)
+
+    assert result.exit_code == 2, (  # noqa: PLR2004
+        f"Expected exit code 2 (preflight), got {result.exit_code}: {result.output}"
+    )
+    assert "not initialized" in result.output.lower(), (
+        f"Expected 'not initialized' in output, got: {result.output}"
+    )
+    assert "ralph --init" in result.output, (
+        f"Expected 'ralph --init' in output, got: {result.output}"
+    )
+    assert "getting-started" in result.output, (
+        f"Expected 'getting-started' in output, got: {result.output}"
+    )
+
+
+def test_cli_run_with_only_prompt_shows_init_hint(
+    clean_env: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Bare `ralph` with only PROMPT.md but no .agent still surfaces `ralph --init` guidance.
+
+    Specifically verifies the validation-error path (PROMPT.md exists but is not configured):
+    the output must explain the problem, point to `ralph --init`, and NOT show the
+    fresh-state 'not initialized' panel (which requires both PROMPT.md and .agent to be absent).
+    """
+    runner = CliRunner()
+
+    # Initialize global configs first so the first-run welcome does not contaminate the output.
+    init_dir = tmp_path / "global_init"
+    init_dir.mkdir()
+    monkeypatch.chdir(init_dir)
+    runner.invoke(app, ["--check-config"], catch_exceptions=False)
+
+    # Switch to a fresh workspace with only an empty PROMPT.md (no .agent).
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    (workspace / "PROMPT.md").write_text("")
+    monkeypatch.chdir(workspace)
+
+    result = runner.invoke(app, [], catch_exceptions=False)
+
+    # Exit 2 = preflight validation failure
+    assert result.exit_code == 2, (  # noqa: PLR2004
+        f"Expected exit code 2 (preflight), got {result.exit_code}: {result.output}"
+    )
+    # Validation error message from validate_required_inputs references ralph --init
+    assert "ralph --init" in result.output, (
+        f"Expected 'ralph --init' guidance in output, got: {result.output}"
+    )
+    # Must mention PROMPT.md to explain what is wrong
+    assert "PROMPT.md" in result.output, (
+        f"Expected 'PROMPT.md' to be mentioned in output, got: {result.output}"
+    )
+    # Must NOT show the "not initialized" fresh-state panel — PROMPT.md exists so
+    # we are in the validation-error path, not the completely-uninitialized path.
+    assert "not initialized" not in result.output.lower(), (
+        "The 'not initialized' fresh-state panel must NOT appear when PROMPT.md exists; "
+        f"got: {result.output}"
     )

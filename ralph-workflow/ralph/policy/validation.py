@@ -323,7 +323,8 @@ def validate_required_inputs(workspace_scope: WorkspaceScope) -> None:
             "PROMPT.md is the goal/acceptance-criteria document "
             "Ralph Workflow reads as its task input. "
             "Run `ralph --init` to scaffold PROMPT.md and project config files, "
-            "then edit PROMPT.md with the task you want Ralph Workflow to run."
+            "then edit PROMPT.md with the task you want Ralph Workflow to run. "
+            "New to Ralph Workflow? See docs/sphinx/getting-started.md for a walkthrough."
         )
     if not prompt_path.is_file():
         raise PolicyValidationError(
@@ -342,5 +343,6 @@ def validate_required_inputs(workspace_scope: WorkspaceScope) -> None:
             f"PROMPT.md at {prompt_path} is still the `ralph --init` starter template. "
             "Edit it to describe YOUR task (remove the `<!-- ralph:starter-prompt ... -->` "
             "marker at the top once you have replaced the example content), then re-run `ralph`. "
-            "See docs/sphinx/concepts.md for what a good PROMPT.md should contain."
+            "New to Ralph Workflow? See docs/sphinx/getting-started.md for a walkthrough, "
+            "or docs/sphinx/concepts.md for what a good PROMPT.md should contain."
         )

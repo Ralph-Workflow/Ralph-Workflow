@@ -1,8 +1,8 @@
-# Default pipeline policy for Ralph.
+# Default pipeline policy for Ralph Workflow.
 #
 # PURPOSE: Defines the phase graph that drives the configurable orchestration layer.
 #
-# LOCATION: This file is the canonical default. Ralph reads overrides from:
+# LOCATION: This file is the canonical default. Ralph Workflow reads overrides from:
 #   - .agent/pipeline.toml (project-local, takes precedence over this file)
 #
 # REGENERATION: Run `ralph --regenerate-config` to refresh from this default.

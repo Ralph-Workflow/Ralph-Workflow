@@ -1,4 +1,4 @@
-"""Init command for Ralph CLI.
+"""Init command for Ralph Workflow CLI.
 
 This module implements the initialization command that sets up
 Ralph Workflow in a repository.
@@ -139,11 +139,15 @@ def _print_fallback_next_steps(target: Path) -> None:
         " for the full HTML reference."
         " Or browse inline: [cyan]python -m pydoc ralph[/cyan]"
     )
+    console.print(
+        "[dim]New to Ralph Workflow?[/dim] Start with"
+        " [cyan]docs/sphinx/getting-started.md[/cyan] for a step-by-step walkthrough."
+    )
     console.print("\n[dim]Next steps:[/dim]")
     console.print("  1. Edit [cyan]PROMPT.md[/cyan] with your implementation task")
     console.print(
-        "  2. (Optional) Read the concepts guide at"
-        " [cyan]docs/sphinx/concepts.md[/cyan] (or the built HTML docs)"
+        "  2. (Optional) Read [cyan]docs/sphinx/getting-started.md[/cyan]"
+        " for a step-by-step first-run walkthrough"
     )
     console.print(
         "  3. (Optional) Override defaults in [cyan].agent/ralph-workflow.toml[/cyan]"
