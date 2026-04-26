@@ -59,6 +59,9 @@ from ralph.process.manager import ManagedProcess, get_process_manager
 
 _MODELED_FLAG_PARTS = 2
 _IDLE_POLL_INTERVAL_SECONDS = 0.05
+# Poll interval for waiting on descendant processes to finish. Distinct from
+# _IDLE_POLL_INTERVAL_SECONDS which is used for idle output detection.
+_DESCENDANT_WAIT_POLL_SECONDS = 0.5
 
 
 @dataclass(frozen=True)
@@ -508,6 +511,7 @@ def _run_subprocess_and_read_lines(  # noqa: PLR0913
                 execution_strategy=strategy,
                 workspace_path=workspace_path,
                 phase=phase,
+                liveness_probe=probe,
             ),
         )
 
@@ -535,7 +539,8 @@ def resolve_invocation_runtime(
         if not endpoint:
             return ResolvedInvocationRuntime(agent_env=runtime_env or None)
         provider_config, upstreams = build_opencode_provider_config(
-            runtime_env.get("OPENCODE_CONFIG_CONTENT") or os.environ.get("OPENCODE_CONFIG_CONTENT"),
+            runtime_env.get("OPENCODE_CONFIG_CONTENT")
+            or os.environ.get("OPENCODE_CONFIG_CONTENT"),
             endpoint,
         )
         runtime_env["OPENCODE_CONFIG_CONTENT"] = provider_config
@@ -630,7 +635,7 @@ def _read_lines_from_process(
     Yields:
         Lines from stdout.
     """
-    stdout_pipe: IO[str] | None = handle.stdout  # type: ignore[assignment]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+    stdout_pipe = cast("IO[str] | None", handle.stdout)
     lines_queue: list[str] = []
     lines_lock = threading.Lock()
     lines_event = threading.Event()
@@ -703,6 +708,128 @@ class _CompletionCheckOptions:
     execution_strategy: GenericExecutionStrategy | OpenCodeExecutionStrategy | None = None
     workspace_path: Path | None = None
     phase: str | None = None
+    # LivenessProbe for checking whether Ralph-tracked child agents are still active.
+    # When None, classify_exit falls back to handle.has_live_descendants() only.
+    liveness_probe: LivenessProbe | None = None
+    # Maximum time to wait for descendant processes to finish before declaring failure.
+    # Default 30s is long enough for legitimate background subagent work while bounding
+    # retry latency. Only used when the strategy returns WAITING_ON_CHILD at exit time.
+    descendant_wait_timeout_seconds: float = 30.0
+    # Grace window after parent rc=0 exit during which we poll for late completion signals
+    # or appearing children. Default 5s is short enough to bound retry latency and long
+    # enough to catch typical late-artifact races.
+    parent_exit_grace_seconds: float = 5.0
+
+
+
+def _wait_for_completion_grace(
+    handle: ManagedProcess,
+    opts: _CompletionCheckOptions,
+    parsed_output: list[str],
+) -> AgentExecutionState:
+    """Wait up to opts.parent_exit_grace_seconds for completion signals or children to appear.
+
+    Polls evaluate_completion + classify_exit at _DESCENDANT_WAIT_POLL_SECONDS intervals.
+    Returns:
+      TERMINAL_COMPLETE if completion signals appear during the grace window.
+      WAITING_ON_CHILD if children appear (caller must escalate to descendant wait).
+      RESUMABLE_CONTINUE if grace deadline elapses with no signals and no children.
+    """
+    assert opts.workspace_path is not None
+    assert opts.phase is not None
+    workspace_path = opts.workspace_path
+    phase = opts.phase
+    execution_strategy = opts.execution_strategy
+    assert execution_strategy is not None
+
+    probe = opts.liveness_probe or DefaultLivenessProbe()
+    deadline = time.monotonic() + opts.parent_exit_grace_seconds
+
+    while time.monotonic() < deadline:
+        signals = evaluate_completion(
+            workspace_path,
+            phase,
+            list(parsed_output) if parsed_output else [],
+        )
+        state = execution_strategy.classify_exit(handle, signals, liveness_probe=probe)
+        if state == AgentExecutionState.TERMINAL_COMPLETE:
+            return AgentExecutionState.TERMINAL_COMPLETE
+        if state == AgentExecutionState.WAITING_ON_CHILD:
+            return AgentExecutionState.WAITING_ON_CHILD
+        threading.Event().wait(_DESCENDANT_WAIT_POLL_SECONDS)
+
+    # Deadline elapsed — one final recheck before declaring failure.
+    signals = evaluate_completion(
+        workspace_path,
+        phase,
+        list(parsed_output) if parsed_output else [],
+    )
+    return execution_strategy.classify_exit(handle, signals, liveness_probe=probe)
+
+
+def _wait_for_descendants_then_recheck(
+    handle: ManagedProcess,
+    opts: _CompletionCheckOptions,
+    parsed_output: list[str],
+) -> AgentExecutionState:
+    """Wait for descendant processes to finish, then re-evaluate completion signals.
+
+    Polls the execution strategy's classify_exit at _DESCENDANT_WAIT_POLL_SECONDS intervals
+    until either the tree is quiet (state != WAITING_ON_CHILD) or the deadline elapses.
+    This allows artifacts written by background subagents to become visible before
+    OpenCodeResumableExitError is raised.
+
+    Args:
+        handle: Completed parent process handle.
+        opts: Completion check options including liveness_probe and timeout.
+        parsed_output: Raw NDJSON output lines from the agent.
+
+    Returns:
+        TERMINAL_COMPLETE if tree quiessed and completion signals present.
+        RESUMABLE_CONTINUE if deadline elapsed with children still alive (fallback to
+        retry rather than silent success). WAITING_ON_CHILD is only returned during
+        the active polling loop, never after deadline.
+    """
+    assert opts.workspace_path is not None
+    assert opts.phase is not None
+    workspace_path = opts.workspace_path
+    phase = opts.phase
+    execution_strategy = opts.execution_strategy
+    assert execution_strategy is not None
+
+    deadline = time.monotonic() + opts.descendant_wait_timeout_seconds
+    probe = opts.liveness_probe or DefaultLivenessProbe()
+
+    while time.monotonic() < deadline:
+        signals = evaluate_completion(
+            workspace_path,
+            phase,
+            list(parsed_output) if parsed_output else [],
+        )
+        exit_state = execution_strategy.classify_exit(
+            handle, signals, liveness_probe=probe
+        )
+        if exit_state != AgentExecutionState.WAITING_ON_CHILD:
+            return exit_state
+        # Use threading.Event.wait for interruptible sleep
+        threading.Event().wait(_DESCENDANT_WAIT_POLL_SECONDS)
+
+    # Deadline elapsed — perform one final completion recheck before falling back.
+    # A required artifact or explicit completion may have appeared just before the
+    # deadline, and we must not miss it.
+    signals = evaluate_completion(
+        workspace_path,
+        phase,
+        list(parsed_output) if parsed_output else [],
+    )
+    final_state = execution_strategy.classify_exit(
+        handle, signals, liveness_probe=probe
+    )
+    # If still WAITING_ON_CHILD, fall back to RESUMABLE_CONTINUE so the caller
+    # raises OpenCodeResumableExitError rather than treating this as silent success.
+    if final_state == AgentExecutionState.WAITING_ON_CHILD:
+        return AgentExecutionState.RESUMABLE_CONTINUE
+    return final_state
 
 
 def _check_process_result(
@@ -715,6 +842,9 @@ def _check_process_result(
 
     For OpenCode agents, exit 0 without a required completion artifact raises
     OpenCodeResumableExitError so the runner can continue the same session.
+    When the process exits but child agents are still running, this function
+    waits up to descendant_wait_timeout_seconds for the tree to quiesce before
+    re-evaluating completion signals.
 
     Args:
         handle: Completed managed process.
@@ -722,11 +852,12 @@ def _check_process_result(
 
     Raises:
         AgentInvocationError: If process exited with non-zero code.
-        OpenCodeResumableExitError: If OpenCode exited without a required artifact.
+        OpenCodeResumableExitError: If OpenCode exited without a required artifact
+            and no child agents are still running.
     """
     returncode = int(handle.returncode or 0)
     if returncode != 0:
-        stderr_pipe: IO[str] | None = handle.stderr  # type: ignore[assignment]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+        stderr_pipe = cast("IO[str] | None", handle.stderr)
         stderr = stderr_pipe.read() if stderr_pipe is not None else "(unable to read stderr)"
         logger.error("Agent exited with code {}: {}", returncode, stderr)
         raise AgentInvocationError(agent_name, returncode, stderr, parsed_output)
@@ -744,7 +875,28 @@ def _check_process_result(
             opts.phase,
             list(parsed_output) if parsed_output else [],
         )
-        exit_state = opts.execution_strategy.classify_exit(handle, signals)
+        # First classification: check completion signals and immediate child status
+        exit_state = opts.execution_strategy.classify_exit(
+            handle, signals, liveness_probe=opts.liveness_probe
+        )
+
+        # When parent exits with no children visible at exit time but no completion
+        # signals either, run a mandatory grace window that polls for late artifacts,
+        # explicit_complete markers, or background children that hadn't yet registered
+        # with the ProcessManager. This eliminates the false-positive retry where
+        # OpenCode is killed within milliseconds of exit despite ongoing background work.
+        if exit_state == AgentExecutionState.RESUMABLE_CONTINUE:
+            exit_state = _wait_for_completion_grace(
+                handle, opts, list(parsed_output) if parsed_output else []
+            )
+
+        # If children appeared (either at exit time or during the grace window),
+        # wait for the tree to quiesce before declaring failure.
+        if exit_state == AgentExecutionState.WAITING_ON_CHILD:
+            exit_state = _wait_for_descendants_then_recheck(
+                handle, opts, list(parsed_output) if parsed_output else []
+            )
+
         if exit_state == AgentExecutionState.RESUMABLE_CONTINUE:
             session_id = extract_session_id(list(parsed_output) if parsed_output else [])
             raise OpenCodeResumableExitError(agent_name, session_id=session_id)

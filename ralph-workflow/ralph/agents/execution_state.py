@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from ralph.agents.completion_signals import CompletionSignals
+    from ralph.process.liveness import LivenessProbe
 
 
 class AgentExecutionState(StrEnum):
@@ -47,6 +48,7 @@ class GenericExecutionStrategy:
         self,
         handle: object,
         completion_signals: object,
+        liveness_probe: LivenessProbe | None = None,
     ) -> AgentExecutionState:
         return AgentExecutionState.TERMINAL_COMPLETE
 
@@ -66,6 +68,9 @@ class OpenCodeExecutionStrategy:
 
     Exit classification requires explicit completion signals (artifact
     present or explicit_complete flag) before declaring terminal success.
+    When completion signals are absent, the LivenessProbe and
+    handle.has_live_descendants() are consulted to avoid false-positive
+    RESUMABLE_CONTINUE verdicts when child agents are still running.
 
     ``label_scope`` narrows the liveness check to processes whose labels
     start with ``agent:{label_scope}:``.  When None the check falls back to
@@ -83,11 +88,11 @@ class OpenCodeExecutionStrategy:
     def classify_quiet(
         self,
         handle: object,
-        liveness_probe: object,
+        liveness_probe: LivenessProbe,
     ) -> AgentExecutionState:
         # Check for Ralph-tracked parallel agent workers (label prefix "agent:")
         try:
-            if bool(liveness_probe.any_agent_active(self._active_label_prefix())):  # type: ignore[attr-defined, misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+            if bool(liveness_probe.any_agent_active(self._active_label_prefix())):
                 return AgentExecutionState.WAITING_ON_CHILD
         except Exception:
             pass
@@ -104,13 +109,29 @@ class OpenCodeExecutionStrategy:
         self,
         handle: object,
         completion_signals: object,
+        liveness_probe: LivenessProbe | None = None,
     ) -> AgentExecutionState:
+        # Fast path: strong completion signals always take precedence
         try:
             signals: CompletionSignals = completion_signals  # type: ignore[assignment]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
             if signals.explicit_complete or signals.required_artifact_present:
                 return AgentExecutionState.TERMINAL_COMPLETE
         except Exception:
             pass
+        # Deferred path: wait for child agents if LivenessProbe reports active agents
+        if liveness_probe is not None:
+            try:
+                if bool(liveness_probe.any_agent_active(self._active_label_prefix())):
+                    return AgentExecutionState.WAITING_ON_CHILD
+            except Exception:
+                pass
+        # Fall back to OS-level descendant check
+        if hasattr(handle, "has_live_descendants"):
+            try:
+                if bool(handle.has_live_descendants()):  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+                    return AgentExecutionState.WAITING_ON_CHILD
+            except Exception:
+                pass
         return AgentExecutionState.RESUMABLE_CONTINUE
 
     def supports_session_continuation(self) -> bool:
