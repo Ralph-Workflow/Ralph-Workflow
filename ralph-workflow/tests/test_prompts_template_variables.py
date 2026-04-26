@@ -68,11 +68,16 @@ def test_specialized_analysis_drain_grants_read_and_exec_defaults() -> None:
     for required in (
         "read_file",
         "list_directory",
+        "list_directory_recursive",
+        "directory_tree",
         "search_files",
         "git_diff",
         "git_status",
+        "git_log",
+        "git_show",
         "exec",
         "ralph_submit_artifact",
+        "declare_complete",
     ):
         assert required in tool_list, f"missing {required} in {tool_list}"
 
@@ -95,11 +100,16 @@ def test_review_analysis_drain_grants_read_and_exec_defaults() -> None:
     for required in (
         "read_file",
         "list_directory",
+        "list_directory_recursive",
+        "directory_tree",
         "search_files",
         "git_diff",
         "git_status",
+        "git_log",
+        "git_show",
         "exec",
         "ralph_submit_artifact",
+        "declare_complete",
     ):
         assert required in tool_list, f"missing {required} in {tool_list}"
 
@@ -131,8 +141,21 @@ def test_analysis_drain_rendered_prompt_contains_exec_and_read_tooling(
     # The EXECUTION block from _mcp_tools.jinja must appear in the rendered output.
     assert "exec" in rendered
 
-    # The MCP TOOLS section must list the read/git/exec/artifact tooling.
-    for tool in ("read_file", "search_files", "git_diff", "git_status", "ralph_submit_artifact"):
+    # The MCP TOOLS section must list the full read/git/exec/artifact tooling.
+    for tool in (
+        "read_file",
+        "list_directory",
+        "list_directory_recursive",
+        "directory_tree",
+        "search_files",
+        "git_diff",
+        "git_status",
+        "git_log",
+        "git_show",
+        "exec",
+        "ralph_submit_artifact",
+        "declare_complete",
+    ):
         assert tool in rendered, f"missing {tool} in rendered {template_name}"
 
     # The SESSION CAPABILITIES block must list the key capabilities.

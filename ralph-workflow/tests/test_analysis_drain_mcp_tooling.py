@@ -6,23 +6,19 @@ tool registry filters tools via a different code path.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
 import pytest
 
 from ralph.mcp.protocol.capability_mapping import SessionDrain
 from ralph.mcp.protocol.session import AgentSession
 from ralph.mcp.tools.bridge import build_ralph_tool_registry
 from ralph.prompts.template_variables import default_caps_and_flags_for_drain
-from ralph.workspace.fs import FsWorkspace
-
-if TYPE_CHECKING:
-    from pathlib import Path
+from ralph.workspace.memory import MemoryWorkspace
 
 _REQUIRED_TOOLS = {
     "read_file",
     "list_directory",
     "list_directory_recursive",
+    "directory_tree",
     "search_files",
     "git_diff",
     "git_status",
@@ -44,7 +40,6 @@ _FORBIDDEN_TOOLS = {"write_file"}
 )
 def test_analysis_drain_tool_registry_exposes_read_exec_and_artifact_tools(
     drain: SessionDrain,
-    tmp_path: Path,
 ) -> None:
     caps, _ = default_caps_and_flags_for_drain(drain)
     session = AgentSession(
@@ -53,7 +48,7 @@ def test_analysis_drain_tool_registry_exposes_read_exec_and_artifact_tools(
         drain=drain.value,
         capabilities={c.value for c in caps},
     )
-    workspace = FsWorkspace(tmp_path)
+    workspace = MemoryWorkspace()
 
     bridge = build_ralph_tool_registry(session, workspace, upstream_registry=None, mcp_config=None)
     tool_names = {defn.name for defn in bridge.list_definitions()}
