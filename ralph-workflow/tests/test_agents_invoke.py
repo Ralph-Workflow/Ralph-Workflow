@@ -84,7 +84,7 @@ def test_invoke_agent_passes_idle_timeout_to_subprocess(
         extra_env: dict[str, str] | None,
         workspace_path: Path | None,
         *,
-        idle_timeout_seconds: float | None = None,
+        policy: object = None,
         **_extra_kwargs: object,
     ) -> list[str]:
         captured["cmd"] = cmd
@@ -92,7 +92,7 @@ def test_invoke_agent_passes_idle_timeout_to_subprocess(
         captured["show_progress"] = show_progress
         captured["extra_env"] = extra_env
         captured["workspace_path"] = workspace_path
-        captured["idle_timeout_seconds"] = idle_timeout_seconds
+        captured["policy"] = policy
         return []
 
     _expected_idle_timeout = 300.0
@@ -113,7 +113,7 @@ def test_invoke_agent_passes_idle_timeout_to_subprocess(
         )
     )
 
-    assert captured["idle_timeout_seconds"] == _expected_idle_timeout
+    assert getattr(captured.get("policy"), "idle_timeout_seconds", None) == _expected_idle_timeout
 
 
 def test_run_subprocess_and_read_lines_wraps_idle_stream_timeout(
@@ -170,7 +170,7 @@ def test_run_subprocess_and_read_lines_wraps_idle_stream_timeout(
                 False,
                 None,
                 tmp_path,
-                idle_timeout_seconds=0.05,
+                policy=invoke_module.TimeoutPolicy(idle_timeout_seconds=0.05),
             )
         )
 
@@ -2921,6 +2921,7 @@ def test_idle_timeout_does_not_fire_when_output_keeps_flowing(
     line_count = 20
     lines = [f'{{"n": {i}}}\n' for i in range(line_count)]
     fake_process = _FakeInvokeProcess(stdout=_PreloadedStdout(lines))
+    fake_process.returncode = 0
     monkeypatch.setattr(
         "ralph.agents.invoke.subprocess.Popen",
         lambda *args, **kwargs: fake_process,
@@ -3188,6 +3189,7 @@ def test_idle_timeout_drain_window_yields_late_line(
     trigger = clock.wait_until(10.2)
     late_line = "late-arrived-line\n"
     fake_process = _FakeInvokeProcess(stdout=_EventTriggeredStdout(late_line, trigger))
+    fake_process.returncode = 0
     monkeypatch.setattr(
         "ralph.agents.invoke.subprocess.Popen",
         lambda *args, **kwargs: fake_process,
@@ -3231,6 +3233,7 @@ def test_idle_timeout_defers_when_children_active_then_clears(
     trigger = clock.wait_until(30.2)
     arrived_line = "work-complete-output\n"
     fake_process = _FakeInvokeProcess(stdout=_EventTriggeredStdout(arrived_line, trigger))
+    fake_process.returncode = 0
     monkeypatch.setattr(
         "ralph.agents.invoke.subprocess.Popen",
         lambda *args, **kwargs: fake_process,
@@ -3327,8 +3330,8 @@ def test_idle_timeout_children_persist_uses_distinct_reason_and_message(
 def test_invoke_agent_passes_config_drain_window_to_watchdog(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """InvokeOptions.drain_window_seconds and max_waiting_on_child_seconds reach WatchdogConfig."""
-    from ralph.agents.idle_watchdog import IdleWatchdog, WatchdogConfig  # noqa: PLC0415
+    """InvokeOptions.drain_window_seconds and max_waiting_on_child_seconds reach TimeoutPolicy."""
+    from ralph.agents.idle_watchdog import IdleWatchdog, TimeoutPolicy  # noqa: PLC0415
 
     prompt_file = tmp_path / "PROMPT.md"
     prompt_file.write_text("hello", encoding="utf-8")
@@ -3339,10 +3342,10 @@ def test_invoke_agent_passes_config_drain_window_to_watchdog(
         lambda *args, **kwargs: fake_process,
     )
 
-    captured_config: list[WatchdogConfig] = []
+    captured_config: list[TimeoutPolicy] = []
     original_init = IdleWatchdog.__init__
 
-    def capturing_init(self: IdleWatchdog, cfg: WatchdogConfig, clock: object) -> None:
+    def capturing_init(self: IdleWatchdog, cfg: TimeoutPolicy, clock: object) -> None:
         captured_config.append(cfg)
         original_init(self, cfg, clock)
 
@@ -3405,6 +3408,7 @@ def test_invoke_agent_yields_lines_with_minimal_latency_under_system_clock(
             return line
 
     fake_process = _FakeInvokeProcess(stdout=TimedStdout())
+    fake_process.returncode = 0
     monkeypatch.setattr(
         "ralph.agents.invoke.subprocess.Popen",
         lambda *args, **kwargs: fake_process,
@@ -3425,3 +3429,92 @@ def test_invoke_agent_yields_lines_with_minimal_latency_under_system_clock(
     assert elapsed < total_wall_limit, (
         f"Expected all {n_lines} lines within {total_wall_limit}s, took {elapsed:.3f}s"
     )
+
+
+def test_invoke_agent_raises_process_exit_hang_when_stdout_closes_but_process_does_not_exit(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """PROCESS_EXIT_HANG fires when stdout closes but poll() keeps returning None.
+
+    This tests the false-negative fix: a subprocess that closes its stdout without
+    calling exit() must be killed and raise AgentInactivityTimeoutError rather than
+    hanging invoke_agent forever.
+    """
+    prompt_file = tmp_path / "PROMPT.md"
+    prompt_file.write_text("hello", encoding="utf-8")
+    config = AgentConfig(cmd="codex", output_flag="--json-stream")
+
+    # Stdout closes immediately (no lines); process never exits (poll returns None).
+    fake_process = _FakeInvokeProcess(stdout=_PreloadedStdout([]))
+    # poll() returns None by default (returncode not set)
+    assert fake_process.returncode is None
+
+    monkeypatch.setattr(
+        "ralph.agents.invoke.subprocess.Popen",
+        lambda *args, **kwargs: fake_process,
+    )
+
+    process_exit_wait = 5.0
+    clock = FakeClock()
+    with pytest.raises(AgentInactivityTimeoutError) as exc_info:
+        list(
+            invoke_agent(
+                config,
+                str(prompt_file),
+                options=InvokeOptions(
+                    show_progress=False,
+                    idle_timeout_seconds=300,
+                    process_exit_wait_seconds=process_exit_wait,
+                    descendant_wait_timeout_seconds=1.0,
+                ),
+                _clock=clock,
+            )
+        )
+
+    from ralph.agents.idle_watchdog import WatchdogFireReason  # noqa: PLC0415
+
+    assert exc_info.value.reason == WatchdogFireReason.PROCESS_EXIT_HANG
+    assert exc_info.value.timeout_seconds == process_exit_wait
+
+
+def test_invoke_agent_raises_session_ceiling_despite_continuous_output(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """SESSION_CEILING_EXCEEDED fires when max_session_seconds is reached.
+
+    This tests the false-negative fix: a process that produces output continuously
+    (defeating the idle-timeout watchdog) must still be killed when the absolute
+    session wall-clock ceiling is reached.
+    """
+    prompt_file = tmp_path / "PROMPT.md"
+    prompt_file.write_text("hello", encoding="utf-8")
+    config = AgentConfig(cmd="codex", output_flag="--json-stream")
+
+    # Stdout blocks forever; FakeClock advances during wait_for_event poll calls.
+    fake_process = _FakeInvokeProcess(stdout=_BlockingStdout())
+    monkeypatch.setattr(
+        "ralph.agents.invoke.subprocess.Popen",
+        lambda *args, **kwargs: fake_process,
+    )
+
+    max_session = 10.0
+    clock = FakeClock()
+    with pytest.raises(AgentInactivityTimeoutError) as exc_info:
+        list(
+            invoke_agent(
+                config,
+                str(prompt_file),
+                options=InvokeOptions(
+                    show_progress=False,
+                    idle_timeout_seconds=None,
+                    max_session_seconds=max_session,
+                    idle_poll_interval_seconds=1.0,
+                ),
+                _clock=clock,
+            )
+        )
+
+    from ralph.agents.idle_watchdog import WatchdogFireReason  # noqa: PLC0415
+
+    assert exc_info.value.reason == WatchdogFireReason.SESSION_CEILING_EXCEEDED
+    assert exc_info.value.timeout_seconds == max_session

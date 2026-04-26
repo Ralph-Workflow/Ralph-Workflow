@@ -221,3 +221,114 @@ def test_config_default_max_waiting_is_1800() -> None:
     """Default GeneralConfig.agent_idle_max_waiting_on_child_seconds is 1800.0s."""
     config = GeneralConfig()
     assert config.agent_idle_max_waiting_on_child_seconds == 1800.0  # noqa: PLR2004
+
+
+def _make_config_full(  # noqa: PLR0913
+    agent_idle_timeout_seconds: float = 300.0,
+    agent_idle_drain_window_seconds: float = 0.5,
+    agent_idle_max_waiting_on_child_seconds: float = 1800.0,
+    agent_idle_poll_interval_seconds: float = 0.05,
+    agent_parent_exit_grace_seconds: float = 5.0,
+    agent_descendant_wait_timeout_seconds: float = 30.0,
+    agent_process_exit_wait_seconds: float = 30.0,
+    agent_max_session_seconds: float | None = None,
+) -> UnifiedConfig:
+    return UnifiedConfig(
+        general=GeneralConfig(
+            agent_idle_timeout_seconds=agent_idle_timeout_seconds,
+            agent_idle_drain_window_seconds=agent_idle_drain_window_seconds,
+            agent_idle_max_waiting_on_child_seconds=agent_idle_max_waiting_on_child_seconds,
+            agent_idle_poll_interval_seconds=agent_idle_poll_interval_seconds,
+            agent_parent_exit_grace_seconds=agent_parent_exit_grace_seconds,
+            agent_descendant_wait_timeout_seconds=agent_descendant_wait_timeout_seconds,
+            agent_process_exit_wait_seconds=agent_process_exit_wait_seconds,
+            agent_max_session_seconds=agent_max_session_seconds,
+        )
+    )
+
+
+def test_config_idle_poll_interval_flows_to_invoke_options(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """GeneralConfig.agent_idle_poll_interval_seconds is passed to InvokeOptions."""
+    custom_poll = 0.1
+    config = _make_config_full(agent_idle_poll_interval_seconds=custom_poll)
+    effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="dev.md")
+    captured: dict[str, object] = {}
+
+    _run_with_config(config, effect, captured, monkeypatch, tmp_path)
+
+    options = captured.get("options")
+    assert getattr(options, "idle_poll_interval_seconds", None) == custom_poll
+
+
+def test_config_parent_exit_grace_flows_to_invoke_options(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """GeneralConfig.agent_parent_exit_grace_seconds is passed to InvokeOptions."""
+    custom_grace = 10.0
+    config = _make_config_full(agent_parent_exit_grace_seconds=custom_grace)
+    effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="dev.md")
+    captured: dict[str, object] = {}
+
+    _run_with_config(config, effect, captured, monkeypatch, tmp_path)
+
+    options = captured.get("options")
+    assert getattr(options, "parent_exit_grace_seconds", None) == custom_grace
+
+
+def test_config_descendant_wait_timeout_flows_to_invoke_options(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """GeneralConfig.agent_descendant_wait_timeout_seconds is passed to InvokeOptions."""
+    custom_wait = 60.0
+    config = _make_config_full(agent_descendant_wait_timeout_seconds=custom_wait)
+    effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="dev.md")
+    captured: dict[str, object] = {}
+
+    _run_with_config(config, effect, captured, monkeypatch, tmp_path)
+
+    options = captured.get("options")
+    assert getattr(options, "descendant_wait_timeout_seconds", None) == custom_wait
+
+
+def test_config_process_exit_wait_flows_to_invoke_options(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """GeneralConfig.agent_process_exit_wait_seconds is passed to InvokeOptions."""
+    custom_exit_wait = 45.0
+    config = _make_config_full(agent_process_exit_wait_seconds=custom_exit_wait)
+    effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="dev.md")
+    captured: dict[str, object] = {}
+
+    _run_with_config(config, effect, captured, monkeypatch, tmp_path)
+
+    options = captured.get("options")
+    assert getattr(options, "process_exit_wait_seconds", None) == custom_exit_wait
+
+
+def test_config_max_session_seconds_flows_to_invoke_options(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """GeneralConfig.agent_max_session_seconds is passed to InvokeOptions."""
+    custom_session = 3600.0
+    config = _make_config_full(agent_max_session_seconds=custom_session)
+    effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="dev.md")
+    captured: dict[str, object] = {}
+
+    _run_with_config(config, effect, captured, monkeypatch, tmp_path)
+
+    options = captured.get("options")
+    assert getattr(options, "max_session_seconds", None) == custom_session
+
+
+def test_config_default_idle_poll_interval_is_0_05() -> None:
+    """Default GeneralConfig.agent_idle_poll_interval_seconds is 0.05s."""
+    config = GeneralConfig()
+    assert config.agent_idle_poll_interval_seconds == 0.05  # noqa: PLR2004
+
+
+def test_config_default_process_exit_wait_is_30() -> None:
+    """Default GeneralConfig.agent_process_exit_wait_seconds is 30.0s."""
+    config = GeneralConfig()
+    assert config.agent_process_exit_wait_seconds == 30.0  # noqa: PLR2004

@@ -8,7 +8,7 @@ from loguru import logger
 from ralph.agents.execution_state import AgentExecutionState
 from ralph.agents.idle_watchdog import (
     IdleWatchdog,
-    WatchdogConfig,
+    TimeoutPolicy,
     WatchdogFireReason,
     WatchdogVerdict,
 )
@@ -20,13 +20,15 @@ def _make_watchdog(
     drain_window: float = 0.5,
     max_waiting: float | None = None,
     start: float = 0.0,
+    max_session: float | None = None,
 ) -> tuple[IdleWatchdog, FakeClock]:
     if max_waiting is None:
         max_waiting = max(1800.0, idle_timeout) if idle_timeout is not None else 1800.0
-    config = WatchdogConfig(
+    config = TimeoutPolicy(
         idle_timeout_seconds=idle_timeout,
         drain_window_seconds=drain_window,
         max_waiting_on_child_seconds=max_waiting,
+        max_session_seconds=max_session,
     )
     clock = FakeClock(start=start)
     return IdleWatchdog(config, clock), clock
@@ -145,17 +147,50 @@ def test_record_activity_clears_drain_state() -> None:
 
 def test_validation_rejects_zero_idle_timeout() -> None:
     with pytest.raises(ValueError, match="positive"):
-        WatchdogConfig(idle_timeout_seconds=0)
+        TimeoutPolicy(idle_timeout_seconds=0)
 
 
 def test_validation_rejects_negative_drain_window() -> None:
     with pytest.raises(ValueError, match=">="):
-        WatchdogConfig(idle_timeout_seconds=10, drain_window_seconds=-0.1)
+        TimeoutPolicy(idle_timeout_seconds=10, drain_window_seconds=-0.1)
 
 
 def test_validation_rejects_max_waiting_less_than_idle() -> None:
     with pytest.raises(ValueError, match="max_waiting_on_child_seconds"):
-        WatchdogConfig(idle_timeout_seconds=100, max_waiting_on_child_seconds=50)
+        TimeoutPolicy(idle_timeout_seconds=100, max_waiting_on_child_seconds=50)
+
+
+def test_session_ceiling_validation_rejects_value_lower_than_idle_timeout() -> None:
+    """TimeoutPolicy rejects max_session_seconds < idle_timeout_seconds."""
+    with pytest.raises(ValueError, match="max_session_seconds"):
+        TimeoutPolicy(idle_timeout_seconds=100, max_session_seconds=50)
+
+
+def test_session_ceiling_fires_despite_heartbeats() -> None:
+    """Session ceiling fires even when record_activity() is called continuously.
+
+    This tests that the session ceiling cannot be defeated by heartbeat activity —
+    a process that produces output continuously must still be killed when the
+    absolute session wall-clock ceiling is reached.
+    """
+    max_session = 30.0
+    watchdog, clock = _make_watchdog(
+        idle_timeout=10.0, drain_window=0.5, max_waiting=1800.0, max_session=max_session
+    )
+
+    # Simulate continuous heartbeat activity every second for 29s — no fire yet.
+    for _ in range(29):
+        clock.advance(1.0)
+        watchdog.record_activity()
+        result = watchdog.evaluate(classify_quiet=_active)
+        assert result == WatchdogVerdict.CONTINUE, f"Expected CONTINUE at t={clock.monotonic()}"
+
+    # At t=30s the session ceiling is reached — FIRE regardless of recent activity.
+    clock.advance(1.0)
+    watchdog.record_activity()  # heartbeat fires just before evaluation
+    result = watchdog.evaluate(classify_quiet=_active)
+    assert result == WatchdogVerdict.FIRE
+    assert watchdog.last_fire_reason == WatchdogFireReason.SESSION_CEILING_EXCEEDED
 
 
 def test_waiting_on_child_cumulative_survives_active_oscillation() -> None:
