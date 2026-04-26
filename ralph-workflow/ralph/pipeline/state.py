@@ -11,7 +11,7 @@ occur exclusively through the reduce function.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -26,6 +26,16 @@ from ralph.pipeline.worker_state import WorkerState  # noqa: TC001
 
 if TYPE_CHECKING:
     from ralph.policy.models import DrainName
+
+
+_PHASE_CHAIN_FIELDS: dict[str, str] = {
+    "planning": "planning_chain",
+    PHASE_DEVELOPMENT: "dev_chain",
+    "development_analysis": "dev_analysis_chain",
+    PHASE_REVIEW: "rev_chain",
+    "review_analysis": "review_analysis_chain",
+    "fix": "fix_chain",
+}
 
 
 class _FrozenPipelineStateModel(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
@@ -297,15 +307,10 @@ class PipelineState(_FrozenPipelineStateModel):  # type: ignore[explicit-any]  #
 
     def chain_for_phase(self, phase: PipelinePhase | str) -> AgentChainState | None:
         """Get the tracked agent chain state for a phase, if any."""
-        phase_to_chain = {
-            "planning": self.planning_chain,
-            PHASE_DEVELOPMENT: self.dev_chain,
-            "development_analysis": self.dev_analysis_chain,
-            PHASE_REVIEW: self.rev_chain,
-            "review_analysis": self.review_analysis_chain,
-            "fix": self.fix_chain,
-        }
-        return phase_to_chain.get(phase)
+        field_name = _PHASE_CHAIN_FIELDS.get(phase)
+        if field_name is None:
+            return None
+        return cast("AgentChainState", getattr(self, field_name))
 
     def with_phase_chain(
         self,
@@ -313,15 +318,7 @@ class PipelineState(_FrozenPipelineStateModel):  # type: ignore[explicit-any]  #
         chain: AgentChainState,
     ) -> PipelineState:
         """Return a copy with the chain state for the given phase updated."""
-        phase_to_field = {
-            "planning": "planning_chain",
-            PHASE_DEVELOPMENT: "dev_chain",
-            "development_analysis": "dev_analysis_chain",
-            PHASE_REVIEW: "rev_chain",
-            "review_analysis": "review_analysis_chain",
-            "fix": "fix_chain",
-        }
-        field_name = phase_to_field.get(phase)
+        field_name = _PHASE_CHAIN_FIELDS.get(phase)
         if field_name is None:
             return self
         return self.copy_with(**{field_name: chain})

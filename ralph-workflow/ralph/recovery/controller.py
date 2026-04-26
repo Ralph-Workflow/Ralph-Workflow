@@ -15,7 +15,7 @@ from ralph.recovery.events import FailureEvent, FailureEventBus, FalloverEvent
 if TYPE_CHECKING:
     from ralph.pipeline.effects import Effect
     from ralph.pipeline.state import PipelineState
-    from ralph.policy.models import PolicyBundle
+    from ralph.policy.models import AgentChainConfig, PolicyBundle
 
 
 def compute_backoff_ms(base_ms: int, attempt: int, max_ms: int = 30_000) -> int:
@@ -100,7 +100,7 @@ class RecoveryController:
 
             # Compute retry delay from chain config
             if agent is not None and failure.counts_against_budget:
-                retry_delay_ms = self._compute_retry_delay(phase, chain, agent)
+                retry_delay_ms = self._compute_retry_delay(phase, agent)
 
         failure_evt = FailureEvent(
             timestamp=datetime.now(UTC),
@@ -203,29 +203,28 @@ class RecoveryController:
         )
         return state.with_phase_chain(phase, new_chain)
 
+    def _chain_config_for_phase(self, phase: str) -> AgentChainConfig | None:
+        """Resolve the AgentChainConfig backing the given phase, or None."""
+        if self._policy_bundle is None:
+            return None
+        phase_def = self._policy_bundle.pipeline.phases.get(phase)
+        if phase_def is None:
+            return None
+        drain_config = self._policy_bundle.agents.agent_drains.get(phase_def.drain)
+        if drain_config is None:
+            return None
+        return self._policy_bundle.agents.agent_chains.get(drain_config.chain)
+
     def _compute_retry_delay(
         self,
         phase: str,
-        chain: object,
         agent: str | None,
     ) -> int:
         """Compute the retry delay for a given phase and agent.
 
         Uses the chain's retry_delay_ms from policy configuration.
         """
-        if self._policy_bundle is None:
-            return 0
-
-        # Find chain name for this phase
-        phase_def = self._policy_bundle.pipeline.phases.get(phase)
-        if phase_def is None:
-            return 0
-
-        drain_config = self._policy_bundle.agents.agent_drains.get(phase_def.drain)
-        if drain_config is None:
-            return 0
-
-        chain_config = self._policy_bundle.agents.agent_chains.get(drain_config.chain)
+        chain_config = self._chain_config_for_phase(phase)
         if chain_config is None:
             return 0
 
@@ -293,7 +292,7 @@ class RecoveryController:
         )
 
         # Get max_retries from policy if available
-        max_retries = self._get_max_retries_for_chain(phase, chain)
+        max_retries = self._get_max_retries_for_chain(phase)
 
         if current_agent is not None:
             budget_state = self._registry.get(phase, current_agent)
@@ -360,23 +359,11 @@ class RecoveryController:
         )
         return failed_state, []
 
-    def _get_max_retries_for_chain(self, phase: str, chain: object) -> int:
+    def _get_max_retries_for_chain(self, phase: str) -> int:
         """Get max_retries from policy for the chain used by this phase."""
-        if self._policy_bundle is None:
-            return 3  # Safe default
-
-        phase_def = self._policy_bundle.pipeline.phases.get(phase)
-        if phase_def is None:
-            return 3
-
-        drain_config = self._policy_bundle.agents.agent_drains.get(phase_def.drain)
-        if drain_config is None:
-            return 3
-
-        chain_config = self._policy_bundle.agents.agent_chains.get(drain_config.chain)
+        chain_config = self._chain_config_for_phase(phase)
         if chain_config is None:
             return 3
-
         return chain_config.max_retries
 
     def snapshot(self) -> dict[str, object]:
@@ -390,7 +377,7 @@ class RecoveryController:
                     "remaining": budget.remaining,
                     "exhausted": budget.exhausted,
                 }
-                for (phase, agent), budget in self._registry._budgets.items()
+                for (phase, agent), budget in self._registry.items()
             },
             "backoff_attempts": dict(self._backoff_attempts),
         }

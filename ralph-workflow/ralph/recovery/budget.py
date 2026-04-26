@@ -6,6 +6,8 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from collections.abc import Iterable
+
     from ralph.policy.models import PolicyBundle
     from ralph.recovery.classifier import ClassifiedFailure
 
@@ -106,6 +108,10 @@ class AgentBudgetRegistry:
         if state is None:
             return False
         return state.exhausted
+
+    def items(self) -> Iterable[tuple[tuple[str, str], BudgetState]]:
+        """Iterate over ((phase, agent), state) pairs without exposing the internal dict."""
+        return self._budgets.items()
 
 
 def seed_budget_registry(bundle: PolicyBundle) -> AgentBudgetRegistry:
