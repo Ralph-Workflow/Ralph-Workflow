@@ -311,3 +311,131 @@ def test_logger_emits_warning_on_fire_with_reason() -> None:
     assert any("FIRE" in msg or "no_output_deadline" in msg for msg in captured_messages), (
         f"Expected WARNING with fire reason, got: {captured_messages}"
     )
+
+
+def test_session_ceiling_fires_even_if_waiting_on_child() -> None:
+    """Session ceiling fires even when classify_quiet=WAITING_ON_CHILD.
+
+    Proves ceiling outranks WAITING deferral — max_session takes precedence
+    over any child-wait state.
+    """
+    watchdog, clock = _make_watchdog(
+        idle_timeout=10.0, drain_window=0.5, max_waiting=1800.0, max_session=20.0
+    )
+
+    # Advance to t=21 (past max_session=20) with children present.
+    clock.advance(21.0)
+    result = watchdog.evaluate(classify_quiet=_waiting)
+    assert result == WatchdogVerdict.FIRE
+    assert watchdog.last_fire_reason == WatchdogFireReason.SESSION_CEILING_EXCEEDED
+
+
+def test_session_ceiling_fires_during_drain_window() -> None:
+    """Session ceiling fires during drain window (ceiling outranks drain deferral).
+
+    When max_session elapses while in the drain window, SESSION_CEILING_EXCEEDED
+    fires regardless of drain state.
+    """
+    watchdog, clock = _make_watchdog(
+        idle_timeout=10.0, drain_window=2.0, max_waiting=1800.0, max_session=15.0
+    )
+
+    # Enter drain window at t=10.
+    clock.advance(10.0)
+    result = watchdog.evaluate(classify_quiet=_active)
+    assert result == WatchdogVerdict.CONTINUE  # drain entered
+
+    # Advance to t=15 (session ceiling hit during drain).
+    clock.advance(5.0)
+    result = watchdog.evaluate(classify_quiet=_active)
+    assert result == WatchdogVerdict.FIRE
+    assert watchdog.last_fire_reason == WatchdogFireReason.SESSION_CEILING_EXCEEDED
+
+
+def test_drain_window_zero_fires_immediately_with_active_classification() -> None:
+    """drain_window=0 with ACTIVE classification fires immediately at idle deadline.
+
+    Regression for the active-branch zero-drain shortcut where drain_window=0
+    must fire immediately without entering a non-existent drain window.
+    """
+    watchdog, clock = _make_watchdog(idle_timeout=10.0, drain_window=0.0, max_waiting=1800.0)
+
+    clock.advance(10.0)
+    result = watchdog.evaluate(classify_quiet=_active)
+    assert result == WatchdogVerdict.FIRE
+    assert watchdog.last_fire_reason == WatchdogFireReason.NO_OUTPUT_DEADLINE
+
+
+def test_record_activity_during_waiting_resets_cumulative_to_zero() -> None:
+    """record_activity() during WAITING resets cumulative_waiting_on_child_seconds to 0.
+
+    When a process that was in WAITING_ON_CHILD produces output, the accumulated
+    waiting time is discarded (matching the docstring contract that activity
+    fully resets state).
+    """
+    watchdog, clock = _make_watchdog(idle_timeout=10.0, max_waiting=20.0)
+
+    # Start WAITING run at t=11.
+    clock.advance(11.0)
+    watchdog.evaluate(classify_quiet=_waiting)  # enters WAITING state
+
+    # Advance to t=15 and record activity.
+    clock.advance(4.0)
+    watchdog.record_activity()
+
+    # Now advance to t=26 (11s from last activity) - cumulative candidate should
+    # NOT include the earlier 4s of waiting.
+    clock.advance(11.0)
+    result = watchdog.evaluate(classify_quiet=_waiting)
+    # cumulative at this point should be 0 (reset by record_activity)
+    # candidate = 0 + 11 = 11 < 20, so still WAITING_ON_CHILD not FIRE
+    assert result == WatchdogVerdict.WAITING_ON_CHILD
+    assert watchdog.cumulative_waiting_on_child_seconds == 0.0
+
+
+def test_evaluate_is_idempotent_when_clock_does_not_advance() -> None:
+    """Two consecutive evaluate() calls with no clock advance return CONTINUE.
+
+    Regression for double-counting: calling evaluate twice at the same clock time
+    must not accumulate extra waiting time.
+    """
+    watchdog, clock = _make_watchdog(idle_timeout=10.0, max_waiting=20.0)
+
+    # Advance to deadline and into WAITING.
+    clock.advance(11.0)
+    result1 = watchdog.evaluate(classify_quiet=_waiting)
+    assert result1 == WatchdogVerdict.WAITING_ON_CHILD
+
+    # Call evaluate again with no clock advance.
+    result2 = watchdog.evaluate(classify_quiet=_waiting)
+    assert result2 == WatchdogVerdict.WAITING_ON_CHILD
+    assert watchdog.cumulative_waiting_on_child_seconds == 0.0
+    assert watchdog.last_fire_reason is None
+
+
+def test_consecutive_active_in_drain_does_not_extend_window() -> None:
+    """evaluate(ACTIVE) called twice with small clock advances does not extend drain window.
+
+    The drain window has a fixed duration measured from when it starts. Calling
+    evaluate(ACTIVE) multiple times during the drain must not reset or extend the
+    window — it should fire after drain_window_seconds regardless.
+    """
+    watchdog, clock = _make_watchdog(idle_timeout=10.0, drain_window=0.5, max_waiting=1800.0)
+
+    # Enter drain at t=10.
+    clock.advance(10.0)
+    result = watchdog.evaluate(classify_quiet=_active)
+    assert result == WatchdogVerdict.CONTINUE
+
+    # Two evaluate calls with small advances totalling 0.4s — still in drain.
+    clock.advance(0.2)
+    watchdog.evaluate(classify_quiet=_active)
+    clock.advance(0.2)
+    result = watchdog.evaluate(classify_quiet=_active)
+    assert result == WatchdogVerdict.CONTINUE
+
+    # One more 0.2s advance = 0.6s > 0.5s drain -> FIRE.
+    clock.advance(0.2)
+    result = watchdog.evaluate(classify_quiet=_active)
+    assert result == WatchdogVerdict.FIRE
+    assert watchdog.last_fire_reason == WatchdogFireReason.NO_OUTPUT_DEADLINE

@@ -3431,6 +3431,52 @@ def test_invoke_agent_yields_lines_with_minimal_latency_under_system_clock(
     )
 
 
+def test_process_exit_hang_raises_via_post_exit_watchdog(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    """PROCESS_EXIT_HANG fires via PostExitWatchdog when stdout yields one line then closes.
+
+    Unlike test_invoke_agent_raises_process_exit_hang_when_stdout_closes_but_process_does_not_exit
+    which uses an empty stdout, this test yields exactly one line before EOF, proving the
+    PostExitWatchdog is invoked even when there is output. The subprocess never exits
+    (poll() returns None), so the post-EOF wait triggers FIRE_PROCESS_EXIT_HANG.
+    """
+    prompt_file = tmp_path / "PROMPT.md"
+    prompt_file.write_text("hello", encoding="utf-8")
+    config = AgentConfig(cmd="codex", output_flag="--json-stream")
+
+    # Stdout yields one line then closes; process never exits (poll returns None).
+    fake_process = _FakeInvokeProcess(stdout=_PreloadedStdout(['{"line": 1}\n']))
+    assert fake_process.returncode is None  # poll() returns None by default
+
+    monkeypatch.setattr(
+        "ralph.agents.invoke.subprocess.Popen",
+        lambda *args, **kwargs: fake_process,
+    )
+
+    process_exit_wait = 5.0
+    clock = FakeClock()
+    with pytest.raises(AgentInactivityTimeoutError) as exc_info:
+        list(
+            invoke_agent(
+                config,
+                str(prompt_file),
+                options=InvokeOptions(
+                    show_progress=False,
+                    idle_timeout_seconds=300,
+                    process_exit_wait_seconds=process_exit_wait,
+                    descendant_wait_timeout_seconds=1.0,
+                ),
+                _clock=clock,
+            )
+        )
+
+    from ralph.agents.idle_watchdog import WatchdogFireReason  # noqa: PLC0415
+
+    assert exc_info.value.reason == WatchdogFireReason.PROCESS_EXIT_HANG
+    assert exc_info.value.timeout_seconds == process_exit_wait
+
+
 def test_invoke_agent_raises_process_exit_hang_when_stdout_closes_but_process_does_not_exit(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -3518,3 +3564,41 @@ def test_invoke_agent_raises_session_ceiling_despite_continuous_output(
 
     assert exc_info.value.reason == WatchdogFireReason.SESSION_CEILING_EXCEEDED
     assert exc_info.value.timeout_seconds == max_session
+
+
+def test_process_exit_observed_before_deadline_does_not_fire(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    """Process exits cleanly before deadline — normal completion, no AgentInactivityTimeoutError.
+
+    This is the inverse of test_process_exit_hang: when poll() returns a non-None
+    value before process_exit_wait_seconds elapses, the post-exit wait returns CONTINUE
+    and no error is raised.
+    """
+    prompt_file = tmp_path / "PROMPT.md"
+    prompt_file.write_text("hello", encoding="utf-8")
+    config = AgentConfig(cmd="codex", output_flag="--json-stream")
+
+    # Stdout yields no lines and process exits immediately (returncode=0).
+    fake_process = _FakeInvokeProcess(stdout=_PreloadedStdout([]))
+    fake_process.returncode = 0
+    monkeypatch.setattr(
+        "ralph.agents.invoke.subprocess.Popen",
+        lambda *args, **kwargs: fake_process,
+    )
+
+    # No error should be raised — process exited before any deadline.
+    result = list(
+        invoke_agent(
+            config,
+            str(prompt_file),
+            options=InvokeOptions(
+                show_progress=False,
+                idle_timeout_seconds=300,
+                process_exit_wait_seconds=30.0,
+            ),
+            _clock=FakeClock(),
+        )
+    )
+    assert result == []
+
