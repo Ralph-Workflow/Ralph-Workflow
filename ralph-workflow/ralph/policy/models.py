@@ -33,24 +33,33 @@ DrainName = Literal[
 ]
 
 
+class _FrozenPolicyModel(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+    """Private base for frozen policy models.
+
+    Owns ``model_config = ConfigDict(frozen=True)`` once so descendants do not
+    repeat it. Pydantic v2 inherits ``model_config`` when descendants do not
+    declare one of their own.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+
 # ---------------------------------------------------------------------------
 # agents.toml models
 # ---------------------------------------------------------------------------
 
 
-class AgentDrainConfig(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+class AgentDrainConfig(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     """Binding from a named drain to an agent chain.
 
     Attributes:
         chain: Name of the agent chain to invoke when this drain is active.
     """
 
-    model_config = ConfigDict(frozen=True)
-
     chain: str = Field(..., description="Agent chain name to bind to this drain")
 
 
-class AgentChainConfig(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+class AgentChainConfig(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     """Definition of a named agent fallback chain.
 
     Attributes:
@@ -59,14 +68,12 @@ class AgentChainConfig(BaseModel):  # type: ignore[explicit-any]  # reason: exte
         retry_delay_ms: Base delay between retries in milliseconds.
     """
 
-    model_config = ConfigDict(frozen=True)
-
     agents: list[str] = Field(..., min_length=1, description="Agents in fallback order")
     max_retries: int = Field(default=3, ge=0, description="Max retries per agent")
     retry_delay_ms: int = Field(default=1000, ge=0, description="Base retry delay in milliseconds")
 
 
-class AgentsPolicy(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+class AgentsPolicy(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     """Top-level agents.toml policy document.
 
     Attributes:
@@ -75,8 +82,6 @@ class AgentsPolicy(BaseModel):  # type: ignore[explicit-any]  # reason: external
         forbid_sibling_drain_inference: If True, rejects implicit sibling-drain
             inheritance. Every built-in drain must have an explicit chain binding.
     """
-
-    model_config = ConfigDict(frozen=True)
 
     agent_chains: dict[str, AgentChainConfig] = Field(
         default_factory=dict,
@@ -113,7 +118,7 @@ class AgentsPolicy(BaseModel):  # type: ignore[explicit-any]  # reason: external
 # ---------------------------------------------------------------------------
 
 
-class PhaseTransition(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+class PhaseTransition(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     """Transition rules from a phase to other phases.
 
     Attributes:
@@ -121,8 +126,6 @@ class PhaseTransition(BaseModel):  # type: ignore[explicit-any]  # reason: exter
         on_failure: Phase to route to on failure (None = pipeline fails).
         on_loopback: Phase to route to when a loopback/continue signal is received.
     """
-
-    model_config = ConfigDict(frozen=True)
 
     on_success: str = Field(..., description="Next phase on success")
     on_failure: str | None = Field(
@@ -134,7 +137,7 @@ class PhaseTransition(BaseModel):  # type: ignore[explicit-any]  # reason: exter
     )
 
 
-class PhaseDefinition(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+class PhaseDefinition(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     """Definition of a single phase in the pipeline graph.
 
     Attributes:
@@ -143,8 +146,6 @@ class PhaseDefinition(BaseModel):  # type: ignore[explicit-any]  # reason: exter
         requires_commit: Whether this phase gates the commit decision.
         embeds_analysis: Whether this phase includes an embedded analysis step.
     """
-
-    model_config = ConfigDict(frozen=True)
 
     drain: DrainName = Field(..., description="Drain binding for this phase")
     transitions: PhaseTransition = Field(..., description="Transition routing rules")
@@ -166,10 +167,8 @@ class PhaseDefinition(BaseModel):  # type: ignore[explicit-any]  # reason: exter
     )
 
 
-class PostCommitRouteWhen(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+class PostCommitRouteWhen(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     """Condition selector for post-commit budget-guarded routing."""
-
-    model_config = ConfigDict(frozen=True)
 
     phase: Literal["development_commit", "review_commit"] = Field(
         ...,
@@ -181,19 +180,15 @@ class PostCommitRouteWhen(BaseModel):  # type: ignore[explicit-any]  # reason: e
     )
 
 
-class PostCommitRoute(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+class PostCommitRoute(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     """Budget-guarded route applied after commit success."""
-
-    model_config = ConfigDict(frozen=True)
 
     when: PostCommitRouteWhen = Field(..., description="Route condition")
     target: str = Field(..., description="Target phase when condition matches")
 
 
-class ParallelExecutionPolicy(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+class ParallelExecutionPolicy(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     """Policy controls for planning-artifact work_units fanout."""
-
-    model_config = ConfigDict(frozen=True)
 
     source: Literal["planning_artifact_work_units"] = Field(
         default="planning_artifact_work_units",
@@ -215,7 +210,7 @@ class ParallelExecutionPolicy(BaseModel):  # type: ignore[explicit-any]  # reaso
     )
 
 
-class PipelinePolicy(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+class PipelinePolicy(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     """Top-level pipeline.toml policy document.
 
     Attributes:
@@ -223,8 +218,6 @@ class PipelinePolicy(BaseModel):  # type: ignore[explicit-any]  # reason: extern
         entry_phase: Name of the phase where the pipeline starts.
         terminal_phase: Name of the phase that marks successful completion.
     """
-
-    model_config = ConfigDict(frozen=True)
 
     phases: dict[str, PhaseDefinition] = Field(
         default_factory=dict,
@@ -320,7 +313,7 @@ class PipelinePolicy(BaseModel):  # type: ignore[explicit-any]  # reason: extern
 # ---------------------------------------------------------------------------
 
 
-class ArtifactContract(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+class ArtifactContract(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     """Contract for an artifact type submitted by an agent at a given drain.
 
     Attributes:
@@ -329,8 +322,6 @@ class ArtifactContract(BaseModel):  # type: ignore[explicit-any]  # reason: exte
         decision_vocabulary: Valid values for the decision field (for analysis drains).
         prompt_template: Optional template for generating prompts (None = use default).
     """
-
-    model_config = ConfigDict(frozen=True)
 
     drain: DrainName = Field(..., description="Drain this artifact is submitted at")
     artifact_type: str = Field(
@@ -347,14 +338,12 @@ class ArtifactContract(BaseModel):  # type: ignore[explicit-any]  # reason: exte
     )
 
 
-class ArtifactsPolicy(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+class ArtifactsPolicy(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     """Top-level artifacts.toml policy document.
 
     Attributes:
         artifacts: Map of artifact name -> artifact contract.
     """
-
-    model_config = ConfigDict(frozen=True)
 
     artifacts: dict[str, ArtifactContract] = Field(
         default_factory=dict,
@@ -381,13 +370,11 @@ class ArtifactsPolicy(BaseModel):  # type: ignore[explicit-any]  # reason: exter
 # ---------------------------------------------------------------------------
 
 
-class PolicyBundle(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+class PolicyBundle(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     """Aggregate of all three policy documents.
 
     This is what the loader returns after validating all three TOML files together.
     """
-
-    model_config = ConfigDict(frozen=True)
 
     agents: AgentsPolicy = Field(..., description="Agent chains and drain bindings")
     pipeline: PipelinePolicy = Field(..., description="Phase graph and routing")

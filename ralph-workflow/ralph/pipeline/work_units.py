@@ -32,10 +32,19 @@ RESERVED_EDIT_PATHS: frozenset[str] = frozenset(
 )
 
 
-class WorkUnit(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
-    """Single planning work unit declaration."""
+class _FrozenWorkUnitModel(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+    """Private base for frozen work unit models.
+
+    Owns ``model_config = ConfigDict(frozen=True)`` once so descendants do not
+    repeat it. Pydantic v2 inherits ``model_config`` when descendants do not
+    declare one of their own.
+    """
 
     model_config = ConfigDict(frozen=True)
+
+
+class WorkUnit(_FrozenWorkUnitModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+    """Single planning work unit declaration."""
 
     unit_id: str = Field(..., min_length=1)
     description: str = Field(..., min_length=1, max_length=MAX_DESCRIPTION_CHARS)
@@ -66,10 +75,8 @@ class WorkUnit(BaseModel):  # type: ignore[explicit-any]  # reason: external lib
         return [_validate_relative_subpath(path) for path in v]
 
 
-class WorkUnitsPlan(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+class WorkUnitsPlan(_FrozenWorkUnitModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     """Typed representation of work_units[] in planning artifacts."""
-
-    model_config = ConfigDict(frozen=True)
 
     work_units: list[WorkUnit] = Field(default_factory=list)
 

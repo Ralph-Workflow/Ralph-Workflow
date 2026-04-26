@@ -11,10 +11,19 @@ from ralph.mcp.tools.names import RALPH_MCP_SERVER_NAME
 _DEFAULT_MAX_INLINE_BYTES = 5_242_880  # 5 MiB
 
 
-class McpServerSpec(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
-    """Schema for a single MCP server entry in `mcp.toml`."""
+class _FrozenMcpModel(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+    """Private base for frozen MCP config models.
+
+    Owns ``model_config = ConfigDict(frozen=True)`` once so descendants do not
+    repeat it. Pydantic v2 inherits ``model_config`` when descendants do not
+    declare one of their own.
+    """
 
     model_config = ConfigDict(frozen=True)
+
+
+class McpServerSpec(_FrozenMcpModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+    """Schema for a single MCP server entry in `mcp.toml`."""
 
     name: str = Field(..., pattern=r"^[a-z][a-z0-9_-]*$")
     transport: Literal["http", "stdio"]
@@ -54,10 +63,8 @@ class McpServerSpec(BaseModel):  # type: ignore[explicit-any]  # reason: externa
         return self
 
 
-class WebSearchBackendSpec(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+class WebSearchBackendSpec(_FrozenMcpModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     """Backend configuration for built-in web search providers."""
-
-    model_config = ConfigDict(frozen=True)
 
     backend: Literal["ddgs", "searxng", "tavily", "brave", "exa"]
     url: str | None = None
@@ -76,10 +83,8 @@ class WebSearchBackendSpec(BaseModel):  # type: ignore[explicit-any]  # reason: 
         return self
 
 
-class WebSearchConfig(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+class WebSearchConfig(_FrozenMcpModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     """Top-level `web_search` config in `mcp.toml`."""
-
-    model_config = ConfigDict(frozen=True)
 
     enabled: bool = True
     backend: str = "ddgs"
@@ -87,10 +92,8 @@ class WebSearchConfig(BaseModel):  # type: ignore[explicit-any]  # reason: exter
     backends: dict[str, WebSearchBackendSpec] = Field(default_factory=dict)
 
 
-class WebVisitConfig(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+class WebVisitConfig(_FrozenMcpModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     """Top-level `web_visit` config in `mcp.toml`."""
-
-    model_config = ConfigDict(frozen=True)
 
     enabled: bool = True
     timeout_ms: int = Field(default=15000, gt=0)
@@ -100,7 +103,7 @@ class WebVisitConfig(BaseModel):  # type: ignore[explicit-any]  # reason: extern
     extract_links: bool = False
 
 
-class MediaConfig(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+class MediaConfig(_FrozenMcpModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     """Opt-in multimodal media support config in `mcp.toml`.
 
     Multimodal support is disabled by default. Enable via [media] section:
@@ -109,16 +112,12 @@ class MediaConfig(BaseModel):  # type: ignore[explicit-any]  # reason: external 
         max_inline_bytes = 5242880
     """
 
-    model_config = ConfigDict(frozen=True)
-
     enabled: bool = False
     max_inline_bytes: int = Field(default=_DEFAULT_MAX_INLINE_BYTES, gt=0)
 
 
-class McpConfig(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+class McpConfig(_FrozenMcpModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     """Top-level `mcp.toml` document."""
-
-    model_config = ConfigDict(frozen=True)
 
     mcp_servers: dict[str, McpServerSpec] = Field(default_factory=dict)
     web_search: WebSearchConfig = Field(default_factory=WebSearchConfig)

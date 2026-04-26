@@ -106,7 +106,9 @@ def test_all_top_level_templates_include_unattended_partial() -> None:
     assert missing == []
 
 
-ANALYSIS_EXHAUSTIVE_FAILURE_GUIDANCE = "**List every gap found** across all dimensions. Do not stop after the first problem."
+ANALYSIS_EXHAUSTIVE_FAILURE_GUIDANCE = (
+    "**List every gap found** across all dimensions. Do not stop after the first problem."
+)
 ANALYSIS_OMISSION_GUIDANCE = (
     "3. **Cite concrete evidence.** File paths, function names, test names, command output,"
 )
