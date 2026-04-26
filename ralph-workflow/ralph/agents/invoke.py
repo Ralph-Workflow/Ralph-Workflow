@@ -39,6 +39,7 @@ from ralph.agents.idle_watchdog import (
     WatchdogFireReason,
     WatchdogVerdict,
 )
+from ralph.agents.post_exit_watchdog import PostExitVerdict, PostExitWatchdog
 from ralph.agents.timeout_clock import Clock, SystemClock
 from ralph.config.enums import AgentTransport
 from ralph.mcp.protocol.startup import (
@@ -127,7 +128,7 @@ class ResolvedInvocationRuntime:
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterator
+    from collections.abc import Iterator
 
     from ralph.config.models import AgentConfig
 
@@ -542,12 +543,9 @@ def _run_subprocess_and_read_lines(  # noqa: PLR0913
 
             # Post-EOF: wait for subprocess to exit within policy budget.
             # Prevents hanging when a subprocess closes stdout but never calls exit().
-            deadline = clock.monotonic() + policy.process_exit_wait_seconds
-            while clock.monotonic() < deadline:
-                if handle.poll() is not None:
-                    break
-                clock.sleep(policy.descendant_wait_poll_seconds)
-            else:
+            post_exit = PostExitWatchdog(policy, clock)
+            verdict = post_exit.wait_for_process_exit(lambda: handle.poll() is not None)
+            if verdict == PostExitVerdict.FIRE_PROCESS_EXIT_HANG:
                 handle.terminate(grace_period_s=0.5)
                 raise _IdleStreamTimeoutError(
                     policy.process_exit_wait_seconds,
@@ -781,6 +779,43 @@ def _read_lines_from_process(  # noqa: PLR0915
     strategy = execution_strategy or GenericExecutionStrategy()
     probe: LivenessProbe = liveness_probe or DefaultLivenessProbe()
 
+    def _safe_classify_quiet() -> AgentExecutionState:
+        try:
+            return strategy.classify_quiet(handle, probe)
+        except Exception:
+            logger.opt(exception=True).debug(
+                "idle watchdog: classify_quiet raised; defaulting to ACTIVE"
+            )
+            return AgentExecutionState.ACTIVE
+
+    def _handle_fire_verdict(
+        verdict: WatchdogVerdict,
+    ) -> tuple[list[str], _IdleStreamTimeoutError] | None:
+        if verdict != WatchdogVerdict.FIRE:
+            return None
+        assert (
+            policy.idle_timeout_seconds is not None or policy.max_session_seconds is not None
+        )
+        fire_reason = watchdog.last_fire_reason
+        assert fire_reason is not None
+        timeout_val = (
+            policy.max_session_seconds
+            if fire_reason == WatchdogFireReason.SESSION_CEILING_EXCEEDED
+            else policy.idle_timeout_seconds
+        )
+        assert timeout_val is not None
+        logger.warning(
+            "idle watchdog firing reason={} elapsed={}s cumulative_waiting={}s",
+            fire_reason,
+            round(clock.monotonic(), 1),
+            round(watchdog.cumulative_waiting_on_child_seconds, 1),
+        )
+        with lines_lock:
+            pending = list(lines_queue)
+            lines_queue.clear()
+        handle.terminate(grace_period_s=0.5)
+        return pending, _IdleStreamTimeoutError(timeout_val, fire_reason)
+
     while True:
         # Clear event BEFORE checking queue+done so we cannot miss a set() that
         # races between the check and the wait_for_event call below.
@@ -797,37 +832,28 @@ def _read_lines_from_process(  # noqa: PLR0915
         if queued_line is not None:
             watchdog.record_activity()
             yield queued_line
+            # Evaluate after every yield: SESSION_CEILING_EXCEEDED can fire even
+            # under continuous output (ACTIVE is correct since activity just reset
+            # the idle deadline; only the session ceiling can produce FIRE here).
+            fire_result = _handle_fire_verdict(
+                watchdog.evaluate(classify_quiet=lambda: AgentExecutionState.ACTIVE)
+            )
+            if fire_result is not None:
+                pending_lines, exc = fire_result
+                yield from pending_lines
+                raise exc
             continue
 
         if is_done:
             break
 
-        verdict = watchdog.evaluate(
-            classify_quiet=lambda: strategy.classify_quiet(handle, probe)
+        fire_result = _handle_fire_verdict(
+            watchdog.evaluate(classify_quiet=_safe_classify_quiet)
         )
-        if verdict == WatchdogVerdict.FIRE:
-            assert policy.idle_timeout_seconds is not None or policy.max_session_seconds is not None
-            fire_reason = watchdog.last_fire_reason
-            assert fire_reason is not None
-            timeout_val = (
-                policy.max_session_seconds
-                if fire_reason == WatchdogFireReason.SESSION_CEILING_EXCEEDED
-                else policy.idle_timeout_seconds
-            )
-            assert timeout_val is not None
-            logger.warning(
-                "idle watchdog firing reason={} elapsed={}s cumulative_waiting={}s",
-                fire_reason,
-                round(clock.monotonic(), 1),
-                round(watchdog.cumulative_waiting_on_child_seconds, 1),
-            )
-            # Drain any lines that arrived just before the FIRE verdict
-            with lines_lock:
-                pending = list(lines_queue)
-                lines_queue.clear()
-            yield from pending
-            handle.terminate(grace_period_s=0.5)
-            raise _IdleStreamTimeoutError(timeout_val, fire_reason)
+        if fire_result is not None:
+            pending_lines, exc = fire_result
+            yield from pending_lines
+            raise exc
 
         # Wake immediately when a line arrives; FakeClock just advances time.
         clock.wait_for_event(lines_event, policy.idle_poll_interval_seconds)
@@ -865,34 +891,6 @@ class _CompletionCheckOptions:
     )
 
 
-def _poll_until_deadline(
-    predicate: Callable[[], AgentExecutionState],
-    *,
-    deadline: float,
-    interval: float,
-    clock: Clock,
-) -> AgentExecutionState:
-    """Poll predicate every interval until deadline or a non-WAITING_ON_CHILD result.
-
-    Args:
-        predicate: Callable returning the current AgentExecutionState.
-        deadline: Monotonic clock time after which polling stops.
-        interval: Seconds to sleep between predicate calls.
-        clock: Clock to use for time and sleep.
-
-    Returns:
-        The final state from the last predicate call.
-    """
-    result = AgentExecutionState.WAITING_ON_CHILD
-    while clock.monotonic() < deadline:
-        result = predicate()
-        if result != AgentExecutionState.WAITING_ON_CHILD:
-            return result
-        clock.sleep(interval)
-    # Final recheck after deadline
-    return predicate()
-
-
 def _wait_for_completion_grace(
     handle: ManagedProcess,
     opts: _CompletionCheckOptions,
@@ -917,30 +915,22 @@ def _wait_for_completion_grace(
 
     effective_clock: Clock = clock or SystemClock()
     probe = opts.liveness_probe or DefaultLivenessProbe()
-    deadline = effective_clock.monotonic() + opts.policy.parent_exit_grace_seconds
 
-    def _check() -> AgentExecutionState:
+    def classify_exit_state() -> AgentExecutionState:
         signals = evaluate_completion(
             workspace_path,
             phase,
             list(parsed_output) if parsed_output else [],
         )
-        state = execution_strategy.classify_exit(handle, signals, liveness_probe=probe)
-        if state == AgentExecutionState.TERMINAL_COMPLETE:
-            return AgentExecutionState.TERMINAL_COMPLETE
-        if state == AgentExecutionState.WAITING_ON_CHILD:
-            return AgentExecutionState.WAITING_ON_CHILD
-        return AgentExecutionState.RESUMABLE_CONTINUE
+        return execution_strategy.classify_exit(handle, signals, liveness_probe=probe)
 
-    while effective_clock.monotonic() < deadline:
-        state = _check()
-        if state in (
-            AgentExecutionState.TERMINAL_COMPLETE,
-            AgentExecutionState.WAITING_ON_CHILD,
-        ):
-            return state
-        effective_clock.sleep(opts.policy.descendant_wait_poll_seconds)
-    return _check()
+    post_exit = PostExitWatchdog(opts.policy, effective_clock)
+    verdict = post_exit.wait_parent_exit_grace(classify_exit_state)
+    if verdict == PostExitVerdict.SIGNALS_PRESENT:
+        return AgentExecutionState.TERMINAL_COMPLETE
+    if verdict == PostExitVerdict.CHILDREN_ACTIVE:
+        return AgentExecutionState.WAITING_ON_CHILD
+    return AgentExecutionState.RESUMABLE_CONTINUE
 
 
 def _wait_for_descendants_then_recheck(
@@ -977,10 +967,9 @@ def _wait_for_descendants_then_recheck(
     assert execution_strategy is not None
 
     effective_clock: Clock = clock or SystemClock()
-    deadline = effective_clock.monotonic() + opts.policy.descendant_wait_timeout_seconds
     probe = opts.liveness_probe or DefaultLivenessProbe()
 
-    def _check() -> AgentExecutionState:
+    def classify_exit_state() -> AgentExecutionState:
         signals = evaluate_completion(
             workspace_path,
             phase,
@@ -988,17 +977,15 @@ def _wait_for_descendants_then_recheck(
         )
         return execution_strategy.classify_exit(handle, signals, liveness_probe=probe)
 
-    final_state = _poll_until_deadline(
-        _check,
-        deadline=deadline,
-        interval=opts.policy.descendant_wait_poll_seconds,
-        clock=effective_clock,
-    )
-    # If still WAITING_ON_CHILD, fall back to RESUMABLE_CONTINUE so the caller
-    # raises OpenCodeResumableExitError rather than treating this as silent success.
-    if final_state == AgentExecutionState.WAITING_ON_CHILD:
+    post_exit = PostExitWatchdog(opts.policy, effective_clock)
+    verdict = post_exit.wait_descendant_quiesce(classify_exit_state)
+    if verdict == PostExitVerdict.SIGNALS_PRESENT:
+        return AgentExecutionState.TERMINAL_COMPLETE
+    if verdict == PostExitVerdict.QUIESCED_NO_SIGNALS:
         return AgentExecutionState.RESUMABLE_CONTINUE
-    return final_state
+    # FIRE_DESCENDANT_HANG: WAITING_ON_CHILD persisted for full deadline.
+    # Fall back to RESUMABLE_CONTINUE so the caller raises OpenCodeResumableExitError.
+    return AgentExecutionState.RESUMABLE_CONTINUE
 
 
 def _check_process_result(

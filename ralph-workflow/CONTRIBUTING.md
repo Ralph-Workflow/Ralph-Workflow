@@ -76,6 +76,34 @@ When working on `ralph/pipeline/runner.py`, `ralph/phases/`, or Claude/CCS agent
 
 This logic is more complex than a naive "agent exited 0" flow, but it exists to prevent silent no-op runs in unattended mode without forcing side-effect-driven phases to produce busywork artifacts. If you change it, update tests and docs together.
 
+## Agent timeout contract
+
+All wall-clock timeout decisions in the agent invocation system are consolidated behind two
+watchdog controllers, both using Clock-injected time for deterministic FakeClock-driven testing:
+
+- **IdleWatchdog** (`ralph/agents/idle_watchdog.py`) — owns in-stream timeouts:
+  - `SESSION_CEILING_EXCEEDED` — absolute wall-clock ceiling; activity cannot reset it.
+  - `NO_OUTPUT_DEADLINE` — idle deadline since last output (+ drain window).
+  - `CHILDREN_PERSIST_TOO_LONG` — cumulative WAITING_ON_CHILD ceiling.
+- **PostExitWatchdog** (`ralph/agents/post_exit_watchdog.py`) — owns post-exit timeouts:
+  - `PROCESS_EXIT_HANG` — subprocess closed stdout but did not exit within budget.
+  - `DESCENDANT_HANG` — descendant_wait deadline elapsed with WAITING_ON_CHILD persistent (post-exit only).
+  - Parent-exit grace window (`wait_parent_exit_grace`).
+  - Descendant-quiesce window (`wait_descendant_quiesce`).
+
+**Forbidden:** No ad-hoc `clock.monotonic()` / `clock.sleep()` loops are allowed in
+`invoke.py`. Every wall-clock decision must route through one of the two watchdogs to
+remain testable. The `FakeClock` / `Clock` seam is the only mechanism for deterministic
+timeout testing; real `time.sleep()` in production tests is a test-smell that indicates
+a missing watchdog seam.
+- The read loop must call `watchdog.evaluate()` on every iteration, including the
+  post-yield path, so `SESSION_CEILING_EXCEEDED` cannot be defeated by continuous output.
+- The read loop must defensively wrap `classify_quiet` so a transient liveness probe
+  exception cannot silence the watchdog (default to ACTIVE on exception).
+
+See `ralph/agents/post_exit_watchdog.py` for the full post-exit transition matrix and
+verdict semantics.
+
 ## OpenCode session continuation and completion contract
 
 OpenCode is a session-based agent that may spawn child agents or delegate background work. Ralph Workflow

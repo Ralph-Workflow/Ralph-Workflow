@@ -518,6 +518,13 @@ ralph.agents.idle_watchdog
    :members:
    :show-inheritance:
 
+ralph.agents.post_exit_watchdog
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.agents.post_exit_watchdog
+   :members:
+   :show-inheritance:
+
 ralph.agents.invoke
 ~~~~~~~~~~~~~~~~~~~
 

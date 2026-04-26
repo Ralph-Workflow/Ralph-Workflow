@@ -1,8 +1,17 @@
 """Idle watchdog for agent timeout policy enforcement.
 
-IdleWatchdog owns the idle-deadline logic and exposes a single evaluate() method.
-All wall-clock decisions go through the injected Clock so the watchdog is fully
-testable without real sleeps (FakeClock) per CLAUDE.md test performance policy.
+IdleWatchdog owns the in-stream idle/deadline logic and exposes a single evaluate()
+method.  All wall-clock decisions go through the injected Clock so the watchdog is
+fully testable without real sleeps (FakeClock) per CLAUDE.md test performance policy.
+
+This module is the counterpart to ralph.agents.post_exit_watchdog.PostExitWatchdog,
+which owns post-exit (post-EOF) wall-clock timeouts.  Together these two watchdogs
+cover every wall-clock timeout fire path in the agent invocation system; no ad-hoc
+clock.monotonic()/clock.sleep() loops are allowed in invoke.py.
+
+IdleWatchdog owns fire reasons: SESSION_CEILING_EXCEEDED, NO_OUTPUT_DEADLINE,
+and CHILDREN_PERSIST_TOO_LONG.  PostExitWatchdog owns: PROCESS_EXIT_HANG and
+DESCENDANT_HANG.  See ralph.agents.post_exit_watchdog for the post-exit family.
 """
 
 from __future__ import annotations
@@ -36,12 +45,19 @@ class WatchdogVerdict(StrEnum):
 
 
 class WatchdogFireReason(StrEnum):
-    """Why the watchdog decided to fire."""
+    """Why the watchdog decided to fire.
+
+    IdleWatchdog reasons (in-stream):
+      NO_OUTPUT_DEADLINE, CHILDREN_PERSIST_TOO_LONG, SESSION_CEILING_EXCEEDED.
+    PostExitWatchdog reasons (post-exit):
+      PROCESS_EXIT_HANG, DESCENDANT_HANG.
+    """
 
     NO_OUTPUT_DEADLINE = "no_output_deadline"
     CHILDREN_PERSIST_TOO_LONG = "children_persist_too_long"
     SESSION_CEILING_EXCEEDED = "session_ceiling_exceeded"
     PROCESS_EXIT_HANG = "process_exit_hang"
+    DESCENDANT_HANG = "descendant_hang"
 
 
 @dataclass(frozen=True)
@@ -53,10 +69,13 @@ class TimeoutPolicy:
     governs every timeout decision.
 
     Precedence of fire conditions (in evaluation order):
+
     1. SESSION_CEILING_EXCEEDED — absolute wall-clock cap; activity cannot reset it.
     2. NO_OUTPUT_DEADLINE (+ drain window) — idle deadline since last output.
     3. CHILDREN_PERSIST_TOO_LONG — cumulative WAITING_ON_CHILD ceiling.
     4. PROCESS_EXIT_HANG — subprocess closed stdout but did not exit within budget.
+    5. DESCENDANT_HANG — descendant-wait deadline elapsed with persistent WAITING_ON_CHILD
+       (post-exit only, owned by PostExitWatchdog).
 
     Attributes:
         idle_timeout_seconds: Maximum seconds without output before watchdog may fire.
