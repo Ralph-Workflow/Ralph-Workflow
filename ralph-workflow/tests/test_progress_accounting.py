@@ -90,7 +90,7 @@ def _progress_policy() -> PipelinePolicy:
             ),
             PHASE_FIX: PhaseDefinition(
                 drain="fix",
-                transitions=PhaseTransition(on_success=PHASE_REVIEW),
+                transitions=PhaseTransition(on_success="review_analysis", on_loopback=PHASE_REVIEW),
             ),
             "review_commit": PhaseDefinition(
                 drain="review_commit",
@@ -149,6 +149,7 @@ def test_review_analysis_loopback_updates_only_review_analysis_fields() -> None:
 
 
 def test_forced_review_analysis_handoff_preserves_outer_progress_and_marks_issue_state() -> None:
+    """At max iteration, ANALYSIS_LOOPBACK routes to fix (not commit) and marks issues."""
     policy = _progress_policy()
     state = PipelineState(
         phase="review_analysis",
@@ -161,7 +162,8 @@ def test_forced_review_analysis_handoff_preserves_outer_progress_and_marks_issue
 
     new_state, _ = _reduce(state, PipelineEvent.ANALYSIS_LOOPBACK, policy)
 
-    assert new_state.phase == "review_commit"
+    # With the fix, loopback routes to fix (not commit) at max iteration
+    assert new_state.phase == PHASE_FIX
     assert new_state.previous_phase == "review_analysis"
     assert new_state.reviewer_pass == 1
     assert new_state.review_analysis_iteration == FORCED_REVIEW_ANALYSIS_ITERATION

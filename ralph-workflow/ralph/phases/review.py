@@ -152,6 +152,17 @@ def handle_review(effect: Effect, ctx: PhaseContext) -> list[Event]:
         head = _current_head_sha(ctx)
         if head is not None:
             _write_review_baseline(ctx, head)
+
+        # Check if issues were found and emit REVIEW_ISSUES_FOUND if so
+        try:
+            artifact_wrapper = load_phase_artifact(ctx.workspace, REVIEW_ISSUES_ARTIFACT_PATH)
+            content = artifact_wrapper.get("content", {})
+            issues = content.get("issues", [])
+            if issues:
+                return [PipelineEvent.REVIEW_ISSUES_FOUND]
+        except Exception:
+            pass
+
         return [PipelineEvent.AGENT_SUCCESS]
 
     return []

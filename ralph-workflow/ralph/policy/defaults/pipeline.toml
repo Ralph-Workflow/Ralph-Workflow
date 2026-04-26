@@ -73,7 +73,7 @@ embeds_analysis = false
 requires_commit = false
 prompt_template = "fix_mode.jinja"
 [phases.fix.transitions]
-on_success = "review"
+on_success = "review_analysis"
 on_loopback = "review"
 
 [phases.review_commit]

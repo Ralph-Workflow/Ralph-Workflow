@@ -14,6 +14,7 @@ from ralph.config.enums import (
     PHASE_FAILED,
     PHASE_FIX,
     PHASE_REVIEW,
+    PHASE_REVIEW_ANALYSIS,
     PHASE_REVIEW_COMMIT,
     PipelinePhase,
 )
@@ -130,7 +131,7 @@ def _policy_with_post_commit_routes() -> PipelinePolicy:
             ),
             PHASE_FIX: PhaseDefinition(
                 drain="fix",
-                transitions=PhaseTransition(on_success=PHASE_REVIEW),
+                transitions=PhaseTransition(on_success=PHASE_REVIEW_ANALYSIS, on_loopback=PHASE_REVIEW),
             ),
             "review_commit": PhaseDefinition(
                 drain="review_commit",
@@ -342,15 +343,16 @@ def test_review_issues_found_advances_to_fix_without_completing_pass() -> None:
     assert new_state.review_issues_found is True
 
 
-def test_fix_success_returns_to_review() -> None:
-    """Test that FIX_SUCCESS returns to review phase."""
+def test_fix_success_returns_to_review_analysis() -> None:
+    """Test that FIX_SUCCESS returns to review_analysis phase for verification."""
+    policy = _policy_with_post_commit_routes()
     state = PipelineState(
         phase=PHASE_FIX,
         reviewer_pass=0,
         total_reviewer_passes=2,
     )
-    new_state, _ = _reduce(state, PipelineEvent.FIX_SUCCESS)
-    assert new_state.phase == PHASE_REVIEW
+    new_state, _ = _reduce(state, PipelineEvent.FIX_SUCCESS, policy)
+    assert new_state.phase == PHASE_REVIEW_ANALYSIS
 
 
 def test_commit_success_advances_to_complete() -> None:
