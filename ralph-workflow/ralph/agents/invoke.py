@@ -19,7 +19,6 @@ import shutil
 import subprocess
 import sys
 import threading
-import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import IO, TYPE_CHECKING, Protocol, cast, runtime_checkable
@@ -34,6 +33,8 @@ from ralph.agents.execution_state import (
     OpenCodeExecutionStrategy,
     strategy_for_transport,
 )
+from ralph.agents.idle_watchdog import IdleWatchdog, WatchdogConfig, WatchdogVerdict
+from ralph.agents.timeout_clock import Clock, SystemClock
 from ralph.config.enums import AgentTransport
 from ralph.mcp.protocol.startup import (
     PreflightError,
@@ -59,9 +60,6 @@ from ralph.process.manager import ManagedProcess, get_process_manager
 
 _MODELED_FLAG_PARTS = 2
 _IDLE_POLL_INTERVAL_SECONDS = 0.05
-# Poll interval for waiting on descendant processes to finish. Distinct from
-# _IDLE_POLL_INTERVAL_SECONDS which is used for idle output detection.
-_DESCENDANT_WAIT_POLL_SECONDS = 0.5
 
 
 @dataclass(frozen=True)
@@ -110,7 +108,7 @@ class ResolvedInvocationRuntime:
 
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Callable, Iterator
 
     from ralph.config.models import AgentConfig
 
@@ -341,6 +339,7 @@ def invoke_agent(
     prompt_file: str,
     *,
     options: InvokeOptions | None = None,
+    _clock: Clock | None = None,
 ) -> Iterator[str]:
     """Invoke agent, yield parsed output lines as they arrive.
 
@@ -348,6 +347,7 @@ def invoke_agent(
         config: Agent configuration specifying command and flags.
         prompt_file: Path to PROMPT.md file to pass to agent.
         options: Optional invocation options.
+        _clock: Injectable Clock for testing; production callers omit this.
 
     Yields:
         Raw agent output lines (before parsing).
@@ -396,6 +396,7 @@ def invoke_agent(
             execution_strategy=execution_strategy,
             liveness_probe=liveness_probe,
             phase=opts.phase,
+            _clock=_clock,
         )
         yield from lines_iter
 
@@ -431,6 +432,7 @@ def _run_subprocess_and_read_lines(  # noqa: PLR0913
     execution_strategy: GenericExecutionStrategy | OpenCodeExecutionStrategy | None = None,
     liveness_probe: LivenessProbe | None = None,
     phase: str | None = None,
+    _clock: Clock | None = None,
 ) -> Iterator[str]:
     """Run subprocess and yield output lines.
 
@@ -455,6 +457,7 @@ def _run_subprocess_and_read_lines(  # noqa: PLR0913
     )
     strategy = execution_strategy or GenericExecutionStrategy()
     probe: LivenessProbe = liveness_probe or DefaultLivenessProbe()
+    clock: Clock = _clock or SystemClock()
     with handle:
         stdout_pipe = handle.stdout
         if stdout_pipe is None:
@@ -466,6 +469,7 @@ def _run_subprocess_and_read_lines(  # noqa: PLR0913
             idle_timeout_seconds=idle_timeout_seconds,
             execution_strategy=strategy,
             liveness_probe=probe,
+            _clock=clock,
         )
         parsed_output: list[str] = []
         if show_progress:
@@ -513,6 +517,7 @@ def _run_subprocess_and_read_lines(  # noqa: PLR0913
                 phase=phase,
                 liveness_probe=probe,
             ),
+            _clock=clock,
         )
 
 
@@ -625,12 +630,14 @@ def _read_lines_from_process(
     idle_timeout_seconds: float | None = None,
     execution_strategy: GenericExecutionStrategy | OpenCodeExecutionStrategy | None = None,
     liveness_probe: LivenessProbe | None = None,
+    _clock: Clock | None = None,
 ) -> Iterator[str]:
     """Read lines from subprocess stdout in a background thread.
 
     Args:
         handle: Running managed process.
         idle_timeout_seconds: Optional maximum idle time without output.
+        _clock: Injectable Clock for testing; production callers omit this.
 
     Yields:
         Lines from stdout.
@@ -639,7 +646,16 @@ def _read_lines_from_process(
     lines_queue: list[str] = []
     lines_lock = threading.Lock()
     lines_event = threading.Event()
-    last_activity = time.monotonic()
+    clock: Clock = _clock or SystemClock()
+
+    watchdog_config = WatchdogConfig(
+        idle_timeout_seconds=idle_timeout_seconds,
+        drain_window_seconds=0.5,
+        max_waiting_on_child_seconds=(
+            max(1800.0, idle_timeout_seconds * 6) if idle_timeout_seconds is not None else 1800.0
+        ),
+    )
+    watchdog = IdleWatchdog(watchdog_config, clock)
 
     def read_lines_thread() -> None:
         if stdout_pipe is None:
@@ -656,6 +672,9 @@ def _read_lines_from_process(
     reader = threading.Thread(target=read_lines_thread, daemon=True)
     reader.start()
 
+    strategy = execution_strategy or GenericExecutionStrategy()
+    probe: LivenessProbe = liveness_probe or DefaultLivenessProbe()
+
     while True:
         queued_line: str | None = None
         with lines_lock:
@@ -663,27 +682,27 @@ def _read_lines_from_process(
                 queued_line = lines_queue.pop(0)
 
         if queued_line is not None:
-            last_activity = time.monotonic()
+            watchdog.record_activity()
             yield queued_line
             continue
 
         if lines_event.is_set():
             break
 
-        if (
-            idle_timeout_seconds is not None
-            and time.monotonic() - last_activity >= idle_timeout_seconds
-        ):
-            strategy = execution_strategy or GenericExecutionStrategy()
-            probe: LivenessProbe = liveness_probe or DefaultLivenessProbe()
-            quiet_state = strategy.classify_quiet(handle, probe)
-            if quiet_state == AgentExecutionState.WAITING_ON_CHILD:
-                last_activity = time.monotonic()
-                continue
-            handle.terminate(grace_period_s=0)
+        verdict = watchdog.evaluate(
+            classify_quiet=lambda: strategy.classify_quiet(handle, probe)
+        )
+        if verdict == WatchdogVerdict.FIRE:
+            assert idle_timeout_seconds is not None
+            # Drain any lines that arrived just before the FIRE verdict
+            with lines_lock:
+                pending = list(lines_queue)
+                lines_queue.clear()
+            yield from pending
+            handle.terminate(grace_period_s=0.5)
             raise _IdleStreamTimeoutError(idle_timeout_seconds)
 
-        lines_event.wait(_IDLE_POLL_INTERVAL_SECONDS)
+        clock.sleep(_IDLE_POLL_INTERVAL_SECONDS)
 
     reader.join(timeout=10)
 
@@ -721,11 +740,40 @@ class _CompletionCheckOptions:
     parent_exit_grace_seconds: float = 5.0
 
 
+def _poll_until_deadline(
+    predicate: Callable[[], AgentExecutionState],
+    *,
+    deadline: float,
+    interval: float,
+    clock: Clock,
+) -> AgentExecutionState:
+    """Poll predicate every interval until deadline or a non-WAITING_ON_CHILD result.
+
+    Args:
+        predicate: Callable returning the current AgentExecutionState.
+        deadline: Monotonic clock time after which polling stops.
+        interval: Seconds to sleep between predicate calls.
+        clock: Clock to use for time and sleep.
+
+    Returns:
+        The final state from the last predicate call.
+    """
+    result = AgentExecutionState.WAITING_ON_CHILD
+    while clock.monotonic() < deadline:
+        result = predicate()
+        if result != AgentExecutionState.WAITING_ON_CHILD:
+            return result
+        clock.sleep(interval)
+    # Final recheck after deadline
+    return predicate()
+
 
 def _wait_for_completion_grace(
     handle: ManagedProcess,
     opts: _CompletionCheckOptions,
     parsed_output: list[str],
+    *,
+    clock: Clock | None = None,
 ) -> AgentExecutionState:
     """Wait up to opts.parent_exit_grace_seconds for completion signals or children to appear.
 
@@ -742,10 +790,11 @@ def _wait_for_completion_grace(
     execution_strategy = opts.execution_strategy
     assert execution_strategy is not None
 
+    effective_clock: Clock = clock or SystemClock()
     probe = opts.liveness_probe or DefaultLivenessProbe()
-    deadline = time.monotonic() + opts.parent_exit_grace_seconds
+    deadline = effective_clock.monotonic() + opts.parent_exit_grace_seconds
 
-    while time.monotonic() < deadline:
+    def _check() -> AgentExecutionState:
         signals = evaluate_completion(
             workspace_path,
             phase,
@@ -756,21 +805,25 @@ def _wait_for_completion_grace(
             return AgentExecutionState.TERMINAL_COMPLETE
         if state == AgentExecutionState.WAITING_ON_CHILD:
             return AgentExecutionState.WAITING_ON_CHILD
-        threading.Event().wait(_DESCENDANT_WAIT_POLL_SECONDS)
+        return AgentExecutionState.RESUMABLE_CONTINUE
 
-    # Deadline elapsed — one final recheck before declaring failure.
-    signals = evaluate_completion(
-        workspace_path,
-        phase,
-        list(parsed_output) if parsed_output else [],
-    )
-    return execution_strategy.classify_exit(handle, signals, liveness_probe=probe)
+    while effective_clock.monotonic() < deadline:
+        state = _check()
+        if state in (
+            AgentExecutionState.TERMINAL_COMPLETE,
+            AgentExecutionState.WAITING_ON_CHILD,
+        ):
+            return state
+        effective_clock.sleep(_DESCENDANT_WAIT_POLL_SECONDS)
+    return _check()
 
 
 def _wait_for_descendants_then_recheck(
     handle: ManagedProcess,
     opts: _CompletionCheckOptions,
     parsed_output: list[str],
+    *,
+    clock: Clock | None = None,
 ) -> AgentExecutionState:
     """Wait for descendant processes to finish, then re-evaluate completion signals.
 
@@ -783,6 +836,7 @@ def _wait_for_descendants_then_recheck(
         handle: Completed parent process handle.
         opts: Completion check options including liveness_probe and timeout.
         parsed_output: Raw NDJSON output lines from the agent.
+        clock: Injectable Clock; defaults to SystemClock.
 
     Returns:
         TERMINAL_COMPLETE if tree quiessed and completion signals present.
@@ -797,33 +851,23 @@ def _wait_for_descendants_then_recheck(
     execution_strategy = opts.execution_strategy
     assert execution_strategy is not None
 
-    deadline = time.monotonic() + opts.descendant_wait_timeout_seconds
+    effective_clock: Clock = clock or SystemClock()
+    deadline = effective_clock.monotonic() + opts.descendant_wait_timeout_seconds
     probe = opts.liveness_probe or DefaultLivenessProbe()
 
-    while time.monotonic() < deadline:
+    def _check() -> AgentExecutionState:
         signals = evaluate_completion(
             workspace_path,
             phase,
             list(parsed_output) if parsed_output else [],
         )
-        exit_state = execution_strategy.classify_exit(
-            handle, signals, liveness_probe=probe
-        )
-        if exit_state != AgentExecutionState.WAITING_ON_CHILD:
-            return exit_state
-        # Use threading.Event.wait for interruptible sleep
-        threading.Event().wait(_DESCENDANT_WAIT_POLL_SECONDS)
+        return execution_strategy.classify_exit(handle, signals, liveness_probe=probe)
 
-    # Deadline elapsed — perform one final completion recheck before falling back.
-    # A required artifact or explicit completion may have appeared just before the
-    # deadline, and we must not miss it.
-    signals = evaluate_completion(
-        workspace_path,
-        phase,
-        list(parsed_output) if parsed_output else [],
-    )
-    final_state = execution_strategy.classify_exit(
-        handle, signals, liveness_probe=probe
+    final_state = _poll_until_deadline(
+        _check,
+        deadline=deadline,
+        interval=_DESCENDANT_WAIT_POLL_SECONDS,
+        clock=effective_clock,
     )
     # If still WAITING_ON_CHILD, fall back to RESUMABLE_CONTINUE so the caller
     # raises OpenCodeResumableExitError rather than treating this as silent success.
@@ -832,11 +876,16 @@ def _wait_for_descendants_then_recheck(
     return final_state
 
 
+_DESCENDANT_WAIT_POLL_SECONDS = 0.5
+
+
 def _check_process_result(
     handle: ManagedProcess,
     agent_name: str,
     parsed_output: list[str] | None = None,
     check_options: _CompletionCheckOptions | None = None,
+    *,
+    _clock: Clock | None = None,
 ) -> None:
     """Check subprocess return code and raise error if non-zero.
 
@@ -849,6 +898,7 @@ def _check_process_result(
     Args:
         handle: Completed managed process.
         agent_name: Name of the agent.
+        _clock: Injectable Clock for testing; production callers omit this.
 
     Raises:
         AgentInvocationError: If process exited with non-zero code.
@@ -887,14 +937,20 @@ def _check_process_result(
         # OpenCode is killed within milliseconds of exit despite ongoing background work.
         if exit_state == AgentExecutionState.RESUMABLE_CONTINUE:
             exit_state = _wait_for_completion_grace(
-                handle, opts, list(parsed_output) if parsed_output else []
+                handle,
+                opts,
+                list(parsed_output) if parsed_output else [],
+                clock=_clock,
             )
 
         # If children appeared (either at exit time or during the grace window),
         # wait for the tree to quiesce before declaring failure.
         if exit_state == AgentExecutionState.WAITING_ON_CHILD:
             exit_state = _wait_for_descendants_then_recheck(
-                handle, opts, list(parsed_output) if parsed_output else []
+                handle,
+                opts,
+                list(parsed_output) if parsed_output else [],
+                clock=_clock,
             )
 
         if exit_state == AgentExecutionState.RESUMABLE_CONTINUE:

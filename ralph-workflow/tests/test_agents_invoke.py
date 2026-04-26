@@ -5,6 +5,7 @@ from __future__ import annotations
 import io
 import json
 import threading
+import time
 import tomllib
 from pathlib import Path
 from types import SimpleNamespace
@@ -26,6 +27,7 @@ from ralph.agents.invoke import (
     check_agent_available,
     invoke_agent,
 )
+from ralph.agents.timeout_clock import FakeClock
 from ralph.config.enums import AgentTransport, JsonParserType
 from ralph.config.models import AgentConfig
 from ralph.mcp.tools.names import (
@@ -43,6 +45,7 @@ from ralph.mcp.upstream.config import (
     UpstreamMcpServer,
     load_upstream_mcp_servers,
 )
+from ralph.process.liveness import FakeLivenessProbe
 
 _EXPECTED_DESCENDANT_LIVENESS_CHECKS = 2
 
@@ -667,15 +670,7 @@ def test_invoke_agent_times_out_when_agent_goes_idle(
             return self.returncode
 
     fake_process = FakeProcess()
-    _mono_idx = [0]
 
-    def _mock_mono() -> float:
-        v = 0.0 if _mono_idx[0] == 0 else 10.0
-        _mono_idx[0] += 1
-        return v
-
-    monkeypatch.setattr("ralph.agents.invoke._IDLE_POLL_INTERVAL_SECONDS", 0.0)
-    monkeypatch.setattr("ralph.agents.invoke.time.monotonic", _mock_mono)
     monkeypatch.setattr(
         "ralph.agents.invoke.subprocess.Popen",
         lambda *args, **kwargs: fake_process,
@@ -687,6 +682,7 @@ def test_invoke_agent_times_out_when_agent_goes_idle(
                 config,
                 str(prompt_file),
                 options=InvokeOptions(show_progress=False, idle_timeout_seconds=5),
+                _clock=FakeClock(),
             )
         )
 
@@ -741,12 +737,9 @@ def test_invoke_agent_defers_idle_timeout_while_descendants_remain_active(
             return self.returncode
 
     fake_process = FakeProcess()
-    monotonic_values = iter([0.0, 10.0, 10.0, 20.0, 20.0])
     descendant_states = iter([True, False])
     descendant_checks = {"count": 0}
 
-    monkeypatch.setattr("ralph.agents.invoke._IDLE_POLL_INTERVAL_SECONDS", 0.0)
-    monkeypatch.setattr("ralph.agents.invoke.time.monotonic", lambda: next(monotonic_values))
     monkeypatch.setattr(
         "ralph.agents.invoke.subprocess.Popen",
         lambda *args, **kwargs: fake_process,
@@ -768,6 +761,7 @@ def test_invoke_agent_defers_idle_timeout_while_descendants_remain_active(
                 config,
                 str(prompt_file),
                 options=InvokeOptions(show_progress=False, idle_timeout_seconds=5),
+                _clock=FakeClock(),
             )
         )
 
@@ -2825,3 +2819,422 @@ def test_check_agent_available_empty_cmd(monkeypatch: pytest.MonkeyPatch) -> Non
     config = AgentConfig(cmd="")
     assert check_agent_available(config) is False
     assert calls == []
+
+
+# ---------------------------------------------------------------------------
+# New integration tests for IdleWatchdog / Clock refactor (Step 8)
+# ---------------------------------------------------------------------------
+
+
+class _BlockingStdout:
+    """Stdout that blocks forever — drives the idle timeout path."""
+
+    def __iter__(self) -> _BlockingStdout:
+        return self
+
+    def __next__(self) -> str:
+        threading.Event().wait(60)
+        raise StopIteration  # unreachable, satisfies type checker
+
+
+class _PreloadedStdout:
+    """Stdout that yields pre-loaded lines and then closes."""
+
+    def __init__(self, lines: list[str]) -> None:
+        self._lines = list(lines)
+
+    def __iter__(self) -> _PreloadedStdout:
+        return self
+
+    def __next__(self) -> str:
+        if self._lines:
+            return self._lines.pop(0)
+        raise StopIteration
+
+
+class _FakeInvokeProcess:
+    """Minimal subprocess.Popen stand-in for integration tests."""
+
+    pid: int = 77777
+
+    def __init__(self, stdout: object = None) -> None:
+        self.stdout = stdout or _BlockingStdout()
+        self.stderr = SimpleNamespace(read=lambda: "")
+        self.returncode: int | None = None
+
+    def __enter__(self) -> _FakeInvokeProcess:
+        return self
+
+    def __exit__(self, _exc_type: object, _exc: object, _tb: object) -> Literal[False]:
+        return False
+
+    def wait(self, timeout: float | None = None) -> int | None:
+        del timeout
+        return self.returncode
+
+    def terminate(self) -> None:
+        self.returncode = -15
+
+    def kill(self) -> None:
+        self.returncode = -9
+
+    def poll(self) -> int | None:
+        return self.returncode
+
+
+def test_idle_timeout_fires_when_truly_idle(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """With no output and a FakeClock advancing past idle_timeout, the watchdog fires."""
+    prompt_file = tmp_path / "PROMPT.md"
+    prompt_file.write_text("hello", encoding="utf-8")
+    config = AgentConfig(cmd="codex", output_flag="--json-stream")
+    fake_process = _FakeInvokeProcess(stdout=_BlockingStdout())
+    monkeypatch.setattr(
+        "ralph.agents.invoke.subprocess.Popen",
+        lambda *args, **kwargs: fake_process,
+    )
+
+    clock = FakeClock()
+    with pytest.raises(AgentInactivityTimeoutError) as exc_info:
+        list(
+            invoke_agent(
+                config,
+                str(prompt_file),
+                options=InvokeOptions(show_progress=False, idle_timeout_seconds=30),
+                _clock=clock,
+            )
+        )
+    _expected_timeout = 30
+    assert exc_info.value.timeout_seconds == _expected_timeout
+
+
+def test_idle_timeout_does_not_fire_when_output_keeps_flowing(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """When lines keep flowing, the idle timeout never fires."""
+    prompt_file = tmp_path / "PROMPT.md"
+    prompt_file.write_text("hello", encoding="utf-8")
+    config = AgentConfig(cmd="codex", output_flag="--json-stream")
+
+    line_count = 20
+    lines = [f'{{"n": {i}}}\n' for i in range(line_count)]
+    fake_process = _FakeInvokeProcess(stdout=_PreloadedStdout(lines))
+    monkeypatch.setattr(
+        "ralph.agents.invoke.subprocess.Popen",
+        lambda *args, **kwargs: fake_process,
+    )
+
+    clock = FakeClock()
+    results = list(
+        invoke_agent(
+            config,
+            str(prompt_file),
+            options=InvokeOptions(show_progress=False, idle_timeout_seconds=10),
+            _clock=clock,
+        )
+    )
+    assert len(results) == line_count
+
+
+def test_idle_timeout_parsed_output_preserved_on_timeout(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """When the timeout fires, parsed_output in the exception contains earlier lines."""
+    prompt_file = tmp_path / "PROMPT.md"
+    prompt_file.write_text("hello", encoding="utf-8")
+    config = AgentConfig(cmd="codex", output_flag="--json-stream")
+
+    initial_line = "initial-output-line\n"
+
+    class _OneLineThenBlock:
+        _yielded = False
+
+        def __iter__(self) -> _OneLineThenBlock:
+            return self
+
+        def __next__(self) -> str:
+            if not self._yielded:
+                self._yielded = True
+                return initial_line
+            threading.Event().wait(60)
+            raise StopIteration
+
+    fake_process = _FakeInvokeProcess(stdout=_OneLineThenBlock())
+    monkeypatch.setattr(
+        "ralph.agents.invoke.subprocess.Popen",
+        lambda *args, **kwargs: fake_process,
+    )
+
+    clock = FakeClock()
+    with pytest.raises(AgentInactivityTimeoutError) as exc_info:
+        list(
+            invoke_agent(
+                config,
+                str(prompt_file),
+                options=InvokeOptions(show_progress=False, idle_timeout_seconds=5),
+                _clock=clock,
+            )
+        )
+    assert initial_line.rstrip() in exc_info.value.parsed_output
+
+
+def test_idle_timeout_fires_when_children_persist_past_hard_ceiling(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """When children stay active past max_waiting_on_child_seconds, the watchdog fires.
+
+    This is the false-negative fix: previously WAITING_ON_CHILD reset last_activity
+    indefinitely. Now a hard ceiling prevents infinite deferral.
+    """
+    prompt_file = tmp_path / "PROMPT.md"
+    prompt_file.write_text("hello", encoding="utf-8")
+    config = AgentConfig(
+        cmd="opencode",
+        output_flag="--json-stream",
+        transport=AgentTransport.OPENCODE,
+    )
+
+    fake_process = _FakeInvokeProcess(stdout=_BlockingStdout())
+    monkeypatch.setattr(
+        "ralph.agents.invoke.subprocess.Popen",
+        lambda *args, **kwargs: fake_process,
+    )
+    # Always active — would infinite-defer under the old buggy code.
+    monkeypatch.setattr(
+        "ralph.agents.invoke.DefaultLivenessProbe",
+        lambda: FakeLivenessProbe(active=True),
+    )
+
+    clock = FakeClock()
+    with pytest.raises(AgentInactivityTimeoutError):
+        list(
+            invoke_agent(
+                config,
+                str(prompt_file),
+                options=InvokeOptions(show_progress=False, idle_timeout_seconds=10),
+                _clock=clock,
+            )
+        )
+
+
+def test_idle_timeout_defers_when_children_active_then_fires(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """WAITING_ON_CHILD defers the timeout but does not prevent it from eventually firing."""
+    prompt_file = tmp_path / "PROMPT.md"
+    prompt_file.write_text("hello", encoding="utf-8")
+    config = AgentConfig(
+        cmd="opencode",
+        output_flag="--json-stream",
+        transport=AgentTransport.OPENCODE,
+    )
+
+    fake_process = _FakeInvokeProcess(stdout=_BlockingStdout())
+    monkeypatch.setattr(
+        "ralph.agents.invoke.subprocess.Popen",
+        lambda *args, **kwargs: fake_process,
+    )
+    # Active for first few calls, then inactive — causes deferral then drain window.
+    _active_calls = 3
+    call_count = {"n": 0}
+
+    def _probe_active(label_prefix: str) -> bool:
+        call_count["n"] += 1
+        return call_count["n"] <= _active_calls
+
+    fake_probe = SimpleNamespace(any_agent_active=_probe_active)
+    monkeypatch.setattr(
+        "ralph.agents.invoke.DefaultLivenessProbe",
+        lambda: fake_probe,
+    )
+
+    clock = FakeClock()
+    with pytest.raises(AgentInactivityTimeoutError):
+        list(
+            invoke_agent(
+                config,
+                str(prompt_file),
+                options=InvokeOptions(show_progress=False, idle_timeout_seconds=5),
+                _clock=clock,
+            )
+        )
+    assert call_count["n"] >= _active_calls
+
+
+def test_termination_uses_nonzero_grace_period(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Regression guard: terminate is called with grace_period_s > 0 (false-positive fix)."""
+    prompt_file = tmp_path / "PROMPT.md"
+    prompt_file.write_text("hello", encoding="utf-8")
+    config = AgentConfig(cmd="codex", output_flag="--json-stream")
+    fake_process = _FakeInvokeProcess(stdout=_BlockingStdout())
+    monkeypatch.setattr(
+        "ralph.agents.invoke.subprocess.Popen",
+        lambda *args, **kwargs: fake_process,
+    )
+
+    terminate_calls: list[float] = []
+
+    def _recording_terminate(
+        _self: object, grace_period_s: float | None = None
+    ) -> None:
+        terminate_calls.append(grace_period_s or 0.0)
+        fake_process.returncode = -15
+
+    monkeypatch.setattr(
+        "ralph.process.manager.ManagedProcess.terminate",
+        _recording_terminate,
+        raising=False,
+    )
+
+    clock = FakeClock()
+    with pytest.raises(AgentInactivityTimeoutError):
+        list(
+            invoke_agent(
+                config,
+                str(prompt_file),
+                options=InvokeOptions(show_progress=False, idle_timeout_seconds=5),
+                _clock=clock,
+            )
+        )
+
+    assert terminate_calls, "terminate was not called"
+    assert all(
+        gp > 0 for gp in terminate_calls
+    ), f"Expected all grace_period_s > 0, got {terminate_calls}"
+
+
+
+
+class _CallbackFakeClock(FakeClock):
+    """FakeClock that triggers threading.Events at scheduled fake-time points."""
+
+    def __init__(self, start: float = 0.0) -> None:
+        super().__init__(start)
+        self._listeners: list[tuple[float, threading.Event]] = []
+
+    def sleep(self, seconds: float) -> None:
+        self._now += seconds
+        triggered = [ev for target, ev in self._listeners if self._now >= target]
+        if triggered:
+            for ev in triggered:
+                ev.set()
+            self._listeners = [(t, ev) for t, ev in self._listeners if self._now < t]
+            # Yield 10ms so the OS can schedule the triggered reader thread.
+            time.sleep(0.01)
+
+    def wait_until(self, target: float) -> threading.Event:
+        """Return an event that fires when fake time reaches target."""
+        ev = threading.Event()
+        if self._now >= target:
+            ev.set()
+        else:
+            self._listeners.append((target, ev))
+        return ev
+
+
+class _EventTriggeredStdout:
+    """Stdout that yields one line when an event fires, then EOF."""
+
+    def __init__(self, line: str, trigger: threading.Event) -> None:
+        self._line = line
+        self._trigger = trigger
+        self._done = False
+
+    def __iter__(self) -> _EventTriggeredStdout:
+        return self
+
+    def __next__(self) -> str:
+        if not self._done:
+            self._trigger.wait()
+            self._done = True
+            return self._line
+        raise StopIteration
+
+
+class _ClockBasedLivenessProbe:
+    """Probe that reports children active until a fake-clock threshold is reached."""
+
+    def __init__(self, clock: FakeClock, active_until: float) -> None:
+        self._clock = clock
+        self._active_until = active_until
+
+    def any_agent_active(self, label_prefix: str) -> bool:
+        return self._clock.monotonic() < self._active_until
+
+
+def test_idle_timeout_drain_window_yields_late_line(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Line arriving inside the drain window clears drain state; no timeout fires."""
+    prompt_file = tmp_path / "PROMPT.md"
+    prompt_file.write_text("hello", encoding="utf-8")
+    config = AgentConfig(cmd="codex", output_flag="--json-stream")
+
+    clock = _CallbackFakeClock()
+    # idle_timeout=10s: deadline at fake_time 10.0, drain window [10.0, 10.5).
+    # Inject line at 10.2 (inside drain window) then EOF -> record_activity clears drain.
+    trigger = clock.wait_until(10.2)
+    late_line = "late-arrived-line\n"
+    fake_process = _FakeInvokeProcess(stdout=_EventTriggeredStdout(late_line, trigger))
+    monkeypatch.setattr(
+        "ralph.agents.invoke.subprocess.Popen",
+        lambda *args, **kwargs: fake_process,
+    )
+
+    result_lines = list(
+        invoke_agent(
+            config,
+            str(prompt_file),
+            options=InvokeOptions(show_progress=False, idle_timeout_seconds=10),
+            _clock=clock,
+        )
+    )
+
+    assert late_line in result_lines
+    # No AgentInactivityTimeoutError — function returned normally.
+
+
+def test_idle_timeout_defers_when_children_active_then_clears(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Children defer timeout; once they clear and output arrives, invocation completes normally."""
+    prompt_file = tmp_path / "PROMPT.md"
+    prompt_file.write_text("hello", encoding="utf-8")
+    config = AgentConfig(
+        cmd="opencode",
+        output_flag="--json-stream",
+        transport=AgentTransport.OPENCODE,
+    )
+
+    clock = _CallbackFakeClock()
+    # Probe reports active children until fake_time 30.0.
+    # After that, classify_quiet returns ACTIVE -> drain window opens.
+    # Line arrives at 30.2 (inside drain window) -> record_activity -> no timeout.
+    probe = _ClockBasedLivenessProbe(clock, active_until=30.0)
+    monkeypatch.setattr(
+        "ralph.agents.invoke.DefaultLivenessProbe",
+        lambda: probe,
+    )
+
+    trigger = clock.wait_until(30.2)
+    arrived_line = "work-complete-output\n"
+    fake_process = _FakeInvokeProcess(stdout=_EventTriggeredStdout(arrived_line, trigger))
+    monkeypatch.setattr(
+        "ralph.agents.invoke.subprocess.Popen",
+        lambda *args, **kwargs: fake_process,
+    )
+
+    result_lines = list(
+        invoke_agent(
+            config,
+            str(prompt_file),
+            options=InvokeOptions(show_progress=False, idle_timeout_seconds=10),
+            _clock=clock,
+        )
+    )
+
+    assert arrived_line in result_lines
+    # No AgentInactivityTimeoutError — deferral cleared and then output arrived.

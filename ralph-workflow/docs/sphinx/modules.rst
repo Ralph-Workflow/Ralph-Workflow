@@ -511,6 +511,13 @@ ralph.agents.executor
    :members:
    :show-inheritance:
 
+ralph.agents.idle_watchdog
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.agents.idle_watchdog
+   :members:
+   :show-inheritance:
+
 ralph.agents.invoke
 ~~~~~~~~~~~~~~~~~~~
 
@@ -577,6 +584,15 @@ ralph.agents.subprocess_executor
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.agents.subprocess_executor
+   :members:
+   :show-inheritance:
+
+----
+
+ralph.agents.timeout_clock
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.agents.timeout_clock
    :members:
    :show-inheritance:
 
