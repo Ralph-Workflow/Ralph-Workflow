@@ -5,6 +5,7 @@ from __future__ import annotations
 import io
 import json
 import threading
+import time
 import tomllib
 from pathlib import Path
 from types import SimpleNamespace
@@ -3103,3 +3104,137 @@ def test_termination_uses_nonzero_grace_period(
     assert all(
         gp > 0 for gp in terminate_calls
     ), f"Expected all grace_period_s > 0, got {terminate_calls}"
+
+
+
+
+class _CallbackFakeClock(FakeClock):
+    """FakeClock that triggers threading.Events at scheduled fake-time points."""
+
+    def __init__(self, start: float = 0.0) -> None:
+        super().__init__(start)
+        self._listeners: list[tuple[float, threading.Event]] = []
+
+    def sleep(self, seconds: float) -> None:
+        self._now += seconds
+        triggered = [ev for target, ev in self._listeners if self._now >= target]
+        if triggered:
+            for ev in triggered:
+                ev.set()
+            self._listeners = [(t, ev) for t, ev in self._listeners if self._now < t]
+            # Yield 10ms so the OS can schedule the triggered reader thread.
+            time.sleep(0.01)
+
+    def wait_until(self, target: float) -> threading.Event:
+        """Return an event that fires when fake time reaches target."""
+        ev = threading.Event()
+        if self._now >= target:
+            ev.set()
+        else:
+            self._listeners.append((target, ev))
+        return ev
+
+
+class _EventTriggeredStdout:
+    """Stdout that yields one line when an event fires, then EOF."""
+
+    def __init__(self, line: str, trigger: threading.Event) -> None:
+        self._line = line
+        self._trigger = trigger
+        self._done = False
+
+    def __iter__(self) -> _EventTriggeredStdout:
+        return self
+
+    def __next__(self) -> str:
+        if not self._done:
+            self._trigger.wait()
+            self._done = True
+            return self._line
+        raise StopIteration
+
+
+class _ClockBasedLivenessProbe:
+    """Probe that reports children active until a fake-clock threshold is reached."""
+
+    def __init__(self, clock: FakeClock, active_until: float) -> None:
+        self._clock = clock
+        self._active_until = active_until
+
+    def any_agent_active(self, label_prefix: str) -> bool:
+        return self._clock.monotonic() < self._active_until
+
+
+def test_idle_timeout_drain_window_yields_late_line(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Line arriving inside the drain window clears drain state; no timeout fires."""
+    prompt_file = tmp_path / "PROMPT.md"
+    prompt_file.write_text("hello", encoding="utf-8")
+    config = AgentConfig(cmd="codex", output_flag="--json-stream")
+
+    clock = _CallbackFakeClock()
+    # idle_timeout=10s: deadline at fake_time 10.0, drain window [10.0, 10.5).
+    # Inject line at 10.2 (inside drain window) then EOF -> record_activity clears drain.
+    trigger = clock.wait_until(10.2)
+    late_line = "late-arrived-line\n"
+    fake_process = _FakeInvokeProcess(stdout=_EventTriggeredStdout(late_line, trigger))
+    monkeypatch.setattr(
+        "ralph.agents.invoke.subprocess.Popen",
+        lambda *args, **kwargs: fake_process,
+    )
+
+    result_lines = list(
+        invoke_agent(
+            config,
+            str(prompt_file),
+            options=InvokeOptions(show_progress=False, idle_timeout_seconds=10),
+            _clock=clock,
+        )
+    )
+
+    assert late_line in result_lines
+    # No AgentInactivityTimeoutError — function returned normally.
+
+
+def test_idle_timeout_defers_when_children_active_then_clears(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Children defer timeout; once they clear and output arrives, invocation completes normally."""
+    prompt_file = tmp_path / "PROMPT.md"
+    prompt_file.write_text("hello", encoding="utf-8")
+    config = AgentConfig(
+        cmd="opencode",
+        output_flag="--json-stream",
+        transport=AgentTransport.OPENCODE,
+    )
+
+    clock = _CallbackFakeClock()
+    # Probe reports active children until fake_time 30.0.
+    # After that, classify_quiet returns ACTIVE -> drain window opens.
+    # Line arrives at 30.2 (inside drain window) -> record_activity -> no timeout.
+    probe = _ClockBasedLivenessProbe(clock, active_until=30.0)
+    monkeypatch.setattr(
+        "ralph.agents.invoke.DefaultLivenessProbe",
+        lambda: probe,
+    )
+
+    trigger = clock.wait_until(30.2)
+    arrived_line = "work-complete-output\n"
+    fake_process = _FakeInvokeProcess(stdout=_EventTriggeredStdout(arrived_line, trigger))
+    monkeypatch.setattr(
+        "ralph.agents.invoke.subprocess.Popen",
+        lambda *args, **kwargs: fake_process,
+    )
+
+    result_lines = list(
+        invoke_agent(
+            config,
+            str(prompt_file),
+            options=InvokeOptions(show_progress=False, idle_timeout_seconds=10),
+            _clock=clock,
+        )
+    )
+
+    assert arrived_line in result_lines
+    # No AgentInactivityTimeoutError — deferral cleared and then output arrived.
