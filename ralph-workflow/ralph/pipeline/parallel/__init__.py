@@ -1,13 +1,29 @@
-"""Parallel pipeline coordination primitives.
+"""Same-workspace parallel pipeline coordination.
 
-This package provides the core components for running Ralph Workflow phases
-in parallel across multiple worker processes:
+This package provides the core components for running Ralph Workflow development
+phases in parallel across multiple worker processes within the same repository
+checkout (same-workspace fan-out, v1).
 
-- **Coordinator**: Manages the overall parallel execution lifecycle
-- **Scheduler**: Distributes work units across available workers
-- **WorkerSession**: Maintains state for an individual worker process
-- **MergeIntegrator**: Combines results from parallel workers
+Supported public surface:
 
-These components are used internally by the pipeline orchestrator when
-parallel execution is enabled via policy configuration.
+- **ParallelExecutionMode**: Enumeration of supported parallel execution modes.
+  Only ``SAME_WORKSPACE`` is supported in v1.
+- **SameWorkspaceContext**: Configuration for a same-workspace fan-out run,
+  including repo root, per-worker namespace root, MCP factory, and optional
+  executor command.
+- **validate_for_same_workspace**: Pre-flight validator that rejects overlapping,
+  missing, or reserved edit areas before any worker is launched.
+
+These are the only supported parallel primitives for v1.
+Per-worker branches and post-development branch reconciliation are explicitly
+out of scope for this iteration.
 """
+
+from ralph.pipeline.parallel.mode import ParallelExecutionMode, SameWorkspaceContext
+from ralph.pipeline.work_units import validate_for_same_workspace
+
+__all__ = [
+    "ParallelExecutionMode",
+    "SameWorkspaceContext",
+    "validate_for_same_workspace",
+]

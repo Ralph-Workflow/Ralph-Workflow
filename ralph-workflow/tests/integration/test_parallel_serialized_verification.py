@@ -223,3 +223,63 @@ class TestSerializedPostFanoutVerification:
             "_determine_effect_from_policy must enable run_post_fanout_verification "
             "for same-workspace parallel execution"
         )
+
+    def test_verification_skipped_when_any_worker_fails(self, monkeypatch, tmp_path) -> None:
+        """Post-fanout verification must not run when a worker has failed."""
+        from ralph.pipeline.events import WorkerFailedEvent  # noqa: PLC0415
+
+        unit = _make_work_unit("unit-a")
+        effect = FanOutDevelopmentEffect(
+            work_units=(unit,),
+            max_workers=1,
+            run_post_fanout_verification=True,
+        )
+        state = PipelineState(phase=PHASE_DEVELOPMENT, work_units=(unit,))
+        policy_bundle = _make_policy_bundle(max_workers=1)
+        workspace_scope = WorkspaceScope(tmp_path)
+        verify_calls: list[str] = []
+
+        class _FakeExecutor:
+            def __init__(self, command, signal_bridge=None) -> None:
+                del command, signal_bridge
+
+        class _FakeMcpFactory:
+            def __init__(self, workspace) -> None:
+                del workspace
+
+        async def _fake_run_fan_out_with_failure(**kwargs):
+            # Return a WorkerFailedEvent to simulate a failed worker
+            return [WorkerFailedEvent(unit_id="unit-a", exit_code=1, error="worker crashed")]
+
+        async def _fake_run_process_async(command, args=(), **kwargs):
+            verify_calls.append(command)
+            return ProcessResult(command=(command,), returncode=0, stdout="", stderr="")
+
+        monkeypatch.setattr(
+            "ralph.interrupt.asyncio_bridge.install_signal_handlers", lambda *args: None
+        )
+        monkeypatch.setattr(
+            "ralph.agents.subprocess_executor.SubprocessAgentExecutor",
+            _FakeExecutor,
+        )
+        monkeypatch.setattr(
+            "ralph.mcp.server.factory_impl.DynamicBindingMcpServerFactory", _FakeMcpFactory
+        )
+        monkeypatch.setattr(
+            "ralph.pipeline.parallel.coordinator.run_fan_out", _fake_run_fan_out_with_failure
+        )
+        monkeypatch.setattr("ralph.executor.process.run_process_async", _fake_run_process_async)
+        monkeypatch.setattr(runner_module.ckpt, "save", lambda _state: None)
+
+        runner_module._execute_fan_out_sync(
+            effect=effect,
+            state=state,
+            display=runner_module._LegacyConsoleDisplay(),
+            policy_bundle=policy_bundle,
+            workspace_scope=workspace_scope,
+        )
+
+        assert verify_calls == [], (
+            f"Verification must not run when a worker failed, got: {verify_calls}"
+        )
+

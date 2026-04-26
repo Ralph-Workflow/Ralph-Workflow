@@ -1,4 +1,4 @@
-"""Tests for config propagation across git worktrees."""
+"""Tests for config propagation across nested workspace scopes."""
 
 from __future__ import annotations
 

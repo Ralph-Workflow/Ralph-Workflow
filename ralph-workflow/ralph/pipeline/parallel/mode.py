@@ -18,7 +18,7 @@ class ParallelExecutionMode(StrEnum):
 
     In v1 only SAME_WORKSPACE is supported. Workers share the single checked-out
     repository root and are isolated only by edit-area path restrictions and
-    per-worker artifact namespaces — not by filesystem or git-worktree isolation.
+    per-worker artifact namespaces — not by filesystem isolation or separate git checkouts.
     """
 
     SAME_WORKSPACE = "same_workspace"
@@ -30,7 +30,7 @@ class SameWorkspaceContext:
 
     Workers run against ``repo_root`` directly. Per-worker mutable state lives
     under ``worker_namespace_root / <unit_id> / {artifacts,tmp,logs,handoffs}``.
-    There is no worktree creation, no per-worker branch, and no merge-back step.
+    Workers share one checkout; post-development coordination is state aggregation only.
     """
 
     repo_root: Path

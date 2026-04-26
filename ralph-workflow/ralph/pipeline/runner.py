@@ -83,7 +83,7 @@ from ralph.pipeline.effects import (
     PreparePromptEffect,
     SaveCheckpointEffect,
 )
-from ralph.pipeline.events import Event, PhaseFailureEvent, PipelineEvent
+from ralph.pipeline.events import Event, PhaseFailureEvent, PipelineEvent, WorkerFailedEvent
 from ralph.pipeline.handoffs import resolve_phase_drain
 from ralph.pipeline.reducer import reduce as reducer_reduce
 from ralph.pipeline.state import AgentChainState, CommitState, PipelineState, RebaseState
@@ -1316,7 +1316,8 @@ async def _run_fan_out_async(  # noqa: PLR0913
             message="Checkpoint save failed after fan-out in phase={phase}: {err}",
         )
 
-        if effect.run_post_fanout_verification:
+        any_worker_failed = any(isinstance(ev, WorkerFailedEvent) for ev in fan_out_events)
+        if effect.run_post_fanout_verification and not any_worker_failed:
             from ralph.executor.process import run_process_async  # noqa: PLC0415
             verify_result = await run_process_async(
                 "make",

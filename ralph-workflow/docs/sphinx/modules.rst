@@ -1099,20 +1099,6 @@ ralph.git.subprocess_runner
    :members:
    :show-inheritance:
 
-ralph.git.worktree_manager
-~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. automodule:: ralph.git.worktree_manager
-   :members:
-   :show-inheritance:
-
-ralph.git.worktree_preflight
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. automodule:: ralph.git.worktree_preflight
-   :members:
-   :show-inheritance:
-
 ralph.git.wrapper
 ~~~~~~~~~~~~~~~~~
 

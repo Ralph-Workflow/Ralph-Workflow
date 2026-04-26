@@ -6,7 +6,7 @@ For the end-to-end pipeline lifecycle (Planning -> Development -> result verific
 
 ## Data Flow
 
-The parallel fan-out executes a wave-based DAG across N workers, where each wave respects dependency ordering and a configurable concurrency cap. Workers run against the shared checkout; there is no per-worker branch, no worktree creation, and no merge-back step.
+The parallel fan-out executes a wave-based DAG across N workers, where each wave respects dependency ordering and a configurable concurrency cap. Workers run against the shared checkout. Each worker is isolated by path restrictions and per-worker artifact namespaces only — same-workspace v1 does not use per-worker branches or separate git checkouts, and post-development coordination is state aggregation only.
 
 ```
 Planning phase

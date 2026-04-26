@@ -349,6 +349,7 @@ class TestNoMergeStepContract:
     def test_no_git_branch_merge_or_worktree_subprocess(self, tmp_path: Path, monkeypatch) -> None:
         """Fan-out path must never issue git branch/merge/checkout or worktree subprocesses."""
         banned_calls: list[str] = []
+
         class _RecordingPopen(_subprocess.Popen):
             def __init__(self, cmd, *args, **kwargs):
                 cmd_str = " ".join(str(c) for c in cmd) if not isinstance(cmd, str) else cmd
@@ -358,6 +359,8 @@ class TestNoMergeStepContract:
                     if banned in cmd_str
                 )
                 super().__init__(cmd, *args, **kwargs)
+
+        monkeypatch.setattr(_subprocess, "Popen", _RecordingPopen)
 
         unit = _make_unit("unit-a")
         effect = FanOutDevelopmentEffect(work_units=(unit,), max_workers=1)

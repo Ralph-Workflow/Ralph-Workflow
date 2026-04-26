@@ -30,7 +30,7 @@ max_work_units = 50
 4. Workers are isolated by `allowed_directories` — each worker may only edit its declared subdirectories.
 5. Per-worker state is scoped to `.agent/workers/<unit_id>/` (artifacts, logs, tmp, handoffs).
 6. Workers coordinate through the `mcp__ralph__coordinate` tool exposed by the MCP server.
-7. When all workers complete, the pipeline continues to the next phase. There is no merge-back step.
+7. When all workers complete, the pipeline continues to the normal analysis phase. Post-development coordination is state aggregation only; the shared checkout already contains all worker edits.
 
 ## Work unit structure
 
