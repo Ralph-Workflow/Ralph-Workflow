@@ -94,3 +94,45 @@ enabled = true
 
     assert "web.search" not in plan.capabilities
     assert "web.visit" in plan.capabilities
+
+
+def test_session_mcp_plan_grants_read_diff_and_exec_for_development_analysis(
+    isolated_home: Path,
+    tmp_path: Path,
+) -> None:
+    del isolated_home
+
+    plan = build_session_mcp_plan(
+        transport=AgentTransport.CLAUDE,
+        drain="development_analysis",
+        workspace_path=tmp_path,
+    )
+
+    assert "workspace.read" in plan.capabilities
+    assert "git.status_read" in plan.capabilities
+    assert "git.diff_read" in plan.capabilities
+    assert "artifact.submit" in plan.capabilities
+    assert "process.exec_bounded" in plan.capabilities
+    assert "run.report_progress" in plan.capabilities
+    assert "workspace.write_tracked" not in plan.capabilities
+
+
+def test_session_mcp_plan_grants_read_diff_and_exec_for_review_analysis(
+    isolated_home: Path,
+    tmp_path: Path,
+) -> None:
+    del isolated_home
+
+    plan = build_session_mcp_plan(
+        transport=AgentTransport.CLAUDE,
+        drain="review_analysis",
+        workspace_path=tmp_path,
+    )
+
+    assert "workspace.read" in plan.capabilities
+    assert "git.status_read" in plan.capabilities
+    assert "git.diff_read" in plan.capabilities
+    assert "artifact.submit" in plan.capabilities
+    assert "process.exec_bounded" in plan.capabilities
+    assert "run.report_progress" in plan.capabilities
+    assert "workspace.write_tracked" not in plan.capabilities
