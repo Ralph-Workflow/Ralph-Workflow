@@ -20,6 +20,18 @@ IMPORTANT: The previous attempt did not submit the required artifact before decl
 
 ---
 
+## RUN COMMANDS YOURSELF
+
+Any time a decision requires running a command — to verify behavior, check output, confirm a test
+passes, validate a build, inspect runtime state, or anything else — run it yourself. Corroborate
+the result yourself. Do not assume a command was run, do not assume it was not run, do not ask
+the developer to run it — run it yourself and confirm the output.
+
+This applies to: tests, lint, type checks, builds, runtime behavior, anything that requires
+observing actual command output to evaluate.
+
+---
+
 ## BEYOND THE DIFF
 
 The diff is a **starting point**, not a boundary. If anything is unclear or lacks sufficient
@@ -110,10 +122,8 @@ Evaluate all changed files for:
 
 ### 7. VERIFICATION EVIDENCE
 
-If the PLAN or workflow requires specific verification commands (tests, lint, type checks, build):
-- Were they actually run?
-- Did they pass? If not, that is a failure.
-- Is the output recorded? If not, that is a failure.
+If the PLAN or this workflow requires specific verification commands (tests, lint, type checks, build):
+Did you run them yourself and corroborate the results? If evidence is absent, run the commands now.
 
 ---
 
