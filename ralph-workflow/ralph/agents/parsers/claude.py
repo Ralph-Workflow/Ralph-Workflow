@@ -4,10 +4,9 @@ from __future__ import annotations
 
 import json
 import re
-from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Final, cast
 
-from ralph.agents.parsers.base import AgentOutputLine
+from ralph.agents.parsers.base import AgentOutputLine, TextAccumulator, stringify_text_blocks
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -31,12 +30,6 @@ _LIFECYCLE_MARKERS: Final[frozenset[str]] = frozenset(
 )
 
 
-@dataclass
-class _TextAccumulator:
-    buffer: str = ""
-    raw_lines: list[str] = field(default_factory=list)
-
-
 class ClaudeParser:
     """Parser for Claude's NDJSON streaming output with robust delta accumulation.
 
@@ -55,10 +48,10 @@ class ClaudeParser:
 
     def __init__(self) -> None:
         # Accumulators keyed by (message_id, content_block_index)
-        self._text_accumulator: dict[tuple[str, int], _TextAccumulator] = {}
-        self._thinking_accumulator: dict[tuple[str, int], _TextAccumulator] = {}
-        self._fallback_accumulator: _TextAccumulator | None = None
-        self._fallback_thinking_accumulator: _TextAccumulator | None = None
+        self._text_accumulator: dict[tuple[str, int], TextAccumulator] = {}
+        self._thinking_accumulator: dict[tuple[str, int], TextAccumulator] = {}
+        self._fallback_accumulator: TextAccumulator | None = None
+        self._fallback_thinking_accumulator: TextAccumulator | None = None
         self._current_message_id: str | None = None
         self._seen_content_blocks: set[tuple[str, int]] = set()
 
@@ -188,9 +181,9 @@ class ClaudeParser:
         key = (self._current_message_id, index)
         if block_type == "text":
             if key not in self._text_accumulator:
-                self._text_accumulator[key] = _TextAccumulator()
+                self._text_accumulator[key] = TextAccumulator()
         elif block_type == "thinking" and key not in self._thinking_accumulator:
-            self._thinking_accumulator[key] = _TextAccumulator()
+            self._thinking_accumulator[key] = TextAccumulator()
 
     def _parse_stream_inner(
         self,
@@ -247,42 +240,17 @@ class ClaudeParser:
         if isinstance(index, int) and self._current_message_id is not None:
             block_key = (self._current_message_id, index)
             if block_key in self._text_accumulator:
-                # Accumulate into existing block
-                acc = self._text_accumulator[block_key]
-                acc.buffer += text
-                acc.raw_lines.append(raw)
-
-                # Check for paragraph boundary - flush on \n\n
-                if "\n\n" in acc.buffer:
-                    parts = acc.buffer.split("\n\n", 1)
-                    acc.buffer = parts[1]
-                    yield AgentOutputLine(
-                        type="text",
-                        content=parts[0],
-                        raw="\n".join(acc.raw_lines),
-                    )
-                    acc.raw_lines = [raw] if acc.buffer else []
+                yield from self._text_accumulator[block_key].accumulate(
+                    text, raw, kind="text", keep_current_when_empty=False
+                )
                 return
 
         # No keyed content block context - accumulate in a fallback stream bucket.
-        fallback_acc = self._fallback_accumulator
-        if fallback_acc is None:
-            fallback_acc = _TextAccumulator()
-            self._fallback_accumulator = fallback_acc
-
-        fallback_acc.buffer += text
-        fallback_acc.raw_lines.append(raw)
-
-        if "\n\n" in fallback_acc.buffer:
-            parts = fallback_acc.buffer.split("\n\n", 1)
-            remaining = parts[1]
-            flushed_content = parts[0]
-            if flushed_content:
-                raw_parts = fallback_acc.raw_lines[: len(fallback_acc.raw_lines) - 1]
-                flushed_raw = "\n".join(raw_parts) if raw_parts else ""
-                yield AgentOutputLine(type="text", content=flushed_content, raw=flushed_raw)
-            fallback_acc.buffer = remaining
-            fallback_acc.raw_lines = [raw]
+        if self._fallback_accumulator is None:
+            self._fallback_accumulator = TextAccumulator()
+        yield from self._fallback_accumulator.accumulate(
+            text, raw, kind="text", keep_current_when_empty=True
+        )
 
     def _accumulate_thinking_delta(
         self,
@@ -301,94 +269,45 @@ class ClaudeParser:
         if isinstance(index, int) and self._current_message_id is not None:
             key = (self._current_message_id, index)
             if key in self._thinking_accumulator:
-                acc = self._thinking_accumulator[key]
-                acc.buffer += text
-                acc.raw_lines.append(raw)
-
-                if "\n\n" in acc.buffer:
-                    parts = acc.buffer.split("\n\n", 1)
-                    acc.buffer = parts[1]
-                    yield AgentOutputLine(
-                        type="thinking",
-                        content=parts[0],
-                        raw="\n".join(acc.raw_lines),
-                    )
-                    acc.raw_lines = [raw] if acc.buffer else []
+                yield from self._thinking_accumulator[key].accumulate(
+                    text, raw, kind="thinking", keep_current_when_empty=False
+                )
                 return
 
         # Fallback thinking accumulator
-        fallback_acc = self._fallback_thinking_accumulator
-        if fallback_acc is None:
-            fallback_acc = _TextAccumulator()
-            self._fallback_thinking_accumulator = fallback_acc
-
-        fallback_acc.buffer += text
-        fallback_acc.raw_lines.append(raw)
-
-        if "\n\n" in fallback_acc.buffer:
-            parts = fallback_acc.buffer.split("\n\n", 1)
-            remaining = parts[1]
-            flushed_content = parts[0]
-            if flushed_content:
-                raw_parts = fallback_acc.raw_lines[: len(fallback_acc.raw_lines) - 1]
-                flushed_raw = "\n".join(raw_parts) if raw_parts else ""
-                yield AgentOutputLine(type="thinking", content=flushed_content, raw=flushed_raw)
-            fallback_acc.buffer = remaining
-            fallback_acc.raw_lines = [raw]
+        if self._fallback_thinking_accumulator is None:
+            self._fallback_thinking_accumulator = TextAccumulator()
+        yield from self._fallback_thinking_accumulator.accumulate(
+            text, raw, kind="thinking", keep_current_when_empty=True
+        )
 
     def _flush_text_accumulator(self, key: tuple[str, int]) -> Iterator[AgentOutputLine]:
         """Flush a single text accumulator and remove it."""
         if key not in self._text_accumulator:
             return
-
         acc = self._text_accumulator.pop(key)
-        buffer = acc.buffer
-        raw_lines = acc.raw_lines
-
-        if buffer:
-            raw_joined = "\n".join(raw_lines) if raw_lines else ""
-            yield AgentOutputLine(
-                type="text",
-                content=buffer,
-                raw=raw_joined,
-            )
+        yield from acc.flush(kind="text")
 
     def _flush_thinking_accumulator(self, key: tuple[str, int]) -> Iterator[AgentOutputLine]:
         """Flush a single thinking accumulator and remove it."""
         if key not in self._thinking_accumulator:
             return
-
         acc = self._thinking_accumulator.pop(key)
-        buffer = acc.buffer
-        raw_lines = acc.raw_lines
-
-        if buffer.strip():
-            raw_joined = "\n".join(raw_lines) if raw_lines else ""
-            yield AgentOutputLine(
-                type="thinking",
-                content=buffer,
-                raw=raw_joined,
-            )
+        yield from acc.flush(kind="thinking", require_strip=True)
 
     def _flush_fallback_accumulator(self) -> Iterator[AgentOutputLine]:
         if self._fallback_accumulator is None:
             return
-
         acc = self._fallback_accumulator
         self._fallback_accumulator = None
-        if acc.buffer:
-            raw_joined = "\n".join(acc.raw_lines) if acc.raw_lines else ""
-            yield AgentOutputLine(type="text", content=acc.buffer, raw=raw_joined)
+        yield from acc.flush(kind="text")
 
     def _flush_fallback_thinking_accumulator(self) -> Iterator[AgentOutputLine]:
         if self._fallback_thinking_accumulator is None:
             return
-
         acc = self._fallback_thinking_accumulator
         self._fallback_thinking_accumulator = None
-        if acc.buffer.strip():
-            raw_joined = "\n".join(acc.raw_lines) if acc.raw_lines else ""
-            yield AgentOutputLine(type="thinking", content=acc.buffer, raw=raw_joined)
+        yield from acc.flush(kind="thinking", require_strip=True)
 
     def _flush_all_accumulators(self) -> Iterator[AgentOutputLine]:
         """Flush all pending accumulators on message_stop or iterator exhaustion."""
@@ -663,8 +582,7 @@ class ClaudeParser:
                 )
                 return
 
-            # Extract text from text blocks only
-            tool_result = self._stringify_tool_content(content)
+            tool_result = stringify_text_blocks(content, require_text_type=True)
             yield AgentOutputLine(
                 type="tool_result",
                 content=tool_result,
@@ -675,16 +593,3 @@ class ClaudeParser:
 
         # String content is passed through
         yield AgentOutputLine(type="tool_result", content=str(content), raw=raw, metadata=block)
-
-    def _stringify_tool_content(self, content: object) -> str:
-        if isinstance(content, str):
-            return content
-        if isinstance(content, list):
-            text_parts = [
-                str(item.get("text", ""))
-                for item in content
-                if isinstance(item, dict) and str(item.get("type", "")) == "text"
-            ]
-            if text_parts:
-                return "\n".join(part for part in text_parts if part)
-        return str(content)

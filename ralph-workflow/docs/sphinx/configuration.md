@@ -246,5 +246,4 @@ Validate with `ralph --check-mcp` after editing.
 
 - [Getting Started](getting-started.md) — first-run walkthrough
 - [CLI Reference](cli.md) — all flags and sub-commands
-- [Agents](agents.md) — agent chain definitions and transport details
 - [Concepts](concepts.md) — pipeline phases, drains, and agent terminology
