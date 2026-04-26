@@ -18,6 +18,27 @@ IMPORTANT: The previous attempt did not submit the required artifact before decl
 
 {{ render_payload_section('LATEST ARTIFACT', LATEST_ARTIFACT, LATEST_ARTIFACT_PATH) }}
 
+---
+
+## BEYOND THE DIFF
+
+The diff is a **starting point**, not a boundary. If anything is unclear or lacks sufficient
+context to make a decision, you MUST explore the codebase — do not guess or skip it.
+
+Specifically, when analyzing the review quality:
+
+- **Import or dependency questions**: read the files being reviewed — do not assume from the diff alone
+- **Integration points**: verify how changed code connects to surrounding systems
+- **Test coverage**: look at existing tests even if test files were not modified
+- **Error handling**: examine the full error path, not just the happy path
+- **Broader context**: if a file is referenced in the diff, read it in full
+- **Verification**: run tests, lint, type checks, or build commands as needed to confirm correctness
+
+The diff may be empty, large, or missing the context you need.
+If you cannot make a decision from the diff alone, explore until you can.
+
+---
+
 You MUST submit a structured review analysis decision artifact with {{SUBMIT_ARTIFACT_TOOL_REFERENCE}}
 using `artifact_type="review_analysis_decision"` before {{DECLARE_COMPLETE_TOOL_REFERENCE}}.
 Not submitting the analysis artifact is a FAILURE.

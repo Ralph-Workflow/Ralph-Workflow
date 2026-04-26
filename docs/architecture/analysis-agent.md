@@ -21,13 +21,18 @@ The analysis agent:
 
 ## Beyond the Diff
 
-The diff provided to the analysis agent is a **starting point**, not a boundary. The analysis agent may:
+The diff provided to the analysis agent is a **starting point**, not a boundary. If anything
+is unclear or lacks sufficient context to make a decision, the analysis agent MUST explore
+the codebase — it is not permitted to guess or skip it.
 
 - Read related files that the changes depend on
 - Check imports, dependencies, and integration points
 - Verify the changes work correctly in the broader codebase context
 - Look at test files even if they weren't changed
 - Run verification commands when appropriate for the project
+
+The diff may be empty (plan already met), large (many files), or missing context entirely.
+If a decision cannot be made from the diff alone, the agent must explore until it can.
 
 ## Where It Sits in the Development Flow
 
