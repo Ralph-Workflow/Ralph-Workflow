@@ -118,6 +118,21 @@ def _default_local_config_path(root: Path) -> Path:
     return root / CONFIG_DIR_NAME / WORKSPACE_CONFIG_NAME
 
 
+def _find_nearest_workspace_root(candidate: Path, repo_root: Path) -> Path:
+    """Prefer the nearest Ralph workspace config between cwd and repo root."""
+    current = candidate.resolve()
+    resolved_repo_root = repo_root.resolve()
+    while True:
+        if _default_local_config_path(current).exists():
+            return current
+        if current == resolved_repo_root:
+            return resolved_repo_root
+        parent = current.parent
+        if parent == current:
+            return resolved_repo_root
+        current = parent
+
+
 def resolve_workspace_scope(start: Path | str | None = None) -> WorkspaceScope:
     """Resolve the active workspace scope.
 
@@ -127,10 +142,11 @@ def resolve_workspace_scope(start: Path | str | None = None) -> WorkspaceScope:
 
     candidate = Path.cwd() if start is None else Path(start)
     try:
-        root = find_repo_root(candidate)
+        repo_root = find_repo_root(candidate)
         main_root = find_main_worktree_root(candidate)
+        root = _find_nearest_workspace_root(candidate, repo_root)
         propagated_configs: tuple[Path, ...] = ()
-        if main_root != root:
+        if main_root != repo_root:
             propagated_configs = (_default_local_config_path(main_root),)
         return WorkspaceScope(
             root,

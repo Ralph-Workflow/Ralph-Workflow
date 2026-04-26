@@ -129,3 +129,23 @@ def test_for_same_workspace_worker_rejects_escape_via_dotdot(tmp_path: Path) -> 
             allowed_directories=("../outside",),
             worker_namespace=worker_ns,
         )
+
+
+def test_resolve_workspace_scope_prefers_nearest_ralph_workspace(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    repo_root = tmp_path / "repo"
+    package_root = repo_root / "ralph-workflow"
+    package_root.mkdir(parents=True)
+    (package_root / ".agent").mkdir()
+    (package_root / ".agent" / "ralph-workflow.toml").write_text("[general]\n")
+
+    monkeypatch.setattr("ralph.workspace.scope.find_repo_root", lambda _start: repo_root)
+    monkeypatch.setattr("ralph.workspace.scope.find_main_worktree_root", lambda _start: repo_root)
+
+    scope = resolve_workspace_scope(package_root)
+
+    assert scope.root == package_root.resolve()
+    assert scope.local_config_path == (package_root / ".agent" / "ralph-workflow.toml").resolve()
+    assert scope.allowed_roots == (package_root.resolve(),)

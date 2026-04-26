@@ -65,6 +65,7 @@ Ralph Workflow
 
    cli
    configuration
+   agents
    mcp-tools
    mcp-architecture
    artifacts

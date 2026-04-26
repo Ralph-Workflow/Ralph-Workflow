@@ -10,6 +10,8 @@ from ralph.pipeline.state import PipelineState
 from ralph.workspace.scope import WorkspaceScope
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     import pytest
 
 
@@ -32,6 +34,14 @@ def _fake_config(developer_iters: int = 1, reviewer_reviews: int = 1) -> Unified
     return config.model_copy(update={"general": general})
 
 
+def _configure_workspace(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> WorkspaceScope:
+    (tmp_path / ".agent").mkdir()
+    (tmp_path / "PROMPT.md").write_text("# Goal\n\nRun the pipeline.\n", encoding="utf-8")
+    scope = WorkspaceScope(tmp_path)
+    monkeypatch.setattr(run_module, "resolve_workspace_scope", lambda: scope)
+    return scope
+
+
 def test_run_pipeline_load_config_failure(monkeypatch: pytest.MonkeyPatch) -> None:
     errors: list[str] = []
 
@@ -51,7 +61,9 @@ def test_run_pipeline_load_config_failure(monkeypatch: pytest.MonkeyPatch) -> No
 
 def test_run_pipeline_resume_without_checkpoint_prints_notice(
     monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
+    _configure_workspace(monkeypatch, tmp_path)
     monkeypatch.setattr(run_module, "load_config", lambda *args, **kwargs: _fake_config())
     console = _CaptureConsole()
     monkeypatch.setattr(run_module, "console", console)
@@ -62,7 +74,11 @@ def test_run_pipeline_resume_without_checkpoint_prints_notice(
     assert any("No checkpoint found to resume from" in line for line in console.lines)
 
 
-def test_run_pipeline_dry_run_reports_summary(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_run_pipeline_dry_run_reports_summary(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _configure_workspace(monkeypatch, tmp_path)
     config = _fake_config(developer_iters=4, reviewer_reviews=2)
     state = PipelineState(phase="review")
 
@@ -94,7 +110,9 @@ class _RegistryWithFromConfigOnly:
 
 def test_run_pipeline_builds_preflight_registry_from_config(
     monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
+    _configure_workspace(monkeypatch, tmp_path)
     config = _fake_config()
     console = _CaptureConsole()
 
@@ -109,7 +127,11 @@ def test_run_pipeline_builds_preflight_registry_from_config(
     assert _RegistryWithFromConfigOnly.called_with is config
 
 
-def test_run_pipeline_runner_unavailable(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_run_pipeline_runner_unavailable(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _configure_workspace(monkeypatch, tmp_path)
     monkeypatch.setattr(run_module, "load_config", lambda *args, **kwargs: _fake_config())
     console = _CaptureConsole()
     logged: list[str] = []
@@ -125,11 +147,15 @@ def test_run_pipeline_runner_unavailable(monkeypatch: pytest.MonkeyPatch) -> Non
     assert logged and logged[-1] == "Pipeline runner is unavailable"
 
 
-def test_run_pipeline_runner_exception(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_run_pipeline_runner_exception(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
     """When the runner raises an unexpected exception, run_pipeline returns 1 and
     shows an error on the console. This validates the observable behavior of the
     outer exception handler; it does not assert which specific logger method is called,
     since that is an implementation detail."""
+    _configure_workspace(monkeypatch, tmp_path)
     monkeypatch.setattr(run_module, "load_config", lambda *args, **kwargs: _fake_config())
     console = _CaptureConsole()
 

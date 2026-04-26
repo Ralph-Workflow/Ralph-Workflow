@@ -46,11 +46,13 @@ config_models = importlib.import_module("ralph.config.models")
 pipeline_effects = importlib.import_module("ralph.pipeline.effects")
 pipeline_state_module = importlib.import_module("ralph.pipeline.state")
 policy_loader_module = importlib.import_module("ralph.policy.loader")
+workspace_scope_module = importlib.import_module("ralph.workspace.scope")
 
 GeneralConfig = config_models.GeneralConfig
 UnifiedConfig = config_models.UnifiedConfig
 run_pipeline_runner = runner_module.run
 PipelineState = pipeline_state_module.PipelineState
+WorkspaceScope = workspace_scope_module.WorkspaceScope
 load_policy = policy_loader_module.load_policy
 
 GeneralConfig.model_rebuild(_types_namespace={"Path": Path})
@@ -124,10 +126,16 @@ def test_runner_saves_interrupted_checkpoint_on_keyboard_interrupt(
 
 def test_run_pipeline_saves_interrupted_resume_checkpoint(
     monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     saved_states: list[PipelineState] = []
     resumed_state = PipelineState(phase="development", interrupted_by_user=False)
 
+    (tmp_path / ".agent").mkdir()
+    (tmp_path / "PROMPT.md").write_text("# Goal\n\nResume the pipeline.\n", encoding="utf-8")
+    monkeypatch.setattr(
+        run_command_module, "resolve_workspace_scope", lambda: WorkspaceScope(tmp_path)
+    )
     monkeypatch.setattr(
         run_command_module, "load_config", lambda *_args, **_kwargs: UnifiedConfig()
     )
