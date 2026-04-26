@@ -235,3 +235,42 @@ def test_recovery_fields_round_trip() -> None:
     assert loaded.last_failure_category == "agent"
     assert loaded.last_connectivity_state == "online"
     assert loaded.recovery_cycle_cap == _TEST_RECOVERY_CYCLE_CAP
+
+
+def test_agent_chain_state_with_retry_increment_increments_retries_only() -> None:
+    from ralph.pipeline.state import AgentChainState  # noqa: PLC0415
+
+    chain = AgentChainState(agents=["a", "b"], current_index=0, retries=2)
+
+    new_chain = chain.with_retry_increment()
+
+    assert new_chain.retries == 3  # noqa: PLR2004
+    assert new_chain.current_index == 0
+    assert new_chain.agents == ["a", "b"]
+    assert chain.retries == 2  # noqa: PLR2004
+
+
+def test_agent_chain_state_with_advance_resets_retries_and_advances_index() -> None:
+    from ralph.pipeline.state import AgentChainState  # noqa: PLC0415
+
+    chain = AgentChainState(agents=["a", "b", "c"], current_index=1, retries=4)
+
+    new_chain = chain.with_advance()
+
+    assert new_chain.current_index == 2  # noqa: PLR2004
+    assert new_chain.retries == 0
+    assert new_chain.agents == ["a", "b", "c"]
+    assert chain.current_index == 1
+    assert chain.retries == 4  # noqa: PLR2004
+
+
+def test_agent_chain_state_with_retry_increment_preserves_empty_agents() -> None:
+    from ralph.pipeline.state import AgentChainState  # noqa: PLC0415
+
+    chain = AgentChainState()
+
+    new_chain = chain.with_retry_increment()
+
+    assert new_chain.agents == []
+    assert new_chain.current_index == 0
+    assert new_chain.retries == 1

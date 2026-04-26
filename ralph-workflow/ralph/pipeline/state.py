@@ -62,6 +62,25 @@ class AgentChainState(_FrozenPipelineStateModel):  # type: ignore[explicit-any] 
     current_index: int = 0
     retries: int = 0
 
+    def with_retry_increment(self) -> AgentChainState:
+        """Return a copy with retries incremented by 1; agents and current_index unchanged."""
+        return AgentChainState(
+            agents=self.agents,
+            current_index=self.current_index,
+            retries=self.retries + 1,
+        )
+
+    def with_advance(self) -> AgentChainState:
+        """Return a copy advanced to the next agent with retries reset to 0.
+
+        Callers MUST check that current_index + 1 < len(agents) before invoking.
+        """
+        return AgentChainState(
+            agents=self.agents,
+            current_index=self.current_index + 1,
+            retries=0,
+        )
+
 
 class RebaseState(_FrozenPipelineStateModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     """State for git rebase operations.

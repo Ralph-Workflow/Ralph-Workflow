@@ -38,7 +38,7 @@ from ralph.pipeline.events import (
     WorkerStartedEvent,
 )
 from ralph.pipeline.handoffs import resolve_next_phase, resolve_post_commit_phase
-from ralph.pipeline.state import AgentChainState, CommitState, PipelineState, RunMetrics
+from ralph.pipeline.state import CommitState, PipelineState, RunMetrics
 from ralph.pipeline.worker_state import WorkerState, WorkerStatus
 
 if TYPE_CHECKING:
@@ -318,11 +318,7 @@ def _handle_agent_failure(state: PipelineState) -> tuple[PipelineState, list[Eff
         return _enter_failed_recovery(state, failure_reason)
 
     if chain.retries < _MAX_AGENT_RETRIES:
-        new_chain = AgentChainState(
-            agents=chain.agents,
-            current_index=chain.current_index,
-            retries=chain.retries + 1,
-        )
+        new_chain = chain.with_retry_increment()
         new_metrics = RunMetrics(
             total_agent_calls=state.metrics.total_agent_calls,
             total_continuations=state.metrics.total_continuations,
@@ -333,11 +329,7 @@ def _handle_agent_failure(state: PipelineState) -> tuple[PipelineState, list[Eff
         return new_state, []
 
     if chain.current_index + 1 < len(chain.agents):
-        new_chain = AgentChainState(
-            agents=chain.agents,
-            current_index=chain.current_index + 1,
-            retries=0,
-        )
+        new_chain = chain.with_advance()
         new_metrics = RunMetrics(
             total_agent_calls=state.metrics.total_agent_calls,
             total_continuations=state.metrics.total_continuations,
@@ -366,11 +358,7 @@ def _handle_agent_retry(state: PipelineState) -> tuple[PipelineState, list[Effec
         failure_reason = _failure_reason(state, f"No tracked agent chain for {state.phase}")
         return _enter_failed_recovery(state, failure_reason)
 
-    new_chain = AgentChainState(
-        agents=chain.agents,
-        current_index=chain.current_index,
-        retries=chain.retries + 1,
-    )
+    new_chain = chain.with_retry_increment()
     new_metrics = RunMetrics(
         total_agent_calls=state.metrics.total_agent_calls,
         total_continuations=state.metrics.total_continuations + 1,
