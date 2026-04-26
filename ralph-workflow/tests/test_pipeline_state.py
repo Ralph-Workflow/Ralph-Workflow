@@ -274,3 +274,60 @@ def test_agent_chain_state_with_retry_increment_preserves_empty_agents() -> None
     assert new_chain.agents == []
     assert new_chain.current_index == 0
     assert new_chain.retries == 1
+
+
+def test_run_metrics_with_retry_increment_increments_retries_only() -> None:
+    from ralph.pipeline.state import RunMetrics  # noqa: PLC0415
+
+    metrics = RunMetrics(
+        total_agent_calls=2,
+        total_continuations=3,
+        total_fallbacks=1,
+        total_retries=4,
+    )
+
+    new_metrics = metrics.with_retry_increment()
+
+    assert new_metrics.total_retries == 5  # noqa: PLR2004
+    assert new_metrics.total_agent_calls == 2  # noqa: PLR2004
+    assert new_metrics.total_continuations == 3  # noqa: PLR2004
+    assert new_metrics.total_fallbacks == 1
+    assert metrics.total_retries == 4  # noqa: PLR2004
+
+
+def test_run_metrics_with_fallback_increment_increments_fallbacks_only() -> None:
+    from ralph.pipeline.state import RunMetrics  # noqa: PLC0415
+
+    metrics = RunMetrics(
+        total_agent_calls=2,
+        total_continuations=3,
+        total_fallbacks=1,
+        total_retries=4,
+    )
+
+    new_metrics = metrics.with_fallback_increment()
+
+    assert new_metrics.total_fallbacks == 2  # noqa: PLR2004
+    assert new_metrics.total_agent_calls == 2  # noqa: PLR2004
+    assert new_metrics.total_continuations == 3  # noqa: PLR2004
+    assert new_metrics.total_retries == 4  # noqa: PLR2004
+    assert metrics.total_fallbacks == 1
+
+
+def test_run_metrics_with_continuation_increment_increments_continuations_only() -> None:
+    from ralph.pipeline.state import RunMetrics  # noqa: PLC0415
+
+    metrics = RunMetrics(
+        total_agent_calls=2,
+        total_continuations=3,
+        total_fallbacks=1,
+        total_retries=4,
+    )
+
+    new_metrics = metrics.with_continuation_increment()
+
+    assert new_metrics.total_continuations == 4  # noqa: PLR2004
+    assert new_metrics.total_agent_calls == 2  # noqa: PLR2004
+    assert new_metrics.total_fallbacks == 1
+    assert new_metrics.total_retries == 4  # noqa: PLR2004
+    assert metrics.total_continuations == 3  # noqa: PLR2004

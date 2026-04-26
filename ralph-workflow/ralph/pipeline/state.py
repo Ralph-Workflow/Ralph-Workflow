@@ -125,6 +125,33 @@ class RunMetrics(_FrozenPipelineStateModel):  # type: ignore[explicit-any]  # re
     total_fallbacks: int = 0
     total_retries: int = 0
 
+    def with_retry_increment(self) -> RunMetrics:
+        """Return a copy with total_retries incremented by 1; other counters unchanged."""
+        return RunMetrics(
+            total_agent_calls=self.total_agent_calls,
+            total_continuations=self.total_continuations,
+            total_fallbacks=self.total_fallbacks,
+            total_retries=self.total_retries + 1,
+        )
+
+    def with_fallback_increment(self) -> RunMetrics:
+        """Return a copy with total_fallbacks incremented by 1; other counters unchanged."""
+        return RunMetrics(
+            total_agent_calls=self.total_agent_calls,
+            total_continuations=self.total_continuations,
+            total_fallbacks=self.total_fallbacks + 1,
+            total_retries=self.total_retries,
+        )
+
+    def with_continuation_increment(self) -> RunMetrics:
+        """Return a copy with total_continuations incremented by 1; other counters unchanged."""
+        return RunMetrics(
+            total_agent_calls=self.total_agent_calls,
+            total_continuations=self.total_continuations + 1,
+            total_fallbacks=self.total_fallbacks,
+            total_retries=self.total_retries,
+        )
+
 
 class FalloverRecord(_FrozenPipelineStateModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     """A record of a single agent fallover event persisted in pipeline state."""

@@ -38,7 +38,7 @@ from ralph.pipeline.events import (
     WorkerStartedEvent,
 )
 from ralph.pipeline.handoffs import resolve_next_phase, resolve_post_commit_phase
-from ralph.pipeline.state import CommitState, PipelineState, RunMetrics
+from ralph.pipeline.state import CommitState, PipelineState
 from ralph.pipeline.worker_state import WorkerState, WorkerStatus
 
 if TYPE_CHECKING:
@@ -319,23 +319,13 @@ def _handle_agent_failure(state: PipelineState) -> tuple[PipelineState, list[Eff
 
     if chain.retries < _MAX_AGENT_RETRIES:
         new_chain = chain.with_retry_increment()
-        new_metrics = RunMetrics(
-            total_agent_calls=state.metrics.total_agent_calls,
-            total_continuations=state.metrics.total_continuations,
-            total_fallbacks=state.metrics.total_fallbacks,
-            total_retries=state.metrics.total_retries + 1,
-        )
+        new_metrics = state.metrics.with_retry_increment()
         new_state = state.with_phase_chain(state.phase, new_chain).copy_with(metrics=new_metrics)
         return new_state, []
 
     if chain.current_index + 1 < len(chain.agents):
         new_chain = chain.with_advance()
-        new_metrics = RunMetrics(
-            total_agent_calls=state.metrics.total_agent_calls,
-            total_continuations=state.metrics.total_continuations,
-            total_fallbacks=state.metrics.total_fallbacks + 1,
-            total_retries=state.metrics.total_retries,
-        )
+        new_metrics = state.metrics.with_fallback_increment()
         new_state = state.with_phase_chain(state.phase, new_chain).copy_with(metrics=new_metrics)
         return new_state, []
 
@@ -359,12 +349,7 @@ def _handle_agent_retry(state: PipelineState) -> tuple[PipelineState, list[Effec
         return _enter_failed_recovery(state, failure_reason)
 
     new_chain = chain.with_retry_increment()
-    new_metrics = RunMetrics(
-        total_agent_calls=state.metrics.total_agent_calls,
-        total_continuations=state.metrics.total_continuations + 1,
-        total_fallbacks=state.metrics.total_fallbacks,
-        total_retries=state.metrics.total_retries,
-    )
+    new_metrics = state.metrics.with_continuation_increment()
 
     new_state = state.with_phase_chain(state.phase, new_chain).copy_with(metrics=new_metrics)
     return new_state, []
