@@ -1,7 +1,3 @@
-REVIEW ANALYSIS MODE
-
-Decide whether the review results should accept the work, request changes, or fail the review analysis.
-
 {% from 'shared/_payload_section.j2' import render_payload_section, render_payload_path %}
 
 {% include 'shared/_unattended_mode.j2' %}
@@ -22,50 +18,215 @@ IMPORTANT: The previous attempt did not submit the required artifact before decl
 
 {{ render_payload_section('LATEST ARTIFACT', LATEST_ARTIFACT, LATEST_ARTIFACT_PATH) }}
 
-You MUST submit a structured review analysis decision artifact with {{SUBMIT_ARTIFACT_TOOL_REFERENCE}} using `artifact_type="review_analysis_decision"` before {{DECLARE_COMPLETE_TOOL_REFERENCE}}.
+You MUST submit a structured review analysis decision artifact with {{SUBMIT_ARTIFACT_TOOL_REFERENCE}}
+using `artifact_type="review_analysis_decision"` before {{DECLARE_COMPLETE_TOOL_REFERENCE}}.
 Not submitting the analysis artifact is a FAILURE.
+
+---
+
+## REVIEW CHECKLIST
+
+You are evaluating the quality and completeness of the review that was performed. A thorough review
+catches real problems. A shallow one misses them. For each dimension below, determine whether the
+review adequately covered it. If it did not, that belongs in `what_came_up_short`.
+
+### 1. PLAN COMPLIANCE CHECK
+
+Did the review confirm every plan requirement, task, and acceptance criterion was implemented
+correctly? The review should have:
+- Enumerated the specific plan items and stated whether each was satisfied.
+- Caught requirements that were missing, partially implemented, or implemented incorrectly.
+- Not accepted "close enough" as good enough for any plan item.
+
+If the plan listed specific files, functions, or behaviors, the review should have checked each one.
+
+### 2. SECURITY COVERAGE — CRITICAL
+
+Did the review evaluate all changed files for security issues? A passing security review is not
+optional. The review should have examined:
+- SQL injection: string-concatenated queries, ORM misuse, raw SQL without parameters
+- XSS: innerHTML, dangerouslySetInnerHTML, unsanitized output to HTML/DOM
+- Hardcoded secrets: API keys, tokens, passwords, credentials in source
+- Authentication/authorization bypasses: missing permission checks
+- Insecure dependencies: new libraries used without verification
+- Input validation gaps: user-controlled data passed to dangerous operations unchecked
+
+If no security-relevant code existed in the changed files, the review should explicitly state that.
+If security-relevant code existed and was not reviewed, that is a failure.
+
+### 3. CORRECTNESS COVERAGE — HIGH
+
+Did the review evaluate error handling, logic correctness, null/undefined handling, race conditions,
+edge cases, and off-by-one errors? The review should have:
+- Examined error paths for bare `except` clauses, silent failures, or lost context.
+- Checked that optional values are guarded before use.
+- Looked for logic errors where the code does something different from what the comments claim.
+- Considered edge cases: empty inputs, boundary values, large inputs, concurrent calls.
+
+If no correctness-relevant code existed, the review should say so explicitly.
+
+### 4. PERFORMANCE COVERAGE — HIGH
+
+Did the review check for N+1 queries, inefficient algorithms, missing indexes, memory leaks,
+and unnecessary API calls? If the changed code touches a database or makes network requests,
+this is especially important.
+
+### 5. MAINTAINABILITY COVERAGE — MEDIUM
+
+Did the review note meaningful naming problems, missing type hints in complex logic,
+duplicated logic, or functions that violate single responsibility? The review should flag
+genuinely confusing or hard-to-maintain code — not style preferences.
+
+### 6. TESTING COVERAGE
+
+Did the review verify that:
+- New code has corresponding tests?
+- Edge cases and error paths are covered?
+- The test suite passes (or that pre-existing failures are acknowledged)?
+- Test quality is meaningful — assertions that check actual behavior, not just code coverage?
+
+If the implementation added new functions without tests, the review should have flagged that.
+
+### 7. REVIEW STRUCTURE AND FINDING QUALITY
+
+Evaluate the review output itself, not just the implementation:
+
+- **Severity classification**: Are findings categorized correctly (CRITICAL/HIGH/MEDIUM/LOW)?
+  A CRITICAL security finding classified as MEDIUM is a review quality problem.
+- **Evidence quality**: Does each finding cite exact file paths, function names, and the nature
+  of the problem? "There are issues" without specifics is insufficient.
+- **Actionable fixes**: Does each finding include a concrete remediation step, or just a
+  description of the problem?
+- **Completeness**: Did the review stop early, or did it examine every changed file?
+  Finding only obvious issues while missing deeper ones is a quality failure.
+- **Gaps not missed**: If real problems exist in the code that the review did not catch,
+  the review itself is incomplete — regardless of whether the review artifact looks polished.
+
+### 8. VERIFICATION EVIDENCE
+
+If the plan or workflow required verification commands (tests, lint, type checks, build):
+- Did the review confirm these were run and pass?
+- Did the review record or reference the evidence?
+- If verification was skipped or evidence was absent, did the review flag it?
+
+---
+
+## DECISION ARTIFACT
 
 Return a JSON object.
 
-- If the review is clean, use `{"status":"completed","summary":"..."}`.
-- After preparing the JSON payload, submit it with {{SUBMIT_ARTIFACT_TOOL_REFERENCE}} and only then call {{DECLARE_COMPLETE_TOOL_REFERENCE}}.
+- If the review is clean and thorough across ALL dimensions above:
+  `{"status":"completed","summary":"..."}`
+
+- After preparing the JSON payload, submit it with {{SUBMIT_ARTIFACT_TOOL_REFERENCE}}
+  and only then call {{DECLARE_COMPLETE_TOOL_REFERENCE}}.
+
 - Use `content` for a freshly generated JSON string.
-- Submit the payload directly as fresh JSON content.
-- Valid submit example: `{"artifact_type":"review_analysis_decision","content":"{\"status\":\"completed\",\"summary\":\"...\"}"}`.
-- If changes are required, use `{"status":"request_changes","summary":"...","what_came_up_short":[...],"how_to_fix":[...]}`.
-- If the review itself could not be completed, use `{"status":"failed","summary":"...","what_came_up_short":[...],"how_to_fix":[...]}`.
+- Valid submit example:
+  `{"artifact_type":"review_analysis_decision","content":"{\"status\":\"completed\",\"summary\":\"...\"}"}`
 
-For any non-passing review analysis, the following two fields are mandatory and must be as detailed as possible:
+- The review has gaps in coverage or quality:
+  `{"status":"request_changes","summary":"...","what_came_up_short":[...],"how_to_fix":[...]}`
 
-1. `what_came_up_short`
-   - Enumerate every defect, regression, missing requirement, unsafe change, or verification gap.
-   - Include every issue that contributed to the failing status.
-   - If you omit a real failure cause, the analysis artifact is incomplete.
-   - Do not stop after the first problem if more issues were found.
-   - Cite concrete evidence: file paths, failing tests, missing checks, or behavior mismatches.
-   - Do not use vague summaries without specifics.
+- The review is fundamentally incomplete or missed critical issues:
+  `{"status":"failed","summary":"...","what_came_up_short":[...],"how_to_fix":[...]}`
 
-2. `how_to_fix`
-   - Provide detailed, ordered remediation steps that would allow the implementation to pass review on the next attempt.
-   - Include a fix for every item listed in `what_came_up_short`.
-   - Include exact files to change, what to update in each file, which tests/checks to run, and what outcomes must be observed.
-   - Make the instructions comprehensive enough that the developer can execute them directly.
+---
 
-Example failing review analysis artifact:
+## `what_came_up_short` — MANDATORY FOR ANY NON-COMPLETED STATUS
+
+1. **List every gap found** across all dimensions. Do not stop after the first problem.
+
+2. **For each gap, include:**
+   - The dimension it belongs to (Plan Compliance / Security / Correctness / Performance /
+     Maintainability / Testing / Review Structure / Verification Evidence)
+   - What the review was supposed to check but did not, or checked but did incorrectly
+   - What the review should have found or said instead
+
+3. **Cite concrete evidence.** File paths, function names, test names, command output,
+   observed behavior, exact mismatches. "The review has gaps" is not evidence.
+   "The review did not examine `api/auth.py` for hardcoded credentials, and
+   `api/auth.py:23` contains a hardcoded API key" is evidence.
+
+4. **Be precise about what was missed.** "The review missed some issues" is not a gap statement.
+   "The review did not examine `api/auth.py` for hardcoded credentials, and
+   `api/auth.py:23` contains a hardcoded API key at line 23" is a gap statement.
+
+5. **Evaluate the review's findings honestly.** If the review found issues but missed deeper
+   or related ones, say so. A polished-looking review that missed the real problems is not
+   a passing review.
+
+Example `what_came_up_short`:
+
+```
+- [Security] The review did not examine `api/auth.py` for hardcoded credentials.
+  `api/auth.py:23` contains a hardcoded fallback API key — this is a CRITICAL severity
+  finding that a thorough security review should have caught.
+- [Review Structure] The SQL injection finding in `db/queries.py` is classified as MEDIUM
+  but should be CRITICAL — the query at line 15 concatenates user input directly, enabling
+  arbitrary SQL execution. Misclassifying CRITICAL findings as MEDIUM is a review quality failure.
+- [Testing] The review states "tests exist for new code" but does not cite which test files
+  or confirm they actually run and pass. No verification evidence (test output) was recorded.
+- [Plan Compliance] The review did not check whether the Windows release artifact upload was
+  implemented as required by the PLAN. `.github/workflows/release-binaries.yml` lacks a
+  Windows matrix leg — this was a specific plan requirement.
+- [Correctness] The review did not examine error handling in `pipeline/runner.py`. The
+  failure output path at line 87 uses a bare `except` that silently swallows exceptions.
+```
+
+---
+
+## `how_to_fix` — MANDATORY FOR ANY NON-COMPLETED STATUS
+
+For every item in `what_came_up_short`, provide a corresponding fix entry:
+
+1. **What the review needs to re-examine or add.** Be specific — not "fix the review" but
+   "re-examine `api/auth.py` for hardcoded credentials."
+2. **The specific finding to add or correct.** What should the review now say?
+3. **The specific code issue to surface.** What will the corrected review now reveal about
+   the implementation?
+4. **How to verify the fix.** What command or check confirms the review finding is valid?
+
+Example `how_to_fix`:
+
+```
+- Re-examine `api/auth.py` for hardcoded credentials. Add a CRITICAL severity finding for
+  the hardcoded fallback API key at line 23. Remediation: remove the key and load from
+  `os.environ.get("API_TOKEN")` instead.
+- Reclassify the SQL injection finding in `db/queries.py` as CRITICAL. The query at
+  line 15 concatenates user input directly, enabling arbitrary SQL execution. Update
+  the severity in the review findings table and update the summary to reflect CRITICAL status.
+- Request the test suite output from the implementer. Confirm tests for new code actually
+  run and pass. If they do not, add a Testing gap finding to the review.
+- Re-examine `.github/workflows/release-binaries.yml` against the PLAN. Confirm whether
+  the Windows matrix leg is present. If absent, add a Plan Compliance gap finding with
+  the specific gap and remediation.
+- Re-examine `pipeline/runner.py` error handling. Add a Correctness finding for the bare
+  `except` at line 87 that silently swallows exceptions. Remediation: catch specific
+  exception types and preserve error context.
+```
+
+---
+
+## EXAMPLE FAILING REVIEW ANALYSIS ARTIFACT
 
 ```json
 {
   "status": "request_changes",
-  "summary": "The happy path works, but error handling and regression coverage are still incomplete.",
+  "summary": "The review is structurally present but missed several critical findings and misclassified at least one severity level.",
   "what_came_up_short": [
-    "`ralph/pipeline/runner.py` still has one failure output path that renders runtime text unsafely.",
-    "There is no regression test proving malformed tool payloads cannot crash the remaining CLI error output path.",
-    "Verification evidence is missing for the review-phase artifact handoff after a failed analysis."
+    "[Security] The review did not examine `api/auth.py` for hardcoded credentials. `api/auth.py:23` contains a hardcoded fallback API key — CRITICAL severity.",
+    "[Review Structure] SQL injection in `db/queries.py:15` is classified as MEDIUM but should be CRITICAL — user input concatenated directly into SQL.",
+    "[Testing] The review states 'tests exist for new code' but cites no verification evidence and does not confirm tests actually pass.",
+    "[Plan Compliance] The review did not verify the Windows matrix leg in `.github/workflows/release-binaries.yml` as required by the PLAN.",
+    "[Correctness] The review did not examine error handling in `pipeline/runner.py`. The bare `except` at line 87 silently swallows exceptions."
   ],
   "how_to_fix": [
-    "Convert the remaining CLI failure output path to a Rich `Text`-based render so runtime strings are always treated as literal text.",
-    "Add a regression test that feeds bracket-heavy runtime text through the affected CLI path and confirms rendering does not raise `MarkupError`.",
-    "Run the targeted review-analysis and full verification suites again, and confirm the handoff artifact is written and read using the same artifact type and path."
+    "Re-examine `api/auth.py` for hardcoded credentials. Add a CRITICAL finding for the hardcoded key at line 23. Remediation: load from `os.environ.get('API_TOKEN')`.",
+    "Reclassify the SQL injection in `db/queries.py:15` as CRITICAL and update the review summary and severity table accordingly.",
+    "Request test suite output showing tests for new code run and pass. If evidence cannot be produced, add a Testing gap finding.",
+    "Re-examine `.github/workflows/release-binaries.yml` against the PLAN. If the Windows leg is absent, add a Plan Compliance gap.",
+    "Re-examine `pipeline/runner.py` error handling. Add a Correctness finding for the bare `except` at line 87. Remediation: catch specific exception types and preserve context."
   ]
 }
 ```

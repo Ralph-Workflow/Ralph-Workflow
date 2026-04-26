@@ -86,7 +86,7 @@ def make_console(
     """Create a Console using Ralph's shared theme and predictable rendering."""
     resolved_no_color = no_color
     if resolved_no_color is None:
-        if "NO_COLOR" in os.environ:
+        if "NO_COLOR" in os.environ and force_terminal is None:
             resolved_no_color = True
         elif "FORCE_COLOR" in os.environ:
             resolved_no_color = False

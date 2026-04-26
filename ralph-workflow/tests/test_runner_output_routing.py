@@ -105,7 +105,7 @@ def test_run_streams_transcript_output_without_dashboard(monkeypatch: pytest.Mon
     ]
     state = PipelineState(phase="planning")
     rendered = io.StringIO()
-    test_console = Console(file=rendered, force_terminal=True, width=120)
+    test_console = Console(file=rendered, force_terminal=True, no_color=False, width=120)
     display = ParallelDisplay(test_console, env={})
 
     def stub_determine_effect(_state: object, _bundle: object) -> object:
@@ -154,7 +154,7 @@ def test_run_streams_transcript_output_without_dashboard(monkeypatch: pytest.Mon
     assert result == 0
     assert "[phase] \u25c6 planning" in output
     assert "[phase] complete" in output
-    assert "Pipeline completed successfully." in output
+    assert "Pipeline Complete" in output
 
 
 def test_single_agent_visual_parity(monkeypatch: pytest.MonkeyPatch) -> None:
