@@ -329,13 +329,7 @@ def _policy_handle_agent_success(
     if phase_def.embeds_analysis:
         return _handle_analysis_success(state, policy)
 
-    try:
-        next_phase = resolve_next_phase(state.phase, "success", policy)
-        return _advance_phase(state, next_phase, policy)
-    except ValueError as exc:
-        return _advance_to_terminal(
-            state, PHASE_FAILED, f"Routing error after agent success in '{state.phase}': {exc}"
-        )
+    return _resolve_or_terminal(state, "success", policy, "agent success")
 
 
 def _handle_agent_failure(state: PipelineState) -> tuple[PipelineState, list[Effect]]:
@@ -455,84 +449,40 @@ def _handle_analysis_loopback(
 
     # Policy-driven routing with analysis iteration cap
     if state.phase == "development_analysis":
-        return _handle_dev_analysis_loopback(state, policy)
+        return _handle_capped_analysis_loopback(
+            state,
+            policy,
+            iteration=state.development_analysis_iteration,
+            max_iterations=state.max_development_analysis_iterations,
+            apply_progress=progress.apply_development_analysis_loopback,
+        )
     if state.phase == "review_analysis":
-        return _handle_review_analysis_loopback(state, policy)
+        return _handle_capped_analysis_loopback(
+            state,
+            policy,
+            iteration=state.review_analysis_iteration,
+            max_iterations=state.max_review_analysis_iterations,
+            apply_progress=progress.apply_review_analysis_loopback,
+        )
 
     # Unknown analysis phase - use general loopback routing with error handling
-    try:
-        next_phase = resolve_next_phase(state.phase, "loopback", policy)
-        return _advance_phase(state, next_phase, policy)
-    except ValueError as exc:
-        return _advance_to_terminal(
-            state,
-            PHASE_FAILED,
-            f"Routing error after analysis loopback in '{state.phase}': {exc}",
-        )
+    return _resolve_or_terminal(state, "loopback", policy, "analysis loopback")
 
 
-def _handle_dev_analysis_loopback(
+def _handle_capped_analysis_loopback(
     state: PipelineState,
     policy: PipelinePolicy,
+    *,
+    iteration: int,
+    max_iterations: int,
+    apply_progress: Callable[[PipelineState, PipelineState], PipelineState],
 ) -> tuple[PipelineState, list[Effect]]:
-    """Handle development analysis loopback with iteration cap."""
-    candidate = state.development_analysis_iteration + 1
-    if candidate >= state.max_development_analysis_iterations:
-        # Cap hit: force advance to development_commit via success route
-        try:
-            next_phase = resolve_next_phase(state.phase, "success", policy)
-        except ValueError as exc:
-            return _advance_to_terminal(
-                state,
-                PHASE_FAILED,
-                f"Routing error after analysis loopback in '{state.phase}': {exc}",
-            )
-        new_state, effects = _advance_phase(state, next_phase, policy)
-        return progress.apply_development_analysis_loopback(state, new_state), effects
-
-    # Normal loopback: route to development and increment counter
-    try:
-        next_phase = resolve_next_phase(state.phase, "loopback", policy)
-    except ValueError as exc:
-        return _advance_to_terminal(
-            state,
-            PHASE_FAILED,
-            f"Routing error after analysis loopback in '{state.phase}': {exc}",
-        )
-    new_state, effects = _advance_phase(state, next_phase, policy)
-    return progress.apply_development_analysis_loopback(state, new_state), effects
-
-
-def _handle_review_analysis_loopback(
-    state: PipelineState,
-    policy: PipelinePolicy,
-) -> tuple[PipelineState, list[Effect]]:
-    """Handle review analysis loopback with iteration cap."""
-    candidate = state.review_analysis_iteration + 1
-    if candidate >= state.max_review_analysis_iterations:
-        # Cap hit: force advance to review_commit via success route
-        try:
-            next_phase = resolve_next_phase(state.phase, "success", policy)
-        except ValueError as exc:
-            return _advance_to_terminal(
-                state,
-                PHASE_FAILED,
-                f"Routing error after analysis loopback in '{state.phase}': {exc}",
-            )
-        new_state, effects = _advance_phase(state, next_phase, policy)
-        return progress.apply_review_analysis_loopback(state, new_state), effects
-
-    # Normal loopback: route to fix and update bookkeeping
-    try:
-        next_phase = resolve_next_phase(state.phase, "loopback", policy)
-    except ValueError as exc:
-        return _advance_to_terminal(
-            state,
-            PHASE_FAILED,
-            f"Routing error after analysis loopback in '{state.phase}': {exc}",
-        )
-    new_state, effects = _advance_phase(state, next_phase, policy)
-    return progress.apply_review_analysis_loopback(state, new_state), effects
+    """Handle an analysis-loopback transition with an iteration cap."""
+    signal = "success" if iteration + 1 >= max_iterations else "loopback"
+    new_state, effects = _resolve_or_terminal(state, signal, policy, "analysis loopback")
+    if new_state.phase == PHASE_FAILED:
+        return new_state, effects
+    return apply_progress(state, new_state), effects
 
 
 def _legacy_handle_analysis_loopback(
@@ -594,15 +544,7 @@ def _handle_review_issues_found(
 ) -> tuple[PipelineState, list[Effect]]:
     """Handle review with issues found."""
     if policy is not None:
-        try:
-            next_phase = resolve_next_phase(state.phase, "loopback", policy)
-            return _advance_phase(state, next_phase, policy)
-        except ValueError as exc:
-            return _advance_to_terminal(
-                state,
-                PHASE_FAILED,
-                f"Routing error after review issues found in '{state.phase}': {exc}",
-            )
+        return _resolve_or_terminal(state, "loopback", policy, "review issues found")
 
     if state.reviewer_pass + 1 < state.total_reviewer_passes:
         new_state, effects = _advance_phase(state, "fix")
@@ -618,13 +560,7 @@ def _handle_fix_success(
 ) -> tuple[PipelineState, list[Effect]]:
     """Handle successful fix."""
     if policy is not None:
-        try:
-            next_phase = resolve_next_phase(state.phase, "success", policy)
-            return _advance_phase(state, next_phase, policy)
-        except ValueError as exc:
-            return _advance_to_terminal(
-                state, PHASE_FAILED, f"Routing error after fix success in '{state.phase}': {exc}"
-            )
+        return _resolve_or_terminal(state, "success", policy, "fix success")
 
     return _advance_phase(state, PHASE_REVIEW)
 
@@ -742,13 +678,7 @@ def _handle_phase_advance(
 ) -> tuple[PipelineState, list[Effect]]:
     """Handle explicit phase advance request."""
     if policy is not None:
-        try:
-            next_phase = resolve_next_phase(state.phase, "success", policy)
-            return _advance_phase(state, next_phase, policy)
-        except ValueError as exc:
-            return _advance_to_terminal(
-                state, PHASE_FAILED, f"Routing error after phase advance in '{state.phase}': {exc}"
-            )
+        return _resolve_or_terminal(state, "success", policy, "phase advance")
     return state, []
 
 
@@ -794,6 +724,23 @@ def _advance_to_terminal(
     }
     new_state = state.copy_with(**updates)
     return new_state, []
+
+
+def _resolve_or_terminal(
+    state: PipelineState,
+    signal: str,
+    policy: PipelinePolicy,
+    label: str,
+) -> tuple[PipelineState, list[Effect]]:
+    try:
+        next_phase = resolve_next_phase(state.phase, signal, policy)
+    except ValueError as exc:
+        return _advance_to_terminal(
+            state,
+            PHASE_FAILED,
+            f"Routing error after {label} in '{state.phase}': {exc}",
+        )
+    return _advance_phase(state, next_phase, policy)
 
 
 def _handle_fan_out_started(state: PipelineState) -> tuple[PipelineState, list[Effect]]:
