@@ -10,7 +10,7 @@ import threading
 import time as _time_module
 from itertools import chain, repeat
 from types import SimpleNamespace
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -31,6 +31,7 @@ from ralph.agents.invoke import (
     _CompletionCheckOptions,
     _IdleStreamTimeoutError,
     _read_lines_from_process,
+    _wait_for_descendants_then_recheck,
 )
 from ralph.agents.registry import _builtin_agents
 from ralph.config.enums import AgentTransport, JsonParserType
@@ -45,6 +46,12 @@ from ralph.workspace.scope import WorkspaceScope
 if TYPE_CHECKING:
     from collections.abc import Iterator
     from pathlib import Path
+
+    from ralph.process.manager import ManagedProcess
+
+
+# Poll interval used in the wait helper - matches _DESCENDANT_WAIT_POLL_SECONDS
+_DESCENDANT_WAIT_POLL_SECONDS = 0.5
 
 
 class _FakeHandle:
@@ -514,14 +521,14 @@ class TestCheckProcessResultCompletionSeam:
     """_check_process_result end-to-end completion contract with OpenCodeExecutionStrategy."""
 
     def test_explicit_completion_without_artifact_does_not_raise(self, tmp_path: Path) -> None:
-        """declare_complete in output prevents OpenCodeResumableExitError even without artifact."""
+        """declare_complete marker prevents OpenCodeResumableExitError without artifact."""
         # development phase requires .agent/artifacts/development_result.json; not created here.
         strategy = OpenCodeExecutionStrategy()
         handle = _FakeHandle(returncode=0)
         raw_output = ["Task declared complete: session_id=abc, summary=done, timestamp=1"]
 
         _check_process_result(
-            handle,  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+            cast("ManagedProcess", handle),
             "opencode",
             raw_output,
             _CompletionCheckOptions(
@@ -530,12 +537,12 @@ class TestCheckProcessResultCompletionSeam:
                 phase="development",
             ),
         )
-        # No exception raised means explicit_complete=True -> TERMINAL_COMPLETE
+        # No exception raised means explicit_complete=True → TERMINAL_COMPLETE
 
     def test_artifact_present_without_explicit_completion_does_not_raise(
         self, tmp_path: Path
     ) -> None:
-        """Artifact on disk -> TERMINAL_COMPLETE without needing declare_complete."""
+        """Artifact on disk produces TERMINAL_COMPLETE without declare_complete."""
         artifact_dir = tmp_path / ".agent" / "artifacts"
         artifact_dir.mkdir(parents=True)
         (artifact_dir / "development_result.json").write_text("{}")
@@ -544,7 +551,7 @@ class TestCheckProcessResultCompletionSeam:
         handle = _FakeHandle(returncode=0)
 
         _check_process_result(
-            handle,  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+            cast("ManagedProcess", handle),
             "opencode",
             [],  # no declare_complete marker
             _CompletionCheckOptions(
@@ -553,7 +560,7 @@ class TestCheckProcessResultCompletionSeam:
                 phase="development",
             ),
         )
-        # No exception raised means required_artifact_present=True -> TERMINAL_COMPLETE
+        # No exception raised means required_artifact_present=True → TERMINAL_COMPLETE
 
     def test_neither_signal_nor_artifact_raises_resumable_exit(
         self, tmp_path: Path
@@ -564,13 +571,14 @@ class TestCheckProcessResultCompletionSeam:
 
         with pytest.raises(OpenCodeResumableExitError):
             _check_process_result(
-                handle,  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+                cast("ManagedProcess", handle),
                 "opencode",
                 [],  # no declare_complete marker
                 _CompletionCheckOptions(
                     execution_strategy=strategy,
                     workspace_path=tmp_path,
                     phase="development",  # has required artifact but file doesn't exist
+                    parent_exit_grace_seconds=0.0,
                 ),
             )
 
@@ -676,7 +684,7 @@ class TestReadLinesFromProcessIdleClockReset:
         ):
             list(
                 _read_lines_from_process(
-                    handle,  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+                    cast("ManagedProcess", handle),
                     idle_timeout_seconds=1.0,
                     execution_strategy=strategy,
                     liveness_probe=probe,
@@ -704,12 +712,9 @@ class TestOpenCodeQuietParentWithLiveChildSuccessPath:
     def test_quiet_opencode_parent_with_ralph_tracked_child_resets_idle_clock(
         self,
     ) -> None:
-        """OpenCode quiet parent with active liveness probe does not time out.
+        """Active liveness probe resets clock; parent produces output with no timeout.
 
         Integration path: _read_lines_from_process with OpenCodeExecutionStrategy.
-        When classify_quiet returns WAITING_ON_CHILD (live child tracked by Ralph),
-        last_activity resets; once the parent then produces output and finishes,
-        no _IdleStreamTimeoutError is raised.
         """
         output_ready = threading.Event()
 
@@ -781,7 +786,7 @@ class TestOpenCodeQuietParentWithLiveChildSuccessPath:
         ):
             collected = list(
                 _read_lines_from_process(
-                    handle,  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+                    cast("ManagedProcess", handle),
                     idle_timeout_seconds=1.0,
                     execution_strategy=strategy,
                     liveness_probe=probe,
@@ -797,4 +802,590 @@ class TestOpenCodeQuietParentWithLiveChildSuccessPath:
         assert handle.terminate_count == 0, (
             f"Handle must not be terminated when idle timeout never fires; "
             f"got {handle.terminate_count} termination(s)"
+        )
+
+
+# ---------------------------------------------------------------------------
+# (n) classify_exit defers to WAITING_ON_CHILD when children are alive
+# ---------------------------------------------------------------------------
+
+
+class TestClassifyExitDefersWhenChildrenAlive:
+    """classify_exit must return WAITING_ON_CHILD when children are alive."""
+
+    def test_classify_exit_returns_waiting_when_liveness_probe_active(self) -> None:
+        """Liveness probe reporting active agents → WAITING_ON_CHILD."""
+        strategy = OpenCodeExecutionStrategy()
+        handle = _FakeHandle(returncode=0, has_descendants=False)
+        probe = FakeLivenessProbe(active=True)
+        signals = CompletionSignals(False, False, ())
+
+        state = strategy.classify_exit(handle, signals, liveness_probe=probe)
+
+        assert state == AgentExecutionState.WAITING_ON_CHILD
+
+    def test_classify_exit_returns_waiting_when_handle_has_descendants(self) -> None:
+        """handle.has_live_descendants() True → WAITING_ON_CHILD."""
+        strategy = OpenCodeExecutionStrategy()
+        handle = _FakeHandle(returncode=0, has_descendants=True)
+        probe = FakeLivenessProbe(active=False)
+        signals = CompletionSignals(False, False, ())
+
+        state = strategy.classify_exit(handle, signals, liveness_probe=probe)
+
+        assert state == AgentExecutionState.WAITING_ON_CHILD
+
+    def test_classify_exit_completion_signals_take_precedence_over_live_children(
+        self,
+    ) -> None:
+        """Strong completion signals → TERMINAL_COMPLETE even with live children."""
+        strategy = OpenCodeExecutionStrategy()
+        handle = _FakeHandle(returncode=0, has_descendants=True)
+        probe = FakeLivenessProbe(active=True)
+        signals = CompletionSignals(True, True, ("development_result",))
+
+        state = strategy.classify_exit(handle, signals, liveness_probe=probe)
+
+        assert state == AgentExecutionState.TERMINAL_COMPLETE
+
+    def test_classify_exit_with_no_probe_falls_back_to_descendant_check(self) -> None:
+        """No liveness_probe → fallback to handle.has_live_descendants() for WAITING_ON_CHILD."""
+        strategy = OpenCodeExecutionStrategy()
+        handle = _FakeHandle(returncode=0, has_descendants=True)
+        signals = CompletionSignals(False, False, ())
+
+        state = strategy.classify_exit(handle, signals)
+
+        assert state == AgentExecutionState.WAITING_ON_CHILD
+
+
+# ---------------------------------------------------------------------------
+# (o) _check_process_result waits for live children before declaring failure
+# ---------------------------------------------------------------------------
+
+
+class TestCheckProcessResultWaitsForLiveChildren:
+    """_check_process_result waits for child agents before raising OpenCodeResumableExitError."""
+
+    def test_raises_resumable_exit_when_wait_times_out_without_artifact(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Probe stays active throughout wait; deadline expires → OpenCodeResumableExitError.
+
+        This tests the real _wait_for_descendants_then_recheck with a probe that
+        never transitions to inactive.
+        """
+        probe = FakeLivenessProbe(active=True)  # Always active
+
+        # Fake evaluate_completion to always return no signals
+        def _fake_evaluate_completion(workspace, phase, raw_output):
+            return CompletionSignals(False, False, ())
+
+        monkeypatch.setattr(
+            "ralph.agents.invoke.evaluate_completion", _fake_evaluate_completion
+        )
+
+        strategy = OpenCodeExecutionStrategy()
+        handle = _FakeHandle(returncode=0, has_descendants=True)
+
+        # Time: 0.0 → 0.1 → 0.2 → deadline at 0.1 (probe always active)
+        # First call (t=0.0): probe active → WAITING_ON_CHILD, wait
+        # Second call (t=0.1): still within deadline, probe still active → WAITING_ON_CHILD, wait
+        # Third call (t=0.2): past deadline → RESUMABLE_CONTINUE (timeout fallback)
+        call_count = [0]
+        monotonic_vals = iter([0.0, 0.1, 0.2])
+
+        def _fake_event_wait(self, timeout=None):
+            if timeout is not None and timeout == _DESCENDANT_WAIT_POLL_SECONDS:
+                call_count[0] += 1
+                return None
+            return threading.Event.wait(self, timeout)
+
+        with (
+            patch.object(_time_module, "monotonic", side_effect=lambda: next(monotonic_vals)),
+            patch.object(threading.Event, "wait", _fake_event_wait),
+            pytest.raises(OpenCodeResumableExitError),
+        ):
+            _check_process_result(
+                cast("ManagedProcess", handle),
+                "opencode",
+                [],
+                _CompletionCheckOptions(
+                    execution_strategy=strategy,
+                    workspace_path=tmp_path,
+                    phase="development",
+                    liveness_probe=probe,
+                    descendant_wait_timeout_seconds=0.1,
+                ),
+            )
+
+    def test_grace_window_runs_even_when_no_children_at_exit_time(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Grace window always runs for OpenCode rc=0 exits without completion signals."""
+        probe = FakeLivenessProbe(active=False)
+
+        evaluate_calls = [0]
+
+        def _fake_evaluate_completion(workspace, phase, raw_output):
+            evaluate_calls[0] += 1
+            return CompletionSignals(False, False, ())
+
+        monkeypatch.setattr(
+            "ralph.agents.invoke.evaluate_completion", _fake_evaluate_completion
+        )
+
+        strategy = OpenCodeExecutionStrategy()
+        handle = _FakeHandle(returncode=0, has_descendants=False)
+
+        monotonic_vals = iter([0.0, 0.5, 1.0])
+        poll_count = [0]
+
+        def _fake_event_wait(self, timeout=None):
+            if timeout is not None and timeout == _DESCENDANT_WAIT_POLL_SECONDS:
+                poll_count[0] += 1
+
+        with (
+            patch.object(_time_module, "monotonic", side_effect=lambda: next(monotonic_vals)),
+            patch.object(threading.Event, "wait", _fake_event_wait),
+            pytest.raises(OpenCodeResumableExitError),
+        ):
+            _check_process_result(
+                cast("ManagedProcess", handle),
+                "opencode",
+                [],
+                _CompletionCheckOptions(
+                    execution_strategy=strategy,
+                    workspace_path=tmp_path,
+                    phase="development",
+                    liveness_probe=probe,
+                    parent_exit_grace_seconds=1.0,
+                    descendant_wait_timeout_seconds=30.0,
+                ),
+            )
+
+        assert evaluate_calls[0] > 1, (
+            f"Grace window must poll evaluate_completion; got {evaluate_calls[0]} calls"
+        )
+        assert poll_count[0] >= 1, "Grace window must sleep at least once before expiring"
+
+    def test_wait_helper_returns_resumable_continue_on_timeout_with_children_alive(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Direct test: _wait_for_descendants_then_recheck returns RESUMABLE_CONTINUE on timeout.
+
+        When the probe stays active and the deadline expires, the helper must
+        return RESUMABLE_CONTINUE (not WAITING_ON_CHILD) so the caller raises.
+        """
+        probe = FakeLivenessProbe(active=True)  # Always active
+
+        def _fake_evaluate_completion(workspace, phase, raw_output):
+            return CompletionSignals(False, False, ())
+
+        monkeypatch.setattr(
+            "ralph.agents.invoke.evaluate_completion", _fake_evaluate_completion
+        )
+
+        strategy = OpenCodeExecutionStrategy()
+        handle = _FakeHandle(returncode=0, has_descendants=True)
+
+        # Time: 0.0 → 0.1 → deadline at 0.1 (after two 0.05s polls)
+        # First call (t=0.0): WAITING_ON_CHILD, wait
+        # Second call (t=0.1): still WAITING_ON_CHILD, deadline hit → RESUMABLE_CONTINUE
+        monotonic_vals = iter([0.0, 0.05, 0.1, 0.15])
+        poll_count = [0]
+
+        def _fake_event_wait(self, timeout=None):
+            if timeout is not None and timeout == _DESCENDANT_WAIT_POLL_SECONDS:
+                poll_count[0] += 1
+                return None
+            return threading.Event.wait(self, timeout)
+
+        with (
+            patch.object(_time_module, "monotonic", side_effect=lambda: next(monotonic_vals)),
+            patch.object(threading.Event, "wait", _fake_event_wait),
+        ):
+            result = _wait_for_descendants_then_recheck(
+                cast("ManagedProcess", handle),
+                _CompletionCheckOptions(
+                    execution_strategy=strategy,
+                    workspace_path=tmp_path,
+                    phase="development",
+                    liveness_probe=probe,
+                    descendant_wait_timeout_seconds=0.1,
+                ),
+                [],
+            )
+
+        # After deadline with children still alive, helper returns RESUMABLE_CONTINUE
+        assert result == AgentExecutionState.RESUMABLE_CONTINUE, (
+            f"Expected RESUMABLE_CONTINUE after timeout with children alive; got {result!r}"
+        )
+
+    def test_artifact_appears_during_wait_produces_terminal_complete(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Artifact appears during wait; no error raised (TERMINAL_COMPLETE).
+
+        Sequence:
+        - t=0.0: initial classify_exit → WAITING_ON_CHILD (no artifact yet)
+        - t=0.0: wait 0.5s (poll interval)
+        - t=0.5: second evaluate_completion → artifact now present → TERMINAL_COMPLETE
+
+        The wait helper is invoked and correctly returns TERMINAL_COMPLETE when
+        the required artifact appears between polls, so _check_process_result
+        does not raise OpenCodeResumableExitError.
+        """
+        probe = FakeLivenessProbe(active=True)  # Children alive initially
+        strategy = OpenCodeExecutionStrategy()
+        handle = _FakeHandle(returncode=0, has_descendants=True)
+
+        # Track which call to evaluate_completion we're on:
+        # 1. _check_process_result initial check → no artifact
+        # 2. _wait_for_descendants_then_recheck first poll → no artifact
+        # 3. _wait_for_descendants_then_recheck second poll → artifact appears!
+        call_count = [0]
+        _artifact_appears_on = 3  # initial check + first loop poll + second loop poll
+
+        def _fake_evaluate_completion(workspace, phase, raw_output):
+            call_count[0] += 1
+            if call_count[0] >= _artifact_appears_on:
+                # Simulate artifact appearing between polls 1 and 2
+                return CompletionSignals(False, True, ("development_result",))
+            return CompletionSignals(False, False, ())
+
+        monkeypatch.setattr(
+            "ralph.agents.invoke.evaluate_completion", _fake_evaluate_completion
+        )
+
+        # Time: 0.0 → 0.5 → deadline at 0.6
+        # First poll (t=0.0): no artifact → WAITING_ON_CHILD, wait 0.5s
+        # Second poll (t=0.5): artifact present → TERMINAL_COMPLETE
+        monotonic_vals = iter([0.0, 0.5, 0.55])
+
+        with (
+            patch.object(_time_module, "monotonic", side_effect=lambda: next(monotonic_vals)),
+        ):
+            _check_process_result(
+                cast("ManagedProcess", handle),
+                "opencode",
+                [],
+                _CompletionCheckOptions(
+                    execution_strategy=strategy,
+                    workspace_path=tmp_path,
+                    phase="development",
+                    liveness_probe=probe,
+                    descendant_wait_timeout_seconds=0.6,
+                ),
+            )
+        # No exception raised because artifact appeared during wait → TERMINAL_COMPLETE
+
+    def test_explicit_complete_appears_during_wait_produces_terminal_complete(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Explicit completion marker appears during wait; no error raised (TERMINAL_COMPLETE).
+
+        Same pattern as artifact test but for explicit_complete signal.
+        """
+        probe = FakeLivenessProbe(active=True)
+        strategy = OpenCodeExecutionStrategy()
+        handle = _FakeHandle(returncode=0, has_descendants=True)
+
+        call_count = [0]
+        _artifact_appears_on = 3  # initial check + first loop poll + second loop poll
+
+        def _fake_evaluate_completion(workspace, phase, raw_output):
+            call_count[0] += 1
+            if call_count[0] >= _artifact_appears_on:
+                # Simulate explicit_complete appearing between polls
+                return CompletionSignals(True, False, ())
+            return CompletionSignals(False, False, ())
+
+        monkeypatch.setattr(
+            "ralph.agents.invoke.evaluate_completion", _fake_evaluate_completion
+        )
+
+        monotonic_vals = iter([0.0, 0.5, 0.55])
+
+        with (
+            patch.object(_time_module, "monotonic", side_effect=lambda: next(monotonic_vals)),
+        ):
+            _check_process_result(
+                cast("ManagedProcess", handle),
+                "opencode",
+                [],
+                _CompletionCheckOptions(
+                    execution_strategy=strategy,
+                    workspace_path=tmp_path,
+                    phase="development",
+                    liveness_probe=probe,
+                    descendant_wait_timeout_seconds=0.6,
+                ),
+            )
+        # No exception raised because explicit_complete appeared during wait
+
+    def test_descendants_finish_during_wait_produces_terminal_complete(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """OS-level descendants finish during wait; no error raised (TERMINAL_COMPLETE).
+
+        Tests the handle.has_live_descendants() path transitioning from True to False
+        during the wait window.
+        """
+        # Probe is inactive (Ralph-tracked agents done), but OS descendants alive initially
+        probe = FakeLivenessProbe(active=False)
+        strategy = OpenCodeExecutionStrategy()
+
+        # Track whether descendants are alive
+        descendants_alive = [True]
+
+        class _TrackingFakeHandle:
+            returncode = 0
+
+            def has_live_descendants(self) -> bool:
+                return descendants_alive[0]
+
+        handle = _TrackingFakeHandle()
+
+        call_count = [0]
+        _artifact_appears_on = 3  # initial check + first loop poll + second loop poll
+
+        def _fake_evaluate_completion_with_artifact(workspace, phase, raw_output):
+            call_count[0] += 1
+            if call_count[0] >= _artifact_appears_on:
+                # After descendants finish, artifact appears
+                return CompletionSignals(False, True, ("development_result",))
+            return CompletionSignals(False, False, ())
+
+        monkeypatch.setattr(
+            "ralph.agents.invoke.evaluate_completion", _fake_evaluate_completion_with_artifact
+        )
+
+        # Time: 0.0 → 0.5 → deadline at 0.6
+        # First poll (t=0.0): descendants alive → WAITING_ON_CHILD, wait 0.5s
+        # Second poll (t=0.5): descendants alive, but artifact appears (call 3) → TERMINAL_COMPLETE
+        monotonic_vals = iter([0.0, 0.5, 0.55])
+
+        with (
+            patch.object(_time_module, "monotonic", side_effect=lambda: next(monotonic_vals)),
+        ):
+            _check_process_result(
+                cast("ManagedProcess", handle),
+                "opencode",
+                [],
+                _CompletionCheckOptions(
+                    execution_strategy=strategy,
+                    workspace_path=tmp_path,
+                    phase="development",
+                    liveness_probe=probe,
+                    descendant_wait_timeout_seconds=0.6,
+                ),
+            )
+        # No exception raised because descendants finished and artifact appeared during wait
+
+    def test_wait_helper_timeout_then_final_recheck_finds_completion(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Deadline expires but completion appears exactly at deadline; final recheck catches it.
+
+        The final recheck (added to fix the timeout gap) must evaluate completion one more
+        time after the deadline elapses, rather than blindly returning RESUMABLE_CONTINUE.
+        """
+        probe = FakeLivenessProbe(active=True)  # Stays active until deadline
+        strategy = OpenCodeExecutionStrategy()
+        handle = _FakeHandle(returncode=0, has_descendants=True)
+
+        call_count = [0]
+        _artifact_appears_on = 2  # first loop poll + final recheck
+
+        def _fake_evaluate_completion(workspace, phase, raw_output):
+            call_count[0] += 1
+            # First poll (inside wait loop): no completion
+            # Second call (final recheck after deadline): completion appears!
+            if call_count[0] >= _artifact_appears_on:
+                return CompletionSignals(False, True, ("development_result",))
+            return CompletionSignals(False, False, ())
+
+        monkeypatch.setattr(
+            "ralph.agents.invoke.evaluate_completion", _fake_evaluate_completion
+        )
+
+        # t[0]=0.0: deadline = 0.5; t[1]=0.0: loop check True -> poll (call 1, no signals);
+        # t[2]=0.5: loop check False -> final recheck (call 2) -> artifact -> TERMINAL_COMPLETE
+        monotonic_vals = iter([0.0, 0.0, 0.5])
+
+        def _fake_event_wait(self, timeout=None):
+            return None
+
+        with (
+            patch.object(_time_module, "monotonic", side_effect=lambda: next(monotonic_vals)),
+            patch.object(threading.Event, "wait", _fake_event_wait),
+        ):
+            result = _wait_for_descendants_then_recheck(
+                cast("ManagedProcess", handle),
+                _CompletionCheckOptions(
+                    execution_strategy=strategy,
+                    workspace_path=tmp_path,
+                    phase="development",
+                    liveness_probe=probe,
+                    descendant_wait_timeout_seconds=0.5,
+                ),
+                [],
+            )
+
+        # Final recheck caught the completion → TERMINAL_COMPLETE, not RESUMABLE_CONTINUE
+        assert result == AgentExecutionState.TERMINAL_COMPLETE, (
+            f"Expected TERMINAL_COMPLETE from final recheck; got {result!r}"
+        )
+
+    def test_grace_window_catches_artifact_appearing_after_exit_with_no_children(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Artifact appears during grace window; no OpenCodeResumableExitError raised.
+
+        Bug scenario: OpenCode exits rc=0, no children visible, no signals at exact exit
+        moment. Grace window polls and finds artifact on second evaluate_completion call.
+        """
+        probe = FakeLivenessProbe(active=False)
+        strategy = OpenCodeExecutionStrategy()
+        handle = _FakeHandle(returncode=0, has_descendants=False)
+
+        call_count = [0]
+
+        def _fake_evaluate_completion(workspace, phase, raw_output):
+            call_count[0] += 1
+            if call_count[0] == 1:
+                return CompletionSignals(False, False, ())
+            return CompletionSignals(False, True, ("development_result",))
+
+        monkeypatch.setattr(
+            "ralph.agents.invoke.evaluate_completion", _fake_evaluate_completion
+        )
+
+        monotonic_vals = iter([0.0, 0.5, 1.0])
+
+        def _fake_event_wait(self, timeout=None):
+            pass
+
+        with (
+            patch.object(_time_module, "monotonic", side_effect=lambda: next(monotonic_vals)),
+            patch.object(threading.Event, "wait", _fake_event_wait),
+        ):
+            _check_process_result(
+                cast("ManagedProcess", handle),
+                "opencode",
+                [],
+                _CompletionCheckOptions(
+                    execution_strategy=strategy,
+                    workspace_path=tmp_path,
+                    phase="development",
+                    liveness_probe=probe,
+                    parent_exit_grace_seconds=1.0,
+                    descendant_wait_timeout_seconds=30.0,
+                ),
+            )
+        # No exception raised means artifact found during grace -> TERMINAL_COMPLETE
+
+    def test_grace_window_raises_resumable_when_no_signal_and_no_children(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """No signals and no children throughout grace -> OpenCodeResumableExitError raised."""
+        probe = FakeLivenessProbe(active=False)
+        strategy = OpenCodeExecutionStrategy()
+        handle = _FakeHandle(returncode=0, has_descendants=False)
+
+        def _fake_evaluate_completion(workspace, phase, raw_output):
+            return CompletionSignals(False, False, ())
+
+        monkeypatch.setattr(
+            "ralph.agents.invoke.evaluate_completion", _fake_evaluate_completion
+        )
+
+        monotonic_vals = iter([0.0, 0.5, 1.0])
+
+        def _fake_event_wait(self, timeout=None):
+            return None
+
+        with (
+            patch.object(_time_module, "monotonic", side_effect=lambda: next(monotonic_vals)),
+            patch.object(threading.Event, "wait", _fake_event_wait),
+            pytest.raises(OpenCodeResumableExitError),
+        ):
+            _check_process_result(
+                cast("ManagedProcess", handle),
+                "opencode",
+                [],
+                _CompletionCheckOptions(
+                    execution_strategy=strategy,
+                    workspace_path=tmp_path,
+                    phase="development",
+                    liveness_probe=probe,
+                    parent_exit_grace_seconds=1.0,
+                    descendant_wait_timeout_seconds=30.0,
+                ),
+            )
+
+    def test_grace_window_escalates_to_descendant_wait_when_children_appear(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Child appears during grace; escalates to descendant wait; raises after timeout.
+
+        Proves the two-window composition: grace detects a late-appearing child and
+        escalates to the existing descendant wait, which eventually times out and raises.
+        """
+
+        class _FlippingProbe:
+            """Returns False on first any_agent_active call, True on subsequent calls."""
+
+            def __init__(self) -> None:
+                self.call_count = 0
+
+            def any_agent_active(self, prefix: str) -> bool:
+                self.call_count += 1
+                return self.call_count > 1
+
+        probe = _FlippingProbe()
+        strategy = OpenCodeExecutionStrategy()
+        handle = _FakeHandle(returncode=0, has_descendants=False)
+
+        def _fake_evaluate_completion(workspace, phase, raw_output):
+            return CompletionSignals(False, False, ())
+
+        monkeypatch.setattr(
+            "ralph.agents.invoke.evaluate_completion", _fake_evaluate_completion
+        )
+
+        # [0] grace deadline calc; [1] grace loop check -> probe call 2 -> WAITING_ON_CHILD
+        # [2] descendant deadline calc; [3] descendant loop check -> WAITING_ON_CHILD -> sleep
+        # [4] descendant loop exit -> final recheck -> RESUMABLE_CONTINUE
+        monotonic_vals = iter([0.0, 0.5, 0.5, 1.0, 2.5])
+
+        def _fake_event_wait(self, timeout=None):
+            return None
+
+        with (
+            patch.object(_time_module, "monotonic", side_effect=lambda: next(monotonic_vals)),
+            patch.object(threading.Event, "wait", _fake_event_wait),
+            pytest.raises(OpenCodeResumableExitError),
+        ):
+            _check_process_result(
+                cast("ManagedProcess", handle),
+                "opencode",
+                [],
+                _CompletionCheckOptions(
+                    execution_strategy=strategy,
+                    workspace_path=tmp_path,
+                    phase="development",
+                    liveness_probe=probe,
+                    parent_exit_grace_seconds=1.0,
+                    descendant_wait_timeout_seconds=2.0,
+                ),
+            )
+
+        # Descendant wait engaged: more probe calls than grace-only scenario requires.
+        # Grace-only: 2 calls (initial classify_exit + grace loop that found child).
+        # Descendant wait adds more calls; total must exceed grace-only count.
+        _grace_only_probe_calls = 2
+        assert probe.call_count > _grace_only_probe_calls, (
+            f"Expected >2 probe calls proving descendant wait engaged; got {probe.call_count}"
         )

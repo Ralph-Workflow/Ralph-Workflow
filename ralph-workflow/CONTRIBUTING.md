@@ -97,10 +97,16 @@ Phases with no registered required artifact (not in `REQUIRED_ARTIFACTS`) also r
 explicitly. This prevents implicit success from being granted just because a phase has no artifact
 requirement.
 
-**Multi-agent tree liveness:** When an OpenCode parent becomes quiet (stops producing output), Ralph Workflow
-consults the `LivenessProbe` before declaring it idle. If any Ralph Workflow-tracked child agent is still
-active (`LivenessProbe.any_agent_active("agent:")` returns True), the idle clock resets and the
-run continues. Only when the full agent tree is quiet does the idle timeout fire.
+**Multi-agent tree liveness:** Both the idle-timeout path (`classify_quiet`) AND the foreground-exit path
+(`classify_exit`) consult the `LivenessProbe` and `handle.has_live_descendants()` before declaring an
+OpenCode run terminal. If any tracked child agent is still active or any OS-level descendant is alive
+when the parent exits, `_check_process_result` waits up to `descendant_wait_timeout_seconds` (default 30s)
+for the tree to quiesce, re-running `evaluate_completion` so artifacts written by background subagents
+are recognised. Only when the full agent tree is quiet AND no completion signals are present is
+`OpenCodeResumableExitError` raised. This prevents the false-positive retry that previously killed the
+OpenCode parent while subagents were still doing useful background work.
+
+**Parent-exit grace window:** Even when no child agents are visible at the exact moment the OpenCode parent exits with rc=0 and no completion signals are present, `_check_process_result` waits up to `parent_exit_grace_seconds` (default 5s) polling `evaluate_completion` and the liveness probe. This covers the race where MCP-driven background subagents have been launched but have not yet registered with the ProcessManager, and where the agent emits a Waiting for... content message but the OpenCode runtime ends the turn before any child becomes visible. If completion signals appear during the grace window the run is declared `TERMINAL_COMPLETE`; if children appear, control escalates to the existing `descendant_wait_timeout_seconds` window; only when both windows expire with no signals is `OpenCodeResumableExitError` raised. The grace window has zero cost on the fast path (when completion signals are present at exit time, `classify_exit` returns `TERMINAL_COMPLETE` before the grace logic runs).
 
 **Session continuation:** `OpenCodeResumableExitError.resumable_session_id` carries the session ID
 extracted from the NDJSON output. The runner threads this ID into the next invocation via
