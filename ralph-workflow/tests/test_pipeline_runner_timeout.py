@@ -230,6 +230,7 @@ def _make_config_full(  # noqa: PLR0913
     agent_idle_poll_interval_seconds: float = 0.05,
     agent_parent_exit_grace_seconds: float = 5.0,
     agent_descendant_wait_timeout_seconds: float = 30.0,
+    agent_descendant_wait_poll_seconds: float = 0.5,
     agent_process_exit_wait_seconds: float = 30.0,
     agent_max_session_seconds: float | None = None,
 ) -> UnifiedConfig:
@@ -241,6 +242,7 @@ def _make_config_full(  # noqa: PLR0913
             agent_idle_poll_interval_seconds=agent_idle_poll_interval_seconds,
             agent_parent_exit_grace_seconds=agent_parent_exit_grace_seconds,
             agent_descendant_wait_timeout_seconds=agent_descendant_wait_timeout_seconds,
+            agent_descendant_wait_poll_seconds=agent_descendant_wait_poll_seconds,
             agent_process_exit_wait_seconds=agent_process_exit_wait_seconds,
             agent_max_session_seconds=agent_max_session_seconds,
         )
@@ -292,6 +294,21 @@ def test_config_descendant_wait_timeout_flows_to_invoke_options(
     assert getattr(options, "descendant_wait_timeout_seconds", None) == custom_wait
 
 
+def test_config_descendant_wait_poll_flows_to_invoke_options(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """GeneralConfig.agent_descendant_wait_poll_seconds is passed to InvokeOptions."""
+    custom_poll = 0.25
+    config = _make_config_full(agent_descendant_wait_poll_seconds=custom_poll)
+    effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="dev.md")
+    captured: dict[str, object] = {}
+
+    _run_with_config(config, effect, captured, monkeypatch, tmp_path)
+
+    options = captured.get("options")
+    assert getattr(options, "descendant_wait_poll_seconds", None) == custom_poll
+
+
 def test_config_process_exit_wait_flows_to_invoke_options(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -332,3 +349,9 @@ def test_config_default_process_exit_wait_is_30() -> None:
     """Default GeneralConfig.agent_process_exit_wait_seconds is 30.0s."""
     config = GeneralConfig()
     assert config.agent_process_exit_wait_seconds == 30.0  # noqa: PLR2004
+
+
+def test_config_default_descendant_wait_poll_is_0_5() -> None:
+    """Default GeneralConfig.agent_descendant_wait_poll_seconds is 0.5s."""
+    config = GeneralConfig()
+    assert config.agent_descendant_wait_poll_seconds == 0.5  # noqa: PLR2004

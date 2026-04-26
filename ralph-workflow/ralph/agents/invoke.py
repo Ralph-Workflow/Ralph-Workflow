@@ -99,6 +99,7 @@ class InvokeOptions:
     idle_poll_interval_seconds: float | None = None
     parent_exit_grace_seconds: float | None = None
     descendant_wait_timeout_seconds: float | None = None
+    descendant_wait_poll_seconds: float | None = None
     process_exit_wait_seconds: float | None = None
     max_session_seconds: float | None = None
     pure: bool = False
@@ -712,6 +713,11 @@ def _policy_from_options(opts: InvokeOptions) -> TimeoutPolicy:
             opts.descendant_wait_timeout_seconds
             if opts.descendant_wait_timeout_seconds is not None
             else _base.descendant_wait_timeout_seconds
+        ),
+        descendant_wait_poll_seconds=(
+            opts.descendant_wait_poll_seconds
+            if opts.descendant_wait_poll_seconds is not None
+            else _base.descendant_wait_poll_seconds
         ),
         process_exit_wait_seconds=(
             opts.process_exit_wait_seconds

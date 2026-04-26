@@ -244,6 +244,14 @@ class GeneralConfig(_FrozenConfigModel):  # type: ignore[explicit-any]  # reason
             " after the parent process exits."
         ),
     )
+    agent_descendant_wait_poll_seconds: float = Field(
+        default=0.5,
+        gt=0.0,
+        description=(
+            "Poll interval in seconds for descendant-wait and process-exit-wait loops."
+            " Values < 0.01s are intended for tests only."
+        ),
+    )
     agent_process_exit_wait_seconds: float = Field(
         default=30.0,
         ge=0.0,

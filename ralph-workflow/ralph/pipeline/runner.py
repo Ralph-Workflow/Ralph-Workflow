@@ -2083,6 +2083,7 @@ def _execute_agent_effect(  # noqa: PLR0913
                 idle_poll_interval_seconds=config.general.agent_idle_poll_interval_seconds,
                 parent_exit_grace_seconds=config.general.agent_parent_exit_grace_seconds,
                 descendant_wait_timeout_seconds=config.general.agent_descendant_wait_timeout_seconds,
+                descendant_wait_poll_seconds=config.general.agent_descendant_wait_poll_seconds,
                 process_exit_wait_seconds=config.general.agent_process_exit_wait_seconds,
                 max_session_seconds=config.general.agent_max_session_seconds,
                 session_id=resume_session_id,
