@@ -50,10 +50,19 @@ class ProgressEventType(StrEnum):
     HEARTBEAT = "heartbeat"
 
 
-class ProgressUpdate(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
-    """Progress update payload sent to the cloud API."""
+class _FrozenCloudModel(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+    """Private base for frozen cloud payload models.
+
+    Owns `model_config = ConfigDict(frozen=True)` once so descendants do not
+    repeat it. Pydantic v2 inherits `model_config` when descendants do not
+    declare one of their own.
+    """
 
     model_config = ConfigDict(frozen=True)
+
+
+class ProgressUpdate(_FrozenCloudModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+    """Progress update payload sent to the cloud API."""
 
     timestamp: datetime
     phase: str
@@ -67,10 +76,8 @@ class ProgressUpdate(BaseModel):  # type: ignore[explicit-any]  # reason: extern
     metadata: dict[str, object] = Field(default_factory=dict)
 
 
-class PipelineResult(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+class PipelineResult(_FrozenCloudModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     """Final workflow completion payload."""
-
-    model_config = ConfigDict(frozen=True)
 
     success: bool
     iterations_used: int
@@ -86,38 +93,30 @@ class PipelineResult(BaseModel):  # type: ignore[explicit-any]  # reason: extern
     error_message: str | None = None
 
 
-class TelemetryEvent(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+class TelemetryEvent(_FrozenCloudModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     """Structured telemetry event payload."""
-
-    model_config = ConfigDict(frozen=True)
 
     timestamp: datetime
     name: str
     attributes: dict[str, object] = Field(default_factory=dict)
 
 
-class MetricSample(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+class MetricSample(_FrozenCloudModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     """Single numeric metric sample."""
-
-    model_config = ConfigDict(frozen=True)
 
     name: str
     value: float
     tags: dict[str, str] = Field(default_factory=dict)
 
 
-class MetricsReport(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+class MetricsReport(_FrozenCloudModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     """Batch of numeric metrics for a workflow run."""
-
-    model_config = ConfigDict(frozen=True)
 
     samples: list[MetricSample] = Field(default_factory=list)
 
 
-class HeartbeatPayload(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+class HeartbeatPayload(_FrozenCloudModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     """Heartbeat payload sent to the API."""
-
-    model_config = ConfigDict(frozen=True)
 
     timestamp: datetime
 
