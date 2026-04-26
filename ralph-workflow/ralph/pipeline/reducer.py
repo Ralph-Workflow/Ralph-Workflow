@@ -38,7 +38,7 @@ from ralph.pipeline.events import (
     WorkerStartedEvent,
 )
 from ralph.pipeline.handoffs import resolve_next_phase, resolve_post_commit_phase
-from ralph.pipeline.state import AgentChainState, CommitState, PipelineState, RunMetrics
+from ralph.pipeline.state import CommitState, PipelineState
 from ralph.pipeline.worker_state import WorkerState, WorkerStatus
 
 if TYPE_CHECKING:
@@ -49,26 +49,6 @@ if TYPE_CHECKING:
 
 # Maximum number of agent retries before giving up
 _MAX_AGENT_RETRIES = 3
-
-# Forbidden sentinel strings that indicate a bug in error handling.
-_FORBIDDEN_ERROR_SENTINELS: frozenset[str] = frozenset(
-    {
-        "Unknown failure",
-        "unknown failure",
-        "",
-        "None",
-        "null",
-    }
-)
-
-
-def _is_valid_error_message(msg: str | None) -> bool:
-    """Check if an error message is descriptive (not a forbidden sentinel)."""
-    if msg is None:
-        return False
-    stripped = msg.strip()
-    return stripped != "" and msg not in _FORBIDDEN_ERROR_SENTINELS
-
 
 def _failure_reason(state: PipelineState, fallback: str) -> str:
     """Extract a descriptive failure reason from state, or use the fallback.
@@ -303,9 +283,7 @@ def _handle_agent_success(
     if state.last_retry_delay_ms > 0:
         state = state.copy_with(last_retry_delay_ms=0)
     if policy is None:
-        return _advance_to_terminal(
-            state, PHASE_FAILED, "No policy loaded for agent success routing"
-        )
+        return _advance_to_failed(state, "No policy loaded for agent success routing")
     return _policy_handle_agent_success(state, policy)
 
 
@@ -316,7 +294,7 @@ def _policy_handle_agent_success(
     """Policy-driven agent success handling."""
     phase_def = policy.phases.get(state.phase)
     if phase_def is None:
-        return _advance_to_terminal(state, PHASE_FAILED, f"Unknown phase: {state.phase}")
+        return _advance_to_failed(state, f"Unknown phase: {state.phase}")
 
     if phase_def.requires_commit and not state.commit.agent_invoked:
         updated_commit = CommitState(
@@ -340,32 +318,14 @@ def _handle_agent_failure(state: PipelineState) -> tuple[PipelineState, list[Eff
         return _enter_failed_recovery(state, failure_reason)
 
     if chain.retries < _MAX_AGENT_RETRIES:
-        new_chain = AgentChainState(
-            agents=chain.agents,
-            current_index=chain.current_index,
-            retries=chain.retries + 1,
-        )
-        new_metrics = RunMetrics(
-            total_agent_calls=state.metrics.total_agent_calls,
-            total_continuations=state.metrics.total_continuations,
-            total_fallbacks=state.metrics.total_fallbacks,
-            total_retries=state.metrics.total_retries + 1,
-        )
+        new_chain = chain.with_retry_increment()
+        new_metrics = state.metrics.with_retry_increment()
         new_state = state.with_phase_chain(state.phase, new_chain).copy_with(metrics=new_metrics)
         return new_state, []
 
     if chain.current_index + 1 < len(chain.agents):
-        new_chain = AgentChainState(
-            agents=chain.agents,
-            current_index=chain.current_index + 1,
-            retries=0,
-        )
-        new_metrics = RunMetrics(
-            total_agent_calls=state.metrics.total_agent_calls,
-            total_continuations=state.metrics.total_continuations,
-            total_fallbacks=state.metrics.total_fallbacks + 1,
-            total_retries=state.metrics.total_retries,
-        )
+        new_chain = chain.with_advance()
+        new_metrics = state.metrics.with_fallback_increment()
         new_state = state.with_phase_chain(state.phase, new_chain).copy_with(metrics=new_metrics)
         return new_state, []
 
@@ -388,17 +348,8 @@ def _handle_agent_retry(state: PipelineState) -> tuple[PipelineState, list[Effec
         failure_reason = _failure_reason(state, f"No tracked agent chain for {state.phase}")
         return _enter_failed_recovery(state, failure_reason)
 
-    new_chain = AgentChainState(
-        agents=chain.agents,
-        current_index=chain.current_index,
-        retries=chain.retries + 1,
-    )
-    new_metrics = RunMetrics(
-        total_agent_calls=state.metrics.total_agent_calls,
-        total_continuations=state.metrics.total_continuations + 1,
-        total_fallbacks=state.metrics.total_fallbacks,
-        total_retries=state.metrics.total_retries,
-    )
+    new_chain = chain.with_retry_increment()
+    new_metrics = state.metrics.with_continuation_increment()
 
     new_state = state.with_phase_chain(state.phase, new_chain).copy_with(metrics=new_metrics)
     return new_state, []
@@ -415,9 +366,8 @@ def _handle_analysis_success(
             new_state, effects = _advance_phase(state, next_phase, policy)
             return progress.apply_analysis_success(state, new_state), effects
         except ValueError as exc:
-            return _advance_to_terminal(
+            return _advance_to_failed(
                 state,
-                PHASE_FAILED,
                 f"Routing error after analysis success in '{state.phase}': {exc}",
             )
 
@@ -576,8 +526,8 @@ def _handle_fix_failure(
                 return _enter_failed_recovery(state, failure_reason)
             return _advance_phase(state, next_phase, policy)
         except ValueError as exc:
-            return _advance_to_terminal(
-                state, PHASE_FAILED, f"Routing error after fix failure in '{state.phase}': {exc}"
+            return _advance_to_failed(
+                state, f"Routing error after fix failure in '{state.phase}': {exc}"
             )
 
     if state.reviewer_pass + 1 < state.total_reviewer_passes:
@@ -597,8 +547,8 @@ def _handle_commit_success(
             new_state, effects = _advance_phase(state, next_phase, policy)
             return progress.apply_commit_outcome(state, new_state, skipped=False), effects
         except ValueError as exc:
-            return _advance_to_terminal(
-                state, PHASE_FAILED, f"Routing error after commit success in '{state.phase}': {exc}"
+            return _advance_to_failed(
+                state, f"Routing error after commit success in '{state.phase}': {exc}"
             )
 
     new_state, effects = _advance_phase(state, PHASE_COMPLETE)
@@ -621,8 +571,8 @@ def _handle_commit_skipped(
             new_state, effects = _advance_phase(state, next_phase, policy)
             return progress.apply_commit_outcome(state, new_state, skipped=True), effects
         except ValueError as exc:
-            return _advance_to_terminal(
-                state, PHASE_FAILED, f"Routing error after commit skipped in '{state.phase}': {exc}"
+            return _advance_to_failed(
+                state, f"Routing error after commit skipped in '{state.phase}': {exc}"
             )
 
     new_state, effects = _advance_phase(state, PHASE_COMPLETE)
@@ -698,30 +648,12 @@ def _advance_phase(
     return new_state, []
 
 
-def _advance_to_terminal(
+def _advance_to_failed(
     state: PipelineState,
-    terminal: PipelinePhase,
     reason: str,
 ) -> tuple[PipelineState, list[Effect]]:
-    """Advance to a terminal state.
-
-    Args:
-        state: Current pipeline state.
-        terminal: Terminal state (complete or failed).
-        reason: Reason for the terminal state.
-
-    Returns:
-        Tuple of (new_state, effects).
-    """
-    if terminal == PHASE_FAILED:
-        return _enter_failed_recovery(state, reason)
-
-    updates: dict[str, object] = {
-        "phase": terminal,
-        "previous_phase": state.phase,
-    }
-    new_state = state.copy_with(**updates)
-    return new_state, []
+    """Transition into PHASE_FAILED via centralized recovery bookkeeping."""
+    return _enter_failed_recovery(state, reason)
 
 
 def _resolve_or_terminal(
@@ -733,9 +665,8 @@ def _resolve_or_terminal(
     try:
         next_phase = resolve_next_phase(state.phase, signal, policy)
     except ValueError as exc:
-        return _advance_to_terminal(
+        return _advance_to_failed(
             state,
-            PHASE_FAILED,
             f"Routing error after {label} in '{state.phase}': {exc}",
         )
     return _advance_phase(state, next_phase, policy)

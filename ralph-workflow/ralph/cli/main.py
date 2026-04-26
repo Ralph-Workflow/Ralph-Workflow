@@ -62,28 +62,6 @@ class CLIOverrideInput:
     git_user_name: str | None = None
     git_user_email: str | None = None
 
-    def __init__(  # noqa: PLR0913
-        self,
-        developer_iters: int | None = None,
-        reviewer_reviews: int | None = None,
-        developer_agent: str | None = None,
-        reviewer_agent: str | None = None,
-        developer_model: str | None = None,
-        reviewer_model: str | None = None,
-        review_depth: ReviewDepth | None = None,
-        git_user_name: str | None = None,
-        git_user_email: str | None = None,
-    ) -> None:
-        object.__setattr__(self, "developer_iters", developer_iters)
-        object.__setattr__(self, "reviewer_reviews", reviewer_reviews)
-        object.__setattr__(self, "developer_agent", developer_agent)
-        object.__setattr__(self, "reviewer_agent", reviewer_agent)
-        object.__setattr__(self, "developer_model", developer_model)
-        object.__setattr__(self, "reviewer_model", reviewer_model)
-        object.__setattr__(self, "review_depth", review_depth)
-        object.__setattr__(self, "git_user_name", git_user_name)
-        object.__setattr__(self, "git_user_email", git_user_email)
-
 
 class GeneralOverrides(TypedDict):
     """General configuration overrides."""

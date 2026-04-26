@@ -14,8 +14,8 @@ from ralph.recovery.events import FailureEvent, FailureEventBus, FalloverEvent
 
 if TYPE_CHECKING:
     from ralph.pipeline.effects import Effect
-    from ralph.pipeline.state import PipelineState
-    from ralph.policy.models import PolicyBundle
+    from ralph.pipeline.state import AgentChainState, PipelineState
+    from ralph.policy.models import AgentChainConfig, PolicyBundle
 
 
 def compute_backoff_ms(base_ms: int, attempt: int, max_ms: int = 30_000) -> int:
@@ -100,7 +100,7 @@ class RecoveryController:
 
             # Compute retry delay from chain config
             if agent is not None and failure.counts_against_budget:
-                retry_delay_ms = self._compute_retry_delay(phase, chain, agent)
+                retry_delay_ms = self._compute_retry_delay(phase, agent)
 
         failure_evt = FailureEvent(
             timestamp=datetime.now(UTC),
@@ -191,41 +191,47 @@ class RecoveryController:
 
     def _increment_chain_retries(self, state: PipelineState, phase: str) -> PipelineState:
         """Increment chain.retries for the given phase without debiting the budget."""
-        from ralph.pipeline.state import AgentChainState  # noqa: PLC0415
-
         chain = state.chain_for_phase(phase)
         if chain is None:
             return state
-        new_chain = AgentChainState(
-            agents=chain.agents,
-            current_index=chain.current_index,
-            retries=chain.retries + 1,
-        )
-        return state.with_phase_chain(phase, new_chain)
+        return state.with_phase_chain(phase, chain.with_retry_increment())
+
+    def _apply_chain_retry(
+        self,
+        state: PipelineState,
+        phase: str,
+        chain: AgentChainState,
+        *,
+        retry_in_session: bool,
+    ) -> PipelineState:
+        """Apply a single retry to the chain and optionally preserve the agent session."""
+        retried_state = state.with_phase_chain(phase, chain.with_retry_increment())
+        if retry_in_session and state.last_agent_session_id:
+            retried_state = retried_state.copy_with(session_preserve_retry_pending=True)
+        return retried_state
+
+    def _chain_config_for_phase(self, phase: str) -> AgentChainConfig | None:
+        """Resolve the AgentChainConfig backing the given phase, or None."""
+        if self._policy_bundle is None:
+            return None
+        phase_def = self._policy_bundle.pipeline.phases.get(phase)
+        if phase_def is None:
+            return None
+        drain_config = self._policy_bundle.agents.agent_drains.get(phase_def.drain)
+        if drain_config is None:
+            return None
+        return self._policy_bundle.agents.agent_chains.get(drain_config.chain)
 
     def _compute_retry_delay(
         self,
         phase: str,
-        chain: object,
         agent: str | None,
     ) -> int:
         """Compute the retry delay for a given phase and agent.
 
         Uses the chain's retry_delay_ms from policy configuration.
         """
-        if self._policy_bundle is None:
-            return 0
-
-        # Find chain name for this phase
-        phase_def = self._policy_bundle.pipeline.phases.get(phase)
-        if phase_def is None:
-            return 0
-
-        drain_config = self._policy_bundle.agents.agent_drains.get(phase_def.drain)
-        if drain_config is None:
-            return 0
-
-        chain_config = self._policy_bundle.agents.agent_chains.get(drain_config.chain)
+        chain_config = self._chain_config_for_phase(phase)
         if chain_config is None:
             return 0
 
@@ -280,7 +286,7 @@ class RecoveryController:
         retry_in_session: bool = False,
     ) -> tuple[PipelineState, list[Effect]]:
         """Handle agent failure with budget debit and chain progression."""
-        from ralph.pipeline.state import AgentChainState, FalloverRecord  # noqa: PLC0415
+        from ralph.pipeline.state import FalloverRecord  # noqa: PLC0415
 
         chain = state.chain_for_phase(phase)
         if chain is None:
@@ -293,35 +299,22 @@ class RecoveryController:
         )
 
         # Get max_retries from policy if available
-        max_retries = self._get_max_retries_for_chain(phase, chain)
+        max_retries = self._get_max_retries_for_chain(phase)
 
-        if current_agent is not None:
-            budget_state = self._registry.get(phase, current_agent)
-            if budget_state is not None:
-                if not budget_state.exhausted:
-                    new_chain = AgentChainState(
-                        agents=chain.agents,
-                        current_index=chain.current_index,
-                        retries=chain.retries + 1,
-                    )
-                    retried_state = state.with_phase_chain(phase, new_chain)
-                    if retry_in_session and state.last_agent_session_id:
-                        retried_state = retried_state.copy_with(
-                            session_preserve_retry_pending=True
-                        )
-                    return retried_state, []
-            elif chain.retries < max_retries:
-                new_chain = AgentChainState(
-                    agents=chain.agents,
-                    current_index=chain.current_index,
-                    retries=chain.retries + 1,
-                )
-                retried_state = state.with_phase_chain(phase, new_chain)
-                if retry_in_session and state.last_agent_session_id:
-                    retried_state = retried_state.copy_with(
-                        session_preserve_retry_pending=True
-                    )
-                return retried_state, []
+        budget_state = (
+            self._registry.get(phase, current_agent) if current_agent is not None else None
+        )
+        should_retry_in_chain = current_agent is not None and (
+            (budget_state is not None and not budget_state.exhausted)
+            or (budget_state is None and chain.retries < max_retries)
+        )
+        if should_retry_in_chain:
+            return (
+                self._apply_chain_retry(
+                    state, phase, chain, retry_in_session=retry_in_session
+                ),
+                [],
+            )
 
         if chain.current_index + 1 < len(chain.agents):
             next_agent = chain.agents[chain.current_index + 1]
@@ -340,12 +333,7 @@ class RecoveryController:
             )
             self._bus.publish(fallover_evt)
 
-            new_chain = AgentChainState(
-                agents=chain.agents,
-                current_index=chain.current_index + 1,
-                retries=0,
-            )
-            new_state = state.with_phase_chain(phase, new_chain).copy_with(
+            new_state = state.with_phase_chain(phase, chain.with_advance()).copy_with(
                 fallover_history=(*state.fallover_history, fallover_record),
                 # Fallover: reset retry delay for new agent
                 last_retry_delay_ms=0,
@@ -360,23 +348,11 @@ class RecoveryController:
         )
         return failed_state, []
 
-    def _get_max_retries_for_chain(self, phase: str, chain: object) -> int:
+    def _get_max_retries_for_chain(self, phase: str) -> int:
         """Get max_retries from policy for the chain used by this phase."""
-        if self._policy_bundle is None:
-            return 3  # Safe default
-
-        phase_def = self._policy_bundle.pipeline.phases.get(phase)
-        if phase_def is None:
-            return 3
-
-        drain_config = self._policy_bundle.agents.agent_drains.get(phase_def.drain)
-        if drain_config is None:
-            return 3
-
-        chain_config = self._policy_bundle.agents.agent_chains.get(drain_config.chain)
+        chain_config = self._chain_config_for_phase(phase)
         if chain_config is None:
             return 3
-
         return chain_config.max_retries
 
     def snapshot(self) -> dict[str, object]:
@@ -390,7 +366,7 @@ class RecoveryController:
                     "remaining": budget.remaining,
                     "exhausted": budget.exhausted,
                 }
-                for (phase, agent), budget in self._registry._budgets.items()
+                for (phase, agent), budget in self._registry.items()
             },
             "backoff_attempts": dict(self._backoff_attempts),
         }

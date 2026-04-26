@@ -11,7 +11,7 @@ occur exclusively through the reduce function.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -26,6 +26,16 @@ from ralph.pipeline.worker_state import WorkerState  # noqa: TC001
 
 if TYPE_CHECKING:
     from ralph.policy.models import DrainName
+
+
+_PHASE_CHAIN_FIELDS: dict[str, str] = {
+    "planning": "planning_chain",
+    PHASE_DEVELOPMENT: "dev_chain",
+    "development_analysis": "dev_analysis_chain",
+    PHASE_REVIEW: "rev_chain",
+    "review_analysis": "review_analysis_chain",
+    "fix": "fix_chain",
+}
 
 
 class _FrozenPipelineStateModel(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
@@ -51,6 +61,25 @@ class AgentChainState(_FrozenPipelineStateModel):  # type: ignore[explicit-any] 
     agents: list[str] = Field(default_factory=list)
     current_index: int = 0
     retries: int = 0
+
+    def with_retry_increment(self) -> AgentChainState:
+        """Return a copy with retries incremented by 1; agents and current_index unchanged."""
+        return AgentChainState(
+            agents=self.agents,
+            current_index=self.current_index,
+            retries=self.retries + 1,
+        )
+
+    def with_advance(self) -> AgentChainState:
+        """Return a copy advanced to the next agent with retries reset to 0.
+
+        Callers MUST check that current_index + 1 < len(agents) before invoking.
+        """
+        return AgentChainState(
+            agents=self.agents,
+            current_index=self.current_index + 1,
+            retries=0,
+        )
 
 
 class RebaseState(_FrozenPipelineStateModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
@@ -95,6 +124,33 @@ class RunMetrics(_FrozenPipelineStateModel):  # type: ignore[explicit-any]  # re
     total_continuations: int = 0
     total_fallbacks: int = 0
     total_retries: int = 0
+
+    def with_retry_increment(self) -> RunMetrics:
+        """Return a copy with total_retries incremented by 1; other counters unchanged."""
+        return RunMetrics(
+            total_agent_calls=self.total_agent_calls,
+            total_continuations=self.total_continuations,
+            total_fallbacks=self.total_fallbacks,
+            total_retries=self.total_retries + 1,
+        )
+
+    def with_fallback_increment(self) -> RunMetrics:
+        """Return a copy with total_fallbacks incremented by 1; other counters unchanged."""
+        return RunMetrics(
+            total_agent_calls=self.total_agent_calls,
+            total_continuations=self.total_continuations,
+            total_fallbacks=self.total_fallbacks + 1,
+            total_retries=self.total_retries,
+        )
+
+    def with_continuation_increment(self) -> RunMetrics:
+        """Return a copy with total_continuations incremented by 1; other counters unchanged."""
+        return RunMetrics(
+            total_agent_calls=self.total_agent_calls,
+            total_continuations=self.total_continuations + 1,
+            total_fallbacks=self.total_fallbacks,
+            total_retries=self.total_retries,
+        )
 
 
 class FalloverRecord(_FrozenPipelineStateModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
@@ -297,15 +353,10 @@ class PipelineState(_FrozenPipelineStateModel):  # type: ignore[explicit-any]  #
 
     def chain_for_phase(self, phase: PipelinePhase | str) -> AgentChainState | None:
         """Get the tracked agent chain state for a phase, if any."""
-        phase_to_chain = {
-            "planning": self.planning_chain,
-            PHASE_DEVELOPMENT: self.dev_chain,
-            "development_analysis": self.dev_analysis_chain,
-            PHASE_REVIEW: self.rev_chain,
-            "review_analysis": self.review_analysis_chain,
-            "fix": self.fix_chain,
-        }
-        return phase_to_chain.get(phase)
+        field_name = _PHASE_CHAIN_FIELDS.get(phase)
+        if field_name is None:
+            return None
+        return cast("AgentChainState", getattr(self, field_name))
 
     def with_phase_chain(
         self,
@@ -313,15 +364,7 @@ class PipelineState(_FrozenPipelineStateModel):  # type: ignore[explicit-any]  #
         chain: AgentChainState,
     ) -> PipelineState:
         """Return a copy with the chain state for the given phase updated."""
-        phase_to_field = {
-            "planning": "planning_chain",
-            PHASE_DEVELOPMENT: "dev_chain",
-            "development_analysis": "dev_analysis_chain",
-            PHASE_REVIEW: "rev_chain",
-            "review_analysis": "review_analysis_chain",
-            "fix": "fix_chain",
-        }
-        field_name = phase_to_field.get(phase)
+        field_name = _PHASE_CHAIN_FIELDS.get(phase)
         if field_name is None:
             return self
         return self.copy_with(**{field_name: chain})

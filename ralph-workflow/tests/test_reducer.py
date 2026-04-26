@@ -1386,3 +1386,12 @@ def test_full_noop_pipeline_flow_reaches_complete_without_billing_counters() -> 
     new_state, _ = _reduce(state, PipelineEvent.COMMIT_SKIPPED, policy)
     assert new_state.phase == PHASE_COMPLETE
     assert new_state.reviewer_pass == 0
+
+
+def test_agent_success_with_no_policy_routes_through_failed_recovery() -> None:
+    state = PipelineState(phase=PHASE_DEVELOPMENT, recovery_epoch=4, last_error=None)
+    new_state, _ = _reduce(state, PipelineEvent.AGENT_SUCCESS)
+    assert new_state.phase == PHASE_FAILED
+    assert new_state.previous_phase == PHASE_DEVELOPMENT
+    assert new_state.recovery_epoch == state.recovery_epoch + 1
+    assert new_state.last_error == "No policy loaded for agent success routing"
