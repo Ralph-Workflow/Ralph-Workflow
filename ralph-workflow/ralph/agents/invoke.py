@@ -19,7 +19,7 @@ import shutil
 import subprocess
 import sys
 import threading
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import IO, TYPE_CHECKING, Protocol, cast, runtime_checkable
 
@@ -33,7 +33,12 @@ from ralph.agents.execution_state import (
     OpenCodeExecutionStrategy,
     strategy_for_transport,
 )
-from ralph.agents.idle_watchdog import IdleWatchdog, WatchdogConfig, WatchdogVerdict
+from ralph.agents.idle_watchdog import (
+    IdleWatchdog,
+    TimeoutPolicy,
+    WatchdogFireReason,
+    WatchdogVerdict,
+)
 from ralph.agents.timeout_clock import Clock, SystemClock
 from ralph.config.enums import AgentTransport
 from ralph.mcp.protocol.startup import (
@@ -59,7 +64,6 @@ from ralph.process.liveness import DefaultLivenessProbe, LivenessProbe
 from ralph.process.manager import ManagedProcess, get_process_manager
 
 _MODELED_FLAG_PARTS = 2
-_IDLE_POLL_INTERVAL_SECONDS = 0.05
 
 
 @dataclass(frozen=True)
@@ -74,6 +78,13 @@ class InvokeOptions:
         workspace_path: Optional path to workspace for file-change monitoring.
         extra_env: Optional environment overrides for the subprocess.
         idle_timeout_seconds: Optional maximum idle time without agent output.
+        drain_window_seconds: Optional drain window duration in seconds.
+        max_waiting_on_child_seconds: Optional ceiling on cumulative WAITING_ON_CHILD time.
+        idle_poll_interval_seconds: Optional poll interval for the read loop.
+        parent_exit_grace_seconds: Optional grace window after parent exit.
+        descendant_wait_timeout_seconds: Optional ceiling for descendant-wait.
+        process_exit_wait_seconds: Optional timeout for post-EOF subprocess exit.
+        max_session_seconds: Optional absolute session wall-clock ceiling.
     """
 
     model_flag: str | None = None
@@ -83,6 +94,14 @@ class InvokeOptions:
     workspace_path: Path | None = None
     extra_env: dict[str, str] | None = None
     idle_timeout_seconds: float | None = None
+    drain_window_seconds: float | None = None
+    max_waiting_on_child_seconds: float | None = None
+    idle_poll_interval_seconds: float | None = None
+    parent_exit_grace_seconds: float | None = None
+    descendant_wait_timeout_seconds: float | None = None
+    descendant_wait_poll_seconds: float | None = None
+    process_exit_wait_seconds: float | None = None
+    max_session_seconds: float | None = None
     pure: bool = False
     system_prompt_file: str | None = None
     phase: str | None = None
@@ -148,9 +167,21 @@ class _ObserverProtocol(_HasStop, Protocol):
 class _IdleStreamTimeoutError(RuntimeError):
     """Raised when an agent process stops producing output for too long."""
 
-    def __init__(self, timeout_seconds: float) -> None:
+    def __init__(self, timeout_seconds: float, reason: WatchdogFireReason) -> None:
         self.timeout_seconds = timeout_seconds
-        super().__init__(f"Agent produced no output for {timeout_seconds:.0f}s")
+        self.reason = reason
+        if reason == WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG:
+            duration = f"{timeout_seconds:.0f}s"
+            msg = f"Agent kept child agents alive without producing output for {duration}"
+        elif reason == WatchdogFireReason.SESSION_CEILING_EXCEEDED:
+            duration = f"{timeout_seconds:.0f}s"
+            msg = f"Agent exceeded max session wall-clock of {duration}"
+        elif reason == WatchdogFireReason.PROCESS_EXIT_HANG:
+            duration = f"{timeout_seconds:.0f}s"
+            msg = f"Agent subprocess closed stdout but did not exit within {duration}"
+        else:
+            msg = f"Agent produced no output for {timeout_seconds:.0f}s"
+        super().__init__(msg)
 
 
 class AgentInvocationError(Exception):
@@ -201,12 +232,26 @@ class AgentInactivityTimeoutError(AgentInvocationError):
         agent_name: str,
         timeout_seconds: float,
         parsed_output: list[str] | None = None,
+        *,
+        reason: WatchdogFireReason | None = None,
     ) -> None:
         self.timeout_seconds = timeout_seconds
+        self.reason = reason
+        if reason == WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG:
+            duration = f"{timeout_seconds:.0f}s"
+            stderr_msg = f"Agent kept child agents alive without producing output for {duration}"
+        elif reason == WatchdogFireReason.SESSION_CEILING_EXCEEDED:
+            duration = f"{timeout_seconds:.0f}s"
+            stderr_msg = f"Agent exceeded max session wall-clock of {duration}"
+        elif reason == WatchdogFireReason.PROCESS_EXIT_HANG:
+            duration = f"{timeout_seconds:.0f}s"
+            stderr_msg = f"Agent subprocess closed stdout but did not exit within {duration}"
+        else:
+            stderr_msg = f"Agent produced no output for {timeout_seconds:.0f}s"
         super().__init__(
             agent_name,
             -1,
-            f"Agent produced no output for {timeout_seconds:.0f}s",
+            stderr_msg,
             parsed_output,
         )
 
@@ -384,6 +429,7 @@ def invoke_agent(
     execution_strategy = strategy_for_transport(_agent_transport(config))
     liveness_probe = DefaultLivenessProbe()
     monitor = _start_workspace_monitor(opts.workspace_path)
+    policy = _policy_from_options(opts)
 
     try:
         lines_iter = _run_subprocess_and_read_lines(
@@ -392,7 +438,7 @@ def invoke_agent(
             opts.show_progress,
             runtime_env,
             opts.workspace_path,
-            idle_timeout_seconds=opts.idle_timeout_seconds,
+            policy=policy,
             execution_strategy=execution_strategy,
             liveness_probe=liveness_probe,
             phase=opts.phase,
@@ -428,7 +474,7 @@ def _run_subprocess_and_read_lines(  # noqa: PLR0913
     extra_env: dict[str, str] | None,
     workspace_path: Path | None,
     *,
-    idle_timeout_seconds: float | None = None,
+    policy: TimeoutPolicy,
     execution_strategy: GenericExecutionStrategy | OpenCodeExecutionStrategy | None = None,
     liveness_probe: LivenessProbe | None = None,
     phase: str | None = None,
@@ -440,6 +486,7 @@ def _run_subprocess_and_read_lines(  # noqa: PLR0913
         cmd: Command to execute.
         config: Agent configuration.
         show_progress: Whether to show progress bar.
+        policy: Consolidated timeout policy for all timeout dimensions.
 
     Yields:
         Output lines from the subprocess.
@@ -466,47 +513,54 @@ def _run_subprocess_and_read_lines(  # noqa: PLR0913
 
         lines_iter = _read_lines_from_process(
             handle,
-            idle_timeout_seconds=idle_timeout_seconds,
+            policy=policy,
             execution_strategy=strategy,
             liveness_probe=probe,
             _clock=clock,
         )
         parsed_output: list[str] = []
-        if show_progress:
-            agent_name = _agent_command_name(config)
-            progress_iter = cast(
-                "Iterator[str]",
-                tqdm(
-                    lines_iter,
-                    desc=f"[{agent_name}]",
-                    unit="line",
-                    leave=False,
-                    file=sys.stdout,
-                ),
-            )
-            try:
+        try:
+            if show_progress:
+                agent_name = _agent_command_name(config)
+                progress_iter = cast(
+                    "Iterator[str]",
+                    tqdm(
+                        lines_iter,
+                        desc=f"[{agent_name}]",
+                        unit="line",
+                        leave=False,
+                        file=sys.stdout,
+                    ),
+                )
                 for line in progress_iter:
                     parsed_output.append(line.rstrip())
                     yield line
-            except _IdleStreamTimeoutError as exc:
-                raise AgentInactivityTimeoutError(
-                    _agent_command_name(config),
-                    exc.timeout_seconds,
-                    parsed_output,
-                ) from exc
-        else:
-            try:
+            else:
                 for line in lines_iter:
                     parsed_output.append(line.rstrip())
                     yield line
-            except _IdleStreamTimeoutError as exc:
-                raise AgentInactivityTimeoutError(
-                    _agent_command_name(config),
-                    exc.timeout_seconds,
-                    parsed_output,
-                ) from exc
 
-        handle.wait()
+            # Post-EOF: wait for subprocess to exit within policy budget.
+            # Prevents hanging when a subprocess closes stdout but never calls exit().
+            deadline = clock.monotonic() + policy.process_exit_wait_seconds
+            while clock.monotonic() < deadline:
+                if handle.poll() is not None:
+                    break
+                clock.sleep(policy.descendant_wait_poll_seconds)
+            else:
+                handle.terminate(grace_period_s=0.5)
+                raise _IdleStreamTimeoutError(
+                    policy.process_exit_wait_seconds,
+                    WatchdogFireReason.PROCESS_EXIT_HANG,
+                )
+        except _IdleStreamTimeoutError as exc:
+            raise AgentInactivityTimeoutError(
+                _agent_command_name(config),
+                exc.timeout_seconds,
+                parsed_output,
+                reason=exc.reason,
+            ) from exc
+
         _check_process_result(
             handle,
             _agent_command_name(config),
@@ -516,6 +570,7 @@ def _run_subprocess_and_read_lines(  # noqa: PLR0913
                 workspace_path=workspace_path,
                 phase=phase,
                 liveness_probe=probe,
+                policy=policy,
             ),
             _clock=clock,
         )
@@ -624,10 +679,58 @@ def _agent_command_name(config: AgentConfig) -> str:
     return config.cmd.split()[0]
 
 
-def _read_lines_from_process(
+def _policy_from_options(opts: InvokeOptions) -> TimeoutPolicy:
+    """Build a TimeoutPolicy from InvokeOptions, falling back to policy defaults for None fields."""
+    _base = TimeoutPolicy(idle_timeout_seconds=opts.idle_timeout_seconds)
+    return TimeoutPolicy(
+        idle_timeout_seconds=opts.idle_timeout_seconds,
+        drain_window_seconds=(
+            opts.drain_window_seconds
+            if opts.drain_window_seconds is not None
+            else _base.drain_window_seconds
+        ),
+        max_waiting_on_child_seconds=(
+            opts.max_waiting_on_child_seconds
+            if opts.max_waiting_on_child_seconds is not None
+            else _base.max_waiting_on_child_seconds
+        ),
+        max_session_seconds=(
+            opts.max_session_seconds
+            if opts.max_session_seconds is not None
+            else _base.max_session_seconds
+        ),
+        idle_poll_interval_seconds=(
+            opts.idle_poll_interval_seconds
+            if opts.idle_poll_interval_seconds is not None
+            else _base.idle_poll_interval_seconds
+        ),
+        parent_exit_grace_seconds=(
+            opts.parent_exit_grace_seconds
+            if opts.parent_exit_grace_seconds is not None
+            else _base.parent_exit_grace_seconds
+        ),
+        descendant_wait_timeout_seconds=(
+            opts.descendant_wait_timeout_seconds
+            if opts.descendant_wait_timeout_seconds is not None
+            else _base.descendant_wait_timeout_seconds
+        ),
+        descendant_wait_poll_seconds=(
+            opts.descendant_wait_poll_seconds
+            if opts.descendant_wait_poll_seconds is not None
+            else _base.descendant_wait_poll_seconds
+        ),
+        process_exit_wait_seconds=(
+            opts.process_exit_wait_seconds
+            if opts.process_exit_wait_seconds is not None
+            else _base.process_exit_wait_seconds
+        ),
+    )
+
+
+def _read_lines_from_process(  # noqa: PLR0915
     handle: ManagedProcess,
     *,
-    idle_timeout_seconds: float | None = None,
+    policy: TimeoutPolicy,
     execution_strategy: GenericExecutionStrategy | OpenCodeExecutionStrategy | None = None,
     liveness_probe: LivenessProbe | None = None,
     _clock: Clock | None = None,
@@ -636,7 +739,7 @@ def _read_lines_from_process(
 
     Args:
         handle: Running managed process.
-        idle_timeout_seconds: Optional maximum idle time without output.
+        policy: Consolidated timeout policy.
         _clock: Injectable Clock for testing; production callers omit this.
 
     Yields:
@@ -648,25 +751,28 @@ def _read_lines_from_process(
     lines_event = threading.Event()
     clock: Clock = _clock or SystemClock()
 
-    watchdog_config = WatchdogConfig(
-        idle_timeout_seconds=idle_timeout_seconds,
-        drain_window_seconds=0.5,
-        max_waiting_on_child_seconds=(
-            max(1800.0, idle_timeout_seconds * 6) if idle_timeout_seconds is not None else 1800.0
-        ),
-    )
-    watchdog = IdleWatchdog(watchdog_config, clock)
+    watchdog = IdleWatchdog(policy, clock)
+
+    reader_done: list[bool] = [False]  # mutable for closure capture
 
     def read_lines_thread() -> None:
         if stdout_pipe is None:
+            with lines_lock:
+                reader_done[0] = True
+            lines_event.set()
             return
         try:
             for line in stdout_pipe:
+                # Append and set under the same lock so the main loop never
+                # misses a line between the queue check and the wait_for_event call.
                 with lines_lock:
                     lines_queue.append(line)
+                    lines_event.set()
         except Exception:
             pass
         finally:
+            with lines_lock:
+                reader_done[0] = True
             lines_event.set()
 
     reader = threading.Thread(target=read_lines_thread, daemon=True)
@@ -676,33 +782,55 @@ def _read_lines_from_process(
     probe: LivenessProbe = liveness_probe or DefaultLivenessProbe()
 
     while True:
+        # Clear event BEFORE checking queue+done so we cannot miss a set() that
+        # races between the check and the wait_for_event call below.
+        lines_event.clear()
+
         queued_line: str | None = None
+        is_done = False
         with lines_lock:
             if lines_queue:
                 queued_line = lines_queue.pop(0)
+            elif reader_done[0]:
+                is_done = True
 
         if queued_line is not None:
             watchdog.record_activity()
             yield queued_line
             continue
 
-        if lines_event.is_set():
+        if is_done:
             break
 
         verdict = watchdog.evaluate(
             classify_quiet=lambda: strategy.classify_quiet(handle, probe)
         )
         if verdict == WatchdogVerdict.FIRE:
-            assert idle_timeout_seconds is not None
+            assert policy.idle_timeout_seconds is not None or policy.max_session_seconds is not None
+            fire_reason = watchdog.last_fire_reason
+            assert fire_reason is not None
+            timeout_val = (
+                policy.max_session_seconds
+                if fire_reason == WatchdogFireReason.SESSION_CEILING_EXCEEDED
+                else policy.idle_timeout_seconds
+            )
+            assert timeout_val is not None
+            logger.warning(
+                "idle watchdog firing reason={} elapsed={}s cumulative_waiting={}s",
+                fire_reason,
+                round(clock.monotonic(), 1),
+                round(watchdog.cumulative_waiting_on_child_seconds, 1),
+            )
             # Drain any lines that arrived just before the FIRE verdict
             with lines_lock:
                 pending = list(lines_queue)
                 lines_queue.clear()
             yield from pending
             handle.terminate(grace_period_s=0.5)
-            raise _IdleStreamTimeoutError(idle_timeout_seconds)
+            raise _IdleStreamTimeoutError(timeout_val, fire_reason)
 
-        clock.sleep(_IDLE_POLL_INTERVAL_SECONDS)
+        # Wake immediately when a line arrives; FakeClock just advances time.
+        clock.wait_for_event(lines_event, policy.idle_poll_interval_seconds)
 
     reader.join(timeout=10)
 
@@ -730,14 +858,11 @@ class _CompletionCheckOptions:
     # LivenessProbe for checking whether Ralph-tracked child agents are still active.
     # When None, classify_exit falls back to handle.has_live_descendants() only.
     liveness_probe: LivenessProbe | None = None
-    # Maximum time to wait for descendant processes to finish before declaring failure.
-    # Default 30s is long enough for legitimate background subagent work while bounding
-    # retry latency. Only used when the strategy returns WAITING_ON_CHILD at exit time.
-    descendant_wait_timeout_seconds: float = 30.0
-    # Grace window after parent rc=0 exit during which we poll for late completion signals
-    # or appearing children. Default 5s is short enough to bound retry latency and long
-    # enough to catch typical late-artifact races.
-    parent_exit_grace_seconds: float = 5.0
+    # TimeoutPolicy governs all post-exit timeout dimensions (parent grace, descendant wait).
+    # Uses a factory default so callers that don't need timeouts can omit it.
+    policy: TimeoutPolicy = field(
+        default_factory=lambda: TimeoutPolicy(idle_timeout_seconds=None)
+    )
 
 
 def _poll_until_deadline(
@@ -775,9 +900,9 @@ def _wait_for_completion_grace(
     *,
     clock: Clock | None = None,
 ) -> AgentExecutionState:
-    """Wait up to opts.parent_exit_grace_seconds for completion signals or children to appear.
+    """Wait up to policy.parent_exit_grace_seconds for completion signals or children to appear.
 
-    Polls evaluate_completion + classify_exit at _DESCENDANT_WAIT_POLL_SECONDS intervals.
+    Polls evaluate_completion + classify_exit at policy.descendant_wait_poll_seconds intervals.
     Returns:
       TERMINAL_COMPLETE if completion signals appear during the grace window.
       WAITING_ON_CHILD if children appear (caller must escalate to descendant wait).
@@ -792,7 +917,7 @@ def _wait_for_completion_grace(
 
     effective_clock: Clock = clock or SystemClock()
     probe = opts.liveness_probe or DefaultLivenessProbe()
-    deadline = effective_clock.monotonic() + opts.parent_exit_grace_seconds
+    deadline = effective_clock.monotonic() + opts.policy.parent_exit_grace_seconds
 
     def _check() -> AgentExecutionState:
         signals = evaluate_completion(
@@ -814,7 +939,7 @@ def _wait_for_completion_grace(
             AgentExecutionState.WAITING_ON_CHILD,
         ):
             return state
-        effective_clock.sleep(_DESCENDANT_WAIT_POLL_SECONDS)
+        effective_clock.sleep(opts.policy.descendant_wait_poll_seconds)
     return _check()
 
 
@@ -827,14 +952,14 @@ def _wait_for_descendants_then_recheck(
 ) -> AgentExecutionState:
     """Wait for descendant processes to finish, then re-evaluate completion signals.
 
-    Polls the execution strategy's classify_exit at _DESCENDANT_WAIT_POLL_SECONDS intervals
-    until either the tree is quiet (state != WAITING_ON_CHILD) or the deadline elapses.
-    This allows artifacts written by background subagents to become visible before
+    Polls the execution strategy's classify_exit at policy.descendant_wait_poll_seconds
+    intervals until either the tree is quiet (state != WAITING_ON_CHILD) or the deadline
+    elapses. This allows artifacts written by background subagents to become visible before
     OpenCodeResumableExitError is raised.
 
     Args:
         handle: Completed parent process handle.
-        opts: Completion check options including liveness_probe and timeout.
+        opts: Completion check options including liveness_probe and policy.
         parsed_output: Raw NDJSON output lines from the agent.
         clock: Injectable Clock; defaults to SystemClock.
 
@@ -852,7 +977,7 @@ def _wait_for_descendants_then_recheck(
     assert execution_strategy is not None
 
     effective_clock: Clock = clock or SystemClock()
-    deadline = effective_clock.monotonic() + opts.descendant_wait_timeout_seconds
+    deadline = effective_clock.monotonic() + opts.policy.descendant_wait_timeout_seconds
     probe = opts.liveness_probe or DefaultLivenessProbe()
 
     def _check() -> AgentExecutionState:
@@ -866,7 +991,7 @@ def _wait_for_descendants_then_recheck(
     final_state = _poll_until_deadline(
         _check,
         deadline=deadline,
-        interval=_DESCENDANT_WAIT_POLL_SECONDS,
+        interval=opts.policy.descendant_wait_poll_seconds,
         clock=effective_clock,
     )
     # If still WAITING_ON_CHILD, fall back to RESUMABLE_CONTINUE so the caller
@@ -874,9 +999,6 @@ def _wait_for_descendants_then_recheck(
     if final_state == AgentExecutionState.WAITING_ON_CHILD:
         return AgentExecutionState.RESUMABLE_CONTINUE
     return final_state
-
-
-_DESCENDANT_WAIT_POLL_SECONDS = 0.5
 
 
 def _check_process_result(
@@ -892,8 +1014,8 @@ def _check_process_result(
     For OpenCode agents, exit 0 without a required completion artifact raises
     OpenCodeResumableExitError so the runner can continue the same session.
     When the process exits but child agents are still running, this function
-    waits up to descendant_wait_timeout_seconds for the tree to quiesce before
-    re-evaluating completion signals.
+    waits up to policy.descendant_wait_timeout_seconds for the tree to quiesce
+    before re-evaluating completion signals.
 
     Args:
         handle: Completed managed process.

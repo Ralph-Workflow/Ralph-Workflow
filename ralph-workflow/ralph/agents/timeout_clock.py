@@ -26,6 +26,15 @@ class Clock(Protocol):
         """Pause execution for the given number of seconds."""
         ...  # pragma: no cover
 
+    def wait_for_event(self, event: threading.Event, seconds: float) -> bool:
+        """Wait up to seconds for event to be set.
+
+        Returns True if the event was set during the wait, False on timeout.
+        Production: uses event.wait() so line arrivals wake the poll loop immediately.
+        Test: advances logical time by seconds and checks event state (no real wait).
+        """
+        ...  # pragma: no cover
+
 
 class SystemClock:
     """Production Clock: uses real wall-clock time."""
@@ -37,6 +46,9 @@ class SystemClock:
         # threading.Event().wait is interruptible (preserves SIGINT semantics)
         # and matches the existing lines_event.wait() pattern in invoke.py.
         threading.Event().wait(seconds)
+
+    def wait_for_event(self, event: threading.Event, seconds: float) -> bool:
+        return event.wait(seconds)
 
 
 class FakeClock:
@@ -54,3 +66,7 @@ class FakeClock:
     def advance(self, seconds: float) -> None:
         """Advance logical time by seconds without blocking."""
         self._now += seconds
+
+    def wait_for_event(self, event: threading.Event, seconds: float) -> bool:
+        self._now += seconds
+        return event.is_set()

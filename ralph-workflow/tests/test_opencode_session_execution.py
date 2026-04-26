@@ -21,6 +21,7 @@ from ralph.agents.execution_state import (
     GenericExecutionStrategy,
     OpenCodeExecutionStrategy,
 )
+from ralph.agents.idle_watchdog import TimeoutPolicy
 from ralph.agents.invoke import (
     AgentInvocationError,
     InvokeOptions,
@@ -578,7 +579,7 @@ class TestCheckProcessResultCompletionSeam:
                     execution_strategy=strategy,
                     workspace_path=tmp_path,
                     phase="development",  # has required artifact but file doesn't exist
-                    parent_exit_grace_seconds=0.0,
+                    policy=TimeoutPolicy(idle_timeout_seconds=None, parent_exit_grace_seconds=0.0),
                 ),
             )
 
@@ -610,15 +611,17 @@ class TestExtractExplicitCompletion:
 
 
 # ---------------------------------------------------------------------------
-# (l) _read_lines_from_process resets idle clock on WAITING_ON_CHILD
+# (l) _read_lines_from_process defers termination on WAITING_ON_CHILD
 # ---------------------------------------------------------------------------
 
 
-class TestReadLinesFromProcessIdleClockReset:
-    """_read_lines_from_process resets idle clock when classify_quiet returns WAITING_ON_CHILD."""
+class TestReadLinesFromProcessWaitingOnChildDeferred:
+    """_read_lines_from_process defers termination when classify_quiet returns WAITING_ON_CHILD."""
 
-    def test_waiting_on_child_resets_clock_without_terminating_handle(self) -> None:
-        """WAITING_ON_CHILD resets last_activity; handle is only terminated when ACTIVE fires."""
+    def test_waiting_on_child_defers_then_active_fires(self) -> None:
+        """WAITING_ON_CHILD defers; handle is only terminated when ACTIVE fires afterward."""
+        from ralph.agents.timeout_clock import FakeClock  # noqa: PLC0415
+
         stop_event = threading.Event()
 
         class _BlockingStdout:
@@ -657,7 +660,7 @@ class TestReadLinesFromProcessIdleClockReset:
         handle = _TestHandle()
 
         class _OnceThenActive(OpenCodeExecutionStrategy):
-            """Returns WAITING_ON_CHILD on first classify_quiet call, ACTIVE on second."""
+            """Returns WAITING_ON_CHILD on first classify_quiet call, ACTIVE on subsequent."""
 
             def __init__(self) -> None:
                 self.call_count = 0
@@ -672,30 +675,27 @@ class TestReadLinesFromProcessIdleClockReset:
 
         strategy = _OnceThenActive()
         probe = FakeLivenessProbe(active=False)
+        # FakeClock advances time on every wait_for_event call, no real wall time.
+        # With idle_timeout=1.0 and poll interval 0.05s, the watchdog fires after ~20 ticks.
+        # drain_window=0.0 fires immediately on ACTIVE (no re-consultation loop).
+        fake_clock = FakeClock(start=0.0)
 
-        # Values: start (0.0), first check (1.1), after reset (1.1), second check (2.2)
-        monotonic_vals = iter([0.0, 1.1, 1.1, 2.2])
-
-        expected_classify_quiet_calls = 2
-        with (
-            patch("ralph.agents.invoke._IDLE_POLL_INTERVAL_SECONDS", 0.0),
-            patch.object(_time_module, "monotonic", side_effect=lambda: next(monotonic_vals)),
-            pytest.raises(_IdleStreamTimeoutError),
-        ):
+        with pytest.raises(_IdleStreamTimeoutError):
             list(
                 _read_lines_from_process(
                     cast("ManagedProcess", handle),
-                    idle_timeout_seconds=1.0,
+                    policy=TimeoutPolicy(
+                        idle_timeout_seconds=1.0,
+                        drain_window_seconds=0.0,
+                        max_waiting_on_child_seconds=1800.0,
+                    ),
                     execution_strategy=strategy,
                     liveness_probe=probe,
+                    _clock=fake_clock,
                 )
             )
 
-        # Strategy was called twice: first WAITING_ON_CHILD (reset), second ACTIVE (terminate)
-        assert strategy.call_count == expected_classify_quiet_calls, (
-            f"Expected 2 classify_quiet calls (reset then terminate); got {strategy.call_count}"
-        )
-        # Handle was terminated once (on ACTIVE, not on WAITING_ON_CHILD)
+        # Handle was terminated exactly once (on ACTIVE fire, not on WAITING_ON_CHILD deferral).
         assert handle.terminate_count == 1, (
             f"Expected 1 termination; got {handle.terminate_count}"
         )
@@ -779,7 +779,6 @@ class TestOpenCodeQuietParentWithLiveChildSuccessPath:
         monotonic_vals = chain([0.0, 1.1, 1.1], repeat(1.5))
 
         with (
-            patch("ralph.agents.invoke._IDLE_POLL_INTERVAL_SECONDS", 0.0),
             patch.object(
                 _time_module, "monotonic", side_effect=lambda: next(monotonic_vals)
             ),
@@ -787,7 +786,7 @@ class TestOpenCodeQuietParentWithLiveChildSuccessPath:
             collected = list(
                 _read_lines_from_process(
                     cast("ManagedProcess", handle),
-                    idle_timeout_seconds=1.0,
+                    policy=TimeoutPolicy(idle_timeout_seconds=1.0),
                     execution_strategy=strategy,
                     liveness_probe=probe,
                 )
@@ -915,7 +914,10 @@ class TestCheckProcessResultWaitsForLiveChildren:
                     workspace_path=tmp_path,
                     phase="development",
                     liveness_probe=probe,
-                    descendant_wait_timeout_seconds=0.1,
+                    policy=TimeoutPolicy(
+                        idle_timeout_seconds=None,
+                        descendant_wait_timeout_seconds=0.1,
+                    ),
                 ),
             )
 
@@ -959,8 +961,11 @@ class TestCheckProcessResultWaitsForLiveChildren:
                     workspace_path=tmp_path,
                     phase="development",
                     liveness_probe=probe,
-                    parent_exit_grace_seconds=1.0,
-                    descendant_wait_timeout_seconds=30.0,
+                    policy=TimeoutPolicy(
+                        idle_timeout_seconds=None,
+                        parent_exit_grace_seconds=1.0,
+                        descendant_wait_timeout_seconds=30.0,
+                    ),
                 ),
             )
 
@@ -1012,7 +1017,10 @@ class TestCheckProcessResultWaitsForLiveChildren:
                     workspace_path=tmp_path,
                     phase="development",
                     liveness_probe=probe,
-                    descendant_wait_timeout_seconds=0.1,
+                    policy=TimeoutPolicy(
+                        idle_timeout_seconds=None,
+                        descendant_wait_timeout_seconds=0.1,
+                    ),
                 ),
                 [],
             )
@@ -1075,7 +1083,10 @@ class TestCheckProcessResultWaitsForLiveChildren:
                     workspace_path=tmp_path,
                     phase="development",
                     liveness_probe=probe,
-                    descendant_wait_timeout_seconds=0.6,
+                    policy=TimeoutPolicy(
+                        idle_timeout_seconds=None,
+                        descendant_wait_timeout_seconds=0.6,
+                    ),
                 ),
             )
         # No exception raised because artifact appeared during wait → TERMINAL_COMPLETE
@@ -1119,7 +1130,10 @@ class TestCheckProcessResultWaitsForLiveChildren:
                     workspace_path=tmp_path,
                     phase="development",
                     liveness_probe=probe,
-                    descendant_wait_timeout_seconds=0.6,
+                    policy=TimeoutPolicy(
+                        idle_timeout_seconds=None,
+                        descendant_wait_timeout_seconds=0.6,
+                    ),
                 ),
             )
         # No exception raised because explicit_complete appeared during wait
@@ -1178,7 +1192,10 @@ class TestCheckProcessResultWaitsForLiveChildren:
                     workspace_path=tmp_path,
                     phase="development",
                     liveness_probe=probe,
-                    descendant_wait_timeout_seconds=0.6,
+                    policy=TimeoutPolicy(
+                        idle_timeout_seconds=None,
+                        descendant_wait_timeout_seconds=0.6,
+                    ),
                 ),
             )
         # No exception raised because descendants finished and artifact appeared during wait
@@ -1228,7 +1245,10 @@ class TestCheckProcessResultWaitsForLiveChildren:
                     workspace_path=tmp_path,
                     phase="development",
                     liveness_probe=probe,
-                    descendant_wait_timeout_seconds=0.5,
+                    policy=TimeoutPolicy(
+                        idle_timeout_seconds=None,
+                        descendant_wait_timeout_seconds=0.5,
+                    ),
                 ),
                 [],
             )
@@ -1280,8 +1300,11 @@ class TestCheckProcessResultWaitsForLiveChildren:
                     workspace_path=tmp_path,
                     phase="development",
                     liveness_probe=probe,
-                    parent_exit_grace_seconds=1.0,
-                    descendant_wait_timeout_seconds=30.0,
+                    policy=TimeoutPolicy(
+                        idle_timeout_seconds=None,
+                        parent_exit_grace_seconds=1.0,
+                        descendant_wait_timeout_seconds=30.0,
+                    ),
                 ),
             )
         # No exception raised means artifact found during grace -> TERMINAL_COMPLETE
@@ -1320,8 +1343,11 @@ class TestCheckProcessResultWaitsForLiveChildren:
                     workspace_path=tmp_path,
                     phase="development",
                     liveness_probe=probe,
-                    parent_exit_grace_seconds=1.0,
-                    descendant_wait_timeout_seconds=30.0,
+                    policy=TimeoutPolicy(
+                        idle_timeout_seconds=None,
+                        parent_exit_grace_seconds=1.0,
+                        descendant_wait_timeout_seconds=30.0,
+                    ),
                 ),
             )
 
@@ -1377,8 +1403,11 @@ class TestCheckProcessResultWaitsForLiveChildren:
                     workspace_path=tmp_path,
                     phase="development",
                     liveness_probe=probe,
-                    parent_exit_grace_seconds=1.0,
-                    descendant_wait_timeout_seconds=2.0,
+                    policy=TimeoutPolicy(
+                        idle_timeout_seconds=None,
+                        parent_exit_grace_seconds=1.0,
+                        descendant_wait_timeout_seconds=2.0,
+                    ),
                 ),
             )
 
