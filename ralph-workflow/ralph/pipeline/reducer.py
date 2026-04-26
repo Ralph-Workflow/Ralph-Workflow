@@ -480,8 +480,6 @@ def _handle_capped_analysis_loopback(
     """Handle an analysis-loopback transition with an iteration cap."""
     signal = "success" if iteration + 1 >= max_iterations else "loopback"
     new_state, effects = _resolve_or_terminal(state, signal, policy, "analysis loopback")
-    if new_state.phase == PHASE_FAILED:
-        return new_state, effects
     return apply_progress(state, new_state), effects
 
 

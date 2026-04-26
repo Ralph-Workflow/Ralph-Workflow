@@ -870,6 +870,49 @@ class TestAnalysisDecisionDispatch:
         new_state, _ = _reduce(state, PipelineEvent.COMMIT_SUCCESS)
         assert new_state.review_analysis_iteration == 0
 
+    def test_dev_analysis_loopback_routing_error_preserves_iteration_bookkeeping(self) -> None:
+        """When routing raises ValueError during capped development_analysis loopback,
+        the state must be FAILED and the iteration counter must still be incremented."""
+        policy = MagicMock()
+        phase_def = MagicMock()
+        phase_def.requires_commit = False
+        phase_def.embeds_analysis = False
+        policy.phases.get.return_value = phase_def
+
+        state = PipelineState(
+            phase="development_analysis",
+            development_analysis_iteration=1,
+            max_development_analysis_iterations=3,
+        )
+        with patch("ralph.pipeline.reducer.resolve_next_phase", side_effect=ValueError("bad")):
+            new_state, _ = _reduce(state, PipelineEvent.ANALYSIS_LOOPBACK, policy)
+
+        assert new_state.phase == PHASE_FAILED
+        assert new_state.development_analysis_iteration == state.development_analysis_iteration + 1
+
+    def test_review_analysis_loopback_routing_error_preserves_iteration_bookkeeping(self) -> None:
+        """When routing raises ValueError during capped review_analysis loopback,
+        the state must be FAILED and the iteration counter and review_issues_found must
+        still reflect the loopback attempt."""
+        policy = MagicMock()
+        phase_def = MagicMock()
+        phase_def.requires_commit = False
+        phase_def.embeds_analysis = False
+        policy.phases.get.return_value = phase_def
+
+        state = PipelineState(
+            phase="review_analysis",
+            review_analysis_iteration=1,
+            max_review_analysis_iterations=3,
+            review_issues_found=False,
+        )
+        with patch("ralph.pipeline.reducer.resolve_next_phase", side_effect=ValueError("bad")):
+            new_state, _ = _reduce(state, PipelineEvent.ANALYSIS_LOOPBACK, policy)
+
+        assert new_state.phase == PHASE_FAILED
+        assert new_state.review_analysis_iteration == state.review_analysis_iteration + 1
+        assert new_state.review_issues_found is True
+
 
 @pytest.mark.parametrize(
     "event,handler_patch_target",
