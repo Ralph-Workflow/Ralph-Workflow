@@ -28,7 +28,18 @@ if TYPE_CHECKING:
     from ralph.policy.models import DrainName
 
 
-class AgentChainState(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+class _FrozenPipelineStateModel(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+    """Private base for frozen pipeline state models.
+
+    Owns ``model_config = ConfigDict(frozen=True)`` once so descendants do not
+    repeat it. Pydantic v2 inherits ``model_config`` when descendants do not
+    declare one of their own.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+
+class AgentChainState(_FrozenPipelineStateModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     """State for agent fallback chain management.
 
     Attributes:
@@ -37,14 +48,12 @@ class AgentChainState(BaseModel):  # type: ignore[explicit-any]  # reason: exter
         retries: Number of retries for current agent.
     """
 
-    model_config = ConfigDict(frozen=True)
-
     agents: list[str] = Field(default_factory=list)
     current_index: int = 0
     retries: int = 0
 
 
-class RebaseState(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+class RebaseState(_FrozenPipelineStateModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     """State for git rebase operations.
 
     Attributes:
@@ -53,14 +62,12 @@ class RebaseState(BaseModel):  # type: ignore[explicit-any]  # reason: external 
         completed: Whether rebase has completed.
     """
 
-    model_config = ConfigDict(frozen=True)
-
     pending: bool = False
     in_progress: bool = False
     completed: bool = False
 
 
-class CommitState(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+class CommitState(_FrozenPipelineStateModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     """State for commit operations.
 
     Attributes:
@@ -69,14 +76,12 @@ class CommitState(BaseModel):  # type: ignore[explicit-any]  # reason: external 
         agent_invoked: Whether commit agent has been invoked.
     """
 
-    model_config = ConfigDict(frozen=True)
-
     message_prepared: bool = False
     diff_prepared: bool = False
     agent_invoked: bool = False
 
 
-class RunMetrics(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+class RunMetrics(_FrozenPipelineStateModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     """Run-level execution metrics.
 
     Attributes:
@@ -86,18 +91,14 @@ class RunMetrics(BaseModel):  # type: ignore[explicit-any]  # reason: external l
         total_retries: Total number of retries.
     """
 
-    model_config = ConfigDict(frozen=True)
-
     total_agent_calls: int = 0
     total_continuations: int = 0
     total_fallbacks: int = 0
     total_retries: int = 0
 
 
-class FalloverRecord(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+class FalloverRecord(_FrozenPipelineStateModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     """A record of a single agent fallover event persisted in pipeline state."""
-
-    model_config = ConfigDict(frozen=True)
 
     phase: str
     from_agent: str
@@ -105,7 +106,7 @@ class FalloverRecord(BaseModel):  # type: ignore[explicit-any]  # reason: extern
     timestamp_iso: str
 
 
-class PipelineState(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+class PipelineState(_FrozenPipelineStateModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     """Immutable snapshot of pipeline execution state.
 
     This is the checkpoint payload - the single source of truth for pipeline progress.
@@ -153,8 +154,6 @@ class PipelineState(BaseModel):  # type: ignore[explicit-any]  # reason: externa
         recovery_cycle_cap: Maximum recovery cycles before pipeline exits.
         last_retry_delay_ms: Pending retry delay in ms (set by controller, consumed by runner).
     """
-
-    model_config = ConfigDict(frozen=True)
 
     phase: PipelinePhase = "planning"
     previous_phase: PipelinePhase | None = None
