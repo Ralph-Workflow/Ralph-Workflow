@@ -21,7 +21,8 @@ def test_commit_prompt_includes_diff_and_guidance() -> None:
     assert "plain text" in prompt.lower()
     assert "mcp artifact is the authoritative output" in prompt.lower()
     assert "## COMMIT MESSAGE FORMAT" in prompt
-    assert "do not explain the diff" in prompt.lower()
+    assert "## WHEN TO USE A BODY" in prompt
+    assert "most commits need a body" in prompt.lower()
     assert "call the tool before emitting any final text" in prompt.lower()
     assert "commit artifact" in prompt.lower()
     assert "skip artifact" in prompt.lower()
@@ -44,13 +45,12 @@ def test_commit_prompt_includes_diff_and_guidance() -> None:
     assert "edit the json file on disk" not in prompt.lower()
     assert "use `chore` only for repo maintenance" in prompt.lower()
     assert "omit the scope when the change spans multiple subsystems" in prompt.lower()
-    assert "include a body when the why is not obvious from the subject alone" in prompt.lower()
+    assert "most commits need a body" in prompt.lower()
+    assert "one-liner subjects (no body) are only acceptable for" in prompt.lower()
     assert "common mistakes to avoid" in prompt.lower()
     assert "bad: chore: update files" in prompt.lower()
-    assert "good: feat(mcp): add structured commit retries" in prompt.lower()
     assert "bad: fix: stuff" in prompt.lower()
-    assert "good: fix(parser): preserve prefixed transcript lines" in prompt.lower()
-    assert "counterexample" in prompt.lower()
+    assert "most commits need a body" in prompt.lower()
 
 
 def test_commit_prompt_rejects_empty_diff() -> None:
@@ -103,18 +103,17 @@ def test_opencode_commit_prompt_uses_direct_tool_call_language() -> None:
     assert "Do not use `content_path` for this task" in prompt
     assert "Use `chore` only for repo maintenance" in prompt
     assert "Omit the scope when the change spans multiple subsystems" in prompt
-    assert "Include a body when the why is not obvious from the subject alone" in prompt
-    assert "Bad: chore: update files" in prompt
-    assert "Good: feat(mcp): add structured commit retries" in prompt
-    assert "Bad: fix: stuff" in prompt
-    assert "Good: fix(parser): preserve prefixed transcript lines" in prompt
+    assert "Most commits need a body" in prompt
+    assert "One-liner subjects (no body) are only" in prompt
+    assert "Bad" in prompt
+    assert "Good" in prompt
 
 
 def test_commit_prompt_explicitly_forbids_confirmation_questions() -> None:
     prompt = prompt_commit_message("diff --git a/app.py b/app.py\n+hello")
 
     assert "do not ask the user for confirmation" in prompt.lower()
-    assert "do not write 'would you like me to'" in prompt.lower()
+    assert "would you like me to" in prompt.lower()
 
 
 def test_commit_prompt_uses_file_reference_for_large_diff(tmp_path) -> None:
