@@ -21,7 +21,11 @@ RESUMED_WORKER_COUNT = 3
 
 
 def _make_work_unit(uid: str) -> WorkUnit:
-    return WorkUnit(unit_id=uid, description=f"Work unit {uid}")
+    return WorkUnit(
+        unit_id=uid,
+        description=f"Work unit {uid}",
+        allowed_directories=[f"src/{uid}"],
+    )
 
 
 def _make_worker_state(uid: str, status: WorkerStatus) -> WorkerState:
@@ -33,8 +37,8 @@ def _fake_executor_for(unit_ids: list[str]) -> FakeAgentExecutor:
     return FakeAgentExecutor(runs)
 
 
-def _seed_worktree_artifact(wt_path: Path) -> None:
-    artifact_dir = wt_path / ".agent" / "artifacts"
+def _seed_worker_artifact(worker_namespace_root: Path, unit_id: str) -> None:
+    artifact_dir = worker_namespace_root / unit_id / "artifacts"
     artifact_dir.mkdir(parents=True, exist_ok=True)
     (artifact_dir / "plan.json").write_text(
         json.dumps(
@@ -90,14 +94,6 @@ def _setup_patches(
         "ralph.display.parallel_display.ParallelDisplay",
         _FakeDisplay,
     )
-
-    async def _mock_integrate(**kwargs: object) -> MagicMock:
-        return MagicMock(events=[])
-
-    monkeypatch.setattr(
-        "ralph.pipeline.parallel.merge_integrator.integrate",
-        _mock_integrate,
-    )
     monkeypatch.setattr(
         "ralph.pipeline.checkpoint.save",
         lambda _state: None,
@@ -106,28 +102,18 @@ def _setup_patches(
         "ralph.git.executor.GitExecutor",
         MagicMock,
     )
-
-    def _fake_worktree_manager_cls(*args: object, **kwargs: object) -> MagicMock:
-        mgr = MagicMock()
-
-        def _create(unit_id: str, base_branch: str) -> Path:
-            wt_path = Path(tmp_path) / ".worktrees" / unit_id
-            wt_path.mkdir(parents=True, exist_ok=True)
-            if artifact_unit_ids is None or unit_id in artifact_unit_ids:
-                _seed_worktree_artifact(wt_path)
-            return wt_path
-
-        mgr.create.side_effect = _create
-        return mgr
-
-    monkeypatch.setattr(
-        "ralph.git.worktree_manager.WorktreeManager",
-        _fake_worktree_manager_cls,
-    )
     monkeypatch.setattr(
         "ralph.mcp.server.factory_impl.DynamicBindingMcpServerFactory",
         lambda *args, **kwargs: MagicMock(),
     )
+
+    # Pre-seed worker-local artifacts for units that should succeed.
+    # The coordinator checks for artifacts in .agent/workers/<unit_id>/artifacts/
+    # after each worker run. Pre-seeding ensures the check passes.
+    worker_namespace_root = Path(tmp_path) / ".agent" / "workers"
+    if artifact_unit_ids is not None:
+        for uid in artifact_unit_ids:
+            _seed_worker_artifact(worker_namespace_root, uid)
 
 
 class TestParallelResume:

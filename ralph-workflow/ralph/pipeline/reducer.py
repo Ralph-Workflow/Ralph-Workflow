@@ -22,8 +22,8 @@ from typing import TYPE_CHECKING, cast
 from ralph.config.enums import (
     PHASE_COMPLETE,
     PHASE_DEVELOPMENT,
+    PHASE_DEVELOPMENT_ANALYSIS,
     PHASE_FAILED,
-    PHASE_MERGE_INTEGRATION,
     PHASE_REVIEW,
     PipelinePhase,
 )
@@ -35,7 +35,6 @@ from ralph.pipeline.events import (
     PipelineEvent,
     WorkerCompletedEvent,
     WorkerFailedEvent,
-    WorkersMergeConflictEvent,
     WorkerStartedEvent,
 )
 from ralph.pipeline.handoffs import resolve_next_phase, resolve_post_commit_phase
@@ -94,17 +93,17 @@ def _restore_work_units(
     return new_state
 
 
-def _dispatch_worker_event(  # noqa: PLR0911
+def _dispatch_worker_event(
     state: PipelineState,
     event: Event,
     recovery: RecoveryController | None = None,
 ) -> tuple[PipelineState, list[Effect]] | None:
     """Handle worker events, returning None if the event is not a worker event.
 
-    When a RecoveryController is supplied, WorkerFailedEvent and WorkersMergeConflictEvent
-    are routed through it for classification-aware recovery (intelligent attribution,
-    budget management). This ensures worker failures are attributed to the phase's
-    active agent and can trigger retry or fallover behavior.
+    When a RecoveryController is supplied, WorkerFailedEvent is routed through it for
+    classification-aware recovery (intelligent attribution, budget management). This ensures
+    worker failures are attributed to the phase's active agent and can trigger retry or
+    fallover behavior.
 
     Terminal worker events (WorkerStartedEvent, WorkerCompletedEvent) do not go through
     RecoveryController as they represent normal lifecycle events.
@@ -147,23 +146,6 @@ def _dispatch_worker_event(  # noqa: PLR0911
             return _restore_work_units(state, new_state), effects
         # No recovery controller - use legacy direct handling
         new_state, effects = _handle_worker_failed(state, event)
-        return _restore_work_units(state, new_state), effects
-
-    if isinstance(event, WorkersMergeConflictEvent):
-        if recovery is not None:
-            # Route through RecoveryController for classification-aware recovery.
-            # Merge conflicts are attributed to the current phase and agent.
-            unit_ids_str = ", ".join(event.conflicting_unit_ids)
-            failure_reason = f"Merge conflict in workers: {unit_ids_str}"
-            new_state, effects, _ = recovery.handle(
-                state,
-                failure_reason,
-                phase=state.phase,
-                agent=state.current_agent(),
-            )
-            return _restore_work_units(state, new_state), effects
-        # No recovery controller - use legacy direct handling
-        new_state, effects = _handle_workers_merge_conflict(state, event)
         return _restore_work_units(state, new_state), effects
 
     return None
@@ -240,7 +222,7 @@ def reduce(
         PipelineEvent.PHASE_ADVANCE: _handle_phase_advance,
         PipelineEvent.FAN_OUT_STARTED: _ignore_policy(_handle_fan_out_started),
         PipelineEvent.WORKERS_RESUMED: _ignore_policy(_handle_workers_resumed),
-        PipelineEvent.ALL_WORKERS_COMPLETE: _ignore_policy(_handle_all_workers_complete),
+        PipelineEvent.ALL_WORKERS_COMPLETE: _handle_all_workers_complete,
     }
     # At this point, event is a PipelineEvent (PhaseFailureEvent and worker events handled above)
     handler = handlers.get(cast("PipelineEvent", event))
@@ -880,18 +862,18 @@ def _handle_worker_failed(
     return state.copy_with(worker_states={**state.worker_states, event.unit_id: updated}), []
 
 
-def _handle_all_workers_complete(state: PipelineState) -> tuple[PipelineState, list[Effect]]:
+def _handle_all_workers_complete(
+    state: PipelineState,
+    policy: PipelinePolicy | None,
+) -> tuple[PipelineState, list[Effect]]:
     if not state.worker_states or any(
         ws.status != WorkerStatus.SUCCEEDED for ws in state.worker_states.values()
     ):
         return state, []
-    return state.copy_with(phase=PHASE_MERGE_INTEGRATION), []
-
-
-def _handle_workers_merge_conflict(
-    state: PipelineState,
-    event: WorkersMergeConflictEvent,
-) -> tuple[PipelineState, list[Effect]]:
-    unit_ids_str = ", ".join(event.conflicting_unit_ids)
-    failure_reason = f"Merge conflict in workers: {unit_ids_str}"
-    return _enter_failed_recovery(state, failure_reason)
+    if policy is not None:
+        try:
+            next_phase = resolve_next_phase(state.phase, "success", policy)
+            return _advance_phase(state, next_phase, policy)
+        except ValueError:
+            pass
+    return _advance_phase(state, PHASE_DEVELOPMENT_ANALYSIS)

@@ -110,6 +110,8 @@ def start_mcp_server(  # noqa: PLR0913
     session_file = lifecycle_deps.create_session_file(root, session)
     env = lifecycle_deps.subprocess_env(session_file)
     if extra_env:
+        # Merge extra_env so the subprocess inherits worker-specific env vars
+        # (e.g. RALPH_WORKER_ARTIFACT_DIR for parallel workers).
         env.update(extra_env)
     process = lifecycle_deps.spawn_process(
         [

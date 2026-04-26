@@ -30,7 +30,7 @@ def test_worker_state_defaults() -> None:
     assert ws.exit_code is None
     assert ws.error_message is None
     assert ws.commit_sha is None
-    assert ws.worktree_path is None
+    assert ws.worker_namespace is None
     assert ws.log_file is None
 
 
@@ -52,7 +52,7 @@ def test_worker_state_round_trip_json() -> None:
         exit_code=0,
         error_message=None,
         commit_sha="abc123",
-        worktree_path="/tmp/wt-unit-42",
+        worker_namespace=".agent/workers/unit-42",
         log_file="/tmp/logs/unit-42.log",
     )
 

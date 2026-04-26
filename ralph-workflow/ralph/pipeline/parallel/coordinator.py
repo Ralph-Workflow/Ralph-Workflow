@@ -10,7 +10,6 @@ from loguru import logger
 
 from ralph import logging as ralph_logging
 from ralph.agents import subprocess_executor
-from ralph.executor.process import run_process_async
 from ralph.mcp.artifacts.store import list_artifacts
 from ralph.mcp.server import factory_impl
 from ralph.pipeline.events import (
@@ -33,10 +32,8 @@ if TYPE_CHECKING:
     from ralph.agents.executor import AgentExecutor, WorkerResult
     from ralph.display.activity_router import ActivityRouter
     from ralph.display.parallel_display import ParallelDisplay
-    from ralph.git.worktree_manager import WorktreeManager
-    from ralph.interrupt.asyncio_bridge import SignalBridge
-    from ralph.mcp.server.factory import McpServerFactory
     from ralph.pipeline.effects import FanOutDevelopmentEffect
+    from ralph.pipeline.parallel.mode import SameWorkspaceContext
     from ralph.pipeline.parallel.worker_session import WorkerSessionBundle
     from ralph.pipeline.work_units import WorkUnit
 
@@ -48,18 +45,9 @@ class _WorkerLog:
 
 
 @dataclass(frozen=True)
-class _IsolationDeps:
-    worktree_manager: WorktreeManager
-    mcp_factory: McpServerFactory
-    repo_root: Path
-    executor_command: tuple[str, ...] | None = None
-    signal_bridge: SignalBridge | None = None
-
-
-@dataclass(frozen=True)
 class _WorkerContext:
     log: _WorkerLog | None = None
-    isolation: _IsolationDeps | None = None
+    same_workspace: SameWorkspaceContext | None = None
     activity_router: ActivityRouter | None = None
 
 
@@ -85,6 +73,19 @@ class ParallelCoordinator:
             if ctx is None
             else replace(ctx, activity_router=effective_router)
         )
+
+        same_workspace = worker_ctx.same_workspace if worker_ctx is not None else None
+        ns_root = (
+            str(same_workspace.worker_namespace_root)
+            if same_workspace is not None and same_workspace.worker_namespace_root is not None
+            else "unknown"
+        )
+        logger.info(
+            "fan-out start mode=same_workspace units={n} namespace_root={ns}",
+            n=len(effect.work_units),
+            ns=ns_root,
+        )
+
         events: list[Event] = [PipelineEvent.FAN_OUT_STARTED]
         if not effect.work_units:
             return [*events, PipelineEvent.ALL_WORKERS_COMPLETE]
@@ -180,66 +181,74 @@ def _flatten_worker_failures(
     return failures, unexpected
 
 
-async def _has_empirical_evidence(worktree_path: Path) -> bool:
-    """Return True if the worktree has artifact evidence OR git workspace changes.
-
-    Artifacts are checked first. If none are found, a `git status --porcelain`
-    query on the worktree serves as the fallback signal. A worker is considered
-    successful when either signal is present; only when both are absent is the
-    worker treated as having produced no output.
-    """
-    artifact_dir = worktree_path / ".agent" / "artifacts"
-    if artifact_dir.exists() and list_artifacts(artifact_dir):
-        return True
-
-    try:
-        result = await run_process_async(
-            "git", ["-C", str(worktree_path), "status", "--porcelain"]
-        )
-        return bool(result.stdout.strip())
-    except Exception:
-        return False
-
-
 def _prepare_executor(
     unit: WorkUnit,
     executor: AgentExecutor,
-    isolation: _IsolationDeps | None,
+    same_workspace: SameWorkspaceContext | None,
     activity_router: ActivityRouter | None = None,
 ) -> tuple[AgentExecutor, WorkerSessionBundle | None, Path | None]:
-    if isolation is None:
-        # Inject the activity router if the executor supports it and a router is available.
-        # This ensures the non-isolated path also routes output through the activity model.
+    if same_workspace is None:
         if activity_router is not None and isinstance(
             executor, subprocess_executor.SubprocessAgentExecutor
         ):
             executor.activity_router = activity_router
         return executor, None, None
 
-    worktree_path = isolation.worktree_manager.create(unit.unit_id, base_branch="main")
-    worker_scope = WorkspaceScope(worktree_path)
-    if isolation.executor_command is None:
-        return executor, worker_session.build_worker_session(
-            unit, isolation.mcp_factory, worker_scope
-        ), worktree_path
+    ns_root = same_workspace.worker_namespace_root or (
+        same_workspace.repo_root / ".agent" / "workers"
+    )
+    worker_namespace = ns_root / unit.unit_id
+    for subdir in ("artifacts", "tmp", "logs", "handoffs"):
+        (worker_namespace / subdir).mkdir(parents=True, exist_ok=True)
 
-    worker_workspace = fs.FsWorkspace(worktree_path)
+    worker_scope = WorkspaceScope.for_same_workspace_worker(
+        repo_root=same_workspace.repo_root,
+        allowed_directories=tuple(unit.allowed_directories),
+        worker_namespace=worker_namespace,
+    )
+
+    if same_workspace.executor_command is None:
+        # In-process mode (e.g. tests with FakeAgentExecutor): use the injected
+        # mcp_factory directly rather than spinning up a real MCP server.
+        bundle = worker_session.build_worker_session(
+            unit,
+            same_workspace.mcp_factory,
+            worker_scope,
+            worker_artifact_dir=worker_namespace / "artifacts",
+        )
+        return executor, bundle, worker_namespace
+
+    worker_workspace = fs.FsWorkspace(
+        same_workspace.repo_root,
+        allowed_roots=worker_scope.allowed_roots,
+    )
     worker_mcp_factory = factory_impl.DynamicBindingMcpServerFactory(workspace=worker_workspace)
-    bundle = worker_session.build_worker_session(unit, worker_mcp_factory, worker_scope)
+    bundle = worker_session.build_worker_session(
+        unit,
+        worker_mcp_factory,
+        worker_scope,
+        worker_artifact_dir=worker_namespace / "artifacts",
+    )
+    worker_artifact_dir = worker_namespace / "artifacts"
     return (
         cast(
             "AgentExecutor",
             subprocess_executor.SubprocessAgentExecutor(
-                isolation.executor_command,
-                signal_bridge=isolation.signal_bridge,
-                cwd=worktree_path,
-                extra_env={"RALPH_MCP_ENDPOINT": bundle.mcp_handle.endpoint},
+                same_workspace.executor_command,
+                signal_bridge=same_workspace.signal_bridge,
+                cwd=same_workspace.repo_root,
+                extra_env={
+                    "RALPH_MCP_ENDPOINT": bundle.mcp_handle.endpoint,
+                    "RALPH_WORKER_ID": unit.unit_id,
+                    "RALPH_WORKER_NAMESPACE": str(worker_namespace),
+                    "RALPH_WORKER_ARTIFACT_DIR": str(worker_artifact_dir),
+                },
                 activity_router=activity_router,
-                raw_overflow_root=worktree_path,
+                raw_overflow_root=worker_namespace / "logs",
             ),
         ),
         bundle,
-        worktree_path,
+        worker_namespace,
     )
 
 
@@ -331,7 +340,7 @@ async def _run_worker(
     ctx: _WorkerContext | None = None,
 ) -> None:
     log = ctx.log if ctx is not None else None
-    isolation = ctx.isolation if ctx is not None else None
+    same_workspace = ctx.same_workspace if ctx is not None else None
     activity_router = ctx.activity_router if ctx is not None else None
 
     with logger.contextualize(unit_id=unit.unit_id):
@@ -354,10 +363,10 @@ async def _run_worker(
             display.set_status(unit.unit_id, status)
 
         try:
-            active_executor, bundle, worktree_path = _prepare_executor(
+            active_executor, bundle, worker_namespace = _prepare_executor(
                 unit,
                 executor,
-                isolation,
+                same_workspace,
                 activity_router,
             )
 
@@ -375,21 +384,20 @@ async def _run_worker(
                     raise _WorkerFailureError(unit.unit_id, 1, str(exc)) from exc
                 raise
 
-            # For isolated workers (worktree + MCP bundle), success is determined by
-            # empirical evidence: submitted artifacts OR workspace changes (git status).
-            # Exit code is kept as diagnostic info only and never decides success/failure.
-            if (
-                bundle is not None
-                and worktree_path is not None
-                and not await _has_empirical_evidence(worktree_path)
-            ):
+            # When running in same-workspace mode (bundle is not None), worker success
+            # is determined exclusively by worker-local artifact evidence. Repo-wide
+            # git status is never used as a fallback signal.
+            if bundle is not None and worker_namespace is not None:
+                artifact_dir = worker_namespace / "artifacts"
+                if not list_artifacts(artifact_dir):
                     display.set_status(unit.unit_id, WorkerStatus.FAILED)
                     raise _WorkerFailureError(
                         unit_id=unit.unit_id,
                         exit_code=result.exit_code,
                         error=(
-                            f"Worker {unit.unit_id!r} produced no artifact and no workspace "
-                            f"changes (exit_code={result.exit_code})"
+                            f"Worker {unit.unit_id!r} produced no worker-local artifact "
+                            f"evidence under {artifact_dir} "
+                            f"(exit_code={result.exit_code})"
                         ),
                     )
 
@@ -399,9 +407,6 @@ async def _run_worker(
         finally:
             if bundle is not None:
                 bundle.mcp_handle.shutdown()
-                if worker_succeeded:
-                    assert isolation is not None
-                    isolation.worktree_manager.destroy(unit.unit_id)
             try:
                 get_process_manager().shutdown_all_for_label(
                     f"agent:{unit.unit_id}", grace_period_s=2.0
@@ -412,6 +417,7 @@ async def _run_worker(
                 )
             if sink_handle is not None:
                 ralph_logging.remove_worker_sink(sink_handle)
+            del worker_succeeded
 
 
 async def run_fan_out(

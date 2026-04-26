@@ -3,7 +3,9 @@
 > **New to Ralph Workflow?** Start with the [Getting Started](getting-started.md) walkthrough — it explains the same flow with more context.
 
 When the planning phase produces two or more work units, Ralph Workflow fans development
-out across multiple git worktrees simultaneously.
+out across multiple workers running in parallel. All workers operate directly on the
+same git checkout (same-workspace mode) and are isolated from each other through
+path restrictions and per-worker artifact namespaces.
 
 ## Configuration
 
@@ -23,28 +25,32 @@ max_work_units = 50
 ## How it works
 
 1. The planning phase produces a `plan.json` artifact declaring multiple `work_units`.
-2. Ralph Workflow validates the work unit count against `max_parallel_workers` and `max_work_units`.
-3. Each work unit is executed in its own git worktree with its own MCP session.
-4. Workers coordinate through the `mcp__ralph__coordinate` tool exposed by the MCP server.
-5. When all workers complete, their results are merged back to the main worktree.
+2. Ralph Workflow validates the plan for same-workspace safety (disjoint `allowed_directories`, no reserved paths).
+3. Each work unit runs as a parallel worker against the shared checkout.
+4. Workers are isolated by `allowed_directories` — each worker may only edit its declared subdirectories.
+5. Per-worker state is scoped to `.agent/workers/<unit_id>/` (artifacts, logs, tmp, handoffs).
+6. Workers coordinate through the `mcp__ralph__coordinate` tool exposed by the MCP server.
+7. When all workers complete, the pipeline continues to the next phase. There is no merge-back step.
 
 ## Work unit structure
 
 Each work unit in the planning artifact declares:
 
-- `unit_id` — unique identifier for the work unit
+- `unit_id` — unique identifier for the work unit (alphanumeric, `_`, `-`, max 64 chars)
 - `description` — human-readable description of the task
-- `allowed_directories` — optional list of directories the worker is permitted to modify
+- `allowed_directories` — list of relative subdirectories the worker is permitted to modify
 
-If `require_allowed_directories = true` is set in the pipeline policy, every work unit
-must declare `allowed_directories`. This enforces isolation between parallel workers.
+Every work unit **must** declare at least one entry in `allowed_directories`. Entries must:
+
+- Be non-empty relative paths (no `..`, no absolute paths)
+- Not reference reserved paths: `.agent`, `.git`, `.worktrees`, `.`
+- Not overlap with another work unit's `allowed_directories` (segment-aware prefix check)
 
 ## Worker success criteria
 
-A parallel worker is considered successful when it produces either:
-
-1. A submitted artifact (e.g., `development_result`) via the MCP `submit_artifact` tool, or
-2. Workspace changes (untracked or modified files detected by `git status`).
+A parallel worker is considered successful when it produces artifact evidence under
+`.agent/workers/<unit_id>/artifacts/`. The worker must submit a valid artifact (e.g.,
+`development_result`) via the MCP `submit_artifact` tool before exiting.
 
 The worker's process exit code is retained as diagnostic information only and does not
 determine success or failure on its own.

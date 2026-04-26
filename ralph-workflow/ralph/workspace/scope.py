@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -55,13 +55,63 @@ class WorkspaceScope:
         object.__setattr__(self, "propagated_config_paths", canonical_propagated_configs)
 
     @classmethod
-    def for_worktree(
+    def for_same_workspace_worker(
         cls,
-        worktree_path: Path,
+        repo_root: Path,
         allowed_directories: tuple[str, ...],
+        worker_namespace: Path,
     ) -> WorkspaceScope:
-        allowed_roots = tuple(worktree_path / ad for ad in allowed_directories)
-        return cls(root=worktree_path, allowed_roots=allowed_roots)
+        """Build a worker-scoped view of the shared checkout.
+
+        The root stays at ``repo_root`` (no per-worker root reassignment). Each
+        allowed directory is resolved relative to ``repo_root``. The
+        ``worker_namespace`` is always added so the worker can write its own
+        artifacts, logs, and temporary outputs even when ``allowed_directories``
+        is narrow. A ``ValueError`` is raised when any entry escapes ``repo_root``
+        via ``..`` or an absolute path.
+
+        This method bypasses the standard __init__ to avoid unconditionally
+        adding ``repo_root`` to allowed_roots. Same-workspace workers must NOT
+        have the repo root as an allowed root — they are restricted to only
+        their declared edit areas plus their own worker namespace.
+
+        Args:
+            repo_root: Shared repository root (same for all parallel workers).
+            allowed_directories: Relative subpaths the worker may edit.
+            worker_namespace: Per-worker scratch directory (always allowed).
+
+        Returns:
+            WorkspaceScope with root=repo_root, allowed_roots restricted to the
+            declared directories plus the worker namespace (repo root is NOT included).
+        """
+        canonical_root = _canonicalize(repo_root)
+        canonical_ns = _canonicalize(worker_namespace)
+
+        allowed_roots: list[Path] = []
+        for ad in allowed_directories:
+            if not ad:
+                raise ValueError("allowed_directory must be non-empty")
+            p = canonical_root / ad
+            resolved = p.resolve()
+            if not str(resolved).startswith(str(canonical_root)):
+                raise ValueError(
+                    f"allowed_directory {ad!r} escapes repo_root {canonical_root}"
+                )
+            allowed_roots.append(resolved)
+
+        allowed_roots.append(canonical_ns)
+
+        # Build the scope directly, bypassing __init__ to avoid unconditionally
+        # adding canonical_root to allowed_roots. Same-workspace workers must
+        # only have their specific allowed directories + worker namespace.
+        scope = object.__new__(cls)
+        object.__setattr__(scope, "root", canonical_root)
+        object.__setattr__(scope, "allowed_roots", cast("tuple[Path, ...]", tuple(allowed_roots)))
+        object.__setattr__(
+            scope, "local_config_path", _default_local_config_path(canonical_root)
+        )
+        object.__setattr__(scope, "propagated_config_paths", ())
+        return scope
 
 
 def _default_local_config_path(root: Path) -> Path:

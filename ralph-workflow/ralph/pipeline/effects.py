@@ -14,16 +14,11 @@ from importlib import import_module
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
-
     from ralph.config.enums import PipelinePhase
     from ralph.pipeline.work_units import WorkUnit
-    from ralph.pipeline.worker_state import WorkerState
 else:
-    Mapping = import_module("collections.abc").Mapping
     PipelinePhase = import_module("ralph.config.enums").PipelinePhase
     WorkUnit = import_module("ralph.pipeline.work_units").WorkUnit
-    WorkerState = import_module("ralph.pipeline.worker_state").WorkerState
 
 
 # Forbidden non-empty sentinel strings that must never appear inside
@@ -159,18 +154,23 @@ class ExitFailureEffect:
 
 @dataclass(frozen=True)
 class FanOutDevelopmentEffect:
-    """Effect to fan out development work across workers."""
+    """Effect to fan out development work across same-workspace workers.
+
+    Workers run in the shared checkout. Each worker is restricted to its declared
+    ``allowed_directories`` and writes its outputs to a per-worker namespace under
+    ``.agent/workers/<unit_id>/``.
+
+    Attributes:
+        work_units: Work units to execute in parallel.
+        max_workers: Maximum number of concurrent workers.
+        run_post_fanout_verification: When True, the runner will execute a serialized
+            workspace-wide verification step after all workers finish. Defaults to False
+            so unit tests do not invoke ``make verify``.
+    """
 
     work_units: tuple[WorkUnit, ...]
     max_workers: int
-
-
-@dataclass(frozen=True)
-class MergeIntegrationEffect:
-    """Effect to merge results from parallel workers."""
-
-    worker_states: Mapping[str, WorkerState]
-    base_branch: str
+    run_post_fanout_verification: bool = False
 
 
 # Union type for all effects
@@ -183,5 +183,4 @@ Effect = (
     | ExitSuccessEffect
     | ExitFailureEffect
     | FanOutDevelopmentEffect
-    | MergeIntegrationEffect
 )

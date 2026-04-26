@@ -108,7 +108,6 @@ if TYPE_CHECKING:
     from ralph.config.models import AgentConfig, UnifiedConfig
     from ralph.display.parallel_display import ParallelDisplay
     from ralph.display.subscriber import PipelineSubscriber
-    from ralph.git.executor import GitExecutor
     from ralph.interrupt.asyncio_bridge import SignalBridge
     from ralph.mcp.upstream.agent_probe import AgentProbeReport
     from ralph.mcp.upstream.config import UpstreamMcpServer
@@ -1186,13 +1185,12 @@ def _fan_out_worker_context(
     *,
     workspace_scope: WorkspaceScope,
     repo_root: Path,
-    git_exec: GitExecutor,
     bridge: SignalBridge,
 ) -> tuple[AgentExecutor, parallel_coordinator._WorkerContext]:
     from ralph.agents.subprocess_executor import SubprocessAgentExecutor  # noqa: PLC0415
-    from ralph.git.worktree_manager import WorktreeManager  # noqa: PLC0415
     from ralph.mcp.server.factory_impl import DynamicBindingMcpServerFactory  # noqa: PLC0415
     from ralph.pipeline.parallel import coordinator  # noqa: PLC0415
+    from ralph.pipeline.parallel.mode import SameWorkspaceContext  # noqa: PLC0415
 
     executor = cast(
         "AgentExecutor",
@@ -1202,17 +1200,19 @@ def _fan_out_worker_context(
         workspace_scope.root,
         allowed_roots=workspace_scope.allowed_roots,
     )
+    worker_namespace_root = repo_root / ".agent" / "workers"
+    worker_namespace_root.mkdir(parents=True, exist_ok=True)
     return executor, coordinator._WorkerContext(
         log=coordinator._WorkerLog(
             log_dir=workspace_scope.root / ".agent" / "logs",
             run_id=str(uuid.uuid4()),
         ),
-        isolation=coordinator._IsolationDeps(
-            worktree_manager=WorktreeManager(repo_root),
-            mcp_factory=DynamicBindingMcpServerFactory(workspace=workspace),
+        same_workspace=SameWorkspaceContext(
             repo_root=repo_root,
+            mcp_factory=DynamicBindingMcpServerFactory(workspace=workspace),
             executor_command=_parallel_worker_command(),
             signal_bridge=bridge,
+            worker_namespace_root=worker_namespace_root,
         ),
     )
 
@@ -1242,7 +1242,6 @@ async def _run_fan_out_async(  # noqa: PLR0913
     policy_bundle: PolicyBundle,
     workspace_scope: WorkspaceScope,
     repo_root: Path,
-    git_exec: GitExecutor,
     pipeline_subscriber: _PipelineSubscriber | None,
     _monitor_stop_cb: Callable[[], None] | None = None,
 ) -> PipelineState:
@@ -1252,7 +1251,12 @@ async def _run_fan_out_async(  # noqa: PLR0913
         SignalBridge,
         install_signal_handlers,
     )
-    from ralph.pipeline.parallel import coordinator, merge_integrator  # noqa: PLC0415
+    from ralph.pipeline.parallel import coordinator  # noqa: PLC0415
+    from ralph.pipeline.work_units import (  # noqa: PLC0415
+        WorkUnitsPlan,
+        WorkUnitsValidationError,
+        validate_for_same_workspace,
+    )
 
     current = state
     try:
@@ -1263,10 +1267,30 @@ async def _run_fan_out_async(  # noqa: PLR0913
         root_task = cast("asyncio.Task[object] | None", asyncio.current_task())
         assert root_task is not None
         install_signal_handlers(loop, root_task, bridge)
+
+        # Pre-flight: validate plan is safe for same-workspace execution.
+        try:
+            validate_for_same_workspace(WorkUnitsPlan(work_units=list(effect.work_units)))
+        except WorkUnitsValidationError as exc:
+            failure_reason = (
+                f"Parallel plan rejected (same-workspace safety check failed): {exc}"
+            )
+            logger.error(failure_reason)
+            recovered, _ = _reduce_runtime_recovery(
+                current,
+                policy_bundle.pipeline,
+                reason=failure_reason,
+            )
+            _notify_pipeline_subscriber(pipeline_subscriber, recovered)
+            _save_checkpoint_or_log(
+                recovered,
+                message="Checkpoint save failed after plan rejection in phase={phase}: {err}",
+            )
+            return recovered
+
         executor, worker_ctx = _fan_out_worker_context(
             workspace_scope=workspace_scope,
             repo_root=repo_root,
-            git_exec=git_exec,
             bridge=bridge,
         )
         current, resume_units = _resume_fan_out_state(
@@ -1292,19 +1316,34 @@ async def _run_fan_out_async(  # noqa: PLR0913
             message="Checkpoint save failed after fan-out in phase={phase}: {err}",
         )
 
-        merge_result = await merge_integrator.integrate(
-            base_branch="main",
-            worker_states=current.worker_states,
-            git_executor=git_exec,
-            repo_root=repo_root,
-        )
-        for ev in merge_result.events:
-            current, _ = reducer_reduce(current, ev, policy_bundle.pipeline)
-            _notify_pipeline_subscriber(pipeline_subscriber, current)
-        _save_checkpoint_or_log(
-            current,
-            message="Checkpoint save failed after merge integration in phase={phase}: {err}",
-        )
+        if effect.run_post_fanout_verification:
+            from ralph.executor.process import run_process_async  # noqa: PLC0415
+            verify_result = await run_process_async(
+                "make",
+                ["-C", str(workspace_scope.root / "ralph-workflow"), "verify"],
+            )
+            if verify_result.returncode != 0:
+                failure_reason = (
+                    f"Post-fanout workspace verification failed "
+                    f"(exit {verify_result.returncode}): "
+                    f"{verify_result.stderr.strip() or verify_result.stdout.strip()}"
+                )
+                logger.error(failure_reason)
+                recovered, _ = _reduce_runtime_recovery(
+                    current,
+                    policy_bundle.pipeline,
+                    reason=failure_reason,
+                )
+                _notify_pipeline_subscriber(pipeline_subscriber, recovered)
+                _save_checkpoint_or_log(
+                    recovered,
+                    message=(
+                        "Checkpoint save failed after verification failure "
+                        "in phase={phase}: {err}"
+                    ),
+                )
+                return recovered
+
         return current
     except KeyboardInterrupt:
         raise
@@ -1343,8 +1382,6 @@ def _execute_fan_out_sync(  # noqa: PLR0913
     """Execute fan-out development synchronously by wrapping asyncio.run()."""
     import asyncio  # noqa: PLC0415
 
-    from ralph.git.executor import GitExecutor  # noqa: PLC0415
-
     parallel_display, effective_pipeline_subscriber = _fan_out_display_and_subscriber(
         display,
         pipeline_subscriber,
@@ -1358,7 +1395,6 @@ def _execute_fan_out_sync(  # noqa: PLR0913
             policy_bundle=policy_bundle,
             workspace_scope=workspace_scope,
             repo_root=workspace_scope.root,
-            git_exec=GitExecutor(),
             pipeline_subscriber=effective_pipeline_subscriber,
             _monitor_stop_cb=_monitor_stop_cb,
         )
@@ -1626,16 +1662,17 @@ def _determine_effect_from_policy(
         scope = workspace_scope or resolve_workspace_scope()
         return _commit_phase_effect(state, policy_bundle, phase_def, scope, config=config)
 
-    agent_name = _agent_name_for_phase_from_policy(state, policy_bundle, config=config)
-    if agent_name is None:
-        return ExitFailureEffect(reason=f"No agent configured for phase '{state.phase}'")
-
     if state.phase == PHASE_DEVELOPMENT and state.work_units:
         parallel_policy = policy_bundle.pipeline.parallel_execution
         return FanOutDevelopmentEffect(
             work_units=state.work_units,
             max_workers=parallel_policy.max_parallel_workers if parallel_policy is not None else 8,
+            run_post_fanout_verification=True,
         )
+
+    agent_name = _agent_name_for_phase_from_policy(state, policy_bundle, config=config)
+    if agent_name is None:
+        return ExitFailureEffect(reason=f"No agent configured for phase '{state.phase}'")
 
     return InvokeAgentEffect(
         agent_name=agent_name,

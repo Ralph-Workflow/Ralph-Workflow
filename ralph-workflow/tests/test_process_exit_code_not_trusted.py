@@ -1,4 +1,4 @@
-"""Invariant test: pipeline success is determined by empirical evidence, never exit codes."""
+"""Invariant: pipeline success uses worker-local artifact evidence, not process exit codes."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ import pytest
 from ralph.mcp.server.factory import McpServerHandle
 from ralph.pipeline.effects import FanOutDevelopmentEffect
 from ralph.pipeline.events import PipelineEvent, WorkerFailedEvent
-from ralph.pipeline.parallel.coordinator import _has_empirical_evidence
+from ralph.pipeline.parallel.mode import SameWorkspaceContext
 from ralph.pipeline.work_units import WorkUnit
 from ralph.pipeline.worker_state import WorkerStatus
 from ralph.process.manager import (
@@ -54,22 +54,6 @@ async def test_exit_code_7_is_exited_not_failed(tmp_path) -> None:
     assert handle.record.status != ProcessStatus.FAILED
 
 
-@pytest.mark.asyncio
-async def test_empirical_evidence_ignores_exit_code(tmp_path) -> None:
-    """_has_empirical_evidence returns False on empty dir and True when artifact present."""
-    # No artifacts, no git changes → no empirical evidence
-    no_evidence = await _has_empirical_evidence(tmp_path)
-    assert no_evidence is False
-
-    # Drop an artifact file → evidence is present regardless of exit code
-    artifact_dir = tmp_path / ".agent" / "artifacts"
-    artifact_dir.mkdir(parents=True)
-    (artifact_dir / "dummy.json").write_text(json.dumps({"type": "plan"}), encoding="utf-8")
-
-    has_evidence = await _has_empirical_evidence(tmp_path)
-    assert has_evidence is True
-
-
 def _load_coordinator():
     return importlib.import_module("ralph.pipeline.parallel.coordinator")
 
@@ -78,8 +62,7 @@ def _make_unit(unit_id: str) -> WorkUnit:
     return WorkUnit(unit_id=unit_id, description=f"Unit {unit_id}", dependencies=[])
 
 
-def _seed_artifact(worktree_path) -> None:
-    artifact_dir = worktree_path / ".agent" / "artifacts"
+def _seed_artifact(artifact_dir) -> None:
     artifact_dir.mkdir(parents=True, exist_ok=True)
     (artifact_dir / "plan.json").write_text(
         json.dumps(
@@ -115,45 +98,31 @@ class _RecordingMcpFactory:
         )
 
 
-class _RecordingWorktreeManager:
-    def __init__(self, repo_root) -> None:
-        self.repo_root = repo_root
-        self.destroy_calls: list[str] = []
-
-    def create(self, unit_id: str, base_branch: str):
-        worktree_path = self.repo_root / ".worktrees" / unit_id
-        worktree_path.mkdir(parents=True, exist_ok=True)
-        return worktree_path
-
-    def destroy(self, unit_id: str) -> None:
-        self.destroy_calls.append(unit_id)
-
-
-def _make_ctx(module, isolation):
+def _make_ctx(module, same_workspace):
     ctx_type = module._WorkerContext
-    return ctx_type(log=None, isolation=isolation)
+    return ctx_type(log=None, same_workspace=same_workspace)
 
 
 @pytest.mark.asyncio
 async def test_nonzero_exit_with_artifact_is_treated_as_success(tmp_path) -> None:
     """Worker coordinator: exit_code != 0 but artifact present → worker succeeds.
 
-    This is the exit-code-not-trusted invariant exercised end-to-end through
-    the actual _run_worker / run_fan_out decision path.
+    This is the exit-code-not-trusted invariant: success comes from worker-local
+    artifact evidence, not the process exit code.
     """
     module = _load_coordinator()
     unit = _make_unit("unit-a")
     effect = FanOutDevelopmentEffect(work_units=(unit,), max_workers=1)
     display = _RecordingDisplay()
-    worktree_manager = _RecordingWorktreeManager(tmp_path)
     mcp_factory = _RecordingMcpFactory()
 
-    _seed_artifact(tmp_path / ".worktrees" / "unit-a")
+    worker_namespace = tmp_path / ".agent" / "workers" / "unit-a"
+    _seed_artifact(worker_namespace / "artifacts")
 
-    isolation = module._IsolationDeps(  # type: ignore[attr-defined]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
-        worktree_manager=worktree_manager,
-        mcp_factory=mcp_factory,
+    same_workspace = SameWorkspaceContext(
         repo_root=tmp_path,
+        mcp_factory=mcp_factory,
+        worker_namespace_root=tmp_path / ".agent" / "workers",
     )
 
     events = await module.run_fan_out(
@@ -162,7 +131,7 @@ async def test_nonzero_exit_with_artifact_is_treated_as_success(tmp_path) -> Non
             {"unit-a": FakeRun(outputs=["done"], exit_code=1, duration_ms=1)}
         ),
         display=display,
-        ctx=_make_ctx(module, isolation),
+        ctx=_make_ctx(module, same_workspace),
     )
 
     assert events[-1] is PipelineEvent.ALL_WORKERS_COMPLETE, (
@@ -172,23 +141,22 @@ async def test_nonzero_exit_with_artifact_is_treated_as_success(tmp_path) -> Non
 
 
 @pytest.mark.asyncio
-async def test_zero_exit_without_artifact_or_git_changes_is_treated_as_failure(tmp_path) -> None:
-    """Worker coordinator: exit_code == 0 but no artifact and no git changes → worker fails.
+async def test_zero_exit_without_artifact_is_treated_as_failure(tmp_path) -> None:
+    """Worker coordinator: exit_code == 0 but no artifact → worker fails.
 
-    This is the exit-code-not-trusted invariant exercised end-to-end through
-    the actual _run_worker / run_fan_out decision path.
+    This is the exit-code-not-trusted invariant: only worker-local artifact
+    evidence determines success, never the process exit code.
     """
     module = _load_coordinator()
     unit = _make_unit("unit-a")
     effect = FanOutDevelopmentEffect(work_units=(unit,), max_workers=1)
     display = _RecordingDisplay()
-    worktree_manager = _RecordingWorktreeManager(tmp_path)
     mcp_factory = _RecordingMcpFactory()
 
-    isolation = module._IsolationDeps(  # type: ignore[attr-defined]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
-        worktree_manager=worktree_manager,
-        mcp_factory=mcp_factory,
+    same_workspace = SameWorkspaceContext(
         repo_root=tmp_path,
+        mcp_factory=mcp_factory,
+        worker_namespace_root=tmp_path / ".agent" / "workers",
     )
 
     events = await module.run_fan_out(
@@ -197,11 +165,11 @@ async def test_zero_exit_without_artifact_or_git_changes_is_treated_as_failure(t
             {"unit-a": FakeRun(outputs=["done"], exit_code=0, duration_ms=1)}
         ),
         display=display,
-        ctx=_make_ctx(module, isolation),
+        ctx=_make_ctx(module, same_workspace),
     )
 
     assert PipelineEvent.ALL_WORKERS_COMPLETE not in events, (
-        "Worker with no artifact and no git changes should fail regardless of exit code"
+        "Worker with no artifact should fail regardless of exit code"
     )
     assert display.statuses["unit-a"][-1] is WorkerStatus.FAILED
     assert any(

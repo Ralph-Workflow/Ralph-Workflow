@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 
-from ralph.config.enums import PHASE_DEVELOPMENT, PHASE_MERGE_INTEGRATION
+from ralph.config.enums import PHASE_DEVELOPMENT, PHASE_DEVELOPMENT_ANALYSIS
 from ralph.pipeline.effects import FanOutDevelopmentEffect
 from ralph.pipeline.events import Event, PipelineEvent, WorkerCompletedEvent
 from ralph.pipeline.parallel import coordinator
@@ -84,7 +84,7 @@ def test_happy_path_state_transitions() -> None:
         reduced_state, _ = reducer_reduce(reduced_state, event)
 
     assert PipelineEvent.ALL_WORKERS_COMPLETE in events
-    assert reduced_state.phase == PHASE_MERGE_INTEGRATION
+    assert reduced_state.phase == PHASE_DEVELOPMENT_ANALYSIS
     assert reduced_state.worker_states["unit-A"].status == WorkerStatus.SUCCEEDED
     assert reduced_state.worker_states["unit-B"].status == WorkerStatus.SUCCEEDED
     assert reduced_state.worker_states["unit-C"].status == WorkerStatus.SUCCEEDED

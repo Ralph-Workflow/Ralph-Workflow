@@ -1,12 +1,12 @@
 # Parallel Fan-Out Architecture
 
-This document describes Ralph's parallel development fan-out system: how a single development phase is executed across N parallel workers using structured concurrency, and how results are merged back into the main branch.
+This document describes Ralph's parallel development fan-out system: how a single development phase is executed across N parallel workers using structured concurrency in same-workspace mode.
 
 For the end-to-end pipeline lifecycle (Planning -> Development -> result verification -> Commit -> Review/Fix loops), see `pipeline-lifecycle.md`. For the event loop and reducer architecture that drives the pipeline, see `event-loop-and-reducers.md`.
 
 ## Data Flow
 
-The parallel fan-out executes a wave-based DAG across N workers, where each wave respects dependency ordering and a configurable concurrency cap.
+The parallel fan-out executes a wave-based DAG across N workers, where each wave respects dependency ordering and a configurable concurrency cap. Workers run against the shared checkout; there is no per-worker branch, no worktree creation, and no merge-back step.
 
 ```
 Planning phase
@@ -15,19 +15,22 @@ Planning phase
 PipelineState.work_units  (tuple[WorkUnit, ...], frozen after planning)
     |
     v
+validate_for_same_workspace()  -- pre-flight safety check --
+    |
+    v
 FanOutDevelopmentEffect(work_units, max_workers)
     |
     v
 coordinator.run_fan_out()  -- asyncio.TaskGroup --
     |
-    +---> scheduler.schedule_next_wave()  --> N SubprocessAgentExecutor.run()
+    +---> scheduler.schedule_next_wave()  --> N worker executors
     |                                              |
     |                                              v
-    |                                         worker subprocess
-    |                                         (MCP agent in worktree)
+    |                                         worker (in-process or subprocess)
+    |                                         (MCP agent on shared checkout)
     |                                              |
     |                                              v
-    +--- WorkerStartedEvent(unit_id) <----------+
+    +--- WorkerStartedEvent(unit_id) <-----------+
     |
     +--- WorkerCompletedEvent(unit_id, exit_code) --+
     |
@@ -37,16 +40,16 @@ coordinator.run_fan_out()  -- asyncio.TaskGroup --
 ALL_WORKERS_COMPLETE  (or partial failure events)
     |
     v
-MergeIntegrationEffect(worker_states, base_branch)
-    |
-    v
-merge_integrator.integrate()  -- sequential git merge per worker branch --
-    |
-    v
-WorkersMergeConflictEvent(conflicting_unit_ids)  --> PHASE_FAILED
-    OR
-ALL_WORKERS_COMPLETE  --> phase advances
+phase advances  (no merge step)
 ```
+
+### Same-Workspace Pre-Flight Validation
+
+Before fan-out starts, `validate_for_same_workspace()` rejects any plan that would allow workers to corrupt each other's state:
+
+- Every unit must declare at least one `allowed_directory`.
+- No unit may declare a reserved path (`.agent`, `.git`, `.worktrees`, `.`).
+- No two units may have overlapping edit areas (segment-aware prefix check).
 
 ### Wave Scheduling
 
@@ -111,35 +114,23 @@ class McpServerFactory(Protocol):
     def build(self, session: object) -> McpServerHandle: ...
 ```
 
-`McpServerFactory` is a protocol so the subprocess executor can be configured with a mock factory in tests. The production implementation is `McpServerFactoryImpl`.
+`McpServerFactory` is a protocol so the in-process executor can be configured with a mock factory in tests. The production implementation is `DynamicBindingMcpServerFactory`.
 
-### WorkspaceScope.for_worktree()
+### WorkspaceScope.for_same_workspace_worker()
 
 ```python
 # ralph-workflow/ralph/workspace/scope.py
 @classmethod
-def for_worktree(cls, worktree_path: Path, allowed_directories: tuple[str, ...]) -> WorkspaceScope:
-    allowed_roots = tuple(worktree_path / ad for ad in allowed_directories)
-    return cls(root=worktree_path, allowed_roots=allowed_roots)
+def for_same_workspace_worker(
+    cls,
+    repo_root: Path,
+    allowed_directories: tuple[str, ...],
+    worker_namespace: Path,
+) -> WorkspaceScope:
+    ...
 ```
 
-Each worker subprocess is assigned its own `WorkspaceScope` pointing at the branch-specific worktree. This constrains filesystem access to the correct worktree and prevents cross-contamination.
-
-### GitExecutor Serialization Gate
-
-```python
-# ralph-workflow/ralph/git/executor.py
-class GitExecutor:
-    def __init__(self) -> None:
-        self._executor = ThreadPoolExecutor(max_workers=1)
-
-    async def arun(self, op: Callable[[], T]) -> T:
-        loop = asyncio.get_running_loop()
-        future = loop.run_in_executor(self._executor, op)
-        return await future
-```
-
-GitPython is not thread-safe when multiple threads share a `.git/` directory. `GitExecutor` serializes all git operations through a single-threaded executor, ensuring that merge integration and any concurrent git operations from other pipeline stages do not corrupt the repository state.
+Each worker is assigned a `WorkspaceScope` that keeps `root=repo_root` (the shared checkout) while restricting `allowed_roots` to the declared directories plus the per-worker namespace path. This constrains filesystem access without creating a new checkout.
 
 ## Concurrency Model
 
@@ -151,14 +142,12 @@ The pipeline event loop in `runner.run()` is synchronous. When it encounters a `
 # ralph-workflow/ralph/pipeline/runner.py
 def _execute_fan_out_sync(*, effect, state, display, policy_bundle, workspace_scope):
     import asyncio
-    async def _run() -> PipelineState:
-        # ... fan-out and merge logic ...
-    return asyncio.run(_run())
+    return asyncio.run(_run_fan_out_async(...))
 ```
 
 ### asyncio.TaskGroup
 
-Within `_run()`, `coordinator.run_fan_out()` uses `asyncio.TaskGroup` for structured concurrency:
+Within `_run_fan_out_async()`, `coordinator.run_fan_out()` uses `asyncio.TaskGroup` for structured concurrency:
 
 ```python
 # ralph-workflow/ralph/pipeline/parallel/coordinator.py
@@ -175,22 +164,6 @@ async with asyncio.TaskGroup() as task_group:
 `TaskGroup` guarantees:
 - All tasks complete or all are cancelled (no orphaned tasks)
 - Exceptions from any task are captured in the `ExceptionGroup` delivered to the `except*` clause
-
-### Worker Subprocess
-
-Each `_run_worker()` task spawns one subprocess via `asyncio.create_subprocess_exec`:
-
-```python
-# ralph-workflow/ralph/agents/subprocess_executor.py
-proc = await asyncio.create_subprocess_exec(
-    *command,
-    stdout=asyncio.subprocess.PIPE,
-    stderr=asyncio.subprocess.STDOUT,
-    start_new_session=True,
-)
-```
-
-The subprocess runs the MCP agent in a branch-specific worktree. Output is drained asynchronously and forwarded to the display via callbacks.
 
 ### Rich Live Display Thread
 
@@ -270,7 +243,16 @@ WorkerCompletedEvent --> reducer --> PipelineState.worker_states[unit_id].status
 WorkerFailedEvent --> reducer --> PipelineState.worker_states[unit_id].status = FAILED
 ```
 
-Workers do not share memory. Each worker is an independent subprocess with its own worktree. The only shared artifact is `PipelineState.worker_states`, which is owned exclusively by the reducer.
+Workers do not share memory. The only shared artifact is `PipelineState.worker_states`, which is owned exclusively by the reducer.
+
+### Worker Success Determination
+
+In same-workspace mode, worker success is determined **exclusively** by worker-local artifact evidence under `.agent/workers/<unit_id>/artifacts/`. The coordinator checks `list_artifacts(artifact_dir)` after execution:
+
+- If artifacts are present → worker succeeded
+- If no artifacts found → worker fails with a descriptive error, regardless of process exit code
+
+Repository-wide git status is **never** used as a fallback success signal.
 
 ### Event Flow
 
@@ -300,8 +282,6 @@ def schedule_next_wave(completed, all_units, currently_running, max_workers):
         return []
 ```
 
-The `max_workers` value comes from `parallel_execution.max_parallel_workers` in policy, which is read from `FanOutDevelopmentEffect.max_workers` and ultimately from `_determine_effect_from_policy()` in `runner.py`.
-
 ### Work Units Immutable After Planning
 
 `work_units` is set once during planning and stored in `PipelineState`. The `FanOutDevelopmentEffect` carries this frozen tuple:
@@ -314,46 +294,29 @@ class FanOutDevelopmentEffect:
     max_workers: int
 ```
 
-Workers read from the worktree, never from each other's outputs. No work unit may be added after the first wave starts.
+No work unit may be added after the first wave starts.
 
 ### Single Writer for Checkpoint
 
-Checkpoint writes are serialized through the main event loop. The `_execute_fan_out_sync()` function calls `ckpt.save(current)` after all fan-out events are reduced and again after merge integration:
+Checkpoint writes are serialized through the main event loop. The `_run_fan_out_async()` function calls `ckpt.save(current)` after all fan-out events are reduced:
 
 ```python
 # ralph-workflow/ralph/pipeline/runner.py
-async def _run() -> PipelineState:
-    # ... fan-out ...
-    for ev in fan_out_events:
-        current, _ = reducer_reduce(current, ev, policy_bundle.pipeline)
-    ckpt.save(current)  # checkpoint after fan-out
-
-    # ... merge ...
-    for ev in merge_result.events:
-        current, _ = reducer_reduce(current, ev, policy_bundle.pipeline)
-    ckpt.save(current)  # checkpoint after merge
-    return current
+for ev in fan_out_events:
+    current, _ = reducer_reduce(current, ev, policy_bundle.pipeline)
+ckpt.save(current)  # checkpoint after fan-out
+return current
 ```
 
-When SIGINT arrives, `run()` catches `KeyboardInterrupt` and saves an immediate checkpoint before exiting:
+### No Cross-Worker Edit Area Overlap
 
-```python
-# ralph-workflow/ralph/pipeline/runner.py
-except KeyboardInterrupt:
-    interrupted_state = state.copy_with(interrupted_by_user=True)
-    ckpt.save(interrupted_state)
-    return 130
-```
-
-### No Cross-Worker Artifact Sharing
-
-Each worker operates on its own branch worktree (`ralph/unit-{unit_id}`). There is no shared filesystem path between workers. Merge integration happens only after all workers complete, via `GitExecutor` serialization.
+Each worker declares non-overlapping `allowed_directories`. The pre-flight `validate_for_same_workspace()` enforces this before any worker starts. Workers never read from each other's edit areas.
 
 ## Hard-Kill Flow
 
 ### Signal Handler Registration
 
-The main `run()` function does not register signal handlers itself. SIGINT handling is layered:
+Signal handling is layered:
 
 1. User sends SIGINT (Ctrl+C)
 2. Python's default SIGINT handler raises `KeyboardInterrupt` in the main thread
@@ -375,74 +338,9 @@ except asyncio.CancelledError:
     raise
 ```
 
-`os.getpgid(pid)` is not used because the process may already be gone. `os.killpg(proc.pid, signal.SIGKILL)` is called directly with the stored `proc.pid`.
-
-### Second SIGINT
-
-If a second SIGINT arrives before the first has been fully handled, Python's default `signal.SIGINT` behavior applies: `sys.exit(130)` is called. This is the same as the shell convention for `SIGINT` exit codes.
-
 ### Checkpoint Before Kill
 
 The checkpoint is saved when the interrupt is caught, before any process killing occurs. This ensures that even a hard kill leaves a resumable checkpoint.
-
-## Merge Integration
-
-### Option B: Sequential Branch Merging
-
-Ralph uses Option B merge strategy: all worker branches are merged into `main` sequentially, in sorted `unit_id` order.
-
-```python
-# ralph-workflow/ralph/pipeline/parallel/merge_integrator.py
-async def integrate(base_branch, worker_states, git_executor, repo_root):
-    succeeded_ids = sorted(
-        unit_id for unit_id, ws in worker_states.items()
-        if ws.status == WorkerStatus.SUCCEEDED
-    )
-
-    for unit_id in succeeded_ids:
-        branch_name = f"ralph/unit-{unit_id}"
-        result = await git_executor.arun(lambda: subprocess.run(
-            ["git", "merge", "--no-ff", branch_name],
-            cwd=repo_root, capture_output=True, check=False,
-        ))
-        if result.returncode != 0:
-            await git_executor.arun(lambda: subprocess.run(
-                ["git", "merge", "--abort"], cwd=repo_root, capture_output=True,
-            ))
-            conflicting_unit_ids.append(unit_id)
-```
-
-### Conflict Handling
-
-If any merge returns a non-zero exit code:
-
-1. `git merge --abort` is issued to roll back to pre-merge state
-2. The `unit_id` is recorded in `conflicting_unit_ids`
-3. After all merge attempts, `WorkersMergeConflictEvent(conflicting_unit_ids)` is returned
-
-### Failure Event → Phase Transition
-
-The reducer handles `WorkersMergeConflictEvent`:
-
-```
-WorkersMergeConflictEvent --> PipelineState.phase = PHASE_FAILED
-```
-
-On any merge conflict, the phase enters `PHASE_FAILED` and the pipeline exits with a non-zero code.
-
-### Worktree Preservation on Failure
-
-Worktrees are preserved on any failure because they are the git branches themselves (`ralph/unit-{unit_id}`). They are not deleted after merge. A developer can inspect them directly to resolve conflicts.
-
-### Successful Merge Outcome
-
-On full success (all workers merged without conflict):
-
-```
-MergeResult(success=True, events=[PipelineEvent.ALL_WORKERS_COMPLETE])
-```
-
-`ALL_WORKERS_COMPLETE` is reduced to advance the phase, continuing the pipeline to the next phase (typically review).
 
 ## See Also
 

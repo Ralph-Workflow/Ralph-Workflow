@@ -115,6 +115,25 @@ class ArtifactHandlerDeps:
 DEFAULT_ARTIFACT_HANDLER_DEPS = ArtifactHandlerDeps()
 
 
+def _resolve_artifact_dir(
+    session: CoordinationSessionLike,
+    workspace: WorkspaceLike,
+) -> Path:
+    """Resolve the artifact directory for a session.
+
+    For parallel workers with a per-worker artifact directory set on the session,
+    use that directory instead of the shared workspace artifact path.
+    This ensures worker artifacts are namespaced under .agent/workers/<unit_id>/artifacts/
+    and do not collide with the parent process or other workers.
+    """
+    # Check if the session has a worker-specific artifact directory set.
+    # This is set for parallel workers via AgentSession.worker_artifact_dir.
+    worker_artifacts = cast("Path | None", getattr(session, "worker_artifact_dir", None))
+    if worker_artifacts is not None:
+        return worker_artifacts
+    return _artifact_dir(workspace)
+
+
 def handle_submit_artifact(
     session: CoordinationSessionLike,
     workspace: WorkspaceLike,
@@ -131,7 +150,7 @@ def handle_submit_artifact(
         backend=resolved_deps.backend,
     )
 
-    artifact_dir = _artifact_dir(workspace)
+    artifact_dir = _resolve_artifact_dir(session, workspace)
     _execute_ops_with_rollback(
         _submit_ops_for_artifact(
             artifact_type,
@@ -174,7 +193,7 @@ def handle_submit_plan_section(
     except PlanArtifactValidationError as exc:
         raise InvalidParamsError(f"[{section}] {exc}") from exc
 
-    artifact_dir = _artifact_dir(workspace)
+    artifact_dir = _resolve_artifact_dir(session, workspace)
     draft = load_plan_draft(artifact_dir, backend=resolved_deps.backend) or new_plan_draft(
         now_iso=resolved_deps.now_iso
     )
@@ -211,7 +230,7 @@ def handle_finalize_plan(
     del params
     resolved_deps = deps or DEFAULT_ARTIFACT_HANDLER_DEPS
 
-    artifact_dir = _artifact_dir(workspace)
+    artifact_dir = _resolve_artifact_dir(session, workspace)
     draft = load_plan_draft(artifact_dir, backend=resolved_deps.backend)
     if draft is None:
         raise InvalidParamsError(
@@ -255,7 +274,7 @@ def handle_get_plan_draft(
     del params
     resolved_deps = deps or DEFAULT_ARTIFACT_HANDLER_DEPS
 
-    artifact_dir = _artifact_dir(workspace)
+    artifact_dir = _resolve_artifact_dir(session, workspace)
     draft = load_plan_draft(artifact_dir, backend=resolved_deps.backend)
     if draft is None:
         response: dict[str, object] = {"staged_sections": []}
@@ -286,7 +305,9 @@ def handle_discard_plan_draft(
     del params
     resolved_deps = deps or DEFAULT_ARTIFACT_HANDLER_DEPS
 
-    existed = delete_plan_draft(_artifact_dir(workspace), backend=resolved_deps.backend)
+    existed = delete_plan_draft(
+        _resolve_artifact_dir(session, workspace), backend=resolved_deps.backend
+    )
     text = "Plan draft discarded." if existed else "No plan draft to discard."
     return ToolResult(
         content=[ToolContent.text_content(text)],

@@ -580,6 +580,7 @@ class FileBackedSession:
         )
         self._run_id_factory = run_id_factory or (lambda: str(uuid.uuid4()))
 
+
     def _load(self) -> dict[str, object]:
         return self._loader(self._path)
 
@@ -601,6 +602,19 @@ class FileBackedSession:
         if not isinstance(capabilities_value, list):
             return set()
         return set(cast("list[str]", capabilities_value))
+
+    @property
+    def worker_artifact_dir(self) -> Path | None:
+        """Return worker artifact dir from environment variable.
+
+        For parallel workers, the parent process sets RALPH_WORKER_ARTIFACT_DIR
+        in the subprocess environment. This property reads that value so that
+        artifact submission can route to the correct per-worker namespace.
+        """
+        raw = os.environ.get("RALPH_WORKER_ARTIFACT_DIR")
+        if raw is None:
+            return None
+        return Path(raw)
 
     def check_capability(self, capability: str) -> object:
         return "approved" if session_has_capability(self.capabilities, capability) else "denied"

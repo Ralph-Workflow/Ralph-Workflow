@@ -70,17 +70,39 @@ def test_mcp_handle_stored(tmp_path: Path) -> None:
     assert bundle.mcp_handle is handle
 
 
-def test_workspace_scope_rooted_at_worktree(tmp_path: Path) -> None:
+def test_workspace_scope_rooted_at_repo(tmp_path: Path) -> None:
     unit = _make_unit("task-gamma")
-    worktree_path = tmp_path / ".worktrees" / "task-gamma"
-    scope = WorkspaceScope(root=worktree_path)
+    worker_ns = tmp_path / ".agent" / "workers" / "task-gamma"
+    worker_ns.mkdir(parents=True)
+    scope = WorkspaceScope.for_same_workspace_worker(
+        repo_root=tmp_path,
+        allowed_directories=("src",),
+        worker_namespace=worker_ns,
+    )
     bundle = build_worker_session(unit, _make_factory(), scope)
-    assert bundle.workspace_scope.root == worktree_path.resolve()
+    assert bundle.workspace_scope.root == tmp_path.resolve()
 
 
 def test_allowed_directories_forwarded(tmp_path: Path) -> None:
     unit = WorkUnit(unit_id="task-delta", description="d", allowed_directories=["src", "tests"])
-    bundle = build_worker_session(unit, _make_factory(), _make_scope(tmp_path))
-    worktree_root = bundle.workspace_scope.root
-    assert worktree_root / "src" in bundle.workspace_scope.allowed_roots
-    assert worktree_root / "tests" in bundle.workspace_scope.allowed_roots
+    worker_ns = tmp_path / ".agent" / "workers" / "task-delta"
+    worker_ns.mkdir(parents=True)
+    scope = WorkspaceScope.for_same_workspace_worker(
+        repo_root=tmp_path,
+        allowed_directories=("src", "tests"),
+        worker_namespace=worker_ns,
+    )
+    bundle = build_worker_session(unit, _make_factory(), scope)
+    repo_root = bundle.workspace_scope.root
+    assert repo_root / "src" in bundle.workspace_scope.allowed_roots
+    assert repo_root / "tests" in bundle.workspace_scope.allowed_roots
+
+
+def test_worker_artifact_dir_stored_in_session(tmp_path: Path) -> None:
+    unit = _make_unit("task-epsilon")
+    artifact_dir = tmp_path / ".agent" / "workers" / "task-epsilon" / "artifacts"
+    artifact_dir.mkdir(parents=True)
+    bundle = build_worker_session(
+        unit, _make_factory(), _make_scope(tmp_path), worker_artifact_dir=artifact_dir
+    )
+    assert bundle.session.worker_artifact_dir == artifact_dir

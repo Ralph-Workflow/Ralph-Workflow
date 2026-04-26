@@ -3,12 +3,14 @@ from __future__ import annotations
 import importlib
 import importlib.util
 import json
-import subprocess
+import logging
 from collections import defaultdict
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, cast
 
+import loguru
+import pytest
 from loguru import logger
 
 from ralph.agents.executor import WorkerResult
@@ -22,6 +24,7 @@ from ralph.pipeline.events import (
     WorkerFailedEvent,
     WorkerStartedEvent,
 )
+from ralph.pipeline.parallel.mode import SameWorkspaceContext
 from ralph.pipeline.work_units import WorkUnit
 from ralph.pipeline.worker_state import WorkerStatus
 from ralph.testing.fake_agent_executor import FakeAgentExecutor, FakeRun
@@ -56,7 +59,7 @@ def make_worker_context(
     *,
     log_dir: Path | None = None,
     run_id: str = "default",
-    isolation: object | None = None,
+    same_workspace: SameWorkspaceContext | None = None,
 ) -> Any:
     module = importlib.import_module("ralph.pipeline.parallel.coordinator")
     ctx_type = module._WorkerContext
@@ -64,11 +67,11 @@ def make_worker_context(
     if log_dir is not None:
         log_type = module._WorkerLog
         log = log_type(log_dir=log_dir, run_id=run_id)
-    return ctx_type(log=log, isolation=isolation)
+    return ctx_type(log=log, same_workspace=same_workspace)
 
 
-def _seed_artifact(worktree_path: Path) -> None:
-    artifact_dir = worktree_path / ".agent" / "artifacts"
+def _seed_artifact(repo_root: Path, unit_id: str) -> None:
+    artifact_dir = repo_root / ".agent" / "workers" / unit_id / "artifacts"
     artifact_dir.mkdir(parents=True, exist_ok=True)
     (artifact_dir / "plan.json").write_text(
         json.dumps(
@@ -140,22 +143,6 @@ class _RecordingMcpFactory:
         )
         self.handles.append(recorded)
         return recorded.handle
-
-
-class _RecordingWorktreeManager:
-    def __init__(self, repo_root: Path) -> None:
-        self.repo_root = repo_root
-        self.create_calls: list[tuple[str, str]] = []
-        self.destroy_calls: list[str] = []
-
-    def create(self, unit_id: str, base_branch: str) -> Path:
-        self.create_calls.append((unit_id, base_branch))
-        worktree_path = self.repo_root / ".worktrees" / unit_id
-        worktree_path.mkdir(parents=True, exist_ok=True)
-        return worktree_path
-
-    def destroy(self, unit_id: str) -> None:
-        self.destroy_calls.append(unit_id)
 
 
 class _LoggingExecutor:
@@ -352,84 +339,52 @@ async def test_failed_dependency_marks_blocked_unit_failed(tmp_path: Path) -> No
     )
 
 
-async def test_isolation_creates_worker_session_and_cleans_up_success(tmp_path: Path) -> None:
-    module = importlib.import_module("ralph.pipeline.parallel.coordinator")
+async def test_same_workspace_creates_worker_session_and_shuts_down_mcp(
+    tmp_path: Path,
+) -> None:
     run_fan_out = _load_run_fan_out()
     unit = WorkUnit(unit_id="unit-a", description="Unit unit-a", allowed_directories=["src"])
     effect = FanOutDevelopmentEffect(work_units=(unit,), max_workers=1)
     display = RecordingDisplay()
-    worktree_manager = _RecordingWorktreeManager(tmp_path)
     mcp_factory = _RecordingMcpFactory()
 
-    _seed_artifact(tmp_path / ".worktrees" / "unit-a")
+    _seed_artifact(tmp_path, "unit-a")
 
-    isolation = module._IsolationDeps(  # type: ignore[attr-defined]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
-        worktree_manager=worktree_manager,
-        mcp_factory=mcp_factory,
-        repo_root=tmp_path,
+    ctx = make_worker_context(
+        same_workspace=SameWorkspaceContext(
+            repo_root=tmp_path,
+            mcp_factory=mcp_factory,  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+        )
     )
 
     events = await run_fan_out(
         effect=effect,
         executor=FakeAgentExecutor({"unit-a": FakeRun(outputs=["ok"], exit_code=0, duration_ms=1)}),
         display=display,
-        ctx=make_worker_context(isolation=isolation),
+        ctx=ctx,
     )
 
     assert events[-1] is PipelineEvent.ALL_WORKERS_COMPLETE
-    assert worktree_manager.create_calls == [("unit-a", "main")]
-    assert worktree_manager.destroy_calls == ["unit-a"]
     assert len(mcp_factory.sessions) == 1
     assert getattr(mcp_factory.sessions[0], "parallel_worker", False) is True
     assert mcp_factory.handles[0].shutdown_calls == 1
 
 
-async def test_isolation_preserves_failed_worktree(tmp_path: Path) -> None:
-    module = importlib.import_module("ralph.pipeline.parallel.coordinator")
-    run_fan_out = _load_run_fan_out()
-    unit = make_unit("unit-a")
-    effect = FanOutDevelopmentEffect(work_units=(unit,), max_workers=1)
-    display = RecordingDisplay()
-    worktree_manager = _RecordingWorktreeManager(tmp_path)
-    mcp_factory = _RecordingMcpFactory()
-
-    isolation = module._IsolationDeps(  # type: ignore[attr-defined]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
-        worktree_manager=worktree_manager,
-        mcp_factory=mcp_factory,
-        repo_root=tmp_path,
-    )
-
-    events = await run_fan_out(
-        effect=effect,
-        executor=FakeAgentExecutor(
-            {"unit-a": FakeRun(outputs=["boom"], exit_code=1, duration_ms=1)}
-        ),
-        display=display,
-        ctx=make_worker_context(isolation=isolation),
-    )
-
-    assert PipelineEvent.ALL_WORKERS_COMPLETE not in events
-    assert worktree_manager.create_calls == [("unit-a", "main")]
-    assert worktree_manager.destroy_calls == []
-    assert mcp_factory.handles[0].shutdown_calls == 1
-
-
 async def test_empirical_success_artifact_beats_nonzero_exit(tmp_path: Path) -> None:
-    """Isolated worker with nonzero exit code succeeds when an artifact is present."""
-    module = importlib.import_module("ralph.pipeline.parallel.coordinator")
+    """Same-workspace worker with nonzero exit code succeeds when an artifact is present."""
     run_fan_out = _load_run_fan_out()
-    unit = make_unit("unit-a")
+    unit = WorkUnit(unit_id="unit-a", description="Unit unit-a", allowed_directories=["src"])
     effect = FanOutDevelopmentEffect(work_units=(unit,), max_workers=1)
     display = RecordingDisplay()
-    worktree_manager = _RecordingWorktreeManager(tmp_path)
     mcp_factory = _RecordingMcpFactory()
 
-    _seed_artifact(tmp_path / ".worktrees" / "unit-a")
+    _seed_artifact(tmp_path, "unit-a")
 
-    isolation = module._IsolationDeps(  # type: ignore[attr-defined]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
-        worktree_manager=worktree_manager,
-        mcp_factory=mcp_factory,
-        repo_root=tmp_path,
+    ctx = make_worker_context(
+        same_workspace=SameWorkspaceContext(
+            repo_root=tmp_path,
+            mcp_factory=mcp_factory,  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+        )
     )
 
     events = await run_fan_out(
@@ -438,28 +393,26 @@ async def test_empirical_success_artifact_beats_nonzero_exit(tmp_path: Path) -> 
             {"unit-a": FakeRun(outputs=["done"], exit_code=1, duration_ms=1)}
         ),
         display=display,
-        ctx=make_worker_context(isolation=isolation),
+        ctx=ctx,
     )
 
     assert events[-1] is PipelineEvent.ALL_WORKERS_COMPLETE
     assert display.statuses["unit-a"][-1] is WorkerStatus.SUCCEEDED
-    assert worktree_manager.destroy_calls == ["unit-a"]
 
 
 async def test_empirical_failure_no_artifact_despite_zero_exit(tmp_path: Path) -> None:
-    """Isolated worker with zero exit code fails when no artifact is submitted."""
-    module = importlib.import_module("ralph.pipeline.parallel.coordinator")
+    """Same-workspace worker with zero exit code fails when no artifact is submitted."""
     run_fan_out = _load_run_fan_out()
-    unit = make_unit("unit-a")
+    unit = WorkUnit(unit_id="unit-a", description="Unit unit-a", allowed_directories=["src"])
     effect = FanOutDevelopmentEffect(work_units=(unit,), max_workers=1)
     display = RecordingDisplay()
-    worktree_manager = _RecordingWorktreeManager(tmp_path)
     mcp_factory = _RecordingMcpFactory()
 
-    isolation = module._IsolationDeps(  # type: ignore[attr-defined]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
-        worktree_manager=worktree_manager,
-        mcp_factory=mcp_factory,
-        repo_root=tmp_path,
+    ctx = make_worker_context(
+        same_workspace=SameWorkspaceContext(
+            repo_root=tmp_path,
+            mcp_factory=mcp_factory,  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+        )
     )
 
     events = await run_fan_out(
@@ -468,7 +421,7 @@ async def test_empirical_failure_no_artifact_despite_zero_exit(tmp_path: Path) -
             {"unit-a": FakeRun(outputs=["done"], exit_code=0, duration_ms=1)}
         ),
         display=display,
-        ctx=make_worker_context(isolation=isolation),
+        ctx=ctx,
     )
 
     assert PipelineEvent.ALL_WORKERS_COMPLETE not in events
@@ -476,10 +429,9 @@ async def test_empirical_failure_no_artifact_despite_zero_exit(tmp_path: Path) -
     assert any(
         isinstance(event, WorkerFailedEvent)
         and event.unit_id == "unit-a"
-        and "no artifact" in event.error
+        and "no worker-local artifact" in event.error
         for event in events
     )
-    assert worktree_manager.destroy_calls == []
 
 
 async def test_activity_router_is_passed_to_subprocess_worker_executor(
@@ -487,10 +439,9 @@ async def test_activity_router_is_passed_to_subprocess_worker_executor(
 ) -> None:
     module = importlib.import_module("ralph.pipeline.parallel.coordinator")
     run_fan_out = _load_run_fan_out()
-    unit = make_unit("unit-a")
+    unit = WorkUnit(unit_id="unit-a", description="Unit unit-a", allowed_directories=["src"])
     effect = FanOutDevelopmentEffect(work_units=(unit,), max_workers=1)
     display = RecordingDisplay()
-    worktree_manager = _RecordingWorktreeManager(tmp_path)
     mcp_factory = _RecordingMcpFactory()
     router = ActivityRouter()
     recorded_activity_routers: list[ActivityRouter | None] = []
@@ -543,20 +494,21 @@ async def test_activity_router_is_passed_to_subprocess_worker_executor(
         _FakeDynamicBindingMcpServerFactory,
     )
 
-    _seed_artifact(tmp_path / ".worktrees" / "unit-a")
+    _seed_artifact(tmp_path, "unit-a")
 
-    isolation = module._IsolationDeps(  # type: ignore[attr-defined]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
-        worktree_manager=worktree_manager,
-        mcp_factory=mcp_factory,
-        repo_root=tmp_path,
-        executor_command=("python", "-m", "ralph"),
+    ctx = make_worker_context(
+        same_workspace=SameWorkspaceContext(
+            repo_root=tmp_path,
+            mcp_factory=mcp_factory,  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+            executor_command=("python", "-m", "ralph"),
+        )
     )
 
     events = await run_fan_out(
         effect=effect,
         executor=FakeAgentExecutor({}),
         display=display,
-        ctx=make_worker_context(isolation=isolation),
+        ctx=ctx,
         activity_router=router,
     )
 
@@ -582,48 +534,133 @@ async def test_worker_logs_are_routed_to_per_worker_sink(tmp_path: Path) -> None
     assert "worker-log-message" in log_path.read_text()
 
 
-async def test_empirical_success_git_changes_no_artifact(tmp_path: Path) -> None:
-    """Isolated worker with no artifact succeeds when worktree has uncommitted git changes."""
+@pytest.mark.asyncio
+async def test_subprocess_worker_receives_ralph_worker_artifact_dir(
+    tmp_path: Path, monkeypatch: Any
+) -> None:
     module = importlib.import_module("ralph.pipeline.parallel.coordinator")
     run_fan_out = _load_run_fan_out()
-    unit = make_unit("unit-a")
+    unit = WorkUnit(unit_id="unit-b", description="Unit unit-b", allowed_directories=["src"])
     effect = FanOutDevelopmentEffect(work_units=(unit,), max_workers=1)
     display = RecordingDisplay()
-
-    # Initialize a git repo so `git status --porcelain` works in the worktree.
-    subprocess.run(["git", "init", str(tmp_path)], check=True, capture_output=True)
-    subprocess.run(
-        ["git", "-C", str(tmp_path), "config", "user.email", "test@test.com"],
-        check=True, capture_output=True,
-    )
-    subprocess.run(
-        ["git", "-C", str(tmp_path), "config", "user.name", "Test"],
-        check=True, capture_output=True,
-    )
-
-    worktree_manager = _RecordingWorktreeManager(tmp_path)
     mcp_factory = _RecordingMcpFactory()
+    recorded_extra_envs: list[dict[str, str]] = []
 
-    # Pre-create the worktree dir and add an untracked file to simulate git changes.
-    worktree_path = tmp_path / ".worktrees" / "unit-a"
-    worktree_path.mkdir(parents=True, exist_ok=True)
-    (worktree_path / "result.py").write_text("# work done")
+    class _RecordingSubprocessExecutor:
+        def __init__(
+            self,
+            *_args: Any,
+            extra_env: dict[str, str] | None = None,
+            **_kwargs: Any,
+        ) -> None:
+            recorded_extra_envs.append(dict(extra_env or {}))
 
-    isolation = module._IsolationDeps(  # type: ignore[attr-defined]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
-        worktree_manager=worktree_manager,
-        mcp_factory=mcp_factory,
-        repo_root=tmp_path,
+        async def run(
+            self,
+            unit: WorkUnit,
+            *,
+            on_output: Callable[[str], None],
+            on_status: Callable[[WorkerStatus], None],
+        ) -> WorkerResult:
+            on_status(WorkerStatus.RUNNING)
+            on_output("done")
+            on_status(WorkerStatus.SUCCEEDED)
+            return WorkerResult(
+                unit_id=unit.unit_id,
+                exit_code=0,
+                final_message="done",
+                duration_ms=1,
+            )
+
+    monkeypatch.setattr(
+        module.subprocess_executor,
+        "SubprocessAgentExecutor",
+        _RecordingSubprocessExecutor,
+    )
+
+    class _FakeDynamicBindingMcpServerFactory:
+        def __init__(self, *, workspace: object) -> None:
+            del workspace
+
+        def build(self, session: object) -> McpServerHandle:
+            return mcp_factory.build(session)
+
+    monkeypatch.setattr(
+        module.factory_impl,
+        "DynamicBindingMcpServerFactory",
+        _FakeDynamicBindingMcpServerFactory,
+    )
+
+    _seed_artifact(tmp_path, "unit-b")
+
+    ctx = make_worker_context(
+        same_workspace=SameWorkspaceContext(
+            repo_root=tmp_path,
+            mcp_factory=mcp_factory,  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+            executor_command=("python", "-m", "ralph"),
+        )
     )
 
     events = await run_fan_out(
         effect=effect,
-        executor=FakeAgentExecutor(
-            {"unit-a": FakeRun(outputs=["done"], exit_code=0, duration_ms=1)}
-        ),
+        executor=FakeAgentExecutor({}),
         display=display,
-        ctx=make_worker_context(isolation=isolation),
+        ctx=ctx,
     )
 
     assert events[-1] is PipelineEvent.ALL_WORKERS_COMPLETE
-    assert display.statuses["unit-a"][-1] is WorkerStatus.SUCCEEDED
-    assert worktree_manager.destroy_calls == ["unit-a"]
+    assert len(recorded_extra_envs) == 1
+    env = recorded_extra_envs[0]
+    assert "RALPH_WORKER_ARTIFACT_DIR" in env, (
+        "SubprocessAgentExecutor must receive RALPH_WORKER_ARTIFACT_DIR in extra_env"
+    )
+    expected_suffix = str(tmp_path / ".agent" / "workers" / "unit-b" / "artifacts")
+    assert env["RALPH_WORKER_ARTIFACT_DIR"] == expected_suffix, (
+        f"RALPH_WORKER_ARTIFACT_DIR must point to the per-worker artifact dir, "
+        f"got: {env['RALPH_WORKER_ARTIFACT_DIR']!r}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_fan_out_start_log_line(tmp_path: Path) -> None:
+    run_fan_out = _load_run_fan_out()
+    # Use empty work_units so fan_out returns immediately after emitting the log.
+    effect = FanOutDevelopmentEffect(work_units=(), max_workers=2)
+    display = RecordingDisplay()
+    ctx = make_worker_context(
+        same_workspace=SameWorkspaceContext(
+            repo_root=tmp_path,
+            mcp_factory=_RecordingMcpFactory(),  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+            executor_command=("python", "-m", "ralph"),
+        )
+    )
+
+    log_records: list[str] = []
+
+    class _CapturingHandler(logging.Handler):
+        def emit(self, record: logging.LogRecord) -> None:
+            log_records.append(self.format(record))
+
+    handler = _CapturingHandler()
+    handler_id = loguru.logger.add(handler, format="{message}", level="INFO")
+
+    try:
+        events = await run_fan_out(
+            effect=effect,
+            executor=FakeAgentExecutor({}),
+            display=display,
+            ctx=ctx,
+        )
+    finally:
+        loguru.logger.remove(handler_id)
+
+    assert events[-1] is PipelineEvent.ALL_WORKERS_COMPLETE
+
+    fan_out_logs = [r for r in log_records if "fan-out start" in r]
+    assert fan_out_logs, "Expected a 'fan-out start' log line from run_fan_out"
+    log_line = fan_out_logs[0]
+    assert "same_workspace" in log_line, f"Log must mention mode=same_workspace: {log_line!r}"
+    assert "units=0" in log_line, f"Log must mention units count: {log_line!r}"
+    assert str(tmp_path / ".agent" / "workers") in log_line, (
+        f"Log must mention namespace_root path: {log_line!r}"
+    )

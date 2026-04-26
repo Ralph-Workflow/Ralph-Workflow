@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
 from dataclasses import FrozenInstanceError, fields
 from typing import get_type_hints
 
@@ -10,7 +9,6 @@ import pytest
 
 from ralph.pipeline import effects
 from ralph.pipeline.work_units import WorkUnit
-from ralph.pipeline.worker_state import WorkerState
 
 
 def test_fan_out_effect_frozen() -> None:
@@ -20,26 +18,38 @@ def test_fan_out_effect_frozen() -> None:
         effect.max_workers = 3  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
 
 
-def test_merge_effect_frozen() -> None:
-    effect = effects.MergeIntegrationEffect(worker_states={}, base_branch="main")
-
-    with pytest.raises(FrozenInstanceError):
-        effect.base_branch = "develop"  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
-
-
 def test_fan_out_effect_fields() -> None:
     effect_fields = fields(effects.FanOutDevelopmentEffect)
     hints = get_type_hints(effects.FanOutDevelopmentEffect)
 
-    assert [field.name for field in effect_fields] == ["work_units", "max_workers"]
+    assert [field.name for field in effect_fields] == [
+        "work_units",
+        "max_workers",
+        "run_post_fanout_verification",
+    ]
     assert hints["work_units"] == tuple[WorkUnit, ...]
     assert hints["max_workers"] is int
+    assert hints["run_post_fanout_verification"] is bool
 
 
-def test_merge_effect_fields() -> None:
-    effect_fields = fields(effects.MergeIntegrationEffect)
-    hints = get_type_hints(effects.MergeIntegrationEffect)
+def test_fan_out_effect_run_post_fanout_verification_defaults_false() -> None:
+    effect = effects.FanOutDevelopmentEffect(work_units=(), max_workers=1)
+    assert effect.run_post_fanout_verification is False
 
-    assert [field.name for field in effect_fields] == ["worker_states", "base_branch"]
-    assert hints["worker_states"] == Mapping[str, WorkerState]
-    assert hints["base_branch"] is str
+
+def test_fan_out_effect_run_post_fanout_verification_settable() -> None:
+    effect = effects.FanOutDevelopmentEffect(
+        work_units=(), max_workers=1, run_post_fanout_verification=True
+    )
+    assert effect.run_post_fanout_verification is True
+
+
+def test_merge_integration_effect_not_in_effects() -> None:
+    assert not hasattr(effects, "MergeIntegrationEffect")
+
+
+def test_effect_union_does_not_include_merge_integration() -> None:
+    import typing  # noqa: PLC0415
+    args = typing.get_args(effects.Effect)
+    names = [getattr(t, "__name__", str(t)) for t in args]
+    assert "MergeIntegrationEffect" not in names

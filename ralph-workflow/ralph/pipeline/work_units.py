@@ -26,6 +26,11 @@ _UNIT_ID_MAX_LEN = 64
 # Token budget guard for planning artifact descriptions.
 MAX_DESCRIPTION_CHARS = 4096
 
+# Paths that workers must never declare as edit areas in same-workspace mode.
+RESERVED_EDIT_PATHS: frozenset[str] = frozenset(
+    {".agent", ".git", ".worktrees", ".", ""}
+)
+
 
 class WorkUnit(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     """Single planning work unit declaration."""
@@ -91,6 +96,80 @@ class WorkUnitsPlan(BaseModel):  # type: ignore[explicit-any]  # reason: externa
 
         _validate_acyclic(dependency_map)
         return self
+
+
+def validate_for_same_workspace(plan: WorkUnitsPlan) -> None:
+    """Validate that a plan is safe for same-workspace parallel execution.
+
+    Enforces rules that apply specifically when workers share the same checkout:
+    - Every unit must declare at least one allowed_directory.
+    - No unit may declare a reserved path (.agent, .git, .worktrees, ., "").
+    - No two units may have overlapping edit areas (prefix-overlap by path segments).
+
+    Raises:
+        WorkUnitsValidationError: with a human-readable message naming the problematic
+            units/paths and suggesting a fix.
+    """
+    for unit in plan.work_units:
+        if not unit.allowed_directories:
+            raise WorkUnitsValidationError(
+                f"Work unit '{unit.unit_id}' does not declare any allowed_directories. "
+                "Each unit must declare the subdirectories it is permitted to edit. "
+                "Choose disjoint subdirectories or merge the work units."
+            )
+        for d in unit.allowed_directories:
+            _check_reserved(unit.unit_id, d)
+
+    _check_no_overlap(plan.work_units)
+
+
+def _check_reserved(unit_id: str, directory: str) -> None:
+    p = PurePosixPath(directory)
+    if not p.parts:
+        raise WorkUnitsValidationError(
+            f"Work unit '{unit_id}' declares an empty allowed_directory. "
+            "The empty string is a reserved path. Choose a specific subdirectory."
+        )
+    first_part = p.parts[0] if p.parts else ""
+    normalized = str(p)
+    if normalized in RESERVED_EDIT_PATHS or first_part in {".agent", ".git", ".worktrees"}:
+        raise WorkUnitsValidationError(
+            f"Work unit '{unit_id}' declares reserved path {directory!r} as an edit area. "
+            "Reserved paths (.agent, .git, .worktrees, .) may not be declared as "
+            "allowed_directories. Choose a project-owned subdirectory."
+        )
+
+
+def _check_no_overlap(units: list[WorkUnit]) -> None:
+    """Detect prefix-overlap between any two units' allowed_directories."""
+    # Build a flat list of (unit_id, path_parts) sorted for deterministic errors
+    all_dirs: list[tuple[str, str, tuple[str, ...]]] = []
+    for unit in sorted(units, key=lambda u: u.unit_id):  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+        for d in sorted(unit.allowed_directories):
+            parts = PurePosixPath(d).parts
+            all_dirs.append((unit.unit_id, d, parts))
+
+    for i, (uid1, d1, p1) in enumerate(all_dirs):
+        for uid2, d2, p2 in all_dirs[i + 1 :]:
+            if uid1 == uid2:
+                continue
+            if _path_parts_overlap(p1, p2):
+                raise WorkUnitsValidationError(
+                    f"Work unit '{uid1}' edit area '{d1}' overlaps with "
+                    f"work unit '{uid2}' edit area '{d2}'. "
+                    "Choose disjoint subdirectories or merge the work units."
+                )
+
+
+def _path_parts_overlap(a: tuple[str, ...], b: tuple[str, ...]) -> bool:
+    """Return True only when one path is a strict prefix of the other (segment-aware).
+
+    'src/api' and 'src/api2' do NOT overlap (different second segment).
+    'src/api' and 'src/api/auth' DO overlap (a is a prefix of b).
+    'src/api' and 'src/api' DO overlap (exact match).
+    """
+    shorter, longer = (a, b) if len(a) <= len(b) else (b, a)
+    return longer[: len(shorter)] == shorter
 
 
 def _validate_relative_subpath(path: str) -> str:

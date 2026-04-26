@@ -310,10 +310,10 @@ ralph.pipeline.parallel.coordinator
    :members:
    :show-inheritance:
 
-ralph.pipeline.parallel.merge_integrator
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+ralph.pipeline.parallel.mode
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. automodule:: ralph.pipeline.parallel.merge_integrator
+.. automodule:: ralph.pipeline.parallel.mode
    :members:
    :show-inheritance:
 

@@ -7,6 +7,8 @@ import json
 from pathlib import Path
 from typing import Any, cast
 
+import pytest
+
 # Config imports for multimodal tests
 from ralph.config.mcp_models import McpConfig, MediaConfig
 from ralph.mcp.protocol import startup
@@ -16,7 +18,7 @@ from ralph.mcp.server import runtime as server_runtime
 from ralph.mcp.tools.coordination import ImageContent, ToolContent, ToolResult
 from ralph.mcp.tools.names import upstream_proxy_tool_name
 from ralph.mcp.upstream.client import HttpUpstreamClient, StdioUpstreamClient, make_upstream_client
-from ralph.mcp.upstream.config import UpstreamMcpServer
+from ralph.mcp.upstream.config import UPSTREAM_MCP_CONFIG_ENV, UpstreamMcpServer
 from ralph.mcp.upstream.models import UpstreamCallError
 from ralph.mcp.upstream.registry import UpstreamRegistry
 from ralph.phases import PhaseContext
@@ -32,6 +34,13 @@ _lazy_imports: dict[str, object] = {}
 
 HTTP_OK = 200
 HTTP_ACCEPTED = 202
+
+
+@pytest.fixture(autouse=True)
+def _isolate_from_upstream_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Prevent real upstream MCP servers (configured in dev env) from being
+    # loaded during tests. Each test provides its own upstream config if needed.
+    monkeypatch.delenv(UPSTREAM_MCP_CONFIG_ENV, raising=False)
 
 
 def _session(run_id: str = "run-1", capabilities: set[str] | None = None) -> AgentSession:

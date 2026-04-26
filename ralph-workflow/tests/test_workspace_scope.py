@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import TYPE_CHECKING
+
+import pytest
 
 from ralph.workspace.scope import WorkspaceScope, resolve_workspace_scope
 
 if TYPE_CHECKING:
-    import pytest
+    from pathlib import Path
 
 
 def test_resolve_workspace_scope_keeps_root_worktree_authority_local(
@@ -27,43 +28,104 @@ def test_resolve_workspace_scope_keeps_root_worktree_authority_local(
     assert scope.allowed_roots == (main_repo.resolve(),)
 
 
-def test_for_worktree_reroots() -> None:
-    worktree_path = Path("/repo/.worktrees/unit-A")
-    scope = WorkspaceScope.for_worktree(worktree_path, ("src", "tests/unit"))
-    assert scope.root == worktree_path.resolve()
+def test_for_same_workspace_worker_root_stays_at_repo_root(tmp_path: Path) -> None:
+    worker_ns = tmp_path / ".agent" / "workers" / "unit-A"
+    worker_ns.mkdir(parents=True)
+    scope = WorkspaceScope.for_same_workspace_worker(
+        repo_root=tmp_path,
+        allowed_directories=("src", "tests/unit"),
+        worker_namespace=worker_ns,
+    )
+    assert scope.root == tmp_path.resolve()
 
 
-def test_for_worktree_allowed_roots_under_worktree() -> None:
-    worktree_path = Path("/repo/.worktrees/unit-A")
-    scope = WorkspaceScope.for_worktree(worktree_path, ("src", "tests/unit"))
-    resolved_wt = str(worktree_path.resolve())
+def test_for_same_workspace_worker_allowed_roots_under_repo_root(tmp_path: Path) -> None:
+    worker_ns = tmp_path / ".agent" / "workers" / "unit-A"
+    worker_ns.mkdir(parents=True)
+    scope = WorkspaceScope.for_same_workspace_worker(
+        repo_root=tmp_path,
+        allowed_directories=("src", "tests/unit"),
+        worker_namespace=worker_ns,
+    )
+    resolved_root = tmp_path.resolve()
     for allowed_root in scope.allowed_roots:
-        assert str(allowed_root).startswith(resolved_wt)
+        assert str(allowed_root).startswith(str(resolved_root))
 
 
-def test_for_worktree_translates_directories() -> None:
-    worktree_path = Path("/repo/.worktrees/unit-B")
-    scope = WorkspaceScope.for_worktree(worktree_path, ("src", "docs"))
-    # root is always included in allowed_roots by WorkspaceScope.__init__
+def test_for_same_workspace_worker_does_not_include_repo_root_in_allowed_roots(
+    tmp_path: Path,
+) -> None:
+    """Same-workspace workers must NOT have the repo root in allowed_roots.
+
+    Workers are restricted to their declared edit areas plus their own
+    worker namespace. The repo root itself is NOT an allowed root.
+    """
+    worker_ns = tmp_path / ".agent" / "workers" / "unit-A"
+    worker_ns.mkdir(parents=True)
+    scope = WorkspaceScope.for_same_workspace_worker(
+        repo_root=tmp_path,
+        allowed_directories=("src", "tests/unit"),
+        worker_namespace=worker_ns,
+    )
+    # Repo root must NOT be in allowed_roots for same-workspace workers
+    assert tmp_path.resolve() not in scope.allowed_roots
+    # But the specific directories and worker namespace must be
+    assert (tmp_path / "src").resolve() in scope.allowed_roots
+    assert (tmp_path / "tests" / "unit").resolve() in scope.allowed_roots
+    assert worker_ns.resolve() in scope.allowed_roots
+
+
+def test_for_same_workspace_worker_translates_directories(tmp_path: Path) -> None:
+    worker_ns = tmp_path / ".agent" / "workers" / "unit-B"
+    worker_ns.mkdir(parents=True)
+    scope = WorkspaceScope.for_same_workspace_worker(
+        repo_root=tmp_path,
+        allowed_directories=("src", "docs"),
+        worker_namespace=worker_ns,
+    )
+    # Only the specific directories + worker namespace, NOT the repo root
     expected = {
-        worktree_path.resolve(),
-        (worktree_path / "src").resolve(),
-        (worktree_path / "docs").resolve(),
+        (tmp_path / "src").resolve(),
+        (tmp_path / "docs").resolve(),
+        worker_ns.resolve(),
     }
     assert set(scope.allowed_roots) == expected
 
 
-def test_for_worktree_original_scope_unmodified() -> None:
-    main_root = Path("/repo")
-    main_scope = WorkspaceScope(root=main_root, allowed_roots=(main_root / "src",))
-    worktree_path = Path("/repo/.worktrees/unit-C")
-    worktree_scope = WorkspaceScope.for_worktree(worktree_path, ("src",))
-    assert id(main_scope) != id(worktree_scope)
-    assert main_scope.root == main_root.resolve()
+def test_for_same_workspace_worker_empty_allowed_dirs(tmp_path: Path) -> None:
+    """Worker with no allowed directories can only write to its namespace."""
+    worker_ns = tmp_path / ".agent" / "workers" / "unit-D"
+    worker_ns.mkdir(parents=True)
+    scope = WorkspaceScope.for_same_workspace_worker(
+        repo_root=tmp_path,
+        allowed_directories=(),
+        worker_namespace=worker_ns,
+    )
+    # Only worker_namespace, NOT repo root
+    assert tmp_path.resolve() not in scope.allowed_roots
+    assert worker_ns.resolve() in scope.allowed_roots
+    assert len(scope.allowed_roots) == 1
 
 
-def test_for_worktree_empty_allowed_dirs() -> None:
-    worktree_path = Path("/repo/.worktrees/unit-D")
-    scope = WorkspaceScope.for_worktree(worktree_path, ())
-    # root is always included; no additional paths
-    assert scope.allowed_roots == (worktree_path.resolve(),)
+def test_for_same_workspace_worker_original_scope_unmodified(tmp_path: Path) -> None:
+    main_scope = WorkspaceScope(root=tmp_path, allowed_roots=(tmp_path / "src",))
+    worker_ns = tmp_path / ".agent" / "workers" / "unit-C"
+    worker_ns.mkdir(parents=True)
+    worker_scope = WorkspaceScope.for_same_workspace_worker(
+        repo_root=tmp_path,
+        allowed_directories=("src",),
+        worker_namespace=worker_ns,
+    )
+    assert id(main_scope) != id(worker_scope)
+    assert main_scope.root == tmp_path.resolve()
+
+
+def test_for_same_workspace_worker_rejects_escape_via_dotdot(tmp_path: Path) -> None:
+    worker_ns = tmp_path / ".agent" / "workers" / "unit-E"
+    worker_ns.mkdir(parents=True)
+    with pytest.raises(ValueError, match="escapes"):
+        WorkspaceScope.for_same_workspace_worker(
+            repo_root=tmp_path,
+            allowed_directories=("../outside",),
+            worker_namespace=worker_ns,
+        )

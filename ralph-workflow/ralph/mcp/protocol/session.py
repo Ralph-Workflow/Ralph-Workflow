@@ -4,9 +4,13 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 from ralph.mcp.protocol.capability_mapping import lookup_ralph_capability
 from ralph.mcp.protocol.env import MCP_ENDPOINT_ENV, MCP_RUN_ID_ENV
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 def _normalize_capability_token(value: str) -> str:
@@ -42,6 +46,7 @@ class AgentSession:
     created_at: float = field(default_factory=time.time)
     parallel_worker: bool = False
     edit_area_result: object = None
+    worker_artifact_dir: Path | None = None
 
     def check_capability(self, capability: str) -> object:
         return "approved" if session_has_capability(self.capabilities, capability) else "denied"

@@ -76,16 +76,10 @@ class WorkerFailedEvent:
     error: str
 
 
-@dataclass(frozen=True)
-class WorkersMergeConflictEvent:
-    conflicting_unit_ids: list[str]
-
-
 Event = (
     PipelineEvent
     | PhaseFailureEvent
     | WorkerStartedEvent
     | WorkerCompletedEvent
     | WorkerFailedEvent
-    | WorkersMergeConflictEvent
 )

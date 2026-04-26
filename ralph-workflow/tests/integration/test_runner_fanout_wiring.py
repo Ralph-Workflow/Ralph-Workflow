@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import MagicMock
 
@@ -18,7 +17,11 @@ from ralph.workspace.scope import WorkspaceScope
 
 
 def _make_work_unit(unit_id: str) -> WorkUnit:
-    return WorkUnit(unit_id=unit_id, description=f"Work unit {unit_id}")
+    return WorkUnit(
+        unit_id=unit_id,
+        description=f"Work unit {unit_id}",
+        allowed_directories=[f"src/{unit_id}"],
+    )
 
 
 def _make_policy_bundle(max_workers: int = 4) -> MagicMock:
@@ -92,7 +95,9 @@ class TestFanOutRouting:
         assert effect.phase == PHASE_PLANNING
 
 
-def test_execute_fan_out_sync_wires_signal_handlers_and_isolation(monkeypatch, tmp_path) -> None:
+def test_execute_fan_out_sync_wires_signal_handlers_and_same_workspace_context(
+    monkeypatch, tmp_path
+) -> None:
     unit = _make_work_unit("unit-a")
     effect = FanOutDevelopmentEffect(work_units=(unit,), max_workers=1)
     state = PipelineState(phase=PHASE_DEVELOPMENT, work_units=(unit,))
@@ -101,16 +106,11 @@ def test_execute_fan_out_sync_wires_signal_handlers_and_isolation(monkeypatch, t
     install_calls: list[tuple[object, object, object]] = []
     coordinator_calls: list[dict[str, object]] = []
     executor_calls: list[dict[str, object]] = []
-    worktree_manager_calls: list[dict[str, object]] = []
     mcp_factory_calls: list[dict[str, object]] = []
 
     class _FakeExecutor:
         def __init__(self, command, signal_bridge=None) -> None:
             executor_calls.append({"command": tuple(command), "signal_bridge": signal_bridge})
-
-    class _FakeWorktreeManager:
-        def __init__(self, repo_root) -> None:
-            worktree_manager_calls.append({"repo_root": repo_root})
 
     class _FakeMcpFactory:
         def __init__(self, workspace) -> None:
@@ -123,17 +123,12 @@ def test_execute_fan_out_sync_wires_signal_handlers_and_isolation(monkeypatch, t
         coordinator_calls.append(kwargs)
         return []
 
-    async def _fake_integrate(**kwargs):
-        return SimpleNamespace(events=[])
-
     monkeypatch.setattr("ralph.interrupt.asyncio_bridge.install_signal_handlers", _fake_install)
     monkeypatch.setattr("ralph.agents.subprocess_executor.SubprocessAgentExecutor", _FakeExecutor)
-    monkeypatch.setattr("ralph.git.worktree_manager.WorktreeManager", _FakeWorktreeManager)
     monkeypatch.setattr(
         "ralph.mcp.server.factory_impl.DynamicBindingMcpServerFactory", _FakeMcpFactory
     )
     monkeypatch.setattr("ralph.pipeline.parallel.coordinator.run_fan_out", _fake_run_fan_out)
-    monkeypatch.setattr("ralph.pipeline.parallel.merge_integrator.integrate", _fake_integrate)
     monkeypatch.setattr(runner_module.ckpt, "save", lambda _state: None)
 
     runner_module._execute_fan_out_sync(
@@ -147,10 +142,9 @@ def test_execute_fan_out_sync_wires_signal_handlers_and_isolation(monkeypatch, t
     assert len(install_calls) == 1
     assert len(executor_calls) == 1
     assert executor_calls[0]["signal_bridge"] is install_calls[0][2]
-    assert worktree_manager_calls[0]["repo_root"] == tmp_path.resolve()
     assert mcp_factory_calls
     ctx = cast("Any", coordinator_calls[0]["ctx"])
-    assert ctx.isolation is not None
+    assert ctx.same_workspace is not None
 
 
 def test_execute_fan_out_sync_converts_unexpected_coordinator_error_to_failed_recovery_state(
@@ -166,10 +160,6 @@ def test_execute_fan_out_sync_converts_unexpected_coordinator_error_to_failed_re
         def __init__(self, command, signal_bridge=None) -> None:
             del command, signal_bridge
 
-    class _FakeWorktreeManager:
-        def __init__(self, repo_root) -> None:
-            del repo_root
-
     class _FakeMcpFactory:
         def __init__(self, workspace) -> None:
             del workspace
@@ -182,7 +172,6 @@ def test_execute_fan_out_sync_converts_unexpected_coordinator_error_to_failed_re
         "ralph.interrupt.asyncio_bridge.install_signal_handlers", lambda *args: None
     )
     monkeypatch.setattr("ralph.agents.subprocess_executor.SubprocessAgentExecutor", _FakeExecutor)
-    monkeypatch.setattr("ralph.git.worktree_manager.WorktreeManager", _FakeWorktreeManager)
     monkeypatch.setattr(
         "ralph.mcp.server.factory_impl.DynamicBindingMcpServerFactory", _FakeMcpFactory
     )
@@ -227,10 +216,6 @@ def test_execute_fan_out_sync_requeues_running_workers_via_reducer_event(
         def __init__(self, command, signal_bridge=None) -> None:
             del command, signal_bridge
 
-    class _FakeWorktreeManager:
-        def __init__(self, repo_root) -> None:
-            del repo_root
-
     class _FakeMcpFactory:
         def __init__(self, workspace) -> None:
             del workspace
@@ -238,10 +223,6 @@ def test_execute_fan_out_sync_requeues_running_workers_via_reducer_event(
     async def _fake_run_fan_out(**kwargs):
         del kwargs
         return []
-
-    async def _fake_integrate(**kwargs):
-        del kwargs
-        return SimpleNamespace(events=[])
 
     def _recording_reduce(current_state, event, pipeline_policy=None):
         seen_events.append(event)
@@ -251,12 +232,10 @@ def test_execute_fan_out_sync_requeues_running_workers_via_reducer_event(
         "ralph.interrupt.asyncio_bridge.install_signal_handlers", lambda *args: None
     )
     monkeypatch.setattr("ralph.agents.subprocess_executor.SubprocessAgentExecutor", _FakeExecutor)
-    monkeypatch.setattr("ralph.git.worktree_manager.WorktreeManager", _FakeWorktreeManager)
     monkeypatch.setattr(
         "ralph.mcp.server.factory_impl.DynamicBindingMcpServerFactory", _FakeMcpFactory
     )
     monkeypatch.setattr("ralph.pipeline.parallel.coordinator.run_fan_out", _fake_run_fan_out)
-    monkeypatch.setattr("ralph.pipeline.parallel.merge_integrator.integrate", _fake_integrate)
     monkeypatch.setattr(runner_module, "reducer_reduce", _recording_reduce)
     monkeypatch.setattr(runner_module.ckpt, "save", lambda _state: None)
 
@@ -294,10 +273,6 @@ def test_execute_fan_out_sync_uses_parallel_display_subscriber_when_not_provided
         def __init__(self, command, signal_bridge=None) -> None:
             del command, signal_bridge
 
-    class _FakeWorktreeManager:
-        def __init__(self, repo_root) -> None:
-            del repo_root
-
     class _FakeMcpFactory:
         def __init__(self, workspace) -> None:
             del workspace
@@ -306,21 +281,15 @@ def test_execute_fan_out_sync_uses_parallel_display_subscriber_when_not_provided
         del kwargs
         return [PipelineEvent.AGENT_SUCCESS]
 
-    async def _fake_integrate(**kwargs):
-        del kwargs
-        return SimpleNamespace(events=[PipelineEvent.ALL_WORKERS_COMPLETE])
-
     monkeypatch.setattr(
         "ralph.interrupt.asyncio_bridge.install_signal_handlers", lambda *args: None
     )
     monkeypatch.setattr("ralph.display.parallel_display.ParallelDisplay", _FakeParallelDisplay)
     monkeypatch.setattr("ralph.agents.subprocess_executor.SubprocessAgentExecutor", _FakeExecutor)
-    monkeypatch.setattr("ralph.git.worktree_manager.WorktreeManager", _FakeWorktreeManager)
     monkeypatch.setattr(
         "ralph.mcp.server.factory_impl.DynamicBindingMcpServerFactory", _FakeMcpFactory
     )
     monkeypatch.setattr("ralph.pipeline.parallel.coordinator.run_fan_out", _fake_run_fan_out)
-    monkeypatch.setattr("ralph.pipeline.parallel.merge_integrator.integrate", _fake_integrate)
     monkeypatch.setattr(
         runner_module,
         "reducer_reduce",
@@ -337,7 +306,8 @@ def test_execute_fan_out_sync_uses_parallel_display_subscriber_when_not_provided
         dashboard_subscriber=None,
     )
 
-    assert notified_phases == [state.phase, state.phase, state.phase]
+    # WORKERS_RESUMED notification + one per fan_out_events entry (AGENT_SUCCESS)
+    assert notified_phases == [state.phase, state.phase]
 
 
 def test_execute_fan_out_sync_notifies_dashboard_subscriber_after_each_reduce(
@@ -359,10 +329,6 @@ def test_execute_fan_out_sync_notifies_dashboard_subscriber_after_each_reduce(
         def __init__(self, command, signal_bridge=None) -> None:
             del command, signal_bridge
 
-    class _FakeWorktreeManager:
-        def __init__(self, repo_root) -> None:
-            del repo_root
-
     class _FakeMcpFactory:
         def __init__(self, workspace) -> None:
             del workspace
@@ -370,10 +336,6 @@ def test_execute_fan_out_sync_notifies_dashboard_subscriber_after_each_reduce(
     async def _fake_run_fan_out(**kwargs):
         del kwargs
         return [PipelineEvent.AGENT_SUCCESS]
-
-    async def _fake_integrate(**kwargs):
-        del kwargs
-        return SimpleNamespace(events=[PipelineEvent.ALL_WORKERS_COMPLETE])
 
     def _recording_reduce(current_state, event, pipeline_policy=None):
         del event, pipeline_policy
@@ -385,12 +347,10 @@ def test_execute_fan_out_sync_notifies_dashboard_subscriber_after_each_reduce(
         "ralph.interrupt.asyncio_bridge.install_signal_handlers", lambda *args: None
     )
     monkeypatch.setattr("ralph.agents.subprocess_executor.SubprocessAgentExecutor", _FakeExecutor)
-    monkeypatch.setattr("ralph.git.worktree_manager.WorktreeManager", _FakeWorktreeManager)
     monkeypatch.setattr(
         "ralph.mcp.server.factory_impl.DynamicBindingMcpServerFactory", _FakeMcpFactory
     )
     monkeypatch.setattr("ralph.pipeline.parallel.coordinator.run_fan_out", _fake_run_fan_out)
-    monkeypatch.setattr("ralph.pipeline.parallel.merge_integrator.integrate", _fake_integrate)
     monkeypatch.setattr(runner_module, "reducer_reduce", _recording_reduce)
     monkeypatch.setattr(runner_module.ckpt, "save", lambda _state: None)
 

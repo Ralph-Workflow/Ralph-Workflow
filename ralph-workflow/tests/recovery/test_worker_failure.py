@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from ralph.config.enums import PHASE_DEVELOPMENT, PHASE_FAILED
-from ralph.pipeline.events import WorkerFailedEvent, WorkersMergeConflictEvent
+from ralph.config.enums import PHASE_DEVELOPMENT
+from ralph.pipeline.events import WorkerFailedEvent
 from ralph.pipeline.reducer import reduce
 from ralph.pipeline.state import AgentChainState, PipelineState
 from ralph.pipeline.work_units import WorkUnit
@@ -58,32 +58,6 @@ def test_single_worker_failure_sets_failed_status() -> None:
     # Pipeline phase unchanged — worker failures don't terminate
     assert new_state.phase == PHASE_DEVELOPMENT
     assert effects == []
-
-
-def test_merge_conflict_enters_phase_failed_with_descriptive_reason() -> None:
-    """WorkersMergeConflictEvent routes to PHASE_FAILED with a descriptive reason."""
-    state = _make_state_with_workers(["w1", "w2"])
-
-    event = WorkersMergeConflictEvent(conflicting_unit_ids=["w1", "w2"])
-    new_state, _ = reduce(state, event, None)
-
-    assert new_state.phase == PHASE_FAILED
-    assert new_state.last_error is not None
-    assert "Merge conflict in workers" in new_state.last_error
-    assert "w1" in new_state.last_error
-    assert "w2" in new_state.last_error
-
-
-def test_merge_conflict_reason_is_non_sentinel() -> None:
-    """WorkersMergeConflictEvent reason must not be a forbidden sentinel."""
-    state = _make_state_with_workers(["worker-alpha"])
-    event = WorkersMergeConflictEvent(conflicting_unit_ids=["worker-alpha"])
-    new_state, _ = reduce(state, event, None)
-
-    last_err = new_state.last_error
-    assert last_err is not None
-    assert last_err not in ("Unknown failure", "unknown failure", "None", "null", "")
-    assert len(last_err) > _MIN_ERROR_LEN
 
 
 def test_worker_failure_preserves_work_units() -> None:
@@ -155,32 +129,6 @@ def test_worker_failure_with_agent_timeout_routes_through_recovery() -> None:
     assert len(collected) == 1
 
 
-def test_merge_conflict_routes_through_recovery_controller() -> None:
-    """WorkersMergeConflictEvent routes through RecoveryController when provided.
-
-    This ensures merge conflicts are classified and attributed through the
-    centralized recovery path rather than bypassing it.
-    """
-    bus = FailureEventBus()
-    collected: list[FailureEvent] = []
-    bus.subscribe(lambda evt: collected.append(evt) if isinstance(evt, FailureEvent) else None)
-
-    registry = AgentBudgetRegistry().set_budget(
-        PHASE_DEVELOPMENT, "claude", max_retries=3
-    )
-    controller = RecoveryController(cycle_cap=10, event_bus=bus, budget_registry=registry)
-
-    state = _make_state_with_workers_and_chain(["w1", "w2"], agents=["claude"])
-
-    event = WorkersMergeConflictEvent(conflicting_unit_ids=["w1", "w2"])
-    _, _ = reduce(state, event, None, recovery=controller)
-
-    # Merge conflict failure event was published
-    assert len(collected) == 1
-    # Failure was attributed to the phase
-    assert collected[0].phase == PHASE_DEVELOPMENT
-
-
 def test_worker_failure_legacy_path_without_recovery_controller() -> None:
     """WorkerFailedEvent uses legacy path when no RecoveryController is provided.
 
@@ -197,19 +145,3 @@ def test_worker_failure_legacy_path_without_recovery_controller() -> None:
     # Phase unchanged
     assert new_state.phase == PHASE_DEVELOPMENT
     assert effects == []
-
-
-def test_merge_conflict_legacy_path_without_recovery_controller() -> None:
-    """WorkersMergeConflictEvent uses legacy path when no RecoveryController is provided.
-
-    This preserves backward compatibility - merge conflicts still enter PHASE_FAILED
-    even without the RecoveryController.
-    """
-    state = _make_state_with_workers(["w1", "w2"])
-
-    event = WorkersMergeConflictEvent(conflicting_unit_ids=["w1", "w2"])
-    new_state, _ = reduce(state, event, None, recovery=None)
-
-    # Should enter PHASE_FAILED via legacy path
-    assert new_state.phase == PHASE_FAILED
-    assert "Merge conflict in workers" in new_state.last_error

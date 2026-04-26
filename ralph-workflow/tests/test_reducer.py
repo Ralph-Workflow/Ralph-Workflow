@@ -10,9 +10,9 @@ import pytest
 from ralph.config.enums import (
     PHASE_COMPLETE,
     PHASE_DEVELOPMENT,
+    PHASE_DEVELOPMENT_ANALYSIS,
     PHASE_FAILED,
     PHASE_FIX,
-    PHASE_MERGE_INTEGRATION,
     PHASE_REVIEW,
     PHASE_REVIEW_COMMIT,
     PipelinePhase,
@@ -22,7 +22,6 @@ from ralph.pipeline.events import (
     PipelineEvent,
     WorkerCompletedEvent,
     WorkerFailedEvent,
-    WorkersMergeConflictEvent,
     WorkerStartedEvent,
 )
 from ralph.pipeline.reducer import reduce as reducer_reduce
@@ -1071,8 +1070,8 @@ def test_worker_failed_unknown_unit_id_is_no_op() -> None:
     assert effects == []
 
 
-def test_all_workers_complete_advances_to_merge_integration() -> None:
-    """ALL_WORKERS_COMPLETE should advance phase to MERGE_INTEGRATION when all succeeded."""
+def test_all_workers_complete_advances_to_development_analysis() -> None:
+    """ALL_WORKERS_COMPLETE should advance phase to DEVELOPMENT_ANALYSIS when all succeeded."""
     states = {
         "u1": WorkerState(unit_id="u1", status=WorkerStatus.SUCCEEDED),
         "u2": WorkerState(unit_id="u2", status=WorkerStatus.SUCCEEDED),
@@ -1085,7 +1084,7 @@ def test_all_workers_complete_advances_to_merge_integration() -> None:
     new_state, effects = _reduce(state, PipelineEvent.ALL_WORKERS_COMPLETE)
 
     assert effects == []
-    assert new_state.phase == PHASE_MERGE_INTEGRATION
+    assert new_state.phase == PHASE_DEVELOPMENT_ANALYSIS
 
 
 def test_all_workers_complete_no_op_if_any_not_succeeded() -> None:
@@ -1123,46 +1122,6 @@ def test_workers_resumed_requeues_running_workers_as_pending() -> None:
     assert effects == []
     assert new_state.worker_states["u1"].status == WorkerStatus.PENDING
     assert new_state.worker_states["u2"].status == WorkerStatus.SUCCEEDED
-
-
-def test_merge_conflict_fails_phase() -> None:
-    """WORKERS_MERGE_CONFLICT should transition phase to PHASE_FAILED with unit_ids."""
-    states = {
-        "u1": WorkerState(unit_id="u1", status=WorkerStatus.SUCCEEDED),
-        "u2": WorkerState(unit_id="u2", status=WorkerStatus.SUCCEEDED),
-    }
-    state = PipelineState(
-        phase=PHASE_MERGE_INTEGRATION,
-        work_units=_make_work_units("u1", "u2"),
-        worker_states=states,
-    )
-    new_state, effects = _reduce(
-        state,
-        WorkersMergeConflictEvent(conflicting_unit_ids=["u1", "u2"]),
-    )
-
-    assert effects == []
-    assert new_state.phase == PHASE_FAILED
-    assert new_state.recovery_epoch == 1
-    assert new_state.last_error is not None
-    assert "u1" in new_state.last_error
-    assert "u2" in new_state.last_error
-
-
-def test_merge_conflict_preserves_worker_states() -> None:
-    """WORKERS_MERGE_CONFLICT should not drop existing worker_states."""
-    ws = WorkerState(unit_id="u1", status=WorkerStatus.SUCCEEDED)
-    state = PipelineState(
-        phase=PHASE_MERGE_INTEGRATION,
-        work_units=_make_work_units("u1"),
-        worker_states={"u1": ws},
-    )
-    new_state, _ = _reduce(
-        state,
-        WorkersMergeConflictEvent(conflicting_unit_ids=["u1"]),
-    )
-
-    assert "u1" in new_state.worker_states
 
 
 # ---------------------------------------------------------------------------

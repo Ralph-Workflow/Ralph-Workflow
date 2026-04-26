@@ -27,7 +27,8 @@ class WorkerState(BaseModel):  # type: ignore[explicit-any]  # reason: external 
         exit_code: Process exit code, if finished.
         error_message: Human-readable error description, if failed.
         commit_sha: Git commit SHA produced by this worker, if any.
-        worktree_path: Filesystem path to the worker's git worktree.
+        worker_namespace: Filesystem path to the worker's per-worker namespace
+            under ``.agent/workers/<unit_id>/`` in the shared checkout.
         log_file: Path to the worker's log file.
     """
 
@@ -40,7 +41,7 @@ class WorkerState(BaseModel):  # type: ignore[explicit-any]  # reason: external 
     exit_code: int | None = None
     error_message: str | None = None
     commit_sha: str | None = None
-    worktree_path: str | None = None
+    worker_namespace: str | None = None
     log_file: str | None = None
 
     def copy_with(self, **updates: object) -> "WorkerState":

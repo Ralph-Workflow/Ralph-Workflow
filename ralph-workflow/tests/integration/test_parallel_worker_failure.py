@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 
-from ralph.config.enums import PHASE_DEVELOPMENT, PHASE_MERGE_INTEGRATION
+from ralph.config.enums import PHASE_DEVELOPMENT
 from ralph.pipeline.effects import FanOutDevelopmentEffect
 from ralph.pipeline.events import (
     Event,
@@ -113,7 +113,6 @@ def test_failed_state_transitions_reflect_failure() -> None:
         reduced_state, _ = reducer_reduce(reduced_state, event)
 
     assert reduced_state.phase == PHASE_DEVELOPMENT
-    assert reduced_state.phase != PHASE_MERGE_INTEGRATION
     assert reduced_state.worker_states["unit-A"].status == WorkerStatus.FAILED
     assert reduced_state.worker_states["unit-B"].status == WorkerStatus.FAILED
     assert reduced_state.worker_states["unit-C"].status == WorkerStatus.FAILED
