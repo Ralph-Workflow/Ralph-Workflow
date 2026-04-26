@@ -33,7 +33,12 @@ from ralph.agents.execution_state import (
     OpenCodeExecutionStrategy,
     strategy_for_transport,
 )
-from ralph.agents.idle_watchdog import IdleWatchdog, WatchdogConfig, WatchdogVerdict
+from ralph.agents.idle_watchdog import (
+    IdleWatchdog,
+    WatchdogConfig,
+    WatchdogFireReason,
+    WatchdogVerdict,
+)
 from ralph.agents.timeout_clock import Clock, SystemClock
 from ralph.config.enums import AgentTransport
 from ralph.mcp.protocol.startup import (
@@ -74,6 +79,8 @@ class InvokeOptions:
         workspace_path: Optional path to workspace for file-change monitoring.
         extra_env: Optional environment overrides for the subprocess.
         idle_timeout_seconds: Optional maximum idle time without agent output.
+        drain_window_seconds: Optional drain window duration in seconds.
+        max_waiting_on_child_seconds: Optional ceiling on cumulative WAITING_ON_CHILD time.
     """
 
     model_flag: str | None = None
@@ -83,6 +90,8 @@ class InvokeOptions:
     workspace_path: Path | None = None
     extra_env: dict[str, str] | None = None
     idle_timeout_seconds: float | None = None
+    drain_window_seconds: float | None = None
+    max_waiting_on_child_seconds: float | None = None
     pure: bool = False
     system_prompt_file: str | None = None
     phase: str | None = None
@@ -148,9 +157,15 @@ class _ObserverProtocol(_HasStop, Protocol):
 class _IdleStreamTimeoutError(RuntimeError):
     """Raised when an agent process stops producing output for too long."""
 
-    def __init__(self, timeout_seconds: float) -> None:
+    def __init__(self, timeout_seconds: float, reason: WatchdogFireReason) -> None:
         self.timeout_seconds = timeout_seconds
-        super().__init__(f"Agent produced no output for {timeout_seconds:.0f}s")
+        self.reason = reason
+        if reason == WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG:
+            duration = f"{timeout_seconds:.0f}s"
+            msg = f"Agent kept child agents alive without producing output for {duration}"
+        else:
+            msg = f"Agent produced no output for {timeout_seconds:.0f}s"
+        super().__init__(msg)
 
 
 class AgentInvocationError(Exception):
@@ -201,12 +216,20 @@ class AgentInactivityTimeoutError(AgentInvocationError):
         agent_name: str,
         timeout_seconds: float,
         parsed_output: list[str] | None = None,
+        *,
+        reason: WatchdogFireReason | None = None,
     ) -> None:
         self.timeout_seconds = timeout_seconds
+        self.reason = reason
+        if reason == WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG:
+            duration = f"{timeout_seconds:.0f}s"
+            stderr_msg = f"Agent kept child agents alive without producing output for {duration}"
+        else:
+            stderr_msg = f"Agent produced no output for {timeout_seconds:.0f}s"
         super().__init__(
             agent_name,
             -1,
-            f"Agent produced no output for {timeout_seconds:.0f}s",
+            stderr_msg,
             parsed_output,
         )
 
@@ -393,6 +416,8 @@ def invoke_agent(
             runtime_env,
             opts.workspace_path,
             idle_timeout_seconds=opts.idle_timeout_seconds,
+            drain_window_seconds=opts.drain_window_seconds,
+            max_waiting_on_child_seconds=opts.max_waiting_on_child_seconds,
             execution_strategy=execution_strategy,
             liveness_probe=liveness_probe,
             phase=opts.phase,
@@ -429,6 +454,8 @@ def _run_subprocess_and_read_lines(  # noqa: PLR0913
     workspace_path: Path | None,
     *,
     idle_timeout_seconds: float | None = None,
+    drain_window_seconds: float | None = None,
+    max_waiting_on_child_seconds: float | None = None,
     execution_strategy: GenericExecutionStrategy | OpenCodeExecutionStrategy | None = None,
     liveness_probe: LivenessProbe | None = None,
     phase: str | None = None,
@@ -467,6 +494,8 @@ def _run_subprocess_and_read_lines(  # noqa: PLR0913
         lines_iter = _read_lines_from_process(
             handle,
             idle_timeout_seconds=idle_timeout_seconds,
+            drain_window_seconds=drain_window_seconds,
+            max_waiting_on_child_seconds=max_waiting_on_child_seconds,
             execution_strategy=strategy,
             liveness_probe=probe,
             _clock=clock,
@@ -493,6 +522,7 @@ def _run_subprocess_and_read_lines(  # noqa: PLR0913
                     _agent_command_name(config),
                     exc.timeout_seconds,
                     parsed_output,
+                    reason=exc.reason,
                 ) from exc
         else:
             try:
@@ -504,6 +534,7 @@ def _run_subprocess_and_read_lines(  # noqa: PLR0913
                     _agent_command_name(config),
                     exc.timeout_seconds,
                     parsed_output,
+                    reason=exc.reason,
                 ) from exc
 
         handle.wait()
@@ -624,10 +655,12 @@ def _agent_command_name(config: AgentConfig) -> str:
     return config.cmd.split()[0]
 
 
-def _read_lines_from_process(
+def _read_lines_from_process(  # noqa: PLR0913, PLR0915
     handle: ManagedProcess,
     *,
     idle_timeout_seconds: float | None = None,
+    drain_window_seconds: float | None = None,
+    max_waiting_on_child_seconds: float | None = None,
     execution_strategy: GenericExecutionStrategy | OpenCodeExecutionStrategy | None = None,
     liveness_probe: LivenessProbe | None = None,
     _clock: Clock | None = None,
@@ -637,6 +670,8 @@ def _read_lines_from_process(
     Args:
         handle: Running managed process.
         idle_timeout_seconds: Optional maximum idle time without output.
+        drain_window_seconds: Optional drain window before firing on no-output path.
+        max_waiting_on_child_seconds: Optional ceiling on cumulative WAITING_ON_CHILD time.
         _clock: Injectable Clock for testing; production callers omit this.
 
     Yields:
@@ -648,25 +683,39 @@ def _read_lines_from_process(
     lines_event = threading.Event()
     clock: Clock = _clock or SystemClock()
 
+    _drain_window = drain_window_seconds if drain_window_seconds is not None else 0.5
+    _max_waiting = (
+        max_waiting_on_child_seconds
+        if max_waiting_on_child_seconds is not None
+        else 1800.0
+    )
     watchdog_config = WatchdogConfig(
         idle_timeout_seconds=idle_timeout_seconds,
-        drain_window_seconds=0.5,
-        max_waiting_on_child_seconds=(
-            max(1800.0, idle_timeout_seconds * 6) if idle_timeout_seconds is not None else 1800.0
-        ),
+        drain_window_seconds=_drain_window,
+        max_waiting_on_child_seconds=_max_waiting,
     )
     watchdog = IdleWatchdog(watchdog_config, clock)
 
+    reader_done: list[bool] = [False]  # mutable for closure capture
+
     def read_lines_thread() -> None:
         if stdout_pipe is None:
+            with lines_lock:
+                reader_done[0] = True
+            lines_event.set()
             return
         try:
             for line in stdout_pipe:
+                # Append and set under the same lock so the main loop never
+                # misses a line between the queue check and the wait_for_event call.
                 with lines_lock:
                     lines_queue.append(line)
+                    lines_event.set()
         except Exception:
             pass
         finally:
+            with lines_lock:
+                reader_done[0] = True
             lines_event.set()
 
     reader = threading.Thread(target=read_lines_thread, daemon=True)
@@ -676,17 +725,24 @@ def _read_lines_from_process(
     probe: LivenessProbe = liveness_probe or DefaultLivenessProbe()
 
     while True:
+        # Clear event BEFORE checking queue+done so we cannot miss a set() that
+        # races between the check and the wait_for_event call below.
+        lines_event.clear()
+
         queued_line: str | None = None
+        is_done = False
         with lines_lock:
             if lines_queue:
                 queued_line = lines_queue.pop(0)
+            elif reader_done[0]:
+                is_done = True
 
         if queued_line is not None:
             watchdog.record_activity()
             yield queued_line
             continue
 
-        if lines_event.is_set():
+        if is_done:
             break
 
         verdict = watchdog.evaluate(
@@ -694,15 +750,24 @@ def _read_lines_from_process(
         )
         if verdict == WatchdogVerdict.FIRE:
             assert idle_timeout_seconds is not None
+            fire_reason = watchdog.last_fire_reason
+            assert fire_reason is not None
+            logger.warning(
+                "idle watchdog firing reason={} idle_elapsed={}s cumulative_waiting={}s",
+                fire_reason,
+                round(clock.monotonic(), 1),
+                round(watchdog.cumulative_waiting_on_child_seconds, 1),
+            )
             # Drain any lines that arrived just before the FIRE verdict
             with lines_lock:
                 pending = list(lines_queue)
                 lines_queue.clear()
             yield from pending
             handle.terminate(grace_period_s=0.5)
-            raise _IdleStreamTimeoutError(idle_timeout_seconds)
+            raise _IdleStreamTimeoutError(idle_timeout_seconds, fire_reason)
 
-        clock.sleep(_IDLE_POLL_INTERVAL_SECONDS)
+        # Wake immediately when a line arrives; FakeClock just advances time.
+        clock.wait_for_event(lines_event, _IDLE_POLL_INTERVAL_SECONDS)
 
     reader.join(timeout=10)
 

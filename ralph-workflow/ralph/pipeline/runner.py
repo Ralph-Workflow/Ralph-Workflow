@@ -2078,6 +2078,8 @@ def _execute_agent_effect(  # noqa: PLR0913
                     MCP_RUN_ID_ENV: session.run_id,
                 },
                 idle_timeout_seconds=config.general.agent_idle_timeout_seconds,
+                drain_window_seconds=config.general.agent_idle_drain_window_seconds,
+                max_waiting_on_child_seconds=config.general.agent_idle_max_waiting_on_child_seconds,
                 session_id=resume_session_id,
                 system_prompt_file=system_prompt_file,
                 phase=str(effect.phase),

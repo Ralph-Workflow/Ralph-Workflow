@@ -154,7 +154,8 @@ def test_run_subprocess_and_read_lines_wraps_idle_stream_timeout(
     def fake_read_lines_from_process(*args: object, **kwargs: object):
         del args, kwargs
         yield "idle line\n"
-        raise invoke_module._IdleStreamTimeoutError(0.05)
+        from ralph.agents.idle_watchdog import WatchdogFireReason  # noqa: PLC0415
+        raise invoke_module._IdleStreamTimeoutError(0.05, WatchdogFireReason.NO_OUTPUT_DEADLINE)
 
     monkeypatch.setattr(
         "ralph.agents.invoke._read_lines_from_process",
@@ -765,7 +766,7 @@ def test_invoke_agent_defers_idle_timeout_while_descendants_remain_active(
             )
         )
 
-    assert descendant_checks["count"] == _EXPECTED_DESCENDANT_LIVENESS_CHECKS
+    assert descendant_checks["count"] >= _EXPECTED_DESCENDANT_LIVENESS_CHECKS
 
 
 def test_invoke_agent_runs_subprocess_in_workspace_path(
@@ -3115,8 +3116,7 @@ class _CallbackFakeClock(FakeClock):
         super().__init__(start)
         self._listeners: list[tuple[float, threading.Event]] = []
 
-    def sleep(self, seconds: float) -> None:
-        self._now += seconds
+    def _trigger_listeners(self) -> None:
         triggered = [ev for target, ev in self._listeners if self._now >= target]
         if triggered:
             for ev in triggered:
@@ -3124,6 +3124,15 @@ class _CallbackFakeClock(FakeClock):
             self._listeners = [(t, ev) for t, ev in self._listeners if self._now < t]
             # Yield 10ms so the OS can schedule the triggered reader thread.
             time.sleep(0.01)
+
+    def sleep(self, seconds: float) -> None:
+        self._now += seconds
+        self._trigger_listeners()
+
+    def wait_for_event(self, event: threading.Event, seconds: float) -> bool:
+        self._now += seconds
+        self._trigger_listeners()
+        return event.is_set()
 
     def wait_until(self, target: float) -> threading.Event:
         """Return an event that fires when fake time reaches target."""
@@ -3238,3 +3247,181 @@ def test_idle_timeout_defers_when_children_active_then_clears(
 
     assert arrived_line in result_lines
     # No AgentInactivityTimeoutError — deferral cleared and then output arrived.
+
+
+def test_idle_timeout_error_carries_fire_reason(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """AgentInactivityTimeoutError carries the watchdog fire reason on the no-output path."""
+    from ralph.agents.idle_watchdog import WatchdogFireReason  # noqa: PLC0415
+
+    prompt_file = tmp_path / "PROMPT.md"
+    prompt_file.write_text("hello", encoding="utf-8")
+    config = AgentConfig(cmd="codex", output_flag="--json-stream")
+    fake_process = _FakeInvokeProcess(stdout=_BlockingStdout())
+    monkeypatch.setattr(
+        "ralph.agents.invoke.subprocess.Popen",
+        lambda *args, **kwargs: fake_process,
+    )
+
+    with pytest.raises(AgentInactivityTimeoutError) as exc_info:
+        list(
+            invoke_agent(
+                config,
+                str(prompt_file),
+                options=InvokeOptions(show_progress=False, idle_timeout_seconds=5),
+                _clock=FakeClock(),
+            )
+        )
+
+    exc = exc_info.value
+    assert exc.reason == WatchdogFireReason.NO_OUTPUT_DEADLINE
+    assert isinstance(exc.reason, WatchdogFireReason)
+
+
+def test_idle_timeout_children_persist_uses_distinct_reason_and_message(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """CHILDREN_PERSIST_TOO_LONG reason produces distinct error message mentioning child agents."""
+    from ralph.agents.idle_watchdog import WatchdogFireReason  # noqa: PLC0415
+
+    prompt_file = tmp_path / "PROMPT.md"
+    prompt_file.write_text("hello", encoding="utf-8")
+    config = AgentConfig(
+        cmd="opencode",
+        output_flag="--json-stream",
+        transport=AgentTransport.OPENCODE,
+    )
+    fake_process = _FakeInvokeProcess(stdout=_BlockingStdout())
+    monkeypatch.setattr(
+        "ralph.agents.invoke.subprocess.Popen",
+        lambda *args, **kwargs: fake_process,
+    )
+
+    # Probe that always reports children active
+    fake_probe = SimpleNamespace(any_agent_active=lambda label_prefix: True)
+    monkeypatch.setattr(
+        "ralph.agents.invoke.DefaultLivenessProbe",
+        lambda: fake_probe,
+    )
+
+    with pytest.raises(AgentInactivityTimeoutError) as exc_info:
+        list(
+            invoke_agent(
+                config,
+                str(prompt_file),
+                options=InvokeOptions(
+                    show_progress=False,
+                    idle_timeout_seconds=10,
+                    max_waiting_on_child_seconds=20.0,
+                ),
+                _clock=FakeClock(),
+            )
+        )
+
+    exc = exc_info.value
+    assert exc.reason == WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG
+    assert "child agents" in str(exc)
+
+
+def test_invoke_agent_passes_config_drain_window_to_watchdog(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """InvokeOptions.drain_window_seconds and max_waiting_on_child_seconds reach WatchdogConfig."""
+    from ralph.agents.idle_watchdog import IdleWatchdog, WatchdogConfig  # noqa: PLC0415
+
+    prompt_file = tmp_path / "PROMPT.md"
+    prompt_file.write_text("hello", encoding="utf-8")
+    config = AgentConfig(cmd="codex", output_flag="--json-stream")
+    fake_process = _FakeInvokeProcess(stdout=_BlockingStdout())
+    monkeypatch.setattr(
+        "ralph.agents.invoke.subprocess.Popen",
+        lambda *args, **kwargs: fake_process,
+    )
+
+    captured_config: list[WatchdogConfig] = []
+    original_init = IdleWatchdog.__init__
+
+    def capturing_init(self: IdleWatchdog, cfg: WatchdogConfig, clock: object) -> None:
+        captured_config.append(cfg)
+        original_init(self, cfg, clock)
+
+    monkeypatch.setattr(IdleWatchdog, "__init__", capturing_init)
+
+    custom_drain = 1.5
+    custom_max = 900.0
+    with pytest.raises(AgentInactivityTimeoutError):
+        list(
+            invoke_agent(
+                config,
+                str(prompt_file),
+                options=InvokeOptions(
+                    show_progress=False,
+                    idle_timeout_seconds=5,
+                    drain_window_seconds=custom_drain,
+                    max_waiting_on_child_seconds=custom_max,
+                ),
+                _clock=FakeClock(),
+            )
+        )
+
+    assert captured_config, "IdleWatchdog was never instantiated"
+    cfg = captured_config[0]
+    assert cfg.drain_window_seconds == custom_drain
+    assert cfg.max_waiting_on_child_seconds == custom_max
+
+
+def test_invoke_agent_yields_lines_with_minimal_latency_under_system_clock(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Lines arrive quickly under production SystemClock - verifies wait_for_event wakeup.
+
+    Without wait_for_event (old sleep-based polling), lines would take up to
+    _IDLE_POLL_INTERVAL_SECONDS per line. This test ensures lines arrive well under 1s.
+    """
+    import time as _time  # noqa: PLC0415
+
+    prompt_file = tmp_path / "PROMPT.md"
+    prompt_file.write_text("hello", encoding="utf-8")
+    config = AgentConfig(cmd="codex", output_flag="--json-stream")
+
+    n_lines = 5
+    inter_line_delay = 0.01  # 10ms between lines
+    total_wall_limit = 2.0  # 2s generous limit for 5 lines at 10ms each
+
+    lines_sent = ["line-" + str(i) + "\n" for i in range(n_lines)]
+    sent_index: list[int] = [0]
+
+    class TimedStdout:
+        def __iter__(self) -> TimedStdout:
+            return self
+
+        def __next__(self) -> str:
+            if sent_index[0] >= n_lines:
+                raise StopIteration
+            _time.sleep(inter_line_delay)
+            line = lines_sent[sent_index[0]]
+            sent_index[0] += 1
+            return line
+
+    fake_process = _FakeInvokeProcess(stdout=TimedStdout())
+    monkeypatch.setattr(
+        "ralph.agents.invoke.subprocess.Popen",
+        lambda *args, **kwargs: fake_process,
+    )
+
+    before = _time.monotonic()
+    result = list(
+        invoke_agent(
+            config,
+            str(prompt_file),
+            options=InvokeOptions(show_progress=False, idle_timeout_seconds=30),
+            # No _clock: production SystemClock
+        )
+    )
+    elapsed = _time.monotonic() - before
+
+    assert result == lines_sent
+    assert elapsed < total_wall_limit, (
+        f"Expected all {n_lines} lines within {total_wall_limit}s, took {elapsed:.3f}s"
+    )

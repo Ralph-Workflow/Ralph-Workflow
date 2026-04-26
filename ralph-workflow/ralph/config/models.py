@@ -158,6 +158,9 @@ class GeneralConfig(_FrozenConfigModel):  # type: ignore[explicit-any]  # reason
         max_cycles: Maximum number of full fallback cycles through a drain.
         execution_history_limit: Maximum execution history entries to keep in memory.
         agent_idle_timeout_seconds: Maximum idle seconds before killing a stalled agent process.
+        agent_idle_drain_window_seconds: Drain window duration after idle deadline before firing.
+        agent_idle_max_waiting_on_child_seconds: Hard ceiling on cumulative
+            WAITING_ON_CHILD deferral time.
     """
 
     verbosity: int = 2
@@ -190,6 +193,22 @@ class GeneralConfig(_FrozenConfigModel):  # type: ignore[explicit-any]  # reason
         description=(
             "Maximum seconds of no-output idle time allowed during an agent"
             " invocation before the process is killed."
+        ),
+    )
+    agent_idle_drain_window_seconds: float = Field(
+        default=0.5,
+        ge=0.0,
+        description=(
+            "Drain window duration in seconds after idle deadline before firing."
+            " Allows late output to flush before the timeout is declared."
+        ),
+    )
+    agent_idle_max_waiting_on_child_seconds: float = Field(
+        default=1800.0,
+        gt=0.0,
+        description=(
+            "Hard ceiling on cumulative WAITING_ON_CHILD deferral time in seconds."
+            " Prevents indefinite deferral when children oscillate with active state."
         ),
     )
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import threading
 import time
 
 from ralph.agents.timeout_clock import Clock, FakeClock, SystemClock
@@ -61,3 +62,52 @@ def test_fake_clock_runtime_checkable() -> None:
 
 def test_system_clock_runtime_checkable() -> None:
     assert isinstance(SystemClock(), Clock) is True
+
+
+_EVENT_WAIT_UPPER_BOUND_S = 0.5
+_FAST_WAIT_S = 0.05
+_FAKE_WAIT_LONG_S = 10.0
+_FAKE_WAIT_SHORT_S = 5.0
+
+
+def test_system_clock_wait_for_event_returns_immediately_when_set() -> None:
+    """wait_for_event returns True immediately when event is pre-set."""
+    clock = SystemClock()
+    event = threading.Event()
+    event.set()
+    before = time.monotonic()
+    result = clock.wait_for_event(event, 1.0)
+    elapsed = time.monotonic() - before
+    assert result is True
+    assert elapsed < _WALL_INSTANT_THRESHOLD_S
+
+
+def test_system_clock_wait_for_event_times_out_when_unset() -> None:
+    """wait_for_event returns False after timeout when event is never set."""
+    clock = SystemClock()
+    event = threading.Event()
+    before = time.monotonic()
+    result = clock.wait_for_event(event, _FAST_WAIT_S)
+    elapsed = time.monotonic() - before
+    assert result is False
+    assert elapsed >= _FAST_WAIT_S
+    assert elapsed < _EVENT_WAIT_UPPER_BOUND_S
+
+
+def test_fake_clock_wait_for_event_advances_time() -> None:
+    """FakeClock.wait_for_event advances logical time without real wait."""
+    clock = FakeClock(start=0.0)
+    event = threading.Event()
+    result = clock.wait_for_event(event, _FAKE_WAIT_LONG_S)
+    assert clock.monotonic() == _FAKE_WAIT_LONG_S
+    assert result is False  # event not set
+
+
+def test_fake_clock_wait_for_event_returns_true_when_event_set() -> None:
+    """FakeClock.wait_for_event returns True when event is already set."""
+    clock = FakeClock(start=0.0)
+    event = threading.Event()
+    event.set()
+    result = clock.wait_for_event(event, _FAKE_WAIT_SHORT_S)
+    assert result is True
+    assert clock.monotonic() == _FAKE_WAIT_SHORT_S
