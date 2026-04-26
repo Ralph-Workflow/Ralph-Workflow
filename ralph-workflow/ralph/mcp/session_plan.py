@@ -49,7 +49,7 @@ def build_session_mcp_plan(
     )
 
     drain_class = drain_class_for_session(drain)
-    if mcp_config.web_search.enabled and drain_class.value not in {"analysis", "commit"}:
+    if mcp_config.web_search.enabled and drain_class.value != "commit":
         capabilities.add("web.search")
     if mcp_config.web_visit.enabled:
         capabilities.add("web.visit")
@@ -85,8 +85,12 @@ def _base_capabilities_for_drain(drain: str) -> set[str]:
         "artifact.submit",
     }
 
-    if drain_class.value in {"planning", "analysis", "review"}:
+    if drain_class.value == "planning":
         return base
+    if drain_class.value == "review":
+        return base | {"run.report_progress"}
+    if drain_class.value == "analysis":
+        return base | {"process.exec_bounded", "run.report_progress"}
     if drain_class.value == "commit":
         return base | {"workspace.write_ephemeral", "git.write", "run.report_progress"}
     return base | {

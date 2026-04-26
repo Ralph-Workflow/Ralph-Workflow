@@ -67,6 +67,7 @@ Ralph Workflow
    configuration
    mcp-tools
    mcp-architecture
+   agents
    artifacts
    prompts
    transcript

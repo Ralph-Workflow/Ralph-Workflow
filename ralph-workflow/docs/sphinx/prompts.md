@@ -63,6 +63,5 @@ The function routes to phase-specific rendering logic internally based on the `p
 
 ## Related pages
 
-- {doc}`agents` — agents that receive the rendered prompts
 - {doc}`concepts` — phase and drain concepts
 - {py:mod}`ralph.prompts` — full API reference

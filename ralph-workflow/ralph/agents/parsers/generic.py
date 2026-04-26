@@ -9,19 +9,12 @@ accumulation for streaming text responses.
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Final, cast
 
-from ralph.agents.parsers.base import AgentOutputLine
+from ralph.agents.parsers.base import AgentOutputLine, TextAccumulator
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
-
-
-@dataclass
-class _TextAccumulator:
-    buffer: str = ""
-    raw_lines: list[str] = field(default_factory=list)
 
 
 # Threshold: content shorter than this without paragraph boundary
@@ -79,7 +72,7 @@ class GenericParser:
     _STOP_TYPES: frozenset[str] = frozenset({"stop", "done", "complete", "finish", "end"})
 
     def __init__(self) -> None:
-        self._text_accumulator: _TextAccumulator | None = None
+        self._text_accumulator: TextAccumulator | None = None
 
     def parse(self, lines: Iterator[str]) -> Iterator[AgentOutputLine]:
         """Parse generic streaming NDJSON lines.
@@ -189,26 +182,10 @@ class GenericParser:
         # Short content without paragraph boundary -> treat as streaming delta
         if self._is_short_content(content):
             if self._text_accumulator is None:
-                self._text_accumulator = _TextAccumulator()
-
-            acc = self._text_accumulator
-            acc.buffer += content
-            acc.raw_lines.append(raw)
-
-            # Check for \n\n in accumulated buffer (paragraph boundary reached
-            # through incremental accumulation)
-            if "\n\n" in acc.buffer:
-                parts = acc.buffer.split("\n\n", 1)
-                flushed_content = parts[0]
-                remaining = parts[1]
-
-                if flushed_content:
-                    raw_parts = acc.raw_lines[: len(acc.raw_lines) - 1]
-                    flushed_raw = "\n".join(raw_parts) if raw_parts else ""
-                    yield AgentOutputLine(type="text", content=flushed_content, raw=flushed_raw)
-
-                acc.buffer = remaining
-                acc.raw_lines = [raw] if remaining else []
+                self._text_accumulator = TextAccumulator()
+            yield from self._text_accumulator.accumulate(
+                content, raw, kind="text", keep_current_when_empty=False
+            )
             return
 
         # Long content or content with sentence-ending punctuation -> standalone
@@ -220,13 +197,9 @@ class GenericParser:
         """Flush the single text accumulator and remove it."""
         if self._text_accumulator is None:
             return
-
         acc = self._text_accumulator
         self._text_accumulator = None
-
-        if acc.buffer:
-            raw_joined = "\n".join(acc.raw_lines) if acc.raw_lines else ""
-            yield AgentOutputLine(type="text", content=acc.buffer, raw=raw_joined)
+        yield from acc.flush(kind="text")
 
     def _flush_all_accumulators(self) -> Iterator[AgentOutputLine]:
         """Flush all pending accumulators on stop or iterator exhaustion."""

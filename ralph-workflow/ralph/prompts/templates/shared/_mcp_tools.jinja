@@ -9,10 +9,12 @@ AVAILABLE TOOLS:
 {% if HAS_MCP_WRITE %}
 WRITE OPERATIONS:
 - Use {{WRITE_FILE_TOOL_REFERENCE}} to create or modify files
+{% endif %}
+
+READ OPERATIONS:
 - Use {{LIST_DIRECTORY_TOOL_REFERENCE}} to explore directories
 - Use {{LIST_DIRECTORY_RECURSIVE_TOOL_REFERENCE}} to explore directories recursively
 - Use {{SEARCH_FILES_TOOL_REFERENCE}} to search file contents
-{% endif %}
 
 {% if HAS_MCP_EXEC %}
 EXECUTION:

@@ -15,7 +15,18 @@ from ralph.config.enums import AgentTransport, JsonParserType, ReviewDepth
 PATH_RUNTIME_CLASS = pathlib.Path
 
 
-class AgentConfig(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+class _FrozenConfigModel(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+    """Private base for frozen configuration models.
+
+    Owns ``model_config = ConfigDict(frozen=True)`` once so descendants do not
+    repeat it. Pydantic v2 inherits ``model_config`` when descendants do not
+    declare one of their own.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+
+class AgentConfig(_FrozenConfigModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     """Configuration for a single AI agent.
 
     Attributes:
@@ -32,8 +43,6 @@ class AgentConfig(BaseModel):  # type: ignore[explicit-any]  # reason: external 
         display_name: Human-readable display name for UI/UX.
         transport: Invocation/MCP transport type for the agent runtime.
     """
-
-    model_config = ConfigDict(frozen=True)
 
     cmd: str
     output_flag: str = "--json-stream"
@@ -70,7 +79,7 @@ class AgentConfig(BaseModel):  # type: ignore[explicit-any]  # reason: external 
         object.__setattr__(self, "transport", inferred_transport)
 
 
-class CloudConfig(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+class CloudConfig(_FrozenConfigModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     """Optional cloud reporting configuration.
 
     Attributes:
@@ -80,15 +89,13 @@ class CloudConfig(BaseModel):  # type: ignore[explicit-any]  # reason: external 
         timeout_secs: Request timeout in seconds.
     """
 
-    model_config = ConfigDict(frozen=True)
-
     enabled: bool = False
     api_url: HttpUrl | None = None
     api_key: str | None = None
     timeout_secs: int = 30
 
 
-class GeneralBehaviorFlags(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+class GeneralBehaviorFlags(_FrozenConfigModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     """General configuration behavioral flags.
 
     Attributes:
@@ -97,38 +104,32 @@ class GeneralBehaviorFlags(BaseModel):  # type: ignore[explicit-any]  # reason: 
         strict_validation: Strict PROMPT.md validation.
     """
 
-    model_config = ConfigDict(frozen=True)
-
     interactive: bool = False
     auto_detect_stack: bool = True
     strict_validation: bool = False
 
 
-class GeneralWorkflowFlags(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+class GeneralWorkflowFlags(_FrozenConfigModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     """General configuration workflow automation flags.
 
     Attributes:
         checkpoint_enabled: Enable checkpoint/resume functionality.
     """
 
-    model_config = ConfigDict(frozen=True)
-
     checkpoint_enabled: bool = True
 
 
-class GeneralExecutionFlags(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+class GeneralExecutionFlags(_FrozenConfigModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     """General configuration execution behavior flags.
 
     Attributes:
         force_universal_prompt: Force universal review prompt for all agents.
     """
 
-    model_config = ConfigDict(frozen=True)
-
     force_universal_prompt: bool = False
 
 
-class GeneralConfig(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+class GeneralConfig(_FrozenConfigModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     """[general] section of ralph-workflow.toml.
 
     Attributes:
@@ -158,8 +159,6 @@ class GeneralConfig(BaseModel):  # type: ignore[explicit-any]  # reason: externa
         execution_history_limit: Maximum execution history entries to keep in memory.
         agent_idle_timeout_seconds: Maximum idle seconds before killing a stalled agent process.
     """
-
-    model_config = ConfigDict(frozen=True)
 
     verbosity: int = 2
     behavior: GeneralBehaviorFlags = Field(default_factory=GeneralBehaviorFlags)
@@ -195,7 +194,7 @@ class GeneralConfig(BaseModel):  # type: ignore[explicit-any]  # reason: externa
     )
 
 
-class CcsConfig(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+class CcsConfig(_FrozenConfigModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     """CCS (Claude Code Switch) defaults configuration.
 
     Attributes:
@@ -209,8 +208,6 @@ class CcsConfig(BaseModel):  # type: ignore[explicit-any]  # reason: external li
         can_commit: Whether CCS can run workflow tools.
     """
 
-    model_config = ConfigDict(frozen=True)
-
     output_flag: str = "--output-format=stream-json"
     yolo_flag: str = "--permission-mode auto"
     verbose_flag: str = "--verbose"
@@ -221,7 +218,7 @@ class CcsConfig(BaseModel):  # type: ignore[explicit-any]  # reason: external li
     can_commit: bool = True
 
 
-class CcsAliasConfig(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+class CcsAliasConfig(_FrozenConfigModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     """Per-alias CCS configuration (table form).
 
     Attributes:
@@ -236,8 +233,6 @@ class CcsAliasConfig(BaseModel):  # type: ignore[explicit-any]  # reason: extern
         model_flag: Optional model flag appended to the command.
         session_flag: Optional session continuation flag.
     """
-
-    model_config = ConfigDict(frozen=True)
 
     cmd: str
     output_flag: str | None = None
@@ -273,7 +268,7 @@ def _default_agent_drains() -> dict[str, str]:
     }
 
 
-class UnifiedConfig(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+class UnifiedConfig(_FrozenConfigModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     """Top-level merged configuration (global + local + CLI overrides).
 
     This is the sole source of truth for Ralph configuration,
@@ -288,8 +283,6 @@ class UnifiedConfig(BaseModel):  # type: ignore[explicit-any]  # reason: externa
         agent_drains: Drain-to-chain bindings for built-in drains.
         cloud: Optional cloud reporting configuration.
     """
-
-    model_config = ConfigDict(frozen=True)
 
     general: GeneralConfig = Field(default_factory=GeneralConfig)
     ccs: CcsConfig = Field(default_factory=CcsConfig)

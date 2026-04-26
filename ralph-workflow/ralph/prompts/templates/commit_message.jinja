@@ -11,33 +11,66 @@ Read the diff silently. Do not write an analysis.
 
 Use the types feat/fix/docs/refactor/test/style/perf/build/ci/chore. Use `chore` only for repo maintenance, tooling, or admin-only changes; do not default to `chore` for meaningful product or code changes. Keep the subject <= 50 chars and write it in lowercase imperative mood.
 
-QUALITY RULES:
+## WHEN TO USE A BODY
+
+Most commits need a body. A body provides context, rationale, and impact that the subject alone cannot convey.
+
+**Include a body when the change is non-trivial:**
+- Multi-file changes or changes affecting multiple subsystems
+- New behavior, removed behavior, or behavior modifications
+- Refactors that change public APIs, data structures, or contracts
+- Changes requiring migration notes, deprecation warnings, or compatibility concerns
+- Any change where the *why* is not immediately obvious from reading the diff
+
+**One-liner subjects (no body) are only acceptable for:**
+- Trivial typo fixes or single-character corrections
+- Single-file cosmetic changes (formatting, imports, comments) with obvious intent
+- Truly obvious micro-changes where subject fully captures the entire change
+
+## BODY STRUCTURE: WHEN TO USE SIMPLE VS DETAILED
+
+For commits requiring a body, choose the right structure:
+
+**Use `body` (single string) when:**
+- The explanation is concise and self-contained (1-2 paragraphs)
+- The rationale is straightforward and doesn't need separation
+
+**Use detailed body fields when the change is complex:**
+- `body_summary`: What changed and why in 1-2 sentences
+- `body_details`: Deep dive — edge cases handled, design decisions, alternatives considered, behavioral notes
+- `body_footer`: Breaking changes, migration steps, deprecation warnings, "Fixes #123", "Closes #456"
+
+Complex refactors, architecture changes, new features with non-obvious behavior, and any change affecting multiple subsystems should use the detailed structure.
+
+## QUALITY RULES
 - Match the repo's conventional-commit style. Prefer the narrowest stable scope when one subsystem clearly owns most of the diff.
 - Omit the scope when the change spans multiple subsystems or no single scope would be honest.
 - The subject must say what changed, not that files changed. Avoid filler like "update", "misc", "stuff", or file-count summaries.
-- Include a body when the why is not obvious from the subject alone, when behavior changes, when a refactor is non-obvious, when compatibility/migration notes matter, or when reviewers need context that is not obvious from the diff.
-- Body text should explain impact or rationale, not restate the file list.
+- Body text should explain impact and rationale, not restate which files changed or re-summarize the diff.
+- When in doubt, include a body. An extra explanatory paragraph is almost never wrong.
 
-COMMON MISTAKES TO AVOID:
+## COMMON MISTAKES TO AVOID
 - Bad: chore: update files
-  Counterexample: Good: feat(mcp): add structured commit retries
+  Counterexample: feat(mcp): add structured commit retries
+  Body: Explains what structured retries solve and how they work.
 - Bad: fix: stuff
-  Counterexample: Good: fix(parser): preserve prefixed transcript lines
-- Bad: chore(prompts): tweak message
-  Counterexample: Good: docs(prompts): document excluded_files schema
-- Bad: feat(tmp): add retry handling
-  Counterexample: Good: feat(prompts): clarify commit artifact retry instructions
+  Counterexample: fix(parser): preserve prefixed transcript lines
+  Body: Explains why prefixed lines were being dropped and the edge case that triggered it.
+- Bad: refactor: rename files
+  Counterexample: refactor(auth): extract token validation to dedicated module
+  Body: Explains the architectural reason and what callers must do differently.
+- Bad: feat: add validation
+  Counterexample: feat(api): add query filter validation for export endpoint
+  Body: Explains which invalid inputs were causing problems and what happens now.
 
-STRICT OUTPUT RULES:
-Do not explain the diff. Do not output bullets, markdown, sections, rationale, or file lists.
+## OUTPUT RULES
+After submitting the MCP artifact, you may echo only the commit subject line as plain text.
+Do not output any additional explanation, markdown formatting, bullets, or prose after the subject line.
 Do not wrap JSON or the subject in code fences.
-Do not ask the user for confirmation.
-Do not write 'Would you like me to' or any equivalent question.
-The task is to submit the artifact now, not to propose a commit message for later approval.
-Your job is to decide on the correct structured artifact and submit it by calling the tool directly.
+Do not ask the user for confirmation or write "Would you like me to..." questions.
+Submit the artifact now, not as a proposal for later approval.
 Call the tool before emitting any final text. If you skip the tool call, the task has failed.
-Do not call Bash.
-Do not use `content_path` for this task.
+Do not call Bash. Do not use `content_path` for this task.
 
 MCP REQUIREMENT:
 The only tool you may call for this task is {{ SUBMIT_ARTIFACT_TOOL_INSTRUCTIONS }}.

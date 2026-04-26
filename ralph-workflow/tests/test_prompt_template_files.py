@@ -34,7 +34,6 @@ class _Workspace:
 
 def test_legacy_prompt_families_have_file_backed_jinja_templates() -> None:
     expected_templates = {
-        "analysis_system_prompt.jinja",
         "commit_message.jinja",
         "commit_simplified.jinja",
         "conflict_resolution.jinja",
@@ -43,7 +42,6 @@ def test_legacy_prompt_families_have_file_backed_jinja_templates() -> None:
         "developer_iteration_continuation.jinja",
         "development_analysis.jinja",
         "development_commit_message.jinja",
-        "fix_analysis_system_prompt.jinja",
         "fix_mode.jinja",
         "parallel_dev_worker.jinja",
         "parallel_planning.jinja",
@@ -108,12 +106,14 @@ def test_all_top_level_templates_include_unattended_partial() -> None:
     assert missing == []
 
 
-ANALYSIS_EXHAUSTIVE_FAILURE_GUIDANCE = "Include every issue that contributed to the failing status."
+ANALYSIS_EXHAUSTIVE_FAILURE_GUIDANCE = (
+    "**List every gap found** across all dimensions. Do not stop after the first problem."
+)
 ANALYSIS_OMISSION_GUIDANCE = (
-    "If you omit a real failure cause, the analysis artifact is incomplete."
+    "3. **Cite concrete evidence.** File paths, function names, test names, command output,"
 )
 ANALYSIS_NO_FIRST_PROBLEM_GUIDANCE = (
-    "Do not stop after the first problem if more issues were found."
+    "Do not stop after the first problem."
 )
 DEVELOPMENT_ANALYSIS_FRESH_SUBMIT_EXAMPLE = (
     '"artifact_type":"development_analysis_decision",'

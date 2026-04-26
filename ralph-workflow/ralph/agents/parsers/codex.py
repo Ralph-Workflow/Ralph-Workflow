@@ -3,19 +3,12 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Final, cast
 
-from ralph.agents.parsers.base import AgentOutputLine
+from ralph.agents.parsers.base import AgentOutputLine, TextAccumulator
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
-
-
-@dataclass
-class _TextAccumulator:
-    buffer: str = ""
-    raw_lines: list[str] = field(default_factory=list)
 
 
 class CodexParser:
@@ -38,7 +31,7 @@ class CodexParser:
 
     def __init__(self) -> None:
         # Accumulator keyed by response id or synthetic stream key
-        self._text_accumulator: dict[str, _TextAccumulator] = {}
+        self._text_accumulator: dict[str, TextAccumulator] = {}
         self._current_response_id: str | None = None
         self._stream_counter = 0
 
@@ -146,41 +139,17 @@ class CodexParser:
 
         key = response_id
         if key not in self._text_accumulator:
-            self._text_accumulator[key] = _TextAccumulator()
-
-        acc = self._text_accumulator[key]
-        acc.buffer += content
-        acc.raw_lines.append(stripped)
-
-        # Check for paragraph boundary - flush on \n\n
-        if "\n\n" in acc.buffer:
-            parts = acc.buffer.split("\n\n", 1)
-            remaining = parts[1]
-            flushed_content = parts[0]
-            # Only yield if there's actual content (skip empty flush at boundary)
-            if flushed_content:
-                # Build raw from all but the last raw line (the \n\n line itself)
-                raw_parts = acc.raw_lines[: len(acc.raw_lines) - 1]
-                flushed_raw = "\n".join(raw_parts) if raw_parts else ""
-                yield AgentOutputLine(type="text", content=flushed_content, raw=flushed_raw)
-            # Reset for remaining content
-            acc.buffer = remaining
-            # If there's remaining content, keep raw_lines starting with current raw
-            # If no remaining content (just saw \n\n), still keep current line for next batch
-            acc.raw_lines = [stripped]
+            self._text_accumulator[key] = TextAccumulator()
+        yield from self._text_accumulator[key].accumulate(
+            content, stripped, kind="text", keep_current_when_empty=True
+        )
 
     def _flush_accumulator(self, key: str) -> Iterator[AgentOutputLine]:
         """Flush a single accumulator and remove it."""
         if key not in self._text_accumulator:
             return
-
         acc = self._text_accumulator.pop(key)
-        buffer = acc.buffer
-        raw_lines = acc.raw_lines
-
-        if buffer:
-            raw_joined = "\n".join(raw_lines) if raw_lines else ""
-            yield AgentOutputLine(type="text", content=buffer, raw=raw_joined)
+        yield from acc.flush(kind="text")
 
     def _flush_all_accumulators(self) -> Iterator[AgentOutputLine]:
         """Flush all pending accumulators on stop or iterator exhaustion."""

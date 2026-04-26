@@ -90,28 +90,28 @@ pre-commit:
 
 # Building
 build: clean-dist
-	python -m build
+	uv run --with hatchling hatch build
 
 build-wheel: clean-dist
-	python -m build --wheel
+	uv run --with hatchling hatch build --wheel
 
 build-sdist: clean-dist
-	python -m build --sdist
+	uv run --with hatchling hatch build --sdist
 
 # Publishing
-twine-upload: dist
+twine-upload: build
 	uv run --with twine python -m twine upload dist/*
 
-twine-upload-testpypi: dist
+twine-upload-testpypi: build
 	uv run --with twine python -m twine upload --repository testpypi dist/*
 
-publish: dist
+publish: build
 	uv run --with twine python -m twine upload dist/*
 
-test-pypi: dist
+test-pypi: build
 	uv run --with twine python -m twine upload --repository testpypi dist/*
 
-test-pypi-upload: dist
+test-pypi-upload: build
 	uv run --with twine python -m twine upload --repository testpypi dist/*
 
 # Cleaning

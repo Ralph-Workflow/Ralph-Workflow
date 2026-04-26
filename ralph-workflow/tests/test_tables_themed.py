@@ -30,6 +30,7 @@ def _themed(buf: StringIO) -> Console:
     return Console(
         file=buf,
         force_terminal=True,
+        no_color=False,
         color_system="truecolor",
         theme=RALPH_THEME,
         width=200,

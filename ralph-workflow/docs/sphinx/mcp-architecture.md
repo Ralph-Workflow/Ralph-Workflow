@@ -104,7 +104,6 @@ Tool names are defined in `ralph.mcp.tools.names`.
 
 ## Related pages
 
-- {doc}`agents` — how agents connect to the MCP server
 - {doc}`mcp-tools` — full tool reference
 - {doc}`artifacts` — the artifact submission tools
 - {py:mod}`ralph.mcp` — full API reference

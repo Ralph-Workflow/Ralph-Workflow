@@ -11,8 +11,13 @@ from enum import StrEnum
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from typing import Protocol
+
     from ralph.agents.completion_signals import CompletionSignals
     from ralph.process.liveness import LivenessProbe
+
+    class _LiveDescendantHandle(Protocol):
+        def has_live_descendants(self) -> bool: ...
 
 
 class AgentExecutionState(StrEnum):
@@ -33,12 +38,12 @@ class GenericExecutionStrategy:
 
     def classify_quiet(
         self,
-        handle: object,
-        liveness_probe: object,
+        handle: _LiveDescendantHandle,
+        liveness_probe: LivenessProbe,
     ) -> AgentExecutionState:
         if hasattr(handle, "has_live_descendants"):
             try:
-                if bool(handle.has_live_descendants()):  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+                if bool(handle.has_live_descendants()):
                     return AgentExecutionState.WAITING_ON_CHILD
             except Exception:
                 pass
@@ -46,8 +51,8 @@ class GenericExecutionStrategy:
 
     def classify_exit(
         self,
-        handle: object,
-        completion_signals: object,
+        handle: _LiveDescendantHandle,
+        completion_signals: CompletionSignals,
         liveness_probe: LivenessProbe | None = None,
     ) -> AgentExecutionState:
         return AgentExecutionState.TERMINAL_COMPLETE
@@ -87,7 +92,7 @@ class OpenCodeExecutionStrategy:
 
     def classify_quiet(
         self,
-        handle: object,
+        handle: _LiveDescendantHandle,
         liveness_probe: LivenessProbe,
     ) -> AgentExecutionState:
         # Check for Ralph-tracked parallel agent workers (label prefix "agent:")
@@ -99,7 +104,7 @@ class OpenCodeExecutionStrategy:
         # Fall back to psutil-based descendant check for non-Ralph-tracked child processes
         if hasattr(handle, "has_live_descendants"):
             try:
-                if bool(handle.has_live_descendants()):  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+                if bool(handle.has_live_descendants()):
                     return AgentExecutionState.WAITING_ON_CHILD
             except Exception:
                 pass
@@ -107,14 +112,13 @@ class OpenCodeExecutionStrategy:
 
     def classify_exit(
         self,
-        handle: object,
-        completion_signals: object,
+        handle: _LiveDescendantHandle,
+        completion_signals: CompletionSignals,
         liveness_probe: LivenessProbe | None = None,
     ) -> AgentExecutionState:
         # Fast path: strong completion signals always take precedence
         try:
-            signals: CompletionSignals = completion_signals  # type: ignore[assignment]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
-            if signals.explicit_complete or signals.required_artifact_present:
+            if completion_signals.explicit_complete or completion_signals.required_artifact_present:
                 return AgentExecutionState.TERMINAL_COMPLETE
         except Exception:
             pass
@@ -128,7 +132,7 @@ class OpenCodeExecutionStrategy:
         # Fall back to OS-level descendant check
         if hasattr(handle, "has_live_descendants"):
             try:
-                if bool(handle.has_live_descendants()):  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+                if bool(handle.has_live_descendants()):
                     return AgentExecutionState.WAITING_ON_CHILD
             except Exception:
                 pass

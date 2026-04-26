@@ -17,6 +17,7 @@ def _make_color_renderer() -> tuple[PlainLogRenderer, StringIO]:
         file=buf,
         color_system="truecolor",
         force_terminal=True,
+        no_color=False,
         theme=RALPH_THEME,
         width=200,
         highlight=False,
