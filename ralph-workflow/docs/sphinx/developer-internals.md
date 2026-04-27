@@ -10,7 +10,6 @@ instead.
 ## What lives here
 
 - [MCP Architecture](mcp-architecture.md) — server lifecycle, capability gates, and upstream proxying
-- [Agents](agents.md) — registry, chains, drains, and invocation flow
 - [Artifacts](artifacts.md) — typed handoffs and artifact storage contracts
 - [Prompts](prompts.md) — prompt template loading, rendering, and payload materialisation
 - [Transcript and Display Reference](transcript.md) — output event structure and rendering behavior
@@ -19,7 +18,6 @@ instead.
 :maxdepth: 1
 
 mcp-architecture
-agents
 artifacts
 prompts
 transcript

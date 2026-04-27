@@ -7,6 +7,15 @@ from pathlib import Path
 import pytest
 
 _DOC_PATH = Path(__file__).parent.parent / "docs" / "sphinx" / "parallel-mode.md"
+_CONCEPTS_DOC_PATH = Path(__file__).parent.parent / "docs" / "sphinx" / "concepts.md"
+
+_BANNED_PHRASES = [
+    "worktree-based",
+    "per-worker worktree",
+    "merge-back",
+    "merge integration",
+    "parallel worktree",
+]
 
 
 @pytest.fixture()
@@ -14,8 +23,17 @@ def parallel_mode_doc() -> str:
     return _DOC_PATH.read_text(encoding="utf-8")
 
 
+@pytest.fixture()
+def concepts_doc() -> str:
+    return _CONCEPTS_DOC_PATH.read_text(encoding="utf-8")
+
+
 def test_parallel_mode_doc_exists() -> None:
     assert _DOC_PATH.is_file(), f"Missing doc: {_DOC_PATH}"
+
+
+def test_concepts_doc_exists() -> None:
+    assert _CONCEPTS_DOC_PATH.is_file(), f"Missing doc: {_CONCEPTS_DOC_PATH}"
 
 
 def test_parallel_mode_doc_describes_same_workspace_mode(parallel_mode_doc: str) -> None:
@@ -67,6 +85,22 @@ def test_parallel_mode_doc_does_not_mention_git_status_fallback(parallel_mode_do
     lower = parallel_mode_doc.lower()
     assert "git status" not in lower, (
         "parallel-mode.md must not mention git status as a success signal (removed in v1)"
+    )
+
+
+@pytest.mark.parametrize("phrase", _BANNED_PHRASES)
+def test_parallel_mode_doc_does_not_contain_banned_phrase(
+    parallel_mode_doc: str, phrase: str
+) -> None:
+    assert phrase.lower() not in parallel_mode_doc.lower(), (
+        f"parallel-mode.md must not contain banned phrase {phrase!r} (removed in v1)"
+    )
+
+
+@pytest.mark.parametrize("phrase", _BANNED_PHRASES)
+def test_concepts_doc_does_not_contain_banned_phrase(concepts_doc: str, phrase: str) -> None:
+    assert phrase.lower() not in concepts_doc.lower(), (
+        f"concepts.md must not contain banned phrase {phrase!r} (removed in v1)"
     )
 
 

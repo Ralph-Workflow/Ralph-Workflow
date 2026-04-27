@@ -733,7 +733,7 @@ class TestValidateWorkUnitsAgainstPolicy:
                     {
                         "unit_id": f"u{i}",
                         "description": f"Work unit {i}",
-                        "allowed_directories": ["src"],
+                        "allowed_directories": [f"dir{i}"],
                     }
                     for i in range(3)
                 ]
@@ -749,7 +749,7 @@ class TestValidateWorkUnitsAgainstPolicy:
                     {
                         "unit_id": f"u{i}",
                         "description": f"Work unit {i}",
-                        "allowed_directories": ["src"],
+                        "allowed_directories": [f"dir{i}"],
                     }
                     for i in range(4)
                 ]
@@ -759,6 +759,59 @@ class TestValidateWorkUnitsAgainstPolicy:
 
         with pytest.raises(PolicyValidationError, match="exceeds cap"):
             validate_work_units_against_policy(rejected_work_units, pipeline)
+
+    def test_overlapping_edit_areas_raise_policy_validation_error(self) -> None:
+        """Work units with overlapping allowed_directories must raise PolicyValidationError."""
+        pipeline = self._minimal_pipeline(
+            parallel_execution=ParallelExecutionPolicy(max_parallel_workers=2)
+        )
+        work_units = parse_work_units_from_artifact(
+            {
+                "work_units": [
+                    {"unit_id": "u1", "description": "A", "allowed_directories": ["src"]},
+                    {"unit_id": "u2", "description": "B", "allowed_directories": ["src/subdir"]},
+                ]
+            }
+        )
+        assert work_units is not None
+
+        with pytest.raises(PolicyValidationError, match="overlaps"):
+            validate_work_units_against_policy(work_units, pipeline)
+
+    def test_missing_allowed_directories_raises_policy_validation_error(self) -> None:
+        """Work units without allowed_directories must raise PolicyValidationError."""
+        pipeline = self._minimal_pipeline(
+            parallel_execution=ParallelExecutionPolicy(max_parallel_workers=2)
+        )
+        work_units = parse_work_units_from_artifact(
+            {
+                "work_units": [
+                    {"unit_id": "u1", "description": "A", "allowed_directories": ["src"]},
+                    {"unit_id": "u2", "description": "B"},
+                ]
+            }
+        )
+        assert work_units is not None
+
+        with pytest.raises(PolicyValidationError, match="allowed_directories"):
+            validate_work_units_against_policy(work_units, pipeline)
+
+    def test_disjoint_edit_areas_pass_validation(self) -> None:
+        """Work units with disjoint allowed_directories must pass validation."""
+        pipeline = self._minimal_pipeline(
+            parallel_execution=ParallelExecutionPolicy(max_parallel_workers=2)
+        )
+        work_units = parse_work_units_from_artifact(
+            {
+                "work_units": [
+                    {"unit_id": "u1", "description": "A", "allowed_directories": ["src"]},
+                    {"unit_id": "u2", "description": "B", "allowed_directories": ["tests"]},
+                ]
+            }
+        )
+        assert work_units is not None
+
+        validate_work_units_against_policy(work_units, pipeline)  # must not raise
 
 
 class TestValidateRequiredInputs:

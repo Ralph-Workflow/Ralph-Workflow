@@ -28,7 +28,16 @@ MAX_DESCRIPTION_CHARS = 4096
 
 # Paths that workers must never declare as edit areas in same-workspace mode.
 RESERVED_EDIT_PATHS: frozenset[str] = frozenset(
-    {".agent", ".git", ".worktrees", ".", ""}
+    {
+        ".agent",
+        ".git",
+        # Reserved as defense-in-depth even though worktree-based fan-out is
+        # not a supported v1 path — prevents accidental cross-worker pollution
+        # if future tooling creates worktrees alongside the main checkout.
+        ".worktrees",
+        ".",
+        "",
+    }
 )
 
 

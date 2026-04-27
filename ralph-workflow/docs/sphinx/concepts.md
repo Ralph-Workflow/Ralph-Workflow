@@ -122,10 +122,15 @@ policy (`max_work_units`, `max_parallel_workers`) before execution begins. See
 
 ## Isolation Mode
 
-When enabled (the default), each agent invocation runs in a clean environment with
-limited filesystem access scoped to the workspace. Isolation behavior is controlled
-by the `general.behavior` section in `ralph-workflow.toml`. See `ralph.policy.models`
-for the isolation config field.
+Parallel workers share the same git checkout (same-workspace mode). Isolation is
+enforced at the path level: each work unit must declare an `allowed_directories` list,
+and the workspace scope for that worker is write-fenced to those directories. Workers
+cannot write outside their declared edit areas. Reserved paths (`.agent`, `.git`, `.`)
+may never be declared as edit areas.
+
+Single-agent (non-parallel) invocations are not path-restricted beyond the normal
+workspace root boundary. See `ralph.pipeline.parallel` for the same-workspace
+coordinator and `ralph.pipeline.work_units` for the validation logic.
 
 (parallel-work-units)=
 ## Parallel Work Units
