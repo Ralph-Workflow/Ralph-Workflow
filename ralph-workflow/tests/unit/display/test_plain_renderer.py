@@ -81,7 +81,6 @@ def _make_worker(*, unit_id: str = "worker-1", status: str = "RUNNING") -> Worke
         finished_at=None,
         elapsed_s=0.0,
         exit_code=None,
-        commit_sha=None,
         error_message=None,
     )
 

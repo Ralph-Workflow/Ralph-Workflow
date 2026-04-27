@@ -26,13 +26,12 @@ class WorkerState(BaseModel):  # type: ignore[explicit-any]  # reason: external 
         finished_at: When the worker finished execution.
         exit_code: Process exit code, if finished.
         error_message: Human-readable error description, if failed.
-        commit_sha: Git commit SHA produced by this worker, if any.
         worker_namespace: Filesystem path to the worker's per-worker namespace
             under ``.agent/workers/<unit_id>/`` in the shared checkout.
         log_file: Path to the worker's log file.
     """
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, extra="ignore")
 
     unit_id: str = Field(..., min_length=1)
     status: WorkerStatus = WorkerStatus.PENDING
@@ -40,7 +39,6 @@ class WorkerState(BaseModel):  # type: ignore[explicit-any]  # reason: external 
     finished_at: datetime | None = None
     exit_code: int | None = None
     error_message: str | None = None
-    commit_sha: str | None = None
     worker_namespace: str | None = None
     log_file: str | None = None
 

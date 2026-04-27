@@ -128,7 +128,6 @@ class ParallelCoordinator:
                             WorkerCompletedEvent(
                                 unit_id=result.unit_id,
                                 exit_code=result.exit_code,
-                                commit_sha="",
                             )
                         )
                         continue

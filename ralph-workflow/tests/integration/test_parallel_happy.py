@@ -61,7 +61,6 @@ def test_three_workers_all_succeed() -> None:
     assert events[-1] == PipelineEvent.ALL_WORKERS_COMPLETE
     assert completed_ids == {"unit-A", "unit-B", "unit-C"}
     assert all(event.exit_code == 0 for event in completed_events)
-    assert all(event.commit_sha == "" for event in completed_events)
 
 
 def test_happy_path_state_transitions() -> None:

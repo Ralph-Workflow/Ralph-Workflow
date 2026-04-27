@@ -753,7 +753,6 @@ def _handle_worker_completed(
     updated = state.worker_states[event.unit_id].copy_with(
         status=WorkerStatus.SUCCEEDED,
         exit_code=event.exit_code,
-        commit_sha=event.commit_sha,
         finished_at=datetime.now(UTC),
     )
     return state.copy_with(worker_states={**state.worker_states, event.unit_id: updated}), []

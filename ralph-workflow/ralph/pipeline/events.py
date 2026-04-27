@@ -66,7 +66,6 @@ class WorkerStartedEvent:
 class WorkerCompletedEvent:
     unit_id: str
     exit_code: int
-    commit_sha: str
 
 
 @dataclass(frozen=True)

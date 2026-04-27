@@ -1125,7 +1125,7 @@ def test_worker_started_unknown_unit_id_is_no_op() -> None:
 
 
 def test_worker_completed_transitions_running_to_succeeded() -> None:
-    """WORKER_COMPLETED should move the worker to SUCCEEDED and store commit_sha."""
+    """WORKER_COMPLETED should move the worker to SUCCEEDED."""
     running = WorkerState(unit_id="u1", status=WorkerStatus.RUNNING)
     state = PipelineState(
         phase=PHASE_DEVELOPMENT,
@@ -1134,14 +1134,13 @@ def test_worker_completed_transitions_running_to_succeeded() -> None:
     )
     new_state, effects = _reduce(
         state,
-        WorkerCompletedEvent(unit_id="u1", exit_code=0, commit_sha="abc123"),
+        WorkerCompletedEvent(unit_id="u1", exit_code=0),
     )
 
     assert effects == []
     ws = new_state.worker_states["u1"]
     assert ws.status == WorkerStatus.SUCCEEDED
     assert ws.exit_code == 0
-    assert ws.commit_sha == "abc123"
     assert ws.finished_at is not None
 
 
@@ -1150,7 +1149,7 @@ def test_worker_completed_unknown_unit_id_is_no_op() -> None:
     state = PipelineState(phase=PHASE_DEVELOPMENT)
     new_state, effects = _reduce(
         state,
-        WorkerCompletedEvent(unit_id="ghost", exit_code=0, commit_sha="sha"),
+        WorkerCompletedEvent(unit_id="ghost", exit_code=0),
     )
 
     assert new_state == state
