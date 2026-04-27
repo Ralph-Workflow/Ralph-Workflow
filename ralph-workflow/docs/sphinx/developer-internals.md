@@ -29,4 +29,4 @@ transcript
 
 - [Developer Reference](developer-reference.md) — top-level developer docs index
 - [Python API Reference](modules.rst) — autodoc for the `ralph.*` package
-- [Versioning](versioning.md) — release and compatibility policy
+- [Release & Versioning](versioning.md) — release and publishing policy

@@ -77,12 +77,6 @@ Ralph Workflow
 
    troubleshooting
 
-.. toctree::
-   :maxdepth: 1
-   :caption: Project
-
-   versioning
-
 Related Links
 =============
 

@@ -13,12 +13,14 @@ If you only need to install, configure, and run Ralph Workflow, start with
 - [Operator Reference](reference.md) stays focused on command, config, and tool lookup
 - [Developer Internals](developer-internals.md) groups the maintainer-facing architecture and runtime pages
 - [Python API Reference](modules.rst) documents the public `ralph.*` package surface
+- [Release & Versioning](versioning.md) covers release, tagging, and publishing policy
 
 ```{toctree}
 :maxdepth: 1
 
 developer-internals
 modules
+versioning
 ```
 
 ## Related pages
