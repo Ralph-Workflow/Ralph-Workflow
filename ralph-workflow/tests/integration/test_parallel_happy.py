@@ -14,7 +14,7 @@ from ralph.testing.fake_agent_executor import FakeAgentExecutor, FakeRun
 
 
 def _make_work_unit(uid: str) -> WorkUnit:
-    return WorkUnit(unit_id=uid, description=f"Work unit {uid}")
+    return WorkUnit(unit_id=uid, description=f"Work unit {uid}", allowed_directories=[f"src/{uid}"])
 
 
 def _run_fan_out(

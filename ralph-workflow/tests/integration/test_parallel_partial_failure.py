@@ -8,13 +8,14 @@ from __future__ import annotations
 
 import asyncio
 
-from ralph.config.enums import PHASE_DEVELOPMENT
+from ralph.config.enums import PHASE_DEVELOPMENT, PHASE_FAILED
 from ralph.pipeline.effects import FanOutDevelopmentEffect
 from ralph.pipeline.events import (
     Event,
     PipelineEvent,
     WorkerCompletedEvent,
     WorkerFailedEvent,
+    WorkerStartedEvent,
 )
 from ralph.pipeline.parallel import coordinator
 from ralph.pipeline.reducer import reduce as reducer_reduce
@@ -29,6 +30,7 @@ def _make_work_unit(uid: str, deps: list[str] | None = None) -> WorkUnit:
         unit_id=uid,
         description=f"Work unit {uid}",
         dependencies=list(deps or []),
+        allowed_directories=[f"src/{uid}"],
     )
 
 
@@ -152,3 +154,95 @@ class TestPartialFailureReporting:
 
         completed_events = [event for event in events if isinstance(event, WorkerCompletedEvent)]
         assert any(e.unit_id == "unit-b" for e in completed_events)
+
+    def test_one_success_one_failure_routes_to_phase_failed_with_sorted_attribution(
+        self,
+    ) -> None:
+        """ALL_WORKERS_COMPLETE after partial failure routes to PHASE_FAILED with attribution.
+
+        The coordinator does not emit ALL_WORKERS_COMPLETE when workers fail, but the
+        reducer's contract must still be correct: when ALL_WORKERS_COMPLETE is processed
+        and there are failed workers, the final state must be PHASE_FAILED with sorted
+        attribution in last_error. This test exercises that reducer contract directly.
+
+        Asserts:
+        - Final reduced state is PHASE_FAILED
+        - last_error contains the failing unit's id (unit-beta)
+        - last_error does NOT contain the succeeding unit's id (unit-alpha)
+        """
+        units = (
+            _make_work_unit("unit-alpha"),
+            _make_work_unit("unit-beta"),
+        )
+        # Build a synthetic event sequence: alpha succeeds, beta fails, then ALL_WORKERS_COMPLETE.
+        # This mirrors what the reducer would process if the coordinator/runner synthesized
+        # ALL_WORKERS_COMPLETE after accumulating per-worker failure evidence.
+        events: list[Event] = [
+            PipelineEvent.FAN_OUT_STARTED,
+            WorkerStartedEvent(unit_id="unit-alpha"),
+            WorkerStartedEvent(unit_id="unit-beta"),
+            WorkerCompletedEvent(unit_id="unit-alpha", exit_code=0),
+            WorkerFailedEvent(unit_id="unit-beta", exit_code=1, error="beta crashed"),
+            PipelineEvent.ALL_WORKERS_COMPLETE,
+        ]
+
+        initial_state = PipelineState(phase=PHASE_DEVELOPMENT, work_units=units)
+        state = initial_state
+        for event in events:
+            state, _ = reducer_reduce(state, event)
+
+        assert state.phase == PHASE_FAILED, (
+            f"Expected PHASE_FAILED after partial failure + ALL_WORKERS_COMPLETE, "
+            f"got {state.phase!r}"
+        )
+        assert state.last_error is not None, "last_error must be set after worker failure"
+        assert "unit-beta" in (state.last_error or ""), (
+            f"last_error must name the failing unit, got: {state.last_error!r}"
+        )
+        # The succeeding unit must not be blamed
+        assert "unit-alpha" not in (state.last_error or ""), (
+            f"last_error must not name the succeeding unit, got: {state.last_error!r}"
+        )
+
+    def test_two_failures_sorted_in_error_attribution(self) -> None:
+        """When two workers fail, last_error lists them alphabetically by unit_id.
+
+        Uses a synthetic event sequence (applying ALL_WORKERS_COMPLETE manually)
+        to test the reducer's attribution contract directly.
+        """
+        units = (
+            _make_work_unit("unit-alpha"),
+            _make_work_unit("unit-beta"),
+            _make_work_unit("unit-gamma"),
+        )
+        # Alpha succeeds; beta and gamma fail; then ALL_WORKERS_COMPLETE.
+        events: list[Event] = [
+            PipelineEvent.FAN_OUT_STARTED,
+            WorkerStartedEvent(unit_id="unit-alpha"),
+            WorkerStartedEvent(unit_id="unit-beta"),
+            WorkerStartedEvent(unit_id="unit-gamma"),
+            WorkerCompletedEvent(unit_id="unit-alpha", exit_code=0),
+            WorkerFailedEvent(unit_id="unit-beta", exit_code=1, error="beta failed"),
+            WorkerFailedEvent(unit_id="unit-gamma", exit_code=1, error="gamma failed"),
+            PipelineEvent.ALL_WORKERS_COMPLETE,
+        ]
+
+        initial_state = PipelineState(phase=PHASE_DEVELOPMENT, work_units=units)
+        state = initial_state
+        for event in events:
+            state, _ = reducer_reduce(state, event)
+
+        assert state.phase == PHASE_FAILED
+        assert state.last_error is not None
+        # Both failing units must be named; the reducer sorts failed_unit_ids alphabetically
+        assert "unit-beta" in (state.last_error or ""), (
+            f"last_error must name unit-beta, got: {state.last_error!r}"
+        )
+        assert "unit-gamma" in (state.last_error or ""), (
+            f"last_error must name unit-gamma, got: {state.last_error!r}"
+        )
+        # beta appears before gamma in alphabetical order
+        last_error = state.last_error or ""
+        assert last_error.index("unit-beta") < last_error.index("unit-gamma"), (
+            f"unit-beta must appear before unit-gamma in last_error: {last_error!r}"
+        )
