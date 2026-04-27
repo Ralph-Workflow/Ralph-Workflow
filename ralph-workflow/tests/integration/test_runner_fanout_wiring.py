@@ -79,6 +79,20 @@ class TestFanOutRouting:
         assert effect.work_units == units
         assert effect.max_workers == max_workers
 
+    def test_serial_when_single_work_unit(self) -> None:
+        """Single work_unit falls through to InvokeAgentEffect — fan-out requires >=2 units."""
+        state = PipelineState(phase=PHASE_DEVELOPMENT, work_units=(_make_work_unit("unit-a"),))
+        policy_bundle = _make_policy_bundle()
+
+        effect = runner_module._determine_effect_from_policy(
+            state,
+            policy_bundle,
+            config=UnifiedConfig(),
+        )
+
+        assert isinstance(effect, InvokeAgentEffect)
+        assert effect.phase == PHASE_DEVELOPMENT
+
     def test_non_development_phase_not_affected(self) -> None:
         """Other phases always use InvokeAgentEffect regardless of work_units."""
         units = (_make_work_unit("unit-a"),)

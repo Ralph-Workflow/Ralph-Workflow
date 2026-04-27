@@ -211,9 +211,10 @@ class TestSerializedPostFanoutVerification:
         )
 
     def test_determine_effect_enables_post_fanout_verification(self, monkeypatch) -> None:
-        """_determine_effect_from_policy sets run_post_fanout_verification=True."""
-        unit = _make_work_unit("unit-a")
-        state = PipelineState(phase=PHASE_DEVELOPMENT, work_units=(unit,))
+        """_determine_effect_from_policy sets run_post_fanout_verification=True for >=2 units."""
+        unit_a = _make_work_unit("unit-a")
+        unit_b = _make_work_unit("unit-b")
+        state = PipelineState(phase=PHASE_DEVELOPMENT, work_units=(unit_a, unit_b))
         policy_bundle = _make_policy_bundle(max_workers=2)
 
         effect = runner_module._determine_effect_from_policy(state, policy_bundle)
