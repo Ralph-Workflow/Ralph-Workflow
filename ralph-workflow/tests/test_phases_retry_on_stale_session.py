@@ -11,7 +11,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from ralph.agents.invoke import AgentInvocationError, InvokeOptions
+from ralph.agents.idle_watchdog import WatchdogFireReason
+from ralph.agents.invoke import AgentInactivityTimeoutError, AgentInvocationError, InvokeOptions
 from ralph.config.enums import PHASE_DEVELOPMENT, AgentTransport
 from ralph.config.models import AgentConfig, GeneralConfig, UnifiedConfig
 from ralph.pipeline import runner as runner_module
@@ -183,6 +184,141 @@ def test_runner_stale_session_internal_retry_succeeds(
     assert "stale session" in retry_content.lower() or "session" in retry_content.lower(), (
         f"Retry prompt must contain stale-session context, got: {retry_content[:200]!r}"
     )
+
+
+def test_runner_inactivity_timeout_with_captured_session_retries_fresh(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Forced inactivity termination ignores captured session IDs and retries fresh."""
+    monkeypatch.setattr(runner_module, "start_mcp_server", lambda *a, **kw: FakeBridge())
+    monkeypatch.setattr(runner_module, "shutdown_mcp_server", lambda _: None)
+    monkeypatch.setattr(
+        runner_module,
+        "materialize_system_prompt",
+        lambda *, workspace_root, name: str(tmp_path / "SYS.md"),
+    )
+
+    (tmp_path / ".agent" / "tmp").mkdir(parents=True, exist_ok=True)
+    monkeypatch.chdir(tmp_path)
+
+    prompt_file = tmp_path / "PROMPT.md"
+    prompt_file.write_text("implement the change", encoding="utf-8")
+    captured_session = '{"session_id":"unsafe-after-kill"}'
+    captured_calls: list[tuple[str | None, str]] = []
+
+    def fake_invoke_agent(
+        config: AgentConfig,
+        prompt_file: str,
+        *,
+        options: InvokeOptions | None = None,
+    ) -> list[str]:
+        del config
+        session_id = options.session_id if options is not None else None
+        captured_calls.append((session_id, prompt_file))
+        if len(captured_calls) == 1:
+            raise AgentInactivityTimeoutError(
+                "claude",
+                300.0,
+                parsed_output=[captured_session],
+                reason=WatchdogFireReason.NO_OUTPUT_DEADLINE,
+            )
+        return []
+
+    result = runner_module._execute_agent_effect(
+        InvokeAgentEffect(
+            agent_name="claude",
+            phase=PHASE_DEVELOPMENT,
+            prompt_file=str(prompt_file),
+        ),
+        _make_config(),
+        runner_module._AgentExecutionDeps(
+            invoke_agent=fake_invoke_agent,
+            agent_invocation_error=AgentInvocationError,
+            agent_registry=_registry_factory(
+                AgentConfig(
+                    cmd="claude",
+                    output_flag="--json-stream",
+                    session_flag="--resume {}",
+                )
+            ),
+        ),
+        WorkspaceScope(tmp_path),
+        state=_make_state(),
+    )
+
+    assert result == PipelineEvent.AGENT_SUCCESS
+    assert len(captured_calls) == _EXPECTED_INVOCATION_COUNT
+    second_session_id, second_prompt = captured_calls[1]
+    assert second_session_id is None
+    retry_content = Path(second_prompt).read_text(encoding="utf-8")
+    assert "inactivity timeout" in retry_content
+
+
+
+def test_runner_stale_session_with_parsed_session_id_retries_fresh(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Stale-session errors force a fresh retry even when output has another session ID."""
+    monkeypatch.setattr(runner_module, "start_mcp_server", lambda *a, **kw: FakeBridge())
+    monkeypatch.setattr(runner_module, "shutdown_mcp_server", lambda _: None)
+    monkeypatch.setattr(
+        runner_module,
+        "materialize_system_prompt",
+        lambda *, workspace_root, name: str(tmp_path / "SYS.md"),
+    )
+
+    (tmp_path / ".agent" / "tmp").mkdir(parents=True, exist_ok=True)
+    monkeypatch.chdir(tmp_path)
+
+    prompt_file = tmp_path / "PROMPT.md"
+    prompt_file.write_text("implement the change", encoding="utf-8")
+    captured_calls: list[str | None] = []
+
+    def fake_invoke_agent(
+        config: AgentConfig,
+        prompt_file: str,
+        *,
+        options: InvokeOptions | None = None,
+    ) -> list[str]:
+        del config, prompt_file
+        captured_calls.append(options.session_id if options is not None else None)
+        if len(captured_calls) == 1:
+            raise AgentInvocationError(
+                "claude",
+                1,
+                "No conversation found with session ID: stale-original",
+                parsed_output=['{"session_id":"different-session-from-output"}'],
+            )
+        return []
+
+    result = runner_module._execute_agent_effect(
+        InvokeAgentEffect(
+            agent_name="claude",
+            phase=PHASE_DEVELOPMENT,
+            prompt_file=str(prompt_file),
+        ),
+        _make_config(),
+        runner_module._AgentExecutionDeps(
+            invoke_agent=fake_invoke_agent,
+            agent_invocation_error=AgentInvocationError,
+            agent_registry=_registry_factory(
+                AgentConfig(
+                    cmd="claude",
+                    output_flag="--json-stream",
+                    session_flag="--resume {}",
+                )
+            ),
+        ),
+        WorkspaceScope(tmp_path),
+        state=_make_state(last_session_id="stale-original", session_preserve=True),
+    )
+
+    assert result == PipelineEvent.AGENT_SUCCESS
+    assert len(captured_calls) == _EXPECTED_INVOCATION_COUNT
+    assert captured_calls[1] is None
+
 
 
 def test_runner_stale_session_exhausts_retries_returns_failure(

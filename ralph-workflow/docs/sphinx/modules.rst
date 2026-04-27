@@ -476,6 +476,13 @@ ralph.agents
 .. automodule:: ralph.agents
    :no-members:
 
+ralph.agents.activity
+~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.agents.activity
+   :members:
+   :show-inheritance:
+
 ralph.agents.availability
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 

@@ -15,6 +15,8 @@ import pytest
 from loguru import logger
 
 from ralph.agents import invoke as invoke_module
+from ralph.agents.activity import AgentActivityKind
+from ralph.agents.execution_state import GenericExecutionStrategy, strategy_for_transport
 from ralph.agents.invoke import (
     AgentInactivityTimeoutError,
     AgentInvocationError,
@@ -3164,6 +3166,23 @@ class _EventTriggeredStdout:
         raise StopIteration
 
 
+class _ScheduledStdout:
+    """Stdout that yields each line after its corresponding event fires."""
+
+    def __init__(self, scheduled_lines: list[tuple[str, threading.Event]]) -> None:
+        self._scheduled_lines = list(scheduled_lines)
+
+    def __iter__(self) -> _ScheduledStdout:
+        return self
+
+    def __next__(self) -> str:
+        if not self._scheduled_lines:
+            raise StopIteration
+        line, trigger = self._scheduled_lines.pop(0)
+        trigger.wait()
+        return line
+
+
 class _ClockBasedLivenessProbe:
     """Probe that reports children active until a fake-clock threshold is reached."""
 
@@ -3206,6 +3225,97 @@ def test_idle_timeout_drain_window_yields_late_line(
 
     assert late_line in result_lines
     # No AgentInactivityTimeoutError — function returned normally.
+
+
+def test_claude_lifecycle_activity_extends_idle_deadline(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Claude lifecycle activity resets idle even when display later suppresses it."""
+    prompt_file = tmp_path / "PROMPT.md"
+    prompt_file.write_text("hello", encoding="utf-8")
+    config = AgentConfig(
+        cmd="claude -p",
+        output_flag="--output-format=stream-json",
+        transport=AgentTransport.CLAUDE,
+    )
+
+    clock = _CallbackFakeClock()
+    lifecycle_line = (
+        '{"type":"content_block_start","index":0,"content_block":{"type":"thinking"}}\n'
+    )
+    trigger = clock.wait_until(10.2)
+    fake_process = _FakeInvokeProcess(stdout=_EventTriggeredStdout(lifecycle_line, trigger))
+    fake_process.returncode = 0
+    monkeypatch.setattr(
+        "ralph.agents.invoke.subprocess.Popen",
+        lambda *args, **kwargs: fake_process,
+    )
+
+    result_lines = list(
+        invoke_agent(
+            config,
+            str(prompt_file),
+            options=InvokeOptions(show_progress=False, idle_timeout_seconds=10),
+            _clock=clock,
+        )
+    )
+
+    assert lifecycle_line in result_lines
+
+
+def test_whitespace_only_output_does_not_extend_idle_deadline(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Blank heartbeats are not activity and cannot evade the idle timeout."""
+    prompt_file = tmp_path / "PROMPT.md"
+    prompt_file.write_text("hello", encoding="utf-8")
+    config = AgentConfig(cmd="codex", output_flag="--json-stream", transport=AgentTransport.CODEX)
+
+    clock = _CallbackFakeClock()
+    blank_trigger = clock.wait_until(10.2)
+    late_activity_trigger = clock.wait_until(11.0)
+    fake_process = _FakeInvokeProcess(
+        stdout=_ScheduledStdout(
+            [
+                ("   \n", blank_trigger),
+                ("meaningful output after original drain\n", late_activity_trigger),
+            ]
+        )
+    )
+    fake_process.returncode = 0
+    monkeypatch.setattr(
+        "ralph.agents.invoke.subprocess.Popen",
+        lambda *args, **kwargs: fake_process,
+    )
+
+    with pytest.raises(AgentInactivityTimeoutError) as exc_info:
+        list(
+            invoke_agent(
+                config,
+                str(prompt_file),
+                options=InvokeOptions(show_progress=False, idle_timeout_seconds=10),
+                _clock=clock,
+            )
+        )
+
+    assert exc_info.value.reason == invoke_module.WatchdogFireReason.NO_OUTPUT_DEADLINE
+
+
+def test_transport_activity_classifier_preserves_generic_and_claude_semantics() -> None:
+    """Transport strategies classify watchdog activity without depending on display parsing."""
+    generic_signal = GenericExecutionStrategy().classify_activity_line("plain output")
+    assert generic_signal is not None
+    assert generic_signal.kind == AgentActivityKind.OUTPUT_LINE
+
+    blank_signal = GenericExecutionStrategy().classify_activity_line("  \n")
+    assert blank_signal is None
+
+    claude_strategy = strategy_for_transport(AgentTransport.CLAUDE)
+    claude_signal = claude_strategy.classify_activity_line(
+        '{"type":"content_block_delta","delta":{"type":"thinking_delta","thinking":""}}'
+    )
+    assert claude_signal is not None
+    assert claude_signal.kind == AgentActivityKind.STREAM_DELTA
 
 
 def test_idle_timeout_defers_when_children_active_then_clears(

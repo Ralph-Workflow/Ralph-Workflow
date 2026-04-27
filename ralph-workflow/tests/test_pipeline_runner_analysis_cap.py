@@ -46,15 +46,10 @@ def _load_default_policy() -> PolicyBundle:
 
 
 class TestDevAnalysisCapTriggeredCommitHandoff:
-    """Test that analysis loopback at max routes to development under the default policy.
+    """Test that analysis loopback at max routes to commit under the default policy."""
 
-    Under the default policy, development_analysis has on_loopback=development.
-    With the fix, at max iteration the loopback signal is still used (not success),
-    so it routes to development for one final attempt.
-    """
-
-    def test_dev_analysis_at_max_forces_development_handoff(self) -> None:
-        """At max-1 iterations, ANALYSIS_LOOPBACK loops back to development for final attempt."""
+    def test_dev_analysis_at_max_forces_commit_handoff(self) -> None:
+        """At max-1 iterations, ANALYSIS_LOOPBACK routes to development_commit."""
         policy = _load_default_policy()
         state = PipelineState(
             phase=PHASE_DEVELOPMENT_ANALYSIS,
@@ -64,8 +59,7 @@ class TestDevAnalysisCapTriggeredCommitHandoff:
         )
 
         new_state, _ = _reduce(state, PipelineEvent.ANALYSIS_LOOPBACK, policy)
-        # With the fix, loopback routes to development (via on_loopback)
-        assert new_state.phase == "development"
+        assert new_state.phase == "development_commit"
         assert new_state.development_analysis_iteration == _DEV_MAX_ANALYSIS
 
     def test_dev_analysis_commit_resets_counter_and_increments_iteration(self) -> None:
@@ -86,15 +80,10 @@ class TestDevAnalysisCapTriggeredCommitHandoff:
 
 
 class TestReviewAnalysisCapTriggeredCommitHandoff:
-    """Test that review analysis loopback at max routes to fix under the default policy.
+    """Test that review analysis loopback at max routes to commit under the default policy."""
 
-    Under the default policy, review_analysis has on_loopback=fix.
-    With the fix, at max iteration the loopback signal is still used (not success),
-    so it routes to fix for one final attempt.
-    """
-
-    def test_review_analysis_at_max_forces_fix_handoff(self) -> None:
-        """At max-1 iterations, ANALYSIS_LOOPBACK loops back to fix for final attempt."""
+    def test_review_analysis_at_max_forces_commit_handoff(self) -> None:
+        """At max-1 iterations, ANALYSIS_LOOPBACK routes to review_commit."""
         policy = _load_default_policy()
         state = PipelineState(
             phase=PHASE_REVIEW_ANALYSIS,
@@ -106,8 +95,7 @@ class TestReviewAnalysisCapTriggeredCommitHandoff:
         )
 
         new_state, _ = _reduce(state, PipelineEvent.ANALYSIS_LOOPBACK, policy)
-        # With the fix, loopback routes to fix (via on_loopback)
-        assert new_state.phase == "fix"
+        assert new_state.phase == "review_commit"
         assert new_state.review_analysis_iteration == _REVIEW_MAX_ANALYSIS
 
     def test_review_analysis_commit_resets_counter_and_increments_reviewer_pass(

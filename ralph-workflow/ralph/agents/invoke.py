@@ -235,9 +235,11 @@ class AgentInactivityTimeoutError(AgentInvocationError):
         parsed_output: list[str] | None = None,
         *,
         reason: WatchdogFireReason | None = None,
+        session_resume_safe: bool = False,
     ) -> None:
         self.timeout_seconds = timeout_seconds
         self.reason = reason
+        self.session_resume_safe = session_resume_safe
         if reason == WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG:
             duration = f"{timeout_seconds:.0f}s"
             stderr_msg = f"Agent kept child agents alive without producing output for {duration}"
@@ -750,6 +752,7 @@ def _read_lines_from_process(  # noqa: PLR0915
     clock: Clock = _clock or SystemClock()
 
     watchdog = IdleWatchdog(policy, clock)
+    last_activity_kind = "none"
 
     reader_done: list[bool] = [False]  # mutable for closure capture
 
@@ -805,10 +808,12 @@ def _read_lines_from_process(  # noqa: PLR0915
         )
         assert timeout_val is not None
         logger.warning(
-            "idle watchdog firing reason={} elapsed={}s cumulative_waiting={}s",
+            "idle watchdog firing reason={} elapsed={}s cumulative_waiting={}s "
+            "last_activity_kind={} resume_safe=false",
             fire_reason,
             round(clock.monotonic(), 1),
             round(watchdog.cumulative_waiting_on_child_seconds, 1),
+            last_activity_kind,
         )
         with lines_lock:
             pending = list(lines_queue)
@@ -830,7 +835,10 @@ def _read_lines_from_process(  # noqa: PLR0915
                 is_done = True
 
         if queued_line is not None:
-            watchdog.record_activity()
+            activity_signal = strategy.classify_activity_line(queued_line)
+            if activity_signal is not None:
+                last_activity_kind = str(activity_signal.kind)
+                watchdog.record_activity()
             yield queued_line
             # Evaluate after every yield: SESSION_CEILING_EXCEEDED can fire even
             # under continuous output (ACTIVE is correct since activity just reset

@@ -46,10 +46,11 @@ def _reduce(
 
 
 def _dev_analysis_policy() -> PipelinePolicy:
-    """Policy with development_analysis that routes to development on loopback.
+    """Policy with analysis phases that route to correction on ordinary loopback.
 
-    This matches the default pipeline.toml behavior where development_analysis
-    has on_loopback=development (giving developer one final chance to fix).
+    This matches the default pipeline.toml behavior: ordinary analysis loopbacks
+    route to development/fix, while capped loopbacks force the success handoff to
+    the matching commit checkpoint.
     """
     return PipelinePolicy(
         phases={
@@ -185,10 +186,10 @@ class TestDevAnalysisLoopbackIncrementsContinuationCounter:
 
 
 class TestDevAnalysisLoopbackAtMaxForcesCommit:
-    """Test D: development_analysis loopback at max budget forces loopback to development."""
+    """Test D: development_analysis loopback at max budget forces commit handoff."""
 
-    def test_dev_analysis_loopback_at_max_forces_development(self) -> None:
-        """At max-1 iterations, ANALYSIS_LOOPBACK loops back to development for final attempt."""
+    def test_dev_analysis_loopback_at_max_forces_commit(self) -> None:
+        """At max-1 iterations, ANALYSIS_LOOPBACK routes to development_commit."""
         state = PipelineState(
             phase=PHASE_DEVELOPMENT_ANALYSIS,
             development_analysis_iteration=2,
@@ -196,8 +197,7 @@ class TestDevAnalysisLoopbackAtMaxForcesCommit:
         )
         policy = _dev_analysis_policy()
         new_state, _ = _reduce(state, PipelineEvent.ANALYSIS_LOOPBACK, policy)
-        # With the fix, loopback signal is used even at max iteration, routing to development
-        assert new_state.phase == PHASE_DEVELOPMENT
+        assert new_state.phase == "development_commit"
         max_iterations = state.max_development_analysis_iterations
         assert new_state.development_analysis_iteration == max_iterations
 
@@ -240,10 +240,10 @@ class TestReviewAnalysisLoopbackIncrementsContinuationCounter:
 
 
 class TestReviewAnalysisLoopbackAtMaxForcesCommit:
-    """Test F (part 2): review_analysis loopback at max budget forces loopback to fix."""
+    """Test F (part 2): review_analysis loopback at max budget forces commit handoff."""
 
-    def test_review_analysis_loopback_at_max_forces_fix(self) -> None:
-        """At max-1 iterations, ANALYSIS_LOOPBACK loops back to fix for final attempt."""
+    def test_review_analysis_loopback_at_max_forces_commit(self) -> None:
+        """At max-1 iterations, ANALYSIS_LOOPBACK routes to review_commit."""
         state = PipelineState(
             phase=PHASE_REVIEW_ANALYSIS,
             review_analysis_iteration=1,
@@ -252,8 +252,7 @@ class TestReviewAnalysisLoopbackAtMaxForcesCommit:
         )
         policy = _dev_analysis_policy()
         new_state, _ = _reduce(state, PipelineEvent.ANALYSIS_LOOPBACK, policy)
-        # With the fix, loopback signal is used even at max iteration, routing to fix
-        assert new_state.phase == PHASE_FIX
+        assert new_state.phase == PHASE_REVIEW_COMMIT
         max_iterations = state.max_review_analysis_iterations
         assert new_state.review_analysis_iteration == max_iterations
 

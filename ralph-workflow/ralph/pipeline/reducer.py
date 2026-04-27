@@ -429,12 +429,11 @@ def _handle_capped_analysis_loopback(
 ) -> tuple[PipelineState, list[Effect]]:
     """Handle an analysis-loopback transition with an iteration cap.
 
-    When the iteration cap is exhausted, the signal remains "loopback" so the
-    pipeline always routes to the correction phase (development or fix) for one
-    final attempt. The "success" signal should only be emitted when the analysis
-    agent actually approves.
+    When the loopback reaches the configured cap, route through the phase's
+    success handoff so the workflow can make forward progress to the commit
+    checkpoint while preserving the capped inner-loop counter.
     """
-    signal = "loopback"
+    signal = "success" if iteration + 1 >= max_iterations else "loopback"
     new_state, effects = _resolve_or_terminal(state, signal, policy, "analysis loopback")
     return apply_progress(state, new_state), effects
 

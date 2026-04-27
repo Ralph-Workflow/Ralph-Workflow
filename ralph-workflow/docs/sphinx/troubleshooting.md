@@ -59,6 +59,21 @@ Validate after fixing:
 ralph --check-mcp
 ```
 
+## Agent run times out even though the transcript showed activity
+
+**Symptom:** Ralph Workflow reports an inactivity timeout or a stale session retry after an
+agent run that appeared active.
+
+**Cause:** Idle timeout follows provider activity signals before display rendering. Real
+streaming deltas, lifecycle events, tool calls, and tool results count as activity; blank
+heartbeat lines do not. If Ralph Workflow has to kill the subprocess for inactivity, any captured
+session ID is considered unsafe and the retry starts fresh unless the transport explicitly
+supports safe resume after forced termination.
+
+**Fix:** Check the watchdog log line for `reason`, `last_activity_kind`, and `resume_safe`.
+If the next attempt reports `No conversation found with session ID`, recovery treats it as a
+stale session and retries fresh within the remaining budget.
+
 ## `make verify` fails after editing config
 
 **Symptom:** `ruff`, `mypy`, or `pytest` fails after editing configuration or source files.

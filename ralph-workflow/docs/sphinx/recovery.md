@@ -67,6 +67,21 @@ Each phase uses an agent chain (e.g., `claude → opencode`). When an agent exha
 `max_retries` budget, Ralph Workflow falls over to the next agent in the chain with a clean
 state — no silent retries, no double-counting. Chain composition is validated pre-flight.
 
+## Idle activity and session safety
+
+Idle timeout is based on transport activity signals, not only visible transcript text.
+Provider lifecycle events, streaming deltas, tool calls, and tool results can reset the idle
+watchdog even when the display parser later suppresses them as non-user-facing noise.
+Whitespace-only output is not activity, so blank heartbeats cannot keep a stuck subprocess
+alive indefinitely.
+
+When Ralph Workflow forcibly terminates a subprocess for inactivity, the next retry starts a
+fresh agent session by default. Captured session IDs from a killed process are treated as
+unsafe unless that transport explicitly marks resume after forced termination as safe. If a
+provider reports a stale session error such as `No conversation found with session ID`,
+`Session not found`, or `Unknown session`, recovery also retries fresh within the remaining
+budget even if the failed output included another session ID.
+
 ## How to read failure events in logs
 
 Failure events are emitted as structured log entries with `recovery=true`:

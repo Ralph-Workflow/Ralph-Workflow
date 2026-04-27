@@ -342,12 +342,12 @@ class TestPipelinePhaseTransitions:
         assert isinstance(effect, (PreparePromptEffect, InvokeAgentEffect))
         assert effect.phase == "review"
 
-    def test_fix_routes_to_review(
+    def test_fix_routes_to_review_analysis(
         self,
         default_policy: tuple[Any, Any, Any],
         initial_state: PipelineState,
     ) -> None:
-        """Test that fix phase routes back to review."""
+        """Test that fix phase routes through review analysis before another review."""
         agents_policy, pipeline_policy, _ = default_policy
 
         # Set state to fix
@@ -359,6 +359,6 @@ class TestPipelinePhaseTransitions:
 
         effect = determine_next_effect(state, pipeline_policy, agents_policy)
 
-        # Fix should route back to review
+        # Fix should route through review_analysis so fixes are checked before another review pass.
         assert isinstance(effect, (PreparePromptEffect, InvokeAgentEffect))
-        assert effect.phase == "review"
+        assert effect.phase == "review_analysis"

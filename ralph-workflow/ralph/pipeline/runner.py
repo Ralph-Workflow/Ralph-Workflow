@@ -2162,6 +2162,18 @@ def _build_agent_recovery_plan(  # noqa: PLR0913
     if reason is None:
         return None
 
+    if _failure_requires_fresh_session(exc, inactivity_error_type):
+        return _AgentRecoveryPlan(
+            prompt_file=_write_agent_retry_prompt(
+                workspace_root=workspace_root,
+                prompt_file=effect.prompt_file,
+                reason=reason,
+                context_lines=_recovery_context_lines(exc, raw_output, rendered_output),
+            ),
+            session_id=None,
+            reason=reason,
+        )
+
     resumable_session_id = cast("object", getattr(exc, "resumable_session_id", None))
     if isinstance(resumable_session_id, str) and resumable_session_id:
         return _AgentRecoveryPlan(
@@ -2187,6 +2199,20 @@ def _build_agent_recovery_plan(  # noqa: PLR0913
         session_id=None,
         reason=reason,
     )
+
+
+def _failure_requires_fresh_session(
+    exc: Exception,
+    inactivity_error_type: type[Exception],
+) -> bool:
+    if isinstance(exc, inactivity_error_type):
+        session_resume_safe = cast("object", getattr(exc, "session_resume_safe", False))
+        return session_resume_safe is not True
+
+    raw_details = "\n".join(_recovery_error_parts(exc))
+    from ralph.recovery.classifier import _SESSION_NOT_FOUND_SUBSTRINGS  # noqa: PLC0415
+
+    return any(s in raw_details for s in _SESSION_NOT_FOUND_SUBSTRINGS)
 
 
 def _retryable_agent_failure_reason(

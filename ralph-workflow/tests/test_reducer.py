@@ -131,7 +131,10 @@ def _policy_with_post_commit_routes() -> PipelinePolicy:
             ),
             PHASE_FIX: PhaseDefinition(
                 drain="fix",
-                transitions=PhaseTransition(on_success=PHASE_REVIEW_ANALYSIS, on_loopback=PHASE_REVIEW),
+                transitions=PhaseTransition(
+                    on_success=PHASE_REVIEW_ANALYSIS,
+                    on_loopback=PHASE_REVIEW,
+                ),
             ),
             "review_commit": PhaseDefinition(
                 drain="review_commit",
@@ -851,6 +854,23 @@ class TestAnalysisDecisionDispatch:
         assert new_state.phase == "review_commit"
         assert new_state.previous_phase == "review_analysis"
         assert new_state.review_analysis_iteration == state.max_review_analysis_iterations
+
+    def test_review_analysis_loopback_at_max_with_policy_forces_commit(self) -> None:
+        """Policy routing must force review_commit when review analysis reaches its cap."""
+        policy = _policy_with_post_commit_routes()
+        state = PipelineState(
+            phase="review_analysis",
+            review_analysis_iteration=1,
+            max_review_analysis_iterations=2,
+            review_issues_found=False,
+        )
+
+        new_state, _ = _reduce(state, PipelineEvent.ANALYSIS_LOOPBACK, policy)
+
+        assert new_state.phase == "review_commit"
+        assert new_state.previous_phase == "review_analysis"
+        assert new_state.review_analysis_iteration == state.max_review_analysis_iterations
+        assert new_state.review_issues_found is True
 
     def test_review_analysis_success_resets_review_analysis_iteration(self) -> None:
         """ANALYSIS_SUCCESS in review_analysis resets the iteration counter."""

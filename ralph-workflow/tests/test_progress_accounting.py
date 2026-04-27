@@ -3,7 +3,7 @@
 These tests lock the intended contract before refactoring:
 - outer counters only change when a cycle/pass completes
 - inner analysis counters track loopbacks within the current cycle/pass
-- forced handoff keeps outer counters unchanged while preserving review flags
+- forced handoff moves to commit while keeping outer counters unchanged and preserving review flags
 - skipped commits route onward without silently counting completed progress
 - checkpoint-facing mirrors derive exactly from canonical PipelineState counters
 """
@@ -149,7 +149,7 @@ def test_review_analysis_loopback_updates_only_review_analysis_fields() -> None:
 
 
 def test_forced_review_analysis_handoff_preserves_outer_progress_and_marks_issue_state() -> None:
-    """At max iteration, ANALYSIS_LOOPBACK routes to fix (not commit) and marks issues."""
+    """At max iteration, ANALYSIS_LOOPBACK routes to commit and marks issues."""
     policy = _progress_policy()
     state = PipelineState(
         phase="review_analysis",
@@ -162,8 +162,7 @@ def test_forced_review_analysis_handoff_preserves_outer_progress_and_marks_issue
 
     new_state, _ = _reduce(state, PipelineEvent.ANALYSIS_LOOPBACK, policy)
 
-    # With the fix, loopback routes to fix (not commit) at max iteration
-    assert new_state.phase == PHASE_FIX
+    assert new_state.phase == "review_commit"
     assert new_state.previous_phase == "review_analysis"
     assert new_state.reviewer_pass == 1
     assert new_state.review_analysis_iteration == FORCED_REVIEW_ANALYSIS_ITERATION

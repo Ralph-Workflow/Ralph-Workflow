@@ -156,9 +156,9 @@ def handle_review(effect: Effect, ctx: PhaseContext) -> list[Event]:
         # Check if issues were found and emit REVIEW_ISSUES_FOUND if so
         try:
             artifact_wrapper = load_phase_artifact(ctx.workspace, REVIEW_ISSUES_ARTIFACT_PATH)
-            content = artifact_wrapper.get("content", {})
-            issues = content.get("issues", [])
-            if issues:
+            content: object = artifact_wrapper.get("content", {})
+            issues: object = content.get("issues", []) if isinstance(content, dict) else []
+            if isinstance(issues, list) and issues:
                 return [PipelineEvent.REVIEW_ISSUES_FOUND]
         except Exception:
             pass

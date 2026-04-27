@@ -7,8 +7,11 @@ OpenCodeExecutionStrategy implementations.
 
 from __future__ import annotations
 
+import json
 from enum import StrEnum
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
+
+from ralph.agents.activity import AgentActivityKind, AgentActivitySignal
 
 if TYPE_CHECKING:
     from typing import Protocol
@@ -35,6 +38,15 @@ class GenericExecutionStrategy:
     Replicates the behaviour that existed before the session-aware model was
     introduced so that Claude/Codex paths are unaffected.
     """
+
+    def classify_activity_line(self, line: str) -> AgentActivitySignal | None:
+        """Classify a raw output line for idle-watchdog activity.
+
+        Generic transports treat any non-blank line as activity while rejecting
+        whitespace-only heartbeats so a process cannot evade the idle deadline
+        without emitting meaningful provider output.
+        """
+        return _non_blank_output_signal(line)
 
     def classify_quiet(
         self,
@@ -64,6 +76,44 @@ class GenericExecutionStrategy:
 _AGENT_LABEL_PREFIX = "agent:"
 
 
+_CLAUDE_LIFECYCLE_EVENTS = frozenset(
+    {
+        "message_start",
+        "message_stop",
+        "content_block_start",
+        "content_block_stop",
+        "message_delta",
+        "assistant",
+        "user",
+        "system",
+    }
+)
+
+
+class ClaudeExecutionStrategy(GenericExecutionStrategy):
+    """Claude-aware activity classification for watchdog control flow."""
+
+    def classify_activity_line(self, line: str) -> AgentActivitySignal | None:
+        stripped = line.strip()
+        if not stripped:
+            return None
+
+        prefixed_signal = _classify_claude_prefixed_line(stripped)
+        if prefixed_signal is not None:
+            return prefixed_signal
+
+        try:
+            parsed = cast("object", json.loads(stripped, strict=False))
+        except json.JSONDecodeError:
+            return AgentActivitySignal(AgentActivityKind.OUTPUT_LINE, raw=line)
+
+        if not isinstance(parsed, dict):
+            return AgentActivitySignal(AgentActivityKind.OUTPUT_LINE, raw=line)
+
+        obj = cast("dict[str, object]", parsed)
+        return _classify_claude_json_object(obj, line)
+
+
 class OpenCodeExecutionStrategy:
     """OpenCode-aware strategy.
 
@@ -89,6 +139,10 @@ class OpenCodeExecutionStrategy:
         if self._label_scope is not None:
             return f"{_AGENT_LABEL_PREFIX}{self._label_scope}:"
         return _AGENT_LABEL_PREFIX
+
+    def classify_activity_line(self, line: str) -> AgentActivitySignal | None:
+        """Classify OpenCode output for idle-watchdog activity."""
+        return _non_blank_output_signal(line)
 
     def classify_quiet(
         self,
@@ -150,11 +204,71 @@ def strategy_for_transport(
 
     if transport == AgentTransport.OPENCODE:
         return OpenCodeExecutionStrategy()
+    if transport == AgentTransport.CLAUDE:
+        return ClaudeExecutionStrategy()
     return GenericExecutionStrategy()
+
+
+def _non_blank_output_signal(line: str) -> AgentActivitySignal | None:
+    if not line.strip():
+        return None
+    return AgentActivitySignal(AgentActivityKind.OUTPUT_LINE, raw=line)
+
+
+def _classify_claude_prefixed_line(stripped: str) -> AgentActivitySignal | None:
+    if stripped.startswith("[claude]:"):
+        return AgentActivitySignal(AgentActivityKind.LIFECYCLE, raw=stripped)
+    if not (stripped.startswith("claude ") or stripped.startswith("claude/")):
+        return None
+    if " tool: " in stripped:
+        return AgentActivitySignal(AgentActivityKind.TOOL_USE, raw=stripped)
+    return AgentActivitySignal(AgentActivityKind.LIFECYCLE, raw=stripped)
+
+
+def _classify_claude_json_object(
+    obj: dict[str, object],
+    raw: str,
+) -> AgentActivitySignal:
+    event_obj = obj.get("event")
+    if obj.get("type") == "stream_event" and isinstance(event_obj, dict):
+        return _classify_claude_json_object(cast("dict[str, object]", event_obj), raw)
+
+    event_type = str(obj.get("type", ""))
+    kind = _claude_activity_kind_for_event(event_type, obj)
+    return AgentActivitySignal(kind, raw=raw)
+
+
+def _claude_activity_kind_for_event(
+    event_type: str,
+    obj: dict[str, object],
+) -> AgentActivityKind:
+    if event_type == "content_block_delta":
+        return AgentActivityKind.STREAM_DELTA
+    if event_type == "content_block_start":
+        return _claude_activity_kind_for_content_block(obj)
+    if event_type in {"tool_use", "mcp_tool_call"}:
+        return AgentActivityKind.TOOL_USE
+    if event_type in {"tool_result", "mcp_tool_result"}:
+        return AgentActivityKind.TOOL_RESULT
+    if event_type in _CLAUDE_LIFECYCLE_EVENTS:
+        return AgentActivityKind.LIFECYCLE
+    return AgentActivityKind.OUTPUT_LINE
+
+
+def _claude_activity_kind_for_content_block(obj: dict[str, object]) -> AgentActivityKind:
+    content_block = obj.get("content_block")
+    if isinstance(content_block, dict):
+        block_type = str(content_block.get("type", ""))
+        if block_type == "tool_use":
+            return AgentActivityKind.TOOL_USE
+        if block_type == "tool_result":
+            return AgentActivityKind.TOOL_RESULT
+    return AgentActivityKind.LIFECYCLE
 
 
 __all__ = [
     "AgentExecutionState",
+    "ClaudeExecutionStrategy",
     "GenericExecutionStrategy",
     "OpenCodeExecutionStrategy",
     "strategy_for_transport",
