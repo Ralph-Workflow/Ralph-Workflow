@@ -214,6 +214,7 @@ def _prepare_executor(
             same_workspace.mcp_factory,
             worker_scope,
             worker_artifact_dir=worker_namespace / "artifacts",
+            worker_namespace=worker_namespace,
         )
         return executor, bundle, worker_namespace
 
@@ -227,6 +228,7 @@ def _prepare_executor(
         worker_mcp_factory,
         worker_scope,
         worker_artifact_dir=worker_namespace / "artifacts",
+        worker_namespace=worker_namespace,
     )
     worker_artifact_dir = worker_namespace / "artifacts"
     return (

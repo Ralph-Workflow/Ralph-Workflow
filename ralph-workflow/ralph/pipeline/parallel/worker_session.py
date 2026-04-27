@@ -27,6 +27,7 @@ def build_worker_session(
     workspace_scope: WorkspaceScope,
     *,
     worker_artifact_dir: Path | None = None,
+    worker_namespace: Path | None = None,
 ) -> WorkerSessionBundle:
     session_id = f"dev-{unit.unit_id}-{uuid4().hex[:8]}"
     session = AgentSession(
@@ -35,6 +36,7 @@ def build_worker_session(
         drain="",
         parallel_worker=True,
         worker_artifact_dir=worker_artifact_dir,
+        worker_namespace=worker_namespace,
     )
     mcp_handle = mcp_factory.build(session)
     return WorkerSessionBundle(

@@ -236,3 +236,25 @@ class TestBannedPhrasesAcrossAllDocs:
             f"{doc_path} contains banned phrase(s): {violations!r}. "
             "Rewrite to describe same-workspace v1 truthfully."
         )
+
+class TestNamespacedPayloadDocs:
+    def test_parallel_mode_doc_mentions_worker_namespaced_payloads(self) -> None:
+        """parallel-mode.md must document that per-worker prompt payloads are namespaced."""
+        doc = _DOC_PATH.read_text(encoding="utf-8")
+        assert ".agent/workers/<unit_id>/tmp/prompt_payloads/" in doc, (
+            "parallel-mode.md must state that per-worker prompt payloads are written under "
+            ".agent/workers/<unit_id>/tmp/prompt_payloads/ (concurrent-worker collision prevention)"
+        )
+
+    def test_parallel_mode_doc_no_future_tense_worktree(self) -> None:
+        """parallel-mode.md must not describe worktree as a future or planned feature."""
+        doc = _DOC_PATH.read_text(encoding="utf-8").lower()
+        forbidden = [
+            "future worktree",
+            "planned worktree support",
+            "worktree mode will be supported",
+        ]
+        violations = [phrase for phrase in forbidden if phrase in doc]
+        assert violations == [], (
+            f"parallel-mode.md contains future-tense worktree language: {violations!r}"
+        )

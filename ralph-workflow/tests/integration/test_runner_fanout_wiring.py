@@ -378,3 +378,73 @@ def test_execute_fan_out_sync_notifies_dashboard_subscriber_after_each_reduce(
     )
 
     assert notified_phases == reduced_phases
+
+def test_materialize_prepared_prompt_uses_worker_namespace_from_env(
+    monkeypatch, tmp_path
+) -> None:
+    """When RALPH_WORKER_NAMESPACE is set, prompt payloads land in the worker's namespace."""
+    from ralph.pipeline import runner as runner_module  # noqa: PLC0415
+    from ralph.pipeline.effects import PreparePromptEffect  # noqa: PLC0415
+    from ralph.policy.loader import load_policy  # noqa: PLC0415
+
+    worker_ns = tmp_path / ".agent" / "workers" / "unit-test"
+    worker_ns.mkdir(parents=True, exist_ok=True)
+    shared_payload_dir = tmp_path / ".agent" / "tmp" / "prompt_payloads"
+
+    recorded_kwargs: list[dict] = []
+
+    def _fake_materialize(**kwargs):
+        recorded_kwargs.append(kwargs)
+        return "rendered-prompt"
+
+    def _fake_dump(workspace, phase, prompt):
+        return "/fake/prompt/path"
+
+    monkeypatch.setenv("RALPH_WORKER_NAMESPACE", str(worker_ns))
+    monkeypatch.setattr(runner_module, "materialize_prompt_for_phase", _fake_materialize)
+    # Patch dump to avoid writing files
+    import ralph.prompts.materialize  # noqa: PLC0415
+    monkeypatch.setattr(ralph.prompts.materialize, "dump_rendered_prompt", _fake_dump)
+
+    policy = load_policy(tmp_path / ".agent")
+    workspace_scope = WorkspaceScope(tmp_path)
+    effect = PreparePromptEffect(phase="development", iteration=1)
+
+    runner_module._materialize_prepared_prompt(effect, policy.pipeline, workspace_scope)
+
+    assert len(recorded_kwargs) == 1
+    wn = recorded_kwargs[0].get("worker_namespace")
+    assert wn is not None, "worker_namespace must be passed to materialize_prompt_for_phase"
+    assert wn == worker_ns, f"Expected {worker_ns}, got {wn}"
+    assert not shared_payload_dir.exists(), (
+        "Shared payload dir must not be written when worker_namespace is set"
+    )
+
+
+def test_materialize_prepared_prompt_no_namespace_without_env(
+    monkeypatch, tmp_path
+) -> None:
+    """Without RALPH_WORKER_NAMESPACE, worker_namespace is None (shared path used)."""
+    from ralph.pipeline import runner as runner_module  # noqa: PLC0415
+    from ralph.pipeline.effects import PreparePromptEffect  # noqa: PLC0415
+    from ralph.policy.loader import load_policy  # noqa: PLC0415
+
+    monkeypatch.delenv("RALPH_WORKER_NAMESPACE", raising=False)
+    recorded_kwargs: list[dict] = []
+
+    def _fake_materialize(**kwargs):
+        recorded_kwargs.append(kwargs)
+        return "rendered-prompt"
+
+    import ralph.prompts.materialize  # noqa: PLC0415
+    monkeypatch.setattr(runner_module, "materialize_prompt_for_phase", _fake_materialize)
+    monkeypatch.setattr(ralph.prompts.materialize, "dump_rendered_prompt", lambda *a, **k: "/p")
+
+    policy = load_policy(tmp_path / ".agent")
+    workspace_scope = WorkspaceScope(tmp_path)
+    effect = PreparePromptEffect(phase="development", iteration=1)
+
+    runner_module._materialize_prepared_prompt(effect, policy.pipeline, workspace_scope)
+
+    assert len(recorded_kwargs) == 1
+    assert recorded_kwargs[0].get("worker_namespace") is None

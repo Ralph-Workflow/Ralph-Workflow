@@ -128,8 +128,7 @@ and the workspace scope for that worker is write-fenced to those directories. Wo
 cannot write outside their declared edit areas. Reserved paths (`.agent`, `.git`, `.`)
 may never be declared as edit areas.
 
-Single-agent (non-parallel) invocations are not path-restricted beyond the normal
-workspace root boundary. See `ralph.pipeline.parallel` for the same-workspace
+Single-agent (non-parallel) invocations use the standard workspace scope and are not subject to per-worker fencing. See `ralph.pipeline.parallel` for the same-workspace
 coordinator and `ralph.pipeline.work_units` for the validation logic.
 
 (parallel-work-units)=

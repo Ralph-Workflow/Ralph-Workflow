@@ -47,6 +47,7 @@ class AgentSession:
     parallel_worker: bool = False
     edit_area_result: object = None
     worker_artifact_dir: Path | None = None
+    worker_namespace: Path | None = None
 
     def check_capability(self, capability: str) -> object:
         return "approved" if session_has_capability(self.capabilities, capability) else "denied"

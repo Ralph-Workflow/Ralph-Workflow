@@ -1491,10 +1491,14 @@ def _materialize_prepared_prompt(
     pipeline_policy: PipelinePolicy,
     workspace_scope: WorkspaceScope,
 ) -> None:
+    import os  # noqa: PLC0415
+
     workspace = FsWorkspace(
         workspace_scope.root,
         allowed_roots=workspace_scope.allowed_roots,
     )
+    worker_ns_str = os.environ.get("RALPH_WORKER_NAMESPACE")
+    worker_namespace = Path(worker_ns_str) if worker_ns_str else None
     materialize_prompt_for_phase(
         phase=effect.phase,
         workspace=workspace,
@@ -1505,6 +1509,7 @@ def _materialize_prepared_prompt(
             )
         ),
         workspace_root=workspace_scope.root,
+        worker_namespace=worker_namespace,
     )
 
 

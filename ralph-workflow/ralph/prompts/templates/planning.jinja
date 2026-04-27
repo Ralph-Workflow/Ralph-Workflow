@@ -153,7 +153,10 @@ These paths are always rejected as `allowed_directories`:
 - `.git` (version control)
 - `.` or empty string (entire repo — too broad)
 
-**4. Use 2+ work units to enable parallel fan-out.**
+**4. Worker state is namespaced per unit.**
+Each worker writes its prompt payloads, logs, and artifacts under `.agent/workers/<unit_id>/`.
+
+**5. Use 2+ work units to enable parallel fan-out.**
 A single work unit falls through to the serial development path. Parallel fan-out only activates with 2 or more units.
 
 **Choosing between splitting and merging:**
