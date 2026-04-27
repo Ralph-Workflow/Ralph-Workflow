@@ -369,8 +369,7 @@ def test_drain_window_zero_fires_immediately_with_active_classification() -> Non
 def test_record_activity_during_waiting_does_not_reset_cumulative() -> None:
     """record_activity() preserves cumulative_waiting_on_child_seconds.
 
-    New contract: cumulative is only reset after a sustained active interval
-    >= drain_window_seconds without a WAITING transition. Heartbeat activity
+    Cumulative is an absolute ceiling that survives heartbeats. Heartbeat activity
     alone cannot defeat the max_waiting_on_child_seconds ceiling.
     """
     watchdog, clock = _make_watchdog(idle_timeout=10.0, max_waiting=20.0)
@@ -385,7 +384,6 @@ def test_record_activity_during_waiting_does_not_reset_cumulative() -> None:
 
     # Cumulative preserved at 4s (not reset by record_activity).
     assert watchdog.cumulative_waiting_on_child_seconds == pytest.approx(4.0, abs=0.01)
-    assert watchdog._last_activity_decay_anchor == watchdog._last_activity
 
     # Advance past idle deadline again (11s from last activity at t=15).
     clock.advance(11.0)  # t=26, idle_elapsed=11
@@ -428,38 +426,42 @@ def test_record_activity_during_waiting_cumulative_causes_fire() -> None:
     assert watchdog.last_fire_reason == WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG
 
 
-def test_cumulative_decays_after_sustained_active_interval() -> None:
-    """Cumulative resets to 0 after drain_window_seconds of active (no WAITING) time.
-
-    After record_activity(), if the agent stays within the idle deadline for at
-    least drain_window_seconds without entering WAITING, the cumulative is zeroed.
-    This allows genuinely-active agents to start fresh after a burst of child activity.
+def test_cumulative_does_not_decay_under_long_active_period() -> None:
+    """Cumulative is absolute across the session: any duration of in-deadline ACTIVE
+    evaluations does NOT reset it. This guards against the previous bug where a single
+    heartbeat plus drain_window quiet wiped the ceiling.
     """
     watchdog, clock = _make_watchdog(idle_timeout=10.0, drain_window=0.5, max_waiting=20.0)
 
-    # 4s WAITING run.
+    # 4s WAITING run starting at t=11.
     clock.advance(11.0)
     watchdog.evaluate(classify_quiet=_waiting)
     clock.advance(4.0)  # t=15
     watchdog.record_activity()
     assert watchdog.cumulative_waiting_on_child_seconds == pytest.approx(4.0, abs=0.01)
-    assert watchdog._last_activity_decay_anchor == watchdog._last_activity
 
     # Stay within idle deadline for > drain_window_seconds (0.5) without WAITING.
     clock.advance(0.6)  # t=15.6, idle_elapsed=0.6 < 10
-    result = watchdog.evaluate(classify_quiet=_active)  # CONTINUE path triggers decay
+    result = watchdog.evaluate(classify_quiet=_active)
     assert result == WatchdogVerdict.CONTINUE
 
-    # Cumulative reset to 0 after the sustained active interval.
-    assert watchdog.cumulative_waiting_on_child_seconds == 0.0
-    assert watchdog._last_activity_decay_anchor is None  # anchor cleared
+    # Cumulative must NOT decay; it remains at 4s.
+    assert watchdog.cumulative_waiting_on_child_seconds == pytest.approx(4.0, abs=0.01)
 
-    # A fresh WAITING run starts the counter from zero.
-    clock.advance(10.0)  # t=25.6, idle_elapsed=10
+    # Sustained active period — still no decay.
+    clock.advance(5.0)  # t=20.6, idle_elapsed=5.6 < 10
+    result = watchdog.evaluate(classify_quiet=_active)
+    assert result == WatchdogVerdict.CONTINUE
+    assert watchdog.cumulative_waiting_on_child_seconds == pytest.approx(4.0, abs=0.01)
+
+    # A fresh WAITING run starts with cumulative=4, not 0.
+    # 4 + 17 = 21 >= 20 -> FIRE proves cumulative was never reset.
+    clock.advance(11.0)  # t=31.6, idle_elapsed=11 -> past idle deadline
+    watchdog.evaluate(classify_quiet=_waiting)  # new WAITING run starts
+    clock.advance(17.0)  # run elapsed=17; candidate=4+17=21>=20
     result = watchdog.evaluate(classify_quiet=_waiting)
-    assert result == WatchdogVerdict.WAITING_ON_CHILD
-    # cumulative still 0 — run is in progress, not yet accumulated to persistent total
-    assert watchdog.cumulative_waiting_on_child_seconds == 0.0
+    assert result == WatchdogVerdict.FIRE
+    assert watchdog.last_fire_reason == WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG
 
 
 def test_waiting_ceiling_survives_intermittent_heartbeats() -> None:
@@ -485,6 +487,58 @@ def test_waiting_ceiling_survives_intermittent_heartbeats() -> None:
         watchdog.record_activity()
 
     assert last_result == WatchdogVerdict.FIRE
+    assert watchdog.last_fire_reason == WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG
+
+
+def test_cumulative_ceiling_fires_with_heartbeat_then_long_quiet() -> None:
+    """Black-box regression: heartbeat + quiet > drain_window must NOT reset cumulative.
+
+    Mirrors the user's log pattern where cumulative_candidate reached 1444s but
+    the ceiling at 1800s was never triggered because every record_activity() +
+    2s-quiet wiped the cumulative counter.
+
+    Pattern:
+      - t=11: past idle deadline, enter WAITING run1
+      - t=19: record_activity (heartbeat at t=19 accumulates 8s -> cumulative=8)
+      - t=21: 2s quiet > drain_window (0.5) — previously this zeroed cumulative
+      - evaluate(ACTIVE) -> CONTINUE; with the BUG cumulative becomes 0
+      - t=32: new idle deadline passed, enter WAITING run2
+      - t=45: run2 elapsed=13; with BUG candidate=0+13=13<20 (no fire);
+              without BUG candidate=8+13=21>=20 -> FIRE
+    """
+    watchdog, clock = _make_watchdog(idle_timeout=10.0, drain_window=0.5, max_waiting=20.0)
+
+    # t=11: past idle deadline
+    clock.advance(11.0)
+    result = watchdog.evaluate(classify_quiet=_waiting)
+    assert result == WatchdogVerdict.WAITING_ON_CHILD
+
+    # t=19: still in run1 (8s elapsed)
+    clock.advance(8.0)
+    result = watchdog.evaluate(classify_quiet=_waiting)
+    assert result == WatchdogVerdict.WAITING_ON_CHILD
+
+    # Heartbeat: record_activity accumulates run1 (8s) -> cumulative=8
+    watchdog.record_activity()
+    assert watchdog.cumulative_waiting_on_child_seconds == pytest.approx(8.0, abs=0.01)
+
+    # t=21: 2s quiet > drain_window=0.5; previously this would zero cumulative
+    clock.advance(2.0)
+    result = watchdog.evaluate(classify_quiet=_active)
+    assert result == WatchdogVerdict.CONTINUE
+
+    # cumulative must remain 8, not be reset to 0
+    assert watchdog.cumulative_waiting_on_child_seconds == pytest.approx(8.0, abs=0.01)
+
+    # t=32: past idle deadline again (11s from record_activity at t=19)
+    clock.advance(11.0)
+    result = watchdog.evaluate(classify_quiet=_waiting)  # new WAITING run2 starts
+    assert result == WatchdogVerdict.WAITING_ON_CHILD
+
+    # t=45: run2 elapsed=13; candidate=8+13=21>=20 -> FIRE
+    clock.advance(13.0)
+    result = watchdog.evaluate(classify_quiet=_waiting)
+    assert result == WatchdogVerdict.FIRE
     assert watchdog.last_fire_reason == WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG
 
 

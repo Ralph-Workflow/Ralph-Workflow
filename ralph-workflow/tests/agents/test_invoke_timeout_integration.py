@@ -3,6 +3,7 @@
 These tests drive the read loop with a fake stdout pipe and FakeClock to prove:
   (a) SESSION_CEILING_EXCEEDED fires under continuous output (false-negative fix).
   (b) NO_OUTPUT_DEADLINE fires when classify_quiet raises (defensive-wrap fix).
+  (c) CHILDREN_PERSIST_TOO_LONG fires with oscillating heartbeat (absolute-ceiling fix).
 
 No real subprocesses are spawned; all timing is driven by FakeClock.
 """
@@ -10,6 +11,7 @@ No real subprocesses are spawned; all timing is driven by FakeClock.
 from __future__ import annotations
 
 import threading
+import time
 from typing import TYPE_CHECKING
 
 import pytest
@@ -235,3 +237,64 @@ def test_post_yield_evaluate_uses_real_classify_quiet() -> None:
         )
     )
     assert "   \n" in lines
+
+
+def test_cumulative_ceiling_fires_with_oscillating_heartbeat() -> None:
+    """Black-box reproduction of the user's bug: an agent that produces a heartbeat
+    after every idle deadline must still trip the absolute CHILDREN_PERSIST_TOO_LONG
+    ceiling.
+
+    Design: the generator yields one meaningful line every (idle_timeout + 1) seconds
+    of fake-clock time by busy-waiting on clock.monotonic() (yielding CPU via
+    time.sleep(0) between checks so the main loop can advance the FakeClock through
+    wait_for_event calls).  classify_quiet always returns WAITING_ON_CHILD.
+
+    With the old code the heartbeat + drain_window quiet reset cumulative to 0 every
+    cycle, so the loop ran forever.  With the fix cumulative is absolute and grows by
+    ~1s per cycle; it eventually exceeds max_waiting_on_child_seconds and
+    CHILDREN_PERSIST_TOO_LONG fires.
+    """
+    idle_timeout = 10.0
+    max_waiting = 20.0
+    drain_window = 0.5
+    poll_interval = 0.05
+
+    policy = TimeoutPolicy(
+        idle_timeout_seconds=idle_timeout,
+        max_waiting_on_child_seconds=max_waiting,
+        drain_window_seconds=drain_window,
+        idle_poll_interval_seconds=poll_interval,
+    )
+    clock = FakeClock(start=0.0)
+
+    _release = threading.Event()
+    _max_heartbeats = 500  # safety: must fire long before this
+
+    def _oscillating_stdout() -> Iterator[str]:
+        # Yield a meaningful heartbeat line every (idle_timeout + 1.0) fake-clock
+        # seconds.  Between yields, busy-wait with time.sleep(0) to release the
+        # GIL so the main read-loop thread can advance the FakeClock.
+        for heartbeat_num in range(_max_heartbeats):
+            target_t = (heartbeat_num + 1) * (idle_timeout + 1.0)
+            while clock.monotonic() < target_t:
+                time.sleep(0)  # release GIL; main thread advances clock
+            yield f"heartbeat {heartbeat_num}\n"
+        # Safety tail: release so reader thread exits cleanly if fire never fires.
+        _release.wait(timeout=5.0)
+        yield from ()
+
+    handle = _FakeManagedHandle(_oscillating_stdout())
+
+    try:
+        with pytest.raises(_IdleStreamTimeoutError) as exc_info:
+            for _ in _read_lines_from_process(
+                handle,
+                policy=policy,
+                execution_strategy=_WaitingStrategy(),
+                _clock=clock,
+            ):
+                pass
+    finally:
+        _release.set()
+
+    assert exc_info.value.reason == WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG
