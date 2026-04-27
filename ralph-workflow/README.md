@@ -120,7 +120,7 @@ Key pages:
 - [`docs/sphinx/cli.md`](docs/sphinx/cli.md) — all CLI flags and sub-commands
 - [`docs/sphinx/configuration.md`](docs/sphinx/configuration.md) — config files, precedence, and FAQ
 - [`docs/sphinx/recovery.md`](docs/sphinx/recovery.md) — failure classification, retry budgets, and connectivity-aware recovery
-- [`docs/sphinx/parallel-mode.md`](docs/sphinx/parallel-mode.md) — parallel worktree execution for multi-work-unit plans
+- [`docs/sphinx/parallel-mode.md`](docs/sphinx/parallel-mode.md) — same-workspace parallel execution for multi-work-unit plans
 - [`docs/sphinx/troubleshooting.md`](docs/sphinx/troubleshooting.md) — common issues and FAQ
 - [`docs/sphinx/modules.rst`](docs/sphinx/modules.rst) — Python API reference (autodoc)
 

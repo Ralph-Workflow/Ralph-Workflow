@@ -1,8 +1,20 @@
 # Parallel Development Mode
 
-Ralph supports parallel development fan-out: when your planning phase produces multiple work units, Ralph can develop them simultaneously across multiple git worktrees.
+Ralph supports parallel development fan-out: when your planning phase produces multiple work units, Ralph can develop them simultaneously in the **same workspace** (same-workspace v1).
 
-Only the **development** phase fans out in parallel. Review, fix, and commit phases always run serially after the parallel development phase completes and merges.
+Only the **development** phase fans out in parallel. Review, fix, and commit phases always run serially after the parallel development phase completes.
+
+---
+
+## How Same-Workspace Parallelism Works
+
+Workers share one repository checkout. Isolation comes from:
+
+- **Path restrictions**: each worker is restricted to the directories it declared in `allowed_directories`
+- **Per-worker namespaces**: scratch files, logs, and artifacts go under `.agent/workers/<unit_id>/`
+- **Policy validation**: overlapping or missing edit areas are rejected at policy load time, before any worker launches
+
+There are no per-worker git branches and no branch-integration step. When all workers finish, Ralph advances directly to the analysis phase. The shared workspace accumulates all changes in place.
 
 ---
 
@@ -84,9 +96,10 @@ Units without dependencies run as soon as a worker is available. Units with depe
 
 ### What to Avoid
 
-- **Overlapping file scopes**: Two units touching the same files risk merge conflicts
+- **Overlapping file scopes**: Two units touching the same files will be rejected at policy load time
 - **Missing boundaries**: Vague descriptions like "implement features" lead to coordination problems
 - **Circular dependencies**: Unit A depending on Unit B and B depending on A causes the pipeline to fail
+- **Reserved paths**: Units must not declare `.agent`, `.git`, or `.` as allowed directories
 
 ---
 
@@ -218,11 +231,10 @@ When you press Ctrl-C during a parallel run, Ralph performs a hard-kill rather t
 The first interrupt:
 1. Kills all tracked subprocess groups via `SIGKILL`
 2. Cancels the root task in the asyncio event loop
-3. Preserves worktrees on disk for post-mortem inspection
-4. Saves a checkpoint with `interrupted_by_user=true`
-5. Exits with code 130
+3. Saves a checkpoint with `interrupted_by_user=true`
+4. Exits with code 130
 
-Worktrees are **not** cleaned up automatically. After a hard-kill, you see orphaned worktrees in `.worktrees/unit-*` directories.
+Per-worker namespaces under `.agent/workers/` are preserved on disk for post-mortem inspection.
 
 ### Second Ctrl-C
 
@@ -230,13 +242,13 @@ If you press Ctrl-C again within the event loop shutdown window, Ralph calls `os
 
 ### After Hard-Kill
 
-The pipeline saves a checkpoint, so you can inspect what happened. Run `ralph cleanup` to remove the orphaned worktrees when you are ready.
+The pipeline saves a checkpoint, so you can resume from where workers left off. Workers that had already completed will not be re-invoked on resume. Run `ralph cleanup` to remove stale per-worker namespaces when you are done.
 
 ---
 
 ## ralph cleanup Command
 
-After a hard-kill or failed parallel run, orphaned git worktrees may remain in `.worktrees/`. The cleanup command removes them.
+After a hard-kill or failed parallel run, stale per-worker namespaces may remain in `.agent/workers/`. The cleanup command removes them.
 
 ### Usage
 
@@ -244,7 +256,7 @@ After a hard-kill or failed parallel run, orphaned git worktrees may remain in `
 # See what would be deleted (dry-run)
 ralph cleanup --dry-run
 
-# Remove orphaned worktrees (with confirmation prompt)
+# Remove stale namespaces (with confirmation prompt)
 ralph cleanup
 
 # Remove without confirmation (for scripts)
@@ -254,100 +266,61 @@ ralph cleanup --force
 ### What It Cleans
 
 The cleanup command:
-1. Scans `.worktrees/unit-*` directories
-2. For each orphaned worktree, destroys the worktree via git worktree remove
-3. Deletes the tracking branch `ralph/unit-{unit_id}`
-4. Reports the number of worktrees removed
+1. Scans `.agent/workers/unit-*` directories
+2. Removes each stale per-worker namespace directory
+3. Reports the number of namespaces removed
 
 ### When to Run
 
 - After a hard-kill interrupt
-- After a pipeline failure that left worktrees behind
-- Before starting a fresh parallel run (recommended)
+- After a pipeline failure that left `.agent/workers/` state behind
+- Before inspecting a fresh run's worker output
 
 ### Exit Codes
 
-- `0`: No orphaned worktrees found, or all cleaned successfully
+- `0`: No stale worker namespaces found, or all cleaned successfully
 - `1`: Error (not in a git repository, etc.)
 
 ---
 
-## Merge Conflict Handling
+## Edit Area Safety
 
-When parallel workers complete, Ralph merges their branches back into the base branch (typically `main`). Conflicts can occur when two workers modify the same lines.
+Same-workspace parallelism is **soft isolation**, not hard isolation. Safety comes from:
 
-### Conflict Detection
+1. **Pre-flight validation**: overlapping `allowed_directories` are rejected before any worker launches
+2. **Runtime fencing**: each worker can only write to its declared directories and its own namespace under `.agent/workers/<unit_id>/`
+3. **Artifact namespacing**: per-worker success evidence lives under `.agent/workers/<unit_id>/artifacts/` and cannot be confused with another worker's evidence
 
-If a `git merge --no-ff` fails during merge integration, Ralph records which units conflicted:
+### Rejected Plans
 
-```
-WorkersMergeConflictEvent: units [api-endpoints, auth-layer] caused conflicts
-```
+Ralph rejects a plan before execution if:
 
-The pipeline transitions to `PHASE_FAILED` with an informative error message.
+- Two or more work units have overlapping `allowed_directories`
+- Any work unit has an empty `allowed_directories` list
+- Any work unit declares a reserved path (`.agent`, `.git`, `.`, or empty string)
 
-### What Ralph Does on Conflict
+The rejection message names the conflicting units and explains what a safe plan would look like.
 
-1. Aborts the failed merge via `git merge --abort`
-2. Emits a `WorkersMergeConflictEvent` naming the conflicting unit IDs
-3. Transitions the pipeline to `failed` phase
-4. Preserves all worktrees on disk
+### What Happens When Workers Are Done
 
-### What Ralph Does NOT Do
+When all workers complete successfully:
 
-- Ralph does not attempt to resolve merge conflicts automatically
-- Ralph does not delete worktrees after conflicts
-- Ralph does not retry the merge
+1. Ralph collects per-worker artifact evidence from `.agent/workers/<unit_id>/artifacts/`
+2. The pipeline advances directly to the analysis phase — no merge step required
+3. If `run_post_fanout_verification=True`, workspace-wide verification runs once, serially, after all workers finish
 
-### Resolving Conflicts Manually
+### Partial Failure
 
-After a merge conflict:
+If some workers succeed and others fail:
 
-1. Inspect the conflicting worktrees:
-   ```bash
-   cd .worktrees/unit-api-endpoints
-   git status
-   ```
-
-2. Resolve conflicts in each worktree using your normal git workflow
-
-3. Commit the resolution:
-   ```bash
-   git add -A
-   git commit -m "Merge conflict resolution"
-   ```
-
-4. Clean up when satisfied:
-   ```bash
-   ralph cleanup --force
-   ```
-
-### Preventing Conflicts
-
-Reduce conflict risk by:
-- Designing work units with non-overlapping file scopes
-- Having later units depend on earlier units when they must touch shared files
-- Running serial development for tightly coupled changes
+- The pipeline transitions to `PHASE_FAILED`
+- The error message names every failed worker (alphabetically sorted)
+- Successful worker outputs remain in the shared workspace
+- Ralph does not roll back partial edits — same-workspace mode does not support automatic rollback
 
 ---
 
 ## Troubleshooting
-
-### "shallow clone" Error
-
-If your repository is a shallow clone, git worktree operations may fail with messages like:
-
-```
-fatal: cannot checkout 'ralph/unit-api-endpoints'
-```
-
-**Fix**: Convert to a full clone:
-
-```bash
-git fetch --unshallow
-```
-
-Or clone the repository fresh without `--depth`.
 
 ### "MCP port bind failed" Error
 
@@ -372,27 +345,20 @@ Kill stale processes and retry.
 When a worker exits with FAIL status:
 
 1. Check the worker's output for the error message
-2. Look at `ralph.log` or the checkpoint for context
+2. Look at `.agent/workers/<unit_id>/logs/` for context
 3. Common causes:
    - Agent crashed or was killed externally
    - The agent produced invalid output that Ralph could not parse
-   - A git operation failed within the worktree
+   - The worker attempted to write outside its declared edit area
 
 The unit_id in the FAIL message tells you which work unit failed.
-
-### Orphan Worktrees After Normal Exit
-
-If the pipeline exits normally but you still see `.worktrees/` directories, this is a bug. Report it with:
-- The checkpoint file
-- The `ralph.log` output
-- Steps to reproduce
 
 ### Pipeline Hangs After All Workers Complete
 
 If the dashboard shows all workers as DONE but the pipeline does not advance:
 
 1. Press Ctrl-C to trigger hard-kill
-2. Run `ralph cleanup --dry-run` to see remaining worktrees
+2. Run `ralph cleanup --dry-run` to see remaining worker namespaces
 3. Report the issue with the checkpoint and logs
 
 ---
@@ -473,30 +439,17 @@ user-api        DONE       45s
 auth-service    DONE       38s
 user-frontend   DONE       62s
 
-All workers complete. Merging branches...
+All workers complete. Advancing to analysis...
 ```
 
-### Merge Phase
+### Analysis and Complete
 
 ```
-Merge: auth-service -> main  [OK]
-Merge: user-api -> main      [OK]
-Merge: user-frontend -> main [OK]
+Phase: development_analysis
+  Reviewing combined worker results...
 
 Phase: review
   Running review agent...
-```
-
-### Review and Complete
-
-```
-Phase: review
-  2 review passes configured
-
-Pass 1/2: Reviewing changes...
-  No issues found.
-
-Pass 2/2: Final review...
   LGTM
 
 Phase: complete
@@ -510,9 +463,11 @@ Pipeline completed successfully.
 | Concern | Behavior |
 |---------|----------|
 | Parallelization trigger | Planning artifact contains 2+ work units |
+| Isolation model | Same workspace, path-restricted per worker |
 | Max concurrent workers | `max_parallel_workers` (default: 8) |
 | Dashboard status labels | WAIT, RUN, DONE, FAIL, CANCELLED |
 | Non-TTY mode | Lines with `[unit_id]` prefix |
 | Hard-kill | First Ctrl-C: SIGKILL all workers, save checkpoint, exit 130 |
 | Cleanup | `ralph cleanup [--dry-run] [--force]` |
-| Merge conflict | Pipeline fails, conflicting unit_ids named, worktrees preserved |
+| Overlapping edit areas | Rejected at policy load time, before launch |
+| Partial failure | Pipeline fails, all failed unit_ids named, no automatic rollback |

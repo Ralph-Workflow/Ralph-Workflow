@@ -129,3 +129,33 @@ Hard requirements for the payload:
 - `risks_mitigations` must contain at least 1 real risk with a mitigation.
 - `verification_strategy` must contain exact commands/checks, not vague statements.
 - Include `work_units` only when parallel work is genuinely safe; otherwise omit it or use an empty array.
+
+---
+
+## Same-Workspace Parallel Worker Rules
+
+When you include `work_units` in your plan, these rules apply. Violating them causes policy validation to reject the plan before any worker launches.
+
+**1. Every work unit must declare `allowed_directories`.**
+Each unit lists the specific subdirectories it may edit. Units with an empty list are rejected.
+```json
+{ "unit_id": "backend", "allowed_directories": ["src/api/", "tests/api/"] }
+```
+
+**2. `allowed_directories` must be disjoint across units.**
+No two units may declare paths where one is a prefix of the other.
+- OK: `src/api/` and `src/db/` (different trees)
+- REJECTED: `src/` and `src/api/` (one is a prefix of the other)
+
+**3. Never declare reserved paths.**
+These paths are always rejected as `allowed_directories`:
+- `.agent` (reserved for Ralph Workflow internal state)
+- `.git` (version control)
+- `.` or empty string (entire repo — too broad)
+
+**4. Use 2+ work units to enable parallel fan-out.**
+A single work unit falls through to the serial development path. Parallel fan-out only activates with 2 or more units.
+
+**Choosing between splitting and merging:**
+- If two areas of work are truly independent (different directories, no shared state), split them into separate units.
+- If two areas overlap or share files, merge them into a single unit rather than risk overlap rejection.

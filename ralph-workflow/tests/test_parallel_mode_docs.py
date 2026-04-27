@@ -151,3 +151,88 @@ def test_arch_doc_mentions_allowed_directories(arch_doc: str) -> None:
     assert "allowed_directories" in arch_doc, (
         "parallel-fan-out.md must document allowed_directories (path isolation mechanism)"
     )
+
+
+_EXTENDED_BANNED_PHRASES = [
+    "worktree-based",
+    "per-worker worktree",
+    "parallel worktree",
+    "merge-back",
+    "merge integration",
+    "worktree fan-out",
+    "branch per worker",
+    "per-worker branch",
+    "worktree isolation",
+    "worktree-based v1",
+]
+
+# Paths that are legitimately allowed to mention worktree (linked-worktree detection docs)
+_WHITELIST_CONTAINS = [
+    "docs/architecture/git-and-rebase.md",
+    "ralph-workflow/ralph/git/operations.py",
+    # The test file itself defines the banned phrases, so it must be whitelisted
+    "tests/test_parallel_mode_docs.py",
+]
+
+
+def _collect_checked_md_files() -> list[Path]:
+    """Collect all .md files that the banned-phrase test must check."""
+    repo_root = Path(__file__).parent.parent.parent
+    rw_root = Path(__file__).parent.parent
+
+    files: list[Path] = []
+
+    # All .md under ralph-workflow/docs/sphinx/
+    sphinx_dir = rw_root / "docs" / "sphinx"
+    if sphinx_dir.exists():
+        files.extend(sphinx_dir.rglob("*.md"))
+
+    # All .md under docs/architecture/
+    arch_dir = repo_root / "docs" / "architecture"
+    if arch_dir.exists():
+        files.extend(arch_dir.rglob("*.md"))
+
+    # All .md under docs/agents/
+    agents_dir = repo_root / "docs" / "agents"
+    if agents_dir.exists():
+        files.extend(agents_dir.rglob("*.md"))
+
+    # Top-level files (exclude PROMPT.md: it is ephemeral user input, not a product doc)
+    for name in ("README.md", "CONTRIBUTING.md", "AGENTS.md", "CLAUDE.md"):
+        p = repo_root / name
+        if p.exists():
+            files.append(p)
+
+    # ralph-workflow top-level files
+    for name in ("README.md", "CONTRIBUTING.md", "CHANGELOG.md"):
+        p = rw_root / name
+        if p.exists():
+            files.append(p)
+
+    return sorted(set(files))
+
+
+def _is_whitelisted(path: Path) -> bool:
+    path_str = str(path)
+    return any(whitelist in path_str for whitelist in _WHITELIST_CONTAINS)
+
+
+class TestBannedPhrasesAcrossAllDocs:
+    @pytest.mark.parametrize(
+        "doc_path",
+        [
+            pytest.param(p, id=str(p.relative_to(Path(__file__).parent.parent.parent)))
+            for p in _collect_checked_md_files()
+            if not _is_whitelisted(p)
+        ],
+    )
+    def test_no_banned_phrase_in_doc(self, doc_path: Path) -> None:
+        """Each checked .md file must not contain any banned worktree/merge-back phrases."""
+        content = doc_path.read_text(encoding="utf-8").lower()
+        violations = [
+            phrase for phrase in _EXTENDED_BANNED_PHRASES if phrase.lower() in content
+        ]
+        assert violations == [], (
+            f"{doc_path} contains banned phrase(s): {violations!r}. "
+            "Rewrite to describe same-workspace v1 truthfully."
+        )

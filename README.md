@@ -37,7 +37,7 @@ It provides:
 - agent chains with retry and fallover behavior
 - explicit artifact contracts and Markdown handoffs
 - MCP integration, including a standalone `ralph-mcp` runtime
-- checkpoint/resume, recovery budgets, and optional parallel worktree execution
+- checkpoint/resume, recovery budgets, and optional same-workspace parallel execution
 
 This repository also keeps legacy design material from the retired Rust implementation, but the current product is the Python package in `ralph-workflow/`.
 
@@ -149,7 +149,7 @@ The package includes both the main orchestration CLI and the standalone `ralph-m
 
 ### 6. Recovery, resume, and parallel work
 
-Recovery is a first-class part of the framework. Ralph Workflow supports checkpoint/resume flows, failure classification, retry budgets, connectivity-aware pause/resume behavior, and optional parallel worktree fan-out when the plan yields multiple work units.
+Recovery is a first-class part of the framework. Ralph Workflow supports checkpoint/resume flows, failure classification, retry budgets, connectivity-aware pause/resume behavior, and optional same-workspace parallel fan-out when the plan yields multiple work units.
 
 ## User-facing workflows
 
