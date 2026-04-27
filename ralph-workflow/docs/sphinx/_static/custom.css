@@ -44,9 +44,14 @@ div[class*="highlight"] {
 }
 
 /* Light-mode code block contrast */
-[data-theme="light"] div[class*="highlight"],
-body:not([data-theme="dark"]) div[class*="highlight"] {
+[data-theme="light"] div[class*="highlight"] {
     background: #f3f4f6;
+}
+
+@media (prefers-color-scheme: light) {
+    body:not([data-theme]) div[class*="highlight"] {
+        background: #f3f4f6;
+    }
 }
 
 /* Inline code */
@@ -143,10 +148,16 @@ a:hover {
 }
 
 /* Light mode card hover */
-[data-theme="light"] .sd-card:hover,
-body:not([data-theme="dark"]) .sd-card:hover {
+[data-theme="light"] .sd-card:hover {
     transform: translateY(-2px);
     box-shadow: 0 0 0 1px var(--color-brand-primary), 0 4px 20px rgba(8, 145, 178, 0.12);
+}
+
+@media (prefers-color-scheme: light) {
+    body:not([data-theme]) .sd-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 0 0 1px var(--color-brand-primary), 0 4px 20px rgba(8, 145, 178, 0.12);
+    }
 }
 
 /* Dark mode card hover */
