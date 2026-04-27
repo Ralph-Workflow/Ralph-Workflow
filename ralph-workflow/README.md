@@ -115,12 +115,14 @@ Key pages:
 - [`docs/sphinx/getting-started.md`](docs/sphinx/getting-started.md) — step-by-step first-run walkthrough for new users
 - [`docs/sphinx/quickstart.md`](docs/sphinx/quickstart.md) — install, init, and run in five minutes
 - [`docs/sphinx/concepts.md`](docs/sphinx/concepts.md) — terminology: phases, drains, agents, MCP artifacts, checkpoints
+- [`docs/sphinx/reference.md`](docs/sphinx/reference.md) — operator-facing reference index
+- [`docs/sphinx/developer-reference.md`](docs/sphinx/developer-reference.md) — developer and maintainer docs index
 - [`docs/sphinx/cli.md`](docs/sphinx/cli.md) — all CLI flags and sub-commands
 - [`docs/sphinx/configuration.md`](docs/sphinx/configuration.md) — config files, precedence, and FAQ
 - [`docs/sphinx/recovery.md`](docs/sphinx/recovery.md) — failure classification, retry budgets, and connectivity-aware recovery
 - [`docs/sphinx/parallel-mode.md`](docs/sphinx/parallel-mode.md) — parallel worktree execution for multi-work-unit plans
 - [`docs/sphinx/troubleshooting.md`](docs/sphinx/troubleshooting.md) — common issues and FAQ
-- [`docs/sphinx/modules.rst`](docs/sphinx/modules.rst) — full Python API reference (autodoc)
+- [`docs/sphinx/modules.rst`](docs/sphinx/modules.rst) — Python API reference (autodoc)
 
 ## Verification
 

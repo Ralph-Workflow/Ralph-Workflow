@@ -36,7 +36,7 @@ Ralph Workflow
       :link: cli
       :link-type: doc
 
-      Every CLI flag, config field, MCP tool, and Python API.
+      Every CLI flag, config field, and MCP tool.
 
    .. grid-item-card:: Fix common issues
       :link: troubleshooting
@@ -63,16 +63,13 @@ Ralph Workflow
    :maxdepth: 2
    :caption: Reference
 
-   cli
-   configuration
-   mcp-tools
-   mcp-architecture
-   agents
-   artifacts
-   prompts
-   transcript
-   modules
-   local-web-access
+   reference
+
+.. toctree::
+   :maxdepth: 2
+   :caption: Developer Reference
+
+   developer-reference
 
 .. toctree::
    :maxdepth: 1

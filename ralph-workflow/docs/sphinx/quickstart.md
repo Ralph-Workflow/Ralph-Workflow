@@ -96,7 +96,7 @@ See [Concepts](concepts.md) for the full phase graph and terminology.
 - [Concepts](concepts.md) — terminology and mental models (phases, drains, checkpoints)
 - [CLI Reference](cli.md) — all flags and sub-commands
 - [Configuration Reference](configuration.md) — config files and precedence
-- [API Reference](modules.rst) — full Python package documentation
+- [Python API Reference](modules.rst) — full Python package documentation
 
 ## Related pages
 
