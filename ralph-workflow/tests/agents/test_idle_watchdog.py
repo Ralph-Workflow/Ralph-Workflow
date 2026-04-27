@@ -366,31 +366,150 @@ def test_drain_window_zero_fires_immediately_with_active_classification() -> Non
     assert watchdog.last_fire_reason == WatchdogFireReason.NO_OUTPUT_DEADLINE
 
 
-def test_record_activity_during_waiting_resets_cumulative_to_zero() -> None:
-    """record_activity() during WAITING resets cumulative_waiting_on_child_seconds to 0.
+def test_record_activity_during_waiting_does_not_reset_cumulative() -> None:
+    """record_activity() preserves cumulative_waiting_on_child_seconds.
 
-    When a process that was in WAITING_ON_CHILD produces output, the accumulated
-    waiting time is discarded (matching the docstring contract that activity
-    fully resets state).
+    New contract: cumulative is only reset after a sustained active interval
+    >= drain_window_seconds without a WAITING transition. Heartbeat activity
+    alone cannot defeat the max_waiting_on_child_seconds ceiling.
     """
     watchdog, clock = _make_watchdog(idle_timeout=10.0, max_waiting=20.0)
 
-    # Start WAITING run at t=11.
+    # 4s WAITING run starting at t=11.
     clock.advance(11.0)
-    watchdog.evaluate(classify_quiet=_waiting)  # enters WAITING state
+    watchdog.evaluate(classify_quiet=_waiting)  # enters WAITING at t=11
 
-    # Advance to t=15 and record activity.
+    # Heartbeat at t=15: accumulates 4s to cumulative, does NOT reset to 0.
     clock.advance(4.0)
     watchdog.record_activity()
 
-    # Now advance to t=26 (11s from last activity) - cumulative candidate should
-    # NOT include the earlier 4s of waiting.
+    # Cumulative preserved at 4s (not reset by record_activity).
+    assert watchdog.cumulative_waiting_on_child_seconds == pytest.approx(4.0, abs=0.01)
+    assert watchdog._last_activity_decay_anchor == watchdog._last_activity
+
+    # Advance past idle deadline again (11s from last activity at t=15).
+    clock.advance(11.0)  # t=26, idle_elapsed=11
+    result = watchdog.evaluate(classify_quiet=_waiting)  # enters new WAITING run at t=26
+    assert result == WatchdogVerdict.WAITING_ON_CHILD  # candidate=4+0=4 < 20
+
+    # Advance 11s within the second WAITING run: candidate = 4 + 11 = 15 < 20.
+    clock.advance(11.0)  # t=37
+    result = watchdog.evaluate(classify_quiet=_waiting)
+    assert result == WatchdogVerdict.WAITING_ON_CHILD
+    assert watchdog.cumulative_waiting_on_child_seconds == pytest.approx(4.0, abs=0.01)
+
+
+def test_record_activity_during_waiting_cumulative_causes_fire() -> None:
+    """Preserved cumulative causes CHILDREN_PERSIST_TOO_LONG when ceiling reached.
+
+    When max_waiting_on_child_seconds is small enough, the preserved 4s from the
+    first WAITING run causes the second run to fire the ceiling.
+    """
+    watchdog, clock = _make_watchdog(idle_timeout=10.0, max_waiting=10.0)
+
+    # 4s WAITING run starting at t=11.
+    clock.advance(11.0)
+    watchdog.evaluate(classify_quiet=_waiting)  # enters WAITING at t=11
+
+    # Heartbeat at t=15: cumulative = 4.0.
+    clock.advance(4.0)
+    watchdog.record_activity()
+    assert watchdog.cumulative_waiting_on_child_seconds == pytest.approx(4.0, abs=0.01)
+
+    # Advance past idle deadline; enters new WAITING run at t=26.
+    clock.advance(11.0)  # t=26, idle_elapsed=11
+    result = watchdog.evaluate(classify_quiet=_waiting)  # candidate=4+0=4 < 10
+    assert result == WatchdogVerdict.WAITING_ON_CHILD
+
+    # Advance 7s in the second run: candidate = 4 + 7 = 11 >= 10 -> FIRE.
+    clock.advance(7.0)  # t=33
+    result = watchdog.evaluate(classify_quiet=_waiting)
+    assert result == WatchdogVerdict.FIRE
+    assert watchdog.last_fire_reason == WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG
+
+
+def test_cumulative_decays_after_sustained_active_interval() -> None:
+    """Cumulative resets to 0 after drain_window_seconds of active (no WAITING) time.
+
+    After record_activity(), if the agent stays within the idle deadline for at
+    least drain_window_seconds without entering WAITING, the cumulative is zeroed.
+    This allows genuinely-active agents to start fresh after a burst of child activity.
+    """
+    watchdog, clock = _make_watchdog(idle_timeout=10.0, drain_window=0.5, max_waiting=20.0)
+
+    # 4s WAITING run.
+    clock.advance(11.0)
+    watchdog.evaluate(classify_quiet=_waiting)
+    clock.advance(4.0)  # t=15
+    watchdog.record_activity()
+    assert watchdog.cumulative_waiting_on_child_seconds == pytest.approx(4.0, abs=0.01)
+    assert watchdog._last_activity_decay_anchor == watchdog._last_activity
+
+    # Stay within idle deadline for > drain_window_seconds (0.5) without WAITING.
+    clock.advance(0.6)  # t=15.6, idle_elapsed=0.6 < 10
+    result = watchdog.evaluate(classify_quiet=_active)  # CONTINUE path triggers decay
+    assert result == WatchdogVerdict.CONTINUE
+
+    # Cumulative reset to 0 after the sustained active interval.
+    assert watchdog.cumulative_waiting_on_child_seconds == 0.0
+    assert watchdog._last_activity_decay_anchor is None  # anchor cleared
+
+    # A fresh WAITING run starts the counter from zero.
+    clock.advance(10.0)  # t=25.6, idle_elapsed=10
+    result = watchdog.evaluate(classify_quiet=_waiting)
+    assert result == WatchdogVerdict.WAITING_ON_CHILD
+    # cumulative still 0 — run is in progress, not yet accumulated to persistent total
+    assert watchdog.cumulative_waiting_on_child_seconds == 0.0
+
+
+def test_waiting_ceiling_survives_intermittent_heartbeats() -> None:
+    """Cumulative WAITING ceiling fires despite intermittent heartbeat activity.
+
+    Previously record_activity() reset cumulative to 0, so a child that emits one
+    heartbeat just after the idle deadline could defeat max_waiting_on_child_seconds
+    forever. The fix preserves cumulative across heartbeats.
+    """
+    idle_timeout = 10.0
+    max_waiting = 20.0
+    watchdog, clock = _make_watchdog(idle_timeout=idle_timeout, max_waiting=max_waiting)
+
+    last_result = WatchdogVerdict.WAITING_ON_CHILD
+    for _ in range(100):  # upper bound; test fails if FIRE never arrives
+        clock.advance(idle_timeout + 1.0)  # advance past idle deadline
+        result = watchdog.evaluate(classify_quiet=_waiting)
+        if result == WatchdogVerdict.FIRE:
+            last_result = result
+            break
+        assert result == WatchdogVerdict.WAITING_ON_CHILD
+        clock.advance(0.5)  # heartbeat arrives shortly after
+        watchdog.record_activity()
+
+    assert last_result == WatchdogVerdict.FIRE
+    assert watchdog.last_fire_reason == WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG
+
+
+def test_session_ceiling_precedence_over_waiting_branch() -> None:
+    """SESSION_CEILING_EXCEEDED takes precedence over CHILDREN_PERSIST_TOO_LONG.
+
+    When both session and cumulative-waiting ceilings are exceeded simultaneously,
+    the session ceiling fires first because it is checked first in evaluate().
+    """
+    watchdog, clock = _make_watchdog(
+        idle_timeout=10.0,
+        max_waiting=1800.0,
+        max_session=15.0,
+    )
+
+    # t=11: past idle deadline; children present.
     clock.advance(11.0)
     result = watchdog.evaluate(classify_quiet=_waiting)
-    # cumulative at this point should be 0 (reset by record_activity)
-    # candidate = 0 + 11 = 11 < 20, so still WAITING_ON_CHILD not FIRE
     assert result == WatchdogVerdict.WAITING_ON_CHILD
-    assert watchdog.cumulative_waiting_on_child_seconds == 0.0
+
+    # t=16: past session ceiling (15s) AND still past idle deadline with children.
+    clock.advance(5.0)
+    result = watchdog.evaluate(classify_quiet=_waiting)
+    assert result == WatchdogVerdict.FIRE
+    assert watchdog.last_fire_reason == WatchdogFireReason.SESSION_CEILING_EXCEEDED
 
 
 def test_evaluate_is_idempotent_when_clock_does_not_advance() -> None:

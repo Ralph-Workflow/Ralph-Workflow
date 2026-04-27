@@ -72,7 +72,9 @@ class TimeoutPolicy:
 
     1. SESSION_CEILING_EXCEEDED — absolute wall-clock cap; activity cannot reset it.
     2. NO_OUTPUT_DEADLINE (+ drain window) — idle deadline since last output.
-    3. CHILDREN_PERSIST_TOO_LONG — cumulative WAITING_ON_CHILD ceiling.
+    3. CHILDREN_PERSIST_TOO_LONG — cumulative WAITING_ON_CHILD ceiling; this is an
+       absolute ceiling that survives heartbeat activity. Cumulative is only reset
+       after a sustained-active interval (>= drain_window_seconds without WAITING).
     4. PROCESS_EXIT_HANG — subprocess closed stdout but did not exit within budget.
     5. DESCENDANT_HANG — descendant-wait deadline elapsed with persistent WAITING_ON_CHILD
        (post-exit only, owned by PostExitWatchdog).
@@ -158,9 +160,11 @@ class IdleWatchdog:
     reset last_activity directly — that was the source of the false-negative bug
     where WAITING_ON_CHILD resets deferred the deadline forever.
 
-    Cumulative WAITING_ON_CHILD time is preserved across WAITING<->ACTIVE
-    oscillation so the max_waiting_on_child_seconds ceiling cannot be defeated
-    by a process that alternates between producing output and waiting on children.
+    Cumulative WAITING_ON_CHILD time is preserved across heartbeat-style activity
+    bursts so the max_waiting_on_child_seconds ceiling cannot be defeated by a
+    process that alternates between producing output and waiting on children.
+    Cumulative is only reset after a sustained-active interval (>= drain_window_seconds
+    without a WAITING transition); see _decay_waiting_cumulative_if_quiet().
 
     The session ceiling (max_session_seconds) is checked first on every evaluate()
     call and cannot be defeated by activity — record_activity() does not reset it.
@@ -175,6 +179,7 @@ class IdleWatchdog:
     _in_drain_window: bool = field(default=False, init=False)
     _drain_started_at: float | None = field(default=None, init=False)
     _last_fire_reason: WatchdogFireReason | None = field(default=None, init=False)
+    _last_activity_decay_anchor: float | None = field(default=None, init=False)
 
     def __init__(self, config: TimeoutPolicy, clock: Clock) -> None:
         self._config = config
@@ -187,6 +192,7 @@ class IdleWatchdog:
         self._in_drain_window = False
         self._drain_started_at = None
         self._last_fire_reason = None
+        self._last_activity_decay_anchor = None
         self._log = logger.bind(component="idle_watchdog")
 
     @property
@@ -204,12 +210,16 @@ class IdleWatchdog:
 
         Does NOT reset _session_started_at — the session ceiling is absolute and
         cannot be defeated by heartbeat activity.
+
+        Does NOT reset _cumulative_waiting_on_child_seconds — cumulative is an
+        absolute ceiling that survives heartbeats. It is only reset after a
+        sustained-active interval (>= drain_window_seconds without WAITING); see
+        _decay_waiting_cumulative_if_quiet() called from the CONTINUE path of evaluate().
         """
         now = self._clock.monotonic()
         self._accumulate_waiting_run(now)
         self._last_activity = now
-        self._waiting_on_child_started_at = None
-        self._cumulative_waiting_on_child_seconds = 0.0
+        self._last_activity_decay_anchor = now
         self._in_drain_window = False
         self._drain_started_at = None
 
@@ -225,6 +235,20 @@ class IdleWatchdog:
             elapsed = now - self._waiting_on_child_started_at
             self._cumulative_waiting_on_child_seconds += max(0.0, elapsed)
             self._waiting_on_child_started_at = None
+
+    def _decay_waiting_cumulative_if_quiet(self, now: float) -> None:
+        """Reset cumulative WAITING after a sustained active interval.
+
+        Called only from the CONTINUE path (idle_elapsed < idle_timeout).
+        Resets cumulative to 0 once the most-recent record_activity() anchor is
+        at least drain_window_seconds old without any WAITING transitions.
+        This allows genuinely-progressing agents to start each WAITING run fresh.
+        """
+        if self._last_activity_decay_anchor is None:
+            return
+        if now - self._last_activity_decay_anchor >= self._config.drain_window_seconds:
+            self._cumulative_waiting_on_child_seconds = 0.0
+            self._last_activity_decay_anchor = None
 
     def evaluate(
         self,
@@ -273,8 +297,10 @@ class IdleWatchdog:
         idle_elapsed = now - self._last_activity
 
         if idle_elapsed < self._config.idle_timeout_seconds:
-            # Still within deadline — clear any lingering child-wait state.
+            # Still within deadline — clear any lingering child-wait state and
+            # decay cumulative if we have had a sustained active interval.
             self._accumulate_waiting_run(now)
+            self._decay_waiting_cumulative_if_quiet(now)
             return WatchdogVerdict.CONTINUE
 
         # Idle deadline has elapsed.

@@ -787,9 +787,9 @@ def _read_lines_from_process(  # noqa: PLR0915
             return strategy.classify_quiet(handle, probe)
         except Exception:
             logger.opt(exception=True).debug(
-                "idle watchdog: classify_quiet raised; defaulting to ACTIVE"
+                "idle watchdog: classify_quiet raised; defaulting to WAITING_ON_CHILD"
             )
-            return AgentExecutionState.ACTIVE
+            return AgentExecutionState.WAITING_ON_CHILD
 
     def _handle_fire_verdict(
         verdict: WatchdogVerdict,
@@ -841,10 +841,11 @@ def _read_lines_from_process(  # noqa: PLR0915
                 watchdog.record_activity()
             yield queued_line
             # Evaluate after every yield: SESSION_CEILING_EXCEEDED can fire even
-            # under continuous output (ACTIVE is correct since activity just reset
-            # the idle deadline; only the session ceiling can produce FIRE here).
+            # under continuous output; classify_quiet still consults the strategy
+            # because a whitespace/no-activity line must not force the ACTIVE branch
+            # when children are alive.
             fire_result = _handle_fire_verdict(
-                watchdog.evaluate(classify_quiet=lambda: AgentExecutionState.ACTIVE)
+                watchdog.evaluate(classify_quiet=_safe_classify_quiet)
             )
             if fire_result is not None:
                 pending_lines, exc = fire_result
