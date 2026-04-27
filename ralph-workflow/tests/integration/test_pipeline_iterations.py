@@ -75,12 +75,13 @@ class ReviewLoopbackOnceInvoker(MockAgentInvoker):
         return PipelineEvent.ANALYSIS_SUCCESS
 
 
-class ReviewLoopbackToCapInvoker(MockAgentInvoker):
-    """Keep requesting review loopback until the reducer forces review_commit."""
+class ReviewLoopbackToCapThenApproveInvoker(MockAgentInvoker):
+    """Request review loopback through the cap, then approve after the final fix pass."""
 
     def __init__(self, workspace: MemoryWorkspace) -> None:
         super().__init__(workspace)
         self.last_phase: str | None = None
+        self._review_analysis_calls = 0
 
     def invoke(self, agent_name: str, phase: str) -> PipelineEvent:
         self.last_phase = phase
@@ -88,7 +89,9 @@ class ReviewLoopbackToCapInvoker(MockAgentInvoker):
 
     def analysis_event_for(self, phase: str) -> PipelineEvent:
         if phase == "review_analysis":
-            return PipelineEvent.ANALYSIS_LOOPBACK
+            self._review_analysis_calls += 1
+            if self._review_analysis_calls <= MAX_REVIEW_ANALYSIS_ITERATIONS:
+                return PipelineEvent.ANALYSIS_LOOPBACK
         return PipelineEvent.ANALYSIS_SUCCESS
 
 
@@ -321,12 +324,12 @@ def test_review_analysis_loopback_is_persisted_as_inner_progress_only(
     assert final_state.review_analysis_iteration == 0
 
 
-def test_review_analysis_cap_forces_review_commit_with_persisted_max_counter(
+def test_review_analysis_cap_routes_through_final_fix_with_persisted_max_counter(
     monkeypatch: MonkeyPatch,
     tmp_path: Path,
     memory_workspace: MemoryWorkspace,
 ) -> None:
-    invoker = ReviewLoopbackToCapInvoker(memory_workspace)
+    invoker = ReviewLoopbackToCapThenApproveInvoker(memory_workspace)
 
     result, saved_states = _run_pipeline(
         monkeypatch,
@@ -336,10 +339,16 @@ def test_review_analysis_cap_forces_review_commit_with_persisted_max_counter(
     )
 
     assert result == 0
-    forced_handoff_state = _state_with_phase(saved_states, "review_commit")
-    assert forced_handoff_state.reviewer_pass == 0
-    assert forced_handoff_state.review_analysis_iteration == MAX_REVIEW_ANALYSIS_ITERATIONS
-    assert forced_handoff_state.review_issues_found is True
+    capped_fix_state = next(
+        state
+        for state in saved_states
+        if state.phase == "fix"
+        and state.previous_phase == "review_analysis"
+        and state.review_analysis_iteration == MAX_REVIEW_ANALYSIS_ITERATIONS
+    )
+    assert capped_fix_state.reviewer_pass == 0
+    assert capped_fix_state.review_issues_found is True
+    assert invoker.count_for("fix") == MAX_REVIEW_ANALYSIS_ITERATIONS
     final_state = saved_states[-1]
     assert final_state.phase == "complete"
     assert final_state.reviewer_pass == 1

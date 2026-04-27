@@ -1,6 +1,6 @@
 """Pipeline runner tests for analysis iteration cap behavior.
 
-These tests verify the cap-triggered commit handoff under the default policy.
+These tests verify correction-phase routing at the analysis cap.
 """
 
 from __future__ import annotations
@@ -45,11 +45,11 @@ def _load_default_policy() -> PolicyBundle:
     return load_policy(DEFAULT_POLICY_DIR)
 
 
-class TestDevAnalysisCapTriggeredCommitHandoff:
-    """Test that analysis loopback at max routes to commit under the default policy."""
+class TestDevAnalysisCapTriggeredCorrectionRouting:
+    """Test that analysis loopback at max still routes to development under the default policy."""
 
-    def test_dev_analysis_at_max_forces_commit_handoff(self) -> None:
-        """At max-1 iterations, ANALYSIS_LOOPBACK routes to development_commit."""
+    def test_dev_analysis_at_max_routes_to_development(self) -> None:
+        """At max-1 iterations, ANALYSIS_LOOPBACK still routes to development."""
         policy = _load_default_policy()
         state = PipelineState(
             phase=PHASE_DEVELOPMENT_ANALYSIS,
@@ -59,7 +59,7 @@ class TestDevAnalysisCapTriggeredCommitHandoff:
         )
 
         new_state, _ = _reduce(state, PipelineEvent.ANALYSIS_LOOPBACK, policy)
-        assert new_state.phase == "development_commit"
+        assert new_state.phase == "development"
         assert new_state.development_analysis_iteration == _DEV_MAX_ANALYSIS
 
     def test_dev_analysis_commit_resets_counter_and_increments_iteration(self) -> None:
@@ -79,11 +79,11 @@ class TestDevAnalysisCapTriggeredCommitHandoff:
         assert new_state.development_analysis_iteration == 0
 
 
-class TestReviewAnalysisCapTriggeredCommitHandoff:
-    """Test that review analysis loopback at max routes to commit under the default policy."""
+class TestReviewAnalysisCapTriggeredCorrectionRouting:
+    """Test that review analysis loopback at max still routes to fix under the default policy."""
 
-    def test_review_analysis_at_max_forces_commit_handoff(self) -> None:
-        """At max-1 iterations, ANALYSIS_LOOPBACK routes to review_commit."""
+    def test_review_analysis_at_max_routes_to_fix(self) -> None:
+        """At max-1 iterations, ANALYSIS_LOOPBACK still routes to fix."""
         policy = _load_default_policy()
         state = PipelineState(
             phase=PHASE_REVIEW_ANALYSIS,
@@ -95,7 +95,7 @@ class TestReviewAnalysisCapTriggeredCommitHandoff:
         )
 
         new_state, _ = _reduce(state, PipelineEvent.ANALYSIS_LOOPBACK, policy)
-        assert new_state.phase == "review_commit"
+        assert new_state.phase == "fix"
         assert new_state.review_analysis_iteration == _REVIEW_MAX_ANALYSIS
 
     def test_review_analysis_commit_resets_counter_and_increments_reviewer_pass(

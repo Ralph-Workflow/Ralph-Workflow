@@ -427,15 +427,34 @@ def _handle_capped_analysis_loopback(
     max_iterations: int,
     apply_progress: Callable[[PipelineState, PipelineState], PipelineState],
 ) -> tuple[PipelineState, list[Effect]]:
-    """Handle an analysis-loopback transition with an iteration cap.
+    """Handle an analysis-loopback transition while preserving correction routing.
 
-    When the loopback reaches the configured cap, route through the phase's
-    success handoff so the workflow can make forward progress to the commit
-    checkpoint while preserving the capped inner-loop counter.
+    Reaching the configured cap must still route through the phase's loopback
+    target so the correcting phase gets one more chance to address the issues
+    surfaced by analysis. The inner-loop counter lands on the configured cap
+    and stays clamped there until analysis approval or commit resets it.
     """
-    signal = "success" if iteration + 1 >= max_iterations else "loopback"
-    new_state, effects = _resolve_or_terminal(state, signal, policy, "analysis loopback")
-    return apply_progress(state, new_state), effects
+    new_state, effects = _resolve_or_terminal(state, "loopback", policy, "analysis loopback")
+    progressed_state = apply_progress(state, new_state)
+    return _clamp_analysis_iteration(state, progressed_state, iteration, max_iterations), effects
+
+
+def _clamp_analysis_iteration(
+    state: PipelineState,
+    progressed_state: PipelineState,
+    iteration: int,
+    max_iterations: int,
+) -> PipelineState:
+    """Clamp analysis-loop progress so counters never exceed the configured cap."""
+    clamped_iteration = max(0, min(iteration + 1, max_iterations))
+    if state.phase == "development_analysis":
+        return progressed_state.copy_with(development_analysis_iteration=clamped_iteration)
+    if state.phase == "review_analysis":
+        return progressed_state.copy_with(
+            review_analysis_iteration=clamped_iteration,
+            review_issues_found=True,
+        )
+    return progressed_state
 
 
 def _legacy_handle_analysis_loopback(
@@ -443,18 +462,30 @@ def _legacy_handle_analysis_loopback(
 ) -> tuple[PipelineState, list[Effect]]:
     """Legacy analysis loopback routing."""
     if state.phase == "development_analysis":
-        if state.development_analysis_iteration + 1 >= state.max_development_analysis_iterations:
-            new_state, effects = _advance_phase(state, "development_commit")
-            return progress.apply_development_analysis_loopback(state, new_state), effects
         new_state, effects = _advance_phase(state, PHASE_DEVELOPMENT)
-        return progress.apply_development_analysis_loopback(state, new_state), effects
+        progressed_state = progress.apply_development_analysis_loopback(state, new_state)
+        return (
+            _clamp_analysis_iteration(
+                state,
+                progressed_state,
+                state.development_analysis_iteration,
+                state.max_development_analysis_iterations,
+            ),
+            effects,
+        )
 
     if state.phase == "review_analysis":
-        if state.review_analysis_iteration + 1 >= state.max_review_analysis_iterations:
-            new_state, effects = _advance_phase(state, "review_commit")
-            return progress.apply_review_analysis_loopback(state, new_state), effects
         new_state, effects = _advance_phase(state, "fix")
-        return progress.apply_review_analysis_loopback(state, new_state), effects
+        progressed_state = progress.apply_review_analysis_loopback(state, new_state)
+        return (
+            _clamp_analysis_iteration(
+                state,
+                progressed_state,
+                state.review_analysis_iteration,
+                state.max_review_analysis_iterations,
+            ),
+            effects,
+        )
 
     return state, []
 

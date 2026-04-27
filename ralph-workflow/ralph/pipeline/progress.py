@@ -11,8 +11,8 @@ Contract:
 * ``reviewer_pass`` counts completed review passes only.
 * Analysis loopbacks mutate only the inner loop counter for the current
   cycle or pass.
-* Forced handoff at max analysis preserves outer progress and carries the inner
-  loop counter to the cap until commit outcome.
+* Capped analysis loopback preserves outer progress and carries the inner
+  loop counter to the cap until analysis or commit outcome resets it.
 * Skipped commits route onward without incrementing outer progress, but they end
   the current inner loop and therefore reset the corresponding analysis counter.
 * Checkpoint mirrors must derive directly from canonical ``PipelineState``.
@@ -82,7 +82,7 @@ def apply_development_analysis_loopback(
     state: PipelineState,
     advanced_state: PipelineState,
 ) -> PipelineState:
-    """Record a development analysis loopback or forced handoff at the cap."""
+    """Record a development analysis loopback, including capped correction routing."""
     return advanced_state.copy_with(
         development_analysis_iteration=state.development_analysis_iteration + 1
     )
@@ -92,7 +92,7 @@ def apply_review_analysis_loopback(
     state: PipelineState,
     advanced_state: PipelineState,
 ) -> PipelineState:
-    """Record a review analysis loopback or forced handoff at the cap."""
+    """Record a review analysis loopback, including capped correction routing."""
     return advanced_state.copy_with(
         review_issues_found=True,
         review_analysis_iteration=state.review_analysis_iteration + 1,
