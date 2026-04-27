@@ -72,7 +72,8 @@ class TimeoutPolicy:
 
     1. SESSION_CEILING_EXCEEDED — absolute wall-clock cap; activity cannot reset it.
     2. NO_OUTPUT_DEADLINE (+ drain window) — idle deadline since last output.
-    3. CHILDREN_PERSIST_TOO_LONG — cumulative WAITING_ON_CHILD ceiling.
+    3. CHILDREN_PERSIST_TOO_LONG — cumulative WAITING_ON_CHILD ceiling; this is an
+       absolute ceiling across the session and never decays.
     4. PROCESS_EXIT_HANG — subprocess closed stdout but did not exit within budget.
     5. DESCENDANT_HANG — descendant-wait deadline elapsed with persistent WAITING_ON_CHILD
        (post-exit only, owned by PostExitWatchdog).
@@ -82,8 +83,10 @@ class TimeoutPolicy:
             None disables the idle-timeout watchdog entirely.
         drain_window_seconds: After a potential timeout, the watchdog enters a drain
             window of this duration to allow late output to flush.
-        max_waiting_on_child_seconds: Hard ceiling on cumulative time the watchdog
-            defers due to WAITING_ON_CHILD. Once exceeded, fires even if children present.
+        max_waiting_on_child_seconds: Hard cumulative ceiling on time spent in
+            WAITING_ON_CHILD state across the entire session. Activity cannot decay
+            or reset it; once exceeded, fires CHILDREN_PERSIST_TOO_LONG even while
+            children are still alive.
         max_session_seconds: Absolute wall-clock ceiling for the entire session.
             Activity cannot reset this ceiling. None means no ceiling (opt-in).
             When set, must be >= idle_timeout_seconds.
@@ -158,9 +161,11 @@ class IdleWatchdog:
     reset last_activity directly — that was the source of the false-negative bug
     where WAITING_ON_CHILD resets deferred the deadline forever.
 
-    Cumulative WAITING_ON_CHILD time is preserved across WAITING<->ACTIVE
-    oscillation so the max_waiting_on_child_seconds ceiling cannot be defeated
-    by a process that alternates between producing output and waiting on children.
+    Cumulative WAITING_ON_CHILD time is an absolute ceiling that is preserved across
+    every transition (heartbeat activity, drain windows, classify_quiet outcomes).
+    Once recorded, cumulative time never decays during the session — this mirrors
+    max_session_seconds semantics so neither ceiling can be defeated by a process
+    that alternates between producing output and waiting on children.
 
     The session ceiling (max_session_seconds) is checked first on every evaluate()
     call and cannot be defeated by activity — record_activity() does not reset it.
@@ -204,12 +209,14 @@ class IdleWatchdog:
 
         Does NOT reset _session_started_at — the session ceiling is absolute and
         cannot be defeated by heartbeat activity.
+
+        Does NOT reset _cumulative_waiting_on_child_seconds. Cumulative is a true
+        absolute ceiling (parallel to the session ceiling) and never decays during
+        the session.
         """
         now = self._clock.monotonic()
         self._accumulate_waiting_run(now)
         self._last_activity = now
-        self._waiting_on_child_started_at = None
-        self._cumulative_waiting_on_child_seconds = 0.0
         self._in_drain_window = False
         self._drain_started_at = None
 
@@ -273,7 +280,8 @@ class IdleWatchdog:
         idle_elapsed = now - self._last_activity
 
         if idle_elapsed < self._config.idle_timeout_seconds:
-            # Still within deadline — clear any lingering child-wait state.
+            # Still within deadline — accumulate any pending WAITING run;
+            # cumulative is absolute and never decays.
             self._accumulate_waiting_run(now)
             return WatchdogVerdict.CONTINUE
 

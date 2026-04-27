@@ -3,6 +3,7 @@
 These tests drive the read loop with a fake stdout pipe and FakeClock to prove:
   (a) SESSION_CEILING_EXCEEDED fires under continuous output (false-negative fix).
   (b) NO_OUTPUT_DEADLINE fires when classify_quiet raises (defensive-wrap fix).
+  (c) CHILDREN_PERSIST_TOO_LONG fires with oscillating heartbeat (absolute-ceiling fix).
 
 No real subprocesses are spawned; all timing is driven by FakeClock.
 """
@@ -10,6 +11,7 @@ No real subprocesses are spawned; all timing is driven by FakeClock.
 from __future__ import annotations
 
 import threading
+import time
 from typing import TYPE_CHECKING
 
 import pytest
@@ -59,6 +61,17 @@ class _RaisingStrategy(GenericExecutionStrategy):
         raise RuntimeError("boom")
 
 
+class _WaitingStrategy(GenericExecutionStrategy):
+    """Strategy whose classify_quiet always returns WAITING_ON_CHILD."""
+
+    def classify_quiet(
+        self,
+        handle: object,
+        liveness_probe: object,
+    ) -> AgentExecutionState:
+        return AgentExecutionState.WAITING_ON_CHILD
+
+
 _MAX_SESSION_SECONDS = 5.0
 _CLOCK_ADVANCE_PER_LINE = 1.0
 _TOTAL_LINES_IN_STDOUT = 20
@@ -99,20 +112,22 @@ def test_session_ceiling_fires_under_continuous_output() -> None:
 
 
 def test_watchdog_fires_even_when_classify_quiet_raises() -> None:
-    """NO_OUTPUT_DEADLINE fires even when classify_quiet raises on every call.
+    """CHILDREN_PERSIST_TOO_LONG fires when classify_quiet raises repeatedly.
 
-    Before the fix, a RuntimeError from classify_quiet propagated out of evaluate()
-    and crashed the read loop without ever raising _IdleStreamTimeoutError.  With
-    the defensive _safe_classify_quiet shim, the exception is caught and ACTIVE is
-    returned, allowing the idle deadline to fire normally.
+    _safe_classify_quiet now returns WAITING_ON_CHILD on exception (not ACTIVE),
+    so the watchdog defers to the cumulative WAITING ceiling rather than firing
+    NO_OUTPUT_DEADLINE immediately. The read loop eventually fires once cumulative
+    WAITING time exceeds max_waiting_on_child_seconds.
 
     The stdout is a blocking generator so the read loop takes only the empty-queue
     path (where _safe_classify_quiet is invoked).  The _reader_release event is
     set in a finally block so the reader daemon thread exits cleanly.
     """
     idle_timeout = 2.0
+    max_waiting = 4.0
     policy = TimeoutPolicy(
         idle_timeout_seconds=idle_timeout,
+        max_waiting_on_child_seconds=max_waiting,
         drain_window_seconds=0.0,
         idle_poll_interval_seconds=0.05,
     )
@@ -140,5 +155,146 @@ def test_watchdog_fires_even_when_classify_quiet_raises() -> None:
     finally:
         _reader_release.set()
 
-    assert exc_info.value.reason == WatchdogFireReason.NO_OUTPUT_DEADLINE
-    assert clock.monotonic() >= idle_timeout
+    assert exc_info.value.reason == WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG
+    assert clock.monotonic() >= idle_timeout + max_waiting
+
+
+def test_classify_quiet_exception_defers_not_fires() -> None:
+    """classify_quiet raising defers to WAITING ceiling, not NO_OUTPUT_DEADLINE.
+
+    _safe_classify_quiet returns WAITING_ON_CHILD (not ACTIVE) on exception, so
+    NO_OUTPUT_DEADLINE is never raised when classify_quiet always raises. Instead
+    the watchdog defers until the cumulative WAITING ceiling fires.
+    """
+    idle_timeout = 2.0
+    max_waiting = 4.0
+    policy = TimeoutPolicy(
+        idle_timeout_seconds=idle_timeout,
+        max_waiting_on_child_seconds=max_waiting,
+        drain_window_seconds=0.5,
+        idle_poll_interval_seconds=0.05,
+    )
+    clock = FakeClock(start=0.0)
+    _reader_release = threading.Event()
+
+    def _blocking_stdout() -> Iterator[str]:
+        _reader_release.wait()
+        yield from ()
+
+    handle = _FakeManagedHandle(_blocking_stdout())
+
+    try:
+        with pytest.raises(_IdleStreamTimeoutError) as exc_info:
+            for _ in _read_lines_from_process(
+                handle,
+                policy=policy,
+                execution_strategy=_RaisingStrategy(),
+                _clock=clock,
+            ):
+                pass
+    finally:
+        _reader_release.set()
+
+    # Must be CHILDREN_PERSIST_TOO_LONG, NOT NO_OUTPUT_DEADLINE.
+    assert exc_info.value.reason == WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG
+    assert exc_info.value.reason != WatchdogFireReason.NO_OUTPUT_DEADLINE
+
+
+def test_post_yield_evaluate_uses_real_classify_quiet() -> None:
+    """Whitespace-only line post-yield does not fire when children are alive.
+
+    Previously the post-yield evaluate forced classify_quiet=lambda: ACTIVE, so
+    a whitespace-only line (no record_activity call) past the idle deadline would
+    drive the watchdog into the ACTIVE branch and fire NO_OUTPUT_DEADLINE even when
+    children are present. Now the real classify_quiet is consulted.
+    """
+    idle_timeout = 2.0
+    policy = TimeoutPolicy(
+        idle_timeout_seconds=idle_timeout,
+        drain_window_seconds=0.5,
+        idle_poll_interval_seconds=0.05,
+    )
+    clock = FakeClock(start=0.0)
+
+    def _stdout_gen() -> Iterator[str]:
+        # Advance clock past idle_timeout before line lands in queue so the
+        # post-yield evaluate sees idle_elapsed >= idle_timeout.
+        clock.advance(3.0)
+        yield "   \n"  # whitespace-only: classify_activity_line returns None
+        # Generator exhausted; reader thread exits naturally.
+
+    handle = _FakeManagedHandle(_stdout_gen())
+
+    # Should NOT raise _IdleStreamTimeoutError: _WaitingStrategy.classify_quiet
+    # returns WAITING_ON_CHILD so the post-yield evaluate defers, and the reader
+    # exits cleanly before the cumulative ceiling is reached.
+    lines = list(
+        _read_lines_from_process(
+            handle,
+            policy=policy,
+            execution_strategy=_WaitingStrategy(),
+            _clock=clock,
+        )
+    )
+    assert "   \n" in lines
+
+
+def test_cumulative_ceiling_fires_with_oscillating_heartbeat() -> None:
+    """Black-box reproduction of the user's bug: an agent that produces a heartbeat
+    after every idle deadline must still trip the absolute CHILDREN_PERSIST_TOO_LONG
+    ceiling.
+
+    Design: the generator yields one meaningful line every (idle_timeout + 1) seconds
+    of fake-clock time by busy-waiting on clock.monotonic() (yielding CPU via
+    time.sleep(0) between checks so the main loop can advance the FakeClock through
+    wait_for_event calls).  classify_quiet always returns WAITING_ON_CHILD.
+
+    With the old code the heartbeat + drain_window quiet reset cumulative to 0 every
+    cycle, so the loop ran forever.  With the fix cumulative is absolute and grows by
+    ~1s per cycle; it eventually exceeds max_waiting_on_child_seconds and
+    CHILDREN_PERSIST_TOO_LONG fires.
+    """
+    idle_timeout = 10.0
+    max_waiting = 20.0
+    drain_window = 0.5
+    poll_interval = 0.05
+
+    policy = TimeoutPolicy(
+        idle_timeout_seconds=idle_timeout,
+        max_waiting_on_child_seconds=max_waiting,
+        drain_window_seconds=drain_window,
+        idle_poll_interval_seconds=poll_interval,
+    )
+    clock = FakeClock(start=0.0)
+
+    _release = threading.Event()
+    _max_heartbeats = 500  # safety: must fire long before this
+
+    def _oscillating_stdout() -> Iterator[str]:
+        # Yield a meaningful heartbeat line every (idle_timeout + 1.0) fake-clock
+        # seconds.  Between yields, busy-wait with time.sleep(0) to release the
+        # GIL so the main read-loop thread can advance the FakeClock.
+        for heartbeat_num in range(_max_heartbeats):
+            target_t = (heartbeat_num + 1) * (idle_timeout + 1.0)
+            while clock.monotonic() < target_t:
+                time.sleep(0)  # release GIL; main thread advances clock
+            yield f"heartbeat {heartbeat_num}\n"
+        # Safety tail: release so reader thread exits cleanly if fire never fires.
+        _release.wait(timeout=5.0)
+        yield from ()
+
+    handle = _FakeManagedHandle(_oscillating_stdout())
+
+    try:
+        with pytest.raises(_IdleStreamTimeoutError) as exc_info:
+            for _ in _read_lines_from_process(
+                handle,
+                policy=policy,
+                execution_strategy=_WaitingStrategy(),
+                _clock=clock,
+            ):
+                pass
+    finally:
+        _release.set()
+
+    assert exc_info.value.reason == WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG
