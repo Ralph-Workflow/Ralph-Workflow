@@ -47,13 +47,14 @@ if TYPE_CHECKING:
 _ANALYSIS_PHASES = frozenset({"development_analysis", "review_analysis"})
 
 
-def materialize_prompt_for_phase(
+def materialize_prompt_for_phase(  # noqa: PLR0913
     *,
     phase: str,
     workspace: Workspace,
     pipeline_policy: PipelinePolicy,
     session_caps: SessionCapabilities,
     workspace_root: Path,
+    worker_namespace: Path | None = None,
 ) -> str:
     prompt = _render_prompt_for_phase(
         phase=phase,
@@ -61,6 +62,7 @@ def materialize_prompt_for_phase(
         pipeline_policy=pipeline_policy,
         session_caps=session_caps,
         workspace_root=workspace_root,
+        worker_namespace=worker_namespace,
     )
     return dump_rendered_prompt(workspace, phase, prompt)
 
@@ -90,12 +92,13 @@ def _read_and_clear_retry_hint(workspace: Workspace, phase: str) -> str:
         return ""
 
 
-def _render_prompt_for_phase(
+def _render_prompt_for_phase(  # noqa: PLR0913
     phase: str,
     workspace: Workspace,
     pipeline_policy: PipelinePolicy,
     session_caps: SessionCapabilities,
     workspace_root: Path,
+    worker_namespace: Path | None = None,
 ) -> str:
     context = TemplateContext.default(workspace_root)
     template_name = _template_name_for_phase(phase, pipeline_policy)
@@ -149,6 +152,7 @@ def _render_prompt_for_phase(
         variables = _phase_payload_variables(
             phase=phase,
             workspace_root=workspace_root,
+            worker_namespace=worker_namespace,
             values={
                 "PLAN": "" if plan_path else (plan_content or "(no plan available)"),
                 "DIFF": diff_content,
@@ -178,6 +182,7 @@ def _render_prompt_for_phase(
             variables.update(
                 _force_plan_path_for_analysis(
                     workspace_root=workspace_root,
+                    worker_namespace=worker_namespace,
                     phase=phase,
                     plan_content=plan_content,
                     plan_path=variables.get("PLAN_PATH", ""),
@@ -212,6 +217,7 @@ def _force_plan_path_for_analysis(
     phase: str,
     plan_content: str | None,
     plan_path: str,
+    worker_namespace: Path | None = None,
 ) -> dict[str, str]:
     """Return PLAN/PLAN_PATH variables that always use a file reference.
 
@@ -223,7 +229,11 @@ def _force_plan_path_for_analysis(
     if plan_path:
         return {"PLAN": "", "PLAN_PATH": plan_path}
     content = plan_content or "(no plan available)"
-    output_dir = workspace_root / ".agent" / "tmp" / "prompt_payloads"
+    output_dir = (
+        worker_namespace / "tmp" / "prompt_payloads"
+        if worker_namespace is not None
+        else workspace_root / ".agent" / "tmp" / "prompt_payloads"
+    )
     written_path = write_payload_to_directory(
         output_dir, f"{phase}_plan.txt", content
     )
@@ -279,8 +289,13 @@ def _phase_payload_variables(
     phase: str,
     workspace_root: Path,
     values: dict[str, str],
+    worker_namespace: Path | None = None,
 ) -> dict[str, str]:
-    output_dir = workspace_root / ".agent" / "tmp" / "prompt_payloads"
+    output_dir = (
+        worker_namespace / "tmp" / "prompt_payloads"
+        if worker_namespace is not None
+        else workspace_root / ".agent" / "tmp" / "prompt_payloads"
+    )
     return build_prompt_payload_variables(
         values,
         prompt_name_prefix=phase,

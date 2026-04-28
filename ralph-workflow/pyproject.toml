@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "ralph-workflow"
 dynamic = ["version"]
-description = "Ralph Workflow is an opinionated AI agent orchestration framework."
+description = "Vendor-neutral AI coding workflow orchestration with unattended execution, recovery, and verification."
 readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "AGPL-3.0-or-later" }
@@ -180,4 +180,10 @@ exclude_lines = [
 dev = [
     "mypy>=1.20.1",
     "types-psutil",
+    "hypothesis>=6.100",
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "pytest-cov>=4.0",
+    "pytest-xdist>=3.6",
+    "ruff>=0.1",
 ]

@@ -37,7 +37,6 @@ class WorkerSnapshot:
     finished_at: datetime | None
     elapsed_s: float
     exit_code: int | None
-    commit_sha: str | None
     error_message: str | None
     dropped_lines: int = 0
 
@@ -203,7 +202,6 @@ def _snapshot_worker(description: str, worker: WorkerState) -> WorkerSnapshot:
         finished_at=worker.finished_at,
         elapsed_s=_elapsed_seconds(worker),
         exit_code=worker.exit_code,
-        commit_sha=worker.commit_sha,
         error_message=worker.error_message,
     )
 

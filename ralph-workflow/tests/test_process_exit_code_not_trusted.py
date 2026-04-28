@@ -59,7 +59,12 @@ def _load_coordinator():
 
 
 def _make_unit(unit_id: str) -> WorkUnit:
-    return WorkUnit(unit_id=unit_id, description=f"Unit {unit_id}", dependencies=[])
+    return WorkUnit(
+        unit_id=unit_id,
+        description=f"Unit {unit_id}",
+        dependencies=[],
+        allowed_directories=[f"src/{unit_id}"],
+    )
 
 
 def _seed_artifact(artifact_dir) -> None:

@@ -391,7 +391,17 @@ def validate_work_units_against_policy(
     work_units: WorkUnitsPlan,
     pipeline_policy: PipelinePolicy | None,
 ) -> None:
-    """Validate parsed planning work_units against pipeline parallel policy."""
+    """Validate parsed planning work_units against pipeline parallel policy.
+
+    For plans with multiple work units, also runs the same-workspace overlap
+    check (validate_for_same_workspace) as a fail-closed guardrail at policy
+    load time, in addition to the runtime pre-flight check in the runner.
+    """
+    from ralph.pipeline.work_units import (  # noqa: PLC0415
+        WorkUnitsValidationError,
+        validate_for_same_workspace,
+    )
+
     if len(work_units.work_units) <= 1:
         return
 
@@ -422,6 +432,12 @@ def validate_work_units_against_policy(
                 raise PolicyValidationError(
                     f"Work unit '{unit.unit_id}' must declare allowed_directories"
                 )
+
+    if parallel_policy.source == "planning_artifact_work_units":
+        try:
+            validate_for_same_workspace(work_units)
+        except WorkUnitsValidationError as exc:
+            raise PolicyValidationError(str(exc)) from exc
 
 
 def validate_agent_chains_satisfiable(

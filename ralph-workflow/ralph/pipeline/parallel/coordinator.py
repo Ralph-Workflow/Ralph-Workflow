@@ -21,6 +21,11 @@ from ralph.pipeline.events import (
 )
 from ralph.pipeline.parallel import worker_session
 from ralph.pipeline.parallel.scheduler import schedule_next_wave
+from ralph.pipeline.work_units import (
+    WorkUnitsPlan,
+    WorkUnitsValidationError,
+    validate_for_same_workspace,
+)
 from ralph.pipeline.worker_state import WorkerStatus
 from ralph.process.manager import ProcessTerminationError, get_process_manager
 from ralph.workspace import fs
@@ -86,6 +91,25 @@ class ParallelCoordinator:
             ns=ns_root,
         )
 
+        # Fail-closed preflight: validate that the plan is safe for same-workspace
+        # execution before any worker is launched. This is a secondary guard; the
+        # runner also validates before calling us. Direct coordinator callers (e.g.
+        # tests, future tooling) are protected by this check too.
+        if effect.work_units:
+            try:
+                validate_for_same_workspace(
+                    WorkUnitsPlan(work_units=list(effect.work_units))
+                )
+            except WorkUnitsValidationError as exc:
+                logger.error("coordinator preflight rejected plan: {}", exc)
+                return [
+                    WorkerFailedEvent(
+                        unit_id="__preflight__",
+                        exit_code=2,
+                        error=f"parallel preflight rejected plan: {exc}",
+                    )
+                ]
+
         events: list[Event] = [PipelineEvent.FAN_OUT_STARTED]
         if not effect.work_units:
             return [*events, PipelineEvent.ALL_WORKERS_COMPLETE]
@@ -128,7 +152,6 @@ class ParallelCoordinator:
                             WorkerCompletedEvent(
                                 unit_id=result.unit_id,
                                 exit_code=result.exit_code,
-                                commit_sha="",
                             )
                         )
                         continue
@@ -215,6 +238,7 @@ def _prepare_executor(
             same_workspace.mcp_factory,
             worker_scope,
             worker_artifact_dir=worker_namespace / "artifacts",
+            worker_namespace=worker_namespace,
         )
         return executor, bundle, worker_namespace
 
@@ -228,6 +252,7 @@ def _prepare_executor(
         worker_mcp_factory,
         worker_scope,
         worker_artifact_dir=worker_namespace / "artifacts",
+        worker_namespace=worker_namespace,
     )
     worker_artifact_dir = worker_namespace / "artifacts"
     return (

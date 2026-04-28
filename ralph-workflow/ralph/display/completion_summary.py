@@ -65,13 +65,6 @@ def _read_verification_status(workspace_root: Path | None) -> tuple[str, str | N
     return (label, reason_text)
 
 
-def _commit_sha_from_snapshot(snapshot: PipelineSnapshot) -> str | None:
-    for worker in reversed(snapshot.workers):
-        if worker.commit_sha:
-            return worker.commit_sha
-    return None
-
-
 def _commit_message_lines(workspace_root: Path | None) -> list[str]:
     if workspace_root is None:
         return []
@@ -167,9 +160,6 @@ def render_completion_summary(  # noqa: PLR0913
     lines.append(_verification_line(workspace_root))
     lines.extend(_commit_message_lines(workspace_root))
 
-    sha = _commit_sha_from_snapshot(snapshot)
-    if sha:
-        lines.append(f"Commit: {sha[:12]}")
     if snapshot.pr_url:
         lines.append(f"PR: {snapshot.pr_url}")
     if snapshot.last_error:
@@ -185,7 +175,7 @@ def render_completion_summary(  # noqa: PLR0913
     return Text("\n".join(lines))
 
 
-def render_completion_summary_group(  # noqa: PLR0912, PLR0913, PLR0915
+def render_completion_summary_group(  # noqa: PLR0912, PLR0913
     snapshot: PipelineSnapshot,
     *,
     workspace_root: Path | None = None,
@@ -263,12 +253,9 @@ def render_completion_summary_group(  # noqa: PLR0912, PLR0913, PLR0915
 
     # Commit section
     commit_lines = _commit_message_lines(workspace_root)
-    sha = _commit_sha_from_snapshot(snapshot)
-    if commit_lines or sha or snapshot.pr_url:
+    if commit_lines or snapshot.pr_url:
         renderables.append(Rule("Commit", style=_phase_style("development_commit")))
         renderables.extend(Text(f"  {ln}") for ln in commit_lines)
-        if sha:
-            renderables.append(Text(f"  Commit SHA: {sha[:12]}"))
         if snapshot.pr_url:
             renderables.append(Text(f"  PR: {snapshot.pr_url}"))
 

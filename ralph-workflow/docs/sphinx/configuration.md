@@ -112,9 +112,11 @@ agent binaries. These fields mirror the flags that `claude` accepts.
 
 ### `[ccs_aliases]`
 
-Maps named agent identifiers to their CCS settings. Supports two forms:
+Optional per-alias CCS overrides. Ralph Workflow can already resolve `ccs/<alias>` dynamically using the global `[ccs]` defaults, so this section is only needed when a specific alias should behave differently.
 
-- **Simple string form** — use a built-in named alias: `ccs_aliases = { claude = "claude", opencode = "opencode" }`
+Supports two forms:
+
+- **Simple string form** — override the command for a specific alias: `ccs_aliases = { work = "ccs work", personal = "ccs personal" }`
 - **Table form** — override per-alias CCS settings individually:
 
 ```toml
@@ -162,11 +164,11 @@ max_retries = 3
 retry_delay_ms = 1000
 
 [agent_chains]
-planning = ["claude"]
-development = ["claude", "opencode"]
-analysis = ["claude"]
-review = ["claude"]
-fix = ["claude"]
+planning = ["claude/opus"]
+development = ["claude", "opencode/minimax/MiniMax-M2.7-highspeed"]
+analysis = ["claude/sonnet"]
+review = ["claude/sonnet"]
+fix = ["opencode/zai-coding-plan/glm-5"]
 commit = ["claude"]
 
 [agent_drains]
@@ -181,10 +183,16 @@ fix = "fix"
 ```
 
 Ralph Workflow tries agents in order; if one exhausts its retry budget, it falls over to
-the next. `[agent_drains]` maps each pipeline drain name (matching a phase's `drain` field
-in `pipeline.toml`) to a chain name from `[agent_chains]`. Multiple drains may share one
+the next. OpenCode model-qualified identifiers use `opencode/<provider>/<model>` syntax,
+for example `opencode/minimax/MiniMax-M2.7-highspeed` or `opencode/zai-coding-plan/glm-5`.
+Claude model tags are shorter: `claude` uses your current Claude Code model/profile, while
+`claude/opus` and `claude/sonnet` force those model families for a specific chain entry.
+
+`[agent_drains]` maps each pipeline drain name (matching a phase's `drain` field in
+`pipeline.toml`) to a chain name from `[agent_chains]`. Multiple drains may share one
 chain — for example, `development_analysis` and `review_analysis` both use the `analysis`
-chain by default.
+chain by default. The built-in drain names are: `planning`, `development`, `analysis`,
+`review`, `fix`, and `commit`.
 
 ## Regenerating Configs
 

@@ -2,6 +2,8 @@
 
 You are a worker agent assigned to implement the following task.
 
+You share the repository checkout with other parallel workers. Your declared allowed_directories are the ONLY paths outside .agent/workers/{{ unit_id }}/ you may modify. Do not infer your success from repo-wide git status — submit a worker artifact via the MCP submit_artifact tool before exiting.
+
 ## Your Task
 
 **Unit ID**: {{ unit_id }}
@@ -14,6 +16,11 @@ You are a worker agent assigned to implement the following task.
 
 You may only modify files within these directories:
 {{ allowed_directories }}
+
+## Worker State Namespace
+
+Your prompt payloads, logs, and artifacts are written under `.agent/workers/{{ unit_id }}/`.
+Do not write to `.agent/workers/` paths belonging to other workers.
 
 ## Base Context
 

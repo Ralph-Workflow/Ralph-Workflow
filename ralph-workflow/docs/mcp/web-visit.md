@@ -1,10 +1,10 @@
 # Web Visit
 
 The `visit_url` tool fetches a single URL and returns readable extracted text.
-It is a built-in Ralph MCP tool gated by the `WebVisit` capability.
+It is a built-in Ralph Workflow MCP tool gated by the `WebVisit` capability.
 
 See [Local Web Access](../sphinx/local-web-access.md) for the product-level overview
-of how `visit_url` fits into Ralph's three web concepts (search, visit, crawl).
+of how `visit_url` fits into Ralph Workflow's three web concepts (search, visit, crawl).
 
 ## Requirements
 
@@ -116,9 +116,9 @@ in every phase. This default exposure is verified by the cross-phase regression 
 
 ### Policy decision
 
-By default, Ralph treats localhost/private networks differently from the public internet:
+By default, Ralph Workflow treats localhost/private networks differently from the public internet:
 they are **blocked unless the operator explicitly opts in**. This is an intentional
-security posture — Ralph should not be able to reach internal services unless you
+security posture — Ralph Workflow should not be able to reach internal services unless you
 deliberately enable it.
 
 When `allow_private_networks=false` (the default), `visit_url` blocks any URL that
@@ -141,11 +141,11 @@ mirrors the SSRF guard logic from established secure HTTP fetch libraries.
 
 Set `allow_private_networks = true` only when:
 
-- Ralph runs in a dedicated container or VM with network isolation
-- You explicitly want Ralph to fetch from local development servers
+- Ralph Workflow runs in a dedicated container or VM with network isolation
+- You explicitly want Ralph Workflow to fetch from local development servers
 - CI runners have a dedicated network namespace with no internal service exposure
 
-**Trade-off:** Enabling private network access removes the SSRF boundary between Ralph
+**Trade-off:** Enabling private network access removes the SSRF boundary between Ralph Workflow
 and your internal services. Only enable it when your deployment environment is
 appropriately isolated and you understand the implications.
 

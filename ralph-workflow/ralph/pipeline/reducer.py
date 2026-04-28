@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING, cast
 
 from ralph.config.enums import (
     PHASE_COMPLETE,
+    PHASE_DEVELOPMENT_ANALYSIS,
     PHASE_FAILED,
     PipelinePhase,
 )
@@ -30,6 +31,7 @@ from ralph.pipeline.events import (
     Event,
     PhaseFailureEvent,
     PipelineEvent,
+    PostFanoutVerificationEvent,
     WorkerCompletedEvent,
     WorkerFailedEvent,
     WorkerStartedEvent,
@@ -127,7 +129,7 @@ def _dispatch_worker_event(
     return None
 
 
-def reduce(
+def reduce(  # noqa: PLR0911
     state: PipelineState,
     event: Event,
     pipeline_policy: PipelinePolicy | None = None,
@@ -155,6 +157,13 @@ def reduce(
         Tuple of (new_state, effects). Effects are instructions for the
         effect handler to execute.
     """
+    # Handle PostFanoutVerificationEvent before worker events.
+    if isinstance(event, PostFanoutVerificationEvent):
+        if not event.success:
+            error_msg = event.error or f"workspace verification failed (exit code {event.exit_code})"  # noqa: E501
+            return _restore_work_units(state, _enter_failed_recovery(state, error_msg)[0]), []
+        return state, []
+
     # Handle PhaseFailureEvent before the generic PipelineEvent dispatch.
     # When a RecoveryController is supplied, delegate to it for classification-aware
     # recovery (intelligent attribution, budget management). When None, use legacy logic.
@@ -681,7 +690,6 @@ def _handle_worker_completed(
     updated = state.worker_states[event.unit_id].copy_with(
         status=WorkerStatus.SUCCEEDED,
         exit_code=event.exit_code,
-        commit_sha=event.commit_sha,
         finished_at=datetime.now(UTC),
     )
     return state.copy_with(worker_states={**state.worker_states, event.unit_id: updated}), []
@@ -706,12 +714,31 @@ def _handle_all_workers_complete(
     state: PipelineState,
     policy: PipelinePolicy | None,
 ) -> tuple[PipelineState, list[Effect]]:
-    if not state.worker_states or any(
-        ws.status != WorkerStatus.SUCCEEDED for ws in state.worker_states.values()
-    ):
+    if not state.worker_states:
         return state, []
+
+    failed_unit_ids = sorted(
+        uid
+        for uid, ws in state.worker_states.items()
+        if ws.status in (WorkerStatus.FAILED, WorkerStatus.CANCELLED)
+    )
+    if failed_unit_ids:
+        reason = f"Parallel fan-out had failed workers: {', '.join(failed_unit_ids)}"
+        return _enter_failed_recovery(state, reason)
+
+    if any(ws.status != WorkerStatus.SUCCEEDED for ws in state.worker_states.values()):
+        return state, []
+
     if policy is None:
-        return _advance_to_failed(state, "No policy loaded for all-workers-complete routing")
+        return (
+            state.copy_with(
+                phase=PHASE_DEVELOPMENT_ANALYSIS,
+                previous_phase=state.phase,
+                last_agent_session_id=None,
+                session_preserve_retry_pending=False,
+            ),
+            [],
+        )
     try:
         next_phase = resolve_next_phase(state.phase, "success", policy)
         return _advance_phase(state, next_phase, policy)

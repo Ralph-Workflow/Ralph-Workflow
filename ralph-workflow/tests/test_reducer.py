@@ -1209,7 +1209,7 @@ def test_worker_started_unknown_unit_id_is_no_op() -> None:
 
 
 def test_worker_completed_transitions_running_to_succeeded() -> None:
-    """WORKER_COMPLETED should move the worker to SUCCEEDED and store commit_sha."""
+    """WORKER_COMPLETED should move the worker to SUCCEEDED."""
     running = WorkerState(unit_id="u1", status=WorkerStatus.RUNNING)
     state = PipelineState(
         phase=PHASE_DEVELOPMENT,
@@ -1218,14 +1218,13 @@ def test_worker_completed_transitions_running_to_succeeded() -> None:
     )
     new_state, effects = _reduce(
         state,
-        WorkerCompletedEvent(unit_id="u1", exit_code=0, commit_sha="abc123"),
+        WorkerCompletedEvent(unit_id="u1", exit_code=0),
     )
 
     assert effects == []
     ws = new_state.worker_states["u1"]
     assert ws.status == WorkerStatus.SUCCEEDED
     assert ws.exit_code == 0
-    assert ws.commit_sha == "abc123"
     assert ws.finished_at is not None
 
 
@@ -1234,7 +1233,7 @@ def test_worker_completed_unknown_unit_id_is_no_op() -> None:
     state = PipelineState(phase=PHASE_DEVELOPMENT)
     new_state, effects = _reduce(
         state,
-        WorkerCompletedEvent(unit_id="ghost", exit_code=0, commit_sha="sha"),
+        WorkerCompletedEvent(unit_id="ghost", exit_code=0),
     )
 
     assert new_state == state
@@ -1307,6 +1306,42 @@ def test_all_workers_complete_no_op_if_any_not_succeeded() -> None:
 
     assert new_state == state
     assert effects == []
+
+
+def test_all_workers_complete_routes_to_phase_failed_when_worker_failed() -> None:
+    """ALL_WORKERS_COMPLETE must route to PHASE_FAILED when any worker has FAILED status."""
+    states = {
+        "u1": WorkerState(unit_id="u1", status=WorkerStatus.SUCCEEDED),
+        "u2": WorkerState(unit_id="u2", status=WorkerStatus.FAILED),
+    }
+    state = PipelineState(
+        phase=PHASE_DEVELOPMENT,
+        work_units=_make_work_units("u1", "u2"),
+        worker_states=states,
+    )
+    new_state, effects = _reduce(state, PipelineEvent.ALL_WORKERS_COMPLETE)
+
+    assert new_state.phase == PHASE_FAILED
+    assert effects == []
+    assert "u2" in (new_state.last_error or "")
+
+
+def test_all_workers_complete_routes_to_phase_failed_when_worker_cancelled() -> None:
+    """ALL_WORKERS_COMPLETE must route to PHASE_FAILED when any worker has CANCELLED status."""
+    states = {
+        "u1": WorkerState(unit_id="u1", status=WorkerStatus.CANCELLED),
+        "u2": WorkerState(unit_id="u2", status=WorkerStatus.SUCCEEDED),
+    }
+    state = PipelineState(
+        phase=PHASE_DEVELOPMENT,
+        work_units=_make_work_units("u1", "u2"),
+        worker_states=states,
+    )
+    new_state, effects = _reduce(state, PipelineEvent.ALL_WORKERS_COMPLETE)
+
+    assert new_state.phase == PHASE_FAILED
+    assert effects == []
+    assert "u1" in (new_state.last_error or "")
 
 
 def test_workers_resumed_requeues_running_workers_as_pending() -> None:
@@ -1561,3 +1596,28 @@ def test_agent_success_with_no_policy_routes_through_failed_recovery() -> None:
     assert new_state.previous_phase == PHASE_DEVELOPMENT
     assert new_state.recovery_epoch == state.recovery_epoch + 1
     assert new_state.last_error == "No policy loaded for agent success routing"
+
+
+def test_all_workers_complete_mixed_statuses_routes_to_phase_failed() -> None:
+    """ALL_WORKERS_COMPLETE with mixed statuses: last_error must name
+    all failed/cancelled units sorted."""
+    states = {
+        "u1": WorkerState(unit_id="u1", status=WorkerStatus.SUCCEEDED),
+        "u2": WorkerState(unit_id="u2", status=WorkerStatus.FAILED),
+        "u3": WorkerState(unit_id="u3", status=WorkerStatus.CANCELLED),
+    }
+    state = PipelineState(
+        phase=PHASE_DEVELOPMENT,
+        work_units=_make_work_units("u1", "u2", "u3"),
+        worker_states=states,
+    )
+    new_state, effects = _reduce(state, PipelineEvent.ALL_WORKERS_COMPLETE)
+
+    assert new_state.phase == PHASE_FAILED
+    assert effects == []
+    error = new_state.last_error or ""
+    assert "u2" in error
+    assert "u3" in error
+    assert error.index("u2") < error.index("u3"), (
+        "Failed unit_ids must appear alphabetically: u2 before u3"
+    )

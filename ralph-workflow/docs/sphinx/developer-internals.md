@@ -9,7 +9,8 @@ instead.
 
 ## What lives here
 
-- [Agents](agents.md) — agent definitions, fallback chains, drain bindings, and invocation flow
+- [Configuration](configuration.md) — runtime config files, precedence, and policy knobs
+- [Agents](agents.md) — agent definitions, fallback chains, drain bindings, and runtime invocation flow
 - [MCP Architecture](mcp-architecture.md) — server lifecycle, capability gates, and upstream proxying
 - [Artifacts](artifacts.md) — typed handoffs and artifact storage contracts
 - [Prompts](prompts.md) — prompt template loading, rendering, and payload materialisation

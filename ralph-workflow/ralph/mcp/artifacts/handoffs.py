@@ -22,6 +22,9 @@ HANDOFF_PATHS: dict[str, str] = {
     "plan": ".agent/PLAN.md",
     "issues": ".agent/ISSUES.md",
     "development_result": ".agent/DEVELOPMENT_RESULT.md",
+    # parallel_development_summary reuses DEVELOPMENT_RESULT.md so the analysis
+    # phase picks it up through the same fallback path without code changes.
+    "parallel_development_summary": ".agent/DEVELOPMENT_RESULT.md",
     "fix_result": ".agent/FIX_RESULT.md",
     "development_analysis_decision": ".agent/DEVELOPMENT_ANALYSIS_DECISION.md",
     "review_analysis_decision": ".agent/REVIEW_ANALYSIS_DECISION.md",
@@ -67,27 +70,30 @@ def delete_markdown_handoff(
 
 def render_markdown_handoff(artifact_type: str, content: Mapping[str, object]) -> str:
     """Render an artifact payload into the Markdown handoff users/agents consume."""
+    return _render_by_artifact_type(artifact_type, content)
+
+
+_RESULT_ARTIFACT_SPECS: dict[str, tuple[str, list[str]]] = {
+    "development_result": ("# Development Result", ["status", "files_changed", "next_steps"]),
+    "fix_result": ("# Fix Result", ["files_changed", "next_steps"]),
+}
+
+
+def _render_by_artifact_type(artifact_type: str, content: Mapping[str, object]) -> str:
     if artifact_type == "plan":
         return render_plan_markdown(content)
     if artifact_type == "issues":
         return _render_issues_markdown(content)
-    if artifact_type == "development_result":
+    if artifact_type == "parallel_development_summary":
+        return _render_parallel_summary_markdown(content)
+    if artifact_type in _RESULT_ARTIFACT_SPECS:
+        title, field_names = _RESULT_ARTIFACT_SPECS[artifact_type]
         return _render_key_value_markdown(
-            title="# Development Result",
+            title=title,
             summary=_string_value(content.get("summary")),
             sections=[
-                ("Status", _string_value(content.get("status"))),
-                ("Files Changed", _string_value(content.get("files_changed"))),
-                ("Next Steps", _string_value(content.get("next_steps"))),
-            ],
-        )
-    if artifact_type == "fix_result":
-        return _render_key_value_markdown(
-            title="# Fix Result",
-            summary=_string_value(content.get("summary")),
-            sections=[
-                ("Files Changed", _string_value(content.get("files_changed"))),
-                ("Next Steps", _string_value(content.get("next_steps"))),
+                (field.replace("_", " ").title(), _string_value(content.get(field)))
+                for field in field_names
             ],
         )
     if artifact_type in {"development_analysis_decision", "review_analysis_decision"}:
@@ -134,6 +140,50 @@ def ensure_markdown_handoff_from_artifact(
         backend=backend,
     )
     return str(workspace_root / relative_path)
+
+
+def _render_parallel_summary_markdown(content: Mapping[str, object]) -> str:
+    """Render the parallel development summary for analysis agent consumption."""
+    lines = ["# Parallel Development Summary"]
+
+    workers = content.get("workers")
+    if isinstance(workers, list) and workers:
+        lines.extend(["", "## Workers"])
+        for w in workers:
+            if not isinstance(w, dict):
+                continue
+            uid = w.get("unit_id", "?")
+            status = w.get("status", "unknown")
+            artifact_count = w.get("artifact_count", 0)
+            final_message = w.get("final_message")
+            entry = f"- **{uid}**: {status} ({artifact_count} artifact(s))"
+            if final_message:
+                entry += f" — {final_message}"
+            lines.append(entry)
+
+    any_failed = content.get("any_failed", False)
+    all_succeeded = content.get("all_succeeded", False)
+    lines.extend([
+        "",
+        "## Status",
+        "",
+        f"- any_failed: {str(any_failed).lower()}",
+        f"- all_succeeded: {str(all_succeeded).lower()}",
+    ])
+
+    verification = content.get("verification")
+    if isinstance(verification, dict):
+        ran = verification.get("ran", False)
+        passed = verification.get("passed")
+        exit_code = verification.get("exit_code")
+        lines.extend(["", "## Verification"])
+        if ran:
+            result = "passed" if passed else f"failed (exit code {exit_code})"
+            lines.extend(["", f"Ran: yes — {result}"])
+        else:
+            lines.extend(["", "Ran: no"])
+
+    return "\n".join(lines).rstrip() + "\n"
 
 
 def _render_analysis_decision_markdown(title: str, content: Mapping[str, object]) -> str:

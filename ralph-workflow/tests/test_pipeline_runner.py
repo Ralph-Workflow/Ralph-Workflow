@@ -347,7 +347,10 @@ class TestDetermineEffect:
         bundle = _load_default_policy_bundle()
         state = PipelineState(
             phase="development",
-            work_units=(WorkUnit(unit_id="unit-a", description="A"),),
+            work_units=(
+                WorkUnit(unit_id="unit-a", description="A", allowed_directories=["src/a"]),
+                WorkUnit(unit_id="unit-b", description="B", allowed_directories=["src/b"]),
+            ),
         )
         config = _config_with_agents(
             agent_chains={"developer": ["claude"]},
@@ -357,7 +360,24 @@ class TestDetermineEffect:
         effect = runner_module._determine_effect_from_policy(state, bundle, config=config)
 
         assert isinstance(effect, FanOutDevelopmentEffect)
-        assert effect.work_units[0].unit_id == "unit-a"
+        assert {u.unit_id for u in effect.work_units} == {"unit-a", "unit-b"}
+
+    def test_development_phase_with_single_work_unit_uses_invoke_agent_effect(self) -> None:
+        """Single work unit must not trigger fan-out — fan-out requires >=2 units."""
+        bundle = _load_default_policy_bundle()
+        state = PipelineState(
+            phase="development",
+            work_units=(WorkUnit(unit_id="unit-a", description="A"),),
+        )
+        config = _config_with_agents(
+            agent_chains={"developer": ["claude"]},
+            agent_drains={"development": "developer"},
+        )
+
+        effect = runner_module._determine_effect_from_policy(state, bundle, config=config)
+
+        assert isinstance(effect, InvokeAgentEffect)
+        assert effect.phase == "development"
 
     def test_policy_selected_parallel_phase_with_work_units_uses_fan_out_effect(self) -> None:
         state = PipelineState(

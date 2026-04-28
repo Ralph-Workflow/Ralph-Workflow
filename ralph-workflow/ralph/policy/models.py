@@ -391,6 +391,14 @@ class ParallelExecutionPolicy(_FrozenPolicyModel):  # type: ignore[explicit-any]
         default=True,
         description="Require each work unit to declare allowed_directories",
     )
+    post_fanout_verification: bool = Field(
+        default=False,
+        description=(
+            "When True, run a serialized workspace-wide verification step after all "
+            "parallel workers complete. Defaults to False so unit tests never invoke "
+            "make verify."
+        ),
+    )
 
 
 class PipelinePolicy(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library

@@ -43,9 +43,6 @@ def test_legacy_prompt_families_have_file_backed_jinja_templates() -> None:
         "development_analysis.jinja",
         "development_commit_message.jinja",
         "fix_mode.jinja",
-        "parallel_dev_worker.jinja",
-        "parallel_planning.jinja",
-        "parallel_verifier.jinja",
         "planning.jinja",
         "review.jinja",
         "review_analysis.jinja",
@@ -263,3 +260,28 @@ def test_commit_prompt_taught_variants_submit_successfully(tmp_path: Path) -> No
             },
         )
         assert result.is_error is False, f"payload #{index} should submit successfully"
+
+
+_MIN_WORKER_PROMPT_LEN = 50
+
+
+def test_worker_developer_template_renders_without_error(tmp_path: Path) -> None:
+    """worker_developer.jinja must render through the real template engine.
+
+    This fails loudly if the shared/_unattended_mode.jinja include is broken
+    (e.g., pointing at a non-existent _unattended_mode.j2).
+    """
+    from ralph.pipeline.work_units import WorkUnit  # noqa: PLC0415
+    from ralph.policy.loader import load_policy  # noqa: PLC0415
+    from ralph.prompts.materialize import render_worker_prompt  # noqa: PLC0415
+
+    unit = WorkUnit(
+        unit_id="unit-x",
+        description="Test unit",
+        allowed_directories=["src/x"],
+    )
+    policy = load_policy(tmp_path / ".agent")
+    rendered = render_worker_prompt(unit, "base context here", policy.pipeline)
+    assert "unit-x" in rendered
+    assert "allowed_directories" in rendered.lower() or "src/x" in rendered
+    assert len(rendered) > _MIN_WORKER_PROMPT_LEN

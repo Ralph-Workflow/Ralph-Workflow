@@ -59,6 +59,12 @@ def find_main_worktree_root(start: Path | str = Path()) -> Path:
     For linked worktrees, this resolves to the main checkout that owns the
     shared git common directory. For ordinary repositories, it matches the
     active repository root.
+
+    This function is used only by workspace scope resolution to detect whether
+    the active checkout is a linked git worktree. It is **not** used for
+    parallel worker isolation — v1 parallel workers share a single
+    same-workspace checkout and are isolated only via ``allowed_directories``
+    path restrictions.
     """
 
     try:

@@ -7,6 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Same-workspace parallel workers v1.** When the planning agent declares two or more disjoint
+  `work_units`, Ralph now runs them as parallel workers in the SAME git checkout using
+  `ParallelExecutionMode.SAME_WORKSPACE`. Each worker is restricted to its declared
+  `allowed_directories`; coordination is by edit-area fencing and per-worker artifact namespaces
+  only — no worktrees, no separate git branches for each worker, no post-fanout merge step.
+- **Runner-boundary parallel preflight.** `_determine_effect_from_policy` now calls
+  `validate_work_units_against_policy` before constructing `FanOutDevelopmentEffect`. Plans with
+  overlapping edit areas, missing `allowed_directories`, or reserved paths produce an immediate
+  `ExitFailureEffect` with a reason containing `parallel preflight rejected plan:` rather than
+  silently degrading.
+- **Serialized post-fanout verification (opt-in).** A new `parallel_execution.post_fanout_verification`
+  policy field (default `false`) controls whether a workspace-wide `make verify` runs after all
+  workers finish. Verification is skipped when any worker failed. The result is captured in a
+  `PostFanoutVerificationEvent` that the reducer uses to mark the phase as failed on non-zero exit.
+- **`PostFanoutVerificationEvent`.** New event in `ralph.pipeline.events` and handled in the
+  reducer. `success=False` routes to `PHASE_FAILED`; `success=True` is a no-op.
+- **`parallel_development_summary.json`.** Written to `.agent/artifacts/parallel_development_summary.json`
+  after fan-out completes. Records per-worker status (`succeeded`, `failed`, `blocked`, `cancelled`),
+  artifact counts, and verification outcome. Worker success is based on worker-local artifact
+  evidence only — repo-wide git state is never used.
+
+### Changed
+- `FanOutDevelopmentEffect.run_post_fanout_verification` now defaults to `False` and is driven by
+  the `parallel_execution.post_fanout_verification` policy field. The previous hardcoded `True`
+  would have triggered `make verify` in all fan-out runs, including unit tests.
+- Documentation (`getting-started.md`, `concepts.md`, `parallel-mode.md`, `parallel-fan-out.md`)
+  truthfully describes v1 same-workspace behavior: no worktrees, no separate git branches for each worker, no
+  post-fanout merge step; soft isolation by path fencing and per-worker namespaces only.
+- `worker_developer.jinja` now correctly includes `shared/_unattended_mode.jinja` (was
+  `_unattended_mode.j2`) and explicitly tells workers they share the checkout.
+
+### Removed
+- Dead worktree-first parallel code paths. The only supported parallel execution mode is
+  `ParallelExecutionMode.SAME_WORKSPACE`; alternative fan-out paths using git worktrees are not part of the shipped
+  product.
+
 ### Changed
 - OpenCode runs no longer treat foreground process exit as terminal success — completion now requires either an explicit completion signal or the required phase artifact to be present in the workspace.
 - Idle/timeout evaluation for OpenCode considers Ralph-tracked agent labels (label prefix `agent:`) via the injectable `LivenessProbe` in addition to OS-level descendants, so quiet parents with live subagent work are not killed prematurely.
@@ -86,6 +123,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `make typecheck` now runs mypy through `uv run python -m mypy` so it uses the project's virtualenv instead of a system-wide mypy that cannot see project dependencies.
 
 ### Removed
+- `commit_sha` field removed from `WorkerCompletedEvent`, `WorkerState`, and `WorkerSnapshot`. This was a worktree-era relic always set to empty string in same-workspace v1 mode. Checkpoints from earlier versions load cleanly due to `extra="ignore"` on `WorkerState`.
 - `max_dev_continuations` config field (previously declared but never used).
 - `_legacy_handle_agent_success` reducer path (unreachable in production — policy is always loaded).
 - Unused `developer_iters_option` / `reviewer_reviews_option` decorator stubs in `cli/options.py`.

@@ -63,7 +63,7 @@ recovery cycle count increment.
 
 ## Agent chain fallover
 
-Each phase uses an agent chain (e.g., `claude → opencode`). When an agent exhausts its
+Each phase uses an agent chain (for example, `claude/opus → opencode/minimax/MiniMax-M2.7-highspeed → claude/sonnet`). When an agent exhausts its
 `max_retries` budget, Ralph Workflow falls over to the next agent in the chain with a clean
 state — no silent retries, no double-counting. Chain composition is validated pre-flight.
 
@@ -103,7 +103,7 @@ max_retries = 3
 retry_delay_ms = 1000
 
 [agent_chains]
-development = ["claude", "opencode"]
+development = ["claude", "opencode/minimax/MiniMax-M2.7-highspeed"]
 ```
 
 The maximum fallback cycles through a drain is also configured in `ralph-workflow.toml`:
@@ -191,5 +191,5 @@ will always restart from the beginning regardless of prior state.
 ## Related pages
 
 - [Concepts](concepts.md) — phase, drain, checkpoint, and recovery cycle terminology
-- [Parallel Mode](parallel-mode.md) — recovery behavior in parallel worktree runs
+- [Parallel Mode](parallel-mode.md) — recovery behavior in same-workspace parallel runs
 - [Troubleshooting](troubleshooting.md) — common recovery-related issues and fixes

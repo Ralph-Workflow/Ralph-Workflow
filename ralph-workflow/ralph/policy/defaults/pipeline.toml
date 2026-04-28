@@ -219,6 +219,7 @@ phase = "development"
 max_parallel_workers = 8
 max_work_units = 50
 require_allowed_directories = true
+post_fanout_verification = false
 
 # ---------------------------------------------------------------------------
 # Pipeline entry and terminal configuration

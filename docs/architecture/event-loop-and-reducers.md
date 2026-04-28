@@ -522,7 +522,7 @@ Without loop detection, the orchestrator's priority system can keep the system s
 ## See Also
 
 - `effect-system.md`
-- `parallel-fan-out.md` — parallel development fan-out, TaskGroup concurrency, process group kill, and merge integration
+- `parallel-fan-out.md` — parallel development fan-out, TaskGroup concurrency, process group kill, and worker coordination
 
 ## Historical Notes
 

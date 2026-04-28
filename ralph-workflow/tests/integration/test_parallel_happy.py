@@ -15,7 +15,7 @@ from ralph.testing.fake_agent_executor import FakeAgentExecutor, FakeRun
 
 
 def _make_work_unit(uid: str) -> WorkUnit:
-    return WorkUnit(unit_id=uid, description=f"Work unit {uid}")
+    return WorkUnit(unit_id=uid, description=f"Work unit {uid}", allowed_directories=[f"src/{uid}"])
 
 
 def _run_fan_out(
@@ -62,7 +62,6 @@ def test_three_workers_all_succeed() -> None:
     assert events[-1] == PipelineEvent.ALL_WORKERS_COMPLETE
     assert completed_ids == {"unit-A", "unit-B", "unit-C"}
     assert all(event.exit_code == 0 for event in completed_events)
-    assert all(event.commit_sha == "" for event in completed_events)
 
 
 def _fan_out_policy() -> PipelinePolicy:

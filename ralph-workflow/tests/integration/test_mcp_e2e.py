@@ -19,7 +19,12 @@ from ralph.mcp.protocol import startup
 from ralph.mcp.tools.names import WEB_SEARCH_TOOL, upstream_proxy_tool_name
 from ralph.mcp.transport.common import merge_mcp_toml_into_upstreams
 from ralph.mcp.upstream.config import UpstreamMcpServer
-from ralph.process.manager import ManagedProcess, ProcessTerminationError, get_process_manager
+from ralph.process.manager import (
+    ManagedProcess,
+    ProcessTerminationError,
+    get_process_manager,
+    reset_process_manager,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -38,7 +43,7 @@ class _RunningServer:
     def stop(self) -> tuple[str, str]:
         if self.handle.poll() is None:
             with contextlib.suppress(ProcessTerminationError):
-                self.handle.terminate(grace_period_s=5.0)
+                self.handle.terminate(grace_period_s=0.2)
         raw_out, raw_err = self.handle.communicate()
 
         def _s(v: object) -> str:
@@ -50,12 +55,16 @@ class _RunningServer:
 
 
 @pytest.fixture(autouse=True)
-def _clean_mcp_env(monkeypatch: pytest.MonkeyPatch) -> None:
+def _clean_mcp_env(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     monkeypatch.delenv("RALPH_UPSTREAM_MCP_CONFIG", raising=False)
     # Prevent the parent Ralph session (if any) from leaking restricted
     # capabilities into the standalone server subprocess via session_from_env.
     monkeypatch.delenv("RALPH_MCP_SESSION_FILE", raising=False)
     monkeypatch.delenv("RALPH_MCP_SESSION_JSON", raising=False)
+    yield
+    with contextlib.suppress(Exception):
+        get_process_manager().shutdown_all(grace_period_s=0.05)
+    reset_process_manager()
 
 
 @contextmanager
@@ -125,7 +134,7 @@ def _wait_for_server(endpoint: str) -> None:
             return
         except Exception as exc:  # pragma: no cover - exercised by retry loop
             last_error = exc
-            time.sleep(0.01)
+            time.sleep(0.001)
     raise AssertionError(f"server failed to start: {last_error}")
 
 

@@ -1,10 +1,10 @@
 # MCP Servers
 
-Ralph acts as an MCP proxy for all agents — configure once in `mcp.toml`, used by every agent.
+Ralph Workflow acts as an MCP proxy for all agents — configure once in `mcp.toml`, used by every agent.
 
 ## Config file locations
 
-Ralph loads `mcp.toml` from three locations, in precedence order (highest to lowest):
+Ralph Workflow loads `mcp.toml` from three locations, in precedence order (highest to lowest):
 
 | Priority | Location | Scope |
 |---|---|---|
@@ -67,7 +67,7 @@ url = "https://mcp.example.com/docs"
 
 ## Multimodal MCP Support (opt-in)
 
-Ralph supports multimodal MCP tools (image reading) as an opt-in feature. This support is **disabled by default** to ensure backward compatibility with text-only clients.
+Ralph Workflow supports multimodal MCP tools (image reading) as an opt-in feature. This support is **disabled by default** to ensure backward compatibility with text-only clients.
 
 ### Enabling multimodal support
 
@@ -81,7 +81,7 @@ max_inline_bytes = 5242880  # 5 MiB, default limit
 
 ### How read_image works
 
-When `media.enabled = true`, Ralph registers a `read_image` tool that:
+When `media.enabled = true`, Ralph Workflow registers a `read_image` tool that:
 
 - Reads binary image files (PNG, JPEG, GIF, WebP)
 - Returns base64-encoded content in MCP image content blocks
@@ -97,13 +97,13 @@ When a client connects without declaring multimodal support, the `read_image` to
 
 ### Client capability declaration
 
-Clients declare multimodal support in the MCP `initialize` handshake via `capabilities`. Ralph extracts the following signals:
+Clients declare multimodal support in the MCP `initialize` handshake via `capabilities`. Ralph Workflow extracts the following signals:
 
 - `capabilities.image` — any truthy value
 - `capabilities.media` — any truthy value
 - `capabilities.multimodal` — any truthy value
 
-If no signal is present, Ralph treats the client as text-only.
+If no signal is present, Ralph Workflow treats the client as text-only.
 
 ### Content block format
 
@@ -121,12 +121,12 @@ Image content uses the MCP image block:
 
 ## Upstream multimodal boundary policy
 
-When an upstream MCP server returns a non-text content block (e.g., an image), Ralph **rejects it with a clear error** rather than silently stringifying or dropping the block. This prevents silent data loss in text-only downstream clients.
+When an upstream MCP server returns a non-text content block (e.g., an image), Ralph Workflow **rejects it with a clear error** rather than silently stringifying or dropping the block. This prevents silent data loss in text-only downstream clients.
 
 Error message format:
 ```
 upstream server '<name>' tool '<tool>' returned multimodal content block (type='<type>')
-which is not supported in Ralph's text-only passthrough at index <idx>.
+which is not supported in Ralph Workflow's text-only passthrough at index <idx>.
 Upstream multimodal payloads must be rejected rather than passed through.
 ```
 
@@ -138,11 +138,11 @@ If a server name exists in **both** `mcp.toml` **and** an agent's native config 
 warning: server "github" defined in mcp.toml overrides agent config; using mcp.toml definition
 ```
 
-Agent-native config entries are not forwarded to the provider CLI. All user-defined servers are loaded by Ralph and re-exposed as Ralph-owned proxied tool aliases.
+Agent-native config entries are not forwarded to the provider CLI. All user-defined servers are loaded by Ralph Workflow and re-exposed as Ralph Workflow-owned proxied tool aliases.
 
 ## Failure policy
 
-Ralph validates every configured custom MCP server at startup by completing the standard `initialize` → `notifications/initialized` → `tools/list` handshake. If any server fails validation, Ralph exits with code 1 and logs the failure reason. Environment variable values defined under `[mcp_servers.<name>.env]` are never included in the failure output — only the variable names are surfaced.
+Ralph Workflow validates every configured custom MCP server at startup by completing the standard `initialize` → `notifications/initialized` → `tools/list` handshake. If any server fails validation, Ralph Workflow exits with code 1 and logs the failure reason. Environment variable values defined under `[mcp_servers.<name>.env]` are never included in the failure output — only the variable names are surfaced.
 
 ```
 ERROR  Custom MCP servers failed startup validation:
@@ -169,13 +169,13 @@ ralph --check-mcp
 
 ## Agent compatibility validation
 
-After every upstream MCP server passes validation, Ralph synthesizes the per-agent transport wiring it would emit for Claude, Codex, and OpenCode and re-runs the same MCP handshake against each backend. This guarantees that what Ralph hands to each agent's MCP client can actually reach the same server. If any agent transport probe fails in strict mode, Ralph exits with code 1 and identifies the (server, transport) pair that failed.
+After every upstream MCP server passes validation, Ralph Workflow synthesizes the per-agent transport wiring it would emit for Claude, Codex, and OpenCode and re-runs the same MCP handshake against each backend. This guarantees that what Ralph Workflow hands to each agent's MCP client can actually reach the same server. If any agent transport probe fails in strict mode, Ralph Workflow exits with code 1 and identifies the (server, transport) pair that failed.
 
-The probe never spawns the agent binaries themselves — the MCP JSON-RPC protocol is identical across all supported agents (`2024-11-05`), so Ralph's own client is a faithful reference.
+The probe never spawns the agent binaries themselves — the MCP JSON-RPC protocol is identical across all supported agents (`2024-11-05`), so Ralph Workflow's own client is a faithful reference.
 
 ## Troubleshooting
 
-Run `ralph --diagnose` to render the per-server `Custom MCP Servers` table and the `Agent Transport Compatibility` table. Both tables surface the redacted error string Ralph would emit during startup, so users can confirm credentials, command paths, and reachability without re-running the full pipeline.
+Run `ralph --diagnose` to render the per-server `Custom MCP Servers` table and the `Agent Transport Compatibility` table. Both tables surface the redacted error string Ralph Workflow would emit during startup, so users can confirm credentials, command paths, and reachability without re-running the full pipeline.
 
 ## Forward compatibility
 
@@ -205,7 +205,7 @@ args = ["-y", "@modelcontextprotocol/server-github"]
 GITHUB_TOKEN = "$GITHUB_TOKEN"
 ```
 
-Ralph loads this server and re-exposes its tools under the `ralph_upstream__github__<tool_name>` alias namespace. For example, if the GitHub MCP server exposes `search_repositories` and `get_repo`, the agent sees them as:
+Ralph Workflow loads this server and re-exposes its tools under the `ralph_upstream__github__<tool_name>` alias namespace. For example, if the GitHub MCP server exposes `search_repositories` and `get_repo`, the agent sees them as:
 
 ```
 ralph_upstream__github__search_repositories
@@ -233,7 +233,7 @@ Once configured, each agent sees the Angular tools under their proxy alias. For 
 ralph_upstream__angular-cli__generate
 ```
 
-No other config is needed — Ralph handles the stdio handshake, tool discovery, and per-agent wiring automatically.
+No other config is needed — Ralph Workflow handles the stdio handshake, tool discovery, and per-agent wiring automatically.
 
 Verify the integration before running the pipeline:
 
@@ -269,7 +269,7 @@ transport = "http"
 url = "http://localhost:6280/mcp"
 ```
 
-Ralph also supports the legacy HTTP+SSE endpoint shape used by some docs-mcp setups:
+Ralph Workflow also supports the legacy HTTP+SSE endpoint shape used by some docs-mcp setups:
 
 ```toml
 [mcp_servers.docs-mcp]
@@ -279,7 +279,7 @@ url = "http://localhost:6280/sse"
 
 Prefer `/mcp` when you control the server config. Use `/sse` only when the server exposes the older HTTP+SSE flow.
 
-The server must be running before `ralph` (or `ralph --check-mcp`) starts. Ralph will fail startup validation if the server is unreachable. Use `RALPH_MCP_STRICT=0` during development if the docs server is optional.
+The server must be running before `ralph` (or `ralph --check-mcp`) starts. Ralph Workflow will fail startup validation if the server is unreachable. Use `RALPH_MCP_STRICT=0` during development if the docs server is optional.
 
 Once running, the search and fetch tools are exposed as:
 
@@ -311,7 +311,7 @@ transport = "http"
 url = "http://localhost:11235/mcp"
 ```
 
-Ralph already supports upstream MCP servers, so no additional code is needed. The Crawl4AI tools
+Ralph Workflow already supports upstream MCP servers, so no additional code is needed. The Crawl4AI tools
 are exposed as:
 
 ```
@@ -340,7 +340,7 @@ at the OS level are the right control for Crawl4AI in production.
 
 ### Verifying cross-phase visibility
 
-After configuring Crawl4AI, verify that its tools are visible across all Ralph phases:
+After configuring Crawl4AI, verify that its tools are visible across all Ralph Workflow phases:
 
 ```
 ralph --check-mcp
@@ -373,7 +373,7 @@ server. It is viable as a local sidecar for teams that need advanced crawl featu
 - Running Firecrawl self-hosted requires more infrastructure (Docker, memory, CPU) than a
   lightweight Crawl4AI setup.
 - Firecrawl is best suited for teams that already run Firecrawl in their stack and want to
-  integrate it with Ralph rather than teams adopting a crawler for the first time.
+  integrate it with Ralph Workflow rather than teams adopting a crawler for the first time.
 
 If you already run Firecrawl, configure it like any other HTTP MCP server:
 

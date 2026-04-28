@@ -149,3 +149,75 @@ def test_resolve_workspace_scope_prefers_nearest_ralph_workspace(
     assert scope.root == package_root.resolve()
     assert scope.local_config_path == (package_root / ".agent" / "ralph-workflow.toml").resolve()
     assert scope.allowed_roots == (package_root.resolve(),)
+
+
+class TestSameWorkspaceWorkerScopeFencing:
+    def test_write_to_declared_dir_succeeds(self, tmp_path: Path) -> None:
+        """Worker scoped to src/foo can write inside src/foo."""
+        from ralph.workspace.fs import FsWorkspace  # noqa: PLC0415
+
+        (tmp_path / "src" / "foo").mkdir(parents=True)
+        worker_ns = tmp_path / ".agent" / "workers" / "u1"
+        worker_ns.mkdir(parents=True)
+
+        scope = WorkspaceScope.for_same_workspace_worker(
+            repo_root=tmp_path,
+            allowed_directories=("src/foo",),
+            worker_namespace=worker_ns,
+        )
+        workspace = FsWorkspace(tmp_path, allowed_roots=scope.allowed_roots)
+        workspace.write("src/foo/x.txt", "hello")
+        assert (tmp_path / "src" / "foo" / "x.txt").read_text() == "hello"
+
+    def test_write_outside_declared_dir_raises(self, tmp_path: Path) -> None:
+        """Worker scoped to src/foo cannot write to src/bar."""
+        from ralph.workspace.fs import FsWorkspace  # noqa: PLC0415
+
+        (tmp_path / "src" / "bar").mkdir(parents=True)
+        worker_ns = tmp_path / ".agent" / "workers" / "u1"
+        worker_ns.mkdir(parents=True)
+
+        scope = WorkspaceScope.for_same_workspace_worker(
+            repo_root=tmp_path,
+            allowed_directories=("src/foo",),
+            worker_namespace=worker_ns,
+        )
+        workspace = FsWorkspace(tmp_path, allowed_roots=scope.allowed_roots)
+        with pytest.raises(ValueError, match="outside workspace root"):
+            workspace.write("src/bar/y.txt", "should fail")
+
+    def test_write_to_shared_agent_artifacts_denied(self, tmp_path: Path) -> None:
+        """Worker u1 cannot write to .agent/artifacts/
+        (only its own .agent/workers/u1/ namespace)."""
+        from ralph.workspace.fs import FsWorkspace  # noqa: PLC0415
+
+        (tmp_path / ".agent" / "artifacts").mkdir(parents=True)
+        worker_ns = tmp_path / ".agent" / "workers" / "u1"
+        worker_ns.mkdir(parents=True)
+
+        scope = WorkspaceScope.for_same_workspace_worker(
+            repo_root=tmp_path,
+            allowed_directories=("src/foo",),
+            worker_namespace=worker_ns,
+        )
+        workspace = FsWorkspace(tmp_path, allowed_roots=scope.allowed_roots)
+        with pytest.raises(ValueError, match="outside workspace root"):
+            workspace.write(".agent/artifacts/plan.json", "should fail")
+
+    def test_write_to_other_workers_namespace_denied(self, tmp_path: Path) -> None:
+        """Worker u1 cannot write to .agent/workers/u2/ (cross-worker namespace fencing)."""
+        from ralph.workspace.fs import FsWorkspace  # noqa: PLC0415
+
+        worker_ns_u1 = tmp_path / ".agent" / "workers" / "u1"
+        worker_ns_u1.mkdir(parents=True)
+        worker_ns_u2 = tmp_path / ".agent" / "workers" / "u2" / "artifacts"
+        worker_ns_u2.mkdir(parents=True)
+
+        scope = WorkspaceScope.for_same_workspace_worker(
+            repo_root=tmp_path,
+            allowed_directories=("src/foo",),
+            worker_namespace=worker_ns_u1,
+        )
+        workspace = FsWorkspace(tmp_path, allowed_roots=scope.allowed_roots)
+        with pytest.raises(ValueError, match="outside workspace root"):
+            workspace.write(".agent/workers/u2/artifacts/x", "should fail")

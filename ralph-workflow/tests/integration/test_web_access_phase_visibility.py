@@ -27,7 +27,7 @@ from ralph.mcp.protocol import startup
 from ralph.mcp.protocol.capability_mapping import Capability, SessionDrain
 from ralph.mcp.protocol.session import AgentSession
 from ralph.mcp.tools.names import VISIT_URL_TOOL, upstream_proxy_tool_name
-from ralph.process.manager import ManagedProcess, get_process_manager
+from ralph.process.manager import ManagedProcess, get_process_manager, reset_process_manager
 from ralph.prompts.template_variables import DEFAULT_CAPABILITIES
 
 if TYPE_CHECKING:
@@ -47,7 +47,7 @@ class _RunningServer:
     def stop(self) -> tuple[str, str]:
         if self.handle.poll() is None:
             with contextlib.suppress(Exception):
-                self.handle.terminate(grace_period_s=5.0)
+                self.handle.terminate(grace_period_s=0.2)
         raw_out, raw_err = self.handle.communicate()
 
         def _s(v: object) -> str:
@@ -59,10 +59,14 @@ class _RunningServer:
 
 
 @pytest.fixture(autouse=True)
-def _clean_mcp_env(monkeypatch: pytest.MonkeyPatch) -> None:
+def _clean_mcp_env(monkeypatch: pytest.MonkeyPatch) -> Generator[None, None, None]:
     monkeypatch.delenv("RALPH_UPSTREAM_MCP_CONFIG", raising=False)
     monkeypatch.delenv("RALPH_MCP_SESSION_FILE", raising=False)
     monkeypatch.delenv("RALPH_MCP_SESSION_JSON", raising=False)
+    yield
+    with contextlib.suppress(Exception):
+        get_process_manager().shutdown_all(grace_period_s=0.05)
+    reset_process_manager()
 
 
 def _reserve_port() -> int:
@@ -82,7 +86,7 @@ def _wait_for_server(endpoint: str) -> None:
             return
         except Exception as exc:
             last_error = exc
-            time.sleep(0.01)
+            time.sleep(0.001)
     raise AssertionError(f"server failed to start: {last_error}")
 
 

@@ -1,6 +1,6 @@
 import asyncio
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from ralph.agents.executor import ExecutorError, WorkerResult
 from ralph.pipeline.work_units import WorkUnit
@@ -13,6 +13,7 @@ class FakeRun:
     exit_code: int
     duration_ms: int
     raise_on_start: Exception | None = None
+    side_effect: Callable[[], None] | None = field(default=None)
 
 
 class FakeAgentExecutor:
@@ -42,6 +43,9 @@ class FakeAgentExecutor:
 
         on_status(WorkerStatus.RUNNING)
         emitted_statuses.append(WorkerStatus.RUNNING)
+
+        if seed.side_effect is not None:
+            seed.side_effect()
 
         for line in seed.outputs:
             on_output(line)

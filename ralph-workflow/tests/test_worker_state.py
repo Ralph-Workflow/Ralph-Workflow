@@ -29,7 +29,6 @@ def test_worker_state_defaults() -> None:
     assert ws.finished_at is None
     assert ws.exit_code is None
     assert ws.error_message is None
-    assert ws.commit_sha is None
     assert ws.worker_namespace is None
     assert ws.log_file is None
 
@@ -51,7 +50,6 @@ def test_worker_state_round_trip_json() -> None:
         finished_at=datetime(2026, 1, 1, 12, 5, 0, tzinfo=UTC),
         exit_code=0,
         error_message=None,
-        commit_sha="abc123",
         worker_namespace=".agent/workers/unit-42",
         log_file="/tmp/logs/unit-42.log",
     )
