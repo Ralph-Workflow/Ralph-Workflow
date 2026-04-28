@@ -13,6 +13,7 @@ import pytest
 from ralph.display.parallel_display import ParallelDisplay
 from ralph.mcp.artifacts.store import list_artifacts
 from ralph.pipeline.effects import FanOutDevelopmentEffect
+from ralph.pipeline.events import WorkerFailedEvent
 from ralph.pipeline.parallel import coordinator
 from ralph.pipeline.parallel.coordinator import (
     _prepare_executor,
@@ -232,6 +233,44 @@ class TestNoGitStatusFallback:
                         f"(exit_code={mock_result.exit_code})"
                     ),
                 )
+
+    def test_coordinator_worker_exit0_no_artifact_produces_worker_failed_event(
+        self, tmp_path: Path
+    ) -> None:
+        """Coordinator emits WorkerFailedEvent when exit_code=0 but no artifacts written."""
+        from ralph.pipeline.parallel.coordinator import _WorkerContext  # noqa: PLC0415
+
+        unit = _make_unit("unit-a", ["src/a"])
+        ctx = _make_same_workspace_context(tmp_path, executor_command=None)
+        worker_ctx = _WorkerContext(same_workspace=ctx)
+
+        class _SilentDisplay(ParallelDisplay):
+            def __init__(self) -> None:
+                pass
+
+            def emit(self, unit_id: str, line: str) -> None:
+                pass
+
+            def set_status(self, unit_id: str, status: object) -> None:
+                pass
+
+        effect = FanOutDevelopmentEffect(work_units=(unit,), max_workers=1)
+        executor = FakeAgentExecutor(
+            {"unit-a": FakeRun(outputs=["done"], exit_code=0, duration_ms=1)}
+        )
+
+        events = asyncio.run(
+            coordinator.run_fan_out(
+                effect=effect,
+                executor=executor,
+                display=_SilentDisplay(),
+                ctx=worker_ctx,
+            )
+        )
+
+        failed = [ev for ev in events if isinstance(ev, WorkerFailedEvent)]
+        assert len(failed) == 1
+        assert failed[0].unit_id == "unit-a"
 
 
 class TestEditAreaEnforcement:
@@ -549,3 +588,51 @@ class TestRunnerNoMergeStep:
             "Runner fan-out event stream must not contain "
             f"merge/worktree/branch events: {violations}"
         )
+
+
+class TestMcpToolBoundaryEnforcement:
+    def test_mcp_write_tool_denied_outside_allowed_roots(self, tmp_path: Path) -> None:
+        """handle_write_file raises ToolError when FsWorkspace rejects out-of-scope write."""
+        from ralph.mcp.tools.coordination import ToolError  # noqa: PLC0415
+        from ralph.mcp.tools.workspace import handle_write_file  # noqa: PLC0415
+
+        allowed_dir = tmp_path / "src" / "allowed"
+        allowed_dir.mkdir(parents=True)
+        workspace = FsWorkspace(tmp_path, allowed_roots=(allowed_dir,))
+
+        class _PermissiveSession:
+            session_id = "test-session"
+            is_parallel_worker = False
+
+            def check_capability(self, _capability: str) -> object:
+                return "approved"
+
+        with pytest.raises(ToolError, match="Failed to write file"):
+            handle_write_file(
+                _PermissiveSession(),
+                workspace,
+                {"path": "src/other/output.txt", "content": "forbidden"},
+            )
+
+    def test_mcp_write_tool_succeeds_inside_allowed_roots(self, tmp_path: Path) -> None:
+        """handle_write_file succeeds when FsWorkspace allows the target path."""
+        from ralph.mcp.tools.workspace import handle_write_file  # noqa: PLC0415
+
+        allowed_dir = tmp_path / "src" / "allowed"
+        allowed_dir.mkdir(parents=True)
+        workspace = FsWorkspace(tmp_path, allowed_roots=(allowed_dir,))
+
+        class _PermissiveSession:
+            session_id = "test-session"
+            is_parallel_worker = False
+
+            def check_capability(self, _capability: str) -> object:
+                return "approved"
+
+        result = handle_write_file(
+            _PermissiveSession(),
+            workspace,
+            {"path": "src/allowed/output.txt", "content": "permitted"},
+        )
+        assert result.is_error is False
+        assert (allowed_dir / "output.txt").read_text() == "permitted"
