@@ -1257,6 +1257,96 @@ def _resume_fan_out_state(
     return resumed_state, resume_units
 
 
+def _write_parallel_development_summary(  # noqa: PLR0913
+    workspace_scope: WorkspaceScope,
+    effect: FanOutDevelopmentEffect,
+    state: PipelineState,
+    *,
+    verify_ran: bool,
+    verify_passed: bool | None,
+    verify_exit_code: int | None,
+) -> None:
+    """Write .agent/artifacts/parallel_development_summary.json after fan-out completes.
+
+    The summary records per-worker status, artifact counts, and verification results.
+    It is the authoritative handoff for the analysis phase when fan-out was used.
+    Worker success is based on per-worker artifact evidence, never repo-wide git state.
+    """
+    import json  # noqa: PLC0415
+
+    from ralph.mcp.artifacts.store import list_artifacts  # noqa: PLC0415
+    from ralph.pipeline.worker_state import WorkerStatus  # noqa: PLC0415
+
+    workers: list[dict[str, object]] = []
+    for unit in effect.work_units:
+        uid = unit.unit_id
+        ws = state.worker_states.get(uid)
+        artifact_dir = workspace_scope.root / ".agent" / "workers" / uid / "artifacts"
+        artifact_count = len(list_artifacts(artifact_dir)) if artifact_dir.exists() else 0
+
+        if ws is None:
+            status = "failed"
+            final_message = "Worker state not recorded"
+        elif ws.status == WorkerStatus.SUCCEEDED:
+            status = "succeeded"
+            final_message = None
+        elif ws.status == WorkerStatus.CANCELLED:
+            status = "cancelled"
+            final_message = ws.error_message
+        elif ws.status == WorkerStatus.FAILED:
+            err = ws.error_message or ""
+            status = "blocked" if err.startswith("Blocked by") else "failed"
+            final_message = ws.error_message
+        else:
+            status = "failed"
+            final_message = ws.error_message
+
+        workers.append({
+            "unit_id": uid,
+            "status": status,
+            "artifact_count": artifact_count,
+            "final_message": final_message,
+        })
+
+    any_failed = any(w["status"] in ("failed", "cancelled", "blocked") for w in workers)
+    all_succeeded = not any_failed and len(workers) > 0
+
+    if verify_ran and not verify_passed:
+        workers.append({
+            "unit_id": "__verify__",
+            "status": "failed",
+            "artifact_count": 0,
+            "final_message": "workspace verification failed",
+        })
+        any_failed = True
+        all_succeeded = False
+
+    summary: dict[str, object] = {
+        "workers": workers,
+        "any_failed": any_failed,
+        "all_succeeded": all_succeeded,
+        "verification": {
+            "ran": verify_ran,
+            "passed": verify_passed,
+            "exit_code": verify_exit_code,
+        },
+    }
+
+    agent_artifacts = workspace_scope.root / ".agent" / "artifacts"
+    summary_path = agent_artifacts / "parallel_development_summary.json"
+    summary_path.parent.mkdir(parents=True, exist_ok=True)
+    summary_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
+    logger.debug(
+        "Wrote parallel_development_summary.json: any_failed={f} all_succeeded={s}",
+        f=any_failed,
+        s=all_succeeded,
+    )
+
+    from ralph.mcp.artifacts.handoffs import sync_markdown_handoff  # noqa: PLC0415
+
+    sync_markdown_handoff(workspace_scope.root, "parallel_development_summary", summary)
+
+
 async def _run_post_fanout_verification(workspace_scope: WorkspaceScope) -> str | None:
     """Run workspace-wide verification exactly once after all workers complete.
 
@@ -1283,7 +1373,7 @@ async def _run_post_fanout_verification(workspace_scope: WorkspaceScope) -> str 
     return None
 
 
-async def _run_fan_out_async(  # noqa: PLR0913
+async def _run_fan_out_async(  # noqa: PLR0913, PLR0915
     *,
     effect: FanOutDevelopmentEffect,
     state: PipelineState,
@@ -1300,6 +1390,7 @@ async def _run_fan_out_async(  # noqa: PLR0913
         SignalBridge,
         install_signal_handlers,
     )
+    from ralph.pipeline.events import PostFanoutVerificationEvent  # noqa: PLC0415
     from ralph.pipeline.parallel import coordinator  # noqa: PLC0415
     from ralph.pipeline.work_units import (  # noqa: PLC0415
         WorkUnitsPlan,
@@ -1366,29 +1457,54 @@ async def _run_fan_out_async(  # noqa: PLR0913
         )
 
         any_worker_failed = any(isinstance(ev, WorkerFailedEvent) for ev in fan_out_events)
+        verify_ran = False
+        verify_passed: bool | None = None
+        verify_exit_code: int | None = None
         if effect.run_post_fanout_verification and not any_worker_failed:
+            verify_ran = True
             verify_error = await _run_post_fanout_verification(workspace_scope)
             if verify_error is not None:
                 logger.error(verify_error)
-                recovered, _ = _reduce_runtime_recovery(
+                verify_passed = False
+                verify_exit_code = 1
+                verify_ev = PostFanoutVerificationEvent(
+                    success=False, exit_code=verify_exit_code, error=verify_error
+                )
+            else:
+                verify_passed = True
+                verify_exit_code = 0
+                verify_ev = PostFanoutVerificationEvent(success=True, exit_code=0)
+            current, _ = reducer_reduce(current, verify_ev, policy_bundle.pipeline)
+            _notify_pipeline_subscriber(pipeline_subscriber, current)
+            _save_checkpoint_or_log(
+                current,
+                message=(
+                    "Checkpoint save failed after verification in phase={phase}: {err}"
+                ),
+            )
+            if not verify_passed:
+                _write_parallel_development_summary(
+                    workspace_scope,
+                    effect,
                     current,
-                    policy_bundle.pipeline,
-                    reason=verify_error,
+                    verify_ran=verify_ran,
+                    verify_passed=verify_passed,
+                    verify_exit_code=verify_exit_code,
                 )
-                _notify_pipeline_subscriber(pipeline_subscriber, recovered)
-                _save_checkpoint_or_log(
-                    recovered,
-                    message=(
-                        "Checkpoint save failed after verification failure "
-                        "in phase={phase}: {err}"
-                    ),
-                )
-                return recovered
+                return current
         elif effect.run_post_fanout_verification and any_worker_failed:
             logger.debug(
                 "Post-fanout verification skipped: one or more workers failed in this wave"
             )
 
+        _write_parallel_development_summary(
+            workspace_scope,
+            effect,
+            current,
+            verify_ran=verify_ran,
+            verify_passed=verify_passed,
+            verify_exit_code=verify_exit_code,
+        )
         return current
     except KeyboardInterrupt:
         raise
@@ -1693,7 +1809,7 @@ def _terminal_phase_effect(state: PipelineState) -> Effect | None:
     return None
 
 
-def _determine_effect_from_policy(
+def _determine_effect_from_policy(  # noqa: PLR0911
     state: PipelineState,
     policy_bundle: PolicyBundle,
     workspace_scope: WorkspaceScope | None = None,
@@ -1713,11 +1829,28 @@ def _determine_effect_from_policy(
         return _commit_phase_effect(state, policy_bundle, phase_def, scope, config=config)
 
     if state.phase == PHASE_DEVELOPMENT and len(state.work_units) >= 2:  # noqa: PLR2004
+        from ralph.pipeline.work_units import (  # noqa: PLC0415
+            WorkUnitsPlan,
+            WorkUnitsValidationError,
+            validate_for_same_workspace,
+        )
+        try:
+            validate_for_same_workspace(WorkUnitsPlan(work_units=list(state.work_units)))
+        except WorkUnitsValidationError as exc:
+            offending = ", ".join(
+                u.unit_id for u in state.work_units if not u.allowed_directories
+            ) or "(see details)"
+            return ExitFailureEffect(
+                reason=f"parallel preflight rejected plan: {exc} (offending units: {offending})"
+            )
         parallel_policy = policy_bundle.pipeline.parallel_execution
+        run_verification = (
+            parallel_policy.post_fanout_verification if parallel_policy is not None else False
+        )
         return FanOutDevelopmentEffect(
             work_units=state.work_units,
             max_workers=parallel_policy.max_parallel_workers if parallel_policy is not None else 8,
-            run_post_fanout_verification=True,
+            run_post_fanout_verification=run_verification,
         )
 
     agent_name = _agent_name_for_phase_from_policy(state, policy_bundle, config=config)
@@ -2381,6 +2514,7 @@ def _phase_output_artifact_paths(phase: str) -> tuple[str, ...]:
     phase_artifacts = {
         "development": (
             DEV_RESULT_ARTIFACT_JSON_PATH,
+            ".agent/artifacts/parallel_development_summary.json",
             ".agent/DEVELOPMENT_RESULT.md",
         ),
         "development_analysis": (

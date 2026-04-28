@@ -35,6 +35,7 @@ def _make_policy_bundle(max_workers: int = 2) -> MagicMock:
         PHASE_DEVELOPMENT: MagicMock(requires_commit=False, drain="development"),
     }
     bundle.pipeline.parallel_execution.max_parallel_workers = max_workers
+    bundle.pipeline.parallel_execution.post_fanout_verification = True
     return bundle
 
 

@@ -184,7 +184,7 @@ Use package/module docstrings for API understanding and this README for workflow
 Ralph Workflow now treats several agent-driven phases as producing explicit evidence, not just a zero exit code.
 
 - `review` must leave behind a fresh `.agent/artifacts/issues.json`.
-- `development` and `fix` workers in isolated parallel runs are judged by empirical evidence: submitted artifacts are checked first; if none are found, workspace changes (untracked or modified files detected by `git status`) serve as the fallback signal. A worker is considered successful when either signal is present, and exit code is retained as diagnostic information only.
+- In same-workspace parallel mode, `development` and `fix` workers are judged by per-worker artifact evidence only: a worker succeeds when it submits an artifact under `.agent/workers/<unit_id>/artifacts/`. Repo-wide `git status` is never used to determine worker success in parallel mode. Exit code is retained as diagnostic information only.
 - Planning keeps `.agent/artifacts/plan.json` as the canonical machine-readable artifact and mirrors it to `.agent/PLAN.md` as the human/agent handoff.
 - The runner still removes per-phase artifacts before each invocation so interrupted runs cannot leak stale summaries or review findings into later phases.
 
@@ -199,7 +199,7 @@ Artifact contract:
   - `.agent/DEVELOPMENT_ANALYSIS_DECISION.md`
   - `.agent/REVIEW_ANALYSIS_DECISION.md`
 
-This hardening is intentionally selective. Review and planning still rely on explicit artifacts where Ralph Workflow needs structured evidence, while development and fix workers are judged by the empirical evidence they leave behind (artifacts and/or workspace changes), not by process exit code.
+This hardening is intentionally selective. Review and planning rely on explicit artifacts where Ralph Workflow needs structured evidence. In same-workspace parallel mode, `development` and `fix` workers are judged by per-worker artifact evidence under `.agent/workers/<unit_id>/artifacts/`; repo-wide workspace changes are not used as a success signal in parallel mode.
 
 ## Built-in web tools
 
@@ -270,7 +270,7 @@ Ralph Workflow's Claude parser accepts both bare (`claude: ...`) and model-quali
 
 ## Parallel Mode
 
-When your planning phase produces two or more work units, Ralph Workflow fans development out across multiple git worktrees simultaneously. For the full guide including configuration, work unit structure, and success criteria, see [`docs/sphinx/parallel-mode.md`](docs/sphinx/parallel-mode.md).
+When your planning phase produces two or more work units, Ralph Workflow runs them as parallel workers in the **same git checkout** (same-workspace mode v1). Each worker is restricted to its declared `allowed_directories` and writes its artifacts under `.agent/workers/<unit_id>/`. Workers do not get separate worktrees or branches; coordination uses edit-area fencing and per-worker artifact namespaces only. For the full guide including configuration, work unit structure, and success criteria, see [`docs/sphinx/parallel-mode.md`](docs/sphinx/parallel-mode.md).
 
 Quick configuration:
 

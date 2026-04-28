@@ -164,6 +164,7 @@ _EXTENDED_BANNED_PHRASES = [
     "per-worker branch",
     "worktree isolation",
     "worktree-based v1",
+    "git worktrees simultaneously",
 ]
 
 # Paths that are legitimately allowed to mention worktree (linked-worktree detection docs)
@@ -257,4 +258,46 @@ class TestNamespacedPayloadDocs:
         violations = [phrase for phrase in forbidden if phrase in doc]
         assert violations == [], (
             f"parallel-mode.md contains future-tense worktree language: {violations!r}"
+        )
+
+
+_README_PATH = Path(__file__).parent.parent / "README.md"
+
+
+@pytest.fixture()
+def readme_doc() -> str:
+    return _README_PATH.read_text(encoding="utf-8")
+
+
+class TestReadmeParallelContract:
+    def test_readme_parallel_mode_section_describes_same_workspace(
+        self, readme_doc: str
+    ) -> None:
+        lower = readme_doc.lower()
+        assert "same git checkout" in lower or "same-workspace" in lower, (
+            "README.md Parallel Mode section must describe same-workspace execution "
+            "(workers run in the same git checkout), not per-worker worktrees"
+        )
+
+    def test_readme_worktrees_not_simultaneous(self, readme_doc: str) -> None:
+        assert "git worktrees simultaneously" not in readme_doc.lower(), (
+            "README.md must not describe parallel mode as fanning out across "
+            "'multiple git worktrees simultaneously' (removed in v1)"
+        )
+
+    def test_readme_does_not_describe_git_status_fallback_for_parallel_workers(
+        self, readme_doc: str
+    ) -> None:
+        lower = readme_doc.lower()
+        assert "isolated parallel runs" not in lower, (
+            "README.md must not describe 'isolated parallel runs' — "
+            "same-workspace v1 uses shared checkout, not isolation"
+        )
+
+    def test_readme_parallel_workers_use_artifact_evidence_not_git_status(
+        self, readme_doc: str
+    ) -> None:
+        assert ".agent/workers/" in readme_doc, (
+            "README.md must describe per-worker artifact evidence under "
+            ".agent/workers/<unit_id>/artifacts/ (v1 success criterion)"
         )

@@ -310,8 +310,8 @@ class TestDetermineEffect:
         state = PipelineState(
             phase="development",
             work_units=(
-                WorkUnit(unit_id="unit-a", description="A"),
-                WorkUnit(unit_id="unit-b", description="B"),
+                WorkUnit(unit_id="unit-a", description="A", allowed_directories=["src/a"]),
+                WorkUnit(unit_id="unit-b", description="B", allowed_directories=["src/b"]),
             ),
         )
         config = _config_with_agents(

@@ -33,6 +33,7 @@ from ralph.pipeline.events import (
     Event,
     PhaseFailureEvent,
     PipelineEvent,
+    PostFanoutVerificationEvent,
     WorkerCompletedEvent,
     WorkerFailedEvent,
     WorkerStartedEvent,
@@ -131,7 +132,7 @@ def _dispatch_worker_event(
     return None
 
 
-def reduce(
+def reduce(  # noqa: PLR0911
     state: PipelineState,
     event: Event,
     pipeline_policy: PipelinePolicy | None = None,
@@ -157,6 +158,13 @@ def reduce(
         Tuple of (new_state, effects). Effects are instructions for the
         effect handler to execute.
     """
+    # Handle PostFanoutVerificationEvent before worker events.
+    if isinstance(event, PostFanoutVerificationEvent):
+        if not event.success:
+            error_msg = event.error or f"workspace verification failed (exit code {event.exit_code})"  # noqa: E501
+            return _restore_work_units(state, _enter_failed_recovery(state, error_msg)[0]), []
+        return state, []
+
     # Handle PhaseFailureEvent before the generic PipelineEvent dispatch.
     # When a RecoveryController is supplied, delegate to it for classification-aware
     # recovery (intelligent attribution, budget management). When None, use legacy logic.
