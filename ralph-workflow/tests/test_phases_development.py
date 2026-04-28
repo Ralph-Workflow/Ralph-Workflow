@@ -71,8 +71,6 @@ class TestHandleDevelopment:
             '{"work_units":[{"unit_id":"u1","description":"A","allowed_directories":["src"],'
             '"dependencies":["missing"]}]}'
         )
-        ctx.pipeline_policy.parallel_execution = None
-
         result = handle_development(effect, ctx)
         assert len(result) == 1
         event = result[0]
@@ -93,11 +91,6 @@ class TestHandleDevelopment:
             else _VALID_PLAN_JSON
         )
 
-        parallel_execution = MagicMock()
-        parallel_execution.max_parallel_workers = 8
-        parallel_execution.require_allowed_directories = True
-        ctx.pipeline_policy.parallel_execution = parallel_execution
-
         result = handle_development(effect, ctx)
         assert result == [PipelineEvent.AGENT_SUCCESS]
 
@@ -115,11 +108,6 @@ class TestHandleDevelopment:
         )
         ctx.console = Console(file=StringIO(), force_terminal=True, color_system=None, width=120)
 
-        parallel_execution = MagicMock()
-        parallel_execution.max_parallel_workers = 8
-        parallel_execution.require_allowed_directories = True
-        ctx.pipeline_policy.parallel_execution = parallel_execution
-
         result = handle_development(effect, ctx)
         assert result == [PipelineEvent.AGENT_SUCCESS]
 
@@ -130,11 +118,6 @@ class TestHandleDevelopment:
         ctx = self._make_context()
         ctx.workspace.exists.side_effect = lambda path: path == ".agent/artifacts/plan.json"
         ctx.workspace.read.return_value = _VALID_PLAN_JSON
-
-        parallel_execution = MagicMock()
-        parallel_execution.max_parallel_workers = 8
-        parallel_execution.require_allowed_directories = True
-        ctx.pipeline_policy.parallel_execution = parallel_execution
 
         result = handle_development(effect, ctx)
         assert len(result) == 1

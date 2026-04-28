@@ -105,7 +105,24 @@ Units without dependencies run as soon as a worker is available. Units with depe
 
 ## Policy Configuration
 
-Parallel execution is controlled by two settings in your pipeline policy.
+Parallelization is configured **per phase** under `[phases.<phase>.parallelization]` in `.agent/pipeline.toml`.
+The global `[parallel_execution]` block has been removed — a `ValidationError` is raised if it appears.
+
+```toml
+[phases.development.parallelization]
+mode = "same_workspace"
+max_parallel_workers = 4
+max_work_units = 25
+require_allowed_directories = true
+post_fanout_verification = false
+```
+
+A phase without a `[phases.<phase>.parallelization]` block **fails closed**: if the planning artifact
+declares 2+ work units for that phase, the pipeline exits with an error before any worker is launched.
+
+### mode
+
+The parallelization mode. Only `"same_workspace"` is supported in v1.
 
 ### max_parallel_workers
 
@@ -113,12 +130,6 @@ Maximum number of concurrent work units running at once.
 
 - **Default**: 8
 - **Minimum**: 1
-- **Config file**: `.agent/ralph-workflow.toml` or `~/.config/ralph-workflow.toml`
-
-```toml
-[pipeline.parallel_execution]
-max_parallel_workers = 4
-```
 
 Reduce this value if you hit API rate limits or want to limit resource usage.
 
@@ -129,11 +140,6 @@ Maximum total work units Ralph will accept from a planning artifact.
 - **Default**: 50
 - **Minimum**: 1
 
-```toml
-[pipeline.parallel_execution]
-max_work_units = 25
-```
-
 If your planning phase produces more than this limit, Ralph rejects the artifact and the pipeline fails.
 
 ### require_allowed_directories
@@ -142,7 +148,7 @@ Whether each work unit must declare `allowed_directories`.
 
 - **Default**: true
 
-When true, units without `allowed_directories` cause a validation error. Set to false if you want to allow unrestricted file access per unit.
+When true, units without `allowed_directories` cause a validation error.
 
 ---
 

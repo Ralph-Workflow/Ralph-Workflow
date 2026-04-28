@@ -53,6 +53,7 @@ from ralph.mcp.artifacts.commit_message import (
     delete_commit_message_artifacts,
     read_commit_message_from_path,
 )
+from ralph.mcp.protocol.env import AGENT_LABEL_SCOPE_ENV
 from ralph.mcp.protocol.session import MCP_ENDPOINT_ENV, MCP_RUN_ID_ENV, AgentSession
 from ralph.mcp.server.lifecycle import shutdown_mcp_server, start_mcp_server
 from ralph.mcp.session_plan import build_session_mcp_plan
@@ -1028,9 +1029,10 @@ def run(  # noqa: PLR0912, PLR0913, PLR0915
                     _prompt_path: str | None = None
                     if effective_pipeline_subscriber is not None:
                         _prompt_path = getattr(effective_pipeline_subscriber, "_prompt_path", None)
-                    _pe = getattr(policy_bundle.pipeline, "parallel_execution", None)  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+                    _dev_phase = policy_bundle.pipeline.phases.get("development")
+                    _dev_para = _dev_phase.parallelization if _dev_phase is not None else None
                     _parallel_max_workers: int | None = (
-                        int(getattr(_pe, "max_parallel_workers", 0)) if _pe is not None else None  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+                        _dev_para.max_parallel_workers if _dev_para is not None else None
                     )
                     _plan_present = (
                         workspace_scope.root / ".agent" / "artifacts" / "plan.json"
@@ -1817,46 +1819,35 @@ def _determine_effect_from_policy(  # noqa: PLR0911
         scope = workspace_scope or resolve_workspace_scope()
         return _commit_phase_effect(state, policy_bundle, phase_def, scope, config=config)
 
-    parallel_policy = policy_bundle.pipeline.parallel_execution
-    if (
-        parallel_policy is not None
-        and state.phase == parallel_policy.phase
-        and state.work_units
-    ):
-        if len(state.work_units) >= _MIN_WORK_UNITS_FOR_PARALLEL_PREFLIGHT:
-            from ralph.pipeline.work_units import (  # noqa: PLC0415
-                WorkUnitsPlan,
-                WorkUnitsValidationError,
-                validate_for_same_workspace,
-            )
-
-            try:
-                validate_for_same_workspace(WorkUnitsPlan(work_units=list(state.work_units)))
-            except WorkUnitsValidationError as exc:
-                offending = ", ".join(
-                    u.unit_id for u in state.work_units if not u.allowed_directories
-                ) or "(see details)"
-                return ExitFailureEffect(
-                    reason=(
-                        f"parallel preflight rejected plan: {exc} "
-                        f"(offending units: {offending})"
-                    )
+    if len(state.work_units) >= 2:  # noqa: PLR2004
+        phase_para = phase_def.parallelization
+        if phase_para is None:
+            return ExitFailureEffect(
+                reason=(
+                    f"Phase {state.phase!r} does not declare parallelization but the plan "
+                    f"declares {len(state.work_units)} work_units; either declare "
+                    f"[phases.{state.phase}.parallelization] or remove the work_units from the plan"
                 )
-        elif phase_def.role == "execution":
-            agent_name = _agent_name_for_phase_from_policy(state, policy_bundle, config=config)
-            if agent_name is None:
-                return ExitFailureEffect(reason=f"No agent configured for phase '{state.phase}'")
-            return InvokeAgentEffect(
-                agent_name=agent_name,
-                phase=state.phase,
-                prompt_file=prompt_file_for_phase(state.phase),
-                drain=phase_def.drain,
             )
+        from ralph.pipeline.work_units import (  # noqa: PLC0415
+            WorkUnitsPlan,
+            WorkUnitsValidationError,
+            validate_for_same_workspace,
+        )
 
+        try:
+            validate_for_same_workspace(WorkUnitsPlan(work_units=list(state.work_units)))
+        except WorkUnitsValidationError as exc:
+            offending = ", ".join(
+                u.unit_id for u in state.work_units if not u.allowed_directories
+            ) or "(see details)"
+            return ExitFailureEffect(
+                reason=f"parallel preflight rejected plan: {exc} (offending units: {offending})"
+            )
         return FanOutDevelopmentEffect(
             work_units=state.work_units,
-            max_workers=parallel_policy.max_parallel_workers,
-            run_post_fanout_verification=parallel_policy.post_fanout_verification,
+            max_workers=phase_para.max_parallel_workers,
+            run_post_fanout_verification=phase_para.post_fanout_verification,
         )
 
     agent_name = _agent_name_for_phase_from_policy(state, policy_bundle, config=config)
@@ -2291,6 +2282,7 @@ def _execute_agent_effect(  # noqa: PLR0913
                 extra_env={
                     MCP_ENDPOINT_ENV: bridge.agent_endpoint_uri(),
                     MCP_RUN_ID_ENV: session.run_id,
+                    AGENT_LABEL_SCOPE_ENV: session.run_id,
                 },
                 idle_timeout_seconds=config.general.agent_idle_timeout_seconds,
                 drain_window_seconds=config.general.agent_idle_drain_window_seconds,

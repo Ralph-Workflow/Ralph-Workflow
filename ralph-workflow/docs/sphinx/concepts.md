@@ -152,9 +152,9 @@ coordinator and `ralph.pipeline.work_units` for the validation logic.
 
 When the planning artifact declares multiple `work_units`, Ralph Workflow runs them
 concurrently using the parallel executor. Each work unit gets its own MCP session and
-coordination context. Parallel execution requires `pipeline.parallel_execution` to be
-configured, including the phase that is eligible for fan-out and the worker/work-unit
-limits. See `ralph.pipeline.parallel` and `ralph.mcp.tools` (coordinate tool).
+coordination context. Parallel execution requires `[phases.<phase>.parallelization]`
+to be declared in `pipeline.toml`. See `ralph.pipeline.parallel` and `ralph.mcp.tools`
+(coordinate tool).
 
 See also: [Parallel Mode](parallel-mode.md) for a detailed walkthrough.
 

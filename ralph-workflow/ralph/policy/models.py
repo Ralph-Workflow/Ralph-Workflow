@@ -308,6 +308,50 @@ class PhaseTransition(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reas
     )
 
 
+class PhaseParallelization(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+    """Transition-scoped parallelization policy for a pipeline phase.
+
+    When present on a PhaseDefinition, same-workspace fan-out is enabled for
+    that phase. When absent (None), multi-work-unit plans are rejected before
+    execution — no silent serialization, no inferred fan-out.
+
+    Attributes:
+        mode: Parallelization mode. Only 'same_workspace' is supported in v1.
+        max_parallel_workers: Maximum number of concurrent work units.
+        max_work_units: Upper bound on total work units in a planning artifact.
+        require_allowed_directories: Require each work unit to declare allowed_directories.
+        post_fanout_verification: When True, run serialized workspace-wide verification
+            after all workers complete.
+    """
+
+    mode: Literal["same_workspace"] = Field(
+        default="same_workspace",
+        description="Parallelization mode; only 'same_workspace' is supported in v1",
+    )
+    max_parallel_workers: int = Field(
+        default=8,
+        ge=1,
+        description="Maximum allowed concurrent work units",
+    )
+    max_work_units: int = Field(
+        default=50,
+        ge=1,
+        description="Maximum allowed total work units from planning artifact",
+    )
+    require_allowed_directories: bool = Field(
+        default=True,
+        description="Require each work unit to declare allowed_directories",
+    )
+    post_fanout_verification: bool = Field(
+        default=False,
+        description=(
+            "When True, run a serialized workspace-wide verification step after all "
+            "parallel workers complete. Defaults to False so unit tests never invoke "
+            "make verify."
+        ),
+    )
+
+
 class PhaseDefinition(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     """Definition of a single phase in the pipeline graph.
 
@@ -327,6 +371,8 @@ class PhaseDefinition(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reas
         embeds_analysis: Deprecated. Use role='analysis' instead.
         prompt_template: File-backed .jinja prompt template for this phase.
         continuation_template: Optional continuation .jinja prompt template.
+        parallelization: Optional transition-scoped parallelization policy. When None,
+            multi-work-unit plans must not fan out from this phase.
     """
 
     drain: str = Field(..., description="Drain binding for this phase")
@@ -391,6 +437,13 @@ class PhaseDefinition(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reas
         default=None,
         description="Optional continuation .jinja prompt template for this phase",
     )
+    parallelization: PhaseParallelization | None = Field(
+        default=None,
+        description=(
+            "Transition-scoped parallelization policy. When None, multi-work-unit plans "
+            "must not fan out from this phase."
+        ),
+    )
 
     @model_validator(mode="before")
     @classmethod
@@ -437,41 +490,6 @@ class PostCommitRoute(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reas
     target: str = Field(..., description="Target phase when condition matches")
 
 
-class ParallelExecutionPolicy(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
-    """Policy controls for planning-artifact work_units fanout."""
-
-    source: Literal["planning_artifact_work_units"] = Field(
-        default="planning_artifact_work_units",
-        description="Source of parallel fanout declarations",
-    )
-    phase: str = Field(
-        default="development",
-        description="Phase that consumes planning work_units via parallel fanout",
-    )
-    max_parallel_workers: int = Field(
-        default=8,
-        ge=1,
-        description="Maximum allowed concurrent work units from planning artifact",
-    )
-    max_work_units: int = Field(
-        default=50,
-        ge=1,
-        description="Maximum allowed total work units from planning artifact",
-    )
-    require_allowed_directories: bool = Field(
-        default=True,
-        description="Require each work unit to declare allowed_directories",
-    )
-    post_fanout_verification: bool = Field(
-        default=False,
-        description=(
-            "When True, run a serialized workspace-wide verification step after all "
-            "parallel workers complete. Defaults to False so unit tests never invoke "
-            "make verify."
-        ),
-    )
-
-
 def _terminal_phase_names(policy: PipelinePolicy) -> set[str]:
     """Return all terminal phase names from policy (declared + pseudo-phases).
 
@@ -489,9 +507,7 @@ def _terminal_phase_names(policy: PipelinePolicy) -> set[str]:
         "phase_failed",
         "exit_failure",
     }
-    names.update(
-        name for name, defn in policy.phases.items() if defn.role == "terminal"
-    )
+    names.update(name for name, defn in policy.phases.items() if defn.role == "terminal")
     return names
 
 
@@ -538,10 +554,6 @@ class PipelinePolicy(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reaso
         default_factory=list,
         description="Optional budget-guarded routes for commit success transitions",
     )
-    parallel_execution: ParallelExecutionPolicy | None = Field(
-        default=None,
-        description="Optional planning-artifact parallel execution policy",
-    )
     default_phase_retry_policy: PhaseRetryPolicy = Field(
         default_factory=PhaseRetryPolicy,
         description="Default retry policy for phases without explicit retry_policy",
@@ -550,6 +562,20 @@ class PipelinePolicy(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reaso
         default_factory=RecoveryPolicy,
         description="Pipeline-wide recovery configuration",
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def no_legacy_parallel_execution_block(cls, values: object) -> object:
+        """Reject configs that still use the removed global [parallel_execution] block."""
+        if isinstance(values, dict) and "parallel_execution" in values:
+            raise ValueError(
+                "The global [parallel_execution] block has been removed. "
+                "Move max_parallel_workers, max_work_units, require_allowed_directories, "
+                "and post_fanout_verification under [phases.<phase>.parallelization] "
+                "(typically [phases.development.parallelization]). "
+                "See docs/migration/parallel-mode.md."
+            )
+        return values
 
     def terminal_states(self) -> set[str]:
         """Return the full set of terminal state names for transition validation."""

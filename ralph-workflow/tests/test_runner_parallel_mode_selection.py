@@ -120,3 +120,69 @@ class TestRunnerBoundaryPreflightRejection:
         assert effect.run_post_fanout_verification is False, (
             "run_post_fanout_verification must default to False so tests never run make verify"
         )
+
+    def test_runner_rejects_fan_out_when_phase_has_no_parallelization_policy(self) -> None:
+        """Fan-out must fail closed when the active phase has no parallelization policy."""
+        bundle = _load_default_policy_bundle()
+        # planning phase has no parallelization declared
+        state = PipelineState(
+            phase="planning",
+            work_units=(
+                WorkUnit(unit_id="unit-a", description="A", allowed_directories=["src/a"]),
+                WorkUnit(unit_id="unit-b", description="B", allowed_directories=["src/b"]),
+            ),
+        )
+        effect = runner_module._determine_effect_from_policy(state, bundle)
+        assert isinstance(effect, ExitFailureEffect)
+        assert "does not declare parallelization" in effect.reason
+
+    def test_runner_uses_phase_scoped_max_parallel_workers(self) -> None:
+        """FanOutDevelopmentEffect must use max_workers from the phase's parallelization."""
+        from unittest.mock import MagicMock  # noqa: PLC0415
+
+        from ralph.policy.models import PhaseParallelization  # noqa: PLC0415
+
+        bundle = MagicMock()
+        # Set up a development phase with parallelization, max_workers=1
+        para = PhaseParallelization(max_parallel_workers=1, post_fanout_verification=False)
+        dev_phase = MagicMock()
+        dev_phase.parallelization = para
+        dev_phase.requires_commit = False
+        bundle.pipeline.phases.get.return_value = dev_phase
+        bundle.pipeline.terminal_phase = "complete"
+
+        state = PipelineState(
+            phase="development",
+            work_units=(
+                WorkUnit(unit_id="unit-a", description="A", allowed_directories=["src/a"]),
+                WorkUnit(unit_id="unit-b", description="B", allowed_directories=["src/b"]),
+            ),
+        )
+        effect = runner_module._determine_effect_from_policy(state, bundle)
+        assert isinstance(effect, FanOutDevelopmentEffect)
+        assert effect.max_workers == 1
+
+    def test_runner_post_fanout_verification_reads_phase_scoped_value(self) -> None:
+        """FanOutDevelopmentEffect.run_post_fanout_verification reads from phase parallelization."""
+        from unittest.mock import MagicMock  # noqa: PLC0415
+
+        from ralph.policy.models import PhaseParallelization  # noqa: PLC0415
+
+        bundle = MagicMock()
+        para = PhaseParallelization(max_parallel_workers=8, post_fanout_verification=True)
+        dev_phase = MagicMock()
+        dev_phase.parallelization = para
+        dev_phase.requires_commit = False
+        bundle.pipeline.phases.get.return_value = dev_phase
+        bundle.pipeline.terminal_phase = "complete"
+
+        state = PipelineState(
+            phase="development",
+            work_units=(
+                WorkUnit(unit_id="unit-a", description="A", allowed_directories=["src/a"]),
+                WorkUnit(unit_id="unit-b", description="B", allowed_directories=["src/b"]),
+            ),
+        )
+        effect = runner_module._determine_effect_from_policy(state, bundle)
+        assert isinstance(effect, FanOutDevelopmentEffect)
+        assert effect.run_post_fanout_verification is True

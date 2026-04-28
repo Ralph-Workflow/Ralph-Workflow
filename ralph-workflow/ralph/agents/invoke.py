@@ -42,6 +42,7 @@ from ralph.agents.idle_watchdog import (
 from ralph.agents.post_exit_watchdog import PostExitVerdict, PostExitWatchdog
 from ralph.agents.timeout_clock import Clock, SystemClock
 from ralph.config.enums import AgentTransport
+from ralph.mcp.protocol.env import AGENT_LABEL_SCOPE_ENV
 from ralph.mcp.protocol.startup import (
     PreflightError,
     ensure_no_preflight_error,
@@ -429,7 +430,13 @@ def invoke_agent(
     )
     logger.info("Invoking agent: {}", _command_for_log(config, cmd, prompt_file))
 
-    execution_strategy = strategy_for_transport(_agent_transport(config))
+    label_scope = None
+    if runtime_env is not None:
+        label_scope = runtime_env.get(str(AGENT_LABEL_SCOPE_ENV))
+    execution_strategy = strategy_for_transport(
+        _agent_transport(config),
+        label_scope=label_scope,
+    )
     liveness_probe = DefaultLivenessProbe()
     monitor = _start_workspace_monitor(opts.workspace_path)
     policy = _policy_from_options(opts)

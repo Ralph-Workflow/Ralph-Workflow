@@ -14,6 +14,7 @@ from ralph.agents.executor import ExecutorError, WorkerResult
 from ralph.display.activity_router import ActivityRouter, detect_provider_from_command
 from ralph.display.line_sanitizer import sanitize_display_line
 from ralph.display.raw_overflow import RawOverflowLog
+from ralph.mcp.protocol.env import AGENT_LABEL_SCOPE_ENV
 from ralph.pipeline.worker_state import WorkerStatus
 from ralph.process.manager import get_process_manager
 
@@ -23,6 +24,22 @@ if TYPE_CHECKING:
     from ralph.display.activity_model import ActivityProvider
     from ralph.interrupt.asyncio_bridge import SignalBridge
     from ralph.pipeline.work_units import WorkUnit
+
+
+def agent_process_label(unit_id: str, env: dict[str, str] | None = None) -> str:
+    scope = None if env is None else env.get(str(AGENT_LABEL_SCOPE_ENV))
+    if scope:
+        return f"agent:{scope}:{unit_id}:root"
+    return f"agent:{unit_id}:root"
+
+
+
+def agent_process_label_prefix(unit_id: str, env: dict[str, str] | None = None) -> str:
+    scope = None if env is None else env.get(str(AGENT_LABEL_SCOPE_ENV))
+    if scope:
+        return f"agent:{scope}:{unit_id}:"
+    return f"agent:{unit_id}:"
+
 
 
 class SubprocessAgentExecutor:
@@ -81,7 +98,7 @@ class SubprocessAgentExecutor:
                 stdout=_PIPE,
                 stderr=_STDOUT,
                 start_new_session=True,
-                label=f"agent:{unit.unit_id}",
+                label=agent_process_label(unit.unit_id, env),
             )
         except OSError as exc:
             on_status(WorkerStatus.FAILED)

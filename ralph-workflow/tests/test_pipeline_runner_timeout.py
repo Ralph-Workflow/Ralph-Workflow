@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import pytest
 from pydantic import ValidationError
 
 from ralph.config.models import AgentConfig, GeneralConfig, UnifiedConfig
+from ralph.mcp.protocol.env import AGENT_LABEL_SCOPE_ENV, MCP_RUN_ID_ENV
 from ralph.pipeline import runner as runner_module
 from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.runner import WorkspaceScope
@@ -22,7 +23,7 @@ def _make_config(agent_idle_timeout_seconds: float) -> UnifiedConfig:
     )
 
 
-def _registry_factory(config: object) -> object:
+def _registry_factory(config: object) -> Any:
     agent_config = AgentConfig(cmd="opencode", output_flag="--json-stream")
 
     class RegistryInstance:
@@ -68,12 +69,12 @@ def test_config_idle_timeout_flows_to_invoke_options(
         return str(tmp_path / "SYSTEM_PROMPT.md")
 
     def fake_invoke_agent(
-        cfg: AgentConfig,
+        config: AgentConfig,
         prompt_file: str,
         *,
         options: object = None,
     ) -> list[str]:
-        del cfg, prompt_file
+        del config, prompt_file
         captured["idle_timeout_seconds"] = (
             getattr(options, "idle_timeout_seconds", None) if options else None
         )
@@ -126,17 +127,17 @@ def _make_config_with_watchdog(
     )
 
 
-def _capture_options_factory(captured: dict[str, object]) -> object:
+def _capture_options_factory(captured: dict[str, object]) -> Any:
     """Return a fake_invoke_agent that captures the full options object."""
     from ralph.config.models import AgentConfig as _AgentConfig  # noqa: PLC0415
 
     def fake_invoke_agent(
-        cfg: _AgentConfig,
+        config: _AgentConfig,
         prompt_file: str,
         *,
         options: object = None,
     ) -> list[str]:
-        del cfg, prompt_file
+        del config, prompt_file
         captured["options"] = options
         return []
 
@@ -145,7 +146,7 @@ def _capture_options_factory(captured: dict[str, object]) -> object:
 
 def _run_with_config(
     config: UnifiedConfig,
-    effect: object,
+    effect: InvokeAgentEffect,
     captured: dict[str, object],
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -179,6 +180,22 @@ def _run_with_config(
         agent_registry=_registry_factory(config),
     )
     runner_module._execute_agent_effect(effect, config, deps, WorkspaceScope(tmp_path))
+
+
+def test_runner_sets_agent_label_scope_to_run_id(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    config = _make_config_with_watchdog()
+    effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="dev.md")
+    captured: dict[str, object] = {}
+
+    _run_with_config(config, effect, captured, monkeypatch, tmp_path)
+
+    options = captured.get("options")
+    extra_env = getattr(options, "extra_env", None)
+    assert isinstance(extra_env, dict)
+    assert extra_env[str(AGENT_LABEL_SCOPE_ENV)] == extra_env[str(MCP_RUN_ID_ENV)]
+
 
 
 def test_config_drain_window_seconds_flows_to_invoke_options(

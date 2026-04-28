@@ -86,7 +86,7 @@ def _validate_plan_artifact(ctx: PhaseContext) -> list[Event] | None:
         )
         parsed = parse_work_units_from_artifact(artifact)
         if parsed is not None:
-            validate_work_units_against_policy(parsed, ctx.pipeline_policy)
+            validate_work_units_against_policy(parsed, ctx.pipeline_policy, phase="development")
     except (
         json.JSONDecodeError,
         PlanArtifactValidationError,

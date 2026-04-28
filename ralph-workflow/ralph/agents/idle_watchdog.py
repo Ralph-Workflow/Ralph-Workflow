@@ -158,8 +158,10 @@ class IdleWatchdog:
     """Tracks agent idle time and decides when to fire the timeout.
 
     The watchdog owns the last_activity timestamp; the caller's loop must NEVER
-    reset last_activity directly — that was the source of the false-negative bug
-    where WAITING_ON_CHILD resets deferred the deadline forever.
+    mutate `_last_activity` directly. Activity must flow through `record_activity()`,
+    which preserves the cumulative WAITING_ON_CHILD ceiling while advancing the
+    idle baseline. Direct resets here previously caused a false-negative bug where
+    WAITING_ON_CHILD deferred the deadline forever.
 
     Cumulative WAITING_ON_CHILD time is an absolute ceiling that is preserved across
     every transition (heartbeat activity, drain windows, classify_quiet outcomes).

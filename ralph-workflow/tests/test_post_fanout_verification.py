@@ -68,8 +68,9 @@ class TestVerificationRunsOnlyWhenFlagTrue:
 
         defaults_dir = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
         bundle = load_policy(defaults_dir)
-        assert bundle.pipeline.parallel_execution is not None
-        assert bundle.pipeline.parallel_execution.post_fanout_verification is False, (
+        dev_para = bundle.pipeline.phases["development"].parallelization
+        assert dev_para is not None
+        assert dev_para.post_fanout_verification is False, (
             "Default policy must have post_fanout_verification=False"
         )
 

@@ -8,14 +8,15 @@ from ralph.config.models import UnifiedConfig
 from ralph.pipeline.effects import FanOutDevelopmentEffect, InvokeAgentEffect
 from ralph.pipeline.runner import _determine_effect_from_policy
 from ralph.pipeline.state import PipelineState
+from ralph.policy.models import PhaseParallelization
 
 
 def _make_policy_bundle(max_workers: int = 4) -> MagicMock:
     bundle = MagicMock()
-    bundle.pipeline.phases = {
-        PHASE_DEVELOPMENT: MagicMock(requires_commit=False, drain="development", role="execution"),
-    }
-    bundle.pipeline.parallel_execution.max_parallel_workers = max_workers
+    para = PhaseParallelization(max_parallel_workers=max_workers, post_fanout_verification=False)
+    dev_phase = MagicMock(requires_commit=False, drain="development", role="execution")
+    dev_phase.parallelization = para
+    bundle.pipeline.phases = {PHASE_DEVELOPMENT: dev_phase}
     bundle.agents.agent_drains = {
         "development": MagicMock(chain="developer"),
     }

@@ -131,7 +131,12 @@ def _is_path_git_tracked(workspace: Workspace, path: str) -> bool:
     normalized = _normalize_relative_path(path)
     if not normalized:
         return False
-    if not workspace.exists(normalized):
+    try:
+        exists = workspace.exists(normalized)
+    except ValueError:
+        # Path is outside the workspace's allowed roots; treat as untracked.
+        return False
+    if not exists:
         return False
     candidate = normalized.replace("\\", "/")
     return (

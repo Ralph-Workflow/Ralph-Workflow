@@ -726,7 +726,7 @@ These files contain "Real*" implementations that wrap `std::fs` behind traits:
 | `files/protection/monitoring.rs` | Background thread monitoring real filesystem changes |
 | `git_helpers/hooks.rs` | Hook installation operates on `.git/hooks/` which is outside workspace root by design |
 | `git_helpers/wrapper.rs` | Creates temp directory for PATH manipulation (must be real filesystem path) |
-| `git_helpers/rebase.rs` | Operates on `.git/` internals (rebase state, worktree config) |
+| `git_helpers/rebase.rs` | Operates on `.git/` internals (rebase state, git configuration) |
 | `logger/output.rs` | `with_log_file()` is for CLI layer (pre-workspace); `with_workspace_log()` exists for pipeline |
 | `checkpoint/file_state.rs` | `capture_file_impl()`/`validate_file_impl()` called from CLI layer before workspace exists |
 

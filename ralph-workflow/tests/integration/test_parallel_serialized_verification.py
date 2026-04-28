@@ -16,6 +16,7 @@ from ralph.pipeline import runner as runner_module
 from ralph.pipeline.effects import FanOutDevelopmentEffect
 from ralph.pipeline.state import AgentChainState, PipelineState
 from ralph.pipeline.work_units import WorkUnit
+from ralph.policy.models import PhaseParallelization
 from ralph.workspace.scope import WorkspaceScope
 
 _MAX_AGENT_RETRIES = 3
@@ -31,12 +32,10 @@ def _make_work_unit(unit_id: str) -> WorkUnit:
 
 def _make_policy_bundle(max_workers: int = 2) -> MagicMock:
     bundle = MagicMock()
-    bundle.pipeline.phases = {
-        PHASE_DEVELOPMENT: MagicMock(requires_commit=False, drain="development", role="execution"),
-    }
-    bundle.pipeline.parallel_execution.phase = PHASE_DEVELOPMENT
-    bundle.pipeline.parallel_execution.max_parallel_workers = max_workers
-    bundle.pipeline.parallel_execution.post_fanout_verification = True
+    para = PhaseParallelization(max_parallel_workers=max_workers, post_fanout_verification=True)
+    dev_phase = MagicMock(requires_commit=False, drain="development", role="execution")
+    dev_phase.parallelization = para
+    bundle.pipeline.phases = {PHASE_DEVELOPMENT: dev_phase}
     bundle.pipeline.recovery.failed_route = PHASE_FAILED
     return bundle
 

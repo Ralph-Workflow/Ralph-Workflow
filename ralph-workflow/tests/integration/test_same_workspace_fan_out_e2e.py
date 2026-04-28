@@ -36,6 +36,7 @@ from ralph.pipeline.state import PipelineState
 from ralph.pipeline.work_units import WorkUnit
 from ralph.pipeline.worker_state import WorkerStatus
 from ralph.policy.loader import load_policy
+from ralph.policy.models import PhaseParallelization
 from ralph.testing.fake_agent_executor import FakeAgentExecutor, FakeRun
 from ralph.workspace.fs import FsWorkspace
 from ralph.workspace.scope import WorkspaceScope
@@ -53,12 +54,10 @@ def _make_work_unit(uid: str) -> WorkUnit:
 
 def _make_policy_bundle(max_workers: int = 4) -> MagicMock:
     bundle = MagicMock()
-    bundle.pipeline.phases = {
-        PHASE_DEVELOPMENT: MagicMock(requires_commit=False, drain="development", role="execution"),
-    }
-    bundle.pipeline.parallel_execution.phase = PHASE_DEVELOPMENT
-    bundle.pipeline.parallel_execution.max_parallel_workers = max_workers
-    bundle.pipeline.parallel_execution.post_fanout_verification = True
+    para = PhaseParallelization(max_parallel_workers=max_workers, post_fanout_verification=True)
+    dev_phase = MagicMock(requires_commit=False, drain="development", role="execution")
+    dev_phase.parallelization = para
+    bundle.pipeline.phases = {PHASE_DEVELOPMENT: dev_phase}
     bundle.agents.agent_drains = {
         "development": MagicMock(chain="developer"),
     }

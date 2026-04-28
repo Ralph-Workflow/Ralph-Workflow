@@ -264,6 +264,14 @@ def test_commit_prompt_taught_variants_submit_successfully(tmp_path: Path) -> No
 
 _MIN_WORKER_PROMPT_LEN = 50
 
+_WORKER_TEMPLATE_BANNED_PHRASES = (
+    "worktree-based",
+    "per-worker worktree",
+    "merge-back",
+    "merge integration",
+    "parallel worktree",
+)
+
 
 def test_worker_developer_template_renders_without_error(tmp_path: Path) -> None:
     """worker_developer.jinja must render through the real template engine.
@@ -285,3 +293,40 @@ def test_worker_developer_template_renders_without_error(tmp_path: Path) -> None
     assert "unit-x" in rendered
     assert "allowed_directories" in rendered.lower() or "src/x" in rendered
     assert len(rendered) > _MIN_WORKER_PROMPT_LEN
+
+
+def test_worker_developer_template_contains_same_workspace_contract(tmp_path: Path) -> None:
+    """worker_developer.jinja must instruct workers to share the same checkout
+    and submit an artifact — not rely on git status or a per-worker worktree."""
+    from ralph.pipeline.work_units import WorkUnit  # noqa: PLC0415
+    from ralph.policy.loader import load_policy  # noqa: PLC0415
+    from ralph.prompts.materialize import render_worker_prompt  # noqa: PLC0415
+
+    unit = WorkUnit(
+        unit_id="unit-y",
+        description="Same-workspace contract test",
+        allowed_directories=["src/y"],
+    )
+    policy = load_policy(tmp_path / ".agent")
+    rendered = render_worker_prompt(unit, "base context here", policy.pipeline)
+
+    # Must reference the shared checkout (not per-worker worktrees)
+    assert "repository checkout" in rendered or "same checkout" in rendered, (
+        "worker prompt must mention 'repository checkout' or 'same checkout'"
+    )
+
+    # Must reference the per-worker namespace path
+    assert ".agent/workers/" in rendered, (
+        "worker prompt must reference '.agent/workers/' namespace path"
+    )
+
+    # Must instruct the worker to submit an artifact
+    assert "submit_artifact" in rendered, (
+        "worker prompt must instruct workers to call submit_artifact"
+    )
+
+    # Must not contain banned worktree-era phrases
+    violations = [phrase for phrase in _WORKER_TEMPLATE_BANNED_PHRASES if phrase in rendered]
+    assert violations == [], (
+        f"worker prompt must not contain banned phrases: {violations}"
+    )

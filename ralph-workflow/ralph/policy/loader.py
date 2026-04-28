@@ -88,8 +88,9 @@ PIPELINE_POLICY_FIELDS = frozenset(
         "phases",
         "entry_phase",
         "terminal_phase",
+        "loop_counters",
+        "budget_counters",
         "post_commit_routes",
-        "parallel_execution",
         "default_phase_retry_policy",
         "recovery",
     }

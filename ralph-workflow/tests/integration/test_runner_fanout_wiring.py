@@ -13,6 +13,7 @@ from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.state import AgentChainState, PipelineState
 from ralph.pipeline.work_units import WorkUnit
 from ralph.pipeline.worker_state import WorkerState, WorkerStatus
+from ralph.policy.models import PhaseParallelization
 from ralph.workspace.scope import WorkspaceScope
 
 
@@ -26,12 +27,15 @@ def _make_work_unit(unit_id: str) -> WorkUnit:
 
 def _make_policy_bundle(max_workers: int = 4) -> MagicMock:
     bundle = MagicMock()
+    para = PhaseParallelization(max_parallel_workers=max_workers, post_fanout_verification=False)
+    dev_phase = MagicMock(requires_commit=False, drain="development", role="execution")
+    dev_phase.parallelization = para
+    plan_phase = MagicMock(requires_commit=False, drain="planning", role="execution")
+    plan_phase.parallelization = None
     bundle.pipeline.phases = {
-        PHASE_DEVELOPMENT: MagicMock(requires_commit=False, drain="development", role="execution"),
-        PHASE_PLANNING: MagicMock(requires_commit=False, drain="planning"),
+        PHASE_DEVELOPMENT: dev_phase,
+        PHASE_PLANNING: plan_phase,
     }
-    bundle.pipeline.parallel_execution.phase = PHASE_DEVELOPMENT
-    bundle.pipeline.parallel_execution.max_parallel_workers = max_workers
     bundle.agents.agent_drains = {
         "development": MagicMock(chain="developer"),
         "planning": MagicMock(chain="planner"),

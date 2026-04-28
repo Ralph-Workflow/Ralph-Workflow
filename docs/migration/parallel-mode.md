@@ -1,5 +1,9 @@
 # Parallel Development Mode
 
+## IMPORTANT: v1 is same-workspace only
+
+Ralph parallel workers in v1 share a single checkout. There are no per-worker git branches and no post-development merge step. Isolation is enforced by `allowed_directories` path restrictions and per-worker namespaces under `.agent/workers/<unit_id>/`. v1 uses the same git checkout for all workers; per-worker git checkout isolation is not offered as a product surface.
+
 This document covers the parallelization feature introduced in the Python implementation. If you are upgrading from an earlier Ralph version or migrating from the retired Rust implementation, read this first.
 
 ---
@@ -14,59 +18,64 @@ If your checkpoint predates parallel mode and you want to use parallel mode, sim
 
 ---
 
-## New Policy Keys
+## Policy Configuration
 
-Two new keys control parallel execution behavior. Both are optional; existing configurations work unchanged.
+Parallelization is now configured **per phase** under `[phases.<phase>.parallelization]`.
+The global `[parallel_execution]` block has been removed; a `ValidationError` is raised if it appears
+in your `.agent/pipeline.toml`.
 
-### `max_parallel_workers`
+### Migration: `[parallel_execution]` → `[phases.development.parallelization]`
 
-Maximum number of concurrent work units running at once.
-
-- **Default**: `8`
-- **Minimum**: `1`
-- **Section**: `[parallel_execution]`
+If your pipeline.toml contained:
 
 ```toml
-[pipeline.parallel_execution]
+# OLD — no longer accepted
+[parallel_execution]
 max_parallel_workers = 4
-```
-
-Reduce this value if you hit API rate limits or want to limit resource usage.
-
-### `max_work_units`
-
-Maximum total work units Ralph will accept from a planning artifact.
-
-- **Default**: `50`
-- **Minimum**: `1`
-- **Section**: `[parallel_execution]`
-
-```toml
-[pipeline.parallel_execution]
 max_work_units = 25
 ```
 
-If your planning phase produces more than this limit, Ralph rejects the artifact and the pipeline fails.
+Replace it with:
 
-### `require_allowed_directories`
+```toml
+# NEW — per-phase scoped
+[phases.development.parallelization]
+mode = "same_workspace"
+max_parallel_workers = 4
+max_work_units = 25
+```
 
-Whether each work unit must declare `allowed_directories`.
+The `mode` field is required and must be `"same_workspace"`.
 
-- **Default**: `true`
+### Fail-Closed Behavior
 
-When `true`, units without `allowed_directories` cause a validation error.
+A phase without a `[phases.<phase>.parallelization]` block **fails closed** when a plan declares
+2+ work units for that phase. The pipeline exits with an error before any worker is launched.
+
+This means you must explicitly opt each phase into parallelization. The default bundled
+configuration declares parallelization only on the `development` phase.
+
+### Available Fields
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `mode` | — | Must be `"same_workspace"` |
+| `max_parallel_workers` | `8` | Maximum concurrent workers |
+| `max_work_units` | `50` | Upper bound on work units in a plan |
+| `require_allowed_directories` | `true` | Reject units missing `allowed_directories` |
+| `post_fanout_verification` | `false` | Run workspace verification after all workers finish |
 
 ---
 
 ## New CLI Command: `ralph cleanup`
 
-After a hard-kill interrupt or a failed parallel run, orphaned git worktrees may remain in `.worktrees/`. The cleanup command removes them.
+After a hard-kill interrupt or a failed parallel run, stale per-worker namespace directories may remain under `.agent/workers/`. The cleanup command removes them.
 
 ```bash
 # See what would be deleted (dry-run)
 ralph cleanup --dry-run
 
-# Remove orphaned worktrees (with confirmation prompt)
+# Remove stale namespaces (with confirmation prompt)
 ralph cleanup
 
 # Remove without confirmation (for scripts)
@@ -76,14 +85,15 @@ ralph cleanup --force
 ### What it cleans
 
 The cleanup command:
-1. Scans `.worktrees/unit-*` directories
-2. For each orphaned worktree, destroys the worktree via `git worktree remove`
-3. Deletes the tracking branch `ralph/unit-{unit_id}`
-4. Reports the number of worktrees removed
+1. Scans `.agent/workers/<unit_id>/` directories
+2. For each stale namespace, removes it with all contents
+3. Reports the number of namespaces removed
+
+There is no git operation involved. Workers in v1 operate on the shared checkout directly; there are no per-worker branches or separate checkouts to clean up.
 
 ### Exit codes
 
-- `0`: No orphaned worktrees found, or all cleaned successfully
+- `0`: No stale namespaces found, or all cleaned successfully
 - `1`: Error (not in a git repository, etc.)
 
 ---
@@ -124,6 +134,7 @@ If parallel mode causes issues and you want to revert to serial behavior:
    # Press Ctrl-C to hard-kill, then:
    ralph cleanup --force
    ```
+   This removes stale `.agent/workers/` directories left behind after a hard-kill.
 
 2. **Remove or limit work units** in your PROMPT.md planning instructions. Specifically, avoid requesting a `work_units` array, or ensure your planning phase produces only a single unit.
 
@@ -142,8 +153,8 @@ The pipeline runs in serial mode as it did before parallelization was introduced
 |---------|--------|----------|
 | Checkpoint format | No `work_units` | Includes `work_units` array |
 | Agent instances | One per phase | One per work unit |
-| Worktree management | One worktree | Multiple worktrees |
-| Merge behavior | N/A | Branch-per-unit merged to base |
+| Per-worker scratch | Not used | `.agent/workers/<unit_id>/` namespace |
+| Merge behavior | N/A | None — workers share the same checkout, post-fan-out is state aggregation only |
 | Cleanup needed | No | After hard-kill or failures |
 
 ---

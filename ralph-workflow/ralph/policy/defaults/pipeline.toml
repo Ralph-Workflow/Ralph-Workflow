@@ -24,6 +24,7 @@
 #   commit_policy    - For role='commit': declares commit counter and loop reset behavior
 #   bypass_routes    - Named outcome bypasses (e.g. review_clean -> review_commit)
 #   terminal_outcome - For role='terminal': declares success or failure
+#   parallelization  - Per-phase same-workspace fan-out policy
 #
 # LOOP COUNTERS AND BUDGET COUNTERS
 # ==================================
@@ -48,6 +49,10 @@
 #   commit       - commit_policy (increments_counter, loop_resets)
 #   terminal     - terminal_outcome
 # See ralph/policy/validation.py:validate_policy_completeness for authoritative checks.
+#
+# Parallelization is transition-scoped: only phases that declare a [parallelization]
+# block can fan out parallel workers. The default enables same-workspace parallelism
+# on the development phase only.
 
 # ---------------------------------------------------------------------------
 # Loop counters (policy-declared iteration tracking for analysis loops)
@@ -100,6 +105,13 @@ continuation_template = "developer_iteration_continuation.jinja"
 [phases.development.transitions]
 on_success = "development_analysis"
 on_loopback = "development"
+
+[phases.development.parallelization]
+mode = "same_workspace"
+max_parallel_workers = 8
+max_work_units = 50
+require_allowed_directories = true
+post_fanout_verification = false
 
 [phases.development_analysis]
 drain = "development_analysis"
@@ -251,18 +263,6 @@ target = "complete"
 [post_commit_routes.when]
 phase = "review_commit"
 budget_state = "exhausted"
-
-# ---------------------------------------------------------------------------
-# Parallel execution policy
-# ---------------------------------------------------------------------------
-
-[parallel_execution]
-source = "planning_artifact_work_units"
-phase = "development"
-max_parallel_workers = 8
-max_work_units = 50
-require_allowed_directories = true
-post_fanout_verification = false
 
 # ---------------------------------------------------------------------------
 # Pipeline entry and terminal configuration

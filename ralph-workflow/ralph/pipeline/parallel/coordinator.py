@@ -11,6 +11,7 @@ from loguru import logger
 from ralph import logging as ralph_logging
 from ralph.agents import subprocess_executor
 from ralph.mcp.artifacts.store import list_artifacts
+from ralph.mcp.protocol.env import AGENT_LABEL_SCOPE_ENV
 from ralph.mcp.server import factory_impl
 from ralph.pipeline.events import (
     Event,
@@ -255,6 +256,7 @@ def _prepare_executor(
         worker_namespace=worker_namespace,
     )
     worker_artifact_dir = worker_namespace / "artifacts"
+    agent_label_scope = bundle.session.session_id
     return (
         cast(
             "AgentExecutor",
@@ -267,6 +269,7 @@ def _prepare_executor(
                     "RALPH_WORKER_ID": unit.unit_id,
                     "RALPH_WORKER_NAMESPACE": str(worker_namespace),
                     "RALPH_WORKER_ARTIFACT_DIR": str(worker_artifact_dir),
+                    str(AGENT_LABEL_SCOPE_ENV): agent_label_scope,
                 },
                 activity_router=activity_router,
                 raw_overflow_root=worker_namespace / "logs",
@@ -432,9 +435,13 @@ async def _run_worker(
         finally:
             if bundle is not None:
                 bundle.mcp_handle.shutdown()
+            label_env: dict[str, str] | None = None
+            if bundle is not None and same_workspace is not None:
+                label_env = {str(AGENT_LABEL_SCOPE_ENV): bundle.session.session_id}
             try:
                 get_process_manager().shutdown_all_for_label(
-                    f"agent:{unit.unit_id}", grace_period_s=2.0
+                    subprocess_executor.agent_process_label_prefix(unit.unit_id, label_env),
+                    grace_period_s=2.0,
                 )
             except ProcessTerminationError as exc:
                 logger.error(
