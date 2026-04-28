@@ -1,6 +1,6 @@
 # Web Search
 
-Ralph ships a built-in `web_search` tool with a pluggable multi-backend design.
+Ralph Workflow ships a built-in `web_search` tool with a pluggable multi-backend design.
 
 ## Backends
 
@@ -29,9 +29,9 @@ primary → fallback[0] → fallback[1] → ... → is_error=True
 ```
 
 - If the primary backend succeeds, results are returned.
-- If it raises a `WebSearchError`, Ralph logs a warning and tries the next backend.
+- If it raises a `WebSearchError`, Ralph Workflow logs a warning and tries the next backend.
 - Retrying the same backend is **not** done — a backend that returns an error (rate-limited, etc.) is skipped for the remainder of the session.
-- If all backends fail, Ralph returns `is_error=True` with message `"all web_search backends failed"`.
+- If all backends fail, Ralph Workflow returns `is_error=True` with message `"all web_search backends failed"`.
 
 ```toml
 [web_search]
@@ -87,11 +87,11 @@ Keyed backends (`tavily`, `brave`, `exa`) require extra dependencies:
 pip install ralph-workflow[web-search]
 ```
 
-This installs `tavily-python`, `brave-search-python-client`, and `exa-py` alongside Ralph.
+This installs `tavily-python`, `brave-search-python-client`, and `exa-py` alongside Ralph Workflow.
 
 ## Privacy note
 
-The **query string is NOT logged**. Ralph logs only the backend name and error type on failure:
+The **query string is NOT logged**. Ralph Workflow logs only the backend name and error type on failure:
 
 ```
 warning: web_search backend tavily failed: <error type>; trying next

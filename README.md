@@ -12,7 +12,7 @@ Everything is configurable: prompts, agent chains, phase routing, retry budgets,
 
 ## A pipeline you actually own
 
-Ralph's runtime config is split by concern: `ralph-workflow.toml` for agent definitions, chain order, drain bindings, and general workflow settings; `pipeline.toml` for the phase graph; and `artifacts.toml`/`mcp.toml` for the rest. Under the hood, a setup looks more like this:
+Ralph Workflow's runtime config is split by concern: `ralph-workflow.toml` for agent definitions, chain order, drain bindings, and general workflow settings; `pipeline.toml` for the phase graph; and `artifacts.toml`/`mcp.toml` for the rest. Under the hood, a setup looks more like this:
 
 ```toml
 # .agent/ralph-workflow.toml
@@ -76,7 +76,7 @@ Frontier models where reasoning matters. Cheap models where they're enough. Loop
 
 **Cost arbitrage is real.** A long unattended run on a single frontier vendor can burn through a meaningful AI budget. Routing planning and review to capable frontier models, but development and fix work to cheaper models, frequently cuts that cost dramatically. You decide where capability matters and where price matters.
 
-**Configurable beats opinionated.** Teams have opinions about how planning should work, what reviewers should check, how fixes should be applied, what counts as "done." Generic agent products force one workflow. Ralph encodes yours.
+**Configurable beats opinionated.** Teams have opinions about how planning should work, what reviewers should check, how fixes should be applied, what counts as "done." Generic agent products force one workflow. Ralph Workflow encodes yours.
 
 ## What you get
 
@@ -125,7 +125,7 @@ $EDITOR PROMPT.md           # write your task spec
 ralph                       # walk away
 ```
 
-Ralph plans, develops, reviews, and commits while you do something else. Pick up from a clean diff when you return.
+Ralph Workflow plans, develops, reviews, and commits while you do something else. Pick up from a clean diff when you return.
 
 ### Pipeline depth presets
 
@@ -189,11 +189,11 @@ The files that matter:
 
 ### Policy-driven phases
 
-You define the phase graph. Ralph executes it. Phases can loop (review → fix → review), branch on analysis output, and terminate on configurable conditions. There's no hidden routing.
+You define the phase graph. Ralph Workflow executes it. Phases can loop (review → fix → review), branch on analysis output, and terminate on configurable conditions. There's no hidden routing.
 
 ### Agent chains with fallback
 
-Each phase has an ordered chain of agents. If the primary fails or hits a retry budget, Ralph falls over to the next. OpenCode model-qualified agents use `opencode/<provider>/<model>` syntax, so a chain can fall from `opencode/minimax/MiniMax-M2.7-highspeed` to `opencode/zai-coding-plan/glm-5` just like any other ordered fallback. Claude model tags are shorter: `claude` uses whatever Claude Code model/profile you last selected, while `claude/opus` or `claude/sonnet` force those model families for that phase.
+Each phase has an ordered chain of agents. If the primary fails or hits a retry budget, Ralph Workflow falls over to the next. OpenCode model-qualified agents use `opencode/<provider>/<model>` syntax, so a chain can fall from `opencode/minimax/MiniMax-M2.7-highspeed` to `opencode/zai-coding-plan/glm-5` just like any other ordered fallback. Claude model tags are shorter: `claude` uses whatever Claude Code model/profile you last selected, while `claude/opus` or `claude/sonnet` force those model families for that phase.
 
 ### Artifact contracts, not exit codes
 
@@ -205,7 +205,7 @@ Recovery is a first-class part of the framework. Ralph Workflow supports checkpo
 
 Interrupt anytime. `ralph --resume` picks up from the last checkpoint. Same-workspace parallel execution can run independent work units when the plan supports it.
 
-## When Ralph fits
+## When Ralph Workflow fits
 
 - Multi-step coding tasks that don't fit in one prompt
 - Refactors, test suites, docs, or features that take hours of execution
@@ -213,7 +213,7 @@ Interrupt anytime. `ralph --resume` picks up from the last checkpoint. Same-work
 - Teams that need cost-controlled, auditable, or workflow-configured agent execution
 - Anyone tired of paying frontier-model rates for grunt work cheaper models handle fine
 
-## When Ralph doesn't fit
+## When Ralph Workflow doesn't fit
 
 - One-shot prompts you can answer interactively
 - Pair-programming sessions where you want to steer in real time
@@ -268,4 +268,4 @@ Useful narrowing:
 
 [AGPL-3.0-or-later](LICENSE).
 
-The framework is copyleft. The code Ralph generates belongs to you — no license encumbrance on outputs. Use it commercially. Use it privately. Use it however.Share
+The framework is copyleft. The code Ralph Workflow generates belongs to you — no license encumbrance on outputs. Use it commercially. Use it privately. Use it however you want.
