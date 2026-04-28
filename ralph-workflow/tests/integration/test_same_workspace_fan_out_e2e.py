@@ -438,6 +438,84 @@ class TestSameWorkspaceFanOutE2E:
         # No success completion
         assert PipelineEvent.ALL_WORKERS_COMPLETE not in events
 
+    def test_repo_dirtiness_does_not_satisfy_missing_artifacts(
+        self, tmp_path: Path
+    ) -> None:
+        """Repo-wide dirtiness from another worker CANNOT satisfy a worker's success check.
+
+        Scenario:
+        - unit-a has pre-seeded artifacts → succeeds
+        - unit-b has NO artifacts → must fail
+        - A real file is written to tmp_path/src/b/ to simulate repo dirtiness
+
+        The coordinator must mark unit-b as FAILED with an error containing
+        'produced no worker-local artifact evidence', even though the repo is
+        dirty due to unit-a's (simulated) edits. Repo-wide git status is never
+        a fallback success signal in same-workspace mode.
+        """
+        unit_a = WorkUnit(
+            unit_id="unit-a", description="Unit A", allowed_directories=["src/a"]
+        )
+        unit_b = WorkUnit(
+            unit_id="unit-b", description="Unit B", allowed_directories=["src/b"]
+        )
+        units = (unit_a, unit_b)
+
+        # Only seed artifacts for unit-a; unit-b gets none on purpose.
+        _seed_artifact(tmp_path, "unit-a")
+
+        # Write a real file change into src/b to make the repo "dirty" — simulating
+        # worker-b having edited files but not submitted any worker-local artifact.
+        dirty_file = tmp_path / "src" / "b" / "some_file.py"
+        dirty_file.parent.mkdir(parents=True, exist_ok=True)
+        dirty_file.write_text("# simulated edit by worker-b\n")
+
+        mcp_factory = _RecordingMcpFactory()
+        ctx_module = __import__(
+            "ralph.pipeline.parallel.coordinator", fromlist=["_WorkerContext"]
+        )
+        ctx = ctx_module._WorkerContext(
+            same_workspace=SameWorkspaceContext(
+                repo_root=tmp_path,
+                mcp_factory=mcp_factory,  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+            )
+        )
+
+        runs = {
+            "unit-a": FakeRun(outputs=["ok-a"], exit_code=0, duration_ms=1),
+            "unit-b": FakeRun(outputs=["ok-b"], exit_code=0, duration_ms=1),
+        }
+        effect = FanOutDevelopmentEffect(work_units=units, max_workers=2)
+        display = RecordingDisplay()
+
+        events = asyncio.run(
+            coordinator.run_fan_out(
+                effect=effect,
+                executor=FakeAgentExecutor(runs),
+                display=display,
+                ctx=ctx,
+            )
+        )
+
+        # unit-b must have failed — repo dirtiness is not a success signal
+        failed_events = [e for e in events if isinstance(e, WorkerFailedEvent)]
+        unit_b_failures = [e for e in failed_events if e.unit_id == "unit-b"]
+        assert len(unit_b_failures) == 1, (
+            f"unit-b must emit exactly one WorkerFailedEvent even though the repo "
+            f"is dirty, but got: {failed_events!r}"
+        )
+        assert "produced no worker-local artifact evidence" in unit_b_failures[0].error, (
+            f"WorkerFailedEvent.error must contain 'produced no worker-local artifact evidence', "
+            f"got: {unit_b_failures[0].error!r}. "
+            "Repo-wide dirtiness must never substitute for per-worker artifact evidence."
+        )
+
+        # unit-a should still have succeeded (it had artifacts)
+        completed_events = [e for e in events if isinstance(e, WorkerCompletedEvent)]
+        assert any(e.unit_id == "unit-a" for e in completed_events), (
+            "unit-a must have completed successfully (it had artifact evidence)"
+        )
+
 
 class TestRunnerAnalysisHandoffIntegration:
     """Runner-level integration: _execute_fan_out_sync wires the analysis handoff.

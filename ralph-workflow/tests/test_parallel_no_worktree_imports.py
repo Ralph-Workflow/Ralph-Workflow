@@ -95,3 +95,30 @@ def test_parallel_modules_do_not_run_git_worktree_commands() -> None:
             f"{module_name} contains 'git worktree' as a string. "
             "Same-workspace parallel mode must never invoke git worktree commands."
         )
+
+
+def test_parallel_modules_do_not_import_find_main_worktree_root() -> None:
+    """Parallel modules must never import or call find_main_worktree_root.
+
+    find_main_worktree_root is a workspace-root resolver for linked git worktrees.
+    It is explicitly NOT part of the same-workspace parallel worker path and must
+    never appear in any ralph.pipeline.parallel.* module.
+    """
+    import importlib  # noqa: PLC0415
+
+    for module_name in _PARALLEL_MODULES:
+        mod = importlib.import_module(module_name)
+
+        # No module-level attribute named find_main_worktree_root
+        assert not hasattr(mod, "find_main_worktree_root"), (
+            f"{module_name} must not expose find_main_worktree_root as a module attribute. "
+            "This function is reserved for workspace bootstrap, not parallel workers."
+        )
+
+        # Source must not contain the token
+        source = _read_source(module_name)
+        assert "find_main_worktree_root" not in source, (
+            f"{module_name} contains the token 'find_main_worktree_root'. "
+            "Same-workspace parallel modules MUST NOT invoke this workspace-root helper. "
+            "Parallel v1 workers always share the canonical repo_root directly."
+        )
