@@ -11,18 +11,24 @@ v1 supports same-workspace parallel execution; other parallel-execution modes ar
 
 ## Configuration
 
-Override parallel execution settings in `.agent/pipeline.toml`:
+Parallelization is configured per phase in `.agent/pipeline.toml`. To enable parallel fan-out
+for the development phase:
 
 ```toml
-[parallel_execution]
+[phases.development.parallelization]
+mode = "same_workspace"
 max_parallel_workers = 4
 max_work_units = 50
 ```
 
 | Field | Description |
 |-------|-------------|
+| `mode` | Must be `"same_workspace"` (only supported mode in v1) |
 | `max_parallel_workers` | Maximum number of concurrent development workers |
 | `max_work_units` | Upper bound on the number of work units the planning artifact may declare |
+
+If a phase does not declare `[phases.<phase>.parallelization]`, the pipeline fails closed
+when a plan declares 2+ work units for that phase.
 
 ## How it works
 

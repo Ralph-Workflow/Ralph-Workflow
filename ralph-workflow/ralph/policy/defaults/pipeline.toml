@@ -12,6 +12,10 @@
 # Phase routing is driven entirely by this file — no hardcoded phase transitions
 # exist in the reducer. Each phase references a drain bound in ralph-workflow.toml
 # and defines routing rules for success, failure, and loopback signals.
+#
+# Parallelization is transition-scoped: only phases that declare a [parallelization]
+# block can fan out parallel workers. The default enables same-workspace parallelism
+# on the development phase only.
 
 [phases.planning]
 drain = "planning"
@@ -30,6 +34,13 @@ continuation_template = "developer_iteration_continuation.jinja"
 [phases.development.transitions]
 on_success = "development_analysis"
 on_loopback = "development"
+
+[phases.development.parallelization]
+mode = "same_workspace"
+max_parallel_workers = 8
+max_work_units = 50
+require_allowed_directories = true
+post_fanout_verification = false
 
 [phases.development_analysis]
 drain = "development_analysis"
@@ -119,13 +130,6 @@ target = "complete"
 [post_commit_routes.when]
 phase = "review_commit"
 budget_state = "exhausted"
-
-[parallel_execution]
-source = "planning_artifact_work_units"
-max_parallel_workers = 8
-max_work_units = 50
-require_allowed_directories = true
-post_fanout_verification = false
 
 entry_phase = "planning"
 terminal_phase = "complete"

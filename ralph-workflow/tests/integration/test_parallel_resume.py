@@ -12,6 +12,7 @@ from ralph.pipeline.runner import _execute_fan_out_sync
 from ralph.pipeline.state import PipelineState
 from ralph.pipeline.work_units import WorkUnit
 from ralph.pipeline.worker_state import WorkerState, WorkerStatus
+from ralph.policy.models import PhaseParallelization
 from ralph.testing.fake_agent_executor import FakeAgentExecutor, FakeRun
 
 if TYPE_CHECKING:
@@ -71,10 +72,10 @@ class _FakeDisplay:
 
 def _make_mock_policy_bundle() -> MagicMock:
     bundle = MagicMock()
-    bundle.pipeline.phases = {
-        PHASE_DEVELOPMENT: MagicMock(requires_commit=False, drain="development"),
-    }
-    bundle.pipeline.parallel_execution.max_parallel_workers = 8
+    para = PhaseParallelization(max_parallel_workers=8, post_fanout_verification=False)
+    dev_phase = MagicMock(requires_commit=False, drain="development")
+    dev_phase.parallelization = para
+    bundle.pipeline.phases = {PHASE_DEVELOPMENT: dev_phase}
     bundle.agents.agent_drains = {}
     bundle.agents.agent_chains = {}
     return bundle

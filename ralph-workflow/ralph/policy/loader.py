@@ -88,7 +88,6 @@ PIPELINE_POLICY_FIELDS = frozenset(
         "entry_phase",
         "terminal_phase",
         "post_commit_routes",
-        "parallel_execution",
     }
 )
 

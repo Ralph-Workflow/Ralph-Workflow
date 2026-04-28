@@ -304,10 +304,11 @@ Ralph Workflow's Claude parser accepts both bare (`claude: ...`) and model-quali
 
 When the planning phase produces two or more work units, Ralph Workflow runs them as parallel workers in the **same git checkout** (same-workspace mode v1). Each worker is restricted to its declared `allowed_directories` and writes its artifacts under `.agent/workers/<unit_id>/`. Workers share the checkout and write to it directly, without separate git branches; coordination uses edit-area fencing and artifact namespaces only. For the full guide including configuration, work unit structure, and success criteria, see [`docs/sphinx/parallel-mode.md`](docs/sphinx/parallel-mode.md).
 
-Quick configuration:
+Quick configuration (in `.agent/pipeline.toml`):
 
 ```toml
-[pipeline.parallel_execution]
+[phases.development.parallelization]
+mode = "same_workspace"
 max_parallel_workers = 4
 max_work_units = 50
 ```

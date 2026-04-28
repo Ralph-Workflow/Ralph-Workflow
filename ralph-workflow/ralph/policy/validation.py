@@ -199,26 +199,44 @@ def get_drain_resolution_matrix(bundle: PolicyBundle) -> dict[str, dict[str, str
 def validate_work_units_against_policy(
     work_units: WorkUnitsPlan,
     pipeline_policy: PipelinePolicy,
+    *,
+    phase: str,
 ) -> None:
-    """Validate parsed planning work_units against pipeline parallel policy.
+    """Validate parsed planning work_units against the active phase's parallelization policy.
 
-    For plans with multiple work units, also runs the same-workspace overlap
-    check (validate_for_same_workspace) as a fail-closed guardrail at policy
-    load time, in addition to the runtime pre-flight check in the runner.
+    Fan-out is transition-scoped: only phases that declare a parallelization block
+    can accept multi-work-unit plans. When the active phase has no parallelization
+    policy, multi-work-unit plans are rejected fail-closed.
+
+    For plans with multiple work units, also runs the same-workspace overlap check
+    (validate_for_same_workspace) as a fail-closed guardrail, in addition to the
+    runtime pre-flight check in the runner.
+
+    Args:
+        work_units: Parsed work units from planning artifact.
+        pipeline_policy: Currently loaded pipeline policy.
+        phase: The phase where the work units will execute (e.g., 'development').
+
+    Raises:
+        PolicyValidationError: If the plan is unsafe or the phase does not permit fan-out.
     """
     from ralph.pipeline.work_units import (  # noqa: PLC0415
         WorkUnitsValidationError,
         validate_for_same_workspace,
     )
 
-    parallel_policy = pipeline_policy.parallel_execution
     if len(work_units.work_units) <= 1:
         return
 
+    phase_def = pipeline_policy.phases.get(phase)
+    parallel_policy = phase_def.parallelization if phase_def is not None else None
+
     if parallel_policy is None:
+        work_units_count = len(work_units.work_units)
         raise PolicyValidationError(
-            "Planning artifact declares multiple work_units but "
-            "pipeline.parallel_execution is not configured"
+            f"Phase {phase!r} does not declare parallelization but the plan declares "
+            f"{work_units_count} work_units; the active transition policy must explicitly "
+            f"enable same-workspace fan-out via [phases.{phase}.parallelization]"
         )
 
     work_units_count = len(work_units.work_units)
@@ -242,11 +260,10 @@ def validate_work_units_against_policy(
                     f"Work unit '{unit.unit_id}' must declare allowed_directories"
                 )
 
-    if parallel_policy.source == "planning_artifact_work_units":
-        try:
-            validate_for_same_workspace(work_units)
-        except WorkUnitsValidationError as exc:
-            raise PolicyValidationError(str(exc)) from exc
+    try:
+        validate_for_same_workspace(work_units)
+    except WorkUnitsValidationError as exc:
+        raise PolicyValidationError(str(exc)) from exc
 
 
 def validate_agent_chains_satisfiable(

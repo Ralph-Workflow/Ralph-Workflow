@@ -90,7 +90,9 @@ def handle_planning(effect: Effect, ctx: PhaseContext) -> list[Event]:
             artifact = normalize_plan_artifact_content(raw_content)
             parsed = parse_work_units_from_artifact(artifact)
             if parsed is not None:
-                validate_work_units_against_policy(parsed, ctx.pipeline_policy)
+                validate_work_units_against_policy(
+                    parsed, ctx.pipeline_policy, phase="development"
+                )
         except (
             json.JSONDecodeError,
             PlanArtifactValidationError,

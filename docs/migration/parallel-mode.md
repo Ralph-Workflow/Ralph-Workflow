@@ -18,47 +18,52 @@ If your checkpoint predates parallel mode and you want to use parallel mode, sim
 
 ---
 
-## New Policy Keys
+## Policy Configuration
 
-Two new keys control parallel execution behavior. Both are optional; existing configurations work unchanged.
+Parallelization is now configured **per phase** under `[phases.<phase>.parallelization]`.
+The global `[parallel_execution]` block has been removed; a `ValidationError` is raised if it appears
+in your `.agent/pipeline.toml`.
 
-### `max_parallel_workers`
+### Migration: `[parallel_execution]` → `[phases.development.parallelization]`
 
-Maximum number of concurrent work units running at once.
-
-- **Default**: `8`
-- **Minimum**: `1`
-- **Section**: `[parallel_execution]`
+If your pipeline.toml contained:
 
 ```toml
-[pipeline.parallel_execution]
+# OLD — no longer accepted
+[parallel_execution]
 max_parallel_workers = 4
-```
-
-Reduce this value if you hit API rate limits or want to limit resource usage.
-
-### `max_work_units`
-
-Maximum total work units Ralph will accept from a planning artifact.
-
-- **Default**: `50`
-- **Minimum**: `1`
-- **Section**: `[parallel_execution]`
-
-```toml
-[pipeline.parallel_execution]
 max_work_units = 25
 ```
 
-If your planning phase produces more than this limit, Ralph rejects the artifact and the pipeline fails.
+Replace it with:
 
-### `require_allowed_directories`
+```toml
+# NEW — per-phase scoped
+[phases.development.parallelization]
+mode = "same_workspace"
+max_parallel_workers = 4
+max_work_units = 25
+```
 
-Whether each work unit must declare `allowed_directories`.
+The `mode` field is required and must be `"same_workspace"`.
 
-- **Default**: `true`
+### Fail-Closed Behavior
 
-When `true`, units without `allowed_directories` cause a validation error.
+A phase without a `[phases.<phase>.parallelization]` block **fails closed** when a plan declares
+2+ work units for that phase. The pipeline exits with an error before any worker is launched.
+
+This means you must explicitly opt each phase into parallelization. The default bundled
+configuration declares parallelization only on the `development` phase.
+
+### Available Fields
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `mode` | — | Must be `"same_workspace"` |
+| `max_parallel_workers` | `8` | Maximum concurrent workers |
+| `max_work_units` | `50` | Upper bound on work units in a plan |
+| `require_allowed_directories` | `true` | Reject units missing `allowed_directories` |
+| `post_fanout_verification` | `false` | Run workspace verification after all workers finish |
 
 ---
 

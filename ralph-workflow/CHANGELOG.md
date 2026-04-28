@@ -43,6 +43,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Dead worktree-first parallel code paths. The only supported parallel execution mode is
   `ParallelExecutionMode.SAME_WORKSPACE`; alternative fan-out paths using git worktrees are not part of the shipped
   product.
+- **Global `[parallel_execution]` block removed.** Parallelization is now configured per phase under
+  `[phases.<phase>.parallelization]` in `pipeline.toml`. The `ParallelExecutionPolicy` model and the
+  `PipelinePolicy.parallel_execution` field are gone. A `ValidationError` is raised for any config that
+  still uses the old `[parallel_execution]` block. To migrate, rename the block to
+  `[phases.development.parallelization]` and add `mode = "same_workspace"`. The pipeline now fails closed
+  when a plan declares 2+ work units for a phase that has no `parallelization` policy.
 
 ### Changed
 - OpenCode runs no longer treat foreground process exit as terminal success — completion now requires either an explicit completion signal or the required phase artifact to be present in the workspace.

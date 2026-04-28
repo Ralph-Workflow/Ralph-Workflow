@@ -26,8 +26,8 @@ from ralph.policy.models import (
     AgentDrainConfig,
     AgentsPolicy,
     ArtifactsPolicy,
-    ParallelExecutionPolicy,
     PhaseDefinition,
+    PhaseParallelization,
     PhaseTransition,
     PipelinePolicy,
     PolicyBundle,
@@ -143,8 +143,9 @@ class TestDefaultPolicyLoading:
         default_dir = Path(__file__).parent.parent / "ralph" / "policy" / "defaults"
         bundle = load_policy(default_dir)
 
-        assert bundle.pipeline.parallel_execution is not None
-        assert bundle.pipeline.parallel_execution.max_work_units == DEFAULT_MAX_WORK_UNITS
+        assert bundle.pipeline.phases["development"].parallelization is not None
+        dev_para = bundle.pipeline.phases["development"].parallelization
+        assert dev_para.max_work_units == DEFAULT_MAX_WORK_UNITS
 
     def test_all_pipeline_drains_are_bound(self) -> None:
         """Test that every drain used in pipeline.phases is bound in agents.agent_drains.
@@ -644,27 +645,22 @@ class TestValidateWorkUnitsAgainstPolicy:
     def _minimal_pipeline(
         self,
         *,
-        parallel_execution: ParallelExecutionPolicy | None = None,
+        parallelization: PhaseParallelization | None = None,
     ) -> PipelinePolicy:
-        base_kwargs = {
-            "phases": {
+        return PipelinePolicy(
+            phases={
                 "planning": PhaseDefinition(
                     drain="planning",
                     transitions=PhaseTransition(on_success="complete"),
+                    parallelization=parallelization,
                 ),
                 "complete": PhaseDefinition(
                     drain="complete",
                     transitions=PhaseTransition(on_success="complete", on_loopback="complete"),
                 ),
             },
-            "entry_phase": "planning",
-            "terminal_phase": "complete",
-        }
-        if parallel_execution is None:
-            return PipelinePolicy(**base_kwargs)
-        return PipelinePolicy(
-            **base_kwargs,
-            parallel_execution=parallel_execution,
+            entry_phase="planning",
+            terminal_phase="complete",
         )
 
     def test_multi_work_units_requires_parallel_execution_policy(self) -> None:
@@ -679,12 +675,12 @@ class TestValidateWorkUnitsAgainstPolicy:
         )
         assert work_units is not None
 
-        with pytest.raises(PolicyValidationError, match="parallel_execution"):
-            validate_work_units_against_policy(work_units, pipeline)
+        with pytest.raises(PolicyValidationError, match="parallelization"):
+            validate_work_units_against_policy(work_units, pipeline, phase="planning")
 
     def test_multi_work_units_respects_max_parallel_workers(self) -> None:
         pipeline = self._minimal_pipeline(
-            parallel_execution=ParallelExecutionPolicy(max_parallel_workers=1)
+            parallelization=PhaseParallelization(max_parallel_workers=1)
         )
         work_units = parse_work_units_from_artifact(
             {
@@ -697,7 +693,7 @@ class TestValidateWorkUnitsAgainstPolicy:
         assert work_units is not None
 
         with pytest.raises(PolicyValidationError, match="max_parallel_workers"):
-            validate_work_units_against_policy(work_units, pipeline)
+            validate_work_units_against_policy(work_units, pipeline, phase="planning")
 
     def test_work_units_count_cap_exceeded(self) -> None:
         default_dir = Path(__file__).parent.parent / "ralph" / "policy" / "defaults"
@@ -717,11 +713,11 @@ class TestValidateWorkUnitsAgainstPolicy:
         assert work_units is not None
 
         with pytest.raises(PolicyValidationError, match="exceeds cap"):
-            validate_work_units_against_policy(work_units, bundle.pipeline)
+            validate_work_units_against_policy(work_units, bundle.pipeline, phase="development")
 
     def test_work_units_count_cap_custom(self) -> None:
         pipeline = self._minimal_pipeline(
-            parallel_execution=ParallelExecutionPolicy(
+            parallelization=PhaseParallelization(
                 max_parallel_workers=8,
                 max_work_units=3,
             )
@@ -741,7 +737,7 @@ class TestValidateWorkUnitsAgainstPolicy:
         )
         assert allowed_work_units is not None
 
-        validate_work_units_against_policy(allowed_work_units, pipeline)
+        validate_work_units_against_policy(allowed_work_units, pipeline, phase="planning")
 
         rejected_work_units = parse_work_units_from_artifact(
             {
@@ -758,12 +754,12 @@ class TestValidateWorkUnitsAgainstPolicy:
         assert rejected_work_units is not None
 
         with pytest.raises(PolicyValidationError, match="exceeds cap"):
-            validate_work_units_against_policy(rejected_work_units, pipeline)
+            validate_work_units_against_policy(rejected_work_units, pipeline, phase="planning")
 
     def test_overlapping_edit_areas_raise_policy_validation_error(self) -> None:
         """Work units with overlapping allowed_directories must raise PolicyValidationError."""
         pipeline = self._minimal_pipeline(
-            parallel_execution=ParallelExecutionPolicy(max_parallel_workers=2)
+            parallelization=PhaseParallelization(max_parallel_workers=2)
         )
         work_units = parse_work_units_from_artifact(
             {
@@ -776,12 +772,12 @@ class TestValidateWorkUnitsAgainstPolicy:
         assert work_units is not None
 
         with pytest.raises(PolicyValidationError, match="overlaps"):
-            validate_work_units_against_policy(work_units, pipeline)
+            validate_work_units_against_policy(work_units, pipeline, phase="planning")
 
     def test_missing_allowed_directories_raises_policy_validation_error(self) -> None:
         """Work units without allowed_directories must raise PolicyValidationError."""
         pipeline = self._minimal_pipeline(
-            parallel_execution=ParallelExecutionPolicy(max_parallel_workers=2)
+            parallelization=PhaseParallelization(max_parallel_workers=2)
         )
         work_units = parse_work_units_from_artifact(
             {
@@ -794,12 +790,12 @@ class TestValidateWorkUnitsAgainstPolicy:
         assert work_units is not None
 
         with pytest.raises(PolicyValidationError, match="allowed_directories"):
-            validate_work_units_against_policy(work_units, pipeline)
+            validate_work_units_against_policy(work_units, pipeline, phase="planning")
 
     def test_disjoint_edit_areas_pass_validation(self) -> None:
         """Work units with disjoint allowed_directories must pass validation."""
         pipeline = self._minimal_pipeline(
-            parallel_execution=ParallelExecutionPolicy(max_parallel_workers=2)
+            parallelization=PhaseParallelization(max_parallel_workers=2)
         )
         work_units = parse_work_units_from_artifact(
             {
@@ -811,7 +807,7 @@ class TestValidateWorkUnitsAgainstPolicy:
         )
         assert work_units is not None
 
-        validate_work_units_against_policy(work_units, pipeline)  # must not raise
+        validate_work_units_against_policy(work_units, pipeline, phase="planning")  # must not raise
 
 
 
@@ -819,7 +815,7 @@ class TestValidateWorkUnitsAgainstPolicy:
     def test_reserved_path_at_policy_load_raises_policy_validation_error(self) -> None:
         """Work units declaring reserved paths raise PolicyValidationError at policy load time."""
         pipeline = self._minimal_pipeline(
-            parallel_execution=ParallelExecutionPolicy(max_parallel_workers=2)
+            parallelization=PhaseParallelization(max_parallel_workers=2)
         )
         work_units = parse_work_units_from_artifact(
             {
@@ -832,24 +828,15 @@ class TestValidateWorkUnitsAgainstPolicy:
         assert work_units is not None
 
         with pytest.raises(PolicyValidationError, match="reserved path"):
-            validate_work_units_against_policy(work_units, pipeline)
+            validate_work_units_against_policy(work_units, pipeline, phase="planning")
 
-    def test_validation_only_runs_for_planning_artifact_source(self) -> None:
-        """validate_for_same_workspace is skipped when parallel_policy.source
-        is not planning_artifact_work_units."""
-        # Build a mock pipeline policy whose parallel_execution.source
-        # != planning_artifact_work_units.
-        # Pydantic models are frozen, so we use MagicMock here to simulate a different source.
-        mock_pipeline = MagicMock()
-        mock_pipeline.parallel_execution.source = "hand_coded_work_units"
-        mock_pipeline.parallel_execution.max_work_units = 50
-        mock_pipeline.parallel_execution.max_parallel_workers = 8
-        mock_pipeline.parallel_execution.require_allowed_directories = False
-
+    def test_validation_does_not_run_for_phase_without_parallelization(self) -> None:
+        """A phase with no parallelization rejects multi-work-unit plans fail-closed."""
+        pipeline = self._minimal_pipeline()  # planning phase has no parallelization
         work_units = parse_work_units_from_artifact(
             {
                 "work_units": [
-                    # Overlapping — would be rejected by validate_for_same_workspace
+                    # Overlapping — but the phase-scoped error fires before the overlap check
                     {"unit_id": "u1", "description": "A", "allowed_directories": ["src"]},
                     {"unit_id": "u2", "description": "B", "allowed_directories": ["src/sub"]},
                 ]
@@ -857,9 +844,8 @@ class TestValidateWorkUnitsAgainstPolicy:
         )
         assert work_units is not None
 
-        # With a non-standard source, validate_for_same_workspace is NOT called,
-        # so overlapping dirs do not raise at policy-load time.
-        validate_work_units_against_policy(work_units, mock_pipeline)
+        with pytest.raises(PolicyValidationError, match="does not declare parallelization"):
+            validate_work_units_against_policy(work_units, pipeline, phase="planning")
 
 class TestValidateRequiredInputs:
     """Tests for validate_required_inputs."""

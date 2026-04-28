@@ -41,12 +41,22 @@ def _make_work_unit(uid: str) -> WorkUnit:
 
 
 def _make_policy_bundle(max_workers: int = 2) -> MagicMock:
+    from ralph.policy.models import PhaseParallelization  # noqa: PLC0415
+
     bundle = MagicMock()
-    bundle.pipeline.phases = {
-        PHASE_DEVELOPMENT: MagicMock(requires_commit=False, drain="development"),
-    }
-    bundle.pipeline.parallel_execution.max_parallel_workers = max_workers
-    bundle.pipeline.parallel_execution.post_fanout_verification = True
+    para = PhaseParallelization(
+        max_parallel_workers=max_workers,
+        post_fanout_verification=True,
+    )
+    dev_phase = MagicMock(requires_commit=False, drain="development")
+    dev_phase.parallelization = para
+    bundle.pipeline.phases = {PHASE_DEVELOPMENT: dev_phase}
+    # Raise AttributeError if old parallel_execution path is accessed
+    type(bundle.pipeline).parallel_execution = property(  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+        lambda self: (_ for _ in ()).throw(  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+            AttributeError("parallel_execution removed — use phases[phase].parallelization")
+        )
+    )
     return bundle
 
 

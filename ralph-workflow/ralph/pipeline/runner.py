@@ -1030,9 +1030,10 @@ def run(  # noqa: PLR0912, PLR0913, PLR0915
                     _prompt_path: str | None = None
                     if effective_pipeline_subscriber is not None:
                         _prompt_path = getattr(effective_pipeline_subscriber, "_prompt_path", None)
-                    _pe = getattr(policy_bundle.pipeline, "parallel_execution", None)  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+                    _dev_phase = policy_bundle.pipeline.phases.get("development")
+                    _dev_para = _dev_phase.parallelization if _dev_phase is not None else None
                     _parallel_max_workers: int | None = (
-                        int(getattr(_pe, "max_parallel_workers", 0)) if _pe is not None else None  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+                        _dev_para.max_parallel_workers if _dev_para is not None else None
                     )
                     _plan_present = (
                         workspace_scope.root / ".agent" / "artifacts" / "plan.json"
@@ -1829,7 +1830,16 @@ def _determine_effect_from_policy(  # noqa: PLR0911
         scope = workspace_scope or resolve_workspace_scope()
         return _commit_phase_effect(state, policy_bundle, phase_def, scope, config=config)
 
-    if state.phase == PHASE_DEVELOPMENT and len(state.work_units) >= 2:  # noqa: PLR2004
+    if len(state.work_units) >= 2:  # noqa: PLR2004
+        phase_para = phase_def.parallelization
+        if phase_para is None:
+            return ExitFailureEffect(
+                reason=(
+                    f"Phase {state.phase!r} does not declare parallelization but the plan "
+                    f"declares {len(state.work_units)} work_units; either declare "
+                    f"[phases.{state.phase}.parallelization] or remove the work_units from the plan"
+                )
+            )
         from ralph.pipeline.work_units import (  # noqa: PLC0415
             WorkUnitsPlan,
             WorkUnitsValidationError,
@@ -1844,14 +1854,10 @@ def _determine_effect_from_policy(  # noqa: PLR0911
             return ExitFailureEffect(
                 reason=f"parallel preflight rejected plan: {exc} (offending units: {offending})"
             )
-        parallel_policy = policy_bundle.pipeline.parallel_execution
-        run_verification = (
-            parallel_policy.post_fanout_verification if parallel_policy is not None else False
-        )
         return FanOutDevelopmentEffect(
             work_units=state.work_units,
-            max_workers=parallel_policy.max_parallel_workers if parallel_policy is not None else 8,
-            run_post_fanout_verification=run_verification,
+            max_workers=phase_para.max_parallel_workers,
+            run_post_fanout_verification=phase_para.post_fanout_verification,
         )
 
     agent_name = _agent_name_for_phase_from_policy(state, policy_bundle, config=config)
