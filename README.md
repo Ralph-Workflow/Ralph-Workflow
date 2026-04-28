@@ -12,7 +12,7 @@ Everything is configurable: prompts, agent chains, phase routing, retry budgets,
 
 ## A pipeline you actually own
 
-Ralph's runtime config is split by concern: `ralph-workflow.toml` for general settings you will tune most often, `pipeline.toml` for the phase graph, `agents.toml` for advanced chain and drain routing, and `artifacts.toml`/`mcp.toml` for the rest. Under the hood, a setup looks more like this:
+Ralph's runtime config is split by concern: `ralph-workflow.toml` for agent definitions, chain order, drain bindings, and general workflow settings; `pipeline.toml` for the phase graph; and `artifacts.toml`/`mcp.toml` for the rest. Under the hood, a setup looks more like this:
 
 ```toml
 # .agent/ralph-workflow.toml
@@ -20,33 +20,21 @@ Ralph's runtime config is split by concern: `ralph-workflow.toml` for general se
 developer_iters = 5
 reviewer_reviews = 2
 max_retries = 3
-```
 
-```toml
-# .agent/agents.toml
-[agent_chains.planning]
-agents = ["claude"]
+[agent_chains]
+planning = ["claude/opus"]
+development = ["opencode/minimax/MiniMax-M2.7-highspeed", "claude/sonnet", "codex"]
+review = ["codex", "claude/sonnet"]
+fix = ["opencode/zai-coding-plan/glm-5"]
+commit = ["claude"]
 
-[agent_chains.development]
-agents = ["opencode", "codex"]
-
-[agent_chains.review]
-agents = ["codex"]
-
-[agent_chains.fix]
-agents = ["opencode"]
-
-[agent_drains.planning]
-chain = "planning"
-
-[agent_drains.development]
-chain = "development"
-
-[agent_drains.review]
-chain = "review"
-
-[agent_drains.fix]
-chain = "fix"
+[agent_drains]
+planning = "planning"
+development = "development"
+analysis = "planning"
+review = "review"
+fix = "fix"
+commit = "commit"
 ```
 
 ```toml
@@ -150,11 +138,35 @@ More presets and custom pipelines in the [docs](https://ralphworkflow.com/docs).
 
 ## Compatible agents
 
-| Agent | Vendor | Strong at | Install |
-|-------|--------|-----------|---------|
-| Claude Code | Anthropic | Planning, complex reasoning, large context | `npm install -g @anthropic/claude-code` |
-| Codex CLI | OpenAI | Structured review, cost-effective analysis | `npm install -g @openai/codex` |
-| OpenCode | Open source | Any role — wraps MiniMax, Qwen, DeepSeek, Llama, and more | [opencode.ai](https://opencode.ai) |
+Ralph Workflow ships with three built-in transport families and several model-qualified naming forms on top of them.
+
+| Identifier form | What it means | Example |
+|---|---|---|
+| `claude` | Claude Code using your currently selected Claude Code model/profile | `planning = ["claude"]` |
+| `claude/<family>` | Force a Claude model family for that chain entry | `planning = ["claude/opus"]` |
+| `codex` | OpenAI Codex CLI transport | `review = ["codex"]` |
+| `opencode` | Base OpenCode transport | `development = ["opencode"]` |
+| `opencode/<provider>/<model>` | OpenCode with an explicit provider/model target | `development = ["opencode/minimax/MiniMax-M2.7-highspeed"]` |
+| `ccs/<alias>` | Claude Code Switch alias resolved dynamically | `planning = ["ccs/work"]` |
+| custom `[agents.*]` name | Your own named agent definition in `ralph-workflow.toml` | `review = ["my-reviewer"]` |
+
+### Built-in transports
+
+| Transport | Strong at | Setup |
+|---|---|---|
+| Claude Code | Planning, complex reasoning, large context | `npm install -g @anthropic/claude-code` |
+| Codex CLI | Structured review, cost-effective analysis | `npm install -g @openai/codex` |
+| OpenCode | Multi-provider execution across OpenCode-supported models | [opencode.ai](https://opencode.ai) |
+| CCS | Profile-based Claude Code switching and aliasing | Use `ccs/<alias>` directly |
+
+### Model-qualified syntax
+
+- `claude` uses whatever Claude Code model/profile you last selected.
+- `claude/opus` or `claude/sonnet` force those model families for a specific phase.
+- `opencode/<provider>/<model>` targets a concrete OpenCode provider/model path, for example:
+  - `opencode/minimax/MiniMax-M2.7-highspeed`
+  - `opencode/zai-coding-plan/glm-5`
+- `ccs/<alias>` resolves dynamically, so names like `ccs/work` or `ccs/personal` work out of the box.
 
 Mix per phase. Mix per repo. Mix per team. Change models when prices shift — change config, not tools.
 
@@ -171,7 +183,6 @@ The files that matter:
 - `~/.config/ralph-workflow.toml` — your user-global runtime defaults
 - `.agent/ralph-workflow.toml` — project-local main config override
 - `.agent/pipeline.toml` — phase graph, transitions, entry/terminal phases, parallel policy
-- `.agent/agents.toml` — advanced agent-chain and drain bindings when you want to override routing
 - `.agent/artifacts.toml` — what each phase must produce
 - `.agent/mcp.toml` — MCP servers, web search, tool access
 
@@ -181,7 +192,7 @@ You define the phase graph. Ralph executes it. Phases can loop (review → fix �
 
 ### Agent chains with fallback
 
-Each phase has an ordered chain of agents. If the primary fails or hits a retry budget, Ralph falls over to the next. Provider/model fallbacks are handled the same way — `opencode:minimax` falls over to `opencode:qwen` if MiniMax is rate-limited.
+Each phase has an ordered chain of agents. If the primary fails or hits a retry budget, Ralph falls over to the next. OpenCode model-qualified agents use `opencode/<provider>/<model>` syntax, so a chain can fall from `opencode/minimax/MiniMax-M2.7-highspeed` to `opencode/zai-coding-plan/glm-5` just like any other ordered fallback. Claude model tags are shorter: `claude` uses whatever Claude Code model/profile you last selected, while `claude/opus` or `claude/sonnet` force those model families for that phase.
 
 ### Artifact contracts, not exit codes
 
