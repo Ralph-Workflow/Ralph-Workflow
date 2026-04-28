@@ -180,4 +180,10 @@ exclude_lines = [
 dev = [
     "mypy>=1.20.1",
     "types-psutil",
+    "hypothesis>=6.100",
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "pytest-cov>=4.0",
+    "pytest-xdist>=3.6",
+    "ruff>=0.1",
 ]

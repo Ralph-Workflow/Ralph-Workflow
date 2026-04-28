@@ -15,6 +15,11 @@ You are a worker agent assigned to implement the following task.
 You may only modify files within these directories:
 {{ allowed_directories }}
 
+## Worker State Namespace
+
+Your prompt payloads, logs, and artifacts are written under `.agent/workers/{{ unit_id }}/`.
+Do not write to `.agent/workers/` paths belonging to other workers.
+
 ## Base Context
 
 {{ base_prompt }}

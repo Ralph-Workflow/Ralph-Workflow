@@ -9,7 +9,7 @@ instead.
 
 ## What lives here
 
-- [Agents](agents.md) — agent definitions, fallback chains, drain bindings, and invocation flow
+- [Configuration](configuration.md) — agent definitions, fallback chains, drain bindings, and runtime policy
 - [MCP Architecture](mcp-architecture.md) — server lifecycle, capability gates, and upstream proxying
 - [Artifacts](artifacts.md) — typed handoffs and artifact storage contracts
 - [Prompts](prompts.md) — prompt template loading, rendering, and payload materialisation
@@ -18,7 +18,6 @@ instead.
 ```{toctree}
 :maxdepth: 1
 
-agents
 mcp-architecture
 artifacts
 prompts

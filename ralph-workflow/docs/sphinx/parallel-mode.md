@@ -7,6 +7,8 @@ out across multiple workers running in parallel. All workers operate directly on
 same git checkout (same-workspace mode) and are isolated from each other through
 path restrictions and per-worker artifact namespaces.
 
+v1 supports same-workspace parallel execution; other parallel-execution modes are out of scope for v1.
+
 ## Configuration
 
 Override parallel execution settings in `.agent/pipeline.toml`:
@@ -54,6 +56,9 @@ A parallel worker is considered successful when it produces artifact evidence un
 
 The worker's process exit code is retained as diagnostic information only and does not
 determine success or failure on its own.
+
+Per-worker prompt payloads are written under `.agent/workers/<unit_id>/tmp/prompt_payloads/`
+so concurrent workers cannot overwrite each other's payload files.
 
 ## Related pages
 

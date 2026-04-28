@@ -68,7 +68,11 @@ class SleeperExecutor:
 
 
 def _make_work_unit(unit_id: str) -> WorkUnit:
-    return WorkUnit(unit_id=unit_id, description=f"Work unit {unit_id}")
+    return WorkUnit(
+        unit_id=unit_id,
+        description=f"Work unit {unit_id}",
+        allowed_directories=[f"src/{unit_id}"],
+    )
 
 
 def _pid_gone(pid: int) -> bool:

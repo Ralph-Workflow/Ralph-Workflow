@@ -28,7 +28,14 @@ MAX_DESCRIPTION_CHARS = 4096
 
 # Paths that workers must never declare as edit areas in same-workspace mode.
 RESERVED_EDIT_PATHS: frozenset[str] = frozenset(
-    {".agent", ".git", ".worktrees", ".", ""}
+    {
+        ".agent",
+        ".git",
+        # Defense-in-depth: deny .worktrees entries; not a supported edit area.
+        ".worktrees",
+        ".",
+        "",
+    }
 )
 
 
@@ -139,10 +146,16 @@ def _check_reserved(unit_id: str, directory: str) -> None:
         )
     first_part = p.parts[0] if p.parts else ""
     normalized = str(p)
-    if normalized in RESERVED_EDIT_PATHS or first_part in {".agent", ".git", ".worktrees"}:
+    if first_part == ".worktrees":
         raise WorkUnitsValidationError(
             f"Work unit '{unit_id}' declares reserved path {directory!r} as an edit area. "
-            "Reserved paths (.agent, .git, .worktrees, .) may not be declared as "
+            "Path '.worktrees' is reserved (defense-in-depth) and may not be used as an "
+            "allowed_directory. Choose a project-owned subdirectory."
+        )
+    if normalized in RESERVED_EDIT_PATHS or first_part in {".agent", ".git"}:
+        raise WorkUnitsValidationError(
+            f"Work unit '{unit_id}' declares reserved path {directory!r} as an edit area. "
+            "Reserved paths (.agent, .git, .) may not be declared as "
             "allowed_directories. Choose a project-owned subdirectory."
         )
 

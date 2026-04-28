@@ -52,6 +52,7 @@ def make_unit(unit_id: str, deps: list[str] | None = None) -> WorkUnit:
         unit_id=unit_id,
         description=f"Unit {unit_id}",
         dependencies=list(deps or []),
+        allowed_directories=[f"src/{unit_id}"],
     )
 
 
@@ -664,3 +665,99 @@ async def test_fan_out_start_log_line(tmp_path: Path) -> None:
     assert str(tmp_path / ".agent" / "workers") in log_line, (
         f"Log must mention namespace_root path: {log_line!r}"
     )
+
+
+class TestPreflightRejection:
+    """Coordinator-level preflight rejects unsafe plans before any worker launches."""
+
+    async def test_overlapping_edit_areas_rejected(self, tmp_path: Path) -> None:
+        """Overlapping allowed_directories are rejected; no executor calls occur."""
+        run_fan_out = _load_run_fan_out()
+        unit_a = WorkUnit(
+            unit_id="unit-a",
+            description="Unit A",
+            allowed_directories=["src"],
+        )
+        unit_b = WorkUnit(
+            unit_id="unit-b",
+            description="Unit B",
+            allowed_directories=["src/sub"],  # 'src' is a prefix of 'src/sub' → overlap
+        )
+        effect = FanOutDevelopmentEffect(work_units=(unit_a, unit_b), max_workers=2)
+        executor = FakeAgentExecutor({
+            "unit-a": FakeRun(outputs=[], exit_code=0, duration_ms=1),
+            "unit-b": FakeRun(outputs=[], exit_code=0, duration_ms=1),
+        })
+        display = RecordingDisplay()
+
+        events = await run_fan_out(
+            effect=effect,
+            executor=executor,
+            display=display,
+        )
+
+        assert any(
+            isinstance(e, WorkerFailedEvent) and e.unit_id == "__preflight__"
+            for e in events
+        ), f"Expected __preflight__ failure event, got: {events}"
+        preflight_event = next(
+            e for e in events if isinstance(e, WorkerFailedEvent) and e.unit_id == "__preflight__"
+        )
+        assert "parallel preflight rejected plan:" in preflight_event.error
+        assert executor.calls == [], "No executor.run() calls should occur on preflight rejection"
+
+    async def test_missing_allowed_directories_rejected(self, tmp_path: Path) -> None:
+        """Work unit with empty allowed_directories is rejected; no executor calls occur."""
+        run_fan_out = _load_run_fan_out()
+        unit_no_dirs = WorkUnit(
+            unit_id="unit-nodirs",
+            description="Unit without edit areas",
+            allowed_directories=[],  # missing required edit area
+        )
+        effect = FanOutDevelopmentEffect(work_units=(unit_no_dirs,), max_workers=1)
+        executor = FakeAgentExecutor({
+            "unit-nodirs": FakeRun(outputs=[], exit_code=0, duration_ms=1),
+        })
+        display = RecordingDisplay()
+
+        events = await run_fan_out(
+            effect=effect,
+            executor=executor,
+            display=display,
+        )
+
+        assert any(
+            isinstance(e, WorkerFailedEvent) and e.unit_id == "__preflight__"
+            for e in events
+        ), f"Expected __preflight__ failure event, got: {events}"
+        assert executor.calls == [], "No executor.run() calls should occur on preflight rejection"
+
+    async def test_reserved_path_rejected(self, tmp_path: Path) -> None:
+        """Work unit declaring .agent as edit area is rejected; no executor calls occur."""
+        run_fan_out = _load_run_fan_out()
+        unit_reserved = WorkUnit(
+            unit_id="unit-reserved",
+            description="Unit with reserved path",
+            allowed_directories=[".agent"],  # reserved path
+        )
+        effect = FanOutDevelopmentEffect(work_units=(unit_reserved,), max_workers=1)
+        executor = FakeAgentExecutor({
+            "unit-reserved": FakeRun(outputs=[], exit_code=0, duration_ms=1),
+        })
+        display = RecordingDisplay()
+
+        events = await run_fan_out(
+            effect=effect,
+            executor=executor,
+            display=display,
+        )
+
+        assert any(
+            isinstance(e, WorkerFailedEvent) and e.unit_id == "__preflight__"
+            for e in events
+        ), f"Expected __preflight__ failure event, got: {events}"
+        preflight_event = next(
+            e for e in events if isinstance(e, WorkerFailedEvent) and e.unit_id == "__preflight__"
+        )
+        assert "parallel preflight rejected plan:" in preflight_event.error
+        assert executor.calls == [], "No executor.run() calls should occur on preflight rejection"

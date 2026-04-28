@@ -1,0 +1,430 @@
+"""Integration test: same-workspace fan-out → analysis handoff.
+
+Proves the full supported path:
+  planning artifact with >=2 disjoint work_units
+  → FanOutDevelopmentEffect from _determine_effect_from_policy
+  → coordinator.run_fan_out produces ALL_WORKERS_COMPLETE
+  → reducer advances to development_analysis (no merge/worktree step)
+  → per-worker evidence stays in its own namespace
+
+All workers use FakeAgentExecutor (no subprocess, no real MCP).
+"""
+
+from __future__ import annotations
+
+import asyncio
+import json
+from collections import defaultdict
+from dataclasses import dataclass
+from typing import TYPE_CHECKING
+from unittest.mock import MagicMock
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+from ralph.config.enums import PHASE_DEVELOPMENT, PHASE_DEVELOPMENT_ANALYSIS
+from ralph.mcp.server.factory import McpServerHandle
+from ralph.pipeline import runner as runner_module
+from ralph.pipeline.effects import FanOutDevelopmentEffect, InvokeAgentEffect
+from ralph.pipeline.events import PipelineEvent, WorkerCompletedEvent, WorkerFailedEvent
+from ralph.pipeline.parallel import coordinator
+from ralph.pipeline.parallel.mode import SameWorkspaceContext
+from ralph.pipeline.reducer import reduce as reducer_reduce
+from ralph.pipeline.state import PipelineState
+from ralph.pipeline.work_units import WorkUnit
+from ralph.pipeline.worker_state import WorkerStatus
+from ralph.testing.fake_agent_executor import FakeAgentExecutor, FakeRun
+from ralph.workspace.fs import FsWorkspace
+from ralph.workspace.scope import WorkspaceScope
+
+
+def _make_work_unit(uid: str) -> WorkUnit:
+    return WorkUnit(
+        unit_id=uid,
+        description=f"Work unit {uid}",
+        allowed_directories=[f"src/{uid}"],
+    )
+
+
+def _make_policy_bundle(max_workers: int = 4) -> MagicMock:
+    bundle = MagicMock()
+    bundle.pipeline.phases = {
+        PHASE_DEVELOPMENT: MagicMock(requires_commit=False, drain="development"),
+    }
+    bundle.pipeline.parallel_execution.max_parallel_workers = max_workers
+    bundle.agents.agent_drains = {
+        "development": MagicMock(chain="developer"),
+    }
+    bundle.agents.agent_chains = {
+        "developer": MagicMock(agents=["developer"]),
+    }
+    return bundle
+
+
+class _FakeDisplay:
+    def emit(self, unit_id: str | None, line: str) -> None:
+        del unit_id, line
+
+    def set_status(self, unit_id: str, status: object) -> None:
+        del unit_id, status
+
+
+@dataclass
+class _RecordedHandle:
+    handle: McpServerHandle
+    shutdown_calls: int = 0
+
+
+class _RecordingMcpFactory:
+    def __init__(self) -> None:
+        self.sessions: list[object] = []
+        self.handles: list[_RecordedHandle] = []
+
+    def build(self, session: object) -> McpServerHandle:
+        self.sessions.append(session)
+        recorded = _RecordedHandle(
+            handle=McpServerHandle(
+                endpoint=f"http://127.0.0.1:{10_000 + len(self.handles)}/mcp",
+                pid=1000 + len(self.handles),
+                shutdown=lambda: None,
+            )
+        )
+
+        def _shutdown(record: _RecordedHandle = recorded) -> None:
+            record.shutdown_calls += 1
+
+        recorded.handle = McpServerHandle(
+            endpoint=recorded.handle.endpoint,
+            pid=recorded.handle.pid,
+            shutdown=_shutdown,
+        )
+        self.handles.append(recorded)
+        return recorded.handle
+
+
+class RecordingDisplay:
+    def __init__(self) -> None:
+        self.statuses: dict[str, list[WorkerStatus]] = defaultdict(list)
+
+    def emit(self, unit_id: str | None, line: str) -> None:
+        del unit_id, line
+
+    def set_status(self, unit_id: str, status: WorkerStatus) -> None:
+        self.statuses[unit_id].append(status)
+
+
+def _seed_artifact(repo_root: Path, unit_id: str) -> None:
+    """Pre-populate worker-local artifact evidence so the coordinator's success check passes."""
+    artifact_dir = repo_root / ".agent" / "workers" / unit_id / "artifacts"
+    artifact_dir.mkdir(parents=True, exist_ok=True)
+    (artifact_dir / "development_result.json").write_text(
+        json.dumps(
+            {
+                "name": "development_result",
+                "type": "development_result",
+                "content": {"summary": f"Worker {unit_id} done", "changes": []},
+                "created_at": "2024-01-01T00:00:00+00:00",
+                "updated_at": "2024-01-01T00:00:00+00:00",
+                "metadata": {},
+            }
+        )
+    )
+
+
+class TestSameWorkspaceFanOutE2E:
+    """End-to-end test of the same-workspace parallel fan-out path."""
+
+    def test_two_disjoint_units_emit_fan_out_effect(self) -> None:
+        """_determine_effect_from_policy emits FanOutDevelopmentEffect for >=2 work units."""
+        from ralph.config.models import UnifiedConfig  # noqa: PLC0415
+
+        unit_a = _make_work_unit("unit-a")
+        unit_b = _make_work_unit("unit-b")
+        state = PipelineState(phase=PHASE_DEVELOPMENT, work_units=(unit_a, unit_b))
+        policy_bundle = _make_policy_bundle(max_workers=2)
+
+        effect = runner_module._determine_effect_from_policy(
+            state, policy_bundle, config=UnifiedConfig()
+        )
+
+        assert isinstance(effect, FanOutDevelopmentEffect)
+        assert {u.unit_id for u in effect.work_units} == {"unit-a", "unit-b"}
+        assert effect.run_post_fanout_verification is True
+
+    def test_single_unit_uses_serial_path(self) -> None:
+        """A single work unit must NOT produce fan-out; it falls to the normal dev path."""
+        from ralph.config.models import UnifiedConfig  # noqa: PLC0415
+
+        state = PipelineState(
+            phase=PHASE_DEVELOPMENT, work_units=(_make_work_unit("unit-a"),)
+        )
+        policy_bundle = _make_policy_bundle(max_workers=4)
+
+        effect = runner_module._determine_effect_from_policy(
+            state, policy_bundle, config=UnifiedConfig()
+        )
+
+        assert isinstance(effect, InvokeAgentEffect)
+        assert effect.phase == PHASE_DEVELOPMENT
+
+    def test_fan_out_advances_to_development_analysis_after_all_succeed(self) -> None:
+        """After ALL_WORKERS_COMPLETE, reducer advances phase to development_analysis."""
+        unit_a = _make_work_unit("unit-a")
+        unit_b = _make_work_unit("unit-b")
+        units = (unit_a, unit_b)
+        runs = {
+            uid: FakeRun(outputs=[f"done-{uid}"], exit_code=0, duration_ms=1)
+            for uid in ("unit-a", "unit-b")
+        }
+        effect = FanOutDevelopmentEffect(work_units=units, max_workers=2)
+        initial_state = PipelineState(phase=PHASE_DEVELOPMENT, work_units=units)
+
+        events = asyncio.run(
+            coordinator.run_fan_out(
+                effect=effect,
+                executor=FakeAgentExecutor(runs),
+                display=_FakeDisplay(),  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+            )
+        )
+
+        assert PipelineEvent.ALL_WORKERS_COMPLETE in events
+
+        reduced_state = initial_state
+        for event in events:
+            reduced_state, _ = reducer_reduce(reduced_state, event)
+
+        assert reduced_state.phase == PHASE_DEVELOPMENT_ANALYSIS, (
+            f"Expected development_analysis after fan-out, got {reduced_state.phase!r}"
+        )
+        assert reduced_state.worker_states["unit-a"].status == WorkerStatus.SUCCEEDED
+        assert reduced_state.worker_states["unit-b"].status == WorkerStatus.SUCCEEDED
+
+    def test_worker_artifacts_are_namespaced_per_unit(self) -> None:
+        """ALL_WORKERS_COMPLETE events carry isolated per-worker completion evidence."""
+        unit_a = _make_work_unit("unit-a")
+        unit_b = _make_work_unit("unit-b")
+        units = (unit_a, unit_b)
+        runs = {
+            "unit-a": FakeRun(outputs=["result-a"], exit_code=0, duration_ms=1),
+            "unit-b": FakeRun(outputs=["result-b"], exit_code=0, duration_ms=1),
+        }
+        effect = FanOutDevelopmentEffect(work_units=units, max_workers=2)
+
+        events = asyncio.run(
+            coordinator.run_fan_out(
+                effect=effect,
+                executor=FakeAgentExecutor(runs),
+                display=_FakeDisplay(),  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+            )
+        )
+
+        completed = [e for e in events if isinstance(e, WorkerCompletedEvent)]
+        completed_ids = {e.unit_id for e in completed}
+        assert completed_ids == {"unit-a", "unit-b"}, (
+            "Each worker must have its own completion event"
+        )
+        # Each unit_id appears exactly once in completed events — no cross-contamination
+        for uid in ("unit-a", "unit-b"):
+            unit_events = [e for e in completed if e.unit_id == uid]
+            assert len(unit_events) == 1, (
+                f"unit {uid!r} must have exactly one WorkerCompletedEvent, "
+                f"got {len(unit_events)}"
+            )
+
+    def test_no_merge_step_required_for_supported_path(self) -> None:
+        """The supported path transitions directly from fan-out to development_analysis
+        without any git merge/worktree step.
+        """
+        unit_a = _make_work_unit("unit-a")
+        unit_b = _make_work_unit("unit-b")
+        units = (unit_a, unit_b)
+        runs = {
+            uid: FakeRun(outputs=[f"done-{uid}"], exit_code=0, duration_ms=1)
+            for uid in ("unit-a", "unit-b")
+        }
+        effect = FanOutDevelopmentEffect(work_units=units, max_workers=2)
+        initial_state = PipelineState(phase=PHASE_DEVELOPMENT, work_units=units)
+
+        events = asyncio.run(
+            coordinator.run_fan_out(
+                effect=effect,
+                executor=FakeAgentExecutor(runs),
+                display=_FakeDisplay(),  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+            )
+        )
+
+        reduced_state = initial_state
+        for event in events:
+            reduced_state, _ = reducer_reduce(reduced_state, event)
+
+        # Phase advanced to development_analysis — no merge/worktree event in the chain
+        assert reduced_state.phase == PHASE_DEVELOPMENT_ANALYSIS
+        # Verify there are no merge-related intermediate phases
+        git_merge_events = [
+            e for e in events
+            if hasattr(e, "name") and "merge" in str(e).lower()
+        ]
+        assert git_merge_events == [], (
+            f"Supported path must not emit merge events, got: {git_merge_events}"
+        )
+
+    def test_two_workers_happy_path_artifact_only_success(self, tmp_path: Path) -> None:
+        """Two safe workers complete with isolated artifact evidence in the same workspace.
+
+        Uses a real SameWorkspaceContext with per-worker namespaces. Each worker's
+        artifact directory is pre-seeded with evidence. Asserts no cross-namespace
+        contamination and correct phase transition.
+        """
+        unit_a = WorkUnit(
+            unit_id="unit-a", description="Unit A", allowed_directories=["src/a"]
+        )
+        unit_b = WorkUnit(
+            unit_id="unit-b", description="Unit B", allowed_directories=["src/b"]
+        )
+        units = (unit_a, unit_b)
+
+        # Pre-seed per-worker artifact evidence
+        _seed_artifact(tmp_path, "unit-a")
+        _seed_artifact(tmp_path, "unit-b")
+
+        mcp_factory = _RecordingMcpFactory()
+        ctx_module = __import__(
+            "ralph.pipeline.parallel.coordinator", fromlist=["_WorkerContext"]
+        )
+        ctx = ctx_module._WorkerContext(
+            same_workspace=SameWorkspaceContext(
+                repo_root=tmp_path,
+                mcp_factory=mcp_factory,  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+            )
+        )
+
+        runs = {
+            "unit-a": FakeRun(outputs=["ok-a"], exit_code=0, duration_ms=1),
+            "unit-b": FakeRun(outputs=["ok-b"], exit_code=0, duration_ms=1),
+        }
+        effect = FanOutDevelopmentEffect(work_units=units, max_workers=2)
+        display = RecordingDisplay()
+        initial_state = PipelineState(phase=PHASE_DEVELOPMENT, work_units=units)
+
+        events = asyncio.run(
+            coordinator.run_fan_out(
+                effect=effect,
+                executor=FakeAgentExecutor(runs),
+                display=display,
+                ctx=ctx,
+            )
+        )
+
+        # Both workers complete
+        completed = [e for e in events if isinstance(e, WorkerCompletedEvent)]
+        assert {e.unit_id for e in completed} == {"unit-a", "unit-b"}, (
+            "Both workers must emit WorkerCompletedEvent"
+        )
+        # Pipeline event emitted
+        assert PipelineEvent.ALL_WORKERS_COMPLETE in events, (
+            "ALL_WORKERS_COMPLETE must be emitted after both workers succeed"
+        )
+        # No merge/worktree events
+        merge_events = [
+            e for e in events if hasattr(e, "name") and "merge" in str(e).lower()
+        ]
+        assert merge_events == [], f"No merge events expected, got {merge_events}"
+
+        # Reducer advances to development_analysis
+        state = initial_state
+        for event in events:
+            state, _ = reducer_reduce(state, event)
+        assert state.phase == PHASE_DEVELOPMENT_ANALYSIS
+
+        # Per-worker artifact directories exist and are separate
+        artifact_a = tmp_path / ".agent" / "workers" / "unit-a" / "artifacts"
+        artifact_b = tmp_path / ".agent" / "workers" / "unit-b" / "artifacts"
+        assert artifact_a.exists() and any(artifact_a.iterdir()), (
+            "unit-a must have its own artifact directory"
+        )
+        assert artifact_b.exists() and any(artifact_b.iterdir()), (
+            "unit-b must have its own artifact directory"
+        )
+        # No cross-namespace contamination: unit-b's artifact not in unit-a's dir
+        assert not (artifact_a / "unit-b").exists(), (
+            "unit-b artifacts must not appear in unit-a's namespace"
+        )
+        assert not (artifact_b / "unit-a").exists(), (
+            "unit-a artifacts must not appear in unit-b's namespace"
+        )
+
+    def test_out_of_scope_worker_write_is_denied(self, tmp_path: Path) -> None:
+        """A worker attempting to write outside its allowed_directories is denied.
+
+        The side_effect callback simulates a worker trying to write to a path
+        outside its declared edit area. The scoped FsWorkspace raises ValueError,
+        the coordinator wraps it in a WorkerFailedEvent, and no forbidden file
+        is created on disk.
+        """
+        unit_a = WorkUnit(
+            unit_id="unit-a", description="Unit A", allowed_directories=["src/a"]
+        )
+        units = (unit_a,)
+
+        mcp_factory = _RecordingMcpFactory()
+        ctx_module = __import__(
+            "ralph.pipeline.parallel.coordinator", fromlist=["_WorkerContext"]
+        )
+        ctx = ctx_module._WorkerContext(
+            same_workspace=SameWorkspaceContext(
+                repo_root=tmp_path,
+                mcp_factory=mcp_factory,  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+            )
+        )
+
+        # Build a scoped workspace that only allows src/a — used inside side_effect.
+        worker_namespace = tmp_path / ".agent" / "workers" / "unit-a"
+        scope = WorkspaceScope.for_same_workspace_worker(
+            repo_root=tmp_path,
+            allowed_directories=("src/a",),
+            worker_namespace=worker_namespace,
+        )
+        scoped_ws = FsWorkspace(tmp_path, allowed_roots=scope.allowed_roots)
+
+        def _attempt_forbidden_write() -> None:
+            # This write targets src/b which is outside the allowed area.
+            scoped_ws.write("src/b/forbidden.txt", "should not be written")
+
+        runs = {
+            "unit-a": FakeRun(
+                outputs=[],
+                exit_code=0,
+                duration_ms=1,
+                side_effect=_attempt_forbidden_write,
+            ),
+        }
+        effect = FanOutDevelopmentEffect(work_units=units, max_workers=1)
+        display = RecordingDisplay()
+
+        events = asyncio.run(
+            coordinator.run_fan_out(
+                effect=effect,
+                executor=FakeAgentExecutor(runs),
+                display=display,
+                ctx=ctx,
+            )
+        )
+
+        # Worker should have failed
+        failed = [e for e in events if isinstance(e, WorkerFailedEvent)]
+        assert any(e.unit_id == "unit-a" for e in failed), (
+            f"Expected WorkerFailedEvent for unit-a, got: {events}"
+        )
+        unit_a_failure = next(e for e in failed if e.unit_id == "unit-a")
+        assert "outside workspace root" in unit_a_failure.error, (
+            f"Error must mention 'outside workspace root', got: {unit_a_failure.error!r}"
+        )
+
+        # Forbidden file must not exist on disk
+        forbidden = tmp_path / "src" / "b" / "forbidden.txt"
+        assert not forbidden.exists(), (
+            f"Forbidden file must not have been written: {forbidden}"
+        )
+
+        # No success completion
+        assert PipelineEvent.ALL_WORKERS_COMPLETE not in events

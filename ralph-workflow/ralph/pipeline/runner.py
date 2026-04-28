@@ -1257,6 +1257,32 @@ def _resume_fan_out_state(
     return resumed_state, resume_units
 
 
+async def _run_post_fanout_verification(workspace_scope: WorkspaceScope) -> str | None:
+    """Run workspace-wide verification exactly once after all workers complete.
+
+    This helper runs on the runner thread (serialized) after coordinator.run_fan_out
+    returns. It is called only when all workers succeeded. Never spawns parallel
+    verifications. NOT related to git worktree isolation.
+
+    Returns:
+        None on success, or an error description string on failure.
+    """
+    from ralph.executor.process import run_process_async  # noqa: PLC0415
+
+    logger.debug("Running post-fanout workspace-wide verification (serialized)")
+    verify_result = await run_process_async(
+        "make",
+        ["-C", str(workspace_scope.root / "ralph-workflow"), "verify"],
+    )
+    if verify_result.returncode != 0:
+        return (
+            f"Post-fanout workspace verification failed "
+            f"(exit {verify_result.returncode}): "
+            f"{verify_result.stderr.strip() or verify_result.stdout.strip()}"
+        )
+    return None
+
+
 async def _run_fan_out_async(  # noqa: PLR0913
     *,
     effect: FanOutDevelopmentEffect,
@@ -1341,22 +1367,13 @@ async def _run_fan_out_async(  # noqa: PLR0913
 
         any_worker_failed = any(isinstance(ev, WorkerFailedEvent) for ev in fan_out_events)
         if effect.run_post_fanout_verification and not any_worker_failed:
-            from ralph.executor.process import run_process_async  # noqa: PLC0415
-            verify_result = await run_process_async(
-                "make",
-                ["-C", str(workspace_scope.root / "ralph-workflow"), "verify"],
-            )
-            if verify_result.returncode != 0:
-                failure_reason = (
-                    f"Post-fanout workspace verification failed "
-                    f"(exit {verify_result.returncode}): "
-                    f"{verify_result.stderr.strip() or verify_result.stdout.strip()}"
-                )
-                logger.error(failure_reason)
+            verify_error = await _run_post_fanout_verification(workspace_scope)
+            if verify_error is not None:
+                logger.error(verify_error)
                 recovered, _ = _reduce_runtime_recovery(
                     current,
                     policy_bundle.pipeline,
-                    reason=failure_reason,
+                    reason=verify_error,
                 )
                 _notify_pipeline_subscriber(pipeline_subscriber, recovered)
                 _save_checkpoint_or_log(
@@ -1367,6 +1384,10 @@ async def _run_fan_out_async(  # noqa: PLR0913
                     ),
                 )
                 return recovered
+        elif effect.run_post_fanout_verification and any_worker_failed:
+            logger.debug(
+                "Post-fanout verification skipped: one or more workers failed in this wave"
+            )
 
         return current
     except KeyboardInterrupt:
@@ -1493,10 +1514,14 @@ def _materialize_prepared_prompt(
     pipeline_policy: PipelinePolicy,
     workspace_scope: WorkspaceScope,
 ) -> None:
+    import os  # noqa: PLC0415
+
     workspace = FsWorkspace(
         workspace_scope.root,
         allowed_roots=workspace_scope.allowed_roots,
     )
+    worker_ns_str = os.environ.get("RALPH_WORKER_NAMESPACE")
+    worker_namespace = Path(worker_ns_str) if worker_ns_str else None
     materialize_prompt_for_phase(
         phase=effect.phase,
         workspace=workspace,
@@ -1507,6 +1532,7 @@ def _materialize_prepared_prompt(
             )
         ),
         workspace_root=workspace_scope.root,
+        worker_namespace=worker_namespace,
     )
 
 
@@ -1686,7 +1712,7 @@ def _determine_effect_from_policy(
         scope = workspace_scope or resolve_workspace_scope()
         return _commit_phase_effect(state, policy_bundle, phase_def, scope, config=config)
 
-    if state.phase == PHASE_DEVELOPMENT and state.work_units:
+    if state.phase == PHASE_DEVELOPMENT and len(state.work_units) >= 2:  # noqa: PLR2004
         parallel_policy = policy_bundle.pipeline.parallel_execution
         return FanOutDevelopmentEffect(
             work_units=state.work_units,

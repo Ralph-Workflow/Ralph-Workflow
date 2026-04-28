@@ -116,7 +116,6 @@ def test_snapshot_from_state_projects_exact_fields_and_order() -> None:
         "finished_at",
         "elapsed_s",
         "exit_code",
-        "commit_sha",
         "error_message",
         "dropped_lines",
     ]
@@ -206,7 +205,6 @@ def test_snapshot_field_names_match_plan_exactly() -> None:
         "finished_at",
         "elapsed_s",
         "exit_code",
-        "commit_sha",
         "error_message",
         "dropped_lines",
     ]

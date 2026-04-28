@@ -1878,7 +1878,13 @@ web-visit = [
 
 [package.dev-dependencies]
 dev = [
+    { name = "hypothesis" },
     { name = "mypy" },
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+    { name = "pytest-cov" },
+    { name = "pytest-xdist" },
+    { name = "ruff" },
     { name = "types-psutil" },
 ]
 
@@ -1927,7 +1933,13 @@ provides-extras = ["bundle", "dev", "docs", "web-search", "web-visit"]
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "hypothesis", specifier = ">=6.100" },
     { name = "mypy", specifier = ">=1.20.1" },
+    { name = "pytest", specifier = ">=8.0" },
+    { name = "pytest-asyncio", specifier = ">=0.23" },
+    { name = "pytest-cov", specifier = ">=4.0" },
+    { name = "pytest-xdist", specifier = ">=3.6" },
+    { name = "ruff", specifier = ">=0.1" },
     { name = "types-psutil" },
 ]
 

@@ -86,6 +86,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `make typecheck` now runs mypy through `uv run python -m mypy` so it uses the project's virtualenv instead of a system-wide mypy that cannot see project dependencies.
 
 ### Removed
+- `commit_sha` field removed from `WorkerCompletedEvent`, `WorkerState`, and `WorkerSnapshot`. This was a worktree-era relic always set to empty string in same-workspace v1 mode. Checkpoints from earlier versions load cleanly due to `extra="ignore"` on `WorkerState`.
 - `max_dev_continuations` config field (previously declared but never used).
 - `_legacy_handle_agent_success` reducer path (unreachable in production — policy is always loaded).
 - Unused `developer_iters_option` / `reviewer_reviews_option` decorator stubs in `cli/options.py`.

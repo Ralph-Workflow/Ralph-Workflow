@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from collections import Counter
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from unittest.mock import MagicMock
@@ -159,6 +160,11 @@ class TestParallelResume:
         assert launched_ids == {"unit-2", "unit-3", "unit-4"}
         assert "unit-0" not in launched_ids
         assert "unit-1" not in launched_ids
+
+        runs_for = Counter(u.unit_id for u in fake_executor.calls)
+        assert runs_for["unit-2"] == 1, "Each resumed unit must be invoked exactly once"
+        assert runs_for["unit-3"] == 1, "Each resumed unit must be invoked exactly once"
+        assert runs_for["unit-4"] == 1, "Each resumed unit must be invoked exactly once"
 
     def test_resume_resets_running_to_pending(
         self,

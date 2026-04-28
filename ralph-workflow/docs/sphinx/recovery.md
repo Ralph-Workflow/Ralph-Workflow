@@ -191,5 +191,5 @@ will always restart from the beginning regardless of prior state.
 ## Related pages
 
 - [Concepts](concepts.md) — phase, drain, checkpoint, and recovery cycle terminology
-- [Parallel Mode](parallel-mode.md) — recovery behavior in parallel worktree runs
+- [Parallel Mode](parallel-mode.md) — recovery behavior in same-workspace parallel runs
 - [Troubleshooting](troubleshooting.md) — common recovery-related issues and fixes

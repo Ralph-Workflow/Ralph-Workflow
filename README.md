@@ -85,7 +85,7 @@ Frontier models where reasoning matters. Cheap models where they're enough. Loop
 - **Auditable by default.** Every iteration commits. Every phase produces structured artifacts. Run history lives in `.agent/logs/`.
 - **Recovery built in.** Checkpoint and resume, failure classification, retry budgets, connectivity-aware pause/resume.
 - **Context isolation.** Every iteration starts fresh from `PROMPT.md`. No drift. No accumulating noise.
-- **Parallel work.** Optional worktree fan-out for independent work units.
+- **Parallel work.** Optional same-workspace parallel execution for independent work units.
 - **MCP-native.** First-class MCP server support, plus a standalone `ralph-mcp` runtime.
 
 ## Install
@@ -200,7 +200,9 @@ Phase success means "the artifact satisfies its contract," not "the process retu
 
 ### Resume and parallel
 
-Interrupt anytime. `ralph --resume` picks up from the last checkpoint. Parallel worktrees fan out independent work units when the plan supports it.
+Recovery is a first-class part of the framework. Ralph Workflow supports checkpoint/resume flows, failure classification, retry budgets, connectivity-aware pause/resume behavior, and optional same-workspace parallel fan-out when the plan yields multiple work units.
+
+Interrupt anytime. `ralph --resume` picks up from the last checkpoint. Same-workspace parallel execution can run independent work units when the plan supports it.
 
 ## When Ralph fits
 

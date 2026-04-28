@@ -389,3 +389,73 @@ class TestNoMergeStepContract:
         assert banned_calls == [], (
             f"Fan-out must not issue git branch/merge/checkout/worktree: {banned_calls}"
         )
+
+    def test_event_stream_contains_no_merge_or_worktree_events(self, tmp_path: Path) -> None:
+        """Event stream from fan-out must not contain any merge, worktree, or branch events."""
+        unit = _make_unit("unit-b")
+        effect = FanOutDevelopmentEffect(work_units=(unit,), max_workers=1)
+
+        class _FakeDisplay(ParallelDisplay):
+            def __init__(self) -> None:
+                pass
+
+            def emit(self, unit_id: str, line: str) -> None:
+                pass
+
+            def set_status(self, unit_id: str, status: WorkerStatus) -> None:
+                pass
+
+        events = asyncio.run(
+            coordinator.run_fan_out(
+                effect=effect,
+                executor=FakeAgentExecutor(
+                    {"unit-b": FakeRun(outputs=["ok"], exit_code=0, duration_ms=1)}
+                ),
+                display=_FakeDisplay(),
+            )
+        )
+
+        # Deny-list: no event class or string repr may contain merge/worktree/branch markers.
+        denied_tokens = ("Merge", "Worktree", "BranchCreated", "BranchMerged", "Rebase")
+        violations = [
+            repr(ev)
+            for ev in events
+            if any(token in type(ev).__name__ or token in repr(ev) for token in denied_tokens)
+        ]
+        assert violations == [], (
+            f"Fan-out event stream must contain no merge/worktree/branch events: {violations}"
+        )
+
+
+class TestConcurrentWorkerArtifactIsolation:
+    def test_concurrent_workers_write_to_separate_artifact_dirs(self, tmp_path: Path) -> None:
+        """Each worker gets its own artifact directory;
+        writing to one never appears in the other."""
+        unit_a = _make_unit("unit-A")
+        unit_b = _make_unit("unit-B", ["src/b"])
+        mock_executor = MagicMock()
+        ctx = _make_same_workspace_context(tmp_path, executor_command=None)
+
+        _, _, ns_a = _prepare_executor(unit_a, mock_executor, ctx)
+        _, _, ns_b = _prepare_executor(unit_b, mock_executor, ctx)
+
+        assert ns_a is not None
+        assert ns_b is not None
+
+        # Write distinct artifacts to each namespace.
+        artifact_a = ns_a / "artifacts" / "result.json"
+        artifact_b = ns_b / "artifacts" / "result.json"
+        artifact_a.write_text(json.dumps({"unit_id": "unit-A"}))
+        artifact_b.write_text(json.dumps({"unit_id": "unit-B"}))
+
+        # Each artifact decodes to its own unit_id.
+        assert json.loads(artifact_a.read_text())["unit_id"] == "unit-A"
+        assert json.loads(artifact_b.read_text())["unit_id"] == "unit-B"
+
+        # The two paths are distinct directories.
+        assert artifact_a.parent != artifact_b.parent
+
+        # unit-A's artifact does NOT appear in unit-B's directory.
+        assert not (ns_b / "artifacts" / "result.json").read_text().startswith(
+            '{"unit_id": "unit-A"}'
+        )

@@ -309,7 +309,10 @@ class TestDetermineEffect:
         bundle = _load_default_policy_bundle()
         state = PipelineState(
             phase="development",
-            work_units=(WorkUnit(unit_id="unit-a", description="A"),),
+            work_units=(
+                WorkUnit(unit_id="unit-a", description="A"),
+                WorkUnit(unit_id="unit-b", description="B"),
+            ),
         )
         config = _config_with_agents(
             agent_chains={"developer": ["claude"]},
@@ -319,7 +322,24 @@ class TestDetermineEffect:
         effect = runner_module._determine_effect_from_policy(state, bundle, config=config)
 
         assert isinstance(effect, FanOutDevelopmentEffect)
-        assert effect.work_units[0].unit_id == "unit-a"
+        assert {u.unit_id for u in effect.work_units} == {"unit-a", "unit-b"}
+
+    def test_development_phase_with_single_work_unit_uses_invoke_agent_effect(self) -> None:
+        """Single work unit must not trigger fan-out — fan-out requires >=2 units."""
+        bundle = _load_default_policy_bundle()
+        state = PipelineState(
+            phase="development",
+            work_units=(WorkUnit(unit_id="unit-a", description="A"),),
+        )
+        config = _config_with_agents(
+            agent_chains={"developer": ["claude"]},
+            agent_drains={"development": "developer"},
+        )
+
+        effect = runner_module._determine_effect_from_policy(state, bundle, config=config)
+
+        assert isinstance(effect, InvokeAgentEffect)
+        assert effect.phase == "development"
 
     def test_commit_phase_with_requires_commit_uses_commit_effect(self, tmp_path: Path) -> None:
         bundle = _load_default_policy_bundle()

@@ -753,7 +753,6 @@ def _handle_worker_completed(
     updated = state.worker_states[event.unit_id].copy_with(
         status=WorkerStatus.SUCCEEDED,
         exit_code=event.exit_code,
-        commit_sha=event.commit_sha,
         finished_at=datetime.now(UTC),
     )
     return state.copy_with(worker_states={**state.worker_states, event.unit_id: updated}), []
@@ -778,10 +777,21 @@ def _handle_all_workers_complete(
     state: PipelineState,
     policy: PipelinePolicy | None,
 ) -> tuple[PipelineState, list[Effect]]:
-    if not state.worker_states or any(
-        ws.status != WorkerStatus.SUCCEEDED for ws in state.worker_states.values()
-    ):
+    if not state.worker_states:
         return state, []
+
+    failed_unit_ids = sorted(
+        uid
+        for uid, ws in state.worker_states.items()
+        if ws.status in (WorkerStatus.FAILED, WorkerStatus.CANCELLED)
+    )
+    if failed_unit_ids:
+        reason = f"Parallel fan-out had failed workers: {', '.join(failed_unit_ids)}"
+        return _enter_failed_recovery(state, reason)
+
+    if any(ws.status != WorkerStatus.SUCCEEDED for ws in state.worker_states.values()):
+        return state, []
+
     if policy is not None:
         try:
             next_phase = resolve_next_phase(state.phase, "success", policy)
