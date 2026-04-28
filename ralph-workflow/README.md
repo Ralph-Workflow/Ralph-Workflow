@@ -56,16 +56,15 @@ ralph
 
 ### First-run configuration
 
-On first run, Ralph Workflow auto-creates seven config files from bundled, fully-commented templates:
+On first run, Ralph Workflow auto-creates the standard project and user config files from bundled, fully-commented templates:
 
 **User-global (created once, reused across all projects):**
 - `~/.config/ralph-workflow.toml` — main Ralph Workflow configuration
 - `~/.config/ralph-workflow-mcp.toml` — MCP servers, web search, and web visit configuration
 
 **Project-local (created by `ralph --init`, lives in your project directory):**
-- `.agent/ralph-workflow.toml` — project-local main config override
+- `.agent/ralph-workflow.toml` — project-local main config override, including agent chains and drain bindings
 - `.agent/mcp.toml` — project-local MCP override
-- `.agent/agents.toml` — agent chain definitions and drain bindings
 - `.agent/pipeline.toml` — phase graph and orchestration policy
 - `.agent/artifacts.toml` — MCP artifact contracts per drain
 
@@ -74,7 +73,7 @@ CLI flags → project-local (`.agent/`) → user-global (`~/.config/`) → bundl
 
 These ship with sane defaults — you only need to edit them if you want to override something specific.
 
-**Ralph Workflow init:** Run `ralph --init` to seed all project-local files.
+**Ralph Workflow init:** Run `ralph --init` to seed the standard project-local files.
 
 **Regeneration:** To reset all configs from the bundled defaults (existing files are backed up to `<name>.bak`), run:
 

@@ -18,6 +18,4 @@ IMPORTANT: The previous attempt ended without producing the required artifact be
 
 {{ render_payload_section('PLAN', PLAN, PLAN_PATH) }}
 
-{{ render_payload_section('ISSUES', ISSUES, ISSUES_PATH) }}
-
-{{ render_payload_section('ANALYSIS FEEDBACK', ANALYSIS_FEEDBACK, ANALYSIS_FEEDBACK_PATH) }}
+{% include 'shared/_analysis_context.j2' %}

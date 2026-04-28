@@ -20,7 +20,7 @@ from ralph.workspace.scope import WorkspaceScope
 if TYPE_CHECKING:
     import pytest
 
-_EXPECTED_LOCAL_CONFIG_COUNT = 5
+_EXPECTED_LOCAL_CONFIG_COUNT = 4
 _EXPECTED_REGENERATE_COUNT = 7
 _DEFAULT_DEVELOPER_ITERS = 5
 
@@ -76,7 +76,6 @@ def test_ensure_local_configs_creates_all_five(tmp_path: Path) -> None:
     expected_files = (
         "ralph-workflow.toml",
         "mcp.toml",
-        "agents.toml",
         "pipeline.toml",
         "artifacts.toml",
     )
@@ -93,16 +92,17 @@ def test_ensure_local_configs_creates_all_five(tmp_path: Path) -> None:
         assert fname in result_names, f"{fname} should be in results"
 
 
-def test_ensure_local_configs_includes_policy_files(tmp_path: Path) -> None:
-    """Verify the three policy TOMLs are in the result list."""
+def test_ensure_local_configs_includes_runtime_policy_files(tmp_path: Path) -> None:
+    """Verify the default runtime policy TOMLs are in the result list."""
     agent_dir = tmp_path / ".agent"
     results = ensure_local_configs(agent_dir)
 
-    policy_files = {"agents.toml", "pipeline.toml", "artifacts.toml"}
+    policy_files = {"pipeline.toml", "artifacts.toml"}
     result_names = {r.path.name for r in results}
     assert policy_files.issubset(result_names), (
         f"Policy files {policy_files} not all in results {result_names}"
     )
+    assert "agents.toml" not in result_names
 
 
 def test_regenerate_all_force_creates_backups(tmp_path: Path) -> None:

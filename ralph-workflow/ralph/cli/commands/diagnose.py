@@ -171,10 +171,10 @@ def _run_preflight_validation(
         if config_path is not None:
             policy_dir = config_path.parent
         else:
-            policy_dir = workspace_scope.local_config_path
+            policy_dir = workspace_scope.root / ".agent"
 
         # Load PolicyBundle for validation
-        bundle = load_policy(policy_dir)
+        bundle = load_policy(policy_dir, config=config)
 
         # Run validators
         validate_agent_chains_satisfiable(bundle, registry)

@@ -28,7 +28,7 @@ ralph --init
 This creates:
 
 - `PROMPT.md` — starter task template in the project root
-- `.agent/` — local config files (`ralph-workflow.toml`, `mcp.toml`, `agents.toml`,
+- `.agent/` — local config files (`ralph-workflow.toml`, `mcp.toml`,
   `pipeline.toml`, `artifacts.toml`)
 - `~/.config/ralph-workflow.toml` and `~/.config/ralph-workflow-mcp.toml` — user-global
   defaults (created once; shared across projects)

@@ -22,7 +22,6 @@ ORIGINAL REQUEST:
 IMPLEMENTATION PLAN:
 {{ render_payload_section('IMPLEMENTATION PLAN', PLAN|default('(no plan available)'), PLAN_PATH) }}
 
-ANALYSIS FEEDBACK:
-{{ render_payload_section('ANALYSIS FEEDBACK', ANALYSIS_FEEDBACK|default(''), ANALYSIS_FEEDBACK_PATH) }}
+{% include 'shared/_analysis_context.j2' %}
 
 {% include 'shared/_developer_iteration_guidance.j2' %}

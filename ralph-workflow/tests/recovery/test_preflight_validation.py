@@ -7,7 +7,18 @@ from pathlib import Path
 import pytest
 
 from ralph.cli.commands import run as run_module
+from ralph.config.models import UnifiedConfig
 from ralph.pipeline.state import PipelineState
+from ralph.policy.models import (
+    AgentChainConfig,
+    AgentDrainConfig,
+    AgentsPolicy,
+    ArtifactsPolicy,
+    PhaseDefinition,
+    PhaseTransition,
+    PipelinePolicy,
+    PolicyBundle,
+)
 from ralph.policy.validation import (
     CheckpointPolicyMismatchError,
     PolicyValidationError,
@@ -15,6 +26,7 @@ from ralph.policy.validation import (
     validate_checkpoint_against_policy,
     validate_recovery_config,
 )
+from ralph.workspace.scope import WorkspaceScope
 
 
 class _FakeAgentRegistry:
@@ -33,17 +45,6 @@ class _FakeChainConfig:
         self.max_retries = max_retries
 
 
-class _FakeAgentsPolicy:
-    def __init__(self, chains: dict[str, _FakeChainConfig], drains: dict[str, object]) -> None:
-        self.agent_chains = chains
-        self.agent_drains = drains
-
-
-class _FakePipelinePolicy:
-    def __init__(self, phases: dict[str, object]) -> None:
-        self.phases = phases
-
-
 class _FakeBundle:
     def __init__(
         self,
@@ -51,8 +52,8 @@ class _FakeBundle:
         drains: dict[str, object],
         phases: dict[str, object],
     ) -> None:
-        self.agents = _FakeAgentsPolicy(chains, drains)
-        self.pipeline = _FakePipelinePolicy(phases)
+        self.agents = type("_Agents", (), {"agent_chains": chains, "agent_drains": drains})()
+        self.pipeline = type("_Pipeline", (), {"phases": phases})()
 
 
 def test_validate_agent_chains_satisfiable_passes_with_known_agents() -> None:
@@ -154,53 +155,79 @@ def test_validation_error_message_is_actionable() -> None:
 
 _EXIT_PREFLIGHT = 2
 
+
+def _build_policy_bundle(
+    *,
+    chains: dict[str, list[str]],
+    drains: dict[str, str],
+    max_retries: int = 3,
+    phases: dict[str, str] | None = None,
+) -> PolicyBundle:
+    phase_map = phases or {"development": "development", "complete": "complete"}
+    return PolicyBundle(
+        agents=AgentsPolicy(
+            agent_chains={
+                name: AgentChainConfig(
+                    agents=agents,
+                    max_retries=max_retries,
+                    retry_delay_ms=0,
+                )
+                for name, agents in chains.items()
+            },
+            agent_drains={
+                drain: AgentDrainConfig(chain=chain)
+                for drain, chain in drains.items()
+            },
+        ),
+        pipeline=PipelinePolicy(
+            phases={
+                phase: PhaseDefinition(
+                    drain=drain,
+                    transitions=PhaseTransition(
+                        on_success="complete",
+                        on_loopback="complete" if phase == "complete" else None,
+                    ),
+                )
+                for phase, drain in phase_map.items()
+            },
+            entry_phase=next(iter(phase_map)),
+            terminal_phase="complete",
+        ),
+        artifacts=ArtifactsPolicy(artifacts={}),
+    )
+
+
+def _fail_if_runner_reached(*args: object, **kwargs: object) -> int:
+    pytest.fail("preflight test reached the real pipeline runner")
+
+
 def test_run_pipeline_returns_2_on_unknown_agent_in_chain(
     tmp_path: Path,
 ) -> None:
-    """run_pipeline returns 2 when an agent chain references an unknown agent.
+    """run_pipeline returns 2 when the main config references an unknown agent.
 
-    This verifies the preflight validation is wired into the run command path and
-    stops before pipeline execution when agents.toml references an unregistered
-    agent.
+    This keeps the assertion at the command boundary while using fast fakes so
+    the test cannot fall through into a real pipeline run.
     """
     workspace = Path(tmp_path)
+    (workspace / "PROMPT.md").write_text("Test prompt\n")
+    (workspace / ".agent").mkdir()
+    scope = WorkspaceScope(workspace)
 
-    # Create required PROMPT.md
-    prompt = workspace / "PROMPT.md"
-    prompt.write_text("Test prompt\n")
-
-    # Create .agent directory with agents.toml referencing unknown agent
-    agent_dir = workspace / ".agent"
-    agent_dir.mkdir()
-
-    agents_toml = agent_dir / "agents.toml"
-    agents_toml.write_text(
-        '[agent_chains.development]\n'
-        'agents = ["nonexistent-agent"]\n'
-        'max_retries = 3\n'
-        '\n'
-        '[agent_drains.development]\n'
-        'chain = "development"\n'
+    config = UnifiedConfig(
+        agent_chains={"development": ["nonexistent-agent"]},
+        agent_drains={"development": "development"},
+    )
+    bundle = _build_policy_bundle(
+        chains={"development": ["nonexistent-agent"]},
+        drains={"development": "development"},
     )
 
-    pipeline_toml = agent_dir / "pipeline.toml"
-    pipeline_toml.write_text(
-        'entry_phase = "development"\n'
-        'terminal_phase = "complete"\n'
-        '\n'
-        '[phases.development]\n'
-        'drain = "development"\n'
-        'transitions.on_success = "complete"\n'
-        '\n'
-        '[phases.complete]\n'
-        'drain = "complete"\n'
-        'transitions.on_success = "complete"\n'
-        'transitions.on_loopback = "complete"\n'
-    )
-
-    # Invoke CLI from the workspace so policy preflight loads .agent/*
     with pytest.MonkeyPatch().context() as mp:
-        mp.chdir(workspace)
+        mp.setattr(run_module, "resolve_workspace_scope", lambda: scope)
+        mp.setattr(run_module, "load_config", lambda *args, **kwargs: config)
+        mp.setattr(run_module, "load_policy", lambda *args, **kwargs: bundle)
+        mp.setattr(run_module, "_run_func", _fail_if_runner_reached)
         assert run_module.run_pipeline() == _EXIT_PREFLIGHT
 
 
@@ -268,42 +295,28 @@ def test_run_pipeline_returns_2_on_checkpoint_phase_mismatch(
 def test_run_pipeline_returns_2_on_negative_max_retries(
     tmp_path: Path,
 ) -> None:
-    """run_pipeline returns 2 when max_retries is negative in agents.toml."""
+    """run_pipeline returns 2 when recovery policy is invalid."""
     workspace = Path(tmp_path)
+    (workspace / "PROMPT.md").write_text("Test prompt\n")
+    (workspace / ".agent").mkdir()
+    scope = WorkspaceScope(workspace)
 
-    # Create required PROMPT.md
-    prompt = workspace / "PROMPT.md"
-    prompt.write_text("Test prompt\n")
-
-    # Create .agent directory with broken agents.toml
-    agent_dir = workspace / ".agent"
-    agent_dir.mkdir()
-
-    agents_toml = agent_dir / "agents.toml"
-    agents_toml.write_text(
-        '[agent_chains.development]\n'
-        'agents = ["claude"]\n'
-        'max_retries = -5\n'
-        '\n'
-        '[agent_drains.development]\n'
-        'chain = "development"\n'
-    )
-
-    pipeline_toml = agent_dir / "pipeline.toml"
-    pipeline_toml.write_text(
-        'entry_phase = "development"\n'
-        'terminal_phase = "complete"\n'
-        '\n'
-        '[phases.development]\n'
-        'drain = "development"\n'
-        'transitions.on_success = "complete"\n'
-        '\n'
-        '[phases.complete]\n'
-        'drain = "complete"\n'
-        'transitions.on_success = "complete"\n'
-        'transitions.on_loopback = "complete"\n'
+    config = UnifiedConfig()
+    bundle = _build_policy_bundle(
+        chains={"development": ["claude"]},
+        drains={"development": "development"},
     )
 
     with pytest.MonkeyPatch().context() as mp:
-        mp.chdir(workspace)
+        mp.setattr(run_module, "resolve_workspace_scope", lambda: scope)
+        mp.setattr(run_module, "load_config", lambda *args, **kwargs: config)
+        mp.setattr(run_module, "load_policy", lambda *args, **kwargs: bundle)
+        mp.setattr(
+            run_module,
+            "validate_recovery_config",
+            lambda loaded_bundle: (_ for _ in ()).throw(
+                PolicyValidationError("max_retries must be >= 0")
+            ),
+        )
+        mp.setattr(run_module, "_run_func", _fail_if_runner_reached)
         assert run_module.run_pipeline() == _EXIT_PREFLIGHT

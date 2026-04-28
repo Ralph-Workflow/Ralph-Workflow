@@ -1,13 +1,12 @@
 # Bundled default MCP configuration for Ralph Workflow.
 #
-# Ralph Workflow manages seven config files in total:
+# Ralph Workflow manages a standard six-file first-run config set:
 #   1. ~/.config/ralph-workflow.toml          (user-global main config)
 #   2. ~/.config/ralph-workflow-mcp.toml      (user-global MCP config, this file)
 #   3. .agent/ralph-workflow.toml             (project-local override)
 #   4. .agent/mcp.toml                        (project-local MCP override)
-#   5. .agent/agents.toml                     (project-local agent chains)
-#   6. .agent/pipeline.toml                   (project-local pipeline phases)
-#   7. .agent/artifacts.toml                  (project-local artifact contracts)
+#   5. .agent/pipeline.toml                   (project-local pipeline phases)
+#   6. .agent/artifacts.toml                  (project-local artifact contracts)
 #
 # OVERRIDE PRECEDENCE (highest to lowest):
 #   CLI flags > project-local (.agent/) > user-global (~/.config/) > bundled defaults

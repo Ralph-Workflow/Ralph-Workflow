@@ -165,7 +165,6 @@ def test_emit_first_run_welcome_with_local_and_global_files(
         BootstrapResult(Path("/home/user/.config/ralph-workflow-mcp.toml"), "created", None),
         BootstrapResult(Path(str(tmp_path) + "/.agent/ralph-workflow.toml"), "created", None),
         BootstrapResult(Path(str(tmp_path) + "/.agent/mcp.toml"), "created", None),
-        BootstrapResult(Path(str(tmp_path) + "/.agent/agents.toml"), "created", None),
         BootstrapResult(Path(str(tmp_path) + "/.agent/pipeline.toml"), "created", None),
         BootstrapResult(Path(str(tmp_path) + "/.agent/artifacts.toml"), "created", None),
     ]
@@ -177,7 +176,7 @@ def test_emit_first_run_welcome_with_local_and_global_files(
     # All file names should appear
     assert "ralph-workflow.toml" in output
     assert "ralph-workflow-mcp.toml" in output
-    assert "agents.toml" in output
+    assert "agents.toml" not in output
     assert "pipeline.toml" in output
     assert "artifacts.toml" in output
 
@@ -462,7 +461,7 @@ def test_emit_first_run_welcome_agents_section_before_config_files(
     buf, rich_console = _make_console()
     results = [
         BootstrapResult(Path("/home/user/.config/ralph-workflow.toml"), "created", None),
-        BootstrapResult(Path(str(tmp_path) + "/.agent/agents.toml"), "created", None),
+        BootstrapResult(Path(str(tmp_path) + "/.agent/pipeline.toml"), "created", None),
     ]
     registry = _FakeRegistry({"claude": _FakeAgent("claude", "claude")})
 

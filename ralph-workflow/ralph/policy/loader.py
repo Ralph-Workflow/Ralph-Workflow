@@ -12,13 +12,15 @@ from __future__ import annotations
 import tomllib
 from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
 from loguru import logger
 from pydantic import ValidationError
 
 import ralph.policy
 from ralph.policy.models import (
+    AgentChainConfig,
+    AgentDrainConfig,
     AgentsPolicy,
     ArtifactsPolicy,
     PipelinePolicy,
@@ -30,6 +32,10 @@ from ralph.policy.validation import (
 from ralph.policy.validation import (
     validate_drain_contracts,
 )
+
+if TYPE_CHECKING:
+    from ralph.config.models import UnifiedConfig
+    from ralph.policy.models import DrainName
 
 
 class PolicyValidationError(Exception):
@@ -194,7 +200,64 @@ def _validate_artifacts(data: dict[str, object]) -> ArtifactsPolicy:
         ) from exc
 
 
-def load_policy(config_dir: Path) -> PolicyBundle:
+def build_agents_policy_from_config(config: UnifiedConfig) -> AgentsPolicy:
+    """Synthesize the active agents policy from the main Ralph config.
+
+    User-facing chain order and drain routing live in ``ralph-workflow.toml``.
+    This helper converts the flat ``UnifiedConfig`` representation into the richer
+    ``AgentsPolicy`` model used by the runtime.
+    """
+    retry_budget = config.general.max_retries
+    retry_delay_ms = config.general.retry_delay_ms
+    chain_configs = {
+        name: AgentChainConfig(
+            agents=list(agents),
+            max_retries=retry_budget,
+            retry_delay_ms=retry_delay_ms,
+        )
+        for name, agents in config.agent_chains.items()
+    }
+
+    explicit_runtime_drains = {
+        drain: AgentDrainConfig(chain=chain)
+        for drain, chain in config.agent_drains.items()
+        if drain in {
+            "planning",
+            "development",
+            "development_analysis",
+            "development_commit",
+            "review",
+            "review_analysis",
+            "review_commit",
+            "fix",
+            "complete",
+        }
+    }
+
+    inferred_sibling_drains: dict[str, str] = {
+        "development_analysis": "analysis",
+        "review_analysis": "analysis",
+        "development_commit": "commit",
+        "review_commit": "commit",
+    }
+    for drain_name, source_drain in inferred_sibling_drains.items():
+        if drain_name in explicit_runtime_drains:
+            continue
+        source_chain = config.agent_drains.get(source_drain)
+        if not isinstance(source_chain, str):
+            continue
+        explicit_runtime_drains[drain_name] = AgentDrainConfig(chain=source_chain)
+
+    return AgentsPolicy(
+        agent_chains=chain_configs,
+        agent_drains={
+            cast("DrainName", drain): binding
+            for drain, binding in explicit_runtime_drains.items()
+        },
+    )
+
+
+def load_policy(config_dir: Path, config: UnifiedConfig | None = None) -> PolicyBundle:
     """Load all three policy TOML files and return a validated PolicyBundle.
 
     Files are loaded from ``config_dir`` (the .agent/ directory). Any absent
@@ -213,7 +276,9 @@ def load_policy(config_dir: Path) -> PolicyBundle:
     pipeline_path = config_dir / "pipeline.toml"
     artifacts_path = config_dir / "artifacts.toml"
 
-    agents_data = _load_toml(agents_path)
+    agents_data: dict[str, object] = {}
+    if config is None:
+        agents_data = _load_toml(agents_path)
     pipeline_data = _load_toml(pipeline_path)
     artifacts_data = _load_toml(artifacts_path)
 
@@ -221,15 +286,16 @@ def load_policy(config_dir: Path) -> PolicyBundle:
     if not pipeline_data:
         pipeline_data = _load_toml(_default_dir() / "pipeline.toml")
 
-    # If agents.toml is absent, use defaults
-    if not agents_data:
-        agents_data = _load_toml(_default_dir() / "agents.toml")
-
     # If artifacts.toml is absent, use defaults
     if not artifacts_data:
         artifacts_data = _load_toml(_default_dir() / "artifacts.toml")
 
-    agents_policy = _validate_agents(agents_data)
+    agents_policy = build_agents_policy_from_config(config) if config is not None else None
+    if agents_policy is None:
+        # Backward-compatibility path for direct policy loading without a main config.
+        if not agents_data:
+            agents_data = _load_toml(_default_dir() / "agents.toml")
+        agents_policy = _validate_agents(agents_data)
     pipeline_policy = _validate_pipeline(pipeline_data)
     artifacts_policy = _validate_artifacts(artifacts_data)
 
@@ -264,7 +330,7 @@ def _default_dir() -> Path:
     return Path(ralph.policy.__file__).parent / "defaults"
 
 
-def load_policy_or_die(config_dir: Path) -> PolicyBundle:
+def load_policy_or_die(config_dir: Path, config: UnifiedConfig | None = None) -> PolicyBundle:
     """Load policy, exiting with a user-friendly message on failure.
 
     Args:
@@ -274,7 +340,9 @@ def load_policy_or_die(config_dir: Path) -> PolicyBundle:
         Validated PolicyBundle.
     """
     try:
-        return load_policy(config_dir)
+        if config is None:
+            return load_policy(config_dir)
+        return load_policy(config_dir, config=config)
     except PolicyValidationError as exc:
         logger.error("Policy validation failed: {}", exc.message)
         if exc.source:

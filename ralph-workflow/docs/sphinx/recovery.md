@@ -57,9 +57,9 @@ Configure it in `ralph-workflow.toml` (or `.agent/ralph-workflow.toml`):
 max_cycles = 3   # default: 3
 ```
 
-Per-chain `max_retries` in `.agent/agents.toml` controls how many times a single agent
-is retried before the chain falls over to the next agent. Only after all agents in a chain
-are exhausted does the recovery cycle count increment.
+Per-chain retry behavior comes from the active agent policy synthesized from
+`ralph-workflow.toml`. Only after all agents in a chain are exhausted does the
+recovery cycle count increment.
 
 ## Agent chain fallover
 
@@ -94,17 +94,19 @@ Failure events are emitted as structured log entries with `recovery=true`:
 
 ## Configuration knobs
 
-Agent chain retry budget and backoff are configured in `.agent/agents.toml`:
+Agent chain retry budget and backoff are normally configured in `ralph-workflow.toml`:
 
 ```toml
-# .agent/agents.toml
-[agent_chains.development]
-agents = ["claude", "opencode"]
-max_retries = 3          # per-agent retry budget
-retry_delay_ms = 1000    # base delay before retry (exponential backoff, capped at 30s)
+# .agent/ralph-workflow.toml
+[general]
+max_retries = 3
+retry_delay_ms = 1000
+
+[agent_chains]
+development = ["claude", "opencode"]
 ```
 
-The maximum fallback cycles through a drain is configured in `ralph-workflow.toml`:
+The maximum fallback cycles through a drain is also configured in `ralph-workflow.toml`:
 
 ```toml
 # ralph-workflow.toml or .agent/ralph-workflow.toml

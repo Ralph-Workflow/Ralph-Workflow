@@ -55,6 +55,7 @@ def test_legacy_prompt_families_have_file_backed_jinja_templates() -> None:
 
 def test_legacy_shared_partials_have_one_jinja_file_each() -> None:
     expected_partials = {
+        "_analysis_context.jinja",
         "_context_section.jinja",
         "_critical_header.jinja",
         "_developer_iteration_guidance.jinja",
@@ -152,6 +153,17 @@ def test_analysis_templates_require_exact_artifact_types_and_detailed_fix_sectio
     assert ANALYSIS_OMISSION_GUIDANCE in review_analysis
     assert ANALYSIS_NO_FIRST_PROBLEM_GUIDANCE in development_analysis
     assert ANALYSIS_NO_FIRST_PROBLEM_GUIDANCE in review_analysis
+
+
+def test_fix_and_developer_iteration_templates_use_analysis_context_partial() -> None:
+    fix_template = (TEMPLATES_ROOT / "fix_mode.jinja").read_text(encoding="utf-8")
+    dev_template = (TEMPLATES_ROOT / "developer_iteration.jinja").read_text(encoding="utf-8")
+
+    assert "shared/_analysis_context" in fix_template
+    assert "shared/_analysis_context" in dev_template
+    assert "render_payload_section('ISSUES'" not in fix_template
+    assert "render_payload_section('ANALYSIS FEEDBACK'" not in fix_template
+    assert "render_payload_section('ANALYSIS FEEDBACK'" not in dev_template
 
 
 def test_review_and_fix_templates_define_explicit_review_handoff_contracts() -> None:
