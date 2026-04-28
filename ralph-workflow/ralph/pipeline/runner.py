@@ -31,9 +31,6 @@ from ralph.agents.chain import ChainManager
 from ralph.agents.parsers import AgentOutputLine, AgentParser, get_parser
 from ralph.agents.registry import AgentRegistry
 from ralph.config.enums import (
-    PHASE_COMPLETE,
-    PHASE_DEVELOPMENT,
-    PHASE_FAILED,
     PHASE_PLANNING,
     Verbosity,
 )
@@ -551,9 +548,9 @@ def _reset_phase_chain_for_recovery(
     state: PipelineState,
     target_phase: str,
 ) -> PipelineState:
-    """Reset the target phase chain when re-entering after PHASE_FAILED.
+    """Reset the target phase chain when re-entering after the terminal failure route.
 
-    Recovery from PHASE_FAILED should restart the configured agent chain from its
+    Recovery from the failure route should restart the configured agent chain from its
     first agent. Without this reset, a recovered phase can resume on the last
     exhausted fallback agent and skip earlier agents on subsequent cycles.
     """
@@ -1059,7 +1056,7 @@ def run(  # noqa: PLR0912, PLR0913, PLR0915
                     cast("_PhaseAwareDisplay", active_display).begin_phase(state.phase)
             _notify_pipeline_subscriber(effective_pipeline_subscriber, state)
             try:
-                while state.phase != PHASE_COMPLETE:
+                while state.phase != policy_bundle.pipeline.terminal_phase:
                     if connectivity_monitor is not None:
                         state = _apply_connectivity_check(state, connectivity_monitor)
                     step_result = _run_pipeline_step(
@@ -1102,7 +1099,7 @@ def run(  # noqa: PLR0912, PLR0913, PLR0915
                 )
                 return 130
 
-            if state.phase == PHASE_COMPLETE:
+            if state.phase == policy_bundle.pipeline.terminal_phase:
                 active_display.emit("run", "[green]Pipeline completed successfully.[/green]")
                 exit_code = 0
             else:
@@ -1589,9 +1586,10 @@ def _handle_inline_effect(  # noqa: PLR0913
     if isinstance(effect, PreparePromptEffect):
         _materialize_prepared_prompt(effect, pipeline_policy, workspace_scope)
         prepared_state = state
-        if state.phase == PHASE_FAILED:
+        if state.phase == pipeline_policy.recovery.failed_route:
             prepared_state = _reset_phase_chain_for_recovery(state, effect.phase)
-            if effect.phase == PHASE_DEVELOPMENT:
+            target_phase_def = pipeline_policy.phases.get(effect.phase)
+            if target_phase_def is not None and target_phase_def.role == "execution":
                 clear_cycle_baseline(workspace_scope.root)
                 _write_start_commit_if_absent(workspace_scope.root)
         updated_state = prepared_state.copy_with(
@@ -1615,7 +1613,7 @@ def _handle_inline_effect(  # noqa: PLR0913
         )
         current_epoch = state.recovery_epoch if isinstance(state.recovery_epoch, int) else 0
         recovered_state = state.copy_with(
-            phase=PHASE_FAILED,
+            phase=pipeline_policy.recovery.failed_route,
             previous_phase=state.phase,
             last_error=effect.reason,
             recovery_epoch=current_epoch + 1,
@@ -1771,13 +1769,18 @@ def _call_determine_effect_from_policy(
     return determine_effect(state, policy_bundle)
 
 
-def _recovery_prepare_effect(state: PipelineState) -> PreparePromptEffect:
+def _recovery_prepare_effect(
+    state: PipelineState, pipeline_policy: PipelinePolicy
+) -> PreparePromptEffect:
     previous_phase = state.previous_phase if isinstance(state.previous_phase, str) else None
+    failed_route = pipeline_policy.recovery.failed_route
     policy_entry_phase = (
-        state.policy_entry_phase if isinstance(state.policy_entry_phase, str) else PHASE_PLANNING
+        state.policy_entry_phase
+        if isinstance(state.policy_entry_phase, str)
+        else pipeline_policy.entry_phase
     )
     target_phase = previous_phase or policy_entry_phase
-    if target_phase == PHASE_FAILED:
+    if target_phase == failed_route:
         target_phase = policy_entry_phase
     drain = state.current_drain if isinstance(state.current_drain, str) else None
     return PreparePromptEffect(
@@ -1787,11 +1790,11 @@ def _recovery_prepare_effect(state: PipelineState) -> PreparePromptEffect:
     )
 
 
-def _terminal_phase_effect(state: PipelineState) -> Effect | None:
-    if state.phase == PHASE_COMPLETE:
+def _terminal_phase_effect(state: PipelineState, pipeline_policy: PipelinePolicy) -> Effect | None:
+    if state.phase == pipeline_policy.terminal_phase:
         return ExitSuccessEffect()
-    if state.phase == PHASE_FAILED:
-        return _recovery_prepare_effect(state)
+    if state.phase == pipeline_policy.recovery.failed_route:
+        return _recovery_prepare_effect(state, pipeline_policy)
     return None
 
 
@@ -1802,7 +1805,7 @@ def _determine_effect_from_policy(  # noqa: PLR0911
     *,
     config: UnifiedConfig | None = None,
 ) -> Effect:
-    terminal = _terminal_phase_effect(state)
+    terminal = _terminal_phase_effect(state, policy_bundle.pipeline)
     if terminal is not None:
         return terminal
 
@@ -1839,7 +1842,7 @@ def _determine_effect_from_policy(  # noqa: PLR0911
                         f"(offending units: {offending})"
                     )
                 )
-        elif state.phase == PHASE_DEVELOPMENT:
+        elif phase_def.role == "execution":
             agent_name = _agent_name_for_phase_from_policy(state, policy_bundle, config=config)
             if agent_name is None:
                 return ExitFailureEffect(reason=f"No agent configured for phase '{state.phase}'")

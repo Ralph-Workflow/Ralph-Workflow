@@ -1021,7 +1021,7 @@ class TestAnalysisDecisionDispatch:
     def test_dev_analysis_loopback_routing_error_preserves_iteration_bookkeeping(self) -> None:
         """Routing errors after capped dev loopback should keep the clamped counter."""
         policy = MagicMock()
-        policy.recovery.terminal_recovery_route = PHASE_FAILED
+        policy.recovery.failed_route = PHASE_FAILED
         phase_def = MagicMock()
         phase_def.requires_commit = False
         phase_def.embeds_analysis = False
@@ -1049,7 +1049,7 @@ class TestAnalysisDecisionDispatch:
     def test_review_analysis_loopback_routing_error_preserves_iteration_bookkeeping(self) -> None:
         """Routing errors after capped review loopback should keep the clamped counter."""
         policy = MagicMock()
-        policy.recovery.terminal_recovery_route = PHASE_FAILED
+        policy.recovery.failed_route = PHASE_FAILED
         phase_def = MagicMock()
         phase_def.requires_commit = False
         phase_def.embeds_analysis = False
@@ -1093,7 +1093,7 @@ def test_routing_error_propagates_as_failure_not_silent(
 ) -> None:
     """All reducer handlers must propagate ValueError from routing as pipeline failure."""
     policy = MagicMock()
-    policy.recovery.terminal_recovery_route = PHASE_FAILED
+    policy.recovery.failed_route = PHASE_FAILED
     phase_def = MagicMock()
     phase_def.requires_commit = False
     phase_def.embeds_analysis = False

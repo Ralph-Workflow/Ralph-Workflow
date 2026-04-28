@@ -13,8 +13,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Literal
 
 from ralph.config.enums import (
-    PHASE_COMPLETE,
-    PHASE_FAILED,
+    PHASE_PLANNING,
     PipelinePhase,
 )
 from ralph.pipeline import handoffs as phase_handoffs
@@ -76,14 +75,18 @@ def determine_next_effect(
     Returns:
         The next Effect to execute.
     """
-    # Terminal states always produce exit effects
-    if state.phase == PHASE_COMPLETE:
+    terminal_phase = pipeline_policy.terminal_phase
+    failed_route = pipeline_policy.recovery.failed_route
+
+    # Terminal success state
+    if state.phase == terminal_phase:
         return ExitSuccessEffect()
 
-    if state.phase == PHASE_FAILED:
+    # Terminal failure state — recover by routing to the pre-failure phase
+    if state.phase == failed_route:
         target_phase = state.previous_phase or state.policy_entry_phase
-        if target_phase == PHASE_FAILED:
-            target_phase = state.policy_entry_phase
+        if target_phase == failed_route:
+            target_phase = state.policy_entry_phase or PHASE_PLANNING
         return PreparePromptEffect(
             phase=target_phase,
             iteration=state.iteration,
@@ -100,7 +103,7 @@ def determine_next_effect(
     chain = agents_policy.agent_chains[chain_name]
 
     # Routing based on phase type and state flags
-    return _derive_effect_for_phase(state, phase_def, chain, chain_name)
+    return _derive_effect_for_phase(state, phase_def, chain, chain_name, pipeline_policy)
 
 
 def _derive_effect_for_phase(
@@ -108,6 +111,7 @@ def _derive_effect_for_phase(
     phase_def: PhaseDefinition,
     chain: AgentChainConfig,
     chain_name: str,
+    pipeline_policy: PipelinePolicy,
 ) -> Effect:
     """Derive the next effect for a known phase.
 
@@ -116,6 +120,7 @@ def _derive_effect_for_phase(
         phase_def: Phase definition from pipeline policy.
         chain: Agent chain config for the current drain.
         chain_name: Name of the agent chain.
+        pipeline_policy: Loaded pipeline policy for terminal state resolution.
 
     Returns:
         Next Effect to execute.
@@ -124,7 +129,7 @@ def _derive_effect_for_phase(
 
     # skip_invocation phases route immediately to the next phase without invoking an agent
     if phase_def.skip_invocation:
-        return _route_transition(state, phase_def, "on_success")
+        return _route_transition(state, phase_def, "on_success", pipeline_policy)
 
     # Check if we need to invoke the agent or prepare the prompt first
     if not _is_agent_invoked_for_phase(state, phase_def):
@@ -187,6 +192,7 @@ def _route_transition(
     state: PipelineState,
     phase_def: PhaseDefinition,
     transition_key: TransitionKey,
+    pipeline_policy: PipelinePolicy,
 ) -> Effect:
     """Route to the phase specified by a transition.
 
@@ -194,6 +200,7 @@ def _route_transition(
         state: Current pipeline state.
         phase_def: Current phase definition.
         transition_key: Which transition to follow (on_success, on_failure, on_loopback).
+        pipeline_policy: Loaded pipeline policy for terminal state resolution.
 
     Returns:
         Effect for the target phase.
@@ -210,10 +217,13 @@ def _route_transition(
         # No transition defined — re-enter the same phase instead of exiting.
         return PreparePromptEffect(phase=state.phase, iteration=state.iteration)
 
-    if target == "failed":
+    terminal_phase = pipeline_policy.terminal_phase
+    failed_route = pipeline_policy.recovery.failed_route
+
+    if target == failed_route:
         return PreparePromptEffect(phase=state.phase, iteration=state.iteration)
 
-    if target == "complete":
+    if target == terminal_phase:
         return ExitSuccessEffect()
 
     # Return an effect that will advance to the target phase

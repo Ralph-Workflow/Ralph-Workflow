@@ -86,7 +86,9 @@ def _apply_runner_stubs(
     )
     monkeypatch.setattr(runner_module, "_write_start_commit_if_absent", lambda _: None)
     monkeypatch.setattr(runner_module, "_validate_custom_mcp_servers", lambda _: 0)
-    monkeypatch.setattr(runner_module, "load_policy_or_die", lambda _: MagicMock())
+    _mock_bundle = MagicMock()
+    _mock_bundle.pipeline.terminal_phase = PHASE_COMPLETE
+    monkeypatch.setattr(runner_module, "load_policy_or_die", lambda *a, **kw: _mock_bundle)
     monkeypatch.setattr(runner_module, "AgentRegistry", MagicMock())
     monkeypatch.setattr(
         runner_module, "_determine_effect_from_policy", _stub_determine_effect(effects)

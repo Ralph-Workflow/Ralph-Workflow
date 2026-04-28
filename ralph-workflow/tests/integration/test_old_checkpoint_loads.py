@@ -13,7 +13,7 @@ from ralph.pipeline.state import PipelineState
 def _make_policy_bundle(max_workers: int = 4) -> MagicMock:
     bundle = MagicMock()
     bundle.pipeline.phases = {
-        PHASE_DEVELOPMENT: MagicMock(requires_commit=False, drain="development"),
+        PHASE_DEVELOPMENT: MagicMock(requires_commit=False, drain="development", role="execution"),
     }
     bundle.pipeline.parallel_execution.max_parallel_workers = max_workers
     bundle.agents.agent_drains = {

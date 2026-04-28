@@ -146,8 +146,8 @@ def reduce(  # noqa: PLR0911
         event: Event to process.
         pipeline_policy: Pipeline policy for resolving transitions.
             Required for all routing decisions. Passing None causes routing
-            handlers to route to PHASE_FAILED rather than silently falling
-            back to hardcoded behavior.
+            handlers to route to the policy-declared failure route rather
+            than silently falling back to hardcoded behavior.
         recovery: Optional RecoveryController. When supplied, PhaseFailureEvents
             and worker failure events are delegated to it for classification-aware
             recovery (intelligent attribution, budget management). When None,
@@ -242,7 +242,7 @@ def _return_state(
 def _terminal_failure_route(policy: PipelinePolicy | None) -> str:
     """Resolve the terminal failure route from policy or fall back to the legacy constant."""
     if policy is not None:
-        return policy.recovery.terminal_recovery_route
+        return policy.recovery.failed_route
     return PHASE_FAILED
 
 

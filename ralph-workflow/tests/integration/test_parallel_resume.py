@@ -72,7 +72,7 @@ class _FakeDisplay:
 def _make_mock_policy_bundle() -> MagicMock:
     bundle = MagicMock()
     bundle.pipeline.phases = {
-        PHASE_DEVELOPMENT: MagicMock(requires_commit=False, drain="development"),
+        PHASE_DEVELOPMENT: MagicMock(requires_commit=False, drain="development", role="execution"),
     }
     bundle.pipeline.parallel_execution.max_parallel_workers = 8
     bundle.agents.agent_drains = {}

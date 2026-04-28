@@ -135,7 +135,7 @@ def validate_drain_contracts(bundle: PolicyBundle) -> None:
     required_drains: set[str] = {
         phase_def.drain
         for phase_name, phase_def in bundle.pipeline.phases.items()
-        if phase_name != bundle.pipeline.terminal_phase
+        if phase_name != bundle.pipeline.terminal_phase and phase_def.role != "terminal"
     }
 
     unbound_drains: list[str] = [
@@ -286,24 +286,57 @@ def _validate_commit_phase_loop_resets(
         )
 
 
-def _validate_recovery_terminal_recovery_route(
+def _validate_recovery_failed_route(
     policy: PipelinePolicy,
     errors: list[str],
 ) -> None:
-    """Validate that recovery.terminal_recovery_route is consistent with declared terminal phases.
+    """Validate that recovery.failed_route is consistent with declared terminal phases.
 
-    terminal_recovery_route must be 'failed', 'phase_failed', 'exit_failure', or reference
+    failed_route must be 'failed', 'phase_failed', 'exit_failure', or reference
     a phase that exists in the pipeline. These pseudo-phases are always valid.
     """
-    terminal_recovery_route = policy.recovery.terminal_recovery_route
-    if terminal_recovery_route in ("failed", "phase_failed", "exit_failure"):
+    failed_route = policy.recovery.failed_route
+    if failed_route in ("failed", "phase_failed", "exit_failure"):
         return
     # Must reference a known phase
-    if terminal_recovery_route not in policy.phases:
+    if failed_route not in policy.phases:
         errors.append(
-            f"recovery.terminal_recovery_route: '{terminal_recovery_route}' "
+            f"recovery.failed_route: '{failed_route}' "
             f"is not a known phase. Must be 'failed', 'phase_failed', 'exit_failure', or "
             f"a phase defined in pipeline.phases. Known phases: {sorted(policy.phases.keys())}"
+        )
+
+
+def _collect_reachable_phases(policy: PipelinePolicy) -> set[str]:
+    """BFS from entry_phase collecting all reachable phase names."""
+    phases = policy.phases
+    visited: set[str] = set()
+    queue: list[str] = [policy.entry_phase]
+    while queue:
+        current = queue.pop()
+        if current in visited or current not in phases:
+            continue
+        visited.add(current)
+        phase_def = phases[current]
+        t = phase_def.transitions
+        candidates: list[str | None] = [t.on_success, t.on_failure, t.on_loopback]
+        candidates.extend(phase_def.bypass_routes.values())
+        candidates.extend(d.target for d in (phase_def.decisions or {}).values())
+        queue.extend(t for t in candidates if t is not None and t in phases and t not in visited)
+    return visited
+
+
+def _validate_reachability(policy: PipelinePolicy, errors: list[str]) -> None:
+    """Validate that every declared phase is reachable from entry_phase."""
+    if policy.entry_phase not in policy.phases:
+        return
+    reachable = _collect_reachable_phases(policy)
+    unreachable = sorted(name for name in policy.phases if name not in reachable)
+    if unreachable:
+        errors.append(
+            f"Unreachable phases detected (not reachable from entry_phase "
+            f"'{policy.entry_phase}'): {unreachable}. "
+            f"Remove these phases or add transitions leading to them."
         )
 
 
@@ -324,7 +357,7 @@ def validate_policy_completeness(bundle: PolicyBundle) -> None:
     terminal_phase = policy.terminal_phase
 
     for phase_name, phase_def in policy.phases.items():
-        if phase_name == terminal_phase:
+        if phase_name == terminal_phase or phase_def.role == "terminal":
             _validate_terminal_phase(phase_name, phase_def, errors)
             continue
 
@@ -353,8 +386,11 @@ def validate_policy_completeness(bundle: PolicyBundle) -> None:
                 # Only flag commit_policy=None (missing entirely), not any specific value
                 _validate_commit_phase_loop_resets(phase_name, phase_def, policy, errors)
 
-    # Validate recovery.terminal_recovery_route consistency
-    _validate_recovery_terminal_recovery_route(policy, errors)
+    # Validate recovery.failed_route consistency
+    _validate_recovery_failed_route(policy, errors)
+
+    # Validate that every declared phase is reachable from the entry point
+    _validate_reachability(policy, errors)
 
     if errors:
         raise PolicyValidationError(

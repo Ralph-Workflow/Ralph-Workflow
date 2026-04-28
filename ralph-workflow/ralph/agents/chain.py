@@ -12,7 +12,7 @@ no default chains. If a drain is not bound, DrainNotBoundError is raised.
 from __future__ import annotations
 
 import time
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from loguru import logger
 
@@ -206,7 +206,7 @@ class ChainManager:
 
         agent_drains: dict[DrainName, AgentDrainConfig] = {}
         for drain, chain in config.agent_drains.items():
-            agent_drains[cast("DrainName", drain)] = AgentDrainConfig(chain=chain)
+            agent_drains[drain] = AgentDrainConfig(chain=chain)
 
         policy = AgentsPolicy(
             agent_chains=agent_chains,

@@ -27,7 +27,7 @@ def _make_work_unit(unit_id: str) -> WorkUnit:
 def _make_policy_bundle(max_workers: int = 4) -> MagicMock:
     bundle = MagicMock()
     bundle.pipeline.phases = {
-        PHASE_DEVELOPMENT: MagicMock(requires_commit=False, drain="development"),
+        PHASE_DEVELOPMENT: MagicMock(requires_commit=False, drain="development", role="execution"),
         PHASE_PLANNING: MagicMock(requires_commit=False, drain="planning"),
     }
     bundle.pipeline.parallel_execution.phase = PHASE_DEVELOPMENT

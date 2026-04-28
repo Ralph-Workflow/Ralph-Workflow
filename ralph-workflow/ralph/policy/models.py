@@ -21,17 +21,10 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 # Shared types
 # ---------------------------------------------------------------------------
 
-DrainName = Literal[
-    "planning",
-    "development",
-    "development_analysis",
-    "development_commit",
-    "review",
-    "review_analysis",
-    "review_commit",
-    "fix",
-    "complete",
-]
+# DrainName is a plain str — drain names are policy-declared and not constrained
+# to a fixed built-in set. Any string value is valid; cross-validation ensures
+# pipeline drains are bound in agents.agent_drains.
+DrainName = str
 
 PhaseRole = Literal[
     "execution",
@@ -98,7 +91,7 @@ class AgentsPolicy(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reason:
         default_factory=dict,
         description="Named agent chains available for binding",
     )
-    agent_drains: dict[DrainName, AgentDrainConfig] = Field(
+    agent_drains: dict[str, AgentDrainConfig] = Field(
         default_factory=dict,
         description="Drain-to-chain bindings",
     )
@@ -244,20 +237,51 @@ class RecoveryPolicy(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reaso
 
     Attributes:
         cycle_cap: Maximum full-chain exhaustion cycles before exit.
-        terminal_recovery_route: How terminal failures are routed.
+        failed_route: Phase to route to on terminal pipeline failure.
+            'failed', 'phase_failed', and 'exit_failure' are built-in pseudo-phases;
+            any declared pipeline phase name with role='terminal' is also valid.
+        terminal_failure_phase: Optional name of the declared terminal failure phase
+            (must have role='terminal' and terminal_outcome='failure' in pipeline.phases).
+            When set, enables BFS reachability validation for failure paths.
         preserve_session_on_categories: Failure categories that preserve agent session.
     """
 
     cycle_cap: int = Field(default=200, ge=1)
-    terminal_recovery_route: str = Field(
+    failed_route: str = Field(
         default="failed",
         description=(
-            "How terminal failures are routed. "
+            "Phase to route to on terminal pipeline failure. "
             "'failed', 'phase_failed', and 'exit_failure' are built-in pseudo-phases; "
             "any declared pipeline phase name is also valid."
         ),
     )
+    terminal_failure_phase: str | None = Field(
+        default=None,
+        description=(
+            "Optional name of the declared terminal failure phase "
+            "(must have role='terminal' and terminal_outcome='failure' in pipeline.phases). "
+            "When set, failure routing references this policy-declared phase."
+        ),
+    )
     preserve_session_on_categories: tuple[str, ...] = ("agent",)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _migrate_terminal_recovery_route(cls, data: object) -> object:
+        """Migrate deprecated terminal_recovery_route to failed_route."""
+        if not isinstance(data, dict):
+            return data
+        d = cast("dict[str, object]", dict(data))
+        if "terminal_recovery_route" in d and "failed_route" not in d:
+            d["failed_route"] = d.pop("terminal_recovery_route")
+        elif "terminal_recovery_route" in d:
+            d.pop("terminal_recovery_route")
+        return d
+
+    @property
+    def terminal_recovery_route(self) -> str:
+        """Deprecated alias for failed_route. Use failed_route instead."""
+        return self.failed_route
 
 
 # ---------------------------------------------------------------------------
@@ -305,7 +329,7 @@ class PhaseDefinition(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reas
         continuation_template: Optional continuation .jinja prompt template.
     """
 
-    drain: DrainName = Field(..., description="Drain binding for this phase")
+    drain: str = Field(..., description="Drain binding for this phase")
     transitions: PhaseTransition = Field(..., description="Transition routing rules")
 
     # New workflow-semantic fields
@@ -448,13 +472,36 @@ class ParallelExecutionPolicy(_FrozenPolicyModel):  # type: ignore[explicit-any]
     )
 
 
+def _terminal_phase_names(policy: PipelinePolicy) -> set[str]:
+    """Return all terminal phase names from policy (declared + pseudo-phases).
+
+    Includes:
+    - policy.terminal_phase (the declared success terminal)
+    - policy.recovery.failed_route (the failure route pseudo-phase or declared phase)
+    - Any phase with role='terminal'
+    - The canonical pseudo-phase tokens 'failed', 'complete', 'phase_failed', 'exit_failure'
+    """
+    names: set[str] = {
+        policy.terminal_phase,
+        policy.recovery.failed_route,
+        "failed",
+        "complete",
+        "phase_failed",
+        "exit_failure",
+    }
+    names.update(
+        name for name, defn in policy.phases.items() if defn.role == "terminal"
+    )
+    return names
+
+
 class PipelinePolicy(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     """Top-level pipeline.toml policy document.
 
     Attributes:
         phases: Map of phase name -> phase definition.
         entry_phase: Name of the phase where the pipeline starts.
-        terminal_phase: Name of the phase that marks successful completion.
+        terminal_phase: Name of the phase that marks successful pipeline completion.
         loop_counters: Policy-declared loop iteration counters keyed by field name.
         budget_counters: Policy-declared budget counters keyed by counter name.
         default_phase_retry_policy: Default retry policy for phases without explicit retry_policy.
@@ -504,10 +551,14 @@ class PipelinePolicy(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reaso
         description="Pipeline-wide recovery configuration",
     )
 
+    def terminal_states(self) -> set[str]:
+        """Return the full set of terminal state names for transition validation."""
+        return _terminal_phase_names(self)
+
     @model_validator(mode="after")
     def all_transitions_reference_known_phases(self) -> PipelinePolicy:
         """Ensure every transition target is a defined phase or terminal."""
-        terminal_states = {self.terminal_phase, "failed"}
+        ts = self.terminal_states()
         for phase_name, phase_def in self.phases.items():
             t = phase_def.transitions
             for label, target in [
@@ -517,7 +568,7 @@ class PipelinePolicy(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reaso
             ]:
                 if (
                     target is not None
-                    and target not in terminal_states
+                    and target not in ts
                     and target not in self.phases
                 ):
                     raise ValueError(
@@ -550,9 +601,9 @@ class PipelinePolicy(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reaso
     @model_validator(mode="after")
     def post_commit_routes_reference_known_targets(self) -> PipelinePolicy:
         """Ensure post_commit route targets are defined phases or terminal pseudo-phases."""
-        terminal_states = {self.terminal_phase, "failed"}
+        ts = self.terminal_states()
         for route in self.post_commit_routes:
-            if route.target not in terminal_states and route.target not in self.phases:
+            if route.target not in ts and route.target not in self.phases:
                 raise ValueError(f"post_commit_routes target '{route.target}' is not a known phase")
         return self
 
@@ -588,10 +639,10 @@ class PipelinePolicy(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reaso
     @model_validator(mode="after")
     def decision_routes_target_known_phases(self) -> PipelinePolicy:
         """Ensure every PhaseDecisionRoute.target resolves to a known phase or terminal."""
-        terminal_states = {self.terminal_phase, "failed", "complete"}
+        ts = self.terminal_states()
         for phase_name, phase_def in self.phases.items():
             for decision_name, route in phase_def.decisions.items():
-                if route.target not in terminal_states and route.target not in self.phases:
+                if route.target not in ts and route.target not in self.phases:
                     raise ValueError(
                         f"Phase '{phase_name}' decisions['{decision_name}'] targets "
                         f"unknown phase '{route.target}'"
@@ -601,10 +652,10 @@ class PipelinePolicy(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reaso
     @model_validator(mode="after")
     def bypass_routes_target_known_phases(self) -> PipelinePolicy:
         """Ensure every bypass_route target resolves to a known phase or terminal."""
-        terminal_states = {self.terminal_phase, "failed", "complete"}
+        ts = self.terminal_states()
         for phase_name, phase_def in self.phases.items():
             for outcome, target in phase_def.bypass_routes.items():
-                if target not in terminal_states and target not in self.phases:
+                if target not in ts and target not in self.phases:
                     raise ValueError(
                         f"Phase '{phase_name}' bypass_routes['{outcome}'] targets "
                         f"unknown phase '{target}'"
@@ -652,6 +703,25 @@ class PipelinePolicy(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reaso
                     )
         return self
 
+    @model_validator(mode="after")
+    def terminal_failure_phase_valid(self) -> PipelinePolicy:
+        """Ensure terminal_failure_phase references a declared phase with correct role/outcome."""
+        tfp = self.recovery.terminal_failure_phase
+        if tfp is None:
+            return self
+        if tfp not in self.phases:
+            raise ValueError(
+                f"recovery.terminal_failure_phase: '{tfp}' is not a known phase. "
+                f"Declared phases: {sorted(self.phases.keys())}"
+            )
+        phase_def = self.phases[tfp]
+        if phase_def.role != "terminal" or phase_def.terminal_outcome != "failure":
+            raise ValueError(
+                f"recovery.terminal_failure_phase: '{tfp}' must have "
+                f"role='terminal' and terminal_outcome='failure'"
+            )
+        return self
+
     def effective_retry_policy(self, phase_name: str) -> PhaseRetryPolicy:
         """Resolve the effective retry policy for a phase."""
         phase_def = self.phases.get(phase_name)
@@ -675,7 +745,7 @@ class ArtifactContract(_FrozenPolicyModel):  # type: ignore[explicit-any]  # rea
         prompt_template: Optional template for generating prompts (None = use default).
     """
 
-    drain: DrainName = Field(..., description="Drain this artifact is submitted at")
+    drain: str = Field(..., description="Drain this artifact is submitted at")
     artifact_type: str = Field(
         ...,
         description="Artifact type identifier submitted via MCP",
@@ -705,7 +775,7 @@ class ArtifactsPolicy(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reas
     @model_validator(mode="after")
     def no_duplicate_artifact_types(self) -> ArtifactsPolicy:
         """Ensure no two artifacts share the same drain + artifact_type pair."""
-        seen: dict[tuple[DrainName, str], str] = {}
+        seen: dict[tuple[str, str], str] = {}
         for name, contract in self.artifacts.items():
             key = (contract.drain, contract.artifact_type)
             if key in seen:
@@ -736,12 +806,13 @@ class PolicyBundle(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reason:
     def all_pipeline_drains_are_bound(self) -> PolicyBundle:
         """Ensure every drain used in pipeline.phases is bound in agents.agent_drains.
 
-        Skips the terminal phase since it never actually invokes an agent —
-        the pipeline ends when it reaches terminal_phase.
+        Skips all terminal-role phases since they never invoke agents.
         """
-        unbound: list[DrainName] = []
+        unbound: list[str] = []
         for phase_name, phase_def in self.pipeline.phases.items():
-            # Skip terminal phase — it never invokes an agent
+            # Skip terminal phases — they never invoke agents
+            if phase_def.role == "terminal":
+                continue
             if phase_name == self.pipeline.terminal_phase:
                 continue
             if phase_def.drain not in self.agents.agent_drains:

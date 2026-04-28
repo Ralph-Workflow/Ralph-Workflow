@@ -37,7 +37,6 @@ from ralph.policy.validation import (
 
 if TYPE_CHECKING:
     from ralph.config.models import UnifiedConfig
-    from ralph.policy.models import DrainName
 
 
 class PolicyValidationError(Exception):
@@ -240,10 +239,7 @@ def build_agents_policy_from_config(config: UnifiedConfig) -> AgentsPolicy:
 
     return AgentsPolicy(
         agent_chains=chain_configs,
-        agent_drains={
-            cast("DrainName", drain): binding
-            for drain, binding in explicit_runtime_drains.items()
-        },
+        agent_drains=dict(explicit_runtime_drains),
     )
 
 
