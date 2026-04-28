@@ -58,6 +58,8 @@ Ralph Workflow
 
    recovery
    parallel-mode
+   policy-explanation
+   policy-driven-overhaul-migration
 
 .. toctree::
    :maxdepth: 2

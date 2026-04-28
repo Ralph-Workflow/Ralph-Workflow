@@ -250,10 +250,10 @@ class RecoveryPolicy(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reaso
 
     cycle_cap: int = Field(default=200, ge=1)
     terminal_recovery_route: str = Field(
-        default="phase_failed",
+        default="failed",
         description=(
             "How terminal failures are routed. "
-            "phase_failed and exit_failure are built-in pseudo-phases; "
+            "'failed', 'phase_failed', and 'exit_failure' are built-in pseudo-phases; "
             "any declared pipeline phase name is also valid."
         ),
     )
@@ -537,6 +537,8 @@ class PipelinePolicy(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reaso
     def no_phase_cycles_without_loopback(self) -> PipelinePolicy:
         """Detect obvious infinite loop risks (phase transitions to itself without loopback)."""
         for name, phase_def in self.phases.items():
+            if name == self.terminal_phase:
+                continue
             t = phase_def.transitions
             if t.on_success == name and t.on_loopback is None:
                 raise ValueError(

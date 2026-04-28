@@ -74,6 +74,7 @@ def _dispatch_worker_event(
     state: PipelineState,
     event: Event,
     recovery: RecoveryController | None = None,
+    policy: PipelinePolicy | None = None,
 ) -> tuple[PipelineState, list[Effect]] | None:
     """Handle worker events, returning None if the event is not a worker event.
 
@@ -160,7 +161,8 @@ def reduce(  # noqa: PLR0911
     if isinstance(event, PostFanoutVerificationEvent):
         if not event.success:
             error_msg = event.error or f"workspace verification failed (exit code {event.exit_code})"  # noqa: E501
-            return _restore_work_units(state, _enter_failed_recovery(state, error_msg)[0]), []
+            recovered, _ = _enter_failed_recovery(state, error_msg, pipeline_policy)
+            return _restore_work_units(state, recovered), []
         return state, []
 
     # Handle PhaseFailureEvent before the generic PipelineEvent dispatch.
@@ -176,11 +178,11 @@ def reduce(  # noqa: PLR0911
                 retry_in_session=event.retry_in_session,
             )
             return _restore_work_units(state, new_state), effects
-        return _handle_phase_failure(state, event)
+        return _handle_phase_failure(state, event, policy=pipeline_policy)
 
     # Handle worker events with a unified approach.
     # Pass recovery to enable classification-aware handling for failure events.
-    worker_result = _dispatch_worker_event(state, event, recovery)
+    worker_result = _dispatch_worker_event(state, event, recovery, policy=pipeline_policy)
     if worker_result is not None:
         return worker_result
 
@@ -199,12 +201,12 @@ def reduce(  # noqa: PLR0911
         PipelineEvent.FIX_FAILURE: _handle_fix_failure,
         PipelineEvent.COMMIT_SUCCESS: _handle_commit_success,
         PipelineEvent.COMMIT_SKIPPED: _handle_commit_skipped,
-        PipelineEvent.COMMIT_FAILURE: _ignore_policy(_handle_commit_failure),
+        PipelineEvent.COMMIT_FAILURE: _handle_commit_failure,
         PipelineEvent.CHECKPOINT_SAVED: _ignore_policy(_handle_checkpoint_saved),
         PipelineEvent.CONTEXT_CLEANED: _return_state,
         PipelineEvent.INTERRUPTED: _ignore_policy(_handle_interrupted),
-        PipelineEvent.COMPLETE: _ignore_policy(_handle_complete),
-        PipelineEvent.FAILED: _ignore_policy(_handle_failed),
+        PipelineEvent.COMPLETE: _handle_complete,
+        PipelineEvent.FAILED: _handle_failed,
         PipelineEvent.PHASE_ADVANCE: _handle_phase_advance,
         PipelineEvent.FAN_OUT_STARTED: _ignore_policy(_handle_fan_out_started),
         PipelineEvent.WORKERS_RESUMED: _ignore_policy(_handle_workers_resumed),
@@ -237,12 +239,28 @@ def _return_state(
     return state, []
 
 
+def _terminal_failure_route(policy: PipelinePolicy | None) -> str:
+    """Resolve the terminal failure route from policy or fall back to the legacy constant."""
+    if policy is not None:
+        return policy.recovery.terminal_recovery_route
+    return PHASE_FAILED
+
+
+def _terminal_success_route(policy: PipelinePolicy | None) -> str:
+    """Resolve the terminal success route from policy or fall back to the legacy constant."""
+    if policy is not None:
+        return policy.terminal_phase
+    return PHASE_COMPLETE
+
+
 def _enter_failed_recovery(
     state: PipelineState,
     reason: str,
+    policy: PipelinePolicy | None = None,
 ) -> tuple[PipelineState, list[Effect]]:
+    """Transition to the policy-declared terminal failure route."""
     new_state = state.copy_with(
-        phase=PHASE_FAILED,
+        phase=_terminal_failure_route(policy),
         previous_phase=state.phase,
         last_error=reason,
         recovery_epoch=state.recovery_epoch + 1,
@@ -251,13 +269,15 @@ def _enter_failed_recovery(
 
 
 def _handle_phase_failure(
-    state: PipelineState, event: PhaseFailureEvent
+    state: PipelineState,
+    event: PhaseFailureEvent,
+    policy: PipelinePolicy | None = None,
 ) -> tuple[PipelineState, list[Effect]]:
     """Handle PhaseFailureEvent from phase handlers.
 
     PhaseFailureEvent carries a recoverable flag:
     - recoverable=True: route through _handle_agent_failure retry/fallback logic
-    - recoverable=False: route directly to PHASE_FAILED (terminal agent decision)
+    - recoverable=False: route directly to the terminal failure route (terminal agent decision)
 
     In both cases, last_error is set to a descriptive string combining the
     phase name and the reason.
@@ -270,14 +290,13 @@ def _handle_phase_failure(
 
     if event.recoverable:
         # Inject the failure message into state.last_error so that
-        # _handle_agent_failure preserves it when it transitions to PHASE_FAILED.
+        # _handle_agent_failure preserves it when it transitions to the failure route.
         state_with_error = state.copy_with(last_error=failure_message)
         if event.retry_in_session and state.last_agent_session_id:
             state_with_error = state_with_error.copy_with(session_preserve_retry_pending=True)
-        return _handle_agent_failure(state_with_error)
-    # Non-recoverable failures now enter centralized recovery instead of
-    # terminating the process.
-    return _enter_failed_recovery(state, failure_message)
+        return _handle_agent_failure(state_with_error, policy=policy)
+    # Non-recoverable failures enter centralized recovery using the policy-declared route.
+    return _enter_failed_recovery(state, failure_message, policy=policy)
 
 
 def _handle_agent_success(
@@ -288,11 +307,11 @@ def _handle_agent_success(
     if state.last_retry_delay_ms > 0:
         state = state.copy_with(last_retry_delay_ms=0)
     if policy is None:
-        return _advance_to_failed(state, "No policy loaded for agent success routing")
+        return _advance_to_failed(state, "No policy loaded for agent success routing", policy)
 
     phase_def = policy.phases.get(state.phase)
     if phase_def is None:
-        return _advance_to_failed(state, f"Unknown phase: {state.phase}")
+        return _advance_to_failed(state, f"Unknown phase: {state.phase}", policy)
 
     if phase_def.role == "commit" and not state.commit.agent_invoked:
         updated_commit = CommitState(
@@ -308,12 +327,15 @@ def _handle_agent_success(
     return _resolve_or_terminal(state, "success", policy, "agent success")
 
 
-def _handle_agent_failure(state: PipelineState) -> tuple[PipelineState, list[Effect]]:
+def _handle_agent_failure(
+    state: PipelineState,
+    policy: PipelinePolicy | None = None,
+) -> tuple[PipelineState, list[Effect]]:
     """Handle agent failure with retry/fallback logic."""
     chain = state.chain_for_phase(state.phase)
     if chain is None:
         failure_reason = _failure_reason(state, f"No tracked agent chain for {state.phase}")
-        return _enter_failed_recovery(state, failure_reason)
+        return _enter_failed_recovery(state, failure_reason, policy)
 
     max_retries = 3
     if chain.retries < max_retries:
@@ -337,7 +359,7 @@ def _handle_agent_failure(state: PipelineState) -> tuple[PipelineState, list[Eff
             f"{chain.retries} retries across {len(chain.agents)} agents"
         ),
     )
-    return _enter_failed_recovery(state, failure_reason)
+    return _enter_failed_recovery(state, failure_reason, policy)
 
 
 def _handle_agent_retry(state: PipelineState) -> tuple[PipelineState, list[Effect]]:
@@ -360,7 +382,7 @@ def _handle_analysis_success(
 ) -> tuple[PipelineState, list[Effect]]:
     """Handle successful analysis decision (continue/approve)."""
     if policy is None:
-        return _advance_to_failed(state, "No policy loaded for analysis success routing")
+        return _advance_to_failed(state, "No policy loaded for analysis success routing", policy)
 
     phase_def = policy.phases.get(state.phase)
     if phase_def is not None and phase_def.decisions:
@@ -377,6 +399,7 @@ def _handle_analysis_success(
         return _advance_to_failed(
             state,
             f"Routing error after analysis success in '{state.phase}': {exc}",
+            policy,
         )
 
 
@@ -386,11 +409,13 @@ def _handle_analysis_loopback(
 ) -> tuple[PipelineState, list[Effect]]:
     """Handle analysis loopback decision (retry/request changes) — policy-driven."""
     if policy is None:
-        return _advance_to_failed(state, "No policy loaded for analysis loopback routing")
+        return _advance_to_failed(state, "No policy loaded for analysis loopback routing", policy)
 
     phase_def = policy.phases.get(state.phase)
     if phase_def is None:
-        return _advance_to_failed(state, f"Unknown phase for analysis loopback: {state.phase}")
+        return _advance_to_failed(
+            state, f"Unknown phase for analysis loopback: {state.phase}", policy
+        )
 
     if isinstance(phase_def.loop_policy, PhaseLoopPolicy):
         return _handle_capped_analysis_loopback_policy_driven(state, policy, phase_def)
@@ -416,8 +441,15 @@ def _handle_capped_analysis_loopback_policy_driven(
 
     iteration_field: str = loop_policy.iteration_state_field
     current_iteration = state.get_loop_iteration(iteration_field)
-    max_iterations: int = state.get_max_loop_iteration(iteration_field)
-
+    _cap: int | None = state.loop_caps.get(iteration_field)
+    if _cap is None:
+        if iteration_field == "development_analysis_iteration":
+            _cap = state.max_development_analysis_iterations
+        elif iteration_field == "review_analysis_iteration":
+            _cap = state.max_review_analysis_iterations
+        else:
+            _cap = loop_policy.max_iterations
+    max_iterations: int = _cap
     # Apply progress tracking up front so it is preserved even if routing fails.
     clamped = max(0, min(current_iteration + 1, max_iterations))
     progress_state = progress.apply_analysis_loopback(state, state, iteration_field)
@@ -440,6 +472,7 @@ def _handle_capped_analysis_loopback_policy_driven(
             return _advance_to_failed(
                 progress_state,
                 f"Routing error for analysis loopback in '{state.phase}': {exc}",
+                policy,
             )
 
     new_state, effects = _advance_phase(progress_state, loopback_target, policy)
@@ -457,7 +490,7 @@ def _handle_review_clean(
     determined by the phase's bypass_routes['review_clean'] policy field.
     """
     if policy is None:
-        return _advance_to_failed(state, "No policy loaded for review clean routing")
+        return _advance_to_failed(state, "No policy loaded for review clean routing", policy)
 
     phase_def = policy.phases.get(state.phase)
     if phase_def is not None and "review_clean" in phase_def.bypass_routes:
@@ -475,7 +508,7 @@ def _handle_review_issues_found(
 ) -> tuple[PipelineState, list[Effect]]:
     """Handle review with issues found."""
     if policy is None:
-        return _advance_to_failed(state, "No policy loaded for review issues found routing")
+        return _advance_to_failed(state, "No policy loaded for review issues found routing", policy)
     new_state, effects = _resolve_or_terminal(state, "loopback", policy, "review issues found")
     return new_state.copy_with(review_outcome="has_issues"), effects
 
@@ -486,7 +519,7 @@ def _handle_fix_success(
 ) -> tuple[PipelineState, list[Effect]]:
     """Handle successful fix."""
     if policy is None:
-        return _advance_to_failed(state, "No policy loaded for fix success routing")
+        return _advance_to_failed(state, "No policy loaded for fix success routing", policy)
     return _resolve_or_terminal(state, "success", policy, "fix success")
 
 
@@ -496,16 +529,19 @@ def _handle_fix_failure(
 ) -> tuple[PipelineState, list[Effect]]:
     """Handle fix failure."""
     if policy is None:
-        return _advance_to_failed(state, "No policy loaded for fix failure routing")
+        return _advance_to_failed(state, "No policy loaded for fix failure routing", policy)
     try:
         next_phase = resolve_next_phase(state.phase, "failure", policy)
-        if next_phase == PHASE_FAILED:
+        failed_route = _terminal_failure_route(policy)
+        # Route to terminal failure if the transition targets a terminal failure pseudo-phase
+        # or the policy-declared terminal failure route.
+        if next_phase == failed_route or next_phase not in policy.phases:
             failure_reason = _failure_reason(state, "Fix phase failed")
-            return _enter_failed_recovery(state, failure_reason)
+            return _enter_failed_recovery(state, failure_reason, policy)
         return _advance_phase(state, next_phase, policy)
     except ValueError as exc:
         return _advance_to_failed(
-            state, f"Routing error after fix failure in '{state.phase}': {exc}"
+            state, f"Routing error after fix failure in '{state.phase}': {exc}", policy
         )
 
 
@@ -515,7 +551,7 @@ def _handle_commit_success(
 ) -> tuple[PipelineState, list[Effect]]:
     """Handle successful commit."""
     if policy is None:
-        return _advance_to_failed(state, "No policy loaded for commit success routing")
+        return _advance_to_failed(state, "No policy loaded for commit success routing", policy)
     try:
         progress_state = progress.apply_commit_outcome(
             state, state, skipped=False, policy=policy
@@ -525,7 +561,7 @@ def _handle_commit_success(
         return new_state, effects
     except ValueError as exc:
         return _advance_to_failed(
-            state, f"Routing error after commit success in '{state.phase}': {exc}"
+            state, f"Routing error after commit success in '{state.phase}': {exc}", policy
         )
 
 
@@ -540,7 +576,7 @@ def _handle_commit_skipped(
     no meaningful agent activity occurred during the skipped phase.
     """
     if policy is None:
-        return _advance_to_failed(state, "No policy loaded for commit skipped routing")
+        return _advance_to_failed(state, "No policy loaded for commit skipped routing", policy)
     try:
         progress_state = progress.apply_commit_outcome(
             state, state, skipped=True, policy=policy
@@ -550,14 +586,17 @@ def _handle_commit_skipped(
         return new_state, effects
     except ValueError as exc:
         return _advance_to_failed(
-            state, f"Routing error after commit skipped in '{state.phase}': {exc}"
+            state, f"Routing error after commit skipped in '{state.phase}': {exc}", policy
         )
 
 
-def _handle_commit_failure(state: PipelineState) -> tuple[PipelineState, list[Effect]]:
+def _handle_commit_failure(
+    state: PipelineState,
+    policy: PipelinePolicy | None,
+) -> tuple[PipelineState, list[Effect]]:
     """Handle commit failure."""
     failure_reason = _failure_reason(state, "Commit failed")
-    return _enter_failed_recovery(state, failure_reason)
+    return _enter_failed_recovery(state, failure_reason, policy)
 
 
 def _handle_checkpoint_saved(state: PipelineState) -> tuple[PipelineState, list[Effect]]:
@@ -572,13 +611,20 @@ def _handle_interrupted(state: PipelineState) -> tuple[PipelineState, list[Effec
     return new_state, [SaveCheckpointEffect()]
 
 
-def _handle_complete(state: PipelineState) -> tuple[PipelineState, list[Effect]]:
-    """Handle pipeline completion."""
-    new_state = state.copy_with(phase=PHASE_COMPLETE)
+def _handle_complete(
+    state: PipelineState,
+    policy: PipelinePolicy | None,
+) -> tuple[PipelineState, list[Effect]]:
+    """Handle pipeline completion — routes to the policy-declared terminal success phase."""
+    terminal = _terminal_success_route(policy)
+    new_state = state.copy_with(phase=terminal)
     return new_state, []
 
 
-def _handle_failed(state: PipelineState) -> tuple[PipelineState, list[Effect]]:
+def _handle_failed(
+    state: PipelineState,
+    policy: PipelinePolicy | None,
+) -> tuple[PipelineState, list[Effect]]:
     """Handle pipeline failure.
 
     Uses state.last_error if available and descriptive, which should have been
@@ -592,7 +638,7 @@ def _handle_failed(state: PipelineState) -> tuple[PipelineState, list[Effect]]:
             "check upstream last_error propagation"
         ),
     )
-    return _enter_failed_recovery(state, last_error)
+    return _enter_failed_recovery(state, last_error, policy)
 
 
 def _handle_phase_advance(
@@ -601,7 +647,7 @@ def _handle_phase_advance(
 ) -> tuple[PipelineState, list[Effect]]:
     """Handle explicit phase advance request."""
     if policy is None:
-        return _advance_to_failed(state, "No policy loaded for phase advance routing")
+        return _advance_to_failed(state, "No policy loaded for phase advance routing", policy)
     return _resolve_or_terminal(state, "success", policy, "phase advance")
 
 
@@ -627,9 +673,10 @@ def _advance_phase(
 def _advance_to_failed(
     state: PipelineState,
     reason: str,
+    policy: PipelinePolicy | None = None,
 ) -> tuple[PipelineState, list[Effect]]:
-    """Transition into PHASE_FAILED via centralized recovery bookkeeping."""
-    return _enter_failed_recovery(state, reason)
+    """Transition into the terminal failure route via centralized recovery bookkeeping."""
+    return _enter_failed_recovery(state, reason, policy)
 
 
 def _resolve_or_terminal(
@@ -644,6 +691,7 @@ def _resolve_or_terminal(
         return _advance_to_failed(
             state,
             f"Routing error after {label} in '{state.phase}': {exc}",
+            policy,
         )
     return _advance_phase(state, next_phase, policy)
 
@@ -727,13 +775,15 @@ def _handle_all_workers_complete(
     )
     if failed_unit_ids:
         reason = f"Parallel fan-out had failed workers: {', '.join(failed_unit_ids)}"
-        return _enter_failed_recovery(state, reason)
+        return _enter_failed_recovery(state, reason, policy)
 
     if any(ws.status != WorkerStatus.SUCCEEDED for ws in state.worker_states.values()):
         return state, []
 
     if policy is None:
-        return _advance_to_failed(state, "No policy loaded for all-workers-complete routing")
+        return _advance_to_failed(
+            state, "No policy loaded for all-workers-complete routing", policy
+        )
     try:
         next_phase = resolve_next_phase(state.phase, "success", policy)
         return _advance_phase(state, next_phase, policy)
@@ -741,4 +791,5 @@ def _handle_all_workers_complete(
         return _advance_to_failed(
             state,
             f"No 'success' transition defined in phase '{state.phase}' for all-workers-complete",
+            policy,
         )

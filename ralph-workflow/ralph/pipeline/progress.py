@@ -127,29 +127,27 @@ def _apply_commit_outcome_policy_driven(
     if not isinstance(commit_policy, PhaseCommitPolicy):
         return advanced_state
 
-    updates: dict[str, object] = {}
-
-    # Reset loop counters declared in loop_resets
+    # Reset loop counters declared in loop_resets via with_loop_iteration
+    # (handles both legacy typed fields and custom dict-based fields)
+    result = advanced_state
     for field_name in commit_policy.loop_resets:
-        try:
-            advanced_state.get_loop_iteration(field_name)  # validate field exists
-            updates[field_name] = 0
-        except AttributeError:
-            pass
+        result = result.with_loop_iteration(field_name, 0)
 
     counter = commit_policy.increments_counter
-    if counter == "iteration":
-        updates["development_budget_remaining"] = max(0, state.development_budget_remaining - 1)
-        if not skipped:
-            updates["iteration"] = state.iteration + 1
-    elif counter == "reviewer_pass":
-        updates["review_budget_remaining"] = max(0, state.review_budget_remaining - 1)
-        if not skipped:
-            updates["reviewer_pass"] = state.reviewer_pass + 1
+    if counter is None:
+        return result
 
-    if updates:
-        return advanced_state.copy_with(**updates)
-    return advanced_state
+    result = result.with_budget_remaining(
+        counter,
+        max(0, state.get_budget_remaining(counter) - 1),
+    )
+    if skipped:
+        return result
+
+    return result.with_outer_progress(
+        counter,
+        state.get_outer_progress(counter) + 1,
+    )
 
 
 def derive_run_context_progress(state: PipelineState, run_context: RunContext) -> RunContext:

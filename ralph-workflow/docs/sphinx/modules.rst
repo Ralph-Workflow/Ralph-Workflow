@@ -149,6 +149,13 @@ ralph.cli.commands.run
    :members:
    :show-inheritance:
 
+ralph.cli.commands.explain
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.cli.commands.explain
+   :members:
+   :show-inheritance:
+
 Config
 ------
 
@@ -239,6 +246,20 @@ ralph.policy.validation
 ~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.policy.validation
+   :members:
+   :show-inheritance:
+
+ralph.policy.explain
+~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.policy.explain
+   :members:
+   :show-inheritance:
+
+ralph.policy.render
+~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.policy.render
    :members:
    :show-inheritance:
 

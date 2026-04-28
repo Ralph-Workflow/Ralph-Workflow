@@ -286,5 +286,5 @@ retry_in_session = false
 
 [recovery]
 cycle_cap = 200
-terminal_recovery_route = "phase_failed"
+terminal_recovery_route = "failed"
 preserve_session_on_categories = ["agent"]

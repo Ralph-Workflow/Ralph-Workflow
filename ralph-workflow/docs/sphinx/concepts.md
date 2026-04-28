@@ -14,11 +14,27 @@ the starter sentinel removed before allowing the pipeline to run. See
 
 ## Phase
 
-A named step in the pipeline sequence. The default pipeline has phases:
+A named step in the pipeline sequence declared in `.agent/pipeline.toml`.
+Every phase has a **role** that determines what the runtime expects from it and
+how it routes on completion. The bundled defaults define phases named
 `planning`, `development`, `development_analysis`, `development_commit`,
-`review`, `review_analysis`, `fix`, `review_commit`, and `complete`.
-Phases are declared in `.agent/pipeline.toml`; the order there defines execution order.
-See `ralph.phases` for phase resolution and `ralph.pipeline` for orchestration.
+`review`, `review_analysis`, `fix`, `review_commit`, and `complete`, but these
+are examples — any phase name is valid.
+
+Phase roles:
+
+| Role | Meaning |
+|------|---------|
+| `execution` | Invokes an agent and routes on `on_success` / `on_failure` |
+| `analysis` | Reads an artifact decision and routes via `decisions` map |
+| `review` | Invokes an agent; routes on `review_clean` bypass or `on_success` |
+| `commit` | Invokes the commit agent; tracks budget via `commit_policy` |
+| `verification` | Invokes an agent; gates advancement on artifact evidence |
+| `terminal` | Ends the pipeline with a declared `terminal_outcome` |
+| `fanout_join` | Aggregates parallel worker results |
+
+See `ralph.policy.models.PhaseRole` and `ralph.policy.validation` for the role contracts.
+See `ralph.phases` for phase handlers and `ralph.pipeline` for orchestration.
 
 ## Drain
 
@@ -190,9 +206,56 @@ Controls how much output Ralph Workflow produces. Levels from least to most:
 `quiet`, `normal`, `verbose` (default), `full`, `debug`. Pass `--verbosity <level>`,
 `--quiet`, or `--debug` on the command line. See `ralph.config.enums.Verbosity`.
 
+## Loop Counter
+
+A policy-declared counter that tracks how many times an analysis loop has iterated.
+Loop counters are declared in `pipeline.toml` under `[loop_counters.<name>]` with a
+`default_max` that caps the loop. Each analysis-role phase references a loop counter
+via `loop_policy.iteration_state_field`. When the counter reaches its cap, the
+pipeline treats the next analysis outcome as a failure rather than a loopback.
+
+The `--developer-iters` and `--reviewer-reviews` CLI flags override the `default_max`
+of the named loop counters at runtime.
+
+See `ralph.policy.models.LoopCounterConfig`.
+
+## Budget Counter
+
+A policy-declared counter that tracks outer progress across commit-role phases.
+Budget counters are declared under `[budget_counters.<name>]`. Each commit-role
+phase's `commit_policy.increments_counter` names which budget counter to increment
+when a commit completes. Counters with `tracks_budget = true` participate in
+post-commit routing decisions (remaining, exhausted, no_review states). See
+`ralph.policy.models.BudgetCounterConfig`.
+
+## Recovery Policy
+
+The `[recovery]` block in `pipeline.toml` governs pipeline-wide failure behavior.
+Key fields:
+
+| Field | Meaning |
+|-------|---------|
+| `cycle_cap` | Maximum number of full recovery cycles before terminal failure |
+| `terminal_recovery_route` | Where terminal failures route: `"failed"`, `"exit_failure"`, or a declared phase name |
+| `preserve_session_on_categories` | Which failure categories allow session-preserving retry |
+
+See `ralph.policy.models.RecoveryPolicy`.
+
+## Policy Explanation
+
+The `ralph --explain-policy` command renders the active policy as a human-readable
+summary. It lists all phases (with roles and drains), loop counters, budget counters,
+terminal outcomes, parallel execution settings, and recovery routing. This is useful
+for confirming a configuration before running and for documenting the workflow your
+project uses.
+
+See [Policy Explanation](policy-explanation.md) for the full walkthrough.
+
 ## Related pages
 
 - [Getting Started](getting-started.md) — first-run walkthrough with phases explained
 - [Configuration](configuration.md) — agents, drains, and pipeline config
+- [Policy Explanation](policy-explanation.md) — `ralph --explain-policy` walkthrough
+- [Policy-Driven Migration](policy-driven-overhaul-migration.md) — upgrading from earlier versions
 - [Recovery](recovery.md) — retry behavior, cycles, and checkpoints
 - [Parallel Mode](parallel-mode.md) — work units and concurrent execution

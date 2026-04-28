@@ -194,6 +194,140 @@ chain — for example, `development_analysis` and `review_analysis` both use the
 chain by default. The built-in drain names are: `planning`, `development`, `analysis`,
 `review`, `fix`, and `commit`.
 
+## `pipeline.toml` Policy Fields
+
+The `pipeline.toml` file declares all workflow behavior. Ralph Workflow validates the
+complete policy at startup and rejects incomplete configurations with actionable errors.
+
+### Top-level fields
+
+| Field | Description |
+|-------|-------------|
+| `entry_phase` | Phase where every run starts |
+| `terminal_phase` | Phase that marks successful completion |
+
+### `[phases.<name>]`
+
+Declares a pipeline phase. Required and optional fields:
+
+| Field | Required? | Description |
+|-------|-----------|-------------|
+| `role` | Yes | Phase behavior class: `execution`, `analysis`, `review`, `commit`, `verification`, `terminal`, `fanout_join` |
+| `drain` | Yes (unless terminal) | Agent chain binding name |
+| `prompt_template` | No | Jinja prompt template filename |
+| `skip_invocation` | No | When true, the phase routes without invoking an agent |
+| `terminal_outcome` | Required for `terminal` | `"success"` or `"failure"` |
+
+#### `[phases.<name>.transitions]`
+
+| Field | Description |
+|-------|-------------|
+| `on_success` | Phase to advance to on agent success |
+| `on_failure` | Phase to advance to on agent failure |
+| `on_loopback` | Phase to loop back to |
+
+#### `[phases.<name>.loop_policy]` (analysis-role phases)
+
+| Field | Description |
+|-------|-------------|
+| `max_iterations` | Maximum loop iterations before treating next outcome as failure |
+| `iteration_state_field` | Names the loop counter declared in `[loop_counters.*]` |
+| `loopback_review_outcome` | (Optional) Review outcome keyword that triggers loopback |
+
+#### `[phases.<name>.decisions.<key>]` (analysis-role phases)
+
+Maps a decision vocabulary key to a routing target:
+
+| Field | Description |
+|-------|-------------|
+| `target` | Phase to route to when this decision is emitted |
+| `reset_loop` | Whether to reset the loop counter when this decision is taken |
+
+#### `[phases.<name>.commit_policy]` (commit-role phases)
+
+| Field | Description |
+|-------|-------------|
+| `requires_artifact` | Whether a commit message artifact is required |
+| `skipped_advances_progress` | Whether a skipped commit still increments budget |
+| `increments_counter` | Names the budget counter declared in `[budget_counters.*]` |
+| `loop_resets` | List of loop counter names to reset on commit |
+
+#### `[phases.<name>.bypass_routes]` (review-role phases)
+
+Named outcome bypasses. Example: `review_clean = "review_commit"` bypasses the
+analysis phase when the review finds no issues.
+
+### `[loop_counters.<name>]`
+
+Declares a loop iteration counter referenced by `loop_policy.iteration_state_field`.
+
+| Field | Description |
+|-------|-------------|
+| `default_max` | Default cap (can be overridden by `--developer-iters` / `--reviewer-reviews`) |
+| `description` | Human-readable description |
+
+### `[budget_counters.<name>]`
+
+Declares a budget counter referenced by `commit_policy.increments_counter`.
+
+| Field | Description |
+|-------|-------------|
+| `description` | Human-readable description |
+| `tracks_budget` | When true, participates in post-commit routing (remaining / exhausted / no_review) |
+
+### `[[post_commit_routes]]`
+
+Declares post-commit routing based on the phase that committed and the resulting
+budget state:
+
+```toml
+[[post_commit_routes]]
+target = "review"
+[post_commit_routes.when]
+phase = "development_commit"
+budget_state = "exhausted"  # remaining | exhausted | no_review
+```
+
+### `[parallel_execution]`
+
+| Field | Description |
+|-------|-------------|
+| `source` | Source of work units (`"planning_artifact_work_units"`) |
+| `phase` | Phase eligible for parallel fan-out |
+| `max_parallel_workers` | Maximum concurrent workers |
+| `max_work_units` | Maximum work units in a plan |
+| `require_allowed_directories` | Whether workers must declare edit-area fencing |
+| `post_fanout_verification` | Whether a verification phase runs after fan-out completes |
+
+### `[default_phase_retry_policy]`
+
+Applied to all phases without an explicit `retry_policy` block:
+
+| Field | Description |
+|-------|-------------|
+| `max_retries` | Maximum retries per agent attempt |
+| `retry_delay_ms` | Base delay between retries |
+| `retry_in_session` | Whether retry preserves the agent session |
+
+### `[recovery]`
+
+| Field | Description |
+|-------|-------------|
+| `cycle_cap` | Maximum full recovery cycles before terminal failure |
+| `terminal_recovery_route` | Where terminal failures route: `"failed"`, `"exit_failure"`, or a declared phase name |
+| `preserve_session_on_categories` | Failure categories that allow session-preserving retry |
+
+## Inspecting the active policy
+
+After editing `pipeline.toml`, confirm the workflow is complete and valid:
+
+```bash
+ralph --check-config       # validate configuration
+ralph --explain-policy     # print a human-readable policy summary
+```
+
+See [Policy Explanation](policy-explanation.md) for a walkthrough of the explain output.
+
 ## Regenerating Configs
 
 ```bash
@@ -237,3 +371,5 @@ Validate with `ralph --check-mcp` after editing.
 - [Getting Started](getting-started.md) — first-run walkthrough
 - [CLI Reference](cli.md) — all flags and sub-commands
 - [Concepts](concepts.md) — pipeline phases, drains, and agent terminology
+- [Policy Explanation](policy-explanation.md) — `ralph --explain-policy` walkthrough
+- [Policy-Driven Migration](policy-driven-overhaul-migration.md) — upgrading from earlier versions

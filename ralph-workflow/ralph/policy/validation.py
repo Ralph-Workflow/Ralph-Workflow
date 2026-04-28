@@ -207,11 +207,14 @@ def _validate_analysis_phase(
     else:
         field = phase_def.loop_policy.iteration_state_field
         known_fields = PipelineState.known_loop_iteration_fields()
-        if field not in known_fields:
+        # Accept legacy built-in fields OR any counter declared in pipeline.loop_counters
+        if field not in known_fields and field not in bundle.pipeline.loop_counters:
             errors.append(
                 f"phases.{phase_name}.loop_policy.iteration_state_field: "
-                f"'{field}' is not a known PipelineState counter field. "
-                f"Known fields: {sorted(known_fields)}"
+                f"'{field}' is not a known PipelineState counter field and is not "
+                f"declared in pipeline.loop_counters. "
+                f"Known built-in fields: {sorted(known_fields)}. "
+                f"Add [loop_counters.{field}] to pipeline.toml to declare a custom counter."
             )
     if not phase_def.decisions:
         errors.append(
@@ -289,17 +292,17 @@ def _validate_recovery_terminal_recovery_route(
 ) -> None:
     """Validate that recovery.terminal_recovery_route is consistent with declared terminal phases.
 
-    terminal_recovery_route must be 'phase_failed', 'exit_failure', or reference
+    terminal_recovery_route must be 'failed', 'phase_failed', 'exit_failure', or reference
     a phase that exists in the pipeline. These pseudo-phases are always valid.
     """
     terminal_recovery_route = policy.recovery.terminal_recovery_route
-    if terminal_recovery_route in ("phase_failed", "exit_failure"):
+    if terminal_recovery_route in ("failed", "phase_failed", "exit_failure"):
         return
     # Must reference a known phase
     if terminal_recovery_route not in policy.phases:
         errors.append(
             f"recovery.terminal_recovery_route: '{terminal_recovery_route}' "
-            f"is not a known phase. Must be 'phase_failed', 'exit_failure', or "
+            f"is not a known phase. Must be 'failed', 'phase_failed', 'exit_failure', or "
             f"a phase defined in pipeline.phases. Known phases: {sorted(policy.phases.keys())}"
         )
 

@@ -24,6 +24,7 @@ from ralph.api.opencode import list_providers as fetch_providers
 from ralph.cli.commands.cleanup import cleanup
 from ralph.cli.commands.commit import CommitPlumbingOptions, commit_plumbing
 from ralph.cli.commands.diagnose import diagnose_command
+from ralph.cli.commands.explain import explain_command
 from ralph.cli.commands.init import init_command
 from ralph.cli.commands.run import run_pipeline
 from ralph.cli.options import (
@@ -244,6 +245,23 @@ def _handle_regenerate_config() -> None:
         console.print("[dim]No configs found to regenerate[/dim]")
 
 
+
+
+def _handle_early_exit_flags(
+    *,
+    version: bool,
+    explain_policy: bool,
+    explain_policy_dir: str | None,
+) -> None:
+    """Handle version and explain-policy early-exit flags before any bootstrap."""
+    if version:
+        version_callback(version)
+    if explain_policy:
+        from pathlib import Path as _Path  # noqa: PLC0415
+        policy_dir = _Path(explain_policy_dir) if explain_policy_dir else None
+        raise typer.Exit(code=explain_command(policy_dir))
+
+
 def main(  # noqa: PLR0913
     ctx: typer.Context,
     config: Annotated[
@@ -416,11 +434,28 @@ def main(  # noqa: PLR0913
         bool,
         typer.Option("--version", "-V", help="Show version"),
     ] = False,
+    explain_policy: Annotated[
+        bool,
+        typer.Option(
+            "--explain-policy",
+            help="Print a human-readable explanation of the active policy and exit",
+        ),
+    ] = False,
+    explain_policy_dir: Annotated[
+        str | None,
+        typer.Option(
+            "--explain-policy-dir",
+            hidden=True,
+            help="Policy directory to explain (default: bundled defaults)",
+        ),
+    ] = None,
 ) -> None:
     """Run the Ralph Workflow multi-agent pipeline or execute a sub-operation."""
-    # Handle version flag
-    if version:
-        version_callback(version)
+    _handle_early_exit_flags(
+        version=version,
+        explain_policy=explain_policy,
+        explain_policy_dir=explain_policy_dir,
+    )
 
     if resume and no_resume:
         raise click.UsageError(
