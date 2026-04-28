@@ -106,7 +106,7 @@ The caller is responsible for emitting `PromptInputEvent::PromptCaptured` when a
 
 All prompt generation functions accept a `&dyn Workspace` parameter and use `workspace.absolute_str()` to generate absolute paths for output files. This ensures prompts embed paths rooted at the workspace directory, not the process's current working directory (`std::env::current_dir()`).
 
-**Why this matters:** In multi-worktree setups or isolation mode, the process CWD may differ from the workspace root. Using CWD-based paths would cause agents to write artifacts to the wrong directory, leading to failed artifact submissions.
+**Why this matters:** In multi-root repository setups or isolation mode, the process CWD may differ from the workspace root. Using CWD-based paths would cause agents to write artifacts to the wrong directory, leading to failed artifact submissions.
 
 **Implementation:**
 - Prompt generation functions take `workspace: &dyn Workspace`

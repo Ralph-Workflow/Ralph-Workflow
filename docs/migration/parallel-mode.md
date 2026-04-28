@@ -1,5 +1,9 @@
 # Parallel Development Mode
 
+## IMPORTANT: v1 is same-workspace only
+
+Ralph parallel workers in v1 share a single checkout. There are no per-worker git branches and no post-development merge step. Isolation is enforced by `allowed_directories` path restrictions and per-worker namespaces under `.agent/workers/<unit_id>/`. v1 uses the same git checkout for all workers; per-worker git checkout isolation is not offered as a product surface.
+
 This document covers the parallelization feature introduced in the Python implementation. If you are upgrading from an earlier Ralph version or migrating from the retired Rust implementation, read this first.
 
 ---
@@ -60,13 +64,13 @@ When `true`, units without `allowed_directories` cause a validation error.
 
 ## New CLI Command: `ralph cleanup`
 
-After a hard-kill interrupt or a failed parallel run, orphaned git worktrees may remain in `.worktrees/`. The cleanup command removes them.
+After a hard-kill interrupt or a failed parallel run, stale per-worker namespace directories may remain under `.agent/workers/`. The cleanup command removes them.
 
 ```bash
 # See what would be deleted (dry-run)
 ralph cleanup --dry-run
 
-# Remove orphaned worktrees (with confirmation prompt)
+# Remove stale namespaces (with confirmation prompt)
 ralph cleanup
 
 # Remove without confirmation (for scripts)
@@ -76,14 +80,15 @@ ralph cleanup --force
 ### What it cleans
 
 The cleanup command:
-1. Scans `.worktrees/unit-*` directories
-2. For each orphaned worktree, destroys the worktree via `git worktree remove`
-3. Deletes the tracking branch `ralph/unit-{unit_id}`
-4. Reports the number of worktrees removed
+1. Scans `.agent/workers/<unit_id>/` directories
+2. For each stale namespace, removes it with all contents
+3. Reports the number of namespaces removed
+
+There is no git operation involved. Workers in v1 operate on the shared checkout directly; there are no per-worker branches or separate checkouts to clean up.
 
 ### Exit codes
 
-- `0`: No orphaned worktrees found, or all cleaned successfully
+- `0`: No stale namespaces found, or all cleaned successfully
 - `1`: Error (not in a git repository, etc.)
 
 ---
@@ -124,6 +129,7 @@ If parallel mode causes issues and you want to revert to serial behavior:
    # Press Ctrl-C to hard-kill, then:
    ralph cleanup --force
    ```
+   This removes stale `.agent/workers/` directories left behind after a hard-kill.
 
 2. **Remove or limit work units** in your PROMPT.md planning instructions. Specifically, avoid requesting a `work_units` array, or ensure your planning phase produces only a single unit.
 
@@ -142,8 +148,8 @@ The pipeline runs in serial mode as it did before parallelization was introduced
 |---------|--------|----------|
 | Checkpoint format | No `work_units` | Includes `work_units` array |
 | Agent instances | One per phase | One per work unit |
-| Worktree management | One worktree | Multiple worktrees |
-| Merge behavior | N/A | Branch-per-unit merged to base |
+| Per-worker scratch | Not used | `.agent/workers/<unit_id>/` namespace |
+| Merge behavior | N/A | None — workers share the same checkout, post-fan-out is state aggregation only |
 | Cleanup needed | No | After hard-kill or failures |
 
 ---

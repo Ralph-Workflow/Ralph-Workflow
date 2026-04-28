@@ -217,7 +217,7 @@ Ralph has two primary testable layers:
 |-------|----------------|-----------|
 | Pure orchestration (`pipeline/orchestrator.py`, reducers) | Phase routing, effect selection, transition logic | Unit tests — value-type inputs/outputs, no mocks needed |
 | Effect handlers (`phases/`, `agents/`) | Workspace reads/writes, subprocess invocation | Integration tests with `MemoryWorkspace` + `FakeAgentExecutor` |
-| Real OS / git | Actual git operations, worktree management | Git system tests only (`tmp_git_repo`) |
+| Real OS / git | Actual git operations, git system hooks | Git system tests only (`tmp_git_repo`) |
 
 ### Testing phase transitions
 
@@ -496,7 +496,7 @@ Tests are first-class architecture components. When a test is hard to write, sim
 | Pure orchestration (`pipeline/orchestrator.py`) | Phase routing, effect selection, all branching logic | Unit-test with Pydantic value inputs and effect outputs — no mocks needed |
 | Phase handlers (`phases/`) | Prompt materialization, workspace reads | Unit-test with `MemoryWorkspace`; assert on written paths |
 | Agent effects (`agents/`, `executor/`) | Subprocess launch, output streaming | Integration-test with `FakeAgentExecutor` + `FakeRun` |
-| Real OS / git | Actual git operations, worktree management | Git system tests only (`tmp_git_repo`) |
+| Real OS / git | Actual git operations, git system hooks | Git system tests only (`tmp_git_repo`) |
 
 ### Principles
 

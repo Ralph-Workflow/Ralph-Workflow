@@ -302,7 +302,7 @@ Ralph Workflow's Claude parser accepts both bare (`claude: ...`) and model-quali
 
 ## Parallel mode
 
-When the planning phase produces two or more work units, Ralph Workflow runs them as parallel workers in the **same git checkout** (same-workspace mode v1). Each worker is restricted to its declared `allowed_directories` and writes its artifacts under `.agent/workers/<unit_id>/`. Workers do not get separate worktrees or branches; coordination uses edit-area fencing and per-worker artifact namespaces only. For the full guide including configuration, work unit structure, and success criteria, see [`docs/sphinx/parallel-mode.md`](docs/sphinx/parallel-mode.md).
+When the planning phase produces two or more work units, Ralph Workflow runs them as parallel workers in the **same git checkout** (same-workspace mode v1). Each worker is restricted to its declared `allowed_directories` and writes its artifacts under `.agent/workers/<unit_id>/`. Workers share the checkout and write to it directly, without separate git branches; coordination uses edit-area fencing and artifact namespaces only. For the full guide including configuration, work unit structure, and success criteria, see [`docs/sphinx/parallel-mode.md`](docs/sphinx/parallel-mode.md).
 
 Quick configuration:
 

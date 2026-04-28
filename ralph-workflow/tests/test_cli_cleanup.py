@@ -92,3 +92,36 @@ def test_cleanup_force_removes_nested_contents(tmp_path: Path) -> None:
     assert result.exit_code == 0, result.output
     assert not unit_dir.exists()
     assert "Removed 1 stale worker namespace" in result.output
+
+
+def test_cleanup_does_not_touch_worktrees_directory(tmp_path: Path) -> None:
+    """Regression guard: cleanup must never remove a sibling .worktrees/ directory.
+
+    v1 does not use git per-worker checkouts, so cleanup must only operate on
+    .agent/workers/ and must leave any other directory untouched.
+    """
+    worktrees_dir = tmp_path / ".worktrees" / "unit-a"
+    worktrees_dir.mkdir(parents=True)
+
+    with patch("ralph.cli.commands.cleanup.find_repo_root", return_value=tmp_path):
+        result = runner.invoke(_app, ["--force"])
+
+    assert result.exit_code == 0, result.output
+    assert worktrees_dir.exists(), (
+        ".worktrees/unit-a must not be touched by cleanup — it is not a supported v1 concept"
+    )
+    assert "No stale worker namespaces found" in result.output
+
+
+def test_cleanup_outside_git_repo_exits_1(tmp_path: Path) -> None:
+    """Running cleanup in a non-git directory must exit with code 1 and an error message."""
+    def _raise_not_in_git() -> None:
+        raise RuntimeError("not a git repository")
+
+    with patch(
+        "ralph.cli.commands.cleanup.find_repo_root", side_effect=_raise_not_in_git
+    ):
+        result = runner.invoke(_app, [])
+
+    assert result.exit_code == 1, f"Expected exit 1 for non-git dir, got {result.exit_code}"
+    assert "not in a git repository" in result.output.lower() or "error" in result.output.lower()
