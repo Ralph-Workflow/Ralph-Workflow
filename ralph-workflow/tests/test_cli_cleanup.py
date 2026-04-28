@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import inspect
+import subprocess
 from typing import TYPE_CHECKING
 from unittest.mock import patch
 
 import typer
 from typer.testing import CliRunner
 
+import ralph.cli.commands.cleanup
 from ralph.cli.commands.cleanup import cleanup
 
 if TYPE_CHECKING:
@@ -125,3 +128,63 @@ def test_cleanup_outside_git_repo_exits_1(tmp_path: Path) -> None:
 
     assert result.exit_code == 1, f"Expected exit 1 for non-git dir, got {result.exit_code}"
     assert "not in a git repository" in result.output.lower() or "error" in result.output.lower()
+
+
+class TestCleanupNeverInvokesGit:
+    """Regression guardrails: cleanup must never shell out to git."""
+
+    def test_cleanup_does_not_shell_out_to_git(
+        self, tmp_path: Path, monkeypatch: object
+    ) -> None:
+        """cleanup --force must remove worker dirs without invoking any git process.
+
+        Monkeypatches all subprocess entry points and asserts none were called.
+        """
+        import pytest  # noqa: PLC0415
+
+        invocations: list[tuple[object, ...]] = []
+
+        def _record(*args: object, **kwargs: object) -> object:
+            invocations.append(args)
+            raise AssertionError(
+                f"cleanup must not invoke subprocess: args={args!r} kwargs={kwargs!r}"
+            )
+
+        mp = pytest.MonkeyPatch()
+        mp.setattr("ralph.git.subprocess_runner.run_git", _record, raising=False)
+        mp.setattr(subprocess, "run", _record)
+        mp.setattr(subprocess, "Popen", _record)
+
+        workers_dir = tmp_path / ".agent" / "workers"
+        (workers_dir / "unit-a").mkdir(parents=True)
+        (workers_dir / "unit-b").mkdir(parents=True)
+
+        try:
+            with patch("ralph.cli.commands.cleanup.find_repo_root", return_value=tmp_path):
+                result = runner.invoke(_app, ["--force"])
+        finally:
+            mp.undo()
+
+        assert result.exit_code == 0, f"cleanup exited {result.exit_code}: {result.output}"
+        assert not (workers_dir / "unit-a").exists(), "unit-a must have been removed"
+        assert not (workers_dir / "unit-b").exists(), "unit-b must have been removed"
+        assert invocations == [], (
+            f"cleanup must not invoke any subprocess, but these were recorded: {invocations!r}"
+        )
+
+    def test_cleanup_source_does_not_reference_worktree_or_subprocess_git(self) -> None:
+        """Static source check: cleanup.py must not contain 'worktree' or subprocess git calls."""
+        source = inspect.getsource(ralph.cli.commands.cleanup)
+        assert "worktree" not in source, (
+            "cleanup.py must not reference 'worktree' — "
+            "v1 cleanup only removes .agent/workers/<unit_id>/ namespaces."
+        )
+        # Must not shell out via subprocess — cleanup uses only shutil.rmtree and Path
+        assert "subprocess" not in source, (
+            "cleanup.py must not import or call subprocess — "
+            "cleanup must use only filesystem operations (shutil/Path), never subprocess."
+        )
+        assert "git worktree" not in source, (
+            "cleanup.py must not contain 'git worktree' — "
+            "cleanup is not allowed to invoke git worktree commands."
+        )

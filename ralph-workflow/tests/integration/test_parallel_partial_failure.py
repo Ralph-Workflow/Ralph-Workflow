@@ -7,8 +7,17 @@ per-unit status is reported correctly for all workers.
 from __future__ import annotations
 
 import asyncio
+import json
+from typing import TYPE_CHECKING
+from unittest.mock import MagicMock
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+    import pytest
 
 from ralph.config.enums import PHASE_DEVELOPMENT, PHASE_FAILED
+from ralph.pipeline import runner as runner_module
 from ralph.pipeline.effects import FanOutDevelopmentEffect
 from ralph.pipeline.events import (
     Event,
@@ -22,7 +31,9 @@ from ralph.pipeline.reducer import reduce as reducer_reduce
 from ralph.pipeline.state import PipelineState
 from ralph.pipeline.work_units import WorkUnit
 from ralph.pipeline.worker_state import WorkerStatus
+from ralph.policy.models import PhaseParallelization
 from ralph.testing.fake_agent_executor import FakeAgentExecutor, FakeRun
+from ralph.workspace.scope import WorkspaceScope
 
 
 def _make_work_unit(uid: str, deps: list[str] | None = None) -> WorkUnit:
@@ -52,6 +63,39 @@ def _run_fan_out(
             effect=effect,
             executor=FakeAgentExecutor(runs),
             display=_FakeDisplay(),  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+        )
+    )
+
+
+def _make_policy_bundle(max_workers: int = 4) -> MagicMock:
+    bundle = MagicMock()
+    para = PhaseParallelization(max_parallel_workers=max_workers, post_fanout_verification=True)
+    dev_phase = MagicMock(requires_commit=False, drain="development")
+    dev_phase.parallelization = para
+    bundle.pipeline.phases = {PHASE_DEVELOPMENT: dev_phase}
+    bundle.agents.agent_drains = {
+        "development": MagicMock(chain="developer"),
+    }
+    bundle.agents.agent_chains = {
+        "developer": MagicMock(agents=["developer"]),
+    }
+    return bundle
+
+
+def _seed_artifact(repo_root: Path, unit_id: str) -> None:
+    """Pre-populate worker-local artifact evidence."""
+    artifact_dir = repo_root / ".agent" / "workers" / unit_id / "artifacts"
+    artifact_dir.mkdir(parents=True, exist_ok=True)
+    (artifact_dir / "development_result.json").write_text(
+        json.dumps(
+            {
+                "name": "development_result",
+                "type": "development_result",
+                "content": {"summary": f"Worker {unit_id} done", "changes": []},
+                "created_at": "2024-01-01T00:00:00+00:00",
+                "updated_at": "2024-01-01T00:00:00+00:00",
+                "metadata": {},
+            }
         )
     )
 
@@ -245,4 +289,169 @@ class TestPartialFailureReporting:
         last_error = state.last_error or ""
         assert last_error.index("unit-beta") < last_error.index("unit-gamma"), (
             f"unit-beta must appear before unit-gamma in last_error: {last_error!r}"
+        )
+
+
+class TestPartialFailureHandoffContent:
+    """Runner-level tests: DEVELOPMENT_RESULT.md handoff content on partial failure.
+
+    These tests verify that when 1 of 2 workers fails, the resulting handoff
+    artifact contains both unit_ids, marks the right worker as failed, and
+    reports phase state as PHASE_FAILED (not PHASE_DEVELOPMENT_ANALYSIS).
+    """
+
+    def test_partial_failure_development_result_md_contains_both_unit_ids(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """When unit-b fails, DEVELOPMENT_RESULT.md must name BOTH unit-a and unit-b.
+
+        Asserts:
+        - .agent/DEVELOPMENT_RESULT.md exists and contains both unit_ids
+        - unit-b (the failed one) is named in the failure context
+        - unit-a (the success) is present and not blamed
+        - any_failed: true and all_succeeded: false
+        """
+        from ralph.pipeline import checkpoint as ckpt  # noqa: PLC0415
+
+        unit_a = _make_work_unit("unit-a")
+        unit_b = _make_work_unit("unit-b")
+
+        _seed_artifact(tmp_path, "unit-a")  # unit-b deliberately has no artifact
+
+        scope = WorkspaceScope(root=tmp_path, allowed_roots=frozenset([tmp_path]))
+        initial_state = PipelineState(
+            phase=PHASE_DEVELOPMENT,
+            work_units=(unit_a, unit_b),
+        )
+
+        partial_events = [
+            PipelineEvent.FAN_OUT_STARTED,
+            WorkerCompletedEvent(unit_id="unit-a", exit_code=0),
+            WorkerFailedEvent(unit_id="unit-b", exit_code=1, error="unit-b: no artifact"),
+            PipelineEvent.ALL_WORKERS_COMPLETE,
+        ]
+
+        async def _fake_run_fan_out(**kwargs: object) -> list[object]:
+            return partial_events
+
+        monkeypatch.setattr(coordinator, "run_fan_out", _fake_run_fan_out)
+        monkeypatch.setattr(ckpt, "save", lambda state: None)
+
+        bundle = _make_policy_bundle(max_workers=2)
+        effect = FanOutDevelopmentEffect(
+            work_units=(unit_a, unit_b),
+            max_workers=2,
+            run_post_fanout_verification=False,
+        )
+
+        final_state = runner_module._execute_fan_out_sync(
+            effect=effect,
+            state=initial_state,
+            display=_FakeDisplay(),  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+            policy_bundle=bundle,
+            workspace_scope=scope,
+        )
+
+        # State must be PHASE_FAILED — never PHASE_DEVELOPMENT_ANALYSIS on partial failure
+        assert final_state.phase == PHASE_FAILED, (
+            f"Partial failure must produce PHASE_FAILED, got {final_state.phase!r}. "
+            "PHASE_DEVELOPMENT_ANALYSIS must only be reached when ALL workers succeed."
+        )
+
+        # DEVELOPMENT_RESULT.md must contain both unit_ids
+        handoff_path = tmp_path / ".agent" / "DEVELOPMENT_RESULT.md"
+        assert handoff_path.exists(), (
+            ".agent/DEVELOPMENT_RESULT.md must be written on partial failure"
+        )
+        content = handoff_path.read_text()
+
+        assert "unit-a" in content, (
+            "DEVELOPMENT_RESULT.md must name unit-a (the successful worker)"
+        )
+        assert "unit-b" in content, (
+            "DEVELOPMENT_RESULT.md must name unit-b (the failed worker)"
+        )
+        assert "any_failed: true" in content, (
+            "DEVELOPMENT_RESULT.md must report any_failed: true"
+        )
+        assert "all_succeeded: false" in content, (
+            "DEVELOPMENT_RESULT.md must report all_succeeded: false"
+        )
+
+    def test_parallel_development_summary_json_has_per_unit_status(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """parallel_development_summary.json lists per-unit status on partial failure.
+
+        Asserts:
+        - .agent/artifacts/parallel_development_summary.json exists
+        - any_failed = true
+        - all_succeeded = false
+        - workers list contains entries for both unit-a and unit-b
+        - unit-a entry has status 'succeeded'
+        - unit-b entry has a non-success status
+        """
+        from ralph.pipeline import checkpoint as ckpt  # noqa: PLC0415
+
+        unit_a = _make_work_unit("unit-a")
+        unit_b = _make_work_unit("unit-b")
+
+        _seed_artifact(tmp_path, "unit-a")
+
+        scope = WorkspaceScope(root=tmp_path, allowed_roots=frozenset([tmp_path]))
+        initial_state = PipelineState(
+            phase=PHASE_DEVELOPMENT,
+            work_units=(unit_a, unit_b),
+        )
+
+        partial_events = [
+            PipelineEvent.FAN_OUT_STARTED,
+            WorkerCompletedEvent(unit_id="unit-a", exit_code=0),
+            WorkerFailedEvent(unit_id="unit-b", exit_code=1, error="unit-b failed"),
+            PipelineEvent.ALL_WORKERS_COMPLETE,
+        ]
+
+        async def _fake_run_fan_out(**kwargs: object) -> list[object]:
+            return partial_events
+
+        monkeypatch.setattr(coordinator, "run_fan_out", _fake_run_fan_out)
+        monkeypatch.setattr(ckpt, "save", lambda state: None)
+
+        bundle = _make_policy_bundle(max_workers=2)
+        effect = FanOutDevelopmentEffect(
+            work_units=(unit_a, unit_b),
+            max_workers=2,
+            run_post_fanout_verification=False,
+        )
+
+        runner_module._execute_fan_out_sync(
+            effect=effect,
+            state=initial_state,
+            display=_FakeDisplay(),  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+            policy_bundle=bundle,
+            workspace_scope=scope,
+        )
+
+        summary_path = tmp_path / ".agent" / "artifacts" / "parallel_development_summary.json"
+        assert summary_path.exists(), (
+            ".agent/artifacts/parallel_development_summary.json must be written after fan-out"
+        )
+        summary = json.loads(summary_path.read_text())
+
+        assert summary["any_failed"] is True, (
+            f"parallel_development_summary.json must have any_failed=true, got: {summary!r}"
+        )
+        assert summary["all_succeeded"] is False, (
+            f"parallel_development_summary.json must have all_succeeded=false, got: {summary!r}"
+        )
+
+        workers_by_id = {w["unit_id"]: w for w in summary["workers"]}
+        assert "unit-a" in workers_by_id, "unit-a must appear in workers list"
+        assert "unit-b" in workers_by_id, "unit-b must appear in workers list"
+
+        assert workers_by_id["unit-a"]["status"] == "succeeded", (
+            f"unit-a must be succeeded, got: {workers_by_id['unit-a']!r}"
+        )
+        assert workers_by_id["unit-b"]["status"] != "succeeded", (
+            f"unit-b must not be succeeded, got: {workers_by_id['unit-b']!r}"
         )
