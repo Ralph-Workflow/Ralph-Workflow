@@ -10,8 +10,8 @@
 # MINIMUM REQUIRED SECTIONS: [phases] with at least entry_phase and terminal_phase.
 #
 # Phase routing is driven entirely by this file — no hardcoded phase transitions
-# exist in the reducer. Each phase references a drain (bound in agents.toml) and
-# defines routing rules for success, failure, and loopback signals.
+# exist in the reducer. Each phase references a drain bound in ralph-workflow.toml
+# and defines routing rules for success, failure, and loopback signals.
 
 [phases.planning]
 drain = "planning"

@@ -176,6 +176,7 @@ _MAX_TOOL_RESULT_BRIEF = 80
 _TOOL_RESULT_BRIEF_THRESHOLD = 500
 _MAX_METADATA_SUMMARY_LENGTH = 120
 _LEGACY_EXECUTE_EFFECT_ARITY = 3
+_POLICY_LOADER_CONFIG_ARITY = 2
 _RECOVERY_CONTEXT_LINES = 12
 _TRANSIENT_CONNECTIVITY_MARKERS = (
     "connection refused",
@@ -854,6 +855,28 @@ def _emit_final_summary(
         logger.debug("Failed to emit completion summary", exc_info=True)
 
 
+def _load_policy_bundle_for_run(
+    workspace_root: Path,
+    config: UnifiedConfig,
+) -> PolicyBundle:
+    loader = load_policy_or_die
+    params = signature(loader).parameters
+    if "config" in params:
+        return loader(workspace_root / ".agent", config=config)
+
+    positional = [
+        param
+        for param in params.values()
+        if param.kind in (param.POSITIONAL_ONLY, param.POSITIONAL_OR_KEYWORD)
+    ]
+    if (
+        any(param.kind == param.VAR_KEYWORD for param in params.values())
+        or len(positional) >= _POLICY_LOADER_CONFIG_ARITY
+    ):
+        return loader(workspace_root / ".agent", config=config)
+    return loader(workspace_root / ".agent")
+
+
 def run(  # noqa: PLR0912, PLR0913, PLR0915
     config: UnifiedConfig,
     initial_state: PipelineState | None = None,
@@ -885,7 +908,7 @@ def run(  # noqa: PLR0912, PLR0913, PLR0915
     _write_start_commit_if_absent(workspace_scope.root)
     if _validate_custom_mcp_servers(workspace_scope.root) != 0:
         return 1
-    policy_bundle = load_policy_or_die(workspace_scope.root / ".agent")
+    policy_bundle = _load_policy_bundle_for_run(workspace_scope.root, config)
     registry = AgentRegistry.from_config(config)
     state = initial_state or _create_initial_state(
         config,
@@ -1721,7 +1744,22 @@ def _agents_for_phase(
     if config_agents:
         return config_agents
 
-    return []
+    if agents_policy is None or pipeline_policy is None:
+        return []
+
+    phase_def = pipeline_policy.phases.get(phase)
+    if phase_def is None:
+        return []
+
+    drain_binding = agents_policy.agent_drains.get(phase_def.drain)
+    if drain_binding is None:
+        return []
+
+    chain_config = agents_policy.agent_chains.get(drain_binding.chain)
+    if chain_config is None:
+        return []
+
+    return list(chain_config.agents)
 
 
 def _config_drain_candidates(*, phase: str, policy_drain: str | None) -> tuple[str, ...]:
@@ -1790,7 +1828,15 @@ def _agent_name_for_phase_from_policy(
     if config_agents:
         return config_agents[0]
 
-    return None
+    drain_binding = policy_bundle.agents.agent_drains.get(phase_def.drain)
+    if drain_binding is None:
+        return None
+
+    chain_config = policy_bundle.agents.agent_chains.get(drain_binding.chain)
+    if chain_config is None or not chain_config.agents:
+        return None
+
+    return chain_config.agents[0]
 
 
 def _phase_event_after_agent_run(  # noqa: PLR0913

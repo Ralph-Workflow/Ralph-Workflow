@@ -158,9 +158,8 @@ def _print_fallback_next_steps(target: Path) -> None:
         " or [cyan]~/.config/ralph-workflow-mcp.toml[/cyan]"
     )
     console.print(
-        "  5. (Optional) Review agent chains in [cyan].agent/agents.toml[/cyan],"
-        " pipeline in [cyan].agent/pipeline.toml[/cyan],"
-        " and artifacts in [cyan].agent/artifacts.toml[/cyan]"
+        "  5. (Optional) Review [cyan].agent/pipeline.toml[/cyan] and"
+        " [cyan].agent/artifacts.toml[/cyan] if you need advanced workflow overrides"
     )
     console.print(
         "  6. (Optional) Run [cyan]ralph --diagnose[/cyan] to verify agents,"

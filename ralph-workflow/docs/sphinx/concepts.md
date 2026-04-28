@@ -23,14 +23,14 @@ See `ralph.phases` for phase resolution and `ralph.pipeline` for orchestration.
 ## Drain
 
 A named binding that maps a phase to an agent chain. Each phase that invokes an agent
-has a drain; the drain name resolves to a chain via `agents.toml`. For example,
-the `development` phase uses the `development` drain, which resolves to the configured
-developer agent chain. See `ralph.policy.models` for the drain/chain data model.
+has a drain; the drain name resolves to a chain via the main Ralph Workflow config (`ralph-workflow.toml`).
+For example, the `development` phase uses the `development` drain, which resolves to the
+configured developer agent chain. See `ralph.policy.models` for the drain/chain data model.
 
 ## Agent
 
 An external AI coding assistant invoked as a subprocess (e.g., `claude`, `opencode`).
-Agents are configured in `agents.toml` with a `cmd` field (the binary name), optional
+Agents are configured in the main Ralph Workflow config with a `cmd` field (the binary name), optional
 model flags, and optional MCP server bindings. Ralph Workflow does not require a specific
 agent; any tool that reads stdin/args and writes to stdout works. See `ralph.agents`.
 
@@ -38,7 +38,7 @@ agent; any tool that reads stdin/args and writes to stdout works. See `ralph.age
 
 An ordered list of agents tried in sequence. If the first agent fails or produces
 unusable output, Ralph Workflow falls over to the next agent in the chain (agent
-fallover). Chains are declared in `agents.toml` under `[agent_chains]`. See
+fallover). Chains are declared in `ralph-workflow.toml` under `[agent_chains]`. See
 `ralph.agents.chain`.
 
 ## Agent Fallover

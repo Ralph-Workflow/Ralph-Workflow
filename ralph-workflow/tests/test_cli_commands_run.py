@@ -7,12 +7,69 @@ from typing import TYPE_CHECKING
 from ralph.cli.commands import run as run_module
 from ralph.config.models import UnifiedConfig
 from ralph.pipeline.state import PipelineState
+from ralph.policy.models import (
+    AgentChainConfig,
+    AgentDrainConfig,
+    AgentsPolicy,
+    ArtifactsPolicy,
+    PhaseDefinition,
+    PhaseTransition,
+    PipelinePolicy,
+    PolicyBundle,
+)
+from ralph.policy.validation import PolicyValidationError
 from ralph.workspace.scope import WorkspaceScope
 
 if TYPE_CHECKING:
     from pathlib import Path
 
     import pytest
+
+
+_EXIT_PREFLIGHT = 2
+
+
+def _policy_bundle_for_testing() -> PolicyBundle:
+    return PolicyBundle(
+        agents=AgentsPolicy(
+            agent_chains={
+                "planning": AgentChainConfig(agents=["claude"]),
+                "development": AgentChainConfig(agents=["claude"]),
+                "development_analysis": AgentChainConfig(agents=["claude"]),
+                "review": AgentChainConfig(agents=["claude"]),
+                "review_analysis": AgentChainConfig(agents=["claude"]),
+                "fix": AgentChainConfig(agents=["claude"]),
+                "complete": AgentChainConfig(agents=["claude"]),
+            },
+            agent_drains={
+                "planning": AgentDrainConfig(chain="planning"),
+                "development": AgentDrainConfig(chain="development"),
+                "development_analysis": AgentDrainConfig(chain="development_analysis"),
+                "review": AgentDrainConfig(chain="review"),
+                "review_analysis": AgentDrainConfig(chain="review_analysis"),
+                "fix": AgentDrainConfig(chain="fix"),
+                "complete": AgentDrainConfig(chain="complete"),
+            },
+        ),
+        pipeline=PipelinePolicy(
+            phases={
+                "planning": PhaseDefinition(
+                    drain="planning",
+                    transitions=PhaseTransition(on_success="complete"),
+                ),
+                "complete": PhaseDefinition(
+                    drain="complete",
+                    transitions=PhaseTransition(
+                        on_success="complete",
+                        on_loopback="complete",
+                    ),
+                ),
+            },
+            entry_phase="planning",
+            terminal_phase="complete",
+        ),
+        artifacts=ArtifactsPolicy(artifacts={}),
+    )
 
 
 class _CaptureConsole:
@@ -125,6 +182,70 @@ def test_run_pipeline_builds_preflight_registry_from_config(
 
     assert run_module.run_pipeline() == 0
     assert _RegistryWithFromConfigOnly.called_with is config
+
+
+def test_run_pipeline_preflight_uses_loaded_policy_bundle_even_when_it_is_not_a_policybundle_mock(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _configure_workspace(monkeypatch, tmp_path)
+    config = _fake_config()
+    fake_bundle = type(
+        "_FakeBundle",
+        (),
+        {
+            "agents": type(
+                "_Agents",
+                (),
+                {
+                    "agent_chains": {
+                        "development": type("_Chain", (), {"agents": ["ghost"]})()
+                    }
+                },
+            )(),
+            "pipeline": type(
+                "_Pipeline",
+                (),
+                {"phases": {"development": object()}},
+            )(),
+        },
+    )()
+
+    monkeypatch.setattr(run_module, "load_config", lambda *args, **kwargs: config)
+    monkeypatch.setattr(run_module, "load_policy", lambda *args, **kwargs: fake_bundle)
+    monkeypatch.setattr(run_module, "AgentRegistry", _RegistryWithFromConfigOnly)
+    monkeypatch.setattr(run_module, "_validate_loaded_policy_bundle", lambda bundle: None)
+    monkeypatch.setattr(
+        run_module,
+        "validate_agent_chains_satisfiable",
+        lambda bundle, registry: (_ for _ in ()).throw(PolicyValidationError("unknown agent")),
+    )
+    monkeypatch.setattr(run_module, "validate_recovery_config", lambda bundle: None)
+    monkeypatch.setattr(run_module, "_run_func", lambda *_args, **_kwargs: 0)
+
+    assert run_module.run_pipeline() == _EXIT_PREFLIGHT
+    assert _RegistryWithFromConfigOnly.called_with is config
+
+
+def test_run_pipeline_loads_policy_with_main_config_as_agents_authority(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    scope = _configure_workspace(monkeypatch, tmp_path)
+    config = _fake_config()
+    captured: dict[str, object] = {}
+
+    def fake_load_policy(policy_dir, *, config=None):
+        captured["policy_dir"] = policy_dir
+        captured["config"] = config
+        return _policy_bundle_for_testing()
+
+    monkeypatch.setattr(run_module, "load_config", lambda *args, **kwargs: config)
+    monkeypatch.setattr(run_module, "load_policy", fake_load_policy)
+    monkeypatch.setattr(run_module, "_run_func", lambda *_args, **_kwargs: 0)
+
+    assert run_module.run_pipeline() == 0
+    assert captured == {"policy_dir": scope.root / ".agent", "config": config}
 
 
 def test_run_pipeline_runner_unavailable(

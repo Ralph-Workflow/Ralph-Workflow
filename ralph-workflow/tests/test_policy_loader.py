@@ -10,6 +10,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from ralph.config.models import UnifiedConfig
 from ralph.policy import loader as policy_loader
 from ralph.policy.loader import (
     PolicyValidationError as LoaderPolicyValidationError,
@@ -149,6 +150,77 @@ def test_load_policy_accepts_legacy_nested_pipeline_table(tmp_path: Path) -> Non
     bundle = load_policy(tmp_path)
     assert bundle.pipeline.entry_phase == "planning"
     assert set(bundle.pipeline.phases) == {"planning", "complete"}
+
+
+def test_load_policy_ignores_invalid_agents_toml_when_unified_config_is_provided(
+    tmp_path: Path,
+) -> None:
+    _copy_default_policy_files(tmp_path)
+    (tmp_path / "agents.toml").write_text("not valid toml: <<<", encoding="utf-8")
+    config = UnifiedConfig(
+        agent_chains={"planning": ["codex"], "complete": ["codex"]},
+        agent_drains={"planning": "planning", "complete": "complete"},
+    )
+    (tmp_path / "pipeline.toml").write_text(
+        dedent(
+            """
+            entry_phase = "planning"
+            terminal_phase = "complete"
+
+            [phases.planning]
+            drain = "planning"
+            prompt_template = "planning.jinja"
+            [phases.planning.transitions]
+            on_success = "complete"
+
+            [phases.complete]
+            drain = "complete"
+            [phases.complete.transitions]
+            on_success = "complete"
+            on_loopback = "complete"
+            """
+        ),
+        encoding="utf-8",
+    )
+
+    bundle = load_policy(tmp_path, config=config)
+
+    assert bundle.agents.agent_chains["planning"].agents == ["codex"]
+    assert bundle.agents.agent_drains["planning"].chain == "planning"
+
+
+def test_load_policy_uses_unified_config_for_agents_policy_when_provided(tmp_path: Path) -> None:
+    _copy_default_policy_files(tmp_path)
+    config = UnifiedConfig(
+        agent_chains={"planning": ["codex"]},
+        agent_drains={"planning": "planning"},
+    )
+    (tmp_path / "pipeline.toml").write_text(
+        dedent(
+            """
+            entry_phase = "planning"
+            terminal_phase = "complete"
+
+            [phases.planning]
+            drain = "planning"
+            prompt_template = "planning.jinja"
+            [phases.planning.transitions]
+            on_success = "complete"
+
+            [phases.complete]
+            drain = "complete"
+            [phases.complete.transitions]
+            on_success = "complete"
+            on_loopback = "complete"
+            """
+        ),
+        encoding="utf-8",
+    )
+
+    bundle = load_policy(tmp_path, config=config)
+
+    assert bundle.agents.agent_chains["planning"].agents == ["codex"]
+    assert bundle.agents.agent_drains["planning"].chain == "planning"
 
 
 def test_load_policy_wraps_validate_drain_contracts_error(

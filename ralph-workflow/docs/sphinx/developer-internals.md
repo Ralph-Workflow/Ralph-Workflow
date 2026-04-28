@@ -9,17 +9,16 @@ instead.
 
 ## What lives here
 
+- [Agents](agents.md) — agent definitions, fallback chains, drain bindings, and invocation flow
 - [MCP Architecture](mcp-architecture.md) — server lifecycle, capability gates, and upstream proxying
 - [Artifacts](artifacts.md) — typed handoffs and artifact storage contracts
 - [Prompts](prompts.md) — prompt template loading, rendering, and payload materialisation
 - [Transcript and Display Reference](transcript.md) — output event structure and rendering behavior
 
-Agent runtime internals currently live in the Python API and source modules under
-`ralph.agents.*` rather than a dedicated Sphinx page.
-
 ```{toctree}
 :maxdepth: 1
 
+agents
 mcp-architecture
 artifacts
 prompts

@@ -8,40 +8,79 @@
 
 Most AI coding tools assume you'll pick one vendor and stay there. Ralph Workflow doesn't. You decide which agent runs which phase — Claude Code plans, OpenCode with a cheap model writes the implementation, Codex reviews it, OpenCode fixes what review caught, and Codex re-reviews until it's clean. All unattended. All auditable. All in your git history.
 
-Everything is configurable: prompts, agent chains, phase routing, retry budgets, recovery rules, verification policy. Express it once in TOML. Diff it. Share it. Run it tomorrow exactly the same way you ran it today.
+Everything is configurable: prompts, agent chains, phase routing, retry budgets, recovery rules, verification policy. Express it in repo-local TOML files. Diff them. Share them. Run them tomorrow exactly the same way you ran them today.
 
 ## A pipeline you actually own
 
+Ralph's runtime config is split by concern: `ralph-workflow.toml` for general settings you will tune most often, `pipeline.toml` for the phase graph, `agents.toml` for advanced chain and drain routing, and `artifacts.toml`/`mcp.toml` for the rest. Under the hood, a setup looks more like this:
+
+```toml
+# .agent/ralph-workflow.toml
+[general]
+developer_iters = 5
+reviewer_reviews = 2
+max_retries = 3
+```
+
+```toml
+# .agent/agents.toml
+[agent_chains.planning]
+agents = ["claude"]
+
+[agent_chains.development]
+agents = ["opencode", "codex"]
+
+[agent_chains.review]
+agents = ["codex"]
+
+[agent_chains.fix]
+agents = ["opencode"]
+
+[agent_drains.planning]
+chain = "planning"
+
+[agent_drains.development]
+chain = "development"
+
+[agent_drains.review]
+chain = "review"
+
+[agent_drains.fix]
+chain = "fix"
+```
+
 ```toml
 # .agent/pipeline.toml
+[phases.planning]
+drain = "planning"
+prompt_template = "planning.jinja"
+[phases.planning.transitions]
+on_success = "development"
 
-[phases.plan]
-agent_chain = ["claude-code"]
-prompt = "prompts/planner.md"
-on_success = "dev"
-
-[phases.dev]
-agent_chain = ["opencode:minimax", "opencode:qwen"]   # primary, fallback
-prompt = "prompts/developer.md"
+[phases.development]
+drain = "development"
+prompt_template = "developer_iteration.jinja"
+[phases.development.transitions]
 on_success = "review"
 
 [phases.review]
-agent_chain = ["codex"]
-prompt = "prompts/reviewer.md"
-on_issues = "fix"
-on_clean = "done"
+drain = "review"
+prompt_template = "review.jinja"
+[phases.review.transitions]
+on_loopback = "fix"
+on_success = "complete"
 
 [phases.fix]
-agent_chain = ["opencode:minimax"]
-prompt = "prompts/fixer.md"
-on_success = "review"   # loop back to reviewer
+drain = "fix"
+prompt_template = "fix_mode.jinja"
+[phases.fix.transitions]
+on_success = "review"
 
-[budgets]
-max_review_fix_loops = 3
-total_iterations = 20
+entry_phase = "planning"
+terminal_phase = "complete"
 ```
 
-Frontier models where reasoning matters. Cheap models where they're enough. Loop review and fix until the reviewer signs off. The whole pipeline lives in your repo, not in a vendor's cloud.
+Frontier models where reasoning matters. Cheap models where they're enough. Loop review and fix until the reviewer signs off. The whole pipeline policy lives in your repo, not in a vendor's cloud.
 
 ## Why this exists
 
@@ -129,11 +168,12 @@ bundled defaults  →  user-global  →  project-local  →  CLI flags
 
 The files that matter:
 
-- `.agent/pipeline.toml` — phase graph, transitions, loops
-- `.agent/agents.toml` — agent chains, model bindings, fallbacks
+- `~/.config/ralph-workflow.toml` — your user-global runtime defaults
+- `.agent/ralph-workflow.toml` — project-local main config override
+- `.agent/pipeline.toml` — phase graph, transitions, entry/terminal phases, parallel policy
+- `.agent/agents.toml` — advanced agent-chain and drain bindings when you want to override routing
 - `.agent/artifacts.toml` — what each phase must produce
 - `.agent/mcp.toml` — MCP servers, web search, tool access
-- `~/.config/ralph-workflow.toml` — your runtime defaults across projects
 
 ### Policy-driven phases
 

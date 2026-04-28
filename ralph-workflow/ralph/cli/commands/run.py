@@ -112,7 +112,7 @@ def _load_configuration(
 
     if workspace_scope is not None:
         try:
-            policy_bundle = load_policy(workspace_scope.root / ".agent")
+            policy_bundle = load_policy(workspace_scope.root / ".agent", config=config)
         except Exception as e:
             logger.warning("Failed to load policy bundle: {}", e)
             console.print(f"[red]Preflight error: {e}[/red]")
@@ -161,7 +161,46 @@ def _print_not_initialized_panel() -> None:
     console.print(panel)
 
 
-def _run_preflight_checks(  # noqa: PLR0911
+def _validate_loaded_policy_bundle(policy_bundle: PolicyBundle) -> None:
+    """Validate cross-drain policy contracts for an already loaded bundle."""
+    from ralph.policy.validation import validate_drain_contracts  # noqa: PLC0415
+
+    validate_drain_contracts(policy_bundle)
+
+
+def _run_policy_preflight_checks(
+    config: UnifiedConfig,
+    policy_bundle: PolicyBundle,
+    initial_state: PipelineState | None,
+) -> int:
+    """Run policy-backed preflight checks against the already loaded bundle."""
+    try:
+        agent_registry = AgentRegistry.from_config(config)
+        validate_agent_chains_satisfiable(policy_bundle, agent_registry)
+    except PolicyValidationError as e:
+        console.print(f"[red]Preflight error: {e.message}[/red]")
+        return _EXIT_PREFLIGHT
+
+    try:
+        validate_recovery_config(policy_bundle)
+    except PolicyValidationError as e:
+        console.print(f"[red]Preflight error: {e.message}[/red]")
+        return _EXIT_PREFLIGHT
+
+    if initial_state is not None:
+        try:
+            validate_checkpoint_against_policy(initial_state, policy_bundle)
+        except CheckpointPolicyMismatchError as e:
+            console.print(f"[red]Checkpoint mismatch: {e}[/red]")
+            return _EXIT_PREFLIGHT
+        except PolicyValidationError as e:
+            console.print(f"[red]Preflight error: {e.message}[/red]")
+            return _EXIT_PREFLIGHT
+
+    return _EXIT_SUCCESS
+
+
+def _run_preflight_checks(
     config: UnifiedConfig,
     workspace_scope: WorkspaceScope | None,
     policy_bundle: object,
@@ -172,7 +211,6 @@ def _run_preflight_checks(  # noqa: PLR0911
     Returns:
         _EXIT_SUCCESS if all checks pass, _EXIT_PREFLIGHT if any check fails.
     """
-    from ralph.policy.models import PolicyBundle  # noqa: PLC0415
     from ralph.policy.validation import validate_required_inputs  # noqa: PLC0415
 
     # validate_required_inputs requires workspace_scope
@@ -190,41 +228,15 @@ def _run_preflight_checks(  # noqa: PLR0911
             console.print(f"[red]Preflight error: {e.message}[/red]")
             return _EXIT_PREFLIGHT
 
-    # Only run policy-based validations if we have a policy bundle
-    if policy_bundle is not None and isinstance(policy_bundle, PolicyBundle):
-        # validate_drain_contracts
+    # Only run policy-based validations if we have a loaded policy bundle.
+    if policy_bundle is not None:
+        loaded_policy_bundle = cast("PolicyBundle", policy_bundle)
         try:
-            from ralph.policy.validation import validate_drain_contracts  # noqa: PLC0415
-            validate_drain_contracts(policy_bundle)
+            _validate_loaded_policy_bundle(loaded_policy_bundle)
         except PolicyValidationError as e:
             console.print(f"[red]Preflight error: {e.message}[/red]")
             return _EXIT_PREFLIGHT
-
-        # validate_agent_chains_satisfiable requires agent registry
-        try:
-            agent_registry = AgentRegistry.from_config(config)
-            validate_agent_chains_satisfiable(policy_bundle, agent_registry)
-        except PolicyValidationError as e:
-            console.print(f"[red]Preflight error: {e.message}[/red]")
-            return _EXIT_PREFLIGHT
-
-        # validate_recovery_config
-        try:
-            validate_recovery_config(policy_bundle)
-        except PolicyValidationError as e:
-            console.print(f"[red]Preflight error: {e.message}[/red]")
-            return _EXIT_PREFLIGHT
-
-        # validate_checkpoint_against_policy
-        if initial_state is not None:
-            try:
-                validate_checkpoint_against_policy(initial_state, policy_bundle)
-            except CheckpointPolicyMismatchError as e:
-                console.print(f"[red]Checkpoint mismatch: {e}[/red]")
-                return _EXIT_PREFLIGHT
-            except PolicyValidationError as e:
-                console.print(f"[red]Preflight error: {e.message}[/red]")
-                return _EXIT_PREFLIGHT
+        return _run_policy_preflight_checks(config, loaded_policy_bundle, initial_state)
 
     return _EXIT_SUCCESS
 
