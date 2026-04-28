@@ -15,7 +15,7 @@ from ralph.recovery.controller import RecoveryController
 def _state_with_session(phase: str = "development_analysis") -> PipelineState:
     return PipelineState(
         phase=phase,
-        dev_chain=AgentChainState(agents=["claude"], current_index=0, retries=0),
+        phase_chains={phase: AgentChainState(agents=["claude"], current_index=0, retries=0)},
         last_agent_session_id="sess-abc123",
     )
 
@@ -23,7 +23,7 @@ def _state_with_session(phase: str = "development_analysis") -> PipelineState:
 def _state_without_session(phase: str = "development_analysis") -> PipelineState:
     return PipelineState(
         phase=phase,
-        dev_chain=AgentChainState(agents=["claude"], current_index=0, retries=0),
+        phase_chains={phase: AgentChainState(agents=["claude"], current_index=0, retries=0)},
         last_agent_session_id=None,
     )
 
@@ -177,7 +177,11 @@ class TestPhaseAdvanceClearsSessionFields:
     def test_advance_phase_clears_last_agent_session_id(self) -> None:
         state = PipelineState(
             phase="development_analysis",
-            dev_chain=AgentChainState(agents=["claude"], current_index=0, retries=0),
+            phase_chains={
+                "development_analysis": AgentChainState(
+                    agents=["claude"], current_index=0, retries=0
+                )
+            },
             last_agent_session_id="sess-to-clear",
         )
         policy = _minimal_analysis_policy()
@@ -187,7 +191,11 @@ class TestPhaseAdvanceClearsSessionFields:
     def test_advance_phase_clears_session_preserve_retry_pending(self) -> None:
         state = PipelineState(
             phase="development_analysis",
-            dev_chain=AgentChainState(agents=["claude"], current_index=0, retries=0),
+            phase_chains={
+                "development_analysis": AgentChainState(
+                    agents=["claude"], current_index=0, retries=0
+                )
+            },
             last_agent_session_id="sess-x",
             session_preserve_retry_pending=True,
         )

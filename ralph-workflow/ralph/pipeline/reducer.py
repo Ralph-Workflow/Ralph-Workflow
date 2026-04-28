@@ -21,7 +21,6 @@ from typing import TYPE_CHECKING, cast
 
 from ralph.config.enums import (
     PHASE_COMPLETE,
-    PHASE_DEVELOPMENT_ANALYSIS,
     PHASE_FAILED,
     PipelinePhase,
 )
@@ -368,12 +367,12 @@ def _handle_analysis_success(
         route = phase_def.decisions.get("completed")
         if route is not None:
             new_state, effects = _advance_phase(state, route.target, policy)
-            return progress.apply_analysis_success(state, new_state), effects
+            return progress.apply_analysis_success(state, new_state, policy=policy), effects
 
     try:
         next_phase = resolve_next_phase(state.phase, "success", policy)
         new_state, effects = _advance_phase(state, next_phase, policy)
-        return progress.apply_analysis_success(state, new_state), effects
+        return progress.apply_analysis_success(state, new_state, policy=policy), effects
     except ValueError as exc:
         return _advance_to_failed(
             state,
@@ -423,6 +422,10 @@ def _handle_capped_analysis_loopback_policy_driven(
     clamped = max(0, min(current_iteration + 1, max_iterations))
     progress_state = progress.apply_analysis_loopback(state, state, iteration_field)
     progress_state = progress_state.with_loop_iteration(iteration_field, clamped)
+    if loop_policy.loopback_review_outcome is not None:
+        progress_state = progress_state.copy_with(
+            review_outcome=loop_policy.loopback_review_outcome
+        )
 
     # Determine the routing target from decisions['request_changes'] or transitions.on_loopback
     loopback_target: str | None = None
@@ -460,10 +463,10 @@ def _handle_review_clean(
     if phase_def is not None and "review_clean" in phase_def.bypass_routes:
         next_phase = phase_def.bypass_routes["review_clean"]
         new_state, effects = _advance_phase(state, next_phase, policy)
-        return new_state.copy_with(review_issues_found=False), effects
+        return new_state.copy_with(review_outcome=None), effects
 
     new_state, effects = _resolve_or_terminal(state, "success", policy, "review clean")
-    return new_state.copy_with(review_issues_found=False), effects
+    return new_state.copy_with(review_outcome=None), effects
 
 
 def _handle_review_issues_found(
@@ -474,7 +477,7 @@ def _handle_review_issues_found(
     if policy is None:
         return _advance_to_failed(state, "No policy loaded for review issues found routing")
     new_state, effects = _resolve_or_terminal(state, "loopback", policy, "review issues found")
-    return new_state.copy_with(review_issues_found=True), effects
+    return new_state.copy_with(review_outcome="has_issues"), effects
 
 
 def _handle_fix_success(
@@ -730,15 +733,7 @@ def _handle_all_workers_complete(
         return state, []
 
     if policy is None:
-        return (
-            state.copy_with(
-                phase=PHASE_DEVELOPMENT_ANALYSIS,
-                previous_phase=state.phase,
-                last_agent_session_id=None,
-                session_preserve_retry_pending=False,
-            ),
-            [],
-        )
+        return _advance_to_failed(state, "No policy loaded for all-workers-complete routing")
     try:
         next_phase = resolve_next_phase(state.phase, "success", policy)
         return _advance_phase(state, next_phase, policy)

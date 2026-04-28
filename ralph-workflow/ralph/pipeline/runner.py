@@ -1718,43 +1718,6 @@ def _create_initial_state(
     Returns:
         Initial PipelineState.
     """
-    # Set up agent chains from config
-    planning_agents = _agents_for_phase(
-        config,
-        "planning",
-        agents_policy=agents_policy,
-        pipeline_policy=pipeline_policy,
-    )
-    dev_agents = _agents_for_phase(
-        config,
-        "development",
-        agents_policy=agents_policy,
-        pipeline_policy=pipeline_policy,
-    )
-    dev_analysis_agents = _agents_for_phase(
-        config,
-        "development_analysis",
-        agents_policy=agents_policy,
-        pipeline_policy=pipeline_policy,
-    )
-    rev_agents = _agents_for_phase(
-        config,
-        "review",
-        agents_policy=agents_policy,
-        pipeline_policy=pipeline_policy,
-    )
-    review_analysis_agents = _agents_for_phase(
-        config,
-        "review_analysis",
-        agents_policy=agents_policy,
-        pipeline_policy=pipeline_policy,
-    )
-    fix_agents = _agents_for_phase(
-        config,
-        "fix",
-        agents_policy=agents_policy,
-        pipeline_policy=pipeline_policy,
-    )
     entry_phase = pipeline_policy.entry_phase if pipeline_policy is not None else PHASE_PLANNING
     phase_chains = _initial_phase_chains(
         config,
@@ -1768,12 +1731,6 @@ def _create_initial_state(
         total_reviewer_passes=config.general.reviewer_reviews,
         development_budget_remaining=config.general.developer_iters,
         review_budget_remaining=config.general.reviewer_reviews,
-        planning_chain=AgentChainState(agents=planning_agents),
-        dev_chain=AgentChainState(agents=dev_agents),
-        dev_analysis_chain=AgentChainState(agents=dev_analysis_agents),
-        rev_chain=AgentChainState(agents=rev_agents),
-        review_analysis_chain=AgentChainState(agents=review_analysis_agents),
-        fix_chain=AgentChainState(agents=fix_agents),
         phase_chains=phase_chains,
         rebase=RebaseState(),
         commit=CommitState(),

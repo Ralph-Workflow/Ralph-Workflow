@@ -10,7 +10,7 @@ from ralph.config.models import UnifiedConfig
 from ralph.pipeline import runner as runner_module
 from ralph.pipeline.effects import FanOutDevelopmentEffect, InvokeAgentEffect
 from ralph.pipeline.events import PipelineEvent
-from ralph.pipeline.state import PipelineState
+from ralph.pipeline.state import AgentChainState, PipelineState
 from ralph.pipeline.work_units import WorkUnit
 from ralph.pipeline.worker_state import WorkerState, WorkerStatus
 from ralph.workspace.scope import WorkspaceScope
@@ -115,7 +115,11 @@ def test_execute_fan_out_sync_wires_signal_handlers_and_same_workspace_context(
 ) -> None:
     unit = _make_work_unit("unit-a")
     effect = FanOutDevelopmentEffect(work_units=(unit,), max_workers=1)
-    state = PipelineState(phase=PHASE_DEVELOPMENT, work_units=(unit,))
+    state = PipelineState(
+        phase=PHASE_DEVELOPMENT,
+        work_units=(unit,),
+        phase_chains={"development": AgentChainState(agents=["claude"])},
+    )
     policy_bundle = _make_policy_bundle(max_workers=1)
     workspace_scope = WorkspaceScope(tmp_path)
     install_calls: list[tuple[object, object, object]] = []
@@ -167,7 +171,11 @@ def test_execute_fan_out_sync_converts_unexpected_coordinator_error_to_failed_re
 ) -> None:
     unit = _make_work_unit("unit-a")
     effect = FanOutDevelopmentEffect(work_units=(unit,), max_workers=1)
-    state = PipelineState(phase=PHASE_DEVELOPMENT, work_units=(unit,))
+    state = PipelineState(
+        phase=PHASE_DEVELOPMENT,
+        work_units=(unit,),
+        phase_chains={"development": AgentChainState(agents=["claude"])},
+    )
     policy_bundle = _make_policy_bundle(max_workers=1)
     workspace_scope = WorkspaceScope(tmp_path)
 
@@ -202,7 +210,7 @@ def test_execute_fan_out_sync_converts_unexpected_coordinator_error_to_failed_re
     )
 
     assert recovered.phase == PHASE_DEVELOPMENT
-    assert recovered.dev_chain.retries == 1
+    assert recovered.chain_for_phase("development").retries == 1
     assert recovered.recovery_epoch == 0
     assert recovered.last_error is not None
     assert "Fan-out execution crashed" in recovered.last_error

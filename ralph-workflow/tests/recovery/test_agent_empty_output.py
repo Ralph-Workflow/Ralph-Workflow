@@ -76,7 +76,7 @@ def test_agent_fault_causes_fallover_when_budget_exhausted() -> None:
     assert len(collected_fallovers) == 1
     assert collected_fallovers[0].from_agent == "claude"
     assert collected_fallovers[0].to_agent == "opencode"
-    assert new_state.dev_chain.current_index == 1
+    assert new_state.chain_for_phase("development").current_index == 1
     assert len(new_state.fallover_history) == 1
 
 

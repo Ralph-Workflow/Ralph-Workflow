@@ -126,14 +126,51 @@ class TestCreateInitialState:
         config = MagicMock()
         config.general.developer_iters = DEVELOPER_ITERATIONS
         config.general.reviewer_reviews = REVIEWER_PASSES
-        config.agent_chains = {"development": ["claude"], "review": ["claude"]}
+        config.agent_chains = {"dev": ["claude"], "rev": ["claude"]}
+        config.agent_drains = {"development": "dev", "review": "rev", "planning": "dev"}
+        agents_policy = AgentsPolicy(
+            agent_chains={
+                "dev": AgentChainConfig(agents=["claude"]),
+                "rev": AgentChainConfig(agents=["claude"]),
+            },
+            agent_drains={
+                "development": AgentDrainConfig(chain="dev"),
+                "review": AgentDrainConfig(chain="rev"),
+                "planning": AgentDrainConfig(chain="dev"),
+            },
+        )
+        pipeline_policy = PipelinePolicy(
+            phases={
+                "planning": PhaseDefinition(
+                    drain="planning",
+                    transitions=PhaseTransition(on_success="development"),
+                ),
+                "development": PhaseDefinition(
+                    drain="development",
+                    transitions=PhaseTransition(on_success="review"),
+                ),
+                "review": PhaseDefinition(
+                    drain="review",
+                    role="review",
+                    transitions=PhaseTransition(on_success="complete"),
+                ),
+                "complete": PhaseDefinition(
+                    drain="complete",
+                    transitions=PhaseTransition(on_success="complete", on_loopback="complete"),
+                ),
+            },
+            entry_phase="planning",
+            terminal_phase="complete",
+        )
 
-        state = runner_module._create_initial_state(config)
+        state = runner_module._create_initial_state(
+            config, agents_policy=agents_policy, pipeline_policy=pipeline_policy
+        )
         assert state.phase == "planning"
         assert state.total_iterations == DEVELOPER_ITERATIONS
         assert state.total_reviewer_passes == REVIEWER_PASSES
-        assert state.dev_chain.agents == ["claude"]
-        assert state.rev_chain.agents == ["claude"]
+        assert state.chain_for_phase("development").agents == ["claude"]
+        assert state.chain_for_phase("review").agents == ["claude"]
 
     def test_empty_agent_chains(self) -> None:
         config = MagicMock()
@@ -142,8 +179,8 @@ class TestCreateInitialState:
         config.agent_chains = {}
 
         state = runner_module._create_initial_state(config)
-        assert state.dev_chain.agents == []
-        assert state.rev_chain.agents == []
+        assert state.chain_for_phase("development") is None
+        assert state.chain_for_phase("review") is None
 
     def test_initial_state_prefers_config_drain_bindings_over_policy_chains(self) -> None:
         config = MagicMock()
@@ -176,7 +213,7 @@ class TestCreateInitialState:
             pipeline_policy=pipeline_policy,
         )
 
-        assert state.planning_chain.agents == ["codex"]
+        assert state.chain_for_phase("planning").agents == ["codex"]
 
     def test_initial_state_tracks_custom_phase_chain_from_policy(self) -> None:
         config = MagicMock()
@@ -251,7 +288,7 @@ class TestCreateInitialState:
             pipeline_policy=pipeline_policy,
         )
 
-        assert state.dev_analysis_chain.agents == ["config-analysis-agent"]
+        assert state.chain_for_phase("development_analysis").agents == ["config-analysis-agent"]
 
     def test_creates_state_with_correct_development_budget(self) -> None:
         config = MagicMock()
@@ -837,7 +874,10 @@ class TestPipelineRunnerLoop:
     def test_run_converts_system_exit_during_effect_execution_into_recovery(
         self, monkeypatch
     ) -> None:
-        state = PipelineState(phase="planning")
+        state = PipelineState(
+            phase="planning",
+            phase_chains={"planning": AgentChainState(agents=["planner"])},
+        )
         effects = iter(
             [
                 InvokeAgentEffect(
@@ -882,7 +922,7 @@ class TestPipelineRunnerLoop:
         assert saved_states
         recovered_state = saved_states[0]
         assert recovered_state.phase == "planning"
-        assert recovered_state.planning_chain.retries == 1
+        assert recovered_state.chain_for_phase("planning").retries == 1
         assert recovered_state.recovery_epoch == 0
         assert recovered_state.last_error is not None
         assert "SystemExit" in recovered_state.last_error
@@ -891,7 +931,10 @@ class TestPipelineRunnerLoop:
     def test_run_converts_system_exit_during_effect_determination_into_recovery(
         self, monkeypatch
     ) -> None:
-        state = PipelineState(phase="planning")
+        state = PipelineState(
+            phase="planning",
+            phase_chains={"planning": AgentChainState(agents=["planner"])},
+        )
         saved_states: list[PipelineState] = []
         calls = iter([SystemExit("determine blew up"), ExitSuccessEffect()])
 
@@ -918,7 +961,7 @@ class TestPipelineRunnerLoop:
         assert saved_states
         recovered_state = saved_states[0]
         assert recovered_state.phase == "planning"
-        assert recovered_state.planning_chain.retries == 1
+        assert recovered_state.chain_for_phase("planning").retries == 1
         assert recovered_state.last_error is not None
         assert "SystemExit" in recovered_state.last_error
         assert "determine blew up" in recovered_state.last_error
@@ -926,7 +969,10 @@ class TestPipelineRunnerLoop:
     def test_run_converts_system_exit_during_prepare_prompt_inline_handling_into_recovery(
         self, monkeypatch
     ) -> None:
-        state = PipelineState(phase="planning")
+        state = PipelineState(
+            phase="planning",
+            phase_chains={"planning": AgentChainState(agents=["planner"])},
+        )
         effects = iter([PreparePromptEffect(phase="planning", iteration=0), ExitSuccessEffect()])
         saved_states: list[PipelineState] = []
 
@@ -956,7 +1002,7 @@ class TestPipelineRunnerLoop:
         assert saved_states
         recovered_state = saved_states[0]
         assert recovered_state.phase == "planning"
-        assert recovered_state.planning_chain.retries == 1
+        assert recovered_state.chain_for_phase("planning").retries == 1
         assert recovered_state.last_error is not None
         assert "SystemExit" in recovered_state.last_error
         assert "prompt blew up" in recovered_state.last_error
@@ -967,6 +1013,7 @@ class TestPipelineRunnerLoop:
         state = PipelineState(
             phase=PHASE_DEVELOPMENT,
             work_units=(WorkUnit(unit_id="unit-a", description="A"),),
+            phase_chains={"development": AgentChainState(agents=["claude"])},
         )
         effects = iter(
             [
@@ -1005,7 +1052,7 @@ class TestPipelineRunnerLoop:
         assert saved_states
         recovered_state = saved_states[0]
         assert recovered_state.phase == PHASE_DEVELOPMENT
-        assert recovered_state.dev_chain.retries == 1
+        assert recovered_state.chain_for_phase("development").retries == 1
         assert recovered_state.last_error is not None
         assert "SystemExit" in recovered_state.last_error
         assert "fanout blew up" in recovered_state.last_error
@@ -2882,7 +2929,7 @@ class TestPhaseHandlerExceptionGuard:
         new_state, effects = reducer_reduce(state, event)
 
         # Should increment retries, not fail
-        assert new_state.dev_chain.retries == 1
+        assert new_state.chain_for_phase("development").retries == 1
         assert new_state.phase == PHASE_DEVELOPMENT
         assert effects == []
 

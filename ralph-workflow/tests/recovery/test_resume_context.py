@@ -186,7 +186,7 @@ def test_resume_after_two_agent_chain_first_exhausted() -> None:
 
     # Phase still DEVELOPMENT (not failed) - fallover happened
     assert new_state.phase == PHASE_DEVELOPMENT
-    assert new_state.dev_chain.current_index == 1  # fell over to opencode
+    assert new_state.chain_for_phase("development").current_index == 1  # fell over to opencode
     # recovery_cycle_count does NOT increment until full chain exhaustion
     assert new_state.recovery_cycle_count == 0
 

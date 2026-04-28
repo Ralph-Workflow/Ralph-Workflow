@@ -23,10 +23,6 @@ from __future__ import annotations
 from dataclasses import replace
 from typing import TYPE_CHECKING
 
-from ralph.config.enums import (
-    PHASE_DEVELOPMENT_ANALYSIS,
-    PHASE_REVIEW_ANALYSIS,
-)
 from ralph.pipeline.handoffs import resolve_phase_drain
 from ralph.pipeline.state import CommitState, PipelineState
 
@@ -68,16 +64,23 @@ def advance_phase(
     return state.copy_with(**updates)
 
 
-def apply_analysis_success(state: PipelineState, advanced_state: PipelineState) -> PipelineState:
+def apply_analysis_success(
+    state: PipelineState,
+    advanced_state: PipelineState,
+    *,
+    policy: PipelinePolicy | None = None,
+) -> PipelineState:
     """Reset inner-loop progress when analysis exits successfully to commit/approval."""
-    if state.phase == PHASE_DEVELOPMENT_ANALYSIS:
-        return advanced_state.copy_with(development_analysis_iteration=0)
-    if state.phase == PHASE_REVIEW_ANALYSIS:
-        return advanced_state.copy_with(
-            review_issues_found=False,
-            review_analysis_iteration=0,
-        )
-    return advanced_state
+    result = advanced_state.copy_with(review_outcome=None)
+    if policy is not None:
+        phase_def = policy.phases.get(state.phase)
+        if phase_def is not None:
+            from ralph.policy.models import PhaseLoopPolicy  # noqa: PLC0415
+
+            if isinstance(phase_def.loop_policy, PhaseLoopPolicy):
+                iteration_field = phase_def.loop_policy.iteration_state_field
+                result = result.with_loop_iteration(iteration_field, 0)
+    return result
 
 
 def apply_analysis_loopback(
@@ -85,50 +88,8 @@ def apply_analysis_loopback(
     advanced_state: PipelineState,
     iteration_field: str,
 ) -> PipelineState:
-    """Record an analysis loopback for any analysis phase by field name.
-
-    Used by the policy-driven loopback handler to apply progress tracking
-    using the iteration_state_field from loop_policy.
-
-    Args:
-        state: Original state before advance.
-        advanced_state: State after phase advance.
-        iteration_field: Loop iteration state field name from loop_policy.
-
-    Returns:
-        Updated state with loopback progress applied.
-    """
-    if iteration_field == "development_analysis_iteration":
-        return apply_development_analysis_loopback(state, advanced_state)
-    if iteration_field == "review_analysis_iteration":
-        return apply_review_analysis_loopback(state, advanced_state)
-    # Unknown iteration field — just increment via generic state update
-    try:
-        current = advanced_state.get_loop_iteration(iteration_field)
-        return advanced_state.with_loop_iteration(iteration_field, current + 1)
-    except AttributeError:
-        return advanced_state
-
-
-def apply_development_analysis_loopback(
-    state: PipelineState,
-    advanced_state: PipelineState,
-) -> PipelineState:
-    """Record a development analysis loopback, including capped correction routing."""
-    return advanced_state.copy_with(
-        development_analysis_iteration=state.development_analysis_iteration + 1
-    )
-
-
-def apply_review_analysis_loopback(
-    state: PipelineState,
-    advanced_state: PipelineState,
-) -> PipelineState:
-    """Record a review analysis loopback, including capped correction routing."""
-    return advanced_state.copy_with(
-        review_issues_found=True,
-        review_analysis_iteration=state.review_analysis_iteration + 1,
-    )
+    """Return advanced_state unchanged; the caller applies the clamped iteration value."""
+    return advanced_state
 
 
 def apply_commit_outcome(

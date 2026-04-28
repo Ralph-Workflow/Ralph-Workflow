@@ -57,15 +57,15 @@ class TestRecoveryFirstBehavior:
         for expected_retries in range(1, 4):
             state, effects = _reduce(state, crash_event)
             assert state.phase == PHASE_DEVELOPMENT
-            assert state.dev_chain.current_index == 0
-            assert state.dev_chain.retries == expected_retries
+            assert state.chain_for_phase("development").current_index == 0
+            assert state.chain_for_phase("development").retries == expected_retries
             assert effects == []
 
         # 4th crash on agent 0: fallback to agent 1 (retries reset to 0)
         state, effects = _reduce(state, crash_event)
         assert state.phase == PHASE_DEVELOPMENT
-        assert state.dev_chain.current_index == 1
-        assert state.dev_chain.retries == 0
+        assert state.chain_for_phase("development").current_index == 1
+        assert state.chain_for_phase("development").retries == 0
         assert state.metrics.total_fallbacks == 1
         assert effects == []
 
@@ -73,8 +73,8 @@ class TestRecoveryFirstBehavior:
         for expected_retries in range(1, 4):
             state, effects = _reduce(state, crash_event)
             assert state.phase == PHASE_DEVELOPMENT
-            assert state.dev_chain.current_index == 1
-            assert state.dev_chain.retries == expected_retries
+            assert state.chain_for_phase("development").current_index == 1
+            assert state.chain_for_phase("development").retries == expected_retries
             assert effects == []
 
         # Final crash on agent 1 (chain exhausted): PHASE_FAILED with descriptive reason

@@ -12,17 +12,27 @@
 # All workflow behavior is declared here. The runtime is a generic policy interpreter
 # that enforces these declarations without any hardcoded phase knowledge.
 #
-# Phase routing is driven entirely by this file - no hardcoded phase transitions
-# exist in the reducer. Each phase references a drain bound in ralph-workflow.toml
+# Phase routing is driven entirely by this file — no hardcoded phase transitions
+# exist in the reducer. Each phase references a drain bound in agents.toml
 # and defines routing rules for success, failure, and loopback signals.
 #
 # KEY FIELDS:
 #   role             - Phase behavior class (execution|analysis|review|commit|verification|terminal|fanout_join)
+#   skip_invocation  - When true, routes directly without invoking an agent
 #   decisions        - For role='analysis': maps decision vocabulary to routing targets
 #   loop_policy      - For role='analysis': bounds the analysis iteration loop
 #   commit_policy    - For role='commit': declares commit counter and loop reset behavior
 #   bypass_routes    - Named outcome bypasses (e.g. review_clean -> review_commit)
 #   terminal_outcome - For role='terminal': declares success or failure
+#
+# LOOP COUNTERS AND BUDGET COUNTERS
+# ==================================
+# Loop counters and budget counters are declared in this file and referenced by
+# phase loop_policy and commit_policy respectively. This makes iteration tracking
+# and budget management fully policy-owned.
+#
+# [loop_counters.*]    - Declared loop iteration counters (keyed by iteration_state_field)
+# [budget_counters.*]  - Declared budget counters (keyed by increments_counter)
 #
 # RETRY AND RECOVERY:
 #   [default_phase_retry_policy] - Default retry settings for all phases
@@ -38,6 +48,42 @@
 #   commit       - commit_policy (increments_counter, loop_resets)
 #   terminal     - terminal_outcome
 # See ralph/policy/validation.py:validate_policy_completeness for authoritative checks.
+
+# ---------------------------------------------------------------------------
+# Loop counters (policy-declared iteration tracking for analysis loops)
+# ---------------------------------------------------------------------------
+#
+# Each entry declares a named loop counter referenced by phase loop_policy.
+# The key must match the iteration_state_field value used in each analysis phase.
+# default_max: default cap used at pipeline start (overridable via config)
+
+[loop_counters.development_analysis_iteration]
+default_max = 3
+description = "Development analysis loop iteration counter"
+
+[loop_counters.review_analysis_iteration]
+default_max = 2
+description = "Review analysis loop iteration counter"
+
+# ---------------------------------------------------------------------------
+# Budget counters (policy-declared outer-progress and budget tracking)
+# ---------------------------------------------------------------------------
+#
+# Each entry declares a named budget counter referenced by phase commit_policy.
+# The key must match the increments_counter value used in each commit phase.
+# tracks_budget: if true, remaining budget affects post-commit routing
+
+[budget_counters.iteration]
+description = "Development iteration counter (developer cycles)"
+tracks_budget = true
+
+[budget_counters.reviewer_pass]
+description = "Review pass counter"
+tracks_budget = true
+
+# ---------------------------------------------------------------------------
+# Phase definitions
+# ---------------------------------------------------------------------------
 
 [phases.planning]
 drain = "planning"
@@ -108,6 +154,7 @@ on_loopback = "fix"
 [phases.review_analysis.loop_policy]
 max_iterations = 2
 iteration_state_field = "review_analysis_iteration"
+loopback_review_outcome = "has_issues"
 [phases.review_analysis.decisions.completed]
 target = "review_commit"
 reset_loop = true
@@ -122,6 +169,7 @@ reset_loop = false
 drain = "fix"
 role = "execution"
 prompt_template = "fix_mode.jinja"
+skip_invocation = true
 [phases.fix.transitions]
 on_success = "review_analysis"
 on_loopback = "review"
@@ -161,15 +209,10 @@ on_loopback = "complete"
 # the names here are examples from the default workflow and can be replaced
 # with any custom commit-role phase name in a user-defined pipeline.
 #
-# Budget state is derived from commit_policy.increments_counter:
-#   increments_counter = "iteration"      -> uses development_budget_remaining
-#   increments_counter = "reviewer_pass"  -> uses review_budget_remaining
-#   increments_counter = "none"           -> no post_commit_route matches (uses transitions.on_success)
-#
-# Budget state labels:
-#   "remaining"  - budget counter > 0 (continue iterating)
-#   "exhausted"  - budget counter = 0 but other work remains
-#   "no_review"  - all budgets = 0 (no review phase to run)
+# Budget state is derived from commit_policy.increments_counter and budget_remaining:
+#   remaining  = budget counter > 0 (continue iterating)
+#   exhausted  = this counter = 0 but other counters still have budget
+#   no_review  = all tracked budget counters exhausted
 #
 # Custom workflows: any commit-role phase may declare matching post_commit_routes.
 # Example for a custom phase named "feature_commit":

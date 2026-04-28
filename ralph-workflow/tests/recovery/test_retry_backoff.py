@@ -183,7 +183,7 @@ def test_backoff_resets_on_fallover() -> None:
     )
 
     # Should have fallen over to opencode
-    assert new_state.dev_chain.current_index == 1
+    assert new_state.chain_for_phase("development").current_index == 1
 
     # Backoff for claude should still be 1, but when we fail opencode,
     # the backoff attempts should reflect the new agent

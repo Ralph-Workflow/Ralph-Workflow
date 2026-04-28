@@ -151,6 +151,7 @@ def _policy_with_post_commit_routes() -> PipelinePolicy:
                 loop_policy=PhaseLoopPolicy(
                     max_iterations=2,
                     iteration_state_field="review_analysis_iteration",
+                    loopback_review_outcome="has_issues",
                 ),
             ),
             PHASE_FIX: PhaseDefinition(
@@ -223,7 +224,7 @@ class TestPhaseFailureEvent:
         )
         event = PhaseFailureEvent(phase="development", reason="missing artifact", recoverable=True)
         new_state, effects = _reduce(state, event)
-        assert new_state.dev_chain.retries == 1
+        assert new_state.chain_for_phase("development").retries == 1
         assert new_state.phase == PHASE_DEVELOPMENT
         assert effects == []
 
@@ -237,8 +238,8 @@ class TestPhaseFailureEvent:
         )
         event = PhaseFailureEvent(phase="development", reason="missing artifact", recoverable=True)
         new_state, effects = _reduce(state, event)
-        assert new_state.dev_chain.current_index == 1
-        assert new_state.dev_chain.retries == 0
+        assert new_state.chain_for_phase("development").current_index == 1
+        assert new_state.chain_for_phase("development").retries == 0
         assert effects == []
 
     def test_phase_failure_recoverable_with_single_agent_after_3_retries_enters_recovery(
@@ -596,7 +597,7 @@ def test_agent_failure_triggers_retry() -> None:
         dev_chain=AgentChainState(agents=["claude"], current_index=0, retries=0),
     )
     new_state, _ = _reduce(state, PipelineEvent.AGENT_FAILURE)
-    assert new_state.dev_chain.retries == 1
+    assert new_state.chain_for_phase("development").retries == 1
 
 
 def test_agent_failure_falls_back_to_next_agent() -> None:
@@ -606,8 +607,8 @@ def test_agent_failure_falls_back_to_next_agent() -> None:
         dev_chain=AgentChainState(agents=["claude", "opencode"], current_index=0, retries=3),
     )
     new_state, _ = _reduce(state, PipelineEvent.AGENT_FAILURE)
-    assert new_state.dev_chain.current_index == 1
-    assert new_state.dev_chain.retries == 0
+    assert new_state.chain_for_phase("development").current_index == 1
+    assert new_state.chain_for_phase("development").retries == 0
 
 
 def test_agent_failure_with_exhausted_chain_enters_recovery() -> None:
@@ -631,8 +632,8 @@ def test_planning_agent_failure_uses_planning_chain_instead_of_review_chain() ->
 
     new_state, _ = _reduce(state, PipelineEvent.AGENT_FAILURE)
 
-    assert new_state.planning_chain.retries == 1
-    assert new_state.rev_chain.retries == 0
+    assert new_state.chain_for_phase("planning").retries == 1
+    assert new_state.chain_for_phase("review").retries == 0
 
 
 def test_checkpoint_saved_increments_count() -> None:
@@ -1053,6 +1054,7 @@ class TestAnalysisDecisionDispatch:
         phase_def.loop_policy = PhaseLoopPolicy(
             max_iterations=3,
             iteration_state_field="review_analysis_iteration",
+            loopback_review_outcome="has_issues",
         )
         phase_def.decisions = {}
         policy.phases.get.return_value = phase_def
@@ -1061,7 +1063,6 @@ class TestAnalysisDecisionDispatch:
             phase="review_analysis",
             review_analysis_iteration=1,
             max_review_analysis_iterations=3,
-            review_issues_found=False,
         )
         with patch("ralph.pipeline.reducer.resolve_next_phase", side_effect=ValueError("bad")):
             new_state, _ = _reduce(state, PipelineEvent.ANALYSIS_LOOPBACK, policy)
@@ -1485,23 +1486,23 @@ def test_phase_handler_crash_exhausts_chain_before_failing() -> None:
     for expected_retries in range(1, 4):
         state, effects = _reduce(state, crash_event)
         assert state.phase == PHASE_DEVELOPMENT
-        assert state.dev_chain.current_index == 0
-        assert state.dev_chain.retries == expected_retries
+        assert state.chain_for_phase("development").current_index == 0
+        assert state.chain_for_phase("development").retries == expected_retries
         assert effects == []
 
     # 4th crash on agent 0: fallback to agent 1 (retries reset to 0)
     state, effects = _reduce(state, crash_event)
     assert state.phase == PHASE_DEVELOPMENT
-    assert state.dev_chain.current_index == 1
-    assert state.dev_chain.retries == 0
+    assert state.chain_for_phase("development").current_index == 1
+    assert state.chain_for_phase("development").retries == 0
     assert effects == []
 
     # Agent 1: 3 more retries (retries 0->1->2->3)
     for expected_retries in range(1, 4):
         state, effects = _reduce(state, crash_event)
         assert state.phase == PHASE_DEVELOPMENT
-        assert state.dev_chain.current_index == 1
-        assert state.dev_chain.retries == expected_retries
+        assert state.chain_for_phase("development").current_index == 1
+        assert state.chain_for_phase("development").retries == expected_retries
         assert effects == []
 
     # Final crash on agent 1 (chain exhausted): PHASE_FAILED recovery state

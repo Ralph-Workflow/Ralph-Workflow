@@ -55,7 +55,7 @@ def test_chain_exhaustion_with_two_agents() -> None:
     assert fallovers[0].from_agent == "claude"
     assert fallovers[0].to_agent == "opencode"
     assert state.phase == PHASE_DEVELOPMENT
-    assert state.dev_chain.current_index == 1
+    assert state.chain_for_phase("development").current_index == 1
     assert len(state.fallover_history) == 1
 
     # Second failure on opencode → budget exhausted (1/1), chain exhausted → PHASE_FAILED

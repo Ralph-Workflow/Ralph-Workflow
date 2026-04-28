@@ -20,9 +20,9 @@ from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
 if TYPE_CHECKING:
-    from pathlib import Path
-
     import pytest
+
+from pathlib import Path
 
 from ralph.config.enums import PHASE_DEVELOPMENT, PHASE_DEVELOPMENT_ANALYSIS
 from ralph.mcp.server.factory import McpServerHandle
@@ -35,9 +35,12 @@ from ralph.pipeline.reducer import reduce as reducer_reduce
 from ralph.pipeline.state import PipelineState
 from ralph.pipeline.work_units import WorkUnit
 from ralph.pipeline.worker_state import WorkerStatus
+from ralph.policy.loader import load_policy
 from ralph.testing.fake_agent_executor import FakeAgentExecutor, FakeRun
 from ralph.workspace.fs import FsWorkspace
 from ralph.workspace.scope import WorkspaceScope
+
+_DEFAULT_POLICY_DIR = Path(__file__).parent.parent.parent / "ralph" / "policy" / "defaults"
 
 
 def _make_work_unit(uid: str) -> WorkUnit:
@@ -193,9 +196,10 @@ class TestSameWorkspaceFanOutE2E:
 
         assert PipelineEvent.ALL_WORKERS_COMPLETE in events
 
+        policy_bundle = load_policy(_DEFAULT_POLICY_DIR)
         reduced_state = initial_state
         for event in events:
-            reduced_state, _ = reducer_reduce(reduced_state, event)
+            reduced_state, _ = reducer_reduce(reduced_state, event, policy_bundle.pipeline)
 
         assert reduced_state.phase == PHASE_DEVELOPMENT_ANALYSIS, (
             f"Expected development_analysis after fan-out, got {reduced_state.phase!r}"
@@ -257,9 +261,10 @@ class TestSameWorkspaceFanOutE2E:
             )
         )
 
+        policy_bundle = load_policy(_DEFAULT_POLICY_DIR)
         reduced_state = initial_state
         for event in events:
-            reduced_state, _ = reducer_reduce(reduced_state, event)
+            reduced_state, _ = reducer_reduce(reduced_state, event, policy_bundle.pipeline)
 
         # Phase advanced to development_analysis — no merge/worktree event in the chain
         assert reduced_state.phase == PHASE_DEVELOPMENT_ANALYSIS
@@ -335,9 +340,10 @@ class TestSameWorkspaceFanOutE2E:
         assert merge_events == [], f"No merge events expected, got {merge_events}"
 
         # Reducer advances to development_analysis
+        policy_bundle = load_policy(_DEFAULT_POLICY_DIR)
         state = initial_state
         for event in events:
-            state, _ = reducer_reduce(state, event)
+            state, _ = reducer_reduce(state, event, policy_bundle.pipeline)
         assert state.phase == PHASE_DEVELOPMENT_ANALYSIS
 
         # Per-worker artifact directories exist and are separate

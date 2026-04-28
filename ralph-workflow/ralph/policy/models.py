@@ -148,11 +148,13 @@ class PhaseLoopPolicy(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reas
 
     Attributes:
         max_iterations: Maximum analysis loop iterations before forcing loopback.
-        iteration_state_field: PipelineState field name tracking this phase's iteration.
+        iteration_state_field: Key in PipelineState.loop_iterations tracking this phase's counter.
+        loopback_review_outcome: When set, loopback transitions set review_outcome to this value.
     """
 
     max_iterations: int = Field(..., ge=0)
     iteration_state_field: str = Field(...)
+    loopback_review_outcome: str | None = None
 
 
 class PhaseDecisionRoute(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
@@ -173,15 +175,19 @@ class PhaseCommitPolicy(_FrozenPolicyModel):  # type: ignore[explicit-any]  # re
     Attributes:
         requires_artifact: Whether commit_message artifact is required.
         skipped_advances_progress: Whether a skipped commit still advances routing.
-        increments_counter: Which outer-progress counter to bump on non-skipped commit.
+        increments_counter: Key in pipeline.budget_counters to bump on non-skipped commit.
+            Use None for no-op (no counter incremented).
         loop_resets: List of loop iteration state fields to reset after commit.
     """
 
     requires_artifact: bool = True
     skipped_advances_progress: bool = True
-    increments_counter: Literal["iteration", "reviewer_pass", "none"] = Field(
-        ...,
-        description="Counter to bump on non-skipped commit. Must be declared explicitly.",
+    increments_counter: str | None = Field(
+        default=None,
+        description=(
+            "Budget counter key (declared in pipeline.budget_counters) to bump on "
+            "non-skipped commit. None means no counter is incremented."
+        ),
     )
     loop_resets: list[str] = Field(default_factory=list)
 
@@ -198,6 +204,39 @@ class PhaseVerificationPolicy(_FrozenPolicyModel):  # type: ignore[explicit-any]
     kind: Literal["artifact", "make_target", "none"]
     gate_for: Literal["advancement", "completion", "release"]
     on_failure_route: str | None = None
+
+
+class LoopCounterConfig(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+    """Declaration of a named loop iteration counter in the pipeline.
+
+    Loop counters track how many times an analysis phase has looped back.
+    They are keyed by the value used in PhaseLoopPolicy.iteration_state_field.
+
+    Attributes:
+        default_max: Default maximum iterations (overridable via config).
+        description: Human-readable description of this counter's purpose.
+    """
+
+    default_max: int = Field(default=3, ge=0, description="Default maximum iterations")
+    description: str = Field(default="", description="Human-readable description")
+
+
+class BudgetCounterConfig(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+    """Declaration of a named budget counter in the pipeline.
+
+    Budget counters track outer-progress (completed cycles) and remaining budget.
+    They are keyed by the value used in PhaseCommitPolicy.increments_counter.
+
+    Attributes:
+        description: Human-readable description of this counter's purpose.
+        tracks_budget: Whether remaining budget is tracked (True = exhaustion matters).
+    """
+
+    description: str = Field(default="", description="Human-readable description")
+    tracks_budget: bool = Field(
+        default=True,
+        description="Whether remaining budget is tracked for post-commit routing",
+    )
 
 
 class RecoveryPolicy(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
@@ -252,6 +291,7 @@ class PhaseDefinition(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reas
         drain: Which drain (agent chain binding) is active during this phase.
         transitions: Routing rules when phase completes.
         role: Phase role classifying its behavior contract. REQUIRED for new configs.
+        skip_invocation: When True, routing proceeds without invoking an agent.
         retry_policy: Optional per-phase retry policy overriding chain defaults.
         loop_policy: Required when role='analysis'; declares loop bounds.
         decisions: Decision vocabulary routing map; required when role='analysis'.
@@ -272,6 +312,13 @@ class PhaseDefinition(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reas
     role: PhaseRole | None = Field(
         default=None,
         description="Phase role classifying behavior contract",
+    )
+    skip_invocation: bool = Field(
+        default=False,
+        description=(
+            "When True, the runtime routes directly without invoking an agent. "
+            "Useful for pass-through or routing-only phases."
+        ),
     )
     retry_policy: PhaseRetryPolicy | None = Field(
         default=None,
@@ -408,6 +455,8 @@ class PipelinePolicy(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reaso
         phases: Map of phase name -> phase definition.
         entry_phase: Name of the phase where the pipeline starts.
         terminal_phase: Name of the phase that marks successful completion.
+        loop_counters: Policy-declared loop iteration counters keyed by field name.
+        budget_counters: Policy-declared budget counters keyed by counter name.
         default_phase_retry_policy: Default retry policy for phases without explicit retry_policy.
         recovery: Pipeline-wide recovery policy.
     """
@@ -423,6 +472,20 @@ class PipelinePolicy(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reaso
     terminal_phase: str = Field(
         default="complete",
         description="Phase that marks successful pipeline completion",
+    )
+    loop_counters: dict[str, LoopCounterConfig] = Field(
+        default_factory=dict,
+        description=(
+            "Policy-declared loop iteration counters. "
+            "Keys must match iteration_state_field values used in phase loop_policy."
+        ),
+    )
+    budget_counters: dict[str, BudgetCounterConfig] = Field(
+        default_factory=dict,
+        description=(
+            "Policy-declared budget counters. "
+            "Keys must match increments_counter values used in phase commit_policy."
+        ),
     )
     post_commit_routes: list[PostCommitRoute] = Field(
         default_factory=list,
@@ -472,10 +535,7 @@ class PipelinePolicy(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reaso
 
     @model_validator(mode="after")
     def no_phase_cycles_without_loopback(self) -> PipelinePolicy:
-        """Detect obvious infinite loop risks (phase transitions to itself without loopback).
-
-        This is a shallow check; runtime budgets still govern actual loop limits.
-        """
+        """Detect obvious infinite loop risks (phase transitions to itself without loopback)."""
         for name, phase_def in self.phases.items():
             t = phase_def.transitions
             if t.on_success == name and t.on_loopback is None:
@@ -549,18 +609,49 @@ class PipelinePolicy(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reaso
                     )
         return self
 
-    def effective_retry_policy(self, phase_name: str) -> PhaseRetryPolicy:
-        """Resolve the effective retry policy for a phase.
+    @model_validator(mode="after")
+    def loop_counter_references_valid(self) -> PipelinePolicy:
+        """Ensure loop_policy.iteration_state_field references a declared loop_counter.
 
-        Uses the phase's explicit retry_policy if set, otherwise falls back to
-        the pipeline-wide default_phase_retry_policy.
-
-        Args:
-            phase_name: Phase name to look up.
-
-        Returns:
-            Effective PhaseRetryPolicy for the phase.
+        Only enforced when loop_counters is non-empty (populated by new-style config).
+        Legacy configs without loop_counters are accepted for backward compatibility.
         """
+        if not self.loop_counters:
+            return self
+        for phase_name, phase_def in self.phases.items():
+            if phase_def.loop_policy is not None:
+                field = phase_def.loop_policy.iteration_state_field
+                if field not in self.loop_counters:
+                    raise ValueError(
+                        f"phases.{phase_name}.loop_policy.iteration_state_field: "
+                        f"'{field}' is not declared in loop_counters. "
+                        f"Declared counters: {sorted(self.loop_counters.keys())}. "
+                        f"Add [loop_counters.{field}] to pipeline.toml."
+                    )
+        return self
+
+    @model_validator(mode="after")
+    def budget_counter_references_valid(self) -> PipelinePolicy:
+        """Ensure commit_policy.increments_counter references a declared budget_counter.
+
+        Only enforced when budget_counters is non-empty (populated by new-style config).
+        """
+        if not self.budget_counters:
+            return self
+        for phase_name, phase_def in self.phases.items():
+            if phase_def.commit_policy is not None:
+                counter = phase_def.commit_policy.increments_counter
+                if counter is not None and counter not in self.budget_counters:
+                    raise ValueError(
+                        f"phases.{phase_name}.commit_policy.increments_counter: "
+                        f"'{counter}' is not declared in budget_counters. "
+                        f"Declared counters: {sorted(self.budget_counters.keys())}. "
+                        f"Add [budget_counters.{counter}] to pipeline.toml."
+                    )
+        return self
+
+    def effective_retry_policy(self, phase_name: str) -> PhaseRetryPolicy:
+        """Resolve the effective retry policy for a phase."""
         phase_def = self.phases.get(phase_name)
         if phase_def is not None and phase_def.retry_policy is not None:
             return phase_def.retry_policy

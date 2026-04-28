@@ -99,6 +99,7 @@ def _progress_policy() -> PipelinePolicy:
                 loop_policy=PhaseLoopPolicy(
                     max_iterations=2,
                     iteration_state_field="review_analysis_iteration",
+                    loopback_review_outcome="has_issues",
                 ),
             ),
             PHASE_FIX: PhaseDefinition(
@@ -152,8 +153,7 @@ def test_review_analysis_loopback_updates_only_review_analysis_fields() -> None:
         reviewer_pass=1,
         review_analysis_iteration=0,
         review_budget_remaining=INITIAL_REVIEW_BUDGET,
-        review_issues_found=False,
-    )
+        )
 
     new_state, _ = _reduce(state, PipelineEvent.ANALYSIS_LOOPBACK, policy)
 
@@ -174,8 +174,7 @@ def test_capped_review_analysis_loopback_preserves_outer_progress_and_marks_issu
         review_analysis_iteration=1,
         max_review_analysis_iterations=FORCED_REVIEW_ANALYSIS_ITERATION,
         review_budget_remaining=1,
-        review_issues_found=False,
-    )
+        )
 
     new_state, _ = _reduce(state, PipelineEvent.ANALYSIS_LOOPBACK, policy)
 
@@ -213,7 +212,7 @@ def test_skipped_review_commit_does_not_increment_outer_progress_but_resets_inne
         reviewer_pass=1,
         review_analysis_iteration=2,
         review_budget_remaining=1,
-        review_issues_found=True,
+        review_outcome="has_issues",
     )
 
     new_state, _ = _reduce(state, PipelineEvent.COMMIT_SKIPPED, policy)

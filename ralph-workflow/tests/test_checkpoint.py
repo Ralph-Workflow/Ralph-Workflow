@@ -92,7 +92,7 @@ def test_checkpoint_roundtrip_full_state(tmp_path: Path) -> None:
         total_iterations=TOTAL_ITERATIONS,
         reviewer_pass=1,
         total_reviewer_passes=2,
-        review_issues_found=True,
+        review_outcome="has_issues",
         dev_chain=AgentChainState(agents=["claude", "opencode"], current_index=1),
         rev_chain=AgentChainState(agents=["claude"], current_index=0),
         rebase=RebaseState(pending=True),
@@ -110,7 +110,7 @@ def test_checkpoint_roundtrip_full_state(tmp_path: Path) -> None:
     assert loaded is not None
     assert loaded.phase == state.phase
     assert loaded.iteration == state.iteration
-    assert loaded.dev_chain.current_index == 1
+    assert loaded.chain_for_phase("development").current_index == 1
     assert loaded.metrics.total_agent_calls == TOTAL_AGENT_CALLS
     assert loaded.git_auth_configured is True
 

@@ -14,10 +14,7 @@ from typing import TYPE_CHECKING, Literal
 
 from ralph.config.enums import (
     PHASE_COMPLETE,
-    PHASE_DEVELOPMENT,
     PHASE_FAILED,
-    PHASE_FIX,
-    PHASE_REVIEW,
     PipelinePhase,
 )
 from ralph.pipeline import handoffs as phase_handoffs
@@ -125,9 +122,8 @@ def _derive_effect_for_phase(
     """
     phase = state.phase
 
-    # For fix phase, route immediately to review — issues were already identified
-    # in the review phase, so fix should run without requiring separate invocation
-    if phase == PHASE_FIX:
+    # skip_invocation phases route immediately to the next phase without invoking an agent
+    if phase_def.skip_invocation:
         return _route_transition(state, phase_def, "on_success")
 
     # Check if we need to invoke the agent or prepare the prompt first
@@ -178,28 +174,12 @@ def _current_agent_name(
     state: PipelineState,
     chain: AgentChainConfig,
 ) -> str:
-    """Get the current agent name from the chain.
-
-    Args:
-        state: Current pipeline state.
-        chain: Agent chain config.
-
-    Returns:
-        Name of the current agent to invoke.
-    """
-    # For phases with dev_chain/rev_chain
-    if state.phase == PHASE_DEVELOPMENT:
-        agents = state.dev_chain.agents
-        idx = state.dev_chain.current_index
-    elif state.phase == PHASE_REVIEW:
-        agents = state.rev_chain.agents
-        idx = state.rev_chain.current_index
-    else:
-        # Fallback to first agent in chain
-        return chain.agents[0]
-
-    if idx < len(agents):
-        return agents[idx]
+    """Get the current agent name from the phase chain state or policy chain."""
+    phase_chain = state.chain_for_phase(state.phase)
+    if phase_chain is not None and phase_chain.agents:
+        idx = phase_chain.current_index
+        if idx < len(phase_chain.agents):
+            return phase_chain.agents[idx]
     return chain.agents[0]
 
 
