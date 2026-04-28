@@ -217,14 +217,17 @@ def explain_policy(bundle: PolicyBundle) -> PolicyExplanation:
         )
 
     # Parallel execution
-    if pipeline.parallel_execution is not None:
-        pe = pipeline.parallel_execution
+    for phase_name, phase_def in pipeline.phases.items():
+        if phase_def.parallelization is None:
+            continue
+        pe = phase_def.parallelization
         explanation.parallel_execution = ParallelExplanation(
-            phase=pe.phase,
+            phase=phase_name,
             max_parallel_workers=pe.max_parallel_workers,
             max_work_units=pe.max_work_units,
             require_allowed_directories=pe.require_allowed_directories,
         )
+        break
 
     # Recovery
     r = pipeline.recovery

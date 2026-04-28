@@ -173,6 +173,27 @@ def _run_preflight_validation(
         else:
             policy_dir = workspace_scope.root / ".agent"
 
+        local_policy_dir = workspace_scope.root / ".agent"
+        has_local_policy_files = any(
+            (local_policy_dir / name).exists()
+            for name in (
+                "ralph-workflow.toml",
+                "agents.toml",
+                "pipeline.toml",
+                "artifacts.toml",
+            )
+        )
+        if not has_local_policy_files:
+            table.add_row(
+                "Pre-flight",
+                Text(
+                    "Skipped: project is not initialized yet (run `ralph --init`)",
+                    style="yellow",
+                ),
+            )
+            console.print(table)
+            return True
+
         # Load PolicyBundle for validation
         bundle = load_policy(policy_dir, config=config)
 

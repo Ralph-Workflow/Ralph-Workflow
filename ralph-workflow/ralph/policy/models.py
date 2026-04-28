@@ -648,18 +648,13 @@ class PipelinePolicy(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reaso
         return self
 
     @model_validator(mode="after")
-    def parallel_execution_phase_exists(self) -> PipelinePolicy:
-        """Ensure the configured fanout phase exists and is non-terminal."""
-        parallel = self.parallel_execution
-        if parallel is None:
-            return self
-        if parallel.phase not in self.phases:
-            raise ValueError(
-                f"parallel_execution.phase '{parallel.phase}' is not a known phase"
-            )
-        phase_def = self.phases[parallel.phase]
-        if phase_def.role == "terminal":
-            raise ValueError("parallel_execution.phase cannot target a terminal phase")
+    def parallelization_targets_non_terminal_phases(self) -> PipelinePolicy:
+        """Ensure only non-terminal phases declare a parallelization policy."""
+        for phase_name, phase_def in self.phases.items():
+            if phase_def.parallelization is not None and phase_def.role == "terminal":
+                raise ValueError(
+                    f"Phase '{phase_name}' declares parallelization but has terminal role"
+                )
         return self
 
     @model_validator(mode="after")

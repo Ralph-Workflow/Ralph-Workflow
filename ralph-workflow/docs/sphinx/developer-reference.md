@@ -12,6 +12,7 @@ If you only need to install, configure, and run Ralph Workflow, start with
 
 - [Operator Reference](reference.md) stays focused on command, config, and tool lookup
 - [Developer Internals](developer-internals.md) groups the maintainer-facing architecture and runtime pages
+- [Agents](agents.md) documents agent chains, drain bindings, and invocation flow
 - [Python API Reference](modules.rst) documents the public `ralph.*` package surface
 - [Release & Versioning](versioning.md) covers release, tagging, and publishing policy
 
@@ -19,6 +20,7 @@ If you only need to install, configure, and run Ralph Workflow, start with
 :maxdepth: 1
 
 developer-internals
+agents
 modules
 versioning
 ```

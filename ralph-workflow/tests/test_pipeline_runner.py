@@ -419,7 +419,10 @@ class TestDetermineEffect:
     def test_policy_selected_parallel_phase_with_work_units_uses_fan_out_effect(self) -> None:
         state = PipelineState(
             phase="feature_build",
-            work_units=(WorkUnit(unit_id="unit-a", description="A"),),
+            work_units=(
+                WorkUnit(unit_id="unit-a", description="A", allowed_directories=("src/a",)),
+                WorkUnit(unit_id="unit-b", description="B", allowed_directories=("src/b",)),
+            ),
         )
         bundle = PolicyBundle(
             agents=AgentsPolicy(
@@ -431,6 +434,7 @@ class TestDetermineEffect:
                     "feature_build": PhaseDefinition(
                         drain="development",
                         transitions=PhaseTransition(on_success="complete"),
+                        parallelization={"max_parallel_workers": 2},
                     ),
                     "complete": PhaseDefinition(
                         drain="complete",
@@ -441,7 +445,6 @@ class TestDetermineEffect:
                 },
                 entry_phase="feature_build",
                 terminal_phase="complete",
-                parallel_execution={"phase": "feature_build", "max_parallel_workers": 2},
             ),
             artifacts=ArtifactsPolicy(artifacts={}),
         )
