@@ -164,6 +164,7 @@ retry_delay_ms = 1000
 [agent_chains]
 planning = ["claude"]
 development = ["claude", "opencode"]
+analysis = ["claude"]
 review = ["claude"]
 fix = ["claude"]
 commit = ["claude"]
@@ -171,15 +172,19 @@ commit = ["claude"]
 [agent_drains]
 planning = "planning"
 development = "development"
-analysis = "analysis"
+development_analysis = "analysis"
+development_commit = "commit"
 review = "review"
+review_analysis = "analysis"
+review_commit = "commit"
 fix = "fix"
-commit = "commit"
 ```
 
 Ralph Workflow tries agents in order; if one exhausts its retry budget, it falls over to
-the next. The built-in drain names are: `planning`, `development`, `analysis`, `review`,
-`fix`, and `commit`.
+the next. `[agent_drains]` maps each pipeline drain name (matching a phase's `drain` field
+in `pipeline.toml`) to a chain name from `[agent_chains]`. Multiple drains may share one
+chain — for example, `development_analysis` and `review_analysis` both use the `analysis`
+chain by default.
 
 ## Regenerating Configs
 

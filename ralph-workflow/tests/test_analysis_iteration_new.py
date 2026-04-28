@@ -26,7 +26,9 @@ from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.reducer import reduce as reducer_reduce
 from ralph.pipeline.state import PipelineState
 from ralph.policy.models import (
+    PhaseCommitPolicy,
     PhaseDefinition,
+    PhaseLoopPolicy,
     PhaseTransition,
     PipelinePolicy,
     PostCommitRoute,
@@ -64,21 +66,29 @@ def _dev_analysis_policy() -> PipelinePolicy:
             ),
             PHASE_DEVELOPMENT_ANALYSIS: PhaseDefinition(
                 drain="development_analysis",
+                role="analysis",
                 transitions=PhaseTransition(
                     on_success="development_commit",
                     on_failure=PHASE_FAILED,
-                    on_loopback=PHASE_DEVELOPMENT,  # loopback to development for final attempt
+                    on_loopback=PHASE_DEVELOPMENT,
                 ),
-                embeds_analysis=True,
+                loop_policy=PhaseLoopPolicy(
+                    max_iterations=3,
+                    iteration_state_field="development_analysis_iteration",
+                ),
             ),
             "development_commit": PhaseDefinition(
                 drain="development_commit",
+                role="commit",
                 transitions=PhaseTransition(
                     on_success=PHASE_DEVELOPMENT,
                     on_failure=PHASE_FAILED,
                     on_loopback=PHASE_DEVELOPMENT,
                 ),
-                requires_commit=True,
+                commit_policy=PhaseCommitPolicy(
+                    increments_counter="iteration",
+                    loop_resets=["development_analysis_iteration"],
+                ),
             ),
             PHASE_REVIEW: PhaseDefinition(
                 drain="review",
@@ -90,12 +100,16 @@ def _dev_analysis_policy() -> PipelinePolicy:
             ),
             PHASE_REVIEW_ANALYSIS: PhaseDefinition(
                 drain="review_analysis",
+                role="analysis",
                 transitions=PhaseTransition(
                     on_success=PHASE_REVIEW_COMMIT,
                     on_failure=PHASE_FAILED,
-                    on_loopback=PHASE_FIX,  # loopback to fix for review issues
+                    on_loopback=PHASE_FIX,
                 ),
-                embeds_analysis=True,
+                loop_policy=PhaseLoopPolicy(
+                    max_iterations=2,
+                    iteration_state_field="review_analysis_iteration",
+                ),
             ),
             PHASE_FIX: PhaseDefinition(
                 drain="fix",
@@ -107,12 +121,16 @@ def _dev_analysis_policy() -> PipelinePolicy:
             ),
             "review_commit": PhaseDefinition(
                 drain="review_commit",
+                role="commit",
                 transitions=PhaseTransition(
                     on_success=PHASE_REVIEW,
                     on_failure=PHASE_FAILED,
                     on_loopback=PHASE_REVIEW,
                 ),
-                requires_commit=True,
+                commit_policy=PhaseCommitPolicy(
+                    increments_counter="reviewer_pass",
+                    loop_resets=["review_analysis_iteration"],
+                ),
             ),
         },
         entry_phase=PHASE_DEVELOPMENT,

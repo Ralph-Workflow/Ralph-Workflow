@@ -11,7 +11,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from ralph import __version__
 
 project = "Ralph Workflow"
-copyright = "2026, Ralph Workflow Contributors"  # noqa: A001
+copyright = "2026, Ralph Workflow Contributors"
 author = "Ralph Workflow Contributors"
 version = __version__
 release = __version__
@@ -52,7 +52,10 @@ html_theme_options = {
         "color-brand-primary": "#0891b2",
         "color-brand-content": "#0891b2",
         "font-stack": "'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif",
-        "font-stack--monospace": "'JetBrains Mono', 'Fira Code', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
+        "font-stack--monospace": (
+            "'JetBrains Mono', 'Fira Code', ui-monospace, "
+            "SFMono-Regular, Menlo, Consolas, monospace"
+        ),
         "color-background-primary": "#ffffff",
         "color-background-secondary": "#f6f8fa",
         "color-foreground-primary": "#0b1320",

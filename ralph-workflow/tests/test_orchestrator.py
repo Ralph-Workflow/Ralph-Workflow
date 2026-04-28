@@ -34,6 +34,7 @@ from ralph.policy.models import (
     AgentChainConfig,
     AgentDrainConfig,
     AgentsPolicy,
+    PhaseCommitPolicy,
     PhaseDefinition,
     PhaseTransition,
     PipelinePolicy,
@@ -84,10 +85,14 @@ def _make_minimal_pipeline_policy() -> PipelinePolicy:
             ),
             "development_commit": PhaseDefinition(
                 drain="development_commit",
-                requires_commit=True,
+                role="commit",
                 transitions=PhaseTransition(
                     on_success="review",
                     on_failure="failed",
+                ),
+                commit_policy=PhaseCommitPolicy(
+                    increments_counter="iteration",
+                    loop_resets=["development_analysis_iteration"],
                 ),
             ),
             "review": PhaseDefinition(
@@ -104,10 +109,14 @@ def _make_minimal_pipeline_policy() -> PipelinePolicy:
             ),
             "review_commit": PhaseDefinition(
                 drain="review_commit",
-                requires_commit=True,
+                role="commit",
                 transitions=PhaseTransition(
                     on_success="complete",
                     on_failure="failed",
+                ),
+                commit_policy=PhaseCommitPolicy(
+                    increments_counter="reviewer_pass",
+                    loop_resets=["review_analysis_iteration"],
                 ),
             ),
             "complete": PhaseDefinition(
@@ -128,6 +137,10 @@ def _make_minimal_pipeline_policy() -> PipelinePolicy:
             PostCommitRoute(
                 when=PostCommitRouteWhen(phase="development_commit", budget_state="exhausted"),
                 target="review",
+            ),
+            PostCommitRoute(
+                when=PostCommitRouteWhen(phase="development_commit", budget_state="no_review"),
+                target="complete",
             ),
             PostCommitRoute(
                 when=PostCommitRouteWhen(phase="review_commit", budget_state="remaining"),

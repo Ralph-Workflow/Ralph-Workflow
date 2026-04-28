@@ -6,6 +6,14 @@ The handler receives an Effect and a PhaseContext, performs any necessary I/O
 
 Phase handlers are registered by name in ``HANDLERS`` dict. Unknown phases
 in the pipeline graph will produce a PhaseHandlerNotFoundError at startup.
+
+Two registration mechanisms are supported:
+1. Decorator-based at import time: @register_handler("phase_name")
+2. Role-based at policy-load time: register_role_handlers(policy)
+
+The role-based mechanism registers the generic handler for every phase whose
+role matches a known role class (commit or analysis). This allows policy-renamed
+phases to work without hardcoded handler registration.
 """
 
 from __future__ import annotations
@@ -107,6 +115,34 @@ def register_handler(phase_name: str) -> Callable[[PhaseHandler], PhaseHandler]:
     return decorator
 
 
+def register_role_handlers(policy: PipelinePolicy) -> None:
+    """Register generic handlers for policy-declared role-based phases.
+
+    Called at policy-load time to ensure every phase with role='commit' or
+    role='analysis' has a handler registered, even if the phase name is not
+    one of the canonical built-in names.
+
+    - Commit-role phases are mapped to the generic ``handle_commit_phase``.
+    - Analysis-role phases are mapped to the generic
+      ``handle_generic_analysis_phase``.
+
+    Phases already registered via ``@register_handler`` are not overwritten.
+
+    Args:
+        policy: Loaded pipeline policy.
+    """
+    from ralph.phases.analysis import handle_generic_analysis_phase  # noqa: PLC0415
+    from ralph.phases.commit import handle_commit_phase  # noqa: PLC0415
+
+    for phase_name, phase_def in policy.phases.items():
+        if phase_def.role == "commit" and phase_name not in HANDLERS:
+            logger.debug("Registering generic commit handler for phase '{}'", phase_name)
+            HANDLERS[phase_name] = handle_commit_phase
+        elif phase_def.role == "analysis" and phase_name not in HANDLERS:
+            logger.debug("Registering generic analysis handler for phase '{}'", phase_name)
+            HANDLERS[phase_name] = handle_generic_analysis_phase
+
+
 def get_handler(phase_name: str) -> PhaseHandler:
     """Get the handler for a phase.
 
@@ -168,4 +204,5 @@ __all__ = [
     "get_handler",
     "handle_phase",
     "register_handler",
+    "register_role_handlers",
 ]

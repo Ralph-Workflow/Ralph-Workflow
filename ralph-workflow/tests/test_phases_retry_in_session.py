@@ -8,6 +8,7 @@ from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.events import PhaseFailureEvent, PipelineEvent
 from ralph.pipeline.reducer import reduce as reducer_reduce
 from ralph.pipeline.state import AgentChainState, PipelineState
+from ralph.policy.models import PhaseDefinition, PhaseTransition, PipelinePolicy
 from ralph.recovery.controller import RecoveryController
 
 
@@ -156,6 +157,20 @@ class TestRecoveryControllerSessionPreservingRetry:
         assert new_state.session_preserve_retry_pending is False
 
 
+def _minimal_analysis_policy() -> PipelinePolicy:
+    """Minimal policy routing development_analysis success to complete."""
+    return PipelinePolicy(
+        phases={
+            "development_analysis": PhaseDefinition(
+                drain="development_analysis",
+                role="analysis",
+                transitions=PhaseTransition(on_success="complete"),
+            ),
+        },
+        entry_phase="development_analysis",
+    )
+
+
 class TestPhaseAdvanceClearsSessionFields:
     """Phase advance must clear session fields to prevent cross-phase session leaks."""
 
@@ -165,7 +180,8 @@ class TestPhaseAdvanceClearsSessionFields:
             dev_chain=AgentChainState(agents=["claude"], current_index=0, retries=0),
             last_agent_session_id="sess-to-clear",
         )
-        new_state, _ = reducer_reduce(state, PipelineEvent.ANALYSIS_SUCCESS, pipeline_policy=None)
+        policy = _minimal_analysis_policy()
+        new_state, _ = reducer_reduce(state, PipelineEvent.ANALYSIS_SUCCESS, pipeline_policy=policy)
         assert new_state.last_agent_session_id is None
 
     def test_advance_phase_clears_session_preserve_retry_pending(self) -> None:
@@ -175,7 +191,8 @@ class TestPhaseAdvanceClearsSessionFields:
             last_agent_session_id="sess-x",
             session_preserve_retry_pending=True,
         )
-        new_state, _ = reducer_reduce(state, PipelineEvent.ANALYSIS_SUCCESS, pipeline_policy=None)
+        policy = _minimal_analysis_policy()
+        new_state, _ = reducer_reduce(state, PipelineEvent.ANALYSIS_SUCCESS, pipeline_policy=policy)
         assert new_state.session_preserve_retry_pending is False
 
 

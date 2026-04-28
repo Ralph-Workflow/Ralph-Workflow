@@ -134,9 +134,10 @@ _PHASE_VALID_ARTIFACT: dict[str, str] = {
 }
 
 
-def _make_ctx(workspace: MemoryWorkspace) -> MagicMock:
+def _make_ctx(workspace: MemoryWorkspace, pipeline_policy: object = None) -> MagicMock:
     ctx = MagicMock()
     ctx.workspace = workspace
+    ctx.pipeline_policy = pipeline_policy
     return ctx
 
 
@@ -387,7 +388,7 @@ def test_end_to_end_retry_flow(tmp_path: Path, phase: str, drain: SessionDrain) 
     )
 
     # Step 3: second attempt with valid artifact now present → must advance
-    ctx2 = _make_ctx(workspace)
+    ctx2 = _make_ctx(workspace, policy.pipeline)
     events2 = handler(_invoke_effect(), ctx2)
     success_events = [
         e for e in events2

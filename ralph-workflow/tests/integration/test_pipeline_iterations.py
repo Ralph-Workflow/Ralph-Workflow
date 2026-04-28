@@ -286,6 +286,7 @@ def test_analysis_loopback_preserves_budget(
     assert result == 0
     assert invoker.count_for("development") == DEVELOPMENT_CYCLES_THREE
     assert invoker.count_for("development_commit") == DEVELOPMENT_CYCLES_TWO
+    starting_budget = DEVELOPMENT_CYCLES_TWO
     loopback_state = next(
         state
         for state in saved_states
@@ -293,7 +294,7 @@ def test_analysis_loopback_preserves_budget(
         and state.previous_phase == "development_analysis"
         and state.development_analysis_iteration == 1
     )
-    assert loopback_state.development_budget_remaining == 1
+    assert loopback_state.development_budget_remaining == starting_budget
     final_state = saved_states[-1]
     assert final_state.iteration == DEVELOPMENT_CYCLES_TWO
     assert final_state.development_analysis_iteration == 0

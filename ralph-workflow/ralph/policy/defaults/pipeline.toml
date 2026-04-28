@@ -7,24 +7,48 @@
 #
 # REGENERATION: Run `ralph --regenerate-config` to refresh from this default.
 #
-# MINIMUM REQUIRED SECTIONS: [phases] with at least entry_phase and terminal_phase.
+# POLICY-DRIVEN ORCHESTRATION
+# ===========================
+# All workflow behavior is declared here. The runtime is a generic policy interpreter
+# that enforces these declarations without any hardcoded phase knowledge.
 #
-# Phase routing is driven entirely by this file — no hardcoded phase transitions
+# Phase routing is driven entirely by this file - no hardcoded phase transitions
 # exist in the reducer. Each phase references a drain bound in ralph-workflow.toml
 # and defines routing rules for success, failure, and loopback signals.
+#
+# KEY FIELDS:
+#   role             - Phase behavior class (execution|analysis|review|commit|verification|terminal|fanout_join)
+#   decisions        - For role='analysis': maps decision vocabulary to routing targets
+#   loop_policy      - For role='analysis': bounds the analysis iteration loop
+#   commit_policy    - For role='commit': declares commit counter and loop reset behavior
+#   bypass_routes    - Named outcome bypasses (e.g. review_clean -> review_commit)
+#   terminal_outcome - For role='terminal': declares success or failure
+#
+# RETRY AND RECOVERY:
+#   [default_phase_retry_policy] - Default retry settings for all phases
+#   [recovery]                   - Pipeline-wide cycle cap and recovery routing
+#
+# POLICY COMPLETENESS:
+# The runtime validates that every phase satisfies its role contract at startup.
+# Missing required fields cause startup rejection with an actionable error.
+# Required fields per role:
+#   execution    - transitions.on_success
+#   analysis     - loop_policy, decisions (covering all artifact decision_vocabulary entries)
+#   review       - transitions.on_success
+#   commit       - commit_policy (increments_counter, loop_resets)
+#   terminal     - terminal_outcome
+# See ralph/policy/validation.py:validate_policy_completeness for authoritative checks.
 
 [phases.planning]
 drain = "planning"
-embeds_analysis = false
-requires_commit = false
+role = "execution"
 prompt_template = "planning.jinja"
 [phases.planning.transitions]
 on_success = "development"
 
 [phases.development]
 drain = "development"
-embeds_analysis = false
-requires_commit = false
+role = "execution"
 prompt_template = "developer_iteration.jinja"
 continuation_template = "developer_iteration_continuation.jinja"
 [phases.development.transitions]
@@ -33,44 +57,70 @@ on_loopback = "development"
 
 [phases.development_analysis]
 drain = "development_analysis"
-embeds_analysis = false
-requires_commit = false
+role = "analysis"
 prompt_template = "development_analysis.jinja"
 [phases.development_analysis.transitions]
 on_success = "development_commit"
 on_loopback = "development"
+[phases.development_analysis.loop_policy]
+max_iterations = 3
+iteration_state_field = "development_analysis_iteration"
+[phases.development_analysis.decisions.completed]
+target = "development_commit"
+reset_loop = true
+[phases.development_analysis.decisions.request_changes]
+target = "development"
+reset_loop = false
+[phases.development_analysis.decisions.failed]
+target = "failed"
+reset_loop = false
 
 [phases.development_commit]
 drain = "development_commit"
-embeds_analysis = false
-requires_commit = true
+role = "commit"
 prompt_template = "development_commit_message.jinja"
 [phases.development_commit.transitions]
 on_success = "review"
 on_failure = "failed"
+[phases.development_commit.commit_policy]
+requires_artifact = true
+skipped_advances_progress = true
+increments_counter = "iteration"
+loop_resets = ["development_analysis_iteration"]
 
 [phases.review]
 drain = "review"
-embeds_analysis = false
-requires_commit = false
+role = "review"
 prompt_template = "review.jinja"
 [phases.review.transitions]
 on_success = "review_analysis"
 on_loopback = "fix"
+[phases.review.bypass_routes]
+review_clean = "review_commit"
 
 [phases.review_analysis]
 drain = "review_analysis"
-embeds_analysis = false
-requires_commit = false
+role = "analysis"
 prompt_template = "review_analysis.jinja"
 [phases.review_analysis.transitions]
 on_success = "review_commit"
 on_loopback = "fix"
+[phases.review_analysis.loop_policy]
+max_iterations = 2
+iteration_state_field = "review_analysis_iteration"
+[phases.review_analysis.decisions.completed]
+target = "review_commit"
+reset_loop = true
+[phases.review_analysis.decisions.request_changes]
+target = "fix"
+reset_loop = false
+[phases.review_analysis.decisions.failed]
+target = "failed"
+reset_loop = false
 
 [phases.fix]
 drain = "fix"
-embeds_analysis = false
-requires_commit = false
+role = "execution"
 prompt_template = "fix_mode.jinja"
 [phases.fix.transitions]
 on_success = "review_analysis"
@@ -78,23 +128,56 @@ on_loopback = "review"
 
 [phases.review_commit]
 drain = "review_commit"
-embeds_analysis = false
-requires_commit = true
+role = "commit"
 prompt_template = "commit_message.jinja"
 [phases.review_commit.transitions]
 on_success = "complete"
 on_failure = "failed"
+[phases.review_commit.commit_policy]
+requires_artifact = true
+skipped_advances_progress = true
+increments_counter = "reviewer_pass"
+loop_resets = ["review_analysis_iteration"]
 
 # The 'complete' phase is the terminal marker — it has no transitions
 # because the pipeline ends when it reaches terminal_phase.
 # No drain is needed for the terminal state.
 [phases.complete]
 drain = "complete"
-embeds_analysis = false
-requires_commit = false
+role = "terminal"
+terminal_outcome = "success"
 [phases.complete.transitions]
 on_success = "complete"
 on_loopback = "complete"
+
+# ---------------------------------------------------------------------------
+# Post-commit budget-guarded routing
+# ---------------------------------------------------------------------------
+#
+# These routes apply after any commit-role phase completes successfully.
+# The runtime matches routes by the POLICY-DECLARED phase name (when.phase)
+# and the computed budget state (when.budget_state). There is no hardcoded
+# recognition of "development_commit" or "review_commit" in the runtime —
+# the names here are examples from the default workflow and can be replaced
+# with any custom commit-role phase name in a user-defined pipeline.
+#
+# Budget state is derived from commit_policy.increments_counter:
+#   increments_counter = "iteration"      -> uses development_budget_remaining
+#   increments_counter = "reviewer_pass"  -> uses review_budget_remaining
+#   increments_counter = "none"           -> no post_commit_route matches (uses transitions.on_success)
+#
+# Budget state labels:
+#   "remaining"  - budget counter > 0 (continue iterating)
+#   "exhausted"  - budget counter = 0 but other work remains
+#   "no_review"  - all budgets = 0 (no review phase to run)
+#
+# Custom workflows: any commit-role phase may declare matching post_commit_routes.
+# Example for a custom phase named "feature_commit":
+#   [[post_commit_routes]]
+#   target = "planning"
+#   [post_commit_routes.when]
+#   phase = "feature_commit"
+#   budget_state = "remaining"
 
 [[post_commit_routes]]
 target = "planning"
@@ -109,6 +192,12 @@ phase = "development_commit"
 budget_state = "exhausted"
 
 [[post_commit_routes]]
+target = "complete"
+[post_commit_routes.when]
+phase = "development_commit"
+budget_state = "no_review"
+
+[[post_commit_routes]]
 target = "review"
 [post_commit_routes.when]
 phase = "review_commit"
@@ -120,11 +209,38 @@ target = "complete"
 phase = "review_commit"
 budget_state = "exhausted"
 
+# ---------------------------------------------------------------------------
+# Parallel execution policy
+# ---------------------------------------------------------------------------
+
 [parallel_execution]
 source = "planning_artifact_work_units"
+phase = "development"
 max_parallel_workers = 8
 max_work_units = 50
 require_allowed_directories = true
 
+# ---------------------------------------------------------------------------
+# Pipeline entry and terminal configuration
+# ---------------------------------------------------------------------------
+
 entry_phase = "planning"
 terminal_phase = "complete"
+
+# ---------------------------------------------------------------------------
+# Default retry policy (applies to all phases without explicit retry_policy)
+# ---------------------------------------------------------------------------
+
+[default_phase_retry_policy]
+max_retries = 3
+retry_delay_ms = 1000
+retry_in_session = false
+
+# ---------------------------------------------------------------------------
+# Recovery policy
+# ---------------------------------------------------------------------------
+
+[recovery]
+cycle_cap = 200
+terminal_recovery_route = "phase_failed"
+preserve_session_on_categories = ["agent"]

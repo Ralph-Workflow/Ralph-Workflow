@@ -2,10 +2,39 @@
 
 > An opinionated AI agent orchestration framework.
 
-Ralph Workflow is a Python 3.12+ CLI and framework for configurable, opinionated AI agent orchestration. It began as a take on the Ralph loop, and the maintained package now turns that philosophy into configurable workflow, agent, and policy primitives. The installable package lives in this directory and exposes two entry points:
+Ralph Workflow is a Python 3.12+ CLI and framework for **policy-driven** AI agent orchestration. The runtime is a generic policy interpreter: all workflow behavior — phase routing, retry rules, analysis loops, commit semantics, verification gates, recovery routing, and parallel execution constraints — is declared in TOML policy files and enforced by the runtime without hardcoded phase knowledge. The installable package lives in this directory and exposes two entry points:
 
 - `ralph` — the main CLI
 - `ralph-mcp` — the standalone MCP server runtime
+
+## Policy-Driven Orchestration
+
+Ralph Workflow's pipeline behavior is defined entirely by three TOML policy files:
+
+| File | What it declares |
+|------|------------------|
+| `.agent/pipeline.toml` | Phase graph, roles, transitions, retry rules, analysis loops, commit semantics, recovery routing, parallel execution |
+| `.agent/ralph-workflow.toml` | Agent chains and drain-to-chain bindings |
+| `.agent/artifacts.toml` | Artifact contracts and decision vocabularies per drain |
+
+The runtime validates that policy is semantically complete at startup and rejects incomplete configurations with actionable errors — it does not silently fall back to hidden built-in semantics.
+
+**Policy surfaces that are configurable:**
+
+- Phase roles (`execution`, `analysis`, `review`, `commit`, `verification`, `terminal`, `fanout_join`)
+- Transition graph (`on_success`, `on_failure`, `on_loopback`)
+- Analysis loop bounds and iteration counters
+- Decision vocabulary and per-decision routing
+- Commit counter type and loop reset behavior
+- Post-commit budget-guarded routing
+- Retry and fallback strategy per phase
+- Recovery cycle cap and terminal routing
+- Parallel execution constraints
+- Artifact requirements per drain
+
+**To understand why Ralph Workflow routed a certain way**, read the active `.agent/pipeline.toml` — all routing decisions trace back to declared policy, not code branches.
+
+**To add or change workflow behavior**, update `pipeline.toml`. Incomplete policy is rejected at startup with a `PolicyValidationError` listing the missing fields.
 
 ## Install
 
@@ -276,6 +305,7 @@ Quick configuration:
 
 ```toml
 [pipeline.parallel_execution]
+phase = "development"
 max_parallel_workers = 4
 max_work_units = 50
 ```

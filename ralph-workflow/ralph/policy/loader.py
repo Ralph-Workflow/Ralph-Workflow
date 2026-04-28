@@ -18,6 +18,7 @@ from loguru import logger
 from pydantic import ValidationError
 
 import ralph.policy
+from ralph.phases import register_role_handlers
 from ralph.policy.models import (
     AgentChainConfig,
     AgentDrainConfig,
@@ -31,6 +32,7 @@ from ralph.policy.validation import (
 )
 from ralph.policy.validation import (
     validate_drain_contracts,
+    validate_policy_completeness,
 )
 
 if TYPE_CHECKING:
@@ -89,6 +91,8 @@ PIPELINE_POLICY_FIELDS = frozenset(
         "terminal_phase",
         "post_commit_routes",
         "parallel_execution",
+        "default_phase_retry_policy",
+        "recovery",
     }
 )
 
@@ -234,20 +238,6 @@ def build_agents_policy_from_config(config: UnifiedConfig) -> AgentsPolicy:
         }
     }
 
-    inferred_sibling_drains: dict[str, str] = {
-        "development_analysis": "analysis",
-        "review_analysis": "analysis",
-        "development_commit": "commit",
-        "review_commit": "commit",
-    }
-    for drain_name, source_drain in inferred_sibling_drains.items():
-        if drain_name in explicit_runtime_drains:
-            continue
-        source_chain = config.agent_drains.get(source_drain)
-        if not isinstance(source_chain, str):
-            continue
-        explicit_runtime_drains[drain_name] = AgentDrainConfig(chain=source_chain)
-
     return AgentsPolicy(
         agent_chains=chain_configs,
         agent_drains={
@@ -270,7 +260,8 @@ def load_policy(config_dir: Path, config: UnifiedConfig | None = None) -> Policy
         Validated PolicyBundle with all three policy documents.
 
     Raises:
-        PolicyValidationError: If any TOML file fails validation.
+        PolicyValidationError: If any TOML file fails validation or the bundle
+            is semantically incomplete for policy-driven orchestration.
     """
     agents_path = config_dir / "agents.toml"
     pipeline_path = config_dir / "pipeline.toml"
@@ -321,6 +312,21 @@ def load_policy(config_dir: Path, config: UnifiedConfig | None = None) -> Policy
             exc.message,
             source="agents",
         ) from exc
+
+    # Semantic completeness validation — ensures policy fully defines workflow behavior
+    try:
+        validate_policy_completeness(bundle)
+    except PolicyContractValidationError as exc:
+        raise PolicyValidationError(
+            exc.message,
+            source=exc.source or "completeness",
+        ) from exc
+
+    # Register handlers for policy-renamed phases (role-based registration).
+    # This allows phases with role='commit' or role='analysis' to work with
+    # custom names beyond the canonical handler names registered at import time.
+    # The call is idempotent — phases with existing handlers are skipped.
+    register_role_handlers(pipeline_policy)
 
     return bundle
 

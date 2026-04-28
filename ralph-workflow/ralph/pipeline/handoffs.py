@@ -10,8 +10,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from ralph.config.enums import PHASE_COMPLETE
-
 if TYPE_CHECKING:
     from ralph.config.enums import PipelinePhase
     from ralph.pipeline.state import PipelineState
@@ -75,21 +73,45 @@ def resolve_post_commit_phase(
     state: PipelineState,
     pipeline_policy: PipelinePolicy,
 ) -> PipelinePhase:
-    """Resolve next phase for a successful commit with optional budget guards."""
-    if state.phase == "development_commit":
-        if state.development_budget_remaining > 0:
-            budget_state = "remaining"
-        elif state.review_budget_remaining == 0:
-            return PHASE_COMPLETE
-        else:
-            budget_state = "exhausted"
-    elif state.phase == "review_commit":
-        budget_state = "remaining" if state.review_budget_remaining > 0 else "exhausted"
-    else:
-        return resolve_next_phase(state.phase, "success", pipeline_policy)
+    """Resolve next phase for a successful commit with optional budget guards.
 
-    for route in pipeline_policy.post_commit_routes:
-        if route.when.phase == state.phase and route.when.budget_state == budget_state:
-            return route.target
+    Routing is driven by post_commit_routes in policy, matched by phase name
+    and budget_state. This works for any commit-role phase, not just the
+    canonical development_commit/review_commit names.
+    """
+    phase_def = pipeline_policy.phases.get(state.phase)
+    is_commit_phase = phase_def is not None and phase_def.role == "commit"
+
+    if is_commit_phase:
+        budget_state = _compute_budget_state(state, pipeline_policy)
+        if budget_state is not None:
+            for route in pipeline_policy.post_commit_routes:
+                if route.when.phase == state.phase and route.when.budget_state == budget_state:
+                    return route.target
 
     return resolve_next_phase(state.phase, "success", pipeline_policy)
+
+
+def _compute_budget_state(state: PipelineState, pipeline_policy: PipelinePolicy) -> str | None:
+    """Determine the budget_state label for the current commit phase.
+
+    Uses the phase's commit_policy.increments_counter to identify which budget
+    counter governs this phase: 'iteration' phases use development_budget_remaining,
+    'reviewer_pass' phases use review_budget_remaining, and 'none' returns None
+    (no post_commit_route will match).
+    """
+    phase_def = pipeline_policy.phases.get(state.phase)
+    if phase_def is None or phase_def.commit_policy is None:
+        return None
+
+    counter = phase_def.commit_policy.increments_counter
+
+    if counter == "iteration":
+        if state.development_budget_remaining > 0:
+            return "remaining"
+        return "no_review" if state.review_budget_remaining == 0 else "exhausted"
+
+    if counter == "reviewer_pass":
+        return "remaining" if state.review_budget_remaining > 0 else "exhausted"
+
+    return None

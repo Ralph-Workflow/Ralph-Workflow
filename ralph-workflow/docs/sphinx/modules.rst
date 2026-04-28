@@ -149,8 +149,6 @@ ralph.cli.commands.run
    :members:
    :show-inheritance:
 
-----
-
 Config
 ------
 

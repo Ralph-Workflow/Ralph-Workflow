@@ -43,6 +43,7 @@ from ralph.policy.validation import (
     validate_checkpoint_compatible,
     validate_drain_bound,
     validate_phase_exists_in_policy,
+    validate_policy_completeness,
 )
 
 __all__ = [
@@ -66,4 +67,5 @@ __all__ = [
     "validate_checkpoint_compatible",
     "validate_drain_bound",
     "validate_phase_exists_in_policy",
+    "validate_policy_completeness",
 ]

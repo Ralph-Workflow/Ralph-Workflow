@@ -149,14 +149,17 @@
 # commit = ["claude"]
 
 # ---------------------------------------------------------------------------
-# [agent_drains.*] — Drain-to-chain bindings for built-in drains
+# [agent_drains.*] — Drain-to-chain bindings for pipeline drains
+# Maps each pipeline drain name to a chain name defined in [agent_chains].
 # Defaults shown below mirror the built-in factory defaults.
 # ---------------------------------------------------------------------------
 
 # [agent_drains]
 # planning = "planning"
 # development = "development"
-# analysis = "analysis"
+# development_analysis = "analysis"
+# development_commit = "commit"
 # review = "review"
+# review_analysis = "analysis"
+# review_commit = "commit"
 # fix = "fix"
-# commit = "commit"

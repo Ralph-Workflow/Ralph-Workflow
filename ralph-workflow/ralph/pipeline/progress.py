@@ -23,7 +23,10 @@ from __future__ import annotations
 from dataclasses import replace
 from typing import TYPE_CHECKING
 
-from ralph.config.enums import PHASE_DEVELOPMENT, PHASE_DEVELOPMENT_ANALYSIS, PHASE_REVIEW
+from ralph.config.enums import (
+    PHASE_DEVELOPMENT_ANALYSIS,
+    PHASE_REVIEW_ANALYSIS,
+)
 from ralph.pipeline.handoffs import resolve_phase_drain
 from ralph.pipeline.state import CommitState, PipelineState
 
@@ -33,11 +36,6 @@ if TYPE_CHECKING:
     from ralph.policy.models import PipelinePolicy
 
 
-DEVELOPMENT_COMMIT_PHASE = "development_commit"
-REVIEW_ANALYSIS_PHASE = "review_analysis"
-REVIEW_COMMIT_PHASE = "review_commit"
-
-
 def advance_phase(
     state: PipelineState,
     target_phase: PipelinePhase,
@@ -45,6 +43,13 @@ def advance_phase(
     policy: PipelinePolicy | None,
 ) -> PipelineState:
     """Advance phases while applying only canonical routing-budget bookkeeping."""
+    if policy is None:
+        msg = (
+            f"advance_phase requires PipelinePolicy to advance to '{target_phase}'; "
+            "pass the active pipeline policy to resolve drain and commit-role semantics"
+        )
+        raise ValueError(msg)
+
     updates: dict[str, object] = {
         "phase": target_phase,
         "previous_phase": state.phase,
@@ -52,16 +57,13 @@ def advance_phase(
         "session_preserve_retry_pending": False,
     }
 
-    if target_phase in (DEVELOPMENT_COMMIT_PHASE, REVIEW_COMMIT_PHASE):
+    phase_def = policy.phases.get(target_phase)
+    is_commit_phase = phase_def is not None and phase_def.role == "commit"
+
+    if is_commit_phase:
         updates["commit"] = CommitState()
 
-    if target_phase == PHASE_DEVELOPMENT and state.phase != PHASE_DEVELOPMENT_ANALYSIS:
-        updates["development_budget_remaining"] = max(0, state.development_budget_remaining - 1)
-    elif target_phase == PHASE_REVIEW:
-        updates["review_budget_remaining"] = max(0, state.review_budget_remaining - 1)
-
-    if policy is not None:
-        updates["current_drain"] = resolve_phase_drain(target_phase, policy)
+    updates["current_drain"] = resolve_phase_drain(target_phase, policy)
 
     return state.copy_with(**updates)
 
@@ -70,12 +72,42 @@ def apply_analysis_success(state: PipelineState, advanced_state: PipelineState) 
     """Reset inner-loop progress when analysis exits successfully to commit/approval."""
     if state.phase == PHASE_DEVELOPMENT_ANALYSIS:
         return advanced_state.copy_with(development_analysis_iteration=0)
-    if state.phase == REVIEW_ANALYSIS_PHASE:
+    if state.phase == PHASE_REVIEW_ANALYSIS:
         return advanced_state.copy_with(
             review_issues_found=False,
             review_analysis_iteration=0,
         )
     return advanced_state
+
+
+def apply_analysis_loopback(
+    state: PipelineState,
+    advanced_state: PipelineState,
+    iteration_field: str,
+) -> PipelineState:
+    """Record an analysis loopback for any analysis phase by field name.
+
+    Used by the policy-driven loopback handler to apply progress tracking
+    using the iteration_state_field from loop_policy.
+
+    Args:
+        state: Original state before advance.
+        advanced_state: State after phase advance.
+        iteration_field: Loop iteration state field name from loop_policy.
+
+    Returns:
+        Updated state with loopback progress applied.
+    """
+    if iteration_field == "development_analysis_iteration":
+        return apply_development_analysis_loopback(state, advanced_state)
+    if iteration_field == "review_analysis_iteration":
+        return apply_review_analysis_loopback(state, advanced_state)
+    # Unknown iteration field — just increment via generic state update
+    try:
+        current = advanced_state.get_loop_iteration(iteration_field)
+        return advanced_state.with_loop_iteration(iteration_field, current + 1)
+    except AttributeError:
+        return advanced_state
 
 
 def apply_development_analysis_loopback(
@@ -104,20 +136,58 @@ def apply_commit_outcome(
     advanced_state: PipelineState,
     *,
     skipped: bool,
+    policy: PipelinePolicy | None = None,
 ) -> PipelineState:
-    """Apply canonical outer-progress semantics for commit success vs skip."""
-    if state.phase == DEVELOPMENT_COMMIT_PHASE:
-        updates: dict[str, object] = {"development_analysis_iteration": 0}
+    """Apply canonical outer-progress semantics for commit success vs skip.
+
+    Policy is required. The counter and loop resets are driven by commit_policy.
+    When commit_policy is absent on the phase, returns advanced_state unchanged.
+    """
+    if policy is None:
+        msg = f"apply_commit_outcome requires PipelinePolicy for commit-role phase {state.phase!r}"
+        raise ValueError(msg)
+    phase_def = policy.phases.get(state.phase)
+    if phase_def is not None and phase_def.commit_policy is not None:
+        return _apply_commit_outcome_policy_driven(
+            state, advanced_state, skipped, phase_def.commit_policy
+        )
+    return advanced_state
+
+
+def _apply_commit_outcome_policy_driven(
+    state: PipelineState,
+    advanced_state: PipelineState,
+    skipped: bool,
+    commit_policy: object,
+) -> PipelineState:
+    """Apply commit outcome using policy-declared commit_policy."""
+    from ralph.policy.models import PhaseCommitPolicy  # noqa: PLC0415
+
+    if not isinstance(commit_policy, PhaseCommitPolicy):
+        return advanced_state
+
+    updates: dict[str, object] = {}
+
+    # Reset loop counters declared in loop_resets
+    for field_name in commit_policy.loop_resets:
+        try:
+            advanced_state.get_loop_iteration(field_name)  # validate field exists
+            updates[field_name] = 0
+        except AttributeError:
+            pass
+
+    counter = commit_policy.increments_counter
+    if counter == "iteration":
+        updates["development_budget_remaining"] = max(0, state.development_budget_remaining - 1)
         if not skipped:
             updates["iteration"] = state.iteration + 1
-        return advanced_state.copy_with(**updates)
-
-    if state.phase == REVIEW_COMMIT_PHASE:
-        updates = {"review_analysis_iteration": 0}
+    elif counter == "reviewer_pass":
+        updates["review_budget_remaining"] = max(0, state.review_budget_remaining - 1)
         if not skipped:
             updates["reviewer_pass"] = state.reviewer_pass + 1
-        return advanced_state.copy_with(**updates)
 
+    if updates:
+        return advanced_state.copy_with(**updates)
     return advanced_state
 
 

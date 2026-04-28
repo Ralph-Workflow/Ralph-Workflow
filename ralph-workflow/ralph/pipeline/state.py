@@ -37,6 +37,23 @@ _PHASE_CHAIN_FIELDS: dict[str, str] = {
     "fix": "fix_chain",
 }
 
+# Map from loop iteration state field names to PipelineState attribute names.
+# Used by get_loop_iteration / with_loop_iteration for policy-driven loop tracking.
+# To add a new analysis-loop counter:
+#   1. Add the int field to PipelineState
+#   2. Add entries to both _LOOP_ITERATION_FIELD_MAP and _LOOP_MAX_ITERATION_FIELD_MAP
+#   3. Declare iteration_state_field in the phase's loop_policy in pipeline.toml
+_LOOP_ITERATION_FIELD_MAP: dict[str, str] = {
+    "development_analysis_iteration": "development_analysis_iteration",
+    "review_analysis_iteration": "review_analysis_iteration",
+}
+
+# Map from loop iteration state field names to the corresponding max-cap field.
+_LOOP_MAX_ITERATION_FIELD_MAP: dict[str, str] = {
+    "development_analysis_iteration": "max_development_analysis_iterations",
+    "review_analysis_iteration": "max_review_analysis_iterations",
+}
+
 
 class _FrozenPipelineStateModel(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     """Private base for frozen pipeline state models.
@@ -182,6 +199,7 @@ class PipelineState(_FrozenPipelineStateModel):  # type: ignore[explicit-any]  #
         rev_chain: Review agent chain state.
         review_analysis_chain: Review analysis agent chain state.
         fix_chain: Fix agent chain state.
+        phase_chains: Policy-keyed per-phase agent chain state for custom phase names.
         rebase: Git rebase state.
         commit: Commit state.
         metrics: Run-level execution metrics.
@@ -224,6 +242,7 @@ class PipelineState(_FrozenPipelineStateModel):  # type: ignore[explicit-any]  #
     rev_chain: AgentChainState = Field(default_factory=AgentChainState)
     review_analysis_chain: AgentChainState = Field(default_factory=AgentChainState)
     fix_chain: AgentChainState = Field(default_factory=AgentChainState)
+    phase_chains: dict[str, AgentChainState] = Field(default_factory=dict)
     rebase: RebaseState = Field(default_factory=RebaseState)
     commit: CommitState = Field(default_factory=CommitState)
     metrics: RunMetrics = Field(default_factory=RunMetrics)
@@ -300,6 +319,30 @@ class PipelineState(_FrozenPipelineStateModel):  # type: ignore[explicit-any]  #
             return v
         raise TypeError(f"Expected list or tuple for fallover_history, got {type(v).__name__!r}")
 
+    @field_validator("phase_chains", mode="before")
+    @classmethod
+    def _coerce_phase_chains(cls, v: object) -> dict[str, AgentChainState]:
+        if v is None:
+            return {}
+        if isinstance(v, dict):
+            return {
+                str(key): AgentChainState.model_validate(value)
+                if isinstance(value, dict)
+                else cast("AgentChainState", value)
+                for key, value in v.items()
+            }
+        raise TypeError(f"Expected dict for phase_chains, got {type(v).__name__!r}")
+
+    @classmethod
+    def known_loop_iteration_fields(cls) -> frozenset[str]:
+        """Return the set of known loop iteration state field names.
+
+        This is the authoritative set consulted by policy validation.
+        To add a new loop counter, add the field to PipelineState AND
+        add entries to _LOOP_ITERATION_FIELD_MAP and _LOOP_MAX_ITERATION_FIELD_MAP.
+        """
+        return frozenset(_LOOP_ITERATION_FIELD_MAP.keys())
+
     def is_complete(self) -> bool:
         """Check if pipeline has reached a terminal success state.
 
@@ -353,6 +396,9 @@ class PipelineState(_FrozenPipelineStateModel):  # type: ignore[explicit-any]  #
 
     def chain_for_phase(self, phase: PipelinePhase | str) -> AgentChainState | None:
         """Get the tracked agent chain state for a phase, if any."""
+        dynamic = self.phase_chains.get(str(phase))
+        if dynamic is not None:
+            return dynamic
         field_name = _PHASE_CHAIN_FIELDS.get(phase)
         if field_name is None:
             return None
@@ -364,10 +410,16 @@ class PipelineState(_FrozenPipelineStateModel):  # type: ignore[explicit-any]  #
         chain: AgentChainState,
     ) -> PipelineState:
         """Return a copy with the chain state for the given phase updated."""
+        phase_key = str(phase)
+        updates: dict[str, object] = {}
+        if phase_key in self.phase_chains:
+            updates["phase_chains"] = {**self.phase_chains, phase_key: chain}
         field_name = _PHASE_CHAIN_FIELDS.get(phase)
-        if field_name is None:
+        if field_name is not None:
+            updates[field_name] = chain
+        if not updates:
             return self
-        return self.copy_with(**{field_name: chain})
+        return self.copy_with(**updates)
 
     def with_drain(self, drain: DrainName | None) -> PipelineState:
         """Return a copy with the current_drain set.
@@ -379,6 +431,71 @@ class PipelineState(_FrozenPipelineStateModel):  # type: ignore[explicit-any]  #
             New PipelineState with current_drain updated.
         """
         return self.copy_with(current_drain=drain)
+
+    def get_loop_iteration(self, field_name: str) -> int:
+        """Get the loop iteration counter for a policy-declared iteration field.
+
+        Args:
+            field_name: The iteration_state_field value from PhaseLoopPolicy.
+
+        Returns:
+            Current iteration count.
+
+        Raises:
+            AttributeError: If field_name is not a known loop iteration field.
+        """
+        attr = _LOOP_ITERATION_FIELD_MAP.get(field_name)
+        if attr is None:
+            raise AttributeError(
+                f"Unknown loop iteration field '{field_name}'. "
+                f"Known fields: {sorted(_LOOP_ITERATION_FIELD_MAP)}"
+            )
+        return cast("int", getattr(self, attr))
+
+    def get_max_loop_iteration(self, field_name: str) -> int:
+        """Get the runtime cap for a loop iteration field from state.
+
+        Returns the state-level maximum for the given iteration field.
+        This is the authoritative cap used for clamping — set from config at
+        pipeline start and may differ from PhaseLoopPolicy.max_iterations.
+
+        Args:
+            field_name: The iteration_state_field value from PhaseLoopPolicy.
+
+        Returns:
+            Maximum iteration count.
+
+        Raises:
+            AttributeError: If field_name is not a known loop iteration field.
+        """
+        attr = _LOOP_MAX_ITERATION_FIELD_MAP.get(field_name)
+        if attr is None:
+            raise AttributeError(
+                f"Unknown loop iteration field '{field_name}'. "
+                f"Known fields: {sorted(_LOOP_MAX_ITERATION_FIELD_MAP)}"
+            )
+        return cast("int", getattr(self, attr))
+
+    def with_loop_iteration(self, field_name: str, value: int) -> PipelineState:
+        """Return a copy with the specified loop iteration field set to value.
+
+        Args:
+            field_name: The iteration_state_field value from PhaseLoopPolicy.
+            value: New iteration count.
+
+        Returns:
+            New PipelineState with the iteration counter updated.
+
+        Raises:
+            AttributeError: If field_name is not a known loop iteration field.
+        """
+        attr = _LOOP_ITERATION_FIELD_MAP.get(field_name)
+        if attr is None:
+            raise AttributeError(
+                f"Unknown loop iteration field '{field_name}'. "
+                f"Known fields: {sorted(_LOOP_ITERATION_FIELD_MAP)}"
+            )
+        return self.copy_with(**{attr: value})
 
     def copy_with(self, **updates: object) -> PipelineState:
         """Return a copy with updates applied in a typed-safe manner.

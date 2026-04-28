@@ -8,14 +8,20 @@ from unittest.mock import MagicMock
 
 from ralph.config.enums import AnalysisDecision
 from ralph.phases.analysis import parse_analysis_decision
+from ralph.policy.loader import load_policy
 
 
 class TestParseAnalysisDecision:
+    def _default_pipeline_policy(self) -> object:
+        with tempfile.TemporaryDirectory() as tmp:
+            return load_policy(Path(tmp) / ".agent").pipeline
+
     def _make_context(self, workspace: MagicMock) -> MagicMock:
         ctx = MagicMock()
         ctx.workspace = workspace
         ctx.artifacts_policy = MagicMock()
         ctx.artifacts_policy.artifacts = {}
+        ctx.pipeline_policy = self._default_pipeline_policy()
         return ctx
 
     def test_missing_artifact_defaults_to_failure(self) -> None:
@@ -127,6 +133,11 @@ class TestParseAnalysisDecision:
         assert result == AnalysisDecision.FAILURE
 
 
+def _load_default_pipeline_policy() -> object:
+    with tempfile.TemporaryDirectory() as tmp:
+        return load_policy(Path(tmp) / ".agent").pipeline
+
+
 class TestDecisionVocabularyFullCoverage:
     """Every status in the policy decision_vocabulary must map to a concrete AnalysisDecision."""
 
@@ -158,6 +169,7 @@ class TestDecisionVocabularyFullCoverage:
             ctx.workspace = workspace
             ctx.artifacts_policy = MagicMock()
             ctx.artifacts_policy.artifacts = {}
+            ctx.pipeline_policy = _load_default_pipeline_policy()
             result = parse_analysis_decision(ctx, "development_analysis")
             is_intentional_failure = status in ("failed",)
             assert result != AnalysisDecision.FAILURE or is_intentional_failure, (
@@ -184,9 +196,306 @@ class TestDecisionVocabularyFullCoverage:
             ctx.workspace = workspace
             ctx.artifacts_policy = MagicMock()
             ctx.artifacts_policy.artifacts = {}
+            ctx.pipeline_policy = _load_default_pipeline_policy()
             result = parse_analysis_decision(ctx, "review_analysis")
             is_intentional_failure = status in ("failed",)
             assert result != AnalysisDecision.FAILURE or is_intentional_failure, (
                 f"Vocabulary entry '{status}' for review_analysis "
                 "must not silently map to FAILURE"
             )
+
+
+
+class TestParseAnalysisDecisionPhaseNameParameter:
+    """parse_analysis_decision uses phase_name for policy lookup, drain_name for artifact path."""
+
+    def _make_custom_analysis_policy(self) -> object:
+        from ralph.config.enums import PHASE_COMPLETE, PHASE_FAILED  # noqa: PLC0415
+        from ralph.policy.models import (  # noqa: PLC0415
+            PhaseDecisionRoute,
+            PhaseDefinition,
+            PhaseLoopPolicy,
+            PhaseTransition,
+            PipelinePolicy,
+        )
+
+        return PipelinePolicy(
+            phases={
+                "custom_analysis": PhaseDefinition(
+                    drain="development_analysis",
+                    role="analysis",
+                    transitions=PhaseTransition(
+                        on_success="development_commit",
+                        on_loopback="development",
+                        on_failure=PHASE_FAILED,
+                    ),
+                    loop_policy=PhaseLoopPolicy(
+                        max_iterations=3,
+                        iteration_state_field="development_analysis_iteration",
+                    ),
+                    decisions={
+                        "completed": PhaseDecisionRoute(
+                            target="development_commit", reset_loop=True
+                        ),
+                        "request_changes": PhaseDecisionRoute(
+                            target="development", reset_loop=False
+                        ),
+                        "failed": PhaseDecisionRoute(
+                            target=PHASE_FAILED, reset_loop=False
+                        ),
+                    },
+                ),
+                "development_commit": PhaseDefinition(
+                    drain="development_commit",
+                    role="commit",
+                    transitions=PhaseTransition(
+                        on_success=PHASE_COMPLETE,
+                        on_failure=PHASE_FAILED,
+                    ),
+                ),
+                "development": PhaseDefinition(
+                    drain="development",
+                    role="execution",
+                    transitions=PhaseTransition(
+                        on_success="custom_analysis",
+                        on_failure=PHASE_FAILED,
+                    ),
+                ),
+                PHASE_COMPLETE: PhaseDefinition(
+                    drain="complete",
+                    role="terminal",
+                    terminal_outcome="success",
+                    transitions=PhaseTransition(
+                        on_success=PHASE_COMPLETE,
+                        on_loopback=PHASE_COMPLETE,
+                    ),
+                ),
+            },
+            entry_phase="development",
+            terminal_phase=PHASE_COMPLETE,
+        )
+
+    def test_phase_name_parameter_used_for_policy_lookup(self) -> None:
+        """When phase_name is provided, it is used for decisions table lookup in policy."""
+        workspace = MagicMock()
+        workspace.exists.return_value = True
+        workspace.read.return_value = (
+            '{"type":"development_analysis_decision","content":{"status":"completed"}}'
+        )
+        ctx = MagicMock()
+        ctx.workspace = workspace
+        ctx.artifacts_policy = MagicMock()
+        ctx.artifacts_policy.artifacts = {}
+        ctx.pipeline_policy = self._make_custom_analysis_policy()
+
+        result = parse_analysis_decision(
+            ctx, "development_analysis", phase_name="custom_analysis"
+        )
+        assert result == AnalysisDecision.PROCEED
+
+    def test_without_phase_name_uses_drain_name_for_policy_lookup(self) -> None:
+        """Without phase_name, drain_name is used for policy lookup (backward compat)."""
+        workspace = MagicMock()
+        workspace.exists.return_value = True
+        workspace.read.return_value = (
+            '{"type":"development_analysis_decision","content":{"status":"completed"}}'
+        )
+        ctx = MagicMock()
+        ctx.workspace = workspace
+        ctx.artifacts_policy = MagicMock()
+        ctx.artifacts_policy.artifacts = {}
+        ctx.pipeline_policy = self._make_custom_analysis_policy()
+
+        # drain_name="development_analysis" is NOT a phase name in this custom policy
+        # (phases are: custom_analysis, development_commit, development, complete).
+        # So the decisions table lookup fails and FAILURE is returned.
+        result = parse_analysis_decision(ctx, "development_analysis")
+        assert result == AnalysisDecision.FAILURE
+
+
+class TestRegisterRoleHandlers:
+    """register_role_handlers wires generic handlers for analysis- and commit-role phases."""
+
+    def _make_analysis_policy(self) -> object:
+        from ralph.config.enums import PHASE_COMPLETE, PHASE_FAILED  # noqa: PLC0415
+        from ralph.policy.models import (  # noqa: PLC0415
+            PhaseDecisionRoute,
+            PhaseDefinition,
+            PhaseLoopPolicy,
+            PhaseTransition,
+            PipelinePolicy,
+        )
+
+        return PipelinePolicy(
+            phases={
+                "my_custom_analysis": PhaseDefinition(
+                    drain="development_analysis",
+                    role="analysis",
+                    transitions=PhaseTransition(
+                        on_success=PHASE_COMPLETE,
+                        on_loopback=PHASE_COMPLETE,
+                        on_failure=PHASE_FAILED,
+                    ),
+                    loop_policy=PhaseLoopPolicy(
+                        max_iterations=3,
+                        iteration_state_field="development_analysis_iteration",
+                    ),
+                    decisions={
+                        "completed": PhaseDecisionRoute(
+                            target=PHASE_COMPLETE, reset_loop=True
+                        ),
+                    },
+                ),
+                PHASE_COMPLETE: PhaseDefinition(
+                    drain="complete",
+                    role="terminal",
+                    terminal_outcome="success",
+                    transitions=PhaseTransition(
+                        on_success=PHASE_COMPLETE,
+                        on_loopback=PHASE_COMPLETE,
+                    ),
+                ),
+            },
+            entry_phase="my_custom_analysis",
+            terminal_phase=PHASE_COMPLETE,
+        )
+
+    def _make_commit_policy(self) -> object:
+        from ralph.config.enums import PHASE_COMPLETE, PHASE_FAILED  # noqa: PLC0415
+        from ralph.policy.models import (  # noqa: PLC0415
+            PhaseCommitPolicy,
+            PhaseDefinition,
+            PhaseTransition,
+            PipelinePolicy,
+        )
+
+        return PipelinePolicy(
+            phases={
+                "my_custom_commit": PhaseDefinition(
+                    drain="development_commit",
+                    role="commit",
+                    transitions=PhaseTransition(
+                        on_success=PHASE_COMPLETE,
+                        on_failure=PHASE_FAILED,
+                    ),
+                    commit_policy=PhaseCommitPolicy(
+                        increments_counter="iteration",
+                        loop_resets=["development_analysis_iteration"],
+                    ),
+                ),
+                PHASE_COMPLETE: PhaseDefinition(
+                    drain="complete",
+                    role="terminal",
+                    terminal_outcome="success",
+                    transitions=PhaseTransition(
+                        on_success=PHASE_COMPLETE,
+                        on_loopback=PHASE_COMPLETE,
+                    ),
+                ),
+            },
+            entry_phase="my_custom_commit",
+            terminal_phase=PHASE_COMPLETE,
+        )
+
+    def test_register_role_handlers_registers_analysis_phase(self) -> None:
+        """register_role_handlers adds a generic handler for analysis-role phases."""
+        from ralph.phases import HANDLERS, register_role_handlers  # noqa: PLC0415
+        from ralph.phases.analysis import handle_generic_analysis_phase  # noqa: PLC0415
+
+        policy = self._make_analysis_policy()
+        HANDLERS.pop("my_custom_analysis", None)
+
+        assert "my_custom_analysis" not in HANDLERS
+        register_role_handlers(policy)
+        assert HANDLERS.get("my_custom_analysis") is handle_generic_analysis_phase
+        HANDLERS.pop("my_custom_analysis", None)
+
+    def test_register_role_handlers_registers_commit_phase(self) -> None:
+        """register_role_handlers adds handle_commit_phase for commit-role phases."""
+        from ralph.phases import HANDLERS, register_role_handlers  # noqa: PLC0415
+        from ralph.phases.commit import handle_commit_phase  # noqa: PLC0415
+
+        policy = self._make_commit_policy()
+        HANDLERS.pop("my_custom_commit", None)
+
+        assert "my_custom_commit" not in HANDLERS
+        register_role_handlers(policy)
+        assert HANDLERS.get("my_custom_commit") is handle_commit_phase
+        HANDLERS.pop("my_custom_commit", None)
+
+    def test_register_role_handlers_does_not_overwrite_existing_handler(self) -> None:
+        """register_role_handlers skips phases that already have a handler registered."""
+        from ralph.phases import HANDLERS, register_role_handlers  # noqa: PLC0415
+        from ralph.phases.analysis import handle_generic_analysis_phase  # noqa: PLC0415
+
+        policy = self._make_analysis_policy()
+        # Pre-register the generic handler; a second call must not overwrite it.
+        HANDLERS["my_custom_analysis"] = handle_generic_analysis_phase
+        try:
+            register_role_handlers(policy)
+            assert HANDLERS["my_custom_analysis"] is handle_generic_analysis_phase
+        finally:
+            del HANDLERS["my_custom_analysis"]
+
+    def test_handle_phase_dispatches_to_registered_analysis_handler(self) -> None:
+        """After register_role_handlers, handle_phase dispatches a custom analysis phase."""
+        from ralph.phases import HANDLERS, handle_phase, register_role_handlers  # noqa: PLC0415
+        from ralph.pipeline.effects import InvokeAgentEffect  # noqa: PLC0415
+        from ralph.pipeline.events import PhaseFailureEvent  # noqa: PLC0415
+
+        policy = self._make_analysis_policy()
+        HANDLERS.pop("my_custom_analysis", None)
+        register_role_handlers(policy)
+
+        workspace = MagicMock()
+        workspace.exists.return_value = False
+        ctx = MagicMock()
+        ctx.workspace = workspace
+        ctx.pipeline_policy = policy
+        ctx.artifacts_policy = MagicMock()
+        ctx.artifacts_policy.artifacts = {}
+
+        effect = InvokeAgentEffect(
+            agent_name="test-agent",
+            phase="my_custom_analysis",
+            prompt_file="/tmp/prompt.md",
+            drain="development_analysis",
+        )
+        try:
+            events = handle_phase(effect, ctx)
+            assert len(events) == 1
+            assert isinstance(events[0], PhaseFailureEvent)
+        finally:
+            HANDLERS.pop("my_custom_analysis", None)
+
+    def test_handle_phase_dispatches_to_registered_commit_handler(self) -> None:
+        """After register_role_handlers, handle_phase dispatches a custom commit phase."""
+        from ralph.phases import HANDLERS, handle_phase, register_role_handlers  # noqa: PLC0415
+        from ralph.pipeline.effects import PreparePromptEffect  # noqa: PLC0415
+
+        policy = self._make_commit_policy()
+        HANDLERS.pop("my_custom_commit", None)
+        register_role_handlers(policy)
+
+        ctx = MagicMock()
+
+        # PreparePromptEffect returns [] from handle_commit_phase (non-InvokeAgentEffect path)
+        effect = PreparePromptEffect(phase="my_custom_commit", iteration=1)
+        try:
+            events = handle_phase(effect, ctx)
+            assert events == []
+        finally:
+            HANDLERS.pop("my_custom_commit", None)
+
+    def test_unregistered_phase_raises_handler_not_found(self) -> None:
+        """handle_phase raises PhaseHandlerNotFoundError for unregistered phase names."""
+        import pytest  # noqa: PLC0415
+
+        from ralph.phases import HANDLERS, PhaseHandlerNotFoundError, handle_phase  # noqa: PLC0415
+        from ralph.pipeline.effects import PreparePromptEffect  # noqa: PLC0415
+
+        HANDLERS.pop("totally_unknown_phase", None)
+        effect = PreparePromptEffect(phase="totally_unknown_phase", iteration=1)
+        with pytest.raises(PhaseHandlerNotFoundError) as exc_info:
+            handle_phase(effect, MagicMock())
+        assert "totally_unknown_phase" in str(exc_info.value)

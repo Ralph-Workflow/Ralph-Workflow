@@ -13,6 +13,8 @@ from __future__ import annotations
 from importlib import import_module
 from typing import TYPE_CHECKING, Any, cast
 
+import pytest
+
 from ralph.config.enums import (
     PHASE_COMPLETE,
     PHASE_DEVELOPMENT,
@@ -21,10 +23,13 @@ from ralph.config.enums import (
     PHASE_REVIEW,
 )
 from ralph.pipeline.events import PipelineEvent
+from ralph.pipeline.progress import advance_phase, apply_commit_outcome
 from ralph.pipeline.reducer import reduce as reducer_reduce
 from ralph.pipeline.state import PipelineState
 from ralph.policy.models import (
+    PhaseCommitPolicy,
     PhaseDefinition,
+    PhaseLoopPolicy,
     PhaseTransition,
     PipelinePolicy,
     PostCommitRoute,
@@ -73,8 +78,12 @@ def _progress_policy() -> PipelinePolicy:
             ),
             "development_commit": PhaseDefinition(
                 drain="development_commit",
+                role="commit",
                 transitions=PhaseTransition(on_success=PHASE_REVIEW),
-                requires_commit=True,
+                commit_policy=PhaseCommitPolicy(
+                    increments_counter="iteration",
+                    loop_resets=["development_analysis_iteration"],
+                ),
             ),
             PHASE_REVIEW: PhaseDefinition(
                 drain="review",
@@ -87,6 +96,10 @@ def _progress_policy() -> PipelinePolicy:
                     on_loopback=PHASE_FIX,
                     on_failure=PHASE_FAILED,
                 ),
+                loop_policy=PhaseLoopPolicy(
+                    max_iterations=2,
+                    iteration_state_field="review_analysis_iteration",
+                ),
             ),
             PHASE_FIX: PhaseDefinition(
                 drain="fix",
@@ -94,8 +107,12 @@ def _progress_policy() -> PipelinePolicy:
             ),
             "review_commit": PhaseDefinition(
                 drain="review_commit",
+                role="commit",
                 transitions=PhaseTransition(on_success=PHASE_COMPLETE),
-                requires_commit=True,
+                commit_policy=PhaseCommitPolicy(
+                    increments_counter="reviewer_pass",
+                    loop_resets=["review_analysis_iteration"],
+                ),
             ),
             PHASE_COMPLETE: PhaseDefinition(
                 drain="complete",
@@ -182,11 +199,11 @@ def test_skipped_development_commit_preserves_outer_progress_but_resets_inner_lo
 
     new_state, _ = _reduce(state, PipelineEvent.COMMIT_SKIPPED, policy)
 
-    assert new_state.phase == "planning"
+    assert new_state.phase == PHASE_REVIEW
     assert new_state.previous_phase == "development_commit"
     assert new_state.iteration == COMPLETED_DEVELOPMENT_CYCLES
     assert new_state.development_analysis_iteration == 0
-    assert new_state.development_budget_remaining == 1
+    assert new_state.development_budget_remaining == 0
 
 
 def test_skipped_review_commit_does_not_increment_outer_progress_but_resets_inner_loop() -> None:
@@ -195,7 +212,7 @@ def test_skipped_review_commit_does_not_increment_outer_progress_but_resets_inne
         phase="review_commit",
         reviewer_pass=1,
         review_analysis_iteration=2,
-        review_budget_remaining=0,
+        review_budget_remaining=1,
         review_issues_found=True,
     )
 
@@ -205,7 +222,24 @@ def test_skipped_review_commit_does_not_increment_outer_progress_but_resets_inne
     assert new_state.previous_phase == "review_commit"
     assert new_state.reviewer_pass == 1
     assert new_state.review_analysis_iteration == 0
+    assert new_state.review_budget_remaining == 0
     assert new_state.review_issues_found is True
+
+
+def test_commit_budget_routes_use_post_commit_policy_after_budget_is_consumed() -> None:
+    policy = _progress_policy()
+    state = PipelineState(
+        phase="development_commit",
+        iteration=0,
+        development_budget_remaining=1,
+        review_budget_remaining=1,
+    )
+
+    new_state, _ = _reduce(state, PipelineEvent.COMMIT_SUCCESS, policy)
+
+    assert new_state.phase == PHASE_REVIEW
+    assert new_state.iteration == 1
+    assert new_state.development_budget_remaining == 0
 
 
 def test_checkpoint_builder_derives_progress_mirrors_from_pipeline_state() -> None:
@@ -226,3 +260,81 @@ def test_checkpoint_builder_derives_progress_mirrors_from_pipeline_state() -> No
 
     assert payload.run_context.actual_developer_runs == 1
     assert payload.run_context.actual_reviewer_runs == COMPLETED_REVIEW_PASSES
+
+
+class TestProgressPolicyRequired:
+    """Commit-role phase transitions require policy to be provided.
+
+    These tests enforce that apply_commit_outcome and advance_phase raise ValueError
+    when called for a commit-role phase without providing the PipelinePolicy.
+    """
+
+    def _commit_phase_policy(self) -> PipelinePolicy:
+        return PipelinePolicy(
+            phases={
+                "feature_commit": PhaseDefinition(
+                    drain="development_commit",
+                    role="commit",
+                    transitions=PhaseTransition(
+                        on_success=PHASE_COMPLETE,
+                        on_failure=PHASE_FAILED,
+                    ),
+                    commit_policy=PhaseCommitPolicy(
+                        increments_counter="iteration",
+                        loop_resets=["development_analysis_iteration"],
+                    ),
+                ),
+                PHASE_COMPLETE: PhaseDefinition(
+                    drain="complete",
+                    role="terminal",
+                    terminal_outcome="success",
+                    transitions=PhaseTransition(
+                        on_success=PHASE_COMPLETE,
+                        on_loopback=PHASE_COMPLETE,
+                    ),
+                ),
+            },
+            entry_phase="feature_commit",
+            terminal_phase=PHASE_COMPLETE,
+        )
+
+    def test_apply_commit_outcome_requires_policy(self) -> None:
+        """apply_commit_outcome raises ValueError when policy=None for a commit-role phase."""
+        state = PipelineState(
+            phase="feature_commit",
+            iteration=1,
+            development_analysis_iteration=0,
+        )
+        advanced_state = state.copy_with(phase=PHASE_COMPLETE)
+
+        with pytest.raises(ValueError, match="requires PipelinePolicy"):
+            apply_commit_outcome(state, advanced_state, skipped=False, policy=None)
+
+    def test_apply_commit_outcome_with_policy_does_not_raise(self) -> None:
+        """apply_commit_outcome succeeds when policy is provided for a commit-role phase."""
+        policy = self._commit_phase_policy()
+        state = PipelineState(
+            phase="feature_commit",
+            iteration=1,
+            development_analysis_iteration=0,
+        )
+        advanced_state = state.copy_with(phase=PHASE_COMPLETE)
+
+        result = apply_commit_outcome(state, advanced_state, skipped=False, policy=policy)
+        # skipped=False increments iteration per commit_policy.increments_counter="iteration"
+        assert result.iteration == state.iteration + 1
+
+    def test_advance_phase_requires_policy_for_commit_target(self) -> None:
+        """advance_phase raises ValueError when policy=None for any target phase."""
+        state = PipelineState(phase="planning", iteration=0)
+
+        with pytest.raises(ValueError, match="requires PipelinePolicy"):
+            advance_phase(state, "feature_commit", policy=None)
+
+    def test_advance_phase_with_policy_does_not_raise(self) -> None:
+        """advance_phase succeeds when policy is provided."""
+        policy = self._commit_phase_policy()
+        state = PipelineState(phase="planning", iteration=0)
+
+        result = advance_phase(state, "feature_commit", policy=policy)
+        assert result.phase == "feature_commit"

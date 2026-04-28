@@ -59,7 +59,7 @@ from ralph.mcp.artifacts.commit_message import (
 from ralph.mcp.protocol.session import MCP_ENDPOINT_ENV, MCP_RUN_ID_ENV, AgentSession
 from ralph.mcp.server.lifecycle import shutdown_mcp_server, start_mcp_server
 from ralph.mcp.session_plan import build_session_mcp_plan
-from ralph.phases import PhaseContext, handle_phase
+from ralph.phases import PhaseContext, handle_phase, register_role_handlers
 from ralph.phases.required_artifacts import (
     DEV_ANALYSIS_DECISION_JSON_PATH,
     DEV_RESULT_ARTIFACT_JSON_PATH,
@@ -909,6 +909,7 @@ def run(  # noqa: PLR0912, PLR0913, PLR0915
     if _validate_custom_mcp_servers(workspace_scope.root) != 0:
         return 1
     policy_bundle = _load_policy_bundle_for_run(workspace_scope.root, config)
+    register_role_handlers(policy_bundle.pipeline)
     registry = AgentRegistry.from_config(config)
     state = initial_state or _create_initial_state(
         config,
@@ -1539,6 +1540,27 @@ def _materialize_agent_prompt_if_needed(
     )
 
 
+def _initial_phase_chains(
+    config: UnifiedConfig,
+    *,
+    agents_policy: AgentsPolicy | None,
+    pipeline_policy: PipelinePolicy | None,
+) -> dict[str, AgentChainState]:
+    if pipeline_policy is None:
+        return {}
+    return {
+        phase_name: AgentChainState(
+            agents=_agents_for_phase(
+                config,
+                phase_name,
+                agents_policy=agents_policy,
+                pipeline_policy=pipeline_policy,
+            )
+        )
+        for phase_name in pipeline_policy.phases
+    }
+
+
 def _create_initial_state(
     config: UnifiedConfig,
     *,
@@ -1591,6 +1613,11 @@ def _create_initial_state(
         pipeline_policy=pipeline_policy,
     )
     entry_phase = pipeline_policy.entry_phase if pipeline_policy is not None else PHASE_PLANNING
+    phase_chains = _initial_phase_chains(
+        config,
+        agents_policy=agents_policy,
+        pipeline_policy=pipeline_policy,
+    )
 
     return PipelineState(
         phase=entry_phase,
@@ -1604,6 +1631,7 @@ def _create_initial_state(
         rev_chain=AgentChainState(agents=rev_agents),
         review_analysis_chain=AgentChainState(agents=review_analysis_agents),
         fix_chain=AgentChainState(agents=fix_agents),
+        phase_chains=phase_chains,
         rebase=RebaseState(),
         commit=CommitState(),
         policy_entry_phase=entry_phase,
@@ -1682,15 +1710,19 @@ def _determine_effect_from_policy(
     if phase_def is None:
         return ExitFailureEffect(reason=f"Unknown phase: {state.phase}")
 
-    if phase_def.requires_commit:
+    if phase_def.role == "commit":
         scope = workspace_scope or resolve_workspace_scope()
         return _commit_phase_effect(state, policy_bundle, phase_def, scope, config=config)
 
-    if state.phase == PHASE_DEVELOPMENT and state.work_units:
-        parallel_policy = policy_bundle.pipeline.parallel_execution
+    parallel_policy = policy_bundle.pipeline.parallel_execution
+    if (
+        parallel_policy is not None
+        and state.phase == parallel_policy.phase
+        and state.work_units
+    ):
         return FanOutDevelopmentEffect(
             work_units=state.work_units,
-            max_workers=parallel_policy.max_parallel_workers if parallel_policy is not None else 8,
+            max_workers=parallel_policy.max_parallel_workers,
             run_post_fanout_verification=True,
         )
 
@@ -2107,7 +2139,11 @@ def _execute_agent_effect(  # noqa: PLR0913
                 workspace_scope.root,
                 allowed_roots=workspace_scope.allowed_roots,
             )
-            _clear_phase_output_artifacts(workspace, effect.phase)
+            _clear_phase_output_artifacts(
+                workspace,
+                effect.phase,
+                drain=effect.drain,
+            )
             bridge = start_mcp_server(
                 session,
                 workspace,
@@ -2339,20 +2375,25 @@ def _write_agent_retry_prompt(
     return str(retry_prompt_path)
 
 
-def _clear_phase_output_artifacts(workspace: FsWorkspace, phase: str) -> None:
+def _clear_phase_output_artifacts(
+    workspace: FsWorkspace,
+    phase: str,
+    *,
+    drain: str | None = None,
+) -> None:
     """Remove stale per-phase artifacts before invoking an agent.
 
     This hardening makes phase handlers reason about outputs created by the
     current invocation instead of silently accepting artifacts left behind by a
-    prior interrupted run. The mapping is intentionally explicit so new
-    artifact-emitting phases must opt in deliberately.
+    prior interrupted run. Cleanup keys off the active drain when available so
+    custom phase names still clear the correct per-drain artifacts.
     """
-    for path in _phase_output_artifact_paths(phase):
+    for path in _phase_output_artifact_paths(phase, drain=drain):
         workspace.remove(path)
 
 
-def _phase_output_artifact_paths(phase: str) -> tuple[str, ...]:
-    phase_artifacts = {
+def _phase_output_artifact_paths(phase: str, *, drain: str | None = None) -> tuple[str, ...]:
+    artifact_paths_by_drain = {
         "development": (
             DEV_RESULT_ARTIFACT_JSON_PATH,
             ".agent/DEVELOPMENT_RESULT.md",
@@ -2370,7 +2411,9 @@ def _phase_output_artifact_paths(phase: str) -> tuple[str, ...]:
         "development_commit": (COMMIT_MESSAGE_ARTIFACT,),
         "review_commit": (COMMIT_MESSAGE_ARTIFACT,),
     }
-    return phase_artifacts.get(phase, ())
+    if drain is not None and drain in artifact_paths_by_drain:
+        return artifact_paths_by_drain[drain]
+    return artifact_paths_by_drain.get(phase, ())
 
 
 def _default_mcp_capabilities_for_phase(phase: str) -> set[str]:
@@ -2686,4 +2729,3 @@ def _prompt_session_drain_for_phase(drain: str | None) -> SessionDrain:
     if drain is not None:
         return SessionDrain(drain)
     return SessionDrain("cli")
-

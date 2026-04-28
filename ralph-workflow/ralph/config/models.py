@@ -352,10 +352,12 @@ def _default_agent_drains() -> dict[str, str]:
     return {
         "planning": "planning",
         "development": "development",
-        "analysis": "analysis",
+        "development_analysis": "analysis",
+        "development_commit": "commit",
         "review": "review",
+        "review_analysis": "analysis",
+        "review_commit": "commit",
         "fix": "fix",
-        "commit": "commit",
     }
 
 

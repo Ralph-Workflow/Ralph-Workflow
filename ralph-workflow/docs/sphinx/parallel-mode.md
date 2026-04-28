@@ -13,13 +13,15 @@ Override parallel execution settings in `.agent/pipeline.toml`:
 
 ```toml
 [parallel_execution]
+phase = "development"
 max_parallel_workers = 4
 max_work_units = 50
 ```
 
 | Field | Description |
 |-------|-------------|
-| `max_parallel_workers` | Maximum number of concurrent development workers |
+| `phase` | Phase name that is eligible to fan out when `work_units` are present |
+| `max_parallel_workers` | Maximum number of concurrent workers for the configured parallel phase |
 | `max_work_units` | Upper bound on the number of work units the planning artifact may declare |
 
 ## How it works

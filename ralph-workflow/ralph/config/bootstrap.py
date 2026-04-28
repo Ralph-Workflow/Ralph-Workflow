@@ -19,8 +19,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
-import ralph.policy
-
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
@@ -30,8 +28,18 @@ _LOCAL_CONFIG_FILENAME = "ralph-workflow.toml"
 _LOCAL_MCP_FILENAME = "mcp.toml"
 _LOCAL_POLICY_FILENAMES = ("pipeline.toml", "artifacts.toml")
 _ADVANCED_LOCAL_POLICY_FILENAMES = ("agents.toml",)
-_BUNDLED_DEFAULTS_DIR = Path(ralph.policy.__file__).parent / "defaults"
 _LOCAL_CONFIG_SOURCE = "ralph-workflow-local.toml"
+
+
+def _get_bundled_defaults_dir() -> Path:
+    """Return the path to the bundled default policy files.
+
+    Computed lazily to avoid circular import: ralph.policy.loader imports
+    ralph.phases which imports ralph.pipeline which imports ralph.config.
+    """
+    import ralph.policy  # noqa: PLC0415
+
+    return Path(ralph.policy.__file__).parent / "defaults"
 
 
 @dataclass(frozen=True)
@@ -80,7 +88,7 @@ def ensure_global_config(global_dir: Path | None = None, *, force: bool = False)
     if global_dir is None:
         global_dir = resolve_global_config_dir()
     target = global_dir / _GLOBAL_CONFIG_FILENAME
-    source = _BUNDLED_DEFAULTS_DIR / _GLOBAL_CONFIG_FILENAME
+    source = _get_bundled_defaults_dir() / _GLOBAL_CONFIG_FILENAME
     return _copy_with_backup(source, target, force)
 
 
@@ -99,7 +107,7 @@ def ensure_global_mcp_config(
     if global_dir is None:
         global_dir = resolve_global_config_dir()
     target = global_dir / _GLOBAL_MCP_FILENAME
-    source = _BUNDLED_DEFAULTS_DIR / "mcp.toml"
+    source = _get_bundled_defaults_dir() / "mcp.toml"
     return _copy_with_backup(source, target, force)
 
 
@@ -116,19 +124,19 @@ def ensure_local_configs(agent_dir: Path, *, force: bool = False) -> list[Bootst
     agent_dir.mkdir(parents=True, exist_ok=True)
     results: list[BootstrapResult] = [
         _copy_with_backup(
-            _BUNDLED_DEFAULTS_DIR / _LOCAL_CONFIG_SOURCE,
+            _get_bundled_defaults_dir() / _LOCAL_CONFIG_SOURCE,
             agent_dir / _LOCAL_CONFIG_FILENAME,
             force,
         ),
         _copy_with_backup(
-            _BUNDLED_DEFAULTS_DIR / "mcp.toml",
+            _get_bundled_defaults_dir() / "mcp.toml",
             agent_dir / _LOCAL_MCP_FILENAME,
             force,
         ),
     ]
     results.extend(
         _copy_with_backup(
-            _BUNDLED_DEFAULTS_DIR / policy_filename,
+            _get_bundled_defaults_dir() / policy_filename,
             agent_dir / policy_filename,
             force,
         )
@@ -145,7 +153,7 @@ def _regenerate_existing_advanced_local_configs(agent_dir: Path) -> list[Bootstr
         if target.exists():
             results.append(
                 _copy_with_backup(
-                    _BUNDLED_DEFAULTS_DIR / policy_filename,
+                    _get_bundled_defaults_dir() / policy_filename,
                     target,
                     True,
                 )

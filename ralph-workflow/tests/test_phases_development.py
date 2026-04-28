@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+import tempfile
 from io import StringIO
+from pathlib import Path
 from unittest.mock import MagicMock
 
 from rich.console import Console
@@ -14,6 +16,7 @@ from ralph.phases.development import (
 )
 from ralph.pipeline.effects import Effect, InvokeAgentEffect, PreparePromptEffect
 from ralph.pipeline.events import PhaseFailureEvent, PipelineEvent
+from ralph.policy.loader import load_policy
 
 _VALID_PLAN_JSON = json.dumps({
     "work_units": [
@@ -150,8 +153,14 @@ class TestHandleDevelopment:
 
 
 class TestHandleDevelopmentAnalysis:
+    def _default_pipeline_policy(self) -> object:
+        with tempfile.TemporaryDirectory() as tmp:
+            return load_policy(Path(tmp) / ".agent").pipeline
+
     def _make_context(self) -> MagicMock:
-        return MagicMock()
+        ctx = MagicMock()
+        ctx.pipeline_policy = self._default_pipeline_policy()
+        return ctx
 
     def _mock_invoke_effect(self) -> MagicMock:
         effect = MagicMock(spec=InvokeAgentEffect)

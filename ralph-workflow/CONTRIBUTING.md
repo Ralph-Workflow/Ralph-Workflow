@@ -18,6 +18,35 @@ make install
 
 When adding or renaming fields on `UnifiedConfig` / `GeneralConfig` in `ralph/config/models.py`, also update the bundled user-global template at `ralph/policy/defaults/ralph-workflow.toml` so new users see the documented default.
 
+## Policy-driven pipeline
+
+Ralph Workflow's pipeline behavior is declared in TOML policy files, not in runtime code.
+The runtime is a generic policy interpreter that validates and enforces these declarations.
+
+**Adding a new phase:**
+
+1. Add the phase to `ralph/policy/defaults/pipeline.toml` with the correct `role` field.
+2. Set all fields required for that role (`loop_policy` for `analysis`, `commit_policy` for `commit`, etc.).
+3. Add a matching drain binding in `ralph/policy/defaults/agents.toml` and `ralph/policy/defaults/ralph-workflow.toml`.
+4. Add an artifact contract in `ralph/policy/defaults/artifacts.toml` if the phase emits artifacts.
+5. Run `ralph/policy/validation.py:validate_policy_completeness` logic is exercised by `make verify` — fix any validation errors before merging.
+
+**Adding a new phase role:**
+
+1. Add the role literal to `PhaseRole` in `ralph/policy/models.py`.
+2. Add role-specific required-field validation to `validate_policy_completeness` in `ralph/policy/validation.py`.
+3. Update the `POLICY COMPLETENESS` comment in `ralph/policy/defaults/pipeline.toml`.
+4. Add tests in `tests/test_policy_validation.py` covering the new validation rule.
+
+**Adding a new loop iteration counter (for a custom analysis phase):**
+
+1. Add an `int` field to `PipelineState` in `ralph/pipeline/state.py`.
+2. Add entries to `_LOOP_ITERATION_FIELD_MAP` and `_LOOP_MAX_ITERATION_FIELD_MAP`.
+3. The field is then available for use as `iteration_state_field` in `loop_policy`.
+
+**Changing workflow behavior** (routing, retries, analysis bounds, commit semantics):
+Update the relevant `pipeline.toml` fields instead of adding code branches. If behavior is not expressible as policy, first extend the policy schema — do not add hardcoded phase-name logic to the reducer.
+
 ## Required verification
 
 Run this before opening or updating a PR:

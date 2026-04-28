@@ -2,7 +2,8 @@
 
 These functions perform runtime checks that cross policy boundaries —
 for example, verifying that a checkpoint's phase is compatible with
-the currently loaded pipeline policy.
+the currently loaded pipeline policy, or that the policy is semantically
+complete for policy-driven orchestration.
 """
 
 from __future__ import annotations
@@ -13,7 +14,7 @@ if TYPE_CHECKING:
     from ralph.agents.registry import AgentRegistry
     from ralph.pipeline.state import PipelineState
     from ralph.pipeline.work_units import WorkUnitsPlan
-    from ralph.policy.models import DrainName, PipelinePolicy, PolicyBundle
+    from ralph.policy.models import PipelinePolicy, PolicyBundle
     from ralph.workspace.scope import WorkspaceScope
 
 
@@ -115,43 +116,38 @@ def validate_chain_exists(
 def validate_drain_contracts(bundle: PolicyBundle) -> None:
     """Validate drain contracts and enforce strict binding rules.
 
-    This validates rule #10 from the orchestration spec: any config that relies
-    on implicit sibling-drain inference is rejected when forbid_sibling_drain_inference
-    is True.
+    When forbid_sibling_drain_inference is True, every drain referenced by a
+    non-terminal pipeline phase must have an explicit chain binding in agents.toml.
+    Required drains are derived from the active pipeline policy, not from a
+    hardcoded built-in set — so custom workflows with a subset of canonical drains
+    only need to bind the drains they actually use.
 
     Args:
         bundle: Currently loaded policy bundle.
 
     Raises:
-        PolicyValidationError: If sibling-drain inference is detected and forbidden.
+        PolicyValidationError: If pipeline-used drains lack explicit bindings.
     """
     if not bundle.agents.forbid_sibling_drain_inference:
         return
 
-    # Built-in drains that should have explicit bindings
-    # Note: "complete" is a terminal marker phase, not an actual drain that invokes
-    # an agent, so it doesn't need a chain binding
-    built_in_drains: set[DrainName] = {
-        "planning",
-        "development",
-        "development_analysis",
-        "development_commit",
-        "review",
-        "review_analysis",
-        "review_commit",
-        "fix",
+    # Derive required drains from the active pipeline (non-terminal phases only)
+    required_drains: set[str] = {
+        phase_def.drain
+        for phase_name, phase_def in bundle.pipeline.phases.items()
+        if phase_name != bundle.pipeline.terminal_phase
     }
 
     unbound_drains: list[str] = [
-        drain for drain in built_in_drains if drain not in bundle.agents.agent_drains
+        drain for drain in required_drains if drain not in bundle.agents.agent_drains
     ]
 
     if unbound_drains:
         raise PolicyValidationError(
             f"Implicit sibling-drain inference is forbidden, but the following "
-            f"drains lack explicit chain bindings: {sorted(unbound_drains)}. "
-            f"Each built-in drain must have an explicit 'chain' binding in "
-            f"agents.toml when forbid_sibling_drain_inference=true."
+            f"pipeline drains lack explicit chain bindings: {sorted(unbound_drains)}. "
+            f"Each drain used by a non-terminal pipeline phase must have an explicit "
+            f"'chain' binding in agents.toml when forbid_sibling_drain_inference=true."
         )
 
 
@@ -160,14 +156,209 @@ class PolicyValidationError(Exception):
 
     Attributes:
         message: Human-readable error message describing the validation failure.
+        source: Which policy area failed (optional).
     """
 
-    def __init__(self, message: str) -> None:
+    def __init__(self, message: str, source: str | None = None) -> None:
         self.message = message
+        self.source = source
         super().__init__(message)
 
 
 PolicyViolation = PolicyValidationError
+
+
+def _validate_terminal_phase(phase_name: str, phase_def: object, errors: list[str]) -> None:
+    """Validate constraints on the terminal phase entry."""
+    from ralph.policy.models import PhaseDefinition  # noqa: PLC0415
+
+    if not isinstance(phase_def, PhaseDefinition):
+        return
+    if phase_def.role is not None and phase_def.role != "terminal":
+        errors.append(
+            f"phases.{phase_name}: terminal_phase must have role='terminal' "
+            f"(got role='{phase_def.role}')"
+        )
+    if phase_def.role == "terminal" and phase_def.terminal_outcome is None:
+        errors.append(
+            f"phases.{phase_name}: role='terminal' requires terminal_outcome "
+            f"to be set ('success' or 'failure')"
+        )
+
+
+def _validate_analysis_phase(
+    phase_name: str,
+    phase_def: object,
+    bundle: object,
+    errors: list[str],
+) -> None:
+    """Validate constraints on analysis-role phases."""
+    from ralph.policy.models import PhaseDefinition, PolicyBundle  # noqa: PLC0415
+
+    if not isinstance(phase_def, PhaseDefinition) or not isinstance(bundle, PolicyBundle):
+        return
+    from ralph.pipeline.state import PipelineState  # noqa: PLC0415
+
+    if phase_def.loop_policy is None:
+        errors.append(
+            f"phases.{phase_name}: role='analysis' requires loop_policy "
+            f"(max_iterations and iteration_state_field)"
+        )
+    else:
+        field = phase_def.loop_policy.iteration_state_field
+        known_fields = PipelineState.known_loop_iteration_fields()
+        if field not in known_fields:
+            errors.append(
+                f"phases.{phase_name}.loop_policy.iteration_state_field: "
+                f"'{field}' is not a known PipelineState counter field. "
+                f"Known fields: {sorted(known_fields)}"
+            )
+    if not phase_def.decisions:
+        errors.append(
+            f"phases.{phase_name}: role='analysis' requires at least one entry "
+            f"in decisions (maps decision vocabulary to routing targets)"
+        )
+    else:
+        drain_name = phase_def.drain
+        vocab: list[str] = []
+        for art in bundle.artifacts.artifacts.values():
+            if art.drain == drain_name and art.decision_vocabulary:
+                vocab.extend(art.decision_vocabulary)
+        if vocab:
+            # Check decisions ⊆ vocab: decision keys must be in the artifact vocabulary
+            errors.extend(
+                f"phases.{phase_name}.decisions.{dk}: "
+                f"decision key '{dk}' is not in the artifact "
+                f"decision_vocabulary {vocab} for drain '{drain_name}'"
+                for dk in phase_def.decisions
+                if dk not in vocab
+            )
+            # Check vocab ⊆ decisions: every vocab entry must have a route
+            # No escape hatch — on_failure is for failures, not for unrouted vocab
+            uncovered = [v for v in vocab if v not in phase_def.decisions]
+            errors.extend(
+                f"phases.{phase_name}.decisions: vocab entry '{v}' has no route "
+                f"in decisions. Every decision_vocabulary entry must have an "
+                f"explicit route in the decisions table."
+                for v in uncovered
+            )
+
+
+def _validate_commit_phase_loop_resets(
+    phase_name: str,
+    phase_def: object,
+    policy: object,
+    errors: list[str],
+) -> None:
+    """Validate that commit_policy.loop_resets references valid iteration fields.
+
+    loop_resets entries must reference iteration_state_field values from analysis
+    phases in the policy, or be empty.
+    """
+    from ralph.policy.models import PhaseDefinition, PipelinePolicy  # noqa: PLC0415
+
+    if not isinstance(phase_def, PhaseDefinition) or not isinstance(policy, PipelinePolicy):
+        return
+    if phase_def.commit_policy is None:
+        return
+
+    loop_resets = phase_def.commit_policy.loop_resets
+    if not loop_resets:
+        return
+
+    # Collect all iteration_state_field values from analysis phases in the policy
+    valid_iteration_fields: set[str] = set()
+    for defn in policy.phases.values():
+        lp = defn.loop_policy
+        if isinstance(defn, PhaseDefinition) and defn.role == "analysis" and lp is not None:
+            valid_iteration_fields.add(lp.iteration_state_field)
+
+    invalid_resets = [f for f in loop_resets if f not in valid_iteration_fields]
+    if invalid_resets:
+        errors.append(
+            f"phases.{phase_name}.commit_policy.loop_resets: "
+            f"invalid iteration field(s) {invalid_resets}. "
+            f"loop_resets must reference iteration_state_field values from analysis phases "
+            f"or be empty. Valid fields: {sorted(valid_iteration_fields)}"
+        )
+
+
+def _validate_recovery_terminal_recovery_route(
+    policy: PipelinePolicy,
+    errors: list[str],
+) -> None:
+    """Validate that recovery.terminal_recovery_route is consistent with declared terminal phases.
+
+    terminal_recovery_route must be 'phase_failed', 'exit_failure', or reference
+    a phase that exists in the pipeline. These pseudo-phases are always valid.
+    """
+    terminal_recovery_route = policy.recovery.terminal_recovery_route
+    if terminal_recovery_route in ("phase_failed", "exit_failure"):
+        return
+    # Must reference a known phase
+    if terminal_recovery_route not in policy.phases:
+        errors.append(
+            f"recovery.terminal_recovery_route: '{terminal_recovery_route}' "
+            f"is not a known phase. Must be 'phase_failed', 'exit_failure', or "
+            f"a phase defined in pipeline.phases. Known phases: {sorted(policy.phases.keys())}"
+        )
+
+
+def validate_policy_completeness(bundle: PolicyBundle) -> None:
+    """Validate that the policy bundle is semantically complete for policy-driven orchestration.
+
+    Enforces that every non-terminal phase has all the fields required for the runtime
+    to drive routing through policy alone, without hidden built-in fallbacks.
+
+    Args:
+        bundle: Currently loaded policy bundle.
+
+    Raises:
+        PolicyValidationError: If any phase is missing required policy fields.
+    """
+    errors: list[str] = []
+    policy = bundle.pipeline
+    terminal_phase = policy.terminal_phase
+
+    for phase_name, phase_def in policy.phases.items():
+        if phase_name == terminal_phase:
+            _validate_terminal_phase(phase_name, phase_def, errors)
+            continue
+
+        # Check role is defined - role is required for all non-terminal phases
+        role = phase_def.role
+        if role is None:
+            errors.append(
+                f"phases.{phase_name}: 'role' is required. "
+                f"Set role='execution'|'analysis'|'review'|'commit'|'verification'|'terminal'. "
+                f"Run `ralph --regenerate-config` to get an updated pipeline.toml template."
+            )
+            continue
+
+        # Role-specific validation - use separate if statements to help mypy track control flow
+        if role == "analysis":
+            _validate_analysis_phase(phase_name, phase_def, bundle, errors)
+
+        if role == "commit":
+            if phase_def.commit_policy is None:
+                errors.append(
+                    f"phases.{phase_name}: role='commit' requires commit_policy "
+                    f"(requires_artifact, increments_counter, loop_resets)"
+                )
+            else:
+                # increments_counter='none' is valid — indicates no outer-progress bump
+                # Only flag commit_policy=None (missing entirely), not any specific value
+                _validate_commit_phase_loop_resets(phase_name, phase_def, policy, errors)
+
+    # Validate recovery.terminal_recovery_route consistency
+    _validate_recovery_terminal_recovery_route(policy, errors)
+
+    if errors:
+        raise PolicyValidationError(
+            "Policy completeness validation failed:\n"
+            + "\n".join(f"  {e}" for e in errors),
+            source="completeness",
+        )
 
 
 def get_drain_resolution_matrix(bundle: PolicyBundle) -> dict[str, dict[str, str]]:
@@ -198,13 +389,13 @@ def get_drain_resolution_matrix(bundle: PolicyBundle) -> dict[str, dict[str, str
 
 def validate_work_units_against_policy(
     work_units: WorkUnitsPlan,
-    pipeline_policy: PipelinePolicy,
+    pipeline_policy: PipelinePolicy | None,
 ) -> None:
     """Validate parsed planning work_units against pipeline parallel policy."""
-    parallel_policy = pipeline_policy.parallel_execution
     if len(work_units.work_units) <= 1:
         return
 
+    parallel_policy = pipeline_policy.parallel_execution if pipeline_policy is not None else None
     if parallel_policy is None:
         raise PolicyValidationError(
             "Planning artifact declares multiple work_units but "

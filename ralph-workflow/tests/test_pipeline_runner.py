@@ -178,6 +178,43 @@ class TestCreateInitialState:
 
         assert state.planning_chain.agents == ["codex"]
 
+    def test_initial_state_tracks_custom_phase_chain_from_policy(self) -> None:
+        config = MagicMock()
+        config.general.developer_iters = DEVELOPER_ITERATIONS
+        config.general.reviewer_reviews = REVIEWER_PASSES
+        config.agent_chains = {"dev_chain": ["codex"]}
+        config.agent_drains = {"development": "dev_chain"}
+        agents_policy = AgentsPolicy(
+            agent_chains={"policy_dev_chain": AgentChainConfig(agents=["claude"])},
+            agent_drains={"development": AgentDrainConfig(chain="policy_dev_chain")},
+        )
+        pipeline_policy = PipelinePolicy(
+            phases={
+                "feature_build": PhaseDefinition(
+                    drain="development",
+                    transitions=PhaseTransition(on_success="complete"),
+                ),
+                "complete": PhaseDefinition(
+                    drain="complete",
+                    role="terminal",
+                    terminal_outcome="success",
+                    transitions=PhaseTransition(on_success="complete", on_loopback="complete"),
+                ),
+            },
+            entry_phase="feature_build",
+            terminal_phase="complete",
+        )
+
+        state = runner_module._create_initial_state(
+            config,
+            agents_policy=agents_policy,
+            pipeline_policy=pipeline_policy,
+        )
+
+        chain = state.chain_for_phase("feature_build")
+        assert chain is not None
+        assert chain.agents == ["codex"]
+
     def test_initial_state_maps_analysis_phases_to_config_analysis_drain(self) -> None:
         config = MagicMock()
         config.general.developer_iters = DEVELOPER_ITERATIONS
@@ -196,6 +233,7 @@ class TestCreateInitialState:
                 ),
                 "development_analysis": PhaseDefinition(
                     drain="development_analysis",
+                    role="analysis",
                     transitions=PhaseTransition(on_success="complete"),
                 ),
                 "complete": PhaseDefinition(
@@ -317,6 +355,43 @@ class TestDetermineEffect:
         )
 
         effect = runner_module._determine_effect_from_policy(state, bundle, config=config)
+
+        assert isinstance(effect, FanOutDevelopmentEffect)
+        assert effect.work_units[0].unit_id == "unit-a"
+
+    def test_policy_selected_parallel_phase_with_work_units_uses_fan_out_effect(self) -> None:
+        state = PipelineState(
+            phase="feature_build",
+            work_units=(WorkUnit(unit_id="unit-a", description="A"),),
+        )
+        bundle = PolicyBundle(
+            agents=AgentsPolicy(
+                agent_chains={"developer": AgentChainConfig(agents=["claude"])},
+                agent_drains={"development": AgentDrainConfig(chain="developer")},
+            ),
+            pipeline=PipelinePolicy(
+                phases={
+                    "feature_build": PhaseDefinition(
+                        drain="development",
+                        transitions=PhaseTransition(on_success="complete"),
+                    ),
+                    "complete": PhaseDefinition(
+                        drain="complete",
+                        role="terminal",
+                        terminal_outcome="success",
+                        transitions=PhaseTransition(on_success="complete", on_loopback="complete"),
+                    ),
+                },
+                entry_phase="feature_build",
+                terminal_phase="complete",
+                parallel_execution={"phase": "feature_build", "max_parallel_workers": 2},
+            ),
+            artifacts=ArtifactsPolicy(artifacts={}),
+        )
+
+        effect = runner_module._determine_effect_from_policy(
+            state, bundle, WorkspaceScope("/tmp/worktree")
+        )
 
         assert isinstance(effect, FanOutDevelopmentEffect)
         assert effect.work_units[0].unit_id == "unit-a"
@@ -529,6 +604,22 @@ class TestDetermineEffect:
         assert isinstance(updated, PipelineState)
         assert updated.phase == "development"
         assert updated.current_drain == "development"
+
+
+def test_phase_output_artifact_paths_use_policy_drains_for_custom_phases() -> None:
+    assert runner_module._phase_output_artifact_paths(
+        "feature_analysis",
+        drain="development_analysis",
+    ) == (
+        ".agent/artifacts/development_analysis_decision.json",
+        ".agent/DEVELOPMENT_ANALYSIS_DECISION.md",
+    )
+    assert runner_module._phase_output_artifact_paths(
+        "feature_commit",
+        drain="development_commit",
+    ) == (
+        ".agent/tmp/commit_message.json",
+    )
 
 
 class TestCommitEffect:
@@ -1836,7 +1927,7 @@ def test_determine_effect_invokes_commit_agent_when_agent_not_yet_invoked(
 ) -> None:
     policy_bundle = MagicMock()
     phase_def = MagicMock()
-    phase_def.requires_commit = True
+    phase_def.role = "commit"
     phase_def.drain = "development_commit"
     policy_bundle.pipeline.phases.get.return_value = phase_def
 
@@ -1864,7 +1955,7 @@ def test_determine_effect_commits_after_agent_invoked(
 ) -> None:
     policy_bundle = MagicMock()
     phase_def = MagicMock()
-    phase_def.requires_commit = True
+    phase_def.role = "commit"
     policy_bundle.pipeline.phases.get.return_value = phase_def
 
     state = PipelineState(phase="development_commit", commit=CommitState(agent_invoked=True))

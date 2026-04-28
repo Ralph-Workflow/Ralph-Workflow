@@ -131,15 +131,9 @@ def _derive_effect_for_phase(
         return _route_transition(state, phase_def, "on_success")
 
     # Check if we need to invoke the agent or prepare the prompt first
-    if not _is_agent_invoked_for_phase(state, phase):
+    if not _is_agent_invoked_for_phase(state, phase_def):
         # First time in this phase — prepare prompt then invoke agent
         return PreparePromptEffect(phase=phase, iteration=state.iteration, drain=phase_def.drain)
-
-    # Agent was already invoked for this phase — check for analysis routing
-    if phase_def.embeds_analysis:
-        # Analysis routing is handled via events, not here
-        # The orchestrator returns InvokeAgentEffect when analysis is pending
-        pass
 
     return InvokeAgentEffect(
         agent_name=_current_agent_name(state, chain),
@@ -150,25 +144,28 @@ def _derive_effect_for_phase(
     )
 
 
-def _is_agent_invoked_for_phase(state: PipelineState, phase: PipelinePhase) -> bool:
+def _is_agent_invoked_for_phase(state: PipelineState, phase_def: PhaseDefinition) -> bool:
     """Check whether the agent has been invoked for the given phase.
 
     This is a state-based check. In the current design, once an agent
     is invoked for a phase, a corresponding flag is set in the state.
 
+    Policy-driven: commit-role phases are identified by their role attribute,
+    not by hardcoded phase names.
+
     Args:
         state: Current pipeline state.
-        phase: Phase to check.
+        phase_def: Phase definition from pipeline policy.
 
     Returns:
         True if the agent for this phase has been invoked.
     """
-    # For phases with commit state, check the commit state
-    if phase in ("development_commit", "review_commit"):
+    # For commit-role phases, check the commit state via phase role, not phase name
+    if phase_def.role == "commit":
         return state.commit.agent_invoked
 
-    # For review phases, check review_issues_found
-    if phase == PHASE_REVIEW:
+    # For review phases, check review_issues_found (role-based check)
+    if phase_def.role == "review":
         # Review "clean" means the phase ran but found no issues
         # The actual logic is in the event handler
         pass

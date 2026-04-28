@@ -3,6 +3,10 @@
 Every phase that demands a typed artifact as output is registered here.
 Importing from this module (rather than duplicating string constants) is the
 single source of truth for artifact paths and types.
+
+The module-level REQUIRED_ARTIFACTS dict remains as the canonical built-in
+registry. build_required_artifacts() derives a custom registry from an
+ArtifactsPolicy for policy-driven artifact lookup.
 """
 
 from __future__ import annotations
@@ -20,6 +24,8 @@ from ralph.mcp.artifacts.typed_artifacts import (
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+    from ralph.policy.models import ArtifactsPolicy
+
 ISSUES_ARTIFACT_JSON_PATH = ".agent/artifacts/issues.json"
 FIX_RESULT_ARTIFACT_JSON_PATH = ".agent/artifacts/fix_result.json"
 DEV_ANALYSIS_DECISION_JSON_PATH = ".agent/artifacts/development_analysis_decision.json"
@@ -27,6 +33,19 @@ REVIEW_ANALYSIS_DECISION_JSON_PATH = ".agent/artifacts/review_analysis_decision.
 DEV_RESULT_ARTIFACT_JSON_PATH = ".agent/artifacts/development_result.json"
 
 _PLAN_ARTIFACT_JSON_PATH = PLAN_ARTIFACT_PATH
+
+# Normalizers keyed by artifact_type — used by build_required_artifacts()
+_ARTIFACT_TYPE_NORMALIZERS: dict[str, Callable[[dict[str, object]], dict[str, object]]] = {
+    "development_result": normalize_development_result_content,
+    "fix_result": normalize_fix_result_content,
+    "issues": normalize_issues_content,
+}
+
+# Markdown path overrides keyed by artifact_type
+_ARTIFACT_TYPE_MARKDOWN_PATHS: dict[str, str] = {
+    "plan": ".agent/PLAN.md",
+    "development_result": ".agent/DEVELOPMENT_RESULT.md",
+}
 
 
 @dataclass(frozen=True)
@@ -86,6 +105,55 @@ REQUIRED_ARTIFACTS: dict[str, RequiredArtifact] = {
 }
 
 
+def build_required_artifacts(
+    artifacts_policy: ArtifactsPolicy,
+) -> dict[str, RequiredArtifact]:
+    """Build a required-artifact registry from an ArtifactsPolicy.
+
+    Derives the artifact table from the loaded artifacts.toml. Each artifact
+    contract in the policy produces a RequiredArtifact entry keyed by drain name.
+    Normalizers and markdown paths are resolved from the built-in registries.
+
+    Args:
+        artifacts_policy: Loaded artifacts policy.
+
+    Returns:
+        Dict mapping drain name -> RequiredArtifact for each artifact contract.
+    """
+    result: dict[str, RequiredArtifact] = {}
+    for contract in artifacts_policy.artifacts.values():
+        drain = str(contract.drain)
+        artifact_type = contract.artifact_type
+
+        # Build the JSON path based on artifact type convention
+        json_path = _artifact_type_to_json_path(artifact_type)
+        markdown_path = _ARTIFACT_TYPE_MARKDOWN_PATHS.get(artifact_type)
+        normalizer = _ARTIFACT_TYPE_NORMALIZERS.get(artifact_type)
+
+        result[drain] = RequiredArtifact(
+            phase=drain,
+            artifact_type=artifact_type,
+            json_path=json_path,
+            markdown_path=markdown_path,
+            normalizer=normalizer,
+        )
+    return result
+
+
+def _artifact_type_to_json_path(artifact_type: str) -> str:
+    """Convert artifact_type to its conventional JSON path.
+
+    Uses the same path conventions as the built-in REQUIRED_ARTIFACTS dict.
+    Falls back to a derived path for unknown artifact types.
+    """
+    # Check built-in artifacts for an exact match
+    for ra in REQUIRED_ARTIFACTS.values():
+        if ra.artifact_type == artifact_type:
+            return ra.json_path
+    # Derive path for unknown artifact types
+    return f".agent/artifacts/{artifact_type}.json"
+
+
 def retry_hint_path(phase: str) -> str:
     """Return the workspace-relative path for the retry hint file for a phase."""
     return f".agent/tmp/last_retry_error_{phase}.txt"
@@ -129,6 +197,7 @@ __all__ = [
     "REVIEW_ANALYSIS_DECISION_JSON_PATH",
     "RequiredArtifact",
     "build_missing_input_hint",
+    "build_required_artifacts",
     "build_retry_hint",
     "retry_hint_path",
 ]

@@ -30,6 +30,7 @@ def _make_policy_bundle(max_workers: int = 4) -> MagicMock:
         PHASE_DEVELOPMENT: MagicMock(requires_commit=False, drain="development"),
         PHASE_PLANNING: MagicMock(requires_commit=False, drain="planning"),
     }
+    bundle.pipeline.parallel_execution.phase = PHASE_DEVELOPMENT
     bundle.pipeline.parallel_execution.max_parallel_workers = max_workers
     bundle.agents.agent_drains = {
         "development": MagicMock(chain="developer"),

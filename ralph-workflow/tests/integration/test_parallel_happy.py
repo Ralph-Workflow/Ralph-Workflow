@@ -10,6 +10,7 @@ from ralph.pipeline.reducer import reduce as reducer_reduce
 from ralph.pipeline.state import PipelineState
 from ralph.pipeline.work_units import WorkUnit
 from ralph.pipeline.worker_state import WorkerStatus
+from ralph.policy.models import PhaseDefinition, PhaseTransition, PipelinePolicy
 from ralph.testing.fake_agent_executor import FakeAgentExecutor, FakeRun
 
 
@@ -64,6 +65,25 @@ def test_three_workers_all_succeed() -> None:
     assert all(event.commit_sha == "" for event in completed_events)
 
 
+def _fan_out_policy() -> PipelinePolicy:
+    return PipelinePolicy(
+        phases={
+            PHASE_DEVELOPMENT: PhaseDefinition(
+                drain="development",
+                role="execution",
+                transitions=PhaseTransition(on_success=PHASE_DEVELOPMENT_ANALYSIS),
+            ),
+            PHASE_DEVELOPMENT_ANALYSIS: PhaseDefinition(
+                drain="development_analysis",
+                role="analysis",
+                transitions=PhaseTransition(on_success="complete"),
+            ),
+        },
+        entry_phase=PHASE_DEVELOPMENT,
+        terminal_phase="complete",
+    )
+
+
 def test_happy_path_state_transitions() -> None:
     units = (
         _make_work_unit("unit-A"),
@@ -76,12 +96,13 @@ def test_happy_path_state_transitions() -> None:
     }
     initial_state = PipelineState(phase=PHASE_DEVELOPMENT, work_units=units)
     effect = FanOutDevelopmentEffect(work_units=units, max_workers=3)
+    policy = _fan_out_policy()
 
     events = _run_fan_out(effect, initial_state, runs)
 
     reduced_state = initial_state
     for event in events:
-        reduced_state, _ = reducer_reduce(reduced_state, event)
+        reduced_state, _ = reducer_reduce(reduced_state, event, policy)
 
     assert PipelineEvent.ALL_WORKERS_COMPLETE in events
     assert reduced_state.phase == PHASE_DEVELOPMENT_ANALYSIS

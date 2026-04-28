@@ -249,12 +249,12 @@ class TestVisitUrlPhaseVisibility:
     """Test that visit_url is visible and callable for every SessionDrain."""
 
     @pytest.mark.parametrize("drain_str", [d.value for d in SessionDrain])
-    def test_visit_url_listed_for_drain(
+    def test_visit_url_is_visible_and_callable_for_drain(
         self,
         temp_workspace: Path,
         drain_str: str,
     ) -> None:
-        """visit_url must appear in tools/list for every drain."""
+        """visit_url must appear in tools/list and be callable for every drain."""
         _write_mcp_toml(
             temp_workspace,
             """
@@ -263,7 +263,6 @@ class TestVisitUrlPhaseVisibility:
             """,
         )
 
-        # Build session with the exact DEFAULT_CAPABILITIES for this drain
         session_drain = SessionDrain(drain_str)
         default_caps = DEFAULT_CAPABILITIES.get(session_drain, ())
         session = AgentSession(
@@ -296,49 +295,6 @@ class TestVisitUrlPhaseVisibility:
                 f"got: {sorted(tool_names)}"
             )
 
-    @pytest.mark.parametrize("drain_str", [d.value for d in SessionDrain])
-    def test_visit_url_callable_for_drain(
-        self,
-        temp_workspace: Path,
-        drain_str: str,
-    ) -> None:
-        """visit_url must be callable and return isError=false for every drain."""
-        _write_mcp_toml(
-            temp_workspace,
-            """
-            [web_visit]
-            enabled = true
-            """,
-        )
-
-        session_drain = SessionDrain(drain_str)
-        default_caps = DEFAULT_CAPABILITIES.get(session_drain, ())
-        session = AgentSession(
-            session_id=f"test-{drain_str}",
-            run_id="run-1",
-            drain=drain_str,
-            capabilities={cap.value for cap in default_caps},
-        )
-
-        session_json = json.dumps(
-            {
-                "session_id": session.session_id,
-                "run_id": session.run_id,
-                "drain": session.drain,
-                "capabilities": list(session.capabilities),
-            }
-        )
-
-        with _run_server(
-            temp_workspace,
-            bootstrap_text=_bootstrap_visit_url_mock(),
-            session_json=session_json,
-        ) as server:
-            session_id = _do_initialize(server.endpoint)
-            _do_initialized_notification(server.endpoint, session_id)
-            _do_tools_list(server.endpoint, session_id)
-
-            # Call visit_url
             result = _do_tool_call(
                 server.endpoint, session_id, VISIT_URL_TOOL, {"url": "https://example.com/page"}
             )
@@ -428,19 +384,6 @@ def _do_initialize(base_url: str) -> str:
         session_id=session_id,
     )
     return session_id
-
-
-def _do_initialized_notification(base_url: str, session_id: str) -> None:
-    """Send notifications/initialized and expect 202 Accepted."""
-    target = startup.parse_http_endpoint(base_url)
-    response, _ = startup.post_http_jsonrpc_with_session(
-        base_url,
-        target,
-        startup.initialized_notification(),
-        session_id=session_id,
-    )
-    # 202 Accepted is expected for notifications
-    assert response is not None
 
 
 def _do_tools_list(base_url: str, session_id: str) -> list[dict[str, Any]]:

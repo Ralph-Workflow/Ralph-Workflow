@@ -12,8 +12,9 @@ The three policy documents are:
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Literal, cast
 
+from loguru import logger
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 # ---------------------------------------------------------------------------
@@ -30,6 +31,16 @@ DrainName = Literal[
     "review_commit",
     "fix",
     "complete",
+]
+
+PhaseRole = Literal[
+    "execution",
+    "analysis",
+    "review",
+    "commit",
+    "verification",
+    "terminal",
+    "fanout_join",
 ]
 
 
@@ -114,6 +125,103 @@ class AgentsPolicy(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reason:
 
 
 # ---------------------------------------------------------------------------
+# pipeline.toml sub-models for workflow-semantic fields
+# ---------------------------------------------------------------------------
+
+
+class PhaseRetryPolicy(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+    """Per-phase retry policy overriding chain-level defaults.
+
+    Attributes:
+        max_retries: Maximum retries for this phase.
+        retry_delay_ms: Base retry delay in milliseconds.
+        retry_in_session: Whether to preserve session on retry.
+    """
+
+    max_retries: int = Field(default=3, ge=0)
+    retry_delay_ms: int = Field(default=1000, ge=0)
+    retry_in_session: bool = False
+
+
+class PhaseLoopPolicy(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+    """Loop bounds for analysis phases.
+
+    Attributes:
+        max_iterations: Maximum analysis loop iterations before forcing loopback.
+        iteration_state_field: PipelineState field name tracking this phase's iteration.
+    """
+
+    max_iterations: int = Field(..., ge=0)
+    iteration_state_field: str = Field(...)
+
+
+class PhaseDecisionRoute(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+    """Route produced by an analysis decision.
+
+    Attributes:
+        target: Phase to route to when this decision is received.
+        reset_loop: Whether to reset the analysis loop counter on this transition.
+    """
+
+    target: str = Field(...)
+    reset_loop: bool = False
+
+
+class PhaseCommitPolicy(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+    """Commit semantics for commit-role phases.
+
+    Attributes:
+        requires_artifact: Whether commit_message artifact is required.
+        skipped_advances_progress: Whether a skipped commit still advances routing.
+        increments_counter: Which outer-progress counter to bump on non-skipped commit.
+        loop_resets: List of loop iteration state fields to reset after commit.
+    """
+
+    requires_artifact: bool = True
+    skipped_advances_progress: bool = True
+    increments_counter: Literal["iteration", "reviewer_pass", "none"] = Field(
+        ...,
+        description="Counter to bump on non-skipped commit. Must be declared explicitly.",
+    )
+    loop_resets: list[str] = Field(default_factory=list)
+
+
+class PhaseVerificationPolicy(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+    """Verification gating semantics for a phase.
+
+    Attributes:
+        kind: Kind of verification (artifact, make_target, or none).
+        gate_for: What this verification gates (advancement, completion, release).
+        on_failure_route: Phase to route to on verification failure (None = fail pipeline).
+    """
+
+    kind: Literal["artifact", "make_target", "none"]
+    gate_for: Literal["advancement", "completion", "release"]
+    on_failure_route: str | None = None
+
+
+class RecoveryPolicy(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+    """Pipeline-wide recovery policy.
+
+    Attributes:
+        cycle_cap: Maximum full-chain exhaustion cycles before exit.
+        terminal_recovery_route: How terminal failures are routed.
+        preserve_session_on_categories: Failure categories that preserve agent session.
+    """
+
+    cycle_cap: int = Field(default=200, ge=1)
+    terminal_recovery_route: str = Field(
+        default="phase_failed",
+        description=(
+            "How terminal failures are routed. "
+            "phase_failed and exit_failure are built-in pseudo-phases; "
+            "any declared pipeline phase name is also valid."
+        ),
+    )
+    preserve_session_on_categories: tuple[str, ...] = ("agent",)
+
+
+# ---------------------------------------------------------------------------
 # pipeline.toml models
 # ---------------------------------------------------------------------------
 
@@ -143,20 +251,67 @@ class PhaseDefinition(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reas
     Attributes:
         drain: Which drain (agent chain binding) is active during this phase.
         transitions: Routing rules when phase completes.
-        requires_commit: Whether this phase gates the commit decision.
-        embeds_analysis: Whether this phase includes an embedded analysis step.
+        role: Phase role classifying its behavior contract. REQUIRED for new configs.
+        retry_policy: Optional per-phase retry policy overriding chain defaults.
+        loop_policy: Required when role='analysis'; declares loop bounds.
+        decisions: Decision vocabulary routing map; required when role='analysis'.
+        commit_policy: Required when role='commit'; declares commit semantics.
+        verification: Optional verification gating policy.
+        terminal_outcome: Explicit terminal outcome; required when role='terminal'.
+        bypass_routes: Named bypass routes (e.g. review_clean -> review_commit).
+        requires_commit: Deprecated. Use role='commit' instead.
+        embeds_analysis: Deprecated. Use role='analysis' instead.
+        prompt_template: File-backed .jinja prompt template for this phase.
+        continuation_template: Optional continuation .jinja prompt template.
     """
 
     drain: DrainName = Field(..., description="Drain binding for this phase")
     transitions: PhaseTransition = Field(..., description="Transition routing rules")
+
+    # New workflow-semantic fields
+    role: PhaseRole | None = Field(
+        default=None,
+        description="Phase role classifying behavior contract",
+    )
+    retry_policy: PhaseRetryPolicy | None = Field(
+        default=None,
+        description="Per-phase retry policy override",
+    )
+    loop_policy: PhaseLoopPolicy | None = Field(
+        default=None,
+        description="Loop bounds for analysis phases",
+    )
+    decisions: dict[str, PhaseDecisionRoute] = Field(
+        default_factory=dict,
+        description="Analysis decision routing map",
+    )
+    commit_policy: PhaseCommitPolicy | None = Field(
+        default=None,
+        description="Commit semantics for commit phases",
+    )
+    verification: PhaseVerificationPolicy | None = Field(
+        default=None,
+        description="Verification gating policy",
+    )
+    terminal_outcome: Literal["success", "failure"] | None = Field(
+        default=None,
+        description="Explicit terminal outcome declaration",
+    )
+    bypass_routes: dict[str, str] = Field(
+        default_factory=dict,
+        description="Named bypass routes (outcome -> target phase)",
+    )
+
+    # Legacy fields — deprecated, use role instead
     requires_commit: bool = Field(
         default=False,
-        description="Whether this phase must produce a commit artifact",
+        description="Deprecated: use role='commit'.",
     )
     embeds_analysis: bool = Field(
         default=False,
-        description="Whether this phase includes an embedded analysis decision",
+        description="Deprecated: use role='analysis'.",
     )
+
     prompt_template: str | None = Field(
         default=None,
         description="File-backed .jinja prompt template for this phase",
@@ -166,17 +321,41 @@ class PhaseDefinition(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reas
         description="Optional continuation .jinja prompt template for this phase",
     )
 
+    @model_validator(mode="before")
+    @classmethod
+    def _derive_role_from_legacy_flags(cls, data: object) -> object:
+        """Derive role from deprecated embeds_analysis/requires_commit when role is unset."""
+        if not isinstance(data, dict):
+            return data
+        d: dict[str, object] = cast("dict[str, object]", data)
+        if d.get("role") is not None:
+            return d
+        if d.get("embeds_analysis"):
+            logger.warning(
+                "Phase uses deprecated 'embeds_analysis=true'; set role='analysis' instead"
+            )
+            return {**d, "role": "analysis"}
+        if d.get("requires_commit"):
+            logger.warning(
+                "Phase uses deprecated 'requires_commit=true'; set role='commit' instead"
+            )
+            return {**d, "role": "commit"}
+        return d
+
 
 class PostCommitRouteWhen(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     """Condition selector for post-commit budget-guarded routing."""
 
-    phase: Literal["development_commit", "review_commit"] = Field(
+    phase: str = Field(
         ...,
         description="Commit phase that this route applies to",
     )
-    budget_state: Literal["remaining", "exhausted"] = Field(
+    budget_state: Literal["remaining", "exhausted", "no_review"] = Field(
         ...,
-        description="Whether relevant budget remains (>0) or is exhausted (<=0)",
+        description=(
+            "Budget state label: 'remaining' (budget>0), 'exhausted' (dev done, review remains), "
+            "'no_review' (all budgets exhausted, no review to run)"
+        ),
     )
 
 
@@ -193,6 +372,10 @@ class ParallelExecutionPolicy(_FrozenPolicyModel):  # type: ignore[explicit-any]
     source: Literal["planning_artifact_work_units"] = Field(
         default="planning_artifact_work_units",
         description="Source of parallel fanout declarations",
+    )
+    phase: str = Field(
+        default="development",
+        description="Phase that consumes planning work_units via parallel fanout",
     )
     max_parallel_workers: int = Field(
         default=8,
@@ -217,6 +400,8 @@ class PipelinePolicy(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reaso
         phases: Map of phase name -> phase definition.
         entry_phase: Name of the phase where the pipeline starts.
         terminal_phase: Name of the phase that marks successful completion.
+        default_phase_retry_policy: Default retry policy for phases without explicit retry_policy.
+        recovery: Pipeline-wide recovery policy.
     """
 
     phases: dict[str, PhaseDefinition] = Field(
@@ -238,6 +423,14 @@ class PipelinePolicy(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reaso
     parallel_execution: ParallelExecutionPolicy | None = Field(
         default=None,
         description="Optional planning-artifact parallel execution policy",
+    )
+    default_phase_retry_policy: PhaseRetryPolicy = Field(
+        default_factory=PhaseRetryPolicy,
+        description="Default retry policy for phases without explicit retry_policy",
+    )
+    recovery: RecoveryPolicy = Field(
+        default_factory=RecoveryPolicy,
+        description="Pipeline-wide recovery configuration",
     )
 
     @model_validator(mode="after")
@@ -306,6 +499,64 @@ class PipelinePolicy(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reaso
                 )
             seen.add(key)
         return self
+
+    @model_validator(mode="after")
+    def parallel_execution_phase_exists(self) -> PipelinePolicy:
+        """Ensure the configured fanout phase exists and is non-terminal."""
+        parallel = self.parallel_execution
+        if parallel is None:
+            return self
+        if parallel.phase not in self.phases:
+            raise ValueError(
+                f"parallel_execution.phase '{parallel.phase}' is not a known phase"
+            )
+        phase_def = self.phases[parallel.phase]
+        if phase_def.role == "terminal":
+            raise ValueError("parallel_execution.phase cannot target a terminal phase")
+        return self
+
+    @model_validator(mode="after")
+    def decision_routes_target_known_phases(self) -> PipelinePolicy:
+        """Ensure every PhaseDecisionRoute.target resolves to a known phase or terminal."""
+        terminal_states = {self.terminal_phase, "failed", "complete"}
+        for phase_name, phase_def in self.phases.items():
+            for decision_name, route in phase_def.decisions.items():
+                if route.target not in terminal_states and route.target not in self.phases:
+                    raise ValueError(
+                        f"Phase '{phase_name}' decisions['{decision_name}'] targets "
+                        f"unknown phase '{route.target}'"
+                    )
+        return self
+
+    @model_validator(mode="after")
+    def bypass_routes_target_known_phases(self) -> PipelinePolicy:
+        """Ensure every bypass_route target resolves to a known phase or terminal."""
+        terminal_states = {self.terminal_phase, "failed", "complete"}
+        for phase_name, phase_def in self.phases.items():
+            for outcome, target in phase_def.bypass_routes.items():
+                if target not in terminal_states and target not in self.phases:
+                    raise ValueError(
+                        f"Phase '{phase_name}' bypass_routes['{outcome}'] targets "
+                        f"unknown phase '{target}'"
+                    )
+        return self
+
+    def effective_retry_policy(self, phase_name: str) -> PhaseRetryPolicy:
+        """Resolve the effective retry policy for a phase.
+
+        Uses the phase's explicit retry_policy if set, otherwise falls back to
+        the pipeline-wide default_phase_retry_policy.
+
+        Args:
+            phase_name: Phase name to look up.
+
+        Returns:
+            Effective PhaseRetryPolicy for the phase.
+        """
+        phase_def = self.phases.get(phase_name)
+        if phase_def is not None and phase_def.retry_policy is not None:
+            return phase_def.retry_policy
+        return self.default_phase_retry_policy
 
 
 # ---------------------------------------------------------------------------
@@ -404,8 +655,11 @@ class PolicyBundle(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reason:
     @model_validator(mode="after")
     def analysis_decision_vocabulary_present(self) -> PolicyBundle:
         """Ensure analysis phases have decision_vocabulary defined."""
+        # Check both new role='analysis' and legacy embeds_analysis=True phases
         analysis_phases = {
-            name: defn for name, defn in self.pipeline.phases.items() if defn.embeds_analysis
+            name: defn
+            for name, defn in self.pipeline.phases.items()
+            if defn.role == "analysis" or defn.embeds_analysis
         }
         for phase_name, phase_def in analysis_phases.items():
             matching_artifacts = [
@@ -413,7 +667,7 @@ class PolicyBundle(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reason:
             ]
             if not any(a.decision_vocabulary for a in matching_artifacts):
                 raise ValueError(
-                    f"Phase '{phase_name}' embeds_analysis=true but no matching "
+                    f"Phase '{phase_name}' has role='analysis' but no matching "
                     f"artifact contract has a decision_vocabulary defined"
                 )
         return self

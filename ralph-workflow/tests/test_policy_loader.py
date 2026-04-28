@@ -134,12 +134,15 @@ def test_load_policy_accepts_legacy_nested_pipeline_table(tmp_path: Path) -> Non
 
             [pipeline.phases.planning]
             drain = "planning"
+            role = "execution"
             prompt_template = "planning.jinja"
             [pipeline.phases.planning.transitions]
             on_success = "complete"
 
             [pipeline.phases.complete]
             drain = "complete"
+            role = "terminal"
+            terminal_outcome = "success"
             [pipeline.phases.complete.transitions]
             on_success = "complete"
             on_loopback = "complete"
@@ -169,12 +172,15 @@ def test_load_policy_ignores_invalid_agents_toml_when_unified_config_is_provided
 
             [phases.planning]
             drain = "planning"
+            role = "execution"
             prompt_template = "planning.jinja"
             [phases.planning.transitions]
             on_success = "complete"
 
             [phases.complete]
             drain = "complete"
+            role = "terminal"
+            terminal_outcome = "success"
             [phases.complete.transitions]
             on_success = "complete"
             on_loopback = "complete"
@@ -203,12 +209,15 @@ def test_load_policy_uses_unified_config_for_agents_policy_when_provided(tmp_pat
 
             [phases.planning]
             drain = "planning"
+            role = "execution"
             prompt_template = "planning.jinja"
             [phases.planning.transitions]
             on_success = "complete"
 
             [phases.complete]
             drain = "complete"
+            role = "terminal"
+            terminal_outcome = "success"
             [phases.complete.transitions]
             on_success = "complete"
             on_loopback = "complete"
@@ -260,3 +269,49 @@ def test_load_policy_or_die_exits_and_logs(monkeypatch: pytest.MonkeyPatch) -> N
     for idx, (fmt, value) in enumerate(expected_messages):
         assert mock_logger.error.call_args_list[idx][0][0] == fmt
         assert mock_logger.error.call_args_list[idx][0][1] == value
+
+
+def test_build_agents_policy_from_config_rejects_missing_drain(tmp_path: Path) -> None:
+    """After removing sibling-drain inference, a pipeline drain missing from
+    agent_drains must cause a cross-policy validation failure at load time.
+    """
+    config_dir = tmp_path / ".agent"
+    config_dir.mkdir(parents=True)
+
+    config = UnifiedConfig(
+        agent_chains={"dev_chain": ["claude"]},
+        agent_drains={"development": "dev_chain"},
+        # development_analysis drain intentionally absent — no sibling inference
+    )
+    (config_dir / "pipeline.toml").write_text(
+        dedent(
+            """
+            entry_phase = "development"
+            terminal_phase = "complete"
+
+            [phases.development]
+            drain = "development"
+            role = "execution"
+            [phases.development.transitions]
+            on_success = "development_analysis"
+
+            [phases.development_analysis]
+            drain = "development_analysis"
+            role = "execution"
+            [phases.development_analysis.transitions]
+            on_success = "complete"
+
+            [phases.complete]
+            drain = "complete"
+            role = "terminal"
+            terminal_outcome = "success"
+            [phases.complete.transitions]
+            on_success = "complete"
+            on_loopback = "complete"
+            """
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(LoaderPolicyValidationError, match="unbound drains"):
+        load_policy(config_dir, config=config)
