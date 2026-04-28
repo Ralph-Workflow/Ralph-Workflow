@@ -8,7 +8,7 @@
 
 Most AI coding tools assume you'll pick one vendor and stay there. Ralph Workflow doesn't. You decide which agent runs which phase — Claude Code plans, OpenCode with a cheap model writes the implementation, Codex reviews it, OpenCode fixes what review caught, and Codex re-reviews until it's clean. All unattended. All auditable. All in your git history.
 
-Everything is configurable: prompts, agent chains, phase routing, retry budgets, recovery rules, verification policy. Express it in repo-local TOML files. Diff them. Share them. Run them tomorrow exactly the same way you ran them today.
+Everything is configurable: prompts, agent chains, phase routing, retry budgets, recovery rules, and verification rules. Express it in repo-local TOML files. Diff them. Share them. Run them tomorrow exactly the same way you ran them today.
 
 ## A pipeline you actually own
 
@@ -68,7 +68,7 @@ entry_phase = "planning"
 terminal_phase = "complete"
 ```
 
-Frontier models where reasoning matters. Cheap models where they're enough. Loop review and fix until the reviewer signs off. The whole pipeline policy lives in your repo, not in a vendor's cloud.
+Frontier models where reasoning matters. Cheap models where they're enough. Loop review and fix until the reviewer signs off. The whole workflow configuration lives in your repo, not in a vendor's cloud.
 
 ## Why this exists
 
@@ -80,10 +80,11 @@ Frontier models where reasoning matters. Cheap models where they're enough. Loop
 
 ## What you get
 
+- **Cost arbitrage you control.** Route frontier models to planning and review; cheap models to development and fix. You decide where capability matters and where price matters.
 - **Vendor-neutral orchestration.** Anthropic, OpenAI, OpenCode + any model it wraps — all behind one config surface.
 - **Real unattended execution.** Walk away. Come back to a clean diff and a review, not a process to babysit.
 - **Auditable by default.** Every iteration commits. Every phase produces structured artifacts. Run history lives in `.agent/logs/`.
-- **Recovery built in.** Checkpoint and resume, failure classification, retry budgets, connectivity-aware pause/resume.
+- **Recovery and verification built in.** Checkpoint and resume, failure classification, retry budgets, and evidence-based phase completion — not just exit codes.
 - **Context isolation.** Every iteration starts fresh from `PROMPT.md`. No drift. No accumulating noise.
 - **Parallel work.** Optional same-workspace parallel execution for independent work units.
 - **MCP-native.** First-class MCP server support, plus a standalone `ralph-mcp` runtime.
@@ -209,7 +210,7 @@ Interrupt anytime. `ralph --resume` picks up from the last checkpoint. Same-work
 - Multi-step coding tasks that don't fit in one prompt
 - Refactors, test suites, docs, or features that take hours of execution
 - Work where you want to walk away and come back to reviewed commits
-- Teams that need cost-controlled or auditable agent execution
+- Teams that need cost-controlled, auditable, or workflow-configured agent execution
 - Anyone tired of paying frontier-model rates for grunt work cheaper models handle fine
 
 ## When Ralph doesn't fit

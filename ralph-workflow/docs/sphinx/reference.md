@@ -10,7 +10,7 @@ If you need pipeline internals, maintainer architecture, or package-level Python
 ## What lives here
 
 - [CLI Reference](cli.md) — commands, flags, and sub-commands
-- [Configuration Reference](configuration.md) — config files, precedence, and policy knobs
+- [Configuration Reference](configuration.md) — config files, precedence, and workflow configuration knobs
 - [MCP Tools](mcp-tools.md) — built-in tool surface exposed to agents
 - [Local Web Access](local-web-access.md) — search, visit, and crawl capabilities
 

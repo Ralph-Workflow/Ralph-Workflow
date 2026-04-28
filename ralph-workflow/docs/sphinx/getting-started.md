@@ -6,11 +6,11 @@ without assuming any prior knowledge. If you are already familiar with the basic
 
 ## What is Ralph Workflow?
 
-Ralph Workflow is an AI agent orchestration framework that automates implementation work.
+Ralph Workflow is a vendor-neutral AI coding workflow orchestrator for implementation work.
 You describe what you want built in a file called `PROMPT.md`, and Ralph Workflow
-coordinates AI coding agents to plan, implement, review, and fix the work for you.
+routes AI coding agents to plan, implement, review, and fix the work for you.
 
-Under the hood, Ralph Workflow runs your AI agents through a structured sequence of
+Under the hood, Ralph Workflow runs your agents through a structured sequence of
 phases — from planning through development analysis, commit, review, and beyond —
 until the work satisfies the acceptance criteria or the configured limits are reached.
 

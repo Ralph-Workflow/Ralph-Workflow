@@ -1,11 +1,23 @@
 # Ralph Workflow (Python)
 
-> An opinionated AI agent orchestration framework.
+> Vendor-neutral AI coding workflow orchestration — unattended, auditable, and configured in your repo.
 
-Ralph Workflow is a Python 3.12+ CLI and framework for configurable, opinionated AI agent orchestration. It began as a take on the Ralph loop, and the maintained package now turns that philosophy into configurable workflow, agent, and policy primitives. The installable package lives in this directory and exposes two entry points:
+Ralph Workflow is a Python 3.12+ CLI and framework for configurable AI coding workflows. It routes work across Claude Code, Codex, OpenCode, and any OpenCode-wrapped model so you can use frontier models where reasoning matters and cheaper models where they're enough. The installable package lives in this directory and exposes two entry points:
 
 - `ralph` — the main CLI
 - `ralph-mcp` — the standalone MCP server runtime
+
+## What Ralph Workflow is
+
+Ralph Workflow is the orchestration layer that sits across AI coding vendors. You decide which agent runs which phase, keep the workflow configuration in repo-local TOML, and run multi-step coding work unattended with audit trails, recovery, and structured verification.
+
+Key differentiators:
+
+- **Vendor-neutral orchestration** — Claude, Codex, OpenCode, or any model behind one config surface
+- **Cost arbitrage** — Route frontier models to planning/review and cheaper models to development/fix
+- **Unattended execution** — Walk away; come back to a reviewed diff instead of babysitting an agent
+- **Workflow config in repo** — Phase graph, agent chains, retry budgets, and recovery rules live in versioned config
+- **Recovery and verification discipline** — Checkpoint/resume, failure classification, and evidence-based phase completion
 
 ## Install
 
@@ -15,6 +27,8 @@ Ralph Workflow is a Python 3.12+ CLI and framework for configurable, opinionated
 pip install ralph-workflow
 ralph --help
 ```
+
+Requires Python 3.12+.
 
 ### pipx
 
