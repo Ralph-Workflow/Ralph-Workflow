@@ -22,6 +22,8 @@ from unittest.mock import MagicMock
 if TYPE_CHECKING:
     from pathlib import Path
 
+    import pytest
+
 from ralph.config.enums import PHASE_DEVELOPMENT, PHASE_DEVELOPMENT_ANALYSIS
 from ralph.mcp.server.factory import McpServerHandle
 from ralph.pipeline import runner as runner_module
@@ -52,6 +54,7 @@ def _make_policy_bundle(max_workers: int = 4) -> MagicMock:
         PHASE_DEVELOPMENT: MagicMock(requires_commit=False, drain="development"),
     }
     bundle.pipeline.parallel_execution.max_parallel_workers = max_workers
+    bundle.pipeline.parallel_execution.post_fanout_verification = True
     bundle.agents.agent_drains = {
         "development": MagicMock(chain="developer"),
     }
@@ -428,3 +431,123 @@ class TestSameWorkspaceFanOutE2E:
 
         # No success completion
         assert PipelineEvent.ALL_WORKERS_COMPLETE not in events
+
+
+class TestRunnerAnalysisHandoffIntegration:
+    """Runner-level integration: _execute_fan_out_sync wires the analysis handoff.
+
+    These tests call _execute_fan_out_sync directly (not just the helper) to prove
+    that after parallel fan-out the runner writes .agent/DEVELOPMENT_RESULT.md so the
+    analysis phase can pick it up through the normal handoff path.
+    """
+
+    def test_runner_writes_development_result_md_after_all_succeed(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """After two workers succeed, .agent/DEVELOPMENT_RESULT.md must exist
+        and contain the parallel summary so the analysis phase can read it."""
+        from ralph.pipeline import checkpoint as ckpt  # noqa: PLC0415
+
+        unit_a = WorkUnit(unit_id="unit-a", description="Unit A", allowed_directories=["src/a"])
+        unit_b = WorkUnit(unit_id="unit-b", description="Unit B", allowed_directories=["src/b"])
+
+        _seed_artifact(tmp_path, "unit-a")
+        _seed_artifact(tmp_path, "unit-b")
+
+        scope = WorkspaceScope(root=tmp_path, allowed_roots=frozenset([tmp_path]))
+        initial_state = PipelineState(
+            phase=PHASE_DEVELOPMENT,
+            work_units=(unit_a, unit_b),
+        )
+
+        success_events = [
+            PipelineEvent.FAN_OUT_STARTED,
+            WorkerCompletedEvent(unit_id="unit-a", exit_code=0),
+            WorkerCompletedEvent(unit_id="unit-b", exit_code=0),
+            PipelineEvent.ALL_WORKERS_COMPLETE,
+        ]
+
+        async def _fake_run_fan_out(**kwargs: object) -> list[object]:
+            return success_events
+
+        monkeypatch.setattr(coordinator, "run_fan_out", _fake_run_fan_out)
+        monkeypatch.setattr(ckpt, "save", lambda state: None)
+
+        bundle = _make_policy_bundle(max_workers=2)
+        effect = FanOutDevelopmentEffect(
+            work_units=(unit_a, unit_b),
+            max_workers=2,
+            run_post_fanout_verification=False,
+        )
+
+        runner_module._execute_fan_out_sync(
+            effect=effect,
+            state=initial_state,
+            display=_FakeDisplay(),  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+            policy_bundle=bundle,
+            workspace_scope=scope,
+        )
+
+        handoff_path = tmp_path / ".agent" / "DEVELOPMENT_RESULT.md"
+        assert handoff_path.exists(), (
+            ".agent/DEVELOPMENT_RESULT.md must be written for analysis to consume after fan-out"
+        )
+        content = handoff_path.read_text()
+        assert "Parallel Development Summary" in content
+        assert "unit-a" in content
+        assert "unit-b" in content
+        assert "all_succeeded: true" in content
+
+    def test_runner_partial_failure_reflected_in_handoff(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """When unit-b fails, DEVELOPMENT_RESULT.md must show any_failed=true
+        and all_succeeded=false so the analysis phase sees the honest outcome."""
+        from ralph.pipeline import checkpoint as ckpt  # noqa: PLC0415
+
+        unit_a = WorkUnit(unit_id="unit-a", description="Unit A", allowed_directories=["src/a"])
+        unit_b = WorkUnit(unit_id="unit-b", description="Unit B", allowed_directories=["src/b"])
+
+        _seed_artifact(tmp_path, "unit-a")  # unit-b gets no artifact on purpose
+
+        scope = WorkspaceScope(root=tmp_path, allowed_roots=frozenset([tmp_path]))
+        initial_state = PipelineState(
+            phase=PHASE_DEVELOPMENT,
+            work_units=(unit_a, unit_b),
+        )
+
+        partial_events = [
+            PipelineEvent.FAN_OUT_STARTED,
+            WorkerCompletedEvent(unit_id="unit-a", exit_code=0),
+            WorkerFailedEvent(unit_id="unit-b", exit_code=1, error="no artifact evidence"),
+            PipelineEvent.ALL_WORKERS_COMPLETE,
+        ]
+
+        async def _fake_run_fan_out(**kwargs: object) -> list[object]:
+            return partial_events
+
+        monkeypatch.setattr(coordinator, "run_fan_out", _fake_run_fan_out)
+        monkeypatch.setattr(ckpt, "save", lambda state: None)
+
+        bundle = _make_policy_bundle(max_workers=2)
+        effect = FanOutDevelopmentEffect(
+            work_units=(unit_a, unit_b),
+            max_workers=2,
+            run_post_fanout_verification=False,
+        )
+
+        runner_module._execute_fan_out_sync(
+            effect=effect,
+            state=initial_state,
+            display=_FakeDisplay(),  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+            policy_bundle=bundle,
+            workspace_scope=scope,
+        )
+
+        handoff_path = tmp_path / ".agent" / "DEVELOPMENT_RESULT.md"
+        assert handoff_path.exists(), (
+            ".agent/DEVELOPMENT_RESULT.md must be written even on partial failure"
+        )
+        content = handoff_path.read_text()
+        assert "any_failed: true" in content
+        assert "all_succeeded: false" in content

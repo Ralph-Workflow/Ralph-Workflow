@@ -125,6 +125,7 @@ source = "planning_artifact_work_units"
 max_parallel_workers = 8
 max_work_units = 50
 require_allowed_directories = true
+post_fanout_verification = false
 
 entry_phase = "planning"
 terminal_phase = "complete"

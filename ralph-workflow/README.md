@@ -159,6 +159,84 @@ ralph-mcp --help
 
 Use it when you want Ralph Workflow's MCP tool surface without running the full `ralph` pipeline.
 
+## Verification
+
+```bash
+make verify
+```
+
+That runs:
+
+- `ruff check ralph/ tests/`
+- `uv run python -m mypy ralph/`
+- `uv run --extra docs sphinx-build -b html docs/sphinx docs/sphinx/_build/html -W --keep-going`
+- `uv run python -m ralph.verify_timeout --suite-timeout 30 -- pytest tests/ -q -n 8 --cov=ralph --cov-report=term-missing --cov-report=html --cov-fail-under 80`
+
+For narrower local runs, use:
+
+- `make docs` — build Sphinx HTML into `docs/sphinx/_build/html` with warnings treated as errors
+- `make test` — full pytest suite without coverage
+- `make test-unit` — everything under `tests/` except `tests/integration/`
+- `make test-integration` — `tests/integration/` only
+
+For the dead-code policy tooling, run the separate Vulture audit:
+
+```bash
+make dead-code
+```
+
+It is intentionally separate from `make verify` while the current dead-code backlog still exists; today the command proves the scanner wiring by failing on the code that still needs cleanup.
+
+## Package map
+
+- `ralph/cli/` — Typer CLI entry points and command plumbing
+- `ralph/config/` — layered config loading and Pydantic models
+- `ralph/pipeline/` — state, events, reducer, orchestrator, effects
+- `ralph/phases/` — phase handlers and dispatch
+- `ralph/agents/` — agent registry, chains, and invocation
+- `ralph/mcp/` — MCP bridge, artifact handling, standalone server runtime
+- `ralph/git/` — GitPython-backed repository helpers and rebase support
+- `ralph/workspace/` — production and in-memory filesystem abstractions
+- `ralph/recovery/` — failure classification, budgets, connectivity monitoring, and recovery controller
+
+## Pydoc-first API reference
+
+The public package docstrings are intended to stand on their own. Useful entry points:
+
+```bash
+python -m pydoc ralph
+python -m pydoc ralph.cli
+python -m pydoc ralph.pipeline
+python -m pydoc ralph.mcp
+python -m pydoc ralph.git
+python -m pydoc ralph.workspace
+python -m pydoc ralph.recovery
+```
+
+Use package/module docstrings for API understanding and this README for workflow-level guidance.
+
+## Phase-output hardening
+
+Ralph Workflow now treats several agent-driven phases as producing explicit evidence, not just a zero exit code.
+
+- `review` must leave behind a fresh `.agent/artifacts/issues.json`.
+- In same-workspace parallel mode, `development` and `fix` workers are judged by per-worker artifact evidence only: a worker succeeds when it submits an artifact under `.agent/workers/<unit_id>/artifacts/`. Repo-wide `git status` is never used to determine worker success in parallel mode. Exit code is retained as diagnostic information only.
+- Planning keeps `.agent/artifacts/plan.json` as the canonical machine-readable artifact and mirrors it to `.agent/PLAN.md` as the human/agent handoff.
+- The runner still removes per-phase artifacts before each invocation so interrupted runs cannot leak stale summaries or review findings into later phases.
+
+Artifact contract:
+- Use `.json` artifacts for Ralph Workflow's validation, routing, checkpointing, and other orchestrator-only logic.
+- Use `.md` handoff files when a user or downstream AI agent needs to read the result of an earlier phase.
+- Current mirrored handoffs are:
+  - `.agent/PLAN.md`
+  - `.agent/DEVELOPMENT_RESULT.md`
+  - `.agent/ISSUES.md`
+  - `.agent/FIX_RESULT.md`
+  - `.agent/DEVELOPMENT_ANALYSIS_DECISION.md`
+  - `.agent/REVIEW_ANALYSIS_DECISION.md`
+
+This hardening is intentionally selective. Review and planning rely on explicit artifacts where Ralph Workflow needs structured evidence. In same-workspace parallel mode, `development` and `fix` workers are judged by per-worker artifact evidence under `.agent/workers/<unit_id>/artifacts/`; repo-wide workspace changes are not used as a success signal in parallel mode.
+
 ## Built-in web tools
 
 ### Web search (`web_search`)
@@ -197,11 +275,34 @@ When enabled:
 - supported formats are PNG, JPEG, GIF, and WebP
 - `read_image` only appears for clients that declare multimodal/image/media capability
 - text-only clients keep the pre-multimodal tool set unchanged
+- image payloads are returned as MCP image content blocks with base64-encoded data
+- `max_inline_bytes` enforces the inline size guard (5 MiB by default)
+
+### Compatibility contract
+
+The multimodal support is designed with strict backward compatibility:
+
+1. **Text-only clients unchanged** — Existing tools (`read_file`, `write_file`, etc.) continue to return text content blocks with the same shape.
+2. **Client capability filtering** — `read_image` only appears in `tools/list` for clients that declare multimodal/image/media capability in the MCP `initialize` handshake.
+3. **Upstream multimodal rejection** — If an upstream MCP server returns a non-text content block, Ralph Workflow rejects it with a clear error rather than silently passing it through.
+
+### What text-only clients see
+
+When a client connects without declaring multimodal support, `read_image` is **not visible** in `tools/list`, even if `media.enabled = true`. The text-only tool set is byte-equivalent to pre-multimodal behavior.
+
+### What multimodal clients see
+
+Clients that declare `capabilities.image`, `capabilities.media`, or `capabilities.multimodal` in the `initialize` request will see `read_image` in `tools/list` when `media.enabled = true`.
+
+## Claude/CCS MCP safety note
+
+Claude-compatible transports such as `claude` and `ccs` run through a stricter MCP path. Ralph Workflow still uses `--mcp-config` plus `--strict-mcp-config`, but it only emits `--tools ""` / `--allowedTools ...` when live MCP tool discovery succeeds with a non-empty allowlist. That avoids a brittle edge case in non-interactive Claude/CCS runs where empty-tool configurations and MCP bootstrapping can produce misleadingly successful no-op executions.
+
+Ralph Workflow's Claude parser accepts both bare (`claude: ...`) and model-qualified (`claude/<model>: ...`) transcript prefixes emitted by the Claude CLI. Lifecycle-only markers (`message_delta`, `user`, `system (status=...)`, `thinking` without a payload) are automatically suppressed so they never appear as noise in the activity log. Free-form text and tool lines after the prefix are parsed normally.
 
 ## Parallel mode
 
-When the planning phase produces two or more work units, Ralph Workflow can fan development out across
-multiple workers in parallel in the same checkout.
+When the planning phase produces two or more work units, Ralph Workflow runs them as parallel workers in the **same git checkout** (same-workspace mode v1). Each worker is restricted to its declared `allowed_directories` and writes its artifacts under `.agent/workers/<unit_id>/`. Workers do not get separate worktrees or branches; coordination uses edit-area fencing and per-worker artifact namespaces only. For the full guide including configuration, work unit structure, and success criteria, see [`docs/sphinx/parallel-mode.md`](docs/sphinx/parallel-mode.md).
 
 Quick configuration:
 
