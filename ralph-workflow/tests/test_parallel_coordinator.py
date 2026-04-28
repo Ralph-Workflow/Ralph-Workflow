@@ -15,6 +15,7 @@ from loguru import logger
 
 from ralph.agents.executor import WorkerResult
 from ralph.display.activity_router import ActivityRouter
+from ralph.mcp.protocol.env import AGENT_LABEL_SCOPE_ENV
 from ralph.mcp.server.factory import McpServerHandle
 from ralph.pipeline.effects import FanOutDevelopmentEffect
 from ralph.pipeline.events import (
@@ -35,6 +36,7 @@ if TYPE_CHECKING:
 RunFanOut = Callable[..., Awaitable[list[Event]]]
 TOTAL_CAP_UNITS = 5
 MAX_CAP_WORKERS = 2
+EXPECTED_WORKER_SCOPE_COUNT = 2
 
 
 def _load_run_fan_out() -> RunFanOut:
@@ -620,6 +622,98 @@ async def test_subprocess_worker_receives_ralph_worker_artifact_dir(
         f"RALPH_WORKER_ARTIFACT_DIR must point to the per-worker artifact dir, "
         f"got: {env['RALPH_WORKER_ARTIFACT_DIR']!r}"
     )
+
+
+@pytest.mark.asyncio
+async def test_subprocess_workers_receive_per_worker_agent_label_scope(
+    tmp_path: Path, monkeypatch: Any
+) -> None:
+    module = importlib.import_module("ralph.pipeline.parallel.coordinator")
+    run_fan_out = _load_run_fan_out()
+    unit_a = WorkUnit(
+        unit_id="unit-scope-a",
+        description="Unit unit-scope-a",
+        allowed_directories=["src/a"],
+    )
+    unit_b = WorkUnit(
+        unit_id="unit-scope-b",
+        description="Unit unit-scope-b",
+        allowed_directories=["src/b"],
+    )
+    effect = FanOutDevelopmentEffect(work_units=(unit_a, unit_b), max_workers=2)
+    display = RecordingDisplay()
+    mcp_factory = _RecordingMcpFactory()
+    recorded_extra_envs: list[dict[str, str]] = []
+
+    class _RecordingSubprocessExecutor:
+        def __init__(
+            self,
+            *_args: Any,
+            extra_env: dict[str, str] | None = None,
+            **_kwargs: Any,
+        ) -> None:
+            recorded_extra_envs.append(dict(extra_env or {}))
+
+        async def run(
+            self,
+            unit: WorkUnit,
+            *,
+            on_output: Callable[[str], None],
+            on_status: Callable[[WorkerStatus], None],
+        ) -> WorkerResult:
+            on_status(WorkerStatus.RUNNING)
+            on_output("done")
+            on_status(WorkerStatus.SUCCEEDED)
+            return WorkerResult(
+                unit_id=unit.unit_id,
+                exit_code=0,
+                final_message="done",
+                duration_ms=1,
+            )
+
+    monkeypatch.setattr(
+        module.subprocess_executor,
+        "SubprocessAgentExecutor",
+        _RecordingSubprocessExecutor,
+    )
+
+    class _FakeDynamicBindingMcpServerFactory:
+        def __init__(self, *, workspace: object) -> None:
+            del workspace
+
+        def build(self, session: object) -> McpServerHandle:
+            return mcp_factory.build(session)
+
+    monkeypatch.setattr(
+        module.factory_impl,
+        "DynamicBindingMcpServerFactory",
+        _FakeDynamicBindingMcpServerFactory,
+    )
+
+    _seed_artifact(tmp_path, "unit-scope-a")
+    _seed_artifact(tmp_path, "unit-scope-b")
+
+    ctx = make_worker_context(
+        same_workspace=SameWorkspaceContext(
+            repo_root=tmp_path,
+            mcp_factory=mcp_factory,  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+            executor_command=("python", "-m", "ralph"),
+        )
+    )
+
+    events = await run_fan_out(
+        effect=effect,
+        executor=FakeAgentExecutor({}),
+        display=display,
+        ctx=ctx,
+    )
+
+    assert events[-1] is PipelineEvent.ALL_WORKERS_COMPLETE
+    assert len(recorded_extra_envs) == EXPECTED_WORKER_SCOPE_COUNT
+    scopes = {env[str(AGENT_LABEL_SCOPE_ENV)] for env in recorded_extra_envs}
+    assert len(scopes) == EXPECTED_WORKER_SCOPE_COUNT
+    session_ids = {session.session_id for session in mcp_factory.sessions}
+    assert scopes == session_ids
 
 
 @pytest.mark.asyncio

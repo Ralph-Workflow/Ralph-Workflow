@@ -234,9 +234,9 @@ class TestUnrelatedWorkerDoesNotSuppressTimeout:
     """Session-scoped liveness: unrelated agent: workers must not keep this run alive.
 
     OpenCodeExecutionStrategy accepts an optional ``label_scope`` that narrows
-    the liveness check from the global ``agent:`` prefix to
-    ``agent:{label_scope}:`` so that concurrent agent workers belonging to a
-    different logical task do not falsely reset the idle clock.
+    the Ralph-tracked liveness check to ``agent:{label_scope}:``. When no scope
+    is available, the strategy must ignore Ralph-tracked `agent:*` labels and
+    rely on OS-level descendant detection instead.
     """
 
     def test_unrelated_agent_worker_does_not_suppress_timeout(self) -> None:
@@ -256,8 +256,8 @@ class TestUnrelatedWorkerDoesNotSuppressTimeout:
             f"Unrelated worker must not suppress timeout for scoped run; got {state!r}"
         )
 
-    def test_related_agent_worker_resets_idle_clock(self) -> None:
-        """Related agent:my-session: worker keeps scoped run alive."""
+    def test_related_agent_worker_keeps_scoped_run_alive(self) -> None:
+        """Related agent:my-session: worker keeps the scoped run in WAITING_ON_CHILD."""
         strategy = OpenCodeExecutionStrategy(label_scope="my-session")
         probe = FakeLivenessProbe(
             active_labels=frozenset({"agent:my-session:worker1"})
@@ -268,11 +268,11 @@ class TestUnrelatedWorkerDoesNotSuppressTimeout:
 
         # "agent:my-session:worker1" starts with "agent:my-session:" → WAITING_ON_CHILD
         assert state == AgentExecutionState.WAITING_ON_CHILD, (
-            f"Related worker must reset idle clock; got {state!r}"
+            f"Related worker must keep the run in WAITING_ON_CHILD; got {state!r}"
         )
 
-    def test_unscoped_strategy_still_activates_on_any_agent_label(self) -> None:
-        """Without a scope, the global agent: prefix keeps existing behaviour."""
+    def test_unscoped_strategy_ignores_unrelated_agent_labels(self) -> None:
+        """Without a scope, Ralph-tracked agent labels must not keep the run alive."""
         strategy = OpenCodeExecutionStrategy()  # no label_scope
         probe = FakeLivenessProbe(
             active_labels=frozenset({"agent:any-run:worker1"})
@@ -281,9 +281,8 @@ class TestUnrelatedWorkerDoesNotSuppressTimeout:
 
         state = strategy.classify_quiet(handle, probe)
 
-        # Any "agent:" prefix matches the global check → WAITING_ON_CHILD
-        assert state == AgentExecutionState.WAITING_ON_CHILD, (
-            f"Unscoped strategy must match any agent: label; got {state!r}"
+        assert state == AgentExecutionState.ACTIVE, (
+            f"Unscoped strategy must ignore unrelated agent labels; got {state!r}"
         )
 
 
@@ -516,6 +515,57 @@ class TestGenericExecutionStrategy:
 # ---------------------------------------------------------------------------
 # (j) _check_process_result: explicit completion / artifact / neither
 # ---------------------------------------------------------------------------
+
+
+class TestOpenCodeStrategyFallbacks:
+    def test_classify_quiet_probe_exception_falls_back_to_descendants(self) -> None:
+        class _RaisingProbe:
+            def any_agent_active(self, label_prefix: str) -> bool:
+                del label_prefix
+                raise RuntimeError("boom")
+
+        strategy = OpenCodeExecutionStrategy(label_scope="run-scope")
+        handle = _FakeHandle(has_descendants=True)
+
+        state = strategy.classify_quiet(handle, cast("FakeLivenessProbe", _RaisingProbe()))
+
+        assert state == AgentExecutionState.WAITING_ON_CHILD
+
+    def test_classify_exit_probe_exception_falls_back_to_descendants(self) -> None:
+        class _RaisingProbe:
+            def any_agent_active(self, label_prefix: str) -> bool:
+                del label_prefix
+                raise RuntimeError("boom")
+
+        strategy = OpenCodeExecutionStrategy(label_scope="run-scope")
+        handle = _FakeHandle(returncode=0, has_descendants=True)
+        signals = CompletionSignals(False, False, ())
+
+        state = strategy.classify_exit(
+            handle,
+            signals,
+            liveness_probe=cast("FakeLivenessProbe", _RaisingProbe()),
+        )
+
+        assert state == AgentExecutionState.WAITING_ON_CHILD
+
+    def test_classify_exit_probe_exception_without_descendants_is_resumable(self) -> None:
+        class _RaisingProbe:
+            def any_agent_active(self, label_prefix: str) -> bool:
+                del label_prefix
+                raise RuntimeError("boom")
+
+        strategy = OpenCodeExecutionStrategy(label_scope="run-scope")
+        handle = _FakeHandle(returncode=0, has_descendants=False)
+        signals = CompletionSignals(False, False, ())
+
+        state = strategy.classify_exit(
+            handle,
+            signals,
+            liveness_probe=cast("FakeLivenessProbe", _RaisingProbe()),
+        )
+
+        assert state == AgentExecutionState.RESUMABLE_CONTINUE
 
 
 class TestCheckProcessResultCompletionSeam:
@@ -1366,7 +1416,7 @@ class TestCheckProcessResultWaitsForLiveChildren:
             def __init__(self) -> None:
                 self.call_count = 0
 
-            def any_agent_active(self, prefix: str) -> bool:
+            def any_agent_active(self, label_prefix: str) -> bool:
                 self.call_count += 1
                 return self.call_count > 1
 

@@ -55,14 +55,15 @@ allowed (it is a `Popen` parameter, not a direct POSIX call).
 
 | Label | Used for |
 |---|---|
-| `agent:<unit_id>` | Parallel worker agent processes |
+| `agent:<scope>:<unit_id>:root` | Scoped parallel worker agent root processes |
 | `phase:<phase_name>` | Processes spawned inside a non-parallel phase |
 | `phase:<phase_name>:mcp-server` | MCP server for a specific phase |
 | `phase:<phase_name>:git:<op>` | Git subprocess inside a phase (when labeled) |
 | `mcp-server` | Pipeline-scoped MCP server not tied to a single phase |
 
 `shutdown_all_for_label` uses prefix matching, so `phase:review` also matches
-`phase:review:mcp-server`.
+`phase:review:mcp-server`. Agent-worker teardown should therefore target the
+segment-delimited prefix `agent:<scope>:<unit_id>:` rather than a bare unit id.
 
 ## Escalation
 

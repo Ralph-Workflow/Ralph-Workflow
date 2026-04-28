@@ -12,6 +12,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 from ralph.agents.executor import WorkerResult
+from ralph.agents.subprocess_executor import agent_process_label
 from ralph.config.enums import PHASE_DEVELOPMENT
 from ralph.pipeline import checkpoint
 from ralph.pipeline.effects import FanOutDevelopmentEffect
@@ -47,7 +48,7 @@ class SleeperExecutor:
         on_status(WorkerStatus.RUNNING)
         start_time = time.monotonic()
         handle = await get_process_manager().spawn_async(
-            ["sleep", "30"], label=f"agent:{unit.unit_id}"
+            ["sleep", "30"], label=agent_process_label(unit.unit_id)
         )
         self.pids.append(handle.record.pid)
 

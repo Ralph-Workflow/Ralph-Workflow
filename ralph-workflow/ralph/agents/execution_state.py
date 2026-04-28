@@ -74,6 +74,7 @@ class GenericExecutionStrategy:
 
 
 _AGENT_LABEL_PREFIX = "agent:"
+_UNSCOPED_AGENT_LABEL_SENTINEL = "agent:__unscoped_disabled__:"
 
 
 _CLAUDE_LIFECYCLE_EVENTS = frozenset(
@@ -127,18 +128,23 @@ class OpenCodeExecutionStrategy:
     handle.has_live_descendants() are consulted to avoid false-positive
     RESUMABLE_CONTINUE verdicts when child agents are still running.
 
-    ``label_scope`` narrows the liveness check to processes whose labels
-    start with ``agent:{label_scope}:``.  When None the check falls back to
-    the global ``agent:`` prefix (production default).
+    ``label_scope`` narrows the Ralph-tracked liveness check to processes whose
+    labels start with ``agent:{label_scope}:``. Real worker root labels are
+    segment-delimited (for example ``agent:{label_scope}:worker-id:root``), so a
+    scoped prefix matches all child processes owned by that Ralph run without
+    colliding with unrelated runs. When no scope is available, the strategy uses
+    a sentinel prefix that never matches real ProcessManager labels, so
+    unrelated ``agent:*`` workers cannot suppress the idle timeout for an
+    unscoped run.
     """
 
     def __init__(self, *, label_scope: str | None = None) -> None:
         self._label_scope = label_scope
 
     def _active_label_prefix(self) -> str:
-        if self._label_scope is not None:
-            return f"{_AGENT_LABEL_PREFIX}{self._label_scope}:"
-        return _AGENT_LABEL_PREFIX
+        if self._label_scope is None:
+            return _UNSCOPED_AGENT_LABEL_SENTINEL
+        return f"{_AGENT_LABEL_PREFIX}{self._label_scope}:"
 
     def classify_activity_line(self, line: str) -> AgentActivitySignal | None:
         """Classify OpenCode output for idle-watchdog activity."""
@@ -149,7 +155,10 @@ class OpenCodeExecutionStrategy:
         handle: _LiveDescendantHandle,
         liveness_probe: LivenessProbe,
     ) -> AgentExecutionState:
-        # Check for Ralph-tracked parallel agent workers (label prefix "agent:")
+        # Check for Ralph-tracked parallel agent workers. When no scope is
+        # available, the sentinel prefix prevents accidental matches against
+        # unrelated ProcessManager labels while still allowing injected probes to
+        # signal relevant child activity deliberately.
         try:
             if bool(liveness_probe.any_agent_active(self._active_label_prefix())):
                 return AgentExecutionState.WAITING_ON_CHILD
@@ -176,7 +185,9 @@ class OpenCodeExecutionStrategy:
                 return AgentExecutionState.TERMINAL_COMPLETE
         except Exception:
             pass
-        # Deferred path: wait for child agents if LivenessProbe reports active agents
+        # Deferred path: wait for child agents if the liveness probe reports
+        # active agents for this scope. The unscoped sentinel avoids accidental
+        # matches against unrelated ProcessManager labels.
         if liveness_probe is not None:
             try:
                 if bool(liveness_probe.any_agent_active(self._active_label_prefix())):
@@ -198,12 +209,14 @@ class OpenCodeExecutionStrategy:
 
 def strategy_for_transport(
     transport: object,
+    *,
+    label_scope: str | None = None,
 ) -> GenericExecutionStrategy | OpenCodeExecutionStrategy:
     """Return the appropriate ExecutionStrategy for an agent transport."""
     from ralph.config.enums import AgentTransport  # noqa: PLC0415
 
     if transport == AgentTransport.OPENCODE:
-        return OpenCodeExecutionStrategy()
+        return OpenCodeExecutionStrategy(label_scope=label_scope)
     if transport == AgentTransport.CLAUDE:
         return ClaudeExecutionStrategy()
     return GenericExecutionStrategy()

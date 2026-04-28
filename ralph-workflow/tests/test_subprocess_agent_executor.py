@@ -3,6 +3,7 @@
 import asyncio
 import inspect
 import sys
+from collections.abc import Iterator
 from contextlib import suppress
 
 import pytest
@@ -10,7 +11,10 @@ import pytest
 from ralph.agents.executor import AgentExecutor
 from ralph.agents.subprocess_executor import SubprocessAgentExecutor
 from ralph.display.activity_router import ActivityRouter
+from ralph.mcp.protocol.env import AGENT_LABEL_SCOPE_ENV
 from ralph.pipeline.work_units import WorkUnit
+from ralph.process import get_process_manager, reset_process_manager
+from ralph.process.liveness import DefaultLivenessProbe
 
 EXIT_CODE_FAILURE = 42
 EXPECTED_ACTIVITY_ENTRIES = 2
@@ -26,6 +30,14 @@ def ignore_status(_status: str) -> None:
 
 def make_unit(unit_id: str) -> WorkUnit:
     return WorkUnit(unit_id=unit_id, description=f"Unit {unit_id}")
+
+
+@pytest.fixture(autouse=True)
+def _reset_pm() -> Iterator[None]:
+    reset_process_manager()
+    yield
+    get_process_manager().shutdown_all(grace_period_s=0)
+    reset_process_manager()
 
 
 @pytest.mark.asyncio
@@ -128,6 +140,35 @@ async def test_final_message_from_last_line() -> None:
         on_status=ignore_status,
     )
     assert result.final_message == (last[-1] if last else "")
+
+
+@pytest.mark.asyncio
+async def test_subprocess_executor_registers_scoped_agent_label_for_liveness() -> None:
+    started = asyncio.Event()
+    finished = asyncio.Event()
+    executor = SubprocessAgentExecutor(
+        [sys.executable, "-c", "import time; print('ready'); time.sleep(0.2)"],
+        extra_env={str(AGENT_LABEL_SCOPE_ENV): "run-scope-456"},
+    )
+    unit = make_unit("worker-a")
+
+    def on_output(line: str) -> None:
+        if "ready" in line:
+            started.set()
+
+    async def _run() -> None:
+        await executor.run(unit, on_output=on_output, on_status=ignore_status)
+        finished.set()
+
+    task = asyncio.create_task(_run())
+    await asyncio.wait_for(started.wait(), timeout=1.0)
+
+    probe = DefaultLivenessProbe()
+    assert probe.any_agent_active("agent:run-scope-456:") is True
+    assert probe.any_agent_active("agent:other-scope:") is False
+
+    await asyncio.wait_for(task, timeout=1.0)
+    assert finished.is_set() is True
 
 
 @pytest.mark.asyncio

@@ -56,6 +56,7 @@ from ralph.mcp.artifacts.commit_message import (
     delete_commit_message_artifacts,
     read_commit_message_from_path,
 )
+from ralph.mcp.protocol.env import AGENT_LABEL_SCOPE_ENV
 from ralph.mcp.protocol.session import MCP_ENDPOINT_ENV, MCP_RUN_ID_ENV, AgentSession
 from ralph.mcp.server.lifecycle import shutdown_mcp_server, start_mcp_server
 from ralph.mcp.session_plan import build_session_mcp_plan
@@ -2281,6 +2282,7 @@ def _execute_agent_effect(  # noqa: PLR0913
                 extra_env={
                     MCP_ENDPOINT_ENV: bridge.agent_endpoint_uri(),
                     MCP_RUN_ID_ENV: session.run_id,
+                    AGENT_LABEL_SCOPE_ENV: session.run_id,
                 },
                 idle_timeout_seconds=config.general.agent_idle_timeout_seconds,
                 drain_window_seconds=config.general.agent_idle_drain_window_seconds,

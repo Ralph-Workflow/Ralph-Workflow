@@ -16,7 +16,12 @@ from loguru import logger
 
 from ralph.agents import invoke as invoke_module
 from ralph.agents.activity import AgentActivityKind
-from ralph.agents.execution_state import GenericExecutionStrategy, strategy_for_transport
+from ralph.agents.execution_state import (
+    AgentExecutionState,
+    GenericExecutionStrategy,
+    OpenCodeExecutionStrategy,
+    strategy_for_transport,
+)
 from ralph.agents.invoke import (
     AgentInactivityTimeoutError,
     AgentInvocationError,
@@ -29,9 +34,10 @@ from ralph.agents.invoke import (
     check_agent_available,
     invoke_agent,
 )
-from ralph.agents.timeout_clock import FakeClock
+from ralph.agents.timeout_clock import Clock, FakeClock
 from ralph.config.enums import AgentTransport, JsonParserType
 from ralph.config.models import AgentConfig
+from ralph.mcp.protocol.env import AGENT_LABEL_SCOPE_ENV
 from ralph.mcp.tools.names import (
     ALL_RALPH_TOOLS,
     CODEX_NATIVE_FEATURES_TO_DISABLE,
@@ -116,6 +122,114 @@ def test_invoke_agent_passes_idle_timeout_to_subprocess(
     )
 
     assert getattr(captured.get("policy"), "idle_timeout_seconds", None) == _expected_idle_timeout
+
+
+def test_invoke_agent_scopes_opencode_liveness_to_agent_label_scope(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    config = AgentConfig(
+        cmd="opencode",
+        output_flag="--json-stream",
+        transport=AgentTransport.OPENCODE,
+    )
+    prompt_file = tmp_path / "PROMPT.md"
+    prompt_file.write_text("hello", encoding="utf-8")
+    captured: dict[str, object] = {}
+
+    def fake_run_subprocess_and_read_lines(  # noqa: PLR0913
+        cmd: list[str],
+        cfg: AgentConfig,
+        show_progress: bool,
+        extra_env: dict[str, str] | None,
+        workspace_path: Path | None,
+        *,
+        execution_strategy: object = None,
+        **_extra_kwargs: object,
+    ) -> list[str]:
+        captured["execution_strategy"] = execution_strategy
+        return []
+
+    monkeypatch.setattr(
+        "ralph.agents.invoke._run_subprocess_and_read_lines",
+        fake_run_subprocess_and_read_lines,
+    )
+
+    list(
+        invoke_agent(
+            config,
+            str(prompt_file),
+            options=InvokeOptions(
+                show_progress=False,
+                workspace_path=tmp_path,
+                session_id="opencode-session-123",
+                extra_env={str(AGENT_LABEL_SCOPE_ENV): "run-scope-123"},
+            ),
+        )
+    )
+
+    class _NoDescendantsHandle:
+        def has_live_descendants(self) -> bool:
+            return False
+
+    strategy = cast("OpenCodeExecutionStrategy", captured["execution_strategy"])
+    state = strategy.classify_quiet(
+        _NoDescendantsHandle(),
+        FakeLivenessProbe(active_labels=frozenset({"agent:run-scope-123:worker1"})),
+    )
+    assert state == AgentExecutionState.WAITING_ON_CHILD
+
+
+def test_invoke_agent_without_session_scope_ignores_unrelated_agent_labels(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    config = AgentConfig(
+        cmd="opencode",
+        output_flag="--json-stream",
+        transport=AgentTransport.OPENCODE,
+    )
+    prompt_file = tmp_path / "PROMPT.md"
+    prompt_file.write_text("hello", encoding="utf-8")
+    captured: dict[str, object] = {}
+
+    def fake_run_subprocess_and_read_lines(  # noqa: PLR0913
+        cmd: list[str],
+        cfg: AgentConfig,
+        show_progress: bool,
+        extra_env: dict[str, str] | None,
+        workspace_path: Path | None,
+        *,
+        execution_strategy: object = None,
+        **_extra_kwargs: object,
+    ) -> list[str]:
+        captured["execution_strategy"] = execution_strategy
+        return []
+
+    monkeypatch.setattr(
+        "ralph.agents.invoke._run_subprocess_and_read_lines",
+        fake_run_subprocess_and_read_lines,
+    )
+
+    list(
+        invoke_agent(
+            config,
+            str(prompt_file),
+            options=InvokeOptions(
+                show_progress=False,
+                workspace_path=tmp_path,
+            ),
+        )
+    )
+
+    class _NoDescendantsHandle:
+        def has_live_descendants(self) -> bool:
+            return False
+
+    strategy = cast("OpenCodeExecutionStrategy", captured["execution_strategy"])
+    state = strategy.classify_quiet(
+        _NoDescendantsHandle(),
+        FakeLivenessProbe(active_labels=frozenset({"agent:other-session:worker1"})),
+    )
+    assert state == AgentExecutionState.ACTIVE
 
 
 def test_run_subprocess_and_read_lines_wraps_idle_stream_timeout(
@@ -3455,7 +3569,7 @@ def test_invoke_agent_passes_config_drain_window_to_watchdog(
     captured_config: list[TimeoutPolicy] = []
     original_init = IdleWatchdog.__init__
 
-    def capturing_init(self: IdleWatchdog, cfg: TimeoutPolicy, clock: object) -> None:
+    def capturing_init(self: IdleWatchdog, cfg: TimeoutPolicy, clock: Clock) -> None:
         captured_config.append(cfg)
         original_init(self, cfg, clock)
 
