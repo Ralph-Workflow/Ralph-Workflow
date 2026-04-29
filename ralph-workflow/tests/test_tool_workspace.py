@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import json
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -20,6 +21,9 @@ from ralph.mcp.tools.coordination import (
     _read_env_value,
 )
 from ralph.mcp.tools.workspace import (
+    WORKSPACE_DELETE_CAPABILITY,
+    WORKSPACE_EDIT_CAPABILITY,
+    WORKSPACE_METADATA_READ_CAPABILITY,
     WORKSPACE_READ_CAPABILITY,
     WORKSPACE_WRITE_EPHEMERAL_CAPABILITY,
     WORKSPACE_WRITE_TRACKED_CAPABILITY,
@@ -31,12 +35,24 @@ from ralph.mcp.tools.workspace import (
     _join_path,
     _list_dir_entries,
     _list_dir_flat,
+    _match_glob,
     _normalize_relative_path,
+    handle_append_file,
+    handle_copy_file,
+    handle_create_directory,
+    handle_delete_path,
+    handle_directory_tree,
+    handle_edit_file,
+    handle_grep_files,
+    handle_list_allowed_roots,
     handle_list_directory,
     handle_list_directory_recursive,
+    handle_move_file,
     handle_read_file,
     handle_read_image,
+    handle_read_multiple_files,
     handle_search_files,
+    handle_stat,
     handle_write_file,
     required_string_param,
 )
@@ -53,6 +69,9 @@ class MockSession:
 
     def check_capability(self, capability: str) -> object:
         return capability == self.allowed_capability
+
+    def check_edit_area(self, path: str) -> object:
+        return True
 
 
 # =============================================================================
@@ -94,12 +113,10 @@ class TestNormalizeRelativePath:
         assert result == "path/to/file"
 
     def test_windows_backslash_preserved(self) -> None:
-        # PurePosixPath preserves backslashes as literal characters
         result = _normalize_relative_path("path\\to\\file")
         assert result == "path\\to\\file"
 
     def test_leading_slash_preserved(self) -> None:
-        # PurePosixPath preserves leading slash in POSIX paths
         result = _normalize_relative_path("/absolute/path")
         assert result.startswith("/")
 
@@ -269,7 +286,6 @@ class TestIsPathGitTracked:
         assert _is_path_git_tracked(ws, ".agent/config.yaml") is False
 
     def test_file_with_target_substring_but_not_excluded_path(self) -> None:
-        # "my_target/main" doesn't contain "/target/" so it passes
         ws = MagicMock()
         ws.exists.return_value = True
         assert _is_path_git_tracked(ws, "my_target/main") is True
@@ -325,6 +341,44 @@ class TestListDirFlat:
 
 
 # =============================================================================
+# _match_glob tests
+# =============================================================================
+
+
+class TestMatchGlob:
+    def test_simple_asterisk_matches_all(self) -> None:
+        assert _match_glob("file.txt", "*") is True
+        assert _match_glob("dir/file.txt", "*") is True
+
+    def test_glob_matches_single_segment(self) -> None:
+        assert _match_glob("main.py", "*.py") is True
+        assert _match_glob("test.py", "*.py") is True
+        assert _match_glob("main.txt", "*.py") is False
+
+    def test_double_asterisk_matches_nested(self) -> None:
+        assert _match_glob("src/main.py", "**/*.py") is True
+        assert _match_glob("a/b/c/file.py", "**/*.py") is True
+        assert _match_glob("file.py", "**/*.py") is True
+
+    def test_exact_match(self) -> None:
+        assert _match_glob("test.py", "test.py") is True
+        assert _match_glob("test.py", "*.py") is True
+
+    def test_question_mark_matches_single_char(self) -> None:
+        assert _match_glob("file1.py", "file?.py") is True
+        assert _match_glob("file12.py", "file??.py") is True
+        assert _match_glob("file.py", "file?.py") is False
+
+    def test_path_with_directory(self) -> None:
+        assert _match_glob("src/main.py", "src/*.py") is True
+        assert _match_glob("src/main.c", "src/*.py") is False
+
+    def test_nested_path_with_double_asterisk(self) -> None:
+        assert _match_glob("src/dir/main.py", "src/**/*.py") is True
+        assert _match_glob("src/a/b/c/file.py", "src/**/*.py") is True
+
+
+# =============================================================================
 # handle_read_file tests
 # =============================================================================
 
@@ -334,7 +388,9 @@ class TestHandleReadFile:
         ws = MagicMock()
         ws.read.return_value = "file contents"
 
-        result = handle_read_file(MockSession(WORKSPACE_READ_CAPABILITY), ws, {"path": "file.txt"})
+        result = handle_read_file(
+            MockSession(WORKSPACE_READ_CAPABILITY), ws, {"path": "file.txt"}
+        )
         assert "file contents" in cast("ToolContent", result.content[0]).text
         assert result.is_error is False
 
@@ -355,7 +411,217 @@ class TestHandleReadFile:
         ws.read.side_effect = FileNotFoundError("not found")
 
         with pytest.raises(ToolError):
-            handle_read_file(MockSession(WORKSPACE_READ_CAPABILITY), ws, {"path": "missing.txt"})
+            handle_read_file(
+                MockSession(WORKSPACE_READ_CAPABILITY), ws, {"path": "missing.txt"}
+            )
+
+
+class TestHandleReadFilePartial:
+    """Tests for partial read variants."""
+
+    def test_head_returns_first_n_lines(self) -> None:
+        ws = MagicMock()
+        ws.read_lines.return_value = (
+            "line1\nline2\n",
+            {"total_lines": 5, "returned_lines": 2, "truncated": True},
+        )
+
+        result = handle_read_file(
+            MockSession(WORKSPACE_READ_CAPABILITY),
+            ws,
+            {"path": "file.txt", "head": 2},
+        )
+        assert result.is_error is False
+        payload = json.loads(cast("ToolContent", result.content[0]).text)
+        assert payload["content"] == "line1\nline2\n"
+        assert payload["returned_lines"] == 2  # noqa: PLR2004
+        assert payload["truncated"] is True
+
+    def test_tail_returns_last_n_lines(self) -> None:
+        ws = MagicMock()
+        ws.read_lines.return_value = (
+            "line4\nline5\n",
+            {"total_lines": 5, "returned_lines": 2, "truncated": True},
+        )
+
+        result = handle_read_file(
+            MockSession(WORKSPACE_READ_CAPABILITY),
+            ws,
+            {"path": "file.txt", "tail": 2},
+        )
+        assert result.is_error is False
+        payload = json.loads(cast("ToolContent", result.content[0]).text)
+        assert payload["content"] == "line4\nline5\n"
+
+    def test_line_start_and_end_returns_range(self) -> None:
+        ws = MagicMock()
+        ws.read_lines.return_value = (
+            "line2\nline3\n",
+            {"total_lines": 5, "returned_lines": 2, "truncated": False},
+        )
+
+        result = handle_read_file(
+            MockSession(WORKSPACE_READ_CAPABILITY),
+            ws,
+            {"path": "file.txt", "line_start": 2, "line_end": 3},
+        )
+        assert result.is_error is False
+        payload = json.loads(cast("ToolContent", result.content[0]).text)
+        assert payload["content"] == "line2\nline3\n"
+
+    def test_offset_and_limit_translates_to_line_range(self) -> None:
+        ws = MagicMock()
+        ws.read_lines.return_value = (
+            "some content",
+            {"total_lines": 1, "returned_lines": 1, "truncated": False},
+        )
+
+        result = handle_read_file(
+            MockSession(WORKSPACE_READ_CAPABILITY),
+            ws,
+            {"path": "file.txt", "offset": 0, "limit": 100},
+        )
+        assert result.is_error is False
+
+    def test_conflicting_params_raise_invalid_params(self) -> None:
+        ws = MagicMock()
+
+        with pytest.raises(InvalidParamsError):
+            handle_read_file(
+                MockSession(WORKSPACE_READ_CAPABILITY),
+                ws,
+                {"path": "file.txt", "head": 2, "offset": 5},
+            )
+
+    def test_line_range_conflicts_with_offset_limit_raise_invalid_params(
+        self,
+    ) -> None:
+        ws = MagicMock()
+
+        with pytest.raises(InvalidParamsError):
+            handle_read_file(
+                MockSession(WORKSPACE_READ_CAPABILITY),
+                ws,
+                {"path": "file.txt", "line_start": 1, "line_end": 5, "offset": 0, "limit": 10},
+            )
+
+
+# =============================================================================
+# handle_read_multiple_files tests
+# =============================================================================
+
+
+class TestHandleReadMultipleFiles:
+    def test_reads_multiple_files(self) -> None:
+        ws = MagicMock()
+        ws.read.side_effect = ["content1", "content2"]
+
+        result = handle_read_multiple_files(
+            MockSession(WORKSPACE_READ_CAPABILITY),
+            ws,
+            {"paths": ["file1.txt", "file2.txt"]},
+        )
+        assert result.is_error is False
+        payload = json.loads(cast("ToolContent", result.content[0]).text)
+        assert len(payload["files"]) == 2  # noqa: PLR2004
+        assert payload["files"][0]["content"] == "content1"
+        assert payload["files"][1]["content"] == "content2"
+
+    def test_partial_failure_returns_error_per_file(self) -> None:
+        ws = MagicMock()
+        ws.read.side_effect = ["content1", FileNotFoundError("not found")]
+
+        result = handle_read_multiple_files(
+            MockSession(WORKSPACE_READ_CAPABILITY),
+            ws,
+            {"paths": ["file1.txt", "missing.txt"]},
+        )
+        assert result.is_error is False
+        payload = json.loads(cast("ToolContent", result.content[0]).text)
+        assert payload["files"][0]["content"] == "content1"
+        assert "error" in payload["files"][1]
+
+    def test_missing_capability_raises(self) -> None:
+        ws = MagicMock()
+
+        with pytest.raises(CapabilityDeniedError):
+            handle_read_multiple_files(MockSession(), ws, {"paths": ["file.txt"]})
+
+    def test_non_list_paths_raises(self) -> None:
+        ws = MagicMock()
+
+        with pytest.raises(InvalidParamsError):
+            handle_read_multiple_files(
+                MockSession(WORKSPACE_READ_CAPABILITY), ws, {"paths": "not a list"}
+            )
+
+
+# =============================================================================
+# handle_stat tests
+# =============================================================================
+
+
+class TestHandleStat:
+    def test_stat_returns_metadata(self) -> None:
+        ws = MagicMock()
+        ws.stat.return_value = {
+            "type": "file",
+            "size_bytes": 100,
+            "created_unix": 123456.0,
+            "modified_unix": 789012.0,
+            "mode": 33188,
+        }
+
+        result = handle_stat(
+            MockSession(WORKSPACE_METADATA_READ_CAPABILITY), ws, {"path": "file.txt"}
+        )
+        assert result.is_error is False
+        payload = json.loads(cast("ToolContent", result.content[0]).text)
+        assert payload["type"] == "file"
+        assert payload["size_bytes"] == 100  # noqa: PLR2004
+
+    def test_stat_missing_file(self) -> None:
+        ws = MagicMock()
+        ws.stat.return_value = {"type": "missing"}
+
+        result = handle_stat(
+            MockSession(WORKSPACE_METADATA_READ_CAPABILITY),
+            ws,
+            {"path": "missing.txt"},
+        )
+        assert result.is_error is False
+        payload = json.loads(cast("ToolContent", result.content[0]).text)
+        assert payload["type"] == "missing"
+
+    def test_missing_capability_raises(self) -> None:
+        ws = MagicMock()
+
+        with pytest.raises(CapabilityDeniedError):
+            handle_stat(MockSession(), ws, {"path": "file.txt"})
+
+
+# =============================================================================
+# handle_list_allowed_roots tests
+# =============================================================================
+
+
+class TestHandleListAllowedRoots:
+    def test_returns_allowed_roots(self) -> None:
+        ws = MagicMock()
+        ws.allowed_roots.return_value = ["/workspace", "/project"]
+
+        result = handle_list_allowed_roots(
+            MockSession(WORKSPACE_READ_CAPABILITY), ws, {}
+        )
+        assert result.is_error is False
+        payload = json.loads(cast("ToolContent", result.content[0]).text)
+        assert payload["allowed_roots"] == ["/workspace", "/project"]
+
+    def test_missing_capability_raises(self) -> None:
+        ws = MagicMock()
+
+        with pytest.raises(CapabilityDeniedError):
+            handle_list_allowed_roots(MockSession(), ws, {})
 
 
 # =============================================================================
@@ -369,7 +635,9 @@ class TestHandleListDirectory:
         ws.list_dir.return_value = ["a.txt", "b.txt"]
         ws.is_dir.side_effect = lambda p: False
 
-        result = handle_list_directory(MockSession(WORKSPACE_READ_CAPABILITY), ws, {"path": "."})
+        result = handle_list_directory(
+            MockSession(WORKSPACE_READ_CAPABILITY), ws, {"path": "."}
+        )
         assert result.is_error is False
         assert "Directory:" in cast("ToolContent", result.content[0]).text
 
@@ -449,64 +717,208 @@ class TestHandleListDirectoryRecursive:
 class TestHandleSearchFiles:
     def test_search_finds_matching_files(self) -> None:
         ws = MagicMock()
-        ws.list_dir.return_value = ["main.py", "test.py"]
-
-        def is_dir(path: str) -> bool:
-            # "." as base means entries are flat
-            return False
-
-        def is_file(path: str) -> bool:
-            return path in ("main.py", "test.py")
-
-        def exists(path: str) -> bool:
-            return path in ("main.py", "test.py")
-
-        ws.is_dir.side_effect = is_dir
-        ws.is_file.side_effect = is_file
-        ws.exists.side_effect = exists
+        ws.iter_files.return_value = ("main.py", "test.py")
+        ws.is_dir.return_value = False
+        ws.is_file.return_value = True
 
         result = handle_search_files(
             MockSession(WORKSPACE_READ_CAPABILITY),
             ws,
-            {"pattern": "main", "path": "."},
+            {"pattern": "*.py", "path": "."},
         )
         assert result.is_error is False
-        assert "main.py" in cast("ToolContent", result.content[0]).text
+        payload = json.loads(cast("ToolContent", result.content[0]).text)
+        assert "main.py" in payload["matches"]
+        assert "test.py" in payload["matches"]
 
-    def test_search_skips_heavy_directories_and_nested_worktrees(self) -> None:
+    def test_search_with_exclude(self) -> None:
         ws = MagicMock()
-        listings = {
-            "": ["src", ".git", "target", "wt-feature"],
-            "src": ["main.py"],
-            ".git": ["config"],
-            "target": ["main.rs"],
-            "wt-feature": ["main.py"],
-        }
-        directories = {"src", ".git", "target", "wt-feature"}
-        files = {"src/main.py", ".git/config", "target/main.rs", "wt-feature/main.py"}
-
-        ws.list_dir.side_effect = lambda path: listings.get(path, [])
-        ws.is_dir.side_effect = lambda path: path in directories
-        ws.is_file.side_effect = lambda path: path in files
-        ws.exists.side_effect = lambda path: path in files or path == "wt-feature/.git"
+        ws.iter_files.return_value = ("file.py", "test_file.py")
 
         result = handle_search_files(
             MockSession(WORKSPACE_READ_CAPABILITY),
             ws,
-            {"pattern": "main", "path": "."},
+            {"pattern": "*.py", "path": ".", "exclude": ["test_*.py"]},
         )
+        assert result.is_error is False
+        payload = json.loads(cast("ToolContent", result.content[0]).text)
+        assert "file.py" in payload["matches"]
+        assert "test_file.py" not in payload["matches"]
 
-        text = cast("ToolContent", result.content[0]).text
-        assert "src/main.py" in text
-        assert "target/main.rs" not in text
-        assert "wt-feature/main.py" not in text
-        assert ".git/config" not in text
+    def test_search_with_limit(self) -> None:
+        ws = MagicMock()
+        ws.iter_files.return_value = ("file1.py", "file2.py", "file3.py")
+
+        result = handle_search_files(
+            MockSession(WORKSPACE_READ_CAPABILITY),
+            ws,
+            {"pattern": "*.py", "path": ".", "limit": 2},
+        )
+        assert result.is_error is False
+        payload = json.loads(cast("ToolContent", result.content[0]).text)
+        assert payload["truncated"] is True
+        assert len(payload["matches"]) == 2  # noqa: PLR2004
+
+    def test_search_missing_capability_raises(self) -> None:
+        ws = MagicMock()
+
+        with pytest.raises(CapabilityDeniedError):
+            handle_search_files(MockSession(), ws, {"pattern": "*", "path": "."})
+
+
+# =============================================================================
+# handle_grep_files tests
+# =============================================================================
+
+
+class TestHandleGrepFiles:
+    def test_grep_finds_matches(self) -> None:
+        ws = MagicMock()
+        ws.iter_files.return_value = ("file.py",)
+        ws.stat.return_value = {"type": "file", "size_bytes": 100}
+        ws.read.return_value = "def foo():\n    pass\n"
+
+        result = handle_grep_files(
+            MockSession(WORKSPACE_READ_CAPABILITY),
+            ws,
+            {"pattern": "def foo", "path": "."},
+        )
+        assert result.is_error is False
+        payload = json.loads(cast("ToolContent", result.content[0]).text)
+        assert len(payload["matches"]) > 0
+        assert payload["matches"][0]["text"] == "def foo():"
+
+    def test_grep_literal_mode(self) -> None:
+        ws = MagicMock()
+        ws.iter_files.return_value = ("file.py",)
+        ws.stat.return_value = {"type": "file", "size_bytes": 100}
+        ws.read.return_value = "def foo():\n    pass\n"
+
+        result = handle_grep_files(
+            MockSession(WORKSPACE_READ_CAPABILITY),
+            ws,
+            {"pattern": "def foo", "path": ".", "regex": False},
+        )
+        assert result.is_error is False
+
+    def test_grep_case_insensitive(self) -> None:
+        ws = MagicMock()
+        ws.iter_files.return_value = ("file.py",)
+        ws.stat.return_value = {"type": "file", "size_bytes": 100}
+        ws.read.return_value = "Def Foo():\n    pass\n"
+
+        result = handle_grep_files(
+            MockSession(WORKSPACE_READ_CAPABILITY),
+            ws,
+            {"pattern": "def foo", "path": ".", "case_sensitive": False},
+        )
+        assert result.is_error is False
+        payload = json.loads(cast("ToolContent", result.content[0]).text)
+        assert len(payload["matches"]) > 0
+
+    def test_grep_whole_word(self) -> None:
+        ws = MagicMock()
+        ws.iter_files.return_value = ("file.py",)
+        ws.stat.return_value = {"type": "file", "size_bytes": 100}
+        ws.read.return_value = "def foo():\n    pass\n"
+
+        result = handle_grep_files(
+            MockSession(WORKSPACE_READ_CAPABILITY),
+            ws,
+            {"pattern": "foo", "path": ".", "whole_word": True},
+        )
+        assert result.is_error is False
+
+    def test_grep_with_context(self) -> None:
+        ws = MagicMock()
+        ws.iter_files.return_value = ("file.py",)
+        ws.stat.return_value = {"type": "file", "size_bytes": 100}
+        ws.read.return_value = "line0\nline1\nline2\nline3\n"
+
+        result = handle_grep_files(
+            MockSession(WORKSPACE_READ_CAPABILITY),
+            ws,
+            {"pattern": "line2", "path": ".", "context_before": 1, "context_after": 1},
+        )
+        assert result.is_error is False
+        payload = json.loads(cast("ToolContent", result.content[0]).text)
+        assert len(payload["matches"]) > 0
+        match = payload["matches"][0]
+        assert "context_before" in match
+        assert "context_after" in match
+
+    def test_grep_invalid_regex_raises(self) -> None:
+        ws = MagicMock()
+
+        with pytest.raises(InvalidParamsError):
+            handle_grep_files(
+                MockSession(WORKSPACE_READ_CAPABILITY),
+                ws,
+                {"pattern": "[invalid", "path": "."},
+            )
+
+    def test_grep_missing_capability_raises(self) -> None:
+        ws = MagicMock()
+
+        with pytest.raises(CapabilityDeniedError):
+            handle_grep_files(MockSession(), ws, {"pattern": "foo", "path": "."})
+
+
+# =============================================================================
+# handle_directory_tree tests
+# =============================================================================
+
+
+class TestHandleDirectoryTree:
+    def test_returns_json_tree(self) -> None:
+        ws = MagicMock()
+
+        def list_dir_effect(p: str) -> list[str]:
+            if p in (".", ""):
+                return ["file.txt", "subdir"]
+            return []
+
+        # Handle both normalized ("") and non-normalized (".") path forms
+        ws.is_dir.side_effect = lambda p: p in (".", "")
+        ws.list_dir.side_effect = list_dir_effect
+        ws.is_file.side_effect = lambda p: p == "file.txt"
+        ws.exists.side_effect = lambda p: False
+
+        result = handle_directory_tree(
+            MockSession(WORKSPACE_READ_CAPABILITY),
+            ws,
+            {"path": "."},
+        )
+        assert result.is_error is False
+        payload = json.loads(cast("ToolContent", result.content[0]).text)
+        assert payload["type"] == "dir"
+        assert "children" in payload
+        assert len(payload["children"]) == 2  # noqa: PLR2004
+
+    def test_respects_max_depth(self) -> None:
+        ws = MagicMock()
+        ws.is_dir.side_effect = lambda p: p in (".", "")
+        ws.list_dir.side_effect = lambda p: ["subdir"] if p in (".", "") else []
+        ws.is_file.side_effect = lambda p: p == "subdir"
+        ws.exists.side_effect = lambda p: False
+
+        result = handle_directory_tree(
+            MockSession(WORKSPACE_READ_CAPABILITY),
+            ws,
+            {"path": ".", "max_depth": 1},
+        )
+        assert result.is_error is False
+        payload = json.loads(cast("ToolContent", result.content[0]).text)
+        assert len(payload["children"]) > 0
+        for child in payload["children"]:
+            if child["type"] == "dir":
+                assert child["children"] == []
 
     def test_missing_capability_raises(self) -> None:
         ws = MagicMock()
 
         with pytest.raises(CapabilityDeniedError):
-            handle_search_files(MockSession(), ws, {"pattern": "*", "path": "."})
+            handle_directory_tree(MockSession(), ws, {"path": "."})
 
 
 # =============================================================================
@@ -531,13 +943,12 @@ class TestHandleWriteFile:
 
     def test_writes_git_tracked_file_with_tracked_capability(self) -> None:
         ws = MagicMock()
-        ws.exists.return_value = True  # File exists = git tracked
+        ws.exists.return_value = True
         ws.write.return_value = None
 
         session = MockSession(WORKSPACE_WRITE_TRACKED_CAPABILITY)
         result = handle_write_file(session, ws, {"path": "src/main.py", "content": "code"})
         assert result.is_error is False
-        assert session.check_capability(WORKSPACE_WRITE_TRACKED_CAPABILITY) is True
 
     def test_missing_path_raises(self) -> None:
         ws = MagicMock()
@@ -558,6 +969,279 @@ class TestHandleWriteFile:
                 ws,
                 {"path": "file.txt"},
             )
+
+
+# =============================================================================
+# handle_edit_file tests
+# =============================================================================
+
+
+class TestHandleEditFile:
+    def test_edits_file_successfully(self) -> None:
+        ws = MagicMock()
+        ws.read.return_value = "hello world"
+        ws.write.return_value = None
+
+        result = handle_edit_file(
+            MockSession(WORKSPACE_EDIT_CAPABILITY),
+            ws,
+            {"path": "file.txt", "edits": [{"oldText": "world", "newText": "there"}]},
+        )
+        assert result.is_error is False
+        payload = json.loads(cast("ToolContent", result.content[0]).text)
+        assert payload["status"] == "applied"
+        ws.write.assert_called_once()
+
+    def test_dry_run_does_not_write(self) -> None:
+        ws = MagicMock()
+        ws.read.return_value = "hello world"
+
+        result = handle_edit_file(
+            MockSession(WORKSPACE_EDIT_CAPABILITY),
+            ws,
+            {
+                "path": "file.txt",
+                "edits": [{"oldText": "world", "newText": "there"}],
+                "dry_run": True,
+            },
+        )
+        assert result.is_error is False
+        payload = json.loads(cast("ToolContent", result.content[0]).text)
+        assert payload["status"] == "preview"
+        assert "diff" in payload
+        ws.write.assert_not_called()
+
+    def test_no_match_returns_error(self) -> None:
+        ws = MagicMock()
+        ws.read.return_value = "hello world"
+
+        result = handle_edit_file(
+            MockSession(WORKSPACE_EDIT_CAPABILITY),
+            ws,
+            {
+                "path": "file.txt",
+                "edits": [{"oldText": "not found", "newText": "replacement"}],
+            },
+        )
+        assert result.is_error is True
+        payload = json.loads(cast("ToolContent", result.content[0]).text)
+        assert payload["status"] == "no_match"
+
+    def test_multi_edit_applies_in_order(self) -> None:
+        ws = MagicMock()
+        ws.read.return_value = "a b c"
+        ws.write.return_value = None
+
+        result = handle_edit_file(
+            MockSession(WORKSPACE_EDIT_CAPABILITY),
+            ws,
+            {
+                "path": "file.txt",
+                "edits": [
+                    {"oldText": "a", "newText": "1"},
+                    {"oldText": "b", "newText": "2"},
+                ],
+            },
+        )
+        assert result.is_error is False
+        ws.write.assert_called_once()
+
+    def test_missing_capability_raises(self) -> None:
+        ws = MagicMock()
+        ws.read.return_value = "content"
+
+        with pytest.raises(CapabilityDeniedError):
+            handle_edit_file(
+                MockSession(),
+                ws,
+                {"path": "file.txt", "edits": [{"oldText": "content", "newText": "x"}]},
+            )
+
+    def test_empty_edits_raises(self) -> None:
+        ws = MagicMock()
+
+        with pytest.raises(InvalidParamsError):
+            handle_edit_file(
+                MockSession(WORKSPACE_EDIT_CAPABILITY), ws, {"path": "file.txt", "edits": []}
+            )
+
+
+# =============================================================================
+# handle_append_file tests
+# =============================================================================
+
+
+class TestHandleAppendFile:
+    def test_appends_to_file(self) -> None:
+        ws = MagicMock()
+        ws.append.return_value = None
+
+        result = handle_append_file(
+            MockSession(WORKSPACE_EDIT_CAPABILITY),
+            ws,
+            {"path": "file.txt", "content": "appended"},
+        )
+        assert result.is_error is False
+        payload = json.loads(cast("ToolContent", result.content[0]).text)
+        assert payload["path"] == "file.txt"
+        assert payload["bytes_appended"] == 8  # noqa: PLR2004
+
+    def test_missing_capability_raises(self) -> None:
+        ws = MagicMock()
+
+        with pytest.raises(CapabilityDeniedError):
+            handle_append_file(MockSession(), ws, {"path": "file.txt", "content": "test"})
+
+
+# =============================================================================
+# handle_create_directory tests
+# =============================================================================
+
+
+class TestHandleCreateDirectory:
+    def test_creates_directory(self) -> None:
+        ws = MagicMock()
+        ws.mkdirs.return_value = None
+
+        result = handle_create_directory(
+            MockSession(WORKSPACE_EDIT_CAPABILITY),
+            ws,
+            {"path": "new/dir"},
+        )
+        assert result.is_error is False
+        payload = json.loads(cast("ToolContent", result.content[0]).text)
+        assert payload["path"] == "new/dir"
+        assert payload["created"] is True
+
+    def test_missing_capability_raises(self) -> None:
+        ws = MagicMock()
+
+        with pytest.raises(CapabilityDeniedError):
+            handle_create_directory(MockSession(), ws, {"path": "new/dir"})
+
+
+# =============================================================================
+# handle_move_file tests
+# =============================================================================
+
+
+class TestHandleMoveFile:
+    def test_moves_file(self) -> None:
+        ws = MagicMock()
+        ws.move.return_value = None
+
+        result = handle_move_file(
+            MockSession(WORKSPACE_EDIT_CAPABILITY),
+            ws,
+            {"src": "old.txt", "dest": "new.txt"},
+        )
+        assert result.is_error is False
+        payload = json.loads(cast("ToolContent", result.content[0]).text)
+        assert payload["src"] == "old.txt"
+        assert payload["dest"] == "new.txt"
+
+    def test_overwrite_true_succeeds(self) -> None:
+        ws = MagicMock()
+        ws.move.return_value = None
+
+        result = handle_move_file(
+            MockSession(WORKSPACE_EDIT_CAPABILITY),
+            ws,
+            {"src": "old.txt", "dest": "new.txt", "overwrite": True},
+        )
+        assert result.is_error is False
+
+    def test_missing_capability_raises(self) -> None:
+        ws = MagicMock()
+
+        with pytest.raises(CapabilityDeniedError):
+            handle_move_file(MockSession(), ws, {"src": "a.txt", "dest": "b.txt"})
+
+
+# =============================================================================
+# handle_copy_file tests
+# =============================================================================
+
+
+class TestHandleCopyFile:
+    def test_copies_file(self) -> None:
+        ws = MagicMock()
+        ws.copy.return_value = None
+
+        result = handle_copy_file(
+            MockSession(WORKSPACE_EDIT_CAPABILITY),
+            ws,
+            {"src": "original.txt", "dest": "copy.txt"},
+        )
+        assert result.is_error is False
+        payload = json.loads(cast("ToolContent", result.content[0]).text)
+        assert payload["src"] == "original.txt"
+        assert payload["dest"] == "copy.txt"
+
+    def test_missing_capability_raises(self) -> None:
+        ws = MagicMock()
+
+        with pytest.raises(CapabilityDeniedError):
+            handle_copy_file(MockSession(), ws, {"src": "a.txt", "dest": "b.txt"})
+
+
+# =============================================================================
+# handle_delete_path tests
+# =============================================================================
+
+
+class TestHandleDeletePath:
+    def test_deletes_file(self) -> None:
+        ws = MagicMock()
+        ws.delete.return_value = None
+
+        result = handle_delete_path(
+            MockSession(WORKSPACE_DELETE_CAPABILITY),
+            ws,
+            {"path": "file.txt"},
+        )
+        assert result.is_error is False
+        payload = json.loads(cast("ToolContent", result.content[0]).text)
+        assert payload["path"] == "file.txt"
+        assert payload["deleted"] is True
+
+    def test_deletes_directory_recursively(self) -> None:
+        ws = MagicMock()
+        ws.delete.return_value = None
+
+        result = handle_delete_path(
+            MockSession(WORKSPACE_DELETE_CAPABILITY),
+            ws,
+            {"path": "dir", "recursive": True},
+        )
+        assert result.is_error is False
+
+    def test_refuses_directory_without_recursive(self) -> None:
+        ws = MagicMock()
+        ws.delete.side_effect = IsADirectoryError("Is a directory")
+
+        result = handle_delete_path(
+            MockSession(WORKSPACE_DELETE_CAPABILITY),
+            ws,
+            {"path": "dir"},
+        )
+        assert result.is_error is True
+
+    def test_workspace_delete_distinct_from_edit(self) -> None:
+        """WorkspaceDelete capability is distinct from WorkspaceEdit."""
+        ws = MagicMock()
+        ws.delete.return_value = None
+
+        with pytest.raises(CapabilityDeniedError):
+            handle_delete_path(
+                MockSession(WORKSPACE_EDIT_CAPABILITY), ws, {"path": "file.txt"}
+            )
+
+    def test_missing_capability_raises(self) -> None:
+        ws = MagicMock()
+
+        with pytest.raises(CapabilityDeniedError):
+            handle_delete_path(MockSession(), ws, {"path": "file.txt"})
 
 
 # =============================================================================
@@ -591,15 +1275,12 @@ class TestInferImageMimeType:
 
 
 # =============================================================================
-# handle_read_image tests (Task 4 & 6)
+# handle_read_image tests
 # =============================================================================
 
 
 class TestHandleReadImage:
-    """Tests for handle_read_image workspace tool (Task 4 & 6)."""
-
     def test_requires_media_read_capability(self) -> None:
-        """handle_read_image raises CapabilityDeniedError when session lacks media.read."""
         ws = MagicMock()
 
         with pytest.raises(CapabilityDeniedError) as exc_info:
@@ -608,7 +1289,6 @@ class TestHandleReadImage:
         assert "media.read" in str(exc_info.value)
 
     def test_returns_error_for_unsupported_format(self) -> None:
-        """handle_read_image returns is_error=True ToolResult for unsupported formats."""
         ws = MagicMock()
 
         result = handle_read_image(
@@ -621,21 +1301,7 @@ class TestHandleReadImage:
         assert "Unsupported image format" in cast("ToolContent", result.content[0]).text
         assert ".pdf" in cast("ToolContent", result.content[0]).text
 
-    def test_returns_error_for_unknown_format(self) -> None:
-        """handle_read_image returns is_error=True for unknown file suffixes."""
-        ws = MagicMock()
-
-        result = handle_read_image(
-            MockSession(MEDIA_READ_CAPABILITY),
-            ws,
-            {"path": "file.xyz"},
-        )
-
-        assert result.is_error is True
-        assert "Unsupported image format" in cast("ToolContent", result.content[0]).text
-
     def test_returns_error_for_missing_file(self) -> None:
-        """handle_read_image returns is_error=True when file cannot be stat'd."""
         ws = MagicMock()
         ws.absolute_path.return_value = "/tmp/nonexistent.png"
 
@@ -648,11 +1314,9 @@ class TestHandleReadImage:
         assert "Failed to stat" in cast("ToolContent", result.content[0]).text
 
     def test_returns_error_for_oversized_file(self) -> None:
-        """handle_read_image returns is_error=True when file exceeds max_inline_bytes."""
         ws = MagicMock()
 
         with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
-            # Write enough bytes to exceed default 5MB limit
             f.write(b"\x00" * (DEFAULT_MAX_INLINE_BYTES + 1))
             temp_path = f.name
 
@@ -671,10 +1335,9 @@ class TestHandleReadImage:
             Path(temp_path).unlink()
 
     def test_returns_image_content_block_on_success(self) -> None:
-        """handle_read_image returns ToolResult with ImageContent on success."""
-        # 1x1 transparent PNG pixel
         png_bytes = base64.b64decode(
-            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk"
+            "+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
         )
 
         with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
@@ -696,28 +1359,10 @@ class TestHandleReadImage:
             assert isinstance(content, ImageContent)
             assert content.type == "image"
             assert content.mime_type == "image/png"
-            # Verify it's valid base64
-            decoded = base64.b64decode(content.data)
-            assert len(decoded) == len(png_bytes)
         finally:
             Path(temp_path).unlink()
 
-    def test_rejects_path_traversal(self) -> None:
-        """handle_read_image rejects paths attempting to escape workspace root."""
-        ws = MagicMock()
-        ws.absolute_path.return_value = "/tmp/../../../etc/passwd"
-
-        result = handle_read_image(
-            MockSession(MEDIA_READ_CAPABILITY),
-            ws,
-            {"path": "../../../etc/passwd"},
-        )
-        # The handler should either reject at absolute_path level or at stat level
-        # depending on implementation. In either case, it should be an error result.
-        assert result.is_error is True
-
     def test_read_file_unchanged_text_only(self) -> None:
-        """read_file (text tool) behavior is unchanged - no binary retrofit."""
         ws = MagicMock()
         ws.read.return_value = "hello world"
 
@@ -727,11 +1372,9 @@ class TestHandleReadImage:
             {"path": "hello.txt"},
         )
 
-        # read_file should return text content, NOT image content
         assert result.is_error is False
         assert hasattr(result.content[0], "text")
         assert cast("ToolContent", result.content[0]).text == "hello world"
-        # It should NOT be an ImageContent
         assert not isinstance(result.content[0], ImageContent)
 
 

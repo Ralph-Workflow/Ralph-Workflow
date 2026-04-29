@@ -91,6 +91,7 @@ def test_capability_template_variables_expose_enabled_flags_and_tools() -> None:
     assert variables["GIT_DIFF_TOOL_NAME"] == "git_diff"
     assert variables["MCP_TOOLS_LIST"] == (
         "read_file, list_directory, list_directory_recursive, directory_tree, search_files, "
+        "read_multiple_files, stat_path, list_allowed_roots, grep_files, "
         "git_status, git_log, git_show, git_diff, write_file, exec, "
         "ralph_submit_artifact, declare_complete, coordinate, "
         "ralph_submit_plan_section, ralph_finalize_plan, ralph_get_plan_draft, "

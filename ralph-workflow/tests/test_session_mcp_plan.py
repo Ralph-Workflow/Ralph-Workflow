@@ -136,3 +136,145 @@ def test_session_mcp_plan_grants_read_diff_and_exec_for_review_analysis(
     assert "process.exec_bounded" in plan.capabilities
     assert "run.report_progress" in plan.capabilities
     assert "workspace.write_tracked" not in plan.capabilities
+
+
+class TestWorkspaceMetadataReadGrantedToAllDrains:
+    """workspace.metadata_read is granted to ALL drains."""
+
+    @pytest.mark.parametrize(
+        "drain",
+        [
+            "planning",
+            "development",
+            "development_analysis",
+            "development_commit",
+            "analysis",
+            "review",
+            "review_analysis",
+            "review_commit",
+            "fix",
+            "commit",
+        ],
+    )
+    def test_metadata_read_granted_to_all_drains(
+        self,
+        isolated_home: Path,
+        tmp_path: Path,
+        drain: str,
+    ) -> None:
+        del isolated_home
+
+        plan = build_session_mcp_plan(
+            transport=AgentTransport.CLAUDE,
+            drain=drain,
+            workspace_path=tmp_path,
+        )
+
+        assert "workspace.metadata_read" in plan.capabilities
+
+
+class TestWorkspaceEditAndDeleteGrantedToDevAndFixDrains:
+    """workspace.edit and workspace.delete are granted to development and fix drains only."""
+
+    @pytest.mark.parametrize(
+        "drain",
+        ["development", "fix"],
+    )
+    def test_edit_and_delete_granted_to_dev_and_fix(
+        self,
+        isolated_home: Path,
+        tmp_path: Path,
+        drain: str,
+    ) -> None:
+        del isolated_home
+
+        plan = build_session_mcp_plan(
+            transport=AgentTransport.CLAUDE,
+            drain=drain,
+            workspace_path=tmp_path,
+        )
+
+        assert "workspace.edit" in plan.capabilities
+        assert "workspace.delete" in plan.capabilities
+
+    @pytest.mark.parametrize(
+        "drain",
+        [
+            "planning",
+            "development_analysis",
+            "development_commit",
+            "analysis",
+            "review",
+            "review_analysis",
+            "review_commit",
+            "commit",
+        ],
+    )
+    def test_edit_and_delete_not_granted_to_read_only_drains(
+        self,
+        isolated_home: Path,
+        tmp_path: Path,
+        drain: str,
+    ) -> None:
+        del isolated_home
+
+        plan = build_session_mcp_plan(
+            transport=AgentTransport.CLAUDE,
+            drain=drain,
+            workspace_path=tmp_path,
+        )
+
+        assert "workspace.edit" not in plan.capabilities
+        assert "workspace.delete" not in plan.capabilities
+
+
+class TestCommitDrainIsStrictlyReadOnly:
+    """Commit drains must be strictly read-only; git.write is reserved to the orchestrator."""
+
+    @pytest.mark.parametrize(
+        "drain",
+        ["development_commit", "review_commit", "commit"],
+    )
+    def test_commit_drain_does_not_grant_write_capabilities(
+        self,
+        isolated_home: Path,
+        tmp_path: Path,
+        drain: str,
+    ) -> None:
+        del isolated_home
+
+        plan = build_session_mcp_plan(
+            transport=AgentTransport.CLAUDE,
+            drain=drain,
+            workspace_path=tmp_path,
+        )
+
+        assert "git.write" not in plan.capabilities
+        assert "workspace.write_ephemeral" not in plan.capabilities
+        assert "workspace.write_tracked" not in plan.capabilities
+        assert "process.exec_bounded" not in plan.capabilities
+
+    @pytest.mark.parametrize(
+        "drain",
+        ["development_commit", "review_commit", "commit"],
+    )
+    def test_commit_drain_keeps_read_capabilities(
+        self,
+        isolated_home: Path,
+        tmp_path: Path,
+        drain: str,
+    ) -> None:
+        del isolated_home
+
+        plan = build_session_mcp_plan(
+            transport=AgentTransport.CLAUDE,
+            drain=drain,
+            workspace_path=tmp_path,
+        )
+
+        assert "workspace.read" in plan.capabilities
+        assert "git.status_read" in plan.capabilities
+        assert "git.diff_read" in plan.capabilities
+        assert "artifact.submit" in plan.capabilities
+        assert "workspace.metadata_read" in plan.capabilities
+        assert "run.report_progress" in plan.capabilities
