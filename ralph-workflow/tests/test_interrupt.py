@@ -13,6 +13,26 @@ if TYPE_CHECKING:
 
 INTERRUPTED_EXIT_CODE = 130
 
+ACTIVE_AGENT_CHAINS = {
+    "planning": ["claude"],
+    "development": ["claude", "opencode"],
+    "analysis": ["claude"],
+    "review": ["claude"],
+    "fix": ["claude"],
+    "commit": ["claude"],
+}
+
+ACTIVE_AGENT_DRAINS = {
+    "planning": "planning",
+    "development": "development",
+    "development_analysis": "analysis",
+    "development_commit": "commit",
+    "review": "review",
+    "review_analysis": "analysis",
+    "review_commit": "commit",
+    "fix": "fix",
+}
+
 
 def _install_test_dependency_stubs() -> None:
     if "loguru" not in sys.modules:
@@ -57,6 +77,13 @@ load_policy = policy_loader_module.load_policy
 
 GeneralConfig.model_rebuild(_types_namespace={"Path": Path})
 UnifiedConfig.model_rebuild(_types_namespace={"Path": Path})
+
+
+def _config_with_agent_policy() -> UnifiedConfig:
+    return UnifiedConfig(
+        agent_chains=dict(ACTIVE_AGENT_CHAINS),
+        agent_drains=dict(ACTIVE_AGENT_DRAINS),
+    )
 
 
 class RunCommandModule(Protocol):
@@ -117,7 +144,7 @@ def test_runner_saves_interrupted_checkpoint_on_keyboard_interrupt(
 
     state = PipelineState(phase="planning")
 
-    exit_code = run_pipeline_runner(UnifiedConfig(), state)
+    exit_code = run_pipeline_runner(_config_with_agent_policy(), state)
 
     assert exit_code == INTERRUPTED_EXIT_CODE
     assert len(saved_states) == 1
@@ -137,7 +164,7 @@ def test_run_pipeline_saves_interrupted_resume_checkpoint(
         run_command_module, "resolve_workspace_scope", lambda: WorkspaceScope(tmp_path)
     )
     monkeypatch.setattr(
-        run_command_module, "load_config", lambda *_args, **_kwargs: UnifiedConfig()
+        run_command_module, "load_config", lambda *_args, **_kwargs: _config_with_agent_policy()
     )
     monkeypatch.setattr(run_command_module.ckpt, "load", lambda: resumed_state)
     monkeypatch.setattr(run_command_module.ckpt, "save", saved_states.append)

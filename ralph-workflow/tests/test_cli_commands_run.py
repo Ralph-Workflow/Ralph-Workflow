@@ -28,6 +28,26 @@ if TYPE_CHECKING:
 
 _EXIT_PREFLIGHT = 2
 
+ACTIVE_AGENT_CHAINS = {
+    "planning": ["claude"],
+    "development": ["claude", "opencode"],
+    "analysis": ["claude"],
+    "review": ["claude"],
+    "fix": ["claude"],
+    "commit": ["claude"],
+}
+
+ACTIVE_AGENT_DRAINS = {
+    "planning": "planning",
+    "development": "development",
+    "development_analysis": "analysis",
+    "development_commit": "commit",
+    "review": "review",
+    "review_analysis": "analysis",
+    "review_commit": "commit",
+    "fix": "fix",
+}
+
 
 def _policy_bundle_for_testing() -> PolicyBundle:
     return PolicyBundle(
@@ -81,7 +101,10 @@ class _CaptureConsole:
 
 
 def _fake_config(developer_iters: int = 1, reviewer_reviews: int = 1) -> UnifiedConfig:
-    config = UnifiedConfig()
+    config = UnifiedConfig(
+        agent_chains=dict(ACTIVE_AGENT_CHAINS),
+        agent_drains=dict(ACTIVE_AGENT_DRAINS),
+    )
     general = config.general.model_copy(
         update={
             "developer_iters": developer_iters,

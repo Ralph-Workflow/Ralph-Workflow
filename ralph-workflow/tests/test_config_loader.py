@@ -26,6 +26,26 @@ DEFAULT_VERBOSITY = 2
 XDG_DEVELOPER_ITERS = 8
 LOCAL_DEVELOPER_ITERS = 3
 
+ACTIVE_AGENT_POLICY = (
+    "[agent_chains]\n"
+    'planning = ["claude"]\n'
+    'development = ["claude", "opencode"]\n'
+    'analysis = ["claude"]\n'
+    'review = ["claude"]\n'
+    'fix = ["claude"]\n'
+    'commit = ["claude"]\n'
+    "\n"
+    "[agent_drains]\n"
+    'planning = "planning"\n'
+    'development = "development"\n'
+    'development_analysis = "analysis"\n'
+    'development_commit = "commit"\n'
+    'review = "review"\n'
+    'review_analysis = "analysis"\n'
+    'review_commit = "commit"\n'
+    'fix = "fix"\n'
+)
+
 
 def _scope_for(path: Path) -> WorkspaceScope:
     return WorkspaceScope(path)
@@ -74,14 +94,18 @@ def test_deep_merge_override_wins() -> None:
     assert result == {"a": 1, "b": {"x": 1, "y": 3, "z": 4}}
 
 
-def test_load_config_with_defaults(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """Test loading config with default values."""
+def test_load_config_without_agent_policy_tables_leaves_agent_policy_empty(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Missing agent policy config must not be silently filled by Python defaults."""
     monkeypatch.setattr(
         "ralph.config.loader.GLOBAL_CONFIG_PATH", tmp_path / GLOBAL_CONFIG_PATH.name
     )
     monkeypatch.setattr("ralph.config.loader.LOCAL_CONFIG_PATH", tmp_path / LOCAL_CONFIG_PATH.name)
 
     config = load_config(workspace_scope=_scope_for(tmp_path))
+    assert config.agent_chains == {}
+    assert config.agent_drains == {}
     assert config.general.developer_iters == DEFAULT_DEVELOPER_ITERS
     assert config.general.reviewer_reviews == DEFAULT_REVIEWER_REVIEWS
     assert config.general.workflow.checkpoint_enabled is True
@@ -103,7 +127,7 @@ def test_load_config_supports_xdg_config_home(
     config_home = tmp_path / "xdg-config"
     config_home.mkdir()
     (config_home / "ralph-workflow.toml").write_text(
-        "[general]\ndeveloper_iters = 8\n",
+        ACTIVE_AGENT_POLICY + "[general]\ndeveloper_iters = 8\n",
         encoding="utf-8",
     )
     monkeypatch.setenv("XDG_CONFIG_HOME", str(config_home))

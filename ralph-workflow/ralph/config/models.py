@@ -337,30 +337,6 @@ class CcsAliasConfig(_FrozenConfigModel):  # type: ignore[explicit-any]  # reaso
     session_flag: str | None = None
 
 
-def _default_agent_chains() -> dict[str, list[str]]:
-    return {
-        "planning": ["claude"],
-        "development": ["claude", "opencode"],
-        "analysis": ["claude"],
-        "review": ["claude"],
-        "fix": ["claude"],
-        "commit": ["claude"],
-    }
-
-
-def _default_agent_drains() -> dict[str, str]:
-    return {
-        "planning": "planning",
-        "development": "development",
-        "development_analysis": "analysis",
-        "development_commit": "commit",
-        "review": "review",
-        "review_analysis": "analysis",
-        "review_commit": "commit",
-        "fix": "fix",
-    }
-
-
 class UnifiedConfig(_FrozenConfigModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     """Top-level merged configuration (global + local + CLI overrides).
 
@@ -381,6 +357,6 @@ class UnifiedConfig(_FrozenConfigModel):  # type: ignore[explicit-any]  # reason
     ccs: CcsConfig = Field(default_factory=CcsConfig)
     agents: dict[str, AgentConfig] = Field(default_factory=dict)
     ccs_aliases: dict[str, str | CcsAliasConfig] = Field(default_factory=dict)
-    agent_chains: dict[str, list[str]] = Field(default_factory=_default_agent_chains)
-    agent_drains: dict[str, str] = Field(default_factory=_default_agent_drains)
+    agent_chains: dict[str, list[str]] = Field(default_factory=dict)
+    agent_drains: dict[str, str] = Field(default_factory=dict)
     cloud: CloudConfig = Field(default_factory=CloudConfig)

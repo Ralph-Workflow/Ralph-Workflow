@@ -218,17 +218,37 @@ def test_bundled_global_template_parses_as_valid_toml() -> None:
     assert isinstance(result, dict)
 
 
-def test_local_template_documents_full_runtime_drain_bindings() -> None:
+def test_local_template_defines_active_runtime_drain_bindings() -> None:
     template = Path(ralph.policy.__file__).parent / "defaults" / "ralph-workflow-local.toml"
-    content = template.read_text(encoding="utf-8")
+    data = tomllib.loads(template.read_text(encoding="utf-8"))
+    drains = data["agent_drains"]
 
-    for line in (
-        '# development_analysis = "analysis"',
-        '# development_commit = "commit"',
-        '# review_analysis = "analysis"',
-        '# review_commit = "commit"',
+    for drain_name, chain_name in (
+        ("planning", "planning"),
+        ("development", "development"),
+        ("development_analysis", "analysis"),
+        ("development_commit", "commit"),
+        ("review", "review"),
+        ("review_analysis", "analysis"),
+        ("review_commit", "commit"),
+        ("fix", "fix"),
     ):
-        assert line in content, f"Expected local template to document runtime drain binding: {line}"
+        assert drains.get(drain_name) == chain_name, (
+            f"Expected active local template drain binding {drain_name!r} -> {chain_name!r}"
+        )
+
+
+def test_local_template_defines_active_agent_chain_defaults() -> None:
+    template = Path(ralph.policy.__file__).parent / "defaults" / "ralph-workflow-local.toml"
+    data = tomllib.loads(template.read_text(encoding="utf-8"))
+    chains = data["agent_chains"]
+
+    assert chains["planning"] == ["claude"]
+    assert chains["development"] == ["claude", "opencode"]
+    assert chains["analysis"] == ["claude"]
+    assert chains["review"] == ["claude"]
+    assert chains["fix"] == ["claude"]
+    assert chains["commit"] == ["claude"]
 
 
 def test_local_template_showcases_fallback_and_transport_examples() -> None:
@@ -246,6 +266,37 @@ def test_local_template_showcases_fallback_and_transport_examples() -> None:
 
 def test_template_example_agent_config_renderer_stays_in_sync_with_documented_example() -> None:
     assert _render_template_example_agent_config() == EXAMPLE_AGENT_CONFIG
+
+
+def test_generated_local_template_validates_against_bundled_policy(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    defaults_dir = Path(ralph.policy.__file__).parent / "defaults"
+    agent_dir = tmp_path / ".agent"
+    agent_dir.mkdir()
+    (agent_dir / "ralph-workflow.toml").write_text(
+        (defaults_dir / "ralph-workflow-local.toml").read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+    (agent_dir / "pipeline.toml").write_text(
+        (defaults_dir / "pipeline.toml").read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+    (agent_dir / "artifacts.toml").write_text(
+        (defaults_dir / "artifacts.toml").read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr("ralph.config.loader.LOCAL_CONFIG_PATH", agent_dir / "ralph-workflow.toml")
+    config = loader_module.load_config(workspace_scope=WorkspaceScope(tmp_path))
+    bundle = load_policy(agent_dir, config=config)
+
+    for phase_name, phase_def in bundle.pipeline.phases.items():
+        if phase_name == bundle.pipeline.terminal_phase:
+            continue
+        assert phase_def.drain in bundle.agents.agent_drains, (
+            f"Generated local template left phase {phase_name!r} drain {phase_def.drain!r} unbound"
+        )
 
 
 def test_template_example_agent_config_validates_against_bundled_policy(

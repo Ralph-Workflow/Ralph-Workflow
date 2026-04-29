@@ -137,25 +137,20 @@
 
 # ---------------------------------------------------------------------------
 # [agent_chains.*] — Named reusable chain definitions (list of agent names)
-# Defaults shown below mirror the built-in factory defaults.
-#
-# The active built-in runtime default is intentionally minimal:
-#   planning = ["claude"]
-#   development = ["claude", "opencode"]
-#   analysis = ["claude"]
-#   review = ["claude"]
-#   fix = ["claude"]
-#   commit = ["claude"]
-#
-# Recommended example (uncomment and adapt):
-#   - planning on a stronger Claude model
-#   - development with a cheaper/faster first attempt and fallbacks
-#   - review through Codex first, then Claude
-#   - cheap commit-message generation
-#   - CCS alias example for teams that standardize model profiles
-# See docs/sphinx/configuration.md#ccs_aliases for CCS details.
+# These active defaults make the generated global config valid on disk without
+# relying on hidden Python-side defaults.
 # ---------------------------------------------------------------------------
 
+[agent_chains]
+planning = ["claude"]
+development = ["claude", "opencode"]
+analysis = ["claude"]
+review = ["claude"]
+fix = ["claude"]
+commit = ["claude"]
+
+# Recommended example (copy/replace the active blocks below if you want a more
+# opinionated setup with explicit model families, fallback order, and CCS aliases):
 # [agent_chains]
 # planning = ["claude/opus"]
 # development = ["opencode/anthropic/claude-sonnet-4", "codex", "claude/sonnet"]
@@ -164,6 +159,7 @@
 # fix = ["opencode/anthropic/claude-sonnet-4", "claude/sonnet"]
 # commit = ["claude/haiku"]
 # alt_planning = ["ccs/work"]
+# See docs/sphinx/configuration.md#ccs_aliases for CCS details.
 
 # ---------------------------------------------------------------------------
 # [agent_drains.*] — Drain-to-chain bindings for pipeline drains
@@ -171,6 +167,17 @@
 # IMPORTANT: the bundled pipeline uses the full runtime drain set below.
 # ---------------------------------------------------------------------------
 
+[agent_drains]
+planning = "planning"
+development = "development"
+development_analysis = "analysis"
+development_commit = "commit"
+review = "review"
+review_analysis = "analysis"
+review_commit = "commit"
+fix = "fix"
+
+# Recommended example drain bindings for the opinionated chain example above:
 # [agent_drains]
 # planning = "planning"
 # development = "development"
