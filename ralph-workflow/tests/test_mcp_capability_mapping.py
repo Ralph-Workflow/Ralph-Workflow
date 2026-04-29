@@ -827,3 +827,29 @@ class TestWorkspaceNewCapabilities:
         )
         assert result.is_allowed() is False
         assert result.code == AccessDeniedCode.CAPABILITY_DENIED
+
+    # ------------------------------------------------------------------
+    # Drain-coverage: metadata_read (all drains), edit/delete (dev/fix only)
+    # ------------------------------------------------------------------
+
+    @pytest.mark.parametrize("drain", list(SessionDrain))
+    def test_workspace_metadata_read_granted_to_all_drains(self, drain: SessionDrain) -> None:
+        assert CapabilitySet.defaults_for_drain(drain).contains(
+            Capability.WORKSPACE_METADATA_READ
+        ), f"SessionDrain.{drain.name} is missing Capability.WORKSPACE_METADATA_READ"
+
+    @pytest.mark.parametrize("drain", list(SessionDrain))
+    def test_workspace_edit_granted_only_to_dev_and_fix(self, drain: SessionDrain) -> None:
+        expected = drain in {SessionDrain.DEVELOPMENT, SessionDrain.FIX}
+        granted = CapabilitySet.defaults_for_drain(drain).contains(Capability.WORKSPACE_EDIT)
+        assert granted is expected, (
+            f"SessionDrain.{drain.name}: WORKSPACE_EDIT grant expected={expected}"
+        )
+
+    @pytest.mark.parametrize("drain", list(SessionDrain))
+    def test_workspace_delete_granted_only_to_dev_and_fix(self, drain: SessionDrain) -> None:
+        expected = drain in {SessionDrain.DEVELOPMENT, SessionDrain.FIX}
+        granted = CapabilitySet.defaults_for_drain(drain).contains(Capability.WORKSPACE_DELETE)
+        assert granted is expected, (
+            f"SessionDrain.{drain.name}: WORKSPACE_DELETE grant expected={expected}"
+        )

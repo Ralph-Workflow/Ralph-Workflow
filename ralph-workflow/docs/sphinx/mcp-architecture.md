@@ -98,7 +98,7 @@ The full tool list is in {doc}`mcp-tools`. Tools are implemented in `ralph.mcp.t
 | Package | Tools provided |
 |---|---|
 | `ralph.mcp.tools.artifact` | `ralph_submit_artifact`, plan section tools |
-| `ralph.mcp.tools.workspace` | `read_file`, `read_multiple_files`, `stat_path`, `list_allowed_roots`, `write_file`, `list_directory`, `search_files`, `grep_files`, `edit_file`, `append_file`, `create_directory`, `move_file`, `copy_file`, `delete_path`, `directory_tree`, `list_directory_recursive`, `handle_read_image` |
+| `ralph.mcp.tools.workspace` | `read_file`, `read_multiple_files`, `stat_path`, `list_allowed_roots`, `write_file`, `list_directory`, `search_files`, `grep_files`, `edit_file`, `append_file`, `create_directory`, `move_file`, `copy_file`, `delete_path`, `directory_tree`, `list_directory_recursive`, `read_image` |
 | `ralph.mcp.tools.exec` | `exec` (bounded shell execution) |
 | `ralph.mcp.tools.git_read` | `git_status`, `git_diff`, `git_log`, `git_show` |
 | `ralph.mcp.tools.websearch` | `web_search` |

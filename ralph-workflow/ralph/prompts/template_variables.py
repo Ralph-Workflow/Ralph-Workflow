@@ -52,6 +52,7 @@ if TYPE_CHECKING:
 DEFAULT_CAPABILITIES: dict[SessionDrain, tuple[RalphCapability, ...]] = {
     SessionDrain.PLANNING: (
         RalphCapability.WORKSPACE_READ,
+        RalphCapability.WORKSPACE_METADATA_READ,
         RalphCapability.WORKSPACE_WRITE_EPHEMERAL,
         RalphCapability.GIT_STATUS_READ,
         RalphCapability.GIT_DIFF_READ,
@@ -62,6 +63,7 @@ DEFAULT_CAPABILITIES: dict[SessionDrain, tuple[RalphCapability, ...]] = {
     ),
     SessionDrain.DEVELOPMENT_ANALYSIS: (
         RalphCapability.WORKSPACE_READ,
+        RalphCapability.WORKSPACE_METADATA_READ,
         RalphCapability.GIT_STATUS_READ,
         RalphCapability.GIT_DIFF_READ,
         RalphCapability.ARTIFACT_SUBMIT,
@@ -72,12 +74,14 @@ DEFAULT_CAPABILITIES: dict[SessionDrain, tuple[RalphCapability, ...]] = {
         RalphCapability.UPSTREAM_TOOL_USE,
     ),
     SessionDrain.DEVELOPMENT_COMMIT: (
+        RalphCapability.WORKSPACE_METADATA_READ,
         RalphCapability.WEB_SEARCH,
         RalphCapability.WEB_VISIT,
         RalphCapability.UPSTREAM_TOOL_USE,
     ),
     SessionDrain.ANALYSIS: (
         RalphCapability.WORKSPACE_READ,
+        RalphCapability.WORKSPACE_METADATA_READ,
         RalphCapability.GIT_STATUS_READ,
         RalphCapability.GIT_DIFF_READ,
         RalphCapability.ARTIFACT_SUBMIT,
@@ -88,6 +92,7 @@ DEFAULT_CAPABILITIES: dict[SessionDrain, tuple[RalphCapability, ...]] = {
     ),
     SessionDrain.REVIEW: (
         RalphCapability.WORKSPACE_READ,
+        RalphCapability.WORKSPACE_METADATA_READ,
         RalphCapability.WORKSPACE_WRITE_EPHEMERAL,
         RalphCapability.GIT_STATUS_READ,
         RalphCapability.GIT_DIFF_READ,
@@ -98,6 +103,7 @@ DEFAULT_CAPABILITIES: dict[SessionDrain, tuple[RalphCapability, ...]] = {
     ),
     SessionDrain.REVIEW_ANALYSIS: (
         RalphCapability.WORKSPACE_READ,
+        RalphCapability.WORKSPACE_METADATA_READ,
         RalphCapability.GIT_STATUS_READ,
         RalphCapability.GIT_DIFF_READ,
         RalphCapability.ARTIFACT_SUBMIT,
@@ -109,8 +115,11 @@ DEFAULT_CAPABILITIES: dict[SessionDrain, tuple[RalphCapability, ...]] = {
     ),
     SessionDrain.DEVELOPMENT: (
         RalphCapability.WORKSPACE_READ,
+        RalphCapability.WORKSPACE_METADATA_READ,
         RalphCapability.WORKSPACE_WRITE_EPHEMERAL,
         RalphCapability.WORKSPACE_WRITE_TRACKED,
+        RalphCapability.WORKSPACE_EDIT,
+        RalphCapability.WORKSPACE_DELETE,
         RalphCapability.GIT_STATUS_READ,
         RalphCapability.GIT_DIFF_READ,
         RalphCapability.PROCESS_EXEC_BOUNDED,
@@ -123,7 +132,10 @@ DEFAULT_CAPABILITIES: dict[SessionDrain, tuple[RalphCapability, ...]] = {
     ),
     SessionDrain.FIX: (
         RalphCapability.WORKSPACE_READ,
+        RalphCapability.WORKSPACE_METADATA_READ,
         RalphCapability.WORKSPACE_WRITE_TRACKED,
+        RalphCapability.WORKSPACE_EDIT,
+        RalphCapability.WORKSPACE_DELETE,
         RalphCapability.GIT_STATUS_READ,
         RalphCapability.GIT_DIFF_READ,
         RalphCapability.PROCESS_EXEC_BOUNDED,
@@ -135,12 +147,14 @@ DEFAULT_CAPABILITIES: dict[SessionDrain, tuple[RalphCapability, ...]] = {
         RalphCapability.UPSTREAM_TOOL_USE,
     ),
     SessionDrain.REVIEW_COMMIT: (
+        RalphCapability.WORKSPACE_METADATA_READ,
         RalphCapability.WEB_SEARCH,
         RalphCapability.WEB_VISIT,
         RalphCapability.UPSTREAM_TOOL_USE,
     ),
     SessionDrain.COMMIT: (
         RalphCapability.WORKSPACE_READ,
+        RalphCapability.WORKSPACE_METADATA_READ,
         RalphCapability.WORKSPACE_WRITE_EPHEMERAL,
         RalphCapability.GIT_STATUS_READ,
         RalphCapability.GIT_DIFF_READ,
