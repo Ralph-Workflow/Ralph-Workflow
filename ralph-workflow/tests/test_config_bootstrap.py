@@ -29,58 +29,6 @@ _EXPECTED_REGENERATE_COUNT = 7
 _DEFAULT_DEVELOPER_ITERS = 5
 
 
-EXAMPLE_AGENT_CONFIG = """[agent_chains]
-planning = [\"claude/opus\"]
-development = [\"opencode/anthropic/claude-sonnet-4\", \"codex\", \"claude/sonnet\"]
-analysis = [\"claude/sonnet\"]
-review = [\"codex\", \"claude/sonnet\"]
-fix = [\"opencode/anthropic/claude-sonnet-4\", \"claude/sonnet\"]
-commit = [\"claude/haiku\"]
-alt_planning = [\"ccs/work\"]
-
-[agent_drains]
-planning = \"planning\"
-development = \"development\"
-development_analysis = \"analysis\"
-development_commit = \"commit\"
-review = \"review\"
-review_analysis = \"analysis\"
-review_commit = \"commit\"
-fix = \"fix\"
-"""
-
-
-def _render_template_example_agent_config() -> str:
-    template = Path(ralph.policy.__file__).parent / "defaults" / "ralph-workflow-local.toml"
-    content = template.read_text(encoding="utf-8").splitlines()
-    sections: dict[str, list[str]] = {"agent_chains": [], "agent_drains": []}
-    current_section: str | None = None
-
-    for line in content:
-        stripped = line.strip()
-        if stripped == "# [agent_chains]":
-            current_section = "agent_chains"
-            continue
-        if stripped == "# [agent_drains]":
-            current_section = "agent_drains"
-            continue
-        if current_section is None:
-            continue
-        if stripped.startswith("# --------------------------------"):
-            current_section = None
-            continue
-        if not stripped.startswith("# "):
-            continue
-        body = stripped[2:]
-        if " = " not in body:
-            continue
-        sections[current_section].append(body)
-
-    rendered = "[agent_chains]\n" + "\n".join(sections["agent_chains"])
-    rendered += "\n\n[agent_drains]\n" + "\n".join(sections["agent_drains"])
-    return rendered + "\n"
-
-
 def test_ensure_global_config_creates_when_absent(tmp_path: Path) -> None:
     result = ensure_global_config(tmp_path)
     target = tmp_path / "ralph-workflow.toml"
@@ -243,29 +191,18 @@ def test_local_template_defines_active_agent_chain_defaults() -> None:
     data = tomllib.loads(template.read_text(encoding="utf-8"))
     chains = data["agent_chains"]
 
-    assert chains["planning"] == ["claude"]
-    assert chains["development"] == ["claude", "opencode"]
-    assert chains["analysis"] == ["claude"]
-    assert chains["review"] == ["claude"]
-    assert chains["fix"] == ["claude"]
-    assert chains["commit"] == ["claude"]
+    assert chains["planning"] == ["claude/opus"]
+    assert chains["development"] == ["opencode/anthropic/claude-sonnet-4", "codex", "claude/sonnet"]
+    assert chains["analysis"] == ["claude/sonnet"]
+    assert chains["review"] == ["codex", "claude/sonnet"]
+    assert chains["fix"] == ["opencode/anthropic/claude-sonnet-4", "claude/sonnet"]
+    assert chains["commit"] == ["claude/haiku"]
 
 
-def test_local_template_showcases_fallback_and_transport_examples() -> None:
+def test_local_template_mentions_ccs_alternative() -> None:
     template = Path(ralph.policy.__file__).parent / "defaults" / "ralph-workflow-local.toml"
     content = template.read_text(encoding="utf-8")
-
-    for snippet in (
-        'planning = ["claude/opus"]',
-        'development = ["opencode/anthropic/claude-sonnet-4", "codex", "claude/sonnet"]',
-        'commit = ["claude/haiku"]',
-        'ccs/work',
-    ):
-        assert snippet in content, f"Expected local template to showcase example: {snippet}"
-
-
-def test_template_example_agent_config_renderer_stays_in_sync_with_documented_example() -> None:
-    assert _render_template_example_agent_config() == EXAMPLE_AGENT_CONFIG
+    assert 'ccs/work' in content
 
 
 def test_generated_local_template_validates_against_bundled_policy(
@@ -299,43 +236,13 @@ def test_generated_local_template_validates_against_bundled_policy(
         )
 
 
-def test_template_example_agent_config_validates_against_bundled_policy(
+def test_generated_local_template_missing_required_drain_fails_policy_validation(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     defaults_dir = Path(ralph.policy.__file__).parent / "defaults"
     agent_dir = tmp_path / ".agent"
     agent_dir.mkdir()
-    (agent_dir / "ralph-workflow.toml").write_text(
-        _render_template_example_agent_config(), encoding="utf-8"
-    )
-    (agent_dir / "pipeline.toml").write_text(
-        (defaults_dir / "pipeline.toml").read_text(encoding="utf-8"),
-        encoding="utf-8",
-    )
-    (agent_dir / "artifacts.toml").write_text(
-        (defaults_dir / "artifacts.toml").read_text(encoding="utf-8"),
-        encoding="utf-8",
-    )
-
-    monkeypatch.setattr("ralph.config.loader.LOCAL_CONFIG_PATH", agent_dir / "ralph-workflow.toml")
-    config = loader_module.load_config(workspace_scope=WorkspaceScope(tmp_path))
-    bundle = load_policy(agent_dir, config=config)
-
-    for phase_name, phase_def in bundle.pipeline.phases.items():
-        if phase_name == bundle.pipeline.terminal_phase:
-            continue
-        assert phase_def.drain in bundle.agents.agent_drains, (
-            f"Documented example left phase {phase_name!r} drain {phase_def.drain!r} unbound"
-        )
-
-
-def test_template_example_agent_config_missing_required_drain_fails_policy_validation(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    defaults_dir = Path(ralph.policy.__file__).parent / "defaults"
-    agent_dir = tmp_path / ".agent"
-    agent_dir.mkdir()
-    broken = _render_template_example_agent_config().replace(
+    broken = (defaults_dir / "ralph-workflow-local.toml").read_text(encoding="utf-8").replace(
         'review_commit = "commit"\n', ''
     )
     (agent_dir / "ralph-workflow.toml").write_text(broken, encoding="utf-8")
