@@ -724,7 +724,7 @@ def _tool_specs(mcp_config: McpConfig) -> tuple[ToolSpec, ...]:
                 description=(
                     "Structured file edit with precise text replacement and optional dry-run. "
                     "Required params: path (string), edits (list of {oldText, newText} objects). "
-                    "Each edit replaces the FIRST occurrence of oldText. "
+                    "Each edit replaces first match of oldText. "
                     "Optional: dry_run (bool, default False). "
                     "When dry_run=True, returns diff preview without writing. "
                     "When dry_run=False, applies edits and returns diff and bytes_written. "
