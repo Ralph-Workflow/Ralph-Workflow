@@ -1,24 +1,51 @@
 # Event Loop and Reducer Architecture
 
-This document describes Ralph's pipeline event loop and reducer architecture: how `PipelineState`, `PipelineEvent`, and `Effect` work together, and the best practices that keep reducers pure and effects isolated.
+This document describes Ralph Workflow's pipeline event loop and reducer architecture: how
+`PipelineState`, events, and effects work together, and how the reducer dispatches routing
+decisions through policy rather than hardcoded match arms.
 
-If you are looking for the end-to-end lifecycle (Planning -> Development -> result verification -> Commit -> Review/Fix loops), see `pipeline-lifecycle.md`.
-If you are looking specifically for effect-handler layering and filesystem rules (`AppEffect` vs pipeline `Effect`, `Workspace` requirements, `std::fs` exceptions), see `effect-system.md`.
-If you are looking for per-run logging, event loop observability, and log directory structure, see `logging-and-observability.md`.
-If you are looking for a codebase-level module map and entrypoints, see `codebase-tour.md`.
+The maintained implementation is the Python package in `ralph-workflow/ralph/`. All module
+references point to that package.
+
+If you are looking for the end-to-end lifecycle (planning → development → commit → review →
+fix), see `pipeline-lifecycle.md`.
+If you are looking for per-run logging and observability, see `logging-and-observability.md`.
+
+## Policy-Defined Orchestration
+
+Ralph Workflow is a **policy-defined orchestration framework**. The reducer is
+decision-key-agnostic: it dispatches routing through `resolve_next_phase()` and
+`phase_def.decisions` / `phase_def.bypass_routes` declared in `pipeline.toml`, never through
+hardcoded outcome strings. Adding or renaming a decision key in policy is sufficient to change
+routing; no code change is required.
+
+Every routing decision made by the reducer traces back to a policy field:
+
+- `transitions.on_success`, `on_loopback`, `on_failure` — phase advancement
+- `bypass_routes[phase.clean_outcome]` — review bypass routing
+- `phase.issues_outcome` — review outcome label
+- `post_commit_routes` guarded by budget counters — post-commit routing
+- `recovery.failed_route` — terminal failure routing
 
 ## Core Contract
 
-Ralph's pipeline is driven by an explicit event loop with a strict separation of concerns:
+The pipeline is driven by an explicit event loop with a strict separation of concerns:
 
-- `PipelineState`: immutable snapshot of "where we are" (this is the pipeline's app-state).
-- `Effect`: an intention to perform I/O (run an agent, write a checkpoint, run git, etc.).
-- `PipelineEvent`: a fact about something that happened (success, failure, data produced). In code this is an umbrella enum that wraps category events.
-- `Reducer`: pure function that applies an event to the current state.
-- `Orchestrator`: pure function that derives the next effect from the current state.
-- `EffectHandler`: impure executor that performs the effect and reports the outcome as `EffectResult` (primary reducer event + optional additional events + optional UI events).
+- **`PipelineState`** (`ralph/pipeline/state.py`): immutable snapshot of pipeline progress.
+  The checkpoint payload. State transitions happen only by applying reducer events.
+- **`Effect`** (`ralph/pipeline/effects.py`): an intention to perform I/O (invoke an agent,
+  write a checkpoint, run git, etc.). Effects carry no side effects themselves.
+- **`Event`** (`ralph/pipeline/events.py`): a fact about something that happened. The reducer
+  consumes events to produce the next state.
+- **`reduce()`** (`ralph/pipeline/reducer.py`): pure function
+  `(state, event, pipeline_policy, recovery) → (new_state, effects)`. No I/O; no logging;
+  fully deterministic. All routing dispatches through `pipeline_policy`.
+- **`Orchestrator`** (`ralph/pipeline/orchestrator.py`): pure function that derives the next
+  effect from the current state.
+- **`EffectHandler`** (`ralph/phases/` and `ralph/agents/`): impure executor that performs
+  the effect and reports the outcome as an event.
 
-The pipeline must make progress by cycling through these steps:
+The loop in `ralph/pipeline/runner.py` cycles:
 
 ```
 state --orchestrate--> effect --handle--> event --reduce--> next_state
@@ -26,507 +53,157 @@ state --orchestrate--> effect --handle--> event --reduce--> next_state
 
 ### Why this is non-negotiable
 
-- Predictable execution: the same state + the same sequence of events produces the same result.
-- Testability: reducers and orchestrators test without filesystem, network, or git.
-- Debuggability: the event log explains what happened without reverse-engineering control flow.
-- Resume/checkpoint: state is the checkpoint; resume is just load state + continue.
+- **Predictable execution**: the same state + event sequence produces the same result.
+- **Testability**: reducers and orchestrators test without filesystem, network, or agents.
+- **Debuggability**: the event log explains what happened without reverse-engineering control flow.
+- **Resume/checkpoint**: state is the checkpoint; resume is load state + continue.
 
 ## The Event Loop
 
-At a high level (pipeline layer):
+1. **Orchestrate**: inspect `PipelineState` and choose the next `Effect`.
+2. **Handle**: execute the effect in the handler (I/O happens here).
+3. **Emit**: return an `Event` (primary) and optional additional events.
+4. **Reduce**: compute next state by applying the event via `reduce()`.
+5. **Repeat** until `state.phase` reaches the configured terminal phase.
 
-1. Orchestrate: inspect the current `PipelineState` and choose the next `Effect`.
-2. Handle: execute the effect in the `EffectHandler` (I/O happens here).
-3. Emit: return an `EffectResult` (primary `PipelineEvent`, optional `additional_events`, optional `ui_events`).
-4. Reduce: compute the next state by applying the primary event and then any additional events, in order.
-5. Repeat until the state reaches a terminal condition (`PipelineState::is_complete()`).
+## PipelineState
 
-Two rules prevent subtle bugs:
+`PipelineState` is the canonical application state.
 
-- The event loop must not "fake" events for certain effects (no synthetic substitutions).
-- The handler is responsible for the side effect itself; the reducer is responsible for decisions.
+- Single source of truth for pipeline progress.
+- Checkpoint payload: serialize to JSON to resume later.
+- Reducer-owned: transitions happen only by applying reducer events.
 
-This includes checkpointing: `Effect::SaveCheckpoint` must still execute through the handler even when persistence is disabled. (If persistence is disabled, the handler can skip writing files, but the effect still runs.)
-
-## PipelineState (The App State)
-
-`PipelineState` is the canonical application state for the pipeline reducer architecture.
-
-- It is the single source of truth for pipeline progress.
-- It is the checkpoint payload: serialize to JSON to resume later.
-- It is reducer-owned: state transitions only happen by applying reducer events.
-
-### What belongs in state
-
-State should include the minimum information needed to:
+State includes the minimum information needed to:
 
 - deterministically derive the next `Effect`
 - explain why the pipeline is in its current phase
 - safely resume after interruption
 
-In practice this means a lot of "single-task sequencing" fields (for example: "prompt prepared for iteration N", "artifact extracted for pass P", "validated outcome stored", etc.). These flags keep orchestration deterministic and prevent handlers from bundling policy decisions into I/O.
+State must not include mutable caches of external reality (filesystem, git status, network)
+or hidden control flags not driven by events.
 
-### What must not be state
+## Reducer: Decision-Key-Agnostic Routing
 
-- mutable caches of external reality (filesystem, git status, network)
-- hidden control flags that are not driven by events
-- anything that would make `reduce(state, event)` depend on time, environment, or I/O
+The reducer in `ralph/pipeline/reducer.py` dispatches all phase routing through policy. Key
+routing helpers:
 
-### Prompt replay history is reducer-owned state
+- `resolve_next_phase(phase, signal, policy)` (`ralph/pipeline/handoffs.py`): looks up
+  `transitions.on_success`, `on_loopback`, or `on_failure` from policy for the given phase.
+- `resolve_post_commit_phase(state, policy)`: selects the post-commit target using
+  `post_commit_routes` and budget counter state.
 
-`PipelineState` includes `prompt_history: HashMap<String, PromptHistoryEntry>` which stores generated prompts keyed by a typed `PromptScopeKey` Display string. This is canonical state — it is serialized in checkpoints and participates in recovery semantics.
+**Analysis routing** (`_handle_analysis_success`, `_handle_capped_analysis_loopback_policy_driven`):
+routes exclusively via `transitions.on_success` / `on_loopback`. The `decisions` map in policy
+is a vocabulary contract used by artifact validation — it is not inspected for routing.
 
-- Prompts are written to `prompt_history` via `PromptInputEvent::PromptCaptured { key, content, content_id }` reducer events (not by direct mutation from handlers).
-- All prompt-preparation handlers use `get_stored_or_generate_prompt()` to replay from history or generate fresh, then emit `PromptCaptured` if a fresh prompt was generated.
-- `UIEvent::PromptReplayHit { key, was_replayed }` is emitted alongside every prompt generation for observability; it does not affect state.
-- Level-3 and level-4 recovery clear `prompt_history` atomically with the `recovery_epoch` increment so stale prompts cannot survive an epoch boundary.
-- All prompt keys are constructed via typed `PromptScopeKey` constructors (never ad-hoc `format!()` strings), with phase-specific constructors enforcing required identity dimensions at compile time.
+**Review routing** (`_handle_review_clean`, `_handle_review_issues_found`):
+- `REVIEW_CLEAN`: reads `phase_def.clean_outcome` from policy, looks up the bypass target in
+  `phase_def.bypass_routes[clean_outcome]`. Falls back to `on_success` when not set.
+- `REVIEW_ISSUES_FOUND`: reads `phase_def.issues_outcome` from policy as the `review_outcome`
+  label. Falls back to `'has_issues'` for back-compat only.
 
-## Terminal State Semantics
+**Terminal routing**: uses `policy.recovery.failed_route` for the failure path and
+`policy.terminal_phase` for the success path — never hardcoded strings.
 
-The event loop terminates based on `PipelineState::is_complete()`, not on orchestration returning "no effect".
+## Events
 
-Current terminal semantics (see `ralph-workflow/src/reducer/state/pipeline.rs`):
+Events are descriptive facts about what happened, not instructions about what to do next.
 
-- `PipelinePhase::Complete` is always terminal.
-- `PipelinePhase::Interrupted` is terminal when either:
-  - at least one checkpoint has been saved (`checkpoint_saved_count > 0`), or
-  - we transitioned from `PipelinePhase::AwaitingDevFix` (completion marker already emitted).
+Current events handled by the reducer (see `ralph/pipeline/events.py`):
 
-The `AwaitingDevFix -> Interrupted` path is intentionally considered terminal even before the checkpoint write, because external orchestration observes termination via the completion marker. The event loop still ensures `Effect::SaveCheckpoint` runs next for persistence.
+| Event | Meaning |
+|-------|---------|
+| `AGENT_SUCCESS` | An agent completed its invocation successfully |
+| `AGENT_FAILURE` | An agent invocation failed |
+| `AGENT_RETRY` | An agent retry was requested |
+| `ANALYSIS_SUCCESS` | Analysis decided to advance |
+| `ANALYSIS_LOOPBACK` | Analysis decided to loop back |
+| `REVIEW_CLEAN` | Review found no issues |
+| `REVIEW_ISSUES_FOUND` | Review found issues |
+| `FIX_SUCCESS` | Fix phase completed successfully |
+| `FIX_FAILURE` | Fix phase failed |
+| `COMMIT_SUCCESS` | Commit was created |
+| `COMMIT_SKIPPED` | Commit was skipped (no diff) |
+| `COMMIT_FAILURE` | Commit failed |
+| `CHECKPOINT_SAVED` | Checkpoint was persisted |
+| `INTERRUPTED` | User interrupted the run |
+| `COMPLETE` | Pipeline reached terminal success |
+| `FAILED` | Pipeline reached terminal failure |
+| `PHASE_ADVANCE` | Explicit phase advance requested |
+| `FAN_OUT_STARTED` | Parallel fan-out started |
+| `ALL_WORKERS_COMPLETE` | All parallel workers finished |
 
-## Event and Effect Shapes (Current)
+`PhaseFailureEvent` and `WorkerFailedEvent` are handled before the main dispatch and may be
+delegated to `RecoveryController` for classification-aware retry/fallback decisions.
 
-Ralph uses a few structural patterns that are important when you add new behavior.
+### Event design rules
 
-### PipelineEvent is category-based
+Events must answer "what happened", not "what should we do next":
 
-`PipelineEvent` wraps category-specific enums so the reducer can do type-safe routing:
+- Good: `SomethingSucceeded`, `SomethingFailed { reason }`, `SomethingCompleted`
+- Bad: `TryNextAgent`, `ShouldRetry`, `AdvanceToReview`
 
-- `PlanningEvent`
-- `DevelopmentEvent`
-- `ReviewEvent`
-- `CommitEvent`
-- `AgentEvent`
-- `RebaseEvent`
-- `PromptInputEvent`
-- `AwaitingDevFixEvent`
+Routing decisions belong in the reducer, not in event shapes.
 
-Category routing keeps each reducer module exhaustively matched within its own domain.
+## Effects
 
-#### Sanctioned cross-phase top-level lifecycle events
+Effects are granular intentions to perform one type of I/O. Each effect does one thing
+and reports an outcome event. The orchestrator derives the next effect from state only —
+it never performs I/O itself.
 
-`PipelineEvent` also contains a **small frozen set** of top-level lifecycle facts that are intentionally cross-phase and not owned by a single category enum:
+## Recovery
 
-- `ContextCleaned`
-- `CheckpointSaved`
-- `FinalStateValidationCompleted`
-- `PromptPermissionsRestored`
-- `LoopRecoveryTriggered`
+When a phase exhausts its agent chain, the reducer calls `_enter_failed_recovery()`, which
+transitions state to `policy.recovery.failed_route`. This is the policy-declared terminal
+failure path.
 
-These are policy exceptions, not a general extension point. They exist to preserve reducer-visible lifecycle boundaries (cleanup, checkpoint accounting, finalization handoff, prompt permission restoration, loop recovery) without hiding control flow in handlers.
+The `RecoveryController` in `ralph/recovery/controller.py` manages retry/fallback decisions
+within a single phase's agent chain. It is passed to the reducer as an optional collaborator;
+when present, `PhaseFailureEvent` is delegated to it for classification-aware handling.
 
-Do **not** add new top-level lifecycle events by default. Prefer category events unless the event is genuinely cross-phase and meets the same exception criteria.
+## Parallel Execution
 
-### UIEvent is separate from PipelineEvent
+When the planning artifact declares multiple work units, the orchestrator dispatches parallel
+workers (see `ralph/pipeline/parallel/`). Worker events (`WorkerStartedEvent`,
+`WorkerCompletedEvent`, `WorkerFailedEvent`) are handled by the reducer and tracked in
+`state.worker_states`.
 
-Effect handlers may emit UI-only events for rendering/logging. These do not affect state, do not go into checkpoints, and must not be required for correctness.
-
-### Effects are intentionally "single-task"
-
-Pipeline effects are granular (prepare prompt, invoke agent, extract MCP artifact, write markdown, archive, apply outcome, etc.).
-
-An effect should do one type of I/O and then report an outcome event. Avoid effects that mix multiple responsibilities (for example: invoke agent + parse output + transition phase).
-
-## Non-Terminating Failure Handling: Escalating Recovery Hierarchy
-
-The pipeline is designed to keep running and route internal failures through an escalating recovery hierarchy instead of exiting early. This ensures true non-terminating operation for unattended pipelines.
-
-### Recovery Flow
-
-When terminal internal failures occur:
-
-1. **Transition to AwaitingDevFix**: Pipeline phase transitions to `PipelinePhase::AwaitingDevFix`
-2. **Dev-fix invocation**: Orchestration derives `TriggerDevFixFlow` effect to diagnose and fix the issue
-3. **Recovery attempt**: After dev-fix completes, the reducer determines the appropriate recovery level based on attempt count
-4. **Escalating resets**: If recovery fails repeatedly, the system escalates through progressively more aggressive reset strategies
-5. **No termination for internal failures**: Internal failures do not cause early termination; completion markers are reserved for explicit external/catastrophic termination paths
-
-### Escalation Levels
-
-The recovery hierarchy implements escalating reset strategies:
-
-- **Level 1 - Retry same operation** (attempts 1-3): Dev-fix agent runs, reset error state, retry the failed effect from the same point
-- **Level 2 - Reset to phase start** (attempts 4-6): Clear phase-specific progress flags and restart the entire phase from the beginning
-- **Level 3 - Reset iteration** (attempts 7-9): Decrement iteration counter and redo Planning → Development → Commit sequence; increments `recovery_epoch` and clears `prompt_history` atomically to prevent stale prompt replay after scope rotation
-- **Level 4 - Reset everything** (attempts 10+): Reset to iteration 0 and start completely fresh from the beginning (and keep trying); increments `recovery_epoch` and clears `prompt_history` atomically for the same reason
-
-### Recovery State Tracking
-
-`PipelineState` includes fields to track recovery progress:
-
-- `dev_fix_attempt_count: u32` - Number of recovery attempts for the current failure
-- `recovery_escalation_level: u32` - Current recovery strategy (0-4)
-- `failed_phase_for_recovery: Option<PipelinePhase>` - Snapshot of the phase where failure occurred
-- `recovery_epoch: u32` - Epoch counter incremented on level-3/4 recovery; carried in `PromptScopeKey` for audit and future isolation
-
-These fields enable deterministic escalation decisions and are preserved in checkpoints to maintain recovery context across resumption.
-
-### Recovery Events
-
-The `AwaitingDevFixEvent` category includes events for recovery progression:
-
-- `RecoveryAttempted { level, attempt_count, target_phase }` - Recovery initiated at a specific escalation level
-- `RecoveryEscalated { from_level, to_level, reason }` - Recovery escalated to more aggressive strategy
-- `RecoverySucceeded { level, total_attempts }` - Recovery succeeded, clear recovery state and resume normal operation
-
-`target_phase` is carried from the recovery effect parameters so the reducer does not need to
-trust `failed_phase_for_recovery`, which can be stale or overwritten by subsequent errors while
-the pipeline is in the recovery loop.
-
-### Why This Architecture
-
-This escalating recovery design ensures:
-
-- **Unattended operation**: Pipeline never gives up early, always tries progressively more aggressive recovery
-- **Safety valve**: The event loop's max-iteration cap prevents tight infinite loops even if the environment never converges
-- **Minimal disruption**: Start with least disruptive recovery (retry) before escalating to more expensive resets
-- **Deterministic behavior**: Recovery decisions are pure functions of attempt count and escalation level
-- **Observable progress**: Recovery events provide visibility into escalation decisions
-
-## Timeout Handling
-
-Timeouts are classified into two sub-types based on whether the agent produced meaningful output:
-
-- **NoOutput**: Agent produced no meaningful content (empty, whitespace-only, or fewer than ~10 non-whitespace characters). Triggers immediate agent switch without consuming same-agent retry budget.
-- **PartialOutput**: Agent produced meaningful partial content before being cut off. Retries the same agent with context preservation (session reuse for session-capable agents, context file extraction for session-less agents).
-
-Context preservation for session-less agents uses the `WriteTimeoutContext` effect, which extracts the logfile content and writes it to a temp file before the retry prompt is prepared. This ensures no context is lost regardless of agent capabilities.
-
-## Orchestration: Priority Order
-
-Orchestration is a pure function from state to the next effect (`determine_next_effect(&PipelineState) -> Effect`). It intentionally encodes a priority order so that recovery/cleanup always preempts phase work.
-
-The current priority ordering is documented in code (see `ralph-workflow/src/reducer/orchestration/`) and includes, roughly:
-
-1. Continuation context cleanup
-2. Timeout context write pending (session-less agent retry context extraction)
-3. Same-agent retry pending (transient invocation failures)
-4. Continuation pending (valid artifact but incomplete work)
-5. Rebase in progress
-6. Agent-chain exhaustion / backoff waiting
-7. Phase-specific effects (the normal single-task sequence)
-
-Do not implement hidden retries or fallback loops inside handlers; retries/fallback must be reducer-visible state so the orchestrator can remain pure and deterministic.
-
-## Handler Error Recovery (Downcasting)
-
-Handlers normally return `Ok(EffectResult { .. })`. When a handler needs to surface a failure that should still be handled by the state machine, it returns `Err(ErrorEvent::... .into())`.
-
-The event loop attempts to downcast typed `ErrorEvent` values out of `anyhow::Error` and re-emit them as a reducer event (`PipelineEvent::PromptInput(PromptInputEvent::HandlerError { .. })`). This keeps recovery logic in reducers without forcing new top-level `PipelineEvent` variants.
-
-Handler panics are also treated as internal failures: the event loop catches them and routes through the same non-terminating failure flow.
-
-## Debuggability: Event Loop Trace
-
-The event loop keeps a bounded in-memory ring buffer of recent (effect, event, phase, retry counters) entries. When the loop encounters an internal failure or hits its iteration cap, it writes a trace to:
-
-- `.agent/tmp/event_loop_trace.jsonl`
-
-This is designed to make "stuck" pipelines diagnosable without reconstructing control flow.
-
-## Where This Lives in Code
-
-The exact file layout can evolve, but conceptually Ralph keeps these concerns separate:
-
-- Event loop driver: `ralph-workflow/src/app/event_loop.rs`
-- Orchestration (state -> next effect): `ralph-workflow/src/reducer/orchestration/`
-- Reduction (state + event -> next state): `ralph-workflow/src/reducer/state_reduction/`
-- Effects (intent enum) and handler trait: `ralph-workflow/src/reducer/effect*`
-- Effect handler implementations (I/O): `ralph-workflow/src/reducer/handler/`
-
-## See Also
-
-- `README.md` (topic index)
-- `agents-and-prompts.md` (agent registry, prompt generation, provider selection)
-- `checkpoint-and-resume.md` (checkpoint semantics and resume flow)
-- `git-and-rebase.md` (libgit2 operations and baseline diff tracking)
-
-## Best Practices: Events vs Decisions
-
-### Events must be descriptive facts
-
-### Events must be descriptive facts
-
-An emitted event should answer: "what happened" (and with what observable data), not "what should we do next".
-
-Good events are:
-
-- Past-tense, factual, and specific
-- Stable over time (their meaning does not depend on hidden context)
-- Carry the data needed for future decisions
-
-Bad events are:
-
-- Imperative or policy-shaped ("advance", "retry", "should")
-- Encoding decisions that belong in the reducer
-
-### Decisions belong in reducers (pure functions)
-
-Reducers should encode the decision logic that turns facts into state transitions:
-
-- retry vs fallback vs abort
-- phase transitions
-- iteration bookkeeping
-- counters/limits
-- which "next step" is enabled by state
-
-The orchestrator then translates the resulting state into the next effect.
-
-### Concrete naming guidance
-
-Prefer events shaped like:
-
-- `SomethingStarted { .. }`
-- `SomethingSucceeded { .. }`
-- `SomethingFailed { reason, .. }`
-- `SomethingDetected { .. }`
-- `SomethingCompleted { .. }`
-
-Avoid events shaped like:
-
-- `TryNextX`
-- `ShouldRetry`
-- `AdvanceToNextX`
-- `DecideX`
-
-#### Migration examples
-
-Before (decision-shaped):
-
-- `AdvanceToNextAgent`
-- `RetryCommitGeneration`
-- `SkipCheckpointWrite`
-
-After (fact-shaped + reducer decision):
-
-- `AgentEvent::InvocationFailed { role, agent, error_kind, retriable, .. }`
-- `CommitEvent::MessageValidationFailed { reason, attempt }`
-- `CheckpointPersisted` / `CheckpointWriteSkipped { reason }` (when you need observability)
-
-In the "after" model:
-
-- The handler reports the outcome (including classification data like `retriable`).
-- The reducer updates state (advance chain, increment attempt, transition phase).
-- The orchestrator sees the updated state and chooses the next effect.
+`ALL_WORKERS_COMPLETE` triggers routing via `resolve_next_phase(state.phase, 'success', policy)`
+— parallel fan-out routing comes from policy, not hardcoded control flow.
 
 ## Best Practices: Reducers
 
-Reducers must be deterministic and side-effect free.
+Reducers must be deterministic and side-effect free:
 
 - No filesystem, git, network, environment, time, randomness, or logging
 - No mutation of shared global state
-- No hidden coupling to config: decisions should be driven by values already present in `PipelineState` or carried in events
-
-### Agent-chain architecture must keep chain definitions, drains, and modes separate
-
-For agent execution architecture, Ralph should treat these as distinct concepts:
-
-- **chain definition**: reusable configured ordered list of concrete agents
-- **drain**: runtime consumer attached to a chain definition (for example planning, development, review, fix, commit, analysis)
-- **drain mode**: retry/continuation sub-state inside a drain (for example continuation, same-agent retry)
-
-This separation is required for reducer clarity and consistency.
-
-Rules:
-
-- Runtime state should not collapse reusable chain definition and active consumer into the same concept.
-- Retry modes that continue the same logical work and session (such as same-agent retry after a transient failure) should remain drain-local mode rather than becoming separate drains.
-- Reducer state and pipeline events must stay concrete; they must not carry unresolved config aliases or config-only indirection.
-- Legacy `[agent_chain]` config is acceptable only as an input format; normalize it into the same built-in drain bindings as `[agent_chains]` + `[agent_drains]` before runtime execution.
-- When a built-in drain is omitted from `[agent_drains]`, default it from already-resolved sibling drains first (for example commit from review/fix, analysis from planning/development) before consulting legacy compatibility names.
-- Drain-selection effects and events should address the concrete drain directly (for example `InitializeAgentChain { drain }` and `agent_chain_initialized(drain, ...)`) rather than carrying redundant role-shaped selectors.
-- Effect handlers should consume already-resolved concrete drain-to-chain mappings, not re-derive chain semantics from scattered defaults.
-- Runtime effects that still need a broad role label for accounting or diagnostics should derive it from the active drain at emission time, so stale `current_role` metadata cannot misroute retry/exhaustion behavior.
-- Checkpoint compatibility should treat any stored role label as derived metadata. Resume logic must be able to reconstruct the effective role from the persisted drain when older/newer checkpoints omit or disagree on `current_role`.
-
-When changing agent architecture, apply this model consistently across config, runtime state, effects, handlers, and documentation. Do not introduce a new abstraction in one layer while leaving the other layers role-shaped and ambiguous.
-
-### Prefer typed error-events over `Err` when recoverable
-
-When a failure should be handled by the state machine, represent it as a typed reducer event (often via `ErrorEvent` or a category event like `PlanningEvent::OutputValidationFailed`).
-
-Reserve returning `Err` for truly unrecoverable failures. The event loop has a recovery path where certain handler errors are downcast back into typed error events and reduced.
-
-### Reducer-friendly event design
-
-If the reducer needs to decide something, the event should include the inputs to that decision.
-
-Example: if fallback policy depends on whether an agent failure is retriable, the event should carry `retriable: bool` (or a structured `error_kind`) rather than forcing the reducer to re-derive it.
-
-### TDD for reducers
+- No hidden coupling to config: decisions driven by values in `PipelineState` or events
 
 When adding or changing reducer behavior:
 
-1. Write a unit test for `reduce(state, event) -> new_state` capturing the decision.
-2. Run the test and confirm it fails for the right reason.
-3. Implement the minimal state transition in the reducer.
+1. Write a unit test for `reduce(state, event) → new_state` capturing the decision.
+2. Confirm it fails for the right reason.
+3. Implement the minimal state transition.
 4. Add follow-up tests for edge cases (limits, phase boundaries, retries).
 
-## Capability Gate (RFC-009 Phase 2)
+## Where to Look in Code
 
-The pipeline implements a **capability gate** that enforces protocol-level capability denial for no-edit drains (Planning, Analysis, Review, Commit). This is a safety net that ensures agents can only perform actions their session allows — not just through prompt text, but through actual enforcement at the effect handler level.
-
-### Overview
-
-Before any effect is executed, the `MainEffectHandler::execute()` method checks whether the active session has the required capabilities. If the session lacks a required capability, the effect is denied with a `CapabilityDenied` event before execution.
-
-```
-effect → Capability Gate → [denied: CapabilityDenied event] OR [approved: execute normally]
-```
-
-### How It Works
-
-1. **Pre-execution check**: At the start of `execute()`, the handler checks if `ctx.active_session` is `Some(session)`
-2. **Required capabilities**: The `effect_required_capabilities(effect)` function returns the set of capabilities an effect needs
-3. **Session check**: `check_effect_capability(session, effect)` evaluates whether the session's capability set satisfies the requirement
-4. **Deny or proceed**: If denied, a `CapabilityDenied` event is returned immediately without executing the effect; if approved, normal execution continues
-
-### Ralph-Internal Effects
-
-Some effects are Ralph's own orchestration and bypass the capability gate entirely. These are classified by `is_ralph_internal_effect(effect) -> bool`:
-
-**Lifecycle and persistence:**
-- `InitializeAgentChain` — runs before session exists
-- `SaveCheckpoint` — Ralph's own persistence
-- `EmitCompletionMarkerAndTerminate` — Ralph's lifecycle
-- `ValidateFinalState` — Ralph's final validation
-
-**Cleanup operations:**
-- `CleanupContext` — Ralph's cleanup
-- `CleanupContinuationContext` — continuation cleanup
-- `CleanupRequiredFiles` — required files cleanup
-
-**Prompt permissions:**
-- `RestorePromptPermissions` — restore prompt file permissions
-- `LockPromptPermissions` — lock prompt file permissions
-
-**Context writes:**
-- `WriteContinuationContext` — write continuation context
-- `WriteTimeoutContext` — write timeout context for session-less agent retries
-
-**Retry and backoff:**
-- `BackoffWait` — Ralph's retry backoff logic
-- `TriggerDevFixFlow` — trigger dev-fix recovery flow
-
-**Recovery effects:**
-- `TriggerLoopRecovery`, `AttemptRecovery`, `EmitRecoveryReset`, `EmitRecoverySuccess` — recovery effects
-
-**Setup operations:**
-- `EnsureGitignoreEntries` — Ralph's setup
-
-**Git operations (internal):**
-- `ConfigureGitAuth` — configure git authentication
-- `PushToRemote` — push to remote
-- `CreatePullRequest` — create pull request
-
-**Archive operations:**
-- `ArchivePlanningXml`, `ArchiveDevelopmentXml`, `ArchiveReviewIssuesXml`, `ArchiveFixResultXml`, `ArchiveCommitXml` — archive artifacts to `.agent/` directory (Ralph's internal ephemeral storage)
-
-**Phase 4 parallel worker effects:**
-- `EvaluateParallelPlan`, `DispatchParallelWorkers` — parallel worker orchestration
-
-### Drain Capability Profiles
-
-Each drain type has a specific capability profile per RFC-009 V1:
-
-| Drain | Capabilities | Policy Flags |
-|-------|-------------|--------------|
-| Planning | `WorkspaceRead`, `WorkspaceWriteEphemeral`, `GitStatusRead`, `GitDiffRead`, `ArtifactSubmit` | `NoEdit` |
-| Analysis | `WorkspaceRead`, `WorkspaceWriteEphemeral`, `GitStatusRead`, `GitDiffRead`, `ArtifactSubmit` | `NoEdit` |
-| Review | `WorkspaceRead`, `WorkspaceWriteEphemeral`, `GitStatusRead`, `GitDiffRead`, `ArtifactSubmit` | `NoEdit` |
-| Development | `WorkspaceRead`, `WorkspaceWriteEphemeral`, `WorkspaceWriteTracked`, `GitStatusRead`, `GitDiffRead`, `ProcessExecBounded`, `ArtifactSubmit`, `RunReportProgress`, `EnvRead` | `AllowShell` |
-| Fix | `WorkspaceRead`, `WorkspaceWriteTracked`, `GitStatusRead`, `GitDiffRead`, `ProcessExecBounded`, `ArtifactSubmit`, `RunReportProgress`, `EnvRead` | `AllowShell` |
-| Commit | `WorkspaceRead`, `WorkspaceWriteEphemeral`, `GitStatusRead`, `GitDiffRead`, `GitWrite`, `ArtifactSubmit`, `RunReportProgress` | `AllowGitWrite` |
-
-**Note**: Planning/Analysis/Review include `WorkspaceWriteEphemeral` because Ralph itself writes artifact files (PLAN.md, ISSUES.md, MCP artifact archives) to `.agent/` which is gitignored. The `NoEdit` policy flag still prevents the agent from writing to tracked source files.
-
-### Audit Trail Integration
-
-Every capability check is recorded in `ctx.audit_trail` via `record_effect_check()`:
-- Session ID
-- Timestamp
-- Effect name
-- Required capabilities
-- Outcome (Approved/Denied)
-- For denials: the specific reason string
-
-The audit trail is persisted to `.agent/audit/{session_id}.jsonl` at the end of each agent invocation.
-
-### Behavioral Equivalence Invariant
-
-The capability gate must NOT change behavior for correctly-orchestrated pipelines. The orchestrator already dispatches effects appropriate for each drain. The gate is a safety net that catches misconfigurations and bugs — it approves everything in normal operation.
-
-If an existing test fails after adding a capability check, the most likely cause is that the gate is misclassifying an effect's requirements or a drain's capability profile.
-
-## Best Practices: Effects and Handlers
-
-Effects are intentions; handlers are execution.
-
-- Effects should be named as verbs/intents: `RunRebase`, `CreateCommit`, `SaveCheckpoint`, `InvokeAgent`.
-- Handlers should not contain high-level pipeline policy (like "how many times to retry").
-- Handlers should translate outcomes into events, not mutate pipeline state directly.
-
-When a handler must implement a local safety rule (for example, "checkpointing disabled so do not write files"), it should still execute through the handler and return an event; the event loop must not bypass the effect.
-
-## Migration Guide: From Decision-Actions to Descriptive Events
-
-If you see control flow that looks like "if X then emit ActionY", it is often a sign the event model is too decision-shaped.
-
-Recommended migration approach:
-
-1. Identify the decision in the handler/orchestrator (retry, fallback, phase change).
-2. Replace any decision-shaped event with a fact-shaped outcome event.
-3. Move the decision into the reducer by updating `PipelineState` fields (attempt counters, chain position, phase).
-4. Ensure the orchestrator derives the next effect only from state.
-5. Add reducer unit tests that cover the policy explicitly.
-
-## Loop Detection and Mandatory Recovery
-
-The pipeline includes a loop detection mechanism to prevent infinite tight loops where the orchestrator cannot converge due to external mismatches (e.g., workspace vs CWD path issues, failed artifact submissions).
-
-### Loop Detection
-
-The orchestrator tracks effect execution patterns in `ContinuationState`:
-- `last_effect_kind`: fingerprint of the last executed effect
-- `consecutive_same_effect_count`: counter for repeated identical effects
-- `max_consecutive_same_effect`: threshold before triggering recovery (default: 20)
-
-The effect fingerprint includes: phase, active drain, drain mode, iteration, and pass.
-
-### Mandatory Recovery
-
-When `consecutive_same_effect_count` exceeds the threshold and the phase is not `Complete` or `Interrupted`, the orchestrator emits `Effect::TriggerLoopRecovery`.
-
-The loop recovery handler:
-1. Clears agent session ID to force fresh invocation
-2. Resets loop detection counters
-3. Emits `LoopRecoveryTriggered` event
-
-After recovery, the orchestrator derives the next effect from the cleaned state, allowing the pipeline to resume with a fresh attempt.
-
-### Why This Is Required
-
-Without loop detection, the orchestrator's priority system can keep the system stuck in the same effect indefinitely when an artifact submission error repeats or an agent cannot converge. Loop recovery provides a deterministic escape path that preserves checkpoint/resume safety: the same pre-recovery state will always trigger recovery at the same threshold.
+| Concern | Location |
+|---------|----------|
+| Reducer (state + event → state) | `ralph/pipeline/reducer.py` |
+| Orchestrator (state → effect) | `ralph/pipeline/orchestrator.py` |
+| Pipeline state | `ralph/pipeline/state.py` |
+| Events | `ralph/pipeline/events.py` |
+| Effects | `ralph/pipeline/effects.py` |
+| Runner / event loop | `ralph/pipeline/runner.py` |
+| Routing helpers | `ralph/pipeline/handoffs.py` |
+| Recovery controller | `ralph/recovery/controller.py` |
+| Policy models | `ralph/policy/models.py` |
+| Policy validation | `ralph/policy/validation.py` |
 
 ## See Also
 
-- `effect-system.md`
-- `parallel-fan-out.md` — parallel development fan-out, TaskGroup concurrency, process group kill, and worker coordination
-
-## Historical Notes
-
-The RFCs in `docs/RFC/` are kept for historical interest only. Do not treat them as canonical.
-
-- `../RFC/RFC-004-reducer-based-pipeline-architecture.md` (historical design)
-- `../RFC/RFC-005-event-loop-savecheckpoint-bypass.md` (historical incident writeup)
+- `pipeline-lifecycle.md` — end-to-end phase lifecycle
+- `checkpoint-and-resume.md` — checkpoint semantics and resume flow
+- `git-and-rebase.md` — git operations and baseline diff tracking

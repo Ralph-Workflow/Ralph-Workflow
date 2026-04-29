@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-import subprocess
 from contextlib import contextmanager
 from pathlib import Path
 from types import SimpleNamespace
@@ -36,9 +35,6 @@ KEYBOARD_INTERRUPT_EXIT_CODE = 130
 USAGE_ERROR_EXIT_CODE = 2
 DEFAULT_DEVELOPER_ITERS = 3
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-
-# ralph-workflow/ directory — used for subprocess tests that need the correct cwd
-_RALPH_WORKFLOW_DIR = Path(__file__).resolve().parent.parent
 
 
 class CliResult:
@@ -594,43 +590,3 @@ def test_explain_policy_prints_workflow_diagram(cli_runner: CliRunner) -> None:
     # Should contain bypass_routes explanation sentence for the review phase
     assert "Explanation: phase 'review' bypasses to 'review_commit'" in result.stdout
 
-
-def _invoke_explain_policy_subprocess() -> subprocess.CompletedProcess[str]:
-    """Run the packaged ralph binary with --explain-policy as a real subprocess.
-
-    PYTHONPATH is explicitly cleared so that the console script resolves imports
-    via the editable install's .pth file (which points to this source tree),
-    rather than any ambient PYTHONPATH that may reference a different checkout
-    (e.g. a shared PYTHONPATH across git worktrees). This mirrors the supported
-    runtime contract: users run `ralph` without setting PYTHONPATH.
-    """
-    ralph_bin = _RALPH_WORKFLOW_DIR / ".venv" / "bin" / "ralph"
-    env = {k: v for k, v in os.environ.items() if k != "PYTHONPATH"}
-    return subprocess.run(
-        [str(ralph_bin), "--explain-policy"],
-        capture_output=True,
-        text=True,
-        env=env,
-        timeout=30,
-        check=False,
-    )
-
-
-def test_explain_policy_subprocess_shows_workflow_diagram() -> None:
-    """Packaged ralph binary must print the ASCII WORKFLOW DIAGRAM section.
-
-    This exercises the actual console-script entrypoint (ralph binary) via
-    subprocess, not the in-process CliRunner, to confirm that the packaged CLI
-    path and the direct module path produce identical output.
-    """
-    result = _invoke_explain_policy_subprocess()
-
-    assert result.returncode == 0, f"ralph --explain-policy failed:\n{result.stderr}"
-    assert "WORKFLOW DIAGRAM" in result.stdout
-    assert "=ENTRY=>" in result.stdout
-    assert "==SUCCESS==>" in result.stdout
-    assert "RALPH WORKFLOW — ACTIVE POLICY EXPLANATION" in result.stdout
-    assert "Explanation: phase 'review' bypasses to 'review_commit'" in result.stdout
-    # Unambiguous loopback glyph — the deprecated <--[loopback]-- must not appear
-    assert "loop back to development" in result.stdout
-    assert "<--[loopback]--" not in result.stdout

@@ -510,19 +510,26 @@ def _handle_review_issues_found(
     """Handle review with issues found.
 
     The review_outcome label is read from the phase's policy-declared
-    issues_outcome field. Falls back to 'has_issues' when issues_outcome
-    is not set (back-compat for configs predating this field).
+    issues_outcome field. Policy completeness validation rejects review phases
+    that omit issues_outcome, so this field is always set when this handler runs.
     """
     if policy is None:
         return _advance_to_failed(state, "No policy loaded for review issues found routing", policy)
     phase_def = policy.phases.get(state.phase)
-    issues_outcome = (
-        phase_def.issues_outcome
-        if phase_def is not None and phase_def.issues_outcome is not None
-        else "has_issues"
-    )
+    if phase_def is None:
+        return _advance_to_failed(
+            state, f"Unknown phase for review issues found: {state.phase}", policy
+        )
+    if phase_def.issues_outcome is None:
+        return _advance_to_failed(
+            state,
+            f"Phase '{state.phase}' has role='review' but issues_outcome is not declared. "
+            "Add issues_outcome to the phase in pipeline.toml. "
+            "See docs/migration/policy-v2.md.",
+            policy,
+        )
     new_state, effects = _resolve_or_terminal(state, "loopback", policy, "review issues found")
-    return new_state.copy_with(review_outcome=issues_outcome), effects
+    return new_state.copy_with(review_outcome=phase_def.issues_outcome), effects
 
 
 def _handle_fix_success(
