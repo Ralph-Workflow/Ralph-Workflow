@@ -30,6 +30,41 @@ the developer to run it — run it yourself and confirm the output.
 This applies to: tests, lint, type checks, builds, runtime behavior, anything that requires
 observing actual command output to evaluate.
 
+## ONLY JUDGE WHAT YOU CAN EVALUATE
+
+Your decision must be grounded in evidence you can personally inspect in this session.
+Evaluation evidence may come ONLY from: (1) code and diff, and (2) command output you ran yourself.
+
+The review artifact plus any developer-produced or reviewer-produced summaries, narratives, and
+other handoff artifacts may be used ONLY to help you locate files, understand claimed scope, or
+choose what to inspect next. They are context only, never evaluation evidence or corroboration.
+
+If an artifact makes a claim, verify that claim against the code, diff, or command output before you
+use it in any evaluation.
+
+The PLAN defines the goal you are evaluating against; it is not evidence by itself. Evaluate the
+available empirical evidence — code, diff, and commands you run in this session — against the
+PLAN's requirements and expected outcomes.
+
+If a plan item cannot be evaluated from code, diff, or commands you can run in this session, you
+MUST NOT treat that item as proven satisfied or unsatisfied. Treat it as not evaluatable from the
+available observable evidence and skip it as a scored judgment. You do not need to enumerate every
+skipped item in the artifact.
+
+- You MAY conclude that a review missed a concrete issue if you can point to the missed issue in the
+  code or verification output.
+- You MAY conclude that verification is still incomplete if you ran the relevant command and it did
+  not establish the required behavior, or if no runnable verification command exists for that claim.
+- You MUST NOT judge what the agent, developer, or reviewer did or did not do.
+- You MUST NOT rely on agent logs, transcripts, or inferred process history as evaluation evidence.
+- When verification matters, run the relevant command yourself and describe the observed result.
+  If no runnable verification command exists for the claim, say that explicitly instead of guessing
+  about anyone's behavior.
+- If you need command-based evidence, run the command yourself and report what you observed.
+
+If a claim depends on behavior you cannot observe in the work product itself, do not make that claim.
+Gather direct evidence yourself or mark the gap strictly in terms of missing observable evidence.
+
 ---
 
 ## BEYOND THE DIFF
@@ -60,13 +95,16 @@ Not submitting the analysis artifact is a FAILURE.
 ## REVIEW CHECKLIST
 
 You are evaluating the quality and completeness of the review that was performed. A thorough review
-catches real problems. A shallow one misses them. For each dimension below, determine whether the
-review adequately covered it. If it did not, that belongs in `what_came_up_short`.
+catches real problems. A shallow one misses them. For each dimension below that is evaluatable from
+code, diff, or commands you can run in this session, determine whether the review adequately covered
+it. If it did not, that belongs in `what_came_up_short`. If a dimension is not evaluatable from
+observable evidence, skip it rather than scoring it.
 
 ### 1. PLAN COMPLIANCE CHECK
 
-Did the review confirm every plan requirement, task, and acceptance criterion was implemented
-correctly? The review should have:
+For every plan requirement, task, and acceptance criterion that you can check from code, diff, or
+commands you can run, did the review correctly surface whether it was implemented? The review should
+have:
 - Enumerated the specific plan items and stated whether each was satisfied.
 - Caught requirements that were missing, partially implemented, or implemented incorrectly.
 - Not accepted "close enough" as good enough for any plan item.
@@ -115,7 +153,7 @@ genuinely confusing or hard-to-maintain code — not style preferences.
 Did the review verify that:
 - New code has corresponding tests?
 - Edge cases and error paths are covered?
-- The test suite passes (or that pre-existing failures are acknowledged)?
+- The test suite produces a passing result relevant to the claimed behavior?
 - Test quality is meaningful — assertions that check actual behavior, not just code coverage?
 
 If the implementation added new functions without tests, the review should have flagged that.
@@ -138,8 +176,8 @@ Evaluate the review output itself, not just the implementation:
 ### 8. VERIFICATION EVIDENCE
 
 If the plan or workflow required verification commands (tests, lint, type checks, build):
-Did the review run them itself and corroborate the results? Did the review record the evidence?
-If verification was skipped or evidence is absent, that is a gap — run the commands yourself now.
+Run the relevant commands yourself now. If the review's verification claims are not established by
+reproducible command output you can observe in this session, that is a gap.
 
 ---
 
@@ -191,19 +229,17 @@ Return a JSON object.
 Example `what_came_up_short`:
 
 ```
-- [Security] The review did not examine `api/auth.py` for hardcoded credentials.
-  `api/auth.py:23` contains a hardcoded fallback API key — this is a CRITICAL severity
-  finding that a thorough security review should have caught.
+- [Security] `api/auth.py:23` contains a hardcoded fallback API key — this is a
+  CRITICAL severity finding in the code that the review should have surfaced.
 - [Review Structure] The SQL injection finding in `db/queries.py` is classified as MEDIUM
   but should be CRITICAL — the query at line 15 concatenates user input directly, enabling
   arbitrary SQL execution. Misclassifying CRITICAL findings as MEDIUM is a review quality failure.
-- [Testing] The review states "tests exist for new code" but does not cite which test files
-  or confirm they actually run and pass. No verification evidence (test output) was recorded.
-- [Plan Compliance] The review did not check whether the Windows release artifact upload was
-  implemented as required by the PLAN. `.github/workflows/release-binaries.yml` lacks a
-  Windows matrix leg — this was a specific plan requirement.
-- [Correctness] The review did not examine error handling in `pipeline/runner.py`. The
-  failure output path at line 87 uses a bare `except` that silently swallows exceptions.
+- [Testing] Running the relevant test suite does not establish a passing result tied to the
+  new code, and no concrete test file or passing command result is surfaced for that risk area.
+- [Plan Compliance] `.github/workflows/release-binaries.yml` lacks a Windows matrix leg,
+  which is a concrete mismatch with the plan requirement and should have been surfaced by the review.
+- [Correctness] `pipeline/runner.py:87` uses a bare `except` that silently swallows
+  exceptions — a concrete code issue the review should have surfaced.
 ```
 
 ---
@@ -228,8 +264,9 @@ Example `how_to_fix`:
 - Reclassify the SQL injection finding in `db/queries.py` as CRITICAL. The query at
   line 15 concatenates user input directly, enabling arbitrary SQL execution. Update
   the severity in the review findings table and update the summary to reflect CRITICAL status.
-- Request the test suite output from the implementer. Confirm tests for new code actually
-  run and pass. If they do not, add a Testing gap finding to the review.
+- Run the relevant test suite yourself and record the observed output. If tests for new code do
+  not run or do not pass, add a Testing gap finding to the review with the specific failing command
+  and result.
 - Re-examine `.github/workflows/release-binaries.yml` against the PLAN. Confirm whether
   the Windows matrix leg is present. If absent, add a Plan Compliance gap finding with
   the specific gap and remediation.
@@ -247,16 +284,16 @@ Example `how_to_fix`:
   "status": "request_changes",
   "summary": "The review is structurally present but missed several critical findings and misclassified at least one severity level.",
   "what_came_up_short": [
-    "[Security] The review did not examine `api/auth.py` for hardcoded credentials. `api/auth.py:23` contains a hardcoded fallback API key — CRITICAL severity.",
+    "[Security] `api/auth.py:23` contains a hardcoded fallback API key — CRITICAL severity, and the review should have surfaced it.",
     "[Review Structure] SQL injection in `db/queries.py:15` is classified as MEDIUM but should be CRITICAL — user input concatenated directly into SQL.",
-    "[Testing] The review states 'tests exist for new code' but cites no verification evidence and does not confirm tests actually pass.",
-    "[Plan Compliance] The review did not verify the Windows matrix leg in `.github/workflows/release-binaries.yml` as required by the PLAN.",
-    "[Correctness] The review did not examine error handling in `pipeline/runner.py`. The bare `except` at line 87 silently swallows exceptions."
+    "[Testing] Running the relevant test suite does not establish a passing result tied to the new code, and the review does not surface a concrete passing command result for that risk area.",
+    "[Plan Compliance] `.github/workflows/release-binaries.yml` lacks the Windows matrix leg required by the PLAN, and the review should have surfaced that mismatch.",
+    "[Correctness] `pipeline/runner.py:87` uses a bare `except` that silently swallows exceptions, and the review should have surfaced that issue."
   ],
   "how_to_fix": [
     "Re-examine `api/auth.py` for hardcoded credentials. Add a CRITICAL finding for the hardcoded key at line 23. Remediation: load from `os.environ.get('API_TOKEN')`.",
     "Reclassify the SQL injection in `db/queries.py:15` as CRITICAL and update the review summary and severity table accordingly.",
-    "Request test suite output showing tests for new code run and pass. If evidence cannot be produced, add a Testing gap finding.",
+    "Run the relevant test suite and record whether tests for new code run and pass. If evidence remains unavailable or the tests fail, add a Testing gap finding with the specific command output.",
     "Re-examine `.github/workflows/release-binaries.yml` against the PLAN. If the Windows leg is absent, add a Plan Compliance gap.",
     "Re-examine `pipeline/runner.py` error handling. Add a Correctness finding for the bare `except` at line 87. Remediation: catch specific exception types and preserve context."
   ]

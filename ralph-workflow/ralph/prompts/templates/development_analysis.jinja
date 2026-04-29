@@ -30,6 +30,41 @@ the developer to run it — run it yourself and confirm the output.
 This applies to: tests, lint, type checks, builds, runtime behavior, anything that requires
 observing actual command output to evaluate.
 
+## ONLY JUDGE WHAT YOU CAN EVALUATE
+
+Your decision must be grounded in evidence you can personally inspect in this session.
+Evaluation evidence may come ONLY from: (1) code and diff, and (2) command output you ran yourself.
+
+Required handoff artifacts, developer-produced summaries, narratives, and self-reports may be used
+ONLY to help you locate files, understand claimed scope, or decide what to inspect next. They are
+context only, never evaluation evidence or corroboration.
+
+If an artifact makes a claim, verify that claim against the code, diff, or command output before you
+use it in any evaluation.
+
+The PLAN defines the goal you are evaluating against; it is not evidence by itself. Evaluate the
+available empirical evidence — code, diff, and commands you run in this session — against the
+PLAN's requirements and expected outcomes.
+
+If a plan item cannot be evaluated from code, diff, or commands you can run in this session, you
+MUST NOT treat that item as proven satisfied or unsatisfied. Treat it as not evaluatable from the
+available observable evidence and skip it as a scored judgment. You do not need to enumerate every
+skipped item in the artifact.
+
+- You MAY conclude that a test failed if you ran it and saw the failure.
+- You MAY conclude that verification is still incomplete if you ran the relevant command and it did
+  not establish the required behavior, or if no runnable verification command exists for that claim.
+- You MAY conclude that code is missing a required behavior if the code or diff conflicts with the
+  behavior required by the plan.
+- You MUST NOT judge what the agent, developer, or reviewer did or did not do.
+- You MUST NOT rely on agent logs, transcripts, or inferred process history as evaluation evidence.
+- When verification matters, run the relevant command yourself and describe the observed result.
+  If no runnable verification command exists for the claim, say that explicitly instead of guessing
+  about anyone's behavior.
+
+If a claim depends on behavior you cannot observe in the work product itself, do not make that claim.
+Gather direct evidence yourself or mark the gap strictly in terms of missing observable evidence.
+
 ---
 
 ## BEYOND THE DIFF
@@ -59,17 +94,19 @@ Not submitting the analysis artifact is a FAILURE.
 
 ## REVIEW CHECKLIST
 
-Evaluate every dimension below. For each, cite concrete evidence from the implementation
-(file paths, function names, command output, test results). If a dimension has no relevant code
-in this implementation, state that explicitly — do not silently skip it.
+Evaluate every dimension below that is actually evaluatable from code, diff, or commands you can
+run in this session. For each scored judgment, cite concrete evidence from the implementation (file
+paths, function names, command output, test results). If a dimension is not evaluatable from
+observable evidence, skip it rather than scoring it.
 
 ### 1. PLAN COMPLIANCE
 
-For every task, requirement, and acceptance criterion in the PLAN:
+For every task, requirement, and acceptance criterion in the PLAN that can be checked from code,
+diff, or commands you can run:
 - Is it implemented? If not, it belongs in `what_came_up_short`.
 - Is it implemented correctly? Incorrect implementation counts as not done.
-- Is it verified? If the PLAN requires evidence (test output, command run), does that evidence
-  exist and pass?
+- Is it verified? If the PLAN requires evidence (test output, command run), does your own
+  verification establish that evidence and that it passes?
 
 If the PLAN specifies files, functions, commands, or behaviors, confirm each one is present
 and correct. "Close enough" is not good enough.
@@ -123,7 +160,8 @@ Evaluate all changed files for:
 ### 7. VERIFICATION EVIDENCE
 
 If the PLAN or this workflow requires specific verification commands (tests, lint, type checks, build):
-Did you run them yourself and corroborate the results? If evidence is absent, run the commands now.
+Run the relevant commands yourself now. If those commands do not establish the required behavior, or
+if no runnable verification command exists for the claim, that is a gap.
 
 ---
 
@@ -173,11 +211,11 @@ Example `what_came_up_short`:
   the Windows artifact — the Windows matrix leg is absent from the workflow file.
 - [Plan Compliance] `ralph-workflow/scripts/install.ps1` exists but is not referenced
   from the workflow or release documentation.
-- [Testing] `pytest` was not run. Running it shows 3 failing tests in
-  `tests/test_pipeline.py::test_runner_error_path` — these failures existed before
-  this implementation.
-- [Verification Evidence] No verification evidence was recorded for platform archive
-  and checksum generation as required by the PLAN.
+- [Testing] Running `pytest tests/test_pipeline.py::test_runner_error_path -v` now shows
+  3 failing assertions, so the current changes are not backed by a passing test result for
+  that path.
+- [Verification Evidence] The required platform archive and checksum results are not
+  observable from the code, diff, or verification commands run in this session.
 - [Security] `api/auth.py:23` hardcodes a fallback API key in source — CRITICAL severity.
 ```
 
@@ -203,8 +241,8 @@ Example `how_to_fix`:
   upload with the existing `{platform}-{arch}.zip` naming convention.
 - Add `ralph-workflow/scripts/install.ps1` to `.github/release-docs.md` under the
   Windows installation section with a `powershell -File install.ps1` command block.
-- Run `pytest tests/test_pipeline.py::test_runner_error_path -v` and fix the 3 failing
-  assertions. If pre-existing, add a comment linking to an issue tracker.
+- Run `pytest tests/test_pipeline.py::test_runner_error_path -v`, inspect the 3 failing
+  assertions, and make the implementation and verification path pass for the claimed behavior.
 - Run the release verification commands from the PLAN and save output to
   `docs/release-verification.md`. Confirm each platform archive and checksum is present.
 - Remove the hardcoded fallback API key from `api/auth.py:23`. Load from environment
@@ -222,14 +260,14 @@ Example `how_to_fix`:
   "what_came_up_short": [
     "[Plan Compliance] `.github/workflows/release-binaries.yml` does not build or upload the Windows artifact.",
     "[Plan Compliance] `ralph-workflow/scripts/install.ps1` exists but is not referenced from the workflow or release documentation.",
-    "[Testing] The test suite was not run. Running `pytest` shows 3 pre-existing failures in `tests/test_pipeline.py`.",
-    "[Verification Evidence] No verification evidence was recorded for platform archive and checksum generation as required by the PLAN.",
+    "[Testing] Running `pytest tests/test_pipeline.py::test_runner_error_path -v` now shows 3 failing assertions, so the current changes are not backed by a passing test result for that path.",
+    "[Verification Evidence] The required platform archive and checksum results are not observable from the code, diff, or verification commands run in this session.",
     "[Security] `api/auth.py:23` hardcodes a fallback API key in source — CRITICAL severity."
   ],
   "how_to_fix": [
     "Add a Windows matrix leg to `.github/workflows/release-binaries.yml` using the same artifact upload pattern as the macOS job. Run on `windows-latest`, produce a `.zip`, upload with the existing `{platform}-{arch}.zip` naming convention.",
     "Add `ralph-workflow/scripts/install.ps1` to `.github/release-docs.md` under the Windows installation section with a `powershell -File install.ps1` command block.",
-    "Run `pytest tests/ -v` and fix or acknowledge the 3 failing tests in `tests/test_pipeline.py`. If pre-existing, add a comment linking to an issue tracker.",
+    "Run `pytest tests/test_pipeline.py::test_runner_error_path -v`, inspect the 3 failing assertions, and make the implementation and verification path pass for the claimed behavior.",
     "Run the release verification commands from the PLAN and save output to `docs/release-verification.md`. Confirm each platform archive and checksum file is present.",
     "Remove the hardcoded fallback API key from `api/auth.py:23`. Load from environment using `os.environ.get('API_TOKEN')` with a clear error if unset."
   ]

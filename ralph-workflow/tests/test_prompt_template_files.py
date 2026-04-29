@@ -113,6 +113,32 @@ ANALYSIS_OMISSION_GUIDANCE = (
 ANALYSIS_NO_FIRST_PROBLEM_GUIDANCE = (
     "Do not stop after the first problem."
 )
+ANALYSIS_EVALUATABLE_ONLY_GUIDANCE = (
+    "## ONLY JUDGE WHAT YOU CAN EVALUATE"
+)
+ANALYSIS_NO_ASSUMED_HUMAN_BEHAVIOR_GUIDANCE = (
+    "You MUST NOT judge what the agent, developer, or reviewer did or did not do."
+)
+ANALYSIS_RUN_COMMAND_OR_NO_COMMAND_GUIDANCE = "no runnable verification command exists"
+ANALYSIS_NO_AGENT_LOG_GUIDANCE = (
+    "You MUST NOT rely on agent logs, transcripts, or inferred process history "
+    "as evaluation evidence."
+)
+ANALYSIS_CODE_DIFF_ONLY_GUIDANCE = (
+    "Evaluation evidence may come ONLY from: (1) code and diff"
+)
+ANALYSIS_CONTEXT_ONLY_ARTIFACT_GUIDANCE = "context only"
+ANALYSIS_VERIFY_ARTIFACT_CLAIMS_GUIDANCE = (
+    "If an artifact makes a claim, verify that claim against the code, diff, or command output"
+)
+ANALYSIS_PLAN_NOT_EVIDENCE_GUIDANCE = (
+    "The PLAN defines the goal you are evaluating against; it is not evidence by itself."
+)
+ANALYSIS_EVIDENCE_AGAINST_PLAN_GUIDANCE = "available empirical evidence"
+ANALYSIS_NOT_EVALUATABLE_GUIDANCE = "not evaluatable"
+ANALYSIS_SKIP_UNEVALUATABLE_GUIDANCE = "skip it as a scored judgment"
+ANALYSIS_NO_NEED_ENUMERATE_SKIPS_GUIDANCE = "skipped item in the artifact."
+ANALYSIS_EVALUATABLE_DIMENSIONS_ONLY_GUIDANCE = "that is evaluatable from"
 DEVELOPMENT_ANALYSIS_FRESH_SUBMIT_EXAMPLE = (
     '"artifact_type":"development_analysis_decision",'
     '"content":"{\\"status\\":\\"completed\\",\\"summary\\":\\"...\\"}"'
@@ -121,6 +147,43 @@ REVIEW_ANALYSIS_FRESH_SUBMIT_EXAMPLE = (
     '"artifact_type":"review_analysis_decision",'
     '"content":"{\\"status\\":\\"completed\\",\\"summary\\":\\"...\\"}"'
 )
+
+
+def _assert_shared_analysis_guidance(
+    development_analysis: str,
+    review_analysis: str,
+) -> None:
+    assert ANALYSIS_EXHAUSTIVE_FAILURE_GUIDANCE in development_analysis
+    assert ANALYSIS_EXHAUSTIVE_FAILURE_GUIDANCE in review_analysis
+    assert ANALYSIS_OMISSION_GUIDANCE in development_analysis
+    assert ANALYSIS_OMISSION_GUIDANCE in review_analysis
+    assert ANALYSIS_NO_FIRST_PROBLEM_GUIDANCE in development_analysis
+    assert ANALYSIS_NO_FIRST_PROBLEM_GUIDANCE in review_analysis
+    assert ANALYSIS_EVALUATABLE_ONLY_GUIDANCE in development_analysis
+    assert ANALYSIS_EVALUATABLE_ONLY_GUIDANCE in review_analysis
+    assert ANALYSIS_NO_ASSUMED_HUMAN_BEHAVIOR_GUIDANCE in development_analysis
+    assert ANALYSIS_NO_ASSUMED_HUMAN_BEHAVIOR_GUIDANCE in review_analysis
+    assert ANALYSIS_RUN_COMMAND_OR_NO_COMMAND_GUIDANCE in development_analysis
+    assert ANALYSIS_RUN_COMMAND_OR_NO_COMMAND_GUIDANCE in review_analysis
+    assert ANALYSIS_NO_AGENT_LOG_GUIDANCE in development_analysis
+    assert ANALYSIS_NO_AGENT_LOG_GUIDANCE in review_analysis
+    assert ANALYSIS_CODE_DIFF_ONLY_GUIDANCE in development_analysis
+    assert ANALYSIS_CODE_DIFF_ONLY_GUIDANCE in review_analysis
+    assert ANALYSIS_CONTEXT_ONLY_ARTIFACT_GUIDANCE in development_analysis
+    assert ANALYSIS_CONTEXT_ONLY_ARTIFACT_GUIDANCE in review_analysis
+    assert ANALYSIS_VERIFY_ARTIFACT_CLAIMS_GUIDANCE in development_analysis
+    assert ANALYSIS_VERIFY_ARTIFACT_CLAIMS_GUIDANCE in review_analysis
+    assert ANALYSIS_PLAN_NOT_EVIDENCE_GUIDANCE in development_analysis
+    assert ANALYSIS_PLAN_NOT_EVIDENCE_GUIDANCE in review_analysis
+    assert ANALYSIS_EVIDENCE_AGAINST_PLAN_GUIDANCE in development_analysis
+    assert ANALYSIS_EVIDENCE_AGAINST_PLAN_GUIDANCE in review_analysis
+    assert ANALYSIS_NOT_EVALUATABLE_GUIDANCE in development_analysis
+    assert ANALYSIS_NOT_EVALUATABLE_GUIDANCE in review_analysis
+    assert ANALYSIS_SKIP_UNEVALUATABLE_GUIDANCE in development_analysis
+    assert ANALYSIS_SKIP_UNEVALUATABLE_GUIDANCE in review_analysis
+    assert ANALYSIS_NO_NEED_ENUMERATE_SKIPS_GUIDANCE in development_analysis
+    assert ANALYSIS_NO_NEED_ENUMERATE_SKIPS_GUIDANCE in review_analysis
+    assert ANALYSIS_EVALUATABLE_DIMENSIONS_ONLY_GUIDANCE in review_analysis
 
 
 def test_analysis_templates_require_exact_artifact_types_and_detailed_fix_sections() -> None:
@@ -147,12 +210,7 @@ def test_analysis_templates_require_exact_artifact_types_and_detailed_fix_sectio
     assert "content_path" not in review_analysis
     assert DEVELOPMENT_ANALYSIS_FRESH_SUBMIT_EXAMPLE in development_analysis
     assert REVIEW_ANALYSIS_FRESH_SUBMIT_EXAMPLE in review_analysis
-    assert ANALYSIS_EXHAUSTIVE_FAILURE_GUIDANCE in development_analysis
-    assert ANALYSIS_EXHAUSTIVE_FAILURE_GUIDANCE in review_analysis
-    assert ANALYSIS_OMISSION_GUIDANCE in development_analysis
-    assert ANALYSIS_OMISSION_GUIDANCE in review_analysis
-    assert ANALYSIS_NO_FIRST_PROBLEM_GUIDANCE in development_analysis
-    assert ANALYSIS_NO_FIRST_PROBLEM_GUIDANCE in review_analysis
+    _assert_shared_analysis_guidance(development_analysis, review_analysis)
 
 
 def test_fix_and_developer_iteration_templates_use_analysis_context_partial() -> None:
@@ -186,8 +244,8 @@ def test_development_analysis_prompt_taught_variants_submit_successfully(tmp_pat
         {
             "status": "request_changes",
             "summary": "Implementation needs another pass.",
-            "what_came_up_short": ["A required verification step is missing."],
-            "how_to_fix": ["Add the missing verification step and rerun checks."],
+            "what_came_up_short": ["Required verification evidence is missing."],
+            "how_to_fix": ["Add the missing verification evidence and rerun checks."],
         },
         {
             "status": "failed",
