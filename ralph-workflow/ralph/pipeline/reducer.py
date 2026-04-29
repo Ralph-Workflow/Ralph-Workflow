@@ -380,16 +380,14 @@ def _handle_analysis_success(
     state: PipelineState,
     policy: PipelinePolicy | None,
 ) -> tuple[PipelineState, list[Effect]]:
-    """Handle successful analysis decision (continue/approve)."""
+    """Handle successful analysis decision (continue/approve).
+
+    Routing is driven exclusively through transitions.on_success via resolve_next_phase.
+    Decision keys in phase_def.decisions are for vocabulary validation only; the
+    reducer does not inspect them for routing.
+    """
     if policy is None:
         return _advance_to_failed(state, "No policy loaded for analysis success routing", policy)
-
-    phase_def = policy.phases.get(state.phase)
-    if phase_def is not None and phase_def.decisions:
-        route = phase_def.decisions.get("completed")
-        if route is not None:
-            new_state, effects = _advance_phase(state, route.target, policy)
-            return progress.apply_analysis_success(state, new_state, policy=policy), effects
 
     try:
         next_phase = resolve_next_phase(state.phase, "success", policy)
@@ -434,6 +432,9 @@ def _handle_capped_analysis_loopback_policy_driven(
     before routing so that even when routing fails the counters are persisted.
     The runtime cap comes from state.get_max_loop_iteration (set from config),
     not from loop_policy.max_iterations.
+
+    Loopback target comes exclusively from transitions.on_loopback via
+    resolve_next_phase — decision keys are vocabulary contracts, not routing keys.
     """
     loop_policy = phase_def.loop_policy
     if not isinstance(loop_policy, PhaseLoopPolicy):
@@ -459,21 +460,15 @@ def _handle_capped_analysis_loopback_policy_driven(
             review_outcome=loop_policy.loopback_review_outcome
         )
 
-    # Determine the routing target from decisions['request_changes'] or transitions.on_loopback
-    loopback_target: str | None = None
-    route = phase_def.decisions.get("request_changes")
-    if route is not None:
-        loopback_target = route.target
-
-    if loopback_target is None:
-        try:
-            loopback_target = resolve_next_phase(state.phase, "loopback", policy)
-        except ValueError as exc:
-            return _advance_to_failed(
-                progress_state,
-                f"Routing error for analysis loopback in '{state.phase}': {exc}",
-                policy,
-            )
+    # Routing target comes from transitions.on_loopback only — no decision-key lookup.
+    try:
+        loopback_target = resolve_next_phase(state.phase, "loopback", policy)
+    except ValueError as exc:
+        return _advance_to_failed(
+            progress_state,
+            f"Routing error for analysis loopback in '{state.phase}': {exc}",
+            policy,
+        )
 
     new_state, effects = _advance_phase(progress_state, loopback_target, policy)
     return new_state, effects
@@ -485,16 +480,22 @@ def _handle_review_clean(
 ) -> tuple[PipelineState, list[Effect]]:
     """Handle clean review (no issues found).
 
-    When a review is clean (no issues found), the review phase emits a bypass
-    directly to the commit phase, bypassing the analysis phase. The target is
-    determined by the phase's bypass_routes['review_clean'] policy field.
+    When a review is clean, the phase emits a bypass directly to the target
+    declared in bypass_routes[clean_outcome]. The bypass key is read from the
+    phase's policy-declared clean_outcome field, not from a hardcoded string.
+    Falls back to on_success routing when clean_outcome is not set or has no
+    matching bypass_routes entry.
     """
     if policy is None:
         return _advance_to_failed(state, "No policy loaded for review clean routing", policy)
 
     phase_def = policy.phases.get(state.phase)
-    if phase_def is not None and "review_clean" in phase_def.bypass_routes:
-        next_phase = phase_def.bypass_routes["review_clean"]
+    if (
+        phase_def is not None
+        and phase_def.clean_outcome is not None
+        and phase_def.clean_outcome in phase_def.bypass_routes
+    ):
+        next_phase = phase_def.bypass_routes[phase_def.clean_outcome]
         new_state, effects = _advance_phase(state, next_phase, policy)
         return new_state.copy_with(review_outcome=None), effects
 
@@ -506,11 +507,22 @@ def _handle_review_issues_found(
     state: PipelineState,
     policy: PipelinePolicy | None,
 ) -> tuple[PipelineState, list[Effect]]:
-    """Handle review with issues found."""
+    """Handle review with issues found.
+
+    The review_outcome label is read from the phase's policy-declared
+    issues_outcome field. Falls back to 'has_issues' when issues_outcome
+    is not set (back-compat for configs predating this field).
+    """
     if policy is None:
         return _advance_to_failed(state, "No policy loaded for review issues found routing", policy)
+    phase_def = policy.phases.get(state.phase)
+    issues_outcome = (
+        phase_def.issues_outcome
+        if phase_def is not None and phase_def.issues_outcome is not None
+        else "has_issues"
+    )
     new_state, effects = _resolve_or_terminal(state, "loopback", policy, "review issues found")
-    return new_state.copy_with(review_outcome="has_issues"), effects
+    return new_state.copy_with(review_outcome=issues_outcome), effects
 
 
 def _handle_fix_success(

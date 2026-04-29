@@ -996,7 +996,7 @@ class TestApplyCommitOutcomeRequiresPolicy:
 
 
 class TestValidatePolicyCompletenessNewRules:
-    """Tests for vocab superset check, commit_policy, loop_resets, and terminal_recovery_route."""
+    """Tests for vocab superset check, commit_policy, loop_resets, and failed_route."""
 
     def _minimal_agents(self, drains: list[str]) -> AgentsPolicy:
         chains = {d: AgentChainConfig(agents=["claude"]) for d in drains}
@@ -1385,13 +1385,17 @@ class TestValidatePolicyCompletenessNewRules:
         bundle = PolicyBundle(agents=agents, pipeline=pipeline, artifacts=artifacts)
         validate_policy_completeness(bundle)  # must not raise
 
-    def test_recovery_terminal_recovery_route_unknown_phase_raises_policy_error(self) -> None:
-        """terminal_recovery_route referencing an undeclared phase fails completeness validation.
+    def test_recovery_terminal_recovery_route_field_rejected(self) -> None:
+        """terminal_recovery_route is deprecated; the model validator rejects it."""
+        with pytest.raises(ValidationError, match="deprecated"):
+            RecoveryPolicy.model_validate({
+                "cycle_cap": 200,
+                "terminal_recovery_route": "some_phase",
+                "preserve_session_on_categories": ("agent",),
+            })
 
-        RecoveryPolicy.terminal_recovery_route accepts any string (phase_failed, exit_failure,
-        or a declared phase name). An undeclared phase name is rejected by
-        validate_policy_completeness, not at Pydantic model level.
-        """
+    def test_recovery_failed_route_unknown_phase_raises_policy_error(self) -> None:
+        """failed_route referencing an undeclared phase fails completeness validation."""
         agents = self._minimal_agents(["planning", "complete"])
         pipeline = PipelinePolicy(
             phases={
@@ -1412,19 +1416,19 @@ class TestValidatePolicyCompletenessNewRules:
             },
             entry_phase="planning",
             terminal_phase="complete",
-            recovery=RecoveryPolicy.model_validate({
-                "cycle_cap": 200,
-                "terminal_recovery_route": "nonexistent_phase",
-                "preserve_session_on_categories": ("agent",),
-            }),
+            recovery=RecoveryPolicy(
+                cycle_cap=200,
+                failed_route="nonexistent_phase",
+                preserve_session_on_categories=("agent",),
+            ),
         )
         artifacts = ArtifactsPolicy(artifacts={})
         bundle = PolicyBundle(agents=agents, pipeline=pipeline, artifacts=artifacts)
         with pytest.raises(PolicyValidationError, match="nonexistent_phase"):
             validate_policy_completeness(bundle)
 
-    def test_recovery_terminal_recovery_route_declared_phase_accepted(self) -> None:
-        """terminal_recovery_route set to a declared pipeline phase is valid."""
+    def test_recovery_failed_route_declared_phase_accepted(self) -> None:
+        """failed_route set to a declared pipeline phase is valid."""
         agents = self._minimal_agents(["planning", "complete"])
         pipeline = PipelinePolicy(
             phases={
@@ -1445,18 +1449,18 @@ class TestValidatePolicyCompletenessNewRules:
             },
             entry_phase="planning",
             terminal_phase="complete",
-            recovery=RecoveryPolicy.model_validate({
-                "cycle_cap": 200,
-                "terminal_recovery_route": "planning",
-                "preserve_session_on_categories": ("agent",),
-            }),
+            recovery=RecoveryPolicy(
+                cycle_cap=200,
+                failed_route="planning",
+                preserve_session_on_categories=("agent",),
+            ),
         )
         artifacts = ArtifactsPolicy(artifacts={})
         bundle = PolicyBundle(agents=agents, pipeline=pipeline, artifacts=artifacts)
         validate_policy_completeness(bundle)  # must not raise
 
-    def test_recovery_terminal_recovery_route_phase_failed_is_valid(self) -> None:
-        """recovery.terminal_recovery_route='phase_failed' is always valid."""
+    def test_recovery_failed_route_phase_failed_is_valid(self) -> None:
+        """recovery.failed_route='phase_failed' is always valid."""
         agents = self._minimal_agents(["planning", "complete"])
         pipeline = PipelinePolicy(
             phases={
@@ -1477,18 +1481,18 @@ class TestValidatePolicyCompletenessNewRules:
             },
             entry_phase="planning",
             terminal_phase="complete",
-            recovery=RecoveryPolicy.model_validate({
-                "cycle_cap": 200,
-                "terminal_recovery_route": "phase_failed",
-                "preserve_session_on_categories": ("agent",),
-            }),
+            recovery=RecoveryPolicy(
+                cycle_cap=200,
+                failed_route="phase_failed",
+                preserve_session_on_categories=("agent",),
+            ),
         )
         artifacts = ArtifactsPolicy(artifacts={})
         bundle = PolicyBundle(agents=agents, pipeline=pipeline, artifacts=artifacts)
         validate_policy_completeness(bundle)  # must not raise
 
-    def test_recovery_terminal_recovery_route_exit_failure_is_valid(self) -> None:
-        """recovery.terminal_recovery_route='exit_failure' is always valid."""
+    def test_recovery_failed_route_exit_failure_is_valid(self) -> None:
+        """recovery.failed_route='exit_failure' is always valid."""
         agents = self._minimal_agents(["planning", "complete"])
         pipeline = PipelinePolicy(
             phases={
@@ -1509,15 +1513,91 @@ class TestValidatePolicyCompletenessNewRules:
             },
             entry_phase="planning",
             terminal_phase="complete",
-            recovery=RecoveryPolicy.model_validate({
-                "cycle_cap": 200,
-                "terminal_recovery_route": "exit_failure",
-                "preserve_session_on_categories": ("agent",),
-            }),
+            recovery=RecoveryPolicy(
+                cycle_cap=200,
+                failed_route="exit_failure",
+                preserve_session_on_categories=("agent",),
+            ),
         )
         artifacts = ArtifactsPolicy(artifacts={})
         bundle = PolicyBundle(agents=agents, pipeline=pipeline, artifacts=artifacts)
         validate_policy_completeness(bundle)  # must not raise
+
+
+    def test_review_role_requires_issues_outcome(self) -> None:
+        """role='review' without issues_outcome fails validate_policy_completeness."""
+        agents = self._minimal_agents(["planning", "review", "complete"])
+        pipeline = PipelinePolicy(
+            phases={
+                "planning": PhaseDefinition(
+                    drain="planning",
+                    role="execution",
+                    transitions=PhaseTransition(on_success="review"),
+                ),
+                "review": PhaseDefinition(
+                    drain="review",
+                    role="review",
+                    transitions=PhaseTransition(on_success="complete"),
+                    # issues_outcome intentionally omitted
+                ),
+                "complete": PhaseDefinition(
+                    drain="complete",
+                    role="terminal",
+                    terminal_outcome="success",
+                    transitions=PhaseTransition(
+                        on_success="complete",
+                        on_loopback="complete",
+                    ),
+                ),
+            },
+            entry_phase="planning",
+            terminal_phase="complete",
+        )
+        artifacts = ArtifactsPolicy(artifacts={})
+        bundle = PolicyBundle(agents=agents, pipeline=pipeline, artifacts=artifacts)
+        with pytest.raises(PolicyValidationError, match="issues_outcome"):
+            validate_policy_completeness(bundle)
+
+    def test_review_role_requires_clean_outcome_when_bypass_routes_set(self) -> None:
+        """role='review' with bypass_routes but no clean_outcome fails completeness check."""
+        agents = self._minimal_agents(["planning", "review", "review_commit", "complete"])
+        pipeline = PipelinePolicy(
+            phases={
+                "planning": PhaseDefinition(
+                    drain="planning",
+                    role="execution",
+                    transitions=PhaseTransition(on_success="review"),
+                ),
+                "review": PhaseDefinition(
+                    drain="review",
+                    role="review",
+                    issues_outcome="has_issues",
+                    transitions=PhaseTransition(on_success="complete"),
+                    bypass_routes={"review_clean": "review_commit"},
+                    # clean_outcome intentionally omitted while bypass_routes is set
+                ),
+                "review_commit": PhaseDefinition(
+                    drain="review_commit",
+                    role="execution",
+                    transitions=PhaseTransition(on_success="complete"),
+                ),
+                "complete": PhaseDefinition(
+                    drain="complete",
+                    role="terminal",
+                    terminal_outcome="success",
+                    transitions=PhaseTransition(
+                        on_success="complete",
+                        on_loopback="complete",
+                    ),
+                ),
+            },
+            entry_phase="planning",
+            terminal_phase="complete",
+        )
+        artifacts = ArtifactsPolicy(artifacts={})
+        bundle = PolicyBundle(agents=agents, pipeline=pipeline, artifacts=artifacts)
+        with pytest.raises(PolicyValidationError, match="clean_outcome"):
+            validate_policy_completeness(bundle)
 
 
 class TestAdvancePhaseRequiresPolicyForCommitTargets:
@@ -1651,6 +1731,7 @@ class TestValidatePolicyCompletenessReachability:
                 "review": PhaseDefinition(
                     drain="review",
                     role="review",
+                    issues_outcome="has_issues",
                     transitions=PhaseTransition(
                         on_success="complete",
                         on_loopback="execution",
@@ -1717,6 +1798,8 @@ class TestValidatePolicyCompletenessReachability:
                 "review": PhaseDefinition(
                     drain="review",
                     role="review",
+                    issues_outcome="has_issues",
+                    clean_outcome="review_clean",
                     transitions=PhaseTransition(
                         on_success="complete",
                         on_loopback="review",

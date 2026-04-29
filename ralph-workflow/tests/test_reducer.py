@@ -142,6 +142,8 @@ def _policy_with_post_commit_routes() -> PipelinePolicy:
             PHASE_REVIEW: PhaseDefinition(
                 drain="review",
                 role="review",
+                clean_outcome="review_clean",
+                issues_outcome="has_issues",
                 transitions=PhaseTransition(on_success="review_analysis", on_loopback=PHASE_FIX),
                 bypass_routes={"review_clean": "review_commit"},
             ),
@@ -1455,8 +1457,8 @@ def test_review_clean_with_policy_routes_to_review_commit_not_analysis() -> None
     assert new_state.review_issues_found is False
 
 
-def test_review_clean_without_policy_still_routes_to_review_commit() -> None:
-    """REVIEW_CLEAN routes to review_commit via bypass_routes in policy."""
+def test_review_clean_via_bypass_routes_skips_analysis() -> None:
+    """REVIEW_CLEAN routes directly to review_commit via bypass_routes, skipping review_analysis."""
     policy = _policy_with_post_commit_routes()
     state = PipelineState(phase=PHASE_REVIEW, review_budget_remaining=1)
     new_state, _ = _reduce(state, PipelineEvent.REVIEW_CLEAN, policy)
@@ -1464,6 +1466,49 @@ def test_review_clean_without_policy_still_routes_to_review_commit() -> None:
     assert new_state.phase == "review_commit"
     assert new_state.previous_phase == PHASE_REVIEW
     assert new_state.review_issues_found is False
+
+
+
+# ---------------------------------------------------------------------------
+# Policy-driven analysis routing (no hardcoded decision-key lookup)
+# ---------------------------------------------------------------------------
+
+
+def test_analysis_success_routes_via_transitions_only() -> None:
+    """ANALYSIS_SUCCESS must route via transitions.on_success, not via decisions dict."""
+    policy = _policy_with_post_commit_routes()
+    # development_analysis.transitions.on_success = "development_commit"
+    state = PipelineState(phase="development_analysis")
+    new_state, _ = _reduce(state, PipelineEvent.ANALYSIS_SUCCESS, policy)
+    assert new_state.phase == "development_commit"
+
+
+def test_analysis_loopback_routes_via_transitions_only() -> None:
+    """ANALYSIS_LOOPBACK must route via transitions.on_loopback, not via decisions dict."""
+    policy = _policy_with_post_commit_routes()
+    # development_analysis.transitions.on_loopback = PHASE_DEVELOPMENT
+    state = PipelineState(phase="development_analysis")
+    new_state, _ = _reduce(state, PipelineEvent.ANALYSIS_LOOPBACK, policy)
+    assert new_state.phase == PHASE_DEVELOPMENT
+
+
+def test_review_clean_uses_policy_clean_outcome() -> None:
+    """REVIEW_CLEAN reads bypass_routes key from phase_def.clean_outcome, not hardcoded string."""
+    policy = _policy_with_post_commit_routes()
+    state = PipelineState(phase=PHASE_REVIEW)
+    new_state, _ = _reduce(state, PipelineEvent.REVIEW_CLEAN, policy)
+    # clean_outcome="review_clean" -> bypass_routes["review_clean"] = "review_commit"
+    assert new_state.phase == PHASE_REVIEW_COMMIT
+    assert new_state.review_outcome is None
+
+
+def test_review_issues_found_uses_policy_issues_outcome() -> None:
+    """REVIEW_ISSUES_FOUND reads review_outcome label from phase_def.issues_outcome."""
+    policy = _policy_with_post_commit_routes()
+    state = PipelineState(phase=PHASE_REVIEW)
+    new_state, _ = _reduce(state, PipelineEvent.REVIEW_ISSUES_FOUND, policy)
+    # issues_outcome="has_issues" -> review_outcome set to "has_issues"
+    assert new_state.review_outcome == "has_issues"
 
 
 # ---------------------------------------------------------------------------

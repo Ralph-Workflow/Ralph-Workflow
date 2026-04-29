@@ -127,7 +127,7 @@ def _build_custom_bundle() -> PolicyBundle:
                 target="verify",
             ),
         ],
-        recovery=RecoveryPolicy(terminal_recovery_route="crashed"),
+        recovery=RecoveryPolicy(failed_route="crashed"),
     )
     agents = AgentsPolicy(
         agent_chains={"main": AgentChainConfig(agents=["claude"])},
@@ -466,7 +466,7 @@ class TestCustomPipelinePolicyValidation:
 
         validate_policy_completeness(custom_bundle)  # must not raise
 
-    def test_terminal_recovery_route_is_custom_phase(
+    def test_failed_route_is_custom_phase(
         self, custom_bundle: PolicyBundle
     ) -> None:
-        assert custom_bundle.pipeline.recovery.terminal_recovery_route == "crashed"
+        assert custom_bundle.pipeline.recovery.failed_route == "crashed"

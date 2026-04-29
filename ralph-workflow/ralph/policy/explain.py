@@ -233,7 +233,7 @@ def explain_policy(bundle: PolicyBundle) -> PolicyExplanation:
     r = pipeline.recovery
     explanation.recovery = RecoveryExplanation(
         cycle_cap=r.cycle_cap,
-        terminal_recovery_route=r.terminal_recovery_route,
+        terminal_recovery_route=r.failed_route,
         preserve_session_on_categories=list(r.preserve_session_on_categories),
     )
 

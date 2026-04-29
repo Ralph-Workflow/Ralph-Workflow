@@ -247,6 +247,36 @@ def _validate_analysis_phase(
             )
 
 
+def _validate_review_phase(
+    phase_name: str,
+    phase_def: object,
+    errors: list[str],
+) -> None:
+    """Validate constraints on review-role phases.
+
+    review-role phases must declare:
+    - issues_outcome: the review_outcome label set when issues are found (required)
+    - clean_outcome: the bypass_routes key that signals a clean review (required
+      when bypass_routes is non-empty, so the reducer knows which key to look up)
+    """
+    from ralph.policy.models import PhaseDefinition  # noqa: PLC0415
+
+    if not isinstance(phase_def, PhaseDefinition):
+        return
+    if phase_def.issues_outcome is None:
+        errors.append(
+            f"phases.{phase_name}: role='review' requires issues_outcome "
+            f"(the review_outcome label set when issues are found, e.g. 'has_issues'). "
+            f"See docs/migration/policy-v2.md."
+        )
+    if phase_def.bypass_routes and phase_def.clean_outcome is None:
+        errors.append(
+            f"phases.{phase_name}: role='review' with bypass_routes requires clean_outcome "
+            f"(the bypass_routes key that signals a clean review, e.g. 'review_clean'). "
+            f"See docs/migration/policy-v2.md."
+        )
+
+
 def _validate_commit_phase_loop_resets(
     phase_name: str,
     phase_def: object,
@@ -404,6 +434,9 @@ def validate_policy_completeness(bundle: PolicyBundle) -> None:
         # Role-specific validation - use separate if statements to help mypy track control flow
         if role == "analysis":
             _validate_analysis_phase(phase_name, phase_def, bundle, errors)
+
+        if role == "review":
+            _validate_review_phase(phase_name, phase_def, errors)
 
         if role == "commit":
             if phase_def.commit_policy is None:
