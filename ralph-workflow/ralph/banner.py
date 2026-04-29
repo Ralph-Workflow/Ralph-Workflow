@@ -9,6 +9,7 @@ if TYPE_CHECKING:
     from types import ModuleType
 
 from ralph import __version__
+from ralph.display.theme import BLUISH_GREEN, SKY_BLUE
 
 ASCII_ART = (
     " ____       _       _     _     ",
@@ -77,15 +78,15 @@ def render_banner(*, version: str = __version__) -> object:
     """Build the Ralph Workflow welcome banner as a rich renderable."""
     _, group_cls, panel_cls, text_cls = _load_rich_components()
 
-    banner_text = text_cls("\n".join(ASCII_ART), style="bold cyan")
-    version_text = text_cls(f"v{version}", style="bold green")
-    title_text = text_cls("Ralph Workflow", style="bold white")
-    welcome_text = text_cls(WELCOME_MESSAGE, style="bold white")
+    banner_text = text_cls("\n".join(ASCII_ART), style=f"bold {SKY_BLUE}")
+    version_text = text_cls(f"v{version}", style=f"bold {BLUISH_GREEN}")
+    title_text = text_cls("Ralph Workflow", style=f"bold {SKY_BLUE}")
+    welcome_text = text_cls(WELCOME_MESSAGE, style="bold")
     tagline_text = text_cls(TAGLINE, style="dim")
 
     banner_panel = panel_cls.fit(
         banner_text,
-        border_style="cyan",
+        border_style=SKY_BLUE,
         padding=(0, 1),
         title=title_text,
         subtitle=version_text,

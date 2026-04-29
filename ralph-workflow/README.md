@@ -365,6 +365,31 @@ It is already on by default, so you do not need an "enable" value for it.
 Ralph Workflow also supports an optional AI-generated summary layer labelled **`↳ ai-summary:`**.
 That layer is controlled separately through the `RALPH_LONG_CONTENT_AI_SUMMARY` opt-in environment variable.
 
+## Terminal display
+
+All rendering goes through a single `DisplayContext` object that owns the console, colour
+policy, terminal width, and adaptive layout limits. No renderer constructs its own console.
+
+**Modes**
+
+| Mode | Trigger | Headline cap | Condenser soft limit |
+|------|---------|--------------|---------------------|
+| `wide` | width ≥ 60 (default) | 120 chars | 400 cells |
+| `compact` | width < 60, or `RALPH_FORCE_NARROW=1` | 80 chars | 240 cells |
+
+**Environment knobs**
+
+| Variable | Effect |
+|----------|--------|
+| `RALPH_FORCE_NARROW=1` | Force compact mode regardless of width |
+| `NO_COLOR=1` | Disable colour output (standard, wins over `FORCE_COLOR`) |
+| `FORCE_COLOR=1` | Force colour output even in non-TTY environments |
+| `COLUMNS=<n>` | Override terminal width used for mode detection |
+
+Colours come from the Okabe-Ito palette defined in `ralph/display/theme.py` and are
+applied through semantic theme keys (`theme.banner.title`, `theme.text.muted`, etc.).
+This makes it straightforward to adapt the palette without touching renderer code.
+
 ## Documentation
 
 The full documentation lives in `docs/sphinx/` and is published under `/docs` at <https://ralphworkflow.com>.

@@ -11,6 +11,7 @@ from ralph.display.artifact_renderer import (
     render_missing_plan_hint,
     render_plan_artifact,
 )
+from ralph.display.context import DisplayContext, make_display_context
 from ralph.display.phase_banner import (
     PhaseStartContext,
     show_phase_complete,
@@ -24,12 +25,14 @@ from ralph.display.status import display_phase, display_progress
 from ralph.display.tables import show_agents, show_config, show_providers
 
 __all__ = [
+    "DisplayContext",
     "PhaseStartContext",
     "RalphProgress",
     "RunStartOrientation",
     "display_phase",
     "display_progress",
     "get_progress",
+    "make_display_context",
     "render_analysis_decision",
     "render_commit_message",
     "render_fix_artifact",

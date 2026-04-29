@@ -1427,6 +1427,13 @@ ralph.display.artifact_renderer
    :members:
    :show-inheritance:
 
+ralph.display.context
+~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.display.context
+   :members:
+   :show-inheritance:
+
 ralph.display.completion_summary
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

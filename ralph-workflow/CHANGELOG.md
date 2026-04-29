@@ -8,6 +8,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **`DisplayContext` single source of truth for rendering.** All display code now receives an
+  injected `DisplayContext` (frozen dataclass) that owns the Rich console, Okabe-Ito theme,
+  resolved terminal width, colour policy, and adaptive layout limits. No renderer constructs
+  its own `Console`. Obtain one via `make_display_context()` exported from `ralph.display`.
+- **Real terminal-mode detection (`compact` / `wide`).** `detect_mode` now returns
+  `'compact'` for terminals narrower than 60 columns and `'wide'` for wider ones.
+  `RALPH_FORCE_NARROW=1` forces compact mode regardless of width. `COLUMNS`, `NO_COLOR`,
+  and `FORCE_COLOR` are all respected. Adaptive limits (headline cap, condenser thresholds,
+  streaming checkpoint size) differ per mode.
+- **Semantic theme keys replace literal Rich style strings.** `phase_banner.py`, `cli/main.py`,
+  and all display modules now reference theme keys (`theme.text.muted`, `theme.banner.title`,
+  etc.) instead of raw colour strings. The Okabe-Ito palette is the single colour source.
+- **`RALPH_FORCE_NARROW` env knob.** Set to `1` / `true` / `yes` / `on` to force compact
+  rendering on wide terminals (useful for screenshots or constrained CI output).
+
 - **Same-workspace parallel workers v1.** When the planning agent declares two or more disjoint
   `work_units`, Ralph now runs them as parallel workers in the SAME git checkout using
   `ParallelExecutionMode.SAME_WORKSPACE`. Each worker is restricted to its declared

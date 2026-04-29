@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Final
 
 from rich.text import Text
 
+from ralph.display.context import DisplayContext, make_display_context
 from ralph.display.long_content_summary import build_ai_summary, build_headline_or_placeholder
 from ralph.display.snapshot import PipelineSnapshot, snapshot_from_state
 
@@ -148,12 +149,8 @@ _ANSI_ESCAPE = re.compile(r"\x1b\[[0-9;]*m")
 
 _EMPTY_PLAN_SIGNATURE: tuple[None, tuple[str, ...], int] = (None, (), 0)
 
-# Streaming checkpoint thresholds
+# Streaming checkpoint: emit a progress line every N fragments regardless of char count
 _STREAMING_CHECKPOINT_FRAGMENTS: Final[int] = 20
-_STREAMING_CHECKPOINT_CHARS: Final[int] = 4000
-
-# Minimum content length to trigger thinking preview on continuation fragments
-_THINKING_PREVIEW_MIN_CHARS: Final[int] = 80
 
 _CHECKPOINTS_DISABLED_VALUES: frozenset[str] = frozenset({"0", "false", "no", "off"})
 
@@ -220,8 +217,9 @@ class PlainLogRenderer:
         console: Console,
         *,
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
+        context: DisplayContext | None = None,
     ) -> None:
-        self._console = console
+        self._ctx = context if context is not None else make_display_context(console=console)
         self._clock = clock
         self._last_phase: str | None = None
         self._last_iteration: int | None = None
@@ -256,6 +254,10 @@ class PlainLogRenderer:
         self._run_counters: _PhaseCounters = _PhaseCounters()
         # Step 4: Track last emitted tool signature per unit to deduplicate META [activity] line
         self._last_emitted_tool_signature: dict[str, tuple[str, str]] = {}
+
+    @property
+    def _console(self) -> Console:
+        return self._ctx.console
 
     def _build_line(self, timestamp: str, level: str, cat: str, suffix: str) -> Text:
         """Build a styled Text line with level and category badge segments."""
@@ -355,15 +357,9 @@ class PlainLogRenderer:
         return parts
 
     def _activity_lines(self, snapshot: PipelineSnapshot, timestamp: str) -> list[Text]:
-        # Compute structured fields text for dedup and rendering
         activity_parts = self._build_activity_parts(snapshot)
         structured_text = " ".join(activity_parts) if activity_parts else None
 
-        # Step 4: Suppress META [activity] line when it duplicates the just-emitted
-        # CONT [tool] line for the same unit_id. Only suppress the structured
-        # activity_parts-derived branch (not the free-form last_activity_line path).
-        # Key by tool+path (not structured_text) so dedup works even when active_agent
-        # is None (structured_text would be None but tool+path are sufficient).
         if snapshot.active_tool and snapshot.active_path:
             tool_sig = self._last_emitted_tool_signature.get(snapshot.active_unit_id or "")
             if tool_sig is not None:
@@ -371,11 +367,6 @@ class PlainLogRenderer:
                 if last_tool == snapshot.active_tool and last_path == snapshot.active_path:
                     return []
 
-        # For signature deduplication: use structured_text when available as the
-        # canonical identifier for this activity. This ensures that a snapshot with
-        # just structured fields (snapshot N) and a later snapshot with the same
-        # structured fields PLUS last_activity_line (snapshot N+1) both produce
-        # the same signature, so the second snapshot is correctly deduplicated.
         effective_activity_for_sig = structured_text
 
         activity_signature = (
@@ -399,8 +390,6 @@ class PlainLogRenderer:
             self._emitted_empty_activity = True
             return [self._build_line(timestamp, "INFO", "META", "[activity] (no active agent yet)")]
 
-        # Single canonical [activity] line: prefer the richer free-form last_activity_line
-        # over structured fields for rendering. Only one line is emitted per snapshot diff.
         if snapshot.last_activity_line:
             line_text = _sanitize(snapshot.last_activity_line)
             if snapshot.active_path:
@@ -430,8 +419,6 @@ class PlainLogRenderer:
         if not snapshot.analysis_phase or not snapshot.analysis_decision:
             return []
 
-        # Suppress [analysis] for development_analysis and review_analysis phases
-        # because render_analysis_decision already outputs a titled block for these.
         if snapshot.analysis_phase in ("development_analysis", "review_analysis"):
             return []
 
@@ -493,9 +480,7 @@ class PlainLogRenderer:
 
     @staticmethod
     def strip_markup(text: str) -> str:
-        # First try rich's markup stripping
         stripped = _strip_markup(text)
-        # Then strip any residual ANSI escape sequences
         return _ANSI_ESCAPE.sub("", stripped)
 
     def emit_snapshot(self, snapshot: PipelineSnapshot) -> None:
@@ -807,7 +792,7 @@ class PlainLogRenderer:
         n = len(accumulated)
         chars = sum(len(x) for x in accumulated)
         joined = " ".join(accumulated)
-        headline = build_headline_or_placeholder(joined, max_chars=120)
+        headline = build_headline_or_placeholder(joined, max_chars=self._ctx.headline_max_chars)
         self._console.print(
             self._build_line(
                 timestamp,
@@ -820,9 +805,8 @@ class PlainLogRenderer:
             no_wrap=True,
         )
 
-        # Step 2: For thinking blocks, emit a preview line showing the reasoning content
         if base_tag == "thinking":
-            preview = build_headline_or_placeholder(joined, max_chars=120)
+            preview = build_headline_or_placeholder(joined, max_chars=self._ctx.headline_max_chars)
             preview_suffix = f"[{end_tag}][{unit_id}] ↳ preview: {_sanitize(preview)}"
             self._console.print(
                 self._build_line(timestamp, "INFO", "CONT", preview_suffix),
@@ -831,7 +815,6 @@ class PlainLogRenderer:
                 no_wrap=True,
             )
 
-        # Optional AI summary on block close — only when hook + env are configured
         ai_summary = build_ai_summary(joined, os.environ)
         if ai_summary:
             ai_text = _sanitize(ai_summary)
@@ -853,7 +836,6 @@ class PlainLogRenderer:
         unit_ids = list(self._active_block.keys())
         for unit_id in unit_ids:
             self._close_block(unit_id, timestamp)
-        # Step 4: Clear tool signatures on phase transitions
         self._last_emitted_tool_signature.clear()
 
     def emit_activity_line(  # noqa: PLR0912, PLR0913, PLR0915
@@ -868,24 +850,7 @@ class PlainLogRenderer:
         ai_summary_line: str | None = None,
         _tool_signature: tuple[str, str] | None = None,
     ) -> None:
-        """Emit a kind-tagged, level-badged content line.
-
-        Identical consecutive streaming fragments are suppressed by default;
-        set RALPH_STREAMING_DEDUP=0 to disable.
-
-        Optional AI-generated summary emitted on its own line labelled ai-summary.
-        When both summary_line and ai_summary_line are given, summary_line is
-        printed first, then ai_summary_line.
-
-        summary_line semantics:
-        - None: summarization was not applicable (disabled or below threshold) — no line emitted.
-        - "": summarization was applicable but no headline extracted — placeholder emitted when
-          condensed_flag is True.
-        - non-empty str: the actual headline — emitted as-is.
-
-        _tool_signature: Optional (tool_name, path) tuple used to track tool calls for
-        META [activity] line deduplication.
-        """
+        """Emit a kind-tagged, level-badged content line."""
         timestamp = self._clock().isoformat()
         base_tag = _KIND_TO_TAG.get(kind, "content")
         level = _KIND_TO_LEVEL.get(kind, "INFO")
@@ -900,34 +865,33 @@ class PlainLogRenderer:
             block_tags = _STREAMING_BLOCK_TAGS.get(base_tag)
             if block_tags is not None:
                 start_tag, continue_tag, _end_tag = block_tags
-                # Global single-block invariant: close any block from a different unit first.
                 other_units = [uid for uid in self._active_block if uid != unit_id]
                 for other_uid in other_units:
                     self._close_block(other_uid, timestamp)
                 if unit_id not in self._active_block:
-                    # Open new block
                     self._active_block[unit_id] = (base_tag, [content])
                     self._last_checkpoint_chars[unit_id] = 0
                     tag = start_tag
                     self._update_counters(kind, is_new_block=True)
                     if kind == "thinking":
-                        headline = build_headline_or_placeholder(content, max_chars=120)
+                        headline = build_headline_or_placeholder(
+                            content, max_chars=self._ctx.headline_max_chars
+                        )
                         sanitized = f"↳ preview: {_sanitize(headline)}"
                 else:
                     existing_base_tag, accumulated = self._active_block[unit_id]
                     if existing_base_tag != base_tag:
-                        # Different kind: close old block first
                         self._close_block(unit_id, timestamp)
-                        # Open new block
                         self._active_block[unit_id] = (base_tag, [content])
                         self._last_checkpoint_chars[unit_id] = 0
                         tag = start_tag
                         self._update_counters(kind, is_new_block=True)
                         if kind == "thinking":
-                            headline = build_headline_or_placeholder(content, max_chars=120)
+                            headline = build_headline_or_placeholder(
+                                content, max_chars=self._ctx.headline_max_chars
+                            )
                             sanitized = f"↳ preview: {_sanitize(headline)}"
                     else:
-                        # Same block continuation — check dedup BEFORE mutating state
                         if _dedup_enabled() and accumulated and accumulated[-1] == content:
                             return
                         seq = len(accumulated) + 1
@@ -939,12 +903,13 @@ class PlainLogRenderer:
                             last_cp = self._last_checkpoint_chars.get(unit_id, 0)
                             emit_checkpoint = (
                                 seq % _STREAMING_CHECKPOINT_FRAGMENTS == 0
-                                or total_chars - last_cp >= _STREAMING_CHECKPOINT_CHARS
+                                or total_chars - last_cp >= self._ctx.streaming_checkpoint_chars
                             )
                             if emit_checkpoint:
                                 self._last_checkpoint_chars[unit_id] = total_chars
                                 headline = build_headline_or_placeholder(
-                                    " ".join(accumulated), max_chars=120
+                                    " ".join(accumulated),
+                                    max_chars=self._ctx.headline_max_chars,
                                 )
                                 cp_tag = f"{base_tag}-checkpoint#{seq}"
                                 cp_suffix = (
@@ -959,10 +924,10 @@ class PlainLogRenderer:
                                     highlight=False,
                                     no_wrap=True,
                                 )
-                                # Step 2: Emit a preview line after checkpoint
                                 if kind == "thinking":
                                     preview = build_headline_or_placeholder(
-                                        " ".join(accumulated), max_chars=120
+                                        " ".join(accumulated),
+                                        max_chars=self._ctx.headline_max_chars,
                                     )
                                     preview_suffix = (
                                         f"[{cp_tag}][{unit_id}] ↳ preview: "
@@ -976,31 +941,27 @@ class PlainLogRenderer:
                                         highlight=False,
                                         no_wrap=True,
                                     )
-                        # Step 2: For long thinking continuation, replace with preview headline.
-                        if kind == "thinking" and len(content) >= _THINKING_PREVIEW_MIN_CHARS:
-                            preview = build_headline_or_placeholder(content, max_chars=120)
+                        thinking_min = self._ctx.thinking_preview_min_chars
+                        if kind == "thinking" and len(content) >= thinking_min:
+                            preview = build_headline_or_placeholder(
+                                content, max_chars=self._ctx.headline_max_chars
+                            )
                             sanitized = f"↳ preview: {_sanitize(preview)}"
             else:
                 tag = base_tag
                 self._update_counters(kind, is_new_block=False)
 
         else:
-            # Non-streaming kind: close ALL open blocks (any unit) before emitting.
             all_units = list(self._active_block.keys())
             for uid in all_units:
                 self._close_block(uid, timestamp)
             tag = base_tag
             self._update_counters(kind, is_new_block=False)
 
-        # Step 4: Record tool signature when emitting a tool_use
         if kind == "tool_use" and _tool_signature is not None:
             tool_name, tool_path = _tool_signature
             self._last_emitted_tool_signature[unit_id] = (tool_name, tool_path)
 
-        # Emit summary line.
-        # summary_line=None means "not applicable" — nothing emitted.
-        # summary_line="" means "applicable but no headline" — placeholder when condensed.
-        # summary_line=<non-empty> means the actual headline.
         if summary_line is not None:
             if summary_line:
                 summary_text = _sanitize(summary_line)
@@ -1028,7 +989,6 @@ class PlainLogRenderer:
                     no_wrap=True,
                 )
 
-        # Emit optional AI-generated summary line after the deterministic headline
         if ai_summary_line:
             ai_text = _sanitize(ai_summary_line)
             self._console.print(
@@ -1093,8 +1053,9 @@ class PlainModeAdapter:
         console: Console,
         *,
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
+        context: DisplayContext | None = None,
     ) -> None:
-        self._renderer = PlainLogRenderer(console, clock=clock)
+        self._renderer = PlainLogRenderer(console, clock=clock, context=context)
 
     def notify(self, state: PipelineState) -> None:
         self._renderer.emit_snapshot(

@@ -31,72 +31,72 @@ def _make_wide_console() -> tuple[Console, StringIO]:
     return console, buf
 
 
-def test_ci_env_forces_lines() -> None:
+def test_ci_env_does_not_affect_mode() -> None:
     console = Console(force_terminal=True, width=120)
-    assert detect_mode(console, {"CI": "1"}) == "lines"
+    assert detect_mode(console, {"CI": "1"}) == "wide"
 
 
-def test_ci_empty_string_still_prefers_lines() -> None:
+def test_ci_empty_string_does_not_affect_mode() -> None:
     console = Console(force_terminal=True, width=120)
-    assert detect_mode(console, {"CI": ""}) == "lines"
+    assert detect_mode(console, {"CI": ""}) == "wide"
 
 
-def test_no_color_forces_lines() -> None:
+def test_no_color_env_does_not_affect_mode() -> None:
     console = Console(force_terminal=True, width=120)
-    assert detect_mode(console, {"NO_COLOR": "1"}) == "lines"
+    assert detect_mode(console, {"NO_COLOR": "1"}) == "wide"
 
 
-def test_no_color_empty_string_forces_lines() -> None:
+def test_no_color_empty_string_does_not_affect_mode() -> None:
     console = Console(force_terminal=True, width=120)
-    assert detect_mode(console, {"NO_COLOR": ""}) == "lines"
+    assert detect_mode(console, {"NO_COLOR": ""}) == "wide"
 
 
-def test_term_dumb_forces_lines() -> None:
+def test_term_dumb_does_not_affect_mode() -> None:
     console = Console(force_terminal=True, width=120)
-    assert detect_mode(console, {"TERM": "dumb"}) == "lines"
+    assert detect_mode(console, {"TERM": "dumb"}) == "wide"
 
 
-def test_term_other_value_still_prefers_lines() -> None:
+def test_term_value_does_not_affect_mode() -> None:
     console = Console(force_terminal=True, width=120)
-    assert detect_mode(console, {"TERM": "xterm-256color"}) == "lines"
+    assert detect_mode(console, {"TERM": "xterm-256color"}) == "wide"
 
 
-def test_non_terminal_console_forces_lines() -> None:
+def test_non_terminal_console_does_not_affect_mode() -> None:
     console = Console(force_terminal=False, width=120)
-    assert detect_mode(console, {}) == "lines"
+    assert detect_mode(console, {}) == "wide"
 
 
-def test_narrow_terminal_forces_lines() -> None:
+def test_narrow_terminal_returns_compact() -> None:
     console = Console(force_terminal=True, width=40)
-    assert detect_mode(console, {}) == "lines"
+    assert detect_mode(console, {}) == "compact"
 
 
-def test_threshold_boundary_forces_lines() -> None:
+def test_threshold_boundary_returns_wide() -> None:
     console = Console(force_terminal=True, width=NARROW_THRESHOLD)
-    assert detect_mode(console, {}) == "lines"
+    assert detect_mode(console, {}) == "wide"
 
 
-def test_threshold_plus_one_still_prefers_lines() -> None:
+def test_threshold_plus_one_returns_wide() -> None:
     console = Console(force_terminal=True, width=NARROW_THRESHOLD + 1)
-    assert detect_mode(console, {}) == "lines"
+    assert detect_mode(console, {}) == "wide"
 
 
 def test_parallel_display_mode_detected_at_init() -> None:
     console = Console(force_terminal=True, width=120)
     pd = ParallelDisplay(console, {})
-    assert pd.mode == "lines"
+    assert pd.mode == "wide"
 
 
-def test_parallel_display_mode_lines_when_ci() -> None:
+def test_parallel_display_mode_wide_when_ci() -> None:
     console = Console(force_terminal=True, width=120)
     pd = ParallelDisplay(console, {"CI": "1"})
-    assert pd.mode == "lines"
+    assert pd.mode == "wide"
 
 
 def test_parallel_display_default_env_uses_os_environ() -> None:
     console = Console(force_terminal=True, width=120)
     pd = ParallelDisplay(console)
-    assert pd.mode == "lines"
+    assert pd.mode in ("compact", "wide")
 
 
 def test_parallel_display_mode_frozen_after_init() -> None:
@@ -112,7 +112,7 @@ def test_parallel_display_mode_frozen_after_init() -> None:
 def test_parallel_display_context_manager() -> None:
     console = Console(force_terminal=True, width=120)
     with ParallelDisplay(console, {}) as pd:
-        assert pd.mode == "lines"
+        assert pd.mode == "wide"
 
 
 def test_parallel_display_emit_does_not_raise() -> None:
@@ -145,7 +145,7 @@ def test_parallel_display_default_mode_streams_copy_pasteable_lines() -> None:
     console = Console(force_terminal=True, width=120, record=True)
     pd = ParallelDisplay(console, {})
 
-    assert pd.mode == "lines"
+    assert pd.mode == "wide"
 
     pd.start()
     try:

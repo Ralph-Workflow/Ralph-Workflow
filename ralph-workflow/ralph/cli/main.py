@@ -15,7 +15,6 @@ import rich_click as click
 import typer
 import typer.testing
 from loguru import logger
-from rich.console import Console
 from rich.text import Text
 
 # Late imports to avoid circular dependencies
@@ -39,6 +38,7 @@ from ralph.config.bootstrap import (
 from ralph.config.enums import ReviewDepth, Verbosity
 from ralph.config.loader import load_config
 from ralph.config.welcome import emit_first_run_welcome
+from ralph.display.theme import make_console as _make_console
 from ralph.pipeline import checkpoint as ckpt
 from ralph.workspace.scope import resolve_workspace_scope
 
@@ -98,7 +98,7 @@ app = typer.Typer(
     rich_markup_mode="rich",
     suggest_commands=True,
 )
-console = Console()
+console = _make_console()
 
 _typer_get_command = typer.main.get_command
 
@@ -165,9 +165,9 @@ def version_callback(version: bool) -> None:
     """Print version information."""
     if version:
         version_text = Text()
-        version_text.append("Ralph Workflow", style="cyan")
+        version_text.append("Ralph Workflow", style="theme.banner.title")
         version_text.append(" version ")
-        version_text.append(__version__, style="green")
+        version_text.append(__version__, style="theme.banner.version")
         console.print(version_text)
         raise typer.Exit()
 

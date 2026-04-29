@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Literal, cast
 from ralph.display.activity_router import ActivityRouter
 from ralph.display.completion_summary import emit_completion_summary
 from ralph.display.content_condenser import condense_content
+from ralph.display.context import DisplayContext, make_display_context
 from ralph.display.lifecycle_filter import is_bare_lifecycle as _is_bare_lifecycle
 from ralph.display.long_content_summary import build_headline_or_placeholder
 from ralph.display.mode import NARROW_THRESHOLD, detect_mode
@@ -20,7 +21,6 @@ from ralph.display.phase_banner import show_phase_transition
 from ralph.display.plain_renderer import PlainLogRenderer
 from ralph.display.raw_overflow import RawOverflowLog
 from ralph.display.subscriber import PipelineSubscriber
-from ralph.display.theme import make_console as _make_console
 from ralph.display.tool_args import format_tool_input, friendly_tool_name
 
 if TYPE_CHECKING:
@@ -38,8 +38,6 @@ _DEFAULT_SNAPSHOT_QUEUE_MAXSIZE: int = 64
 _MAX_OVERFLOW_FILE_BYTES: int = 50 * 1024 * 1024  # 50 MB guard
 _DROP_DEBOUNCE_SECONDS: float = 1.0
 _NEVER_WARNED: float = float("-inf")
-# Minimum content length to trigger headline summarization for tool_result
-_TOOL_RESULT_HEADLINE_MIN_CHARS: int = 80
 
 
 def _strip_markup(line: str) -> str:
@@ -49,9 +47,8 @@ def _strip_markup(line: str) -> str:
 class ParallelDisplay:
     __slots__ = (
         "_activity_router",
-        "_console",
+        "_ctx",
         "_drop_last_warned",
-        "_mode",
         "_overflow_logs",
         "_overflow_warned",
         "_plain_renderer",
@@ -64,20 +61,19 @@ class ParallelDisplay:
         console: Console | None = None,
         env: Mapping[str, str] | None = None,
         *,
-        mode: Literal["lines"] | None = None,
+        mode: Literal["compact", "wide"] | None = None,
         subscriber: PipelineSubscriber | None = None,
         workspace_root: Path | None = None,
         run_id: str | None = None,
     ) -> None:
         resolved_env = dict(os.environ if env is None else env)
-        if console is None:
-            console = _make_console()
-        self._console = console
-        self._mode: Literal["lines"] = "lines"
-        if mode is None:
-            self._mode = detect_mode(console, resolved_env)
+        self._ctx: DisplayContext = make_display_context(
+            env=resolved_env,
+            console=console,
+            force_mode=mode,
+        )
 
-        self._plain_renderer = PlainLogRenderer(console)
+        self._plain_renderer = PlainLogRenderer(self._ctx.console, context=self._ctx)
         self._workspace_root: Path = workspace_root if workspace_root is not None else Path.cwd()
 
         # Per-unit raw overflow logs, lazy-created on first oversized emit
@@ -105,6 +101,10 @@ class ParallelDisplay:
                 run_id=effective_run_id,
                 on_snapshot=self._plain_renderer.emit_snapshot,
             )
+
+    @property
+    def _console(self) -> Console:
+        return self._ctx.console
 
     def _get_overflow_log(self, unit_id: str) -> RawOverflowLog:
         if unit_id not in self._overflow_logs:
@@ -161,8 +161,6 @@ class ParallelDisplay:
 
         tool_signature: tuple[str, str] | None = None
 
-        # For tool_use events, render the tool name in friendly form and append input args.
-        # Also forward to the subscriber so the next snapshot reflects the current tool call.
         if kind is _Kind.TOOL_USE:
             original_name = text
             text = friendly_tool_name(text)
@@ -192,27 +190,27 @@ class ParallelDisplay:
         overflow = self._get_overflow_log(unit_id)
         overflow_ref = overflow.relative_reference(self._workspace_root)
 
-        # Condenser runs without overflow_ref so it does not embed the path.
-        # The renderer receives condensed_ref and appends [see path] when condensed.
         visible, condensed_flag, summary_line, ai_summary_line = condense_content(
-            text, soft_limit=400, hard_limit=4000, summary=True
+            text,
+            soft_limit=self._ctx.condenser_soft_limit,
+            hard_limit=self._ctx.condenser_hard_limit,
+            summary=True,
         )
 
         if condensed_flag:
             self._check_overflow_size(unit_id, overflow)
             overflow.append(text)
 
-        # Step 3: For tool_result, if condense_content returned summary_line is None
-        # but content has at least one non-blank line AND len(content) >= threshold,
-        # compute a headline for the result.
         effective_summary_line = summary_line
         if (
             kind is _Kind.TOOL_RESULT
             and summary_line is None
             and text.strip()
-            and len(text) >= _TOOL_RESULT_HEADLINE_MIN_CHARS
+            and len(text) >= self._ctx.tool_result_headline_min_chars
         ):
-            effective_summary_line = build_headline_or_placeholder(text, max_chars=120)
+            effective_summary_line = build_headline_or_placeholder(
+                text, max_chars=self._ctx.headline_max_chars
+            )
 
         self._plain_renderer.emit_activity_line(
             unit_id,
@@ -232,8 +230,8 @@ class ParallelDisplay:
         return self._activity_router
 
     @property
-    def mode(self) -> Literal["lines"]:
-        return self._mode
+    def mode(self) -> Literal["compact", "wide"]:
+        return self._ctx.mode
 
     @property
     def subscriber(self) -> PipelineSubscriber:
@@ -282,15 +280,12 @@ class ParallelDisplay:
         decision: str,
         reason: str | None = None,
     ) -> None:
-        # Only record to decision_log via subscriber; the titled block is rendered
-        # by render_analysis_decision in the phase handler (development.py/review.py).
-        # This avoids double-rendering both a plain [analysis] line and a titled block.
         with contextlib.suppress(Exception):
             self._subscriber.record_analysis(phase, decision, reason)
 
     def emit_phase_transition(self, from_phase: str, to_phase: str) -> None:
         self._plain_renderer.flush_blocks()
-        show_phase_transition(from_phase, to_phase, console=self._console)
+        show_phase_transition(from_phase, to_phase, console=self._ctx.console)
         with contextlib.suppress(Exception):
             self._subscriber.record_phase_transition(from_phase, to_phase)
 
@@ -330,7 +325,7 @@ class ParallelDisplay:
                     snapshot = self._subscriber.build_snapshot(last_state)
                     if snapshot is not None:
                         emit_completion_summary(
-                            self._console,
+                            self._ctx.console,
                             snapshot,
                             workspace_root=self._workspace_root,
                             dropped_count=self._subscriber.dropped_count,
@@ -350,7 +345,7 @@ class ParallelDisplay:
     @property
     def console(self) -> Console:
         """Expose console for external renderers."""
-        return self._console
+        return self._ctx.console
 
     def __enter__(self) -> ParallelDisplay:
         self.start()

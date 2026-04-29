@@ -70,7 +70,7 @@ _TRANSITION_DESCRIPTIONS: dict[tuple[str, str], str] = {
 
 def _phase_style(phase: str) -> str:
     """Return the rich style string for a phase name."""
-    return _PHASE_STYLES.get(phase, "dim")
+    return _PHASE_STYLES.get(phase, "theme.text.muted")
 
 
 def _phase_label(phase: str) -> str:
@@ -116,22 +116,22 @@ def show_phase_transition(
         c.print()
         c.print(Rule(style=style))
         banner = Text()
-        banner.append(f"  {from_label}", style="dim")
-        banner.append(" → ", style="bold")
+        banner.append(f"  {from_label}", style="theme.text.muted")
+        banner.append(" → ", style="theme.text.emphasis")
         banner.append(to_label, style=style)
         if context:
             detail = "  ".join(f"{k}={v}" for k, v in context.items())
-            banner.append(f"  ({detail})", style="dim")
+            banner.append(f"  ({detail})", style="theme.text.muted")
         c.print(banner)
         if description:
-            c.print(Text(f"  {description}", style="dim italic"))
+            c.print(Text(f"  {description}", style="theme.text.dim_italic"))
         c.print(Rule(style=style))
     else:
         c.print()
         title = Text()
         title.append(f"{from_label} → {to_label}")
         if description:
-            title.append(f"  {description}", style="dim italic")
+            title.append(f"  {description}", style="theme.text.dim_italic")
         c.print(Rule(title=title, style=style))
 
 
@@ -183,9 +183,15 @@ def show_phase_start(
 
     if ctx is not None:
         if ctx.iteration is not None and ctx.total_iterations is not None:
-            line.append(f" [iteration {ctx.iteration + 1}/{ctx.total_iterations}]", style="dim")
+            line.append(
+                f" [iteration {ctx.iteration + 1}/{ctx.total_iterations}]",
+                style="theme.text.muted",
+            )
         if ctx.reviewer_pass is not None and ctx.total_reviewer_passes is not None:
-            line.append(f" [pass {ctx.reviewer_pass + 1}/{ctx.total_reviewer_passes}]", style="dim")
+            line.append(
+                f" [pass {ctx.reviewer_pass + 1}/{ctx.total_reviewer_passes}]",
+                style="theme.text.muted",
+            )
         if (
             phase == "development_analysis"
             and ctx.development_analysis_iteration is not None
@@ -195,7 +201,7 @@ def show_phase_start(
                 ctx.development_analysis_iteration,
                 ctx.max_development_analysis_iterations,
             )
-            line.append(suffix, style="dim")
+            line.append(suffix, style="theme.text.muted")
         if (
             phase == "review_analysis"
             and ctx.review_analysis_iteration is not None
@@ -205,13 +211,13 @@ def show_phase_start(
                 ctx.review_analysis_iteration,
                 ctx.max_review_analysis_iterations,
             )
-            line.append(suffix, style="dim")
+            line.append(suffix, style="theme.text.muted")
         effective_agent = ctx.agent_name or agent_name
     else:
         effective_agent = agent_name
 
     if effective_agent is not None:
-        line.append(f"  agent={effective_agent}", style="dim")
+        line.append(f"  agent={effective_agent}", style="theme.text.muted")
 
     c.print(line)
 
@@ -278,6 +284,6 @@ def show_phase_complete(
     line.append("✓ ", style=style)
     line.append(f"{label} complete", style=style)
     if decision is not None:
-        line.append(f" — {decision}", style="bold")
+        line.append(f" — {decision}", style="theme.text.emphasis")
 
     c.print(line)

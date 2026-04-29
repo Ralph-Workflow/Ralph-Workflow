@@ -54,14 +54,22 @@ _THEME_STYLES: Final[dict[str, str]] = {
     "theme.phase.review_analysis": REDDISH_PURPLE,
     "theme.phase.review_commit": BLUE,
     "theme.status.error": f"bold {VERMILLION}",
+    "theme.status.failure": f"bold {VERMILLION}",
     "theme.status.info": BLUE,
     "theme.status.pending": "dim",
     "theme.status.running": SKY_BLUE,
     "theme.status.skipped": YELLOW,
     "theme.status.success": f"bold {BLUISH_GREEN}",
     "theme.status.warning": f"bold {ORANGE}",
+    "theme.text.dim_italic": "dim italic",
     "theme.text.emphasis": "bold",
     "theme.text.muted": "dim",
+    "theme.banner.ascii": f"bold {SKY_BLUE}",
+    "theme.banner.border": SKY_BLUE,
+    "theme.banner.tagline": "dim",
+    "theme.banner.title": f"bold {SKY_BLUE}",
+    "theme.banner.version": f"bold {BLUISH_GREEN}",
+    "theme.banner.welcome": "bold",
 }
 
 RALPH_THEME: Final[Theme] = Theme(_THEME_STYLES)
