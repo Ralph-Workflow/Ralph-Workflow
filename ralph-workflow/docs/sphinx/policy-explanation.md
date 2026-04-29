@@ -129,8 +129,8 @@ WORKFLOW DIAGRAM
 |-------|---------|
 | `+--name--+` | Phase box with name and role |
 | `=ENTRY=>` | Entry phase — where every run starts |
-| `==SUCCESS==>` | Terminal success — pipeline completes successfully |
-| `==FAILURE==>` | Terminal failure — pipeline fails (on_failure route to built-in failed target) |
+| `==SUCCESS==>` | Terminal success — marks a phase declared with `terminal_outcome='success'` |
+| `==FAILURE==>` | Terminal failure — marks a phase declared with `terminal_outcome='failure'`; only policy-declared terminal phases receive this marker |
 | `\| loop back to X` | Loopback edge — routes BACK to phase X on loopback signal |
 | `+---^  (returns to 'X' phase)` | Continuation of loopback annotation |
 | `[LOOPBACK: counter=N, max=M]` | Loopback consumes loop counter N (present only when loopback_review_outcome is set) |

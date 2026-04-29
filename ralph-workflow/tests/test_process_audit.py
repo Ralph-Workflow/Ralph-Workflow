@@ -32,6 +32,7 @@ TESTS_ALLOWLIST: set[str] = {
     "test_git_rebase.py",              # git repo setup via subprocess.run in test fixtures
     "test_git_rebase_continuation.py", # git repo setup via subprocess.run in test fixtures
     "test_asyncio_bridge.py",          # patches os.killpg; no real call
+    "test_cli.py",                     # exercises actual console-script entrypoint via subprocess
 }
 
 _MCP_FIXTURE_FILES = {
