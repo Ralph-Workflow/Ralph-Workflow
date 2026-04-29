@@ -566,3 +566,26 @@ def test_regenerate_config_flag_creates_bak(
     assert bak.exists()
     assert bak.read_text(encoding="utf-8") == "# MINE"
     assert (xdg_dir / "ralph-workflow.toml").read_text(encoding="utf-8").startswith("#")
+
+
+def test_explain_policy_prints_workflow_diagram(cli_runner: CliRunner) -> None:
+    """--explain-policy prints the workflow diagram and structural breakdown."""
+    result = cli_runner.invoke(app, ["--explain-policy"])
+
+    # Should exit successfully
+    assert result.exit_code == 0
+
+    # Should contain the ASCII diagram section
+    assert "WORKFLOW DIAGRAM" in result.stdout
+
+    # Should contain entry marker
+    assert "=ENTRY=>" in result.stdout
+
+    # Should contain terminal success marker
+    assert "==SUCCESS==>" in result.stdout
+
+    # Should also contain the structural breakdown section
+    assert "RALPH WORKFLOW — ACTIVE POLICY EXPLANATION" in result.stdout
+
+    # Should contain bypass_routes explanation sentence for the review phase
+    assert "Explanation: phase 'review' bypasses to 'review_commit'" in result.stdout

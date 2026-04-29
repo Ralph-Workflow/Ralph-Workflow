@@ -30,6 +30,7 @@ from ralph.pipeline.state import AgentChainState, CommitState, PipelineState
 from ralph.pipeline.work_units import WorkUnit
 from ralph.pipeline.worker_state import WorkerState, WorkerStatus
 from ralph.policy.models import (
+    BudgetCounterConfig,
     PhaseCommitPolicy,
     PhaseDefinition,
     PhaseLoopPolicy,
@@ -183,6 +184,10 @@ def _policy_with_post_commit_routes() -> PipelinePolicy:
         },
         entry_phase="planning",
         terminal_phase=PHASE_COMPLETE,
+        budget_counters={
+            "iteration": BudgetCounterConfig(),
+            "reviewer_pass": BudgetCounterConfig(),
+        },
         post_commit_routes=[
             PostCommitRoute(
                 when=PostCommitRouteWhen(phase="development_commit", budget_state="remaining"),

@@ -1,4 +1,4 @@
-"""Render a PolicyExplanation as human-readable text or rich table output.
+"""Render a PolicyExplanation as human-readable text or ASCII workflow diagram.
 
 This module converts the structured PolicyExplanation dataclass (from explain.py)
 into text or rich console output that answers:
@@ -11,10 +11,15 @@ into text or rich console output that answers:
 
 from __future__ import annotations
 
+from collections import deque
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from ralph.policy.explain import PhaseExplanation, PolicyExplanation
+    from ralph.policy.explain import (
+        ParallelExplanation,
+        PhaseExplanation,
+        PolicyExplanation,
+    )
 
 
 _ROLE_LABELS: dict[str, str] = {
@@ -26,6 +31,260 @@ _ROLE_LABELS: dict[str, str] = {
     "terminal": "terminal (pipeline ends here)",
     "fanout_join": "fanout-join (waits for parallel workers)",
 }
+
+
+def _compute_success_spine(exp: PolicyExplanation) -> list[str]:
+    """Compute the happy-path spine by following on_success edges from entry_phase.
+
+    Determinism rule: phase ordering follows on_success edges; ties broken
+    alphabetically.
+    """
+    phase_map: dict[str, PhaseExplanation] = {p.name: p for p in exp.phases}
+    spine: list[str] = []
+    visited: set[str] = set()
+
+    current = exp.entry_phase
+    while current and current not in visited:
+        spine.append(current)
+        visited.add(current)
+        phase = phase_map.get(current)
+        if phase is None:
+            break
+        # Only follow on_success for the spine
+        next_phase = phase.on_success
+        if not next_phase or next_phase in visited:
+            break
+        current = next_phase
+
+    # Add any unvisited phases alphabetically (for orphan display)
+    spine.extend(sorted(pname for pname in phase_map if pname not in visited))
+
+    return spine
+
+
+def _compute_bfs_order(exp: PolicyExplanation) -> list[str]:
+    """Compute BFS ordering of phases starting from entry_phase.
+
+    Determinism rule: phase ordering follows BFS from entry_phase; ties broken
+    alphabetically.
+    """
+    phase_map: dict[str, PhaseExplanation] = {p.name: p for p in exp.phases}
+    bfs_order: list[str] = []
+    bfs_queue: deque[str] = deque()
+    bfs_visited: set[str] = set()
+
+    if exp.entry_phase not in phase_map:
+        return []
+
+    bfs_queue.append(exp.entry_phase)
+    bfs_visited.add(exp.entry_phase)
+
+    while bfs_queue:
+        current = bfs_queue.popleft()
+        bfs_order.append(current)
+        phase = phase_map.get(current)
+        if phase is None:
+            continue
+
+        next_phases: list[str] = []
+        if phase.on_success and phase.on_success not in bfs_visited:
+            next_phases.append(phase.on_success)
+        if phase.on_failure and phase.on_failure not in bfs_visited:
+            next_phases.append(phase.on_failure)
+        if phase.on_loopback and phase.on_loopback not in bfs_visited:
+            next_phases.append(phase.on_loopback)
+        next_phases.extend(
+            t for t in phase.decisions.values() if t and t not in bfs_visited
+        )
+        next_phases.sort()
+        for np_hop in next_phases:
+            if np_hop not in bfs_visited:
+                bfs_queue.append(np_hop)
+                bfs_visited.add(np_hop)
+
+    bfs_order.extend(pname for pname in phase_map if pname not in bfs_visited)
+
+    return bfs_order
+
+
+def _compute_box_width(phase_name: str, role: str | None) -> int:
+    """Compute the width for a phase box.
+
+    Width = max(len(name), len('role=' + role), 6) + 4.
+    """
+    role_str = f"role={role or 'unknown'}"
+    return max(len(phase_name), len(role_str), 6) + 4
+
+
+def _render_fanout_annotation(
+    lines: list[str],
+    phase_name: str,
+    parallel_phase: str | None,
+    pe: ParallelExplanation | None,
+) -> None:
+    """Render fanout annotation line if applicable."""
+    if parallel_phase == phase_name and pe is not None:
+        lines.append(
+            f"[fanout: max_workers={pe.max_parallel_workers}, "
+            f"max_units={pe.max_work_units}]"
+        )
+
+
+def _render_loop_annotation(lines: list[str], phase: PhaseExplanation) -> None:
+    """Render loop annotation line if applicable."""
+    if phase.loop_policy is not None:
+        lp = phase.loop_policy
+        lines.append(
+            f"[loop: counter={lp.iteration_state_field}, max={lp.max_iterations}]"
+        )
+
+
+def _render_phase_box(lines: list[str], phase_name: str, role: str | None) -> None:
+    """Render a single phase box with name and role."""
+    width = _compute_box_width(phase_name, role)
+    role_str = f"role={role or 'unknown'}"
+
+    lines.append("+" + "-" * (width - 2) + "+")
+    name_content = f" {phase_name} "
+    lines.append("|" + name_content.center(width - 2) + "|")
+    role_content = f" {role_str} "
+    lines.append("|" + role_content.center(width - 2) + "|")
+    lines.append("+" + "-" * (width - 2) + "+")
+
+
+def _render_decision_branches(lines: list[str], phase: PhaseExplanation) -> None:
+    """Render decision branch rows for a phase."""
+    if not phase.decisions:
+        return
+    for decision_name, target in sorted(phase.decisions.items()):
+        if target != phase.on_success:
+            lines.append(f"    +--[{decision_name}]--> {target}")
+
+
+def _render_loopback_arrow(lines: list[str], phase: PhaseExplanation) -> None:
+    """Render loopback annotation if applicable.
+
+    Emits 'loop back to <target>' below the phase box, with an optional
+    [LOOPBACK: counter=..., max=...] annotation when the loopback consumes a
+    loop counter (i.e. when loop_policy.loopback_review_outcome is set).
+    """
+    if phase.on_loopback and phase.on_loopback != phase.on_success:
+        target = phase.on_loopback
+        lines.append(f"    | loop back to {target}")
+        lines.append(f"    +---^  (returns to '{target}' phase)")
+        if phase.loop_policy is not None and phase.loop_policy.loopback_review_outcome is not None:
+            lp = phase.loop_policy
+            lines.append(
+                f"    [LOOPBACK: counter={lp.iteration_state_field}, max={lp.max_iterations}]"
+            )
+
+
+def _render_terminal_marker(lines: list[str], phase: PhaseExplanation) -> None:
+    """Render terminal outcome marker if applicable.
+
+    Renders ==SUCCESS==> for phases with terminal_outcome='success'.
+    Renders ==FAILURE==> for phases with terminal_outcome='failure'.
+    Only actual terminal phases (declared with role='terminal') get markers.
+    """
+    if phase.terminal_outcome == "success":
+        lines.append("==SUCCESS==>")
+    elif phase.terminal_outcome == "failure":
+        lines.append("==FAILURE==>")
+
+
+def _render_happy_path_arrow(
+    lines: list[str], phase: PhaseExplanation, next_phase: str | None
+) -> None:
+    """Render happy path arrow to next phase if applicable."""
+    if (
+        phase.on_success
+        and next_phase
+        and not phase.is_terminal
+        and next_phase == phase.on_success
+    ):
+        lines.append("    |")
+        lines.append("    v")
+
+
+def render_explanation_ascii(exp: PolicyExplanation) -> str:
+    """Render a PolicyExplanation as a deterministic pure-ASCII workflow diagram.
+
+    Visual contract (per PLAN step 4):
+
+    1. BOX STRUCTURE: Each phase renders as a 4-line box:
+       Line 1: "+" + "-" * (width-2) + "+"
+       Line 2: "|" + <phase_name> centered + "|"
+       Line 3: "|" + "role=<role>" centered + "|"
+       Line 4: "+" + "-" * (width-2) + "+"
+       Width = max(len(name), len("role=" + role), 6) + 4
+
+    2. ENTRY MARKER: =ENTRY=> appears on the line above the entry phase box.
+
+    3. HAPPY-PATH: A center-aligned "|" then "v" arrowhead connects
+       consecutive phases on the success spine.
+
+    4. DECISION BRANCHES: For each decision whose target differs from on_success,
+       render "    +--[decision_name]--> target_phase" (4-space indent).
+
+    5. LOOPBACK: When on_loopback differs from on_success, render
+       "    | loop back to target_phase" and
+       "    +---^  (returns to 'target_phase' phase)".
+       If loop_policy.loopback_review_outcome is also set, render a third line:
+       "    [LOOPBACK: counter=NAME, max=N]".
+
+    6. TERMINAL MARKERS: ==SUCCESS==> for terminal_outcome="success";
+       ==FAILURE==> for terminal_outcome="failure". Only policy-declared
+       terminal phases get markers.
+
+    7. FANOUT ANNOTATION: [fanout: max_workers=N, max_units=M] appears
+       above the phase box for the parallel-eligible phase.
+
+    8. LOOP ANNOTATION: [loop: counter=NAME, max=N] appears above the
+       phase box for phases with loop_policy.
+
+    9. GLYPHS: Pure ASCII only — allowed chars: + - | < > v ^ = [ ] _ . ,
+       plus alphanumerics. No Unicode box-drawing characters.
+
+    10. ORDERING: Success spine (follows on_success from entry_phase);
+        unvisited phases appended alphabetically. Ties broken alphabetically.
+
+    Args:
+        exp: The policy explanation to render.
+
+    Returns:
+        A multi-line ASCII string representing the workflow diagram.
+    """
+    phase_map: dict[str, PhaseExplanation] = {p.name: p for p in exp.phases}
+    spine_order = _compute_success_spine(exp)
+    lines: list[str] = []
+
+    parallel_phase = None
+    if exp.parallel_execution is not None:
+        parallel_phase = exp.parallel_execution.phase
+
+    for i, phase_name in enumerate(spine_order):
+        phase = phase_map.get(phase_name)
+        if phase is None:
+            continue
+
+        # Determine the next phase on the success spine
+        next_phase = spine_order[i + 1] if i + 1 < len(spine_order) else None
+
+        _render_fanout_annotation(
+            lines, phase_name, parallel_phase, exp.parallel_execution
+        )
+        _render_loop_annotation(lines, phase)
+
+        if phase.is_entry:
+            lines.append("=ENTRY=>")
+
+        _render_phase_box(lines, phase_name, phase.role)
+        _render_decision_branches(lines, phase)
+        _render_loopback_arrow(lines, phase)
+        _render_terminal_marker(lines, phase)
+        _render_happy_path_arrow(lines, phase, next_phase)
+
+    return "\n".join(lines)
 
 
 def render_explanation_text(exp: PolicyExplanation) -> str:
@@ -88,6 +347,46 @@ def render_explanation_text(exp: PolicyExplanation) -> str:
     lines.append("")
     lines.append("=" * 70)
     return "\n".join(lines)
+
+
+def _render_explanation_sentences(phase: PhaseExplanation) -> list[str]:
+    """Generate explanation sentences for a phase per Required Product Outcome D.
+
+    Produces sentences for decisions, terminal outcomes, bypass_routes, and
+    loopback caps.
+    """
+    sentences: list[str] = []
+
+    if phase.decisions:
+        for decision_name, target in phase.decisions.items():
+            sentences.append(
+                f"Explanation: phase '{phase.name}' routes to "
+                f"'{target}' because the configured decision was "
+                f"'{decision_name}'."
+            )
+
+    if phase.terminal_outcome:
+        sentences.append(
+            f"Explanation: when reached, the run terminates because "
+            f"the workflow policy declares phase '{phase.name}' as a "
+            f"terminal '{phase.terminal_outcome}' outcome."
+        )
+
+    for outcome, target in sorted(phase.bypass_routes.items()):
+        sentences.append(
+            f"Explanation: phase '{phase.name}' bypasses to '{target}' "
+            f"when the configured outcome is '{outcome}'."
+        )
+
+    if phase.on_loopback and phase.loop_policy is not None:
+        sentences.append(
+            f"Explanation: phase '{phase.name}' loops back to "
+            f"'{phase.on_loopback}' until "
+            f"{phase.loop_policy.max_iterations} attempts are exhausted, "
+            f"after which the run terminates."
+        )
+
+    return sentences
 
 
 def _render_parallel_text(exp: PolicyExplanation, lines: list[str]) -> None:
@@ -207,3 +506,6 @@ def _render_phase_text(phase: object, lines: list[str]) -> None:
             )
 
     _render_phase_commit(phase, lines)
+
+    sentences = _render_explanation_sentences(phase)
+    lines.extend(sentences)

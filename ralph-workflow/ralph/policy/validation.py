@@ -340,6 +340,36 @@ def _validate_reachability(policy: PipelinePolicy, errors: list[str]) -> None:
         )
 
 
+
+def _validate_post_commit_routes_coverage(
+    policy: PipelinePolicy,
+    errors: list[str],
+) -> None:
+    """Validate that every tracked-budget commit phase has at least one post_commit_route.
+
+    A commit-role phase that increments a tracked budget counter must have at least
+    one [[post_commit_routes]] entry matching its phase name, otherwise the runtime
+    cannot route on budget state and silently falls back to on_success — which is
+    false configurability.
+    """
+    for phase_name, phase_def in policy.phases.items():
+        if phase_def.role != "commit" or phase_def.commit_policy is None:
+            continue
+        counter = phase_def.commit_policy.increments_counter
+        if not counter or counter == "none":
+            continue
+        tracked_cfg = policy.budget_counters.get(counter)
+        if tracked_cfg is None or not tracked_cfg.tracks_budget:
+            continue
+        has_route = any(r.when.phase == phase_name for r in policy.post_commit_routes)
+        if not has_route:
+            errors.append(
+                f"phases.{phase_name}: role='commit' tracks budget counter '{counter}' "
+                f"but no post_commit_routes apply to this phase. "
+                f"Declare at least one [[post_commit_routes]] with "
+                f"when.phase='{phase_name}' to define routing on commit success."
+            )
+
 def validate_policy_completeness(bundle: PolicyBundle) -> None:
     """Validate that the policy bundle is semantically complete for policy-driven orchestration.
 
@@ -391,6 +421,9 @@ def validate_policy_completeness(bundle: PolicyBundle) -> None:
 
     # Validate that every declared phase is reachable from the entry point
     _validate_reachability(policy, errors)
+
+    # Validate that commit phases with tracked budget counters have post_commit_routes
+    _validate_post_commit_routes_coverage(policy, errors)
 
     if errors:
         raise PolicyValidationError(

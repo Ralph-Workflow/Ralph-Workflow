@@ -95,23 +95,37 @@ def resolve_post_commit_phase(
 def _compute_budget_state(state: PipelineState, pipeline_policy: PipelinePolicy) -> str | None:
     """Determine the budget_state label for the current commit phase.
 
-    Uses the phase's commit_policy.increments_counter to identify which budget
-    counter governs this phase: 'iteration' phases use development_budget_remaining,
-    'reviewer_pass' phases use review_budget_remaining, and 'none' returns None
-    (no post_commit_route will match).
+    Uses only policy-declared counter names from pipeline.budget_counters.
+    Counter identity is fully generic: any counter name declared with
+    tracks_budget=True is eligible.
+
+    Returns:
+        'remaining'  — the phase's own budget counter still has budget left
+        'exhausted'  — this counter is at 0 but another tracked counter has budget
+        'no_review'  — this counter is at 0 and no other tracked counter has budget
+        None         — no tracked budget counter governs this phase
     """
     phase_def = pipeline_policy.phases.get(state.phase)
     if phase_def is None or phase_def.commit_policy is None:
         return None
 
     counter = phase_def.commit_policy.increments_counter
+    if not counter or counter == "none":
+        return None
 
-    if counter == "iteration":
-        if state.development_budget_remaining > 0:
-            return "remaining"
-        return "no_review" if state.review_budget_remaining == 0 else "exhausted"
+    tracked_cfg = pipeline_policy.budget_counters.get(counter)
+    if tracked_cfg is None or not tracked_cfg.tracks_budget:
+        return None
 
-    if counter == "reviewer_pass":
-        return "remaining" if state.review_budget_remaining > 0 else "exhausted"
+    if state.get_budget_remaining(counter) > 0:
+        return "remaining"
 
-    return None
+    for other_name, other_cfg in pipeline_policy.budget_counters.items():
+        if (
+            other_name != counter
+            and other_cfg.tracks_budget
+            and state.get_budget_remaining(other_name) > 0
+        ):
+            return "exhausted"
+
+    return "no_review"

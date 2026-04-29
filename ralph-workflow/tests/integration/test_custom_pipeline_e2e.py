@@ -32,6 +32,8 @@ from ralph.policy.models import (
     PhaseTransition,
     PipelinePolicy,
     PolicyBundle,
+    PostCommitRoute,
+    PostCommitRouteWhen,
     RecoveryPolicy,
 )
 from ralph.policy.render import render_explanation_text
@@ -115,6 +117,16 @@ def _build_custom_bundle() -> PolicyBundle:
         budget_counters={
             "build_pass": BudgetCounterConfig(description="build passes completed")
         },
+        post_commit_routes=[
+            PostCommitRoute(
+                when=PostCommitRouteWhen(phase="seal", budget_state="remaining"),
+                target="kickoff",
+            ),
+            PostCommitRoute(
+                when=PostCommitRouteWhen(phase="seal", budget_state="no_review"),
+                target="verify",
+            ),
+        ],
         recovery=RecoveryPolicy(terminal_recovery_route="crashed"),
     )
     agents = AgentsPolicy(

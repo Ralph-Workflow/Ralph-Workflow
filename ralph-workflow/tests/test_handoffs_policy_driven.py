@@ -11,6 +11,7 @@ from ralph.config.enums import PHASE_COMPLETE, PHASE_FAILED
 from ralph.pipeline.handoffs import resolve_post_commit_phase
 from ralph.pipeline.state import PipelineState
 from ralph.policy.models import (
+    BudgetCounterConfig,
     PhaseCommitPolicy,
     PhaseDefinition,
     PhaseTransition,
@@ -47,6 +48,7 @@ def _feature_commit_policy() -> PipelinePolicy:
         },
         entry_phase="feature_commit",
         terminal_phase=PHASE_COMPLETE,
+        budget_counters={"iteration": BudgetCounterConfig()},
         post_commit_routes=[
             PostCommitRoute(
                 when=PostCommitRouteWhen(phase="feature_commit", budget_state="remaining"),
