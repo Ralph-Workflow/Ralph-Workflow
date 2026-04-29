@@ -68,7 +68,7 @@ enabled = true
     assert {server.name for server in upstreams} == {"github", "docs"}
 
 
-def test_session_mcp_plan_omits_web_search_for_commit_even_when_enabled(
+def test_session_mcp_plan_omits_web_search_and_web_visit_for_commit_even_when_enabled(
     isolated_home: Path,
     tmp_path: Path,
 ) -> None:
@@ -93,7 +93,7 @@ enabled = true
     )
 
     assert "web.search" not in plan.capabilities
-    assert "web.visit" in plan.capabilities
+    assert "web.visit" not in plan.capabilities
 
 
 def test_session_mcp_plan_grants_read_diff_and_exec_for_development_analysis(
@@ -231,28 +231,45 @@ class TestWorkspaceEditAndDeleteGrantedToDevAndFixDrains:
 class TestCommitDrainIsStrictlyReadOnly:
     """Commit drains must be strictly read-only; git.write is reserved to the orchestrator."""
 
+    @pytest.fixture
+    def commit_drain_workspace(self, tmp_path: Path, isolated_home: Path) -> Path:
+        del isolated_home
+        agent_dir = tmp_path / ".agent"
+        agent_dir.mkdir()
+        (agent_dir / "mcp.toml").write_text(
+            """
+[web_search]
+enabled = true
+
+[web_visit]
+enabled = true
+""".strip(),
+            encoding="utf-8",
+        )
+        return tmp_path
+
     @pytest.mark.parametrize(
         "drain",
         ["development_commit", "review_commit", "commit"],
     )
     def test_commit_drain_does_not_grant_write_capabilities(
         self,
-        isolated_home: Path,
-        tmp_path: Path,
+        commit_drain_workspace: Path,
         drain: str,
     ) -> None:
-        del isolated_home
-
         plan = build_session_mcp_plan(
             transport=AgentTransport.CLAUDE,
             drain=drain,
-            workspace_path=tmp_path,
+            workspace_path=commit_drain_workspace,
         )
 
         assert "git.write" not in plan.capabilities
         assert "workspace.write_ephemeral" not in plan.capabilities
         assert "workspace.write_tracked" not in plan.capabilities
         assert "process.exec_bounded" not in plan.capabilities
+        assert "upstream.tool_use" not in plan.capabilities
+        assert "web.visit" not in plan.capabilities
+        assert "web.search" not in plan.capabilities
 
     @pytest.mark.parametrize(
         "drain",

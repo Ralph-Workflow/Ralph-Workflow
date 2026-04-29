@@ -53,9 +53,11 @@ def build_session_mcp_plan(
     )
 
     drain_class = drain_class_for_session(drain)
-    if mcp_config.web_search.enabled and drain_class.value != "commit":
+    is_commit = drain_class.value == "commit"
+
+    if mcp_config.web_search.enabled and not is_commit:
         capabilities.add("web.search")
-    if mcp_config.web_visit.enabled:
+    if mcp_config.web_visit.enabled and not is_commit:
         capabilities.add("web.visit")
     if mcp_config.media.enabled:
         capabilities.add("media.read")
@@ -68,10 +70,8 @@ def build_session_mcp_plan(
             upstreams,
         )
         set_upstream_mcp_config(server_env, upstreams)
-    elif upstreams:
-        capabilities.add("upstream.tool_use")
 
-    if upstreams:
+    if upstreams and not is_commit:
         capabilities.add("upstream.tool_use")
 
     return SessionMcpPlan(
