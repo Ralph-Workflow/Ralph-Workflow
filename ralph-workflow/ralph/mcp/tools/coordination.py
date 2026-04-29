@@ -172,6 +172,7 @@ def handle_declare_complete(
     now_fn: Callable[[], int] = _timestamp,
 ) -> ToolResult:
     """Declare that the agent has completed its assigned task."""
+    require_capability(session, ARTIFACT_SUBMIT_CAPABILITY, "Task completion")
     summary_value = params.get("summary", "No summary provided")
     summary = summary_value if isinstance(summary_value, str) else "No summary provided"
     message = (

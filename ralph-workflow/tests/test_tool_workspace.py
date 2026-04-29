@@ -21,6 +21,7 @@ from ralph.mcp.tools.coordination import (
     _read_env_value,
 )
 from ralph.mcp.tools.workspace import (
+    _FULL_READ_DEFAULT_MAX_BYTES,
     WORKSPACE_DELETE_CAPABILITY,
     WORKSPACE_EDIT_CAPABILITY,
     WORKSPACE_METADATA_READ_CAPABILITY,
@@ -506,6 +507,96 @@ class TestHandleReadFilePartial:
             )
 
 
+class TestHandleReadFileNonUtf8:
+    """Tests for structured non-UTF-8 error in handle_read_file."""
+
+    def test_returns_structured_error_for_unicode_decode_error(self) -> None:
+        ws = MagicMock()
+        ws.stat.return_value = {"type": "file", "size_bytes": 100}
+        ws.read.side_effect = UnicodeDecodeError("utf-8", b"\xff", 0, 1, "invalid start byte")
+
+        result = handle_read_file(
+            MockSession(WORKSPACE_READ_CAPABILITY), ws, {"path": "binary.bin"}
+        )
+        assert result.is_error is True
+        payload = json.loads(cast("ToolContent", result.content[0]).text)
+        assert payload["status"] == "binary_or_invalid_utf8"
+        assert payload["path"] == "binary.bin"
+        assert payload["byte_offset"] == 0
+
+    def test_propagates_other_exceptions_as_tool_error(self) -> None:
+        ws = MagicMock()
+        ws.stat.return_value = {"type": "file", "size_bytes": 100}
+        ws.read.side_effect = RuntimeError("unexpected disk error")
+
+        with pytest.raises(ToolError):
+            handle_read_file(
+                MockSession(WORKSPACE_READ_CAPABILITY), ws, {"path": "file.txt"}
+            )
+
+
+class TestHandleReadFileFullReadTruncation:
+    """Tests for oversize truncation in handle_read_file."""
+
+    def test_small_file_returns_plain_text(self) -> None:
+        ws = MagicMock()
+        ws.stat.return_value = {"type": "file", "size_bytes": 100}
+        ws.read.return_value = "small content"
+
+        result = handle_read_file(
+            MockSession(WORKSPACE_READ_CAPABILITY), ws, {"path": "small.txt"}
+        )
+        assert result.is_error is False
+        assert cast("ToolContent", result.content[0]).text == "small content"
+
+    def test_oversize_file_returns_truncation_envelope(self) -> None:
+        ws = MagicMock()
+        ws.stat.return_value = {"type": "file", "size_bytes": 10_000_000}
+        ws.read_lines.return_value = (
+            "first 5MB worth",
+            {"total_lines": 50000, "returned_lines": 19531, "truncated": True},
+        )
+
+        result = handle_read_file(
+            MockSession(WORKSPACE_READ_CAPABILITY), ws, {"path": "large.txt"}
+        )
+        assert result.is_error is False
+        payload = json.loads(cast("ToolContent", result.content[0]).text)
+        assert payload["truncated"] is True
+        assert payload["total_bytes"] == 10_000_000  # noqa: PLR2004
+        assert payload["max_bytes"] == _FULL_READ_DEFAULT_MAX_BYTES
+        assert payload["reason"] == "oversize"
+        assert "content" in payload
+
+    def test_explicit_max_bytes_override_respected(self) -> None:
+        ws = MagicMock()
+        ws.stat.return_value = {"type": "file", "size_bytes": 2000}
+        ws.read_lines.return_value = (
+            "truncated content",
+            {"total_lines": 10, "returned_lines": 3, "truncated": True},
+        )
+
+        result = handle_read_file(
+            MockSession(WORKSPACE_READ_CAPABILITY),
+            ws,
+            {"path": "file.txt", "max_bytes": 1000},
+        )
+        assert result.is_error is False
+        payload = json.loads(cast("ToolContent", result.content[0]).text)
+        assert payload["max_bytes"] == 1000  # noqa: PLR2004
+        assert payload["truncated"] is True
+
+    def test_dir_path_falls_through_to_workspace_read(self) -> None:
+        ws = MagicMock()
+        ws.stat.return_value = {"type": "dir"}
+        ws.read.side_effect = IsADirectoryError("is a directory")
+
+        with pytest.raises(ToolError):
+            handle_read_file(
+                MockSession(WORKSPACE_READ_CAPABILITY), ws, {"path": "somedir"}
+            )
+
+
 # =============================================================================
 # handle_read_multiple_files tests
 # =============================================================================
@@ -962,6 +1053,7 @@ class TestHandleWriteFile:
 
     def test_missing_content_raises(self) -> None:
         ws = MagicMock()
+        ws.exists.return_value = False  # file is untracked/ephemeral
 
         with pytest.raises(InvalidParamsError):
             handle_write_file(

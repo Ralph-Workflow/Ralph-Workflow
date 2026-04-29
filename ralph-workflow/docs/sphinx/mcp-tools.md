@@ -58,6 +58,60 @@ Drain class groupings used in this table:
 Claude exposes every tool as `mcp__ralph__<tool>` (e.g., `mcp__ralph__read_file`).
 See `ralph.mcp.tools.names` for the canonical name constants.
 
+### read_file response shapes
+
+`read_file` returns different response shapes depending on which parameters are supplied
+and how large the file is.
+
+**1. Plain text** — full file is UTF-8 and at or below the size limit (default 5 MB):
+returned as a single text content block with no JSON envelope.
+
+**2. Partial-read JSON envelope** — when any of `line_start`/`line_end`, `offset`/`limit`,
+`head`, or `tail` is supplied:
+
+```json
+{
+  "path": "<requested path>",
+  "content": "<returned text>",
+  "total_lines": <int>,
+  "returned_lines": <int>,
+  "truncated": <bool>
+}
+```
+
+The partial-read parameter groups are mutually exclusive; combining any two
+(`line_start`/`line_end` with `offset`/`limit`, etc.) raises `InvalidParams`.
+
+**3. Oversize/error JSON envelope** — when the file exceeds `max_bytes` (default
+`5_000_000`) or fails UTF-8 decoding. The JSON envelope only appears in these
+error/truncation cases.
+
+Oversize truncation (`is_error: false`):
+
+```json
+{
+  "path": "<requested path>",
+  "content": "<representative head>",
+  "truncated": true,
+  "total_bytes": <int>,
+  "max_bytes": <int>,
+  "reason": "oversize"
+}
+```
+
+Non-UTF-8 / binary file (`is_error: true`):
+
+```json
+{
+  "status": "binary_or_invalid_utf8",
+  "path": "<requested path>",
+  "error": "<decoding error message>",
+  "byte_offset": <int>
+}
+```
+
+Pass an explicit `max_bytes` parameter to override the 5 MB ceiling for a single call.
+
 ### Capability grant rules
 
 Capability grants follow these rules (implemented in `ralph.mcp.session_plan`):

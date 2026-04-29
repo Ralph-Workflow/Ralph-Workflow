@@ -51,6 +51,9 @@ _SUPPORTED_IMAGE_MIME_TYPES: dict[str, str] = {
 
 _GREP_DEFAULT_LIMIT = 1000
 _MAX_PATTERN_LENGTH = 1000
+# Default ceiling for full-file reads; larger files are truncated via read_lines.
+# The JSON envelope only appears when truncated=True OR when an error occurs.
+_FULL_READ_DEFAULT_MAX_BYTES = 5_000_000
 
 
 def _attribute_value(
@@ -291,6 +294,17 @@ def handle_read_file(
     workspace: Workspace,
     params: dict[str, object],
 ) -> ToolResult:
+    """Read a UTF-8 file from the workspace.
+
+    Full-file reads (no partial params) return a plain text block for UTF-8 files
+    at or below max_bytes (default 5_000_000). The JSON envelope only appears when
+    truncated is True OR when an error occurs (binary_or_invalid_utf8).
+
+    Partial-read parameter groups (line_start/line_end, offset/limit, head, tail)
+    are mutually exclusive; combining any two raises InvalidParams.
+
+    Optional param max_bytes overrides the default ceiling for full-file reads.
+    """
     require_capability(session, WORKSPACE_READ_CAPABILITY, "Workspace read")
     path = required_string_param(params, "path")
     normalized = _normalize_relative_path(path)
@@ -345,8 +359,45 @@ def handle_read_file(
             content=[ToolContent.text_content(_tool_json(payload))], is_error=False
         )
 
+    # Full-file read: check size before reading to enforce max_bytes ceiling.
+    max_bytes = _int_param(params, "max_bytes", _FULL_READ_DEFAULT_MAX_BYTES)
+    try:
+        stat_result: dict[str, object] = workspace.stat(normalized)
+    except Exception:
+        stat_result = {}
+
+    file_type = stat_result.get("type", "")
+    size_bytes = stat_result.get("size_bytes")
+
+    if file_type == "file" and isinstance(size_bytes, int) and size_bytes > max_bytes:
+        # File exceeds ceiling: return a representative head with truncation metadata.
+        # 256 is an average-line-length heuristic; read_lines enforces its own limits.
+        head_value = max(1, max_bytes // 256)
+        content, _meta = workspace.read_lines(normalized, head=head_value)
+        payload = {
+            "path": path,
+            "content": content,
+            "truncated": True,
+            "total_bytes": size_bytes,
+            "max_bytes": max_bytes,
+            "reason": "oversize",
+        }
+        return ToolResult(
+            content=[ToolContent.text_content(_tool_json(payload))], is_error=False
+        )
+
     try:
         content = workspace.read(normalized)
+    except UnicodeDecodeError as exc:
+        payload = {
+            "status": "binary_or_invalid_utf8",
+            "path": path,
+            "error": str(exc),
+            "byte_offset": exc.start,
+        }
+        return ToolResult(
+            content=[ToolContent.text_content(_tool_json(payload))], is_error=True
+        )
     except FileNotFoundError as exc:
         raise ToolError(f"Failed to read file '{path}': {exc}") from exc
     except Exception as exc:
@@ -716,8 +767,9 @@ def handle_write_file(
     workspace: Workspace,
     params: dict[str, object],
 ) -> ToolResult:
+    # Path is extracted first to determine which write capability applies
+    # (tracked vs ephemeral), then capability check fires before content extraction.
     path = required_string_param(params, "path")
-    content = required_string_param(params, "content")
     normalized = _normalize_relative_path(path)
     _check_edit_area_restriction(session, normalized)
     is_tracked = _is_path_git_tracked(workspace, normalized)
@@ -727,6 +779,7 @@ def handle_write_file(
         else WORKSPACE_WRITE_EPHEMERAL_CAPABILITY
     )
     require_capability(session, capability, "Workspace write")
+    content = required_string_param(params, "content")
     _write_file_to_workspace(workspace, normalized, content)
     return ToolResult(
         content=[ToolContent.text_content(
@@ -742,15 +795,14 @@ def handle_edit_file(
     params: dict[str, object],
 ) -> ToolResult:
     path = required_string_param(params, "path")
+    normalized = _normalize_relative_path(path)
+    _check_edit_area_restriction(session, normalized)
+    require_capability(session, WORKSPACE_EDIT_CAPABILITY, "Workspace edit")
     edits_param = params.get("edits")
     if not isinstance(edits_param, list) or len(edits_param) == 0:
         raise InvalidParamsError("Missing 'edits' parameter as non-empty list")
     edits = cast("list[dict[str, str]]", edits_param)
     dry_run = bool(params.get("dry_run", False))
-
-    normalized = _normalize_relative_path(path)
-    _check_edit_area_restriction(session, normalized)
-    require_capability(session, WORKSPACE_EDIT_CAPABILITY, "Workspace edit")
 
     try:
         original_content = workspace.read(normalized)
@@ -827,10 +879,10 @@ def handle_append_file(
     params: dict[str, object],
 ) -> ToolResult:
     path = required_string_param(params, "path")
-    content = required_string_param(params, "content")
     normalized = _normalize_relative_path(path)
     _check_edit_area_restriction(session, normalized)
     require_capability(session, WORKSPACE_EDIT_CAPABILITY, "Workspace append")
+    content = required_string_param(params, "content")
 
     try:
         workspace.append(normalized, content)
@@ -877,12 +929,12 @@ def handle_move_file(
 ) -> ToolResult:
     src = required_string_param(params, "src")
     dest = required_string_param(params, "dest")
-    overwrite = bool(params.get("overwrite", False))
     src_norm = _normalize_relative_path(src)
     dest_norm = _normalize_relative_path(dest)
     _check_edit_area_restriction(session, src_norm)
     _check_edit_area_restriction(session, dest_norm)
     require_capability(session, WORKSPACE_EDIT_CAPABILITY, "Move file")
+    overwrite = bool(params.get("overwrite", False))
 
     try:
         workspace.move(src_norm, dest_norm, overwrite=overwrite)
@@ -907,11 +959,11 @@ def handle_copy_file(
 ) -> ToolResult:
     src = required_string_param(params, "src")
     dest = required_string_param(params, "dest")
-    overwrite = bool(params.get("overwrite", False))
     src_norm = _normalize_relative_path(src)
     dest_norm = _normalize_relative_path(dest)
     _check_edit_area_restriction(session, dest_norm)
     require_capability(session, WORKSPACE_EDIT_CAPABILITY, "Copy file")
+    overwrite = bool(params.get("overwrite", False))
 
     try:
         workspace.copy(src_norm, dest_norm, overwrite=overwrite)
@@ -935,10 +987,10 @@ def handle_delete_path(
     params: dict[str, object],
 ) -> ToolResult:
     path = required_string_param(params, "path")
-    recursive = bool(params.get("recursive", False))
     normalized = _normalize_relative_path(path)
     _check_edit_area_restriction(session, normalized)
     require_capability(session, WORKSPACE_DELETE_CAPABILITY, "Delete path")
+    recursive = bool(params.get("recursive", False))
 
     try:
         workspace.delete(normalized, recursive=recursive)
