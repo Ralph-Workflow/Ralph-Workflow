@@ -165,11 +165,11 @@ retry_delay_ms = 1000
 
 [agent_chains]
 planning = ["claude/opus"]
-development = ["claude", "opencode/minimax/MiniMax-M2.7-highspeed"]
-analysis = ["claude/sonnet"]
-review = ["claude/sonnet"]
-fix = ["opencode/zai-coding-plan/glm-5"]
-commit = ["claude"]
+development = ["opencode/minimax/MiniMax-M2.7-highspeed", "codex", "claude/sonnet"]
+analysis = ["opencode/openai/gpt-5.4"]
+review = ["opencode/openai/gpt-5.4"]
+fix = ["opencode/zai-coding-plan/glm-5", "claude/sonnet"]
+commit = ["claude/haiku"]
 
 [agent_drains]
 planning = "planning"
@@ -191,8 +191,9 @@ Claude model tags are shorter: `claude` uses your current Claude Code model/prof
 `[agent_drains]` maps each pipeline drain name (matching a phase's `drain` field in
 `pipeline.toml`) to a chain name from `[agent_chains]`. Multiple drains may share one
 chain — for example, `development_analysis` and `review_analysis` both use the `analysis`
-chain by default. The built-in drain names are: `planning`, `development`, `analysis`,
-`review`, `fix`, and `commit`.
+chain by default. The built-in runtime drain names are: `planning`, `development`,
+`development_analysis`, `development_commit`, `review`, `review_analysis`,
+`review_commit`, and `fix`.
 
 ## `pipeline.toml` Policy Fields
 

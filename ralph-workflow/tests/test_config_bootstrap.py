@@ -192,10 +192,14 @@ def test_local_template_defines_active_agent_chain_defaults() -> None:
     chains = data["agent_chains"]
 
     assert chains["planning"] == ["claude/opus"]
-    assert chains["development"] == ["opencode/anthropic/claude-sonnet-4", "codex", "claude/sonnet"]
-    assert chains["analysis"] == ["claude/sonnet"]
-    assert chains["review"] == ["codex", "claude/sonnet"]
-    assert chains["fix"] == ["opencode/anthropic/claude-sonnet-4", "claude/sonnet"]
+    assert chains["development"] == [
+        "opencode/minimax/MiniMax-M2.7-highspeed",
+        "codex",
+        "claude/sonnet",
+    ]
+    assert chains["analysis"] == ["opencode/openai/gpt-5.4"]
+    assert chains["review"] == ["opencode/openai/gpt-5.4"]
+    assert chains["fix"] == ["opencode/zai-coding-plan/glm-5", "claude/sonnet"]
     assert chains["commit"] == ["claude/haiku"]
 
 
