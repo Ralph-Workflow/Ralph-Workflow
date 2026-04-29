@@ -445,7 +445,7 @@ def test_run_pipeline_keyboard_interrupt(monkeypatch: pytest.MonkeyPatch) -> Non
 
     exit_code = _run_pipeline(None, {}, dry_run=False, resume=False, no_resume=False)
     assert exit_code == KEYBOARD_INTERRUPT_EXIT_CODE
-    assert printed == ["\n[yellow]Interrupted by user[/yellow]"]
+    assert printed and "Interrupted by user" in printed[0]
 
 
 def test_run_pipeline_exception(monkeypatch: pytest.MonkeyPatch) -> None:

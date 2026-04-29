@@ -136,6 +136,19 @@ _CAT_THEME_KEYS: Final[dict[str, str]] = {
     "CONT": "theme.cat.cont",
 }
 
+# Abbreviated badges for compact mode
+_COMPACT_LEVEL_BADGES: Final[dict[str, str]] = {
+    "INFO": "I",
+    "SUCCESS": "S",
+    "WARN": "W",
+    "ERROR": "E",
+    "MILESTONE": "M",
+}
+_COMPACT_CAT_BADGES: Final[dict[str, str]] = {
+    "META": "M",
+    "CONT": "C",
+}
+
 # Kinds that form streaming blocks
 _STREAMING_KINDS: Final[frozenset[str]] = frozenset({"text", "thinking"})
 
@@ -214,12 +227,17 @@ class PlainLogRenderer:
 
     def __init__(
         self,
-        console: Console,
+        console_or_context: Console | DisplayContext,
         *,
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
         context: DisplayContext | None = None,
     ) -> None:
-        self._ctx = context if context is not None else make_display_context(console=console)
+        if isinstance(console_or_context, DisplayContext):
+            self._ctx = console_or_context
+        elif context is not None:
+            self._ctx = context
+        else:
+            self._ctx = make_display_context(console=console_or_context)
         self._clock = clock
         self._last_phase: str | None = None
         self._last_iteration: int | None = None
@@ -259,19 +277,31 @@ class PlainLogRenderer:
     def _console(self) -> Console:
         return self._ctx.console
 
+    def _format_timestamp(self, ts: datetime) -> str:
+        """Format a datetime as a timestamp string, abbreviated in compact mode."""
+        if self._ctx.mode == "compact":
+            return ts.strftime("%H:%M:%S")
+        return ts.isoformat()
+
     def _build_line(self, timestamp: str, level: str, cat: str, suffix: str) -> Text:
         """Build a styled Text line with level and category badge segments."""
         t = Text()
         t.append(timestamp + " ")
-        t.append(level, style=_LEVEL_THEME_KEYS.get(level, ""))
+        if self._ctx.mode == "compact":
+            level_badge = _COMPACT_LEVEL_BADGES.get(level, level[0])
+            cat_badge = _COMPACT_CAT_BADGES.get(cat, cat[0])
+        else:
+            level_badge = level
+            cat_badge = cat
+        t.append(level_badge, style=_LEVEL_THEME_KEYS.get(level, ""))
         t.append(" ")
-        t.append(cat, style=_CAT_THEME_KEYS.get(cat, ""))
+        t.append(cat_badge, style=_CAT_THEME_KEYS.get(cat, ""))
         t.append(" ")
         t.append(suffix)
         return t
 
     def _snapshot_texts(self, snapshot: PipelineSnapshot) -> list[Text]:
-        timestamp = self._clock().isoformat()
+        timestamp = self._format_timestamp(self._clock())
         texts: list[Text] = []
         texts.extend(self._phase_lines(snapshot, timestamp))
         texts.extend(self._plan_lines(snapshot, timestamp))
@@ -489,7 +519,7 @@ class PlainLogRenderer:
 
     def emit_run_start(self, orientation: RunStartOrientation) -> None:  # noqa: PLR0912
         """Emit a one-time MILESTONE orientation block at pipeline start."""
-        timestamp = self._clock().isoformat()
+        timestamp = self._format_timestamp(self._clock())
         self._console.print(
             self._build_line(
                 timestamp, "MILESTONE", "META", "[run-start] ◆ Ralph Workflow run start"
@@ -615,7 +645,7 @@ class PlainLogRenderer:
     def emit_phase_close(self, phase: str, produced: str) -> None:
         """Emit a single-line recap after a phase's artifact blocks are rendered."""
         self.flush_blocks()
-        timestamp = self._clock().isoformat()
+        timestamp = self._format_timestamp(self._clock())
         clean_produced = _sanitize(produced).strip()
         counters = self._phase_counters
         if counters is not None:
@@ -672,7 +702,7 @@ class PlainLogRenderer:
     ) -> None:
         """Emit a one-time MILESTONE orientation block at pipeline stop."""
         self.flush_blocks()
-        timestamp = self._clock().isoformat()
+        timestamp = self._format_timestamp(self._clock())
         total_elapsed_s = 0.0
         if self._run_start_time is not None:
             total_elapsed_s = round(max(0.0, time.monotonic() - self._run_start_time), 1)
@@ -832,7 +862,7 @@ class PlainLogRenderer:
 
     def flush_blocks(self) -> None:
         """Close all open streaming blocks. Call on phase transitions and stop."""
-        timestamp = self._clock().isoformat()
+        timestamp = self._format_timestamp(self._clock())
         unit_ids = list(self._active_block.keys())
         for unit_id in unit_ids:
             self._close_block(unit_id, timestamp)
@@ -851,7 +881,7 @@ class PlainLogRenderer:
         _tool_signature: tuple[str, str] | None = None,
     ) -> None:
         """Emit a kind-tagged, level-badged content line."""
-        timestamp = self._clock().isoformat()
+        timestamp = self._format_timestamp(self._clock())
         base_tag = _KIND_TO_TAG.get(kind, "content")
         level = _KIND_TO_LEVEL.get(kind, "INFO")
         cat = _TAG_CATEGORY.get(base_tag, "META")
@@ -1019,7 +1049,7 @@ class PlainLogRenderer:
 
     def emit_artifact(self, kind: str, summary: str) -> None:
         """Emit an artifact summary line for copy-paste-safe transcripts."""
-        timestamp = self._clock().isoformat()
+        timestamp = self._format_timestamp(self._clock())
         sanitized_summary = _sanitize(summary)
         self._console.print(
             self._build_line(
@@ -1035,7 +1065,7 @@ class PlainLogRenderer:
 
     def emit_warn_line(self, unit_id: str, tag: str, message: str) -> None:
         """Emit a WARN META line for a specific tag."""
-        timestamp = self._clock().isoformat()
+        timestamp = self._format_timestamp(self._clock())
         cat = _TAG_CATEGORY.get(tag, "META")
         self._console.print(
             self._build_line(timestamp, "WARN", cat, f"[{tag}][{unit_id}] {message}"),
@@ -1050,12 +1080,12 @@ class PlainModeAdapter:
 
     def __init__(
         self,
-        console: Console,
+        console_or_context: Console | DisplayContext,
         *,
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
         context: DisplayContext | None = None,
     ) -> None:
-        self._renderer = PlainLogRenderer(console, clock=clock, context=context)
+        self._renderer = PlainLogRenderer(console_or_context, clock=clock, context=context)
 
     def notify(self, state: PipelineState) -> None:
         self._renderer.emit_snapshot(

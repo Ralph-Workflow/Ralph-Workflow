@@ -17,6 +17,7 @@ from ralph.cli.commands import diagnose as diagnose_module
 from ralph.cli.commands import init as init_module
 from ralph.config.enums import AgentTransport, JsonParserType, ReviewDepth
 from ralph.config.models import AgentConfig, UnifiedConfig
+from ralph.display.theme import RALPH_THEME
 from ralph.mcp.artifacts.commit_message import write_commit_message_artifact
 from ralph.mcp.protocol.session import AgentSession
 from ralph.mcp.tools.bridge import build_ralph_tool_registry
@@ -32,7 +33,7 @@ _SUMMARY_RETRY_FAILURES = 2
 
 def _attach_console(monkeypatch: pytest.MonkeyPatch, module: object) -> StringIO:
     stream = StringIO()
-    console = Console(file=stream, force_terminal=False, color_system=None)
+    console = Console(file=stream, force_terminal=False, color_system=None, theme=RALPH_THEME)
     monkeypatch.setattr(module, "console", console)
     return stream
 

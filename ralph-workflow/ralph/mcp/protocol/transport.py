@@ -119,9 +119,10 @@ class StdioTransport(MCPTransport):
 
     def _read_loop(self) -> None:
         """Read from stdout in a loop."""
-        assert self._process is not None
-        assert self._process.stdout is not None
-        for raw_line in self._process.stdout:
+        proc = self._process
+        if proc is None or proc.stdout is None:
+            return
+        for raw_line in proc.stdout:
             if self._closed:
                 break
             stripped = raw_line.strip()
@@ -157,17 +158,19 @@ class StdioTransport(MCPTransport):
 
     def _write_loop(self) -> None:
         """Write to stdin in a loop."""
-        assert self._process is not None
-        assert self._process.stdin is not None
+        proc = self._process
+        if proc is None or proc.stdin is None:
+            return
+        stdin = proc.stdin
         while not self._closed:
             try:
                 msg = self._send_queue.get(timeout=0.1)
                 line = (json.dumps(msg) + "\n").encode("utf-8")
-                self._process.stdin.write(line)
-                self._process.stdin.flush()
+                stdin.write(line)
+                stdin.flush()
             except Empty:
                 continue
-            except BrokenPipeError:
+            except (OSError, ValueError):
                 break
 
     async def send(self, message: MCPMessage) -> None:

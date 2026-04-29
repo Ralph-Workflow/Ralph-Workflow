@@ -16,7 +16,6 @@ from ralph.display.content_condenser import condense_content
 from ralph.display.context import DisplayContext, make_display_context
 from ralph.display.lifecycle_filter import is_bare_lifecycle as _is_bare_lifecycle
 from ralph.display.long_content_summary import build_headline_or_placeholder
-from ralph.display.mode import NARROW_THRESHOLD, detect_mode
 from ralph.display.phase_banner import show_phase_transition
 from ralph.display.plain_renderer import PlainLogRenderer
 from ralph.display.raw_overflow import RawOverflowLog
@@ -361,4 +360,4 @@ class ParallelDisplay:
         self.stop()
 
 
-__all__ = ["NARROW_THRESHOLD", "ParallelDisplay", "_strip_markup", "detect_mode"]
+__all__ = ["ParallelDisplay", "_strip_markup"]

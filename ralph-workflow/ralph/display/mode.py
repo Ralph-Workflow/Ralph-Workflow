@@ -21,6 +21,8 @@ def detect_mode(
     Returns 'compact' when the terminal is narrower than NARROW_THRESHOLD or
     RALPH_FORCE_NARROW is set to a truthy value. Returns 'wide' otherwise.
 
+    Precedence for width resolution: COLUMNS env > console.width > 80.
+
     Args:
         console: Rich console used to read terminal width.
         env: Environment mapping checked for COLUMNS and RALPH_FORCE_NARROW.
@@ -32,15 +34,16 @@ def detect_mode(
     if force_narrow:
         return "compact"
 
+    # COLUMNS takes precedence over console.width (matches make_display_context precedence)
     width: int
-    if hasattr(console, "width") and isinstance(console.width, int) and console.width > 0:
-        width = console.width
-    elif "COLUMNS" in env:
+    if "COLUMNS" in env:
         try:
             w = int(env["COLUMNS"])
             width = w if w > 0 else 80
         except (ValueError, TypeError):
             width = 80
+    elif hasattr(console, "width") and isinstance(console.width, int) and console.width > 0:
+        width = console.width
     else:
         width = 80
 

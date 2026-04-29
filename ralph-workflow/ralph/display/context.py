@@ -56,6 +56,12 @@ class DisplayContext:
     tool_result_headline_min_chars: int
 
 
+def _console_has_no_color(console: Console) -> bool:
+    """Return True when the console has color disabled via its no_color attribute."""
+    raw: object = getattr(console, "no_color", False)
+    return bool(raw)
+
+
 def make_display_context(
     *,
     env: Mapping[str, str] | None = None,
@@ -108,8 +114,10 @@ def make_display_context(
 
     narrow = mode == "compact"
 
-    # Color enabled: NO_COLOR wins over FORCE_COLOR per CLI conventions
-    color_enabled = "NO_COLOR" not in resolved_env
+    # Color enabled: NO_COLOR wins over FORCE_COLOR per CLI conventions.
+    # Also honour the injected console's own color policy (e.g. console created with
+    # no_color=True in a context where NO_COLOR is not in env).
+    color_enabled = "NO_COLOR" not in resolved_env and not _console_has_no_color(console)
 
     # Adaptive limits based on mode
     if mode == "compact":

@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import sys
-import time
 from io import BytesIO
 from typing import IO, TYPE_CHECKING
 
@@ -76,6 +75,7 @@ def test_stdio_transport_uses_injected_process_and_thread_factories() -> None:
     assert events == ["create:1", "create:2", "start:1", "start:2"]
 
 
+@pytest.mark.timeout_seconds(5)
 def test_stdio_transport_default_factory_tracks_process_in_manager() -> None:
     """StdioTransport default factory registers the spawned process with ProcessManager.
 
@@ -88,13 +88,9 @@ def test_stdio_transport_default_factory_tracks_process_in_manager() -> None:
         transport = StdioTransport([PYTHON, "-c", "import time; time.sleep(30)"])
         transport.start()
 
-        # Give the process a moment to register.
-        deadline = time.monotonic() + 1.0
-        while time.monotonic() < deadline:
-            active = [r for r in pm.list_active() if r.label and r.label.startswith("mcp-stdio:")]
-            if active:
-                break
-            time.sleep(0.02)
+        # ProcessManager.spawn() registers the record synchronously before returning,
+        # so list_active() is immediately consistent after transport.start().
+        active = [r for r in pm.list_active() if r.label and r.label.startswith("mcp-stdio:")]
 
         assert len(active) == 1, f"Expected 1 mcp-stdio record, got {active}"
         assert active[0].status == ProcessStatus.RUNNING

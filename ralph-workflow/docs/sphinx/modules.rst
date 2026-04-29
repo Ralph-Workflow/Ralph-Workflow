@@ -1399,6 +1399,7 @@ ralph.display
 .. automodule:: ralph.display
    :members:
    :show-inheritance:
+   :exclude-members: DisplayContext, make_display_context
 
 ralph.display.activity_model
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

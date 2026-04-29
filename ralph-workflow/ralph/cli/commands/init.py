@@ -10,7 +10,6 @@ import shutil
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from rich.console import Console
 from rich.text import Text
 
 import ralph.policy
@@ -21,6 +20,7 @@ from ralph.config.bootstrap import (
     ensure_local_configs,
 )
 from ralph.config.welcome import emit_first_run_welcome
+from ralph.display.theme import make_console
 
 if TYPE_CHECKING:
     from ralph.agents.registry import AgentRegistry
@@ -29,7 +29,7 @@ STARTER_PROMPT_SENTINEL = (
     "<!-- ralph:starter-prompt: edit this file before running `ralph` -->"
 )
 
-console = Console()
+console = make_console()
 
 
 def init_command(

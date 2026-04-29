@@ -5,9 +5,7 @@ from queue import Queue
 
 from rich.console import Console
 
-from ralph.display.mode import NARROW_THRESHOLD as _EXPECTED_NARROW_THRESHOLD
-from ralph.display.mode import detect_mode as _detect_mode_from_mode
-from ralph.display.parallel_display import NARROW_THRESHOLD, ParallelDisplay, detect_mode
+from ralph.display.parallel_display import ParallelDisplay
 from ralph.display.subscriber import PipelineSubscriber
 from ralph.pipeline.worker_state import WorkerStatus
 
@@ -67,14 +65,6 @@ def test_set_status_does_not_call_subscriber_notify() -> None:
     pd.set_status("u1", WorkerStatus.RUNNING)
 
     assert notify_calls == []
-
-
-def test_narrow_threshold_unchanged() -> None:
-    assert NARROW_THRESHOLD == _EXPECTED_NARROW_THRESHOLD
-
-
-def test_detect_mode_importable_from_parallel_display() -> None:
-    assert detect_mode is _detect_mode_from_mode
 
 
 def test_subscriber_property_exposed() -> None:

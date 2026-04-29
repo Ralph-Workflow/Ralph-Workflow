@@ -13,6 +13,7 @@ from ralph.agents.registry import AgentRegistry
 from ralph.config.bootstrap import BootstrapResult
 from ralph.config.models import UnifiedConfig
 from ralph.config.welcome import emit_first_run_welcome
+from ralph.display.theme import RALPH_THEME
 
 if TYPE_CHECKING:
     import pytest
@@ -61,7 +62,7 @@ class _FakeRegistry:
 
 def _make_console() -> tuple[StringIO, Console]:
     buf = StringIO()
-    return buf, Console(file=buf, force_terminal=False)
+    return buf, Console(file=buf, force_terminal=False, theme=RALPH_THEME)
 
 
 def _assert_no_raw_markup(output: str) -> None:
@@ -75,7 +76,7 @@ def _assert_no_raw_markup(output: str) -> None:
 def test_emit_first_run_welcome_noops_on_all_skipped() -> None:
     """Welcome should not print when all results are skipped (subsequent runs)."""
     console = StringIO()
-    rich_console = Console(file=console, force_terminal=True)
+    rich_console = Console(file=console, force_terminal=True, theme=RALPH_THEME)
     results = [
         BootstrapResult(Path("/global/ralph-workflow.toml"), "skipped", None),
         BootstrapResult(Path("/global/mcp.toml"), "skipped", None),
@@ -90,7 +91,7 @@ def test_emit_first_run_welcome_noops_on_all_skipped() -> None:
 def test_emit_first_run_welcome_prints_when_any_created() -> None:
     """Welcome should print when at least one file is created."""
     console = StringIO()
-    rich_console = Console(file=console, force_terminal=True)
+    rich_console = Console(file=console, force_terminal=True, theme=RALPH_THEME)
     results = [
         BootstrapResult(Path("/global/ralph-workflow.toml"), "created", None),
         BootstrapResult(Path("/global/mcp.toml"), "skipped", None),
@@ -106,7 +107,7 @@ def test_emit_first_run_welcome_prints_when_any_created() -> None:
 def test_emit_first_run_welcome_prints_when_any_regenerated() -> None:
     """Welcome should print when at least one file is regenerated."""
     console = StringIO()
-    rich_console = Console(file=console, force_terminal=True)
+    rich_console = Console(file=console, force_terminal=True, theme=RALPH_THEME)
     regen_result = BootstrapResult(
         Path("/global/ralph-workflow.toml"),
         "regenerated",
@@ -126,7 +127,7 @@ def test_emit_first_run_welcome_prints_when_any_regenerated() -> None:
 def test_emit_first_run_welcome_flags_missing_agent() -> None:
     """Missing agent should be flagged with a warning indicator."""
     console = StringIO()
-    rich_console = Console(file=console, force_terminal=True)
+    rich_console = Console(file=console, force_terminal=True, theme=RALPH_THEME)
     results = [BootstrapResult(Path("/global/ralph-workflow.toml"), "created", None)]
     registry = _FakeRegistry(
         {"missing-agent": _FakeAgent("definitely-not-a-real-binary-xyz", "MissingAgent")}
@@ -142,7 +143,7 @@ def test_emit_first_run_welcome_flags_missing_agent() -> None:
 def test_emit_first_run_welcome_marks_available_agent() -> None:
     """Available agent should not be flagged as missing."""
     console = StringIO()
-    rich_console = Console(file=console, force_terminal=True)
+    rich_console = Console(file=console, force_terminal=True, theme=RALPH_THEME)
     results = [BootstrapResult(Path("/global/ralph-workflow.toml"), "created", None)]
     # Use 'python' as it's guaranteed to be on PATH in CI
     registry = _FakeRegistry({"python": _FakeAgent("python", "Python")})
@@ -159,7 +160,7 @@ def test_emit_first_run_welcome_with_local_and_global_files(
 ) -> None:
     """Welcome should group files by scope (global vs local)."""
     console = StringIO()
-    rich_console = Console(file=console, force_terminal=True)
+    rich_console = Console(file=console, force_terminal=True, theme=RALPH_THEME)
     results = [
         BootstrapResult(Path("/home/user/.config/ralph-workflow.toml"), "created", None),
         BootstrapResult(Path("/home/user/.config/ralph-workflow-mcp.toml"), "created", None),
@@ -186,7 +187,7 @@ def test_emit_first_run_welcome_noops_when_no_registry(
 ) -> None:
     """Welcome should work without an agent registry (generic PATH message)."""
     console = StringIO()
-    rich_console = Console(file=console, force_terminal=True)
+    rich_console = Console(file=console, force_terminal=True, theme=RALPH_THEME)
     results = [
         BootstrapResult(Path("/global/ralph-workflow.toml"), "created", None),
     ]

@@ -2,18 +2,18 @@
 
 from __future__ import annotations
 
-from importlib import import_module
 from io import StringIO
-from typing import Any
+
+from rich.console import Console
 
 from ralph import __version__
 from ralph.banner import render_banner, show_banner
+from ralph.display.theme import RALPH_THEME
 
 
-def _create_console(buffer: StringIO) -> Any:
-    """Create a rich console for output capture."""
-    console_cls = import_module("rich.console").Console
-    return console_cls(file=buffer, force_terminal=False, width=100)
+def _create_console(buffer: StringIO) -> Console:
+    """Create a themed rich console for output capture."""
+    return Console(file=buffer, force_terminal=False, width=100, theme=RALPH_THEME)
 
 
 def test_render_banner_includes_ascii_art_version_and_welcome_message() -> None:

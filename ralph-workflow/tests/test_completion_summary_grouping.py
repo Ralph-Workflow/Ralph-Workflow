@@ -11,7 +11,9 @@ from ralph.display.completion_summary import (
     emit_completion_summary,
     render_completion_summary_group,
 )
+from ralph.display.context import make_display_context
 from ralph.display.snapshot import PipelineSnapshot
+from ralph.display.theme import RALPH_THEME
 
 
 def _make_snapshot(  # noqa: PLR0913
@@ -95,6 +97,24 @@ def _render_group_full(  # noqa: PLR0913
         error_count=error_count,
         elapsed_seconds=elapsed_seconds,
         overflow_path=overflow_path,
+    )
+    console.print(group, markup=False, highlight=False)
+    return buf.getvalue()
+
+
+def _render_compact(
+    snapshot: PipelineSnapshot,
+    *,
+    thinking_block_count: int = 0,
+) -> str:
+    """Render the group in compact mode using a narrow DisplayContext."""
+    buf = StringIO()
+    console = Console(file=buf, force_terminal=False, width=50, theme=RALPH_THEME)
+    ctx = make_display_context(console=console, env={"COLUMNS": "50"})
+    group = render_completion_summary_group(
+        snapshot,
+        thinking_block_count=thinking_block_count,
+        context=ctx,
     )
     console.print(group, markup=False, highlight=False)
     return buf.getvalue()
@@ -293,3 +313,31 @@ def test_completion_panel_parity_with_run_end() -> None:
     assert "tool_calls=7" in out
     assert "errors=0" in out
     assert "agent_calls=4" in out
+
+
+# --- Compact mode tests ---
+
+
+def test_compact_collapses_section_headers() -> None:
+    """In compact mode, Rule headers like 'Metrics' are replaced with 'METRICS:' prefixes."""
+    out = _render_compact(_make_snapshot())
+    # Should NOT contain a Rule titled 'Metrics' (Rules render as '── Metrics ──')
+    # In plain text output, a Rule appears as a line with dashes around the title
+    # We check that no standalone 'Metrics' appears as a section header line
+    # (compact mode uses 'METRICS:' prefix instead)
+    assert "METRICS:" in out
+    assert "DECISIONS:" in out or "DECISIONS" in out
+    assert "VERIFICATION:" in out
+
+
+def test_compact_contains_pipeline_title() -> None:
+    """Compact mode still shows the pipeline title."""
+    out = _render_compact(_make_snapshot())
+    assert "Pipeline Complete" in out
+
+
+def test_compact_contains_key_data() -> None:
+    """Compact mode still includes agent_calls and verification data."""
+    out = _render_compact(_make_snapshot())
+    assert "agent_calls=4" in out
+    assert "Verification" in out

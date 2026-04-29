@@ -10,11 +10,10 @@ from rich.console import Console
 
 from ralph.agents.parsers.base import AgentParser
 from ralph.display.activity_model import ActivityEventKind, ActivityProvider
+from ralph.display.mode import NARROW_THRESHOLD, detect_mode
 from ralph.display.parallel_display import (
-    NARROW_THRESHOLD,
     ParallelDisplay,
     _strip_markup,
-    detect_mode,
 )
 from ralph.display.ring_buffer import RingBuffer
 from ralph.pipeline.worker_state import WorkerStatus

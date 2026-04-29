@@ -17,6 +17,8 @@ from ralph.display.theme import make_console
 if TYPE_CHECKING:
     from rich.console import Console
 
+    from ralph.display.context import DisplayContext
+
 _PHASE_STYLES: dict[str, str] = {
     "planning": "theme.phase.planning",
     "development": "theme.phase.development",
@@ -85,12 +87,23 @@ def _phase_label(phase: str) -> str:
     return phase.replace("_", " ").title()
 
 
+def _resolve_console(
+    console: Console | None,
+    display_context: DisplayContext | None,
+) -> Console:
+    """Resolve the console to use, preferring display_context.console when available."""
+    if display_context is not None:
+        return display_context.console
+    return console or make_console()
+
+
 def show_phase_transition(
     from_phase: str,
     to_phase: str,
     *,
     context: dict[str, object] | None = None,
     console: Console | None = None,
+    display_context: DisplayContext | None = None,
 ) -> None:
     """Display a visual transition between pipeline phases.
 
@@ -102,8 +115,9 @@ def show_phase_transition(
         to_phase: The phase being entered.
         context: Optional key-value context to display alongside the transition.
         console: Rich console for output.
+        display_context: DisplayContext whose console takes precedence over console.
     """
-    c = console or make_console()
+    c = _resolve_console(console, display_context)
 
     style = _phase_style(to_phase)
     from_label = _phase_label(from_phase)
@@ -164,6 +178,7 @@ def show_phase_start(
     ctx: PhaseStartContext | None = None,
     agent_name: str | None = None,
     console: Console | None = None,
+    display_context: DisplayContext | None = None,
 ) -> None:
     """Display the start of a pipeline phase.
 
@@ -172,8 +187,9 @@ def show_phase_start(
         ctx: Optional context with iteration/reviewer counters.
         agent_name: Name of the agent being invoked (shortcut; also settable via ctx).
         console: Rich console for output.
+        display_context: DisplayContext whose console takes precedence over console.
     """
-    c = console or make_console()
+    c = _resolve_console(console, display_context)
     style = _phase_style(phase)
     label = _phase_label(phase)
 
@@ -239,6 +255,7 @@ def show_phase_start_from_state(
     phase: str,
     *,
     console: Console | None = None,
+    display_context: DisplayContext | None = None,
 ) -> None:
     """Display phase start using counters extracted from a pipeline state object.
 
@@ -246,6 +263,7 @@ def show_phase_start_from_state(
         state: Any object with optional iteration/reviewer/analysis counter attributes.
         phase: Phase name to display.
         console: Rich console for output.
+        display_context: DisplayContext whose console takes precedence over console.
     """
     ctx = PhaseStartContext(
         iteration=_get_int_attr(state, "iteration"),
@@ -260,7 +278,7 @@ def show_phase_start_from_state(
         review_analysis_iteration=_get_int_attr(state, "review_analysis_iteration"),
         max_review_analysis_iterations=_get_int_attr(state, "max_review_analysis_iterations"),
     )
-    show_phase_start(phase, ctx=ctx, console=console)
+    show_phase_start(phase, ctx=ctx, console=console, display_context=display_context)
 
 
 def show_phase_complete(
@@ -268,6 +286,7 @@ def show_phase_complete(
     *,
     decision: str | None = None,
     console: Console | None = None,
+    display_context: DisplayContext | None = None,
 ) -> None:
     """Display phase completion with an optional decision outcome.
 
@@ -275,8 +294,9 @@ def show_phase_complete(
         phase: Phase that completed.
         decision: Optional decision (e.g. 'approved', 'needs changes').
         console: Rich console for output.
+        display_context: DisplayContext whose console takes precedence over console.
     """
-    c = console or make_console()
+    c = _resolve_console(console, display_context)
     style = _phase_style(phase)
     label = _phase_label(phase)
 

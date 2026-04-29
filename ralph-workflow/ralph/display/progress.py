@@ -18,7 +18,7 @@ import sys
 from contextlib import contextmanager
 from importlib import import_module
 from io import TextIOBase
-from typing import TYPE_CHECKING, Protocol, cast
+from typing import TYPE_CHECKING, ClassVar, Protocol, cast
 
 from ralph.display.theme import RALPH_THEME
 
@@ -27,6 +27,8 @@ if TYPE_CHECKING:
     from types import ModuleType
 
     from rich.theme import Theme
+
+    from ralph.display.context import DisplayContext
 
 TaskID = int
 
@@ -177,8 +179,13 @@ class RalphProgress:
                 progress.update(phase_task, advance=10)
     """
 
-    def __init__(self) -> None:
-        """Initialize RalphProgress."""
+    def __init__(self, context: DisplayContext | None = None) -> None:
+        """Initialize RalphProgress.
+
+        Args:
+            context: Optional DisplayContext to use its shared console.
+        """
+        self._context = context
         self._console: _ConsoleProto | None = None
         self._progress: _ProgressProto | None = None
         self._tqdm: _TqdmProto | None = None
@@ -230,7 +237,11 @@ class RalphProgress:
             remaining_column,
         ) = columns
 
-        console = console_factory(stderr=True, theme=RALPH_THEME)
+        if self._context is not None:
+            console: _ConsoleProto = cast("_ConsoleProto", self._context.console)
+        else:
+            console = console_factory(stderr=True, theme=RALPH_THEME)
+
         progress = progress_factory(
             spinner_column(),
             text_column("[theme.cat.meta]{task.description}[/theme.cat.meta]"),
@@ -374,27 +385,33 @@ class RalphProgress:
                 self._tqdm.refresh()
 
 
-# Module-level convenience instance
-_default_progress: RalphProgress | None = None
-
-
 class _ProgressSingleton:
-    """Singleton wrapper for RalphProgress."""
+    """Singleton wrapper for RalphProgress, keyed by context console id."""
 
-    _instance: RalphProgress | None = None
+    _instances: ClassVar[dict[int | None, RalphProgress]] = {}
 
     @classmethod
-    def get(cls) -> RalphProgress:
-        """Get the singleton RalphProgress instance."""
-        if cls._instance is None:
-            cls._instance = RalphProgress()
-        return cls._instance
+    def get(cls, context: DisplayContext | None = None) -> RalphProgress:
+        """Get the RalphProgress singleton for the given context.
+
+        Args:
+            context: Optional DisplayContext; instances are keyed by id(context.console).
+                     None context maps to a shared default instance.
+        """
+        key = id(context.console) if context is not None else None
+        if key not in cls._instances:
+            cls._instances[key] = RalphProgress(context=context)
+        return cls._instances[key]
 
 
-def get_progress() -> RalphProgress:
+def get_progress(context: DisplayContext | None = None) -> RalphProgress:
     """Get the default RalphProgress instance.
 
+    Args:
+        context: Optional DisplayContext to share its console with the progress display.
+            Different contexts (identified by console identity) yield separate instances.
+
     Returns:
-        RalphProgress singleton.
+        RalphProgress instance for the given context.
     """
-    return _ProgressSingleton.get()
+    return _ProgressSingleton.get(context)

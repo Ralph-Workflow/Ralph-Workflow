@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import sys
-from io import TextIOBase
+from io import StringIO, TextIOBase
 from types import ModuleType, SimpleNamespace
 
 import pytest
+from rich.console import Console
 
 from ralph.display import progress
+from ralph.display.context import make_display_context
+from ralph.display.theme import RALPH_THEME
 
 VALUE_SENTINEL = 123
 EXPECTED_COLUMN_COUNT = 7
@@ -276,6 +279,39 @@ def test_rich_progress_context_manager_sets_state(monkeypatch):
     assert rp._console is None
 
 
+def test_rich_progress_uses_injected_console_when_context_supplied(monkeypatch):
+    """When a context is supplied, its console is reused rather than creating a new one."""
+    buf = StringIO()
+    shared_console = Console(file=buf, force_terminal=False, width=120, theme=RALPH_THEME)
+    ctx = make_display_context(console=shared_console, env={"COLUMNS": "120"})
+
+    captured_console: list[object] = []
+
+    def progress_factory(
+        *args: object, console: object | None = None, **kwargs: object
+    ) -> _DummyRichProgress:
+        captured_console.append(console)
+        dummy = _DummyRichProgress()
+        return dummy
+
+    def make_column(index: int):
+        return lambda *args, **kwargs: f"column-{index}"
+
+    columns = tuple(make_column(i) for i in range(7))
+    monkeypatch.setattr(
+        progress,
+        "_load_rich_components",
+        lambda: (None, progress_factory, columns),
+    )
+
+    rp = progress.RalphProgress(context=ctx)
+    with rp._rich_progress():
+        pass
+
+    assert len(captured_console) == 1
+    assert captured_console[0] is shared_console
+
+
 def test_rich_progress_context_manager_raises_when_missing(monkeypatch):
     monkeypatch.setattr(progress, "_load_rich_components", lambda: None)
     rp = progress.RalphProgress()
@@ -360,7 +396,23 @@ def test_update_uses_tqdm_fallback():
 
 
 def test_get_progress_singleton(monkeypatch):
-    monkeypatch.setattr(progress._ProgressSingleton, "_instance", None)
+    monkeypatch.setattr(progress._ProgressSingleton, "_instances", {})
     first = progress.get_progress()
     second = progress.get_progress()
     assert first is second
+
+
+def test_get_progress_different_context_yields_different_instance(monkeypatch):
+    """Different contexts (by console identity) produce separate instances."""
+    monkeypatch.setattr(progress._ProgressSingleton, "_instances", {})
+    buf1 = StringIO()
+    buf2 = StringIO()
+    console1 = Console(file=buf1, force_terminal=False, width=120, theme=RALPH_THEME)
+    console2 = Console(file=buf2, force_terminal=False, width=120, theme=RALPH_THEME)
+    ctx1 = make_display_context(console=console1, env={"COLUMNS": "120"})
+    ctx2 = make_display_context(console=console2, env={"COLUMNS": "120"})
+    p1 = progress.get_progress(ctx1)
+    p2 = progress.get_progress(ctx2)
+    p1_again = progress.get_progress(ctx1)
+    assert p1 is not p2
+    assert p1 is p1_again

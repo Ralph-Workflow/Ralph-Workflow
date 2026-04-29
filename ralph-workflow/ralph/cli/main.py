@@ -237,14 +237,10 @@ def _handle_regenerate_config() -> None:
         if created_or_regenerated:
             emit_first_run_welcome(console, results, is_regenerate=True)
         else:
-            # All skipped - show minimal summary
-            console.print(
-                "[dim]No configs needed regeneration (all files up-to-date)[/dim]"
-            )
+            msg = "No configs needed regeneration (all files up-to-date)"
+            console.print(Text(msg, style="theme.text.muted"))
     else:
-        console.print("[dim]No configs found to regenerate[/dim]")
-
-
+        console.print(Text("No configs found to regenerate", style="theme.text.muted"))
 
 
 def _handle_early_exit_flags(
@@ -613,7 +609,7 @@ def _handle_check_config(
         config_path = _config_path(config)
         workspace_scope = None if config_path is not None else resolve_workspace_scope()
         load_config(config_path, cli_overrides, workspace_scope=workspace_scope)
-        console.print("[green]Configuration is valid[/green]")
+        console.print(Text("Configuration is valid", style="theme.status.success"))
         return 0
     except Exception as e:
         logger.error("Configuration is invalid: {}", e)
@@ -639,9 +635,9 @@ def _handle_check_mcp(check_mcp: bool) -> int | None:
         logger.error("MCP validation failed: {}", e)
         return 1
     if rc == 0:
-        console.print("[green]MCP servers validated successfully[/green]")
+        console.print(Text("MCP servers validated successfully", style="theme.status.success"))
     else:
-        console.print("[red]MCP validation failed — see logs[/red]")
+        console.print(Text("MCP validation failed — see logs", style="theme.status.error"))
     return rc
 
 
@@ -697,20 +693,16 @@ def _run_pipeline(  # noqa: PLR0913
         )
         return exit_code
     except KeyboardInterrupt:
-        console.print("\n[yellow]Interrupted by user[/yellow]")
+        console.print(Text("\nInterrupted by user", style="theme.status.warning"))
         return 130
     except Exception as e:
         logger.exception("Pipeline failed: {}")
-        console.print(_status_text("Error", str(e), "red"))
+        err_text = Text()
+        err_text.append("Error:", style="theme.status.error")
+        err_text.append(" ")
+        err_text.append(str(e))
+        console.print(err_text)
         return 1
-
-
-def _status_text(label: str, detail: str, style: str) -> Text:
-    text = Text()
-    text.append(f"{label}:", style=style)
-    text.append(" ")
-    text.append(detail)
-    return text
 
 
 def _configure_logging(verbosity: Verbosity) -> None:

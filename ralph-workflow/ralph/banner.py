@@ -9,7 +9,7 @@ if TYPE_CHECKING:
     from types import ModuleType
 
 from ralph import __version__
-from ralph.display.theme import BLUISH_GREEN, SKY_BLUE
+from ralph.display.theme import make_console
 
 ASCII_ART = (
     " ____       _       _     _     ",
@@ -48,26 +48,19 @@ class _RichGroupProto(Protocol):
     def __call__(self, *_renderables: object) -> object: ...
 
 
-class _RichConsoleClassProto(Protocol):
-    """Protocol for rich.Console class (constructor)."""
-
-    def __call__(self, **kwargs: object) -> SupportsPrint: ...
-
-
 def _module_attr(module: ModuleType, attribute: str) -> object:
     namespace = cast("dict[str, object]", module.__dict__)
     return namespace[attribute]
 
 
 def _load_rich_components() -> tuple[
-    _RichConsoleClassProto, _RichGroupProto, _RichPanelProto, _RichTextProto
+    _RichGroupProto, _RichPanelProto, _RichTextProto
 ]:
     """Load rich classes lazily so static analysis does not depend on local env setup."""
     console_module = import_module("rich.console")
     panel_module = import_module("rich.panel")
     text_module = import_module("rich.text")
     return (
-        cast("_RichConsoleClassProto", _module_attr(console_module, "Console")),
         cast("_RichGroupProto", _module_attr(console_module, "Group")),
         cast("_RichPanelProto", _module_attr(panel_module, "Panel")),
         cast("_RichTextProto", _module_attr(text_module, "Text")),
@@ -76,17 +69,17 @@ def _load_rich_components() -> tuple[
 
 def render_banner(*, version: str = __version__) -> object:
     """Build the Ralph Workflow welcome banner as a rich renderable."""
-    _, group_cls, panel_cls, text_cls = _load_rich_components()
+    group_cls, panel_cls, text_cls = _load_rich_components()
 
-    banner_text = text_cls("\n".join(ASCII_ART), style=f"bold {SKY_BLUE}")
-    version_text = text_cls(f"v{version}", style=f"bold {BLUISH_GREEN}")
-    title_text = text_cls("Ralph Workflow", style=f"bold {SKY_BLUE}")
-    welcome_text = text_cls(WELCOME_MESSAGE, style="bold")
-    tagline_text = text_cls(TAGLINE, style="dim")
+    banner_text = text_cls("\n".join(ASCII_ART), style="theme.banner.ascii")
+    version_text = text_cls(f"v{version}", style="theme.banner.version")
+    title_text = text_cls("Ralph Workflow", style="theme.banner.title")
+    welcome_text = text_cls(WELCOME_MESSAGE, style="theme.banner.welcome")
+    tagline_text = text_cls(TAGLINE, style="theme.banner.tagline")
 
     banner_panel = panel_cls.fit(
         banner_text,
-        border_style=SKY_BLUE,
+        border_style="theme.banner.border",
         padding=(0, 1),
         title=title_text,
         subtitle=version_text,
@@ -97,8 +90,7 @@ def render_banner(*, version: str = __version__) -> object:
 
 def show_banner(*, console: SupportsPrint | None = None, version: str = __version__) -> None:
     """Print the Ralph Workflow welcome banner to the provided console."""
-    if console is not None:
-        console_instance: SupportsPrint = console
-    else:
-        console_instance = _load_rich_components()[0]()
+    console_instance: SupportsPrint = console if console is not None else cast(
+        "SupportsPrint", make_console()
+    )
     console_instance.print(render_banner(version=version))
