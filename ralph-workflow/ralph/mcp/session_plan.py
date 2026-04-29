@@ -45,13 +45,19 @@ def build_session_mcp_plan(
 
     capabilities = _base_capabilities_for_drain(drain)
     mcp_config = load_mcp_config(
-        config_path=(workspace_path / ".agent" / "mcp.toml") if workspace_path is not None else None
+        config_path=(
+            (workspace_path / ".agent" / "mcp.toml")
+            if workspace_path is not None
+            else None
+        )
     )
 
     drain_class = drain_class_for_session(drain)
-    if mcp_config.web_search.enabled and drain_class.value != "commit":
+    is_commit = drain_class.value == "commit"
+
+    if mcp_config.web_search.enabled and not is_commit:
         capabilities.add("web.search")
-    if mcp_config.web_visit.enabled:
+    if mcp_config.web_visit.enabled and not is_commit:
         capabilities.add("web.visit")
     if mcp_config.media.enabled:
         capabilities.add("media.read")
@@ -64,10 +70,8 @@ def build_session_mcp_plan(
             upstreams,
         )
         set_upstream_mcp_config(server_env, upstreams)
-    elif upstreams:
-        capabilities.add("upstream.tool_use")
 
-    if upstreams:
+    if upstreams and not is_commit:
         capabilities.add("upstream.tool_use")
 
     return SessionMcpPlan(
@@ -83,6 +87,7 @@ def _base_capabilities_for_drain(drain: str) -> set[str]:
         "git.status_read",
         "git.diff_read",
         "artifact.submit",
+        "workspace.metadata_read",
     }
 
     if drain_class.value == "planning":
@@ -91,11 +96,14 @@ def _base_capabilities_for_drain(drain: str) -> set[str]:
         return base | {"run.report_progress"}
     if drain_class.value == "analysis":
         return base | {"process.exec_bounded", "run.report_progress"}
+    # Commit drains are strictly read-only: git.write is reserved to the orchestrator.
     if drain_class.value == "commit":
-        return base | {"workspace.write_ephemeral", "git.write", "run.report_progress"}
+        return base | {"run.report_progress"}
     return base | {
         "workspace.write_ephemeral",
         "workspace.write_tracked",
+        "workspace.edit",
+        "workspace.delete",
         "process.exec_bounded",
         "run.report_progress",
         "env.read",

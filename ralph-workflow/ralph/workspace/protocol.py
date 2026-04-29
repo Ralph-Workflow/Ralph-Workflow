@@ -107,3 +107,102 @@ class Workspace(Protocol):
     def absolute_path(self, path: str) -> str:
         """Resolve a relative path to its absolute workspace path."""
         ...
+
+    def read_lines(
+        self,
+        path: str,
+        *,
+        start: int | None = None,
+        end: int | None = None,
+        head: int | None = None,
+        tail: int | None = None,
+    ) -> tuple[str, dict[str, object]]:
+        """Read lines from a file with slicing support.
+
+        Args:
+            path: Relative path to the file.
+            start: 1-based line number to start from (inclusive).
+            end: 1-based line number to end at (inclusive).
+            head: Return only the first N lines.
+            tail: Return only the last N lines.
+
+        Returns:
+            Tuple of (text content, metadata dict) where metadata has
+            total_lines, returned_lines, truncated keys.
+
+        Raises:
+            ValueError: If conflicting params are supplied.
+            FileNotFoundError: If file doesn't exist.
+        """
+        ...
+
+    def stat(self, path: str) -> dict[str, object]:
+        """Get file metadata/stat data.
+
+        Args:
+            path: Relative path to the file.
+
+        Returns:
+            Dict with type ('file'|'dir'|'missing'), size_bytes,
+            created_unix, modified_unix, mode.
+        """
+        ...
+
+    def mkdirs(self, path: str) -> None:
+        """Create a directory and all parent directories.
+
+        Args:
+            path: Relative path to the directory to create.
+        """
+        ...
+
+    def move(self, src: str, dest: str, *, overwrite: bool = False) -> None:
+        """Move a file or directory.
+
+        Args:
+            src: Source path.
+            dest: Destination path.
+            overwrite: Whether to overwrite existing destination.
+        """
+        ...
+
+    def copy(self, src: str, dest: str, *, overwrite: bool = False) -> None:
+        """Copy a file or directory.
+
+        Args:
+            src: Source path.
+            dest: Destination path.
+            overwrite: Whether to overwrite existing destination.
+        """
+        ...
+
+    def delete(self, path: str, *, recursive: bool = False) -> None:
+        """Delete a file or directory.
+
+        Args:
+            path: Relative path to delete.
+            recursive: If True, delete directories recursively.
+
+        Raises:
+            IsADirectoryError: If path is a directory and recursive is False.
+        """
+        ...
+
+    def allowed_roots(self) -> list[str]:
+        """Return the list of allowed workspace root paths.
+
+        Returns:
+            List of string paths from configured allowed roots.
+        """
+        ...
+
+    def iter_files(self, base: str) -> tuple[str, ...]:
+        """Iterate over file paths under a base directory.
+
+        Args:
+            base: Base directory path to search under.
+
+        Yields:
+            File paths relative to workspace root, honoring skip patterns.
+        """
+        ...

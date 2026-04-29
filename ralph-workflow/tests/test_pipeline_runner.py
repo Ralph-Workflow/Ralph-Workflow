@@ -1394,11 +1394,14 @@ class TestExecuteAgentEffect:
         assert result == PipelineEvent.AGENT_SUCCESS
         assert captured["capabilities"] == {
             "workspace.read",
+            "workspace.metadata_read",
             "git.status_read",
             "git.diff_read",
             "artifact.submit",
             "workspace.write_ephemeral",
             "workspace.write_tracked",
+            "workspace.edit",
+            "workspace.delete",
             "process.exec_bounded",
             "run.report_progress",
             "env.read",
@@ -1445,11 +1448,14 @@ class TestExecuteAgentEffect:
         assert captured["drain"] == "development"
         assert captured["capabilities"] == {
             "workspace.read",
+            "workspace.metadata_read",
             "git.status_read",
             "git.diff_read",
             "artifact.submit",
             "workspace.write_ephemeral",
             "workspace.write_tracked",
+            "workspace.edit",
+            "workspace.delete",
             "process.exec_bounded",
             "run.report_progress",
             "env.read",

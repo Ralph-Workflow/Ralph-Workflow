@@ -27,7 +27,7 @@ Ralph acts as an **MCP server** when advertising tools to connected AI agents.
 |------|---------|
 | `names.py` | Tool name constants (`RALPH_MCP_SERVER_NAME`, `READ_FILE_TOOL`, etc.) |
 | `bridge.py` | `ToolBridge` registry and `build_ralph_tool_registry` |
-| `workspace.py` | `handle_read_file`, `handle_write_file`, `handle_list_directory`, `handle_read_image`, etc. |
+| `workspace.py` | `handle_read_file`, `handle_read_multiple_files`, `handle_stat`, `handle_list_allowed_roots`, `handle_write_file`, `handle_list_directory`, `handle_search_files`, `handle_grep_files`, `handle_directory_tree`, `handle_edit_file`, `handle_append_file`, `handle_create_directory`, `handle_move_file`, `handle_copy_file`, `handle_delete_path`, `handle_read_image`, etc. |
 | `git_read.py` | `handle_git_status`, `handle_git_diff`, `handle_git_log`, `handle_git_show` |
 | `exec.py` | `handle_exec_command` with command blacklist |
 | `artifact.py` | `handle_submit_artifact`, `handle_submit_plan_section`, `handle_finalize_plan`, etc. |
@@ -96,19 +96,23 @@ Ralph uses an internal capability vocabulary for session access control:
 | Capability | Value | Description |
 |------------|-------|-------------|
 | `workspace.read` | `workspace.read` | Read files and list directories |
+| `workspace.metadata_read` | `workspace.metadata_read` | Read file metadata/stat (distinct from content read) |
 | `workspace.write_ephemeral` | `workspace.write_ephemeral` | Write to non-git-tracked files |
 | `workspace.write_tracked` | `workspace.write_tracked` | Write to git-tracked files |
+| `workspace.edit` | `workspace.edit` | Edit, append, create, move, copy files and directories |
+| `workspace.delete` | `workspace.delete` | Delete files and directories (distinct destructive capability) |
 | `process.exec_bounded` | `process.exec_bounded` | Execute bounded shell commands |
 | `process.exec_unbounded` | `process.exec_unbounded` | Execute shell commands without limits |
 | `artifact.submit` | `artifact.submit` | Submit structured artifacts |
 | `run.report_progress` | `run.report_progress` | Report progress to pipeline |
 | `git.status_read` | `git.status_read` | Read git status and history |
 | `git.diff_read` | `git.diff_read` | Read git diffs |
-| `git.write` | `git.write` | Perform git operations |
+| `git.write` | `git.write` | Perform git operations (orchestrator-only; never granted to agents) |
 | `env.read` | `env.read` | Read environment variables |
 | `env.write` | `env.write` | Write environment variables |
 | `upstream.tool_use` | `upstream.tool_use` | Use upstream MCP tools |
 | `web.search` | `web.search` | Search the web |
+| `web.visit` | `web.visit` | Fetch and extract text from a URL (config opt-in; all drains) |
 | `media.read` | `media.read` | Read image files (opt-in) |
 
 ### MCP Capability Mapping
@@ -119,8 +123,11 @@ MCP capabilities are mapped to Ralph capabilities:
 |----------------|-------------------|
 | `FileRead` | `workspace.read` |
 | `WorkspaceRead` | `workspace.read` |
+| `WorkspaceMetadataRead` | `workspace.metadata_read` |
 | `WorkspaceWriteEphemeral` | `workspace.write_ephemeral` |
 | `WorkspaceWriteTracked` | `workspace.write_tracked` |
+| `WorkspaceEdit` | `workspace.edit` |
+| `WorkspaceDelete` | `workspace.delete` |
 | `WorkspaceWriteAny` | Composite (ephemeral OR tracked) |
 | `GitStatusRead` | `git.status_read` |
 | `GitRead` | `git.status_read` |
@@ -133,6 +140,7 @@ MCP capabilities are mapped to Ralph capabilities:
 | `EnvWrite` | `env.write` |
 | `UpstreamToolUse` | `upstream.tool_use` |
 | `WebSearch` | `web.search` |
+| `WebVisit` | `web.visit` |
 | `MediaRead` | `media.read` |
 
 ### Multimodal Capability (MediaRead)

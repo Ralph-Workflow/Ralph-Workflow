@@ -21,12 +21,22 @@ Drain class groupings used in this table:
 
 | Tool name | Capability gate | Granted to drains | Brief description |
 |-----------|----------------|-------------------|-------------------|
-| `read_file` | `workspace.read` | all | Read a UTF-8 file from the workspace |
+| `read_file` | `workspace.read` | all | Read a UTF-8 file, with optional partial read params (line_start/line_end, head, tail, offset/limit). Returns structured JSON when partial params are used. |
+| `read_multiple_files` | `workspace.read` | all | Read multiple files in one call, per-file success/failure |
+| `stat_path` | `workspace.metadata_read` | all | Get file metadata/stat (type, size, created, modified, mode) |
+| `list_allowed_roots` | `workspace.read` | all | Return configured allowed workspace root paths |
 | `write_file` | `workspace.write_tracked` | write drains | Write or overwrite a tracked file |
 | `list_directory` | `workspace.read` | all | List entries in a directory |
-| `list_directory_recursive` | `workspace.read` | all | Recursive directory listing |
-| `directory_tree` | `workspace.read` | all | JSON directory tree |
-| `search_files` | `workspace.read` | all | Glob-pattern file search |
+| `list_directory_recursive` | `workspace.read` | all | Recursive directory listing (text dump) |
+| `directory_tree` | `workspace.read` | all | Structured JSON tree with max_depth and exclude_patterns support |
+| `search_files` | `workspace.read` | all | True glob-pattern file search (**, *, ?, exclude, limit) |
+| `grep_files` | `workspace.read` | all | Native content search (regex/literal, case/whole-word, context lines, include/exclude) |
+| `edit_file` | `workspace.edit` | write drains | Structured edit with dry_run preview and unified diff |
+| `append_file` | `workspace.edit` | write drains | Append content to a file |
+| `create_directory` | `workspace.edit` | write drains | Create a directory and all parents |
+| `move_file` | `workspace.edit` | write drains | Move or rename a file/directory |
+| `copy_file` | `workspace.edit` | write drains | Copy a file/directory |
+| `delete_path` | `workspace.delete` | write drains | Delete file or directory (distinct destructive capability) |
 | `git_status` | `git.status_read` | all | Current git status |
 | `git_diff` | `git.diff_read` | all | Current git diff |
 | `git_log` | `git.status_read` | all | Recent commit log |
@@ -48,18 +58,68 @@ Drain class groupings used in this table:
 Claude exposes every tool as `mcp__ralph__<tool>` (e.g., `mcp__ralph__read_file`).
 See `ralph.mcp.tools.names` for the canonical name constants.
 
+### read_file response shapes
+
+`read_file` returns different response shapes depending on which parameters are supplied
+and how large the file is.
+
+**1. Plain text** — full file is UTF-8 and at or below the size limit (default 5 MB):
+returned as a single text content block with no JSON envelope.
+
+**2. Partial-read JSON envelope** — when any of `line_start`/`line_end`, `offset`/`limit`,
+`head`, or `tail` is supplied:
+
+```json
+{
+  "path": "<requested path>",
+  "content": "<returned text>",
+  "total_lines": <int>,
+  "returned_lines": <int>,
+  "truncated": <bool>
+}
+```
+
+The partial-read parameter groups are mutually exclusive; combining any two
+(`line_start`/`line_end` with `offset`/`limit`, etc.) raises `InvalidParams`.
+
+**3. Oversize/error JSON envelope** — when the file exceeds `max_bytes` (default
+`5_000_000`) or fails UTF-8 decoding. The JSON envelope only appears in these
+error/truncation cases.
+
+Oversize truncation (`is_error: false`):
+
+```json
+{
+  "path": "<requested path>",
+  "content": "<representative head>",
+  "truncated": true,
+  "total_bytes": <int>,
+  "max_bytes": <int>,
+  "reason": "oversize"
+}
+```
+
+Non-UTF-8 / binary file (`is_error: true`):
+
+```json
+{
+  "status": "binary_or_invalid_utf8",
+  "path": "<requested path>",
+  "error": "<decoding error message>",
+  "byte_offset": <int>
+}
+```
+
+Pass an explicit `max_bytes` parameter to override the 5 MB ceiling for a single call.
+
 ### Capability grant rules
 
 Capability grants follow these rules (implemented in `ralph.mcp.session_plan`):
 
-- **Base capabilities** (all drains): `workspace.read`, `git.status_read`, `git.diff_read`,
-  `artifact.submit`
-- **Write drains** (development, fix) additionally receive: `workspace.write_ephemeral`,
-  `workspace.write_tracked`, `process.exec_bounded`, `run.report_progress`, `env.read`
-- **Commit drains** (development\_commit, review\_commit, commit) additionally receive:
-  `workspace.write_ephemeral`, `git.write`, `run.report_progress`
-- **`web.search`** is granted when enabled in MCP config AND the drain class is not
-  `analysis` (development\_analysis, review\_analysis) or `commit`
+- **Base capabilities** (all drains): `workspace.read`, `workspace.metadata_read`, `git.status_read`, `git.diff_read`, `artifact.submit`
+- **Write drains** (development, fix) additionally receive: `workspace.write_ephemeral`, `workspace.write_tracked`, `workspace.edit`, `workspace.delete`, `process.exec_bounded`, `run.report_progress`, `env.read`
+- **Commit drains** (development\_commit, review\_commit, commit) are strictly read-only; they additionally receive only `run.report_progress`. `git.write` is reserved to the orchestrator and is never granted to agents.
+- **`web.search`** is granted when enabled in MCP config AND the drain class is not `analysis` (development\_analysis, review\_analysis) or `commit`
 - **`web.visit`** is granted to all drains when enabled in MCP config
 - **`upstream.tool_use`** is granted whenever upstream MCP servers are configured
 
@@ -116,9 +176,12 @@ callable. The capability strings are:
 
 | Capability | What it gates |
 |------------|--------------|
-| `workspace.read` | `read_file`, `list_directory`, `list_directory_recursive`, `directory_tree`, `search_files` |
+| `workspace.read` | `read_file` (full), `read_multiple_files`, `list_allowed_roots`, `list_directory`, `list_directory_recursive`, `directory_tree`, `search_files`, `grep_files` |
+| `workspace.metadata_read` | `stat_path` (file metadata/stat) |
 | `workspace.write_ephemeral` | Write to files not tracked by git |
 | `workspace.write_tracked` | `write_file` (git-tracked files) |
+| `workspace.edit` | `edit_file`, `append_file`, `create_directory`, `move_file`, `copy_file` |
+| `workspace.delete` | `delete_path` (distinct destructive capability) |
 | `process.exec_bounded` | `exec` (with command blacklist enforced) |
 | `artifact.submit` | `ralph_submit_artifact`, `declare_complete`, `coordinate`, plan draft tools |
 | `run.report_progress` | `report_progress` |

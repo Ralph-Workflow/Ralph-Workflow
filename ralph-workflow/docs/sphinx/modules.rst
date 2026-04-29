@@ -1195,6 +1195,13 @@ ralph.workspace.scope
 .. automodule:: ralph.workspace.scope
    :no-members:
 
+ralph.workspace.skip
+~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.workspace.skip
+   :members:
+   :show-inheritance:
+
 ----
 
 Recovery

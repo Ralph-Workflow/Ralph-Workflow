@@ -34,6 +34,7 @@ def test_capability_set_defaults_cover_each_drain() -> None:
 
     assert set(planning) == {
         Capability.WORKSPACE_READ,
+        Capability.WORKSPACE_METADATA_READ,
         Capability.WORKSPACE_WRITE_EPHEMERAL,
         Capability.GIT_STATUS_READ,
         Capability.GIT_DIFF_READ,
@@ -44,8 +45,11 @@ def test_capability_set_defaults_cover_each_drain() -> None:
     }
     assert set(development) == {
         Capability.WORKSPACE_READ,
+        Capability.WORKSPACE_METADATA_READ,
         Capability.WORKSPACE_WRITE_EPHEMERAL,
         Capability.WORKSPACE_WRITE_TRACKED,
+        Capability.WORKSPACE_EDIT,
+        Capability.WORKSPACE_DELETE,
         Capability.GIT_STATUS_READ,
         Capability.GIT_DIFF_READ,
         Capability.PROCESS_EXEC_BOUNDED,
@@ -58,7 +62,10 @@ def test_capability_set_defaults_cover_each_drain() -> None:
     }
     assert set(fix) == {
         Capability.WORKSPACE_READ,
+        Capability.WORKSPACE_METADATA_READ,
         Capability.WORKSPACE_WRITE_TRACKED,
+        Capability.WORKSPACE_EDIT,
+        Capability.WORKSPACE_DELETE,
         Capability.GIT_STATUS_READ,
         Capability.GIT_DIFF_READ,
         Capability.PROCESS_EXEC_BOUNDED,
@@ -71,6 +78,7 @@ def test_capability_set_defaults_cover_each_drain() -> None:
     }
     assert set(commit) == {
         Capability.WORKSPACE_READ,
+        Capability.WORKSPACE_METADATA_READ,
         Capability.WORKSPACE_WRITE_EPHEMERAL,
         Capability.GIT_STATUS_READ,
         Capability.GIT_DIFF_READ,

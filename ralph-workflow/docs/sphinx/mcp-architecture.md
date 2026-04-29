@@ -36,6 +36,21 @@ The `check_mcp_capability_policy` function is the single entry point for access 
 
 Capability grants in a session are declared in `ralph.mcp.session_plan` and are injected into the MCP server at startup via the session context.
 
+Key capability classes in the extended vocabulary:
+
+| Capability | Description |
+|---|---|
+| `workspace.read` | Read files and list directories |
+| `workspace.metadata_read` | Read file metadata/stat without reading content |
+| `workspace.write_ephemeral` | Write to non-git-tracked files |
+| `workspace.write_tracked` | Write to git-tracked files |
+| `workspace.edit` | Edit, append, create, move, and copy files |
+| `workspace.delete` | Delete files and directories (distinct destructive capability) |
+| `web.visit` | Fetch and extract text from a URL (opt-in; all drains) |
+| `git.write` | Perform git write operations — **orchestrator-only; never granted to agents** |
+
+Commit drains are strictly read-only: they receive only base read capabilities plus `run.report_progress`. They do not receive `git.write`, `workspace.write_ephemeral`, `workspace.write_tracked`, `workspace.edit`, or `process.exec_bounded`. The orchestrator is solely responsible for performing the actual git write operation after a commit agent proposes a commit message via `artifact.submit`.
+
 ## Session plan
 
 `ralph.mcp.session_plan` constructs the capability grant set for a given drain and policy configuration. It resolves which capabilities the agent receives, validates that required capabilities are present, and produces the `SessionPlan` object consumed by the server factory.
@@ -83,7 +98,7 @@ The full tool list is in {doc}`mcp-tools`. Tools are implemented in `ralph.mcp.t
 | Package | Tools provided |
 |---|---|
 | `ralph.mcp.tools.artifact` | `ralph_submit_artifact`, plan section tools |
-| `ralph.mcp.tools.workspace` | `read_file`, `write_file`, `list_directory`, `search_files` |
+| `ralph.mcp.tools.workspace` | `read_file`, `read_multiple_files`, `stat_path`, `list_allowed_roots`, `write_file`, `list_directory`, `search_files`, `grep_files`, `edit_file`, `append_file`, `create_directory`, `move_file`, `copy_file`, `delete_path`, `directory_tree`, `list_directory_recursive`, `read_image` |
 | `ralph.mcp.tools.exec` | `exec` (bounded shell execution) |
 | `ralph.mcp.tools.git_read` | `git_status`, `git_diff`, `git_log`, `git_show` |
 | `ralph.mcp.tools.websearch` | `web_search` |
