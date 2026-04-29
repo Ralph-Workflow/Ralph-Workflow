@@ -30,8 +30,10 @@ def test_loading_pipeline_toml_with_global_parallel_execution_block_raises(
 
 
 def test_pipelinepolicy_model_rejects_parallel_execution_field() -> None:
-    with pytest.raises(ValidationError, match="parallel_execution"):
+    with pytest.raises(ValidationError, match="parallel_execution") as excinfo:
         PipelinePolicy.model_validate({"parallel_execution": {"max_parallel_workers": 2}})
+
+    assert "regenerate-config" in str(excinfo.value)
 
 
 def test_phase_definition_accepts_parallelization() -> None:

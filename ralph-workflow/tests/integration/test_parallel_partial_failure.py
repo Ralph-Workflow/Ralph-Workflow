@@ -73,6 +73,7 @@ def _make_policy_bundle(max_workers: int = 4) -> MagicMock:
     dev_phase = MagicMock(requires_commit=False, drain="development")
     dev_phase.parallelization = para
     bundle.pipeline.phases = {PHASE_DEVELOPMENT: dev_phase}
+    bundle.pipeline.recovery.failed_route = PHASE_FAILED
     bundle.agents.agent_drains = {
         "development": MagicMock(chain="developer"),
     }

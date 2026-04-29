@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import tomllib
 from pathlib import Path
-from typing import TYPE_CHECKING
+
+import pytest
 
 import ralph.config.loader as loader_module
 import ralph.policy
@@ -15,14 +16,69 @@ from ralph.config.bootstrap import (
     regenerate_all,
     resolve_global_config_dir,
 )
+from ralph.policy.loader import (
+    PolicyValidationError as LoaderPolicyValidationError,
+)
+from ralph.policy.loader import (
+    load_policy,
+)
 from ralph.workspace.scope import WorkspaceScope
-
-if TYPE_CHECKING:
-    import pytest
 
 _EXPECTED_LOCAL_CONFIG_COUNT = 4
 _EXPECTED_REGENERATE_COUNT = 7
 _DEFAULT_DEVELOPER_ITERS = 5
+
+
+EXAMPLE_AGENT_CONFIG = """[agent_chains]
+planning = [\"claude/opus\"]
+development = [\"opencode/anthropic/claude-sonnet-4\", \"codex\", \"claude/sonnet\"]
+analysis = [\"claude/sonnet\"]
+review = [\"codex\", \"claude/sonnet\"]
+fix = [\"opencode/anthropic/claude-sonnet-4\", \"claude/sonnet\"]
+commit = [\"claude/haiku\"]
+alt_planning = [\"ccs/work\"]
+
+[agent_drains]
+planning = \"planning\"
+development = \"development\"
+development_analysis = \"analysis\"
+development_commit = \"commit\"
+review = \"review\"
+review_analysis = \"analysis\"
+review_commit = \"commit\"
+fix = \"fix\"
+"""
+
+
+def _render_template_example_agent_config() -> str:
+    template = Path(ralph.policy.__file__).parent / "defaults" / "ralph-workflow-local.toml"
+    content = template.read_text(encoding="utf-8").splitlines()
+    sections: dict[str, list[str]] = {"agent_chains": [], "agent_drains": []}
+    current_section: str | None = None
+
+    for line in content:
+        stripped = line.strip()
+        if stripped == "# [agent_chains]":
+            current_section = "agent_chains"
+            continue
+        if stripped == "# [agent_drains]":
+            current_section = "agent_drains"
+            continue
+        if current_section is None:
+            continue
+        if stripped.startswith("# --------------------------------"):
+            current_section = None
+            continue
+        if not stripped.startswith("# "):
+            continue
+        body = stripped[2:]
+        if " = " not in body:
+            continue
+        sections[current_section].append(body)
+
+    rendered = "[agent_chains]\n" + "\n".join(sections["agent_chains"])
+    rendered += "\n\n[agent_drains]\n" + "\n".join(sections["agent_drains"])
+    return rendered + "\n"
 
 
 def test_ensure_global_config_creates_when_absent(tmp_path: Path) -> None:
@@ -160,3 +216,112 @@ def test_bundled_global_template_parses_as_valid_toml() -> None:
     content = template.read_text(encoding="utf-8")
     result = tomllib.loads(content)
     assert isinstance(result, dict)
+
+
+def test_local_template_documents_full_runtime_drain_bindings() -> None:
+    template = Path(ralph.policy.__file__).parent / "defaults" / "ralph-workflow-local.toml"
+    content = template.read_text(encoding="utf-8")
+
+    for line in (
+        '# development_analysis = "analysis"',
+        '# development_commit = "commit"',
+        '# review_analysis = "analysis"',
+        '# review_commit = "commit"',
+    ):
+        assert line in content, f"Expected local template to document runtime drain binding: {line}"
+
+
+def test_local_template_showcases_fallback_and_transport_examples() -> None:
+    template = Path(ralph.policy.__file__).parent / "defaults" / "ralph-workflow-local.toml"
+    content = template.read_text(encoding="utf-8")
+
+    for snippet in (
+        'planning = ["claude/opus"]',
+        'development = ["opencode/anthropic/claude-sonnet-4", "codex", "claude/sonnet"]',
+        'commit = ["claude/haiku"]',
+        'ccs/work',
+    ):
+        assert snippet in content, f"Expected local template to showcase example: {snippet}"
+
+
+def test_template_example_agent_config_renderer_stays_in_sync_with_documented_example() -> None:
+    assert _render_template_example_agent_config() == EXAMPLE_AGENT_CONFIG
+
+
+def test_template_example_agent_config_validates_against_bundled_policy(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    defaults_dir = Path(ralph.policy.__file__).parent / "defaults"
+    agent_dir = tmp_path / ".agent"
+    agent_dir.mkdir()
+    (agent_dir / "ralph-workflow.toml").write_text(
+        _render_template_example_agent_config(), encoding="utf-8"
+    )
+    (agent_dir / "pipeline.toml").write_text(
+        (defaults_dir / "pipeline.toml").read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+    (agent_dir / "artifacts.toml").write_text(
+        (defaults_dir / "artifacts.toml").read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr("ralph.config.loader.LOCAL_CONFIG_PATH", agent_dir / "ralph-workflow.toml")
+    config = loader_module.load_config(workspace_scope=WorkspaceScope(tmp_path))
+    bundle = load_policy(agent_dir, config=config)
+
+    for phase_name, phase_def in bundle.pipeline.phases.items():
+        if phase_name == bundle.pipeline.terminal_phase:
+            continue
+        assert phase_def.drain in bundle.agents.agent_drains, (
+            f"Documented example left phase {phase_name!r} drain {phase_def.drain!r} unbound"
+        )
+
+
+def test_template_example_agent_config_missing_required_drain_fails_policy_validation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    defaults_dir = Path(ralph.policy.__file__).parent / "defaults"
+    agent_dir = tmp_path / ".agent"
+    agent_dir.mkdir()
+    broken = _render_template_example_agent_config().replace(
+        'review_commit = "commit"\n', ''
+    )
+    (agent_dir / "ralph-workflow.toml").write_text(broken, encoding="utf-8")
+    (agent_dir / "pipeline.toml").write_text(
+        (defaults_dir / "pipeline.toml").read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+    (agent_dir / "artifacts.toml").write_text(
+        (defaults_dir / "artifacts.toml").read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr("ralph.config.loader.LOCAL_CONFIG_PATH", agent_dir / "ralph-workflow.toml")
+    config = loader_module.load_config(workspace_scope=WorkspaceScope(tmp_path))
+    with pytest.raises(LoaderPolicyValidationError, match="unbound drains"):
+        load_policy(agent_dir, config=config)
+
+
+def test_ensure_local_configs_bootstraps_a_valid_policy_bundle(tmp_path: Path) -> None:
+    agent_dir = tmp_path / ".agent"
+    ensure_local_configs(agent_dir)
+
+    bundle = load_policy(agent_dir)
+
+    assert bundle.pipeline.entry_phase == "planning"
+    assert bundle.pipeline.phases["development"].parallelization is not None
+
+
+def test_regenerate_all_bootstraps_a_valid_policy_bundle(tmp_path: Path) -> None:
+    global_dir = tmp_path / "g"
+    agent_dir = tmp_path / "a"
+    global_dir.mkdir()
+    agent_dir.mkdir()
+
+    regenerate_all(global_dir=global_dir, agent_dir=agent_dir)
+
+    bundle = load_policy(agent_dir)
+
+    assert bundle.pipeline.terminal_phase == "complete"
+    assert bundle.pipeline.phases["development"].parallelization is not None

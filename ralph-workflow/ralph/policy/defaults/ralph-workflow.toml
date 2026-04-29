@@ -138,20 +138,37 @@
 # ---------------------------------------------------------------------------
 # [agent_chains.*] — Named reusable chain definitions (list of agent names)
 # Defaults shown below mirror the built-in factory defaults.
+#
+# The active built-in runtime default is intentionally minimal:
+#   planning = ["claude"]
+#   development = ["claude", "opencode"]
+#   analysis = ["claude"]
+#   review = ["claude"]
+#   fix = ["claude"]
+#   commit = ["claude"]
+#
+# Recommended example (uncomment and adapt):
+#   - planning on a stronger Claude model
+#   - development with a cheaper/faster first attempt and fallbacks
+#   - review through Codex first, then Claude
+#   - cheap commit-message generation
+#   - CCS alias example for teams that standardize model profiles
+# See docs/sphinx/configuration.md#ccs_aliases for CCS details.
 # ---------------------------------------------------------------------------
 
 # [agent_chains]
-# planning = ["claude"]
-# development = ["claude", "opencode"]
-# analysis = ["claude"]
-# review = ["claude"]
-# fix = ["claude"]
-# commit = ["claude"]
+# planning = ["claude/opus"]
+# development = ["opencode/anthropic/claude-sonnet-4", "codex", "claude/sonnet"]
+# analysis = ["claude/sonnet"]
+# review = ["codex", "claude/sonnet"]
+# fix = ["opencode/anthropic/claude-sonnet-4", "claude/sonnet"]
+# commit = ["claude/haiku"]
+# alt_planning = ["ccs/work"]
 
 # ---------------------------------------------------------------------------
 # [agent_drains.*] — Drain-to-chain bindings for pipeline drains
 # Maps each pipeline drain name to a chain name defined in [agent_chains].
-# Defaults shown below mirror the built-in factory defaults.
+# IMPORTANT: the bundled pipeline uses the full runtime drain set below.
 # ---------------------------------------------------------------------------
 
 # [agent_drains]

@@ -573,7 +573,8 @@ class PipelinePolicy(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reaso
                 "Move max_parallel_workers, max_work_units, require_allowed_directories, "
                 "and post_fanout_verification under [phases.<phase>.parallelization] "
                 "(typically [phases.development.parallelization]). "
-                "See docs/migration/parallel-mode.md."
+                "Run `ralph --regenerate-config` to refresh the bundled template if this "
+                "file came from an older bootstrap. See docs/migration/parallel-mode.md."
             )
         return values
 
