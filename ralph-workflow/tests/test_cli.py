@@ -598,19 +598,14 @@ def test_explain_policy_prints_workflow_diagram(cli_runner: CliRunner) -> None:
 def _invoke_explain_policy_subprocess() -> subprocess.CompletedProcess[str]:
     """Run the packaged ralph binary with --explain-policy as a real subprocess.
 
-    PYTHONPATH is prepended with the project directory so that the installed
-    console script resolves imports from this source tree, even in environments
-    where PYTHONPATH already points at a different copy of the package (e.g. git
-    worktrees sharing a common PYTHONPATH).
+    PYTHONPATH is explicitly cleared so that the console script resolves imports
+    via the editable install's .pth file (which points to this source tree),
+    rather than any ambient PYTHONPATH that may reference a different checkout
+    (e.g. a shared PYTHONPATH across git worktrees). This mirrors the supported
+    runtime contract: users run `ralph` without setting PYTHONPATH.
     """
     ralph_bin = _RALPH_WORKFLOW_DIR / ".venv" / "bin" / "ralph"
-    existing_pythonpath = os.environ.get("PYTHONPATH", "")
-    pythonpath = (
-        f"{_RALPH_WORKFLOW_DIR}:{existing_pythonpath}"
-        if existing_pythonpath
-        else str(_RALPH_WORKFLOW_DIR)
-    )
-    env = {**os.environ, "PYTHONPATH": pythonpath}
+    env = {k: v for k, v in os.environ.items() if k != "PYTHONPATH"}
     return subprocess.run(
         [str(ralph_bin), "--explain-policy"],
         capture_output=True,
