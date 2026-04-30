@@ -46,6 +46,7 @@ from ralph.prompts.commit import (
     prompt_commit_message,
     prompt_commit_message_for_opencode,
 )
+from ralph.prompts.payload_refs import _sanitize_surrogates
 from ralph.prompts.system_prompt import materialize_system_prompt
 from ralph.prompts.template_registry import TemplateRegistry, default_template_dirs
 from ralph.workspace.fs import FsWorkspace
@@ -297,8 +298,8 @@ def _commit_drain_agent_supported(registry: AgentRegistry, agent_name: str) -> b
 def _working_tree_diff(repo_root: Path) -> str:
     repo = Repo(repo_root)
     if repo.head.is_valid():
-        return cast("str", repo.git.diff("HEAD"))
-    return cast("str", repo.git.diff("--cached"))
+        return _sanitize_surrogates(cast("str", repo.git.diff("HEAD")))
+    return _sanitize_surrogates(cast("str", repo.git.diff("--cached")))
 
 
 def _commit_submit_artifact_tool_names(

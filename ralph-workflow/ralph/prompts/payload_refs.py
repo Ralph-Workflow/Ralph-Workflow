@@ -14,6 +14,11 @@ MAX_INLINE_PROMPT_BYTES = 100 * 1024
 type PromptPayloadWriter = Callable[[str, str], str]
 
 
+def _sanitize_surrogates(text: str) -> str:
+    """Replace lone surrogate code points so the result is strictly UTF-8 encodable."""
+    return text.encode("utf-8", "surrogateescape").decode("utf-8", "replace")
+
+
 def build_prompt_payload_variables(
     values: Mapping[str, str],
     *,
@@ -24,13 +29,14 @@ def build_prompt_payload_variables(
 
     variables: dict[str, str] = {}
     for name, content in values.items():
-        if len(content.encode("utf-8")) > MAX_INLINE_PROMPT_BYTES:
+        safe_content = _sanitize_surrogates(content)
+        if len(safe_content.encode("utf-8")) > MAX_INLINE_PROMPT_BYTES:
             relative_path = prompt_payload_relative_path(prompt_name_prefix, name)
             variables[name] = ""
-            variables[f"{name}_PATH"] = write_payload(relative_path, content)
+            variables[f"{name}_PATH"] = write_payload(relative_path, safe_content)
             continue
 
-        variables[name] = content
+        variables[name] = safe_content
         variables[f"{name}_PATH"] = ""
     return variables
 
@@ -44,7 +50,7 @@ def prompt_payload_relative_path(prompt_name_prefix: str, variable_name: str) ->
 def write_payload_to_directory(output_dir: Path, relative_path: str, content: str) -> str:
     destination = output_dir / Path(relative_path).name
     destination.parent.mkdir(parents=True, exist_ok=True)
-    destination.write_text(content, encoding="utf-8")
+    destination.write_text(_sanitize_surrogates(content), encoding="utf-8")
     return str(destination)
 
 
