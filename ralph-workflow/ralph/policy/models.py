@@ -362,7 +362,7 @@ class PhaseDefinition(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reas
         commit_policy: Required when role='commit'; declares commit semantics.
         verification: Optional verification gating policy.
         terminal_outcome: Explicit terminal outcome; required when role='terminal'.
-        bypass_routes: Named bypass routes (e.g. review_clean -> review_commit).
+        bypass_routes: Named bypass routes (e.g. clean -> review_commit).
         clean_outcome: For role='review': the bypass_routes key that means the review
             is clean (no issues). The reducer looks up this key in bypass_routes to
             find the target phase for a clean review. Required when bypass_routes is

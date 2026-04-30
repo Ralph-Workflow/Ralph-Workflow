@@ -272,7 +272,7 @@ def _validate_review_phase(
     if phase_def.bypass_routes and phase_def.clean_outcome is None:
         errors.append(
             f"phases.{phase_name}: role='review' with bypass_routes requires clean_outcome "
-            f"(the bypass_routes key that signals a clean review, e.g. 'review_clean'). "
+            f"(the bypass_routes key that signals a clean review, e.g. 'clean'). "
             f"See docs/migration/policy-v2.md."
         )
 

@@ -142,10 +142,10 @@ def _policy_with_post_commit_routes() -> PipelinePolicy:
             PHASE_REVIEW: PhaseDefinition(
                 drain="review",
                 role="review",
-                clean_outcome="review_clean",
+                clean_outcome="clean",
                 issues_outcome="has_issues",
                 transitions=PhaseTransition(on_success="review_analysis", on_loopback=PHASE_FIX),
-                bypass_routes={"review_clean": "review_commit"},
+                bypass_routes={"clean": "review_commit"},
             ),
             "review_analysis": PhaseDefinition(
                 drain="review_analysis",
@@ -1497,8 +1497,54 @@ def test_review_clean_uses_policy_clean_outcome() -> None:
     policy = _policy_with_post_commit_routes()
     state = PipelineState(phase=PHASE_REVIEW)
     new_state, _ = _reduce(state, PipelineEvent.REVIEW_CLEAN, policy)
-    # clean_outcome="review_clean" -> bypass_routes["review_clean"] = "review_commit"
+    # clean_outcome="clean" -> bypass_routes["clean"] = "review_commit"
     assert new_state.phase == PHASE_REVIEW_COMMIT
+    assert new_state.review_outcome is None
+
+
+def test_review_clean_without_bypass_routes_uses_on_success() -> None:
+    """REVIEW_CLEAN with no clean_outcome or bypass_routes falls back to transitions.on_success."""
+    policy = PipelinePolicy(
+        phases={
+            PHASE_REVIEW: PhaseDefinition(
+                drain="review",
+                role="review",
+                issues_outcome="has_issues",
+                # clean_outcome=None (default) — no bypass key declared
+                # bypass_routes={} (default) — no bypass entries
+                transitions=PhaseTransition(
+                    on_success=PHASE_REVIEW_ANALYSIS,
+                    on_loopback=PHASE_FIX,
+                ),
+            ),
+            PHASE_REVIEW_ANALYSIS: PhaseDefinition(
+                drain="review_analysis",
+                role="analysis",
+                transitions=PhaseTransition(
+                    on_success=PHASE_COMPLETE,
+                    on_loopback=PHASE_FIX,
+                ),
+                loop_policy=PhaseLoopPolicy(
+                    max_iterations=2,
+                    iteration_state_field="review_analysis_iteration",
+                ),
+            ),
+            PHASE_FIX: PhaseDefinition(
+                drain="fix",
+                role="execution",
+                transitions=PhaseTransition(
+                    on_success=PHASE_REVIEW_ANALYSIS,
+                    on_loopback=PHASE_REVIEW,
+                ),
+            ),
+        },
+        entry_phase=PHASE_REVIEW,
+        terminal_phase=PHASE_COMPLETE,
+    )
+    state = PipelineState(phase=PHASE_REVIEW)
+    new_state, _ = _reduce(state, PipelineEvent.REVIEW_CLEAN, policy)
+    # No clean_outcome -> falls back to on_success routing
+    assert new_state.phase == PHASE_REVIEW_ANALYSIS
     assert new_state.review_outcome is None
 
 

@@ -99,9 +99,10 @@ is a vocabulary contract used by artifact validation — it is not inspected for
 
 **Review routing** (`_handle_review_clean`, `_handle_review_issues_found`):
 - `REVIEW_CLEAN`: reads `phase_def.clean_outcome` from policy, looks up the bypass target in
-  `phase_def.bypass_routes[clean_outcome]`. Falls back to `on_success` when not set.
+  `phase_def.bypass_routes[clean_outcome]`. Falls back to `on_success` when no bypass is set.
 - `REVIEW_ISSUES_FOUND`: reads `phase_def.issues_outcome` from policy as the `review_outcome`
-  label. Falls back to `'has_issues'` for back-compat only.
+  label. `issues_outcome` is required for any `role='review'` phase — missing it causes
+  startup rejection via `validate_policy_completeness`.
 
 **Terminal routing**: uses `policy.recovery.failed_route` for the failure path and
 `policy.terminal_phase` for the success path — never hardcoded strings.
