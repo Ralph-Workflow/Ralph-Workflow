@@ -48,6 +48,8 @@ class ProgressEventType(StrEnum):
     PIPELINE_COMPLETED = "pipeline_completed"
     PIPELINE_INTERRUPTED = "pipeline_interrupted"
     HEARTBEAT = "heartbeat"
+    CHILD_WAITING_SUSPECTED_FROZEN = "child_waiting_suspected_frozen"
+    CHILD_WAITING_HARD_STOP = "child_waiting_hard_stop"
 
 
 class _FrozenCloudModel(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library

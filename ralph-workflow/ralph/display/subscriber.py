@@ -83,6 +83,7 @@ class PipelineSubscriber:
         self._active_command: str | None = None
         self._active_pattern: str | None = None
         self._last_activity_line: str | None = None
+        self._waiting_status_line: str | None = None
         self._analysis_phase: str | None = None
         self._analysis_decision: str | None = None
         self._analysis_reason: str | None = None
@@ -111,6 +112,10 @@ class PipelineSubscriber:
     def last_state(self) -> PipelineState | None:
         with self._lock:
             return self._last_state
+
+    @property
+    def run_id(self) -> str:
+        return self._run_id
 
     @property
     def last_tool_name(self) -> str | None:
@@ -253,7 +258,10 @@ class PipelineSubscriber:
                 self._active_unit_id = unit_id
             if agent_name is not None:
                 self._active_agent = agent_name
-            self._last_activity_line = line
+            if event.kind == WaitingStatusKind.EXITED:
+                self._waiting_status_line = None
+            else:
+                self._waiting_status_line = line
             if event.kind in (WaitingStatusKind.SUSPECTED_FROZEN, WaitingStatusKind.HARD_STOP):
                 self._append_decision_log_locked(
                     phase=self._previous_phase or "unknown",
@@ -386,6 +394,7 @@ class PipelineSubscriber:
             active_command=self._active_command,
             active_pattern=self._active_pattern,
             last_activity_line=self._last_activity_line,
+            waiting_status_line=self._waiting_status_line,
             analysis_phase=self._analysis_phase,
             analysis_decision=self._analysis_decision,
             analysis_reason=self._analysis_reason,

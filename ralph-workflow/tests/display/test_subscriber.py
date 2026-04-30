@@ -20,7 +20,7 @@ def _make_subscriber(tmp_path: Path) -> PipelineSubscriber:
 
 
 def _last_line(sub: PipelineSubscriber) -> str | None:
-    return getattr(sub, "_last_activity_line", None)
+    return getattr(sub, "_waiting_status_line", None)
 
 
 def _event(  # noqa: PLR0913
@@ -84,12 +84,10 @@ def test_record_waiting_status_kind_specific_lines(tmp_path: Path) -> None:
     assert "may be frozen" in line
     assert "time_and_workspace_quiet" in line
 
-    # EXITED
+    # EXITED clears the waiting status line
     sub.record_waiting_status(_event(WaitingStatusKind.EXITED))
     line = _last_line(sub)
-    assert line is not None
-    assert "resumed activity" in line
-    assert "run=" in line
+    assert line is None
 
     # HARD_STOP with scoped_child_active and oldest_child_seconds
     sub.record_waiting_status(
@@ -150,3 +148,42 @@ def test_non_waiting_status_event_is_ignored(tmp_path: Path) -> None:
     sub.record_waiting_status(None)
     sub.record_waiting_status(42)
     assert _last_line(sub) == initial_line
+
+
+def test_record_waiting_status_writes_to_waiting_field_not_activity_line(tmp_path: Path) -> None:
+    """record_waiting_status writes to _waiting_status_line, not _last_activity_line."""
+    sub = _make_subscriber(tmp_path)
+    activity_before = getattr(sub, "_last_activity_line", None)
+    sub.record_waiting_status(_event(WaitingStatusKind.PROGRESS))
+    assert getattr(sub, "_waiting_status_line", None) is not None
+    assert "still active" in (getattr(sub, "_waiting_status_line", "") or "")
+    assert getattr(sub, "_last_activity_line", None) == activity_before
+
+
+def test_record_waiting_status_clears_field_on_exited(tmp_path: Path) -> None:
+    """EXITED event clears _waiting_status_line back to None."""
+    sub = _make_subscriber(tmp_path)
+    sub.record_waiting_status(_event(WaitingStatusKind.ENTERED))
+    assert getattr(sub, "_waiting_status_line", None) is not None
+    sub.record_waiting_status(_event(WaitingStatusKind.EXITED))
+    assert getattr(sub, "_waiting_status_line", None) is None
+
+
+def test_snapshot_includes_waiting_status_field(tmp_path: Path) -> None:
+    """Snapshot built after a PROGRESS event has waiting_status_line populated."""
+    from ralph.pipeline.state import PipelineState  # noqa: PLC0415
+
+    sub = _make_subscriber(tmp_path)
+    sub.record_waiting_status(_event(WaitingStatusKind.PROGRESS))
+    # Provide a minimal state so build_snapshot succeeds.
+    state = PipelineState(
+        phase="development",
+        iteration=1,
+        total_iterations=1,
+        reviewer_pass=0,
+        total_reviewer_passes=1,
+    )
+    snapshot = sub.build_snapshot(state)
+    assert snapshot is not None
+    assert snapshot.waiting_status_line is not None
+    assert "still active" in snapshot.waiting_status_line

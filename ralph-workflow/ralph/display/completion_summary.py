@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from typing import TYPE_CHECKING
 
 from rich.console import Group
@@ -36,6 +37,29 @@ _BADGE_THEME_KEYS: dict[str, str] = {
     "WARN": "theme.level.warn",
     "FAIL": "theme.status.failure",
 }
+
+_CHILDREN_PERSIST_MARKER = "kept child agents alive"
+_KV_PATTERN = re.compile(r"(\w+)=([^,)\s]+)")
+
+
+def _children_persist_diagnostic_line(error: str) -> str | None:
+    """Parse a CHILDREN_PERSIST_TOO_LONG error string into a human-readable reason line.
+
+    Returns None when the error does not match the marker phrase.
+    Missing keys in the diagnostic render as '?'.
+    """
+    if _CHILDREN_PERSIST_MARKER not in error:
+        return None
+    pairs: dict[str, str] = {m.group(1): m.group(2) for m in _KV_PATTERN.finditer(error)}
+    cum = pairs.get("cumulative", "?")
+    scoped = pairs.get("scoped_child_active", "?")
+    oldest = pairs.get("oldest_child_seconds", "?")
+    delta = pairs.get("workspace_event_delta", "?")
+    evidence = pairs.get("evidence", "?")
+    return (
+        f"Reason: long child wait — cumulative={cum}, scoped_child_active={scoped},"
+        f" oldest_child_seconds={oldest}, workspace_event_delta={delta}, evidence={evidence}"
+    )
 
 
 def _artifact_content(parsed: dict[str, object]) -> dict[str, object]:
@@ -166,6 +190,9 @@ def render_completion_summary(  # noqa: PLR0913
         lines.append(f"PR: {snapshot.pr_url}")
     if snapshot.last_error:
         lines.append(f"Error: {snapshot.last_error}")
+        diag = _children_persist_diagnostic_line(snapshot.last_error)
+        if diag:
+            lines.append(diag)
     if snapshot.plan_risks:
         lines.append("Open Risks:")
         lines.extend(f"- {risk}" for risk in snapshot.plan_risks)
@@ -250,6 +277,9 @@ def _render_compact_group(  # noqa: PLR0912, PLR0913
 
     if snapshot.last_error:
         renderables.append(Text(f"ERROR: {snapshot.last_error}"))
+        diag = _children_persist_diagnostic_line(snapshot.last_error)
+        if diag:
+            renderables.append(Text(f"REASON: {diag}"))
 
     dropped_line = _dropped_count_line(dropped_count)
     if dropped_line:
@@ -258,7 +288,7 @@ def _render_compact_group(  # noqa: PLR0912, PLR0913
     return Group(*renderables)
 
 
-def render_completion_summary_group(  # noqa: PLR0912, PLR0913
+def render_completion_summary_group(  # noqa: PLR0912, PLR0913, PLR0915
     snapshot: PipelineSnapshot,
     *,
     workspace_root: Path | None = None,
@@ -366,6 +396,9 @@ def render_completion_summary_group(  # noqa: PLR0912, PLR0913
     if snapshot.last_error:
         renderables.append(Rule("Error", style=_phase_style("failed")))
         renderables.append(Text(f"  {snapshot.last_error}"))
+        diag = _children_persist_diagnostic_line(snapshot.last_error)
+        if diag:
+            renderables.append(Text(f"  {diag}"))
 
     dropped_line = _dropped_count_line(dropped_count)
     if dropped_line:
