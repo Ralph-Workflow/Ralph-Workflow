@@ -377,10 +377,20 @@ class RecoveryController:
         reason: str,
         category: object,
     ) -> PipelineState:
-        from ralph.config.enums import PHASE_FAILED  # noqa: PLC0415
+        """Enter the terminal failure phase.
 
+        Uses policy.declared.failed_route when available, raising a RuntimeError
+        if policy is not set (signals missing policy at a routing call site).
+        """
+        if self._policy_bundle is None:
+            raise RuntimeError(
+                "_enter_phase_failed requires policy_bundle to be set on the controller. "
+                "Without policy, the runtime cannot determine the failure route. "
+                "Set policy_bundle when constructing RecoveryController."
+            )
+        failed_route = self._policy_bundle.pipeline.recovery.failed_route
         return state.copy_with(
-            phase=PHASE_FAILED,
+            phase=failed_route,
             previous_phase=state.phase,
             last_error=reason,
             recovery_epoch=state.recovery_epoch + 1,

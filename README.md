@@ -187,9 +187,17 @@ The files that matter:
 - `.agent/artifacts.toml` — what each phase must produce
 - `.agent/mcp.toml` — MCP servers, web search, tool access
 
-### Policy-driven phases
+### Policy-defined orchestration
 
-You define the phase graph. Ralph Workflow executes it. Phases can loop (review → fix → review), branch on analysis output, and terminate on configurable conditions. There's no hidden routing.
+Ralph Workflow is a **policy-defined orchestration framework**: the workflow shape, routing decisions, retry budgets, analysis loops, commit semantics, recovery paths, and terminal outcomes are all declared in `pipeline.toml`, `agents.toml`, and `artifacts.toml`. The runtime enforces and validates those declarations. There is no hidden built-in knowledge of specific phase names or routing outcomes — every routing decision traces back to the active policy.
+
+To inspect the active policy and see the full workflow as an ASCII diagram, run:
+
+```bash
+ralph --explain-policy
+```
+
+This prints a visual representation of the pipeline — phases, happy-path routing, loopback arrows, decision branches, and terminal outcomes — derived from the active policy files. See [docs/migration/policy-v2.md](docs/migration/policy-v2.md) for a guide to the policy model and how to migrate from older configurations.
 
 ### Agent chains with fallback
 

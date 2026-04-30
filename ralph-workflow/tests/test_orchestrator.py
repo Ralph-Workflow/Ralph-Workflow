@@ -34,6 +34,7 @@ from ralph.policy.models import (
     AgentChainConfig,
     AgentDrainConfig,
     AgentsPolicy,
+    BudgetCounterConfig,
     PhaseCommitPolicy,
     PhaseDefinition,
     PhaseTransition,
@@ -129,6 +130,10 @@ def _make_minimal_pipeline_policy() -> PipelinePolicy:
         },
         entry_phase="planning",
         terminal_phase="complete",
+        budget_counters={
+            "iteration": BudgetCounterConfig(),
+            "reviewer_pass": BudgetCounterConfig(),
+        },
         post_commit_routes=[
             PostCommitRoute(
                 when=PostCommitRouteWhen(phase="development_commit", budget_state="remaining"),

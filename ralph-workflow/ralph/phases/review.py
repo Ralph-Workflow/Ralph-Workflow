@@ -21,10 +21,9 @@ from pathlib import Path
 from git import InvalidGitRepositoryError
 from loguru import logger
 
-from ralph.config.enums import AnalysisDecision
 from ralph.git.operations import GitOperationError, get_head_sha, has_commits_since
 from ralph.phases import PhaseContext, register_handler
-from ralph.phases.analysis import parse_analysis_decision
+from ralph.phases.analysis import parse_analysis_decision_status
 from ralph.phases.artifacts import (
     PhaseArtifactError,
     load_phase_artifact,
@@ -37,7 +36,12 @@ from ralph.phases.required_artifacts import (
     retry_hint_path,
 )
 from ralph.pipeline.effects import Effect, InvokeAgentEffect, PreparePromptEffect
-from ralph.pipeline.events import Event, PhaseFailureEvent, PipelineEvent
+from ralph.pipeline.events import (
+    AnalysisDecisionEvent,
+    Event,
+    PhaseFailureEvent,
+    PipelineEvent,
+)
 
 REVIEW_BASELINE_MARKER = ".agent/tmp/last_reviewed_sha.txt"
 REVIEW_ISSUES_ARTIFACT_PATH = ISSUES_ARTIFACT_JSON_PATH
@@ -173,7 +177,7 @@ def handle_review_analysis(effect: Effect, ctx: PhaseContext) -> list[Event]:
     """Handle the review analysis step.
 
     After the review agent completes, reads the review analysis artifact
-    to determine routing (approve or request changes).
+    to determine routing via policy-declared decision routes.
 
     Args:
         effect: The effect that triggered this phase.
@@ -204,22 +208,19 @@ def handle_review_analysis(effect: Effect, ctx: PhaseContext) -> list[Event]:
                 )
             ]
 
-        decision = parse_analysis_decision(ctx, "review_analysis")
-        logger.info("Review analysis decision: {}", decision)
+        status = parse_analysis_decision_status(ctx, "review_analysis")
+        if status is None:
+            logger.warning("Review analysis decision could not be determined")
+            return [
+                PhaseFailureEvent(
+                    phase="review_analysis",
+                    reason="Unroutable review analysis decision",
+                    recoverable=True,
+                    retry_in_session=True,
+                )
+            ]
 
-        if decision in (AnalysisDecision.PROCEED, AnalysisDecision.COMPLETE):
-            return [PipelineEvent.ANALYSIS_SUCCESS]
-        if decision in (
-            AnalysisDecision.REVISE,
-            AnalysisDecision.FAILURE,
-            AnalysisDecision.ESCALATE,
-        ):
-            logger.warning("Review analysis decision {} triggers loopback", decision)
-            return [PipelineEvent.ANALYSIS_LOOPBACK]
-        logger.warning(
-            "Unknown review analysis decision: {}. Defaulting to success.",
-            decision,
-        )
-        return [PipelineEvent.ANALYSIS_SUCCESS]
+        logger.info("Review analysis decision: {}", status)
+        return [AnalysisDecisionEvent(phase="review_analysis", decision=status)]
 
     return []

@@ -209,7 +209,9 @@ def build_agents_policy_from_config(config: UnifiedConfig) -> AgentsPolicy:
 
     User-facing chain order and drain routing live in ``ralph-workflow.toml``.
     This helper converts the flat ``UnifiedConfig`` representation into the richer
-    ``AgentsPolicy`` model used by the runtime.
+    ``AgentsPolicy`` model used by the runtime. All drains declared in
+    ``config.agent_drains`` are included unconditionally — no hardcoded built-in
+    drain filter is applied.
     """
     retry_budget = config.general.max_retries
     retry_delay_ms = config.general.retry_delay_ms
@@ -222,25 +224,14 @@ def build_agents_policy_from_config(config: UnifiedConfig) -> AgentsPolicy:
         for name, agents in config.agent_chains.items()
     }
 
-    explicit_runtime_drains = {
+    drain_configs = {
         drain: AgentDrainConfig(chain=chain)
         for drain, chain in config.agent_drains.items()
-        if drain in {
-            "planning",
-            "development",
-            "development_analysis",
-            "development_commit",
-            "review",
-            "review_analysis",
-            "review_commit",
-            "fix",
-            "complete",
-        }
     }
 
     return AgentsPolicy(
         agent_chains=chain_configs,
-        agent_drains=dict(explicit_runtime_drains),
+        agent_drains=drain_configs,
     )
 
 

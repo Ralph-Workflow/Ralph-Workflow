@@ -247,6 +247,36 @@ def _validate_analysis_phase(
             )
 
 
+def _validate_review_phase(
+    phase_name: str,
+    phase_def: object,
+    errors: list[str],
+) -> None:
+    """Validate constraints on review-role phases.
+
+    review-role phases must declare:
+    - issues_outcome: the review_outcome label set when issues are found (required)
+    - clean_outcome: the bypass_routes key that signals a clean review (required
+      when bypass_routes is non-empty, so the reducer knows which key to look up)
+    """
+    from ralph.policy.models import PhaseDefinition  # noqa: PLC0415
+
+    if not isinstance(phase_def, PhaseDefinition):
+        return
+    if phase_def.issues_outcome is None:
+        errors.append(
+            f"phases.{phase_name}: role='review' requires issues_outcome "
+            f"(the review_outcome label set when issues are found, e.g. 'has_issues'). "
+            f"See docs/migration/policy-v2.md."
+        )
+    if phase_def.bypass_routes and phase_def.clean_outcome is None:
+        errors.append(
+            f"phases.{phase_name}: role='review' with bypass_routes requires clean_outcome "
+            f"(the bypass_routes key that signals a clean review, e.g. 'clean'). "
+            f"See docs/migration/policy-v2.md."
+        )
+
+
 def _validate_commit_phase_loop_resets(
     phase_name: str,
     phase_def: object,
@@ -286,6 +316,94 @@ def _validate_commit_phase_loop_resets(
         )
 
 
+def _validate_commit_phase_post_commit_routes(
+    phase_name: str,
+    phase_def: object,
+    policy: object,
+    errors: list[str],
+) -> None:
+    """Validate that commit phases with budget-tracked counters have post_commit_routes.
+
+    When a commit phase increments a budget-tracking counter, at least one
+    post_commit_route must apply to that phase so the pipeline can route after commit.
+    """
+    from ralph.policy.models import PhaseDefinition, PipelinePolicy  # noqa: PLC0415
+
+    if not isinstance(phase_def, PhaseDefinition) or not isinstance(policy, PipelinePolicy):
+        return
+    if phase_def.commit_policy is None:
+        return
+
+    counter = phase_def.commit_policy.increments_counter
+    if counter == "none" or counter not in policy.budget_counters:
+        return
+
+    counter_config = policy.budget_counters[counter]
+    if not counter_config.tracks_budget:
+        return
+
+    # At least one post_commit_route must apply to this phase
+    applies = any(r.when.phase == phase_name for r in policy.post_commit_routes)
+    if not applies:
+        errors.append(
+            f"phases.{phase_name}: increments budget-tracking counter '{counter}' "
+            f"but no post_commit_routes apply to this phase. "
+            f"Add at least one [[post_commit_routes]] entry with when.phase='{phase_name}'."
+        )
+
+
+def _validate_verification_phase(
+    phase_name: str,
+    phase_def: object,
+    policy: object,
+    errors: list[str],
+) -> None:
+    """Validate constraints on verification-role phases.
+
+    verification-role phases must declare:
+    - verification.block: the gating policy (kind, gate_for, on_failure_route)
+    - verification.kind: one of 'artifact', 'make_target', 'none'
+    - verification.gate_for: one of 'advancement', 'completion', 'release'
+    - verification.on_failure_route: either None or a known phase/terminal pseudo-phase
+    """
+    from ralph.policy.models import PhaseDefinition, PipelinePolicy  # noqa: PLC0415
+
+    if not isinstance(phase_def, PhaseDefinition) or not isinstance(policy, PipelinePolicy):
+        return
+    if phase_def.verification is None:
+        errors.append(
+            f"phases.{phase_name}: role='verification' requires a verification block "
+            f"(kind, gate_for, on_failure_route). Add [phases.{phase_name}.verification] "
+            f"to pipeline.toml. See docs/sphinx/policy-explanation.md."
+        )
+        return
+
+    kind = phase_def.verification.kind
+    if kind not in ("artifact", "make_target", "none"):
+        errors.append(
+            f"phases.{phase_name}.verification.kind: must be one of "
+            f"'artifact', 'make_target', 'none' (got '{kind}')"
+        )
+
+    gate_for = phase_def.verification.gate_for
+    if gate_for not in ("advancement", "completion", "release"):
+        errors.append(
+            f"phases.{phase_name}.verification.gate_for: must be one of "
+            f"'advancement', 'completion', 'release' (got '{gate_for}')"
+        )
+
+    on_failure_route = phase_def.verification.on_failure_route
+    if on_failure_route is not None:
+        ts = policy.terminal_states()
+        known_phases = sorted(policy.phases.keys())
+        if on_failure_route not in ts and on_failure_route not in policy.phases:
+            errors.append(
+                f"phases.{phase_name}.verification.on_failure_route: "
+                f"'{on_failure_route}' is not a known phase or terminal pseudo-phase. "
+                f"Known phases: {known_phases}"
+            )
+
+
 def _validate_recovery_failed_route(
     policy: PipelinePolicy,
     errors: list[str],
@@ -322,6 +440,9 @@ def _collect_reachable_phases(policy: PipelinePolicy) -> set[str]:
         candidates: list[str | None] = [t.on_success, t.on_failure, t.on_loopback]
         candidates.extend(phase_def.bypass_routes.values())
         candidates.extend(d.target for d in (phase_def.decisions or {}).values())
+        v = phase_def.verification
+        if v is not None and v.on_failure_route is not None:
+            candidates.append(v.on_failure_route)
         queue.extend(t for t in candidates if t is not None and t in phases and t not in visited)
     return visited
 
@@ -375,6 +496,9 @@ def validate_policy_completeness(bundle: PolicyBundle) -> None:
         if role == "analysis":
             _validate_analysis_phase(phase_name, phase_def, bundle, errors)
 
+        if role == "review":
+            _validate_review_phase(phase_name, phase_def, errors)
+
         if role == "commit":
             if phase_def.commit_policy is None:
                 errors.append(
@@ -385,6 +509,10 @@ def validate_policy_completeness(bundle: PolicyBundle) -> None:
                 # increments_counter='none' is valid — indicates no outer-progress bump
                 # Only flag commit_policy=None (missing entirely), not any specific value
                 _validate_commit_phase_loop_resets(phase_name, phase_def, policy, errors)
+                _validate_commit_phase_post_commit_routes(phase_name, phase_def, policy, errors)
+
+        if role == "verification":
+            _validate_verification_phase(phase_name, phase_def, policy, errors)
 
     # Validate recovery.failed_route consistency
     _validate_recovery_failed_route(policy, errors)

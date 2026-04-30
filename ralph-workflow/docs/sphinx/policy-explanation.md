@@ -25,6 +25,7 @@ The explanation covers all policy-declared elements:
 
 | Section | What it contains |
 |---------|-----------------|
+| **WORKFLOW DIAGRAM** | ASCII diagram showing phases, routing edges, decision branches, loopbacks, and terminal markers |
 | **Entry phase** | The phase where every run starts |
 | **Terminal phase** | The phase that marks successful completion |
 | **Phases** | Each declared phase with its role, drain, and key routing |
@@ -34,50 +35,279 @@ The explanation covers all policy-declared elements:
 | **Parallel execution** | Whether parallel fan-out is configured and its source |
 | **Recovery** | Cycle cap and where terminal failures route |
 
-## Example output (default pipeline)
+## Workflow diagram
+
+The ASCII diagram is the first visual output from `--explain-policy`. It shows:
+
+- **Boxed phase nodes** — each phase rendered as a box with its name and role
+- **Entry marker** — `=ENTRY=>` marks the starting phase
+- **Happy-path arrows** — `|` and `v` connect phases on the success path
+- **Decision branches** — `+--[decision_name]--> target` shows routing for specific decisions
+- **Loopback arrows** — `| loop back to target` with `+---^` shows retry/request-changes routing
+- **Terminal markers** — `==SUCCESS==>` or `==FAILURE==>` marks terminal outcomes
+- **Fanout annotations** — `[fanout: max_workers=N, max_units=M]` on phases with parallelization
+- **Loop annotations** — `[loop: counter=NAME, max=N]` on phases with bounded iteration
 
 ```
-Policy Explanation
-==================
+WORKFLOW DIAGRAM
+======================================================================
+=ENTRY=>
++----------------+
+|    planning    |
+| role=execution |
++----------------+
+    |
+    v
+[fanout: max_workers=8, max_units=50]
++----------------+
+|  development   |
+| role=execution |
++----------------+
+    | loop back to development
+    +---^  (returns to 'development' phase)
+    |
+    v
+[loop: counter=development_analysis_iteration, max=3]
++----------------------+
+| development_analysis |
+|    role=analysis     |
++----------------------+
+    +--[failed]--> failed
+    +--[request_changes]--> development
+    | loop back to development
+    +---^  (returns to 'development' phase)
+    |
+    v
++--------------------+
+| development_commit |
+|    role=commit     |
++--------------------+
+    |
+    v
++-------------+
+|    review   |
+| role=review |
++-------------+
+    | loop back to fix
+    +---^  (returns to 'fix' phase)
+    |
+    v
+[loop: counter=review_analysis_iteration, max=2]
++-----------------+
+| review_analysis |
+|  role=analysis  |
++-----------------+
+    +--[failed]--> failed
+    +--[request_changes]--> fix
+    | loop back to fix
+    +---^  (returns to 'fix' phase)
+    [LOOPBACK: counter=review_analysis_iteration, max=2]
+    |
+    v
++---------------+
+| review_commit |
+|  role=commit  |
++---------------+
+    |
+    v
++---------------+
+|    complete   |
+| role=terminal |
++---------------+
+==SUCCESS==>
++----------------+
+|      fix       |
+| role=execution |
++----------------+
+    | loop back to review
+    +---^  (returns to 'review' phase)
+```
 
-Entry phase:    planning
+### Reading the diagram
+
+| Glyph | Meaning |
+|-------|---------|
+| `+--name--+` | Phase box with name and role |
+| `=ENTRY=>` | Entry phase — where every run starts |
+| `==SUCCESS==>` | Terminal success — marks a phase declared with `terminal_outcome='success'` |
+| `==FAILURE==>` | Terminal failure — marks a phase declared with `terminal_outcome='failure'`; only policy-declared terminal phases receive this marker |
+| `\| loop back to X` | Loopback edge — routes BACK to phase X on loopback signal |
+| `+---^  (returns to 'X' phase)` | Continuation of loopback annotation |
+| `[LOOPBACK: counter=N, max=M]` | Loopback consumes loop counter N (present only when loopback_review_outcome is set) |
+| `+--[decision]--> Y` | Decision branch — routes to Y when decision is emitted |
+| `[fanout: ...]` | Fanout annotation — phase supports parallel execution |
+| `[loop: ...]` | Loop annotation — phase has bounded iteration |
+
+## Explanation sentences
+
+The structural breakdown appends explanation sentences per phase for every routing surface.
+Four sentence forms are generated:
+
+| Form | Example |
+|------|---------|
+| Decision route | `Explanation: phase 'development_analysis' routes to 'development_commit' because the configured decision was 'completed'.` |
+| Terminal outcome | `Explanation: when reached, the run terminates because the workflow policy declares phase 'complete' as a terminal 'success' outcome.` |
+| Bypass route | `Explanation: phase 'review' bypasses to 'review_commit' when the configured outcome is 'review_clean'.` |
+| Loopback cap | `Explanation: phase 'development_analysis' loops back to 'development' until 3 attempts are exhausted, after which the run terminates.` |
+
+These sentences make it possible to answer "why did Ralph Workflow route here?" from the explanation output alone,
+without reading `pipeline.toml` or runtime code.
+
+## Structural breakdown
+
+The second section provides the full structured breakdown:
+
+```
+RALPH WORKFLOW — ACTIVE POLICY EXPLANATION
+======================================================================
+
+Entry phase  : planning
 Terminal phase: complete
 
-Phases (9)
-----------
-  planning              role=execution      drain=planning
-  development           role=execution      drain=development
-  development_analysis  role=analysis       drain=development_analysis
-  development_commit    role=commit         drain=development_commit
-  review                role=review         drain=review
-  review_analysis       role=analysis       drain=review_analysis
-  fix                   role=execution      drain=fix
-  review_commit         role=commit         drain=review_commit
-  complete              role=terminal       drain=complete
-
-Loop counters (2)
------------------
-  development_analysis_iteration  max=3
-  review_analysis_iteration       max=2
-
-Budget counters (2)
--------------------
-  iteration      tracks_budget=True
-  reviewer_pass  tracks_budget=True
-
-Terminal outcomes (1)
----------------------
+Terminal outcomes:
   success    → complete
 
-Parallel execution
-------------------
-  Source: planning_artifact_work_units
-  Phase:  development
+----------------------------------------------------------------------
+PHASES
+----------------------------------------------------------------------
 
-Recovery
---------
-  Cycle cap:               200
-  Terminal recovery route: failed
+  Phase: planning [ENTRY]
+    Role       : execution (agent runs code)
+    Drain      : planning
+    Chain      : planning → agents: [claude]
+    Retry      : up to 3 retries per agent, then fail
+    On success → development
+    On failure → pipeline fails (no on_failure route)
+
+  Phase: development
+    Role       : execution (agent runs code)
+    Drain      : development
+    Chain      : development → agents: [claude, opencode]
+    Retry      : up to 3 retries per agent, then fall back to next agent
+    On success → development_analysis
+    On failure → pipeline fails (no on_failure route)
+    On loopback → development
+
+  Phase: development_analysis
+    Role       : analysis (agent reviews output, decides next step)
+    Drain      : development_analysis
+    Chain      : development_analysis → agents: [claude]
+    Retry      : up to 3 retries per agent, then fail
+    On success → development_commit
+    On failure → pipeline fails (no on_failure route)
+    On loopback → development
+    Decisions:
+      completed            → development_commit
+      request_changes      → development
+      failed               → failed
+    Loop       : counter='development_analysis_iteration', max=3
+Explanation: phase 'development_analysis' routes to 'development_commit' because the configured decision was 'completed'.
+Explanation: phase 'development_analysis' routes to 'development' because the configured decision was 'request_changes'.
+Explanation: phase 'development_analysis' routes to 'failed' because the configured decision was 'failed'.
+Explanation: phase 'development_analysis' loops back to 'development' until 3 attempts are exhausted, after which the run terminates.
+
+  Phase: development_commit
+    Role       : commit (agent commits changes)
+    Drain      : development_commit
+    Chain      : development_commit → agents: [claude]
+    Retry      : up to 3 retries per agent, then fail
+    On success → review
+    On failure → failed
+    Commit     : increments 'iteration'
+                 resets loop counters: ['development_analysis_iteration']
+                 requires artifact: yes
+    When is commit required? When this phase is active and the agent
+      produces changes that need to be committed.
+
+  Phase: review
+    Role       : review (agent performs code review)
+    Drain      : review
+    Chain      : review → agents: [claude]
+    Retry      : up to 3 retries per agent, then fail
+    On success → review_analysis
+    On failure → pipeline fails (no on_failure route)
+    On loopback → fix
+    Bypass [review_clean] → review_commit
+Explanation: phase 'review' bypasses to 'review_commit' when the configured outcome is 'review_clean'.
+
+  Phase: review_analysis
+    Role       : analysis (agent reviews output, decides next step)
+    Drain      : review_analysis
+    Chain      : review_analysis → agents: [claude]
+    Retry      : up to 3 retries per agent, then fail
+    On success → review_commit
+    On failure → pipeline fails (no on_failure route)
+    On loopback → fix
+    Decisions:
+      completed            → review_commit
+      request_changes      → fix
+      failed               → failed
+    Loop       : counter='review_analysis_iteration', max=2
+                 loopback sets review_outcome='has_issues'
+Explanation: phase 'review_analysis' routes to 'review_commit' because the configured decision was 'completed'.
+Explanation: phase 'review_analysis' routes to 'fix' because the configured decision was 'request_changes'.
+Explanation: phase 'review_analysis' routes to 'failed' because the configured decision was 'failed'.
+Explanation: phase 'review_analysis' loops back to 'fix' until 2 attempts are exhausted, after which the run terminates.
+
+  Phase: fix
+    Role       : execution (agent runs code)
+    Drain      : fix
+    Chain      : fix → agents: [claude]
+    Retry      : up to 3 retries per agent, then fail
+    Invocation : SKIPPED — routing proceeds without invoking an agent
+    On success → review_analysis
+    On failure → pipeline fails (no on_failure route)
+    On loopback → review
+
+  Phase: review_commit
+    Role       : commit (agent commits changes)
+    Drain      : review_commit
+    Chain      : review_commit → agents: [claude]
+    Retry      : up to 3 retries per agent, then fail
+    On success → complete
+    On failure → failed
+    Commit     : increments 'reviewer_pass'
+                 resets loop counters: ['review_analysis_iteration']
+                 requires artifact: yes
+    When is commit required? When this phase is active and the agent
+      produces changes that need to be committed.
+
+  Phase: complete [TERMINAL]
+    Role       : terminal (pipeline ends here)
+    Drain      : complete
+    Terminal outcome: success
+    On loopback → complete
+Explanation: when reached, the run terminates because the workflow policy declares phase 'complete' as a terminal 'success' outcome.
+
+----------------------------------------------------------------------
+LOOP COUNTERS
+----------------------------------------------------------------------
+  development_analysis_iteration: max=3 — Development analysis loop iteration counter
+  review_analysis_iteration: max=2 — Review analysis loop iteration counter
+
+----------------------------------------------------------------------
+BUDGET COUNTERS
+----------------------------------------------------------------------
+  iteration: tracked (exhaustion matters) — Development iteration counter (developer cycles)
+  reviewer_pass: tracked (exhaustion matters) — Review pass counter
+
+----------------------------------------------------------------------
+PARALLEL EXECUTION
+----------------------------------------------------------------------
+  Fanout phase : development
+  Max workers  : 8
+  Max work units: 50
+  Require allowed_directories: yes
+  When is parallel execution allowed? When the planning artifact declares multiple work_units (up to 50) for phase 'development'.
+
+----------------------------------------------------------------------
+RECOVERY POLICY
+----------------------------------------------------------------------
+  Max recovery cycles : 200
+  Terminal failure route: failed
+  Session preserved on: agent
+
+======================================================================
 ```
 
 ## Why this is useful
@@ -85,20 +315,31 @@ Recovery
 Reading the explanation output answers "what will Ralph Workflow do?" without reading
 TOML files. It is the machine-enforced statement of how the active policy routes work.
 
+The workflow diagram provides a quick visual overview of the pipeline shape, while
+the structural breakdown provides complete details for deep inspection.
+
 The explanation output is deterministic: for the same `pipeline.toml` the output is always
 the same. Pin it in a review artifact, CI log, or runbook to record the exact workflow
 a run used.
+
+Note: the ASCII example in this document is illustrative. Regenerate it with
+`ralph --explain-policy` when the renderer changes.
 
 ## How the explanation is generated
 
 The command calls `ralph.policy.explain.explain_policy()` which traverses the validated
 `PipelinePolicy` in memory and produces a `PolicyExplanation` dataclass. That dataclass
-is rendered by `ralph.policy.render.render_explanation_text()` into the human-readable
-format shown above.
+is rendered by `ralph.policy.render.render_explanation_ascii()` into the ASCII diagram
+and by `ralph.policy.render.render_explanation_text()` into the structured format shown above.
 
 Because it runs against the already-validated policy, an explanation can only be
 produced if the policy is complete. If `pipeline.toml` is invalid, the command exits 1
 and prints a `PolicyValidationError` to stderr instead of partial output.
+
+## Q&A
+
+**Q: How do I prove policy is the source of truth?**
+A: `tests/test_custom_policy_workflow.py` constructs a fully renamed policy (phases `design`/`build`/`audit`/`sign_off`/`done`, counter `cycles`, loop `audit_round`) and exercises the reducer to confirm no built-in name is secretly meaningful.
 
 ## Related pages
 

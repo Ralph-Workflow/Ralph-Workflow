@@ -6,8 +6,7 @@ import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock
 
-from ralph.config.enums import AnalysisDecision
-from ralph.phases.analysis import parse_analysis_decision
+from ralph.phases.analysis import parse_analysis_decision_status
 from ralph.policy.loader import load_policy
 
 
@@ -29,8 +28,8 @@ class TestParseAnalysisDecision:
         workspace.exists.return_value = False
         ctx = self._make_context(workspace)
 
-        result = parse_analysis_decision(ctx, "development_analysis")
-        assert result == AnalysisDecision.FAILURE
+        result = parse_analysis_decision_status(ctx, "development_analysis")
+        assert result is None
 
     def test_completed_status_maps_to_proceed(self) -> None:
         workspace = MagicMock()
@@ -40,8 +39,8 @@ class TestParseAnalysisDecision:
         )
         ctx = self._make_context(workspace)
 
-        result = parse_analysis_decision(ctx, "development_analysis")
-        assert result == AnalysisDecision.PROCEED
+        result = parse_analysis_decision_status(ctx, "development_analysis")
+        assert result == "completed"
 
     def test_request_changes_status_maps_to_revise(self) -> None:
         workspace = MagicMock()
@@ -51,10 +50,10 @@ class TestParseAnalysisDecision:
         )
         ctx = self._make_context(workspace)
 
-        result = parse_analysis_decision(ctx, "review_analysis")
-        assert result == AnalysisDecision.REVISE
+        result = parse_analysis_decision_status(ctx, "review_analysis")
+        assert result == "request_changes"
 
-    def test_failed_status_maps_to_failure(self) -> None:
+    def test_failed_status_is_a_valid_decision(self) -> None:
         workspace = MagicMock()
         workspace.exists.return_value = True
         workspace.read.return_value = (
@@ -62,10 +61,10 @@ class TestParseAnalysisDecision:
         )
         ctx = self._make_context(workspace)
 
-        result = parse_analysis_decision(ctx, "development_analysis")
-        assert result == AnalysisDecision.FAILURE
+        result = parse_analysis_decision_status(ctx, "development_analysis")
+        assert result == "failed"
 
-    def test_invalid_synonym_defaults_to_failure(self) -> None:
+    def test_invalid_synonym_returns_none(self) -> None:
         workspace = MagicMock()
         workspace.exists.return_value = True
         workspace.read.return_value = (
@@ -73,10 +72,10 @@ class TestParseAnalysisDecision:
         )
         ctx = self._make_context(workspace)
 
-        result = parse_analysis_decision(ctx, "review_analysis")
-        assert result == AnalysisDecision.FAILURE
+        result = parse_analysis_decision_status(ctx, "review_analysis")
+        assert result is None
 
-    def test_unknown_status_defaults_to_failure(self) -> None:
+    def test_unknown_status_returns_none(self) -> None:
         workspace = MagicMock()
         workspace.exists.return_value = True
         workspace.read.return_value = (
@@ -84,26 +83,26 @@ class TestParseAnalysisDecision:
         )
         ctx = self._make_context(workspace)
 
-        result = parse_analysis_decision(ctx, "development_analysis")
-        assert result == AnalysisDecision.FAILURE
+        result = parse_analysis_decision_status(ctx, "development_analysis")
+        assert result is None
 
-    def test_malformed_json_defaults_to_failure(self) -> None:
+    def test_malformed_json_returns_none(self) -> None:
         workspace = MagicMock()
         workspace.exists.return_value = True
         workspace.read.return_value = "not valid json"
         ctx = self._make_context(workspace)
 
-        result = parse_analysis_decision(ctx, "development_analysis")
-        assert result == AnalysisDecision.FAILURE
+        result = parse_analysis_decision_status(ctx, "development_analysis")
+        assert result is None
 
-    def test_read_error_defaults_to_failure(self) -> None:
+    def test_read_error_returns_none(self) -> None:
         workspace = MagicMock()
         workspace.exists.return_value = True
         workspace.read.side_effect = RuntimeError("read error")
         ctx = self._make_context(workspace)
 
-        result = parse_analysis_decision(ctx, "development_analysis")
-        assert result == AnalysisDecision.FAILURE
+        result = parse_analysis_decision_status(ctx, "development_analysis")
+        assert result is None
 
     def test_rejects_invalid_artifact_type_for_drain(self) -> None:
         workspace = MagicMock()
@@ -111,9 +110,9 @@ class TestParseAnalysisDecision:
         workspace.read.return_value = '{"type":"plan","content":{"status":"completed"}}'
         ctx = self._make_context(workspace)
 
-        result = parse_analysis_decision(ctx, "development_analysis")
+        result = parse_analysis_decision_status(ctx, "development_analysis")
 
-        assert result == AnalysisDecision.FAILURE
+        assert result is None
 
     def test_rejects_status_not_allowed_by_policy_vocabulary(self) -> None:
         workspace = MagicMock()
@@ -128,9 +127,9 @@ class TestParseAnalysisDecision:
         contract.decision_vocabulary = ["request_changes", "reject", "loopback"]
         ctx.artifacts_policy.artifacts = {"review": contract}
 
-        result = parse_analysis_decision(ctx, "review_analysis")
+        result = parse_analysis_decision_status(ctx, "review_analysis")
 
-        assert result == AnalysisDecision.FAILURE
+        assert result is None
 
 
 def _load_default_pipeline_policy() -> object:
@@ -139,7 +138,7 @@ def _load_default_pipeline_policy() -> object:
 
 
 class TestDecisionVocabularyFullCoverage:
-    """Every status in the policy decision_vocabulary must map to a concrete AnalysisDecision."""
+    """Every status in the policy decision_vocabulary must be parseable (return non-None)."""
 
     def _load_default_policy(self) -> object:
         from ralph.policy.loader import load_policy  # noqa: PLC0415
@@ -148,7 +147,7 @@ class TestDecisionVocabularyFullCoverage:
             bundle = load_policy(Path(tmp) / ".agent")
             return bundle.artifacts
 
-    def test_every_development_analysis_vocabulary_entry_maps_to_concrete_decision(
+    def test_every_development_analysis_vocabulary_entry_is_parseable(
         self,
     ) -> None:
         from ralph.phases.artifacts import decision_vocabulary_for_drain  # noqa: PLC0415
@@ -170,14 +169,13 @@ class TestDecisionVocabularyFullCoverage:
             ctx.artifacts_policy = MagicMock()
             ctx.artifacts_policy.artifacts = {}
             ctx.pipeline_policy = _load_default_pipeline_policy()
-            result = parse_analysis_decision(ctx, "development_analysis")
-            is_intentional_failure = status in ("failed",)
-            assert result != AnalysisDecision.FAILURE or is_intentional_failure, (
+            result = parse_analysis_decision_status(ctx, "development_analysis")
+            assert result is not None, (
                 f"Vocabulary entry '{status}' for development_analysis "
-                "must not silently map to FAILURE"
+                "must parse to a non-None status"
             )
 
-    def test_every_review_analysis_vocabulary_entry_maps_to_concrete_decision(self) -> None:
+    def test_every_review_analysis_vocabulary_entry_is_parseable(self) -> None:
         from ralph.phases.artifacts import decision_vocabulary_for_drain  # noqa: PLC0415
 
         policy = self._load_default_policy()
@@ -197,11 +195,10 @@ class TestDecisionVocabularyFullCoverage:
             ctx.artifacts_policy = MagicMock()
             ctx.artifacts_policy.artifacts = {}
             ctx.pipeline_policy = _load_default_pipeline_policy()
-            result = parse_analysis_decision(ctx, "review_analysis")
-            is_intentional_failure = status in ("failed",)
-            assert result != AnalysisDecision.FAILURE or is_intentional_failure, (
+            result = parse_analysis_decision_status(ctx, "review_analysis")
+            assert result is not None, (
                 f"Vocabulary entry '{status}' for review_analysis "
-                "must not silently map to FAILURE"
+                "must parse to a non-None status"
             )
 
 
@@ -288,13 +285,13 @@ class TestParseAnalysisDecisionPhaseNameParameter:
         ctx.artifacts_policy.artifacts = {}
         ctx.pipeline_policy = self._make_custom_analysis_policy()
 
-        result = parse_analysis_decision(
+        result = parse_analysis_decision_status(
             ctx, "development_analysis", phase_name="custom_analysis"
         )
-        assert result == AnalysisDecision.PROCEED
+        assert result == "completed"
 
     def test_without_phase_name_uses_drain_name_for_policy_lookup(self) -> None:
-        """Without phase_name, drain_name is used for policy lookup (backward compat)."""
+        """Without phase_name, drain_name falls back — returns status when phase not in policy."""
         workspace = MagicMock()
         workspace.exists.return_value = True
         workspace.read.return_value = (
@@ -308,9 +305,10 @@ class TestParseAnalysisDecisionPhaseNameParameter:
 
         # drain_name="development_analysis" is NOT a phase name in this custom policy
         # (phases are: custom_analysis, development_commit, development, complete).
-        # So the decisions table lookup fails and FAILURE is returned.
-        result = parse_analysis_decision(ctx, "development_analysis")
-        assert result == AnalysisDecision.FAILURE
+        # When phase_def is None, the policy decisions check is skipped and the
+        # raw status is returned as-is.
+        result = parse_analysis_decision_status(ctx, "development_analysis")
+        assert result == "completed"
 
 
 class TestRegisterRoleHandlers:

@@ -340,3 +340,78 @@ class TestExplainCLI:
         )
         assert result.exit_code == 0
         assert "planning" in result.output.lower() or "PHASES" in result.output
+
+
+class TestVerificationExplainRendering:
+    """Tests for explain_policy and render_explanation_text with verification-role phases."""
+
+    def _bundle_with_verification(
+        self, kind: str = "artifact", on_failure_route: str | None = "crashed"
+    ) -> PolicyBundle:
+        from ralph.policy.models import PhaseVerificationPolicy  # noqa: PLC0415
+
+        return PolicyBundle(
+            agents=AgentsPolicy(
+                agent_chains={"c": AgentChainConfig(agents=["claude"])},
+                agent_drains={
+                    "verify_drain": AgentDrainConfig(chain="c"),
+                    "complete": AgentDrainConfig(chain="c"),
+                    "crashed": AgentDrainConfig(chain="c"),
+                },
+            ),
+            pipeline=PipelinePolicy(
+                phases={
+                    "verify": PhaseDefinition(
+                        drain="verify_drain",
+                        role="verification",
+                        verification=PhaseVerificationPolicy(
+                            kind=kind,
+                            gate_for="advancement",
+                            on_failure_route=on_failure_route,
+                        ),
+                        transitions=PhaseTransition(on_success="complete"),
+                    ),
+                    "crashed": PhaseDefinition(
+                        drain="crashed",
+                        role="terminal",
+                        terminal_outcome="failure",
+                        transitions=PhaseTransition(on_success="crashed", on_loopback="crashed"),
+                    ),
+                    "complete": PhaseDefinition(
+                        drain="complete",
+                        role="terminal",
+                        terminal_outcome="success",
+                        transitions=PhaseTransition(on_success="complete"),
+                    ),
+                },
+                entry_phase="verify",
+                terminal_phase="complete",
+            ),
+            artifacts=ArtifactsPolicy(),
+        )
+
+    def test_verification_block_appears_in_phase_explanation(self) -> None:
+        bundle = self._bundle_with_verification()
+        result = explain_policy(bundle)
+        verify = next(p for p in result.phases if p.name == "verify")
+        assert verify.verification is not None
+        assert verify.verification.kind == "artifact"
+        assert verify.verification.gate_for == "advancement"
+        assert verify.verification.on_failure_route == "crashed"
+
+    def test_verification_text_render_includes_kind_and_gate(self) -> None:
+        bundle = self._bundle_with_verification()
+        result = explain_policy(bundle)
+        text = render_explanation_text(result)
+        assert "kind=artifact" in text
+        assert "gates=advancement" in text
+
+    def test_verification_explanation_sentence_includes_failure_route(self) -> None:
+        from ralph.policy.render import _render_explanation_sentences  # noqa: PLC0415
+
+        bundle = self._bundle_with_verification(on_failure_route="crashed")
+        result = explain_policy(bundle)
+        verify = next(p for p in result.phases if p.name == "verify")
+        sentences = _render_explanation_sentences(verify)
+        combined = " ".join(sentences)
+        assert "crashed" in combined

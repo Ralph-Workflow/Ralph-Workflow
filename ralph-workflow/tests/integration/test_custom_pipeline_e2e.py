@@ -30,8 +30,11 @@ from ralph.policy.models import (
     PhaseDefinition,
     PhaseLoopPolicy,
     PhaseTransition,
+    PhaseVerificationPolicy,
     PipelinePolicy,
     PolicyBundle,
+    PostCommitRoute,
+    PostCommitRouteWhen,
     RecoveryPolicy,
 )
 from ralph.policy.render import render_explanation_text
@@ -90,6 +93,11 @@ def _build_custom_bundle() -> PolicyBundle:
                 drain="review",
                 role="verification",
                 transitions=PhaseTransition(on_success="done", on_failure="crashed"),
+                verification=PhaseVerificationPolicy(
+                    kind="make_target",
+                    gate_for="advancement",
+                    on_failure_route="crashed",
+                ),
             ),
             "crashed": PhaseDefinition(
                 drain="complete",
@@ -115,6 +123,16 @@ def _build_custom_bundle() -> PolicyBundle:
         budget_counters={
             "build_pass": BudgetCounterConfig(description="build passes completed")
         },
+        post_commit_routes=[
+            PostCommitRoute(
+                when=PostCommitRouteWhen(phase="seal", budget_state="remaining"),
+                target="kickoff",
+            ),
+            PostCommitRoute(
+                when=PostCommitRouteWhen(phase="seal", budget_state="no_review"),
+                target="verify",
+            ),
+        ],
         recovery=RecoveryPolicy(failed_route="crashed"),
     )
     agents = AgentsPolicy(
@@ -454,7 +472,7 @@ class TestCustomPipelinePolicyValidation:
 
         validate_policy_completeness(custom_bundle)  # must not raise
 
-    def test_terminal_recovery_route_is_custom_phase(
+    def test_failed_route_is_custom_phase(
         self, custom_bundle: PolicyBundle
     ) -> None:
         assert custom_bundle.pipeline.recovery.failed_route == "crashed"
