@@ -132,7 +132,7 @@ reset_loop = true
 target = "development"
 reset_loop = false
 [phases.development_analysis.decisions.failed]
-target = "failed"
+target = "development"
 reset_loop = false
 
 [phases.development_commit]
@@ -178,7 +178,7 @@ reset_loop = true
 target = "fix"
 reset_loop = false
 [phases.review_analysis.decisions.failed]
-target = "failed"
+target = "fix"
 reset_loop = false
 
 [phases.fix]

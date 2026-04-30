@@ -19,7 +19,7 @@ Call the `ralph_submit_artifact` tool with `artifact_type` set to `review_analys
 
 ## Required fields (inside content)
 
-- `status` — must be `"completed"` if the reviewed work is acceptable, `"request_changes"` if changes are needed, or `"failed"` if the review itself could not be completed
+- `status` — must be `"completed"` if the reviewed work is acceptable, `"request_changes"` if changes are needed, or `"failed"` if the review result is unusable and the review/fix cycle should restart from the work phase
 - `summary` — a non-empty string describing the overall analysis result
 
 ## Optional fields (inside content)

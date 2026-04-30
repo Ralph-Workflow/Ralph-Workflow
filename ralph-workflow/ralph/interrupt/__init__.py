@@ -10,8 +10,16 @@ from __future__ import annotations
 import threading
 
 from ralph.interrupt.asyncio_bridge import install_signal_handlers as install_signal_handlers
+from ralph.interrupt.controller import (
+    INTERRUPT_EXIT_CODE as INTERRUPT_EXIT_CODE,
+    InterruptController as InterruptController,
+    controller_from_process_manager as controller_from_process_manager,
+)
 
 __all__ = [
+    "INTERRUPT_EXIT_CODE",
+    "InterruptController",
+    "controller_from_process_manager",
     "install_signal_handlers",
     "request_user_interrupt",
     "user_interrupted_occurred",

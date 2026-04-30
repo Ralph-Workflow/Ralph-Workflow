@@ -11,6 +11,7 @@ import signal
 from unittest.mock import MagicMock, patch
 
 from ralph.interrupt.asyncio_bridge import SignalBridge, install_signal_handlers
+from ralph.interrupt.controller import InterruptController
 
 _PID_A = 42
 _PID_B = 1234
@@ -30,9 +31,10 @@ def _install_and_get_first_handler(
     loop: MagicMock,
     task: MagicMock,
     bridge: SignalBridge,
+    controller: InterruptController | None = None,
 ) -> object:
     """Install handlers and return the first SIGINT callback."""
-    install_signal_handlers(loop, task, bridge)
+    install_signal_handlers(loop, task, bridge, controller)
     first_call_args = loop.add_signal_handler.call_args_list[0][0]
     assert first_call_args[0] == signal.SIGINT
     return first_call_args[1]
@@ -178,6 +180,28 @@ class TestInstallSignalHandlers:
             second_handler()
 
         mock_exit.assert_called_once_with(130)
+
+    def test_first_sigint_uses_injected_controller(self) -> None:
+        loop = MagicMock(spec=asyncio.AbstractEventLoop)
+        task = MagicMock(spec=asyncio.Task)
+        bridge = SignalBridge()
+        events: list[tuple[str, object]] = []
+        controller = InterruptController(
+            shutdown_all=lambda grace_period_s: events.append(("shutdown", grace_period_s)),
+            record_interrupt=lambda: events.append(("record", None)),
+            stop_connectivity=lambda: events.append(("stop", None)),
+            kill_process_group=lambda pid, sig: events.append(("kill", (pid, sig))),
+            hard_exit=lambda code: events.append(("exit", code)),
+        )
+        bridge.register_pid(_PID_B)
+
+        first_handler = _install_and_get_first_handler(loop, task, bridge, controller)
+        first_handler()  # type: ignore[operator]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+
+        task.cancel.assert_called_once()
+        assert ("record", None) in events
+        assert ("shutdown", 0) in events
+        assert any(event[0] == "kill" and event[1][0] == _PID_B for event in events)
 
     def test_no_pids_registered_no_killpg_called(self) -> None:
         loop = MagicMock(spec=asyncio.AbstractEventLoop)

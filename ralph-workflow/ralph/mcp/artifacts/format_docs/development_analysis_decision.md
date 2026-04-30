@@ -19,7 +19,7 @@ Call the `ralph_submit_artifact` tool with `artifact_type` set to `development_a
 
 ## Required fields (inside content)
 
-- `status` — must be `"completed"` if the implementation is acceptable, `"request_changes"` if changes are needed, or `"failed"` if the analysis itself could not be completed
+- `status` — must be `"completed"` if the implementation is acceptable, `"request_changes"` if changes are needed, or `"failed"` if the analysis result is unusable and the implementation should be redone from the work phase
 - `summary` — a non-empty string describing the overall analysis result
 
 ## Optional fields (inside content)

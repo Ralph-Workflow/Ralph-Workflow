@@ -72,7 +72,7 @@ WORKFLOW DIAGRAM
 | development_analysis |
 |    role=analysis     |
 +----------------------+
-    +--[failed]--> failed
+    +--[failed]--> development
     +--[request_changes]--> development
     | loop back to development
     +---^  (returns to 'development' phase)
@@ -97,7 +97,7 @@ WORKFLOW DIAGRAM
 | review_analysis |
 |  role=analysis  |
 +-----------------+
-    +--[failed]--> failed
+    +--[failed]--> fix
     +--[request_changes]--> fix
     | loop back to fix
     +---^  (returns to 'fix' phase)
@@ -199,11 +199,11 @@ PHASES
     Decisions:
       completed            → development_commit
       request_changes      → development
-      failed               → failed
+      failed               → development
     Loop       : counter='development_analysis_iteration', max=3
 Explanation: phase 'development_analysis' routes to 'development_commit' because the configured decision was 'completed'.
 Explanation: phase 'development_analysis' routes to 'development' because the configured decision was 'request_changes'.
-Explanation: phase 'development_analysis' routes to 'failed' because the configured decision was 'failed'.
+Explanation: phase 'development_analysis' routes to 'development' because the configured decision was 'failed'.
 Explanation: phase 'development_analysis' loops back to 'development' until 3 attempts are exhausted, after which the run terminates.
 
   Phase: development_commit
@@ -241,12 +241,12 @@ Explanation: phase 'review' bypasses to 'review_commit' when the configured outc
     Decisions:
       completed            → review_commit
       request_changes      → fix
-      failed               → failed
+      failed               → fix
     Loop       : counter='review_analysis_iteration', max=2
                  loopback sets review_outcome='has_issues'
 Explanation: phase 'review_analysis' routes to 'review_commit' because the configured decision was 'completed'.
 Explanation: phase 'review_analysis' routes to 'fix' because the configured decision was 'request_changes'.
-Explanation: phase 'review_analysis' routes to 'failed' because the configured decision was 'failed'.
+Explanation: phase 'review_analysis' routes to 'fix' because the configured decision was 'failed'.
 Explanation: phase 'review_analysis' loops back to 'fix' until 2 attempts are exhausted, after which the run terminates.
 
   Phase: fix

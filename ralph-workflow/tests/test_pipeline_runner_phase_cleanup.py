@@ -38,6 +38,7 @@ _FAST_POLICY = ProcessManagerPolicy(
     default_grace_period_s=0.3, kill_followup_timeout_s=0.5, log_events=False
 )
 
+_INTERRUPT_EXIT_CODE = 130
 PYTHON = sys.executable
 _TEST_PHASE = "fake-phase"
 
@@ -222,3 +223,63 @@ def test_runner_phase_scope_does_not_kill_other_labels(
     assert _pid_gone(spawned["phase"]), (
         f"Phase-labeled PID {spawned['phase']} must be gone after scope exits"
     )
+
+
+def test_runner_interrupt_shuts_down_tracked_children_even_outside_phase_scope(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """KeyboardInterrupt must tear down tracked children before returning 130.
+
+    This covers the serial runner path, where agent subprocesses are not labeled
+    under ``phase:<phase>`` and therefore cannot rely on ``process_phase_scope``
+    prefix cleanup alone.
+    """
+    pm = ProcessManager(policy=_FAST_POLICY)
+    spawned_pid: list[int] = []
+
+    def fake_execute_agent_effect(
+        effect: object, config: object, deps: object, workspace_scope: object, **kwargs: object
+    ) -> PipelineEvent:
+        handle = get_process_manager().spawn(
+            [PYTHON, "-c", "import time; time.sleep(30)"],
+            label="invoke:fake-agent",
+        )
+        spawned_pid.append(handle.record.pid)
+        raise KeyboardInterrupt
+
+    effects: list[object] = [
+        InvokeAgentEffect(
+            agent_name="fake-agent",
+            phase=_TEST_PHASE,
+            prompt_file="/dev/null",
+        ),
+    ]
+    _apply_runner_stubs(
+        monkeypatch, tmp_path, effects, fake_execute_agent_effect=fake_execute_agent_effect
+    )
+
+    initial_state = MagicMock()
+    initial_state.phase = _TEST_PHASE
+    initial_state.recovery_epoch = 0
+    interrupted_state = MagicMock()
+    initial_state.copy_with.return_value = interrupted_state
+    saved_states: list[object] = []
+    monkeypatch.setattr(runner_module.ckpt, "save", saved_states.append)
+
+    original_singleton = _mgr._singleton
+    _mgr._singleton = pm
+    try:
+        exit_code = runner_module.run(
+            MagicMock(), initial_state=initial_state, verbosity=Verbosity.QUIET
+        )
+    finally:
+        _mgr._singleton = original_singleton
+
+    assert exit_code == _INTERRUPT_EXIT_CODE
+    assert spawned_pid, "Fake handler must have spawned a tracked child"
+    assert _pid_gone(spawned_pid[0], timeout_s=1.5), (
+        f"Tracked PID {spawned_pid[0]} must be gone after interrupt handling"
+    )
+    initial_state.copy_with.assert_called_once_with(interrupted_by_user=True)
+    assert saved_states == [interrupted_state]

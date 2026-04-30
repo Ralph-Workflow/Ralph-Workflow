@@ -45,6 +45,8 @@ from ralph.display.phase_banner import (
     show_phase_start,
     show_phase_transition,
 )
+from ralph.interrupt import controller_from_process_manager
+from ralph.interrupt.controller import install_force_kill_handler
 from ralph.mcp.artifacts.commit_message import (
     COMMIT_MESSAGE_ARTIFACT,
     delete_commit_message_artifacts,
@@ -84,7 +86,7 @@ from ralph.pipeline.reducer import reduce as reducer_reduce
 from ralph.pipeline.state import AgentChainState, CommitState, PipelineState, RebaseState
 from ralph.pipeline.worker_state import WorkerStatus
 from ralph.policy.loader import load_policy_or_die
-from ralph.process.manager import process_phase_scope
+from ralph.process.manager import get_process_manager, process_phase_scope
 from ralph.prompts.materialize import (
     materialize_prompt_for_phase,
     prompt_file_for_phase,
@@ -605,6 +607,23 @@ def _save_checkpoint_or_log(
         logger.exception(message, phase=state.phase, err=exc)
 
 
+def _handle_keyboard_interrupt(monitor_stop: Callable[[], None] | None = None) -> None:
+    """Gracefully stop tracked children, escalating on a second SIGINT."""
+    process_manager = get_process_manager()
+    controller = controller_from_process_manager(
+        process_manager=process_manager,
+        stop_connectivity=monitor_stop,
+    )
+    restore_force_kill = install_force_kill_handler(lambda: controller.force_exit())
+    try:
+        controller.begin_interrupt(grace_period_s=process_manager.policy.default_grace_period_s)
+    except Exception:
+        logger.warning("Interrupt controller raised during KeyboardInterrupt")
+    finally:
+        with suppress(Exception):
+            restore_force_kill()
+
+
 def _run_pipeline_step(  # noqa: PLR0913
     *,
     state: PipelineState,
@@ -1105,7 +1124,18 @@ def run(  # noqa: PLR0912, PLR0913, PLR0915
                             cast("_PhaseAwareDisplay", active_display).begin_phase(state.phase)
 
             except KeyboardInterrupt:
-                logger.warning("Interrupted by user; saving checkpoint.")
+                logger.warning("Interrupted by user; shutting down tracked processes.")
+                _emit_display_line(
+                    active_display,
+                    None,
+                    _status_text(
+                        "Interrupted",
+                        "Stopping gracefully. Press Ctrl+C again to force kill child processes.",
+                        "yellow",
+                    ),
+                )
+                _handle_keyboard_interrupt(_monitor_stop)
+                _monitor_stop = None
                 interrupted_state = state.copy_with(interrupted_by_user=True)
                 _save_checkpoint_or_log(
                     interrupted_state,

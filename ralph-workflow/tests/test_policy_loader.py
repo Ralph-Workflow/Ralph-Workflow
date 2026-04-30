@@ -368,3 +368,19 @@ def test_build_agents_policy_includes_custom_drains() -> None:
     policy = build_agents_policy_from_config(config)
     assert "my_custom_drain" in policy.agent_drains
     assert policy.agent_drains["my_custom_drain"].chain == "custom_chain"
+
+
+def test_default_policy_failed_analysis_decisions_route_to_same_rework_target() -> None:
+    """Default policy must treat failed analysis as stronger rework, not termination."""
+    defaults_dir = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
+
+    bundle = load_policy(defaults_dir)
+    development_decisions = bundle.pipeline.phases["development_analysis"].decisions
+    review_decisions = bundle.pipeline.phases["review_analysis"].decisions
+
+    assert development_decisions is not None
+    assert review_decisions is not None
+    assert development_decisions["failed"].target == development_decisions["request_changes"].target
+    assert review_decisions["failed"].target == review_decisions["request_changes"].target
+    assert development_decisions["failed"].target == "development"
+    assert review_decisions["failed"].target == "fix"

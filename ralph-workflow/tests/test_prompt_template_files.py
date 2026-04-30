@@ -320,6 +320,20 @@ def test_commit_prompt_taught_variants_submit_successfully(tmp_path: Path) -> No
         assert result.is_error is False, f"payload #{index} should submit successfully"
 
 
+def test_analysis_templates_define_failed_as_stronger_major_remediation() -> None:
+    development_analysis = (TEMPLATES_ROOT / "development_analysis.jinja").read_text(
+        encoding="utf-8"
+    )
+    review_analysis = (TEMPLATES_ROOT / "review_analysis.jinja").read_text(encoding="utf-8")
+
+    assert "major incompleteness" in development_analysis.lower()
+    assert "major incompleteness" in review_analysis.lower()
+    assert "start over" in development_analysis.lower() or "redo" in development_analysis.lower()
+    assert "start over" in review_analysis.lower() or "redo" in review_analysis.lower()
+    assert "security vulnerability, or data loss risk" not in development_analysis
+    assert "fundamentally incomplete or missed critical issues" not in review_analysis
+
+
 _MIN_WORKER_PROMPT_LEN = 50
 
 _WORKER_TEMPLATE_BANNED_PHRASES = (

@@ -14,6 +14,7 @@ Tests cover:
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -26,6 +27,9 @@ from ralph.policy.explain import (
 )
 from ralph.policy.loader import load_policy
 from ralph.policy.render import render_explanation_ascii, render_explanation_text
+
+if TYPE_CHECKING:
+    from ralph.policy.models import PolicyBundle
 
 
 def _get_default_policy_path() -> Path:
@@ -262,6 +266,17 @@ class TestRenderExplanationAscii:
         # Check for the specific decisions we know exist
         assert "+--[failed]-->" in output or "+--[request_changes]-->" in output
 
+    def test_failed_decision_branches_render_as_rework_targets(self) -> None:
+        """Default policy explanation must show failed analysis decisions looping back to rework."""
+        policy_dir = _get_default_policy_path()
+        bundle = load_policy(policy_dir)
+        explanation = explain_policy(bundle)
+        output = render_explanation_ascii(explanation)
+
+        assert "+--[failed]--> development" in output
+        assert "+--[failed]--> fix" in output
+        assert "+--[failed]--> failed" not in output
+
     def test_render_text_emits_bypass_route_sentences(self) -> None:
         """render_explanation_text emits bypass_route explanation sentences."""
         phase = PhaseExplanation(
@@ -329,7 +344,7 @@ class TestRenderExplanationAscii:
 class TestVerificationAsciiAnnotation:
     """Tests that verification phases produce [verify: ...] annotation in ASCII output."""
 
-    def _bundle_with_verification(self) -> object:
+    def _bundle_with_verification(self) -> PolicyBundle:
         from ralph.policy.models import (  # noqa: PLC0415
             AgentChainConfig,
             AgentDrainConfig,
