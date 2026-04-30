@@ -43,6 +43,7 @@ from ralph.pipeline.effects import (
 )
 from ralph.pipeline.events import Event, PhaseFailureEvent, PipelineEvent
 from ralph.pipeline.reducer import reduce as reducer_reduce
+from ralph.pipeline.runner import _phase_context
 from ralph.pipeline.state import AgentChainState, CommitState, PipelineState
 from ralph.pipeline.work_units import WorkUnit
 from ralph.policy.loader import load_policy
@@ -51,6 +52,7 @@ from ralph.policy.models import (
     AgentDrainConfig,
     AgentsPolicy,
     ArtifactsPolicy,
+    PhaseCommitPolicy,
     PhaseDefinition,
     PhaseTransition,
     PipelinePolicy,
@@ -3168,3 +3170,206 @@ class TestCycleBaselineLifecycle:
         assert cleared, (
             "clear_cycle_baseline must be called after development_commit COMMIT_SUCCESS"
         )
+
+
+def _make_minimal_policy(
+    phases: dict[str, PhaseDefinition], *, entry_phase: str = "done"
+) -> PipelinePolicy:
+    return PipelinePolicy(phases=phases, terminal_phase="done", entry_phase=entry_phase)
+
+
+class TestPhaseContextRoleBasedDispatch:
+    """Verify _phase_context uses phase roles not hardcoded phase names."""
+
+    def _call(
+        self,
+        state: PipelineState,
+        previous_phase: str,
+        policy: PipelinePolicy,
+    ) -> dict[str, object]:
+        return _phase_context(state, previous_phase, policy)
+
+    def test_execution_role_shows_iteration_context(self) -> None:
+        policy = _make_minimal_policy(
+            {
+                "build": PhaseDefinition(
+                    drain="development",
+                    role="execution",
+                    transitions=PhaseTransition(on_success="done"),
+                ),
+                "done": PhaseDefinition(
+                    drain="development",
+                    role="terminal",
+                    transitions=PhaseTransition(on_success="done"),
+                    terminal_outcome="success",
+                ),
+            }
+        )
+        state = PipelineState(phase="build", iteration=2, total_iterations=5)
+        ctx = self._call(state, "planning", policy)
+        assert ctx.get("iteration") == "3/5"
+
+    def test_review_role_shows_pass_context(self) -> None:
+        policy = _make_minimal_policy(
+            {
+                "qa": PhaseDefinition(
+                    drain="review",
+                    role="review",
+                    issues_outcome="issues_found",
+                    transitions=PhaseTransition(on_success="done"),
+                ),
+                "done": PhaseDefinition(
+                    drain="development",
+                    role="terminal",
+                    transitions=PhaseTransition(on_success="done"),
+                    terminal_outcome="success",
+                ),
+            }
+        )
+        state = PipelineState(phase="qa", reviewer_pass=1, total_reviewer_passes=3)
+        ctx = self._call(state, "planning", policy)
+        assert ctx.get("pass") == "2/3"
+
+    def test_analysis_to_commit_shows_approved_decision(self) -> None:
+        policy = _make_minimal_policy(
+            {
+                "gate": PhaseDefinition(
+                    drain="development_analysis",
+                    role="analysis",
+                    transitions=PhaseTransition(on_success="seal"),
+                    decisions={},
+                    loop_policy=None,
+                ),
+                "seal": PhaseDefinition(
+                    drain="development",
+                    role="commit",
+                    commit_policy=PhaseCommitPolicy(increments_counter="build_pass"),
+                    transitions=PhaseTransition(on_success="done"),
+                ),
+                "done": PhaseDefinition(
+                    drain="development",
+                    role="terminal",
+                    transitions=PhaseTransition(on_success="done"),
+                    terminal_outcome="success",
+                ),
+            }
+        )
+        state = PipelineState(phase="seal")
+        ctx = self._call(state, "gate", policy)
+        assert ctx.get("decision") == "approved"
+
+    def test_analysis_to_execution_shows_needs_changes_decision(self) -> None:
+        policy = _make_minimal_policy(
+            {
+                "gate": PhaseDefinition(
+                    drain="development_analysis",
+                    role="analysis",
+                    transitions=PhaseTransition(on_success="seal", on_loopback="build"),
+                    decisions={},
+                    loop_policy=None,
+                ),
+                "build": PhaseDefinition(
+                    drain="development",
+                    role="execution",
+                    transitions=PhaseTransition(on_success="gate"),
+                ),
+                "seal": PhaseDefinition(
+                    drain="development",
+                    role="commit",
+                    commit_policy=PhaseCommitPolicy(increments_counter="build_pass"),
+                    transitions=PhaseTransition(on_success="done"),
+                ),
+                "done": PhaseDefinition(
+                    drain="development",
+                    role="terminal",
+                    transitions=PhaseTransition(on_success="done"),
+                    terminal_outcome="success",
+                ),
+            }
+        )
+        state = PipelineState(phase="build")
+        ctx = self._call(state, "gate", policy)
+        assert ctx.get("decision") == "needs changes"
+
+    def test_commit_role_previous_shows_counter_budget(self) -> None:
+        policy = _make_minimal_policy(
+            {
+                "seal": PhaseDefinition(
+                    drain="development",
+                    role="commit",
+                    commit_policy=PhaseCommitPolicy(increments_counter="build_pass"),
+                    transitions=PhaseTransition(on_success="done"),
+                ),
+                "build": PhaseDefinition(
+                    drain="development",
+                    role="execution",
+                    transitions=PhaseTransition(on_success="done"),
+                ),
+                "done": PhaseDefinition(
+                    drain="development",
+                    role="terminal",
+                    transitions=PhaseTransition(on_success="done"),
+                    terminal_outcome="success",
+                ),
+            }
+        )
+        state = PipelineState(
+            phase="build",
+            budget_remaining={"build_pass": 2},
+        )
+        ctx = self._call(state, "seal", policy)
+        assert ctx.get("build_pass_budget") == "2 remaining"
+
+    def test_unknown_phase_returns_empty_context(self) -> None:
+        policy = PipelinePolicy.model_construct(phases={})
+        state = PipelineState(phase="nonexistent")
+        ctx = self._call(state, "also_nonexistent", policy)
+        assert ctx == {}
+
+    def test_execution_role_not_triggered_by_analysis_role_phase(self) -> None:
+        policy = _make_minimal_policy(
+            {
+                "gate": PhaseDefinition(
+                    drain="development_analysis",
+                    role="analysis",
+                    transitions=PhaseTransition(on_success="done"),
+                    decisions={},
+                    loop_policy=None,
+                ),
+                "done": PhaseDefinition(
+                    drain="development",
+                    role="terminal",
+                    transitions=PhaseTransition(on_success="done"),
+                    terminal_outcome="success",
+                ),
+            }
+        )
+        state = PipelineState(phase="gate", iteration=2, total_iterations=5)
+        ctx = self._call(state, "planning", policy)
+        assert "iteration" not in ctx
+
+    def test_commit_role_with_none_counter_omits_budget(self) -> None:
+        policy = _make_minimal_policy(
+            {
+                "seal": PhaseDefinition(
+                    drain="development",
+                    role="commit",
+                    commit_policy=PhaseCommitPolicy(increments_counter=None),
+                    transitions=PhaseTransition(on_success="done"),
+                ),
+                "build": PhaseDefinition(
+                    drain="development",
+                    role="execution",
+                    transitions=PhaseTransition(on_success="done"),
+                ),
+                "done": PhaseDefinition(
+                    drain="development",
+                    role="terminal",
+                    transitions=PhaseTransition(on_success="done"),
+                    terminal_outcome="success",
+                ),
+            }
+        )
+        state = PipelineState(phase="build")
+        ctx = self._call(state, "seal", policy)
+        assert not any(k.endswith("_budget") for k in ctx)

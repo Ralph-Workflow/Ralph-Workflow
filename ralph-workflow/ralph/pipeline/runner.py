@@ -684,9 +684,12 @@ def _run_pipeline_step(  # noqa: PLR0913
                     verbosity=verbosity,
                 )
 
-        if isinstance(effect, CommitEffect) and state.phase == "development_commit" and event in (
-            PipelineEvent.COMMIT_SUCCESS,
-            PipelineEvent.COMMIT_SKIPPED,
+        _commit_phase_def = policy_bundle.pipeline.phases.get(state.phase)
+        if (
+            isinstance(effect, CommitEffect)
+            and _commit_phase_def is not None
+            and _commit_phase_def.role == "commit"
+            and event in (PipelineEvent.COMMIT_SUCCESS, PipelineEvent.COMMIT_SKIPPED)
         ):
             clear_cycle_baseline(workspace_scope.root)
         next_state, _ = reducer_reduce(state, event, policy_bundle.pipeline)
@@ -727,22 +730,34 @@ def _run_pipeline_step(  # noqa: PLR0913
         return recovered_state
 
 
-def _phase_context(state: PipelineState, previous_phase: str) -> dict[str, object]:
+def _phase_context(
+    state: PipelineState,
+    previous_phase: str,
+    pipeline_policy: PipelinePolicy,
+) -> dict[str, object]:
     """Build a context dict for emit_phase_transition with iteration/decision hints."""
     context: dict[str, object] = {}
-    if state.phase in {"development", "fix"}:
+    current_phase_def = pipeline_policy.phases.get(state.phase)
+    previous_phase_def = pipeline_policy.phases.get(previous_phase)
+
+    current_role = current_phase_def.role if current_phase_def is not None else None
+    previous_role = previous_phase_def.role if previous_phase_def is not None else None
+
+    if current_role == "execution":
         context["iteration"] = f"{state.iteration + 1}/{state.total_iterations}"
-    if state.phase == "review":
+    if current_role == "review":
         context["pass"] = f"{state.reviewer_pass + 1}/{state.total_reviewer_passes}"
-    if previous_phase in {"development_analysis", "review_analysis"}:
-        if state.phase in {"development_commit", "review_commit"}:
+    if previous_role == "analysis":
+        if current_role == "commit":
             context["decision"] = "approved"
-        elif state.phase in {"development", "fix"}:
+        elif current_role == "execution":
             context["decision"] = "needs changes"
-    if previous_phase == "development_commit":
-        context["dev_budget"] = f"{state.total_iterations - state.iteration} remaining"
-    if previous_phase == "review_commit":
-        context["review_budget"] = f"{state.total_reviewer_passes - state.reviewer_pass} remaining"
+    if previous_role == "commit" and previous_phase_def is not None:
+        commit_policy = previous_phase_def.commit_policy
+        if commit_policy is not None and commit_policy.increments_counter:
+            counter = commit_policy.increments_counter
+            remaining = state.get_budget_remaining(counter)
+            context[f"{counter}_budget"] = f"{remaining} remaining"
     return context
 
 
@@ -777,6 +792,7 @@ def _emit_phase_transition_if_changed(
     state: PipelineState,
     *,
     verbosity: Verbosity,
+    pipeline_policy: PipelinePolicy,
 ) -> str:
     """Emit a phase-transition banner if state.phase != previous_phase.
 
@@ -795,7 +811,7 @@ def _emit_phase_transition_if_changed(
         logger.debug("show_phase_complete failed", exc_info=True)
 
     # Emit transition to the new phase
-    context = _phase_context(state, previous_phase) or None
+    context = _phase_context(state, previous_phase, pipeline_policy) or None
     try:
         show_phase_transition(previous_phase, state.phase, context=context)
     except Exception:  # pragma: no cover - defensive
@@ -1082,6 +1098,7 @@ def run(  # noqa: PLR0912, PLR0913, PLR0915
                         _prev_phase,
                         state,
                         verbosity=effective_verbosity,
+                        pipeline_policy=policy_bundle.pipeline,
                     )
                     if hasattr(active_display, "begin_phase"):
                         with suppress(Exception):
