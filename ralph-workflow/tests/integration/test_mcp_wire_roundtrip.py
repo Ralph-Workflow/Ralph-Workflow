@@ -26,6 +26,7 @@ from ralph.mcp.server.runtime import (
     _FallbackStandaloneServer,
 )
 from ralph.mcp.tools.bridge import build_ralph_tool_registry
+from ralph.mcp.tools.names import RalphToolName
 from ralph.mcp.upstream.client import make_upstream_client
 from ralph.mcp.upstream.config import UpstreamMcpServer
 from ralph.mcp.webvisit.extractor import ExtractedPage
@@ -41,10 +42,16 @@ _MAX_DESCRIPTION_CHARS = 500
 # Server startup timeout
 _SERVER_START_TIMEOUT = 10.0
 
+# Content used by the append_file roundtrip assertion
+_APPEND_CONTENT = "hi"
+
 # Capabilities required by the built-in Ralph tools
 _REQUIRED_CAPABILITIES = {
     "WorkspaceRead",
     "WorkspaceWriteAny",
+    "WorkspaceMetadataRead",
+    "WorkspaceEdit",
+    "WorkspaceDelete",
     "GitStatusRead",
     "ProcessExecBounded",
     "ArtifactSubmit",
@@ -129,6 +136,70 @@ class TestHttpMcpServer:
             _do_read_file_test(base_url, session_id)
         finally:
             # Explicitly close server socket before shutdown to avoid socket leaks
+            httpd = standalone._httpd
+            if httpd is not None:
+                httpd.server_close()
+                httpd.shutdown()
+            thread.join(timeout=5.0)
+            if thread.is_alive():
+                raise AssertionError("Server thread did not shut down within 5 seconds")
+
+    def test_new_workspace_tools_roundtrip(self, temp_workspace: Path) -> None:
+        """Wire-level roundtrip for the expanded workspace tool surface.
+
+        Boots one server and exercises stat_path, list_allowed_roots,
+        read_multiple_files, directory_tree, search_files, grep_files,
+        edit_file (dry_run + apply), append_file, create_directory,
+        move_file, copy_file, and delete_path end-to-end over JSON-RPC.
+        """
+        _seed_extended_workspace(temp_workspace)
+
+        workspace = FsWorkspace(temp_workspace)
+        session = AgentSession(
+            session_id="test-new-tools",
+            run_id="test-run-new",
+            drain="development",
+            capabilities=_REQUIRED_CAPABILITIES,
+        )
+        registry = build_ralph_tool_registry(session, workspace)
+        mcp_server = McpServer(session, workspace, registry)
+        standalone = _FallbackStandaloneServer("127.0.0.1", 0, mcp_server)
+        server_port: dict[str, int] = {}
+
+        def run_server() -> None:
+            standalone.run("streamable-http")
+
+        thread = threading.Thread(target=run_server, daemon=True)
+        thread.start()
+
+        started = False
+        deadline = time.monotonic() + _SERVER_START_TIMEOUT
+        while time.monotonic() < deadline:
+            if standalone._httpd is not None:
+                port = standalone._httpd.server_address[1]
+                server_port["port"] = port
+                try:
+                    _wait_for_port(port, timeout=1.0)
+                    started = True
+                    break
+                except AssertionError:
+                    pass
+            time.sleep(0.05)
+
+        if not started:
+            raise AssertionError("Server did not start within 10 seconds")
+
+        base_url = f"http://127.0.0.1:{server_port['port']}/mcp"
+
+        try:
+            session_id = _do_initialize(base_url)
+            _do_initialized_notification(base_url, session_id)
+            tools = _do_tools_list(base_url, session_id)
+            _assert_new_workspace_tools_present(tools)
+            call_id = [10]
+            _do_workspace_read_roundtrips(base_url, session_id, call_id)
+            _do_workspace_write_roundtrips(base_url, session_id, call_id)
+        finally:
             httpd = standalone._httpd
             if httpd is not None:
                 httpd.server_close()
@@ -298,6 +369,199 @@ def temp_workspace(tmp_path: Path) -> Generator[Path, None, None]:
     test_file = workspace / "test_read.txt"
     test_file.write_text("Hello, World!")
     yield workspace
+
+
+def _seed_extended_workspace(workspace: Path) -> None:
+    """Seed extra files into workspace for the new-tools roundtrip test."""
+    (workspace / "src").mkdir()
+    (workspace / "src" / "main.py").write_text("# main\ndef main():\n    print('Hello')\n")
+    (workspace / "src" / "util.py").write_text("# util\ndef util():\n    pass\n")
+    (workspace / "README.md").write_text("# Project\nHello World\n")
+
+
+def _assert_new_workspace_tools_present(tools: list[dict[str, Any]]) -> None:
+    """Assert that all new workspace tools appear in the tools/list response."""
+    tool_names = {t["name"] for t in tools}
+    expected = {
+        str(RalphToolName.STAT_PATH),
+        str(RalphToolName.LIST_ALLOWED_ROOTS),
+        str(RalphToolName.READ_MULTIPLE_FILES),
+        str(RalphToolName.DIRECTORY_TREE),
+        str(RalphToolName.SEARCH_FILES),
+        str(RalphToolName.GREP_FILES),
+        str(RalphToolName.EDIT_FILE),
+        str(RalphToolName.APPEND_FILE),
+        str(RalphToolName.CREATE_DIRECTORY),
+        str(RalphToolName.MOVE_FILE),
+        str(RalphToolName.COPY_FILE),
+        str(RalphToolName.DELETE_PATH),
+    }
+    for tool in expected:
+        assert tool in tool_names, f"Tool {tool!r} missing from tools/list"
+
+
+def _do_tool_call(
+    base_url: str,
+    session_id: str,
+    call_id: list[int],
+    name: str,
+    args: dict[str, object],
+) -> dict[str, Any]:
+    """Make a tools/call JSON-RPC request and return the MCP result object."""
+    call_id[0] += 1
+    payload = {
+        "jsonrpc": "2.0",
+        "id": call_id[0],
+        "method": "tools/call",
+        "params": {"name": name, "arguments": args},
+    }
+    with httpx.Client(timeout=10.0) as client:
+        resp = client.post(
+            base_url,
+            json=payload,
+            headers={"Mcp-Session-Id": session_id},
+        )
+    assert resp.status_code == HTTPStatus.OK.value, (
+        f"tools/call {name} HTTP {resp.status_code}"
+    )
+    data = _parse_sse_body(resp.content)
+    assert "result" in data, f"tools/call {name} failed: {data}"
+    return data["result"]
+
+
+def _do_workspace_read_roundtrips(
+    base_url: str, session_id: str, call_id: list[int]
+) -> None:
+    """Assert read-only workspace tool calls return expected shapes."""
+    result = _do_tool_call(
+        base_url, session_id, call_id, str(RalphToolName.STAT_PATH), {"path": "test_read.txt"}
+    )
+    assert result.get("isError") is not True
+    inner = json.loads(result["content"][0]["text"])
+    assert inner.get("type") == "file"
+    assert isinstance(inner.get("size_bytes"), int) and inner["size_bytes"] > 0
+
+    result = _do_tool_call(base_url, session_id, call_id, str(RalphToolName.LIST_ALLOWED_ROOTS), {})
+    assert result.get("isError") is not True
+    inner = json.loads(result["content"][0]["text"])
+    assert len(inner.get("allowed_roots", [])) > 0
+
+    result = _do_tool_call(
+        base_url, session_id, call_id, str(RalphToolName.READ_MULTIPLE_FILES),
+        {"paths": ["test_read.txt", "missing_file.txt"]},
+    )
+    assert result.get("isError") is not True
+    inner = json.loads(result["content"][0]["text"])
+    files = inner.get("files", [])
+    assert any(f.get("path") == "test_read.txt" and "content" in f for f in files)
+    assert any(f.get("path") == "missing_file.txt" and "error" in f for f in files)
+
+    result = _do_tool_call(
+        base_url, session_id, call_id,
+        str(RalphToolName.DIRECTORY_TREE), {"path": ".", "max_depth": 1},
+    )
+    assert result.get("isError") is not True
+    inner = json.loads(result["content"][0]["text"])
+    assert inner.get("type") == "dir" and isinstance(inner.get("children"), list)
+
+    result = _do_tool_call(
+        base_url, session_id, call_id, str(RalphToolName.SEARCH_FILES),
+        {"pattern": "**/*.py", "path": "src"},
+    )
+    assert result.get("isError") is not True
+    inner = json.loads(result["content"][0]["text"])
+    match_names = [m.split("/")[-1] for m in inner.get("matches", [])]
+    assert "main.py" in match_names and "util.py" in match_names
+
+    result = _do_tool_call(
+        base_url, session_id, call_id,
+        str(RalphToolName.GREP_FILES), {"pattern": "Hello", "path": "."},
+    )
+    assert result.get("isError") is not True
+    inner = json.loads(result["content"][0]["text"])
+    assert len(inner.get("matches", [])) > 0
+    first_match = inner["matches"][0]
+    assert "line" in first_match and "text" in first_match
+
+
+def _do_workspace_write_roundtrips(
+    base_url: str, session_id: str, call_id: list[int]
+) -> None:
+    """Assert write/mutate workspace tool calls return expected shapes."""
+    result = _do_tool_call(
+        base_url, session_id, call_id, str(RalphToolName.CREATE_DIRECTORY), {"path": "newdir"}
+    )
+    assert result.get("isError") is not True
+    assert json.loads(result["content"][0]["text"]).get("created") is True
+
+    result = _do_tool_call(
+        base_url, session_id, call_id, str(RalphToolName.APPEND_FILE),
+        {"path": "newdir/log.txt", "content": _APPEND_CONTENT},
+    )
+    assert result.get("isError") is not True
+    inner = json.loads(result["content"][0]["text"])
+    assert inner.get("bytes_appended") == len(_APPEND_CONTENT)
+
+    result = _do_tool_call(
+        base_url, session_id, call_id, str(RalphToolName.EDIT_FILE),
+        {
+            "path": "test_read.txt",
+            "edits": [{"oldText": "Hello", "newText": "Howdy"}],
+            "dry_run": True,
+        },
+    )
+    assert result.get("isError") is not True
+    inner = json.loads(result["content"][0]["text"])
+    assert inner.get("status") == "preview" and "diff" in inner
+
+    result = _do_tool_call(
+        base_url, session_id, call_id, str(RalphToolName.EDIT_FILE),
+        {
+            "path": "test_read.txt",
+            "edits": [{"oldText": "Hello", "newText": "Howdy"}],
+            "dry_run": False,
+        },
+    )
+    assert result.get("isError") is not True
+    assert json.loads(result["content"][0]["text"]).get("status") == "applied"
+
+    result = _do_tool_call(
+        base_url, session_id, call_id, str(RalphToolName.EDIT_FILE),
+        {
+            "path": "test_read.txt",
+            "edits": [{"oldText": "missing token", "newText": "replaced"}],
+            "dry_run": False,
+        },
+    )
+    assert result.get("isError") is True
+    inner = json.loads(result["content"][0]["text"])
+    assert inner.get("status") == "no_match"
+    assert "edit_index" in inner
+
+    result = _do_tool_call(
+        base_url, session_id, call_id, str(RalphToolName.MOVE_FILE),
+        {"src": "newdir/log.txt", "dest": "newdir/log2.txt"},
+    )
+    assert result.get("isError") is not True
+
+    result = _do_tool_call(
+        base_url, session_id, call_id, str(RalphToolName.COPY_FILE),
+        {"src": "newdir/log2.txt", "dest": "newdir/log3.txt"},
+    )
+    assert result.get("isError") is not True
+
+    result = _do_tool_call(
+        base_url, session_id, call_id, str(RalphToolName.DELETE_PATH), {"path": "newdir/log3.txt"}
+    )
+    assert result.get("isError") is not True
+    assert json.loads(result["content"][0]["text"]).get("deleted") is True
+
+    result = _do_tool_call(
+        base_url, session_id, call_id, str(RalphToolName.DELETE_PATH),
+        {"path": "newdir", "recursive": True},
+    )
+    assert result.get("isError") is not True
+    assert json.loads(result["content"][0]["text"]).get("deleted") is True
 
 
 def _parse_sse_body(body: bytes) -> dict[str, Any]:

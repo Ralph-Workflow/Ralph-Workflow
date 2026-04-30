@@ -1,263 +1,181 @@
-# Pipeline Lifecycle (Plan -> Build -> Verify -> Commit -> Review)
+# Pipeline Lifecycle
 
-This document describes the *end-to-end* behavior of Ralph's pipeline: how it moves through Planning, Development, result verification (analysis), Commit, and the Review/Fix cycles.
+This document describes the end-to-end lifecycle of a Ralph Workflow run: how the pipeline moves
+through planning, development, analysis, commit, review, and fix phases, and how policy-defined
+orchestration drives every routing decision.
 
-If you are looking for the generic reducer/event-loop mechanics, see `event-loop-and-reducers.md`.
-If you are looking for effect-handler layering and filesystem rules, see `effect-system.md`.
-If you are looking for checkpoint/resume persistence details, see `checkpoint-and-resume.md`.
-If you are looking for git baseline/rebase behavior, see `git-and-rebase.md`.
+The maintained implementation is the Python package in `ralph-workflow/ralph/`. All module
+references in this document point to that package.
 
-## The Big Picture: Nested Loops
+If you are looking for the generic event-loop and reducer mechanics, see
+`event-loop-and-reducers.md`.
+If you are looking for checkpoint/resume persistence, see `checkpoint-and-resume.md`.
+If you are looking for git baseline behavior, see `git-and-rebase.md`.
 
-Ralph runs two nested loops, each driven by reducer-visible counters in `PipelineState`:
+## Policy-Defined Orchestration
 
-- **Development iterations** (`iteration` / `total_iterations`): repeated Plan -> Build -> Verify -> Commit.
-- **Review passes** (`reviewer_pass` / `total_reviewer_passes`): repeated Review; when issues are found, run Fix -> Commit before the next pass.
+Ralph Workflow is a **policy-defined orchestration framework**. The workflow shape — phases,
+routing decisions, retry budgets, analysis loops, commit semantics, recovery paths, and terminal
+outcomes — is declared in `.agent/pipeline.toml`, `.agent/agents.toml`, and
+`.agent/artifacts.toml`. The runtime in `ralph/pipeline/` validates and enforces those
+declarations without any hardcoded knowledge of specific phase names or routing outcomes.
 
-The pipeline is deterministic: each step is a single `Effect` derived from state; each effect produces a `PipelineEvent`; the reducer applies that event to produce the next state.
+Every routing decision the reducer makes traces back to a policy field:
 
-## Start State
+- Phase advancement follows `transitions.on_success` / `on_loopback` / `on_failure`
+- Analysis loop targets come from `transitions.on_loopback` (not from decision-key literals)
+- Review bypass routes come from `bypass_routes[phase.clean_outcome]`
+- Commit post-routing comes from `post_commit_routes` guarded by budget counters
+- Recovery terminal routing comes from `recovery.failed_route`
 
-Initial phase selection is derived from the configured iteration counts (see `PipelineState::initial_with_continuation` in `ralph-workflow/src/reducer/state/pipeline.rs`):
+The phase graph defined in `pipeline.toml` determines what phases exist, how they connect,
+and what each phase role means. The runtime has no secret phase-name recognition.
 
-- If `total_iterations > 0`: start in `Planning`.
-- If `total_iterations == 0` and `total_reviewer_passes > 0`: start in `Review`.
-- If both are `0`: start in `CommitMessage` (typically becomes a no-op commit and then completes).
+## The Big Picture
 
-Internally, `iteration` and `reviewer_pass` are *0-based counters*. The pipeline runs work while `iteration < total_iterations` (and similarly for `reviewer_pass < total_reviewer_passes`).
-
-## Development Iteration: Plan -> Build -> Verify -> Commit
-
-One development iteration is the unit of progress that ends in a commit. The core idea is:
-
-1. **Planning** writes the plan for the current iteration (`.agent/PLAN.md`).
-2. **Development** runs the developer agent to edit the repo.
-3. **Result verification** runs the analysis agent to produce an objective `development_result.xml`.
-4. **Commit** creates (or skips) a commit for that iteration and advances the iteration counter.
-
-The authoritative sequencing lives in `ralph-workflow/src/reducer/orchestration/phase_effects/mod.rs` and the reducer transitions live in `ralph-workflow/src/reducer/state_reduction/`.
-
-### Planning (per-iteration)
-
-Planning produces a valid plan *before* development starts:
-
-- Effects (typical): `PreparePlanningPrompt` -> `InvokePlanningAgent` -> `ExtractPlanningXml` -> `ValidatePlanningXml` -> `WritePlanningMarkdown` -> `ArchivePlanningXml` -> `ApplyPlanningOutcome`.
-- If planning output is invalid, the reducer keeps the phase in `Planning` and uses XSD retries / agent fallback (this is reducer-visible via `ContinuationState`).
-- Planning does not advance `iteration`.
-
-### Development (per-iteration)
-
-Development is intentionally split into two roles:
-
-- **Developer agent**: edits code.
-- **Analysis agent**: verifies what changed vs the plan.
-
-#### Developer invocation
-
-Typical effect sequence for a given `iteration`:
-
-`PrepareDevelopmentContext` -> `PrepareDevelopmentPrompt` -> `InvokeDevelopmentAgent`
-
-#### Result verification (analysis agent)
-
-After *every* developer invocation (including continuation attempts), orchestration invokes the analysis agent:
-
-`InvokeAnalysisAgent` -> `ExtractDevelopmentXml` -> `ValidateDevelopmentXml` -> `ArchiveDevelopmentXml` -> `ApplyDevelopmentOutcome`
-
-Key properties:
-
-- Analysis runs **after** `InvokeDevelopmentAgent` and **before** XML extraction.
-- Analysis does **not** increment `iteration`.
-- The analysis agent writes `.agent/tmp/development_result.xml` by comparing the current git diff against `.agent/PLAN.md`.
-
-See also: `analysis-agent.md` for the analysis step's invariants.
-
-### Continuation Loop (within an iteration)
-
-Applying the validated development outcome produces a status:
-
-- `completed`: iteration succeeds and proceeds to commit.
-- `partial` / `failed`: iteration may enter a continuation loop.
-
-Continuation is a reducer-controlled retry that stays inside the same `iteration`:
-
-1. The reducer emits `DevelopmentEvent::ContinuationTriggered { .. }`.
-2. Orchestration writes continuation context (so the next prompt can reference what happened).
-3. Development context/prompt are re-prepared in `PromptMode::Continuation`.
-4. Developer agent runs again.
-5. Analysis runs again.
-
-This repeats until either:
-
-- A continuation succeeds (status becomes `completed`) and we proceed to commit, or
-- Continuation budget is exhausted, which triggers agent fallback and may escalate to `AwaitingDevFix` if the agent chain is exhausted and work is still incomplete.
-
-The mechanics live in `ralph-workflow/src/reducer/state_reduction/development.rs` (see `OutcomeApplied`, `ContinuationTriggered`, `ContinuationSucceeded`, `ContinuationBudgetExhausted`).
-
-### Commit (completes a dev iteration)
-
-After a successful development iteration, the pipeline enters `CommitMessage` and tries to produce a commit:
-
-- If the computed diff is empty, the commit is skipped (`SkipCommit`).
-- Otherwise the commit agent generates a message (XML), the reducer validates it, and the handler creates the commit.
-
-Only the post-commit transition advances the top-level counters:
-
-- If `previous_phase == Development`: `iteration` increments and phase transitions to `Planning` (if more iterations remain) or to `Review` / `FinalValidation`.
-- If `previous_phase == Review`: `reviewer_pass` increments and phase transitions to `Review` (if passes remain) or to `FinalValidation`.
-
-See `compute_post_commit_transition` in `ralph-workflow/src/reducer/state_reduction/commit.rs`.
-
-## Review Phase: Review -> Fix -> Commit (repeat)
-
-Review runs after all development iterations complete (when configured) and is driven by `reviewer_pass`.
-
-### Review pass
-
-Typical effect sequence:
-
-`PrepareReviewContext` -> `PrepareReviewPrompt` -> `InvokeReviewAgent` -> `ExtractReviewIssuesXml` -> `ValidateReviewIssuesXml` -> `WriteIssuesMarkdown` -> `ArchiveReviewIssuesXml` -> `ApplyReviewOutcome`
-
-The review agent produces `.agent/tmp/issues.xml` (validated) and `.agent/ISSUES.md` (written by the pipeline).
-
-### Fix attempt (only when issues found)
-
-If review finds issues, the phase remains `Review` but `review_issues_found` drives orchestration into a fix attempt:
-
-`PrepareFixPrompt` -> `InvokeFixAgent` -> `ExtractFixResultXml` -> `ValidateFixResultXml` -> `ArchiveFixResultXml` -> `ApplyFixOutcome`
-
-Fix attempts can themselves continue (a fix-specific continuation budget), and on completion the pipeline transitions to `CommitMessage` with `previous_phase = Review`.
-
-After the fix commit, `reviewer_pass` increments and review continues until all passes are complete.
-
-## Finalization and Completion
-
-After the last configured loop completes, the pipeline transitions through:
-
-- `FinalValidation`: final state validation effect.
-- `Finalizing`: cleanup effects (for example restoring prompt permissions).
-- `Complete`: terminal success.
-
-## Failure Handling: AwaitingDevFix Recovery Loop
-
-Ralph routes terminal failures through an **escalating recovery loop** (not a one-shot attempt) designed for unattended operation:
-
-1. **Failure detected** → Transition to `AwaitingDevFix` phase
-2. **TriggerDevFixFlow** → Invoke dev-fix agent to diagnose and fix the issue
-3. **DevFixCompleted** → Increment attempt count, determine escalation level (1-4)
-4. **RecoveryAttempted** → Transition back to failed phase, attempt recovery at determined level
-5. **Work executes** → Phase orchestration retries the work that failed
-6. **IF work succeeds** → Phase orchestration detects recovery success
-7. **EmitRecoverySuccess** → Handler emits `RecoverySucceeded` event
-8. **Recovery state cleared** → Reset `dev_fix_attempt_count`, `recovery_escalation_level`, `failed_phase_for_recovery`
-9. **Normal operation resumes** → Continue from the recovered phase
-10. **IF work fails AGAIN** → **LOOP BACK TO STEP 1** with preserved recovery state
-11. **Recovery state preserved** → Keep attempt count and escalation level for continued escalation
-12. **Termination is not attempt-count driven** → completion markers are emitted only via explicit
-    termination effects (a safety valve / catastrophic external paths), not as part of normal
-    recovery escalation.
-
-### Critical: This is a LOOP, Not One-Shot
-
-The recovery flow is designed to **repeatedly attempt recovery with escalating strategies**. 
-Each failure loops back to step 1 with an incremented attempt count and potentially higher 
-escalation level. The pipeline will retry the same work multiple times, with progressively 
-more aggressive resets, before giving up.
-
-**Recovery state preservation is critical:** When a failure occurs while already in recovery 
-(previous_phase == AwaitingDevFix), the error reducer preserves `dev_fix_attempt_count` and 
-`recovery_escalation_level` instead of resetting them. This enables escalation across multiple 
-recovery cycles rather than resetting to level 1 on each failure.
-
-**This is NOT:**
-- Run dev-fix once → terminate
-- Try recovery once → give up
-- Reset counters on each failure
-
-**This IS:**
-- Run dev-fix → retry work → if fails, run dev-fix again → retry work with reset → 
-  if fails, run dev-fix again with bigger reset → repeat indefinitely (bounded only by the event
-  loop safety valve / explicit termination effects)
-
-### Escalation Levels
-
-The recovery hierarchy implements progressively more aggressive reset strategies:
-
-- **Level 1** (attempts 1-3): Retry the same operation that failed
-- **Level 2** (attempts 4-6): Reset to phase start (clear phase-specific progress)
-- **Level 3** (attempts 7-9): Reset iteration counter, restart from Planning
-- **Level 4** (attempts 10+): Reset to iteration 0, complete restart
-
-Reset semantics for Level 3/4 are intentionally "start fresh": in addition to
-clearing phase flags, the reducer resets global phase-start prerequisites like
-`context_cleaned` and `gitignore_entries_ensured`, and clears materialized
-`prompt_inputs` / continuation state so Planning deterministically re-runs the
-full setup sequence.
-
-This ensures the pipeline is truly **non-terminating by default** for unattended operation; normal recovery does not terminate the pipeline.
-
-### Example: Recovery Loop with Escalation
+A standard run moves through these phases in order:
 
 ```
-Iteration 0: Development agent fails (GitAddAllFailed)
-  ↓
-AwaitingDevFix: TriggerDevFixFlow (attempt 1)
-  ↓
-DevFixCompleted: "Fixed permission issue"
-  ↓
-RecoveryAttempted: Level 1 (retry same operation)
-  ↓
-Development: Try git add again... FAILS AGAIN (still has issue)
-  ↓
-AwaitingDevFix: TriggerDevFixFlow (attempt 2) ← LOOP BACK (counters preserved)
-  ↓
-DevFixCompleted: "Fixed path issue"
-  ↓
-RecoveryAttempted: Level 1 (retry same operation)
-  ↓
-Development: Try git add again... FAILS AGAIN
-  ↓
-AwaitingDevFix: TriggerDevFixFlow (attempt 3) ← LOOP BACK (counters preserved)
-  ↓
-DevFixCompleted: "Fixed file encoding"
-  ↓
-RecoveryAttempted: Level 1 (retry same operation)
-  ↓
-Development: Try git add again... FAILS AGAIN
-  ↓
-AwaitingDevFix: TriggerDevFixFlow (attempt 4) ← LOOP BACK, ESCALATE
-  ↓
-DevFixCompleted: "Reset phase state"
-  ↓
-RecoveryAttempted: Level 2 (reset to phase start) ← ESCALATED
-  ↓
-Development: Restart entire Development phase from scratch... SUCCESS
-  ↓
-EmitRecoverySuccess: Clear recovery state, resume normal operation
-  ↓
-Continue to CommitMessage phase
+planning → development → development_analysis → development_commit
+        → review → review_analysis → fix → review_commit → complete
 ```
 
-The recovery loop is intended to be non-terminating for unattended operation; termination requires
-an explicit safety valve / catastrophic termination path.
+This sequence comes from the active `pipeline.toml`, not from hardcoded control flow. To
+inspect the active pipeline shape, run:
 
-### Recovery Success Detection
+```bash
+ralph --explain-policy
+```
 
-Recovery is considered successful when:
-- `previous_phase == Some(AwaitingDevFix)` (just returned from recovery)
-- Phase-specific work completes (e.g., Planning XML archived, Development XML archived)
-- Orchestration emits `EmitRecoverySuccess` effect before applying phase outcome
-- Reducer clears recovery state (attempt_count=0, level=0, failed_phase=None)
+The ASCII diagram shows phases, happy-path routing, loopbacks, decision branches, and terminal
+outcomes — all derived from the current policy.
 
-Each phase orchestration module checks `is_recovery_state_active(state)` after its archive step completes to detect successful recovery.
+## Event Loop
 
-Terminal semantics for the event loop are implemented by `PipelineState::is_complete()` (see `ralph-workflow/src/reducer/state/pipeline.rs`).
+The pipeline is driven by an explicit event loop in `ralph/pipeline/runner.py`:
 
-Checkpoint persistence for interrupted runs is implemented in the CLI/app layer and written to `.agent/checkpoint.json` (see `checkpoint-and-resume.md`).
+```
+state --orchestrate--> effect --handle--> event --reduce--> next_state
+```
 
-## Where To Look in Code
+- **`PipelineState`** (`ralph/pipeline/state.py`): immutable snapshot of pipeline progress;
+  the checkpoint payload.
+- **`Effect`** (`ralph/pipeline/effects.py`): an intention to perform I/O (invoke an agent,
+  write a checkpoint, etc.). Effects have no side effects themselves.
+- **`Event`** (`ralph/pipeline/events.py`): a fact about something that happened. The reducer
+  consumes events.
+- **`reduce()`** (`ralph/pipeline/reducer.py`): pure function `(state, event, policy) →
+  (new_state, effects)`. No I/O; fully deterministic; dispatches through policy for all routing.
+- **`Orchestrator`** (`ralph/pipeline/orchestrator.py`): pure function that derives the next
+  effect from the current state.
 
-- Orchestration (state -> next effect): `ralph-workflow/src/reducer/orchestration/phase_effects/mod.rs`
-- Reducers (state + event -> state): `ralph-workflow/src/reducer/state_reduction/`
-- State + counters + terminal semantics: `ralph-workflow/src/reducer/state/pipeline.rs`
-- Event loop driver: `ralph-workflow/src/app/event_loop.rs`
+The loop terminates when `state.phase` reaches the configured terminal phase (typically
+`complete` or the `failed_route` declared in `recovery`).
+
+## Phase Lifecycle
+
+### Planning
+
+The planning phase produces a structured plan artifact. The planning agent reads `PROMPT.md`
+and writes `.agent/artifacts/plan.json` (machine-readable) and `.agent/PLAN.md`
+(human/agent handoff).
+
+Advancement: when the planning agent produces a valid plan artifact, the reducer emits
+`AGENT_SUCCESS` and routes to the next phase declared in `transitions.on_success`.
+
+### Development
+
+The development agent edits the repository to implement the plan. In parallel mode, multiple
+workers may each implement a subset of the work units declared by the plan.
+
+The development phase can loop (via `transitions.on_loopback`) back to itself when the
+analysis phase decides additional work is needed.
+
+### Development Analysis
+
+The analysis agent inspects the diff against the plan and emits a structured decision artifact.
+The reducer handles two events:
+
+- `ANALYSIS_SUCCESS`: routes via `transitions.on_success` (typically to `development_commit`)
+- `ANALYSIS_LOOPBACK`: routes via `transitions.on_loopback` (back to `development`)
+
+Routing comes exclusively from `transitions` — not from decision-key literals in the `decisions`
+map. The `decisions` map is a vocabulary contract for artifact validation, not a routing table.
+
+The loop counter declared in `[loop_counters.<name>]` bounds how many iterations are allowed
+before the pipeline routes to the failure path.
+
+### Development Commit
+
+The commit agent generates a commit message and creates a commit. After a successful commit,
+the reducer routes using `post_commit_routes` guarded by budget counters. The `iteration`
+budget counter determines whether to continue with review or terminate.
+
+If the diff is empty (nothing to commit), the commit is skipped and routing proceeds as if
+the commit succeeded, without incrementing the commit counter.
+
+### Review
+
+The review agent inspects the committed diff and produces an issues artifact. Two events drive
+review routing:
+
+- `REVIEW_CLEAN`: the reviewer found no issues. The reducer reads `phase.clean_outcome` from
+  policy to look up the bypass route in `bypass_routes`. Falls back to `transitions.on_success`
+  when `clean_outcome` is not set.
+- `REVIEW_ISSUES_FOUND`: issues were found. The `review_outcome` label is read from the
+  phase's `issues_outcome` policy field. Routing follows `transitions.on_loopback`.
+
+Both `clean_outcome` and `issues_outcome` are required policy fields for `role='review'`
+phases (enforced by `validate_policy_completeness`).
+
+### Review Analysis
+
+Like development analysis, but for the review loop. The analysis agent decides whether the
+reviewer's issues have been adequately addressed.
+
+- `ANALYSIS_SUCCESS` → `transitions.on_success` (typically `review_commit`)
+- `ANALYSIS_LOOPBACK` → `transitions.on_loopback` (back to `fix`)
+
+The `review_analysis_iteration` loop counter bounds the review-fix cycles.
+
+### Fix
+
+The fix agent addresses the issues identified during review. After fix succeeds, routing
+follows `transitions.on_success` (back to `review_analysis` or directly to `review`).
+
+### Review Commit
+
+After review issues are resolved, the review commit agent commits the fix. Post-commit routing
+is guarded by the `reviewer_pass` budget counter, similar to the development commit.
+
+### Complete
+
+The `complete` phase is the terminal success outcome. Its `role='terminal'` declaration in
+policy makes it terminal; the runtime enforces this through `validate_policy_completeness`.
+
+## Recovery
+
+When any phase exhausts its agent chain or reaches a non-recoverable failure, the reducer
+transitions to the route declared in `recovery.failed_route`. This is the policy-declared
+terminal failure path, not a hardcoded constant.
+
+The recovery controller in `ralph/recovery/controller.py` handles failure classification,
+budget management, and agent retry/fallback decisions within each phase. Workflow-level recovery
+routing (which phase to go to on terminal failure) is always policy-owned.
+
+## Where to Look in Code
+
+| Concern | Location |
+|---------|----------|
+| State machine core | `ralph/pipeline/reducer.py` |
+| Phase orchestration | `ralph/pipeline/orchestrator.py` |
+| Pipeline state | `ralph/pipeline/state.py` |
+| Events | `ralph/pipeline/events.py` |
+| Effects | `ralph/pipeline/effects.py` |
+| Runner / event loop | `ralph/pipeline/runner.py` |
+| Policy models | `ralph/policy/models.py` |
+| Policy validation | `ralph/policy/validation.py` |
+| Policy loading | `ralph/policy/loader.py` |
+| Policy explanation | `ralph/policy/explain.py`, `ralph/policy/render.py` |
+| Phase handlers | `ralph/phases/` |
+| Recovery | `ralph/recovery/` |

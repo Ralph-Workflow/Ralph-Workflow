@@ -16,7 +16,6 @@ from contextlib import suppress
 
 from loguru import logger
 
-from ralph.config.enums import AnalysisDecision
 from ralph.mcp.artifacts.plan import (
     PLAN_ARTIFACT_PATH,
     PlanArtifactValidationError,
@@ -24,7 +23,7 @@ from ralph.mcp.artifacts.plan import (
     normalize_plan_artifact_content,
 )
 from ralph.phases import PhaseContext, register_handler
-from ralph.phases.analysis import parse_analysis_decision
+from ralph.phases.analysis import parse_analysis_decision_status
 from ralph.phases.artifacts import (
     PhaseArtifactError,
     load_phase_artifact,
@@ -38,7 +37,12 @@ from ralph.phases.required_artifacts import (
     retry_hint_path,
 )
 from ralph.pipeline.effects import Effect, InvokeAgentEffect, PreparePromptEffect
-from ralph.pipeline.events import Event, PhaseFailureEvent, PipelineEvent
+from ralph.pipeline.events import (
+    AnalysisDecisionEvent,
+    Event,
+    PhaseFailureEvent,
+    PipelineEvent,
+)
 from ralph.pipeline.work_units import WorkUnitsValidationError, parse_work_units_from_artifact
 from ralph.policy.validation import PolicyValidationError, validate_work_units_against_policy
 
@@ -198,18 +202,25 @@ def _missing_analysis_artifact_event(phase: str, artifact_path: str) -> PhaseFai
     )
 
 
-def _analysis_event_for_decision(phase: str, decision: AnalysisDecision) -> list[Event]:
-    if decision in (AnalysisDecision.PROCEED, AnalysisDecision.COMPLETE):
-        return [PipelineEvent.ANALYSIS_SUCCESS]
-    if decision in (
-        AnalysisDecision.REVISE,
-        AnalysisDecision.FAILURE,
-        AnalysisDecision.ESCALATE,
-    ):
-        logger.warning("Analysis decision {} triggers loopback", decision)
-        return [PipelineEvent.ANALYSIS_LOOPBACK]
-    logger.warning("Unknown analysis decision: {}, defaulting to success", decision)
-    return [PipelineEvent.ANALYSIS_SUCCESS]
+def _analysis_event_for_decision(phase: str, status: str | None) -> list[Event]:
+    """Map parse_analysis_decision_status output to AnalysisDecisionEvent.
+
+    This helper is kept for the canonical development_analysis handler.
+    The raw status string is passed through directly; the reducer routes
+    via ``phase_def.decisions[status].target``.
+    """
+    if status is None:
+        # parse_analysis_decision_status already logged the warning
+        return [
+            PhaseFailureEvent(
+                phase=phase,
+                reason=f"Unroutable analysis decision for phase '{phase}'",
+                recoverable=True,
+                retry_in_session=True,
+            )
+        ]
+    logger.info("Development analysis decision: {}", status)
+    return [AnalysisDecisionEvent(phase=phase, decision=status)]
 
 
 @register_handler("development_analysis")
@@ -251,6 +262,5 @@ def handle_development_analysis(effect: Effect, ctx: PhaseContext) -> list[Event
         _write_retry_hint(ctx, "development_analysis", detail)
         return [_missing_analysis_artifact_event("development_analysis", artifact_path)]
 
-    decision = parse_analysis_decision(ctx, "development_analysis")
-    logger.info("Development analysis decision: {}", decision)
-    return _analysis_event_for_decision("development_analysis", decision)
+    status = parse_analysis_decision_status(ctx, "development_analysis")
+    return _analysis_event_for_decision("development_analysis", status)

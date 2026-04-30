@@ -18,6 +18,15 @@ if TYPE_CHECKING:
 
 
 @dataclass
+class VerificationExplanation:
+    """Explanation of a phase's verification policy."""
+
+    kind: str
+    gate_for: str
+    on_failure_route: str | None
+
+
+@dataclass
 class PhaseExplanation:
     """Explanation of a single phase."""
 
@@ -36,8 +45,11 @@ class PhaseExplanation:
     loop_policy: LoopPolicyExplanation | None
     commit_policy: CommitPolicyExplanation | None
     terminal_outcome: str | None
+    clean_outcome: str | None = None
+    issues_outcome: str | None = None
     is_entry: bool = False
     is_terminal: bool = False
+    verification: VerificationExplanation | None = None
 
 
 @dataclass
@@ -165,6 +177,15 @@ def explain_policy(bundle: PolicyBundle) -> PolicyExplanation:
             dk: dr.target for dk, dr in phase_def.decisions.items()
         }
 
+        verification_expl: VerificationExplanation | None = None
+        if phase_def.verification is not None:
+            v = phase_def.verification
+            verification_expl = VerificationExplanation(
+                kind=v.kind,
+                gate_for=v.gate_for,
+                on_failure_route=v.on_failure_route,
+            )
+
         phase_expl = PhaseExplanation(
             name=phase_name,
             role=phase_def.role,
@@ -181,8 +202,11 @@ def explain_policy(bundle: PolicyBundle) -> PolicyExplanation:
             loop_policy=loop_expl,
             commit_policy=commit_expl,
             terminal_outcome=phase_def.terminal_outcome,
+            clean_outcome=phase_def.clean_outcome,
+            issues_outcome=phase_def.issues_outcome,
             is_entry=(phase_name == pipeline.entry_phase),
             is_terminal=(phase_name == pipeline.terminal_phase),
+            verification=verification_expl,
         )
         explanation.phases.append(phase_expl)
 
@@ -233,7 +257,7 @@ def explain_policy(bundle: PolicyBundle) -> PolicyExplanation:
     r = pipeline.recovery
     explanation.recovery = RecoveryExplanation(
         cycle_cap=r.cycle_cap,
-        terminal_recovery_route=r.terminal_recovery_route,
+        terminal_recovery_route=r.failed_route,
         preserve_session_on_categories=list(r.preserve_session_on_categories),
     )
 

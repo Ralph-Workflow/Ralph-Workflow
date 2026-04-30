@@ -134,7 +134,8 @@ def show_phase_transition(
             slim_title.append(f"{from_label} → {to_label}", style=style)
             c.print(Rule(title=slim_title, style=style))
         elif mode == "medium":
-            # Medium: denser banner with Rule separators but no description
+            # Medium: denser banner with Rule separators while still preserving the
+            # human-readable transition description.
             c.print(Rule(style=style))
             banner = Text()
             banner.append(f"  {from_label}", style="theme.text.muted")
@@ -144,6 +145,8 @@ def show_phase_transition(
                 detail = "  ".join(f"{k}={v}" for k, v in context.items())
                 banner.append(f"  ({detail})", style="theme.text.muted")
             c.print(banner)
+            if description:
+                c.print(Text(f"  {description}", style="theme.text.dim_italic"))
             c.print(Rule(style=style))
         else:
             # Wide: full banner with leading blank line and description

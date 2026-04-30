@@ -9,18 +9,23 @@ from ralph.agents.execution_state import AgentExecutionState
 from ralph.agents.idle_watchdog import (
     IdleWatchdog,
     TimeoutPolicy,
+    WaitingStatusEvent,
+    WaitingStatusKind,
     WatchdogFireReason,
     WatchdogVerdict,
 )
 from ralph.agents.timeout_clock import FakeClock
 
 
-def _make_watchdog(
+def _make_watchdog(  # noqa: PLR0913
     idle_timeout: float | None,
     drain_window: float = 0.5,
     max_waiting: float | None = None,
     start: float = 0.0,
     max_session: float | None = None,
+    listener: object = None,
+    suspect: float | None = None,
+    status_interval: float | None = None,
 ) -> tuple[IdleWatchdog, FakeClock]:
     if max_waiting is None:
         max_waiting = max(1800.0, idle_timeout) if idle_timeout is not None else 1800.0
@@ -29,9 +34,13 @@ def _make_watchdog(
         drain_window_seconds=drain_window,
         max_waiting_on_child_seconds=max_waiting,
         max_session_seconds=max_session,
+        # Disable suspicion by default so tests that use small max_waiting values
+        # (e.g. 20.0) don't conflict with the 600.0 default suspect threshold.
+        suspect_waiting_on_child_seconds=suspect,
+        waiting_status_interval_seconds=status_interval if status_interval is not None else 30.0,
     )
     clock = FakeClock(start=start)
-    return IdleWatchdog(config, clock), clock
+    return IdleWatchdog(config, clock, listener), clock
 
 
 def _active() -> AgentExecutionState:
@@ -612,3 +621,193 @@ def test_consecutive_active_in_drain_does_not_extend_window() -> None:
     result = watchdog.evaluate(classify_quiet=_active)
     assert result == WatchdogVerdict.FIRE
     assert watchdog.last_fire_reason == WatchdogFireReason.NO_OUTPUT_DEADLINE
+
+
+# ---------------------------------------------------------------------------
+# New tests for throttled status events (Phase 1 & 2 implementation)
+# ---------------------------------------------------------------------------
+
+
+def _make_watchdog_with_listener(  # noqa: PLR0913
+    idle_timeout: float | None,
+    drain_window: float = 0.5,
+    max_waiting: float = 1800.0,
+    start: float = 0.0,
+    status_interval: float = 30.0,
+    suspect: float | None = 600.0,
+    listener: list[WaitingStatusEvent] | None = None,
+) -> tuple[IdleWatchdog, FakeClock, list[WaitingStatusEvent]]:
+    captured: list[WaitingStatusEvent] = listener if listener is not None else []
+    config = TimeoutPolicy(
+        idle_timeout_seconds=idle_timeout,
+        drain_window_seconds=drain_window,
+        max_waiting_on_child_seconds=max_waiting,
+        waiting_status_interval_seconds=status_interval,
+        suspect_waiting_on_child_seconds=suspect,
+    )
+    clock = FakeClock(start=start)
+    watchdog = IdleWatchdog(config, clock, listener=captured.append)
+    return watchdog, clock, captured
+
+
+def test_waiting_emits_entered_event_once_per_run() -> None:
+    """Exactly one ENTERED event per WAITING_ON_CHILD run, regardless of tick count."""
+    watchdog, clock, events = _make_watchdog_with_listener(
+        idle_timeout=1.0, max_waiting=1000.0, status_interval=100.0, suspect=None
+    )
+    clock.advance(1.1)  # past idle deadline
+    for _ in range(5):
+        result = watchdog.evaluate(classify_quiet=_waiting)
+        assert result == WatchdogVerdict.WAITING_ON_CHILD
+        clock.advance(0.01)
+    entered = [e for e in events if e.kind == WaitingStatusKind.ENTERED]
+    assert len(entered) == 1
+
+
+_EXPECTED_PROGRESS_COUNT = 2
+
+
+def test_waiting_progress_throttled_to_interval() -> None:
+    """PROGRESS events fire at ~status_interval cadence, not every tick."""
+    watchdog, clock, events = _make_watchdog_with_listener(
+        idle_timeout=1.0, max_waiting=1000.0, status_interval=10.0, suspect=None
+    )
+    clock.advance(1.1)  # past idle deadline
+    # Drive 25 ticks with 1s gap each (total 25s fake time)
+    for _ in range(25):
+        watchdog.evaluate(classify_quiet=_waiting)
+        clock.advance(1.0)
+    progress = [e for e in events if e.kind == WaitingStatusKind.PROGRESS]
+    # Should have fired at ~10s and ~20s — exactly 2 PROGRESS events
+    assert len(progress) == _EXPECTED_PROGRESS_COUNT
+
+
+def test_waiting_suspected_frozen_fires_once_per_run() -> None:
+    """SUSPECTED_FROZEN fires exactly once per WAITING run when suspect threshold crossed."""
+    watchdog, clock, events = _make_watchdog_with_listener(
+        idle_timeout=1.0, max_waiting=100.0, status_interval=100.0, suspect=5.0
+    )
+    clock.advance(1.1)  # past idle deadline
+    # First evaluate: enters WAITING, sets _waiting_on_child_started_at = now
+    watchdog.evaluate(classify_quiet=_waiting)
+    # Now advance 6s within the WAITING run so candidate_total = 6s > suspect=5s
+    clock.advance(6.0)
+    result = watchdog.evaluate(classify_quiet=_waiting)
+    # Verdict is still WAITING_ON_CHILD (not FIRE)
+    assert result == WatchdogVerdict.WAITING_ON_CHILD
+    suspected = [e for e in events if e.kind == WaitingStatusKind.SUSPECTED_FROZEN]
+    assert len(suspected) == 1
+    # Advance more — suspected_frozen should not fire again
+    clock.advance(2.0)
+    watchdog.evaluate(classify_quiet=_waiting)
+    suspected_after = [e for e in events if e.kind == WaitingStatusKind.SUSPECTED_FROZEN]
+    assert len(suspected_after) == 1
+
+
+def test_waiting_exited_event_on_record_activity() -> None:
+    """EXITED event is emitted when transitioning out of WAITING via record_activity."""
+    watchdog, clock, events = _make_watchdog_with_listener(
+        idle_timeout=1.0, max_waiting=1000.0, status_interval=100.0, suspect=None
+    )
+    clock.advance(1.1)
+    watchdog.evaluate(classify_quiet=_waiting)  # ENTERED
+    clock.advance(0.5)
+    watchdog.record_activity()  # should emit EXITED
+    exited = [e for e in events if e.kind == WaitingStatusKind.EXITED]
+    assert len(exited) == 1
+    assert exited[0].current_run_seconds > 0.0
+
+
+_HARD_STOP_MAX_WAITING = 5.0
+
+
+def test_waiting_hard_stop_emits_event_with_diagnostic() -> None:
+    """HARD_STOP event is emitted with diagnostic dict before FIRE."""
+    watchdog, clock, events = _make_watchdog_with_listener(
+        idle_timeout=1.0, max_waiting=_HARD_STOP_MAX_WAITING, status_interval=100.0, suspect=None
+    )
+    clock.advance(1.1)  # enter WAITING
+    watchdog.evaluate(classify_quiet=_waiting)
+    clock.advance(_HARD_STOP_MAX_WAITING)  # cross ceiling
+    result = watchdog.evaluate(classify_quiet=_waiting)
+    assert result == WatchdogVerdict.FIRE
+    hard_stops = [e for e in events if e.kind == WaitingStatusKind.HARD_STOP]
+    assert len(hard_stops) == 1
+    hs = hard_stops[0]
+    assert hs.cumulative_seconds >= _HARD_STOP_MAX_WAITING
+    assert hs.idle_elapsed_seconds > 0.0
+    assert "cumulative" in hs.diagnostic
+    assert "run_elapsed" in hs.diagnostic
+
+
+def test_waiting_no_per_tick_log_spam() -> None:
+    """No per-tick WAITING_ON_CHILD log spam with throttled status interval."""
+    captured_logs: list[str] = []
+
+    def _sink(message: object) -> None:
+        captured_logs.append(str(message))
+
+    sink_id = logger.add(
+        _sink,
+        level="DEBUG",
+        filter=lambda r: r["extra"].get("component") == "idle_watchdog",
+    )
+    try:
+        config = TimeoutPolicy(
+            idle_timeout_seconds=1.0,
+            max_waiting_on_child_seconds=1000.0,
+            waiting_status_interval_seconds=100.0,
+            suspect_waiting_on_child_seconds=None,
+        )
+        clock = FakeClock(start=0.0)
+        watchdog = IdleWatchdog(config, clock)
+        clock.advance(1.1)
+        for _ in range(200):
+            watchdog.evaluate(classify_quiet=_waiting)
+            clock.advance(0.01)
+    finally:
+        logger.remove(sink_id)
+
+    # The old spam line contained "cumulative_candidate=" — must not appear
+    spam_count = sum(1 for msg in captured_logs if "cumulative_candidate=" in msg)
+    assert spam_count == 0
+
+
+def test_listener_exception_does_not_propagate() -> None:
+    """A listener that raises must not crash the watchdog evaluate call."""
+
+    def _bad_listener(_event: WaitingStatusEvent) -> None:
+        raise RuntimeError("listener exploded")
+
+    config = TimeoutPolicy(
+        idle_timeout_seconds=1.0,
+        max_waiting_on_child_seconds=1000.0,
+        waiting_status_interval_seconds=100.0,
+        suspect_waiting_on_child_seconds=None,
+    )
+    clock = FakeClock(start=0.0)
+    watchdog = IdleWatchdog(config, clock, listener=_bad_listener)
+    clock.advance(1.1)
+    # Must not raise
+    result = watchdog.evaluate(classify_quiet=_waiting)
+    assert result == WatchdogVerdict.WAITING_ON_CHILD
+
+
+def test_validation_rejects_suspect_above_ceiling() -> None:
+    """TimeoutPolicy rejects suspect_waiting_on_child_seconds >= max_waiting_on_child_seconds."""
+    with pytest.raises(ValueError, match="strictly less than"):
+        TimeoutPolicy(
+            idle_timeout_seconds=10,
+            max_waiting_on_child_seconds=100,
+            suspect_waiting_on_child_seconds=200,
+        )
+
+
+def test_validation_rejects_suspect_equal_to_ceiling() -> None:
+    """suspect_waiting_on_child_seconds equal to ceiling is also rejected."""
+    with pytest.raises(ValueError, match="strictly less than"):
+        TimeoutPolicy(
+            idle_timeout_seconds=10,
+            max_waiting_on_child_seconds=100,
+            suspect_waiting_on_child_seconds=100,
+        )

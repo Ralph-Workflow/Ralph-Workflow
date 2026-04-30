@@ -108,6 +108,9 @@ class Capability(StrEnum):
     WORKSPACE_READ = "workspace.read"
     WORKSPACE_WRITE_EPHEMERAL = "workspace.write_ephemeral"
     WORKSPACE_WRITE_TRACKED = "workspace.write_tracked"
+    WORKSPACE_METADATA_READ = "workspace.metadata_read"
+    WORKSPACE_EDIT = "workspace.edit"
+    WORKSPACE_DELETE = "workspace.delete"
     PROCESS_EXEC_BOUNDED = "process.exec_bounded"
     PROCESS_EXEC_UNBOUNDED = "process.exec_unbounded"
     ARTIFACT_SUBMIT = "artifact.submit"
@@ -136,6 +139,9 @@ class McpCapability(StrEnum):
     WORKSPACE_WRITE_EPHEMERAL = "WorkspaceWriteEphemeral"
     WORKSPACE_WRITE_TRACKED = "WorkspaceWriteTracked"
     WORKSPACE_WRITE_ANY = "WorkspaceWriteAny"
+    WORKSPACE_METADATA_READ = "WorkspaceMetadataRead"
+    WORKSPACE_EDIT = "WorkspaceEdit"
+    WORKSPACE_DELETE = "WorkspaceDelete"
     GIT_STATUS_READ = "GitStatusRead"
     GIT_WRITE = "GitWrite"
     ENV_READ = "EnvRead"
@@ -185,6 +191,9 @@ MCP_TO_RALPH_CAPABILITY_MAP: dict[McpCapability, Capability] = {
     McpCapability.WEB_SEARCH: Capability.WEB_SEARCH,
     McpCapability.WEB_VISIT: Capability.WEB_VISIT,
     McpCapability.MEDIA_READ: Capability.MEDIA_READ,
+    McpCapability.WORKSPACE_METADATA_READ: Capability.WORKSPACE_METADATA_READ,
+    McpCapability.WORKSPACE_EDIT: Capability.WORKSPACE_EDIT,
+    McpCapability.WORKSPACE_DELETE: Capability.WORKSPACE_DELETE,
 }
 
 _RALPH_CAPABILITY_ALIASES: dict[str, Capability] = {
@@ -202,6 +211,10 @@ _RALPH_CAPABILITY_ALIASES: dict[str, Capability] = {
     "web_visit": Capability.WEB_VISIT,
     "media.read": Capability.MEDIA_READ,
     "media_read": Capability.MEDIA_READ,
+    "workspace.metadata_read": Capability.WORKSPACE_METADATA_READ,
+    "workspace.metadata.read": Capability.WORKSPACE_METADATA_READ,
+    "workspace.edit": Capability.WORKSPACE_EDIT,
+    "workspace.delete": Capability.WORKSPACE_DELETE,
 }
 
 _MCP_CAPABILITY_ALIASES: dict[str, McpCapability] = {
@@ -232,6 +245,9 @@ _MCP_CAPABILITY_ALIASES: dict[str, McpCapability] = {
     "web_visit": McpCapability.WEB_VISIT,
     "media.read": McpCapability.MEDIA_READ,
     "media_read": McpCapability.MEDIA_READ,
+    "workspace.metadata_read": McpCapability.WORKSPACE_METADATA_READ,
+    "workspace.edit": McpCapability.WORKSPACE_EDIT,
+    "workspace.delete": McpCapability.WORKSPACE_DELETE,
 }
 
 _APPROVED_POLICY_VALUES = {"approved", "allow", "allowed"}
@@ -504,6 +520,9 @@ def check_mcp_capability_policy(
         McpCapability.WEB_SEARCH,
         McpCapability.WEB_VISIT,
         McpCapability.MEDIA_READ,
+        McpCapability.WORKSPACE_METADATA_READ,
+        McpCapability.WORKSPACE_EDIT,
+        McpCapability.WORKSPACE_DELETE,
     }:
         return evaluate_mapped_capability(normalized_capability, mapped_outcome)
     return AccessDecision.deny(

@@ -462,8 +462,8 @@ def test_show_phase_transition_compact_mode_no_leading_blank_line() -> None:
     assert len(rule_lines) == 1
 
 
-def test_show_phase_transition_medium_mode_has_two_rules_no_description() -> None:
-    """Medium mode major transition has two Rules but no description text."""
+def test_show_phase_transition_medium_mode_has_two_rules_with_description() -> None:
+    """Medium mode major transition keeps both Rules and the description text."""
     console = Console(record=True, width=80)
     ctx = make_display_context(console=console, force_mode="medium")
     show_phase_transition("planning", "development", display_context=ctx)
@@ -478,8 +478,8 @@ def test_show_phase_transition_medium_mode_has_two_rules_no_description() -> Non
     assert len(rule_lines) == expected_rule_count, (
         f"Expected {expected_rule_count} rule lines for medium mode, got: {rule_lines}"
     )
-    # Medium should NOT contain the description text
-    assert "Plan ready" not in output
+    # Medium should still preserve the description text for readability.
+    assert "Plan ready" in output
 
 
 def test_show_phase_transition_wide_mode_has_description_and_leading_blank() -> None:

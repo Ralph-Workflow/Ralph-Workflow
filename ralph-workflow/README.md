@@ -2,7 +2,7 @@
 
 > Vendor-neutral AI coding workflow orchestration — unattended, auditable, and configured in your repo.
 
-Ralph Workflow is a Python 3.12+ CLI package and framework for **policy-driven** AI coding workflows. You decide which agent runs which phase, keep the workflow configuration in repo-local TOML, and let Ralph Workflow plan, implement, review, fix, and commit work for you. The runtime is a generic policy interpreter: all workflow behavior — phase routing, retry rules, analysis loops, commit semantics, verification gates, recovery routing, and parallel execution constraints — is declared in TOML policy files and enforced by the runtime without hardcoded phase knowledge.
+Ralph Workflow is a Python 3.12+ CLI package and framework for **policy-defined orchestration** of AI coding workflows. You decide which agent runs which phase, keep the workflow configuration in repo-local TOML, and let Ralph Workflow plan, implement, review, fix, and commit work for you. The runtime is a generic policy interpreter: all workflow behavior — phase routing, retry rules, analysis loops, commit semantics, verification gates, recovery routing, and parallel execution constraints — is declared in TOML policy files and enforced by the runtime without hardcoded phase knowledge.
 
 The package exposes two entry points:
 
@@ -51,6 +51,49 @@ The runtime validates that policy is semantically complete at startup and reject
 **To understand why Ralph Workflow routed a certain way**, read the active `.agent/pipeline.toml` — all routing decisions trace back to declared policy, not code branches.
 
 **To add or change workflow behavior**, update `pipeline.toml`. Incomplete policy is rejected at startup with a `PolicyValidationError` listing the missing fields.
+
+## Inspecting the active policy
+
+Run `ralph --explain-policy` to print a visual representation of the active pipeline policy:
+
+```bash
+ralph --explain-policy
+```
+
+To inspect a project-local policy directory explicitly:
+
+```bash
+ralph --explain-policy --explain-policy-dir /path/to/.agent
+```
+
+Example output (abbreviated):
+
+```
+=ENTRY=>
++------------------+
+|    planning      |
+| role=execution   |
++------------------+
+    |
+    v
+[fanout: max_workers=8, max_units=50]
++------------------+
+|   development    |
+| role=execution   |
++------------------+
+    | loop back to development
+    +---^  (returns to 'development' phase)
+    |
+    v
+...
++------------------+
+|    complete      |
+| role=terminal    |
++------------------+
+==SUCCESS==>
+```
+
+The diagram shows phases and their roles, the happy-path spine, loopback arrows with their return targets clearly marked, decision branches, fanout annotations for parallel phases, and terminal outcome markers. See [docs/migration/policy-v2.md](../docs/migration/policy-v2.md) for the policy model reference and migration guide.
 
 ## Install
 

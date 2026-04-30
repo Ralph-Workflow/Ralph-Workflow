@@ -239,8 +239,9 @@ class TestPartialFailureReporting:
 
         initial_state = PipelineState(phase=PHASE_DEVELOPMENT, work_units=units)
         state = initial_state
+        bundle = _make_policy_bundle()
         for event in events:
-            state, _ = reducer_reduce(state, event)
+            state, _ = reducer_reduce(state, event, bundle.pipeline)
 
         assert state.phase == PHASE_FAILED, (
             f"Expected PHASE_FAILED after partial failure + ALL_WORKERS_COMPLETE, "
@@ -280,8 +281,9 @@ class TestPartialFailureReporting:
 
         initial_state = PipelineState(phase=PHASE_DEVELOPMENT, work_units=units)
         state = initial_state
+        bundle = _make_policy_bundle()
         for event in events:
-            state, _ = reducer_reduce(state, event)
+            state, _ = reducer_reduce(state, event, bundle.pipeline)
 
         assert state.phase == PHASE_FAILED
         assert state.last_error is not None

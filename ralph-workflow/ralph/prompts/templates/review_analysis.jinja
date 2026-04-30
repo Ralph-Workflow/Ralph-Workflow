@@ -198,7 +198,7 @@ Return a JSON object.
 - The review has gaps in coverage or quality:
   `{"status":"request_changes","summary":"...","what_came_up_short":[...],"how_to_fix":[...]}`
 
-- The review is fundamentally incomplete or missed critical issues:
+- The review found major incompleteness or an otherwise unusable result; stronger remediation may be needed, including possible redo or starting over from the work phase:
   `{"status":"failed","summary":"...","what_came_up_short":[...],"how_to_fix":[...]}`
 
 ---

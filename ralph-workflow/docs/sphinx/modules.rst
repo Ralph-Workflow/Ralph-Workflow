@@ -477,6 +477,13 @@ ralph.phases.review
    :members:
    :show-inheritance:
 
+ralph.phases.verification
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.phases.verification
+   :members:
+   :show-inheritance:
+
 ralph.phases.timing
 ~~~~~~~~~~~~~~~~~~~
 
@@ -1195,6 +1202,13 @@ ralph.workspace.scope
 .. automodule:: ralph.workspace.scope
    :no-members:
 
+ralph.workspace.skip
+~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.workspace.skip
+   :members:
+   :show-inheritance:
+
 ----
 
 Recovery
@@ -1676,6 +1690,20 @@ ralph.interrupt.asyncio_bridge
 
 .. automodule:: ralph.interrupt.asyncio_bridge
    :no-members:
+
+ralph.interrupt.controller
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.interrupt.controller
+   :members:
+   :show-inheritance:
+
+ralph.interrupt.state
+~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.interrupt.state
+   :members:
+   :show-inheritance:
 
 ralph.language_detector
 ~~~~~~~~~~~~~~~~~~~~~~~

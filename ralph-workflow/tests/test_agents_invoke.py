@@ -3569,9 +3569,11 @@ def test_invoke_agent_passes_config_drain_window_to_watchdog(
     captured_config: list[TimeoutPolicy] = []
     original_init = IdleWatchdog.__init__
 
-    def capturing_init(self: IdleWatchdog, cfg: TimeoutPolicy, clock: Clock) -> None:
+    def capturing_init(
+        self: IdleWatchdog, cfg: TimeoutPolicy, clock: Clock, listener: object = None
+    ) -> None:
         captured_config.append(cfg)
-        original_init(self, cfg, clock)
+        original_init(self, cfg, clock, listener)
 
     monkeypatch.setattr(IdleWatchdog, "__init__", capturing_init)
 

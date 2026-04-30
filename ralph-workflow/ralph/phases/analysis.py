@@ -3,11 +3,13 @@
 The analysis phase reads a typed artifact submitted by the agent via MCP
 and extracts the decision field to route the pipeline.
 
-Analysis decisions are explicit typed enums (AnalysisDecision) that drive
-the reducer routing for analysis-role phases.
-
 Decision routing is driven entirely by policy: the phase's decisions table
-in pipeline.toml maps status strings to routing targets.
+in pipeline.toml maps raw status strings (from the agent artifact) to
+PhaseDecisionRoute targets. The reducer routes via decisions[status].target
+directly, so the raw status string is passed through as-is.
+
+AnalysisDecision (from ralph.config.enums) is kept as a display/typing aid
+only — it is NOT used for reducer routing.
 """
 
 from __future__ import annotations
@@ -16,7 +18,6 @@ from typing import TYPE_CHECKING
 
 from loguru import logger
 
-from ralph.config.enums import PHASE_FAILED, AnalysisDecision
 from ralph.phases.artifacts import (
     decision_vocabulary_for_drain,
     load_phase_artifact,
@@ -24,30 +25,32 @@ from ralph.phases.artifacts import (
 )
 from ralph.phases.required_artifacts import REQUIRED_ARTIFACTS
 from ralph.pipeline.effects import Effect, InvokeAgentEffect, PreparePromptEffect
-from ralph.pipeline.events import Event, PhaseFailureEvent, PipelineEvent
+from ralph.pipeline.events import (
+    AnalysisDecisionEvent,
+    Event,
+    PhaseFailureEvent,
+    PipelineEvent,
+)
 
 if TYPE_CHECKING:
     from ralph.phases import PhaseContext
-    from ralph.policy.models import PhaseDecisionRoute
 
 
-def parse_analysis_decision(
+def parse_analysis_decision_status(
     ctx: PhaseContext,
     drain_name: str,
     *,
     phase_name: str | None = None,
-) -> AnalysisDecision:
-    """Parse the analysis decision from the MCP artifact.
+) -> str | None:
+    """Parse the raw decision status string from the MCP artifact.
 
-    Reads the artifact file from the workspace and extracts the status field,
-    which is mapped to an AnalysisDecision enum value via the phase's decisions
-    table in policy.
+    Reads the artifact file from the workspace and extracts the status field.
+    The raw status string is returned directly — the reducer looks up
+    the target in ``phase_def.decisions[status].target``.
 
     The ``drain_name`` is used to locate the artifact and vocabulary; the
     ``phase_name`` (defaults to ``drain_name`` when omitted) is used to look up
-    the phase's decisions table in pipeline policy. Pass an explicit ``phase_name``
-    when the policy phase name differs from the drain name (e.g. policy-renamed
-    analysis phases).
+    the phase's decisions table in pipeline policy.
 
     Args:
         ctx: Phase context with workspace and pipeline_policy.
@@ -55,7 +58,8 @@ def parse_analysis_decision(
         phase_name: Name of the phase in pipeline policy (defaults to drain_name).
 
     Returns:
-        AnalysisDecision enum value. Defaults to FAILURE if parsing fails.
+        Raw status string, or None if parsing fails (caller should emit
+        PhaseFailureEvent).
     """
     policy_phase_name = phase_name if phase_name is not None else drain_name
     artifact_type = f"{drain_name}_decision"
@@ -64,10 +68,10 @@ def parse_analysis_decision(
 
     if not ctx.workspace.exists(artifact_path):
         logger.warning(
-            "No analysis artifact found at {}. Defaulting to FAILURE.",
+            "No analysis artifact found at {}. Cannot determine decision status.",
             artifact_path,
         )
-        return AnalysisDecision.FAILURE
+        return None
 
     try:
         artifact = load_phase_artifact(ctx.workspace, artifact_path)
@@ -82,56 +86,28 @@ def parse_analysis_decision(
                 status,
                 vocabulary,
             )
-            return AnalysisDecision.FAILURE
+            return None
 
+        # Validate that the status exists in the policy decisions table.
         phase_def = ctx.pipeline_policy.phases.get(policy_phase_name)
-        if phase_def is not None and phase_def.decisions:
-            return _resolve_decision_from_policy(status, phase_def.decisions, artifact_path)
+        if phase_def is not None and phase_def.decisions and status not in phase_def.decisions:
+            logger.warning(
+                "Phase '{}' has no policy route for status '{}'. "
+                "Add it to phases.{}.decisions or update the artifact decision_vocabulary.",
+                policy_phase_name,
+                status,
+                policy_phase_name,
+            )
+            return None
 
-        logger.warning(
-            "Phase '{}' has no decisions table in policy; status '{}' cannot be routed."
-            " Defaulting to FAILURE.",
-            policy_phase_name,
-            status,
-        )
-        return AnalysisDecision.FAILURE
+        return status
     except Exception as exc:
         logger.warning(
-            "Failed to parse analysis artifact at {}: {}. Defaulting to FAILURE.",
+            "Failed to parse analysis artifact at {}: {}.",
             artifact_path,
             exc,
         )
-        return AnalysisDecision.FAILURE
-
-
-def _resolve_decision_from_policy(
-    status: str,
-    decisions: dict[str, PhaseDecisionRoute],
-    artifact_path: str,
-) -> AnalysisDecision:
-    """Resolve AnalysisDecision from policy decisions table using structural route properties.
-
-    The decision is derived from the matched PhaseDecisionRoute:
-    - reset_loop=True  → PROCEED (forward exit, loop counter resets on this transition)
-    - target==PHASE_FAILED → FAILURE (terminal failure route)
-    - otherwise → REVISE (loopback to a correction phase)
-
-    Status values not found in the decisions table map to FAILURE.
-    """
-    route = decisions.get(status)
-    if route is None:
-        logger.warning(
-            "Status '{}' not in policy decisions table at {}. Defaulting to FAILURE.",
-            status,
-            artifact_path,
-        )
-        return AnalysisDecision.FAILURE
-
-    if route.reset_loop:
-        return AnalysisDecision.PROCEED
-    if route.target == PHASE_FAILED:
-        return AnalysisDecision.FAILURE
-    return AnalysisDecision.REVISE
+        return None
 
 
 def handle_generic_analysis_phase(effect: Effect, ctx: PhaseContext) -> list[Event]:
@@ -143,8 +119,8 @@ def handle_generic_analysis_phase(effect: Effect, ctx: PhaseContext) -> list[Eve
     - Uses ``effect.phase`` as the pipeline policy phase name.
     - Uses ``effect.drain`` (if set) or ``effect.phase`` as the drain name for
       artifact path and vocabulary lookup.
-    - Emits ``ANALYSIS_SUCCESS`` on a forward-exit decision (reset_loop=True) and
-      ``ANALYSIS_LOOPBACK`` on a revise/failure decision.
+    - Emits ``AnalysisDecisionEvent`` with the raw decision string, letting
+      the reducer route directly through ``phase_def.decisions[status].target``.
 
     Args:
         effect: The effect that triggered this phase.
@@ -185,25 +161,19 @@ def handle_generic_analysis_phase(effect: Effect, ctx: PhaseContext) -> list[Eve
                 )
             ]
 
-        decision = parse_analysis_decision(ctx, drain_name, phase_name=phase_name)
-        logger.info("Analysis phase '{}' decision: {}", phase_name, decision)
+        status = parse_analysis_decision_status(ctx, drain_name, phase_name=phase_name)
+        if status is None:
+            # parse_analysis_decision_status already logged the warning
+            return [
+                PhaseFailureEvent(
+                    phase=phase_name,
+                    reason=f"Unroutable analysis decision for phase '{phase_name}'",
+                    recoverable=True,
+                    retry_in_session=True,
+                )
+            ]
 
-        if decision in (AnalysisDecision.PROCEED, AnalysisDecision.COMPLETE):
-            return [PipelineEvent.ANALYSIS_SUCCESS]
-        if decision in (
-            AnalysisDecision.REVISE,
-            AnalysisDecision.FAILURE,
-            AnalysisDecision.ESCALATE,
-        ):
-            logger.warning(
-                "Analysis phase '{}' decision {} triggers loopback", phase_name, decision
-            )
-            return [PipelineEvent.ANALYSIS_LOOPBACK]
-        logger.warning(
-            "Unknown analysis decision: {} for phase '{}'. Defaulting to success.",
-            decision,
-            phase_name,
-        )
-        return [PipelineEvent.ANALYSIS_SUCCESS]
+        logger.info("Analysis phase '{}' decision: {}", phase_name, status)
+        return [AnalysisDecisionEvent(phase=phase_name, decision=status)]
 
     return []

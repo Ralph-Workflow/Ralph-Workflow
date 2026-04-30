@@ -13,10 +13,10 @@
 # does not support XML/XSD structured output. All agent output flows through
 # typed JSON artifacts submitted via the MCP bridge.
 #
-# decision_vocabulary defines valid values for analysis decision routing:
-# - "continue" / "success" / "completed" / "approve" / "approved" → on_success transition
-# - "loopback" / "retry" / "request_changes" → on_loopback transition
-# - "fail" / "failed" / "reject" → on_failure transition
+# decision_vocabulary defines the allowed analysis decision strings for each artifact.
+# Their routing is policy-owned in pipeline.toml via phases.<name>.decisions, not implied
+# by the vocabulary text itself. For the default workflow, both "request_changes" and
+# "failed" are remediation outcomes, while "completed" advances forward.
 
 # ---------------------------------------------------------------------------
 # Planning artifact

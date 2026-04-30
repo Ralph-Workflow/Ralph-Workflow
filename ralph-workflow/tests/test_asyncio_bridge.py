@@ -11,6 +11,7 @@ import signal
 from unittest.mock import MagicMock, patch
 
 from ralph.interrupt.asyncio_bridge import SignalBridge, install_signal_handlers
+from ralph.interrupt.controller import InterruptController
 
 _PID_A = 42
 _PID_B = 1234
@@ -30,9 +31,10 @@ def _install_and_get_first_handler(
     loop: MagicMock,
     task: MagicMock,
     bridge: SignalBridge,
+    controller: InterruptController | None = None,
 ) -> object:
     """Install handlers and return the first SIGINT callback."""
-    install_signal_handlers(loop, task, bridge)
+    install_signal_handlers(loop, task, bridge, controller)
     first_call_args = loop.add_signal_handler.call_args_list[0][0]
     assert first_call_args[0] == signal.SIGINT
     return first_call_args[1]
@@ -96,7 +98,7 @@ class TestInstallSignalHandlers:
 
         task.cancel.assert_called_once()
 
-    def test_first_sigint_kills_registered_pids(self) -> None:
+    def test_second_sigint_kills_registered_pids(self) -> None:
         loop = MagicMock(spec=asyncio.AbstractEventLoop)
         task = MagicMock(spec=asyncio.Task)
         bridge = SignalBridge()
@@ -104,9 +106,11 @@ class TestInstallSignalHandlers:
         bridge.register_pid(_PID_C)
 
         first_handler = _install_and_get_first_handler(loop, task, bridge)
+        first_handler()  # type: ignore[operator]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+        second_handler = loop.add_signal_handler.call_args_list[1][0][1]
 
-        with patch("os.killpg") as mock_killpg:
-            first_handler()  # type: ignore[operator]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+        with patch("os.killpg") as mock_killpg, patch("os._exit"):
+            second_handler()  # type: ignore[operator]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
 
         killed_pids = {c[0][0] for c in mock_killpg.call_args_list}
         assert _PID_B in killed_pids
@@ -178,6 +182,51 @@ class TestInstallSignalHandlers:
             second_handler()
 
         mock_exit.assert_called_once_with(130)
+
+    def test_injected_controller_handles_graceful_then_forced_sigint(self) -> None:
+        loop = MagicMock(spec=asyncio.AbstractEventLoop)
+        task = MagicMock(spec=asyncio.Task)
+        bridge = SignalBridge()
+        events: list[tuple[str, object]] = []
+
+        def _shutdown_all(grace_period_s: float) -> None:
+            events.append(("shutdown", grace_period_s))
+
+        def _record_interrupt() -> None:
+            events.append(("record", None))
+
+        def _stop_connectivity() -> None:
+            events.append(("stop", None))
+
+        def _kill_process_group(pid: int, sig: int) -> None:
+            events.append(("kill", (pid, sig)))
+
+        def _hard_exit(code: int) -> None:
+            events.append(("exit", code))
+
+        controller = InterruptController(
+            shutdown_all=_shutdown_all,
+            record_interrupt=_record_interrupt,
+            stop_connectivity=_stop_connectivity,
+            kill_process_group=_kill_process_group,
+            hard_exit=_hard_exit,
+        )
+        bridge.register_pid(_PID_B)
+
+        first_handler = _install_and_get_first_handler(loop, task, bridge, controller)
+        first_handler()  # type: ignore[operator]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+
+        task.cancel.assert_called_once()
+        assert ("record", None) in events
+        assert ("stop", None) in events
+        assert any(event[0] == "shutdown" and event[1] != 0 for event in events)
+        assert not any(event[0] == "kill" for event in events)
+
+        second_handler = loop.add_signal_handler.call_args_list[1][0][1]
+        second_handler()  # type: ignore[operator]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+
+        assert any(event[0] == "kill" and event[1][0] == _PID_B for event in events)
+        assert ("exit", 130) in events
 
     def test_no_pids_registered_no_killpg_called(self) -> None:
         loop = MagicMock(spec=asyncio.AbstractEventLoop)

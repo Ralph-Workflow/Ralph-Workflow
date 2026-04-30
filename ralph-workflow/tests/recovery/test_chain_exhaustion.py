@@ -2,11 +2,20 @@
 
 from __future__ import annotations
 
+import tempfile
+from pathlib import Path
+
 from ralph.config.enums import PHASE_DEVELOPMENT, PHASE_FAILED
 from ralph.pipeline.state import AgentChainState, PipelineState
+from ralph.policy.loader import load_policy
 from ralph.recovery.budget import AgentBudgetRegistry
 from ralph.recovery.controller import RecoveryController
 from ralph.recovery.events import FailureEventBus, FalloverEvent
+
+
+def _minimal_policy_bundle():
+    with tempfile.TemporaryDirectory() as d:
+        return load_policy(Path(d) / ".agent")
 
 _MIN_ERROR_LEN = 10
 
@@ -39,7 +48,10 @@ def test_chain_exhaustion_with_two_agents() -> None:
     bus.subscribe(lambda evt: fallovers.append(evt) if isinstance(evt, FalloverEvent) else None)  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
 
     registry = _registry_with_one_retry("claude", "opencode")
-    controller = RecoveryController(cycle_cap=10, budget_registry=registry, event_bus=bus)
+    controller = RecoveryController(
+        cycle_cap=10, budget_registry=registry, event_bus=bus,
+        policy_bundle=_minimal_policy_bundle(),
+    )
     state = _make_state(["claude", "opencode"])
 
     # First failure on claude → budget exhausted (1/1), should fallover to opencode
@@ -76,7 +88,9 @@ def test_chain_exhaustion_with_two_agents() -> None:
 def test_chain_exhaustion_last_error_is_non_sentinel() -> None:
     """Chain exhaustion last_error must be descriptive and not a forbidden sentinel."""
     registry = _registry_with_one_retry("claude")
-    controller = RecoveryController(cycle_cap=10, budget_registry=registry)
+    controller = RecoveryController(
+        cycle_cap=10, budget_registry=registry, policy_bundle=_minimal_policy_bundle()
+    )
     state = _make_state(["claude"])
 
     state, _, _ = controller.handle(
@@ -95,7 +109,9 @@ def test_chain_exhaustion_last_error_is_non_sentinel() -> None:
 def test_chain_exhaustion_increments_recovery_cycle_count() -> None:
     """Each full-chain exhaustion must increment recovery_cycle_count by 1."""
     registry = _registry_with_one_retry("claude")
-    controller = RecoveryController(cycle_cap=10, budget_registry=registry)
+    controller = RecoveryController(
+        cycle_cap=10, budget_registry=registry, policy_bundle=_minimal_policy_bundle()
+    )
     state = _make_state(["claude"])
 
     assert state.recovery_cycle_count == 0

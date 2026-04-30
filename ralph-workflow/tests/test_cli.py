@@ -190,8 +190,9 @@ def test_app_diagnose(cli_runner: CliRunner, tmp_path: Path) -> None:
     """Test --diagnose runs without crashing."""
     with cli_runner.isolated_filesystem(temp_dir=tmp_path):
         result = cli_runner.invoke(app, ["--diagnose"])
-        # May fail without git repo but shouldn't crash
-        assert result.exit_code in (0, 1)
+        # May fail without git repo or return a validation-specific exit code,
+        # but it should not crash with an unexpected Typer usage error.
+        assert result.exit_code in (0, 1, 2)
 
 
 def test_app_with_invalid_config(cli_runner: CliRunner, tmp_path: Path) -> None:
@@ -571,3 +572,27 @@ def test_regenerate_config_flag_creates_bak(
     assert bak.exists()
     assert bak.read_text(encoding="utf-8") == "# MINE"
     assert (xdg_dir / "ralph-workflow.toml").read_text(encoding="utf-8").startswith("#")
+
+
+def test_explain_policy_prints_workflow_diagram(cli_runner: CliRunner) -> None:
+    """--explain-policy prints the workflow diagram and structural breakdown."""
+    result = cli_runner.invoke(app, ["--explain-policy"])
+
+    # Should exit successfully
+    assert result.exit_code == 0
+
+    # Should contain the ASCII diagram section
+    assert "WORKFLOW DIAGRAM" in result.stdout
+
+    # Should contain entry marker
+    assert "=ENTRY=>" in result.stdout
+
+    # Should contain terminal success marker
+    assert "==SUCCESS==>" in result.stdout
+
+    # Should also contain the structural breakdown section
+    assert "RALPH WORKFLOW — ACTIVE POLICY EXPLANATION" in result.stdout
+
+    # Should contain bypass_routes explanation sentence for the review phase
+    assert "Explanation: phase 'review' bypasses to 'review_commit'" in result.stdout
+

@@ -15,10 +15,15 @@ from typing import TYPE_CHECKING, Protocol, cast
 
 from ralph.mcp.protocol.capability_mapping import McpCapability
 from ralph.mcp.tools.names import (
+    APPEND_FILE_TOOL,
     COORDINATE_TOOL,
+    COPY_FILE_TOOL,
+    CREATE_DIRECTORY_TOOL,
     DECLARE_COMPLETE_TOOL,
+    DELETE_PATH_TOOL,
     DIRECTORY_TREE_TOOL,
     DISCARD_PLAN_DRAFT_TOOL,
+    EDIT_FILE_TOOL,
     EXEC_TOOL,
     FINALIZE_PLAN_TOOL,
     GET_PLAN_DRAFT_TOOL,
@@ -26,12 +31,18 @@ from ralph.mcp.tools.names import (
     GIT_LOG_TOOL,
     GIT_SHOW_TOOL,
     GIT_STATUS_TOOL,
+    GREP_FILES_TOOL,
+    LIST_ALLOWED_ROOTS_TOOL,
     LIST_DIRECTORY_RECURSIVE_TOOL,
     LIST_DIRECTORY_TOOL,
+    MOVE_FILE_TOOL,
     READ_ENV_TOOL,
     READ_FILE_TOOL,
     READ_IMAGE_TOOL,
+    READ_MULTIPLE_FILES_TOOL,
     REPORT_PROGRESS_TOOL,
+    SEARCH_FILES_TOOL,
+    STAT_PATH_TOOL,
     SUBMIT_ARTIFACT_TOOL,
     SUBMIT_PLAN_SECTION_TOOL,
     VISIT_URL_TOOL,
@@ -48,7 +59,6 @@ if TYPE_CHECKING:
 JsonObject = dict[str, object]
 ToolHandler = Callable[[object, object, JsonObject], object]
 
-# Example JSON snippets used in tool descriptions
 _EXAMPLE_PLAN_CONTENT = '{"summary": "placeholder"}'
 _EXAMPLE_COMMIT_CONTENT = '{"type": "commit", "subject": "placeholder"}'
 _EXAMPLE_STEPS_CONTENT = '{"steps": [{"step": "placeholder"}]}'
@@ -325,7 +335,11 @@ def _tool_specs(mcp_config: McpConfig) -> tuple[ToolSpec, ...]:
                 description=(
                     "Read a UTF-8 text file from the workspace. "
                     "Required param: path (string, relative or absolute path inside workspace). "
-                    "Returns the file contents as text string. "
+                    "Optional params for partial reads: line_start (1-based), line_end (1-based), "
+                    "offset (0-based byte offset), limit (byte limit), head (first N lines), "
+                    "tail (last N lines). "
+                    "When partial params are used, returns JSON with path, content, total_lines, "
+                    "returned_lines, truncated. Otherwise returns plain text. "
                     'Example: {"path": "ralph-workflow/README.md"} returns the file text.'
                 ),
                 input_schema={
@@ -338,6 +352,30 @@ def _tool_specs(mcp_config: McpConfig) -> tuple[ToolSpec, ...]:
                                 "(example values: 'README.md', '/tmp/file.txt', "
                                 "'ralph-workflow/ralph/__init__.py')."
                             ),
+                        },
+                        "line_start": {
+                            "type": "integer",
+                            "description": "1-based line number to start from (inclusive).",
+                        },
+                        "line_end": {
+                            "type": "integer",
+                            "description": "1-based line number to end at (inclusive).",
+                        },
+                        "offset": {
+                            "type": "integer",
+                            "description": "0-based byte offset to start reading from.",
+                        },
+                        "limit": {
+                            "type": "integer",
+                            "description": "Maximum number of bytes to read from offset.",
+                        },
+                        "head": {
+                            "type": "integer",
+                            "description": "Return only the first N lines.",
+                        },
+                        "tail": {
+                            "type": "integer",
+                            "description": "Return only the last N lines.",
                         },
                     },
                     "required": ["path"],
@@ -387,6 +425,69 @@ def _tool_specs(mcp_config: McpConfig) -> tuple[ToolSpec, ...]:
         ),
         ToolSpec(
             metadata=_metadata(
+                name=READ_MULTIPLE_FILES_TOOL,
+                description=(
+                    "Read multiple text files in one call. "
+                    "Required param: paths (list of strings). "
+                    "Returns per-file success/failure rather than failing the entire batch. "
+                    'Example: {"paths": ["file1.txt", "file2.txt"]} returns JSON with files array.'
+                ),
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "paths": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "List of file paths to read.",
+                        },
+                    },
+                    "required": ["paths"],
+                },
+                required_capability="WorkspaceRead",
+            ),
+            module_name="ralph.mcp.tools.workspace",
+            handler_name="handle_read_multiple_files",
+        ),
+        ToolSpec(
+            metadata=_metadata(
+                name=STAT_PATH_TOOL,
+                description=(
+                    "Get file info/stat data. Required param: path (string). "
+                    "Returns file type ('file'|'dir'|'missing'), size_bytes, created_unix, "
+                    "modified_unix, and mode. "
+                    'Example: {"path": "README.md"} returns file metadata as JSON.'
+                ),
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "path": {
+                            "type": "string",
+                            "description": "File path to get metadata for.",
+                        },
+                    },
+                    "required": ["path"],
+                },
+                required_capability="WorkspaceMetadataRead",
+            ),
+            module_name="ralph.mcp.tools.workspace",
+            handler_name="handle_stat",
+        ),
+        ToolSpec(
+            metadata=_metadata(
+                name=LIST_ALLOWED_ROOTS_TOOL,
+                description=(
+                    "Expose the list of allowed directories/roots for the workspace. "
+                    "No parameters required. Returns JSON list of allowed root paths. "
+                    "Example: {} returns the configured allowed roots."
+                ),
+                input_schema={"type": "object", "properties": {}},
+                required_capability="WorkspaceRead",
+            ),
+            module_name="ralph.mcp.tools.workspace",
+            handler_name="handle_list_allowed_roots",
+        ),
+        ToolSpec(
+            metadata=_metadata(
                 name=LIST_DIRECTORY_TOOL,
                 description=(
                     "List entries in a directory. Required param: path (string). "
@@ -425,13 +526,14 @@ def _tool_specs(mcp_config: McpConfig) -> tuple[ToolSpec, ...]:
         ),
         ToolSpec(
             metadata=_metadata(
-                name="search_files",
+                name=SEARCH_FILES_TOOL,
                 description=(
-                    "Search for files matching a glob pattern within a directory. "
+                    "Search for files matching a true glob pattern within a directory. "
                     "Required params: pattern (string, glob style) and path (string). "
-                    "Returns an array of matching file paths. "
-                    'Example: {"pattern": "*.py", "path": "."} '
-                    "finds all Python files in the current directory."
+                    "Optional params: exclude (list of glob patterns), limit (default 1000). "
+                    "Returns JSON with pattern, base, matches array, and truncated flag. "
+                    "Supports ** for any-depth, * for single segment, ? for single char. "
+                    'Example: {"pattern": "**/*.py", "path": "."} matches Python files recursively.'
                 ),
                 input_schema={
                     "type": "object",
@@ -441,7 +543,7 @@ def _tool_specs(mcp_config: McpConfig) -> tuple[ToolSpec, ...]:
                             "description": (
                                 "Glob pattern as a string to match file names "
                                 "(example values: '*.py', '**/*.md', 'test_*.py', "
-                                "'config/*.toml')."
+                                "'config/*.toml', '**/test_*.py')."
                             ),
                         },
                         "path": {
@@ -452,6 +554,16 @@ def _tool_specs(mcp_config: McpConfig) -> tuple[ToolSpec, ...]:
                                 "(example values: '.', 'ralph', 'tests')."
                             ),
                         },
+                        "exclude": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "List of glob patterns to exclude from results.",
+                        },
+                        "limit": {
+                            "type": "integer",
+                            "description": "Maximum number of results to return (default 1000).",
+                            "default": 1000,
+                        },
                     },
                     "required": ["pattern", "path"],
                 },
@@ -459,6 +571,342 @@ def _tool_specs(mcp_config: McpConfig) -> tuple[ToolSpec, ...]:
             ),
             module_name="ralph.mcp.tools.workspace",
             handler_name="handle_search_files",
+        ),
+        ToolSpec(
+            metadata=_metadata(
+                name=GREP_FILES_TOOL,
+                description=(
+                    "Native content search (grep/regex). Required: pattern (string), "
+                    "path (string, base directory). Optional: regex (bool, default True), "
+                    "case_sensitive (bool), whole_word (bool), include/exclude (glob patterns), "
+                    "context_before/after (int), limit (int, default 1000), "
+                    "max_file_bytes (int). "
+                    "Returns JSON: matches (path, line, text, context_before/after), "
+                    "truncated, skipped_files. "
+                    'Example: {"pattern": "def main", "path": ".", "case_sensitive": false}.'
+                ),
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "pattern": {
+                            "type": "string",
+                            "description": (
+                                "Search pattern (regex if regex=True, else literal)."
+                            ),
+                        },
+                        "path": {
+                            "type": "string",
+                            "description": "Base directory to search under.",
+                        },
+                        "regex": {
+                            "type": "boolean",
+                            "description": "Treat pattern as regex (default True).",
+                            "default": True,
+                        },
+                        "case_sensitive": {
+                            "type": "boolean",
+                            "description": "Case sensitive search (default True).",
+                            "default": True,
+                        },
+                        "whole_word": {
+                            "type": "boolean",
+                            "description": "Match whole words only (default False).",
+                            "default": False,
+                        },
+                        "include": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "Glob patterns to include files from.",
+                        },
+                        "exclude": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "Glob patterns to exclude files from.",
+                        },
+                        "context_before": {
+                            "type": "integer",
+                            "description": "Number of context lines before each match (default 0).",
+                            "default": 0,
+                        },
+                        "context_after": {
+                            "type": "integer",
+                            "description": "Number of context lines after each match (default 0).",
+                            "default": 0,
+                        },
+                        "limit": {
+                            "type": "integer",
+                            "description": "Maximum matches to return (default 1000).",
+                            "default": 1000,
+                        },
+                        "max_file_bytes": {
+                            "type": "integer",
+                            "description": "Skip files larger than this (default 5_000_000).",
+                            "default": 5000000,
+                        },
+                    },
+                    "required": ["pattern", "path"],
+                },
+                required_capability="WorkspaceRead",
+            ),
+            module_name="ralph.mcp.tools.workspace",
+            handler_name="handle_grep_files",
+        ),
+        ToolSpec(
+            metadata=_metadata(
+                name=LIST_DIRECTORY_RECURSIVE_TOOL,
+                description=(
+                    "List all files and directories recursively starting from path. "
+                    "Required param: path (string). Returns a flat array of all entries "
+                    "with their full paths. "
+                    'Example: {"path": "ralph"} returns all files and folders under ralph/.'
+                ),
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "path": {
+                            "type": "string",
+                            "description": (
+                                "Root directory path as a string for recursive listing, "
+                                "relative or absolute inside the workspace "
+                                "(example values: 'ralph', '.', 'src')."
+                            ),
+                        },
+                    },
+                    "required": ["path"],
+                },
+                required_capability="WorkspaceRead",
+            ),
+            module_name="ralph.mcp.tools.workspace",
+            handler_name="handle_list_directory_recursive",
+        ),
+        ToolSpec(
+            metadata=_metadata(
+                name=DIRECTORY_TREE_TOOL,
+                description=(
+                    "Return a structured JSON directory tree. Required param: path (string). "
+                    "Optional params: max_depth (integer, unlimited if None), "
+                    "exclude_patterns (list of glob patterns to exclude). "
+                    "Returns a nested dict with name, type ('dir'|'file'), and children key "
+                    "for directories only. "
+                    'Example: {"path": ".", "max_depth": 2} returns a 2-level JSON tree.'
+                ),
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "path": {
+                            "type": "string",
+                            "description": (
+                                "Root directory path as a string for tree view, relative or "
+                                "absolute inside the workspace "
+                                "(example values: '.', 'ralph', 'src')."
+                            ),
+                        },
+                        "max_depth": {
+                            "type": "integer",
+                            "description": "Maximum depth to recurse to (None = unlimited).",
+                        },
+                        "exclude_patterns": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "Glob patterns to exclude from the tree.",
+                        },
+                    },
+                    "required": ["path"],
+                },
+                required_capability="WorkspaceRead",
+            ),
+            module_name="ralph.mcp.tools.workspace",
+            handler_name="handle_directory_tree",
+        ),
+        ToolSpec(
+            metadata=_metadata(
+                name=EDIT_FILE_TOOL,
+                description=(
+                    "Structured file edit with precise text replacement and optional dry-run. "
+                    "Required params: path (string), edits (list of {oldText, newText} objects). "
+                    "Each edit replaces first match of oldText. "
+                    "Optional: dry_run (bool, default False). "
+                    "When dry_run=True, returns diff preview without writing. "
+                    "When dry_run=False, applies edits and returns diff and bytes_written. "
+                    "Returns error with status='no_match' when oldText is not found. "
+                    'Example: {"path": "f.txt", "edits": [{"oldText": "foo", "newText": "bar"}]}.'
+                ),
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "path": {
+                            "type": "string",
+                            "description": "File path to edit.",
+                        },
+                        "edits": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "oldText": {"type": "string"},
+                                    "newText": {"type": "string"},
+                                },
+                                "required": ["oldText"],
+                            },
+                            "description": "List of edits to apply in order.",
+                        },
+                        "dry_run": {
+                            "type": "boolean",
+                            "description": "Preview changes without writing (default False).",
+                            "default": False,
+                        },
+                    },
+                    "required": ["path", "edits"],
+                },
+                required_capability="WorkspaceEdit",
+            ),
+            module_name="ralph.mcp.tools.workspace",
+            handler_name="handle_edit_file",
+        ),
+        ToolSpec(
+            metadata=_metadata(
+                name=APPEND_FILE_TOOL,
+                description=(
+                    "Append content to a file. Required params: path (string), content (string). "
+                    "Creates the file if it doesn't exist. "
+                    'Example: {"path": "log.txt", "content": "new line\\n"}.'
+                ),
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "path": {
+                            "type": "string",
+                            "description": "File path to append to.",
+                        },
+                        "content": {
+                            "type": "string",
+                            "description": "Content to append.",
+                        },
+                    },
+                    "required": ["path", "content"],
+                },
+                required_capability="WorkspaceEdit",
+            ),
+            module_name="ralph.mcp.tools.workspace",
+            handler_name="handle_append_file",
+        ),
+        ToolSpec(
+            metadata=_metadata(
+                name=CREATE_DIRECTORY_TOOL,
+                description=(
+                    "Create a directory and all parent directories. Required param: path (string). "
+                    'Example: {"path": "new/nested/dir"}.'
+                ),
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "path": {
+                            "type": "string",
+                            "description": "Directory path to create.",
+                        },
+                    },
+                    "required": ["path"],
+                },
+                required_capability="WorkspaceEdit",
+            ),
+            module_name="ralph.mcp.tools.workspace",
+            handler_name="handle_create_directory",
+        ),
+        ToolSpec(
+            metadata=_metadata(
+                name=MOVE_FILE_TOOL,
+                description=(
+                    "Move or rename a file or directory. Required params: src (string), "
+                    "dest (string). Optional: overwrite (bool, default False). "
+                    "Fails if dest exists and overwrite is False. "
+                    'Example: {"src": "old.txt", "dest": "new.txt", "overwrite": false}.'
+                ),
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "src": {
+                            "type": "string",
+                            "description": "Source file path.",
+                        },
+                        "dest": {
+                            "type": "string",
+                            "description": "Destination file path.",
+                        },
+                        "overwrite": {
+                            "type": "boolean",
+                            "description": "Overwrite existing destination (default False).",
+                            "default": False,
+                        },
+                    },
+                    "required": ["src", "dest"],
+                },
+                required_capability="WorkspaceEdit",
+            ),
+            module_name="ralph.mcp.tools.workspace",
+            handler_name="handle_move_file",
+        ),
+        ToolSpec(
+            metadata=_metadata(
+                name=COPY_FILE_TOOL,
+                description=(
+                    "Copy a file or directory. Required params: src (string), dest (string). "
+                    "Optional: overwrite (bool, default False). "
+                    "Fails if dest exists and overwrite is False. "
+                    'Example: {"src": "original.txt", "dest": "copy.txt", "overwrite": false}.'
+                ),
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "src": {
+                            "type": "string",
+                            "description": "Source file path.",
+                        },
+                        "dest": {
+                            "type": "string",
+                            "description": "Destination file path.",
+                        },
+                        "overwrite": {
+                            "type": "boolean",
+                            "description": "Overwrite existing destination (default False).",
+                            "default": False,
+                        },
+                    },
+                    "required": ["src", "dest"],
+                },
+                required_capability="WorkspaceEdit",
+            ),
+            module_name="ralph.mcp.tools.workspace",
+            handler_name="handle_copy_file",
+        ),
+        ToolSpec(
+            metadata=_metadata(
+                name=DELETE_PATH_TOOL,
+                description=(
+                    "Delete a file or directory. Required param: path (string). "
+                    "Optional: recursive (bool, default False). "
+                    "DISTINCT: requires WorkspaceDelete capability (not WorkspaceEdit). "
+                    "Refuses to delete directories unless recursive=True. "
+                    'Example: {"path": "old_file.txt", "recursive": false}.'
+                ),
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "path": {
+                            "type": "string",
+                            "description": "Path to delete.",
+                        },
+                        "recursive": {
+                            "type": "boolean",
+                            "description": "Delete directories recursively (default False).",
+                            "default": False,
+                        },
+                    },
+                    "required": ["path"],
+                },
+                required_capability="WorkspaceDelete",
+            ),
+            module_name="ralph.mcp.tools.workspace",
+            handler_name="handle_delete_path",
         ),
         ToolSpec(
             metadata=_metadata(
@@ -830,63 +1278,6 @@ def _tool_specs(mcp_config: McpConfig) -> tuple[ToolSpec, ...]:
         ),
         ToolSpec(
             metadata=_metadata(
-                name=LIST_DIRECTORY_RECURSIVE_TOOL,
-                description=(
-                    "List all files and directories recursively starting from path. "
-                    "Required param: path (string). "
-                    "Returns a flat array of all entries with their full paths. "
-                    'Example: {"path": "ralph"} returns all files and folders under ralph/.'
-                ),
-                input_schema={
-                    "type": "object",
-                    "properties": {
-                        "path": {
-                            "type": "string",
-                            "description": (
-                                "Root directory path as a string for recursive listing, "
-                                "relative or absolute inside the workspace "
-                                "(example values: 'ralph', '.', 'src')."
-                            ),
-                        },
-                    },
-                    "required": ["path"],
-                },
-                required_capability="WorkspaceRead",
-            ),
-            module_name="ralph.mcp.tools.workspace",
-            handler_name="handle_list_directory_recursive",
-        ),
-        ToolSpec(
-            metadata=_metadata(
-                name=DIRECTORY_TREE_TOOL,
-                description=(
-                    "Return a recursive directory tree showing all files and folders. "
-                    "Compatibility alias for tools expecting standard directory_tree name. "
-                    "Required param: path (string). "
-                    "Returns a tree structure with nested entries. "
-                    'Example: {"path": "."} returns the full directory tree from current dir.'
-                ),
-                input_schema={
-                    "type": "object",
-                    "properties": {
-                        "path": {
-                            "type": "string",
-                            "description": (
-                                "Root directory path as a string for tree view, relative or "
-                                "absolute inside the workspace "
-                                "(example values: '.', 'ralph', 'src')."
-                            ),
-                        },
-                    },
-                    "required": ["path"],
-                },
-                required_capability="WorkspaceRead",
-            ),
-            module_name="ralph.mcp.tools.workspace",
-            handler_name="handle_list_directory_recursive",
-        ),
-        ToolSpec(
-            metadata=_metadata(
                 name=COORDINATE_TOOL,
                 description=(
                     "Coordinate parallel worker activities. "
@@ -1075,12 +1466,7 @@ def build_ralph_tool_registry(
     upstream_registry: UpstreamRegistry | None = None,
     mcp_config: McpConfig | None = None,
 ) -> ToolBridge:
-    """Build the default Ralph MCP tool registry.
-
-    This mirrors the Rust `build_ralph_tool_registry` function. The returned
-    registry captures `session` and `workspace` so future tool module ports can
-    expose Rust-compatible `handle_*` functions without extra adapter glue.
-    """
+    """Build the default Ralph MCP tool registry."""
 
     from ralph.config.mcp_models import McpConfig  # noqa: PLC0415
 

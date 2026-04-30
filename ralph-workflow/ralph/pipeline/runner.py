@@ -29,10 +29,7 @@ from rich.text import Text
 from ralph.agents.chain import ChainManager
 from ralph.agents.parsers import AgentOutputLine, AgentParser, get_parser
 from ralph.agents.registry import AgentRegistry
-from ralph.config.enums import (
-    PHASE_PLANNING,
-    Verbosity,
-)
+from ralph.config.enums import Verbosity
 from ralph.display.artifact_renderer import (
     render_analysis_decision,
     render_commit_message,
@@ -49,6 +46,8 @@ from ralph.display.phase_banner import (
     show_phase_start,
     show_phase_transition,
 )
+from ralph.interrupt import controller_from_process_manager
+from ralph.interrupt.controller import install_force_kill_handler
 from ralph.mcp.artifacts.commit_message import (
     COMMIT_MESSAGE_ARTIFACT,
     delete_commit_message_artifacts,
@@ -88,7 +87,7 @@ from ralph.pipeline.reducer import reduce as reducer_reduce
 from ralph.pipeline.state import AgentChainState, CommitState, PipelineState, RebaseState
 from ralph.pipeline.worker_state import WorkerStatus
 from ralph.policy.loader import load_policy_or_die
-from ralph.process.manager import process_phase_scope
+from ralph.process.manager import get_process_manager, process_phase_scope
 from ralph.prompts.materialize import (
     materialize_prompt_for_phase,
     prompt_file_for_phase,
@@ -624,6 +623,23 @@ def _save_checkpoint_or_log(
         logger.exception(message, phase=state.phase, err=exc)
 
 
+def _handle_keyboard_interrupt(monitor_stop: Callable[[], None] | None = None) -> None:
+    """Gracefully stop tracked children, escalating on a second SIGINT."""
+    process_manager = get_process_manager()
+    controller = controller_from_process_manager(
+        process_manager=process_manager,
+        stop_connectivity=monitor_stop,
+    )
+    restore_force_kill = install_force_kill_handler(controller.force_exit)
+    try:
+        controller.begin_interrupt(grace_period_s=process_manager.policy.default_grace_period_s)
+    except Exception:
+        logger.warning("Interrupt controller raised during KeyboardInterrupt")
+    finally:
+        with suppress(Exception):
+            restore_force_kill()
+
+
 def _run_pipeline_step(  # noqa: PLR0913
     *,
     state: PipelineState,
@@ -703,14 +719,12 @@ def _run_pipeline_step(  # noqa: PLR0913
                     verbosity=verbosity,
                 )
 
+        _commit_phase_def = policy_bundle.pipeline.phases.get(state.phase)
         if (
             isinstance(effect, CommitEffect)
-            and state.phase == "development_commit"
-            and event
-            in (
-                PipelineEvent.COMMIT_SUCCESS,
-                PipelineEvent.COMMIT_SKIPPED,
-            )
+            and _commit_phase_def is not None
+            and _commit_phase_def.role == "commit"
+            and event in (PipelineEvent.COMMIT_SUCCESS, PipelineEvent.COMMIT_SKIPPED)
         ):
             clear_cycle_baseline(workspace_scope.root)
         next_state, _ = reducer_reduce(state, event, policy_bundle.pipeline)
@@ -751,22 +765,34 @@ def _run_pipeline_step(  # noqa: PLR0913
         return recovered_state
 
 
-def _phase_context(state: PipelineState, previous_phase: str) -> dict[str, object]:
+def _phase_context(
+    state: PipelineState,
+    previous_phase: str,
+    pipeline_policy: PipelinePolicy,
+) -> dict[str, object]:
     """Build a context dict for emit_phase_transition with iteration/decision hints."""
     context: dict[str, object] = {}
-    if state.phase in {"development", "fix"}:
+    current_phase_def = pipeline_policy.phases.get(state.phase)
+    previous_phase_def = pipeline_policy.phases.get(previous_phase)
+
+    current_role = current_phase_def.role if current_phase_def is not None else None
+    previous_role = previous_phase_def.role if previous_phase_def is not None else None
+
+    if current_role == "execution":
         context["iteration"] = f"{state.iteration + 1}/{state.total_iterations}"
-    if state.phase == "review":
+    if current_role == "review":
         context["pass"] = f"{state.reviewer_pass + 1}/{state.total_reviewer_passes}"
-    if previous_phase in {"development_analysis", "review_analysis"}:
-        if state.phase in {"development_commit", "review_commit"}:
+    if previous_role == "analysis":
+        if current_role == "commit":
             context["decision"] = "approved"
-        elif state.phase in {"development", "fix"}:
+        elif current_role == "execution":
             context["decision"] = "needs changes"
-    if previous_phase == "development_commit":
-        context["dev_budget"] = f"{state.total_iterations - state.iteration} remaining"
-    if previous_phase == "review_commit":
-        context["review_budget"] = f"{state.total_reviewer_passes - state.reviewer_pass} remaining"
+    if previous_role == "commit" and previous_phase_def is not None:
+        commit_policy = previous_phase_def.commit_policy
+        if commit_policy is not None and commit_policy.increments_counter:
+            counter = commit_policy.increments_counter
+            remaining = state.get_budget_remaining(counter)
+            context[f"{counter}_budget"] = f"{remaining} remaining"
     return context
 
 
@@ -801,6 +827,7 @@ def _emit_phase_transition_if_changed(
     state: PipelineState,
     *,
     verbosity: Verbosity,
+    pipeline_policy: PipelinePolicy,
 ) -> str:
     """Emit a phase-transition banner if state.phase != previous_phase.
 
@@ -819,7 +846,7 @@ def _emit_phase_transition_if_changed(
         logger.debug("show_phase_complete failed", exc_info=True)
 
     # Emit transition to the new phase
-    context = _phase_context(state, previous_phase) or None
+    context = _phase_context(state, previous_phase, pipeline_policy) or None
     try:
         show_phase_transition(previous_phase, state.phase, context=context)
     except Exception:  # pragma: no cover - defensive
@@ -1134,13 +1161,25 @@ def run(  # noqa: PLR0912, PLR0913, PLR0915
                         _prev_phase,
                         state,
                         verbosity=effective_verbosity,
+                        pipeline_policy=policy_bundle.pipeline,
                     )
                     if hasattr(active_display, "begin_phase"):
                         with suppress(Exception):
                             cast("_PhaseAwareDisplay", active_display).begin_phase(state.phase)
 
             except KeyboardInterrupt:
-                logger.warning("Interrupted by user; saving checkpoint.")
+                logger.warning("Interrupted by user; shutting down tracked processes.")
+                _emit_display_line(
+                    active_display,
+                    None,
+                    _status_text(
+                        "Interrupted",
+                        "Stopping gracefully. Press Ctrl+C again to force kill child processes.",
+                        "yellow",
+                    ),
+                )
+                _handle_keyboard_interrupt(_monitor_stop)
+                _monitor_stop = None
                 interrupted_state = state.copy_with(interrupted_by_user=True)
                 _save_checkpoint_or_log(
                     interrupted_state,
@@ -1757,17 +1796,18 @@ def _create_initial_state(
     config: UnifiedConfig,
     *,
     agents_policy: AgentsPolicy | None = None,
-    pipeline_policy: PipelinePolicy | None = None,
+    pipeline_policy: PipelinePolicy,
 ) -> PipelineState:
     """Create initial pipeline state from configuration.
 
     Args:
         config: Unified configuration.
+        pipeline_policy: Pipeline policy (required for entry_phase resolution).
 
     Returns:
         Initial PipelineState.
     """
-    entry_phase = pipeline_policy.entry_phase if pipeline_policy is not None else PHASE_PLANNING
+    entry_phase = pipeline_policy.entry_phase
     phase_chains = _initial_phase_chains(
         config,
         agents_policy=agents_policy,
@@ -1784,11 +1824,7 @@ def _create_initial_state(
         rebase=RebaseState(),
         commit=CommitState(),
         policy_entry_phase=entry_phase,
-        current_drain=(
-            resolve_phase_drain(entry_phase, pipeline_policy)
-            if pipeline_policy is not None
-            else None
-        ),
+        current_drain=resolve_phase_drain(entry_phase, pipeline_policy),
         max_development_analysis_iterations=config.general.max_development_analysis_iterations,
         max_review_analysis_iterations=config.general.max_review_analysis_iterations,
         development_analysis_iteration=0,
@@ -2276,11 +2312,26 @@ def _execute_agent_effect(  # noqa: PLR0913
         effect.phase, effect.agent_name, _display_console(display), state
     )
 
+    from ralph.agents.idle_watchdog import WaitingStatusEvent  # noqa: PLC0415,TC001
     from ralph.agents.invoke import (  # noqa: PLC0415
         AgentInactivityTimeoutError,
         InvokeOptions,
         extract_session_id,
     )
+
+    _display_subscriber = _subscriber_for_display(display)
+
+    def _waiting_listener(event: WaitingStatusEvent) -> None:
+        if _display_subscriber is None:
+            return
+        try:
+            _display_subscriber.record_waiting_status(
+                event,
+                unit_id=effect.agent_name,
+                agent_name=effect.agent_name,
+            )
+        except Exception:
+            logger.debug("waiting_listener.record_waiting_status failed", exc_info=True)
 
     attempt_prompt_file = effect.prompt_file
     resume_session_id: str | None = (
@@ -2348,9 +2399,12 @@ def _execute_agent_effect(  # noqa: PLR0913
                 descendant_wait_poll_seconds=config.general.agent_descendant_wait_poll_seconds,
                 process_exit_wait_seconds=config.general.agent_process_exit_wait_seconds,
                 max_session_seconds=config.general.agent_max_session_seconds,
+                waiting_status_interval_seconds=config.general.agent_waiting_status_interval_seconds,
+                suspect_waiting_on_child_seconds=config.general.agent_suspect_waiting_on_child_seconds,
                 session_id=resume_session_id,
                 system_prompt_file=system_prompt_file,
                 phase=str(effect.phase),
+                waiting_listener=_waiting_listener,
             )
             output_lines = deps.invoke_agent(agent_config, attempt_prompt_file, options=options)
             if _verbosity_rank(verbosity) >= _VERBOSITY_RANK[Verbosity.NORMAL]:

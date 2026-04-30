@@ -315,3 +315,72 @@ def test_build_agents_policy_from_config_rejects_missing_drain(tmp_path: Path) -
 
     with pytest.raises(LoaderPolicyValidationError, match="unbound drains"):
         load_policy(config_dir, config=config)
+
+def test_terminal_recovery_route_rejected(tmp_path: Path) -> None:
+    """Loading a pipeline.toml with the deprecated terminal_recovery_route field raises an error."""
+    config_dir = tmp_path / ".agent"
+    config_dir.mkdir(parents=True)
+
+    config = UnifiedConfig(
+        agent_chains={"main": ["claude"]},
+        agent_drains={"planning": "main", "complete": "main"},
+    )
+    (config_dir / "pipeline.toml").write_text(
+        dedent(
+            """
+            entry_phase = "planning"
+            terminal_phase = "complete"
+
+            [phases.planning]
+            drain = "planning"
+            role = "execution"
+            [phases.planning.transitions]
+            on_success = "complete"
+
+            [phases.complete]
+            drain = "complete"
+            role = "terminal"
+            terminal_outcome = "success"
+            [phases.complete.transitions]
+            on_success = "complete"
+            on_loopback = "complete"
+
+            [recovery]
+            cycle_cap = 200
+            terminal_recovery_route = "phase_failed"
+            """
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(LoaderPolicyValidationError, match="deprecated"):
+        load_policy(config_dir, config=config)
+
+
+def test_build_agents_policy_includes_custom_drains() -> None:
+    """build_agents_policy_from_config includes all declared drains unconditionally."""
+    from ralph.policy.loader import build_agents_policy_from_config  # noqa: PLC0415
+
+    config = UnifiedConfig(
+        agent_chains={"custom_chain": ["claude"]},
+        agent_drains={"my_custom_drain": "custom_chain"},
+    )
+    policy = build_agents_policy_from_config(config)
+    assert "my_custom_drain" in policy.agent_drains
+    assert policy.agent_drains["my_custom_drain"].chain == "custom_chain"
+
+
+def test_default_policy_failed_analysis_decisions_route_to_same_rework_target() -> None:
+    """Default policy must treat failed analysis as stronger rework, not termination."""
+    defaults_dir = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
+
+    bundle = load_policy(defaults_dir)
+    development_decisions = bundle.pipeline.phases["development_analysis"].decisions
+    review_decisions = bundle.pipeline.phases["review_analysis"].decisions
+
+    assert development_decisions is not None
+    assert review_decisions is not None
+    assert development_decisions["failed"].target == development_decisions["request_changes"].target
+    assert review_decisions["failed"].target == review_decisions["request_changes"].target
+    assert development_decisions["failed"].target == "development"
+    assert review_decisions["failed"].target == "fix"

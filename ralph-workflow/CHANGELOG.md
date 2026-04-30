@@ -22,7 +22,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   etc.) instead of raw colour strings. The Okabe-Ito palette is the single colour source.
 - **`RALPH_FORCE_NARROW` env knob.** Set to `1` / `true` / `yes` / `on` to force compact
   rendering on wide terminals (useful for screenshots or constrained CI output).
-
+- **Custom policy workflow contract test (`tests/test_custom_policy_workflow.py`).** Demonstrates that Ralph Workflow routes on user-defined phase, drain, loop counter, and budget counter names (`design`/`build`/`audit`/`sign_off`/`done`, counter `cycles`, loop `audit_round`) without any runtime knowledge of the canonical defaults. Proves the policy-driven contract via `validate_policy_completeness`, `explain_policy`, `resolve_post_commit_phase`, and `with_loop_iteration` on a fully renamed bundle.
+- **Explanation sentences for `bypass_routes` and loopback caps in `ralph --explain-policy`.** `_render_explanation_sentences` now emits `Explanation: phase 'X' bypasses to 'Y' when the configured outcome is 'Z'` for every bypass route (sorted for determinism) and `Explanation: phase 'X' loops back to 'Y' until N attempts are exhausted` when a loop cap applies, satisfying Required Product Outcome D for every routing surface.
+- **ASCII workflow diagram in `ralph --explain-policy`.** The command now prints a deterministic boxed-node diagram of the active pipeline (entry marker, happy-path arrows, decision branches, loopback edges, terminal success/failure markers, and fan-out/loop annotations) above the existing structural breakdown. Renders pure-ASCII glyphs (no Unicode box characters) so it is safe in code reviews, CI logs, and runbooks. See `docs/sphinx/policy-explanation.md` for the legend.
 - **Same-workspace parallel workers v1.** When the planning agent declares two or more disjoint
   `work_units`, Ralph now runs them as parallel workers in the SAME git checkout using
   `ParallelExecutionMode.SAME_WORKSPACE`. Each worker is restricted to its declared
@@ -45,6 +47,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   evidence only — repo-wide git state is never used.
 
 ### Changed
+- **`_compute_budget_state` is fully policy-driven.** Budget-state labels (`remaining`/`exhausted`/`no_review`) now work for any counter declared in `[budget_counters]`, not just the canonical `iteration`/`reviewer_pass` names. The function reads only `pipeline_policy.budget_counters` and `state.get_budget_remaining(counter)` — no hardcoded counter names remain in routing-predicate logic.
+- **ASCII workflow diagram renders loopbacks unambiguously.** The old `<--[loopback]-- target` glyph is replaced with `    | loop back to target` / `    +---^  (returns to 'target' phase)` below the looping phase box. When the loopback also consumes a loop counter, a third line `    [LOOPBACK: counter=NAME, max=N]` follows so readers can distinguish counted retries from uncounted routing.
 - `FanOutDevelopmentEffect.run_post_fanout_verification` now defaults to `False` and is driven by
   the `parallel_execution.post_fanout_verification` policy field. The previous hardcoded `True`
   would have triggered `make verify` in all fan-out runs, including unit tests.
@@ -144,6 +148,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Tooling that expected dropped-buffer notifications at `INFO` level must update to `WARN`.
 
 ### Fixed
+- **Policy validation now rejects pipelines that declare a tracked budget counter without any matching `post_commit_routes` entry.** Previously, a commit-role phase with `tracks_budget = true` but no matching route would silently fall through to `on_success` instead of raising an error. `validate_policy_completeness` now fails closed with: `phases.<phase>: role='commit' tracks budget counter '<counter>' but no post_commit_routes apply to this phase.`
 - **OpenCode false-positive retry bug.** When OpenCode foreground exits rc=0 and (a) child agents are still running OR (b) no children are visible at the exact moment of exit but background work is still pending, `_check_process_result` now waits before declaring resumable failure. Two windows govern the wait: a mandatory `parent_exit_grace_seconds` (default 5s) that polls for late-appearing completion artifacts, `explicit_complete` markers, or newly-registered child agents — covering the race where MCP-driven background subagents have been launched but not yet registered with the ProcessManager — and the existing `descendant_wait_timeout_seconds` (default 30s) that engages once children are visible. Previously, when the foreground exited and no children were visible at that exact instant (a common case for late-spawning MCP subagents and async background work), `OpenCodeResumableExitError` was raised within ~1ms, killing the OpenCode parent before background work could complete. The new grace window eliminates this false positive while preserving the fast path (`TERMINAL_COMPLETE` when completion signals are present at exit time).
 - `-D` / `--developer-iters` and `-R` / `--reviewer-reviews` CLI flags now correctly control the number of dev/review cycles. Previously, the pipeline ran exactly one dev cycle and one review pass regardless of the flag values. The `developer_iters` setting controls dev cycles; `reviewer_reviews` controls review cycles.
 - `-R=0` now skips the review phase entirely instead of running one forced review pass.

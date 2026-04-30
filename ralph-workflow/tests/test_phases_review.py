@@ -16,7 +16,7 @@ from ralph.phases.review import (
     handle_review_analysis,
 )
 from ralph.pipeline.effects import Effect, InvokeAgentEffect, PreparePromptEffect
-from ralph.pipeline.events import PhaseFailureEvent, PipelineEvent
+from ralph.pipeline.events import AnalysisDecisionEvent, PhaseFailureEvent, PipelineEvent
 from ralph.policy.loader import load_policy
 from ralph.workspace.fs import FsWorkspace
 
@@ -154,50 +154,68 @@ class TestHandleReviewAnalysis:
         effect = MagicMock(spec=InvokeAgentEffect)
         return effect
 
-    def test_proceed_decision_returns_analysis_success(self) -> None:
+    def test_proceed_decision_returns_analysis_decision_event(self) -> None:
         effect = self._mock_invoke_effect()
         ctx = self._make_context()
         ctx.workspace.exists.return_value = True
         ctx.workspace.read.return_value = '{"status": "completed"}'
 
         result = handle_review_analysis(effect, ctx)
-        assert result == [PipelineEvent.ANALYSIS_SUCCESS]
+        assert len(result) == 1
+        assert isinstance(result[0], AnalysisDecisionEvent)
+        assert result[0].phase == "review_analysis"
+        assert result[0].decision == "completed"
 
-    def test_unknown_status_returns_analysis_loopback(self) -> None:
+    def test_unknown_status_returns_phase_failure(self) -> None:
         effect = self._mock_invoke_effect()
         ctx = self._make_context()
         ctx.workspace.exists.return_value = True
         ctx.workspace.read.return_value = '{"status": "unknown"}'
 
         result = handle_review_analysis(effect, ctx)
-        assert result == [PipelineEvent.ANALYSIS_LOOPBACK]
+        assert len(result) == 1
+        event = result[0]
+        assert isinstance(event, PhaseFailureEvent)
+        assert event.phase == "review_analysis"
+        assert event.recoverable is True
 
-    def test_revise_decision_returns_analysis_loopback(self) -> None:
+    def test_revise_decision_unroutable_returns_phase_failure(self) -> None:
         effect = self._mock_invoke_effect()
         ctx = self._make_context()
         ctx.workspace.exists.return_value = True
         ctx.workspace.read.return_value = '{"status": "revise"}'
 
         result = handle_review_analysis(effect, ctx)
-        assert result == [PipelineEvent.ANALYSIS_LOOPBACK]
+        assert len(result) == 1
+        event = result[0]
+        assert isinstance(event, PhaseFailureEvent)
+        assert event.phase == "review_analysis"
+        assert event.recoverable is True
 
-    def test_failure_decision_returns_analysis_loopback(self) -> None:
+    def test_failure_decision_returns_analysis_decision_event(self) -> None:
         effect = self._mock_invoke_effect()
         ctx = self._make_context()
         ctx.workspace.exists.return_value = True
         ctx.workspace.read.return_value = '{"status": "failed"}'
 
         result = handle_review_analysis(effect, ctx)
-        assert result == [PipelineEvent.ANALYSIS_LOOPBACK]
+        assert len(result) == 1
+        assert isinstance(result[0], AnalysisDecisionEvent)
+        assert result[0].phase == "review_analysis"
+        assert result[0].decision == "failed"
 
-    def test_escalate_decision_returns_analysis_loopback(self) -> None:
+    def test_escalate_decision_unroutable_returns_phase_failure(self) -> None:
         effect = self._mock_invoke_effect()
         ctx = self._make_context()
         ctx.workspace.exists.return_value = True
         ctx.workspace.read.return_value = '{"status": "escalate"}'
 
         result = handle_review_analysis(effect, ctx)
-        assert result == [PipelineEvent.ANALYSIS_LOOPBACK]
+        assert len(result) == 1
+        event = result[0]
+        assert isinstance(event, PhaseFailureEvent)
+        assert event.phase == "review_analysis"
+        assert event.recoverable is True
 
     def test_missing_artifact_returns_phase_failure_recoverable(self) -> None:
         effect = self._mock_invoke_effect()

@@ -1,13 +1,13 @@
-"""Asyncio signal bridge for hard-kill on SIGINT.
+"""Asyncio signal bridge for graceful-then-forced SIGINT handling.
 
 Uses ``loop.add_signal_handler()`` — not ``signal.signal()`` — to stay
 compatible with the asyncio event loop.
 
 Signal handling contract:
 
-* First ``SIGINT`` cancels ``root_task`` and shuts down tracked subprocesses via
-  ``ProcessManager.shutdown_all(grace_period_s=0)``.
-* Second ``SIGINT`` calls ``os._exit(130)`` immediately with no extra cleanup.
+* First ``SIGINT`` records the interrupt, requests graceful tracked-process
+  shutdown, and cancels ``root_task``.
+* Second ``SIGINT`` force-kills tracked child processes and exits with code 130.
 
 ``bridge.pids`` stays synchronized by subscribing to ProcessManager lifecycle
 Events, so callers must not register or deregister PIDs manually.
@@ -15,14 +15,13 @@ Events, so callers must not register or deregister PIDs manually.
 
 from __future__ import annotations
 
-import contextlib
-import os
 import signal
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from loguru import logger
 
+from ralph.interrupt.controller import InterruptController, controller_from_process_manager
 from ralph.process.manager import ProcessEvent, ProcessStatus, get_process_manager
 
 if TYPE_CHECKING:
@@ -58,27 +57,26 @@ def install_signal_handlers(
     loop: asyncio.AbstractEventLoop,
     root_task: asyncio.Task[object],
     bridge: SignalBridge,
+    controller: InterruptController | None = None,
 ) -> None:
     pm = get_process_manager()
     bridge._unsubscribe = pm.register_listener(bridge._on_process_event)
+    active_controller = controller or controller_from_process_manager(
+        process_manager=pm,
+        stop_connectivity=bridge._connectivity_stop,
+    )
 
     def _first_sigint() -> None:
         bridge._interrupt_count += 1
         try:
-            pm.shutdown_all(grace_period_s=0)
+            active_controller.begin_interrupt(grace_period_s=pm.policy.default_grace_period_s)
         except Exception:
-            logger.warning("ProcessManager.shutdown_all raised during SIGINT")
-        for pid in list(bridge.pids):
-            with contextlib.suppress(ProcessLookupError, PermissionError):
-                os.killpg(pid, signal.SIGKILL)
-        if bridge._connectivity_stop is not None:
-            with contextlib.suppress(Exception):
-                bridge._connectivity_stop()
+            logger.warning("Interrupt controller raised during SIGINT")
         root_task.cancel()
         loop.add_signal_handler(signal.SIGINT, _second_sigint)
 
     def _second_sigint() -> None:
-        os._exit(130)
+        active_controller.force_exit(bridge_pids=list(bridge.pids))
 
     loop.add_signal_handler(signal.SIGINT, _first_sigint)
 

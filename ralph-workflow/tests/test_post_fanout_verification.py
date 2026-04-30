@@ -5,13 +5,32 @@ from __future__ import annotations
 import typing
 from typing import TYPE_CHECKING
 
+from ralph.config.enums import PHASE_COMPLETE, PHASE_FAILED
 from ralph.pipeline.effects import FanOutDevelopmentEffect
 from ralph.pipeline.events import PostFanoutVerificationEvent
 from ralph.pipeline.reducer import reduce as reducer_reduce
 from ralph.pipeline.state import PipelineState
 from ralph.pipeline.work_units import WorkUnit
 from ralph.pipeline.worker_state import WorkerState, WorkerStatus
+from ralph.policy.models import PhaseDefinition, PhaseTransition, PipelinePolicy
 from ralph.workspace.scope import WorkspaceScope
+
+
+def _minimal_policy() -> PipelinePolicy:
+    return PipelinePolicy(
+        phases={
+            "development": PhaseDefinition(
+                drain="development",
+                transitions=PhaseTransition(
+                    on_success=PHASE_COMPLETE,
+                    on_failure=PHASE_FAILED,
+                    on_loopback="development",
+                ),
+            ),
+        },
+        entry_phase="development",
+        terminal_phase=PHASE_COMPLETE,
+    )
 
 _EXIT_CODE_VERIFY_FAIL = 2
 
@@ -122,7 +141,7 @@ class TestVerificationFailureMarksPhase:
             exit_code=1,
             error="workspace verification failed (exit code 1)",
         )
-        new_state, _ = reducer_reduce(state, event)
+        new_state, _ = reducer_reduce(state, event, _minimal_policy())
         assert new_state.phase == PHASE_FAILED
         assert "workspace verification failed" in (new_state.last_error or "")
 
@@ -139,7 +158,7 @@ class TestVerificationFailureMarksPhase:
         state = PipelineState(phase="development", worker_states={})
         error_msg = "workspace verification failed (exit code 2): make: *** [verify] Error 2"
         event = PostFanoutVerificationEvent(success=False, exit_code=2, error=error_msg)
-        new_state, _ = reducer_reduce(state, event)
+        new_state, _ = reducer_reduce(state, event, _minimal_policy())
         assert new_state.last_error is not None
         assert "workspace verification failed" in new_state.last_error
 

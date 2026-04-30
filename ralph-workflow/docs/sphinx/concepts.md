@@ -228,6 +228,15 @@ when a commit completes. Counters with `tracks_budget = true` participate in
 post-commit routing decisions (remaining, exhausted, no_review states). See
 `ralph.policy.models.BudgetCounterConfig`.
 
+Post-commit routing is declared in `[[post_commit_routes]]` entries in `pipeline.toml`,
+matched by `when.phase` (the commit phase name) and `when.budget_state` (remaining,
+exhausted, or no_review). Counter names are fully policy-declared — the runtime has no
+built-in knowledge of `iteration` or `reviewer_pass`; any name works. Policy validation
+enforces that every commit-role phase whose counter has `tracks_budget = true` declares
+at least one matching `post_commit_routes` entry, so incomplete configurations are
+rejected at startup rather than silently routing on `on_success`. See
+`ralph.policy.validation._validate_post_commit_routes_coverage`.
+
 ## Recovery Policy
 
 The `[recovery]` block in `pipeline.toml` governs pipeline-wide failure behavior.

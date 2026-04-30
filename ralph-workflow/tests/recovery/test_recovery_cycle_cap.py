@@ -2,14 +2,23 @@
 
 from __future__ import annotations
 
+import tempfile
+from pathlib import Path
+
 import pytest
 
 from ralph.config.enums import PHASE_DEVELOPMENT
 from ralph.pipeline.effects import ExitFailureEffect
 from ralph.pipeline.state import AgentChainState, PipelineState
+from ralph.policy.loader import load_policy
 from ralph.recovery.budget import AgentBudgetRegistry
 from ralph.recovery.controller import RecoveryController
 from ralph.recovery.cycle_cap import CycleCap
+
+
+def _minimal_policy_bundle():
+    with tempfile.TemporaryDirectory() as d:
+        return load_policy(Path(d) / ".agent")
 
 _CYCLE_CAP = 3
 _EXPECTED_CYCLE_COUNT = 2
@@ -51,7 +60,9 @@ def test_env_failure_does_not_increment_cycle_count() -> None:
 def test_agent_failure_chain_exhaustion_increments_cycle_count() -> None:
     """Agent chain exhaustion increments recovery_cycle_count."""
     registry = AgentBudgetRegistry().set_budget(PHASE_DEVELOPMENT, "claude", max_retries=1)
-    controller = RecoveryController(cycle_cap=10, budget_registry=registry)
+    controller = RecoveryController(
+        cycle_cap=10, budget_registry=registry, policy_bundle=_minimal_policy_bundle()
+    )
     state = _make_state(["claude"])
 
     new_state, _, _ = controller.handle(
@@ -67,7 +78,9 @@ def test_agent_failure_chain_exhaustion_increments_cycle_count() -> None:
 def test_cycle_cap_exceeded_emits_exit_failure_effect() -> None:
     """When recovery_cycle_count >= cap, an ExitFailureEffect is produced."""
     registry = AgentBudgetRegistry().set_budget(PHASE_DEVELOPMENT, "claude", max_retries=1)
-    controller = RecoveryController(cycle_cap=_CYCLE_CAP, budget_registry=registry)
+    controller = RecoveryController(
+        cycle_cap=_CYCLE_CAP, budget_registry=registry, policy_bundle=_minimal_policy_bundle()
+    )
 
     state = _make_state(["claude"], cycle_count=_EXPECTED_CYCLE_COUNT)
 

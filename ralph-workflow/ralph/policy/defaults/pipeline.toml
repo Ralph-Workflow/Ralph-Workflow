@@ -22,7 +22,9 @@
 #   decisions        - For role='analysis': maps decision vocabulary to routing targets
 #   loop_policy      - For role='analysis': bounds the analysis iteration loop
 #   commit_policy    - For role='commit': declares commit counter and loop reset behavior
-#   bypass_routes    - Named outcome bypasses (e.g. review_clean -> review_commit)
+#   bypass_routes    - Named outcome bypasses (e.g. clean -> review_commit)
+#   clean_outcome    - For role='review': bypass_routes key that signals a clean review
+#   issues_outcome   - For role='review': value set as review_outcome when issues are found
 #   terminal_outcome - For role='terminal': declares success or failure
 #   parallelization  - Per-phase same-workspace fan-out policy
 #
@@ -45,7 +47,7 @@
 # Required fields per role:
 #   execution    - transitions.on_success
 #   analysis     - loop_policy, decisions (covering all artifact decision_vocabulary entries)
-#   review       - transitions.on_success
+#   review       - transitions.on_success, issues_outcome; clean_outcome when bypass_routes set
 #   commit       - commit_policy (increments_counter, loop_resets)
 #   terminal     - terminal_outcome
 # See ralph/policy/validation.py:validate_policy_completeness for authoritative checks.
@@ -130,7 +132,7 @@ reset_loop = true
 target = "development"
 reset_loop = false
 [phases.development_analysis.decisions.failed]
-target = "failed"
+target = "development"
 reset_loop = false
 
 [phases.development_commit]
@@ -150,11 +152,13 @@ loop_resets = ["development_analysis_iteration"]
 drain = "review"
 role = "review"
 prompt_template = "review.jinja"
+clean_outcome = "clean"
+issues_outcome = "has_issues"
 [phases.review.transitions]
 on_success = "review_analysis"
 on_loopback = "fix"
 [phases.review.bypass_routes]
-review_clean = "review_commit"
+clean = "review_commit"
 
 [phases.review_analysis]
 drain = "review_analysis"
@@ -174,7 +178,7 @@ reset_loop = true
 target = "fix"
 reset_loop = false
 [phases.review_analysis.decisions.failed]
-target = "failed"
+target = "fix"
 reset_loop = false
 
 [phases.fix]
