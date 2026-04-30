@@ -1593,6 +1593,36 @@ ralph.exit_pause
    :members:
    :show-inheritance:
 
+ralph.interrupt
+~~~~~~~~~~~~~~~
+
+.. Note: ralph.interrupt re-exports its submodules; using :no-members: avoids
+   duplicate object-description warnings while keeping the package documented.
+
+.. automodule:: ralph.interrupt
+   :no-members:
+
+ralph.interrupt.asyncio_bridge
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.interrupt.asyncio_bridge
+   :members:
+   :show-inheritance:
+
+ralph.interrupt.controller
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.interrupt.controller
+   :members:
+   :show-inheritance:
+
+ralph.interrupt.state
+~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.interrupt.state
+   :members:
+   :show-inheritance:
+
 ralph.files
 ~~~~~~~~~~~
 
@@ -1669,19 +1699,6 @@ ralph.guidelines.stack
 .. automodule:: ralph.guidelines.stack
    :members:
    :show-inheritance:
-
-ralph.interrupt
-~~~~~~~~~~~~~~~
-
-.. automodule:: ralph.interrupt
-   :members:
-   :show-inheritance:
-
-ralph.interrupt.asyncio_bridge
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. automodule:: ralph.interrupt.asyncio_bridge
-   :no-members:
 
 ralph.language_detector
 ~~~~~~~~~~~~~~~~~~~~~~~

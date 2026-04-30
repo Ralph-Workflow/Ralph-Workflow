@@ -15,8 +15,6 @@ Events, so callers must not register or deregister PIDs manually.
 
 from __future__ import annotations
 
-import contextlib
-import os
 import signal
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING

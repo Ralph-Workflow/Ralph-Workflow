@@ -11,24 +11,31 @@ from __future__ import annotations
 
 import os
 import signal
-from collections.abc import Callable, Iterable
 from contextlib import suppress
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol, cast
 
+from ralph.interrupt.state import request_user_interrupt
 from ralph.process.manager import get_process_manager
 
 if TYPE_CHECKING:
+    from collections.abc import Callable, Iterable
+
     from ralph.process.manager import ProcessManager
 
 
+class SignalGetter(Protocol):
+    def __call__(self, signum: int) -> object: ...
+
+
+class SignalSetter(Protocol):
+    def __call__(self, signum: int, handler: object) -> object: ...
+
+
+_DEFAULT_SIGNAL_GETTER = cast("SignalGetter", signal.getsignal)
+_DEFAULT_SIGNAL_SETTER = cast("SignalSetter", signal.signal)
+
 INTERRUPT_EXIT_CODE = 130
-
-
-def _request_user_interrupt() -> None:
-    from ralph.interrupt import request_user_interrupt
-
-    request_user_interrupt()
 
 
 @dataclass(frozen=True)
@@ -36,7 +43,7 @@ class InterruptController:
     """Coordinate graceful and forced interrupt handling through injected seams."""
 
     shutdown_all: Callable[[float], None]
-    record_interrupt: Callable[[], None] = _request_user_interrupt
+    record_interrupt: Callable[[], None] = request_user_interrupt
     stop_connectivity: Callable[[], None] | None = None
     kill_process_group: Callable[[int, int], None] | None = None
     hard_exit: Callable[[int], None] | None = None
@@ -71,8 +78,8 @@ class InterruptController:
 def install_force_kill_handler(
     on_force_interrupt: Callable[[], None],
     *,
-    signal_getter: Callable[[int], object] = signal.getsignal,
-    signal_setter: Callable[[int, object], object] = signal.signal,
+    signal_getter: SignalGetter = _DEFAULT_SIGNAL_GETTER,
+    signal_setter: SignalSetter = _DEFAULT_SIGNAL_SETTER,
 ) -> Callable[[], None]:
     """Install a temporary SIGINT handler that escalates to forced termination."""
     previous = signal_getter(signal.SIGINT)
@@ -93,7 +100,7 @@ def controller_from_process_manager(
     *,
     process_manager: ProcessManager | None = None,
     stop_connectivity: Callable[[], None] | None = None,
-    record_interrupt: Callable[[], None] = _request_user_interrupt,
+    record_interrupt: Callable[[], None] = request_user_interrupt,
     kill_process_group: Callable[[int, int], None] | None = None,
     hard_exit: Callable[[int], None] | None = None,
 ) -> InterruptController:

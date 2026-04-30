@@ -98,7 +98,7 @@ class TestInstallSignalHandlers:
 
         task.cancel.assert_called_once()
 
-    def test_first_sigint_kills_registered_pids(self) -> None:
+    def test_first_sigint_does_not_force_kill_registered_pids(self) -> None:
         loop = MagicMock(spec=asyncio.AbstractEventLoop)
         task = MagicMock(spec=asyncio.Task)
         bridge = SignalBridge()
@@ -110,11 +110,7 @@ class TestInstallSignalHandlers:
         with patch("os.killpg") as mock_killpg:
             first_handler()  # type: ignore[operator]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
 
-        killed_pids = {c[0][0] for c in mock_killpg.call_args_list}
-        assert _PID_B in killed_pids
-        assert _PID_C in killed_pids
-        for c in mock_killpg.call_args_list:
-            assert c[0][1] == signal.SIGKILL
+        mock_killpg.assert_not_called()
 
     def test_first_sigint_ignores_dead_processes(self) -> None:
         loop = MagicMock(spec=asyncio.AbstractEventLoop)
@@ -165,10 +161,12 @@ class TestInstallSignalHandlers:
         second_call = loop.add_signal_handler.call_args_list[1][0]
         assert second_call[0] == signal.SIGINT
 
-    def test_second_sigint_exits_130(self) -> None:
+    def test_second_sigint_force_kills_registered_pids_and_exits_130(self) -> None:
         loop = MagicMock(spec=asyncio.AbstractEventLoop)
         task = MagicMock(spec=asyncio.Task)
         bridge = SignalBridge()
+        bridge.register_pid(_PID_B)
+        bridge.register_pid(_PID_C)
 
         first_handler = _install_and_get_first_handler(loop, task, bridge)
         first_handler()  # type: ignore[operator]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
@@ -176,9 +174,12 @@ class TestInstallSignalHandlers:
         second_call_args = loop.add_signal_handler.call_args_list[1][0]
         second_handler = second_call_args[1]
 
-        with patch("os._exit") as mock_exit:
+        with patch("os.killpg") as mock_killpg, patch("os._exit") as mock_exit:
             second_handler()
 
+        killed_pids = {c[0][0] for c in mock_killpg.call_args_list}
+        assert _PID_B in killed_pids
+        assert _PID_C in killed_pids
         mock_exit.assert_called_once_with(130)
 
     def test_first_sigint_uses_injected_controller(self) -> None:
@@ -200,8 +201,8 @@ class TestInstallSignalHandlers:
 
         task.cancel.assert_called_once()
         assert ("record", None) in events
-        assert ("shutdown", 0) in events
-        assert any(event[0] == "kill" and event[1][0] == _PID_B for event in events)
+        assert ("shutdown", 5.0) in events
+        assert not any(event[0] == "kill" for event in events)
 
     def test_no_pids_registered_no_killpg_called(self) -> None:
         loop = MagicMock(spec=asyncio.AbstractEventLoop)
