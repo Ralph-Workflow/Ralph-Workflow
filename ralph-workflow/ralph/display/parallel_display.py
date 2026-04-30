@@ -187,6 +187,7 @@ class ParallelDisplay:
             soft_limit=self._ctx.condenser_soft_limit,
             hard_limit=self._ctx.condenser_hard_limit,
             summary=True,
+            env=self._ctx.env,
         )
 
         if condensed_flag:

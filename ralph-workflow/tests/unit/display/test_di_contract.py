@@ -23,7 +23,6 @@ from rich.console import Console
 from ralph.config.models import GeneralConfig, UnifiedConfig
 from ralph.display import artifact_renderer as artifact_renderer_module
 from ralph.display import phase_banner as phase_banner_module
-from ralph.display import status as status_module
 from ralph.display import tables as tables_module
 from ralph.display.artifact_renderer import (
     render_analysis_decision,
@@ -40,7 +39,6 @@ from ralph.display.phase_banner import (
     show_phase_transition,
 )
 from ralph.display.plain_renderer import PlainLogRenderer
-from ralph.display.status import display_phase
 from ralph.display.tables import show_agents, show_providers
 
 
@@ -108,8 +106,6 @@ class TestRenderersRequireDisplayContext:
             (phase_banner_module, "show_phase_start"),
             (phase_banner_module, "show_phase_start_from_state"),
             (phase_banner_module, "show_phase_complete"),
-            (status_module, "display_phase"),
-            (status_module, "display_progress"),
             (artifact_renderer_module, "render_plan_artifact"),
             (artifact_renderer_module, "render_analysis_decision"),
             (artifact_renderer_module, "render_commit_message"),
@@ -137,11 +133,6 @@ class TestRenderersRequireDisplayContext:
         """show_phase_transition() must fail when called without display_context."""
         with pytest.raises(TypeError, match="display_context"):
             show_phase_transition("planning", "development")  # type: ignore[call-arg]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
-
-    def test_display_phase_rejects_missing_context(self) -> None:
-        """display_phase() must fail when called without display_context."""
-        with pytest.raises(TypeError, match="display_context"):
-            display_phase("Planning", iteration=1, total=3)  # type: ignore[call-arg]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
 
     def test_plain_log_renderer_requires_display_context(self) -> None:
         """PlainLogRenderer() must fail when called without an explicit DisplayContext."""

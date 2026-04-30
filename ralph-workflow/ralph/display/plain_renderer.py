@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 import re
 import time
 from dataclasses import dataclass, field
@@ -164,14 +163,6 @@ _ANSI_ESCAPE = re.compile(r"\x1b\[[0-9;]*m")
 
 _EMPTY_PLAN_SIGNATURE: tuple[None, tuple[str, ...], int] = (None, (), 0)
 
-# Streaming checkpoint: emit a progress line every N fragments regardless of char count
-_STREAMING_CHECKPOINT_FRAGMENTS: Final[int] = 20
-
-_CHECKPOINTS_DISABLED_VALUES: frozenset[str] = frozenset({"0", "false", "no", "off"})
-
-# Identical consecutive fragment dedup
-_DEDUP_DISABLED_VALUES: Final[frozenset[str]] = frozenset({"0", "false", "no", "off"})
-
 
 def _strip_markup(text: str) -> str:
     try:
@@ -183,16 +174,6 @@ def _strip_markup(text: str) -> str:
 def _sanitize(text: str) -> str:
     """Strip both Rich markup and ANSI escapes for copy-paste safety."""
     return _ANSI_ESCAPE.sub("", _strip_markup(text))
-
-
-def _checkpoints_enabled() -> bool:
-    flag = os.environ.get("RALPH_STREAMING_CHECKPOINTS", "").lower().strip()
-    return flag not in _CHECKPOINTS_DISABLED_VALUES
-
-
-def _dedup_enabled() -> bool:
-    flag = os.environ.get("RALPH_STREAMING_DEDUP", "").lower().strip()
-    return flag not in _DEDUP_DISABLED_VALUES
 
 
 @dataclass
@@ -320,7 +301,7 @@ class PlainLogRenderer:
             self._last_phase = snapshot.phase
             self._last_iteration = snapshot.iteration
             level = LEVELS.get(snapshot.phase, "INFO")
-            marker = "◆ " if level == "MILESTONE" else ""
+            marker = f"{self._ctx.glyph_for('milestone')} " if level == "MILESTONE" else ""
             return [self._build_line(timestamp, level, "META", f"[phase] {marker}{snapshot.phase}")]
         if snapshot.iteration != self._last_iteration:
             self._last_iteration = snapshot.iteration
@@ -869,7 +850,7 @@ class PlainLogRenderer:
                 no_wrap=True,
             )
 
-        ai_summary = build_ai_summary(joined, os.environ)
+        ai_summary = build_ai_summary(joined, self._ctx.env)
         if ai_summary:
             ai_text = _sanitize(ai_summary)
             self._console.print(
@@ -953,17 +934,21 @@ class PlainLogRenderer:
                             )
                             sanitized = f"↳ preview: {_sanitize(headline)}"
                     else:
-                        if _dedup_enabled() and accumulated and accumulated[-1] == content:
+                        if (
+                            self._ctx.streaming_dedup_enabled
+                            and accumulated
+                            and accumulated[-1] == content
+                        ):
                             return
                         seq = len(accumulated) + 1
                         accumulated.append(content)
                         tag = f"{continue_tag}#{seq}"
 
-                        if _checkpoints_enabled():
+                        if self._ctx.streaming_checkpoints_enabled:
                             total_chars = sum(len(x) for x in accumulated)
                             last_cp = self._last_checkpoint_chars.get(unit_id, 0)
                             emit_checkpoint = (
-                                seq % _STREAMING_CHECKPOINT_FRAGMENTS == 0
+                                seq % self._ctx.streaming_checkpoint_fragments == 0
                                 or total_chars - last_cp >= self._ctx.streaming_checkpoint_chars
                             )
                             if emit_checkpoint:
