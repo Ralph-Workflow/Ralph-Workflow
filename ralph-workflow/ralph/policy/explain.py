@@ -36,6 +36,8 @@ class PhaseExplanation:
     loop_policy: LoopPolicyExplanation | None
     commit_policy: CommitPolicyExplanation | None
     terminal_outcome: str | None
+    clean_outcome: str | None = None
+    issues_outcome: str | None = None
     is_entry: bool = False
     is_terminal: bool = False
 
@@ -181,6 +183,8 @@ def explain_policy(bundle: PolicyBundle) -> PolicyExplanation:
             loop_policy=loop_expl,
             commit_policy=commit_expl,
             terminal_outcome=phase_def.terminal_outcome,
+            clean_outcome=phase_def.clean_outcome,
+            issues_outcome=phase_def.issues_outcome,
             is_entry=(phase_name == pipeline.entry_phase),
             is_terminal=(phase_name == pipeline.terminal_phase),
         )

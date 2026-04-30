@@ -464,6 +464,16 @@ def _render_phase_commit(phase: PhaseExplanation, lines: list[str]) -> None:
     lines.append("      produces changes that need to be committed.")
 
 
+def _render_phase_review(phase: PhaseExplanation, lines: list[str]) -> None:
+    """Render review-phase-specific fields for a phase."""
+    if phase.role != "review":
+        return
+    if phase.clean_outcome:
+        lines.append(f"    Clean outcome: {phase.clean_outcome}")
+    if phase.issues_outcome:
+        lines.append(f"    Issues outcome: {phase.issues_outcome}")
+
+
 def _render_phase_text(phase: object, lines: list[str]) -> None:
     """Render a single phase's explanation into text lines."""
     from ralph.policy.explain import PhaseExplanation  # noqa: PLC0415
@@ -506,6 +516,8 @@ def _render_phase_text(phase: object, lines: list[str]) -> None:
             )
 
     _render_phase_commit(phase, lines)
+
+    _render_phase_review(phase, lines)
 
     sentences = _render_explanation_sentences(phase)
     lines.extend(sentences)

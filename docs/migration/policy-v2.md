@@ -92,7 +92,7 @@ pipeline drains and agent drains.
 
 ### `issues_outcome` on `role='review'` phases
 
-All phases with `role = 'review'` must now declare `issues_outcome`. This is the label stored
+All phases with `role = 'review'` must declare `issues_outcome`. This is the label stored
 as `review_outcome` in pipeline state when the reviewer finds issues.
 
 ```toml
@@ -119,13 +119,13 @@ finds no issues.
 [phases.review]
 role = "review"
 drain = "review"
-clean_outcome = "review_clean"    # required when bypass_routes is non-empty
+clean_outcome = "clean"    # required when bypass_routes is non-empty
 issues_outcome = "has_issues"
 [phases.review.transitions]
 on_success = "review_analysis"
 on_loopback = "fix"
 [phases.review.bypass_routes]
-review_clean = "review_commit"
+clean = "review_commit"
 ```
 
 `validate_policy_completeness` raises `PolicyValidationError` if a `role='review'` phase has
@@ -172,14 +172,19 @@ review_clean = "review_commit"
 [phases.review]
 drain = "review"
 role = "review"
-clean_outcome = "review_clean"
+clean_outcome = "clean"
 issues_outcome = "has_issues"
 [phases.review.transitions]
 on_success = "review_analysis"
 on_loopback = "fix"
 [phases.review.bypass_routes]
-review_clean = "review_commit"
+clean = "review_commit"
 ```
+
+Key changes:
+- `clean_outcome = "clean"` — the key that signals a clean review (must match a key in `bypass_routes`)
+- `issues_outcome = "has_issues"` — the value set as `review_outcome` when issues are found
+- `bypass_routes` key is now `clean` (not `review_clean`)
 
 ### Step 3: Verify the updated policy
 
@@ -220,8 +225,16 @@ and re-run until the command exits 0.
 
 ## How to read `--explain-policy` output
 
-`ralph --explain-policy` renders the active policy as an ASCII workflow diagram. The diagram
-contract is defined in `ralph/policy/render.py`. Key visual elements:
+`ralph --explain-policy` renders the active policy as an ASCII workflow diagram and a
+text-based explanation. The text output includes key fields for each phase:
+
+- **For `role='review'` phases**: `clean_outcome` and `issues_outcome` are listed
+  to make the review routing contract explicit.
+- **Bypass routes**: Rendered as `Bypass [key] → target` showing which outcome keys
+  trigger which bypass routes.
+- **Decisions**: Rendered with the decision vocabulary and their target phases.
+
+The diagram contract is defined in `ralph/policy/render.py`. Key visual elements:
 
 | Element | Meaning |
 |---------|---------|
