@@ -14,9 +14,13 @@ from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
 import pytest
+from rich.console import Console
 
+import ralph.display.context as display_context_module
 import ralph.display.parallel_display as pd_module
+from ralph.config.enums import Verbosity
 from ralph.config.models import GeneralConfig, UnifiedConfig
+from ralph.display.context import make_display_context
 from ralph.pipeline import runner as runner_module
 from ralph.pipeline.effects import (
     CommitEffect,
@@ -59,8 +63,6 @@ def test_default_run_constructs_parallel_display_and_renders_surfaces(
 
     def spy_init(self: object, *args: object, **kwargs: object) -> None:
         constructed.append(self)
-        # Force lines mode so the test does not require a real terminal.
-        kwargs.setdefault("mode", "lines")
         real_init(self, *args, **kwargs)
 
     monkeypatch.setattr(pd_module.ParallelDisplay, "__init__", spy_init)
@@ -139,11 +141,10 @@ def test_default_run_propagates_display_subscriber(
 
     real_init = pd_module.ParallelDisplay.__init__
 
-    def lines_init(self: object, *args: object, **kwargs: object) -> None:
-        kwargs.setdefault("mode", "lines")
+    def plain_init(self: object, *args: object, **kwargs: object) -> None:
         real_init(self, *args, **kwargs)
 
-    monkeypatch.setattr(pd_module.ParallelDisplay, "__init__", lines_init)
+    monkeypatch.setattr(pd_module.ParallelDisplay, "__init__", plain_init)
 
     # Short-circuit immediately: enter -> exit by going straight to complete.
     state = MagicMock()
@@ -160,3 +161,70 @@ def test_default_run_propagates_display_subscriber(
     # The subscriber attached should not be None — display.subscriber was used.
     if captured_subscribers:
         assert all(s is not None for s in captured_subscribers)
+
+
+def test_sigwinch_refresh_updates_live_display_context(
+    monkeypatch: MonkeyPatch, tmp_path: Path
+) -> None:
+    """SIGWINCH refresh must update the display object the runner keeps using."""
+    policy_bundle = load_policy(DEFAULT_POLICY_DIR)
+    base_console = Console(record=True, width=120, force_terminal=True)
+    wide_ctx = make_display_context(console=base_console, env={"COLUMNS": "120"})
+    compact_ctx = make_display_context(
+        console=base_console,
+        env={"COLUMNS": "40"},
+        force_width=40,
+    )
+
+    class StubDisplay:
+        def __init__(self) -> None:
+            self._ctx = wide_ctx
+            self._plain_renderer = MagicMock()
+            self._plain_renderer._ctx = wide_ctx
+
+        def __enter__(self) -> StubDisplay:
+            return self
+
+        def __exit__(self, exc_type, exc, tb) -> bool:
+            return False
+
+        def emit(self, *_args, **_kwargs) -> None:
+            return None
+
+    display = StubDisplay()
+
+    monkeypatch.setattr(runner_module, "resolve_workspace_scope", lambda: WorkspaceScope(tmp_path))
+    monkeypatch.setattr(runner_module, "_write_start_commit_if_absent", lambda _root: None)
+    monkeypatch.setattr(runner_module, "_validate_custom_mcp_servers", lambda _root: 0)
+    monkeypatch.setattr(runner_module, "load_policy_or_die", lambda _path: policy_bundle)
+    monkeypatch.setattr(runner_module.ckpt, "save", lambda _state: None)
+
+    def fake_install_sigwinch_refresher(ctx_holder: list[object], on_refresh=None) -> None:
+        ctx_holder[0] = compact_ctx
+        if on_refresh is not None:
+            on_refresh(compact_ctx)
+
+    monkeypatch.setattr(
+        display_context_module,
+        "install_sigwinch_refresher",
+        fake_install_sigwinch_refresher,
+    )
+
+    state = PipelineState(
+        phase="complete",
+        total_iterations=0,
+        total_reviewer_passes=0,
+        development_budget_remaining=0,
+        review_budget_remaining=0,
+    )
+
+    exit_code = runner_module.run(
+        _config(),
+        initial_state=state,
+        display=display,
+        verbosity=Verbosity.VERBOSE,
+    )
+
+    assert exit_code == 0
+    assert display._ctx.mode == "compact"
+    assert display._plain_renderer._ctx.mode == "compact"

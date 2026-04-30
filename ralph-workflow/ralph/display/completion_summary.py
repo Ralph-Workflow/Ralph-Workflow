@@ -10,17 +10,15 @@ from rich.console import Group
 from rich.rule import Rule
 from rich.text import Text
 
-from ralph.display.context import make_display_context
 from ralph.display.phase_banner import _phase_style
 from ralph.mcp.artifacts.commit_message import read_commit_message_artifact
 
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from rich.console import Console
-
     from ralph.display.context import DisplayContext
     from ralph.display.snapshot import PipelineSnapshot
+
 
 _VERIFICATION_ARTIFACT = ".agent/artifacts/verification.json"
 _DECISION_LABELS: dict[str, str] = {
@@ -111,13 +109,13 @@ def _verification_line(workspace_root: Path | None) -> str:
     """Return a human-readable verification status line.
 
     Only reports a positive status when the verification artifact is present and
-    readable. A missing or unreadable artifact yields 'not verified' — the
+    readable. A missing or unreadable artifact yields 'not verified' \u2014 the
     pipeline's own phase/error state is not used as a proxy for verification.
     """
     status, reason = _read_verification_status(workspace_root)
     if status == "unknown":
         return "Verification: not verified"
-    suffix = f" — {reason}" if reason else ""
+    suffix = f" \u2014 {reason}" if reason else ""
     return f"Verification: {status}{suffix}"
 
 
@@ -129,11 +127,11 @@ def _dropped_count_line(dropped: int) -> str:
 
 
 def _make_badge_text(badge: str, rest: str) -> Text:
-    """Build a Text object with a themed badge label followed by plain rest text."""
+    """Build a Text object with a themed badge label followed by muted rest text."""
     theme_key = _BADGE_THEME_KEYS.get(badge, "theme.level.info")
     t = Text("  ")
     t.append(f"[{badge}]", style=theme_key)
-    t.append(rest)
+    t.append(rest, style="theme.text.muted")
     return t
 
 
@@ -178,7 +176,7 @@ def render_completion_summary(  # noqa: PLR0913
         lines.append("Decisions:")
         for phase, decision, reason, _ts in snapshot.decision_log:
             badge = _DECISION_LABELS.get(decision.lower(), "INFO")
-            reason_part = f" — {reason}" if reason else ""
+            reason_part = f" \u2014 {reason}" if reason else ""
             lines.append(f"- [{badge}] {phase.replace('_', ' ').title()}: {decision}{reason_part}")
     else:
         lines.append("Decisions: (none recorded)")
@@ -215,6 +213,7 @@ def _render_compact_group(  # noqa: PLR0912, PLR0913
     tool_call_count: int = 0,
     error_count: int = 0,
     elapsed_seconds: float | None = None,
+    include_context_sections: bool = True,
 ) -> Group:
     """Compact single-column layout: section tags replace Rule headers."""
     failed = snapshot.phase == "failed"
@@ -223,7 +222,7 @@ def _render_compact_group(  # noqa: PLR0912, PLR0913
 
     renderables: list[Text] = [Text(title, style=style)]
 
-    if snapshot.plan_summary or snapshot.plan_scope_items:
+    if include_context_sections and (snapshot.plan_summary or snapshot.plan_scope_items):
         if snapshot.plan_summary:
             renderables.append(Text(f"PLAN: {snapshot.plan_summary}"))
         if snapshot.plan_scope_items:
@@ -242,7 +241,7 @@ def _render_compact_group(  # noqa: PLR0912, PLR0913
     if snapshot.decision_log:
         for phase, decision, reason, _ts in snapshot.decision_log:
             badge = _DECISION_LABELS.get(decision.lower(), "INFO")
-            reason_part = f": {decision}" + (f" — {reason}" if reason else "")
+            reason_part = f": {decision}" + (f" \u2014 {reason}" if reason else "")
             phase_title = phase.replace('_', ' ').title()
             renderables.append(
                 _make_badge_text(badge, f" DECISIONS: {phase_title}{reason_part}")
@@ -272,7 +271,7 @@ def _render_compact_group(  # noqa: PLR0912, PLR0913
         if snapshot.pr_url:
             renderables.append(Text(f"COMMIT: PR: {snapshot.pr_url}"))
 
-    if snapshot.plan_risks:
+    if include_context_sections and snapshot.plan_risks:
         renderables.extend(Text(f"RISKS: - {risk}") for risk in snapshot.plan_risks)
 
     if snapshot.last_error:
@@ -299,14 +298,27 @@ def render_completion_summary_group(  # noqa: PLR0912, PLR0913, PLR0915
     tool_call_count: int = 0,
     error_count: int = 0,
     elapsed_seconds: float | None = None,
-    context: DisplayContext | None = None,
+    include_context_sections: bool = True,
+    display_context: DisplayContext,
 ) -> Group:
     """Render the completion summary as a Rich Group with rule-delimited sections.
 
     In compact mode the section Rule headers are replaced with uppercase tag prefixes.
     Returns a Group suitable for ``console.print(group, markup=False, highlight=False)``.
+
+    Args:
+        snapshot: Pipeline snapshot with run metadata.
+        workspace_root: Path to workspace for artifact reading.
+        dropped_count: Number of dropped snapshots.
+        thinking_block_count: Number of thinking blocks.
+        overflow_path: Path to overflow log if any.
+        content_block_count: Number of content blocks.
+        tool_call_count: Number of tool calls.
+        error_count: Number of errors.
+        elapsed_seconds: Total elapsed time.
+        display_context: DisplayContext providing console and mode.
     """
-    if context is not None and context.mode == "compact":
+    if display_context.mode == "compact":
         return _render_compact_group(
             snapshot,
             workspace_root=workspace_root,
@@ -317,6 +329,7 @@ def render_completion_summary_group(  # noqa: PLR0912, PLR0913, PLR0915
             tool_call_count=tool_call_count,
             error_count=error_count,
             elapsed_seconds=elapsed_seconds,
+            include_context_sections=include_context_sections,
         )
 
     failed = snapshot.phase == "failed"
@@ -329,7 +342,7 @@ def render_completion_summary_group(  # noqa: PLR0912, PLR0913, PLR0915
     renderables.append(Rule(title, style=style))
 
     # Plan section
-    if snapshot.plan_summary or snapshot.plan_scope_items:
+    if include_context_sections and (snapshot.plan_summary or snapshot.plan_scope_items):
         renderables.append(Rule("Plan", style=_phase_style("planning")))
         if snapshot.plan_summary:
             renderables.append(Text(f"  {snapshot.plan_summary}"))
@@ -353,7 +366,7 @@ def render_completion_summary_group(  # noqa: PLR0912, PLR0913, PLR0915
     if snapshot.decision_log:
         for phase, decision, reason, _ts in snapshot.decision_log:
             badge = _DECISION_LABELS.get(decision.lower(), "INFO")
-            reason_part = f": {decision}" + (f" — {reason}" if reason else "")
+            reason_part = f": {decision}" + (f" \u2014 {reason}" if reason else "")
             renderables.append(
                 _make_badge_text(
                     badge,
@@ -388,7 +401,7 @@ def render_completion_summary_group(  # noqa: PLR0912, PLR0913, PLR0915
             renderables.append(Text(f"  PR: {snapshot.pr_url}"))
 
     # Risks section
-    if snapshot.plan_risks:
+    if include_context_sections and snapshot.plan_risks:
         renderables.append(Rule("Open Risks", style=_phase_style("fix")))
         renderables.extend(Text(f"  - {risk}") for risk in snapshot.plan_risks)
 
@@ -411,7 +424,6 @@ def render_completion_summary_group(  # noqa: PLR0912, PLR0913, PLR0915
 
 
 def emit_completion_summary(  # noqa: PLR0913
-    console: Console,
     snapshot: PipelineSnapshot,
     *,
     workspace_root: Path | None = None,
@@ -422,10 +434,24 @@ def emit_completion_summary(  # noqa: PLR0913
     tool_call_count: int = 0,
     error_count: int = 0,
     elapsed_seconds: float | None = None,
-    context: DisplayContext | None = None,
+    include_context_sections: bool = True,
+    display_context: DisplayContext,
 ) -> None:
-    if context is None:
-        context = make_display_context(console=console)
+    """Emit the completion summary to the console.
+
+    Args:
+        snapshot: Pipeline snapshot with run metadata.
+        workspace_root: Path to workspace for artifact reading.
+        dropped_count: Number of dropped snapshots.
+        thinking_block_count: Number of thinking blocks.
+        overflow_path: Path to overflow log if any.
+        content_block_count: Number of content blocks.
+        tool_call_count: Number of tool calls.
+        error_count: Number of errors.
+        elapsed_seconds: Total elapsed time.
+        display_context: DisplayContext providing the console and mode.
+    """
+    console = display_context.console
     console.print(
         render_completion_summary_group(
             snapshot,
@@ -437,7 +463,8 @@ def emit_completion_summary(  # noqa: PLR0913
             tool_call_count=tool_call_count,
             error_count=error_count,
             elapsed_seconds=elapsed_seconds,
-            context=context,
+            include_context_sections=include_context_sections,
+            display_context=display_context,
         ),
         markup=False,
         highlight=False,

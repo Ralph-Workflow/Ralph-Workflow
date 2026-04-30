@@ -10,7 +10,8 @@ from rich.console import Console
 
 from ralph.agents.parsers.base import AgentParser
 from ralph.display.activity_model import ActivityEventKind, ActivityProvider
-from ralph.display.mode import NARROW_THRESHOLD, detect_mode
+from ralph.display.context import make_display_context
+from ralph.display.mode import MEDIUM_THRESHOLD, NARROW_THRESHOLD
 from ralph.display.parallel_display import (
     ParallelDisplay,
     _strip_markup,
@@ -32,92 +33,104 @@ def _make_wide_console() -> tuple[Console, StringIO]:
 
 def test_ci_env_does_not_affect_mode() -> None:
     console = Console(force_terminal=True, width=120)
-    assert detect_mode(console, {"CI": "1"}) == "wide"
+    ctx = make_display_context(console=console, env={"CI": "1"})
+    assert ctx.mode == "wide"
 
 
 def test_ci_empty_string_does_not_affect_mode() -> None:
     console = Console(force_terminal=True, width=120)
-    assert detect_mode(console, {"CI": ""}) == "wide"
+    ctx = make_display_context(console=console, env={"CI": ""})
+    assert ctx.mode == "wide"
 
 
 def test_no_color_env_does_not_affect_mode() -> None:
     console = Console(force_terminal=True, width=120)
-    assert detect_mode(console, {"NO_COLOR": "1"}) == "wide"
+    ctx = make_display_context(console=console, env={"NO_COLOR": "1"})
+    assert ctx.mode == "wide"
 
 
 def test_no_color_empty_string_does_not_affect_mode() -> None:
     console = Console(force_terminal=True, width=120)
-    assert detect_mode(console, {"NO_COLOR": ""}) == "wide"
+    ctx = make_display_context(console=console, env={"NO_COLOR": ""})
+    assert ctx.mode == "wide"
 
 
 def test_term_dumb_does_not_affect_mode() -> None:
     console = Console(force_terminal=True, width=120)
-    assert detect_mode(console, {"TERM": "dumb"}) == "wide"
+    ctx = make_display_context(console=console, env={"TERM": "dumb"})
+    assert ctx.mode == "wide"
 
 
 def test_term_value_does_not_affect_mode() -> None:
     console = Console(force_terminal=True, width=120)
-    assert detect_mode(console, {"TERM": "xterm-256color"}) == "wide"
+    ctx = make_display_context(console=console, env={"TERM": "xterm-256color"})
+    assert ctx.mode == "wide"
 
 
 def test_non_terminal_console_does_not_affect_mode() -> None:
     console = Console(force_terminal=False, width=120)
-    assert detect_mode(console, {}) == "wide"
+    ctx = make_display_context(console=console, env={})
+    assert ctx.mode == "wide"
 
 
 def test_narrow_terminal_returns_compact() -> None:
     console = Console(force_terminal=True, width=40)
-    assert detect_mode(console, {}) == "compact"
+    ctx = make_display_context(console=console, env={})
+    assert ctx.mode == "compact"
 
 
 def test_threshold_boundary_returns_medium() -> None:
     console = Console(force_terminal=True, width=NARROW_THRESHOLD)
-    assert detect_mode(console, {}) == "medium"
+    ctx = make_display_context(console=console, env={})
+    assert ctx.mode == "medium"
 
 
 def test_threshold_plus_one_returns_medium() -> None:
     console = Console(force_terminal=True, width=NARROW_THRESHOLD + 1)
-    assert detect_mode(console, {}) == "medium"
+    ctx = make_display_context(console=console, env={})
+    assert ctx.mode == "medium"
 
 
 def test_threshold_99_returns_medium() -> None:
-    from ralph.display.mode import MEDIUM_THRESHOLD  # noqa: PLC0415
     console = Console(force_terminal=True, width=MEDIUM_THRESHOLD - 1)
-    assert detect_mode(console, {}) == "medium"
+    ctx = make_display_context(console=console, env={})
+    assert ctx.mode == "medium"
 
 
 def test_threshold_60_returns_medium() -> None:
     console = Console(force_terminal=True, width=60)
-    assert detect_mode(console, {}) == "medium"
+    ctx = make_display_context(console=console, env={})
+    assert ctx.mode == "medium"
 
 
 def test_threshold_100_returns_wide() -> None:
-    from ralph.display.mode import MEDIUM_THRESHOLD  # noqa: PLC0415
     console = Console(force_terminal=True, width=MEDIUM_THRESHOLD)
-    assert detect_mode(console, {}) == "wide"
+    ctx = make_display_context(console=console, env={})
+    assert ctx.mode == "wide"
 
 
 def test_parallel_display_mode_detected_at_init() -> None:
     console = Console(force_terminal=True, width=120)
-    pd = ParallelDisplay(console, {})
-    assert pd.mode == "wide"
+    ctx = make_display_context(console=console, env={})
+    pd = ParallelDisplay(make_display_context(console=console, env={}))
+    assert pd.mode == ctx.mode == "wide"
 
 
 def test_parallel_display_mode_wide_when_ci() -> None:
     console = Console(force_terminal=True, width=120)
-    pd = ParallelDisplay(console, {"CI": "1"})
+    pd = ParallelDisplay(make_display_context(console=console, env={"CI": "1"}))
     assert pd.mode == "wide"
 
 
 def test_parallel_display_default_env_uses_os_environ() -> None:
     console = Console(force_terminal=True, width=120)
-    pd = ParallelDisplay(console)
+    pd = ParallelDisplay(make_display_context(console=console, env={}))
     assert pd.mode in ("compact", "medium", "wide")
 
 
 def test_parallel_display_mode_frozen_after_init() -> None:
     console = Console(force_terminal=True, width=120)
-    pd = ParallelDisplay(console, {})
+    pd = ParallelDisplay(make_display_context(console=console, env={}))
     try:
         pd.mode = "lines"  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
         raise AssertionError("Should have raised AttributeError")
@@ -127,39 +140,39 @@ def test_parallel_display_mode_frozen_after_init() -> None:
 
 def test_parallel_display_context_manager() -> None:
     console = Console(force_terminal=True, width=120)
-    with ParallelDisplay(console, {}) as pd:
+    with ParallelDisplay(make_display_context(console=console, env={})) as pd:
         assert pd.mode == "wide"
 
 
 def test_parallel_display_emit_does_not_raise() -> None:
     console = Console(force_terminal=True, width=120)
-    pd = ParallelDisplay(console, {})
+    pd = ParallelDisplay(make_display_context(console=console, env={}))
     pd.emit("unit-1", "some output line")
 
 
 def test_parallel_display_emit_none_unit_id_does_not_raise() -> None:
     console = Console(force_terminal=True, width=120)
-    pd = ParallelDisplay(console, {})
+    pd = ParallelDisplay(make_display_context(console=console, env={}))
     pd.emit(None, "some output line")
 
 
 def test_parallel_display_set_status_writes_line() -> None:
     console = Console(force_terminal=True, width=120, record=True)
-    pd = ParallelDisplay(console, {})
+    pd = ParallelDisplay(make_display_context(console=console, env={}))
     pd.set_status("unit-1", WorkerStatus.RUNNING)
     assert "status=RUNNING" in console.export_text()
 
 
 def test_parallel_display_start_stop_do_not_raise() -> None:
     console = Console(force_terminal=True, width=120)
-    pd = ParallelDisplay(console, {})
+    pd = ParallelDisplay(make_display_context(console=console, env={}))
     pd.start()
     pd.stop()
 
 
 def test_parallel_display_default_mode_streams_copy_pasteable_lines() -> None:
     console = Console(force_terminal=True, width=120, record=True)
-    pd = ParallelDisplay(console, {})
+    pd = ParallelDisplay(make_display_context(console=console, env={}))
 
     assert pd.mode == "wide"
 
@@ -186,11 +199,10 @@ def test_strip_markup_removes_rich_tags() -> None:
 
 def test_oversized_content_written_to_overflow_log(tmp_path: Path) -> None:
     console, _buf = _make_wide_console()
-    pd = ParallelDisplay(console, {}, workspace_root=tmp_path)
+    pd = ParallelDisplay(make_display_context(console=console, env={}), workspace_root=tmp_path)
 
     big_content = "A" * 5000  # exceeds hard_limit=4000
     pd._emit_activity_event("unit-1", ActivityEventKind.TEXT, big_content, None, {})
-
     overflow_log = tmp_path / ".agent" / "raw" / "unit-1.log"
     assert overflow_log.exists(), "overflow log should be created for oversized content"
     written = overflow_log.read_text(encoding="utf-8")
@@ -200,7 +212,7 @@ def test_oversized_content_written_to_overflow_log(tmp_path: Path) -> None:
 def test_soft_limit_content_overflow_ref_appears_in_output(tmp_path: Path) -> None:
     """Content between soft and hard limits includes overflow ref in condensed output."""
     console, buf = _make_wide_console()
-    pd = ParallelDisplay(console, {}, workspace_root=tmp_path)
+    pd = ParallelDisplay(make_display_context(console=console, env={}), workspace_root=tmp_path)
 
     # 500 chars: above soft_limit(400), below hard_limit(4000)
     # renderer appends [see .agent/raw/unit-1.log] via condensed_ref
@@ -214,7 +226,7 @@ def test_soft_limit_content_overflow_ref_appears_in_output(tmp_path: Path) -> No
 def test_condensed_ref_in_renderer_not_in_condenser(tmp_path: Path) -> None:
     """The overflow ref is added by PlainLogRenderer, not embedded in condenser output."""
     console, buf = _make_wide_console()
-    pd = ParallelDisplay(console, {}, workspace_root=tmp_path)
+    pd = ParallelDisplay(make_display_context(console=console, env={}), workspace_root=tmp_path)
 
     soft_limit_content = "C" * 500
     pd._emit_activity_event("unit-1", ActivityEventKind.TEXT, soft_limit_content, None, {})
@@ -228,7 +240,7 @@ def test_condensed_ref_in_renderer_not_in_condenser(tmp_path: Path) -> None:
 
 def test_short_content_not_written_to_overflow(tmp_path: Path) -> None:
     console, _buf = _make_wide_console()
-    pd = ParallelDisplay(console, {}, workspace_root=tmp_path)
+    pd = ParallelDisplay(make_display_context(console=console, env={}), workspace_root=tmp_path)
 
     small_content = "hello world"
     pd._emit_activity_event("unit-1", ActivityEventKind.TEXT, small_content, None, {})
@@ -239,7 +251,7 @@ def test_short_content_not_written_to_overflow(tmp_path: Path) -> None:
 
 def test_stop_flushes_streaming_blocks(tmp_path: Path) -> None:
     console, buf = _make_wide_console()
-    pd = ParallelDisplay(console, {}, workspace_root=tmp_path)
+    pd = ParallelDisplay(make_display_context(console=console, env={}), workspace_root=tmp_path)
 
     pd._emit_activity_event("unit-1", ActivityEventKind.TEXT, "partial output", None, {})
     pd.stop()
@@ -250,7 +262,7 @@ def test_stop_flushes_streaming_blocks(tmp_path: Path) -> None:
 
 def test_emit_phase_transition_flushes_blocks(tmp_path: Path) -> None:
     console, buf = _make_wide_console()
-    pd = ParallelDisplay(console, {}, workspace_root=tmp_path)
+    pd = ParallelDisplay(make_display_context(console=console, env={}), workspace_root=tmp_path)
 
     pd._emit_activity_event("unit-1", ActivityEventKind.TEXT, "some content", None, {})
     pd.emit_phase_transition("planning", "development")
@@ -265,7 +277,7 @@ def test_emit_phase_transition_flushes_blocks(tmp_path: Path) -> None:
 def test_drop_warning_emitted_when_ring_buffer_drops(tmp_path: Path) -> None:
     """When the ring buffer drops lines, a WARN META [progress] line is emitted."""
     console, buf = _make_wide_console()
-    pd = ParallelDisplay(console, {}, workspace_root=tmp_path)
+    pd = ParallelDisplay(make_display_context(console=console, env={}), workspace_root=tmp_path)
 
     # Inject a tiny ring buffer so we can force drops
     tiny_buf: RingBuffer = RingBuffer(maxsize=1)
@@ -288,7 +300,7 @@ def test_drop_warning_emitted_when_ring_buffer_drops(tmp_path: Path) -> None:
 def test_drop_warning_debounced_within_one_second(tmp_path: Path) -> None:
     """Two consecutive drop checks within 1 second produce only one warning."""
     console, buf = _make_wide_console()
-    pd = ParallelDisplay(console, {}, workspace_root=tmp_path)
+    pd = ParallelDisplay(make_display_context(console=console, env={}), workspace_root=tmp_path)
 
     tiny_buf: RingBuffer = RingBuffer(maxsize=1)
     tiny_buf.enqueue("a")
@@ -331,7 +343,7 @@ class _AlwaysRaisingParser(AgentParser):
 def test_malformed_input_written_to_overflow_log(tmp_path: Path) -> None:
     """When ActivityRouter fails to parse a line, the raw input is written to overflow."""
     console, _buf = _make_wide_console()
-    pd = ParallelDisplay(console, {}, workspace_root=tmp_path)
+    pd = ParallelDisplay(make_display_context(console=console, env={}), workspace_root=tmp_path)
 
     pd._activity_router._parser_factory = lambda _: _AlwaysRaisingParser()
 
@@ -347,7 +359,7 @@ def test_malformed_input_written_to_overflow_log(tmp_path: Path) -> None:
 def test_malformed_input_still_emits_error_event(tmp_path: Path) -> None:
     """A parse failure emits an ERROR event even when overflow write occurs."""
     console, buf = _make_wide_console()
-    pd = ParallelDisplay(console, {}, workspace_root=tmp_path)
+    pd = ParallelDisplay(make_display_context(console=console, env={}), workspace_root=tmp_path)
 
     pd._activity_router._parser_factory = lambda _: _AlwaysRaisingParser()
 

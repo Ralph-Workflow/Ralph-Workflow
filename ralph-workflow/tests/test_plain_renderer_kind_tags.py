@@ -9,6 +9,7 @@ from unittest.mock import patch
 from rich.console import Console
 
 from ralph.display.content_condenser import condense_content
+from ralph.display.context import make_display_context
 from ralph.display.long_content_summary import set_ai_summary_hook
 from ralph.display.plain_renderer import LEVELS, PlainLogRenderer
 
@@ -16,7 +17,7 @@ from ralph.display.plain_renderer import LEVELS, PlainLogRenderer
 def _make_renderer() -> tuple[PlainLogRenderer, StringIO]:
     buf = StringIO()
     console = Console(file=buf, force_terminal=False, highlight=False, color_system=None, width=200)
-    return PlainLogRenderer(console), buf
+    return PlainLogRenderer(make_display_context(console=console, env={})), buf
 
 
 def test_text_kind_emits_content_tag() -> None:
@@ -388,10 +389,14 @@ def test_streaming_checkpoint_every_4000_chars() -> None:
 
 
 def test_streaming_checkpoint_disabled_by_env() -> None:
-    renderer, buf = _make_renderer()
-    with patch.dict(os.environ, {"RALPH_STREAMING_CHECKPOINTS": "0"}):
-        for i in range(25):
-            renderer.emit_activity_line("u", "text", f"frag{i:02d}")
+    buf = StringIO()
+    console = Console(file=buf, force_terminal=False, highlight=False, color_system=None, width=200)
+    renderer = PlainLogRenderer(
+        make_display_context(console=console, env={"RALPH_STREAMING_CHECKPOINTS": "0"})
+    )
+    assert renderer._ctx.streaming_checkpoints_enabled is False
+    for i in range(25):
+        renderer.emit_activity_line("u", "text", f"frag{i:02d}")
     out = buf.getvalue()
     assert "[content-checkpoint#" not in out
 
@@ -531,16 +536,19 @@ def test_above_threshold_empty_headline_yields_placeholder() -> None:
 
 def test_content_end_emits_ai_summary_when_hook_set() -> None:
     """Block close emits ↳ ai-summary: line after the [content-end] line."""
-    renderer, buf = _make_renderer()
+    buf = StringIO()
+    console = Console(file=buf, force_terminal=False, highlight=False, color_system=None, width=200)
+    renderer = PlainLogRenderer(
+        make_display_context(console=console, env={"RALPH_LONG_CONTENT_AI_SUMMARY": "1"})
+    )
     set_ai_summary_hook(lambda text: "Block AI summary")
     try:
-        with patch.dict(os.environ, {"RALPH_LONG_CONTENT_AI_SUMMARY": "1"}):
-            # Accumulate > 4000 chars so should_summarize returns True
-            for i in range(3):
-                renderer.emit_activity_line("u", "text", "x" * 1499 + str(i))
-            buf.truncate(0)
-            buf.seek(0)
-            renderer.flush_blocks()
+        # Accumulate > 4000 chars so should_summarize returns True
+        for i in range(3):
+            renderer.emit_activity_line("u", "text", "x" * 1499 + str(i))
+        buf.truncate(0)
+        buf.seek(0)
+        renderer.flush_blocks()
     finally:
         set_ai_summary_hook(None)
     out = buf.getvalue()

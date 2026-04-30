@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 import re
 import time
 from dataclasses import dataclass, field
@@ -11,7 +10,7 @@ from typing import TYPE_CHECKING, Final
 
 from rich.text import Text
 
-from ralph.display.context import DisplayContext, make_display_context
+from ralph.display.context import DisplayContext
 from ralph.display.long_content_summary import build_ai_summary, build_headline_or_placeholder
 from ralph.display.snapshot import PipelineSnapshot, snapshot_from_state
 
@@ -164,14 +163,6 @@ _ANSI_ESCAPE = re.compile(r"\x1b\[[0-9;]*m")
 
 _EMPTY_PLAN_SIGNATURE: tuple[None, tuple[str, ...], int] = (None, (), 0)
 
-# Streaming checkpoint: emit a progress line every N fragments regardless of char count
-_STREAMING_CHECKPOINT_FRAGMENTS: Final[int] = 20
-
-_CHECKPOINTS_DISABLED_VALUES: frozenset[str] = frozenset({"0", "false", "no", "off"})
-
-# Identical consecutive fragment dedup
-_DEDUP_DISABLED_VALUES: Final[frozenset[str]] = frozenset({"0", "false", "no", "off"})
-
 
 def _strip_markup(text: str) -> str:
     try:
@@ -183,16 +174,6 @@ def _strip_markup(text: str) -> str:
 def _sanitize(text: str) -> str:
     """Strip both Rich markup and ANSI escapes for copy-paste safety."""
     return _ANSI_ESCAPE.sub("", _strip_markup(text))
-
-
-def _checkpoints_enabled() -> bool:
-    flag = os.environ.get("RALPH_STREAMING_CHECKPOINTS", "").lower().strip()
-    return flag not in _CHECKPOINTS_DISABLED_VALUES
-
-
-def _dedup_enabled() -> bool:
-    flag = os.environ.get("RALPH_STREAMING_DEDUP", "").lower().strip()
-    return flag not in _DEDUP_DISABLED_VALUES
 
 
 @dataclass
@@ -229,17 +210,13 @@ class PlainLogRenderer:
 
     def __init__(
         self,
-        console_or_context: Console | DisplayContext,
+        display_context: DisplayContext,
         *,
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
-        context: DisplayContext | None = None,
     ) -> None:
-        if isinstance(console_or_context, DisplayContext):
-            self._ctx = console_or_context
-        elif context is not None:
-            self._ctx = context
-        else:
-            self._ctx = make_display_context(console=console_or_context)
+        if not isinstance(display_context, DisplayContext):
+            raise TypeError("display_context is required")
+        self._ctx = display_context
         self._clock = clock
         self._last_phase: str | None = None
         self._last_iteration: int | None = None
@@ -324,7 +301,7 @@ class PlainLogRenderer:
             self._last_phase = snapshot.phase
             self._last_iteration = snapshot.iteration
             level = LEVELS.get(snapshot.phase, "INFO")
-            marker = "◆ " if level == "MILESTONE" else ""
+            marker = f"{self._ctx.glyph_for('milestone')} " if level == "MILESTONE" else ""
             return [self._build_line(timestamp, level, "META", f"[phase] {marker}{snapshot.phase}")]
         if snapshot.iteration != self._last_iteration:
             self._last_iteration = snapshot.iteration
@@ -537,67 +514,151 @@ class PlainLogRenderer:
         for text in self._snapshot_texts(snapshot):
             self._console.print(text, markup=False, highlight=False, no_wrap=True)
 
-    def emit_run_start(self, orientation: RunStartOrientation) -> None:  # noqa: PLR0912
+    def emit_run_start(self, orientation: RunStartOrientation) -> None:
         """Emit a one-time MILESTONE orientation block at pipeline start."""
         timestamp = self._format_timestamp(self._clock())
+        compact = self._ctx.mode == "compact"
+
         self._console.print(
             self._build_line(
-                timestamp, "MILESTONE", "META", "[run-start] ◆ Ralph Workflow run start"
+                timestamp,
+                "MILESTONE",
+                "META",
+                f"[run-start] {self._ctx.glyph_for('milestone')} Ralph Workflow run start",
             ),
             markup=False,
             highlight=False,
             no_wrap=True,
         )
 
-        if orientation.legend_enabled:
+        if orientation.legend_enabled and not compact:
             self._console.print(
                 self._build_line(
                     timestamp,
                     "INFO",
                     "META",
-                    "[run-start] legend: LEVEL (INFO/SUCCESS/WARN/ERROR/MILESTONE)"
-                    "  CAT (META/CONT)  [tag][unit] message",
+                    "[run-start] legend: levels: INFO|SUCCESS|WARN|ERROR|MILESTONE"
+                    "  cats: META|CONT  format: [tag][unit] message",
                 ),
                 markup=False,
                 highlight=False,
                 no_wrap=True,
             )
 
+        if compact:
+            self._emit_run_start_compact(timestamp, orientation)
+        else:
+            self._emit_run_start_wide(timestamp, orientation)
+
+    def _emit_run_start_compact(  # noqa: PLR0912
+        self, timestamp: str, orientation: RunStartOrientation
+    ) -> None:
+        """Compact layout: max 4 [run-start] lines (milestone + up to 3 content)."""
+        # prompt+workspace combined
+        prompt_ws_parts: list[str] = []
         if orientation.prompt_path is not None:
-            val = _sanitize(orientation.prompt_path)
+            prompt_ws_parts.append(f"prompt={_sanitize(orientation.prompt_path)}")
+        if orientation.workspace_root is not None:
+            prompt_ws_parts.append(f"workspace={_sanitize(orientation.workspace_root)}")
+        if prompt_ws_parts:
             self._console.print(
-                self._build_line(timestamp, "INFO", "META", f"[run-start] prompt={val}"),
+                self._build_line(
+                    timestamp, "INFO", "META", f"[run-start] {' '.join(prompt_ws_parts)}"
+                ),
                 markup=False,
                 highlight=False,
                 no_wrap=True,
             )
 
-        dev_parts: list[str] = []
+        # agents+iterations combined
+        agents_iters_parts: list[str] = []
         if orientation.developer_agent is not None:
-            dev_parts.append(f"developer={_sanitize(orientation.developer_agent)}")
+            agents_iters_parts.append(f"developer={_sanitize(orientation.developer_agent)}")
         if orientation.developer_model is not None:
-            dev_parts.append(f"model={_sanitize(orientation.developer_model)}")
-        if dev_parts:
-            self._console.print(
-                self._build_line(timestamp, "INFO", "META", f"[run-start] {' '.join(dev_parts)}"),
-                markup=False,
-                highlight=False,
-                no_wrap=True,
-            )
-
-        rev_parts: list[str] = []
+            agents_iters_parts.append(f"model={_sanitize(orientation.developer_model)}")
         if orientation.reviewer_agent is not None:
-            rev_parts.append(f"reviewer={_sanitize(orientation.reviewer_agent)}")
+            agents_iters_parts.append(f"reviewer={_sanitize(orientation.reviewer_agent)}")
         if orientation.reviewer_model is not None:
-            rev_parts.append(f"model={_sanitize(orientation.reviewer_model)}")
-        if rev_parts:
+            agents_iters_parts.append(f"model={_sanitize(orientation.reviewer_model)}")
+        iter_compact: list[str] = []
+        if orientation.developer_iters is not None:
+            iter_compact.append(f"dev:{orientation.developer_iters}")
+        if orientation.reviewer_reviews is not None:
+            iter_compact.append(f"reviewer:{orientation.reviewer_reviews}")
+        if iter_compact:
+            agents_iters_parts.append(f"iterations={' '.join(iter_compact)}")
+        if agents_iters_parts:
             self._console.print(
-                self._build_line(timestamp, "INFO", "META", f"[run-start] {' '.join(rev_parts)}"),
+                self._build_line(
+                    timestamp,
+                    "INFO",
+                    "META",
+                    f"[run-start] {' '.join(agents_iters_parts)}",
+                ),
                 markup=False,
                 highlight=False,
                 no_wrap=True,
             )
 
+        # plan+verbosity+parallel combined (always emitted)
+        plan_val = "ready" if orientation.plan_present else "absent"
+        misc_parts: list[str] = [f"plan={plan_val}"]
+        if orientation.verbosity is not None:
+            misc_parts.append(f"verbosity={orientation.verbosity}")
+        if orientation.parallel_max_workers is not None:
+            misc_parts.append(f"parallel=max_workers={orientation.parallel_max_workers}")
+        self._console.print(
+            self._build_line(timestamp, "INFO", "META", f"[run-start] {' '.join(misc_parts)}"),
+            markup=False,
+            highlight=False,
+            no_wrap=True,
+        )
+
+    @staticmethod
+    def _build_agents_parts(orientation: RunStartOrientation) -> list[str]:
+        """Collect developer/reviewer agent+model tokens for the wide run-start agents line."""
+        parts: list[str] = []
+        if orientation.developer_agent is not None:
+            parts.append(f"developer={_sanitize(orientation.developer_agent)}")
+        if orientation.developer_model is not None:
+            parts.append(f"model={_sanitize(orientation.developer_model)}")
+        if orientation.reviewer_agent is not None:
+            parts.append(f"reviewer={_sanitize(orientation.reviewer_agent)}")
+        if orientation.reviewer_model is not None:
+            parts.append(f"model={_sanitize(orientation.reviewer_model)}")
+        return parts
+
+    def _emit_run_start_wide(
+        self, timestamp: str, orientation: RunStartOrientation
+    ) -> None:
+        """Medium/wide layout: grouped fields on shared lines."""
+        # prompt+workspace on one line
+        pw_parts: list[str] = []
+        if orientation.prompt_path is not None:
+            pw_parts.append(f"prompt={_sanitize(orientation.prompt_path)}")
+        if orientation.workspace_root is not None:
+            pw_parts.append(f"workspace={_sanitize(orientation.workspace_root)}")
+        if pw_parts:
+            self._console.print(
+                self._build_line(timestamp, "INFO", "META", f"[run-start] {' '.join(pw_parts)}"),
+                markup=False,
+                highlight=False,
+                no_wrap=True,
+            )
+
+        # agents+models on one line (developer and reviewer combined)
+        agents_parts = self._build_agents_parts(orientation)
+        if agents_parts:
+            self._console.print(
+                self._build_line(
+                    timestamp, "INFO", "META", f"[run-start] {' '.join(agents_parts)}"
+                ),
+                markup=False,
+                highlight=False,
+                no_wrap=True,
+            )
+
+        # iterations on one line
         iter_parts: list[str] = []
         if orientation.developer_iters is not None:
             iter_parts.append(f"dev:{orientation.developer_iters}")
@@ -629,32 +690,17 @@ class PlainLogRenderer:
                 no_wrap=True,
             )
 
+        # plan+verbosity on one line
         plan_val = "ready" if orientation.plan_present else "absent"
+        plan_parts: list[str] = [f"plan={plan_val}"]
+        if orientation.verbosity is not None:
+            plan_parts.append(f"verbosity={orientation.verbosity}")
         self._console.print(
-            self._build_line(timestamp, "INFO", "META", f"[run-start] plan={plan_val}"),
+            self._build_line(timestamp, "INFO", "META", f"[run-start] {' '.join(plan_parts)}"),
             markup=False,
             highlight=False,
             no_wrap=True,
         )
-
-        if orientation.verbosity is not None:
-            self._console.print(
-                self._build_line(
-                    timestamp, "INFO", "META", f"[run-start] verbosity={orientation.verbosity}"
-                ),
-                markup=False,
-                highlight=False,
-                no_wrap=True,
-            )
-
-        if orientation.workspace_root is not None:
-            val = _sanitize(orientation.workspace_root)
-            self._console.print(
-                self._build_line(timestamp, "INFO", "META", f"[run-start] workspace={val}"),
-                markup=False,
-                highlight=False,
-                no_wrap=True,
-            )
 
     def begin_phase(self, phase: str) -> None:
         """Start timing a new phase and reset its counters to zero."""
@@ -678,10 +724,15 @@ class PlainLogRenderer:
             f" thinking_blocks={counters.thinking_blocks}, tool_calls={counters.tool_calls},"
             f" errors={counters.errors})"
         )
+        glyph_prefix = (
+            f"{self._ctx.glyph_for('milestone')} "
+            if LEVELS.get(phase) == "MILESTONE"
+            else ""
+        )
         if clean_produced:
-            line_suffix = f"[phase-close] phase={phase} {clean_produced}{suffix}"
+            line_suffix = f"[phase-close] {glyph_prefix}phase={phase} {clean_produced}{suffix}"
         else:
-            line_suffix = f"[phase-close] phase={phase}{suffix}"
+            line_suffix = f"[phase-close] {glyph_prefix}phase={phase}{suffix}"
         self._console.print(
             self._build_line(timestamp, "INFO", "META", line_suffix),
             markup=False,
@@ -720,92 +771,103 @@ class PlainLogRenderer:
         total_agent_calls: int = 0,
         pr_url: str | None = None,
     ) -> None:
-        """Emit a one-time MILESTONE orientation block at pipeline stop."""
+        """Emit a one-time MILESTONE orientation block at pipeline stop.
+
+        Compact mode (<=3 lines): phase+elapsed on one line, counters on one line.
+        Wide mode: one line per field with counters grouped, PR last.
+        """
         self.flush_blocks()
         timestamp = self._format_timestamp(self._clock())
         total_elapsed_s = 0.0
         if self._run_start_time is not None:
             total_elapsed_s = round(max(0.0, time.monotonic() - self._run_start_time), 1)
-        self._console.print(
-            self._build_line(timestamp, "MILESTONE", "META", "[run-end] ◆ Ralph Workflow run end"),
-            markup=False,
-            highlight=False,
-            no_wrap=True,
-        )
-        self._console.print(
-            self._build_line(timestamp, "INFO", "META", f"[run-end] phase={phase}"),
-            markup=False,
-            highlight=False,
-            no_wrap=True,
-        )
-        self._console.print(
-            self._build_line(timestamp, "INFO", "META", f"[run-end] elapsed={total_elapsed_s}s"),
-            markup=False,
-            highlight=False,
-            no_wrap=True,
-        )
-        self._console.print(
-            self._build_line(
-                timestamp,
-                "INFO",
-                "META",
-                f"[run-end] content_blocks={self._run_counters.content_blocks}",
-            ),
-            markup=False,
-            highlight=False,
-            no_wrap=True,
-        )
-        self._console.print(
-            self._build_line(
-                timestamp,
-                "INFO",
-                "META",
-                f"[run-end] thinking_blocks={self._run_counters.thinking_blocks}",
-            ),
-            markup=False,
-            highlight=False,
-            no_wrap=True,
-        )
-        self._console.print(
-            self._build_line(
-                timestamp,
-                "INFO",
-                "META",
-                f"[run-end] tool_calls={self._run_counters.tool_calls}",
-            ),
-            markup=False,
-            highlight=False,
-            no_wrap=True,
-        )
-        self._console.print(
-            self._build_line(
-                timestamp,
-                "INFO",
-                "META",
-                f"[run-end] errors={self._run_counters.errors}",
-            ),
-            markup=False,
-            highlight=False,
-            no_wrap=True,
-        )
-        self._console.print(
-            self._build_line(
-                timestamp,
-                "INFO",
-                "META",
-                f"[run-end] agent_calls={total_agent_calls}",
-            ),
-            markup=False,
-            highlight=False,
-            no_wrap=True,
-        )
-        if pr_url is not None:
+
+        is_compact = self._ctx.mode == "compact"
+
+        if is_compact:
+            # Compact: 3 lines max — phase+elapsed, counters, PR
             self._console.print(
-                self._build_line(timestamp, "INFO", "META", f"[run-end] pr={_sanitize(pr_url)}"),
+                self._build_line(
+                    timestamp,
+                    "MILESTONE",
+                    "META",
+                    f"[run-end] {phase} | {total_elapsed_s}s",
+                ),
                 markup=False,
                 highlight=False,
                 no_wrap=True,
             )
+            # Counters on one line
+            self._console.print(
+                self._build_line(
+                    timestamp,
+                    "INFO",
+                    "META",
+                    f"[run-end] agent={total_agent_calls}"
+                    f" content={self._run_counters.content_blocks}"
+                    f" thinking={self._run_counters.thinking_blocks}"
+                    f" tools={self._run_counters.tool_calls}"
+                    f" errors={self._run_counters.errors}",
+                ),
+                markup=False,
+                highlight=False,
+                no_wrap=True,
+            )
+            if pr_url is not None:
+                self._console.print(
+                    self._build_line(
+                        timestamp, "INFO", "META", f"[run-end] pr={_sanitize(pr_url)}"
+                    ),
+                    markup=False,
+                    highlight=False,
+                    no_wrap=True,
+                )
+        else:
+            # Wide: multi-line, counters grouped, PR last
+            self._console.print(
+                self._build_line(
+                    timestamp,
+                    "MILESTONE",
+                    "META",
+                    f"[run-end] {self._ctx.glyph_for('milestone')} Ralph Workflow run end",
+                ),
+                markup=False,
+                highlight=False,
+                no_wrap=True,
+            )
+            self._console.print(
+                self._build_line(
+                    timestamp, "INFO", "META", f"[run-end] phase={phase} elapsed={total_elapsed_s}s"
+                ),
+                markup=False,
+                highlight=False,
+                no_wrap=True,
+            )
+            # Counters grouped
+            self._console.print(
+                self._build_line(
+                    timestamp,
+                    "INFO",
+                    "META",
+                    f"[run-end] agent_calls={total_agent_calls}"
+                    f" content_blocks={self._run_counters.content_blocks}"
+                    f" thinking_blocks={self._run_counters.thinking_blocks}"
+                    f" tool_calls={self._run_counters.tool_calls}"
+                    f" errors={self._run_counters.errors}",
+                ),
+                markup=False,
+                highlight=False,
+                no_wrap=True,
+            )
+            if pr_url is not None:
+                self._console.print(
+                    self._build_line(
+                        timestamp, "INFO", "META", f"[run-end] pr={_sanitize(pr_url)}"
+                    ),
+                    markup=False,
+                    highlight=False,
+                    no_wrap=True,
+                )
 
     @property
     def content_blocks_count(self) -> int:
@@ -865,7 +927,7 @@ class PlainLogRenderer:
                 no_wrap=True,
             )
 
-        ai_summary = build_ai_summary(joined, os.environ)
+        ai_summary = build_ai_summary(joined, self._ctx.env)
         if ai_summary:
             ai_text = _sanitize(ai_summary)
             self._console.print(
@@ -881,7 +943,14 @@ class PlainLogRenderer:
             )
 
     def flush_blocks(self) -> None:
-        """Close all open streaming blocks. Call on phase transitions and stop."""
+        """Close all open streaming blocks and refresh display context.
+
+        Called on phase transitions and pipeline stop. Refreshes the
+        DisplayContext to pick up any terminal resize that occurred,
+        ensuring subsequent rendering uses the current width and mode.
+        """
+        # Refresh context to pick up new terminal size (SIGWINCH on POSIX).
+        self._ctx = self._ctx.refreshed()
         timestamp = self._format_timestamp(self._clock())
         unit_ids = list(self._active_block.keys())
         for unit_id in unit_ids:
@@ -942,17 +1011,21 @@ class PlainLogRenderer:
                             )
                             sanitized = f"↳ preview: {_sanitize(headline)}"
                     else:
-                        if _dedup_enabled() and accumulated and accumulated[-1] == content:
+                        if (
+                            self._ctx.streaming_dedup_enabled
+                            and accumulated
+                            and accumulated[-1] == content
+                        ):
                             return
                         seq = len(accumulated) + 1
                         accumulated.append(content)
                         tag = f"{continue_tag}#{seq}"
 
-                        if _checkpoints_enabled():
+                        if self._ctx.streaming_checkpoints_enabled:
                             total_chars = sum(len(x) for x in accumulated)
                             last_cp = self._last_checkpoint_chars.get(unit_id, 0)
                             emit_checkpoint = (
-                                seq % _STREAMING_CHECKPOINT_FRAGMENTS == 0
+                                seq % self._ctx.streaming_checkpoint_fragments == 0
                                 or total_chars - last_cp >= self._ctx.streaming_checkpoint_chars
                             )
                             if emit_checkpoint:
@@ -1100,12 +1173,11 @@ class PlainModeAdapter:
 
     def __init__(
         self,
-        console_or_context: Console | DisplayContext,
+        display_context: DisplayContext,
         *,
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
-        context: DisplayContext | None = None,
     ) -> None:
-        self._renderer = PlainLogRenderer(console_or_context, clock=clock, context=context)
+        self._renderer = PlainLogRenderer(display_context, clock=clock)
 
     def notify(self, state: PipelineState) -> None:
         self._renderer.emit_snapshot(

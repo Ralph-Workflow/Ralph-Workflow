@@ -126,10 +126,8 @@ def _install_runner_stubs(
     real_init = pd_module.ParallelDisplay.__init__
 
     def spy_init(self: object, *args: object, **kwargs: object) -> None:
+        real_init(self, *args, **kwargs)
         captured_displays.append(self)
-        updated_kwargs = dict(kwargs)
-        updated_kwargs["console"] = captured_console
-        real_init(self, *args, **updated_kwargs)
 
     monkeypatch.setattr(pd_module.ParallelDisplay, "__init__", spy_init)
 
@@ -148,12 +146,24 @@ def test_transcript_ordering_run_start_phase_transitions_streaming_phase_close_c
     artifacts_dir = tmp_path / ".agent" / "artifacts"
     artifacts_dir.mkdir(parents=True, exist_ok=True)
     plan_data = {
-        "summary": "Test plan",
-        "total_steps": 5,
-        "scope_items": ["step 1", "step 2"],
+        "summary": {
+            "context": "Test plan",
+            "scope_items": [
+                {"text": "step 1"},
+                {"text": "step 2"},
+                {"text": "step 3"},
+            ],
+        },
+        "steps": [{"number": 1, "title": "Validate", "content": "Do the work"}],
+        "critical_files": {
+            "primary_files": [{"path": "ralph/pipeline/runner.py", "action": "modify"}],
+            "reference_files": [],
+        },
         "risks_mitigations": [
             {"risk": "Risk A", "mitigation": "Mitigation A"},
-            {"risk": "Risk B", "mitigation": "Mitigation B"},
+        ],
+        "verification_strategy": [
+            {"method": "pytest", "expected_outcome": "passes"},
         ],
     }
     (artifacts_dir / "plan.json").write_text(json.dumps(plan_data), encoding="utf-8")

@@ -37,6 +37,7 @@ from ralph.agents.invoke import (
 from ralph.agents.registry import _builtin_agents
 from ralph.config.enums import AgentTransport, JsonParserType
 from ralph.config.models import AgentConfig, UnifiedConfig
+from ralph.display.context import make_display_context
 from ralph.pipeline import runner as runner_module
 from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.events import PipelineEvent
@@ -395,6 +396,7 @@ class TestRunnerSessionContinuation:
                 agent_registry=registry,
             ),
             WorkspaceScope(tmp_path),
+            display_context=make_display_context(),
         )
 
         assert result == PipelineEvent.AGENT_SUCCESS
@@ -446,6 +448,7 @@ class TestRunnerSessionContinuation:
                 agent_registry=registry,
             ),
             WorkspaceScope(tmp_path),
+            display_context=make_display_context(),
         )
 
         assert result == PipelineEvent.AGENT_FAILURE

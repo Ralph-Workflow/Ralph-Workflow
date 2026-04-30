@@ -12,6 +12,7 @@ import pytest
 from rich.console import Console
 
 from ralph.cli.commands import diagnose as diagnose_module
+from ralph.display.context import make_display_context
 from ralph.display.theme import RALPH_THEME
 from ralph.workspace.scope import WorkspaceScope
 
@@ -57,9 +58,10 @@ def test_diagnose_renders_custom_mcp_tables_with_real_stdio_fixture(
     _write_fake_stdio_mcp_toml(tmp_path)
     monkeypatch.setenv("HOME", str(tmp_path / "fake-home"))
     console, stream = _make_test_console()
+    ctx = make_display_context(console=console, env={})
     workspace_scope = WorkspaceScope(tmp_path)
 
-    diagnose_module._check_mcp_servers(workspace_scope, console=console)
+    diagnose_module._check_mcp_servers(workspace_scope, display_context=ctx)
 
     output = stream.getvalue()
     assert "Custom MCP Servers" in output
@@ -75,9 +77,10 @@ def test_diagnose_handles_workspace_with_no_custom_mcp_servers(
     tmp_path: Path,
 ) -> None:
     console, stream = _make_test_console()
+    ctx = make_display_context(console=console, env={})
     workspace_scope = WorkspaceScope(tmp_path)
 
-    diagnose_module._check_mcp_servers(workspace_scope, console=console)
+    diagnose_module._check_mcp_servers(workspace_scope, display_context=ctx)
 
     output = stream.getvalue()
     assert "Custom MCP Servers" in output

@@ -17,6 +17,7 @@ from ralph.cli.commands.diagnose import _build_next_steps, _check_agents
 from ralph.cli.main import app
 from ralph.config.enums import JsonParserType
 from ralph.config.models import AgentConfig, UnifiedConfig
+from ralph.display.context import make_display_context
 from ralph.display.theme import RALPH_THEME
 
 KNOWN_DEFAULT_AGENTS = ("claude", "opencode")
@@ -124,6 +125,7 @@ def test_diagnose_alias_path_status_rendered_in_cli(
 
     buf = StringIO()
     buf_console = Console(file=buf, force_terminal=False, theme=RALPH_THEME)
+    ctx = make_display_context(console=buf_console, env={})
 
     with (
         patch("ralph.cli.commands.diagnose.load_config", return_value=cfg),
@@ -132,7 +134,7 @@ def test_diagnose_alias_path_status_rendered_in_cli(
             return_value=base_registry,
         ),
     ):
-        _check_agents(None, console=buf_console)
+        _check_agents(None, display_context=ctx)
 
     output = buf.getvalue()
     lines = output.splitlines()

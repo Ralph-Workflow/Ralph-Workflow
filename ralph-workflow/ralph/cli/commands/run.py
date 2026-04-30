@@ -16,7 +16,6 @@ from rich.text import Text
 from ralph.agents.registry import AgentRegistry
 from ralph.config.enums import Verbosity  # noqa: TC001
 from ralph.config.loader import load_config
-from ralph.display.context import DisplayContext, make_display_context
 from ralph.pipeline import checkpoint as ckpt
 from ralph.pipeline.state import PipelineState  # noqa: TC001
 from ralph.policy.loader import load_policy
@@ -31,11 +30,10 @@ from ralph.workspace.scope import WorkspaceScope, resolve_workspace_scope
 
 if TYPE_CHECKING:
     from ralph.config.models import UnifiedConfig
+    from ralph.display.context import DisplayContext
     from ralph.policy.models import PolicyBundle
 
-
-def _resolve_ctx(display_context: DisplayContext | None) -> DisplayContext:
-    return display_context if display_context is not None else make_display_context()
+from ralph.display.context import make_display_context
 
 
 class _RunnerFunc(Protocol):
@@ -76,14 +74,15 @@ def _load_configuration(
     config_path: pathlib.Path | None,
     cli_overrides: ConfigOverrides,
     resume: bool,
-    display_context: DisplayContext | None = None,
+    *,
+    display_context: DisplayContext,
 ) -> _LoadResult | int:
     """Load configuration and resolve workspace scope.
 
     Returns:
         _LoadResult on success, or int error code on failure.
     """
-    console = _resolve_ctx(display_context).console
+    console = display_context.console
     try:
         workspace_scope = None if config_path is not None else resolve_workspace_scope()
         config = load_config(config_path, cli_overrides, workspace_scope=workspace_scope)
@@ -120,9 +119,9 @@ def _load_configuration(
     )
 
 
-def _print_not_initialized_panel(display_context: DisplayContext | None = None) -> None:
+def _print_not_initialized_panel(*, display_context: DisplayContext) -> None:
     """Print a friendly 'not initialized' panel for completely fresh workspaces."""
-    console = _resolve_ctx(display_context).console
+    console = display_context.console
     content = Text()
     content.append(
         "Ralph Workflow orchestrates AI coding agents through a "
@@ -162,10 +161,11 @@ def _run_policy_preflight_checks(
     config: UnifiedConfig,
     policy_bundle: PolicyBundle,
     initial_state: PipelineState | None,
-    display_context: DisplayContext | None = None,
+    *,
+    display_context: DisplayContext,
 ) -> int:
     """Run policy-backed preflight checks against the already loaded bundle."""
-    console = _resolve_ctx(display_context).console
+    console = display_context.console
     try:
         agent_registry = AgentRegistry.from_config(config)
         validate_agent_chains_satisfiable(policy_bundle, agent_registry)
@@ -197,7 +197,8 @@ def _run_preflight_checks(
     workspace_scope: WorkspaceScope | None,
     policy_bundle: object,
     initial_state: PipelineState | None,
-    display_context: DisplayContext | None = None,
+    *,
+    display_context: DisplayContext,
 ) -> int:
     """Run all preflight validation checks.
 
@@ -206,14 +207,14 @@ def _run_preflight_checks(
     """
     from ralph.policy.validation import validate_required_inputs  # noqa: PLC0415
 
-    console = _resolve_ctx(display_context).console
+    console = display_context.console
     # validate_required_inputs requires workspace_scope
     if workspace_scope is not None:
         # Fresh-state detection: workspace has neither PROMPT.md nor .agent
         prompt_path = workspace_scope.root / "PROMPT.md"
         agent_dir = workspace_scope.root / ".agent"
         if not prompt_path.exists() and not agent_dir.exists():
-            _print_not_initialized_panel(display_context)
+            _print_not_initialized_panel(display_context=display_context)
             return _EXIT_PREFLIGHT
 
         try:
@@ -234,7 +235,7 @@ def _run_preflight_checks(
             config,
             loaded_policy_bundle,
             initial_state,
-            display_context,
+            display_context=display_context,
         )
 
     return _EXIT_SUCCESS
@@ -243,10 +244,11 @@ def _run_preflight_checks(
 def _print_dry_run(
     initial_state: PipelineState | None,
     config: UnifiedConfig,
-    display_context: DisplayContext | None = None,
+    *,
+    display_context: DisplayContext,
 ) -> None:
     """Print dry-run information."""
-    console = _resolve_ctx(display_context).console
+    console = display_context.console
     console.print(Text("Dry run mode", style="theme.cat.meta"))
     console.print(_detail_text("Phase", initial_state.phase if initial_state else "planning"))
     console.print(_detail_text("Iterations", str(config.general.developer_iters)))
@@ -258,14 +260,15 @@ def _execute_pipeline(
     initial_state: PipelineState | None,
     policy_bundle: object,
     verbosity: Verbosity | None,
-    display_context: DisplayContext | None = None,
+    *,
+    display_context: DisplayContext,
 ) -> int:
     """Execute the pipeline.
 
     Returns:
         Exit code from pipeline runner.
     """
-    console = _resolve_ctx(display_context).console
+    console = display_context.console
     if _run_func is None:
         logger.error("Pipeline runner is unavailable")
         console.print(Text("Pipeline runner is unavailable", style="theme.status.error"))
@@ -278,6 +281,8 @@ def _execute_pipeline(
             kwargs["verbosity"] = verbosity
         if policy_bundle is not None and "policy_bundle" in runner_params:
             kwargs["policy_bundle"] = policy_bundle
+        if "display_context" in runner_params:
+            kwargs["display_context"] = display_context
         return _run_func(config, initial_state, **kwargs)
     except KeyboardInterrupt:
         console.print(Text("\nInterrupted by user", style="theme.status.warning"))
@@ -349,6 +354,7 @@ def run_pipeline(  # noqa: PLR0913
     dry_run: bool = False,
     resume: bool = False,
     verbosity: Verbosity | None = None,
+    *,
     display_context: DisplayContext | None = None,
 ) -> int:
     """Run the Ralph Workflow pipeline (backward compatibility wrapper).
@@ -359,13 +365,17 @@ def run_pipeline(  # noqa: PLR0913
         dry_run: If True, run without invoking agents.
         resume: If True, resume from checkpoint.
         verbosity: Optional explicit verbosity passed through to the runner.
-        display_context: Optional display context for consistent rendering.
+        display_context: Display context for consistent rendering. If None, a default
+            context is created using make_display_context().
 
     Returns:
         Exit code (0 for success, non-zero for failure).
     """
+    ctx = display_context if display_context is not None else make_display_context()
     # Phase 1: Load configuration
-    load_result = _load_configuration(config_path, cli_overrides or {}, resume, display_context)
+    load_result = _load_configuration(
+        config_path, cli_overrides or {}, resume, display_context=ctx
+    )
     if isinstance(load_result, int):
         return load_result
 
@@ -375,14 +385,16 @@ def run_pipeline(  # noqa: PLR0913
         load_result.workspace_scope,
         load_result.policy_bundle,
         load_result.initial_state,
-        display_context,
+        display_context=ctx,
     )
     if preflight_result != _EXIT_SUCCESS:
         return preflight_result
 
     # Phase 3: Handle dry-run
     if dry_run:
-        _print_dry_run(load_result.initial_state, load_result.config, display_context)
+        _print_dry_run(
+            load_result.initial_state, load_result.config, display_context=ctx
+        )
         return _EXIT_SUCCESS
 
     # Phase 4: Execute pipeline
@@ -391,5 +403,5 @@ def run_pipeline(  # noqa: PLR0913
         load_result.initial_state,
         load_result.policy_bundle,
         verbosity,
-        display_context,
+        display_context=ctx,
     )

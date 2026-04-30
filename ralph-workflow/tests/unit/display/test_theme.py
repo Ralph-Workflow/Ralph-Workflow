@@ -6,6 +6,8 @@ import pytest
 from rich.console import Console
 from rich.theme import Theme
 
+from ralph.display.context import make_display_context
+
 theme = importlib.import_module("ralph.display.theme")
 
 DEFAULT_WIDTH = 80
@@ -57,20 +59,24 @@ def test_make_console_respects_explicit_no_color() -> None:
 
 
 def test_make_console_respects_no_color_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    """make_display_context respects NO_COLOR env var and propagates to console.no_color."""
     monkeypatch.setenv("NO_COLOR", "1")
 
-    console = theme.make_console(width=DEFAULT_WIDTH)
+    ctx = make_display_context()
 
-    assert console.no_color is True
+    assert ctx.console.no_color is True
+    assert ctx.color_enabled is False
 
 
 def test_make_console_prefers_no_color_over_force_color(monkeypatch: pytest.MonkeyPatch) -> None:
+    """NO_COLOR takes precedence over FORCE_COLOR in make_display_context."""
     monkeypatch.setenv("NO_COLOR", "1")
     monkeypatch.setenv("FORCE_COLOR", "1")
 
-    console = theme.make_console(width=DEFAULT_WIDTH)
+    ctx = make_display_context()
 
-    assert console.no_color is True
+    assert ctx.console.no_color is True
+    assert ctx.color_enabled is False
 
 
 def test_ralph_theme_contains_required_style_keys() -> None:

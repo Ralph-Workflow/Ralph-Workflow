@@ -7,13 +7,14 @@ from io import StringIO
 
 from rich.console import Console
 
+from ralph.display.context import make_display_context
 from ralph.display.plain_renderer import _TAG_CATEGORY, _TAGS, PlainLogRenderer
 
 
 def _make_renderer() -> tuple[PlainLogRenderer, StringIO]:
     buf = StringIO()
     console = Console(file=buf, force_terminal=False, highlight=False, color_system=None, width=200)
-    return PlainLogRenderer(console), buf
+    return PlainLogRenderer(make_display_context(console=console, env={})), buf
 
 
 def test_emit_run_end_emits_milestone_header() -> None:
@@ -125,3 +126,18 @@ def test_emit_run_end_continuation_lines_use_info_level() -> None:
     # First line is MILESTONE, rest should be INFO
     for line in lines[1:]:
         assert " INFO " in line, f"Expected INFO level in: {line}"
+
+
+def test_emit_run_end_milestone_glyph_ascii_fallback() -> None:
+    """RALPH_FORCE_ASCII=1 uses ASCII milestone glyph (* not ◆) in run-end header."""
+    buf = StringIO()
+    console = Console(file=buf, force_terminal=False, highlight=False, color_system=None, width=200)
+    renderer = PlainLogRenderer(
+        make_display_context(console=console, env={"RALPH_FORCE_ASCII": "1"})
+    )
+    renderer.emit_run_end(phase="complete", total_agent_calls=0)
+    out = buf.getvalue()
+    lines = [ln for ln in out.splitlines() if ln.strip()]
+    assert lines, "expected at least one non-empty line"
+    assert "[run-end] * Ralph Workflow run end" in lines[0]
+    assert "◆" not in lines[0]

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from ralph.display.context import make_display_context
 from ralph.display.tool_args import format_tool_input
 
 if TYPE_CHECKING:
@@ -98,7 +99,10 @@ def test_tool_use_renders_friendly_name_in_parallel_display(tmp_path: Path) -> N
 
     buf = StringIO()
     console = Console(file=buf, force_terminal=False, color_system=None, width=2000)
-    pd = ParallelDisplay(console, {"CI": "1"}, workspace_root=tmp_path)
+    pd = ParallelDisplay(
+        make_display_context(console=console, env={"CI": "1"}),
+        workspace_root=tmp_path,
+    )
 
     event = json.dumps({
         "type": "content_block_start",

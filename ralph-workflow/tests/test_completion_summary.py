@@ -13,6 +13,7 @@ from ralph.display.completion_summary import (
     emit_completion_summary,
     render_completion_summary,
 )
+from ralph.display.context import make_display_context
 from ralph.display.snapshot import PipelineSnapshot, WorkerSnapshot
 from ralph.display.subscriber import PipelineSubscriber
 from ralph.pipeline.state import PipelineState
@@ -208,7 +209,8 @@ def test_render_risks_section_lists_items() -> None:
 
 def test_emit_completion_summary_writes_to_console() -> None:
     console = Console(record=True, width=120, force_terminal=False, color_system=None)
-    emit_completion_summary(console, _make_snapshot())
+    ctx = make_display_context(console=console)
+    emit_completion_summary(_make_snapshot(), display_context=ctx)
     out = console.export_text()
     assert "Pipeline Complete" in out
 
@@ -253,10 +255,13 @@ def test_emit_completion_summary_uses_subscriber_decision_log(tmp_path: Path) ->
     snapshot = subscriber.build_snapshot(state)
     assert snapshot is not None
 
-    text = _render_plain(snapshot, workspace_root=tmp_path)
-    assert "Pipeline Complete" in text
-    assert "Development Analysis" in text
-    assert "proceed" in text
-    assert "all green" in text
+    console = Console(record=True, width=120, force_terminal=False, color_system=None)
+    ctx = make_display_context(console=console)
+    emit_completion_summary(snapshot, display_context=ctx, workspace_root=tmp_path)
+    out = console.export_text()
+    assert "Pipeline Complete" in out
+    assert "Development Analysis" in out
+    assert "proceed" in out
+    assert "all green" in out
     # phase transition row from record_phase_transition
-    assert "→ development" in text
+    assert "\u2192 development" in out

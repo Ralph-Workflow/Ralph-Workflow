@@ -67,10 +67,12 @@ def _render_group(
 ) -> str:
     buf = StringIO()
     console = Console(file=buf, force_terminal=False, width=120, color_system=None)
+    ctx = make_display_context(console=console, env={})
     group = render_completion_summary_group(
         snapshot,
         thinking_block_count=thinking_block_count,
         overflow_path=overflow_path,
+        display_context=ctx,
     )
     console.print(group, markup=False, highlight=False)
     return buf.getvalue()
@@ -89,6 +91,7 @@ def _render_group_full(  # noqa: PLR0913
     """Render group with all activity counter parameters."""
     buf = StringIO()
     console = Console(file=buf, force_terminal=False, width=120, color_system=None)
+    ctx = make_display_context(console=console, env={})
     group = render_completion_summary_group(
         snapshot,
         content_block_count=content_block_count,
@@ -97,6 +100,7 @@ def _render_group_full(  # noqa: PLR0913
         error_count=error_count,
         elapsed_seconds=elapsed_seconds,
         overflow_path=overflow_path,
+        display_context=ctx,
     )
     console.print(group, markup=False, highlight=False)
     return buf.getvalue()
@@ -114,7 +118,7 @@ def _render_compact(
     group = render_completion_summary_group(
         snapshot,
         thinking_block_count=thinking_block_count,
-        context=ctx,
+        display_context=ctx,
     )
     console.print(group, markup=False, highlight=False)
     return buf.getvalue()
@@ -197,7 +201,8 @@ def test_group_sections_appear_in_order() -> None:
 def test_emit_completion_summary_uses_group_format() -> None:
     buf = StringIO()
     console = Console(file=buf, force_terminal=False, width=120, color_system=None)
-    emit_completion_summary(console, _make_snapshot())
+    ctx = make_display_context(console=console, env={})
+    emit_completion_summary(_make_snapshot(), display_context=ctx)
     out = buf.getvalue()
     assert "Pipeline Complete" in out
     assert "Decisions" in out
@@ -247,11 +252,12 @@ def test_group_activity_summary_appears_after_verification() -> None:
 def test_emit_completion_summary_accepts_thinking_and_overflow_params() -> None:
     buf = StringIO()
     console = Console(file=buf, force_terminal=False, width=120, color_system=None)
+    ctx = make_display_context(console=console, env={})
     emit_completion_summary(
-        console,
         _make_snapshot(),
         thinking_block_count=3,
         overflow_path=".agent/raw/u.log",
+        display_context=ctx,
     )
     out = buf.getvalue()
     assert "thinking_blocks=3" in out

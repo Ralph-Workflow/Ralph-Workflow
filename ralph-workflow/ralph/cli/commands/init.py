@@ -20,23 +20,22 @@ from ralph.config.bootstrap import (
     ensure_local_configs,
 )
 from ralph.config.welcome import emit_first_run_welcome
-from ralph.display.context import DisplayContext, make_display_context
 
 if TYPE_CHECKING:
     from ralph.agents.registry import AgentRegistry
+    from ralph.display.context import DisplayContext
+
+from ralph.display.context import make_display_context
 
 STARTER_PROMPT_SENTINEL = (
     "<!-- ralph:starter-prompt: edit this file before running `ralph` -->"
 )
 
 
-def _resolve_console(display_context: DisplayContext | None) -> DisplayContext:
-    return display_context if display_context is not None else make_display_context()
-
-
 def init_command(
     template: str | None = None,
     config_path: Path | None = None,
+    *,
     display_context: DisplayContext | None = None,
 ) -> None:
     """Initialize Ralph Workflow in the current working directory.
@@ -45,9 +44,10 @@ def init_command(
         template: Optional template name (e.g. 'default').
               All labels currently produce the same starter content.
         config_path: Optional path for config file.
-        display_context: Optional display context for consistent rendering.
+        display_context: Display context for consistent rendering. If None, a default
+            context is created using make_display_context().
     """
-    ctx = _resolve_console(display_context)
+    ctx = display_context if display_context is not None else make_display_context()
     console = ctx.console
     if template:
         console.print(
@@ -123,7 +123,7 @@ def init_command(
             )
         else:
             # All skipped - show fallback next steps
-            _print_fallback_next_steps(target, ctx)
+            _print_fallback_next_steps(target, display_context=ctx)
 
 
 def _try_load_registry() -> AgentRegistry | None:
@@ -138,9 +138,9 @@ def _try_load_registry() -> AgentRegistry | None:
         return None
 
 
-def _print_fallback_next_steps(target: Path, display_context: DisplayContext | None = None) -> None:
+def _print_fallback_next_steps(target: Path, *, display_context: DisplayContext) -> None:
     """Print next steps when all configs were skipped (re-running init)."""
-    ctx = _resolve_console(display_context)
+    ctx = display_context
     console = ctx.console
     console.print(_status_text("Ralph Workflow initialized in", str(target), "theme.cat.meta"))
     console.print(

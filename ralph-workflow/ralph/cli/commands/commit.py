@@ -56,10 +56,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator
 
     from ralph.config.models import AgentConfig, UnifiedConfig
-
-def _resolve_ctx(display_context: DisplayContext | None) -> DisplayContext:
-    return display_context if display_context is not None else make_display_context()
-
+    from ralph.display.context import DisplayContext
 
 # Maximum number of staged files to display in output
 _MAX_DISPLAY_FILES = 5
@@ -132,9 +129,10 @@ def commit_plumbing(
 
     Args:
         options: Commit plumbing options.
-        display_context: Optional display context for consistent rendering.
+        display_context: Display context for consistent rendering.
+            If None, a context is created using make_display_context().
     """
-    ctx = _resolve_ctx(display_context)
+    ctx = display_context if display_context is not None else make_display_context()
     console = ctx.console
     opts = options or CommitPlumbingOptions()
 
@@ -157,7 +155,7 @@ def commit_plumbing(
         return
 
     if opts.show_commit_msg:
-        _show_commit_message(repo_root, ctx)
+        _show_commit_message(repo_root, display_context=ctx)
         return
 
     if opts.generate_commit_msg or opts.generate_commit:
@@ -179,9 +177,9 @@ def _handle_agent_commit_generation(
     repo_root: Path,
     config: UnifiedConfig,
     options: CommitPlumbingOptions,
-    display_context: DisplayContext | None = None,
+    display_context: DisplayContext,
 ) -> None:
-    ctx = _resolve_ctx(display_context)
+    ctx = display_context
     console = ctx.console
     generate = options.generate_commit_msg or options.generate_commit
     apply = options.generate_commit
@@ -230,7 +228,7 @@ def _handle_agent_commit_generation(
                 style="theme.status.error",
             )
         )
-        _print_commit_failure_details(result.failure_details, ctx)
+        _print_commit_failure_details(result.failure_details, display_context=ctx)
         return
 
     persisted_message = read_commit_message_artifact(repo_root)
@@ -242,7 +240,7 @@ def _handle_agent_commit_generation(
 
     # Use the shared render_commit_message for consistent UI
     console.print(Text("\nGenerated commit message:", style="theme.status.success"))
-    render_commit_message(repo_root, console)
+    render_commit_message(repo_root, ctx)
 
     if apply:
         stage_all(repo_root)
@@ -373,7 +371,7 @@ def _generate_commit_message_with_chain(  # noqa: PLR0913
     agents: list[str],
     verbose: bool,
     agent_idle_timeout_seconds: float = 300.0,
-    display_context: DisplayContext | None = None,
+    display_context: DisplayContext,
 ) -> CommitAgentResult:
     template_dirs = (repo_root / ".agent" / "prompts" / "commit", *default_template_dirs(repo_root))
     template_registry = TemplateRegistry(template_dirs=template_dirs)
@@ -422,7 +420,7 @@ def _generate_commit_message_with_agent(  # noqa: PLR0913
     verbose: bool,
     extra_env: dict[str, str],
     agent_idle_timeout_seconds: float = 300.0,
-    display_context: DisplayContext | None = None,
+    display_context: DisplayContext,
 ) -> CommitAgentResult:
     failure_details: list[str] = []
     attempt_context = CommitAttemptContext(
@@ -493,7 +491,7 @@ def _invoke_commit_agent_attempt(
     prompt_file: str,
     attempt_context: CommitAttemptContext,
     session_id: str | None = None,
-    display_context: DisplayContext | None = None,
+    display_context: DisplayContext,
 ) -> CommitAgentAttempt:
     delete_commit_message_artifacts(attempt_context.repo_root)
     try:
@@ -642,8 +640,8 @@ def _write_commit_prompt_file(repo_root: Path, prompt: str) -> str:
     return str(prompt_path)
 
 
-def _show_commit_message(repo_root: Path, display_context: DisplayContext | None = None) -> None:
-    ctx = _resolve_ctx(display_context)
+def _show_commit_message(repo_root: Path, *, display_context: DisplayContext) -> None:
+    ctx = display_context
     console = ctx.console
     commit_message = read_commit_message_artifact(repo_root)
     if commit_message is None:
@@ -651,14 +649,15 @@ def _show_commit_message(repo_root: Path, display_context: DisplayContext | None
         return
 
     # Use the shared render_commit_message for consistent UI
-    render_commit_message(repo_root, console)
+    render_commit_message(repo_root, ctx)
 
 
 def _print_commit_failure_details(
     failure_details: list[str],
-    display_context: DisplayContext | None = None,
+    *,
+    display_context: DisplayContext,
 ) -> None:
-    ctx = _resolve_ctx(display_context)
+    ctx = display_context
     console = ctx.console
     for detail in failure_details:
         console.print(Text(detail, style="theme.status.error"))
@@ -707,9 +706,9 @@ def _collect_commit_agent_output(
     parser_type: str,
     agent_name: str,
     verbose: bool,
-    display_context: DisplayContext | None = None,
+    display_context: DisplayContext,
 ) -> tuple[list[str], list[str]]:
-    ctx = _resolve_ctx(display_context)
+    ctx = display_context
     console = ctx.console
     parser = _resolve_commit_parser(parser_type)
     parsed_output: list[str] = []

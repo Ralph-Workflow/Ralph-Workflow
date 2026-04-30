@@ -72,6 +72,7 @@ Ralph Workflow
    :caption: Developer Reference
 
    developer-reference
+   display
 
 .. toctree::
    :maxdepth: 1

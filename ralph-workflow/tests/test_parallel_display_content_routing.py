@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 from rich.console import Console
 
 from ralph.display.activity_model import ActivityProvider
+from ralph.display.context import make_display_context
 from ralph.display.parallel_display import ParallelDisplay
 
 if TYPE_CHECKING:
@@ -20,7 +21,10 @@ _LONG_TEXT_LEN = 5000
 def _make_display(tmp_path: Path, width: int = 2000) -> tuple[ParallelDisplay, StringIO]:
     buf = StringIO()
     console = Console(file=buf, force_terminal=False, color_system=None, width=width)
-    pd = ParallelDisplay(console, {"CI": "1"}, workspace_root=tmp_path)
+    pd = ParallelDisplay(
+        make_display_context(console=console, env={"CI": "1"}),
+        workspace_root=tmp_path,
+    )
     return pd, buf
 
 
@@ -207,7 +211,7 @@ def test_activity_snapshot_does_not_duplicate_activity_line(tmp_path: Path) -> N
 
     buf = StringIO()
     console = Console(file=buf, force_terminal=False, color_system=None, width=200)
-    renderer = PlainLogRenderer(console)
+    renderer = PlainLogRenderer(make_display_context(console=console, env={}))
 
     snapshot = PipelineSnapshot(
         phase="development",

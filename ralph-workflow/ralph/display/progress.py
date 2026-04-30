@@ -10,6 +10,16 @@ The RalphProgress provides:
 
 When running in a non-TTY environment (e.g., CI, redirected output),
 tqdm is used as a fallback to ensure progress is still visible.
+
+Example::
+
+    ctx = make_display_context()
+    with RalphProgress(ctx) as progress:
+        pipeline_task = progress.add_task("Pipeline", total=100)
+        with progress.phase(pipeline_task, "Planning"):
+            phase_task = progress.add_task(pipeline_task, "Agent", total=50)
+            # ... do work ...
+            progress.update(phase_task, advance=10)
 """
 
 from __future__ import annotations
@@ -19,8 +29,6 @@ from contextlib import contextmanager
 from importlib import import_module
 from io import TextIOBase
 from typing import TYPE_CHECKING, ClassVar, Protocol, cast
-
-from ralph.display.theme import RALPH_THEME
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -169,21 +177,17 @@ class RalphProgress:
     Uses rich.Progress when running in a TTY environment,
     falls back to tqdm when running in non-TTY (CI, redirected output).
 
-    Example::
-
-        with RalphProgress() as progress:
-            pipeline_task = progress.add_task("Pipeline", total=100)
-            with progress.phase(pipeline_task, "Planning"):
-                phase_task = progress.add_task(pipeline_task, "Agent", total=50)
-                # ... do work ...
-                progress.update(phase_task, advance=10)
+    Note:
+        RalphProgress requires a DisplayContext to be provided. The context
+        is used to obtain the shared console. Instances are cached by
+        console identity via _ProgressSingleton.
     """
 
-    def __init__(self, context: DisplayContext | None = None) -> None:
+    def __init__(self, context: DisplayContext) -> None:
         """Initialize RalphProgress.
 
         Args:
-            context: Optional DisplayContext to use its shared console.
+            context: DisplayContext providing the console for progress display.
         """
         self._context = context
         self._console: _ConsoleProto | None = None
@@ -226,7 +230,7 @@ class RalphProgress:
         if rich_components is None:
             raise RuntimeError("rich is unavailable")
 
-        console_factory, progress_factory, columns = rich_components
+        _, progress_factory, columns = rich_components
         (
             spinner_column,
             text_column,
@@ -237,10 +241,7 @@ class RalphProgress:
             remaining_column,
         ) = columns
 
-        if self._context is not None:
-            console: _ConsoleProto = cast("_ConsoleProto", self._context.console)
-        else:
-            console = console_factory(stderr=True, theme=RALPH_THEME)
+        console: _ConsoleProto = cast("_ConsoleProto", self._context.console)
 
         progress = progress_factory(
             spinner_column(),
@@ -386,30 +387,40 @@ class RalphProgress:
 
 
 class _ProgressSingleton:
-    """Singleton wrapper for RalphProgress, keyed by context console id."""
+    """Singleton wrapper for RalphProgress, keyed by context console id.
 
-    _instances: ClassVar[dict[int | None, RalphProgress]] = {}
+    Note:
+        Callers must NOT re-create DisplayContext per phase; they must use
+        refreshed() or pass the same context. Different contexts (identified
+        by console identity) yield separate RalphProgress instances.
+    """
+
+    _instances: ClassVar[dict[int, RalphProgress]] = {}
 
     @classmethod
-    def get(cls, context: DisplayContext | None = None) -> RalphProgress:
+    def get(cls, context: DisplayContext) -> RalphProgress:
         """Get the RalphProgress singleton for the given context.
 
         Args:
-            context: Optional DisplayContext; instances are keyed by id(context.console).
-                     None context maps to a shared default instance.
+            context: DisplayContext whose console identity key the instance.
+                Must not be None.
+
+        Returns:
+            RalphProgress instance for the given context.
         """
-        key = id(context.console) if context is not None else None
+        key = id(context.console)
         if key not in cls._instances:
             cls._instances[key] = RalphProgress(context=context)
         return cls._instances[key]
 
 
-def get_progress(context: DisplayContext | None = None) -> RalphProgress:
-    """Get the default RalphProgress instance.
+def get_progress(context: DisplayContext) -> RalphProgress:
+    """Get the default RalphProgress instance for the given context.
 
     Args:
-        context: Optional DisplayContext to share its console with the progress display.
-            Different contexts (identified by console identity) yield separate instances.
+        context: DisplayContext providing the console for progress display.
+            Different contexts (identified by console identity) yield separate
+            RalphProgress instances.
 
     Returns:
         RalphProgress instance for the given context.

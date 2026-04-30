@@ -9,6 +9,7 @@ from rich.console import Console
 
 from ralph.config.enums import JsonParserType
 from ralph.config.models import AgentConfig, GeneralConfig, UnifiedConfig
+from ralph.display.context import make_display_context
 from ralph.display.tables import (
     CheckpointSummaryOptions,
     show_agents,
@@ -26,8 +27,9 @@ GeneralConfig.model_rebuild()
 UnifiedConfig.model_rebuild()
 
 
-def _themed(buf: StringIO) -> Console:
-    return Console(
+def _themed_context(buf: StringIO) -> object:
+    """Create a DisplayContext for themed (color) output."""
+    console = Console(
         file=buf,
         force_terminal=True,
         no_color=False,
@@ -36,27 +38,32 @@ def _themed(buf: StringIO) -> Console:
         width=200,
         highlight=False,
     )
+    return make_display_context(console=console, env={})
 
 
-def _plain(buf: StringIO) -> Console:
-    return Console(
+def _plain_context(buf: StringIO) -> object:
+    """Create a DisplayContext for plain (no color) output."""
+    console = Console(
         file=buf,
         force_terminal=False,
         color_system=None,
         theme=RALPH_THEME,
         width=200,
     )
+    return make_display_context(console=console, env={})
 
 
 def test_show_providers_emits_ansi_on_tty() -> None:
     buf = StringIO()
-    show_providers(["openai"], console=_themed(buf))
+    ctx = _themed_context(buf)
+    show_providers(["openai"], display_context=ctx)
     assert "\x1b[" in buf.getvalue()
 
 
 def test_show_providers_no_ansi_on_plain() -> None:
     buf = StringIO()
-    show_providers(["openai"], console=_plain(buf))
+    ctx = _plain_context(buf)
+    show_providers(["openai"], display_context=ctx)
     out = buf.getvalue()
     assert "\x1b[" not in out
     assert "openai" in out
@@ -67,7 +74,8 @@ def test_show_agents_emits_ansi_on_tty() -> None:
     agent = AgentConfig(cmd="/usr/bin/claude", json_parser=JsonParserType.GENERIC)
     config = UnifiedConfig(agents={"claude": agent})
     buf = StringIO()
-    show_agents(config, console=_themed(buf))
+    ctx = _themed_context(buf)
+    show_agents(config, display_context=ctx)
     assert "\x1b[" in buf.getvalue()
 
 
@@ -75,7 +83,8 @@ def test_show_agents_no_ansi_on_plain() -> None:
     agent = AgentConfig(cmd="/usr/bin/claude", json_parser=JsonParserType.GENERIC)
     config = UnifiedConfig(agents={"claude": agent})
     buf = StringIO()
-    show_agents(config, console=_plain(buf))
+    ctx = _plain_context(buf)
+    show_agents(config, display_context=ctx)
     out = buf.getvalue()
     assert "\x1b[" not in out
     assert "claude" in out
@@ -83,13 +92,15 @@ def test_show_agents_no_ansi_on_plain() -> None:
 
 def test_show_metrics_emits_ansi_on_tty() -> None:
     buf = StringIO()
-    show_metrics({"runs": 1}, console=_themed(buf))
+    ctx = _themed_context(buf)
+    show_metrics({"runs": 1}, display_context=ctx)
     assert "\x1b[" in buf.getvalue()
 
 
 def test_show_metrics_no_ansi_on_plain() -> None:
     buf = StringIO()
-    show_metrics({"runs": 1}, console=_plain(buf))
+    ctx = _plain_context(buf)
+    show_metrics({"runs": 1}, display_context=ctx)
     out = buf.getvalue()
     assert "\x1b[" not in out
     assert "runs" in out
@@ -98,13 +109,15 @@ def test_show_metrics_no_ansi_on_plain() -> None:
 
 def test_show_config_emits_ansi_on_tty() -> None:
     buf = StringIO()
-    show_config(UnifiedConfig(), console=_themed(buf))
+    ctx = _themed_context(buf)
+    show_config(UnifiedConfig(), display_context=ctx)
     assert "\x1b[" in buf.getvalue()
 
 
 def test_show_config_no_ansi_on_plain() -> None:
     buf = StringIO()
-    show_config(UnifiedConfig(), console=_plain(buf))
+    ctx = _plain_context(buf)
+    show_config(UnifiedConfig(), display_context=ctx)
     out = buf.getvalue()
     assert "\x1b[" not in out
     assert "Effective Configuration" in out
@@ -116,7 +129,8 @@ def test_show_checkpoint_summary_emits_ansi_on_tty() -> None:
         reviewer_pass=0, total_reviewer_passes=2,
     )
     buf = StringIO()
-    show_checkpoint_summary(opts, console=_themed(buf))
+    ctx = _themed_context(buf)
+    show_checkpoint_summary(opts, display_context=ctx)
     assert "\x1b[" in buf.getvalue()
 
 
@@ -126,7 +140,8 @@ def test_show_checkpoint_summary_no_ansi_on_plain() -> None:
         reviewer_pass=0, total_reviewer_passes=2,
     )
     buf = StringIO()
-    show_checkpoint_summary(opts, console=_plain(buf))
+    ctx = _plain_context(buf)
+    show_checkpoint_summary(opts, display_context=ctx)
     out = buf.getvalue()
     assert "\x1b[" not in out
     assert "review" in out

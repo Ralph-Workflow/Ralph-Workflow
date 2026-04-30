@@ -1,22 +1,18 @@
 """Phase transition display for Ralph pipeline.
 
 Renders visually distinct banners and separators at pipeline phase boundaries
-so the user can easily follow the flow of planning → development → review → …
+so the user can easily follow the flow of planning \u2192 development \u2192 review \u2192 \u2026
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 from rich.rule import Rule
 from rich.text import Text
 
-from ralph.display.context import make_display_context
-
 if TYPE_CHECKING:
-    from rich.console import Console
-
     from ralph.display.context import DisplayContext
 
 _PHASE_STYLES: dict[str, str] = {
@@ -51,21 +47,24 @@ _MAJOR_TRANSITIONS: frozenset[tuple[str, str]] = frozenset(
 )
 
 _TRANSITION_DESCRIPTIONS: dict[tuple[str, str], str] = {
-    ("planning", "development"): "Plan ready — starting development",
-    ("development", "development_analysis"): "Development complete — analyzing results",
-    ("development_analysis", "development_commit"): "Analysis approved — committing changes",
+    ("planning", "development"): "Plan ready \u2014 starting development",
+    ("development", "development_analysis"): "Development complete \u2014 analyzing results",
+    ("development_analysis", "development_commit"): "Analysis approved \u2014 committing changes",
     ("development_analysis", "development"): (
-        "Analysis requested changes — returning to development"
+        "Analysis requested changes \u2014 returning to development"
     ),
-    ("development_commit", "review"): "Changes committed — starting review",
-    ("development_commit", "planning"): "Commit complete — re-planning needed",
-    ("review", "review_analysis"): "Review complete — analyzing findings",
-    ("review_analysis", "review_commit"): "Review analysis approved — committing review changes",
-    ("review_analysis", "fix"): "Review found issues — routing to fix",
-    ("fix", "review"): "Fix complete — re-reviewing",
-    ("review_commit", "complete"): "Review changes committed — pipeline complete",
-    ("review_commit", "development"): "Review committed — continuing development",
-    ("review_commit", "planning"): "Review committed — re-planning needed",
+    ("development_commit", "review"): "Changes committed \u2014 starting review",
+    ("development_commit", "planning"): "Commit complete \u2014 re-planning needed",
+    ("review", "review_analysis"): "Review complete \u2014 analyzing findings",
+    (
+        "review_analysis",
+        "review_commit",
+    ): "Review analysis approved \u2014 committing review changes",
+    ("review_analysis", "fix"): "Review found issues \u2014 routing to fix",
+    ("fix", "review"): "Fix complete \u2014 re-reviewing",
+    ("review_commit", "complete"): "Review changes committed \u2014 pipeline complete",
+    ("review_commit", "development"): "Review committed \u2014 continuing development",
+    ("review_commit", "planning"): "Review committed \u2014 re-planning needed",
     ("review", "complete"): "All reviews passed",
 }
 
@@ -87,14 +86,70 @@ def _phase_label(phase: str) -> str:
     return phase.replace("_", " ").title()
 
 
-def _resolve_console(
-    console: Console | None,
-    display_context: DisplayContext | None,
-) -> Console:
-    """Resolve the console to use, preferring display_context.console when available."""
-    if display_context is not None:
-        return display_context.console
-    return console or make_display_context().console
+@dataclass(frozen=True)
+class _TransitionLayout:
+    """Layout knobs for phase transition banner rendering."""
+
+    leading_blank: bool
+    separator_rule: bool
+    trailing_rule: bool
+
+
+@dataclass(frozen=True)
+class _BannerOptions:
+    """Options for rendering a transition banner."""
+
+    from_label: str
+    to_label: str
+    description: str | None = None
+    context: dict[str, object] | None = None
+    style: str = "theme.text.muted"
+
+
+_MODE_LAYOUTS: dict[Literal["compact", "medium", "wide"], _TransitionLayout] = {
+    "compact": _TransitionLayout(leading_blank=False, separator_rule=False, trailing_rule=True),
+    "medium": _TransitionLayout(leading_blank=True, separator_rule=True, trailing_rule=True),
+    "wide": _TransitionLayout(leading_blank=True, separator_rule=True, trailing_rule=True),
+}
+
+
+def _render_transition_banner(
+    display_context: DisplayContext,
+    options: _BannerOptions,
+    is_major: bool,
+) -> None:
+    """Render a phase transition banner using mode-driven layout.
+
+    Args:
+        display_context: DisplayContext providing console and mode.
+        options: Banner options including labels, description, context, and style.
+        is_major: True for major transitions, False for minor.
+    """
+    c = display_context.console
+    mode = display_context.mode
+    layout = _MODE_LAYOUTS[mode]
+
+    if layout.leading_blank:
+        c.print()
+
+    if layout.separator_rule:
+        c.print(Rule(style=options.style))
+
+    banner = Text()
+    arrow = display_context.glyph_for("arrow")
+    banner.append(f"  {options.from_label}", style="theme.text.muted")
+    banner.append(f" {arrow} ", style="theme.text.emphasis")
+    banner.append(options.to_label, style=options.style)
+    if options.context:
+        detail = "  ".join(f"{k}={v}" for k, v in options.context.items())
+        banner.append(f"  ({detail})", style="theme.text.muted")
+    c.print(banner)
+
+    if options.description and is_major:
+        c.print(Text(f"  {options.description}", style="theme.text.dim_italic"))
+
+    if layout.trailing_rule:
+        c.print(Rule(style=options.style))
 
 
 def show_phase_transition(
@@ -102,75 +157,49 @@ def show_phase_transition(
     to_phase: str,
     *,
     context: dict[str, object] | None = None,
-    console: Console | None = None,
-    display_context: DisplayContext | None = None,
+    display_context: DisplayContext,
 ) -> None:
     """Display a visual transition between pipeline phases.
 
-    Major transitions (e.g. planning → development) get a prominent banner.
-    Minor transitions (e.g. development → development_analysis) get a simple rule.
+    Major transitions (e.g. planning \u2192 development) get a prominent banner.
+    Minor transitions (e.g. development \u2192 development_analysis) get a simple rule.
 
     Args:
         from_phase: The phase being left.
         to_phase: The phase being entered.
         context: Optional key-value context to display alongside the transition.
-        console: Rich console for output.
-        display_context: DisplayContext whose console takes precedence over console.
+        display_context: DisplayContext providing console and mode.
     """
-    c = _resolve_console(console, display_context)
-    ctx = display_context if display_context is not None else make_display_context(console=c)
-
     style = _phase_style(to_phase)
     from_label = _phase_label(from_phase)
     to_label = _phase_label(to_phase)
     description = _TRANSITION_DESCRIPTIONS.get((from_phase, to_phase))
 
     is_major = (from_phase, to_phase) in _MAJOR_TRANSITIONS
-    mode = ctx.mode
 
     if is_major:
-        if mode == "compact":
-            slim_title = Text()
-            slim_title.append(f"{from_label} → {to_label}", style=style)
-            c.print(Rule(title=slim_title, style=style))
-        elif mode == "medium":
-            # Medium: denser banner with Rule separators while still preserving the
-            # human-readable transition description.
-            c.print(Rule(style=style))
-            banner = Text()
-            banner.append(f"  {from_label}", style="theme.text.muted")
-            banner.append(" → ", style="theme.text.emphasis")
-            banner.append(to_label, style=style)
-            if context:
-                detail = "  ".join(f"{k}={v}" for k, v in context.items())
-                banner.append(f"  ({detail})", style="theme.text.muted")
-            c.print(banner)
-            if description:
-                c.print(Text(f"  {description}", style="theme.text.dim_italic"))
-            c.print(Rule(style=style))
-        else:
-            # Wide: full banner with leading blank line and description
-            c.print()
-            c.print(Rule(style=style))
-            banner = Text()
-            banner.append(f"  {from_label}", style="theme.text.muted")
-            banner.append(" → ", style="theme.text.emphasis")
-            banner.append(to_label, style=style)
-            if context:
-                detail = "  ".join(f"{k}={v}" for k, v in context.items())
-                banner.append(f"  ({detail})", style="theme.text.muted")
-            c.print(banner)
-            if description:
-                c.print(Text(f"  {description}", style="theme.text.dim_italic"))
-            c.print(Rule(style=style))
+        banner_options = _BannerOptions(
+            from_label=from_label,
+            to_label=to_label,
+            description=description,
+            context=context,
+            style=style,
+        )
+        _render_transition_banner(
+            display_context,
+            banner_options,
+            is_major=True,
+        )
     else:
-        if mode != "compact":
-            c.print()
+        # Minor transition: simple rule with title
+        if display_context.mode != "compact":
+            display_context.console.print()
         title = Text()
-        title.append(f"{from_label} → {to_label}")
+        arrow = display_context.glyph_for("arrow")
+        title.append(f"{from_label} {arrow} {to_label}")
         if description:
             title.append(f"  {description}", style="theme.text.dim_italic")
-        c.print(Rule(title=title, style=style))
+        display_context.console.print(Rule(title=title, style=style))
 
 
 @dataclass(frozen=True)
@@ -201,8 +230,7 @@ def show_phase_start(
     *,
     ctx: PhaseStartContext | None = None,
     agent_name: str | None = None,
-    console: Console | None = None,
-    display_context: DisplayContext | None = None,
+    display_context: DisplayContext,
 ) -> None:
     """Display the start of a pipeline phase.
 
@@ -210,15 +238,15 @@ def show_phase_start(
         phase: Phase name.
         ctx: Optional context with iteration/reviewer counters.
         agent_name: Name of the agent being invoked (shortcut; also settable via ctx).
-        console: Rich console for output.
-        display_context: DisplayContext whose console takes precedence over console.
+        display_context: DisplayContext providing the console for output.
     """
-    c = _resolve_console(console, display_context)
+    c = display_context.console
     style = _phase_style(phase)
     label = _phase_label(phase)
 
     line = Text()
-    line.append("▶ ", style=style)
+    start_glyph = display_context.glyph_for("start")
+    line.append(f"{start_glyph} ", style=style)
     line.append(label, style=style)
 
     if ctx is not None:
@@ -278,16 +306,14 @@ def show_phase_start_from_state(
     state: object,
     phase: str,
     *,
-    console: Console | None = None,
-    display_context: DisplayContext | None = None,
+    display_context: DisplayContext,
 ) -> None:
     """Display phase start using counters extracted from a pipeline state object.
 
     Args:
         state: Any object with optional iteration/reviewer/analysis counter attributes.
         phase: Phase name to display.
-        console: Rich console for output.
-        display_context: DisplayContext whose console takes precedence over console.
+        display_context: DisplayContext providing the console for output.
     """
     ctx = PhaseStartContext(
         iteration=_get_int_attr(state, "iteration"),
@@ -302,32 +328,31 @@ def show_phase_start_from_state(
         review_analysis_iteration=_get_int_attr(state, "review_analysis_iteration"),
         max_review_analysis_iterations=_get_int_attr(state, "max_review_analysis_iterations"),
     )
-    show_phase_start(phase, ctx=ctx, console=console, display_context=display_context)
+    show_phase_start(phase, ctx=ctx, display_context=display_context)
 
 
 def show_phase_complete(
     phase: str,
     *,
     decision: str | None = None,
-    console: Console | None = None,
-    display_context: DisplayContext | None = None,
+    display_context: DisplayContext,
 ) -> None:
     """Display phase completion with an optional decision outcome.
 
     Args:
         phase: Phase that completed.
         decision: Optional decision (e.g. 'approved', 'needs changes').
-        console: Rich console for output.
-        display_context: DisplayContext whose console takes precedence over console.
+        display_context: DisplayContext providing the console for output.
     """
-    c = _resolve_console(console, display_context)
+    c = display_context.console
     style = _phase_style(phase)
     label = _phase_label(phase)
 
     line = Text()
-    line.append("✓ ", style=style)
+    success_glyph = display_context.glyph_for("success")
+    line.append(f"{success_glyph} ", style=style)
     line.append(f"{label} complete", style=style)
     if decision is not None:
-        line.append(f" — {decision}", style="theme.text.emphasis")
+        line.append(f" \u2014 {decision}", style="theme.text.emphasis")
 
     c.print(line)

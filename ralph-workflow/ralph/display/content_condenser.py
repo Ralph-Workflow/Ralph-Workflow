@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import os
-from typing import Literal, overload
+from typing import TYPE_CHECKING, Literal, overload
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
 
 from rich.cells import cell_len
 
@@ -38,6 +41,7 @@ def condense_content(
     hard_limit: int = ...,
     overflow_ref: str | None = ...,
     summary: Literal[False] = ...,
+    env: Mapping[str, str] | None = ...,
 ) -> tuple[str, bool]: ...
 
 
@@ -49,16 +53,18 @@ def condense_content(
     hard_limit: int = ...,
     overflow_ref: str | None = ...,
     summary: Literal[True],
+    env: Mapping[str, str] | None = ...,
 ) -> tuple[str, bool, str | None, str | None]: ...
 
 
-def condense_content(  # noqa: PLR0911, PLR0912
+def condense_content(  # noqa: PLR0911, PLR0912, PLR0913
     text: str,
     *,
     soft_limit: int = _SOFT_LIMIT,
     hard_limit: int = _HARD_LIMIT,
     overflow_ref: str | None = None,
     summary: bool = False,
+    env: Mapping[str, str] | None = None,
 ) -> tuple[str, bool] | tuple[str, bool, str | None, str | None]:
     """Condense *text* so it fits within display limits.
 
@@ -108,9 +114,10 @@ def condense_content(  # noqa: PLR0911, PLR0912
             suffix = " … (truncated)"
         visible = head + suffix
         if summary:
-            if should_summarize(text, os.environ):
+            _env = env if env is not None else os.environ
+            if should_summarize(text, _env):
                 summary_line: str | None = build_headline_or_placeholder(text, max_chars=200)
-                ai_summary_line: str | None = build_ai_summary(text, os.environ)
+                ai_summary_line: str | None = build_ai_summary(text, _env)
             else:
                 summary_line = None
                 ai_summary_line = None
@@ -139,9 +146,10 @@ def condense_content(  # noqa: PLR0911, PLR0912
         middle = f" … (+{omitted} chars truncated) … "
     visible = head + middle + tail
     if summary:
-        if should_summarize(text, os.environ):
+        _env = env if env is not None else os.environ
+        if should_summarize(text, _env):
             summary_line = build_headline_or_placeholder(text, max_chars=200)
-            ai_summary_line = build_ai_summary(text, os.environ)
+            ai_summary_line = build_ai_summary(text, _env)
         else:
             summary_line = None
             ai_summary_line = None

@@ -218,19 +218,23 @@ def _try_load_registry() -> AgentRegistry | None:
         return None
 
 
-def _bootstrap_global_configs(display_context: DisplayContext | None = None) -> None:
+def _bootstrap_global_configs(*, display_context: DisplayContext) -> None:
     """Create user-global config files from bundled templates if they don't exist."""
     results = [ensure_global_config(), ensure_global_mcp_config()]
     registry = None
     if any(r.action in {"created", "regenerated"} for r in results):
         registry = _try_load_registry()
-    ctx = display_context if display_context is not None else _get_cli_context()
-    emit_first_run_welcome(ctx.console, results, agent_registry=registry, display_context=ctx)
+    emit_first_run_welcome(
+        display_context.console,
+        results,
+        agent_registry=registry,
+        display_context=display_context,
+    )
 
 
-def _handle_regenerate_config(*, console: Console | None = None) -> None:
+def _handle_regenerate_config(*, display_context: DisplayContext) -> None:
     """Regenerate global and local configs from bundled defaults, backing up existing files."""
-    c = console if console is not None else _get_cli_context().console
+    c = display_context.console
     agent_dir: RuntimePath | None
     try:
         scope = resolve_workspace_scope()
@@ -242,7 +246,7 @@ def _handle_regenerate_config(*, console: Console | None = None) -> None:
     if results:
         created_or_regenerated = [r for r in results if r.action in {"created", "regenerated"}]
         if created_or_regenerated:
-            emit_first_run_welcome(c, results, is_regenerate=True)
+            emit_first_run_welcome(c, results, is_regenerate=True, display_context=display_context)
         else:
             msg = "No configs needed regeneration (all files up-to-date)"
             c.print(Text(msg, style="theme.text.muted"))
@@ -508,7 +512,7 @@ def main(  # noqa: PLR0913
         raise typer.Exit(code=exit_code)
 
     if diagnose:
-        exit_code = diagnose_command(_config_path(config), cli_overrides, _cli_ctx)
+        exit_code = diagnose_command(_config_path(config), cli_overrides, display_context=_cli_ctx)
         raise typer.Exit(code=exit_code)
 
     if init is not None:
@@ -516,7 +520,7 @@ def main(  # noqa: PLR0913
         raise typer.Exit()
 
     if regenerate_config:
-        _handle_regenerate_config(console=_console)
+        _handle_regenerate_config(display_context=_cli_ctx)
         raise typer.Exit()
 
     if inspect_checkpoint:
@@ -556,7 +560,8 @@ def _handle_list_agents(
     config: str | None,
     cli_overrides: dict[str, object],
     list_agents: bool,
-    display_context: DisplayContext | None = None,
+    *,
+    display_context: DisplayContext,
 ) -> int | None:
     """Handle --list-agents flag.
 
@@ -564,7 +569,7 @@ def _handle_list_agents(
         config: Path to config file.
         cli_overrides: CLI overrides dict.
         list_agents: Whether flag was set.
-        display_context: Optional display context for adaptive layout.
+        display_context: Display context for adaptive layout.
 
     Returns:
         Exit code or None to continue.
@@ -585,13 +590,14 @@ def _handle_list_agents(
 
 def _handle_list_providers(
     list_providers: bool,
-    display_context: DisplayContext | None = None,
+    *,
+    display_context: DisplayContext,
 ) -> int | None:
     """Handle --list-providers flag.
 
     Args:
         list_providers: Whether flag was set.
-        display_context: Optional display context for adaptive layout.
+        display_context: Display context for adaptive layout.
 
     Returns:
         Exit code or None to continue.
@@ -667,13 +673,14 @@ def _handle_check_mcp(check_mcp: bool, *, console: Console | None = None) -> int
 
 def _handle_commit_plumbing(
     options: CommitPlumbingOptions,
-    display_context: DisplayContext | None = None,
+    *,
+    display_context: DisplayContext,
 ) -> int | None:
     """Handle commit plumbing commands.
 
     Args:
         options: Commit plumbing options.
-        display_context: Optional display context for consistent rendering.
+        display_context: Display context for consistent rendering.
 
     Returns:
         Exit code or None to continue.
@@ -697,7 +704,7 @@ def _run_pipeline(  # noqa: PLR0913
     no_resume: bool,
     verbosity: Verbosity = Verbosity.VERBOSE,
     *,
-    display_context: DisplayContext | None = None,
+    display_context: DisplayContext,
 ) -> int:
     """Run the main pipeline.
 
@@ -708,13 +715,12 @@ def _run_pipeline(  # noqa: PLR0913
         resume: Whether to resume.
         no_resume: Whether to ignore checkpoint.
         verbosity: Verbosity level.
-        display_context: Optional display context for consistent rendering.
+        display_context: Display context for consistent rendering.
 
     Returns:
         Exit code.
     """
-    ctx = display_context if display_context is not None else _get_cli_context()
-    c = ctx.console
+    c = display_context.console
     try:
         exit_code = run_pipeline(
             config_path=_config_path(config),
@@ -722,7 +728,7 @@ def _run_pipeline(  # noqa: PLR0913
             dry_run=dry_run,
             resume=resume and not no_resume,
             verbosity=verbosity,
-            display_context=ctx,
+            display_context=display_context,
         )
         return exit_code
     except KeyboardInterrupt:

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import io
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 from rich.console import Console
 
@@ -34,7 +34,8 @@ UnifiedConfig.model_rebuild()
 def _capture_output(func: Callable[..., None], *args: Any, **kwargs: Any) -> str:
     stream = io.StringIO()
     console = Console(file=stream, color_system=None, force_terminal=False, theme=RALPH_THEME)
-    kwargs.setdefault("console", console)
+    ctx = make_display_context(console=console)
+    kwargs.setdefault("display_context", ctx)
     func(*args, **kwargs)
     return stream.getvalue()
 
@@ -126,7 +127,7 @@ def test_show_checkpoint_summary_formats_values() -> None:
 # --- Tests for compact mode column suppression ---
 
 
-def _make_display_context_for_mode(mode: str) -> DisplayContext:
+def _make_display_context_for_mode(mode: Literal["compact", "medium", "wide"]) -> DisplayContext:
     """Create a DisplayContext for the specified mode."""
     stream = io.StringIO()
     console = Console(file=stream, color_system=None, force_terminal=False, theme=RALPH_THEME)
@@ -250,3 +251,47 @@ def test_show_checkpoint_summary_wide_mode_shows_review_pass() -> None:
     assert "2/7" in output
     assert "Review Pass" in output
     assert "1/3" in output
+
+
+# --- Compact mode overflow and config panel width tests ---
+
+
+def _make_compact_context(width: int = 40) -> tuple[object, io.StringIO]:
+    """Create a compact DisplayContext with a fixed narrow width."""
+    stream = io.StringIO()
+    console = Console(
+        file=stream,
+        color_system=None,
+        force_terminal=False,
+        theme=RALPH_THEME,
+        width=width,
+    )
+    ctx = make_display_context(console=console, env={"COLUMNS": str(width)})
+    return ctx, stream
+
+
+def test_show_agents_compact_narrow_title_present() -> None:
+    """Compact mode still renders the Configured Agents title."""
+    agent = AgentConfig(cmd="/usr/bin/ralph", json_parser=JsonParserType.GENERIC)
+    config = UnifiedConfig(agents={"myagent": agent})
+    ctx, stream = _make_compact_context(40)
+    show_agents(config, display_context=ctx)
+    output = stream.getvalue()
+    assert "Configured Agents" in output
+    assert "myagent" in output
+
+
+def test_show_config_compact_shows_effective_configuration_title() -> None:
+    """Compact show_config wraps JSON in a Panel with the title visible."""
+    ctx, stream = _make_compact_context(40)
+    show_config(UnifiedConfig(), display_context=ctx)
+    output = stream.getvalue()
+    assert "Effective Configuration" in output
+
+
+def test_show_providers_compact_narrow_shows_providers() -> None:
+    """Compact mode narrow terminal still shows provider names."""
+    ctx, stream = _make_compact_context(40)
+    show_providers(["openai"], display_context=ctx)
+    output = stream.getvalue()
+    assert "openai" in output

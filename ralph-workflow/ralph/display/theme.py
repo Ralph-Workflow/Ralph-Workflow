@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
-import os
-from typing import Final
+from typing import TYPE_CHECKING, Final
 
 from rich.console import Console
 from rich.theme import Theme
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
 
 ORANGE: Final[str] = "#E69F00"
 SKY_BLUE: Final[str] = "#56B4E9"
@@ -17,14 +19,67 @@ VERMILLION: Final[str] = "#D55E00"
 REDDISH_PURPLE: Final[str] = "#CC79A7"
 BLACK: Final[str] = "#000000"
 
+# Glyph tables for Unicode and ASCII modes
+UNICODE_GLYPHS: Final[dict[str, str]] = {
+    "success": "\u2713",  # ✓
+    "error": "\u2717",  # ✗
+    "warning": "\u26a0",  # ⚠
+    "running": "\u25d0",  # ◐
+    "pending": "\u25cb",  # ○
+    "info": "\u2139",  # U+2139 INFORMATION SOURCE
+    "milestone": "\u25c6",  # ◆
+    "arrow": "\u2192",  # →
+    "start": "\u25b6",  # ▶
+}
+
+ASCII_GLYPHS: Final[dict[str, str]] = {
+    "success": "[OK]",
+    "error": "[X]",
+    "warning": "[!]",
+    "running": "[*]",
+    "pending": "[ ]",
+    "info": "[i]",
+    "milestone": "*",
+    "arrow": "->",
+    "start": ">",
+}
+
+_RALPH_FORCE_ASCII_TRUTHY: frozenset[str] = frozenset({"1", "true", "yes", "on"})
+
+
+def detect_glyph_capability(stream: object, env: Mapping[str, str]) -> bool:
+    """Return False when glyphs should fall back to ASCII, True for Unicode.
+
+    Heuristic order (highest to lowest precedence):
+    1. RALPH_FORCE_ASCII env var (any truthy value) → ASCII
+    2. stream.encoding exists and 'utf' not in encoding.lower() → ASCII
+    3. TERM=dumb → ASCII
+    4. Otherwise → Unicode
+    """
+    # Check explicit env override first
+    force_ascii = env.get("RALPH_FORCE_ASCII", "").lower().strip()
+    if force_ascii in _RALPH_FORCE_ASCII_TRUTHY:
+        return False
+
+    # Check stream encoding
+    encoding: object = getattr(stream, "encoding", None)
+    if encoding is not None:
+        encoding_str = str(encoding).lower()
+        if "utf" not in encoding_str:
+            return False
+
+    # Check TERM=dumb
+    term = env.get("TERM", "")
+    return term != "dumb"
+
 STATUS_STYLES: Final[dict[str, tuple[str, str, str]]] = {
-    "success": (f"bold {BLUISH_GREEN}", "✓", "PASS"),
-    "running": (SKY_BLUE, "◐", "RUN"),
-    "warning": (f"bold {ORANGE}", "⚠", "WARN"),
-    "error": (f"bold {VERMILLION}", "✗", "FAIL"),
-    "skipped": (YELLOW, "○", "SKIP"),
-    "pending": ("dim", "○", "WAIT"),
-    "info": (BLUE, "ℹ", "INFO"),  # noqa: RUF001
+    "success": (f"bold {BLUISH_GREEN}", "\u2713", "PASS"),
+    "running": (SKY_BLUE, "\u25d0", "RUN"),
+    "warning": (f"bold {ORANGE}", "\u26a0", "WARN"),
+    "error": (f"bold {VERMILLION}", "\u2717", "FAIL"),
+    "skipped": (YELLOW, "\u25cb", "SKIP"),
+    "pending": ("dim", "\u25cb", "WAIT"),
+    "info": (BLUE, "\u2139", "INFO"),
 }
 
 _THEME_STYLES: Final[dict[str, str]] = {
@@ -91,19 +146,25 @@ def make_console(
     force_terminal: bool | None = None,
     width: int | None = None,
 ) -> Console:
-    """Create a Console using Ralph's shared theme and predictable rendering."""
-    resolved_no_color = no_color
-    if resolved_no_color is None:
-        if "NO_COLOR" in os.environ and force_terminal is None:
-            resolved_no_color = True
-        elif "FORCE_COLOR" in os.environ:
-            resolved_no_color = False
-    resolved_force_terminal = force_terminal
-    if resolved_force_terminal is None:
-        if "NO_COLOR" in os.environ:
-            resolved_force_terminal = False
-        elif "FORCE_COLOR" in os.environ:
-            resolved_force_terminal = True
+    """Create a Console using Ralph's shared theme and predictable rendering.
+
+    This is a pure constructor - no environment reads. All decisions about
+    no_color and force_terminal must be passed explicitly via the corresponding
+    arguments. The caller is responsible for resolving environment variables
+    before calling this function.
+
+    Args:
+        no_color: If True, disables color output. If False, enables color.
+            If None, defaults to False (color enabled).
+        force_terminal: If True, forces terminal detection on. If False, forces it off.
+            If None, defaults to False.
+        width: Optional terminal width override.
+
+    Returns:
+        Configured Console instance with Ralph's theme.
+    """
+    resolved_no_color = no_color if no_color is not None else False
+    resolved_force_terminal = force_terminal if force_terminal is not None else False
     return Console(
         theme=RALPH_THEME,
         no_color=resolved_no_color,
@@ -114,6 +175,7 @@ def make_console(
 
 
 __all__ = [
+    "ASCII_GLYPHS",
     "BLACK",
     "BLUE",
     "BLUISH_GREEN",
@@ -122,8 +184,10 @@ __all__ = [
     "REDDISH_PURPLE",
     "SKY_BLUE",
     "STATUS_STYLES",
+    "UNICODE_GLYPHS",
     "VERMILLION",
     "YELLOW",
+    "detect_glyph_capability",
     "format_status",
     "make_console",
 ]

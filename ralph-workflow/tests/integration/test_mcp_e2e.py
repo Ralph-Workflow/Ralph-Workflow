@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import contextlib
+import http.client
 import json
 import os
 import socket
 import subprocess
 import sys
 import time
+import urllib.parse
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
@@ -138,12 +140,43 @@ def _wait_for_server(endpoint: str) -> None:
     raise AssertionError(f"server failed to start: {last_error}")
 
 
+class _LocalPostResponse:
+    def __init__(self, status_code: int, headers: dict[str, str], content: bytes) -> None:
+        self.status_code = status_code
+        self.headers = headers
+        self.content = content
+        self.text = content.decode("utf-8", errors="replace")
+
+
+def _local_post_json(
+    endpoint: str,
+    *,
+    json: dict[str, Any],
+    headers: dict[str, str],
+    timeout: float,
+) -> _LocalPostResponse:
+    parsed = urllib.parse.urlparse(endpoint)
+    body = __import__("json").dumps(json).encode("utf-8")
+    path = parsed.path or "/"
+    conn = http.client.HTTPConnection(parsed.hostname, parsed.port, timeout=timeout)
+    merged_headers = {"Content-Type": "application/json", **headers}
+    try:
+        conn.request("POST", path, body=body, headers=merged_headers)
+        response = conn.getresponse()
+        content = response.read()
+        header_map = dict(response.getheaders())
+        return _LocalPostResponse(response.status, header_map, content)
+    finally:
+        conn.close()
+
+
 def _initialize_session(endpoint: str) -> str:
     target = startup.parse_http_endpoint(endpoint)
     response, session_id = startup.post_http_jsonrpc_with_session(
         endpoint,
         target,
         startup.initialize_request(),
+        post_fn=_local_post_json,
     )
     assert response["result"]
     assert session_id
@@ -152,6 +185,7 @@ def _initialize_session(endpoint: str) -> str:
         target,
         startup.initialized_notification(),
         session_id=session_id,
+        post_fn=_local_post_json,
     )
     return session_id
 
@@ -163,6 +197,7 @@ def _tools_list(endpoint: str, session_id: str) -> list[dict[str, Any]]:
         target,
         startup.tools_list_request(),
         session_id=session_id,
+        post_fn=_local_post_json,
     )
     result = response["result"]
     assert isinstance(result, dict)

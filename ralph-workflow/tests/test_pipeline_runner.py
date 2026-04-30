@@ -130,7 +130,7 @@ def _stub_workspace_scope_and_policy(monkeypatch: MonkeyPatch, tmp_path: Path) -
 
 
 def test_resolve_display_defaults_to_legacy_console_display() -> None:
-    display = runner_module._resolve_display(None)
+    display = runner_module._resolve_display(None, make_display_context())
 
     assert isinstance(display, runner_module._LegacyConsoleDisplay)
 
@@ -805,7 +805,9 @@ def test_execute_agent_effect_uses_single_workspace_root(monkeypatch, tmp_path: 
         agent_registry=Registry,
     )
 
-    result = runner_module._execute_agent_effect(effect, config, deps, WorkspaceScope(tmp_path))
+    result = runner_module._execute_agent_effect(
+        effect, config, deps, WorkspaceScope(tmp_path), display_context=make_display_context()
+    )
 
     assert result == PipelineEvent.AGENT_SUCCESS
     assert seen["workspace_root"] == tmp_path
@@ -1370,6 +1372,7 @@ class TestExecuteAgentEffect:
                 agent_registry=registry,
             ),
             WorkspaceScope("/tmp/worktree"),
+            display_context=make_display_context(),
         )
 
         assert result == PipelineEvent.AGENT_SUCCESS
@@ -1401,6 +1404,7 @@ class TestExecuteAgentEffect:
                 agent_registry=registry,
             ),
             WorkspaceScope("/tmp/worktree"),
+            display_context=make_display_context(),
         )
 
         assert result == PipelineEvent.AGENT_SUCCESS
@@ -1454,6 +1458,7 @@ class TestExecuteAgentEffect:
                 agent_registry=registry,
             ),
             WorkspaceScope("/tmp/worktree"),
+            display_context=make_display_context(),
         )
 
         assert result == PipelineEvent.AGENT_SUCCESS
@@ -1488,6 +1493,7 @@ class TestExecuteAgentEffect:
                 agent_registry=registry,
             ),
             WorkspaceScope("/tmp/worktree"),
+            display_context=make_display_context(),
         )
 
         assert result == PipelineEvent.AGENT_FAILURE
@@ -1558,6 +1564,7 @@ class TestExecuteAgentEffect:
                 agent_registry=runner_module.AgentRegistry,
             ),
             WorkspaceScope(tmp_path),
+            display_context=make_display_context(),
         )
 
         assert result == PipelineEvent.AGENT_SUCCESS
@@ -1596,6 +1603,7 @@ class TestExecuteAgentEffect:
                 agent_registry=runner_module.AgentRegistry,
             ),
             WorkspaceScope("/tmp/worktree"),
+            display_context=make_display_context(),
         )
 
         assert result == PipelineEvent.AGENT_SUCCESS
@@ -1627,6 +1635,7 @@ class TestExecuteAgentEffect:
                 agent_registry=registry,
             ),
             WorkspaceScope("/tmp/worktree"),
+            display_context=make_display_context(),
         )
 
         assert result == PipelineEvent.AGENT_FAILURE
@@ -1657,6 +1666,7 @@ class TestExecuteAgentEffect:
                 agent_registry=registry,
             ),
             WorkspaceScope("/tmp/worktree"),
+            display_context=make_display_context(),
         )
 
         assert result == PipelineEvent.AGENT_FAILURE
@@ -1707,6 +1717,7 @@ class TestExecuteAgentEffect:
                 agent_registry=registry,
             ),
             WorkspaceScope("/tmp/worktree"),
+            display_context=make_display_context(),
         )
 
         assert result == PipelineEvent.AGENT_SUCCESS
@@ -1746,6 +1757,7 @@ class TestExecuteAgentEffect:
                 agent_registry=registry,
             ),
             WorkspaceScope("/tmp/worktree"),
+            display_context=make_display_context(),
         )
         second = runner_module._execute_agent_effect(
             effect,
@@ -1756,6 +1768,7 @@ class TestExecuteAgentEffect:
                 agent_registry=registry,
             ),
             WorkspaceScope("/tmp/worktree"),
+            display_context=make_display_context(),
         )
 
         assert first == PipelineEvent.AGENT_SUCCESS
@@ -1806,6 +1819,7 @@ class TestExecuteAgentEffect:
                 agent_registry=registry,
             ),
             WorkspaceScope("/tmp/worktree"),
+            display_context=runner_module.make_display_context(),
         )
 
         assert result == PipelineEvent.AGENT_SUCCESS
@@ -1858,6 +1872,7 @@ class TestExecuteAgentEffect:
                 agent_registry=registry,
             ),
             WorkspaceScope("/tmp/worktree"),
+            display_context=runner_module.make_display_context(),
         )
 
         assert result == PipelineEvent.AGENT_SUCCESS
@@ -1933,6 +1948,7 @@ class TestExecuteAgentEffect:
                 agent_registry=registry,
             ),
             WorkspaceScope(tmp_path),
+            display_context=make_display_context(),
         )
 
         assert result == PipelineEvent.AGENT_SUCCESS
@@ -1994,6 +2010,7 @@ class TestExecuteAgentEffect:
                 agent_registry=registry,
             ),
             WorkspaceScope(tmp_path),
+            display_context=make_display_context(),
         )
 
         assert result == PipelineEvent.AGENT_SUCCESS
@@ -2179,7 +2196,7 @@ class TestPhaseEventAfterAgentRun:
 
         output = io.StringIO()
         console = Console(file=output, force_terminal=False, color_system=None, width=120)
-        display = ParallelDisplay(console=console, env={})
+        display = ParallelDisplay(make_display_context(console=console, env={}))
         policy_bundle = MagicMock()
         policy_bundle.pipeline = MagicMock()
         policy_bundle.agents = MagicMock()
@@ -2265,8 +2282,10 @@ class TestExecuteCommitEffect:
         )
         output = io.StringIO()
         display = ParallelDisplay(
-            console=Console(file=output, force_terminal=False, color_system=None, width=120),
-            env={},
+            make_display_context(
+                console=Console(file=output, force_terminal=False, color_system=None, width=120),
+                env={},
+            )
         )
 
         result = runner_module._execute_commit_effect(
@@ -2914,6 +2933,7 @@ class TestPhaseHandlerExceptionGuard:
                 config=UnifiedConfig(),
                 policy_bundle=policy_bundle,
                 workspace=FsWorkspace(tmp_path),
+                display_context=make_display_context(),
             )
         finally:
             if original_handler is not None:
@@ -2998,7 +3018,7 @@ def test_phase_start_banner_emitted_to_parallel_display_console(
 
     buf = io.StringIO()
     display_console = Console(file=buf, force_terminal=False, highlight=False, width=120)
-    display = ParallelDisplay(console=display_console, env={}, mode="lines")
+    display = ParallelDisplay(make_display_context(console=display_console, env={}))
 
     config = MagicMock()
     config.general.verbosity = 2

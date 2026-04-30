@@ -8,6 +8,7 @@ from rich.console import Console
 
 from ralph import __version__
 from ralph.banner import render_banner, show_banner
+from ralph.display.context import make_display_context
 from ralph.display.theme import RALPH_THEME
 
 
@@ -43,8 +44,9 @@ def test_show_banner_prints_to_provided_console() -> None:
     """show_banner should print the banner to the supplied console."""
     buffer = StringIO()
     console = _create_console(buffer)
+    ctx = make_display_context(console=console, env={})
 
-    show_banner(console=console)
+    show_banner(display_context=ctx, console=console)
 
     output = buffer.getvalue()
     assert "Ralph" in output

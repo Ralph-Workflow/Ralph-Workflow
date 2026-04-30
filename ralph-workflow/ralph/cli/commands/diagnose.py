@@ -16,7 +16,6 @@ from rich.text import Text
 from ralph.agents.availability import check_agent_availability
 from ralph.agents.registry import AgentRegistry
 from ralph.config.loader import load_config
-from ralph.display.context import DisplayContext, make_display_context
 from ralph.git.operations import find_repo_root, is_repo_clean
 from ralph.policy.loader import PolicyValidationError, load_policy
 from ralph.policy.validation import (
@@ -26,12 +25,15 @@ from ralph.policy.validation import (
 from ralph.workspace.scope import WorkspaceScope, resolve_workspace_scope
 
 if TYPE_CHECKING:
-    from rich.console import Console
+    from ralph.display.context import DisplayContext
+
+from ralph.display.context import make_display_context
 
 
 def diagnose_command(
     config_path: Path | None = None,
     cli_overrides: dict[str, object] | None = None,
+    *,
     display_context: DisplayContext | None = None,
 ) -> int:
     """Run diagnostics on the Ralph Workflow environment.
@@ -39,7 +41,8 @@ def diagnose_command(
     Args:
         config_path: Optional path to config file.
         cli_overrides: CLI flag overrides.
-        display_context: Optional display context for adaptive layout.
+        display_context: Display context for consistent rendering. If None, a default
+            context is created using make_display_context().
 
     Returns:
         Exit code (0 for success, 1 for errors, 2 for validation failures).
@@ -55,16 +58,16 @@ def diagnose_command(
 
     workspace_scope = resolve_workspace_scope()
 
-    config_ok = _check_git_repo(console=console)
-    config_ok &= _check_configuration(config_path, cli_overrides, console=console)
-    agent_missing = _check_agents(cli_overrides, console=console)
+    config_ok = _check_git_repo(display_context=ctx)
+    config_ok &= _check_configuration(config_path, cli_overrides, display_context=ctx)
+    agent_missing = _check_agents(cli_overrides, display_context=ctx)
     config_ok &= not agent_missing
-    config_ok &= _check_mcp_servers(workspace_scope, console=console)
-    config_ok &= _check_workspace_files(console=console)
+    config_ok &= _check_mcp_servers(workspace_scope, display_context=ctx)
+    config_ok &= _check_workspace_files(display_context=ctx)
 
     # Pre-flight validation using policy system
     validation_ok = _run_preflight_validation(
-        config_path, cli_overrides, workspace_scope, console=console
+        config_path, cli_overrides, workspace_scope, display_context=ctx
     )
 
     # Build and print next steps
@@ -86,7 +89,7 @@ def diagnose_command(
         prompt_exists=prompt_exists,
         prompt_has_sentinel=prompt_has_sentinel,
     )
-    _print_next_steps_panel(next_steps, console=console)
+    _print_next_steps_panel(next_steps, display_context=ctx)
 
     console.print()
 
@@ -144,9 +147,9 @@ def _build_next_steps(
     return steps
 
 
-def _print_next_steps_panel(steps: list[str], *, console: Console | None = None) -> None:
+def _print_next_steps_panel(steps: list[str], *, display_context: DisplayContext) -> None:
     """Print the Next steps panel to the console."""
-    c = console if console is not None else make_display_context().console
+    c = display_context.console
     content = Text()
     for i, step in enumerate(steps):
         if i > 0:
@@ -166,7 +169,7 @@ def _run_preflight_validation(
     cli_overrides: dict[str, object] | None,
     workspace_scope: WorkspaceScope,
     *,
-    console: Console | None = None,
+    display_context: DisplayContext,
 ) -> bool:
     """Run pre-flight validation on policy configuration.
 
@@ -174,12 +177,12 @@ def _run_preflight_validation(
         config_path: Optional path to config file.
         cli_overrides: CLI flag overrides.
         workspace_scope: Workspace scope.
-        console: Rich console for output.
+        display_context: DisplayContext providing the console for output.
 
     Returns:
         True if validation passes, False otherwise.
     """
-    c = console if console is not None else make_display_context().console
+    c = display_context.console
     table = Table(title="Pre-flight Validation", show_header=False)
     table.add_column("Check", style="theme.cat.meta")
     table.add_column("Status")
@@ -240,16 +243,16 @@ def _run_preflight_validation(
         return False
 
 
-def _check_git_repo(*, console: Console | None = None) -> bool:
+def _check_git_repo(*, display_context: DisplayContext) -> bool:
     """Check git repository status.
 
     Args:
-        console: Rich console for output.
+        display_context: DisplayContext providing the console for output.
 
     Returns:
         True if check passed, False otherwise.
     """
-    c = console if console is not None else make_display_context().console
+    c = display_context.console
     table = Table(title="Git Repository", show_header=False)
     table.add_column("Check", style="theme.cat.meta")
     table.add_column("Status")
@@ -281,19 +284,19 @@ def _check_configuration(
     config_path: Path | None,
     cli_overrides: dict[str, object] | None,
     *,
-    console: Console | None = None,
+    display_context: DisplayContext,
 ) -> bool:
     """Check configuration validity.
 
     Args:
         config_path: Optional path to config file.
         cli_overrides: CLI flag overrides.
-        console: Rich console for output.
+        display_context: DisplayContext providing the console for output.
 
     Returns:
         True if check passed, False otherwise.
     """
-    c = console if console is not None else make_display_context().console
+    c = display_context.console
     table = Table(title="Configuration", show_header=False)
     table.add_column("Check", style="theme.cat.meta")
     table.add_column("Status")
@@ -318,18 +321,18 @@ def _check_configuration(
 def _check_agents(
     cli_overrides: dict[str, object] | None,
     *,
-    console: Console | None = None,
+    display_context: DisplayContext,
 ) -> bool:
     """Check agent availability and return True if any agent is missing from PATH.
 
     Args:
         cli_overrides: CLI flag overrides.
-        console: Rich console for output.
+        display_context: DisplayContext providing the console for output.
 
     Returns:
         True if at least one agent is missing from PATH, False otherwise.
     """
-    c = console if console is not None else make_display_context().console
+    c = display_context.console
     table = Table(title="Agents")
     table.add_column("Agent", style="theme.cat.meta")
     table.add_column("Config")
@@ -373,13 +376,13 @@ def _check_agents(
 def _check_mcp_servers(
     workspace_scope: WorkspaceScope,
     *,
-    console: Console | None = None,
+    display_context: DisplayContext,
 ) -> bool:
     """Render custom MCP server health and per-agent transport compatibility.
 
     Args:
         workspace_scope: Workspace scope.
-        console: Rich console for output.
+        display_context: DisplayContext providing the console for output.
 
     Returns:
         True if check passed, False otherwise.
@@ -388,7 +391,7 @@ def _check_mcp_servers(
     from ralph.mcp.upstream.agent_probe import probe_agent_transports  # noqa: PLC0415
     from ralph.mcp.upstream.validation import validate_upstream_mcp_servers  # noqa: PLC0415
 
-    c = console if console is not None else make_display_context().console
+    c = display_context.console
 
     server_table = Table(title="Custom MCP Servers")
     server_table.add_column("Server", style="theme.cat.meta")
@@ -477,16 +480,16 @@ def _check_mcp_servers(
     return True
 
 
-def _check_workspace_files(*, console: Console | None = None) -> bool:
+def _check_workspace_files(*, display_context: DisplayContext) -> bool:
     """Check workspace files.
 
     Args:
-        console: Rich console for output.
+        display_context: DisplayContext providing the console for output.
 
     Returns:
         True if check passed, False otherwise.
     """
-    c = console if console is not None else make_display_context().console
+    c = display_context.console
     table = Table(title="Workspace Files", show_header=False)
     table.add_column("File", style="theme.cat.meta")
     table.add_column("Status")
