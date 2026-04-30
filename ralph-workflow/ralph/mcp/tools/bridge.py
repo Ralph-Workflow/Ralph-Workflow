@@ -1011,31 +1011,50 @@ def _tool_specs(mcp_config: McpConfig) -> tuple[ToolSpec, ...]:
             metadata=_metadata(
                 name=EXEC_TOOL,
                 description=(
-                    "Execute a shell command in the workspace. Required param: command "
-                    "(string, shell command without operators). Optional params: args "
-                    "(string array) and timeout_ms (number, default 30000). Returns "
-                    "stdout, stderr, and exit_code. Note: some commands may be blacklisted; "
-                    "prefer structured tools (read_file, write_file, git_status) when "
-                    "available. "
-                    'Example: {"command": "ls", "args": ["-la"], "timeout_ms": 5000} '
-                    "lists files with details, timeout 5s."
+                    "Execute a bounded subprocess in the workspace. Accepts command or "
+                    "argv as a string or string array, plus optional args and timeout_ms. "
+                    "Shell-style strings are tokenized, but shell control operators are "
+                    "rejected because exec does not run a shell. Returns stdout, stderr, "
+                    "and exit_code. Example: {\"command\": \"python -m pytest\", "
+                    '\"args\": [\"-q\"], \"timeout_ms\": 5000}. '
+                    "Some commands may still be blacklisted; prefer structured tools "
+                    "when available."
                 ),
                 input_schema={
                     "type": "object",
                     "properties": {
                         "command": {
-                            "type": "string",
+                            "oneOf": [
+                                {"type": "string"},
+                                {"type": "array", "items": {"type": "string"}},
+                            ],
                             "description": (
-                                "Shell command to execute as a string without shell operators "
-                                "(example values: 'ls', 'git status', 'python --version')."
+                                "Primary command input. This may be a bare executable "
+                                "name, a shell-style command line without shell control "
+                                "operators, or an argv-style string array (example values: "
+                                "'ls', 'python --version', 'python -m pytest "
+                                "tests/test_tool_exec.py', ['python', '-m', 'pytest'])."
+                            ),
+                        },
+                        "argv": {
+                            "oneOf": [
+                                {"type": "string"},
+                                {"type": "array", "items": {"type": "string"}},
+                            ],
+                            "description": (
+                                "Fallback alias for callers that prefer argv-style input. Used "
+                                "when 'command' is omitted. Accepts the same forms as 'command'."
                             ),
                         },
                         "args": {
-                            "type": "array",
-                            "items": {"type": "string"},
+                            "oneOf": [
+                                {"type": "array", "items": {"type": "string"}},
+                                {"type": "string"},
+                            ],
                             "description": (
-                                "Command arguments as an array of strings, one per element "
-                                "(example values: ['-la'], ['--help'], ['.', '--max-depth', '2'])."
+                                "Optional command arguments. Pass either an array of strings "
+                                "or a shell-style string without shell control operators "
+                                "(example values: ['-la'], '--help', ['.', '--max-depth', '2'])."
                             ),
                         },
                         "timeout_ms": {
