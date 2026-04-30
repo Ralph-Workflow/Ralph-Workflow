@@ -2,12 +2,20 @@
 
 from __future__ import annotations
 
+import tempfile
 from datetime import UTC, datetime
+from pathlib import Path
 
 from ralph.config.enums import PHASE_DEVELOPMENT, PHASE_FAILED
 from ralph.pipeline.state import AgentChainState, FalloverRecord, PipelineState
+from ralph.policy.loader import load_policy
 from ralph.recovery.budget import AgentBudgetRegistry
 from ralph.recovery.controller import RecoveryController
+
+
+def _minimal_policy_bundle():
+    with tempfile.TemporaryDirectory() as d:
+        return load_policy(Path(d) / ".agent")
 
 
 def _make_state_with_recovery_context(
@@ -136,7 +144,9 @@ def test_resume_after_single_agent_chain_exhaustion_increments_count() -> None:
     there is no next agent to fall over to.
     """
     registry = AgentBudgetRegistry().set_budget(PHASE_DEVELOPMENT, "claude", max_retries=1)
-    controller = RecoveryController(cycle_cap=10, budget_registry=registry)
+    controller = RecoveryController(
+        cycle_cap=10, budget_registry=registry, policy_bundle=_minimal_policy_bundle()
+    )
     state = _make_state(["claude"])  # Single agent chain
 
     class _AgentTimeoutError(Exception):

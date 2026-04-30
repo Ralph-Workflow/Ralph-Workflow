@@ -30,10 +30,7 @@ from rich.text import Text
 from ralph.agents.chain import ChainManager
 from ralph.agents.parsers import AgentOutputLine, AgentParser, get_parser
 from ralph.agents.registry import AgentRegistry
-from ralph.config.enums import (
-    PHASE_PLANNING,
-    Verbosity,
-)
+from ralph.config.enums import Verbosity
 from ralph.display.artifact_renderer import (
     render_analysis_decision,
     render_commit_message,
@@ -1708,17 +1705,18 @@ def _create_initial_state(
     config: UnifiedConfig,
     *,
     agents_policy: AgentsPolicy | None = None,
-    pipeline_policy: PipelinePolicy | None = None,
+    pipeline_policy: PipelinePolicy,
 ) -> PipelineState:
     """Create initial pipeline state from configuration.
 
     Args:
         config: Unified configuration.
+        pipeline_policy: Pipeline policy (required for entry_phase resolution).
 
     Returns:
         Initial PipelineState.
     """
-    entry_phase = pipeline_policy.entry_phase if pipeline_policy is not None else PHASE_PLANNING
+    entry_phase = pipeline_policy.entry_phase
     phase_chains = _initial_phase_chains(
         config,
         agents_policy=agents_policy,
@@ -1735,11 +1733,7 @@ def _create_initial_state(
         rebase=RebaseState(),
         commit=CommitState(),
         policy_entry_phase=entry_phase,
-        current_drain=(
-            resolve_phase_drain(entry_phase, pipeline_policy)
-            if pipeline_policy is not None
-            else None
-        ),
+        current_drain=resolve_phase_drain(entry_phase, pipeline_policy),
         max_development_analysis_iterations=config.general.max_development_analysis_iterations,
         max_review_analysis_iterations=config.general.max_review_analysis_iterations,
         development_analysis_iteration=0,

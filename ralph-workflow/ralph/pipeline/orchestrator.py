@@ -12,10 +12,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Literal
 
-from ralph.config.enums import (
-    PHASE_PLANNING,
-    PipelinePhase,
-)
+if TYPE_CHECKING:
+    from ralph.config.enums import PipelinePhase
 from ralph.pipeline import handoffs as phase_handoffs
 from ralph.pipeline.effects import (
     Effect,
@@ -85,8 +83,13 @@ def determine_next_effect(
     # Terminal failure state — recover by routing to the pre-failure phase
     if state.phase == failed_route:
         target_phase = state.previous_phase or state.policy_entry_phase
-        if target_phase == failed_route:
-            target_phase = state.policy_entry_phase or PHASE_PLANNING
+        if target_phase == failed_route or target_phase is None:
+            raise RuntimeError(
+                f"Cannot determine recovery target for failed_route phase "
+                f"'{failed_route}': both previous_phase and policy_entry_phase "
+                f"are unset or recursion prevented routing. "
+                f"Ensure policy_entry_phase is set in the initial state."
+            )
         return PreparePromptEffect(
             phase=target_phase,
             iteration=state.iteration,

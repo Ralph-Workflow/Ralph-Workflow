@@ -31,7 +31,7 @@ from ralph.phases.planning import handle_planning
 from ralph.phases.required_artifacts import REQUIRED_ARTIFACTS, build_retry_hint, retry_hint_path
 from ralph.phases.review import handle_review, handle_review_analysis
 from ralph.pipeline.effects import InvokeAgentEffect
-from ralph.pipeline.events import PhaseFailureEvent, PipelineEvent
+from ralph.pipeline.events import AnalysisDecisionEvent, PhaseFailureEvent, PipelineEvent
 from ralph.policy.loader import load_policy
 from ralph.prompts.materialize import _read_and_clear_retry_hint
 from ralph.prompts.types import SessionCapabilities, SessionDrain
@@ -393,6 +393,7 @@ def test_end_to_end_retry_flow(tmp_path: Path, phase: str, drain: SessionDrain) 
     success_events = [
         e for e in events2
         if e in (PipelineEvent.AGENT_SUCCESS, PipelineEvent.ANALYSIS_SUCCESS)
+        or isinstance(e, AnalysisDecisionEvent)
     ]
     assert success_events, (
         f"Phase {phase}: second attempt must succeed when valid artifact is present"

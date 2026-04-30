@@ -19,14 +19,12 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, cast
 
-from ralph.config.enums import (
-    PHASE_COMPLETE,
-    PHASE_FAILED,
-    PipelinePhase,
-)
+if TYPE_CHECKING:
+    from ralph.config.enums import PipelinePhase
 from ralph.pipeline import progress
 from ralph.pipeline.effects import Effect, SaveCheckpointEffect
 from ralph.pipeline.events import (
+    AnalysisDecisionEvent,
     Event,
     PhaseFailureEvent,
     PipelineEvent,
@@ -180,6 +178,12 @@ def reduce(  # noqa: PLR0911
             return _restore_work_units(state, new_state), effects
         return _handle_phase_failure(state, event, policy=pipeline_policy)
 
+    # Handle AnalysisDecisionEvent: route directly through decisions[decision].target.
+    # This is the preferred path for analysis routing. The legacy ANALYSIS_SUCCESS/
+    # ANALYSIS_LOOPBACK enum events route via transitions.on_success/on_loopback only.
+    if isinstance(event, AnalysisDecisionEvent):
+        return _handle_analysis_decision(state, event, pipeline_policy)
+
     # Handle worker events with a unified approach.
     # Pass recovery to enable classification-aware handling for failure events.
     worker_result = _dispatch_worker_event(state, event, recovery, policy=pipeline_policy)
@@ -191,7 +195,7 @@ def reduce(  # noqa: PLR0911
         Callable[[PipelineState, PipelinePolicy | None], tuple[PipelineState, list[Effect]]],
     ] = {
         PipelineEvent.AGENT_SUCCESS: _handle_agent_success,
-        PipelineEvent.AGENT_FAILURE: _ignore_policy(_handle_agent_failure),
+        PipelineEvent.AGENT_FAILURE: _handle_agent_failure,
         PipelineEvent.AGENT_RETRY: _ignore_policy(_handle_agent_retry),
         PipelineEvent.ANALYSIS_SUCCESS: _handle_analysis_success,
         PipelineEvent.ANALYSIS_LOOPBACK: _handle_analysis_loopback,
@@ -240,17 +244,31 @@ def _return_state(
 
 
 def _terminal_failure_route(policy: PipelinePolicy | None) -> str:
-    """Resolve the terminal failure route from policy or fall back to the legacy constant."""
-    if policy is not None:
-        return policy.recovery.failed_route
-    return PHASE_FAILED
+    """Resolve the terminal failure route from policy.
+
+    Raises:
+        RuntimeError: When policy is None (routing requires loaded policy).
+    """
+    if policy is None:
+        raise RuntimeError(
+            "Routing requires loaded policy; no fallback to legacy phase constants. "
+            "Ensure pipeline_policy is passed to reduce()."
+        )
+    return policy.recovery.failed_route
 
 
 def _terminal_success_route(policy: PipelinePolicy | None) -> str:
-    """Resolve the terminal success route from policy or fall back to the legacy constant."""
-    if policy is not None:
-        return policy.terminal_phase
-    return PHASE_COMPLETE
+    """Resolve the terminal success route from policy.
+
+    Raises:
+        RuntimeError: When policy is None (routing requires loaded policy).
+    """
+    if policy is None:
+        raise RuntimeError(
+            "Routing requires loaded policy; no fallback to legacy phase constants. "
+            "Ensure pipeline_policy is passed to reduce()."
+        )
+    return policy.terminal_phase
 
 
 def _enter_failed_recovery(
@@ -472,6 +490,82 @@ def _handle_capped_analysis_loopback_policy_driven(
 
     new_state, effects = _advance_phase(progress_state, loopback_target, policy)
     return new_state, effects
+
+
+def _handle_analysis_decision(
+    state: PipelineState,
+    event: AnalysisDecisionEvent,
+    policy: PipelinePolicy | None,
+) -> tuple[PipelineState, list[Effect]]:
+    """Handle AnalysisDecisionEvent: route directly through decisions[decision].target.
+
+    The decision string from the agent artifact is used as a key into
+    ``phase_def.decisions`` to look up the target phase. This replaces the
+    legacy collapsing of all decisions into ANALYSIS_SUCCESS/ANALYSIS_LOOPBACK
+    followed by routing via transitions.on_success/on_loopback.
+
+    When the route's reset_loop is True, the loop counter is reset to 0.
+    When reset_loop is False and the phase has a loop_policy, the counter
+    is incremented (clamped to the runtime cap).
+    """
+    if policy is None:
+        return _advance_to_failed(
+            state,
+            "No policy loaded for analysis decision routing",
+            policy,
+        )
+
+    phase_def = policy.phases.get(event.phase)
+    if phase_def is None:
+        return _advance_to_failed(
+            state,
+            f"Unknown phase for analysis decision: {event.phase}",
+            policy,
+        )
+
+    route = phase_def.decisions.get(event.decision)
+    if route is None:
+        return _advance_to_failed(
+            state,
+            f"Phase '{event.phase}' has no policy route for decision "
+            f"'{event.decision}'. Add it to phases.{event.phase}.decisions "
+            f"or update the artifact decision_vocabulary.",
+            policy,
+        )
+
+    # Apply loop counter accounting before routing.
+    progress_state = state
+    if phase_def.loop_policy is not None:
+        iteration_field = phase_def.loop_policy.iteration_state_field
+        if route.reset_loop:
+            # Reset counter on forward exit (e.g., 'completed' decision).
+            progress_state = progress_state.with_loop_iteration(iteration_field, 0)
+        else:
+            # Increment counter on loopback (e.g., 'request_changes' decision).
+            current = state.get_loop_iteration(iteration_field)
+            max_iter = state.get_max_loop_iteration(iteration_field)
+            clamped = max(0, min(current + 1, max_iter))
+            progress_state = progress_state.with_loop_iteration(iteration_field, clamped)
+            # Apply loopback_review_outcome when configured and this is a loopback route.
+            lp = phase_def.loop_policy
+            if lp.loopback_review_outcome is not None:
+                progress_state = progress_state.copy_with(
+                    review_outcome=lp.loopback_review_outcome
+                )
+
+    # Resolve target: route to terminal failure when target is the failed route,
+    # otherwise advance to the declared target.
+    failed_route = _terminal_failure_route(policy)
+    if route.target == failed_route or route.target not in policy.phases:
+        failure_reason = _failure_reason(
+            state,
+            f"Analysis decision '{event.decision}' in phase '{event.phase}' "
+            f"routes to terminal failure target '{route.target}'",
+        )
+        return _enter_failed_recovery(progress_state, failure_reason, policy)
+
+    new_state, effects = _advance_phase(progress_state, route.target, policy)
+    return _restore_work_units(state, new_state), effects
 
 
 def _handle_review_clean(

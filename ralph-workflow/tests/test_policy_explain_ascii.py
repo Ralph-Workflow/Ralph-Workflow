@@ -324,3 +324,60 @@ class TestRenderExplanationAscii:
             "Explanation: phase 'review' bypasses to 'review_commit' "
             "when the configured outcome is 'review_clean'."
         ) in output
+
+
+class TestVerificationAsciiAnnotation:
+    """Tests that verification phases produce [verify: ...] annotation in ASCII output."""
+
+    def _bundle_with_verification(self) -> object:
+        from ralph.policy.models import (  # noqa: PLC0415
+            AgentChainConfig,
+            AgentDrainConfig,
+            AgentsPolicy,
+            ArtifactsPolicy,
+            PhaseDefinition,
+            PhaseTransition,
+            PhaseVerificationPolicy,
+            PipelinePolicy,
+            PolicyBundle,
+        )
+        return PolicyBundle(
+            agents=AgentsPolicy(
+                agent_chains={"c": AgentChainConfig(agents=["claude"])},
+                agent_drains={
+                    "verify_drain": AgentDrainConfig(chain="c"),
+                    "complete": AgentDrainConfig(chain="c"),
+                },
+            ),
+            pipeline=PipelinePolicy(
+                phases={
+                    "verify": PhaseDefinition(
+                        drain="verify_drain",
+                        role="verification",
+                        verification=PhaseVerificationPolicy(
+                            kind="artifact",
+                            gate_for="advancement",
+                            on_failure_route=None,
+                        ),
+                        transitions=PhaseTransition(on_success="complete"),
+                    ),
+                    "complete": PhaseDefinition(
+                        drain="complete",
+                        role="terminal",
+                        terminal_outcome="success",
+                        transitions=PhaseTransition(on_success="complete"),
+                    ),
+                },
+                entry_phase="verify",
+                terminal_phase="complete",
+            ),
+            artifacts=ArtifactsPolicy(),
+        )
+
+    def test_ascii_includes_verify_annotation(self) -> None:
+        """Verification block must produce '[verify: kind=...' annotation in ASCII output."""
+        bundle = self._bundle_with_verification()
+        explanation = explain_policy(bundle)
+        output = render_explanation_ascii(explanation)
+        assert "[verify: kind=artifact" in output
+        assert "gates=advancement" in output

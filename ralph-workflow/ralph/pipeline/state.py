@@ -37,7 +37,7 @@ from ralph.pipeline.work_units import WorkUnit  # noqa: TC001
 from ralph.pipeline.worker_state import WorkerState  # noqa: TC001
 
 if TYPE_CHECKING:
-    from ralph.policy.models import DrainName
+    from ralph.policy.models import DrainName, PipelinePolicy
 
 # Legacy loop iteration field names → their corresponding max-cap field names.
 _LEGACY_LOOP_FIELDS: dict[str, str] = {
@@ -406,8 +406,18 @@ class PipelineState(_FrozenPipelineStateModel):  # type: ignore[explicit-any]  #
         """Backward-compat derived property: True when review_outcome indicates issues."""
         return self.review_outcome is not None and self.review_outcome != "clean"
 
-    def is_complete(self) -> bool:
-        """Check if pipeline has reached a terminal success state."""
+    def is_complete(self, policy: PipelinePolicy | None = None) -> bool:
+        """Check if pipeline has reached a terminal success state.
+
+        Args:
+            policy: Optional PipelinePolicy. When provided, compares against
+                policy.terminal_phase. When None, falls back to comparing
+                against 'complete' only as a backwards-compat aid.
+        """
+        if policy is not None:
+            terminal = policy.terminal_phase
+            return self.phase == terminal
+        # Backward compat: fall back to comparing against 'complete'
         return self.phase == PHASE_COMPLETE
 
     def current_agent(self) -> str | None:

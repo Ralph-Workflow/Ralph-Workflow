@@ -139,6 +139,15 @@ def _render_loop_annotation(lines: list[str], phase: PhaseExplanation) -> None:
         )
 
 
+def _render_verification_annotation(lines: list[str], phase: PhaseExplanation) -> None:
+    """Render verification gate annotation line if applicable."""
+    if phase.verification is not None:
+        v = phase.verification
+        lines.append(
+            f"[verify: kind={v.kind}, gates={v.gate_for}]"
+        )
+
+
 def _render_phase_box(lines: list[str], phase_name: str, role: str | None) -> None:
     """Render a single phase box with name and role."""
     width = _compute_box_width(phase_name, role)
@@ -274,6 +283,7 @@ def render_explanation_ascii(exp: PolicyExplanation) -> str:
             lines, phase_name, parallel_phase, exp.parallel_execution
         )
         _render_loop_annotation(lines, phase)
+        _render_verification_annotation(lines, phase)
 
         if phase.is_entry:
             lines.append("=ENTRY=>")
@@ -386,6 +396,15 @@ def _render_explanation_sentences(phase: PhaseExplanation) -> list[str]:
             f"after which the run terminates."
         )
 
+    if phase.verification is not None:
+        v = phase.verification
+        failure_target = v.on_failure_route or "pipeline failure"
+        sentences.append(
+            f"Explanation: phase '{phase.name}' must satisfy a {v.kind} "
+            f"verification gate before {v.gate_for}; failure routes to "
+            f"'{failure_target}'."
+        )
+
     return sentences
 
 
@@ -474,6 +493,32 @@ def _render_phase_review(phase: PhaseExplanation, lines: list[str]) -> None:
         lines.append(f"    Issues outcome: {phase.issues_outcome}")
 
 
+def _render_phase_verification(phase: PhaseExplanation, lines: list[str]) -> None:
+    """Render verification gate info for a phase."""
+    v = phase.verification
+    if v is None:
+        return
+    if v.on_failure_route:
+        on_fail_str = f"on_failure_route='{v.on_failure_route}'"
+    else:
+        on_fail_str = "no on_failure_route (pipeline fails)"
+    lines.append(
+        f"    Verification: kind={v.kind}, gates={v.gate_for}, {on_fail_str}"
+    )
+    if v.kind == "artifact":
+        lines.append(
+            "               An artifact file must be present and non-empty before advancement."
+        )
+    elif v.kind == "make_target":
+        lines.append(
+            "               NOT YET IMPLEMENTED — declare kind='artifact' or kind='none'."
+        )
+    elif v.kind == "none":
+        lines.append(
+            "               Declarative gate — always passes; use for documentation."
+        )
+
+
 def _render_phase_text(phase: object, lines: list[str]) -> None:
     """Render a single phase's explanation into text lines."""
     from ralph.policy.explain import PhaseExplanation  # noqa: PLC0415
@@ -518,6 +563,8 @@ def _render_phase_text(phase: object, lines: list[str]) -> None:
     _render_phase_commit(phase, lines)
 
     _render_phase_review(phase, lines)
+
+    _render_phase_verification(phase, lines)
 
     sentences = _render_explanation_sentences(phase)
     lines.extend(sentences)

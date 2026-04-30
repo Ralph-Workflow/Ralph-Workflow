@@ -178,9 +178,13 @@ class TestCreateInitialState:
         config.general.reviewer_reviews = 1
         config.agent_chains = {}
 
-        state = runner_module._create_initial_state(config)
-        assert state.chain_for_phase("development") is None
-        assert state.chain_for_phase("review") is None
+        state = runner_module._create_initial_state(
+            config, pipeline_policy=_load_default_policy_bundle().pipeline
+        )
+        dev_chain = state.chain_for_phase("development")
+        rev_chain = state.chain_for_phase("review")
+        assert dev_chain is None or dev_chain.agents == []
+        assert rev_chain is None or rev_chain.agents == []
 
     def test_initial_state_prefers_config_drain_bindings_over_policy_chains(self) -> None:
         config = MagicMock()
@@ -295,7 +299,9 @@ class TestCreateInitialState:
         config.general.developer_iters = DEVELOPER_ITERATIONS
         config.general.reviewer_reviews = REVIEWER_PASSES
         config.agent_chains = {"development": ["claude"], "review": ["claude"]}
-        state = runner_module._create_initial_state(config)
+        state = runner_module._create_initial_state(
+            config, pipeline_policy=_load_default_policy_bundle().pipeline
+        )
         assert state.development_budget_remaining == DEVELOPER_ITERATIONS
 
     def test_creates_state_with_correct_review_budget(self) -> None:
@@ -303,7 +309,9 @@ class TestCreateInitialState:
         config.general.developer_iters = DEVELOPER_ITERATIONS
         config.general.reviewer_reviews = REVIEWER_PASSES
         config.agent_chains = {"development": ["claude"], "review": ["claude"]}
-        state = runner_module._create_initial_state(config)
+        state = runner_module._create_initial_state(
+            config, pipeline_policy=_load_default_policy_bundle().pipeline
+        )
         assert state.review_budget_remaining == REVIEWER_PASSES
 
     def test_creates_state_with_zero_review_budget_when_r_zero(self) -> None:
@@ -311,7 +319,9 @@ class TestCreateInitialState:
         config.general.developer_iters = 1
         config.general.reviewer_reviews = 0
         config.agent_chains = {"development": ["claude"], "review": ["claude"]}
-        state = runner_module._create_initial_state(config)
+        state = runner_module._create_initial_state(
+            config, pipeline_policy=_load_default_policy_bundle().pipeline
+        )
         assert state.review_budget_remaining == 0
 
 
@@ -2950,7 +2960,7 @@ class TestPhaseHandlerExceptionGuard:
             recoverable=False,
         )
 
-        new_state, _effects = reducer_reduce(state, event)
+        new_state, _effects = reducer_reduce(state, event, _load_default_policy_bundle().pipeline)
 
         assert new_state.phase == PHASE_FAILED
         assert new_state.last_error is not None

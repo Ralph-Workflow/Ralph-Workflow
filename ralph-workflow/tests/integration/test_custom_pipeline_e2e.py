@@ -30,6 +30,7 @@ from ralph.policy.models import (
     PhaseDefinition,
     PhaseLoopPolicy,
     PhaseTransition,
+    PhaseVerificationPolicy,
     PipelinePolicy,
     PolicyBundle,
     PostCommitRoute,
@@ -92,6 +93,11 @@ def _build_custom_bundle() -> PolicyBundle:
                 drain="review",
                 role="verification",
                 transitions=PhaseTransition(on_success="done", on_failure="crashed"),
+                verification=PhaseVerificationPolicy(
+                    kind="make_target",
+                    gate_for="advancement",
+                    on_failure_route="crashed",
+                ),
             ),
             "crashed": PhaseDefinition(
                 drain="complete",

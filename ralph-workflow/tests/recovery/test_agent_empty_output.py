@@ -2,12 +2,21 @@
 
 from __future__ import annotations
 
+import tempfile
+from pathlib import Path
+
 from ralph.config.enums import PHASE_DEVELOPMENT, PHASE_FAILED
 from ralph.pipeline.state import AgentChainState, PipelineState
+from ralph.policy.loader import load_policy
 from ralph.recovery.budget import AgentBudgetRegistry
 from ralph.recovery.classifier import FailureCategory, FailureClassifier
 from ralph.recovery.controller import RecoveryController
 from ralph.recovery.events import FailureEventBus, FalloverEvent
+
+
+def _minimal_policy_bundle():
+    with tempfile.TemporaryDirectory() as d:
+        return load_policy(Path(d) / ".agent")
 
 
 def _make_state(agents: list[str]) -> PipelineState:
@@ -83,7 +92,9 @@ def test_agent_fault_causes_fallover_when_budget_exhausted() -> None:
 def test_agent_fault_chain_exhaustion_enters_phase_failed() -> None:
     """When entire chain is exhausted, state enters PHASE_FAILED."""
     registry = _make_registry_with_budget(PHASE_DEVELOPMENT, "claude", max_retries=1)
-    controller = RecoveryController(cycle_cap=10, budget_registry=registry)
+    controller = RecoveryController(
+        cycle_cap=10, budget_registry=registry, policy_bundle=_minimal_policy_bundle()
+    )
     state = _make_state(["claude"])
 
     class _AgentTimeoutError(Exception):

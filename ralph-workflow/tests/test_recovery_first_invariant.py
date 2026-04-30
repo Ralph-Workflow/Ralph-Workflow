@@ -12,22 +12,40 @@ from __future__ import annotations
 
 import pytest
 
-from ralph.config.enums import PHASE_DEVELOPMENT, PHASE_FAILED
+from ralph.config.enums import PHASE_COMPLETE, PHASE_DEVELOPMENT, PHASE_FAILED
 from ralph.pipeline.effects import Effect, ExitFailureEffect
 from ralph.pipeline.events import PhaseFailureEvent
 from ralph.pipeline.reducer import reduce as reducer_reduce
 from ralph.pipeline.state import AgentChainState, PipelineState
+from ralph.policy.models import PhaseDefinition, PhaseTransition, PipelinePolicy
 
 # Expected number of retries when a phase fails with a 2-agent chain:
 # 3 retries for agent 0 + 3 retries for agent 1 = 6 total retries
 _EXPECTED_TOTAL_RETRIES = 6
 
 
+def _minimal_policy() -> PipelinePolicy:
+    return PipelinePolicy(
+        phases={
+            PHASE_DEVELOPMENT: PhaseDefinition(
+                drain="development",
+                transitions=PhaseTransition(
+                    on_success=PHASE_COMPLETE,
+                    on_failure=PHASE_FAILED,
+                    on_loopback=PHASE_DEVELOPMENT,
+                ),
+            ),
+        },
+        entry_phase=PHASE_DEVELOPMENT,
+        terminal_phase=PHASE_COMPLETE,
+    )
+
+
 def _reduce(
     state: PipelineState,
     event: PhaseFailureEvent,
 ) -> tuple[PipelineState, list[Effect]]:
-    return reducer_reduce(state, event, None)
+    return reducer_reduce(state, event, _minimal_policy())
 
 
 class TestRecoveryFirstBehavior:

@@ -258,7 +258,7 @@ class TestPhaseFailureEvent:
             dev_chain=AgentChainState(agents=["claude"], current_index=0, retries=3),
         )
         event = PhaseFailureEvent(phase="development", reason="missing artifact", recoverable=True)
-        new_state, effects = _reduce(state, event)
+        new_state, effects = _reduce(state, event, _basic_pipeline_policy())
         assert new_state.phase == PHASE_FAILED
         assert new_state.last_error is not None
         assert "development" in new_state.last_error
@@ -279,7 +279,7 @@ class TestPhaseFailureEvent:
             reason="Analysis decision: FAILURE",
             recoverable=False,
         )
-        new_state, effects = _reduce(state, event)
+        new_state, effects = _reduce(state, event, _basic_pipeline_policy())
         assert new_state.phase == PHASE_FAILED
         assert new_state.last_error == "development_analysis: Analysis decision: FAILURE"
         assert new_state.recovery_epoch == 1
@@ -296,7 +296,7 @@ class TestPhaseFailureEvent:
             reason="Invalid development evidence: missing planning artifact",
             recoverable=True,
         )
-        new_state, _effects = _reduce(state, event)
+        new_state, _effects = _reduce(state, event, _basic_pipeline_policy())
         assert new_state.phase == PHASE_FAILED
         assert new_state.last_error is not None
         assert "missing planning artifact" in new_state.last_error
@@ -314,7 +314,7 @@ class TestPhaseFailureEvent:
             reason="Missing/invalid issues artifact",
             recoverable=True,
         )
-        new_state, effects = _reduce(state, event)
+        new_state, effects = _reduce(state, event, _basic_pipeline_policy())
         assert new_state.phase == PHASE_FAILED
         assert new_state.last_error is not None
         assert new_state.last_error != "Unknown failure"
@@ -624,7 +624,7 @@ def test_agent_failure_with_exhausted_chain_enters_recovery() -> None:
         phase=PHASE_DEVELOPMENT,
         dev_chain=AgentChainState(agents=["claude"], current_index=0, retries=3),
     )
-    new_state, effects = _reduce(state, PipelineEvent.AGENT_FAILURE)
+    new_state, effects = _reduce(state, PipelineEvent.AGENT_FAILURE, _basic_pipeline_policy())
     assert new_state.phase == PHASE_FAILED
     assert new_state.recovery_epoch == 1
     assert effects == []
@@ -1330,7 +1330,8 @@ def test_all_workers_complete_routes_to_phase_failed_when_worker_failed() -> Non
         work_units=_make_work_units("u1", "u2"),
         worker_states=states,
     )
-    new_state, effects = _reduce(state, PipelineEvent.ALL_WORKERS_COMPLETE)
+    policy = _basic_pipeline_policy()
+    new_state, effects = _reduce(state, PipelineEvent.ALL_WORKERS_COMPLETE, policy)
 
     assert new_state.phase == PHASE_FAILED
     assert effects == []
@@ -1348,7 +1349,8 @@ def test_all_workers_complete_routes_to_phase_failed_when_worker_cancelled() -> 
         work_units=_make_work_units("u1", "u2"),
         worker_states=states,
     )
-    new_state, effects = _reduce(state, PipelineEvent.ALL_WORKERS_COMPLETE)
+    policy = _basic_pipeline_policy()
+    new_state, effects = _reduce(state, PipelineEvent.ALL_WORKERS_COMPLETE, policy)
 
     assert new_state.phase == PHASE_FAILED
     assert effects == []
@@ -1568,6 +1570,7 @@ def test_phase_handler_crash_exhausts_chain_before_failing() -> None:
     This is the single most important regression guard for the bug where the pipeline
     exited on the first exception instead of going through the retry/fallback chain.
     """
+    policy = _basic_pipeline_policy()
     # State with a 2-agent dev_chain
     state = PipelineState(
         phase=PHASE_DEVELOPMENT,
@@ -1583,14 +1586,14 @@ def test_phase_handler_crash_exhausts_chain_before_failing() -> None:
 
     # Agent 0: 3 retries (retries 0->1->2->3)
     for expected_retries in range(1, 4):
-        state, effects = _reduce(state, crash_event)
+        state, effects = _reduce(state, crash_event, policy)
         assert state.phase == PHASE_DEVELOPMENT
         assert state.chain_for_phase("development").current_index == 0
         assert state.chain_for_phase("development").retries == expected_retries
         assert effects == []
 
     # 4th crash on agent 0: fallback to agent 1 (retries reset to 0)
-    state, effects = _reduce(state, crash_event)
+    state, effects = _reduce(state, crash_event, policy)
     assert state.phase == PHASE_DEVELOPMENT
     assert state.chain_for_phase("development").current_index == 1
     assert state.chain_for_phase("development").retries == 0
@@ -1598,14 +1601,14 @@ def test_phase_handler_crash_exhausts_chain_before_failing() -> None:
 
     # Agent 1: 3 more retries (retries 0->1->2->3)
     for expected_retries in range(1, 4):
-        state, effects = _reduce(state, crash_event)
+        state, effects = _reduce(state, crash_event, policy)
         assert state.phase == PHASE_DEVELOPMENT
         assert state.chain_for_phase("development").current_index == 1
         assert state.chain_for_phase("development").retries == expected_retries
         assert effects == []
 
     # Final crash on agent 1 (chain exhausted): PHASE_FAILED recovery state
-    state, effects = _reduce(state, crash_event)
+    state, effects = _reduce(state, crash_event, policy)
     assert state.phase == PHASE_FAILED
     assert state.last_error is not None
     assert "Phase handler crashed: RuntimeError: boom" in state.last_error
@@ -1689,13 +1692,13 @@ def test_full_noop_pipeline_flow_reaches_complete_without_billing_counters() -> 
     assert new_state.reviewer_pass == 0
 
 
-def test_agent_success_with_no_policy_routes_through_failed_recovery() -> None:
+def test_agent_success_with_no_policy_raises_runtime_error() -> None:
+    """AGENT_SUCCESS without a policy raises RuntimeError (policy is always required)."""
+    import pytest  # noqa: PLC0415
+
     state = PipelineState(phase=PHASE_DEVELOPMENT, recovery_epoch=4, last_error=None)
-    new_state, _ = _reduce(state, PipelineEvent.AGENT_SUCCESS)
-    assert new_state.phase == PHASE_FAILED
-    assert new_state.previous_phase == PHASE_DEVELOPMENT
-    assert new_state.recovery_epoch == state.recovery_epoch + 1
-    assert new_state.last_error == "No policy loaded for agent success routing"
+    with pytest.raises(RuntimeError, match="Routing requires loaded policy"):
+        _reduce(state, PipelineEvent.AGENT_SUCCESS)
 
 
 def test_all_workers_complete_mixed_statuses_routes_to_phase_failed() -> None:
@@ -1711,7 +1714,8 @@ def test_all_workers_complete_mixed_statuses_routes_to_phase_failed() -> None:
         work_units=_make_work_units("u1", "u2", "u3"),
         worker_states=states,
     )
-    new_state, effects = _reduce(state, PipelineEvent.ALL_WORKERS_COMPLETE)
+    policy = _basic_pipeline_policy()
+    new_state, effects = _reduce(state, PipelineEvent.ALL_WORKERS_COMPLETE, policy)
 
     assert new_state.phase == PHASE_FAILED
     assert effects == []

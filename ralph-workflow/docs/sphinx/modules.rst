@@ -477,6 +477,13 @@ ralph.phases.review
    :members:
    :show-inheritance:
 
+ralph.phases.verification
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.phases.verification
+   :members:
+   :show-inheritance:
+
 ralph.phases.timing
 ~~~~~~~~~~~~~~~~~~~
 
