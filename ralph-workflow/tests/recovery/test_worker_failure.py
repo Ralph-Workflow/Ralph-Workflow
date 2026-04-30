@@ -38,7 +38,7 @@ def _make_state_with_workers_and_chain(unit_ids: list[str], agents: list[str]) -
     }
     return PipelineState(
         phase="development",
-        dev_chain=AgentChainState(agents=agents, current_index=0, retries=0),
+        phase_chains={"development": AgentChainState(agents=agents, current_index=0, retries=0)},
         work_units=work_units,
         worker_states=worker_states,
     )

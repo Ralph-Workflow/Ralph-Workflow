@@ -28,7 +28,7 @@ def _make_state(
 ) -> PipelineState:
     return PipelineState(
         phase="development",
-        dev_chain=AgentChainState(agents=agents, current_index=0, retries=0),
+        phase_chains={"development": AgentChainState(agents=agents, current_index=0, retries=0)},
         last_agent_session_id=last_session_id,
         session_preserve_retry_pending=session_preserve,
     )

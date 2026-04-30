@@ -302,7 +302,9 @@ class TestSerializedPostFanoutVerification:
         # rather than scheduling another retry attempt.
         exhausted_chain = AgentChainState(agents=[], current_index=0, retries=_MAX_AGENT_RETRIES)
         state = PipelineState(
-            phase="development", work_units=(unit,), dev_chain=exhausted_chain
+            phase="development",
+            work_units=(unit,),
+            phase_chains={"development": exhausted_chain},
         )
         policy_bundle = _make_policy_bundle(max_workers=1)
         workspace_scope = WorkspaceScope(tmp_path)

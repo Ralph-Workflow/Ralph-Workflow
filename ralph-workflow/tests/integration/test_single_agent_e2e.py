@@ -55,8 +55,10 @@ def test_run_completes_in_serial_mode_without_fan_out(
 
     initial_state = PipelineState(
         phase="planning",
-        planning_chain=AgentChainState(agents=["planner"]),
-        dev_chain=AgentChainState(agents=["developer"]),
+        phase_chains={
+            "planning": AgentChainState(agents=["planner"]),
+            "development": AgentChainState(agents=["developer"]),
+        },
         work_units=(),
     )
 

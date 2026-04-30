@@ -27,7 +27,7 @@ _MIN_REASON_LEN = 20
 def _make_state(agents: list[str], cycle_count: int = 0) -> PipelineState:
     return PipelineState(
         phase="development",
-        dev_chain=AgentChainState(agents=agents, current_index=0, retries=0),
+        phase_chains={"development": AgentChainState(agents=agents, current_index=0, retries=0)},
         recovery_cycle_count=cycle_count,
         recovery_cycle_cap=_CYCLE_CAP,
     )

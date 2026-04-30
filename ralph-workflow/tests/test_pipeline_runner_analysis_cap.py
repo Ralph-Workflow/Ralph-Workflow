@@ -49,8 +49,8 @@ class TestDevAnalysisCapTriggeredCorrectionRouting:
         policy = _load_default_policy()
         state = PipelineState(
             phase="development_analysis",
-            development_analysis_iteration=2,  # max-1 where max=3
-            max_development_analysis_iterations=_DEV_MAX_ANALYSIS,
+            loop_iterations={"development_analysis_iteration": 2},  # max-1 where max=3
+            loop_caps={"development_analysis_iteration": _DEV_MAX_ANALYSIS},
             development_budget_remaining=3,
         )
 
@@ -63,7 +63,7 @@ class TestDevAnalysisCapTriggeredCorrectionRouting:
         policy = _load_default_policy()
         state = PipelineState(
             phase="development_commit",
-            development_analysis_iteration=_DEV_MAX_ANALYSIS,
+            loop_iterations={"development_analysis_iteration": _DEV_MAX_ANALYSIS},
             iteration=1,
             development_budget_remaining=3,
             review_budget_remaining=2,
@@ -83,8 +83,8 @@ class TestReviewAnalysisCapTriggeredCorrectionRouting:
         policy = _load_default_policy()
         state = PipelineState(
             phase="review_analysis",
-            review_analysis_iteration=1,  # max-1 where max=2
-            max_review_analysis_iterations=_REVIEW_MAX_ANALYSIS,
+            loop_iterations={"review_analysis_iteration": 1},  # max-1 where max=2
+            loop_caps={"review_analysis_iteration": _REVIEW_MAX_ANALYSIS},
             reviewer_pass=0,
             development_budget_remaining=3,
             review_budget_remaining=2,
@@ -101,7 +101,7 @@ class TestReviewAnalysisCapTriggeredCorrectionRouting:
         policy = _load_default_policy()
         state = PipelineState(
             phase="review_commit",
-            review_analysis_iteration=_REVIEW_MAX_ANALYSIS,
+            loop_iterations={"review_analysis_iteration": _REVIEW_MAX_ANALYSIS},
             reviewer_pass=0,
             development_budget_remaining=3,
             review_budget_remaining=2,

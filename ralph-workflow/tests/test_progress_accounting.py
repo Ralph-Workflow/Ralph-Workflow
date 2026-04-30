@@ -144,7 +144,7 @@ def test_review_analysis_loopback_updates_only_review_analysis_fields() -> None:
     state = PipelineState(
         phase="review_analysis",
         reviewer_pass=1,
-        review_analysis_iteration=0,
+        loop_iterations={"review_analysis_iteration": 0},
         review_budget_remaining=INITIAL_REVIEW_BUDGET,
         )
 
@@ -155,7 +155,7 @@ def test_review_analysis_loopback_updates_only_review_analysis_fields() -> None:
     assert new_state.reviewer_pass == 1
     assert new_state.get_loop_iteration("review_analysis_iteration") == 1
     assert new_state.review_budget_remaining == INITIAL_REVIEW_BUDGET
-    assert new_state.review_issues_found is True
+    assert new_state.review_outcome is not None
 
 
 def test_capped_review_analysis_loopback_preserves_outer_progress_and_marks_issue_state() -> None:
@@ -164,8 +164,8 @@ def test_capped_review_analysis_loopback_preserves_outer_progress_and_marks_issu
     state = PipelineState(
         phase="review_analysis",
         reviewer_pass=1,
-        review_analysis_iteration=1,
-        max_review_analysis_iterations=FORCED_REVIEW_ANALYSIS_ITERATION,
+        loop_iterations={"review_analysis_iteration": 1},
+        loop_caps={"review_analysis_iteration": FORCED_REVIEW_ANALYSIS_ITERATION},
         review_budget_remaining=1,
         )
 
@@ -179,7 +179,7 @@ def test_capped_review_analysis_loopback_preserves_outer_progress_and_marks_issu
         == FORCED_REVIEW_ANALYSIS_ITERATION
     )
     assert new_state.review_budget_remaining == 1
-    assert new_state.review_issues_found is True
+    assert new_state.review_outcome is not None
 
 
 def test_skipped_development_commit_preserves_outer_progress_but_resets_inner_loop() -> None:
@@ -187,7 +187,7 @@ def test_skipped_development_commit_preserves_outer_progress_but_resets_inner_lo
     state = PipelineState(
         phase="development_commit",
         iteration=COMPLETED_DEVELOPMENT_CYCLES,
-        development_analysis_iteration=3,
+        loop_iterations={"development_analysis_iteration": 3},
         development_budget_remaining=1,
         review_budget_remaining=1,
     )
@@ -206,7 +206,7 @@ def test_skipped_review_commit_does_not_increment_outer_progress_but_resets_inne
     state = PipelineState(
         phase="review_commit",
         reviewer_pass=1,
-        review_analysis_iteration=2,
+        loop_iterations={"review_analysis_iteration": 2},
         review_budget_remaining=1,
         review_outcome="has_issues",
     )
@@ -218,7 +218,7 @@ def test_skipped_review_commit_does_not_increment_outer_progress_but_resets_inne
     assert new_state.reviewer_pass == 1
     assert new_state.get_loop_iteration("review_analysis_iteration") == 0
     assert new_state.review_budget_remaining == 0
-    assert new_state.review_issues_found is True
+    assert new_state.review_outcome is not None
 
 
 def test_commit_budget_routes_use_post_commit_policy_after_budget_is_consumed() -> None:
@@ -298,7 +298,7 @@ class TestProgressPolicyRequired:
         state = PipelineState(
             phase="feature_commit",
             iteration=1,
-            development_analysis_iteration=0,
+            loop_iterations={"development_analysis_iteration": 0},
         )
         advanced_state = state.copy_with(phase="complete")
 
@@ -311,7 +311,7 @@ class TestProgressPolicyRequired:
         state = PipelineState(
             phase="feature_commit",
             iteration=1,
-            development_analysis_iteration=0,
+            loop_iterations={"development_analysis_iteration": 0},
         )
         advanced_state = state.copy_with(phase="complete")
 

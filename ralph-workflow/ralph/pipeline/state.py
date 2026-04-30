@@ -18,8 +18,8 @@ modifying source code.
 Budget counters (budget_remaining / outer_progress) track remaining budget
 and completed cycles for each policy-declared budget counter.
 
-Legacy checkpoint fields are migrated to the generic dicts at deserialise time
-via the _migrate_legacy_state_fields model_validator.
+Legacy checkpoint fields (budget fields only) are migrated to the generic
+dicts at deserialise time via the _migrate_legacy_state_fields model_validator.
 """
 
 from __future__ import annotations
@@ -34,46 +34,6 @@ from ralph.pipeline.worker_state import WorkerState  # noqa: TC001
 
 if TYPE_CHECKING:
     from ralph.policy.models import DrainName, PipelinePolicy
-
-# Legacy chain field names → canonical phase names for checkpoint migration.
-_LEGACY_CHAIN_FIELD_TO_PHASE: dict[str, str] = {
-    "planning_chain": "planning",
-    "dev_chain": "development",
-    "dev_analysis_chain": "development_analysis",
-    "rev_chain": "review",
-    "review_analysis_chain": "review_analysis",
-    "fix_chain": "fix",
-}
-
-
-def _migrate_chain_field(
-    d: dict[str, object],
-    phase_chains: dict[str, object],
-    old_field: str,
-    phase_key: str,
-) -> None:
-    if old_field in d:
-        val = d.pop(old_field)
-        if val is not None and phase_key not in phase_chains:
-            phase_chains[phase_key] = val
-
-
-def _migrate_loop_field_pair(
-    d: dict[str, object],
-    loop_iterations: dict[str, object],
-    loop_caps: dict[str, object],
-    iter_field: str,
-    cap_field: str,
-) -> None:
-    if iter_field not in loop_iterations and iter_field in d:
-        loop_iterations[iter_field] = d.pop(iter_field)
-    elif iter_field in d:
-        d.pop(iter_field)
-    if iter_field not in loop_caps and cap_field in d:
-        loop_caps[iter_field] = d.pop(cap_field)
-    elif cap_field in d:
-        d.pop(cap_field)
-
 
 def _migrate_counter_field(
     d: dict[str, object],
@@ -202,7 +162,6 @@ class PipelineState(_FrozenPipelineStateModel):  # type: ignore[explicit-any]  #
         total_reviewer_passes: Total allowed review passes.
         development_budget_remaining: Alias for budget_remaining['iteration'].
         review_budget_remaining: Alias for budget_remaining['reviewer_pass'].
-        review_issues_found: True when review_outcome is set (derived property).
     """
 
     phase: PipelinePhase = "planning"
@@ -268,41 +227,11 @@ class PipelineState(_FrozenPipelineStateModel):  # type: ignore[explicit-any]  #
 
         Handles old checkpoints that stored:
         - Typed chain fields → migrated into phase_chains
-        - Legacy loop iteration fields → migrated into loop_iterations / loop_caps
         - Legacy budget fields → migrated into budget_remaining / outer_progress
         """
         if not isinstance(data, dict):
             return data
         d = cast("dict[str, object]", dict(data))
-
-        # Migrate typed chain fields into phase_chains
-        _raw = d.get("phase_chains")
-        phase_chains: dict[str, object] = dict(
-            cast("dict[str, object]", _raw) if _raw is not None else {}
-        )
-        for old_field, phase_key in _LEGACY_CHAIN_FIELD_TO_PHASE.items():
-            _migrate_chain_field(d, phase_chains, old_field, phase_key)
-        d["phase_chains"] = phase_chains
-
-        # Migrate legacy loop iteration fields into loop_iterations and loop_caps
-        _raw_li = d.get("loop_iterations")
-        loop_iterations: dict[str, object] = dict(
-            cast("dict[str, object]", _raw_li) if _raw_li is not None else {}
-        )
-        _raw_lc = d.get("loop_caps")
-        loop_caps: dict[str, object] = dict(
-            cast("dict[str, object]", _raw_lc) if _raw_lc is not None else {}
-        )
-        _migrate_loop_field_pair(
-            d, loop_iterations, loop_caps,
-            "development_analysis_iteration", "max_development_analysis_iterations",
-        )
-        _migrate_loop_field_pair(
-            d, loop_iterations, loop_caps,
-            "review_analysis_iteration", "max_review_analysis_iterations",
-        )
-        d["loop_iterations"] = loop_iterations
-        d["loop_caps"] = loop_caps
 
         # Migrate legacy budget fields into budget_remaining and outer_progress
         _raw_br = d.get("budget_remaining")
@@ -405,16 +334,6 @@ class PipelineState(_FrozenPipelineStateModel):  # type: ignore[explicit-any]  #
         if isinstance(v, dict):
             return {str(k): int(val) for k, val in v.items()}
         raise TypeError(f"Expected dict for outer_progress, got {type(v).__name__!r}")
-
-    @property
-    def review_issues_found(self) -> bool:
-        """Derived property: True when review_outcome is set (indicates issues found).
-
-        Clean reviews result in review_outcome=None (set by the reducer via policy-
-        declared clean_outcome routing). Any non-None review_outcome means issues
-        were flagged, so this property does not need to hardcode any outcome name.
-        """
-        return self.review_outcome is not None
 
     def is_complete(self, policy: PipelinePolicy) -> bool:
         """Check if pipeline has reached a terminal success state.

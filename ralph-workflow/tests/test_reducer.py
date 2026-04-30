@@ -14,6 +14,7 @@ from ralph.pipeline.events import (
     WorkerFailedEvent,
     WorkerStartedEvent,
 )
+from ralph.pipeline.progress import review_issues_found as _review_issues_found
 from ralph.pipeline.reducer import reduce as reducer_reduce
 from ralph.pipeline.state import AgentChainState, CommitState, PipelineState
 from ralph.pipeline.work_units import WorkUnit
@@ -217,7 +218,7 @@ class TestPhaseFailureEvent:
         """PhaseFailureEvent(recoverable=True) increments retry count."""
         state = PipelineState(
             phase="development",
-            dev_chain=AgentChainState(agents=["claude"], current_index=0, retries=0),
+            phase_chains={"development": AgentChainState(agents=["claude"], current_index=0, retries=0)},  # noqa: E501
         )
         event = PhaseFailureEvent(phase="development", reason="missing artifact", recoverable=True)
         new_state, effects = _reduce(state, event)
@@ -231,7 +232,7 @@ class TestPhaseFailureEvent:
         """After 3 retries, recoverable PhaseFailureEvent advances to next agent."""
         state = PipelineState(
             phase="development",
-            dev_chain=AgentChainState(agents=["claude", "opencode"], current_index=0, retries=3),
+            phase_chains={"development": AgentChainState(agents=["claude", "opencode"], current_index=0, retries=3)},  # noqa: E501
         )
         event = PhaseFailureEvent(phase="development", reason="missing artifact", recoverable=True)
         new_state, effects = _reduce(state, event)
@@ -245,7 +246,7 @@ class TestPhaseFailureEvent:
         """Single-agent chain exhaustion should enter recovery without exit effects."""
         state = PipelineState(
             phase="development",
-            dev_chain=AgentChainState(agents=["claude"], current_index=0, retries=3),
+            phase_chains={"development": AgentChainState(agents=["claude"], current_index=0, retries=3)},  # noqa: E501
         )
         event = PhaseFailureEvent(phase="development", reason="missing artifact", recoverable=True)
         new_state, effects = _reduce(state, event, _basic_pipeline_policy())
@@ -260,10 +261,7 @@ class TestPhaseFailureEvent:
         self,
     ) -> None:
         """PhaseFailureEvent(recoverable=False) should still avoid process exit."""
-        state = PipelineState(
-            phase="development",
-            dev_chain=AgentChainState(agents=["claude"], current_index=0, retries=0),
-        )
+        state = PipelineState(phase="development")
         event = PhaseFailureEvent(
             phase="development_analysis",
             reason="Analysis decision: FAILURE",
@@ -279,7 +277,7 @@ class TestPhaseFailureEvent:
         """When chain exhausts, the original PhaseFailureEvent reason is preserved."""
         state = PipelineState(
             phase="development",
-            dev_chain=AgentChainState(agents=["claude"], current_index=0, retries=3),
+            phase_chains={"development": AgentChainState(agents=["claude"], current_index=0, retries=3)},  # noqa: E501
         )
         event = PhaseFailureEvent(
             phase="development",
@@ -297,7 +295,7 @@ class TestPhaseFailureEvent:
         """Terminal failure from PhaseFailureEvent must never show 'Unknown failure'."""
         state = PipelineState(
             phase="review",
-            rev_chain=AgentChainState(agents=["reviewer"], current_index=0, retries=3),
+            phase_chains={"review": AgentChainState(agents=["reviewer"], current_index=0, retries=3)},  # noqa: E501
         )
         event = PhaseFailureEvent(
             phase="review",
@@ -383,7 +381,7 @@ def test_review_issues_found_advances_to_fix_without_completing_pass() -> None:
     new_state, _ = _reduce(state, PipelineEvent.REVIEW_ISSUES_FOUND, policy)
     assert new_state.phase == "fix"
     assert new_state.reviewer_pass == 0
-    assert new_state.review_issues_found is True
+    assert _review_issues_found(new_state, policy) is True
 
 
 def test_fix_success_returns_to_review_analysis() -> None:
@@ -591,7 +589,7 @@ def test_agent_failure_triggers_retry() -> None:
     """Test that AGENT_FAILURE increments retry count."""
     state = PipelineState(
         phase="development",
-        dev_chain=AgentChainState(agents=["claude"], current_index=0, retries=0),
+        phase_chains={"development": AgentChainState(agents=["claude"], current_index=0, retries=0)},  # noqa: E501
     )
     new_state, _ = _reduce(state, PipelineEvent.AGENT_FAILURE)
     assert new_state.chain_for_phase("development").retries == 1
@@ -601,7 +599,7 @@ def test_agent_failure_falls_back_to_next_agent() -> None:
     """Test that AGENT_FAILURE falls back to next agent after max retries."""
     state = PipelineState(
         phase="development",
-        dev_chain=AgentChainState(agents=["claude", "opencode"], current_index=0, retries=3),
+        phase_chains={"development": AgentChainState(agents=["claude", "opencode"], current_index=0, retries=3)},  # noqa: E501
     )
     new_state, _ = _reduce(state, PipelineEvent.AGENT_FAILURE)
     assert new_state.chain_for_phase("development").current_index == 1
@@ -612,7 +610,7 @@ def test_agent_failure_with_exhausted_chain_enters_recovery() -> None:
     """AGENT_FAILURE with exhausted chain should enter recovery without exit effects."""
     state = PipelineState(
         phase="development",
-        dev_chain=AgentChainState(agents=["claude"], current_index=0, retries=3),
+        phase_chains={"development": AgentChainState(agents=["claude"], current_index=0, retries=3)},  # noqa: E501
     )
     new_state, effects = _reduce(state, PipelineEvent.AGENT_FAILURE, _basic_pipeline_policy())
     assert new_state.phase == "failed"
@@ -623,8 +621,10 @@ def test_agent_failure_with_exhausted_chain_enters_recovery() -> None:
 def test_planning_agent_failure_uses_planning_chain_instead_of_review_chain() -> None:
     state = PipelineState(
         phase="planning",
-        planning_chain=AgentChainState(agents=["claude", "opencode"], current_index=0, retries=0),
-        rev_chain=AgentChainState(agents=["reviewer"], current_index=0, retries=0),
+        phase_chains={
+            "planning": AgentChainState(agents=["claude", "opencode"], current_index=0, retries=0),
+            "review": AgentChainState(agents=["reviewer"], current_index=0, retries=0),
+        },
     )
 
     new_state, _ = _reduce(state, PipelineEvent.AGENT_FAILURE)
@@ -744,14 +744,13 @@ class TestAnalysisDecisionDispatch:
             phase="review_analysis",
             reviewer_pass=0,
             total_reviewer_passes=2,
-            review_issues_found=False,
         )
 
         new_state, _ = _reduce(state, PipelineEvent.ANALYSIS_LOOPBACK, policy)
 
         assert new_state.phase == "fix"
         assert new_state.reviewer_pass == 0
-        assert new_state.review_issues_found is True
+        assert _review_issues_found(new_state, policy) is True
 
     def test_analysis_success_with_policy_clears_review_issue_flag(self) -> None:
         """Policy routing should clear stale review issue state on approval."""
@@ -760,13 +759,12 @@ class TestAnalysisDecisionDispatch:
             phase="review_analysis",
             reviewer_pass=1,
             total_reviewer_passes=2,
-            review_issues_found=True,
         )
 
         new_state, _ = _reduce(state, PipelineEvent.ANALYSIS_SUCCESS, policy)
 
         assert new_state.phase == "review_commit"
-        assert new_state.review_issues_found is False
+        assert _review_issues_found(new_state, policy) is False
 
     def test_analysis_success_with_policy_routes_correctly(self) -> None:
         """Test that ANALYSIS_SUCCESS respects pipeline policy routing."""
@@ -856,8 +854,8 @@ class TestAnalysisDecisionDispatch:
         policy = _policy_with_post_commit_routes()
         state = PipelineState(
             phase="development_analysis",
-            development_analysis_iteration=0,
-            max_development_analysis_iterations=3,
+            loop_iterations={"development_analysis_iteration": 0},
+            loop_caps={"development_analysis_iteration": 3},
         )
         new_state, _ = _reduce(state, PipelineEvent.ANALYSIS_LOOPBACK, policy)
         assert new_state.get_loop_iteration("development_analysis_iteration") == 1
@@ -867,8 +865,8 @@ class TestAnalysisDecisionDispatch:
         policy = _policy_with_post_commit_routes()
         state = PipelineState(
             phase="development_analysis",
-            development_analysis_iteration=2,
-            max_development_analysis_iterations=3,
+            loop_iterations={"development_analysis_iteration": 2},
+            loop_caps={"development_analysis_iteration": 3},
         )
         new_state, _ = _reduce(state, PipelineEvent.ANALYSIS_LOOPBACK, policy)
         assert new_state.phase == "development"
@@ -883,8 +881,8 @@ class TestAnalysisDecisionDispatch:
         policy = _policy_with_post_commit_routes()
         state = PipelineState(
             phase="development_analysis",
-            development_analysis_iteration=3,
-            max_development_analysis_iterations=3,
+            loop_iterations={"development_analysis_iteration": 3},
+            loop_caps={"development_analysis_iteration": 3},
         )
         new_state, _ = _reduce(state, PipelineEvent.ANALYSIS_LOOPBACK, policy)
         assert new_state.phase == "development"
@@ -899,8 +897,8 @@ class TestAnalysisDecisionDispatch:
         policy = _policy_with_post_commit_routes()
         state = PipelineState(
             phase="development_analysis",
-            development_analysis_iteration=0,
-            max_development_analysis_iterations=0,
+            loop_iterations={"development_analysis_iteration": 0},
+            loop_caps={"development_analysis_iteration": 0},
         )
         new_state, _ = _reduce(state, PipelineEvent.ANALYSIS_LOOPBACK, policy)
         assert new_state.phase == "development"
@@ -912,8 +910,8 @@ class TestAnalysisDecisionDispatch:
         policy = _policy_with_post_commit_routes()
         state = PipelineState(
             phase="development_analysis",
-            development_analysis_iteration=2,
-            max_development_analysis_iterations=3,
+            loop_iterations={"development_analysis_iteration": 2},
+            loop_caps={"development_analysis_iteration": 3},
         )
         new_state, _ = _reduce(state, PipelineEvent.ANALYSIS_SUCCESS, policy)
         assert new_state.get_loop_iteration("development_analysis_iteration") == 0
@@ -923,8 +921,8 @@ class TestAnalysisDecisionDispatch:
         policy = _policy_with_post_commit_routes()
         state = PipelineState(
             phase="development_commit",
-            development_analysis_iteration=2,
-            max_development_analysis_iterations=3,
+            loop_iterations={"development_analysis_iteration": 2},
+            loop_caps={"development_analysis_iteration": 3},
             development_budget_remaining=0,
         )
         new_state, _ = _reduce(state, PipelineEvent.COMMIT_SUCCESS, policy)
@@ -935,8 +933,8 @@ class TestAnalysisDecisionDispatch:
         policy = _policy_with_post_commit_routes()
         state = PipelineState(
             phase="review_analysis",
-            review_analysis_iteration=0,
-            max_review_analysis_iterations=3,
+            loop_iterations={"review_analysis_iteration": 0},
+            loop_caps={"review_analysis_iteration": 3},
         )
         new_state, _ = _reduce(state, PipelineEvent.ANALYSIS_LOOPBACK, policy)
         assert new_state.get_loop_iteration("review_analysis_iteration") == 1
@@ -946,8 +944,8 @@ class TestAnalysisDecisionDispatch:
         policy = _policy_with_post_commit_routes()
         state = PipelineState(
             phase="review_analysis",
-            review_analysis_iteration=2,
-            max_review_analysis_iterations=3,
+            loop_iterations={"review_analysis_iteration": 2},
+            loop_caps={"review_analysis_iteration": 3},
         )
         new_state, _ = _reduce(state, PipelineEvent.ANALYSIS_LOOPBACK, policy)
         assert new_state.phase == "fix"
@@ -962,9 +960,8 @@ class TestAnalysisDecisionDispatch:
         policy = _policy_with_post_commit_routes()
         state = PipelineState(
             phase="review_analysis",
-            review_analysis_iteration=3,
-            max_review_analysis_iterations=3,
-            review_issues_found=False,
+            loop_iterations={"review_analysis_iteration": 3},
+            loop_caps={"review_analysis_iteration": 3},
         )
         new_state, _ = _reduce(state, PipelineEvent.ANALYSIS_LOOPBACK, policy)
         assert new_state.phase == "fix"
@@ -973,31 +970,29 @@ class TestAnalysisDecisionDispatch:
             new_state.get_loop_iteration("review_analysis_iteration")
             == state.loop_caps.get("review_analysis_iteration", 2)
         )
-        assert new_state.review_issues_found is True
+        assert new_state.review_outcome is not None
 
     def test_review_analysis_loopback_with_zero_cap_stays_zero(self) -> None:
         """A zero configured cap should still route to fix without incrementing."""
         policy = _policy_with_post_commit_routes()
         state = PipelineState(
             phase="review_analysis",
-            review_analysis_iteration=0,
-            max_review_analysis_iterations=0,
-            review_issues_found=False,
+            loop_iterations={"review_analysis_iteration": 0},
+            loop_caps={"review_analysis_iteration": 0},
         )
         new_state, _ = _reduce(state, PipelineEvent.ANALYSIS_LOOPBACK, policy)
         assert new_state.phase == "fix"
         assert new_state.previous_phase == "review_analysis"
         assert new_state.get_loop_iteration("review_analysis_iteration") == 0
-        assert new_state.review_issues_found is True
+        assert new_state.review_outcome is not None
 
     def test_review_analysis_loopback_at_max_with_policy_routes_to_fix(self) -> None:
         """Policy routing must keep review analysis loopback on fix when the cap is reached."""
         policy = _policy_with_post_commit_routes()
         state = PipelineState(
             phase="review_analysis",
-            review_analysis_iteration=1,
-            max_review_analysis_iterations=2,
-            review_issues_found=False,
+            loop_iterations={"review_analysis_iteration": 1},
+            loop_caps={"review_analysis_iteration": 2},
         )
 
         new_state, _ = _reduce(state, PipelineEvent.ANALYSIS_LOOPBACK, policy)
@@ -1008,15 +1003,15 @@ class TestAnalysisDecisionDispatch:
             new_state.get_loop_iteration("review_analysis_iteration")
             == state.loop_caps.get("review_analysis_iteration", 2)
         )
-        assert new_state.review_issues_found is True
+        assert new_state.review_outcome is not None
 
     def test_review_analysis_success_resets_review_analysis_iteration(self) -> None:
         """ANALYSIS_SUCCESS in review_analysis resets the iteration counter."""
         policy = _policy_with_post_commit_routes()
         state = PipelineState(
             phase="review_analysis",
-            review_analysis_iteration=2,
-            max_review_analysis_iterations=3,
+            loop_iterations={"review_analysis_iteration": 2},
+            loop_caps={"review_analysis_iteration": 3},
         )
         new_state, _ = _reduce(state, PipelineEvent.ANALYSIS_SUCCESS, policy)
         assert new_state.get_loop_iteration("review_analysis_iteration") == 0
@@ -1026,8 +1021,8 @@ class TestAnalysisDecisionDispatch:
         policy = _policy_with_post_commit_routes()
         state = PipelineState(
             phase="review_commit",
-            review_analysis_iteration=2,
-            max_review_analysis_iterations=3,
+            loop_iterations={"review_analysis_iteration": 2},
+            loop_caps={"review_analysis_iteration": 3},
             review_budget_remaining=0,
         )
         new_state, _ = _reduce(state, PipelineEvent.COMMIT_SUCCESS, policy)
@@ -1049,8 +1044,8 @@ class TestAnalysisDecisionDispatch:
 
         state = PipelineState(
             phase="development_analysis",
-            development_analysis_iteration=1,
-            max_development_analysis_iterations=3,
+            loop_iterations={"development_analysis_iteration": 1},
+            loop_caps={"development_analysis_iteration": 3},
         )
         with patch("ralph.pipeline.reducer.resolve_next_phase", side_effect=ValueError("bad")):
             new_state, _ = _reduce(state, PipelineEvent.ANALYSIS_LOOPBACK, policy)
@@ -1078,8 +1073,8 @@ class TestAnalysisDecisionDispatch:
 
         state = PipelineState(
             phase="review_analysis",
-            review_analysis_iteration=1,
-            max_review_analysis_iterations=3,
+            loop_iterations={"review_analysis_iteration": 1},
+            loop_caps={"review_analysis_iteration": 3},
         )
         with patch("ralph.pipeline.reducer.resolve_next_phase", side_effect=ValueError("bad")):
             new_state, _ = _reduce(state, PipelineEvent.ANALYSIS_LOOPBACK, policy)
@@ -1089,7 +1084,7 @@ class TestAnalysisDecisionDispatch:
             state.get_loop_iteration("review_analysis_iteration") + 1,
             state.loop_caps.get("review_analysis_iteration", 2),
         )
-        assert new_state.review_issues_found is True
+        assert new_state.review_outcome is not None
 
 
 @pytest.mark.parametrize(
@@ -1464,7 +1459,7 @@ def test_review_clean_with_policy_routes_to_review_commit_not_analysis() -> None
 
     assert new_state.phase == "review_commit"
     assert new_state.previous_phase == "review"
-    assert new_state.review_issues_found is False
+    assert new_state.review_outcome is None
 
 
 def test_review_clean_via_bypass_routes_skips_analysis() -> None:
@@ -1475,7 +1470,7 @@ def test_review_clean_via_bypass_routes_skips_analysis() -> None:
 
     assert new_state.phase == "review_commit"
     assert new_state.previous_phase == "review"
-    assert new_state.review_issues_found is False
+    assert new_state.review_outcome is None
 
 
 
@@ -1579,10 +1574,10 @@ def test_phase_handler_crash_exhausts_chain_before_failing() -> None:
     exited on the first exception instead of going through the retry/fallback chain.
     """
     policy = _basic_pipeline_policy()
-    # State with a 2-agent dev_chain
+    # State with a 2-agent phase chain
     state = PipelineState(
         phase="development",
-        dev_chain=AgentChainState(agents=["claude", "codex"], current_index=0, retries=0),
+        phase_chains={"development": AgentChainState(agents=["claude", "codex"], current_index=0, retries=0)},  # noqa: E501
     )
 
     # PhaseFailureEvent that simulates a handler crash

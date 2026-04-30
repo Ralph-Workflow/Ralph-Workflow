@@ -183,8 +183,8 @@ class TestDevAnalysisLoopbackIncrementsContinuationCounter:
         """ANALYSIS_LOOPBACK increments development_analysis_iteration and routes to development."""
         state = PipelineState(
             phase="development_analysis",
-            development_analysis_iteration=0,
-            max_development_analysis_iterations=3,
+            loop_iterations={"development_analysis_iteration": 0},
+            loop_caps={"development_analysis_iteration": 3},
         )
         policy = _dev_analysis_policy()
         new_state, _ = _reduce(state, PipelineEvent.ANALYSIS_LOOPBACK, policy)
@@ -200,8 +200,8 @@ class TestDevAnalysisLoopbackAtMaxRoutesToDevelopment:
         """At max-1 iterations, ANALYSIS_LOOPBACK still routes to development."""
         state = PipelineState(
             phase="development_analysis",
-            development_analysis_iteration=2,
-            max_development_analysis_iterations=3,
+            loop_iterations={"development_analysis_iteration": 2},
+            loop_caps={"development_analysis_iteration": 3},
         )
         policy = _dev_analysis_policy()
         new_state, _ = _reduce(state, PipelineEvent.ANALYSIS_LOOPBACK, policy)
@@ -217,7 +217,7 @@ class TestDevCommitSuccessResetsDevAnalysisIteration:
         """COMMIT_SUCCESS resets development_analysis_iteration to 0."""
         state = PipelineState(
             phase="development_commit",
-            development_analysis_iteration=3,
+            loop_iterations={"development_analysis_iteration": 3},
             iteration=0,
             development_budget_remaining=3,
             review_budget_remaining=2,
@@ -235,8 +235,8 @@ class TestReviewAnalysisLoopbackIncrementsContinuationCounter:
         """ANALYSIS_LOOPBACK increments review_analysis_iteration and routes to fix."""
         state = PipelineState(
             phase="review_analysis",
-            review_analysis_iteration=0,
-            max_review_analysis_iterations=2,
+            loop_iterations={"review_analysis_iteration": 0},
+            loop_caps={"review_analysis_iteration": 2},
             reviewer_pass=0,
         )
         policy = _dev_analysis_policy()
@@ -254,8 +254,8 @@ class TestReviewAnalysisLoopbackAtMaxRoutesToFix:
         """At max-1 iterations, ANALYSIS_LOOPBACK still routes to fix."""
         state = PipelineState(
             phase="review_analysis",
-            review_analysis_iteration=1,
-            max_review_analysis_iterations=2,
+            loop_iterations={"review_analysis_iteration": 1},
+            loop_caps={"review_analysis_iteration": 2},
             reviewer_pass=0,
         )
         policy = _dev_analysis_policy()
@@ -272,7 +272,7 @@ class TestReviewCommitSuccessResetsReviewAnalysisIteration:
         """COMMIT_SUCCESS resets review_analysis_iteration to 0."""
         state = PipelineState(
             phase="review_commit",
-            review_analysis_iteration=2,
+            loop_iterations={"review_analysis_iteration": 2},
             reviewer_pass=0,
             development_budget_remaining=3,
             review_budget_remaining=2,
@@ -290,8 +290,8 @@ class TestAnalysisSuccessResetsCounters:
         """ANALYSIS_SUCCESS resets development_analysis_iteration."""
         state = PipelineState(
             phase="development_analysis",
-            development_analysis_iteration=2,
-            max_development_analysis_iterations=3,
+            loop_iterations={"development_analysis_iteration": 2},
+            loop_caps={"development_analysis_iteration": 3},
         )
         policy = _dev_analysis_policy()
         new_state, _ = _reduce(state, PipelineEvent.ANALYSIS_SUCCESS, policy)
@@ -303,8 +303,8 @@ class TestAnalysisSuccessResetsCounters:
         """ANALYSIS_SUCCESS resets review_analysis_iteration."""
         state = PipelineState(
             phase="review_analysis",
-            review_analysis_iteration=1,
-            max_review_analysis_iterations=2,
+            loop_iterations={"review_analysis_iteration": 1},
+            loop_caps={"review_analysis_iteration": 2},
         )
         policy = _dev_analysis_policy()
         new_state, _ = _reduce(state, PipelineEvent.ANALYSIS_SUCCESS, policy)

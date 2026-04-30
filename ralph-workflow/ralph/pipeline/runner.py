@@ -805,30 +805,30 @@ def _show_phase_start_with_context(
     agent_name: str,
     console: Console | None,
     state: PipelineState | None,
+    *,
+    pipeline_policy: PipelinePolicy | None = None,
 ) -> None:
     """Helper to call show_phase_start with PhaseStartContext when state is available."""
     if state is None:
         show_phase_start(phase, agent_name=agent_name, console=console)
         return
 
-    # Build PhaseStartContext from state
+    analysis_iteration: int | None = None
+    max_analysis_iterations: int | None = None
+    if pipeline_policy is not None:
+        phase_def = pipeline_policy.phases.get(phase)
+        if phase_def is not None and phase_def.loop_policy is not None:
+            field = phase_def.loop_policy.iteration_state_field
+            analysis_iteration = state.loop_iterations.get(field)
+            max_analysis_iterations = state.loop_caps.get(field)
+
     ctx = PhaseStartContext(
         iteration=state.iteration,
         total_iterations=state.total_iterations,
         reviewer_pass=state.reviewer_pass,
         total_reviewer_passes=state.total_reviewer_passes,
-        development_analysis_iteration=state.loop_iterations.get(
-            "development_analysis_iteration"
-        ),
-        max_development_analysis_iterations=state.loop_caps.get(
-            "development_analysis_iteration"
-        ),
-        review_analysis_iteration=state.loop_iterations.get(
-            "review_analysis_iteration"
-        ),
-        max_review_analysis_iterations=state.loop_caps.get(
-            "review_analysis_iteration"
-        ),
+        analysis_iteration=analysis_iteration,
+        max_analysis_iterations=max_analysis_iterations,
     )
     show_phase_start(phase, ctx=ctx, agent_name=agent_name, console=console)
 

@@ -14,6 +14,7 @@ from ralph.pipeline.worker_state import WorkerState, WorkerStatus
 
 if TYPE_CHECKING:
     from ralph.pipeline.state import PipelineState
+    from ralph.policy.models import PipelinePolicy
 
 
 _STATUS_TO_SEMANTIC: dict[str, str] = {
@@ -97,6 +98,7 @@ def snapshot_from_state(  # noqa: PLR0913
     prompt_path: str | None,
     prompt_preview: tuple[str, ...],
     run_id: str | None,
+    pipeline_policy: PipelinePolicy | None = None,
     plan_summary: str | None = None,
     plan_scope_items: tuple[str, ...] = (),
     plan_total_steps: int = 0,
@@ -117,6 +119,7 @@ def snapshot_from_state(  # noqa: PLR0913
     decision_log: tuple[tuple[str, str, str, str], ...] = (),
 ) -> PipelineSnapshot:
     """Project PipelineState into an immutable pipeline snapshot."""
+    from ralph.pipeline.progress import review_issues_found as _review_issues_found  # noqa: PLC0415
 
     created_at = datetime.now(UTC)
     workers = _snapshot_workers(state)
@@ -134,7 +137,7 @@ def snapshot_from_state(  # noqa: PLR0913
         total_iterations=state.total_iterations,
         reviewer_pass=state.reviewer_pass,
         total_reviewer_passes=state.total_reviewer_passes,
-        review_issues_found=state.review_issues_found,
+        review_issues_found=_review_issues_found(state, pipeline_policy),
         interrupted_by_user=state.interrupted_by_user,
         last_error=state.last_error,
         pr_url=state.pr_url,

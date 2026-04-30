@@ -21,7 +21,7 @@ def _minimal_policy_bundle():
 def _make_state(agents: list[str]) -> PipelineState:
     return PipelineState(
         phase="development",
-        dev_chain=AgentChainState(agents=agents, current_index=0, retries=0),
+        phase_chains={"development": AgentChainState(agents=agents, current_index=0, retries=0)},
     )
 
 

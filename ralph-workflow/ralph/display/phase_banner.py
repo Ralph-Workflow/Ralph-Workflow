@@ -182,10 +182,8 @@ class PhaseStartContext:
     reviewer_pass: int | None = None
     total_reviewer_passes: int | None = None
     agent_name: str | None = None
-    development_analysis_iteration: int | None = None
-    max_development_analysis_iterations: int | None = None
-    review_analysis_iteration: int | None = None
-    max_review_analysis_iterations: int | None = None
+    analysis_iteration: int | None = None
+    max_analysis_iterations: int | None = None
 
 
 def _build_analysis_suffix(
@@ -233,23 +231,12 @@ def show_phase_start(
                 style="theme.text.muted",
             )
         if (
-            phase == "development_analysis"
-            and ctx.development_analysis_iteration is not None
-            and ctx.max_development_analysis_iterations is not None
+            ctx.analysis_iteration is not None
+            and ctx.max_analysis_iterations is not None
         ):
             suffix = _build_analysis_suffix(
-                ctx.development_analysis_iteration,
-                ctx.max_development_analysis_iterations,
-            )
-            line.append(suffix, style="theme.text.muted")
-        if (
-            phase == "review_analysis"
-            and ctx.review_analysis_iteration is not None
-            and ctx.max_review_analysis_iterations is not None
-        ):
-            suffix = _build_analysis_suffix(
-                ctx.review_analysis_iteration,
-                ctx.max_review_analysis_iterations,
+                ctx.analysis_iteration,
+                ctx.max_analysis_iterations,
             )
             line.append(suffix, style="theme.text.muted")
         effective_agent = ctx.agent_name or agent_name
@@ -295,12 +282,6 @@ def show_phase_start_from_state(
         reviewer_pass=_get_int_attr(state, "reviewer_pass"),
         total_reviewer_passes=_get_int_attr(state, "total_reviewer_passes"),
         agent_name=_get_str_attr(state, "agent_name"),
-        development_analysis_iteration=_get_int_attr(state, "development_analysis_iteration"),
-        max_development_analysis_iterations=_get_int_attr(
-            state, "max_development_analysis_iterations"
-        ),
-        review_analysis_iteration=_get_int_attr(state, "review_analysis_iteration"),
-        max_review_analysis_iterations=_get_int_attr(state, "max_review_analysis_iterations"),
     )
     show_phase_start(phase, ctx=ctx, console=console, display_context=display_context)
 

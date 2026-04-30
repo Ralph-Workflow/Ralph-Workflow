@@ -102,7 +102,7 @@ def test_snapshot_last_activity_line_never_stores_lifecycle(tmp_path: Path) -> N
     state.total_iterations = 1
     state.reviewer_pass = 0
     state.total_reviewer_passes = 0
-    state.review_issues_found = False
+    state.review_outcome = None
     state.interrupted_by_user = False
     state.last_error = None
     state.pr_url = None

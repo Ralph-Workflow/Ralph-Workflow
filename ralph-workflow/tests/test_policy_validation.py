@@ -1402,9 +1402,9 @@ class TestValidatePolicyCompletenessNewRules:
     def test_recovery_failed_route_unknown_phase_raises_policy_error(self) -> None:
         """failed_route referencing an undeclared phase fails completeness validation.
 
-        RecoveryPolicy.failed_route accepts any string (phase_failed, exit_failure,
-        or a declared phase name). An undeclared phase name is rejected by
+        A non-reserved string that doesn't match a declared phase is rejected by
         validate_policy_completeness, not at Pydantic model level.
+        Note: 'phase_failed' and 'exit_failure' are rejected at model construction.
         """
         agents = self._minimal_agents(["planning", "complete"])
         pipeline = PipelinePolicy(
@@ -1470,70 +1470,22 @@ class TestValidatePolicyCompletenessNewRules:
         validate_policy_completeness(bundle)  # must not raise
 
     def test_recovery_failed_route_phase_failed_is_rejected(self) -> None:
-        """recovery.failed_route='phase_failed' is rejected with migration hint."""
-        agents = self._minimal_agents(["planning", "complete"])
-        pipeline = PipelinePolicy(
-            phases={
-                "planning": PhaseDefinition(
-                    drain="planning",
-                    role="execution",
-                    transitions=PhaseTransition(on_success="complete"),
-                ),
-                "complete": PhaseDefinition(
-                    drain="complete",
-                    role="terminal",
-                    terminal_outcome="success",
-                    transitions=PhaseTransition(
-                        on_success="complete",
-                        on_loopback="complete",
-                    ),
-                ),
-            },
-            entry_phase="planning",
-            terminal_phase="complete",
-            recovery=RecoveryPolicy(
+        """recovery.failed_route='phase_failed' is rejected at model construction."""
+        with pytest.raises(ValidationError, match="no longer supported"):
+            RecoveryPolicy(
                 cycle_cap=200,
                 failed_route="phase_failed",
                 preserve_session_on_categories=("agent",),
-            ),
-        )
-        artifacts = ArtifactsPolicy(artifacts={})
-        bundle = PolicyBundle(agents=agents, pipeline=pipeline, artifacts=artifacts)
-        with pytest.raises(PolicyValidationError, match="no longer supported"):
-            validate_policy_completeness(bundle)
+            )
 
     def test_recovery_failed_route_exit_failure_is_rejected(self) -> None:
-        """recovery.failed_route='exit_failure' is rejected with migration hint."""
-        agents = self._minimal_agents(["planning", "complete"])
-        pipeline = PipelinePolicy(
-            phases={
-                "planning": PhaseDefinition(
-                    drain="planning",
-                    role="execution",
-                    transitions=PhaseTransition(on_success="complete"),
-                ),
-                "complete": PhaseDefinition(
-                    drain="complete",
-                    role="terminal",
-                    terminal_outcome="success",
-                    transitions=PhaseTransition(
-                        on_success="complete",
-                        on_loopback="complete",
-                    ),
-                ),
-            },
-            entry_phase="planning",
-            terminal_phase="complete",
-            recovery=RecoveryPolicy(
+        """recovery.failed_route='exit_failure' is rejected at model construction."""
+        with pytest.raises(ValidationError, match="no longer supported"):
+            RecoveryPolicy(
                 cycle_cap=200,
                 failed_route="exit_failure",
                 preserve_session_on_categories=("agent",),
-            ),
-        )
-        artifacts = ArtifactsPolicy(artifacts={})
-        bundle = PolicyBundle(agents=agents, pipeline=pipeline, artifacts=artifacts)
-        with pytest.raises(PolicyValidationError, match="no longer supported"):
-            validate_policy_completeness(bundle)
+            )
 
 
     def test_review_role_requires_issues_outcome(self) -> None:

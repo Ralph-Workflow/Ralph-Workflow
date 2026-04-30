@@ -26,7 +26,9 @@ def _make_state_with_recovery_context(
         fallover_history = []
     return PipelineState(
         phase="development",
-        dev_chain=AgentChainState(agents=["claude", "opencode"], current_index=1, retries=0),
+        phase_chains={
+            "development": AgentChainState(agents=["claude", "opencode"], current_index=1, retries=0)  # noqa: E501
+        },
         fallover_history=tuple(fallover_history),
         recovery_cycle_count=recovery_cycle_count,
         last_failure_category=last_failure_category,
@@ -37,7 +39,7 @@ def _make_state(agents: list[str]) -> PipelineState:
     """Simple helper for single-agent chain state."""
     return PipelineState(
         phase="development",
-        dev_chain=AgentChainState(agents=agents, current_index=0, retries=0),
+        phase_chains={"development": AgentChainState(agents=agents, current_index=0, retries=0)},
     )
 
 

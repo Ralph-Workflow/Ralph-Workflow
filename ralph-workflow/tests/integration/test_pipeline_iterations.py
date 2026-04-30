@@ -326,7 +326,7 @@ def test_review_analysis_loopback_is_persisted_as_inner_progress_only(
     fix_state = _state_with_phase(saved_states, "fix")
     assert fix_state.reviewer_pass == 0
     assert fix_state.get_loop_iteration("review_analysis_iteration") == 1
-    assert fix_state.review_issues_found is True
+    assert fix_state.review_outcome is not None
     final_state = saved_states[-1]
     assert final_state.phase == "complete"
     assert final_state.reviewer_pass == 1
@@ -356,7 +356,7 @@ def test_review_analysis_cap_routes_through_final_fix_with_persisted_max_counter
         and state.get_loop_iteration("review_analysis_iteration") == MAX_REVIEW_ANALYSIS_ITERATIONS
     )
     assert capped_fix_state.reviewer_pass == 0
-    assert capped_fix_state.review_issues_found is True
+    assert capped_fix_state.review_outcome is not None
     assert invoker.count_for("fix") == MAX_REVIEW_ANALYSIS_ITERATIONS
     final_state = saved_states[-1]
     assert final_state.phase == "complete"

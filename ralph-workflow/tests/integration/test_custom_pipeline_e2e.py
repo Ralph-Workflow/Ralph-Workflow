@@ -251,7 +251,6 @@ class TestCustomPipelineLoopback:
         # Loopback should set review_outcome from loopback_review_outcome config
         state, _ = reducer_reduce(state, PipelineEvent.ANALYSIS_LOOPBACK, policy)
         assert state.review_outcome == "has_issues"
-        assert state.review_issues_found is True  # derived property
 
     def test_gate_loopback_three_times_still_routes_correctly(
         self, custom_bundle: PolicyBundle

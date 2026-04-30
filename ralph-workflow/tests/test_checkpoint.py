@@ -92,8 +92,10 @@ def test_checkpoint_roundtrip_full_state(tmp_path: Path) -> None:
         reviewer_pass=1,
         total_reviewer_passes=2,
         review_outcome="has_issues",
-        dev_chain=AgentChainState(agents=["claude", "opencode"], current_index=1),
-        rev_chain=AgentChainState(agents=["claude"], current_index=0),
+        phase_chains={
+            "development": AgentChainState(agents=["claude", "opencode"], current_index=1),
+            "review": AgentChainState(agents=["claude"], current_index=0),
+        },
         rebase=RebaseState(pending=True),
         commit=CommitState(message_prepared=True),
         metrics=RunMetrics(total_agent_calls=TOTAL_AGENT_CALLS, total_continuations=2),

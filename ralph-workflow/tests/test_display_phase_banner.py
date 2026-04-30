@@ -293,8 +293,8 @@ def test_show_phase_start_dev_analysis_shows_analysis_counter() -> None:
     """When phase is development_analysis with counter context, suffix [analysis N/M] appears."""
     console = Console(record=True)
     ctx = PhaseStartContext(
-        development_analysis_iteration=1,
-        max_development_analysis_iterations=3,
+        analysis_iteration=1,
+        max_analysis_iterations=3,
     )
     show_phase_start("development_analysis", ctx=ctx, console=console)
     output = console.export_text()
@@ -303,11 +303,11 @@ def test_show_phase_start_dev_analysis_shows_analysis_counter() -> None:
 
 
 def test_show_phase_start_dev_analysis_zero_index_shows_one() -> None:
-    """development_analysis_iteration=0 shows as [analysis 1/M]."""
+    """analysis_iteration=0 shows as [analysis 1/M]."""
     console = Console(record=True)
     ctx = PhaseStartContext(
-        development_analysis_iteration=0,
-        max_development_analysis_iterations=3,
+        analysis_iteration=0,
+        max_analysis_iterations=3,
     )
     show_phase_start("development_analysis", ctx=ctx, console=console)
     output = console.export_text()
@@ -315,11 +315,11 @@ def test_show_phase_start_dev_analysis_zero_index_shows_one() -> None:
 
 
 def test_show_phase_start_dev_analysis_at_max_shows_max() -> None:
-    """development_analysis_iteration=2 with max=3 shows [analysis 3/3]."""
+    """analysis_iteration=2 with max=3 shows [analysis 3/3]."""
     console = Console(record=True)
     ctx = PhaseStartContext(
-        development_analysis_iteration=2,
-        max_development_analysis_iterations=3,
+        analysis_iteration=2,
+        max_analysis_iterations=3,
     )
     show_phase_start("development_analysis", ctx=ctx, console=console)
     output = console.export_text()
@@ -330,8 +330,8 @@ def test_show_phase_start_review_analysis_shows_analysis_counter() -> None:
     """When phase is review_analysis with counter context, suffix [analysis N/M] appears."""
     console = Console(record=True)
     ctx = PhaseStartContext(
-        review_analysis_iteration=0,
-        max_review_analysis_iterations=2,
+        analysis_iteration=0,
+        max_analysis_iterations=2,
     )
     show_phase_start("review_analysis", ctx=ctx, console=console)
     output = console.export_text()
@@ -340,11 +340,11 @@ def test_show_phase_start_review_analysis_shows_analysis_counter() -> None:
 
 
 def test_show_phase_start_review_analysis_at_max_shows_max() -> None:
-    """review_analysis_iteration=1 with max=2 shows [analysis 2/2]."""
+    """analysis_iteration=1 with max=2 shows [analysis 2/2]."""
     console = Console(record=True)
     ctx = PhaseStartContext(
-        review_analysis_iteration=1,
-        max_review_analysis_iterations=2,
+        analysis_iteration=1,
+        max_analysis_iterations=2,
     )
     show_phase_start("review_analysis", ctx=ctx, console=console)
     output = console.export_text()
@@ -366,13 +366,11 @@ def test_show_phase_start_dev_analysis_no_suffix_without_context() -> None:
 
 
 def test_show_phase_start_development_no_analysis_suffix() -> None:
-    """When phase is development (not analysis), no [analysis] suffix even with counters."""
+    """When phase is development without analysis_iteration, no [analysis] suffix."""
     console = Console(record=True)
     ctx = PhaseStartContext(
         iteration=1,
         total_iterations=5,
-        development_analysis_iteration=2,
-        max_development_analysis_iterations=3,
     )
     show_phase_start("development", ctx=ctx, console=console)
     output = console.export_text()
@@ -381,13 +379,11 @@ def test_show_phase_start_development_no_analysis_suffix() -> None:
 
 
 def test_show_phase_start_review_no_analysis_suffix() -> None:
-    """When phase is review (not analysis), no [analysis] suffix even with counters."""
+    """When phase is review without analysis_iteration, no [analysis] suffix."""
     console = Console(record=True)
     ctx = PhaseStartContext(
         reviewer_pass=0,
         total_reviewer_passes=2,
-        review_analysis_iteration=1,
-        max_review_analysis_iterations=2,
     )
     show_phase_start("review", ctx=ctx, console=console)
     output = console.export_text()
@@ -401,8 +397,8 @@ def test_show_phase_start_combines_iteration_and_analysis_counters() -> None:
     ctx = PhaseStartContext(
         iteration=2,
         total_iterations=5,
-        development_analysis_iteration=1,
-        max_development_analysis_iterations=3,
+        analysis_iteration=1,
+        max_analysis_iterations=3,
     )
     show_phase_start("development_analysis", ctx=ctx, console=console)
     output = console.export_text()

@@ -113,7 +113,9 @@ def test_runner_exits_via_cycle_cap_not_premature_termination(
 
     initial_state = PipelineState(
         phase="development",
-        dev_chain=AgentChainState(agents=["claude", "opencode"], current_index=0, retries=0),
+        phase_chains={
+            "development": AgentChainState(agents=["claude", "opencode"], current_index=0, retries=0)  # noqa: E501
+        },
         policy_entry_phase="development",
         recovery_cycle_cap=_CYCLE_CAP,
     )
@@ -168,7 +170,9 @@ def test_runner_cycle_cap_emits_failure_events_and_fallover_events(
 
     initial_state = PipelineState(
         phase="development",
-        dev_chain=AgentChainState(agents=["claude", "opencode"], current_index=0, retries=0),
+        phase_chains={
+            "development": AgentChainState(agents=["claude", "opencode"], current_index=0, retries=0)  # noqa: E501
+        },
         policy_entry_phase="development",
         recovery_cycle_cap=_CYCLE_CAP,
     )
@@ -243,7 +247,9 @@ def test_runner_fallover_history_reflects_agent_transitions(
 
     initial_state = PipelineState(
         phase="development",
-        dev_chain=AgentChainState(agents=["claude", "opencode"], current_index=0, retries=0),
+        phase_chains={
+            "development": AgentChainState(agents=["claude", "opencode"], current_index=0, retries=0)  # noqa: E501
+        },
         policy_entry_phase="development",
         recovery_cycle_cap=_CYCLE_CAP,
     )
@@ -295,7 +301,9 @@ def test_runner_recovery_cycle_count_reaches_cap(
 
     initial_state = PipelineState(
         phase="development",
-        dev_chain=AgentChainState(agents=["claude", "opencode"], current_index=0, retries=0),
+        phase_chains={
+            "development": AgentChainState(agents=["claude", "opencode"], current_index=0, retries=0)  # noqa: E501
+        },
         policy_entry_phase="development",
         recovery_cycle_cap=_CYCLE_CAP,
     )

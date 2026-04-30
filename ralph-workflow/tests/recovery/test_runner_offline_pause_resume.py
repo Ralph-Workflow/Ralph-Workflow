@@ -80,7 +80,9 @@ def test_offline_pauses_agent_invocation_and_resume_completes(
 
     initial_state = PipelineState(
         phase="development",
-        dev_chain=AgentChainState(agents=["claude"], current_index=0, retries=0),
+        phase_chains={
+            "development": AgentChainState(agents=["claude"], current_index=0, retries=0)
+        },
         policy_entry_phase="development",
         recovery_cycle_cap=10,
     )
@@ -194,7 +196,9 @@ def test_offline_window_produces_no_failure_events(
 
     initial_state = PipelineState(
         phase="development",
-        dev_chain=AgentChainState(agents=["claude"], current_index=0, retries=0),
+        phase_chains={
+            "development": AgentChainState(agents=["claude"], current_index=0, retries=0)
+        },
         policy_entry_phase="development",
         recovery_cycle_cap=10,
     )

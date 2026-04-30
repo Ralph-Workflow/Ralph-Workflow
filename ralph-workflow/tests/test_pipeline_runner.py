@@ -518,8 +518,10 @@ class TestDetermineEffect:
     def test_review_analysis_prefers_its_own_bound_chain_over_review_chain(self) -> None:
         state = PipelineState(
             phase="review_analysis",
-            rev_chain=AgentChainState(agents=["reviewer-agent"]),
-            review_analysis_chain=AgentChainState(agents=["analysis-agent"]),
+            phase_chains={
+                "review": AgentChainState(agents=["reviewer-agent"]),
+                "review_analysis": AgentChainState(agents=["analysis-agent"]),
+            },
         )
         bundle = PolicyBundle(
             agents=AgentsPolicy(
@@ -1226,7 +1228,7 @@ class TestPipelineRunnerLoop:
     ) -> None:
         planning_state = PipelineState(
             phase="planning",
-            planning_chain=AgentChainState(agents=["claude"], current_index=0, retries=3),
+            phase_chains={"planning": AgentChainState(agents=["claude"], current_index=0, retries=3)},  # noqa: E501
         )
         failed_state = planning_state.copy_with(
             phase="failed",
@@ -2931,7 +2933,7 @@ class TestPhaseHandlerExceptionGuard:
         """PhaseFailureEvent(recoverable=True) should route through reducer retry."""
         state = PipelineState(
             phase="development",
-            dev_chain=AgentChainState(agents=["claude"], current_index=0, retries=0),
+            phase_chains={"development": AgentChainState(agents=["claude"], current_index=0, retries=0)},  # noqa: E501
         )
         event = PhaseFailureEvent(
             phase="development",
@@ -2950,10 +2952,7 @@ class TestPhaseHandlerExceptionGuard:
         self,
     ) -> None:
         """PhaseFailureEvent(recoverable=False) should transition to "failed"."""
-        state = PipelineState(
-            phase="development",
-            dev_chain=AgentChainState(agents=["claude"], current_index=0, retries=0),
-        )
+        state = PipelineState(phase="development")
         event = PhaseFailureEvent(
             phase="development_analysis",
             reason="Analysis decision: FAILURE",

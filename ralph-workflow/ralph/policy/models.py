@@ -238,8 +238,10 @@ class RecoveryPolicy(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reaso
     Attributes:
         cycle_cap: Maximum full-chain exhaustion cycles before exit.
         failed_route: Phase to route to on terminal pipeline failure.
-            'failed', 'phase_failed', and 'exit_failure' are built-in pseudo-phases;
-            any declared pipeline phase name with role='terminal' is also valid.
+            Only 'failed' is accepted as a deprecated alias (emits deprecation
+            warning). Declare a phase with role='terminal' and
+            terminal_outcome='failure' and reference it here.
+            'phase_failed' and 'exit_failure' are no longer accepted.
         terminal_failure_phase: Optional name of the declared terminal failure phase
             (must have role='terminal' and terminal_outcome='failure' in pipeline.phases).
             When set, enables BFS reachability validation for failure paths.
@@ -268,8 +270,8 @@ class RecoveryPolicy(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reaso
 
     @model_validator(mode="before")
     @classmethod
-    def _reject_terminal_recovery_route(cls, data: object) -> object:
-        """Reject the deprecated terminal_recovery_route field with an actionable error."""
+    def _reject_legacy_route_fields(cls, data: object) -> object:
+        """Reject removed/deprecated recovery fields with actionable errors."""
         if not isinstance(data, dict):
             return data
         d = cast("dict[str, object]", dict(data))
@@ -277,6 +279,21 @@ class RecoveryPolicy(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reaso
             raise ValueError(
                 "recovery.terminal_recovery_route is deprecated; rename it to "
                 "recovery.failed_route. See docs/migration/policy-v2.md."
+            )
+        failed_route = d.get("failed_route")
+        if failed_route in ("phase_failed", "exit_failure"):
+            raise ValueError(
+                f"recovery.failed_route: '{failed_route}' is no longer supported. "
+                "Declare a terminal failure phase with role='terminal' and "
+                "terminal_outcome='failure' and reference it via recovery.failed_route "
+                "(and optionally recovery.terminal_failure_phase). "
+                "See docs/sphinx/policy-driven-overhaul-migration.md."
+            )
+        if failed_route == "failed":
+            logger.warning(
+                "recovery.failed_route: 'failed' is a deprecated pseudo-phase alias. "
+                "Declare a phase with role='terminal' and terminal_outcome='failure' "
+                "and reference it via recovery.failed_route instead."
             )
         return d
 

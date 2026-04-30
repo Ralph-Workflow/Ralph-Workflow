@@ -15,7 +15,9 @@ if TYPE_CHECKING:
 def _make_state_with_recovery_fields() -> PipelineState:
     return PipelineState(
         phase="development",
-        dev_chain=AgentChainState(agents=["claude", "opencode"], current_index=1, retries=2),
+        phase_chains={
+            "development": AgentChainState(agents=["claude", "opencode"], current_index=1, retries=2)  # noqa: E501
+        },
         recovery_cycle_count=3,
         fallover_history=(
             FalloverRecord(
