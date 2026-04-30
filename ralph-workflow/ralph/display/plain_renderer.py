@@ -514,9 +514,11 @@ class PlainLogRenderer:
         for text in self._snapshot_texts(snapshot):
             self._console.print(text, markup=False, highlight=False, no_wrap=True)
 
-    def emit_run_start(self, orientation: RunStartOrientation) -> None:  # noqa: PLR0912
+    def emit_run_start(self, orientation: RunStartOrientation) -> None:
         """Emit a one-time MILESTONE orientation block at pipeline start."""
         timestamp = self._format_timestamp(self._clock())
+        compact = self._ctx.mode == "compact"
+
         self._console.print(
             self._build_line(
                 timestamp,
@@ -529,7 +531,7 @@ class PlainLogRenderer:
             no_wrap=True,
         )
 
-        if orientation.legend_enabled:
+        if orientation.legend_enabled and not compact:
             self._console.print(
                 self._build_line(
                     timestamp,
@@ -543,41 +545,120 @@ class PlainLogRenderer:
                 no_wrap=True,
             )
 
+        if compact:
+            self._emit_run_start_compact(timestamp, orientation)
+        else:
+            self._emit_run_start_wide(timestamp, orientation)
+
+    def _emit_run_start_compact(  # noqa: PLR0912
+        self, timestamp: str, orientation: RunStartOrientation
+    ) -> None:
+        """Compact layout: max 4 [run-start] lines (milestone + up to 3 content)."""
+        # prompt+workspace combined
+        prompt_ws_parts: list[str] = []
         if orientation.prompt_path is not None:
-            val = _sanitize(orientation.prompt_path)
+            prompt_ws_parts.append(f"prompt={_sanitize(orientation.prompt_path)}")
+        if orientation.workspace_root is not None:
+            prompt_ws_parts.append(f"workspace={_sanitize(orientation.workspace_root)}")
+        if prompt_ws_parts:
             self._console.print(
-                self._build_line(timestamp, "INFO", "META", f"[run-start] prompt={val}"),
+                self._build_line(
+                    timestamp, "INFO", "META", f"[run-start] {' '.join(prompt_ws_parts)}"
+                ),
                 markup=False,
                 highlight=False,
                 no_wrap=True,
             )
 
-        dev_parts: list[str] = []
+        # agents+iterations combined
+        agents_iters_parts: list[str] = []
         if orientation.developer_agent is not None:
-            dev_parts.append(f"developer={_sanitize(orientation.developer_agent)}")
+            agents_iters_parts.append(f"developer={_sanitize(orientation.developer_agent)}")
         if orientation.developer_model is not None:
-            dev_parts.append(f"model={_sanitize(orientation.developer_model)}")
-        if dev_parts:
-            self._console.print(
-                self._build_line(timestamp, "INFO", "META", f"[run-start] {' '.join(dev_parts)}"),
-                markup=False,
-                highlight=False,
-                no_wrap=True,
-            )
-
-        rev_parts: list[str] = []
+            agents_iters_parts.append(f"model={_sanitize(orientation.developer_model)}")
         if orientation.reviewer_agent is not None:
-            rev_parts.append(f"reviewer={_sanitize(orientation.reviewer_agent)}")
+            agents_iters_parts.append(f"reviewer={_sanitize(orientation.reviewer_agent)}")
         if orientation.reviewer_model is not None:
-            rev_parts.append(f"model={_sanitize(orientation.reviewer_model)}")
-        if rev_parts:
+            agents_iters_parts.append(f"model={_sanitize(orientation.reviewer_model)}")
+        iter_compact: list[str] = []
+        if orientation.developer_iters is not None:
+            iter_compact.append(f"dev:{orientation.developer_iters}")
+        if orientation.reviewer_reviews is not None:
+            iter_compact.append(f"reviewer:{orientation.reviewer_reviews}")
+        if iter_compact:
+            agents_iters_parts.append(f"iterations={' '.join(iter_compact)}")
+        if agents_iters_parts:
             self._console.print(
-                self._build_line(timestamp, "INFO", "META", f"[run-start] {' '.join(rev_parts)}"),
+                self._build_line(
+                    timestamp,
+                    "INFO",
+                    "META",
+                    f"[run-start] {' '.join(agents_iters_parts)}",
+                ),
                 markup=False,
                 highlight=False,
                 no_wrap=True,
             )
 
+        # plan+verbosity+parallel combined (always emitted)
+        plan_val = "ready" if orientation.plan_present else "absent"
+        misc_parts: list[str] = [f"plan={plan_val}"]
+        if orientation.verbosity is not None:
+            misc_parts.append(f"verbosity={orientation.verbosity}")
+        if orientation.parallel_max_workers is not None:
+            misc_parts.append(f"parallel=max_workers={orientation.parallel_max_workers}")
+        self._console.print(
+            self._build_line(timestamp, "INFO", "META", f"[run-start] {' '.join(misc_parts)}"),
+            markup=False,
+            highlight=False,
+            no_wrap=True,
+        )
+
+    @staticmethod
+    def _build_agents_parts(orientation: RunStartOrientation) -> list[str]:
+        """Collect developer/reviewer agent+model tokens for the wide run-start agents line."""
+        parts: list[str] = []
+        if orientation.developer_agent is not None:
+            parts.append(f"developer={_sanitize(orientation.developer_agent)}")
+        if orientation.developer_model is not None:
+            parts.append(f"model={_sanitize(orientation.developer_model)}")
+        if orientation.reviewer_agent is not None:
+            parts.append(f"reviewer={_sanitize(orientation.reviewer_agent)}")
+        if orientation.reviewer_model is not None:
+            parts.append(f"model={_sanitize(orientation.reviewer_model)}")
+        return parts
+
+    def _emit_run_start_wide(
+        self, timestamp: str, orientation: RunStartOrientation
+    ) -> None:
+        """Medium/wide layout: grouped fields on shared lines."""
+        # prompt+workspace on one line
+        pw_parts: list[str] = []
+        if orientation.prompt_path is not None:
+            pw_parts.append(f"prompt={_sanitize(orientation.prompt_path)}")
+        if orientation.workspace_root is not None:
+            pw_parts.append(f"workspace={_sanitize(orientation.workspace_root)}")
+        if pw_parts:
+            self._console.print(
+                self._build_line(timestamp, "INFO", "META", f"[run-start] {' '.join(pw_parts)}"),
+                markup=False,
+                highlight=False,
+                no_wrap=True,
+            )
+
+        # agents+models on one line (developer and reviewer combined)
+        agents_parts = self._build_agents_parts(orientation)
+        if agents_parts:
+            self._console.print(
+                self._build_line(
+                    timestamp, "INFO", "META", f"[run-start] {' '.join(agents_parts)}"
+                ),
+                markup=False,
+                highlight=False,
+                no_wrap=True,
+            )
+
+        # iterations on one line
         iter_parts: list[str] = []
         if orientation.developer_iters is not None:
             iter_parts.append(f"dev:{orientation.developer_iters}")
@@ -609,32 +690,17 @@ class PlainLogRenderer:
                 no_wrap=True,
             )
 
+        # plan+verbosity on one line
         plan_val = "ready" if orientation.plan_present else "absent"
+        plan_parts: list[str] = [f"plan={plan_val}"]
+        if orientation.verbosity is not None:
+            plan_parts.append(f"verbosity={orientation.verbosity}")
         self._console.print(
-            self._build_line(timestamp, "INFO", "META", f"[run-start] plan={plan_val}"),
+            self._build_line(timestamp, "INFO", "META", f"[run-start] {' '.join(plan_parts)}"),
             markup=False,
             highlight=False,
             no_wrap=True,
         )
-
-        if orientation.verbosity is not None:
-            self._console.print(
-                self._build_line(
-                    timestamp, "INFO", "META", f"[run-start] verbosity={orientation.verbosity}"
-                ),
-                markup=False,
-                highlight=False,
-                no_wrap=True,
-            )
-
-        if orientation.workspace_root is not None:
-            val = _sanitize(orientation.workspace_root)
-            self._console.print(
-                self._build_line(timestamp, "INFO", "META", f"[run-start] workspace={val}"),
-                markup=False,
-                highlight=False,
-                no_wrap=True,
-            )
 
     def begin_phase(self, phase: str) -> None:
         """Start timing a new phase and reset its counters to zero."""
