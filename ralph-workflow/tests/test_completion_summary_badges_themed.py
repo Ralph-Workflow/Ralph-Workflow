@@ -7,7 +7,7 @@ from io import StringIO
 
 from rich.console import Console
 
-from ralph.display.completion_summary import emit_completion_summary
+from ralph.display.completion_summary import _make_badge_text, emit_completion_summary
 from ralph.display.context import make_display_context
 from ralph.display.snapshot import PipelineSnapshot
 from ralph.display.theme import RALPH_THEME
@@ -106,3 +106,22 @@ def test_fail_badge_label_present_on_plain() -> None:
     ctx = _plain_context(buf)
     emit_completion_summary(_make_snapshot(), display_context=ctx)
     assert "[FAIL]" in buf.getvalue()
+
+
+def test_badge_reason_text_dim_in_themed_output() -> None:
+    """_make_badge_text applies dim muted style to reason text in themed output."""
+    buf = StringIO()
+    console = Console(
+        file=buf,
+        force_terminal=True,
+        color_system="truecolor",
+        theme=RALPH_THEME,
+        width=200,
+        highlight=False,
+    )
+    t = _make_badge_text("PASS", " Development Analysis: proceed")
+    console.print(t, markup=False, highlight=False, no_wrap=True)
+    out = buf.getvalue()
+    assert "Development Analysis: proceed" in out
+    # dim ANSI code (\x1b[2m) must be present since theme.text.muted = 'dim'
+    assert "\x1b[2m" in out

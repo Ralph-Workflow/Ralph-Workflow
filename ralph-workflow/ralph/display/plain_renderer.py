@@ -519,7 +519,10 @@ class PlainLogRenderer:
         timestamp = self._format_timestamp(self._clock())
         self._console.print(
             self._build_line(
-                timestamp, "MILESTONE", "META", "[run-start] ◆ Ralph Workflow run start"
+                timestamp,
+                "MILESTONE",
+                "META",
+                f"[run-start] {self._ctx.glyph_for('milestone')} Ralph Workflow run start",
             ),
             markup=False,
             highlight=False,
@@ -532,8 +535,8 @@ class PlainLogRenderer:
                     timestamp,
                     "INFO",
                     "META",
-                    "[run-start] legend: LEVEL (INFO/SUCCESS/WARN/ERROR/MILESTONE)"
-                    "  CAT (META/CONT)  [tag][unit] message",
+                    "[run-start] legend: levels: INFO|SUCCESS|WARN|ERROR|MILESTONE"
+                    "  cats: META|CONT  format: [tag][unit] message",
                 ),
                 markup=False,
                 highlight=False,
@@ -655,10 +658,15 @@ class PlainLogRenderer:
             f" thinking_blocks={counters.thinking_blocks}, tool_calls={counters.tool_calls},"
             f" errors={counters.errors})"
         )
+        glyph_prefix = (
+            f"{self._ctx.glyph_for('milestone')} "
+            if LEVELS.get(phase) == "MILESTONE"
+            else ""
+        )
         if clean_produced:
-            line_suffix = f"[phase-close] phase={phase} {clean_produced}{suffix}"
+            line_suffix = f"[phase-close] {glyph_prefix}phase={phase} {clean_produced}{suffix}"
         else:
-            line_suffix = f"[phase-close] phase={phase}{suffix}"
+            line_suffix = f"[phase-close] {glyph_prefix}phase={phase}{suffix}"
         self._console.print(
             self._build_line(timestamp, "INFO", "META", line_suffix),
             markup=False,
@@ -752,7 +760,10 @@ class PlainLogRenderer:
             # Wide: multi-line, counters grouped, PR last
             self._console.print(
                 self._build_line(
-                    timestamp, "MILESTONE", "META", "[run-end] ◆ Ralph Workflow run end"
+                    timestamp,
+                    "MILESTONE",
+                    "META",
+                    f"[run-end] {self._ctx.glyph_for('milestone')} Ralph Workflow run end",
                 ),
                 markup=False,
                 highlight=False,

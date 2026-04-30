@@ -127,11 +127,11 @@ def _dropped_count_line(dropped: int) -> str:
 
 
 def _make_badge_text(badge: str, rest: str) -> Text:
-    """Build a Text object with a themed badge label followed by plain rest text."""
+    """Build a Text object with a themed badge label followed by muted rest text."""
     theme_key = _BADGE_THEME_KEYS.get(badge, "theme.level.info")
     t = Text("  ")
     t.append(f"[{badge}]", style=theme_key)
-    t.append(rest)
+    t.append(rest, style="theme.text.muted")
     return t
 
 

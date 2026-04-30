@@ -115,3 +115,28 @@ def test_emit_run_start_verbosity_omitted_when_none() -> None:
     renderer.emit_run_start(_orientation(verbosity=None))
     out = buf.getvalue()
     assert "verbosity=" not in out
+
+
+def test_emit_run_start_milestone_glyph_ascii_fallback() -> None:
+    """RALPH_FORCE_ASCII=1 uses ASCII milestone glyph (* not ◆) in run-start header."""
+    buf = StringIO()
+    console = Console(file=buf, force_terminal=False, highlight=False, color_system=None, width=200)
+    renderer = PlainLogRenderer(
+        make_display_context(console=console, env={"RALPH_FORCE_ASCII": "1"})
+    )
+    renderer.emit_run_start(_orientation())
+    out = buf.getvalue()
+    lines = [ln for ln in out.splitlines() if ln.strip()]
+    assert lines, "expected at least one non-empty line"
+    assert "[run-start] * Ralph Workflow run start" in lines[0]
+    assert "◆" not in lines[0]
+
+
+def test_emit_run_start_legend_format() -> None:
+    """emit_run_start legend uses new pipe-separated format."""
+    renderer, buf = _make_renderer()
+    renderer.emit_run_start(_orientation())
+    out = buf.getvalue()
+    assert "levels: INFO|SUCCESS|WARN|ERROR|MILESTONE" in out
+    assert "cats: META|CONT" in out
+    assert "format: [tag][unit] message" in out

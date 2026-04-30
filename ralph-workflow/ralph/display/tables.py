@@ -68,8 +68,12 @@ def show_agents(
         title_style="theme.banner.title",
         header_style="theme.text.emphasis",
     )
-    table.add_column("Name", style="theme.cat.meta")
-    table.add_column("Command")
+    if display_context.mode == "compact":
+        table.add_column("Name", style="theme.cat.meta", overflow="fold")
+        table.add_column("Command", overflow="fold")
+    else:
+        table.add_column("Name", style="theme.cat.meta")
+        table.add_column("Command")
     if show_secondary:
         table.add_column("Parser", style="theme.cat.cont")
         table.add_column("Can Commit", justify="center")
@@ -115,7 +119,10 @@ def show_providers(
         title_style="theme.banner.title",
         header_style="theme.text.emphasis",
     )
-    table.add_column("Provider", style="theme.cat.meta")
+    if display_context.mode == "compact":
+        table.add_column("Provider", style="theme.cat.meta", overflow="fold")
+    else:
+        table.add_column("Provider", style="theme.cat.meta")
     if show_status:
         table.add_column("Status", justify="center")
 
@@ -148,7 +155,14 @@ def show_config(
     c = display_context.console
     config_json = config.model_dump_json(indent=2)
     if display_context.mode == "compact":
-        c.print(config_json)
+        c.print(
+            Panel(
+                config_json,
+                title="Effective Configuration",
+                border_style="theme.phase.planning",
+                width=display_context.width,
+            )
+        )
     else:
         c.print(
             Panel(
@@ -179,7 +193,10 @@ def show_metrics(
         title_style="theme.banner.title",
         header_style="theme.text.emphasis",
     )
-    table.add_column("Metric", style="theme.cat.meta")
+    if display_context.mode == "compact":
+        table.add_column("Metric", style="theme.cat.meta", overflow="fold")
+    else:
+        table.add_column("Metric", style="theme.cat.meta")
     table.add_column("Value", justify="right", style="theme.status.success")
 
     for name, value in metrics.items():
@@ -208,7 +225,10 @@ def show_checkpoint_summary(
         show_lines=False,
         title_style="theme.banner.title",
     )
-    table.add_column("Property", style="theme.cat.meta")
+    if display_context.mode == "compact":
+        table.add_column("Property", style="theme.cat.meta", overflow="fold")
+    else:
+        table.add_column("Property", style="theme.cat.meta")
     table.add_column("Value")
 
     table.add_row("Phase", options.phase)
