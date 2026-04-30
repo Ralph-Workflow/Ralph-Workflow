@@ -56,7 +56,7 @@ class TestDevAnalysisCapTriggeredCorrectionRouting:
 
         new_state, _ = _reduce(state, PipelineEvent.ANALYSIS_LOOPBACK, policy)
         assert new_state.phase == "development"
-        assert new_state.development_analysis_iteration == _DEV_MAX_ANALYSIS
+        assert new_state.get_loop_iteration("development_analysis_iteration") == _DEV_MAX_ANALYSIS
 
     def test_dev_analysis_commit_resets_counter_and_increments_iteration(self) -> None:
         """COMMIT_SUCCESS after cap resets analysis_iteration and increments iteration."""
@@ -72,7 +72,7 @@ class TestDevAnalysisCapTriggeredCorrectionRouting:
         new_state, _ = _reduce(state, PipelineEvent.COMMIT_SUCCESS, policy)
         expected_iteration = state.iteration + 1
         assert new_state.iteration == expected_iteration
-        assert new_state.development_analysis_iteration == 0
+        assert new_state.get_loop_iteration("development_analysis_iteration") == 0
 
 
 class TestReviewAnalysisCapTriggeredCorrectionRouting:
@@ -92,7 +92,7 @@ class TestReviewAnalysisCapTriggeredCorrectionRouting:
 
         new_state, _ = _reduce(state, PipelineEvent.ANALYSIS_LOOPBACK, policy)
         assert new_state.phase == "fix"
-        assert new_state.review_analysis_iteration == _REVIEW_MAX_ANALYSIS
+        assert new_state.get_loop_iteration("review_analysis_iteration") == _REVIEW_MAX_ANALYSIS
 
     def test_review_analysis_commit_resets_counter_and_increments_reviewer_pass(
         self,
@@ -110,4 +110,4 @@ class TestReviewAnalysisCapTriggeredCorrectionRouting:
         new_state, _ = _reduce(state, PipelineEvent.COMMIT_SUCCESS, policy)
         expected_reviewer_pass = state.reviewer_pass + 1
         assert new_state.reviewer_pass == expected_reviewer_pass
-        assert new_state.review_analysis_iteration == 0
+        assert new_state.get_loop_iteration("review_analysis_iteration") == 0

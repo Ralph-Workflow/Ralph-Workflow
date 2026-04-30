@@ -32,6 +32,7 @@ from ralph.policy.models import (
     ArtifactsPolicy,
     BudgetCounterConfig,
     DrainName,
+    LoopCounterConfig,
     PhaseCommitPolicy,
     PhaseDecisionRoute,
     PhaseDefinition,
@@ -1212,6 +1213,7 @@ class TestValidatePolicyCompletenessNewRules:
                     ),
                 ),
             },
+            loop_counters={"development_analysis_iteration": LoopCounterConfig(default_max=3)},
             entry_phase="development_analysis",
             terminal_phase="complete",
         )
@@ -1261,6 +1263,7 @@ class TestValidatePolicyCompletenessNewRules:
                     ),
                 ),
             },
+            loop_counters={"development_analysis_iteration": LoopCounterConfig(default_max=3)},
             entry_phase="development_analysis",
             terminal_phase="complete",
         )
@@ -1379,6 +1382,7 @@ class TestValidatePolicyCompletenessNewRules:
                     ),
                 ),
             },
+            loop_counters={"development_analysis_iteration": LoopCounterConfig(default_max=3)},
             entry_phase="development_analysis",
             terminal_phase="complete",
         )
@@ -1783,6 +1787,7 @@ class TestValidatePolicyCompletenessReachability:
                 ),
                 "complete": self._terminal_phase(),
             },
+            loop_counters={"development_analysis_iteration": LoopCounterConfig(default_max=3)},
             entry_phase="analysis",
             terminal_phase="complete",
         )
@@ -2078,9 +2083,32 @@ class TestValidatePolicyCompletenessVerificationRole:
         with pytest.raises(PolicyValidationError, match="nonexistent_phase"):
             validate_policy_completeness(bundle)
 
-    def test_verification_on_failure_route_terminal_pseudo_accepted(self) -> None:
-        """on_failure_route to 'failed', 'phase_failed', or 'exit_failure' pseudo-phases passes."""
-        for pseudo in ("failed", "phase_failed", "exit_failure"):
+    def test_verification_on_failure_route_failed_pseudo_accepted(self) -> None:
+        """on_failure_route to 'failed' pseudo-phase passes."""
+        agents = self._agents(["verify", "complete"])
+        pipeline = PipelinePolicy(
+            phases={
+                "verify": PhaseDefinition(
+                    drain="verify",
+                    role="verification",
+                    verification=PhaseVerificationPolicy(
+                        kind="none",
+                        gate_for="advancement",
+                        on_failure_route="failed",
+                    ),
+                    transitions=PhaseTransition(on_success="complete"),
+                ),
+                "complete": self._terminal_phase(),
+            },
+            entry_phase="verify",
+            terminal_phase="complete",
+        )
+        bundle = PolicyBundle(agents=agents, pipeline=pipeline, artifacts=ArtifactsPolicy())
+        validate_policy_completeness(bundle)  # must not raise
+
+    def test_verification_on_failure_route_legacy_pseudo_rejected(self) -> None:
+        """on_failure_route to 'phase_failed' or 'exit_failure' pseudo-phases is rejected."""
+        for pseudo in ("phase_failed", "exit_failure"):
             agents = self._agents(["verify", "complete"])
             pipeline = PipelinePolicy(
                 phases={
@@ -2100,7 +2128,8 @@ class TestValidatePolicyCompletenessVerificationRole:
                 terminal_phase="complete",
             )
             bundle = PolicyBundle(agents=agents, pipeline=pipeline, artifacts=ArtifactsPolicy())
-            validate_policy_completeness(bundle)  # must not raise
+            with pytest.raises(PolicyValidationError, match=pseudo):
+                validate_policy_completeness(bundle)
 
     def test_verification_on_failure_route_declared_terminal_phase_accepted(self) -> None:
         """on_failure_route pointing to a declared terminal phase passes."""

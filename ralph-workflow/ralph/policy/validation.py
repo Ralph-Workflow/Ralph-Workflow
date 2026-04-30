@@ -197,7 +197,6 @@ def _validate_analysis_phase(
 
     if not isinstance(phase_def, PhaseDefinition) or not isinstance(bundle, PolicyBundle):
         return
-    from ralph.pipeline.state import PipelineState  # noqa: PLC0415
 
     if phase_def.loop_policy is None:
         errors.append(
@@ -206,15 +205,12 @@ def _validate_analysis_phase(
         )
     else:
         field = phase_def.loop_policy.iteration_state_field
-        known_fields = PipelineState.known_loop_iteration_fields()
-        # Accept legacy built-in fields OR any counter declared in pipeline.loop_counters
-        if field not in known_fields and field not in bundle.pipeline.loop_counters:
+        # All loop counters must be declared in pipeline.loop_counters
+        if field not in bundle.pipeline.loop_counters:
             errors.append(
                 f"phases.{phase_name}.loop_policy.iteration_state_field: "
-                f"'{field}' is not a known PipelineState counter field and is not "
-                f"declared in pipeline.loop_counters. "
-                f"Known built-in fields: {sorted(known_fields)}. "
-                f"Add [loop_counters.{field}] to pipeline.toml to declare a custom counter."
+                f"'{field}' is not declared in pipeline.loop_counters. "
+                f"Add [loop_counters.{field}] to pipeline.toml to declare this counter."
             )
     if not phase_def.decisions:
         errors.append(

@@ -251,8 +251,9 @@ class RecoveryPolicy(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reaso
         default="failed",
         description=(
             "Phase to route to on terminal pipeline failure. "
-            "'failed', 'phase_failed', and 'exit_failure' are built-in pseudo-phases; "
-            "any declared pipeline phase name is also valid."
+            "'failed' is a deprecated pseudo-phase (still accepted, emits warning). "
+            "Preferred: declare a phase with role='terminal' and terminal_outcome='failure' "
+            "and reference it here. 'phase_failed' and 'exit_failure' are no longer accepted."
         ),
     )
     terminal_failure_phase: str | None = Field(
@@ -509,21 +510,23 @@ class PostCommitRoute(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reas
 
 
 def _terminal_phase_names(policy: PipelinePolicy) -> set[str]:
-    """Return all terminal phase names from policy (declared + pseudo-phases).
+    """Return all terminal phase names from policy (declared + deprecated aliases).
 
     Includes:
     - policy.terminal_phase (the declared success terminal)
-    - policy.recovery.failed_route (the failure route pseudo-phase or declared phase)
+    - policy.recovery.failed_route (the failure route or declared phase)
     - Any phase with role='terminal'
-    - The canonical pseudo-phase tokens 'failed', 'complete', 'phase_failed', 'exit_failure'
+    - Deprecated pseudo-phase aliases 'failed' and 'complete'
+
+    The legacy pseudo-phases 'phase_failed' and 'exit_failure' are no longer
+    accepted as terminal states; configs using them must migrate to a declared
+    terminal phase with role='terminal' and terminal_outcome='failure'.
     """
     names: set[str] = {
         policy.terminal_phase,
         policy.recovery.failed_route,
         "failed",
         "complete",
-        "phase_failed",
-        "exit_failure",
     }
     names.update(name for name, defn in policy.phases.items() if defn.role == "terminal")
     return names

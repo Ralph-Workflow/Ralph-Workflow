@@ -153,7 +153,7 @@ def test_review_analysis_loopback_updates_only_review_analysis_fields() -> None:
     assert new_state.phase == "fix"
     assert new_state.previous_phase == "review_analysis"
     assert new_state.reviewer_pass == 1
-    assert new_state.review_analysis_iteration == 1
+    assert new_state.get_loop_iteration("review_analysis_iteration") == 1
     assert new_state.review_budget_remaining == INITIAL_REVIEW_BUDGET
     assert new_state.review_issues_found is True
 
@@ -174,7 +174,10 @@ def test_capped_review_analysis_loopback_preserves_outer_progress_and_marks_issu
     assert new_state.phase == "fix"
     assert new_state.previous_phase == "review_analysis"
     assert new_state.reviewer_pass == 1
-    assert new_state.review_analysis_iteration == FORCED_REVIEW_ANALYSIS_ITERATION
+    assert (
+        new_state.get_loop_iteration("review_analysis_iteration")
+        == FORCED_REVIEW_ANALYSIS_ITERATION
+    )
     assert new_state.review_budget_remaining == 1
     assert new_state.review_issues_found is True
 
@@ -194,7 +197,7 @@ def test_skipped_development_commit_preserves_outer_progress_but_resets_inner_lo
     assert new_state.phase == "review"
     assert new_state.previous_phase == "development_commit"
     assert new_state.iteration == COMPLETED_DEVELOPMENT_CYCLES
-    assert new_state.development_analysis_iteration == 0
+    assert new_state.get_loop_iteration("development_analysis_iteration") == 0
     assert new_state.development_budget_remaining == 0
 
 
@@ -213,7 +216,7 @@ def test_skipped_review_commit_does_not_increment_outer_progress_but_resets_inne
     assert new_state.phase == "complete"
     assert new_state.previous_phase == "review_commit"
     assert new_state.reviewer_pass == 1
-    assert new_state.review_analysis_iteration == 0
+    assert new_state.get_loop_iteration("review_analysis_iteration") == 0
     assert new_state.review_budget_remaining == 0
     assert new_state.review_issues_found is True
 

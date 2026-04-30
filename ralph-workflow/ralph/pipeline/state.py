@@ -195,20 +195,14 @@ class PipelineState(_FrozenPipelineStateModel):  # type: ignore[explicit-any]  #
         budget_remaining: Remaining budget keyed by budget counter name.
         outer_progress: Completed cycle counts keyed by budget counter name.
 
-    LEGACY FIELDS (backward-compat aliases, populated from policy at startup):
+    LEGACY FIELDS (backward-compat, populated from policy at startup):
         iteration: Alias for outer_progress['iteration'] (dev cycles completed).
         total_iterations: Total allowed development iterations.
         reviewer_pass: Alias for outer_progress['reviewer_pass'] (review passes).
         total_reviewer_passes: Total allowed review passes.
         development_budget_remaining: Alias for budget_remaining['iteration'].
         review_budget_remaining: Alias for budget_remaining['reviewer_pass'].
-        review_issues_found: Whether review found issues (derived from review_outcome).
-
-    LOOP ITERATION ALIASES (read-only properties, delegate to loop_iterations / loop_caps):
-        development_analysis_iteration: loop_iterations['development_analysis_iteration']
-        max_development_analysis_iterations: loop_caps['development_analysis_iteration']
-        review_analysis_iteration: loop_iterations['review_analysis_iteration']
-        max_review_analysis_iterations: loop_caps['review_analysis_iteration']
+        review_issues_found: True when review_outcome is set (derived property).
     """
 
     phase: PipelinePhase = "planning"
@@ -413,54 +407,26 @@ class PipelineState(_FrozenPipelineStateModel):  # type: ignore[explicit-any]  #
         raise TypeError(f"Expected dict for outer_progress, got {type(v).__name__!r}")
 
     @property
-    def development_analysis_iteration(self) -> int:
-        """Read-only alias: current development analysis loop iteration count."""
-        return self.loop_iterations.get("development_analysis_iteration", 0)
-
-    @property
-    def max_development_analysis_iterations(self) -> int:
-        """Read-only alias: max development analysis iterations from loop_caps."""
-        return self.loop_caps.get("development_analysis_iteration", 3)
-
-    @property
-    def review_analysis_iteration(self) -> int:
-        """Read-only alias: current review analysis loop iteration count."""
-        return self.loop_iterations.get("review_analysis_iteration", 0)
-
-    @property
-    def max_review_analysis_iterations(self) -> int:
-        """Read-only alias: max review analysis iterations from loop_caps."""
-        return self.loop_caps.get("review_analysis_iteration", 2)
-
-    @classmethod
-    def known_loop_iteration_fields(cls) -> frozenset[str]:
-        """Return the set of built-in loop iteration state field names.
-
-        Custom fields declared in policy loop_counters are also valid;
-        they are validated against policy at load time.
-        """
-        return frozenset({
-            "development_analysis_iteration",
-            "review_analysis_iteration",
-        })
-
-    @property
     def review_issues_found(self) -> bool:
-        """Backward-compat derived property: True when review_outcome indicates issues."""
-        return self.review_outcome is not None and self.review_outcome != "clean"
+        """Derived property: True when review_outcome is set (indicates issues found).
 
-    def is_complete(self, policy: PipelinePolicy | None = None) -> bool:
+        Clean reviews result in review_outcome=None (set by the reducer via policy-
+        declared clean_outcome routing). Any non-None review_outcome means issues
+        were flagged, so this property does not need to hardcode any outcome name.
+        """
+        return self.review_outcome is not None
+
+    def is_complete(self, policy: PipelinePolicy) -> bool:
         """Check if pipeline has reached a terminal success state.
 
         Args:
-            policy: Optional PipelinePolicy. When provided, compares against
-                policy.terminal_phase. When None, falls back to comparing
-                against the 'complete' phase name as a backwards-compat aid.
+            policy: PipelinePolicy. Compares current phase against
+                policy.terminal_phase to determine completion.
+
+        Raises:
+            RuntimeError: When policy is None (routing requires loaded policy).
         """
-        if policy is not None:
-            terminal = policy.terminal_phase
-            return self.phase == terminal
-        return self.phase == "complete"
+        return self.phase == policy.terminal_phase
 
     def current_agent(self) -> str | None:
         """Get the current agent for the active phase."""

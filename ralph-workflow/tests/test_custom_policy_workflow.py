@@ -218,4 +218,4 @@ class TestCustomPolicyLoopCounterDict:
         updated = state.with_loop_iteration("audit_round", 1)
 
         assert updated.get_loop_iteration("audit_round") == 1
-        assert updated.development_analysis_iteration == 0
+        assert updated.get_loop_iteration("development_analysis_iteration") == 0

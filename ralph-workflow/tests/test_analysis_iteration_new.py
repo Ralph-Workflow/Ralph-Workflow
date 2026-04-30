@@ -190,7 +190,7 @@ class TestDevAnalysisLoopbackIncrementsContinuationCounter:
         new_state, _ = _reduce(state, PipelineEvent.ANALYSIS_LOOPBACK, policy)
         # Routes to development via on_loopback
         assert new_state.phase == "development"
-        assert new_state.development_analysis_iteration == 1
+        assert new_state.get_loop_iteration("development_analysis_iteration") == 1
 
 
 class TestDevAnalysisLoopbackAtMaxRoutesToDevelopment:
@@ -206,8 +206,8 @@ class TestDevAnalysisLoopbackAtMaxRoutesToDevelopment:
         policy = _dev_analysis_policy()
         new_state, _ = _reduce(state, PipelineEvent.ANALYSIS_LOOPBACK, policy)
         assert new_state.phase == "development"
-        max_iterations = state.max_development_analysis_iterations
-        assert new_state.development_analysis_iteration == max_iterations
+        max_iterations = state.loop_caps.get("development_analysis_iteration", 3)
+        assert new_state.get_loop_iteration("development_analysis_iteration") == max_iterations
 
 
 class TestDevCommitSuccessResetsDevAnalysisIteration:
@@ -225,7 +225,7 @@ class TestDevCommitSuccessResetsDevAnalysisIteration:
         policy = _dev_analysis_policy()
         new_state, _ = _reduce(state, PipelineEvent.COMMIT_SUCCESS, policy)
         assert new_state.iteration == 1
-        assert new_state.development_analysis_iteration == 0
+        assert new_state.get_loop_iteration("development_analysis_iteration") == 0
 
 
 class TestReviewAnalysisLoopbackIncrementsContinuationCounter:
@@ -243,7 +243,7 @@ class TestReviewAnalysisLoopbackIncrementsContinuationCounter:
         new_state, _ = _reduce(state, PipelineEvent.ANALYSIS_LOOPBACK, policy)
         # Routes to fix via on_loopback
         assert new_state.phase == "fix"
-        assert new_state.review_analysis_iteration == 1
+        assert new_state.get_loop_iteration("review_analysis_iteration") == 1
         assert new_state.reviewer_pass == 0
 
 
@@ -261,8 +261,8 @@ class TestReviewAnalysisLoopbackAtMaxRoutesToFix:
         policy = _dev_analysis_policy()
         new_state, _ = _reduce(state, PipelineEvent.ANALYSIS_LOOPBACK, policy)
         assert new_state.phase == "fix"
-        max_iterations = state.max_review_analysis_iterations
-        assert new_state.review_analysis_iteration == max_iterations
+        max_iterations = state.loop_caps.get("review_analysis_iteration", 2)
+        assert new_state.get_loop_iteration("review_analysis_iteration") == max_iterations
 
 
 class TestReviewCommitSuccessResetsReviewAnalysisIteration:
@@ -280,7 +280,7 @@ class TestReviewCommitSuccessResetsReviewAnalysisIteration:
         policy = _dev_analysis_policy()
         new_state, _ = _reduce(state, PipelineEvent.COMMIT_SUCCESS, policy)
         assert new_state.reviewer_pass == 1
-        assert new_state.review_analysis_iteration == 0
+        assert new_state.get_loop_iteration("review_analysis_iteration") == 0
 
 
 class TestAnalysisSuccessResetsCounters:
@@ -297,7 +297,7 @@ class TestAnalysisSuccessResetsCounters:
         new_state, _ = _reduce(state, PipelineEvent.ANALYSIS_SUCCESS, policy)
         # Success routes to development_commit
         assert new_state.phase == "development_commit"
-        assert new_state.development_analysis_iteration == 0
+        assert new_state.get_loop_iteration("development_analysis_iteration") == 0
 
     def test_review_analysis_success_resets_review_analysis_iteration(self) -> None:
         """ANALYSIS_SUCCESS resets review_analysis_iteration."""
@@ -310,4 +310,4 @@ class TestAnalysisSuccessResetsCounters:
         new_state, _ = _reduce(state, PipelineEvent.ANALYSIS_SUCCESS, policy)
         # Success routes to review_commit
         assert new_state.phase == "review_commit"
-        assert new_state.review_analysis_iteration == 0
+        assert new_state.get_loop_iteration("review_analysis_iteration") == 0

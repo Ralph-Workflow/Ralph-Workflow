@@ -817,10 +817,18 @@ def _show_phase_start_with_context(
         total_iterations=state.total_iterations,
         reviewer_pass=state.reviewer_pass,
         total_reviewer_passes=state.total_reviewer_passes,
-        development_analysis_iteration=state.development_analysis_iteration,
-        max_development_analysis_iterations=state.max_development_analysis_iterations,
-        review_analysis_iteration=state.review_analysis_iteration,
-        max_review_analysis_iterations=state.max_review_analysis_iterations,
+        development_analysis_iteration=state.loop_iterations.get(
+            "development_analysis_iteration"
+        ),
+        max_development_analysis_iterations=state.loop_caps.get(
+            "development_analysis_iteration"
+        ),
+        review_analysis_iteration=state.loop_iterations.get(
+            "review_analysis_iteration"
+        ),
+        max_review_analysis_iterations=state.loop_caps.get(
+            "review_analysis_iteration"
+        ),
     )
     show_phase_start(phase, ctx=ctx, agent_name=agent_name, console=console)
 
@@ -1830,8 +1838,8 @@ def _create_initial_state(
         policy_entry_phase=entry_phase,
         current_drain=resolve_phase_drain(entry_phase, pipeline_policy),
         loop_caps={
-            "development_analysis_iteration": config.general.max_development_analysis_iterations,
-            "review_analysis_iteration": config.general.max_review_analysis_iterations,
+            name: cfg.default_max
+            for name, cfg in pipeline_policy.loop_counters.items()
         },
     )
 
