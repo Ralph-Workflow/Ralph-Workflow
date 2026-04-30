@@ -117,6 +117,8 @@ run_command_module = _load_run_command_module()
 
 
 def test_request_user_interrupt_sets_flag() -> None:
+    state_module = importlib.import_module("ralph.interrupt.state")
+    importlib.reload(state_module)
     module = importlib.reload(interrupt_module)
     assert not module.user_interrupted_occurred()
     module.request_user_interrupt()

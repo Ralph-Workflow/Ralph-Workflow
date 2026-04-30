@@ -630,7 +630,11 @@ def _handle_keyboard_interrupt(monitor_stop: Callable[[], None] | None = None) -
         process_manager=process_manager,
         stop_connectivity=monitor_stop,
     )
-    restore_force_kill = install_force_kill_handler(controller.force_exit)
+
+    def _force_exit() -> None:
+        controller.force_exit()
+
+    restore_force_kill = install_force_kill_handler(_force_exit)
     try:
         controller.begin_interrupt(grace_period_s=process_manager.policy.default_grace_period_s)
     except Exception:

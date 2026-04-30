@@ -16,15 +16,8 @@ from ralph.interrupt.controller import InterruptController
 _PID_A = 42
 _PID_B = 1234
 _PID_C = 5678
-_PID_DEAD = 999
-_PID_PERM = 777
 _PID_SAFE = 9999
-
-
-def _extract_sigint_callback(loop: MagicMock) -> tuple[object, ...]:
-    """Return (first_handler, second_handler) from add_signal_handler call args."""
-    calls = loop.add_signal_handler.call_args_list
-    return calls
+_EXPECTED_HANDLER_INSTALL_COUNT = 2
 
 
 def _install_and_get_first_handler(
@@ -98,7 +91,7 @@ class TestInstallSignalHandlers:
 
         task.cancel.assert_called_once()
 
-    def test_second_sigint_kills_registered_pids(self) -> None:
+    def test_first_sigint_does_not_force_kill_registered_pids(self) -> None:
         loop = MagicMock(spec=asyncio.AbstractEventLoop)
         task = MagicMock(spec=asyncio.Task)
         bridge = SignalBridge()
@@ -106,43 +99,11 @@ class TestInstallSignalHandlers:
         bridge.register_pid(_PID_C)
 
         first_handler = _install_and_get_first_handler(loop, task, bridge)
-        first_handler()  # type: ignore[operator]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
-        second_handler = loop.add_signal_handler.call_args_list[1][0][1]
 
-        with patch("os.killpg") as mock_killpg, patch("os._exit"):
-            second_handler()  # type: ignore[operator]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
-
-        killed_pids = {c[0][0] for c in mock_killpg.call_args_list}
-        assert _PID_B in killed_pids
-        assert _PID_C in killed_pids
-        for c in mock_killpg.call_args_list:
-            assert c[0][1] == signal.SIGKILL
-
-    def test_first_sigint_ignores_dead_processes(self) -> None:
-        loop = MagicMock(spec=asyncio.AbstractEventLoop)
-        task = MagicMock(spec=asyncio.Task)
-        bridge = SignalBridge()
-        bridge.register_pid(_PID_DEAD)
-
-        first_handler = _install_and_get_first_handler(loop, task, bridge)
-
-        with patch("os.killpg", side_effect=ProcessLookupError):
+        with patch("os.killpg") as mock_killpg:
             first_handler()  # type: ignore[operator]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
 
-        task.cancel.assert_called_once()
-
-    def test_first_sigint_ignores_permission_error(self) -> None:
-        loop = MagicMock(spec=asyncio.AbstractEventLoop)
-        task = MagicMock(spec=asyncio.Task)
-        bridge = SignalBridge()
-        bridge.register_pid(_PID_PERM)
-
-        first_handler = _install_and_get_first_handler(loop, task, bridge)
-
-        with patch("os.killpg", side_effect=PermissionError):
-            first_handler()  # type: ignore[operator]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
-
-        task.cancel.assert_called_once()
+        mock_killpg.assert_not_called()
 
     def test_first_sigint_increments_interrupt_count(self) -> None:
         loop = MagicMock(spec=asyncio.AbstractEventLoop)
@@ -162,25 +123,28 @@ class TestInstallSignalHandlers:
         first_handler = _install_and_get_first_handler(loop, task, bridge)
         first_handler()  # type: ignore[operator]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
 
-        expected_handler_install_count = 2
-        assert loop.add_signal_handler.call_count == expected_handler_install_count
+        assert loop.add_signal_handler.call_count == _EXPECTED_HANDLER_INSTALL_COUNT
         second_call = loop.add_signal_handler.call_args_list[1][0]
         assert second_call[0] == signal.SIGINT
 
-    def test_second_sigint_exits_130(self) -> None:
+    def test_second_sigint_force_kills_registered_pids_and_exits_130(self) -> None:
         loop = MagicMock(spec=asyncio.AbstractEventLoop)
         task = MagicMock(spec=asyncio.Task)
         bridge = SignalBridge()
+        bridge.register_pid(_PID_B)
+        bridge.register_pid(_PID_C)
 
         first_handler = _install_and_get_first_handler(loop, task, bridge)
         first_handler()  # type: ignore[operator]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
 
-        second_call_args = loop.add_signal_handler.call_args_list[1][0]
-        second_handler = second_call_args[1]
+        second_handler = loop.add_signal_handler.call_args_list[1][0][1]
 
-        with patch("os._exit") as mock_exit:
+        with patch("os.killpg") as mock_killpg, patch("os._exit") as mock_exit:
             second_handler()
 
+        killed_pids = {call.args[0] for call in mock_killpg.call_args_list}
+        assert killed_pids == {_PID_B, _PID_C}
+        assert all(call.args[1] == signal.SIGKILL for call in mock_killpg.call_args_list)
         mock_exit.assert_called_once_with(130)
 
     def test_injected_controller_handles_graceful_then_forced_sigint(self) -> None:
@@ -189,27 +153,27 @@ class TestInstallSignalHandlers:
         bridge = SignalBridge()
         events: list[tuple[str, object]] = []
 
-        def _shutdown_all(grace_period_s: float) -> None:
+        def shutdown_all(grace_period_s: float) -> None:
             events.append(("shutdown", grace_period_s))
 
-        def _record_interrupt() -> None:
+        def record_interrupt() -> None:
             events.append(("record", None))
 
-        def _stop_connectivity() -> None:
+        def stop_connectivity() -> None:
             events.append(("stop", None))
 
-        def _kill_process_group(pid: int, sig: int) -> None:
+        def kill_process_group(pid: int, sig: int) -> None:
             events.append(("kill", (pid, sig)))
 
-        def _hard_exit(code: int) -> None:
+        def hard_exit(code: int) -> None:
             events.append(("exit", code))
 
         controller = InterruptController(
-            shutdown_all=_shutdown_all,
-            record_interrupt=_record_interrupt,
-            stop_connectivity=_stop_connectivity,
-            kill_process_group=_kill_process_group,
-            hard_exit=_hard_exit,
+            shutdown_all=shutdown_all,
+            record_interrupt=record_interrupt,
+            stop_connectivity=stop_connectivity,
+            kill_process_group=kill_process_group,
+            hard_exit=hard_exit,
         )
         bridge.register_pid(_PID_B)
 

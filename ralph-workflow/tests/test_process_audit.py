@@ -25,16 +25,15 @@ ALLOWLIST: list[tuple[str, str]] = []
 # Files under TESTS_ROOT that are allowed to use subprocess directly.
 # Each entry should have a comment explaining why it's allowlisted.
 TESTS_ALLOWLIST: set[str] = {
-    "test_process_audit.py",           # defines pattern strings as literals
+    "test_process_audit.py",  # defines pattern strings as literals
     "test_process_cross_platform.py",  # defines forbidden token strings as literals for inspection
-    "test_process_manager.py",         # drives ProcessManager; subprocess.run is test infra
-    "test_parallel_coordinator.py",    # git repo setup via subprocess.run in test fixtures
-    "test_git_rebase.py",              # git repo setup via subprocess.run in test fixtures
-    "test_git_rebase_continuation.py", # git repo setup via subprocess.run in test fixtures
-    "test_asyncio_bridge.py",          # patches os.killpg; no real call
-    "test_cli.py",                     # exercises actual console-script entrypoint via subprocess
-    # launches a child Python process to validate live SIGINT handling
-    "test_interrupt_signal_realtime.py",
+    "test_process_manager.py",  # drives ProcessManager; subprocess.run is test infra
+    "test_parallel_coordinator.py",  # git repo setup via subprocess.run in test fixtures
+    "test_git_rebase.py",  # git repo setup via subprocess.run in test fixtures
+    "test_git_rebase_continuation.py",  # git repo setup via subprocess.run in test fixtures
+    "test_asyncio_bridge.py",  # patches os.killpg; no real call
+    "test_cli.py",  # exercises actual console-script entrypoint via subprocess
+    "test_interrupt_signal_realtime.py",  # live SIGINT black-box coverage needs a subprocess
 }
 
 _MCP_FIXTURE_FILES = {

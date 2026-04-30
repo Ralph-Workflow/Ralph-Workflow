@@ -11,28 +11,32 @@ from __future__ import annotations
 
 import os
 import signal
+from collections.abc import Callable, Iterable
 from contextlib import suppress
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from types import FrameType
+from typing import TYPE_CHECKING, Protocol, cast
 
 from ralph.interrupt.state import request_user_interrupt
 from ralph.process.manager import get_process_manager
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterable
-    from types import FrameType
-    from typing import Protocol
-
     from ralph.process.manager import ProcessManager
 
-    type SignalHandler = Callable[[int, FrameType | None], object] | int | None
 
-    class SignalGetter(Protocol):
-        def __call__(self, signalnum: int, /) -> SignalHandler: ...
+type SignalHandler = Callable[[int, FrameType | None], object] | int | None
 
-    class SignalSetter(Protocol):
-        def __call__(self, signalnum: int, handler: SignalHandler, /) -> SignalHandler: ...
 
+class SignalGetter(Protocol):
+    def __call__(self, signalnum: int, /) -> SignalHandler: ...
+
+
+class SignalSetter(Protocol):
+    def __call__(self, signalnum: int, handler: SignalHandler, /) -> SignalHandler: ...
+
+
+_DEFAULT_SIGNAL_GETTER = cast("SignalGetter", signal.getsignal)
+_DEFAULT_SIGNAL_SETTER = cast("SignalSetter", signal.signal)
 
 INTERRUPT_EXIT_CODE = 130
 
@@ -77,13 +81,13 @@ class InterruptController:
 def install_force_kill_handler(
     on_force_interrupt: Callable[[], None],
     *,
-    signal_getter: SignalGetter = signal.getsignal,
-    signal_setter: SignalSetter = signal.signal,
+    signal_getter: SignalGetter = _DEFAULT_SIGNAL_GETTER,
+    signal_setter: SignalSetter = _DEFAULT_SIGNAL_SETTER,
 ) -> Callable[[], None]:
     """Install a temporary SIGINT handler that escalates to forced termination."""
     previous = signal_getter(signal.SIGINT)
 
-    def _handler(signum: int, frame: object) -> None:
+    def _handler(signum: int, frame: FrameType | None) -> None:
         del signum, frame
         on_force_interrupt()
 
