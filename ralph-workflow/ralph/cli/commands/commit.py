@@ -13,7 +13,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
 from git import Repo
-from rich.console import Console
 from rich.text import Text
 
 from ralph.agents.invoke import (
@@ -27,6 +26,7 @@ from ralph.agents.registry import AgentRegistry
 from ralph.config.enums import AgentTransport
 from ralph.config.loader import load_config
 from ralph.display.artifact_renderer import render_commit_message
+from ralph.display.context import make_display_context
 from ralph.git.operations import (
     create_commit,
     find_repo_root,
@@ -56,7 +56,7 @@ if TYPE_CHECKING:
 
     from ralph.config.models import AgentConfig, UnifiedConfig
 
-console = Console()
+console = make_display_context().console
 
 # Maximum number of staged files to display in output
 _MAX_DISPLAY_FILES = 5
@@ -134,7 +134,9 @@ def commit_plumbing(
     try:
         repo_root = find_repo_root()
     except Exception as e:
-        console.print(_styled_commit_status("Error", f"Not in a git repository: {e}", "red"))
+        console.print(
+            _styled_commit_status("Error", f"Not in a git repository: {e}", "theme.status.error")
+        )
         return
 
     # Load configuration
@@ -144,7 +146,7 @@ def commit_plumbing(
         )
         config = load_config(opts.config_path, opts.cli_overrides, workspace_scope=workspace_scope)
     except Exception as e:
-        console.print(_styled_commit_status("Error loading config", str(e), "red"))
+        console.print(_styled_commit_status("Error loading config", str(e), "theme.status.error"))
         return
 
     if opts.show_commit_msg:
@@ -160,7 +162,7 @@ def commit_plumbing(
         return
 
     if not has_staged_changes(repo_root):
-        console.print("[yellow]No staged changes to commit[/yellow]")
+        console.print(Text("No staged changes to commit", style="theme.status.warning"))
         return
 
 
@@ -181,13 +183,18 @@ def _handle_agent_commit_generation(
     delete_commit_message_artifacts(repo_root)
     diff = _working_tree_diff(repo_root)
     if not diff.strip():
-        console.print("[yellow]No changes to commit[/yellow]")
+        console.print(Text("No changes to commit", style="theme.status.warning"))
         return
 
     registry = AgentRegistry.from_config(config)
     agents = _resolve_commit_message_agents(config, registry)
     if not agents:
-        console.print("[red]No commit-capable agents available in commit/review drains[/red]")
+        console.print(
+            Text(
+                "No commit-capable agents available in commit/review drains",
+                style="theme.status.error",
+            )
+        )
         return
 
     result = _generate_commit_message_with_chain(
@@ -201,21 +208,28 @@ def _handle_agent_commit_generation(
 
     if result.skipped:
         delete_commit_message_artifacts(repo_root)
-        console.print("[yellow]Skipping commit: agent requested skip[/yellow]")
+        console.print(Text("Skipping commit: agent requested skip", style="theme.status.warning"))
         return
 
     if not result.message:
-        console.print("[red]Failed to generate commit message from commit drain agents[/red]")
+        console.print(
+            Text(
+                "Failed to generate commit message from commit drain agents",
+                style="theme.status.error",
+            )
+        )
         _print_commit_failure_details(result.failure_details)
         return
 
     persisted_message = read_commit_message_artifact(repo_root)
     if persisted_message is None:
-        console.print("[red]Failed to persist generated commit message[/red]")
+        console.print(
+            Text("Failed to persist generated commit message", style="theme.status.error")
+        )
         return
 
     # Use the shared render_commit_message for consistent UI
-    console.print("\n[green]Generated commit message:[/green]")
+    console.print(Text("\nGenerated commit message:", style="theme.status.success"))
     render_commit_message(repo_root, console)
 
     if apply:
@@ -229,11 +243,15 @@ def _handle_agent_commit_generation(
             )
             delete_commit_message_artifacts(repo_root)
             console.print(
-                _styled_commit_status("Created commit", sha[:8], "green", leading_newline=True)
+                _styled_commit_status(
+                    "Created commit", sha[:8], "theme.status.success", leading_newline=True
+                )
             )
         except Exception as e:
             console.print(
-                _styled_commit_status("Commit failed", str(e), "red", leading_newline=True)
+                _styled_commit_status(
+                    "Commit failed", str(e), "theme.status.error", leading_newline=True
+                )
             )
 
 
@@ -607,7 +625,7 @@ def _write_commit_prompt_file(repo_root: Path, prompt: str) -> str:
 def _show_commit_message(repo_root: Path) -> None:
     commit_message = read_commit_message_artifact(repo_root)
     if commit_message is None:
-        console.print("[red]No commit message generated yet[/red]")
+        console.print(Text("No commit message generated yet", style="theme.status.error"))
         return
 
     # Use the shared render_commit_message for consistent UI
@@ -616,7 +634,7 @@ def _show_commit_message(repo_root: Path) -> None:
 
 def _print_commit_failure_details(failure_details: list[str]) -> None:
     for detail in failure_details:
-        console.print(Text(detail, style="red"))
+        console.print(Text(detail, style="theme.status.error"))
 
 
 def _format_agent_invocation_failure(
@@ -699,26 +717,26 @@ def _render_commit_agent_activity_line(output: AgentOutputLine, agent_name: str)
     if output.type == "text":
         content = output.content.strip()
         if content:
-            rendered = _styled_commit_prefix(agent_name, "white")
+            rendered = _styled_commit_prefix(agent_name, "theme.text.emphasis")
             rendered.append(content)
     elif output.type == "tool_use":
         tool_name = output.content.strip() or "unknown-tool"
         summary = _tool_input_summary(output.metadata)
-        rendered = _styled_commit_prefix(f"{agent_name} tool", "magenta")
+        rendered = _styled_commit_prefix(f"{agent_name} tool", "theme.phase.review_analysis")
         rendered.append(tool_name)
         if summary:
             rendered.append(f" ({summary})")
     elif output.type == "tool_result":
         result = output.content.strip() or _event_summary(output)
         if result:
-            rendered = _styled_commit_prefix(f"{agent_name} tool result", "dim")
+            rendered = _styled_commit_prefix(f"{agent_name} tool result", "theme.text.muted")
             rendered.append(result)
     elif output.type == "error":
         error = output.content.strip() or "unknown error"
-        rendered = _styled_commit_prefix(f"{agent_name} error", "red")
+        rendered = _styled_commit_prefix(f"{agent_name} error", "theme.status.error")
         rendered.append(error)
     else:
-        rendered = _styled_commit_prefix(f"{agent_name} {output.type}", "dim")
+        rendered = _styled_commit_prefix(f"{agent_name} {output.type}", "theme.text.muted")
         rendered.append(_event_summary(output))
 
     return rendered

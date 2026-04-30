@@ -18,6 +18,7 @@ from ralph.cli.commands.diagnose import _build_next_steps, _check_agents
 from ralph.cli.main import app
 from ralph.config.enums import JsonParserType
 from ralph.config.models import AgentConfig, UnifiedConfig
+from ralph.display.theme import RALPH_THEME
 
 KNOWN_DEFAULT_AGENTS = ("claude", "opencode")
 
@@ -125,7 +126,7 @@ def test_diagnose_alias_path_status_rendered_in_cli(
     buf = StringIO()
     original_console = diag_mod.console
 
-    diag_mod.console = Console(file=buf, force_terminal=False)
+    diag_mod.console = Console(file=buf, force_terminal=False, theme=RALPH_THEME)
     try:
         with (
             patch("ralph.cli.commands.diagnose.load_config", return_value=cfg),

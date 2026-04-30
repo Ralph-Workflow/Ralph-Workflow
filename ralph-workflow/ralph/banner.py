@@ -9,7 +9,7 @@ if TYPE_CHECKING:
     from types import ModuleType
 
 from ralph import __version__
-from ralph.display.theme import make_console
+from ralph.display.context import DisplayContext, make_display_context
 
 ASCII_ART = (
     " ____       _       _     _     ",
@@ -67,9 +67,18 @@ def _load_rich_components() -> tuple[
     )
 
 
-def render_banner(*, version: str = __version__) -> object:
+def render_banner(
+    *,
+    version: str = __version__,
+    compact: bool = False,
+) -> object:
     """Build the Ralph Workflow welcome banner as a rich renderable."""
     group_cls, panel_cls, text_cls = _load_rich_components()
+
+    if compact:
+        welcome = text_cls(f"Ralph Workflow v{version}", style="theme.banner.welcome")
+        tagline = text_cls(TAGLINE, style="theme.banner.tagline")
+        return group_cls(welcome, tagline)
 
     banner_text = text_cls("\n".join(ASCII_ART), style="theme.banner.ascii")
     version_text = text_cls(f"v{version}", style="theme.banner.version")
@@ -88,9 +97,18 @@ def render_banner(*, version: str = __version__) -> object:
     return group_cls(banner_panel, welcome_text, tagline_text)
 
 
-def show_banner(*, console: SupportsPrint | None = None, version: str = __version__) -> None:
+def show_banner(
+    *,
+    display_context: DisplayContext | None = None,
+    console: SupportsPrint | None = None,
+    version: str = __version__,
+) -> None:
     """Print the Ralph Workflow welcome banner to the provided console."""
-    console_instance: SupportsPrint = console if console is not None else cast(
-        "SupportsPrint", make_console()
+    resolved_context: DisplayContext = (
+        display_context if display_context is not None else make_display_context()
     )
-    console_instance.print(render_banner(version=version))
+    console_instance: SupportsPrint = (
+        console if console is not None else cast("SupportsPrint", resolved_context.console)
+    )
+    compact = resolved_context.mode == "compact"
+    console_instance.print(render_banner(version=version, compact=compact))

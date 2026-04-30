@@ -10,8 +10,10 @@ from ralph.display.context import DisplayContext, make_display_context
 from ralph.display.theme import RALPH_THEME
 
 _NARROW_WIDTH = 50
+_MEDIUM_WIDTH = 80
 _WIDE_WIDTH = 120
 _COMPACT_HEADLINE_MAX = 80
+_MEDIUM_HEADLINE_MAX = 100
 _WIDE_CONDENSER_SOFT = 400
 
 
@@ -44,6 +46,14 @@ def test_wide_columns_env_gives_wide_mode() -> None:
     assert ctx.mode == "wide"
     assert ctx.narrow is False
     assert ctx.width == _WIDE_WIDTH
+
+
+def test_medium_columns_env_gives_medium_mode() -> None:
+    """COLUMNS=80 should produce medium mode with narrow=False."""
+    ctx = make_display_context(env={"COLUMNS": str(_MEDIUM_WIDTH)})
+    assert ctx.mode == "medium"
+    assert ctx.narrow is False
+    assert ctx.width == _MEDIUM_WIDTH
 
 
 def test_no_color_env_disables_color() -> None:
@@ -116,6 +126,42 @@ def test_compact_limits_are_smaller_than_wide() -> None:
     assert compact.streaming_checkpoint_chars <= wide.streaming_checkpoint_chars
     assert compact.thinking_preview_min_chars <= wide.thinking_preview_min_chars
     assert compact.tool_result_headline_min_chars <= wide.tool_result_headline_min_chars
+
+
+def test_medium_limits_are_between_compact_and_wide() -> None:
+    """All adaptive limits in medium mode must fall between compact and wide."""
+    compact = make_display_context(env={"COLUMNS": "40"})
+    medium = make_display_context(env={"COLUMNS": str(_MEDIUM_WIDTH)})
+    wide = make_display_context(env={"COLUMNS": "200"})
+    assert compact.headline_max_chars <= medium.headline_max_chars <= wide.headline_max_chars
+    assert compact.condenser_soft_limit <= medium.condenser_soft_limit <= wide.condenser_soft_limit
+    assert compact.condenser_hard_limit <= medium.condenser_hard_limit <= wide.condenser_hard_limit
+    assert (
+        compact.streaming_checkpoint_chars
+        <= medium.streaming_checkpoint_chars
+        <= wide.streaming_checkpoint_chars
+    )
+
+
+def test_threshold_60_gives_medium_mode() -> None:
+    """Width exactly 60 should yield medium mode (lower boundary)."""
+    ctx = make_display_context(env={"COLUMNS": "60"})
+    assert ctx.mode == "medium"
+    assert ctx.narrow is False
+
+
+def test_threshold_99_gives_medium_mode() -> None:
+    """Width 99 should yield medium mode (upper boundary, just below wide)."""
+    ctx = make_display_context(env={"COLUMNS": "99"})
+    assert ctx.mode == "medium"
+    assert ctx.narrow is False
+
+
+def test_threshold_100_gives_wide_mode() -> None:
+    """Width 100 should yield wide mode (lower boundary of wide)."""
+    ctx = make_display_context(env={"COLUMNS": "100"})
+    assert ctx.mode == "wide"
+    assert ctx.narrow is False
 
 
 def test_ralph_force_narrow_truthy_variants() -> None:

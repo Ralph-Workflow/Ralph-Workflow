@@ -60,7 +60,7 @@ class ParallelDisplay:
         console: Console | None = None,
         env: Mapping[str, str] | None = None,
         *,
-        mode: Literal["compact", "wide"] | None = None,
+        mode: Literal["compact", "medium", "wide"] | None = None,
         subscriber: PipelineSubscriber | None = None,
         workspace_root: Path | None = None,
         run_id: str | None = None,
@@ -229,7 +229,7 @@ class ParallelDisplay:
         return self._activity_router
 
     @property
-    def mode(self) -> Literal["compact", "wide"]:
+    def mode(self) -> Literal["compact", "medium", "wide"]:
         return self._ctx.mode
 
     @property

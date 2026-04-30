@@ -38,7 +38,7 @@ from ralph.config.bootstrap import (
 from ralph.config.enums import ReviewDepth, Verbosity
 from ralph.config.loader import load_config
 from ralph.config.welcome import emit_first_run_welcome
-from ralph.display.theme import make_console as _make_console
+from ralph.display.context import make_display_context as _make_display_context
 from ralph.pipeline import checkpoint as ckpt
 from ralph.workspace.scope import resolve_workspace_scope
 
@@ -98,7 +98,7 @@ app = typer.Typer(
     rich_markup_mode="rich",
     suggest_commands=True,
 )
-console = _make_console()
+console = _make_display_context().console
 
 _typer_get_command = typer.main.get_command
 

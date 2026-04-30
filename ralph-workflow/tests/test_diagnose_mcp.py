@@ -12,6 +12,7 @@ import pytest
 from rich.console import Console
 
 from ralph.cli.commands import diagnose as diagnose_module
+from ralph.display.theme import RALPH_THEME
 from ralph.workspace.scope import WorkspaceScope
 
 if TYPE_CHECKING:
@@ -25,7 +26,9 @@ pytestmark = pytest.mark.timeout_seconds(20)
 
 def _attach_console(monkeypatch: pytest.MonkeyPatch) -> StringIO:
     stream = StringIO()
-    console = Console(file=stream, force_terminal=False, color_system=None, width=200)
+    console = Console(
+        file=stream, force_terminal=False, color_system=None, width=200, theme=RALPH_THEME
+    )
     monkeypatch.setattr(diagnose_module, "console", console)
     return stream
 

@@ -7,13 +7,15 @@ components used throughout the CLI.
 from __future__ import annotations
 
 from collections.abc import Mapping
+from typing import TYPE_CHECKING
 
-from rich.console import Console
 from rich.table import Table
 
 from ralph.config.models import AgentConfig
+from ralph.display.context import make_display_context
 
-console = Console()
+if TYPE_CHECKING:
+    from rich.console import Console
 
 
 AgentTable = Mapping[str, AgentConfig]
@@ -26,11 +28,11 @@ def display_agents_table(agents: AgentTable, console: Console | None = None) -> 
         agents: Dictionary of agent configurations.
         console: Rich console for output.
     """
-    c = console or Console()
+    c = console if console is not None else make_display_context().console
     table = Table(title="Configured Agents", show_header=True)
-    table.add_column("Name", style="cyan")
+    table.add_column("Name", style="theme.cat.meta")
     table.add_column("Command")
-    table.add_column("Parser", style="magenta")
+    table.add_column("Parser", style="theme.cat.cont")
     table.add_column("Can Commit", justify="center")
 
     for name, agent in agents.items():
@@ -49,9 +51,9 @@ def display_providers_table(providers: list[str], console: Console | None = None
         providers: List of provider names.
         console: Rich console for output.
     """
-    c = console or Console()
+    c = console if console is not None else make_display_context().console
     table = Table(title="Available Providers", show_header=True)
-    table.add_column("Provider", style="cyan")
+    table.add_column("Provider", style="theme.cat.meta")
 
     for provider in providers:
         table.add_row(provider)

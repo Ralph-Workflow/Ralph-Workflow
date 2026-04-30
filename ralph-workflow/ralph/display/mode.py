@@ -8,6 +8,7 @@ if TYPE_CHECKING:
     from rich.console import Console
 
 NARROW_THRESHOLD: int = 60
+MEDIUM_THRESHOLD: int = 100
 
 _RALPH_FORCE_NARROW_TRUTHY: frozenset[str] = frozenset({"1", "true", "yes", "on"})
 
@@ -15,11 +16,12 @@ _RALPH_FORCE_NARROW_TRUTHY: frozenset[str] = frozenset({"1", "true", "yes", "on"
 def detect_mode(
     console: Console,
     env: dict[str, str],
-) -> Literal["compact", "wide"]:
+) -> Literal["compact", "medium", "wide"]:
     """Detect display mode from terminal width and environment.
 
     Returns 'compact' when the terminal is narrower than NARROW_THRESHOLD or
-    RALPH_FORCE_NARROW is set to a truthy value. Returns 'wide' otherwise.
+    RALPH_FORCE_NARROW is set to a truthy value. Returns 'medium' for widths in
+    [NARROW_THRESHOLD, MEDIUM_THRESHOLD). Returns 'wide' for MEDIUM_THRESHOLD and above.
 
     Precedence for width resolution: COLUMNS env > console.width > 80.
 
@@ -28,7 +30,7 @@ def detect_mode(
         env: Environment mapping checked for COLUMNS and RALPH_FORCE_NARROW.
 
     Returns:
-        'compact' or 'wide'.
+        'compact', 'medium', or 'wide'.
     """
     force_narrow = env.get("RALPH_FORCE_NARROW", "").lower().strip() in _RALPH_FORCE_NARROW_TRUTHY
     if force_narrow:
@@ -47,4 +49,8 @@ def detect_mode(
     else:
         width = 80
 
-    return "compact" if width < NARROW_THRESHOLD else "wide"
+    if width < NARROW_THRESHOLD:
+        return "compact"
+    if width < MEDIUM_THRESHOLD:
+        return "medium"
+    return "wide"

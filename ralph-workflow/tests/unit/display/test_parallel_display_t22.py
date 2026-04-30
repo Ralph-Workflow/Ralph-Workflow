@@ -12,7 +12,7 @@ from ralph.pipeline.worker_state import WorkerStatus
 
 def test_no_args_constructs_in_non_tty_env() -> None:
     pd = ParallelDisplay()
-    assert pd.mode in ("compact", "wide")
+    assert pd.mode in ("compact", "medium", "wide")
 
 
 def test_no_args_constructs_in_tty_env() -> None:

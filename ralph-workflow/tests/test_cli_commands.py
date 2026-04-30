@@ -1492,7 +1492,7 @@ def test_init_command_fallback_next_steps_do_not_advertise_template_labels(
 
 def test_display_tables_render() -> None:
     buffer = StringIO()
-    console = Console(file=buffer, force_terminal=False, color_system=None)
+    console = Console(file=buffer, force_terminal=False, color_system=None, theme=RALPH_THEME)
     agent = AgentConfig(cmd="agent", can_commit=False)
     options_module.display_agents_table({"alpha": agent}, console=console)
     rendered = buffer.getvalue()

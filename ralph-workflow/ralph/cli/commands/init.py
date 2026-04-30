@@ -20,7 +20,7 @@ from ralph.config.bootstrap import (
     ensure_local_configs,
 )
 from ralph.config.welcome import emit_first_run_welcome
-from ralph.display.theme import make_console
+from ralph.display.context import make_display_context
 
 if TYPE_CHECKING:
     from ralph.agents.registry import AgentRegistry
@@ -29,7 +29,7 @@ STARTER_PROMPT_SENTINEL = (
     "<!-- ralph:starter-prompt: edit this file before running `ralph` -->"
 )
 
-console = make_console()
+console = make_display_context().console
 
 
 def init_command(
@@ -48,7 +48,7 @@ def init_command(
             Text(
                 f"Warning: --init label {template!r} is deprecated and ignored; "
                 "use `ralph --init` without a label.",
-                style="yellow",
+                style="theme.status.warning",
             )
         )
 
@@ -89,14 +89,14 @@ def init_command(
             "3. Run `ralph` to start the planning → development → review → fix pipeline.\n",
             encoding="utf-8",
         )
-        console.print(_status_text("Created", str(prompt_path), "green"))
+        console.print(_status_text("Created", str(prompt_path), "theme.status.success"))
 
     bundled_defaults = Path(ralph.policy.__file__).parent / "defaults"
 
     if config_path is not None and not config_path.exists():
         config_path.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(str(bundled_defaults / "ralph-workflow.toml"), str(config_path))
-        console.print(_status_text("Created", str(config_path), "green"))
+        console.print(_status_text("Created", str(config_path), "theme.status.success"))
     elif config_path is None:
         local_results = ensure_local_configs(agent_dir)
         global_results: list[BootstrapResult] = [
@@ -129,44 +129,53 @@ def _try_load_registry() -> AgentRegistry | None:
 
 def _print_fallback_next_steps(target: Path) -> None:
     """Print next steps when all configs were skipped (re-running init)."""
-    console.print(_status_text("Ralph Workflow initialized in", str(target), "cyan"))
+    console.print(_status_text("Ralph Workflow initialized in", str(target), "theme.cat.meta"))
     console.print(
         "\nRalph Workflow orchestrates AI coding agents through a"
-        " [cyan]planning → development → review → fix[/cyan] loop driven by PROMPT.md."
+        " [theme.phase.planning]planning → development → review → fix[/theme.phase.planning]"
+        " loop driven by PROMPT.md."
     )
     console.print(
-        "[dim]Docs:[/dim] run [cyan]make docs && make serve-docs[/cyan] from ralph-workflow/"
-        " for the full HTML reference."
-        " Or browse inline: [cyan]python -m pydoc ralph[/cyan]"
+        Text("Docs: ", style="theme.text.muted")
     )
     console.print(
-        "[dim]New to Ralph Workflow?[/dim] Start with"
-        " [cyan]docs/sphinx/getting-started.md[/cyan] for a step-by-step walkthrough."
+        "[theme.text.muted]New to Ralph Workflow?[/theme.text.muted] Start with"
+        " [theme.cat.meta]docs/sphinx/getting-started.md[/theme.cat.meta]"
+        " for a step-by-step walkthrough."
     )
-    console.print("\n[dim]Next steps:[/dim]")
-    console.print("  1. Edit [cyan]PROMPT.md[/cyan] with your implementation task")
+    console.print(Text("\nNext steps:", style="theme.text.muted"))
     console.print(
-        "  2. (Optional) Read [cyan]docs/sphinx/getting-started.md[/cyan]"
+        "  1. Edit [theme.cat.meta]PROMPT.md[/theme.cat.meta] with your implementation task"
+    )
+    console.print(
+        "  2. (Optional) Read"
+        " [theme.cat.meta]docs/sphinx/getting-started.md[/theme.cat.meta]"
         " for a step-by-step first-run walkthrough"
     )
     console.print(
-        "  3. (Optional) Override defaults in [cyan].agent/ralph-workflow.toml[/cyan]"
-        " or [cyan]~/.config/ralph-workflow.toml[/cyan]"
+        "  3. (Optional) Override defaults in"
+        " [theme.cat.meta].agent/ralph-workflow.toml[/theme.cat.meta]"
+        " or [theme.cat.meta]~/.config/ralph-workflow.toml[/theme.cat.meta]"
     )
     console.print(
-        "  4. (Optional) Configure MCP servers in [cyan].agent/mcp.toml[/cyan]"
-        " or [cyan]~/.config/ralph-workflow-mcp.toml[/cyan]"
+        "  4. (Optional) Configure MCP servers in"
+        " [theme.cat.meta].agent/mcp.toml[/theme.cat.meta]"
+        " or [theme.cat.meta]~/.config/ralph-workflow-mcp.toml[/theme.cat.meta]"
     )
     console.print(
-        "  5. (Optional) Review [cyan].agent/pipeline.toml[/cyan] and"
-        " [cyan].agent/artifacts.toml[/cyan] if you need advanced workflow overrides"
+        "  5. (Optional) Review [theme.cat.meta].agent/pipeline.toml[/theme.cat.meta] and"
+        " [theme.cat.meta].agent/artifacts.toml[/theme.cat.meta]"
+        " if you need advanced workflow overrides"
     )
     console.print(
-        "  6. (Optional) Run [cyan]ralph --diagnose[/cyan] to verify agents,"
-        " MCP servers, and config"
+        "  6. (Optional) Run [theme.cat.meta]ralph --diagnose[/theme.cat.meta]"
+        " to verify agents, MCP servers, and config"
     )
-    console.print("  7. Run [cyan]ralph[/cyan] to start the pipeline")
-    console.print("\n[dim]To reset configs later: [cyan]ralph --regenerate-config[/cyan][/dim]")
+    console.print("  7. Run [theme.cat.meta]ralph[/theme.cat.meta] to start the pipeline")
+    console.print(
+        "\n[theme.text.muted]To reset configs later:"
+        " [theme.cat.meta]ralph --regenerate-config[/theme.cat.meta][/theme.text.muted]"
+    )
 
 
 def _status_text(label: str, detail: str, style: str) -> Text:

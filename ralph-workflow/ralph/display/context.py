@@ -11,7 +11,7 @@ import os
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Final, Literal
 
-from ralph.display.mode import NARROW_THRESHOLD
+from ralph.display.mode import MEDIUM_THRESHOLD, NARROW_THRESHOLD
 from ralph.display.theme import RALPH_THEME, make_console
 
 if TYPE_CHECKING:
@@ -21,16 +21,27 @@ if TYPE_CHECKING:
     from rich.theme import Theme
 
 _COMPACT_HEADLINE_MAX_CHARS: Final[int] = 80
+_MEDIUM_HEADLINE_MAX_CHARS: Final[int] = 100
 _WIDE_HEADLINE_MAX_CHARS: Final[int] = 120
+
 _COMPACT_CONDENSER_SOFT_LIMIT: Final[int] = 240
+_MEDIUM_CONDENSER_SOFT_LIMIT: Final[int] = 300
 _WIDE_CONDENSER_SOFT_LIMIT: Final[int] = 400
+
 _COMPACT_CONDENSER_HARD_LIMIT: Final[int] = 2400
+_MEDIUM_CONDENSER_HARD_LIMIT: Final[int] = 3200
 _WIDE_CONDENSER_HARD_LIMIT: Final[int] = 4000
+
 _COMPACT_STREAMING_CHECKPOINT_CHARS: Final[int] = 2400
+_MEDIUM_STREAMING_CHECKPOINT_CHARS: Final[int] = 3200
 _WIDE_STREAMING_CHECKPOINT_CHARS: Final[int] = 4000
+
 _COMPACT_THINKING_PREVIEW_MIN_CHARS: Final[int] = 60
+_MEDIUM_THINKING_PREVIEW_MIN_CHARS: Final[int] = 70
 _WIDE_THINKING_PREVIEW_MIN_CHARS: Final[int] = 80
+
 _COMPACT_TOOL_RESULT_HEADLINE_MIN_CHARS: Final[int] = 60
+_MEDIUM_TOOL_RESULT_HEADLINE_MIN_CHARS: Final[int] = 70
 _WIDE_TOOL_RESULT_HEADLINE_MIN_CHARS: Final[int] = 80
 
 
@@ -45,7 +56,7 @@ class DisplayContext:
     console: Console
     theme: Theme
     width: int
-    mode: Literal["compact", "wide"]
+    mode: Literal["compact", "medium", "wide"]
     narrow: bool
     color_enabled: bool
     headline_max_chars: int
@@ -62,12 +73,92 @@ def _console_has_no_color(console: Console) -> bool:
     return bool(raw)
 
 
+def _build_console(resolved_env: dict[str, str]) -> Console:
+    """Create a console based on NO_COLOR / FORCE_COLOR env flags."""
+    if "NO_COLOR" in resolved_env:
+        return make_console(no_color=True, force_terminal=False)
+    if "FORCE_COLOR" in resolved_env:
+        return make_console(no_color=False, force_terminal=True)
+    return make_console()
+
+
+def _compute_width(
+    resolved_env: dict[str, str],
+    console: Console,
+    force_width: int | None,
+) -> int:
+    """Resolve effective terminal width from overrides, env, and console."""
+    if force_width is not None and force_width > 0:
+        return force_width
+    if "COLUMNS" in resolved_env:
+        try:
+            w = int(resolved_env["COLUMNS"])
+            return w if w > 0 else (console.width or 80)
+        except (ValueError, TypeError):
+            pass
+    return console.width or 80
+
+
+def _compute_mode(
+    resolved_env: dict[str, str],
+    force_mode: Literal["compact", "medium", "wide"] | None,
+    width: int,
+) -> Literal["compact", "medium", "wide"]:
+    """Resolve display mode from overrides, env flags, and terminal width."""
+    if force_mode is not None:
+        return force_mode
+    force_narrow_val = resolved_env.get("RALPH_FORCE_NARROW", "").lower().strip()
+    if force_narrow_val in {"1", "true", "yes", "on"} or width < NARROW_THRESHOLD:
+        return "compact"
+    if width < MEDIUM_THRESHOLD:
+        return "medium"
+    return "wide"
+
+
+@dataclass(frozen=True)
+class _ModeAdaptiveLimits:
+    headline_max_chars: int
+    condenser_soft_limit: int
+    condenser_hard_limit: int
+    streaming_checkpoint_chars: int
+    thinking_preview_min_chars: int
+    tool_result_headline_min_chars: int
+
+
+_MODE_LIMITS: Final[dict[str, _ModeAdaptiveLimits]] = {
+    "compact": _ModeAdaptiveLimits(
+        headline_max_chars=_COMPACT_HEADLINE_MAX_CHARS,
+        condenser_soft_limit=_COMPACT_CONDENSER_SOFT_LIMIT,
+        condenser_hard_limit=_COMPACT_CONDENSER_HARD_LIMIT,
+        streaming_checkpoint_chars=_COMPACT_STREAMING_CHECKPOINT_CHARS,
+        thinking_preview_min_chars=_COMPACT_THINKING_PREVIEW_MIN_CHARS,
+        tool_result_headline_min_chars=_COMPACT_TOOL_RESULT_HEADLINE_MIN_CHARS,
+    ),
+    "medium": _ModeAdaptiveLimits(
+        headline_max_chars=_MEDIUM_HEADLINE_MAX_CHARS,
+        condenser_soft_limit=_MEDIUM_CONDENSER_SOFT_LIMIT,
+        condenser_hard_limit=_MEDIUM_CONDENSER_HARD_LIMIT,
+        streaming_checkpoint_chars=_MEDIUM_STREAMING_CHECKPOINT_CHARS,
+        thinking_preview_min_chars=_MEDIUM_THINKING_PREVIEW_MIN_CHARS,
+        tool_result_headline_min_chars=_MEDIUM_TOOL_RESULT_HEADLINE_MIN_CHARS,
+    ),
+    "wide": _ModeAdaptiveLimits(
+        headline_max_chars=_WIDE_HEADLINE_MAX_CHARS,
+        condenser_soft_limit=_WIDE_CONDENSER_SOFT_LIMIT,
+        condenser_hard_limit=_WIDE_CONDENSER_HARD_LIMIT,
+        streaming_checkpoint_chars=_WIDE_STREAMING_CHECKPOINT_CHARS,
+        thinking_preview_min_chars=_WIDE_THINKING_PREVIEW_MIN_CHARS,
+        tool_result_headline_min_chars=_WIDE_TOOL_RESULT_HEADLINE_MIN_CHARS,
+    ),
+}
+
+
 def make_display_context(
     *,
     env: Mapping[str, str] | None = None,
     console: Console | None = None,
     force_width: int | None = None,
-    force_mode: Literal["compact", "wide"] | None = None,
+    force_mode: Literal["compact", "medium", "wide"] | None = None,
 ) -> DisplayContext:
     """Create a DisplayContext with resolved terminal metrics and adaptive limits.
 
@@ -75,79 +166,31 @@ def make_display_context(
         env: Environment mapping (defaults to os.environ).
         console: Console to use (defaults to make_console() with env-aware color policy).
         force_width: Override terminal width detection.
-        force_mode: Override mode detection ('compact' or 'wide').
+        force_mode: Override mode detection ('compact', 'medium', or 'wide').
 
     Returns:
         Fully initialised DisplayContext.
     """
     resolved_env = dict(os.environ if env is None else env)
-
-    if console is None:
-        no_color_in_env = "NO_COLOR" in resolved_env
-        force_color_in_env = "FORCE_COLOR" in resolved_env
-        if no_color_in_env:
-            console = make_console(no_color=True, force_terminal=False)
-        elif force_color_in_env:
-            console = make_console(no_color=False, force_terminal=True)
-        else:
-            console = make_console()
-
-    # Compute effective width: force_width > COLUMNS env > console.width > 80
-    if force_width is not None and force_width > 0:
-        width = force_width
-    elif "COLUMNS" in resolved_env:
-        try:
-            w = int(resolved_env["COLUMNS"])
-            width = w if w > 0 else (console.width or 80)
-        except (ValueError, TypeError):
-            width = console.width or 80
-    else:
-        width = console.width or 80
-
-    # Compute mode: force_mode > RALPH_FORCE_NARROW > width-based detection
-    if force_mode is not None:
-        mode: Literal["compact", "wide"] = force_mode
-    else:
-        force_narrow_val = resolved_env.get("RALPH_FORCE_NARROW", "").lower().strip()
-        force_narrow = force_narrow_val in {"1", "true", "yes", "on"}
-        mode = "compact" if (force_narrow or width < NARROW_THRESHOLD) else "wide"
-
-    narrow = mode == "compact"
-
-    # Color enabled: NO_COLOR wins over FORCE_COLOR per CLI conventions.
-    # Also honour the injected console's own color policy (e.g. console created with
-    # no_color=True in a context where NO_COLOR is not in env).
-    color_enabled = "NO_COLOR" not in resolved_env and not _console_has_no_color(console)
-
-    # Adaptive limits based on mode
-    if mode == "compact":
-        headline_max_chars = _COMPACT_HEADLINE_MAX_CHARS
-        condenser_soft_limit = _COMPACT_CONDENSER_SOFT_LIMIT
-        condenser_hard_limit = _COMPACT_CONDENSER_HARD_LIMIT
-        streaming_checkpoint_chars = _COMPACT_STREAMING_CHECKPOINT_CHARS
-        thinking_preview_min_chars = _COMPACT_THINKING_PREVIEW_MIN_CHARS
-        tool_result_headline_min_chars = _COMPACT_TOOL_RESULT_HEADLINE_MIN_CHARS
-    else:
-        headline_max_chars = _WIDE_HEADLINE_MAX_CHARS
-        condenser_soft_limit = _WIDE_CONDENSER_SOFT_LIMIT
-        condenser_hard_limit = _WIDE_CONDENSER_HARD_LIMIT
-        streaming_checkpoint_chars = _WIDE_STREAMING_CHECKPOINT_CHARS
-        thinking_preview_min_chars = _WIDE_THINKING_PREVIEW_MIN_CHARS
-        tool_result_headline_min_chars = _WIDE_TOOL_RESULT_HEADLINE_MIN_CHARS
-
+    resolved_console = console if console is not None else _build_console(resolved_env)
+    width = _compute_width(resolved_env, resolved_console, force_width)
+    mode = _compute_mode(resolved_env, force_mode, width)
+    limits = _MODE_LIMITS.get(mode, _MODE_LIMITS["wide"])
+    # NO_COLOR wins over FORCE_COLOR per CLI conventions.
+    color_enabled = "NO_COLOR" not in resolved_env and not _console_has_no_color(resolved_console)
     return DisplayContext(
-        console=console,
+        console=resolved_console,
         theme=RALPH_THEME,
         width=width,
         mode=mode,
-        narrow=narrow,
+        narrow=mode == "compact",
         color_enabled=color_enabled,
-        headline_max_chars=headline_max_chars,
-        condenser_soft_limit=condenser_soft_limit,
-        condenser_hard_limit=condenser_hard_limit,
-        streaming_checkpoint_chars=streaming_checkpoint_chars,
-        thinking_preview_min_chars=thinking_preview_min_chars,
-        tool_result_headline_min_chars=tool_result_headline_min_chars,
+        headline_max_chars=limits.headline_max_chars,
+        condenser_soft_limit=limits.condenser_soft_limit,
+        condenser_hard_limit=limits.condenser_hard_limit,
+        streaming_checkpoint_chars=limits.streaming_checkpoint_chars,
+        thinking_preview_min_chars=limits.thinking_preview_min_chars,
+        tool_result_headline_min_chars=limits.tool_result_headline_min_chars,
     )
 
 

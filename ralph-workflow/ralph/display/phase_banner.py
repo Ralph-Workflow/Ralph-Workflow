@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 from rich.rule import Rule
 from rich.text import Text
 
-from ralph.display.theme import make_console
+from ralph.display.context import make_display_context
 
 if TYPE_CHECKING:
     from rich.console import Console
@@ -94,7 +94,7 @@ def _resolve_console(
     """Resolve the console to use, preferring display_context.console when available."""
     if display_context is not None:
         return display_context.console
-    return console or make_console()
+    return console or make_display_context().console
 
 
 def show_phase_transition(
@@ -125,23 +125,31 @@ def show_phase_transition(
     description = _TRANSITION_DESCRIPTIONS.get((from_phase, to_phase))
 
     is_major = (from_phase, to_phase) in _MAJOR_TRANSITIONS
+    mode = display_context.mode if display_context is not None else "wide"
 
     if is_major:
-        c.print()
-        c.print(Rule(style=style))
-        banner = Text()
-        banner.append(f"  {from_label}", style="theme.text.muted")
-        banner.append(" → ", style="theme.text.emphasis")
-        banner.append(to_label, style=style)
-        if context:
-            detail = "  ".join(f"{k}={v}" for k, v in context.items())
-            banner.append(f"  ({detail})", style="theme.text.muted")
-        c.print(banner)
-        if description:
-            c.print(Text(f"  {description}", style="theme.text.dim_italic"))
-        c.print(Rule(style=style))
+        if mode == "compact":
+            slim_title = Text()
+            slim_title.append(f"{from_label} → {to_label}", style=style)
+            c.print(Rule(title=slim_title, style=style))
+        else:
+            if mode != "medium":
+                c.print()
+            c.print(Rule(style=style))
+            banner = Text()
+            banner.append(f"  {from_label}", style="theme.text.muted")
+            banner.append(" → ", style="theme.text.emphasis")
+            banner.append(to_label, style=style)
+            if context:
+                detail = "  ".join(f"{k}={v}" for k, v in context.items())
+                banner.append(f"  ({detail})", style="theme.text.muted")
+            c.print(banner)
+            if description:
+                c.print(Text(f"  {description}", style="theme.text.dim_italic"))
+            c.print(Rule(style=style))
     else:
-        c.print()
+        if mode != "compact":
+            c.print()
         title = Text()
         title.append(f"{from_label} → {to_label}")
         if description:

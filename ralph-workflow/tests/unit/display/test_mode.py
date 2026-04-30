@@ -19,11 +19,11 @@ def test_narrow_console_returns_compact() -> None:
     assert mode.detect_mode(console, {}) == "compact"
 
 
-def test_threshold_boundary_returns_wide() -> None:
-    # width == NARROW_THRESHOLD (60) is NOT < 60, so returns "wide"
+def test_threshold_boundary_returns_medium() -> None:
+    # width == NARROW_THRESHOLD (60) is not < 60, so falls into medium tier
     console = Console(force_terminal=True, width=mode.NARROW_THRESHOLD)
 
-    assert mode.detect_mode(console, {}) == "wide"
+    assert mode.detect_mode(console, {}) == "medium"
 
 
 def test_non_terminal_wide_returns_wide() -> None:

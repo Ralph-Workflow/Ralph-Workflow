@@ -70,13 +70,30 @@ def test_narrow_terminal_returns_compact() -> None:
     assert detect_mode(console, {}) == "compact"
 
 
-def test_threshold_boundary_returns_wide() -> None:
+def test_threshold_boundary_returns_medium() -> None:
     console = Console(force_terminal=True, width=NARROW_THRESHOLD)
-    assert detect_mode(console, {}) == "wide"
+    assert detect_mode(console, {}) == "medium"
 
 
-def test_threshold_plus_one_returns_wide() -> None:
+def test_threshold_plus_one_returns_medium() -> None:
     console = Console(force_terminal=True, width=NARROW_THRESHOLD + 1)
+    assert detect_mode(console, {}) == "medium"
+
+
+def test_threshold_99_returns_medium() -> None:
+    from ralph.display.mode import MEDIUM_THRESHOLD  # noqa: PLC0415
+    console = Console(force_terminal=True, width=MEDIUM_THRESHOLD - 1)
+    assert detect_mode(console, {}) == "medium"
+
+
+def test_threshold_60_returns_medium() -> None:
+    console = Console(force_terminal=True, width=60)
+    assert detect_mode(console, {}) == "medium"
+
+
+def test_threshold_100_returns_wide() -> None:
+    from ralph.display.mode import MEDIUM_THRESHOLD  # noqa: PLC0415
+    console = Console(force_terminal=True, width=MEDIUM_THRESHOLD)
     assert detect_mode(console, {}) == "wide"
 
 
@@ -95,7 +112,7 @@ def test_parallel_display_mode_wide_when_ci() -> None:
 def test_parallel_display_default_env_uses_os_environ() -> None:
     console = Console(force_terminal=True, width=120)
     pd = ParallelDisplay(console)
-    assert pd.mode in ("compact", "wide")
+    assert pd.mode in ("compact", "medium", "wide")
 
 
 def test_parallel_display_mode_frozen_after_init() -> None:

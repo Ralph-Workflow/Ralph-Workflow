@@ -7,8 +7,8 @@ environment and configuration.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
@@ -16,6 +16,7 @@ from rich.text import Text
 from ralph.agents.availability import check_agent_availability
 from ralph.agents.registry import AgentRegistry
 from ralph.config.loader import load_config
+from ralph.display.context import make_display_context
 from ralph.git.operations import find_repo_root, is_repo_clean
 from ralph.policy.loader import PolicyValidationError, load_policy
 from ralph.policy.validation import (
@@ -24,7 +25,10 @@ from ralph.policy.validation import (
 )
 from ralph.workspace.scope import WorkspaceScope, resolve_workspace_scope
 
-console = Console()
+if TYPE_CHECKING:
+    from rich.console import Console
+
+console: Console = make_display_context().console
 
 
 def diagnose_command(
@@ -40,13 +44,17 @@ def diagnose_command(
     Returns:
         Exit code (0 for success, 1 for errors, 2 for validation failures).
     """
-    console.print("\n[cyan bold]Ralph Workflow Diagnostics[/cyan bold]\n")
+    title = Text()
+    title.append("Ralph Workflow Diagnostics", style="theme.banner.title")
+    console.print()
+    console.print(title)
+    console.print()
 
     workspace_scope = resolve_workspace_scope()
 
     config_ok = _check_git_repo()
     config_ok &= _check_configuration(config_path, cli_overrides)
-    agent_missing = _check_agents_returning_missing(cli_overrides)
+    agent_missing = _check_agents(cli_overrides)
     config_ok &= not agent_missing
     config_ok &= _check_mcp_servers(workspace_scope)
     config_ok &= _check_workspace_files()
@@ -61,7 +69,9 @@ def diagnose_command(
     if prompt_exists:
         try:
             from ralph.cli.commands.init import STARTER_PROMPT_SENTINEL  # noqa: PLC0415
-            prompt_has_sentinel = STARTER_PROMPT_SENTINEL in prompt_path.read_text(encoding="utf-8")
+            prompt_has_sentinel = STARTER_PROMPT_SENTINEL in prompt_path.read_text(
+                encoding="utf-8"
+            )
         except Exception:
             pass
 
@@ -137,10 +147,12 @@ def _print_next_steps_panel(steps: list[str]) -> None:
             content.append("\n")
         content.append(f"  • {step}")
     content.append("\n\n")
-    content.append("New to Ralph Workflow? ", style="dim")
-    content.append("docs/sphinx/getting-started.md", style="dim cyan")
-    content.append(" — step-by-step walkthrough.", style="dim")
-    console.print(Panel(content, title="Next steps", border_style="cyan", padding=(1, 2)))
+    content.append("New to Ralph Workflow? ", style="theme.text.muted")
+    content.append("docs/sphinx/getting-started.md", style="theme.text.muted")
+    content.append(" — step-by-step walkthrough.", style="theme.text.muted")
+    console.print(
+        Panel(content, title="Next steps", border_style="theme.phase.planning", padding=(1, 2))
+    )
 
 
 def _run_preflight_validation(
@@ -159,7 +171,7 @@ def _run_preflight_validation(
         True if validation passes, False otherwise.
     """
     table = Table(title="Pre-flight Validation", show_header=False)
-    table.add_column("Check", style="cyan")
+    table.add_column("Check", style="theme.cat.meta")
     table.add_column("Status")
 
     try:
@@ -188,7 +200,7 @@ def _run_preflight_validation(
                 "Pre-flight",
                 Text(
                     "Skipped: project is not initialized yet (run `ralph --init`)",
-                    style="yellow",
+                    style="theme.status.warning",
                 ),
             )
             console.print(table)
@@ -201,17 +213,19 @@ def _run_preflight_validation(
         validate_agent_chains_satisfiable(bundle, registry)
         validate_recovery_config(bundle)
 
-        table.add_row("Agent chains", "[green]Satisfiable[/green]")
-        table.add_row("Recovery config", "[green]Valid[/green]")
+        table.add_row("Agent chains", Text("Satisfiable", style="theme.status.success"))
+        table.add_row("Recovery config", Text("Valid", style="theme.status.success"))
         console.print(table)
         return True
 
     except PolicyValidationError as e:
-        table.add_row("Policy validation", _status_text("Failed", e.message, "red"))
+        table.add_row(
+            "Policy validation", _status_text("Failed", e.message, "theme.status.error")
+        )
         console.print(table)
         return False
     except Exception as e:
-        table.add_row("Pre-flight", _status_text("Error", str(e), "red"))
+        table.add_row("Pre-flight", _status_text("Error", str(e), "theme.status.error"))
         console.print(table)
         return False
 
@@ -223,25 +237,27 @@ def _check_git_repo() -> bool:
         True if check passed, False otherwise.
     """
     table = Table(title="Git Repository", show_header=False)
-    table.add_column("Check", style="cyan")
+    table.add_column("Check", style="theme.cat.meta")
     table.add_column("Status")
 
     try:
         repo_root = find_repo_root()
         table.add_row("Repository root", str(repo_root))
     except Exception as e:
-        table.add_row("Repository", _status_text("Error", str(e), "red"))
+        table.add_row("Repository", _status_text("Error", str(e), "theme.status.error"))
         console.print(table)
         return False
 
     try:
         clean = is_repo_clean(repo_root)
         if clean:
-            table.add_row("Working tree", "[green]Clean[/green]")
+            table.add_row("Working tree", Text("Clean", style="theme.status.success"))
         else:
-            table.add_row("Working tree", "[yellow]Has uncommitted changes[/yellow]")
+            table.add_row(
+                "Working tree", Text("Has uncommitted changes", style="theme.status.warning")
+            )
     except Exception as e:
-        table.add_row("Working tree", _status_text("Error", str(e), "red"))
+        table.add_row("Working tree", _status_text("Error", str(e), "theme.status.error"))
 
     console.print(table)
     return True
@@ -257,19 +273,19 @@ def _check_configuration(
         True if check passed, False otherwise.
     """
     table = Table(title="Configuration", show_header=False)
-    table.add_column("Check", style="cyan")
+    table.add_column("Check", style="theme.cat.meta")
     table.add_column("Status")
 
     try:
         workspace_scope = None if config_path is not None else resolve_workspace_scope()
         config = load_config(config_path, cli_overrides, workspace_scope=workspace_scope)
-        table.add_row("Config loaded", "[green]Success[/green]")
+        table.add_row("Config loaded", Text("Success", style="theme.status.success"))
         table.add_row("Developer iters", str(config.general.developer_iters))
         table.add_row("Reviewer reviews", str(config.general.reviewer_reviews))
         table.add_row("Review depth", config.general.review_depth.value)
         table.add_row("Checkpoint enabled", str(config.general.workflow.checkpoint_enabled))
     except Exception as e:
-        table.add_row("Config loaded", _status_text("Error", str(e), "red"))
+        table.add_row("Config loaded", _status_text("Error", str(e), "theme.status.error"))
         console.print(table)
         return False
 
@@ -278,22 +294,13 @@ def _check_configuration(
 
 
 def _check_agents(cli_overrides: dict[str, object] | None) -> bool:
-    """Check agent availability, including PATH presence.
-
-    Returns:
-        True if check passed, False otherwise.
-    """
-    return not _check_agents_returning_missing(cli_overrides)
-
-
-def _check_agents_returning_missing(cli_overrides: dict[str, object] | None) -> bool:
     """Check agent availability and return True if any agent is missing from PATH.
 
     Returns:
         True if at least one agent is missing from PATH, False otherwise.
     """
     table = Table(title="Agents")
-    table.add_column("Agent", style="cyan")
+    table.add_column("Agent", style="theme.cat.meta")
     table.add_column("Config")
     table.add_column("PATH")
 
@@ -303,24 +310,28 @@ def _check_agents_returning_missing(cli_overrides: dict[str, object] | None) -> 
         registry = AgentRegistry.from_config(config)
         agent_names = registry.list_agents()
         if not agent_names:
-            table.add_row("(none)", "[yellow]No agents configured[/yellow]", "-")
+            table.add_row(
+                "(none)", Text("No agents configured", style="theme.status.warning"), "-"
+            )
         else:
             availability = check_agent_availability(registry)
-            path_by_name: dict[str, str] = {}
+            path_by_name: dict[str, Text] = {}
             for name, status in availability:
                 if status == "available":
-                    path_by_name[name] = "[green]on PATH[/green]"
+                    path_by_name[name] = Text("on PATH", style="theme.status.success")
                 else:
-                    path_by_name[name] = "[yellow]missing[/yellow]"
+                    path_by_name[name] = Text("missing", style="theme.status.warning")
                     any_missing = True
             for name in agent_names:
                 agent = registry.get(name)
                 cmd = agent.cmd if agent else ""
-                path_status = path_by_name.get(name, "[yellow]missing[/yellow]")
-                config_cell = _status_text("Configured", cmd, "green")
+                path_status = path_by_name.get(
+                    name, Text("missing", style="theme.status.warning")
+                )
+                config_cell = _status_text("Configured", cmd, "theme.status.success")
                 table.add_row(name, config_cell, path_status)
     except Exception as e:
-        table.add_row("Agents", _status_text("Error", str(e), "red"), "-")
+        table.add_row("Agents", _status_text("Error", str(e), "theme.status.error"), "-")
         console.print(table)
         return True
 
@@ -339,7 +350,7 @@ def _check_mcp_servers(workspace_scope: WorkspaceScope) -> bool:
     from ralph.mcp.upstream.validation import validate_upstream_mcp_servers  # noqa: PLC0415
 
     server_table = Table(title="Custom MCP Servers")
-    server_table.add_column("Server", style="cyan")
+    server_table.add_column("Server", style="theme.cat.meta")
     server_table.add_column("Transport")
     server_table.add_column("Status")
     server_table.add_column("Tools")
@@ -350,7 +361,7 @@ def _check_mcp_servers(workspace_scope: WorkspaceScope) -> bool:
         server_table.add_row(
             "(none)",
             "-",
-            "[yellow]No custom MCP servers configured[/yellow]",
+            Text("No custom MCP servers configured", style="theme.status.warning"),
             "-",
             "-",
         )
@@ -363,7 +374,7 @@ def _check_mcp_servers(workspace_scope: WorkspaceScope) -> bool:
         server_table.add_row(
             "(validator)",
             "-",
-            _status_text("Error", str(exc), "red"),
+            _status_text("Error", str(exc), "theme.status.error"),
             "-",
             "-",
         )
@@ -371,11 +382,15 @@ def _check_mcp_servers(workspace_scope: WorkspaceScope) -> bool:
         return False
 
     for entry in report.servers:
-        status = "[green]ok[/green]" if entry.ok else "[red]failed[/red]"
+        status = (
+            Text("ok", style="theme.status.success")
+            if entry.ok
+            else Text("failed", style="theme.status.error")
+        )
         detail = entry.error or ""
         if entry.secret_keys:
             keys = ",".join(entry.secret_keys)
-            detail = f"{detail} [dim](env: {keys})[/dim]" if detail else f"[dim]env: {keys}[/dim]"
+            detail = f"{detail} (env: {keys})" if detail else f"env: {keys}"
         server_table.add_row(
             entry.name,
             entry.transport,
@@ -392,29 +407,29 @@ def _check_mcp_servers(workspace_scope: WorkspaceScope) -> bool:
         return True
 
     probe_table = Table(title="Agent Transport Compatibility")
-    probe_table.add_column("Server", style="cyan")
+    probe_table.add_column("Server", style="theme.cat.meta")
     probe_table.add_column("Claude")
     probe_table.add_column("Codex")
     probe_table.add_column("OpenCode")
 
     probes = probe_agent_transports(healthy_servers, workspace_path=workspace_scope.root)
-    by_server: dict[str, dict[str, str]] = {}
+    by_server: dict[str, dict[str, Text]] = {}
     for probe in probes:
         if probe.note and probe.ok:
-            cell = "[yellow]-[/yellow]"
+            cell = Text("-", style="theme.status.warning")
         elif probe.ok:
-            cell = "[green]✓[/green]"
+            cell = Text("✓", style="theme.status.success")
         else:
-            cell = "[red]✗[/red]"
+            cell = Text("✗", style="theme.status.error")
         by_server.setdefault(probe.server_name, {})[probe.transport.value] = cell
 
     for server in healthy_servers:
         cells = by_server.get(server.name, {})
         probe_table.add_row(
             server.name,
-            cells.get("claude", "-"),
-            cells.get("codex", "-"),
-            cells.get("opencode", "-"),
+            cells.get("claude", Text("-")),
+            cells.get("codex", Text("-")),
+            cells.get("opencode", Text("-")),
         )
 
     console.print(probe_table)
@@ -428,7 +443,7 @@ def _check_workspace_files() -> bool:
         True if check passed, False otherwise.
     """
     table = Table(title="Workspace Files", show_header=False)
-    table.add_column("File", style="cyan")
+    table.add_column("File", style="theme.cat.meta")
     table.add_column("Status")
 
     workspace_files = [
@@ -443,9 +458,11 @@ def _check_workspace_files() -> bool:
         file_label.append(f"{file_path} ({description})")
         if path.exists():
             size = path.stat().st_size
-            table.add_row(file_label, _status_text("Exists", f"{size} bytes", "green"))
+            table.add_row(
+                file_label, _status_text("Exists", f"{size} bytes", "theme.status.success")
+            )
         else:
-            table.add_row(file_label, Text("Not found", style="yellow"))
+            table.add_row(file_label, Text("Not found", style="theme.status.warning"))
 
     console.print(table)
     return True

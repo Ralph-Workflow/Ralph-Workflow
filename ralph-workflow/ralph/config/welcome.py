@@ -13,6 +13,7 @@ from ralph.banner import show_banner
 
 if TYPE_CHECKING:
     from ralph.config.bootstrap import BootstrapResult
+    from ralph.display.context import DisplayContext
 
 _KNOWN_AGENT_INSTALL_URLS: dict[str, str] = {
     "claude": "https://docs.claude.com/claude-code",
@@ -30,7 +31,6 @@ def _build_agent_availability_content(
             availability = check_agent_availability(agent_registry)
             avail_lines: list[Text] = []
             for registry_name, status in availability:
-                # Use display_name if available, otherwise show registry name
                 agent = agent_registry.get(registry_name)
                 label = (
                     (agent.display_name or registry_name)
@@ -38,34 +38,22 @@ def _build_agent_availability_content(
                     else registry_name
                 )
                 if status == "available":
-                    avail_lines.append(
-                        Text.from_markup(f"  • {label}: [green]on PATH[/green]")
-                    )
+                    t = Text(f"  • {label}: ")
+                    t.append("on PATH", style="theme.status.success")
+                    avail_lines.append(t)
                 elif status == "missing_on_path":
                     install_url = _KNOWN_AGENT_INSTALL_URLS.get(registry_name.lower())
+                    t = Text(f"  • {label}: ")
+                    t.append("⚠ missing (not on PATH)", style="theme.status.warning")
                     if install_url:
-                        avail_lines.append(
-                            Text.from_markup(
-                                f"  • {label}: "
-                                "[yellow]⚠ missing (not on PATH)[/yellow] "
-                                f"[dim]install: {install_url}[/dim]"
-                            )
-                        )
-                    else:
-                        avail_lines.append(
-                            Text.from_markup(
-                                f"  • {label}: "
-                                "[yellow]⚠ missing (not on PATH)[/yellow]"
-                            )
-                        )
+                        t.append(f" install: {install_url}", style="theme.text.muted")
+                    avail_lines.append(t)
                 else:  # no_cmd
-                    avail_lines.append(
-                        Text.from_markup(
-                            f"  • {label}: [yellow]⚠ missing (not on PATH)[/yellow]"
-                        )
-                    )
+                    t = Text(f"  • {label}: ")
+                    t.append("⚠ missing (not on PATH)", style="theme.status.warning")
+                    avail_lines.append(t)
             if avail_lines:
-                content.append(Text.from_markup("[bold cyan]Detected agents:[/bold cyan]"))
+                content.append(Text("Detected agents:", style="theme.banner.title"))
                 content.extend(avail_lines)
                 return content
         except Exception:
@@ -80,13 +68,14 @@ def _build_regenerate_summary(results: list[BootstrapResult]) -> Text | None:
     if not regenerated:
         return None
     backup_count = sum(1 for r in regenerated if r.backup is not None)
-    text = Text.from_markup(f"Regenerated {len(regenerated)} config file(s)")
+    text = Text(f"Regenerated {len(regenerated)} config file(s)")
     if backup_count > 0:
-        text.append_text(
-            Text.from_markup(
-                f" ([yellow]{backup_count} backup(s) saved with .bak suffix[/yellow])"
-            )
+        text.append(" (")
+        text.append(
+            f"{backup_count} backup(s) saved with .bak suffix",
+            style="theme.status.warning",
         )
+        text.append(")")
     return text
 
 
@@ -110,7 +99,7 @@ def _append_file_section(content: list[object], heading: str, files: list[str]) 
     """Append a headed bullet list of config files when present."""
     if not files:
         return
-    content.append(Text.from_markup(heading))
+    content.append(Text(heading, style="theme.banner.title"))
     content.extend(Text(f"  • {name}") for name in files)
 
 
@@ -120,6 +109,7 @@ def emit_first_run_welcome(
     *,
     agent_registry: HasListAgents | None = None,
     is_regenerate: bool = False,
+    display_context: DisplayContext | None = None,
 ) -> None:
     """Print a structured first-run welcome panel.
 
@@ -128,8 +118,8 @@ def emit_first_run_welcome(
         results: Bootstrap results from a bootstrap operation.
         agent_registry: Optional agent registry for availability checking.
         is_regenerate: Whether this is a regenerate (--regenerate-config) operation.
+        display_context: Optional display context for adaptive layout.
     """
-    # No-op when everything was skipped (subsequent runs)
     if all(r.action == "skipped" for r in results):
         return
 
@@ -137,64 +127,65 @@ def emit_first_run_welcome(
     if not has_new_or_regenerated:
         return
 
-    show_banner(console=console)  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+    show_banner(display_context=display_context, console=console)  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
 
     content: list[object] = []
 
-    # Elevator pitch and docs pointer for new users
-    content.append(
-        Text.from_markup(
-            "Ralph Workflow orchestrates AI coding agents through a "
-            "[cyan]planning → development → review → fix[/cyan] loop "
-            "driven by your PROMPT.md."
-        )
+    intro = Text("Ralph Workflow orchestrates AI coding agents through a ")
+    intro.append("planning → development → review → fix", style="theme.phase.planning")
+    intro.append(" loop driven by your PROMPT.md.")
+    content.append(intro)
+
+    docs_line1 = Text("New to Ralph Workflow? Read ", style="theme.text.muted")
+    docs_line1.append("docs/sphinx/getting-started.md", style="theme.cat.meta")
+    docs_line1.append(" for a step-by-step walkthrough.", style="theme.text.muted")
+    content.append(docs_line1)
+
+    docs_line2 = Text("Offline docs: ", style="theme.text.muted")
+    docs_line2.append("python -m pydoc ralph", style="theme.cat.meta")
+    docs_line2.append(" · run ", style="theme.text.muted")
+    docs_line2.append("make serve-docs", style="theme.cat.meta")
+    docs_line2.append(
+        " from ralph-workflow/ for the full HTML reference.",
+        style="theme.text.muted",
     )
-    content.append(
-        Text.from_markup(
-            "[dim]New to Ralph Workflow? Read [cyan]docs/sphinx/getting-started.md[/cyan]"
-            " for a step-by-step walkthrough.[/dim]"
-        )
-    )
-    content.append(
-        Text.from_markup(
-            "[dim]Offline docs: [cyan]python -m pydoc ralph[/cyan] · "
-            "run [cyan]make serve-docs[/cyan] from ralph-workflow/ "
-            "for the full HTML reference.[/dim]"
-        )
-    )
+    content.append(docs_line2)
+
     content.append(Text())  # blank line
 
-    # For regenerate, show summary line first
     if is_regenerate:
         summary = _build_regenerate_summary(results)
         if summary:
             content.append(summary)
             content.append(Text())  # blank line
 
-    # Agent availability (shown before config file lists; not shown during regenerate)
     if not is_regenerate:
         content.extend(_build_agent_availability_content(agent_registry))
 
     global_files, local_files = _partition_config_files(results)
-    _append_file_section(content, "[bold cyan]Global config files:[/bold cyan]", global_files)
-    _append_file_section(content, "[bold cyan]Local config files:[/bold cyan]", local_files)
+    _append_file_section(content, "Global config files:", global_files)
+    _append_file_section(content, "Local config files:", local_files)
 
-    # Next steps
-    next_steps = Text.from_markup(
-        "[bold cyan]Next steps:[/bold cyan]\n"
-        "  1. Edit [cyan]PROMPT.md[/cyan] with your implementation task\n"
-        "  2. Install AI agents if missing (e.g., `claude`, `opencode`)\n"
-        "  3. (Optional) Run [cyan]ralph --diagnose[/cyan] to verify agents,"
-        " MCP servers, and config\n"
-        "  4. Run [cyan]ralph[/cyan] to start the pipeline\n"
-        "  5. Run [cyan]ralph --regenerate-config[/cyan] to reset configs"
-    )
+    next_steps = Text("Next steps:\n", style="theme.banner.title")
+    next_steps.append("  1. Edit ")
+    next_steps.append("PROMPT.md", style="theme.cat.meta")
+    next_steps.append(" with your implementation task\n")
+    next_steps.append("  2. Install AI agents if missing (e.g., `claude`, `opencode`)\n")
+    next_steps.append("  3. (Optional) Run ")
+    next_steps.append("ralph --diagnose", style="theme.cat.meta")
+    next_steps.append(" to verify agents, MCP servers, and config\n")
+    next_steps.append("  4. Run ")
+    next_steps.append("ralph", style="theme.cat.meta")
+    next_steps.append(" to start the pipeline\n")
+    next_steps.append("  5. Run ")
+    next_steps.append("ralph --regenerate-config", style="theme.cat.meta")
+    next_steps.append(" to reset configs")
     content.append(next_steps)
 
     panel = Panel(
         Group(*content),  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
         title="Ralph Workflow first-run setup",
-        border_style="cyan",
+        border_style="theme.banner.border",
         padding=(1, 2),
     )
     console.print(panel)  # type: ignore[attr-defined]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library

@@ -5,7 +5,6 @@ This module implements the main pipeline execution command.
 
 from __future__ import annotations
 
-import importlib
 import pathlib  # noqa: TC003
 from inspect import signature
 from typing import TYPE_CHECKING, NamedTuple, Protocol, cast
@@ -17,6 +16,7 @@ from rich.text import Text
 from ralph.agents.registry import AgentRegistry
 from ralph.config.enums import Verbosity  # noqa: TC001
 from ralph.config.loader import load_config
+from ralph.display.context import make_display_context
 from ralph.pipeline import checkpoint as ckpt
 from ralph.pipeline.state import PipelineState  # noqa: TC001
 from ralph.policy.loader import load_policy
@@ -30,6 +30,8 @@ from ralph.policy.validation import (
 from ralph.workspace.scope import WorkspaceScope, resolve_workspace_scope
 
 if TYPE_CHECKING:
+    from rich.console import Console
+
     from ralph.config.models import UnifiedConfig
     from ralph.policy.models import PolicyBundle
 
@@ -51,29 +53,9 @@ except ImportError:
 else:
     _run_func = cast("_RunnerFunc", _imported_run_func)
 
-
-class _FallbackConsole:
-    def print(self, *args: object, **kwargs: object) -> None:
-        return None
-
-
-class _ConsoleLike(Protocol):
-    def print(self, *args: object, **kwargs: object) -> None: ...
-
+console: Console = make_display_context().console
 
 ConfigOverrides = dict[str, object]
-
-
-def _create_console() -> _ConsoleLike:
-    try:
-        console_module = importlib.import_module("rich.console")
-    except ModuleNotFoundError:
-        return _FallbackConsole()
-
-    return cast("_ConsoleLike", console_module.Console())
-
-
-console: _ConsoleLike = _create_console()
 
 
 # Exit codes
@@ -115,13 +97,18 @@ def _load_configuration(
             policy_bundle = load_policy(workspace_scope.root / ".agent", config=config)
         except Exception as e:
             logger.warning("Failed to load policy bundle: {}", e)
-            console.print(f"[red]Preflight error: {e}[/red]")
+            err_text = Text()
+            err_text.append("Preflight error:", style="theme.status.error")
+            err_text.append(f" {e}")
+            console.print(err_text)
             return _EXIT_PREFLIGHT
 
     if resume:
         initial_state = ckpt.load()
         if initial_state is None:
-            console.print("[yellow]No checkpoint found to resume from[/yellow]")
+            console.print(
+                Text("No checkpoint found to resume from", style="theme.status.warning")
+            )
 
     return _LoadResult(
         config=config,
@@ -139,23 +126,23 @@ def _print_not_initialized_panel() -> None:
         "planning → development → review → fix loop "
         "driven by your PROMPT.md.\n\n"
     )
-    content.append("Next steps:\n", style="bold cyan")
+    content.append("Next steps:\n", style="theme.banner.title")
     content.append("  1. Run ")
-    content.append("ralph --init", style="cyan")
+    content.append("ralph --init", style="theme.cat.meta")
     content.append(" to scaffold PROMPT.md and .agent/ configs\n")
     content.append("  2. Edit ")
-    content.append("PROMPT.md", style="cyan")
+    content.append("PROMPT.md", style="theme.cat.meta")
     content.append(" with your task\n")
     content.append("  3. Run ")
-    content.append("ralph", style="cyan")
+    content.append("ralph", style="theme.cat.meta")
     content.append(" to start the pipeline\n\n")
-    content.append("Docs: ", style="dim")
-    content.append("docs/sphinx/getting-started.md", style="dim cyan")
-    content.append(" — step-by-step walkthrough for new users", style="dim")
+    content.append("Docs: ", style="theme.text.muted")
+    content.append("docs/sphinx/getting-started.md", style="theme.text.muted")
+    content.append(" — step-by-step walkthrough for new users", style="theme.text.muted")
     panel = Panel(
         content,
         title="Ralph Workflow is not initialized here yet",
-        border_style="yellow",
+        border_style="theme.status.warning",
         padding=(1, 2),
     )
     console.print(panel)
@@ -178,23 +165,23 @@ def _run_policy_preflight_checks(
         agent_registry = AgentRegistry.from_config(config)
         validate_agent_chains_satisfiable(policy_bundle, agent_registry)
     except PolicyValidationError as e:
-        console.print(f"[red]Preflight error: {e.message}[/red]")
+        console.print(_preflight_error_text(e.message))
         return _EXIT_PREFLIGHT
 
     try:
         validate_recovery_config(policy_bundle)
     except PolicyValidationError as e:
-        console.print(f"[red]Preflight error: {e.message}[/red]")
+        console.print(_preflight_error_text(e.message))
         return _EXIT_PREFLIGHT
 
     if initial_state is not None:
         try:
             validate_checkpoint_against_policy(initial_state, policy_bundle)
         except CheckpointPolicyMismatchError as e:
-            console.print(f"[red]Checkpoint mismatch: {e}[/red]")
+            console.print(_checkpoint_mismatch_text(str(e)))
             return _EXIT_PREFLIGHT
         except PolicyValidationError as e:
-            console.print(f"[red]Preflight error: {e.message}[/red]")
+            console.print(_preflight_error_text(e.message))
             return _EXIT_PREFLIGHT
 
     return _EXIT_SUCCESS
@@ -225,7 +212,7 @@ def _run_preflight_checks(
         try:
             validate_required_inputs(workspace_scope)
         except PolicyValidationError as e:
-            console.print(f"[red]Preflight error: {e.message}[/red]")
+            console.print(_preflight_error_text(e.message))
             return _EXIT_PREFLIGHT
 
     # Only run policy-based validations if we have a loaded policy bundle.
@@ -234,7 +221,7 @@ def _run_preflight_checks(
         try:
             _validate_loaded_policy_bundle(loaded_policy_bundle)
         except PolicyValidationError as e:
-            console.print(f"[red]Preflight error: {e.message}[/red]")
+            console.print(_preflight_error_text(e.message))
             return _EXIT_PREFLIGHT
         return _run_policy_preflight_checks(config, loaded_policy_bundle, initial_state)
 
@@ -243,7 +230,7 @@ def _run_preflight_checks(
 
 def _print_dry_run(initial_state: PipelineState | None, config: UnifiedConfig) -> None:
     """Print dry-run information."""
-    console.print("[cyan]Dry run mode[/cyan]")
+    console.print(Text("Dry run mode", style="theme.cat.meta"))
     console.print(_detail_text("Phase", initial_state.phase if initial_state else "planning"))
     console.print(_detail_text("Iterations", str(config.general.developer_iters)))
     console.print(_detail_text("Review passes", str(config.general.reviewer_reviews)))
@@ -262,7 +249,7 @@ def _execute_pipeline(
     """
     if _run_func is None:
         logger.error("Pipeline runner is unavailable")
-        console.print("[red]Pipeline runner is unavailable[/red]")
+        console.print(Text("Pipeline runner is unavailable", style="theme.status.error"))
         return _EXIT_CONFIG_ERROR
 
     try:
@@ -274,19 +261,19 @@ def _execute_pipeline(
             kwargs["policy_bundle"] = policy_bundle
         return _run_func(config, initial_state, **kwargs)
     except KeyboardInterrupt:
-        console.print("\n[yellow]Interrupted by user[/yellow]")
+        console.print(Text("\nInterrupted by user", style="theme.status.warning"))
         if initial_state is not None:
             _save_interrupt_checkpoint(initial_state)
         return _EXIT_INTERRUPT
     except CheckpointPolicyMismatchError as e:
-        console.print(f"[red]Checkpoint mismatch: {e}[/red]")
+        console.print(_checkpoint_mismatch_text(str(e)))
         return _EXIT_PREFLIGHT
     except PolicyValidationError as e:
-        console.print(f"[red]Pipeline configuration error: {e.message}[/red]")
+        console.print(_pipeline_config_error_text(e.message))
         return _EXIT_PREFLIGHT
     except Exception as e:
         logger.exception("Pipeline execution failed: {}")
-        console.print(_status_text("Pipeline failed", str(e), "red"))
+        console.print(_status_text("Pipeline failed", str(e), "theme.status.error"))
         return _EXIT_CONFIG_ERROR
 
 
@@ -298,6 +285,27 @@ def _save_interrupt_checkpoint(initial_state: PipelineState) -> None:
         ckpt.save(interrupted_state)
     except Exception:
         logger.warning("Checkpoint save failed during interrupt", exc_info=True)
+
+
+def _preflight_error_text(message: str) -> Text:
+    text = Text()
+    text.append("Preflight error:", style="theme.status.error")
+    text.append(f" {message}")
+    return text
+
+
+def _checkpoint_mismatch_text(message: str) -> Text:
+    text = Text()
+    text.append("Checkpoint mismatch:", style="theme.status.error")
+    text.append(f" {message}")
+    return text
+
+
+def _pipeline_config_error_text(message: str) -> Text:
+    text = Text()
+    text.append("Pipeline configuration error:", style="theme.status.error")
+    text.append(f" {message}")
+    return text
 
 
 def _status_text(label: str, detail: str, style: str) -> Text:

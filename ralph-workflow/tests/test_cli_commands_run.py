@@ -170,7 +170,7 @@ def test_run_pipeline_dry_run_reports_summary(
     monkeypatch.setattr(run_module, "console", console)
 
     assert run_module.run_pipeline(dry_run=True, resume=True) == 0
-    assert console.lines[0] == "[cyan]Dry run mode[/cyan]"
+    assert "Dry run mode" in console.lines[0]
     assert "Phase: review" in console.lines[1]
     assert "Iterations: 4" in console.lines[2]
     assert "Review passes: 2" in console.lines[3]

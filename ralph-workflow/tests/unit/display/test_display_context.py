@@ -44,10 +44,10 @@ def test_compact_mode_for_narrow_terminal() -> None:
 
 
 def test_compact_mode_at_threshold_boundary() -> None:
-    # width == NARROW_THRESHOLD is NOT < NARROW_THRESHOLD → "wide"
+    # width == NARROW_THRESHOLD (60) is not < 60 → falls into medium tier
     console = Console(width=NARROW_THRESHOLD, force_terminal=True)
     ctx = make_display_context(console=console, env={})
-    assert ctx.mode == "wide"
+    assert ctx.mode == "medium"
 
 
 def test_ralph_force_narrow_env_forces_compact() -> None:

@@ -40,11 +40,18 @@ _REPO_ROOT = Path(__file__).parent.parent.parent
 
 def _target_files() -> list[Path]:
     display_dir = _REPO_ROOT / "ralph-workflow" / "ralph" / "display"
+    cli_dir = _REPO_ROOT / "ralph-workflow" / "ralph" / "cli"
+    cli_commands_dir = cli_dir / "commands"
     extras = [
         _REPO_ROOT / "ralph-workflow" / "ralph" / "banner.py",
-        _REPO_ROOT / "ralph-workflow" / "ralph" / "cli" / "main.py",
+        _REPO_ROOT / "ralph-workflow" / "ralph" / "config" / "welcome.py",
     ]
-    files = list(display_dir.glob("*.py")) + extras
+    files = (
+        list(display_dir.glob("*.py"))
+        + list(cli_dir.glob("*.py"))
+        + list(cli_commands_dir.glob("*.py"))
+        + extras
+    )
     return [f for f in files if f.is_file()]
 
 
