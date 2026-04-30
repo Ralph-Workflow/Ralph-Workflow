@@ -32,7 +32,11 @@ from ralph.prompts.developer import (
     prompt_developer_iteration_xml_with_context,
     prompt_planning_xml_with_context,
 )
-from ralph.prompts.payload_refs import build_prompt_payload_variables, write_payload_to_directory
+from ralph.prompts.payload_refs import (
+    _sanitize_surrogates,
+    build_prompt_payload_variables,
+    write_payload_to_directory,
+)
 from ralph.prompts.template_context import TemplateContext
 from ralph.prompts.template_engine import render_template
 from ralph.prompts.types import SessionCapabilities, capability_template_variables
@@ -599,11 +603,11 @@ def _git_diff(workspace_root: Path) -> str:
         repo = Repo(workspace_root)
         baseline_sha = read_cycle_baseline(workspace_root)
         if baseline_sha:
-            committed = cast("str", repo.git.diff(baseline_sha, "HEAD"))
-            uncommitted = cast("str", repo.git.diff("HEAD"))
+            committed = _sanitize_surrogates(cast("str", repo.git.diff(baseline_sha, "HEAD")))
+            uncommitted = _sanitize_surrogates(cast("str", repo.git.diff("HEAD")))
             parts = [p for p in (committed, uncommitted) if p]
             return "\n".join(parts) if parts else "(no diff available)"
-        return cast("str", repo.git.diff("HEAD"))
+        return _sanitize_surrogates(cast("str", repo.git.diff("HEAD")))
     except Exception:
         return "(no diff available)"
 

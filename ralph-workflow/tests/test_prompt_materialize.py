@@ -497,3 +497,82 @@ def test_git_diff_many_mid_cycle_commits_no_uncommitted(tmp_git_repo: Path) -> N
     diff = materialize_module._git_diff(tmp_git_repo)
     assert "commit_only_a.py" in diff
     assert "commit_only_b.py" in diff
+
+
+def test_git_diff_strips_lone_surrogates_from_gitpython_output(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    surrogate_diff = "diff --git a/file.txt b/file.txt\n@@\n+\udca4 byte\n"
+
+    class _FakeGit:
+        def diff(self, *_args: object, **_kwargs: object) -> str:
+            return surrogate_diff
+
+    class _FakeRepo:
+        def __init__(self, *_args: object, **_kwargs: object) -> None:
+            self.git = _FakeGit()
+
+    monkeypatch.setattr(materialize_module, "Repo", _FakeRepo)
+
+    diff = materialize_module._git_diff(tmp_path)
+
+    assert "\udca4" not in diff
+    diff.encode("utf-8")  # must not raise
+
+
+def test_materialize_commit_phase_handles_surrogate_diff(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    policy = load_policy(tmp_path / ".agent")
+    workspace = MemoryWorkspace(root=str(tmp_path))
+
+    surrogate_diff = "diff --git a/x.py b/x.py\n+\udca4\n"
+    monkeypatch.setattr(
+        materialize_module,
+        "_git_diff",
+        lambda _workspace_root: surrogate_diff,
+    )
+
+    prompt_path = materialize_prompt_for_phase(
+        phase="development_commit",
+        workspace=workspace,
+        pipeline_policy=policy.pipeline,
+        session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.COMMIT),
+        workspace_root=tmp_path,
+    )
+
+    rendered = workspace.read(prompt_path)
+    assert "\udca4" not in rendered
+    rendered.encode("utf-8")  # must not raise
+
+
+def test_materialize_commit_phase_with_oversized_surrogate_diff(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    policy = load_policy(tmp_path / ".agent")
+    workspace = MemoryWorkspace(root=str(tmp_path))
+
+    big_surrogate = "\udca4" + ("x" * (100 * 1024 + 1))
+    monkeypatch.setattr(
+        materialize_module,
+        "_git_diff",
+        lambda _workspace_root: big_surrogate,
+    )
+
+    prompt_path = materialize_prompt_for_phase(
+        phase="development_commit",
+        workspace=workspace,
+        pipeline_policy=policy.pipeline,
+        session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.COMMIT),
+        workspace_root=tmp_path,
+    )
+
+    rendered = workspace.read(prompt_path)
+    assert "\udca4" not in rendered
+    payload_path = tmp_path / ".agent" / "tmp" / "prompt_payloads" / "development_commit_diff.txt"
+    assert payload_path.exists()
+    written = payload_path.read_text(encoding="utf-8")
+    assert "\udca4" not in written
