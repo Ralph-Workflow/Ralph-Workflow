@@ -14,19 +14,54 @@ views used by CLI diagnostics and listing commands.
    ``Console``-only fallbacks. Callers must construct a ``DisplayContext``
    via ``make_display_context()`` before invoking renderers.
 
-   **Width and mode precedence (highest to lowest):**
+   **Invariant enforcement:** ``tests/display/test_di_invariants.py`` scans
+   every file under ``ralph/display/`` and ``ralph/banner.py`` to assert that
+   ``Console(`` and ``Theme(`` only appear in ``theme.py``, and that
+   ``os.environ``/``os.getenv`` only appear in ``context.py`` and
+   ``content_condenser.py``.
 
-   1. ``RALPH_FORCE_NARROW`` env var (set to ``1``/``true``/``yes``/``on``)
-      forces ``compact`` mode regardless of terminal width.
-   2. ``force_width`` argument to ``make_display_context()`` overrides everything.
-   3. ``COLUMNS`` env var (positive integer) overrides the console's width.
-   4. ``console.width`` is the default fallback.
+   **Environment variable precedence (highest to lowest):**
 
-   **Color precedence:** ``NO_COLOR`` env var (any value) disables color.
-   ``FORCE_COLOR`` (any value) enables color. ``NO_COLOR`` takes precedence.
+   - ``RALPH_FORCE_NARROW`` (``1``/``true``/``yes``/``on``) — forces
+     ``compact`` mode regardless of terminal width.
+   - ``force_width`` argument to ``make_display_context()`` — overrides
+     terminal width detection.
+   - ``COLUMNS`` (positive integer) — overrides the console's auto-detected
+     width.
+   - ``console.width`` — the default fallback from Rich's terminal detection.
 
-   **Mode thresholds:** ``compact`` (< 60 cols), ``medium`` (60-99 cols),
-   ``wide`` (>= 100 cols).
+   **Color environment variables:**
+
+   - ``NO_COLOR`` (any value) — disables all color output.  Takes precedence
+     over ``FORCE_COLOR``.
+   - ``FORCE_COLOR`` (any value) — enables color output on non-TTY streams.
+
+   **Glyph environment variables:**
+
+   - ``RALPH_FORCE_ASCII`` (``1``/``true``/``yes``/``on``) — disables Unicode
+     glyphs; renderers use ASCII fallbacks (e.g. ``->`` instead of ``→``).
+   - ``TERM=dumb`` — disables Unicode glyphs via the same fallback path.
+
+   **Streaming environment variables:**
+
+   - ``RALPH_STREAMING_DEDUP`` (``0``/``false``/``no``/``off``) — disables
+     consecutive-fragment deduplication in streaming blocks.
+   - ``RALPH_STREAMING_CHECKPOINTS`` (``0``/``false``/``no``/``off``) —
+     disables periodic checkpoint lines during long streaming blocks.
+
+   **Long-content environment variables:**
+
+   - ``RALPH_LONG_CONTENT_SUMMARY`` (``0``/``false``/``no``/``off``) —
+     disables fallback-headline generation for long content blocks
+     (handled in ``content_condenser.py``).
+   - ``RALPH_LONG_CONTENT_AI_SUMMARY`` (``0``/``false``/``no``/``off``) —
+     disables AI-based headline generation for long content blocks.
+
+   **Mode thresholds:**
+
+   - ``compact`` — terminal width < 60 columns.
+   - ``medium`` — terminal width 60-99 columns.
+   - ``wide`` — terminal width ≥ 100 columns.
 
    **SIGWINCH refresh (POSIX):** On non-Windows platforms, a SIGWINCH signal
    handler is installed via ``install_sigwinch_refresher()`` at pipeline start.

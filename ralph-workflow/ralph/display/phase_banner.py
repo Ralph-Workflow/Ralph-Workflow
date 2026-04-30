@@ -136,8 +136,9 @@ def _render_transition_banner(
         c.print(Rule(style=options.style))
 
     banner = Text()
+    arrow = display_context.glyph_for("arrow")
     banner.append(f"  {options.from_label}", style="theme.text.muted")
-    banner.append(" \u2192 ", style="theme.text.emphasis")
+    banner.append(f" {arrow} ", style="theme.text.emphasis")
     banner.append(options.to_label, style=options.style)
     if options.context:
         detail = "  ".join(f"{k}={v}" for k, v in options.context.items())
@@ -194,7 +195,8 @@ def show_phase_transition(
         if display_context.mode != "compact":
             display_context.console.print()
         title = Text()
-        title.append(f"{from_label} \u2192 {to_label}")
+        arrow = display_context.glyph_for("arrow")
+        title.append(f"{from_label} {arrow} {to_label}")
         if description:
             title.append(f"  {description}", style="theme.text.dim_italic")
         display_context.console.print(Rule(title=title, style=style))
@@ -243,7 +245,8 @@ def show_phase_start(
     label = _phase_label(phase)
 
     line = Text()
-    line.append("\u25b6 ", style=style)
+    start_glyph = display_context.glyph_for("start")
+    line.append(f"{start_glyph} ", style=style)
     line.append(label, style=style)
 
     if ctx is not None:
@@ -346,7 +349,8 @@ def show_phase_complete(
     label = _phase_label(phase)
 
     line = Text()
-    line.append("\u2713 ", style=style)
+    success_glyph = display_context.glyph_for("success")
+    line.append(f"{success_glyph} ", style=style)
     line.append(f"{label} complete", style=style)
     if decision is not None:
         line.append(f" \u2014 {decision}", style="theme.text.emphasis")
