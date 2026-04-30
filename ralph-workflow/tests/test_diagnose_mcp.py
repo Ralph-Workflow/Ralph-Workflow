@@ -24,13 +24,12 @@ FAKE_STDIO_MCP = PACKAGE_ROOT / "tests" / "fixtures" / "fake_stdio_mcp.py"
 pytestmark = pytest.mark.timeout_seconds(20)
 
 
-def _attach_console(monkeypatch: pytest.MonkeyPatch) -> StringIO:
+def _make_test_console() -> tuple[Console, StringIO]:
     stream = StringIO()
     console = Console(
         file=stream, force_terminal=False, color_system=None, width=200, theme=RALPH_THEME
     )
-    monkeypatch.setattr(diagnose_module, "console", console)
-    return stream
+    return console, stream
 
 
 def _write_fake_stdio_mcp_toml(workspace: Path) -> None:
@@ -57,10 +56,10 @@ def test_diagnose_renders_custom_mcp_tables_with_real_stdio_fixture(
 ) -> None:
     _write_fake_stdio_mcp_toml(tmp_path)
     monkeypatch.setenv("HOME", str(tmp_path / "fake-home"))
-    stream = _attach_console(monkeypatch)
+    console, stream = _make_test_console()
     workspace_scope = WorkspaceScope(tmp_path)
 
-    diagnose_module._check_mcp_servers(workspace_scope)
+    diagnose_module._check_mcp_servers(workspace_scope, console=console)
 
     output = stream.getvalue()
     assert "Custom MCP Servers" in output
@@ -73,12 +72,12 @@ def test_diagnose_renders_custom_mcp_tables_with_real_stdio_fixture(
 
 
 def test_diagnose_handles_workspace_with_no_custom_mcp_servers(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    tmp_path: Path,
 ) -> None:
-    stream = _attach_console(monkeypatch)
+    console, stream = _make_test_console()
     workspace_scope = WorkspaceScope(tmp_path)
 
-    diagnose_module._check_mcp_servers(workspace_scope)
+    diagnose_module._check_mcp_servers(workspace_scope, console=console)
 
     output = stream.getvalue()
     assert "Custom MCP Servers" in output

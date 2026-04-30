@@ -125,16 +125,25 @@ def display_status_summary(
     c.print(table)
 
 
-def create_progress_bar() -> Progress:
+def create_progress_bar(
+    console: Console | None = None,
+    display_context: DisplayContext | None = None,
+) -> Progress:
     """Create a configured progress bar.
+
+    Args:
+        console: Rich console for output.
+        display_context: Optional display context for adaptive layout.
 
     Returns:
         Configured Progress instance.
     """
+    c = _resolve_console(console, display_context)
     return Progress(
         SpinnerColumn(),
         TextColumn("[progress.description]{task.description}"),
         BarColumn(),
         TaskProgressColumn(),
+        console=c,
         expand=False,
     )

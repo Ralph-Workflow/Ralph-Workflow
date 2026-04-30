@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 from rich.table import Table
 
 from ralph.config.models import AgentConfig
-from ralph.display.context import make_display_context
+from ralph.display.context import DisplayContext, make_display_context
 
 if TYPE_CHECKING:
     from rich.console import Console
@@ -21,14 +21,24 @@ if TYPE_CHECKING:
 AgentTable = Mapping[str, AgentConfig]
 
 
-def display_agents_table(agents: AgentTable, console: Console | None = None) -> None:
+def display_agents_table(
+    agents: AgentTable,
+    console: Console | None = None,
+    display_context: DisplayContext | None = None,
+) -> None:
     """Display a formatted table of agents.
 
     Args:
         agents: Dictionary of agent configurations.
         console: Rich console for output.
+        display_context: Optional display context for adaptive layout.
     """
-    c = console if console is not None else make_display_context().console
+    if display_context is not None:
+        c = display_context.console
+    elif console is not None:
+        c = console
+    else:
+        c = make_display_context().console
     table = Table(title="Configured Agents", show_header=True)
     table.add_column("Name", style="theme.cat.meta")
     table.add_column("Command")
@@ -44,14 +54,24 @@ def display_agents_table(agents: AgentTable, console: Console | None = None) -> 
     c.print(table)
 
 
-def display_providers_table(providers: list[str], console: Console | None = None) -> None:
+def display_providers_table(
+    providers: list[str],
+    console: Console | None = None,
+    display_context: DisplayContext | None = None,
+) -> None:
     """Display a formatted table of providers.
 
     Args:
         providers: List of provider names.
         console: Rich console for output.
+        display_context: Optional display context for adaptive layout.
     """
-    c = console if console is not None else make_display_context().console
+    if display_context is not None:
+        c = display_context.console
+    elif console is not None:
+        c = console
+    else:
+        c = make_display_context().console
     table = Table(title="Available Providers", show_header=True)
     table.add_column("Provider", style="theme.cat.meta")
 

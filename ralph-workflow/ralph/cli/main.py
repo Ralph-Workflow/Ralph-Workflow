@@ -45,8 +45,11 @@ from ralph.workspace.scope import resolve_workspace_scope
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
 
+    from rich.console import Console
+
     from ralph.agents.registry import AgentRegistry
     from ralph.config.models import AgentConfig
+    from ralph.display.context import DisplayContext
 
 
 @dataclass(frozen=True)
@@ -98,9 +101,13 @@ app = typer.Typer(
     rich_markup_mode="rich",
     suggest_commands=True,
 )
-console = _make_display_context().console
 
 _typer_get_command = typer.main.get_command
+
+
+def _get_cli_context() -> DisplayContext:
+    """Resolve a fresh DisplayContext for the current terminal environment."""
+    return _make_display_context()
 
 
 def _prepare_init_args(args: Sequence[str] | None) -> list[str] | None:
@@ -161,14 +168,15 @@ typer.main.get_command = _get_command_with_optional_init
 typer.testing._get_command = _get_command_with_optional_init  # type: ignore[attr-defined]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
 
 
-def version_callback(version: bool) -> None:
+def version_callback(version: bool, ctx: DisplayContext | None = None) -> None:
     """Print version information."""
     if version:
+        c = ctx.console if ctx is not None else _get_cli_context().console
         version_text = Text()
         version_text.append("Ralph Workflow", style="theme.banner.title")
         version_text.append(" version ")
         version_text.append(__version__, style="theme.banner.version")
-        console.print(version_text)
+        c.print(version_text)
         raise typer.Exit()
 
 
@@ -213,17 +221,19 @@ def _try_load_registry() -> AgentRegistry | None:
         return None
 
 
-def _bootstrap_global_configs() -> None:
+def _bootstrap_global_configs(display_context: DisplayContext | None = None) -> None:
     """Create user-global config files from bundled templates if they don't exist."""
     results = [ensure_global_config(), ensure_global_mcp_config()]
     registry = None
     if any(r.action in {"created", "regenerated"} for r in results):
         registry = _try_load_registry()
-    emit_first_run_welcome(console, results, agent_registry=registry)
+    ctx = display_context if display_context is not None else _get_cli_context()
+    emit_first_run_welcome(ctx.console, results, agent_registry=registry, display_context=ctx)
 
 
-def _handle_regenerate_config() -> None:
+def _handle_regenerate_config(*, console: Console | None = None) -> None:
     """Regenerate global and local configs from bundled defaults, backing up existing files."""
+    c = console if console is not None else _get_cli_context().console
     agent_dir: RuntimePath | None
     try:
         scope = resolve_workspace_scope()
@@ -235,12 +245,12 @@ def _handle_regenerate_config() -> None:
     if results:
         created_or_regenerated = [r for r in results if r.action in {"created", "regenerated"}]
         if created_or_regenerated:
-            emit_first_run_welcome(console, results, is_regenerate=True)
+            emit_first_run_welcome(c, results, is_regenerate=True)
         else:
             msg = "No configs needed regeneration (all files up-to-date)"
-            console.print(Text(msg, style="theme.text.muted"))
+            c.print(Text(msg, style="theme.text.muted"))
     else:
-        console.print(Text("No configs found to regenerate", style="theme.text.muted"))
+        c.print(Text("No configs found to regenerate", style="theme.text.muted"))
 
 
 def _handle_early_exit_flags(
@@ -460,7 +470,10 @@ def main(  # noqa: PLR0913
 
     verbosity = _resolve_effective_verbosity(verbosity, quiet=quiet, debug=debug)
 
-    _bootstrap_global_configs()
+    _cli_ctx = _get_cli_context()
+    _console = _cli_ctx.console
+
+    _bootstrap_global_configs(display_context=_cli_ctx)
 
     # Set up logging based on verbosity
     _configure_logging(verbosity)
@@ -489,16 +502,16 @@ def main(  # noqa: PLR0913
     if exit_code is not None:
         raise typer.Exit(code=exit_code)
 
-    exit_code = _handle_check_config(config, cli_overrides, check_config)
+    exit_code = _handle_check_config(config, cli_overrides, check_config, console=_console)
     if exit_code is not None:
         raise typer.Exit(code=exit_code)
 
-    exit_code = _handle_check_mcp(check_mcp)
+    exit_code = _handle_check_mcp(check_mcp, console=_console)
     if exit_code is not None:
         raise typer.Exit(code=exit_code)
 
     if diagnose:
-        exit_code = diagnose_command(_config_path(config), cli_overrides)
+        exit_code = diagnose_command(_config_path(config), cli_overrides, _cli_ctx)
         raise typer.Exit(code=exit_code)
 
     if init is not None:
@@ -506,12 +519,12 @@ def main(  # noqa: PLR0913
         raise typer.Exit()
 
     if regenerate_config:
-        _handle_regenerate_config()
+        _handle_regenerate_config(console=_console)
         raise typer.Exit()
 
     if inspect_checkpoint:
         summary = ckpt.inspect()
-        console.print(summary)
+        _console.print(summary)
         raise typer.Exit()
 
     exit_code = _handle_commit_plumbing(
@@ -531,7 +544,9 @@ def main(  # noqa: PLR0913
         return
 
     # Run the main pipeline
-    exit_code = _run_pipeline(config, cli_overrides, dry_run, resume, no_resume, verbosity)
+    exit_code = _run_pipeline(
+        config, cli_overrides, dry_run, resume, no_resume, verbosity, console=_console
+    )
     raise typer.Exit(code=exit_code)
 
 
@@ -592,6 +607,8 @@ def _handle_check_config(
     config: str | None,
     cli_overrides: dict[str, object],
     check_config: bool,
+    *,
+    console: Console | None = None,
 ) -> int | None:
     """Handle --check-config flag.
 
@@ -599,24 +616,26 @@ def _handle_check_config(
         config: Path to config file.
         cli_overrides: CLI overrides dict.
         check_config: Whether flag was set.
+        console: Rich console for output.
 
     Returns:
         Exit code or None to continue.
     """
     if not check_config:
         return None
+    c = console if console is not None else _get_cli_context().console
     try:
         config_path = _config_path(config)
         workspace_scope = None if config_path is not None else resolve_workspace_scope()
         load_config(config_path, cli_overrides, workspace_scope=workspace_scope)
-        console.print(Text("Configuration is valid", style="theme.status.success"))
+        c.print(Text("Configuration is valid", style="theme.status.success"))
         return 0
     except Exception as e:
         logger.error("Configuration is invalid: {}", e)
         return 1
 
 
-def _handle_check_mcp(check_mcp: bool) -> int | None:
+def _handle_check_mcp(check_mcp: bool, *, console: Console | None = None) -> int | None:
     """Handle --check-mcp flag.
 
     Runs the same startup validation the pipeline runs, without starting
@@ -626,6 +645,7 @@ def _handle_check_mcp(check_mcp: bool) -> int | None:
     """
     if not check_mcp:
         return None
+    c = console if console is not None else _get_cli_context().console
     from ralph.pipeline import runner as runner_module  # noqa: PLC0415
 
     try:
@@ -635,9 +655,9 @@ def _handle_check_mcp(check_mcp: bool) -> int | None:
         logger.error("MCP validation failed: {}", e)
         return 1
     if rc == 0:
-        console.print(Text("MCP servers validated successfully", style="theme.status.success"))
+        c.print(Text("MCP servers validated successfully", style="theme.status.success"))
     else:
-        console.print(Text("MCP validation failed — see logs", style="theme.status.error"))
+        c.print(Text("MCP validation failed — see logs", style="theme.status.error"))
     return rc
 
 
@@ -670,6 +690,8 @@ def _run_pipeline(  # noqa: PLR0913
     resume: bool,
     no_resume: bool,
     verbosity: Verbosity = Verbosity.VERBOSE,
+    *,
+    console: Console | None = None,
 ) -> int:
     """Run the main pipeline.
 
@@ -679,10 +701,13 @@ def _run_pipeline(  # noqa: PLR0913
         dry_run: Whether to do dry run.
         resume: Whether to resume.
         no_resume: Whether to ignore checkpoint.
+        verbosity: Verbosity level.
+        console: Rich console for output.
 
     Returns:
         Exit code.
     """
+    c = console if console is not None else _get_cli_context().console
     try:
         exit_code = run_pipeline(
             config_path=_config_path(config),
@@ -693,7 +718,7 @@ def _run_pipeline(  # noqa: PLR0913
         )
         return exit_code
     except KeyboardInterrupt:
-        console.print(Text("\nInterrupted by user", style="theme.status.warning"))
+        c.print(Text("\nInterrupted by user", style="theme.status.warning"))
         return 130
     except Exception as e:
         logger.exception("Pipeline failed: {}")
@@ -701,7 +726,7 @@ def _run_pipeline(  # noqa: PLR0913
         err_text.append("Error:", style="theme.status.error")
         err_text.append(" ")
         err_text.append(str(e))
-        console.print(err_text)
+        c.print(err_text)
         return 1
 
 

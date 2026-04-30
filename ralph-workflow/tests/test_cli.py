@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import os
 from contextlib import contextmanager
+from io import StringIO
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
 
 import pytest
 import rich_click as click
+from rich.console import Console
 from typer.main import get_command
 from typer.testing import CliRunner as TyperCliRunner
 
@@ -28,6 +30,7 @@ from ralph.cli.main import (
     app,
 )
 from ralph.config.enums import ReviewDepth, Verbosity
+from ralph.display.theme import RALPH_THEME
 from ralph.workspace.scope import WorkspaceScope
 
 RUN_PIPELINE_SUCCESS = 42
@@ -256,16 +259,12 @@ def test_handle_check_config_success(monkeypatch: pytest.MonkeyPatch) -> None:
     """Check config returns 0 and prints a success banner."""
 
     monkeypatch.setattr("ralph.cli.main.load_config", lambda *args, **kwargs: object())
-    printed: list[str] = []
+    stream = StringIO()
+    console = Console(file=stream, force_terminal=False, color_system=None, theme=RALPH_THEME)
 
-    def fake_console_print(message: object) -> None:
-        printed.append(str(message))
-
-    monkeypatch.setattr("ralph.cli.main.console.print", fake_console_print)
-
-    exit_code = _handle_check_config(None, {}, True)
+    exit_code = _handle_check_config(None, {}, True, console=console)
     assert exit_code == 0
-    assert printed and "Configuration is valid" in printed[0]
+    assert "Configuration is valid" in stream.getvalue()
 
 
 def test_handle_check_config_failure(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -293,13 +292,11 @@ def test_handle_check_mcp_flag_returns_zero_when_validation_passes(
     monkeypatch.setattr("ralph.cli.main.resolve_workspace_scope", lambda: scope)
 
     monkeypatch.setattr(runner_module, "_validate_custom_mcp_servers", lambda _root: 0)
-    printed: list[str] = []
-    monkeypatch.setattr(
-        "ralph.cli.main.console.print", lambda message: printed.append(str(message))
-    )
+    stream = StringIO()
+    console = Console(file=stream, force_terminal=False, color_system=None, theme=RALPH_THEME)
 
-    assert _handle_check_mcp(True) == 0
-    assert printed and "MCP servers validated successfully" in printed[0]
+    assert _handle_check_mcp(True, console=console) == 0
+    assert "MCP servers validated successfully" in stream.getvalue()
 
 
 def test_handle_check_mcp_flag_returns_one_on_validation_failure(
@@ -310,13 +307,11 @@ def test_handle_check_mcp_flag_returns_one_on_validation_failure(
     monkeypatch.setattr("ralph.cli.main.resolve_workspace_scope", lambda: scope)
 
     monkeypatch.setattr(runner_module, "_validate_custom_mcp_servers", lambda _root: 1)
-    printed: list[str] = []
-    monkeypatch.setattr(
-        "ralph.cli.main.console.print", lambda message: printed.append(str(message))
-    )
+    stream = StringIO()
+    console = Console(file=stream, force_terminal=False, color_system=None, theme=RALPH_THEME)
 
-    assert _handle_check_mcp(True) == 1
-    assert printed and "MCP validation failed" in printed[0]
+    assert _handle_check_mcp(True, console=console) == 1
+    assert "MCP validation failed" in stream.getvalue()
 
 
 def test_handle_list_agents_injects_workspace_scope_for_implicit_config(
@@ -438,14 +433,14 @@ def test_run_pipeline_keyboard_interrupt(monkeypatch: pytest.MonkeyPatch) -> Non
         "ralph.cli.main.run_pipeline",
         lambda *args, **kwargs: (_ for _ in ()).throw(KeyboardInterrupt()),
     )
-    printed: list[str] = []
-    monkeypatch.setattr(
-        "ralph.cli.main.console.print", lambda message: printed.append(str(message))
-    )
+    stream = StringIO()
+    console = Console(file=stream, force_terminal=False, color_system=None, theme=RALPH_THEME)
 
-    exit_code = _run_pipeline(None, {}, dry_run=False, resume=False, no_resume=False)
+    exit_code = _run_pipeline(
+        None, {}, dry_run=False, resume=False, no_resume=False, console=console
+    )
     assert exit_code == KEYBOARD_INTERRUPT_EXIT_CODE
-    assert printed and "Interrupted by user" in printed[0]
+    assert "Interrupted by user" in stream.getvalue()
 
 
 def test_run_pipeline_exception(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -461,15 +456,15 @@ def test_run_pipeline_exception(monkeypatch: pytest.MonkeyPatch) -> None:
         logged.append(str(message))
 
     monkeypatch.setattr("ralph.cli.main.logger.exception", capture_exception)
-    printed: list[str] = []
-    monkeypatch.setattr(
-        "ralph.cli.main.console.print", lambda message: printed.append(str(message))
-    )
+    stream = StringIO()
+    console = Console(file=stream, force_terminal=False, color_system=None, theme=RALPH_THEME)
 
-    exit_code = _run_pipeline(None, {}, dry_run=False, resume=False, no_resume=False)
+    exit_code = _run_pipeline(
+        None, {}, dry_run=False, resume=False, no_resume=False, console=console
+    )
     assert exit_code == 1
     assert logged == ["Pipeline failed: {}"]
-    assert printed and "Error" in printed[0]
+    assert "Error" in stream.getvalue()
 
 
 def test_build_cli_overrides_sets_values() -> None:

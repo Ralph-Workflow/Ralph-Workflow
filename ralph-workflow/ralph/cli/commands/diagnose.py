@@ -16,7 +16,7 @@ from rich.text import Text
 from ralph.agents.availability import check_agent_availability
 from ralph.agents.registry import AgentRegistry
 from ralph.config.loader import load_config
-from ralph.display.context import make_display_context
+from ralph.display.context import DisplayContext, make_display_context
 from ralph.git.operations import find_repo_root, is_repo_clean
 from ralph.policy.loader import PolicyValidationError, load_policy
 from ralph.policy.validation import (
@@ -28,22 +28,25 @@ from ralph.workspace.scope import WorkspaceScope, resolve_workspace_scope
 if TYPE_CHECKING:
     from rich.console import Console
 
-console: Console = make_display_context().console
-
 
 def diagnose_command(
     config_path: Path | None = None,
     cli_overrides: dict[str, object] | None = None,
+    display_context: DisplayContext | None = None,
 ) -> int:
     """Run diagnostics on the Ralph Workflow environment.
 
     Args:
         config_path: Optional path to config file.
         cli_overrides: CLI flag overrides.
+        display_context: Optional display context for adaptive layout.
 
     Returns:
         Exit code (0 for success, 1 for errors, 2 for validation failures).
     """
+    ctx = display_context if display_context is not None else make_display_context()
+    console = ctx.console
+
     title = Text()
     title.append("Ralph Workflow Diagnostics", style="theme.banner.title")
     console.print()
@@ -52,15 +55,17 @@ def diagnose_command(
 
     workspace_scope = resolve_workspace_scope()
 
-    config_ok = _check_git_repo()
-    config_ok &= _check_configuration(config_path, cli_overrides)
-    agent_missing = _check_agents(cli_overrides)
+    config_ok = _check_git_repo(console=console)
+    config_ok &= _check_configuration(config_path, cli_overrides, console=console)
+    agent_missing = _check_agents(cli_overrides, console=console)
     config_ok &= not agent_missing
-    config_ok &= _check_mcp_servers(workspace_scope)
-    config_ok &= _check_workspace_files()
+    config_ok &= _check_mcp_servers(workspace_scope, console=console)
+    config_ok &= _check_workspace_files(console=console)
 
     # Pre-flight validation using policy system
-    validation_ok = _run_preflight_validation(config_path, cli_overrides, workspace_scope)
+    validation_ok = _run_preflight_validation(
+        config_path, cli_overrides, workspace_scope, console=console
+    )
 
     # Build and print next steps
     prompt_path = workspace_scope.root / "PROMPT.md"
@@ -81,7 +86,7 @@ def diagnose_command(
         prompt_exists=prompt_exists,
         prompt_has_sentinel=prompt_has_sentinel,
     )
-    _print_next_steps_panel(next_steps)
+    _print_next_steps_panel(next_steps, console=console)
 
     console.print()
 
@@ -139,8 +144,9 @@ def _build_next_steps(
     return steps
 
 
-def _print_next_steps_panel(steps: list[str]) -> None:
+def _print_next_steps_panel(steps: list[str], *, console: Console | None = None) -> None:
     """Print the Next steps panel to the console."""
+    c = console if console is not None else make_display_context().console
     content = Text()
     for i, step in enumerate(steps):
         if i > 0:
@@ -150,7 +156,7 @@ def _print_next_steps_panel(steps: list[str]) -> None:
     content.append("New to Ralph Workflow? ", style="theme.text.muted")
     content.append("docs/sphinx/getting-started.md", style="theme.text.muted")
     content.append(" — step-by-step walkthrough.", style="theme.text.muted")
-    console.print(
+    c.print(
         Panel(content, title="Next steps", border_style="theme.phase.planning", padding=(1, 2))
     )
 
@@ -159,6 +165,8 @@ def _run_preflight_validation(
     config_path: Path | None,
     cli_overrides: dict[str, object] | None,
     workspace_scope: WorkspaceScope,
+    *,
+    console: Console | None = None,
 ) -> bool:
     """Run pre-flight validation on policy configuration.
 
@@ -166,10 +174,12 @@ def _run_preflight_validation(
         config_path: Optional path to config file.
         cli_overrides: CLI flag overrides.
         workspace_scope: Workspace scope.
+        console: Rich console for output.
 
     Returns:
         True if validation passes, False otherwise.
     """
+    c = console if console is not None else make_display_context().console
     table = Table(title="Pre-flight Validation", show_header=False)
     table.add_column("Check", style="theme.cat.meta")
     table.add_column("Status")
@@ -203,7 +213,7 @@ def _run_preflight_validation(
                     style="theme.status.warning",
                 ),
             )
-            console.print(table)
+            c.print(table)
             return True
 
         # Load PolicyBundle for validation
@@ -215,27 +225,31 @@ def _run_preflight_validation(
 
         table.add_row("Agent chains", Text("Satisfiable", style="theme.status.success"))
         table.add_row("Recovery config", Text("Valid", style="theme.status.success"))
-        console.print(table)
+        c.print(table)
         return True
 
     except PolicyValidationError as e:
         table.add_row(
             "Policy validation", _status_text("Failed", e.message, "theme.status.error")
         )
-        console.print(table)
+        c.print(table)
         return False
     except Exception as e:
         table.add_row("Pre-flight", _status_text("Error", str(e), "theme.status.error"))
-        console.print(table)
+        c.print(table)
         return False
 
 
-def _check_git_repo() -> bool:
+def _check_git_repo(*, console: Console | None = None) -> bool:
     """Check git repository status.
+
+    Args:
+        console: Rich console for output.
 
     Returns:
         True if check passed, False otherwise.
     """
+    c = console if console is not None else make_display_context().console
     table = Table(title="Git Repository", show_header=False)
     table.add_column("Check", style="theme.cat.meta")
     table.add_column("Status")
@@ -245,7 +259,7 @@ def _check_git_repo() -> bool:
         table.add_row("Repository root", str(repo_root))
     except Exception as e:
         table.add_row("Repository", _status_text("Error", str(e), "theme.status.error"))
-        console.print(table)
+        c.print(table)
         return False
 
     try:
@@ -259,19 +273,27 @@ def _check_git_repo() -> bool:
     except Exception as e:
         table.add_row("Working tree", _status_text("Error", str(e), "theme.status.error"))
 
-    console.print(table)
+    c.print(table)
     return True
 
 
 def _check_configuration(
     config_path: Path | None,
     cli_overrides: dict[str, object] | None,
+    *,
+    console: Console | None = None,
 ) -> bool:
     """Check configuration validity.
+
+    Args:
+        config_path: Optional path to config file.
+        cli_overrides: CLI flag overrides.
+        console: Rich console for output.
 
     Returns:
         True if check passed, False otherwise.
     """
+    c = console if console is not None else make_display_context().console
     table = Table(title="Configuration", show_header=False)
     table.add_column("Check", style="theme.cat.meta")
     table.add_column("Status")
@@ -286,19 +308,28 @@ def _check_configuration(
         table.add_row("Checkpoint enabled", str(config.general.workflow.checkpoint_enabled))
     except Exception as e:
         table.add_row("Config loaded", _status_text("Error", str(e), "theme.status.error"))
-        console.print(table)
+        c.print(table)
         return False
 
-    console.print(table)
+    c.print(table)
     return True
 
 
-def _check_agents(cli_overrides: dict[str, object] | None) -> bool:
+def _check_agents(
+    cli_overrides: dict[str, object] | None,
+    *,
+    console: Console | None = None,
+) -> bool:
     """Check agent availability and return True if any agent is missing from PATH.
+
+    Args:
+        cli_overrides: CLI flag overrides.
+        console: Rich console for output.
 
     Returns:
         True if at least one agent is missing from PATH, False otherwise.
     """
+    c = console if console is not None else make_display_context().console
     table = Table(title="Agents")
     table.add_column("Agent", style="theme.cat.meta")
     table.add_column("Config")
@@ -332,15 +363,23 @@ def _check_agents(cli_overrides: dict[str, object] | None) -> bool:
                 table.add_row(name, config_cell, path_status)
     except Exception as e:
         table.add_row("Agents", _status_text("Error", str(e), "theme.status.error"), "-")
-        console.print(table)
+        c.print(table)
         return True
 
-    console.print(table)
+    c.print(table)
     return any_missing
 
 
-def _check_mcp_servers(workspace_scope: WorkspaceScope) -> bool:
+def _check_mcp_servers(
+    workspace_scope: WorkspaceScope,
+    *,
+    console: Console | None = None,
+) -> bool:
     """Render custom MCP server health and per-agent transport compatibility.
+
+    Args:
+        workspace_scope: Workspace scope.
+        console: Rich console for output.
 
     Returns:
         True if check passed, False otherwise.
@@ -348,6 +387,8 @@ def _check_mcp_servers(workspace_scope: WorkspaceScope) -> bool:
     from ralph.mcp.transport.common import mcp_toml_as_upstreams  # noqa: PLC0415
     from ralph.mcp.upstream.agent_probe import probe_agent_transports  # noqa: PLC0415
     from ralph.mcp.upstream.validation import validate_upstream_mcp_servers  # noqa: PLC0415
+
+    c = console if console is not None else make_display_context().console
 
     server_table = Table(title="Custom MCP Servers")
     server_table.add_column("Server", style="theme.cat.meta")
@@ -365,7 +406,7 @@ def _check_mcp_servers(workspace_scope: WorkspaceScope) -> bool:
             "-",
             "-",
         )
-        console.print(server_table)
+        c.print(server_table)
         return True
 
     try:
@@ -378,7 +419,7 @@ def _check_mcp_servers(workspace_scope: WorkspaceScope) -> bool:
             "-",
             "-",
         )
-        console.print(server_table)
+        c.print(server_table)
         return False
 
     for entry in report.servers:
@@ -399,7 +440,7 @@ def _check_mcp_servers(workspace_scope: WorkspaceScope) -> bool:
             detail or "-",
         )
 
-    console.print(server_table)
+    c.print(server_table)
 
     healthy_names = {r.name for r in report.servers if r.ok}
     healthy_servers = tuple(s for s in upstreams if s.name in healthy_names)
@@ -432,16 +473,20 @@ def _check_mcp_servers(workspace_scope: WorkspaceScope) -> bool:
             cells.get("opencode", Text("-")),
         )
 
-    console.print(probe_table)
+    c.print(probe_table)
     return True
 
 
-def _check_workspace_files() -> bool:
+def _check_workspace_files(*, console: Console | None = None) -> bool:
     """Check workspace files.
+
+    Args:
+        console: Rich console for output.
 
     Returns:
         True if check passed, False otherwise.
     """
+    c = console if console is not None else make_display_context().console
     table = Table(title="Workspace Files", show_header=False)
     table.add_column("File", style="theme.cat.meta")
     table.add_column("Status")
@@ -464,7 +509,7 @@ def _check_workspace_files() -> bool:
         else:
             table.add_row(file_label, Text("Not found", style="theme.status.warning"))
 
-    console.print(table)
+    c.print(table)
     return True
 
 

@@ -1,6 +1,9 @@
+from io import StringIO
+
 from rich.console import Console
 
 from ralph.display import status
+from ralph.display.context import make_display_context
 from ralph.display.theme import RALPH_THEME
 
 _PROGRESS_COMPLETED = 2
@@ -52,3 +55,35 @@ def test_display_status_summary_renders_metrics() -> None:
     assert "Review Pass │ 1/3" in output
     assert "Success     │ 7" in output
     assert "Failure     │ 2" in output
+
+
+def test_display_phase_uses_injected_display_context_width() -> None:
+    """display_phase uses the console from the injected DisplayContext."""
+    stream = StringIO()
+    console = Console(
+        file=stream, force_terminal=False, color_system=None, width=60, theme=RALPH_THEME
+    )
+    ctx = make_display_context(env={"COLUMNS": "60"})
+    import dataclasses  # noqa: PLC0415
+    recording_ctx = dataclasses.replace(ctx, console=console)
+
+    status.display_phase("Planning", iteration=1, total=3, display_context=recording_ctx)
+
+    output = stream.getvalue()
+    assert "Phase" in output
+    assert "Planning" in output
+    assert "Iteration 1 of 3" in output
+
+
+def test_create_progress_bar_uses_injected_display_context() -> None:
+    """create_progress_bar uses the console from the injected DisplayContext."""
+    stream = StringIO()
+    console = Console(
+        file=stream, force_terminal=False, color_system=None, theme=RALPH_THEME
+    )
+    ctx = make_display_context(env={"COLUMNS": "120"})
+    import dataclasses  # noqa: PLC0415
+    recording_ctx = dataclasses.replace(ctx, console=console)
+
+    progress = status.create_progress_bar(display_context=recording_ctx)
+    assert progress.console is console

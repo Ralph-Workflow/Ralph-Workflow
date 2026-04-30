@@ -11,7 +11,6 @@ import pytest
 from rich.console import Console
 from typer.testing import CliRunner
 
-import ralph.cli.commands.diagnose as diag_mod
 from ralph.agents.availability import check_agent_availability
 from ralph.agents.registry import AgentRegistry
 from ralph.cli.commands.diagnose import _build_next_steps, _check_agents
@@ -124,20 +123,16 @@ def test_diagnose_alias_path_status_rendered_in_cli(
     base_registry.register("my-alias", custom_agent)
 
     buf = StringIO()
-    original_console = diag_mod.console
+    buf_console = Console(file=buf, force_terminal=False, theme=RALPH_THEME)
 
-    diag_mod.console = Console(file=buf, force_terminal=False, theme=RALPH_THEME)
-    try:
-        with (
-            patch("ralph.cli.commands.diagnose.load_config", return_value=cfg),
-            patch(
-                "ralph.cli.commands.diagnose.AgentRegistry.from_config",
-                return_value=base_registry,
-            ),
-        ):
-            _check_agents(None)
-    finally:
-        diag_mod.console = original_console
+    with (
+        patch("ralph.cli.commands.diagnose.load_config", return_value=cfg),
+        patch(
+            "ralph.cli.commands.diagnose.AgentRegistry.from_config",
+            return_value=base_registry,
+        ),
+    ):
+        _check_agents(None, console=buf_console)
 
     output = buf.getvalue()
     lines = output.splitlines()
