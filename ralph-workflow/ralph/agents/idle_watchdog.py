@@ -130,6 +130,7 @@ class CorroborationSnapshot:
     scoped_child_count: int | None = None
     terminal_child_events_total: int | None = None
     last_activity_was_meaningful: bool | None = None
+    alive_by: str | None = None
 
 
 #: Corroborator callable type — advisory only, never changes the watchdog verdict.
@@ -424,6 +425,8 @@ class IdleWatchdog:
             )
         if current.last_activity_was_meaningful is False:
             diag["lifecycle_only_activity"] = True
+        if current.alive_by is not None:
+            diag["alive_by"] = current.alive_by
         return diag
 
     def _build_evidence_string(

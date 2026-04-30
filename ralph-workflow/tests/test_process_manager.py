@@ -449,3 +449,110 @@ def test_process_phase_scope_warns_on_termination_error() -> None:
     assert any("test-phase" in msg for msg in warning_messages), (
         f"Expected warning mentioning 'test-phase', got: {warning_messages}"
     )
+
+
+# ---------------------------------------------------------------------------
+# 15. ManagedProcess.descendant_snapshot() returns count and oldest age
+# ---------------------------------------------------------------------------
+
+
+class _FakePsutilProcess:
+    """Minimal psutil.Process-like fake for descendant_snapshot tests."""
+
+    def __init__(
+        self, pid: int, *, running: bool = True, status: str = "sleeping", create_time: float = 0.0
+    ) -> None:
+        self._pid = pid
+        self._running = running
+        self._status = status
+        self._create_time = create_time
+
+    def is_running(self) -> bool:
+        return self._running
+
+    def status(self) -> str:
+        return self._status
+
+    def create_time(self) -> float:
+        return self._create_time
+
+    def children(self, recursive: bool = False) -> list[_FakePsutilProcess]:
+        return []
+
+
+def test_has_live_descendant_counts_excludes_zombies() -> None:
+    """descendant_snapshot excludes zombie processes and returns only live count."""
+    pm = _make_pm()
+    handle = pm.spawn([PYTHON, "-c", "import time; time.sleep(30)"])
+    try:
+        # Build fake psutil children: one live, one zombie
+        live_child = _FakePsutilProcess(pid=1001, running=True, status="sleeping", create_time=0.0)
+        zombie_child = _FakePsutilProcess(pid=1002, running=True, status="zombie", create_time=0.0)
+
+        import ralph.process.manager as _mgr_mod  # noqa: PLC0415
+
+        class _FakePsutilModule:
+            NoSuchProcess = psutil.NoSuchProcess
+            AccessDenied = psutil.AccessDenied
+
+            def Process(self, pid: int) -> _FakePsutilProcess:  # noqa: N802
+                if pid == handle.pid:
+                    # Patch children to return our fakes
+                    class _RootWithChildren(_FakePsutilProcess):
+                        def children(self, recursive: bool = False) -> list[_FakePsutilProcess]:
+                            return [live_child, zombie_child]
+
+                    return _RootWithChildren(pid)
+                return _FakePsutilProcess(pid)
+
+        with patch.object(_mgr_mod, "psutil", _FakePsutilModule()):
+            count, oldest = handle.descendant_snapshot()
+
+        assert count == 1, f"Expected 1 live non-zombie descendant; got {count}"
+        assert oldest is not None
+    finally:
+        handle.terminate(grace_period_s=0.2)
+        get_process_manager().shutdown_all(grace_period_s=0)
+
+
+def test_has_live_descendant_counts_returns_oldest_age() -> None:
+    """descendant_snapshot returns the oldest live descendant age in seconds."""
+    pm = _make_pm()
+    handle = pm.spawn([PYTHON, "-c", "import time; time.sleep(30)"])
+    try:
+        import time as _time  # noqa: PLC0415
+        now = _time.monotonic()
+        older_age = 20.0
+        newer_age = 5.0
+        # Simulated create times: one 5s old, one 20s old
+        old_child = _FakePsutilProcess(
+            pid=2001, running=True, status="sleeping", create_time=now - older_age
+        )
+        new_child = _FakePsutilProcess(
+            pid=2002, running=True, status="running", create_time=now - newer_age
+        )
+
+        import ralph.process.manager as _mgr_mod  # noqa: PLC0415
+
+        class _FakePsutilModule:
+            NoSuchProcess = psutil.NoSuchProcess
+            AccessDenied = psutil.AccessDenied
+
+            def Process(self, pid: int) -> _FakePsutilProcess:  # noqa: N802
+                class _RootWithChildren(_FakePsutilProcess):
+                    def children(self, recursive: bool = False) -> list[_FakePsutilProcess]:
+                        return [old_child, new_child]
+
+                return _RootWithChildren(pid)
+
+        with patch.object(_mgr_mod, "psutil", _FakePsutilModule()):
+            count, oldest = handle.descendant_snapshot()
+
+        expected_count = 2
+        min_oldest_age = older_age - 1.0
+        assert count == expected_count, f"Expected {expected_count} live descendants; got {count}"
+        assert oldest is not None
+        assert oldest >= min_oldest_age, f"Expected oldest age >= {min_oldest_age}s; got {oldest}"
+    finally:
+        handle.terminate(grace_period_s=0.2)
+        get_process_manager().shutdown_all(grace_period_s=0)

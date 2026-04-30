@@ -67,6 +67,32 @@ Each phase uses an agent chain (for example, `claude/opus → opencode/minimax/M
 `max_retries` budget, Ralph Workflow falls over to the next agent in the chain with a clean
 state — no silent retries, no double-counting. Chain composition is validated pre-flight.
 
+## Child agent liveness classification
+
+Ralph Workflow distinguishes four child-agent liveness states based on fresh evidence rather
+than process existence alone:
+
+- **Active progressing** — child emitted a progress signal within `agent_child_progress_ttl_seconds` (default 45 s).
+- **Alive but quiet** — child process or label exists but no recent progress; within grace threshold.
+- **Hung or stale** — child process or label exists, but progress and heartbeat leases have expired.
+  Ralph Workflow stops waiting and escalates to a resumable-retry path rather than holding
+  `WAITING_ON_CHILD` open indefinitely.
+- **Exited confirmed** — child emitted an explicit terminal acknowledgement, or no fresh evidence
+  remains and no OS descendants are present.
+
+The key implication: **raw process existence no longer implies active child work.**
+A stale label or PID that has not renewed its progress lease within the configured TTL
+will not keep the parent waiting. Progress and heartbeat signals, not process presence,
+drive the liveness decision.
+
+Waiting status log lines include an `alive_by=` key that explains why WAITING_ON_CHILD
+is held open:
+
+- `alive_by=fresh_progress` — progress renewed within TTL
+- `alive_by=fresh_heartbeat_only` — heartbeat renewed but progress stale
+- `alive_by=os_descendant_only_stale_progress` — OS-level descendant only; registry is stale
+- `alive_by=stale_label_only` — label present but stale (warn-worthy; may escalate)
+
 ## Idle activity and session safety
 
 Idle timeout is based on transport activity signals, not only visible transcript text.

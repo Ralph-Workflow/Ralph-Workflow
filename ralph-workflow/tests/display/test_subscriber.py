@@ -225,3 +225,36 @@ def test_snapshot_includes_waiting_status_field(tmp_path: Path) -> None:
     assert snapshot is not None
     assert snapshot.waiting_status_line is not None
     assert "still active" in snapshot.waiting_status_line
+
+
+# ---------------------------------------------------------------------------
+# Task 7: alive_by diagnostic rendering in subscriber
+# ---------------------------------------------------------------------------
+
+
+def test_progress_event_with_alive_by_includes_it_in_line(tmp_path: Path) -> None:
+    """PROGRESS event with alive_by diagnostic shows it in the waiting status line."""
+    sub = _make_subscriber(tmp_path)
+    sub.record_waiting_status(
+        _event(WaitingStatusKind.PROGRESS, diagnostic={"alive_by": "fresh_progress"})
+    )
+    line = _last_line(sub)
+    assert line is not None
+    assert "alive_by=fresh_progress" in line
+
+
+def test_suspected_frozen_event_with_stale_label_includes_alive_by(tmp_path: Path) -> None:
+    """SUSPECTED_FROZEN with alive_by=stale_label_only includes it in the status line."""
+    sub = _make_subscriber(tmp_path)
+    sub.record_waiting_status(
+        _event(
+            WaitingStatusKind.SUSPECTED_FROZEN,
+            diagnostic={
+                "evidence": "time_only",
+                "alive_by": "stale_label_only",
+            },
+        )
+    )
+    line = _last_line(sub)
+    assert line is not None
+    assert "alive_by=stale_label_only" in line

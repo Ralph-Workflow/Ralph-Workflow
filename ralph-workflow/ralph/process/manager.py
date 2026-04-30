@@ -43,6 +43,7 @@ if TYPE_CHECKING:
         def kill(self) -> None: ...
         def is_running(self) -> bool: ...
         def status(self) -> str: ...
+        def create_time(self) -> float: ...
 
     class _PsutilModuleLike(Protocol):
         NoSuchProcess: type[BaseException]
@@ -210,6 +211,41 @@ class ManagedProcess:
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 continue
         return False
+
+    def descendant_snapshot(self) -> tuple[int, float | None]:
+        """Return (live_descendant_count, oldest_age_seconds) excluding zombies.
+
+        Returns:
+            Tuple of (count of live non-zombie descendants,
+                      age in seconds of the oldest live descendant, or None if none).
+        """
+        if psutil is None:
+            return (0, None)
+        try:
+            root = psutil.Process(self.pid)
+            descendants = root.children(recursive=True)
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            return (0, None)
+
+        import time as _time  # noqa: PLC0415
+        now = _time.monotonic()
+        count = 0
+        oldest_age: float | None = None
+        for child in descendants:
+            try:
+                if not (child.is_running() and child.status() != "zombie"):
+                    continue
+                count += 1
+                try:
+                    create_time = child.create_time()
+                    age = now - create_time
+                    if oldest_age is None or age > oldest_age:
+                        oldest_age = age
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    pass
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                continue
+        return (count, oldest_age)
 
     def __enter__(self) -> ManagedProcess:
         return self

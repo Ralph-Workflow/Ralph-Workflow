@@ -20,7 +20,6 @@ import subprocess
 import sys
 import threading
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import IO, TYPE_CHECKING, Protocol, cast, runtime_checkable
 
@@ -68,6 +67,7 @@ from ralph.mcp.transport.common import (
     set_upstream_mcp_config,
 )
 from ralph.mcp.transport.opencode import build_opencode_provider_config
+from ralph.process.child_liveness import ChildLivenessRegistry
 from ralph.process.liveness import DefaultLivenessProbe, LivenessProbe
 from ralph.process.manager import (
     ManagedProcess,
@@ -77,11 +77,6 @@ from ralph.process.manager import (
 )
 
 _MODELED_FLAG_PARTS = 2
-
-try:
-    import psutil as _invoke_psutil
-except ImportError:
-    _invoke_psutil = None  # type: ignore[assignment]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
 
 _NON_MEANINGFUL_ACTIVITY_KINDS: frozenset[AgentActivityKind] = frozenset(
     {AgentActivityKind.LIFECYCLE}
@@ -114,6 +109,14 @@ class InvokeOptions:
             WAITING_ON_CHILD. Does NOT affect timeout safety or ceiling math.
         suspect_waiting_on_child_seconds: Optional suspicion threshold in seconds;
             emits a warning event but does NOT shorten the hard-stop ceiling.
+        child_progress_ttl_seconds: Maximum seconds since last child progress signal
+            before the child is treated as not-progressing.
+        child_heartbeat_ttl_seconds: Maximum seconds since last child heartbeat before
+            heartbeat is considered stale.
+        child_stale_label_ttl_seconds: Grace period during which a child label may
+            persist after the underlying child evidence has gone stale.
+        child_exit_reconcile_seconds: Reconciliation window after stdout EOF during
+            which late terminal acks are still accepted.
     """
 
     model_flag: str | None = None
@@ -133,6 +136,10 @@ class InvokeOptions:
     max_session_seconds: float | None = None
     waiting_status_interval_seconds: float | None = None
     suspect_waiting_on_child_seconds: float | None = None
+    child_progress_ttl_seconds: float | None = None
+    child_heartbeat_ttl_seconds: float | None = None
+    child_stale_label_ttl_seconds: float | None = None
+    child_exit_reconcile_seconds: float | None = None
     pure: bool = False
     system_prompt_file: str | None = None
     phase: str | None = None
@@ -497,11 +504,13 @@ def invoke_agent(
     label_scope = None
     if runtime_env is not None:
         label_scope = runtime_env.get(str(AGENT_LABEL_SCOPE_ENV))
+    registry = _make_child_registry(opts)
     execution_strategy = strategy_for_transport(
         _agent_transport(config),
         label_scope=label_scope,
+        registry=registry,
     )
-    liveness_probe = DefaultLivenessProbe()
+    liveness_probe = DefaultLivenessProbe(registry=registry)
     monitor = _start_workspace_monitor(opts.workspace_path)
     policy = _policy_from_options(opts)
 
@@ -525,6 +534,30 @@ def invoke_agent(
         _log_workspace_completion(monitor)
     finally:
         _stop_workspace_monitor(monitor)
+
+
+_CHILD_PROGRESS_TTL_DEFAULT = 45.0
+_CHILD_HEARTBEAT_TTL_DEFAULT = 15.0
+_CHILD_STALE_LABEL_TTL_DEFAULT = 10.0
+_CHILD_EXIT_RECONCILE_DEFAULT = 5.0
+
+
+def _make_child_registry(opts: InvokeOptions) -> ChildLivenessRegistry:
+    """Create a new per-invoke ChildLivenessRegistry using config-driven TTL values."""
+    return ChildLivenessRegistry(
+        progress_ttl=opts.child_progress_ttl_seconds
+        if opts.child_progress_ttl_seconds is not None
+        else _CHILD_PROGRESS_TTL_DEFAULT,
+        heartbeat_ttl=opts.child_heartbeat_ttl_seconds
+        if opts.child_heartbeat_ttl_seconds is not None
+        else _CHILD_HEARTBEAT_TTL_DEFAULT,
+        stale_label_ttl=opts.child_stale_label_ttl_seconds
+        if opts.child_stale_label_ttl_seconds is not None
+        else _CHILD_STALE_LABEL_TTL_DEFAULT,
+        exit_reconcile=opts.child_exit_reconcile_seconds
+        if opts.child_exit_reconcile_seconds is not None
+        else _CHILD_EXIT_RECONCILE_DEFAULT,
+    )
 
 
 def _start_workspace_monitor(workspace_path: Path | None) -> WorkspaceMonitor | None:
@@ -873,24 +906,33 @@ def _read_lines_from_process(  # noqa: PLR0913,PLR0915
         scoped_active: bool | None = None
         scoped_count: int | None = None
         try:
-            active_records = get_process_manager().list_active()
-            desc_pids: set[int] = set()
-            if _invoke_psutil is not None:
-                try:
-                    root = _invoke_psutil.Process(handle.pid)
-                    desc_pids = {p.pid for p in root.children(recursive=True)}
-                except Exception:
-                    desc_pids = set()
-            scoped_recs = [r for r in active_records if r.pid in desc_pids]
-            scoped_count = len(scoped_recs)
-            scoped_active = scoped_count > 0
-            if scoped_recs:
-                now_utc = datetime.now(UTC)
-                oldest_secs = max(
-                    (now_utc - r.started_at).total_seconds() for r in scoped_recs
-                )
+            desc_count, desc_oldest = handle.descendant_snapshot()
+            scoped_count = desc_count
+            scoped_active = desc_count > 0
+            oldest_secs = desc_oldest
         except Exception:
             logger.debug("corroborator: process scan failed (suppressed)")
+        alive_by: str | None = None
+        reg = cast("ChildLivenessRegistry | None", getattr(strategy, "_registry", None))
+        if reg is not None:
+            try:
+                label_prefix = cast(
+                    "str | None",
+                    getattr(strategy, "_active_label_prefix", lambda: None)(),
+                )
+                reg_snap = reg.snapshot(label_prefix or "")
+                if reg_snap.has_fresh_progress:
+                    alive_by = "fresh_progress"
+                elif reg_snap.has_fresh_label and reg_snap.has_process:
+                    alive_by = "fresh_heartbeat_only"
+                elif reg_snap.has_process and not reg_snap.has_fresh_label:
+                    alive_by = "stale_label_only"
+                elif scoped_active:
+                    alive_by = "os_descendant_only_stale_progress"
+            except Exception:
+                logger.debug("corroborator: registry snapshot failed (suppressed)")
+        elif scoped_active and alive_by is None:
+            alive_by = "os_descendant_only_stale_progress"
         return CorroborationSnapshot(
             workspace_event_count=ws_count,
             oldest_child_seconds=oldest_secs,
@@ -898,6 +940,7 @@ def _read_lines_from_process(  # noqa: PLR0913,PLR0915
             scoped_child_count=scoped_count,
             terminal_child_events_total=terminal_child_events_counter[0],
             last_activity_was_meaningful=last_activity_meaningful[0],
+            alive_by=alive_by,
         )
 
     watchdog = IdleWatchdog(
@@ -1003,6 +1046,8 @@ def _read_lines_from_process(  # noqa: PLR0913,PLR0915
                         activity_signal.kind not in _NON_MEANINGFUL_ACTIVITY_KINDS
                     )
                     watchdog.record_activity()
+                if hasattr(strategy, "observe_line"):
+                    strategy.observe_line(queued_line)
                 yield queued_line
                 # Evaluate after every yield: SESSION_CEILING_EXCEEDED can fire even
                 # under continuous output; classify_quiet still consults the strategy

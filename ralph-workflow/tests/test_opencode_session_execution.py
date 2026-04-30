@@ -40,7 +40,8 @@ from ralph.config.models import AgentConfig, UnifiedConfig
 from ralph.pipeline import runner as runner_module
 from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.events import PipelineEvent
-from ralph.process.liveness import FakeLivenessProbe
+from ralph.process.child_liveness import ChildActivitySnapshot, ChildLivenessRegistry
+from ralph.process.liveness import DefaultLivenessProbe, FakeLivenessProbe
 from ralph.recovery.classifier import FailureCategory, FailureClassifier
 from ralph.workspace.scope import WorkspaceScope
 
@@ -271,18 +272,17 @@ class TestUnrelatedWorkerDoesNotSuppressTimeout:
             f"Related worker must keep the run in WAITING_ON_CHILD; got {state!r}"
         )
 
-    def test_unscoped_strategy_ignores_unrelated_agent_labels(self) -> None:
-        """Without a scope, Ralph-tracked agent labels must not keep the run alive."""
+    def test_unscoped_run_uses_descendant_and_lease_evidence(self) -> None:
+        """Without a scope, strategy uses registry-wide snapshot; empty registry + no descendants -> ACTIVE."""  # noqa: E501
         strategy = OpenCodeExecutionStrategy()  # no label_scope
-        probe = FakeLivenessProbe(
-            active_labels=frozenset({"agent:any-run:worker1"})
-        )
+        # FakeLivenessProbe with active=False: child_snapshot('') returns has_process=False
+        probe = FakeLivenessProbe(active=False)
         handle = _FakeHandle(has_descendants=False)
 
         state = strategy.classify_quiet(handle, probe)
 
         assert state == AgentExecutionState.ACTIVE, (
-            f"Unscoped strategy must ignore unrelated agent labels; got {state!r}"
+            f"Unscoped strategy with empty registry and no descendants must return ACTIVE; got {state!r}"  # noqa: E501
         )
 
 
@@ -596,7 +596,7 @@ class TestCheckProcessResultCompletionSeam:
         """Artifact on disk produces TERMINAL_COMPLETE without declare_complete."""
         artifact_dir = tmp_path / ".agent" / "artifacts"
         artifact_dir.mkdir(parents=True)
-        (artifact_dir / "development_result.json").write_text("{}")
+        (artifact_dir / "development_result.json").write_text('{"summary": "done"}')
 
         strategy = OpenCodeExecutionStrategy()
         handle = _FakeHandle(returncode=0)
@@ -629,6 +629,50 @@ class TestCheckProcessResultCompletionSeam:
                     execution_strategy=strategy,
                     workspace_path=tmp_path,
                     phase="development",  # has required artifact but file doesn't exist
+                    policy=TimeoutPolicy(idle_timeout_seconds=None, parent_exit_grace_seconds=0.0),
+                ),
+            )
+
+    def test_malformed_json_artifact_raises_resumable_exit(self, tmp_path: Path) -> None:
+        """An artifact that cannot be parsed as JSON must NOT set required_artifact_present."""
+        artifact_dir = tmp_path / ".agent" / "artifacts"
+        artifact_dir.mkdir(parents=True)
+        (artifact_dir / "development_result.json").write_text("not-valid-json")
+
+        strategy = OpenCodeExecutionStrategy()
+        handle = _FakeHandle(returncode=0)
+
+        with pytest.raises(OpenCodeResumableExitError):
+            _check_process_result(
+                cast("ManagedProcess", handle),
+                "opencode",
+                [],
+                _CompletionCheckOptions(
+                    execution_strategy=strategy,
+                    workspace_path=tmp_path,
+                    phase="development",
+                    policy=TimeoutPolicy(idle_timeout_seconds=None, parent_exit_grace_seconds=0.0),
+                ),
+            )
+
+    def test_empty_json_object_artifact_raises_resumable_exit(self, tmp_path: Path) -> None:
+        """An empty JSON dict artifact must NOT set required_artifact_present."""
+        artifact_dir = tmp_path / ".agent" / "artifacts"
+        artifact_dir.mkdir(parents=True)
+        (artifact_dir / "development_result.json").write_text("{}")
+
+        strategy = OpenCodeExecutionStrategy()
+        handle = _FakeHandle(returncode=0)
+
+        with pytest.raises(OpenCodeResumableExitError):
+            _check_process_result(
+                cast("ManagedProcess", handle),
+                "opencode",
+                [],
+                _CompletionCheckOptions(
+                    execution_strategy=strategy,
+                    workspace_path=tmp_path,
+                    phase="development",
                     policy=TimeoutPolicy(idle_timeout_seconds=None, parent_exit_grace_seconds=0.0),
                 ),
             )
@@ -906,6 +950,121 @@ class TestClassifyExitDefersWhenChildrenAlive:
         state = strategy.classify_exit(handle, signals)
 
         assert state == AgentExecutionState.WAITING_ON_CHILD
+
+
+# ---------------------------------------------------------------------------
+# (n2) registry-backed classify_exit evidence precedence
+# ---------------------------------------------------------------------------
+
+
+class TestRegistryBackedClassifyExit:
+    """classify_exit uses registry terminal_count to confirm all children exited."""
+
+    def test_observe_line_routes_progress_event_to_registry(self) -> None:
+        """A child_progress JSON line routed via observe_line updates registry progress."""
+        import json  # noqa: PLC0415
+
+        t = [0.0]
+        reg = ChildLivenessRegistry(
+            progress_ttl=45.0,
+            heartbeat_ttl=15.0,
+            stale_label_ttl=10.0,
+            exit_reconcile=5.0,
+            now=lambda: t[0],
+        )
+        strategy = OpenCodeExecutionStrategy(label_scope="scope/a", registry=reg)
+        # Register via spawn event so scope_prefix matches what observe_line uses.
+        spawn_line = json.dumps({"type": "child_started", "child_id": "c1"})
+        strategy.observe_line(spawn_line)
+        progress_line = json.dumps(
+            {"type": "child_progress", "child_id": "c1", "phase": "tool_call"}
+        )
+        strategy.observe_line(progress_line)
+
+        probe = DefaultLivenessProbe(registry=reg)
+        snap = probe.child_snapshot("agent:scope/a:")
+        assert snap.has_fresh_progress is True
+
+    def test_observe_line_routes_terminal_ack_to_registry(self) -> None:
+        """A child_complete JSON line routes terminal ack into the registry."""
+        import json  # noqa: PLC0415
+
+        t = [0.0]
+        reg = ChildLivenessRegistry(
+            progress_ttl=45.0,
+            heartbeat_ttl=15.0,
+            stale_label_ttl=10.0,
+            exit_reconcile=5.0,
+            now=lambda: t[0],
+        )
+        strategy = OpenCodeExecutionStrategy(label_scope="scope/a", registry=reg)
+        spawn_line = json.dumps({"type": "child_started", "child_id": "c1"})
+        strategy.observe_line(spawn_line)
+        terminal_line = json.dumps(
+            {"type": "child_complete", "child_id": "c1", "terminal_state": "complete"}
+        )
+        strategy.observe_line(terminal_line)
+
+        probe = DefaultLivenessProbe(registry=reg)
+        snap = probe.child_snapshot("agent:scope/a:")
+        assert snap.terminal_count == 1
+        assert snap.active_count == 0
+
+    def test_classify_exit_terminal_complete_when_all_children_acked(self) -> None:
+        """classify_exit returns TERMINAL_COMPLETE when registry shows all children done."""
+        import json  # noqa: PLC0415
+
+        t = [0.0]
+        reg = ChildLivenessRegistry(
+            progress_ttl=45.0,
+            heartbeat_ttl=15.0,
+            stale_label_ttl=10.0,
+            exit_reconcile=5.0,
+            now=lambda: t[0],
+        )
+        strategy = OpenCodeExecutionStrategy(label_scope="scope/a", registry=reg)
+        spawn_line = json.dumps({"type": "child_started", "child_id": "c1"})
+        strategy.observe_line(spawn_line)
+        terminal_line = json.dumps({"type": "child_complete", "child_id": "c1"})
+        strategy.observe_line(terminal_line)
+
+        probe = DefaultLivenessProbe(registry=reg)
+        handle = _FakeHandle(returncode=0, has_descendants=False)
+        signals = CompletionSignals(False, False, ())
+
+        state = strategy.classify_exit(handle, signals, liveness_probe=probe)
+
+        assert state == AgentExecutionState.TERMINAL_COMPLETE, (
+            f"Expected TERMINAL_COMPLETE after all children acked; got {state!r}"
+        )
+
+    def test_classify_exit_waiting_when_child_has_fresh_progress(self) -> None:
+        """classify_exit stays WAITING_ON_CHILD when registry shows fresh progress."""
+        import json  # noqa: PLC0415
+
+        t = [0.0]
+        reg = ChildLivenessRegistry(
+            progress_ttl=45.0,
+            heartbeat_ttl=15.0,
+            stale_label_ttl=10.0,
+            exit_reconcile=5.0,
+            now=lambda: t[0],
+        )
+        strategy = OpenCodeExecutionStrategy(label_scope="scope/a", registry=reg)
+        spawn_line = json.dumps({"type": "child_started", "child_id": "c1"})
+        strategy.observe_line(spawn_line)
+        progress_line = json.dumps({"type": "child_progress", "child_id": "c1"})
+        strategy.observe_line(progress_line)
+
+        probe = DefaultLivenessProbe(registry=reg)
+        handle = _FakeHandle(returncode=0, has_descendants=False)
+        signals = CompletionSignals(False, False, ())
+
+        state = strategy.classify_exit(handle, signals, liveness_probe=probe)
+
+        assert state == AgentExecutionState.WAITING_ON_CHILD, (
+            f"Expected WAITING_ON_CHILD with fresh progress; got {state!r}"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -1411,7 +1570,7 @@ class TestCheckProcessResultWaitsForLiveChildren:
         """
 
         class _FlippingProbe:
-            """Returns False on first any_agent_active call, True on subsequent calls."""
+            """Returns False on first call, True on subsequent calls."""
 
             def __init__(self) -> None:
                 self.call_count = 0
@@ -1419,6 +1578,18 @@ class TestCheckProcessResultWaitsForLiveChildren:
             def any_agent_active(self, label_prefix: str) -> bool:
                 self.call_count += 1
                 return self.call_count > 1
+
+            def child_snapshot(self, scope_prefix: str) -> object:
+                active = self.any_agent_active(scope_prefix)
+                return ChildActivitySnapshot(
+                    scope_prefix=scope_prefix,
+                    has_process=active,
+                    has_fresh_label=active,
+                    has_fresh_progress=active,
+                    oldest_live_child_seconds=None,
+                    active_count=1 if active else 0,
+                    terminal_count=0,
+                )
 
         probe = _FlippingProbe()
         strategy = OpenCodeExecutionStrategy()

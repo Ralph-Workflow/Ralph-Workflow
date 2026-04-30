@@ -6,6 +6,11 @@ escalating termination via psutil for cross-platform process-tree teardown
 (Linux, macOS, and Windows). No POSIX-only APIs are used.
 """
 
+from ralph.process.child_liveness import (  # noqa: F401
+    ChildActivitySnapshot,
+    ChildLivenessRecord,
+    ChildLivenessRegistry,
+)
 from ralph.process.manager import (
     ManagedAsyncProcess,
     ManagedProcess,

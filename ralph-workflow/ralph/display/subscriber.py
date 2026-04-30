@@ -29,6 +29,50 @@ _DECISION_LOG_MAX = 16
 _ANALYSIS_PHASES = frozenset({"development_analysis", "review_analysis"})
 
 
+def _format_waiting_status_line(event: object) -> str:
+    """Build the human-readable line for a WaitingStatusEvent."""
+    from ralph.agents.idle_watchdog import WaitingStatusEvent, WaitingStatusKind  # noqa: PLC0415,I001
+
+    assert isinstance(event, WaitingStatusEvent)
+    cum = f"{event.cumulative_seconds:.0f}"
+    ceil = f"{event.ceiling_seconds:.0f}"
+    run = f"{event.current_run_seconds:.0f}"
+    if event.kind == WaitingStatusKind.ENTERED:
+        return f"Background child work started waiting (cumulative={cum}s, ceiling={ceil}s)"
+    if event.kind == WaitingStatusKind.PROGRESS:
+        delta = event.diagnostic.get("workspace_event_delta")
+        alive_by = event.diagnostic.get("alive_by")
+        parts = [f"run={run}s", f"cumulative={cum}s", f"ceiling={ceil}s"]
+        if delta is not None:
+            parts.append(f"workspace_events_since_wait={delta}")
+        if alive_by is not None:
+            parts.append(f"alive_by={alive_by}")
+        return f"Background child work still active ({', '.join(parts)})"
+    if event.kind == WaitingStatusKind.SUSPECTED_FROZEN:
+        evidence = str(event.diagnostic.get("evidence", "unknown"))
+        alive_by = event.diagnostic.get("alive_by")
+        suffix = f", alive_by={alive_by}" if alive_by is not None else ""
+        return (
+            f"Background child work may be frozen"
+            f" (cumulative={cum}s, ceiling={ceil}s, evidence={evidence}{suffix})"
+        )
+    if event.kind == WaitingStatusKind.EXITED:
+        return f"Background child work resumed activity (run={run}s, cumulative={cum}s)"
+    scoped = event.diagnostic.get("scoped_child_active", "?")
+    oldest_val = event.diagnostic.get("oldest_child_seconds")
+    oldest_part = (
+        f", oldest_child_seconds={float(oldest_val):.0f}s"
+        if oldest_val is not None
+        else ""
+    )
+    return (
+        f"Background child work hit hard ceiling"
+        f" (cumulative={cum}s, ceiling={ceil}s,"
+        f" scoped_child_active={scoped}{oldest_part})"
+    )
+
+
+
 def _now_iso() -> str:
     return datetime.now(UTC).isoformat()
 
@@ -200,7 +244,7 @@ class PipelineSubscriber:
         if snapshot is not None:
             self._publish(snapshot)
 
-    def record_waiting_status(  # noqa: PLR0912
+    def record_waiting_status(
         self,
         event: object,
         *,
@@ -212,47 +256,7 @@ class PipelineSubscriber:
 
         if not isinstance(event, WaitingStatusEvent):
             return
-        cum = f"{event.cumulative_seconds:.0f}"
-        ceil = f"{event.ceiling_seconds:.0f}"
-        run = f"{event.current_run_seconds:.0f}"
-        if event.kind == WaitingStatusKind.ENTERED:
-            line = f"Background child work started waiting (cumulative={cum}s, ceiling={ceil}s)"
-        elif event.kind == WaitingStatusKind.PROGRESS:
-            delta = event.diagnostic.get("workspace_event_delta")
-            if delta is not None:
-                line = (
-                    f"Background child work still active"
-                    f" (run={run}s, cumulative={cum}s, ceiling={ceil}s,"
-                    f" workspace_events_since_wait={delta})"
-                )
-            else:
-                line = (
-                    f"Background child work still active"
-                    f" (run={run}s, cumulative={cum}s, ceiling={ceil}s)"
-                )
-        elif event.kind == WaitingStatusKind.SUSPECTED_FROZEN:
-            evidence = str(event.diagnostic.get("evidence", "unknown"))
-            line = (
-                f"Background child work may be frozen"
-                f" (cumulative={cum}s, ceiling={ceil}s, evidence={evidence})"
-            )
-        elif event.kind == WaitingStatusKind.EXITED:
-            line = f"Background child work resumed activity (run={run}s, cumulative={cum}s)"
-        elif event.kind == WaitingStatusKind.HARD_STOP:
-            scoped = event.diagnostic.get("scoped_child_active", "?")
-            oldest_val = event.diagnostic.get("oldest_child_seconds")
-            if oldest_val is not None:
-                oldest_str = f"{float(oldest_val):.0f}"
-                line = (
-                    f"Background child work hit hard ceiling"
-                    f" (cumulative={cum}s, ceiling={ceil}s,"
-                    f" scoped_child_active={scoped}, oldest_child_seconds={oldest_str}s)"
-                )
-            else:
-                line = (
-                    f"Background child work hit hard ceiling"
-                    f" (cumulative={cum}s, ceiling={ceil}s, scoped_child_active={scoped})"
-                )
+        line = _format_waiting_status_line(event)
         snapshots_to_publish: list[PipelineSnapshot] = []
         with self._lock:
             if unit_id is not None:

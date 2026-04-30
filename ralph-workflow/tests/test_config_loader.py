@@ -364,3 +364,47 @@ def test_load_config_suspect_threshold_roundtrips(
     config = load_config(workspace_scope=_scope_for(tmp_path))
 
     assert config.general.agent_suspect_waiting_on_child_seconds == _CUSTOM_SUSPECT_THRESHOLD
+
+
+# ---------------------------------------------------------------------------
+# Child-liveness TTL config knobs
+# ---------------------------------------------------------------------------
+
+
+def test_general_config_child_progress_ttl_default() -> None:
+    cfg = GeneralConfig()
+    assert cfg.agent_child_progress_ttl_seconds == 45.0  # noqa: PLR2004
+
+
+def test_general_config_child_heartbeat_ttl_default() -> None:
+    cfg = GeneralConfig()
+    assert cfg.agent_child_heartbeat_ttl_seconds == 15.0  # noqa: PLR2004
+
+
+def test_general_config_child_stale_label_ttl_default() -> None:
+    cfg = GeneralConfig()
+    assert cfg.agent_child_stale_label_ttl_seconds == 10.0  # noqa: PLR2004
+
+
+def test_general_config_child_exit_reconcile_default() -> None:
+    cfg = GeneralConfig()
+    assert cfg.agent_child_exit_reconcile_seconds == 5.0  # noqa: PLR2004
+
+
+def test_load_config_child_progress_ttl_roundtrips(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(
+        "ralph.config.loader.GLOBAL_CONFIG_PATH", tmp_path / GLOBAL_CONFIG_PATH.name
+    )
+    local_path = tmp_path / ".agent" / "ralph-workflow.toml"
+    local_path.parent.mkdir(parents=True)
+    local_path.write_text(
+        "[general]\nagent_child_progress_ttl_seconds = 90.0\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr("ralph.config.loader.LOCAL_CONFIG_PATH", local_path)
+
+    config = load_config(workspace_scope=_scope_for(tmp_path))
+
+    assert config.general.agent_child_progress_ttl_seconds == 90.0  # noqa: PLR2004

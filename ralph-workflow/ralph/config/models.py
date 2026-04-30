@@ -296,6 +296,35 @@ class GeneralConfig(_FrozenConfigModel):  # type: ignore[explicit-any]  # reason
             " agent_idle_max_waiting_on_child_seconds when set."
         ),
     )
+    agent_child_progress_ttl_seconds: float = Field(
+        default=45.0,
+        gt=0.0,
+        description=(
+            "Maximum seconds since last child progress signal"
+            " before the child is treated as not-progressing."
+        ),
+    )
+    agent_child_heartbeat_ttl_seconds: float = Field(
+        default=15.0,
+        gt=0.0,
+        description="Maximum seconds since last child heartbeat before heartbeat is stale.",
+    )
+    agent_child_stale_label_ttl_seconds: float = Field(
+        default=10.0,
+        gt=0.0,
+        description=(
+            "Grace period during which a child label may persist"
+            " after the underlying child evidence has gone stale."
+        ),
+    )
+    agent_child_exit_reconcile_seconds: float = Field(
+        default=5.0,
+        ge=0.0,
+        description=(
+            "Reconciliation window after stdout EOF during which"
+            " late terminal acks are still accepted."
+        ),
+    )
 
     @model_validator(mode="after")
     def _validate_session_ceiling(self) -> GeneralConfig:
@@ -318,6 +347,20 @@ class GeneralConfig(_FrozenConfigModel):  # type: ignore[explicit-any]  # reason
                 " agent_idle_max_waiting_on_child_seconds"
                 f" (got {self.agent_suspect_waiting_on_child_seconds}"
                 f" >= {self.agent_idle_max_waiting_on_child_seconds})"
+            )
+            raise ValueError(msg)
+        if self.agent_child_heartbeat_ttl_seconds > self.agent_child_progress_ttl_seconds:
+            msg = (
+                "agent_child_heartbeat_ttl_seconds must be <= agent_child_progress_ttl_seconds"
+                f" (got {self.agent_child_heartbeat_ttl_seconds}"
+                f" > {self.agent_child_progress_ttl_seconds})"
+            )
+            raise ValueError(msg)
+        if self.agent_child_stale_label_ttl_seconds > self.agent_child_progress_ttl_seconds:
+            msg = (
+                "agent_child_stale_label_ttl_seconds must be <= agent_child_progress_ttl_seconds"
+                f" (got {self.agent_child_stale_label_ttl_seconds}"
+                f" > {self.agent_child_progress_ttl_seconds})"
             )
             raise ValueError(msg)
         return self

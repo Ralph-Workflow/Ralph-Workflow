@@ -124,6 +124,69 @@ def test_invoke_agent_passes_idle_timeout_to_subprocess(
     assert getattr(captured.get("policy"), "idle_timeout_seconds", None) == _expected_idle_timeout
 
 
+def test_invoke_agent_probe_and_strategy_share_same_registry(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """DefaultLivenessProbe and OpenCodeExecutionStrategy share the same registry instance."""
+    config = AgentConfig(
+        cmd="opencode",
+        output_flag="--json-stream",
+        transport=AgentTransport.OPENCODE,
+    )
+    prompt_file = tmp_path / "PROMPT.md"
+    prompt_file.write_text("hello", encoding="utf-8")
+    captured: dict[str, object] = {}
+
+    def fake_run_subprocess_and_read_lines(  # noqa: PLR0913
+        cmd: list[str],
+        cfg: object,
+        show_progress: bool,
+        extra_env: object,
+        workspace_path: object,
+        *,
+        execution_strategy: object = None,
+        liveness_probe: object = None,
+        **_extra_kwargs: object,
+    ) -> list[str]:
+        captured["execution_strategy"] = execution_strategy
+        captured["liveness_probe"] = liveness_probe
+        return []
+
+    monkeypatch.setattr(
+        "ralph.agents.invoke._run_subprocess_and_read_lines",
+        fake_run_subprocess_and_read_lines,
+    )
+
+    list(
+        invoke_agent(
+            config,
+            str(prompt_file),
+            options=InvokeOptions(
+                show_progress=False,
+                workspace_path=tmp_path,
+                extra_env={str(AGENT_LABEL_SCOPE_ENV): "run-scope-x"},
+                child_progress_ttl_seconds=90.0,
+            ),
+        )
+    )
+
+    strategy = cast("OpenCodeExecutionStrategy", captured["execution_strategy"])
+    probe = captured["liveness_probe"]
+    strategy_registry = getattr(strategy, "_registry", None)
+    probe_registry = getattr(probe, "_registry", None)
+    assert strategy_registry is not None, "Strategy must have a non-None registry"
+    assert probe_registry is not None, "Probe must have a non-None registry"
+    assert strategy_registry is probe_registry, (
+        "Strategy and probe must share the same registry instance"
+    )
+    # Confirm config-driven TTL was applied
+    expected_ttl = 90.0
+    actual_ttl = strategy_registry._progress_ttl
+    assert actual_ttl == expected_ttl, (
+        f"Expected progress_ttl={expected_ttl} from InvokeOptions; got {actual_ttl}"
+    )
+
+
 def test_invoke_agent_scopes_opencode_liveness_to_agent_label_scope(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -3127,7 +3190,7 @@ def test_idle_timeout_fires_when_children_persist_past_hard_ceiling(
     # Always active — would infinite-defer under the old buggy code.
     monkeypatch.setattr(
         "ralph.agents.invoke.DefaultLivenessProbe",
-        lambda: FakeLivenessProbe(active=True),
+        lambda registry=None: FakeLivenessProbe(active=True),
     )
 
     clock = FakeClock()
@@ -3170,7 +3233,7 @@ def test_idle_timeout_defers_when_children_active_then_fires(
     fake_probe = SimpleNamespace(any_agent_active=_probe_active)
     monkeypatch.setattr(
         "ralph.agents.invoke.DefaultLivenessProbe",
-        lambda: fake_probe,
+        lambda registry=None: fake_probe,
     )
 
     clock = FakeClock()
@@ -3457,7 +3520,7 @@ def test_idle_timeout_defers_when_children_active_then_clears(
     probe = _ClockBasedLivenessProbe(clock, active_until=30.0)
     monkeypatch.setattr(
         "ralph.agents.invoke.DefaultLivenessProbe",
-        lambda: probe,
+        lambda registry=None: probe,
     )
 
     trigger = clock.wait_until(30.2)
@@ -3535,7 +3598,7 @@ def test_idle_timeout_children_persist_uses_distinct_reason_and_message(
     fake_probe = SimpleNamespace(any_agent_active=lambda label_prefix: True)
     monkeypatch.setattr(
         "ralph.agents.invoke.DefaultLivenessProbe",
-        lambda: fake_probe,
+        lambda registry=None: fake_probe,
     )
 
     with pytest.raises(AgentInactivityTimeoutError) as exc_info:

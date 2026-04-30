@@ -14,8 +14,9 @@ call declare_complete explicitly rather than relying on implicit success.
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -34,11 +35,14 @@ class CompletionSignals:
             on disk. False when the phase has no registered required artifact or
             the artifact file does not yet exist.
         artifact_types: Tuple of artifact type names found.
+        terminal_ack_seen: True when a child_terminal lifecycle ACK was received
+            from the OpenCode transport.
     """
 
     explicit_complete: bool
     required_artifact_present: bool
     artifact_types: tuple[str, ...]
+    terminal_ack_seen: bool = False
 
 
 def extract_explicit_completion(raw_output: list[str]) -> bool:
@@ -57,6 +61,18 @@ def extract_explicit_completion(raw_output: list[str]) -> bool:
     return any(_EXPLICIT_COMPLETION_MARKER in line for line in raw_output)
 
 
+def _artifact_is_schema_valid(artifact_path: Path) -> bool:
+    """Return True when the artifact file exists, parses as JSON, and is a non-empty dict."""
+    if not artifact_path.exists():
+        return False
+    try:
+        content = artifact_path.read_text(encoding="utf-8")
+        parsed = cast("object", json.loads(content))
+        return isinstance(parsed, dict) and len(parsed) > 0
+    except (OSError, json.JSONDecodeError, ValueError):
+        return False
+
+
 def evaluate_completion(
     workspace: Path,
     phase: str,
@@ -66,10 +82,11 @@ def evaluate_completion(
 
     explicit_complete is set from scanning raw_output for the declare_complete
     MCP tool marker, independently of artifact presence. required_artifact_present
-    is True only when the artifact file exists on disk for phases that have a
-    registered required artifact. Phases without a registered required artifact
-    always return required_artifact_present=False so OpenCode agents cannot
-    implicitly succeed — they must call declare_complete explicitly.
+    is True only when the artifact file exists on disk, parses as valid JSON,
+    and contains a non-empty dict for phases that have a registered required artifact.
+    Phases without a registered required artifact always return
+    required_artifact_present=False so OpenCode agents cannot implicitly succeed
+    — they must call declare_complete explicitly.
 
     Args:
         workspace: Workspace root path.
@@ -90,7 +107,7 @@ def evaluate_completion(
             artifact_types=(),
         )
     artifact_path = workspace / ra.json_path
-    present = artifact_path.exists()
+    present = _artifact_is_schema_valid(artifact_path)
     return CompletionSignals(
         explicit_complete=explicit,
         required_artifact_present=present,

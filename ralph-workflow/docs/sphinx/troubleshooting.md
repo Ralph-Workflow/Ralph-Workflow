@@ -123,6 +123,33 @@ Key fields:
 
 Use `ralph --inspect-checkpoint` to see what the current checkpoint contains before deciding.
 
+## Background child work seems to hang indefinitely
+
+**Symptom:** Ralph Workflow shows *"Background child work still active"* for a long time even
+after the agent subprocess has returned. The run never completes.
+
+**Cause (before v1.1):** Process existence alone was used to decide whether a child was
+still alive. A stale label or orphaned PID could keep `WAITING_ON_CHILD` open forever.
+
+**Current behaviour:** Ralph Workflow uses an evidence-backed liveness model. A child is only
+considered alive when it has renewed its progress or heartbeat lease within the configured
+TTL (default: progress 45 s, heartbeat 15 s). A stale process without fresh evidence is
+not treated as active; the parent falls back to OS-descendant detection, and if that also
+clears, escalates to a resumable-retry path.
+
+The waiting status log line includes `alive_by=` to explain the active evidence:
+
+```
+Background child work still active (run=120s, cumulative=240s, ceiling=1800s, alive_by=fresh_progress)
+```
+
+If you see `alive_by=stale_label_only`, the child has gone quiet and the watchdog will
+escalate once the suspect threshold is crossed.
+
+**Fix if child genuinely hangs:** Check the child agent log for errors. The parent
+will eventually fire `CHILDREN_PERSIST_TOO_LONG` when `max_waiting_on_child_seconds`
+(default 1800 s) is reached.
+
 ## Related pages
 
 - [Getting Started](getting-started.md) — step-by-step first-run walkthrough

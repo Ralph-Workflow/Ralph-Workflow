@@ -1309,6 +1309,13 @@ ralph.process
    :members:
    :show-inheritance:
 
+ralph.process.child_liveness
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.process.child_liveness
+   :members:
+   :show-inheritance:
+
 ralph.process.liveness
 ~~~~~~~~~~~~~~~~~~~~~~
 

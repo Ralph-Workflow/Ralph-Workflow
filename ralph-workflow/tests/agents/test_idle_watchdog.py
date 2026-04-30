@@ -980,3 +980,73 @@ def test_hard_stop_diag_includes_corroboration() -> None:
     diag = hard_stops[0].diagnostic
     assert diag.get("scoped_child_active") is True
     assert diag.get("oldest_child_seconds") == _HARD_STOP_OLDEST_CHILD_SECS
+
+
+# ---------------------------------------------------------------------------
+# Task 7: alive_by diagnostics in CorroborationSnapshot
+# ---------------------------------------------------------------------------
+
+
+def test_corroboration_snapshot_has_alive_by_field() -> None:
+    """CorroborationSnapshot accepts alive_by and defaults to None."""
+    snap = CorroborationSnapshot()
+    assert snap.alive_by is None
+
+    snap_with = CorroborationSnapshot(alive_by="fresh_progress")
+    assert snap_with.alive_by == "fresh_progress"
+
+
+def test_build_corroboration_diag_includes_alive_by_when_set() -> None:
+    """alive_by from CorroborationSnapshot propagates into the diagnostic dict."""
+    events: list[WaitingStatusEvent] = []
+
+    def _corroborator() -> CorroborationSnapshot:
+        return CorroborationSnapshot(alive_by="fresh_heartbeat_only", scoped_child_active=True)
+
+    config = TimeoutPolicy(
+        idle_timeout_seconds=1.0,
+        drain_window_seconds=0.0,
+        max_waiting_on_child_seconds=1800.0,
+        suspect_waiting_on_child_seconds=None,
+        waiting_status_interval_seconds=1.0,
+    )
+    clock = FakeClock(start=0.0)
+    watchdog = IdleWatchdog(config, clock, listener=events.append, corroborator=_corroborator)
+
+    clock.advance(1.5)
+    watchdog.evaluate(classify_quiet=_waiting)  # ENTERED
+    clock.advance(2.0)
+    watchdog.evaluate(classify_quiet=_waiting)  # PROGRESS (interval=1s)
+
+    progress_events = [e for e in events if e.kind == WaitingStatusKind.PROGRESS]
+    assert progress_events, "expected at least one PROGRESS event"
+    diag = progress_events[0].diagnostic
+    assert diag.get("alive_by") == "fresh_heartbeat_only"
+
+
+def test_build_corroboration_diag_omits_alive_by_when_none() -> None:
+    """alive_by=None should not appear in the diagnostic dict."""
+    events: list[WaitingStatusEvent] = []
+
+    def _corroborator() -> CorroborationSnapshot:
+        return CorroborationSnapshot(scoped_child_active=True)
+
+    config = TimeoutPolicy(
+        idle_timeout_seconds=1.0,
+        drain_window_seconds=0.0,
+        max_waiting_on_child_seconds=1800.0,
+        suspect_waiting_on_child_seconds=None,
+        waiting_status_interval_seconds=1.0,
+    )
+    clock = FakeClock(start=0.0)
+    watchdog = IdleWatchdog(config, clock, listener=events.append, corroborator=_corroborator)
+
+    clock.advance(1.5)
+    watchdog.evaluate(classify_quiet=_waiting)  # ENTERED
+    clock.advance(2.0)
+    watchdog.evaluate(classify_quiet=_waiting)  # PROGRESS
+
+    progress_events = [e for e in events if e.kind == WaitingStatusKind.PROGRESS]
+    assert progress_events
+    diag = progress_events[0].diagnostic
+    assert "alive_by" not in diag
