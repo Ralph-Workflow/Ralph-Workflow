@@ -233,7 +233,7 @@ def test_generated_local_template_validates_against_bundled_policy(
     bundle = load_policy(agent_dir, config=config)
 
     for phase_name, phase_def in bundle.pipeline.phases.items():
-        if phase_name == bundle.pipeline.terminal_phase:
+        if phase_def.role == "terminal":
             continue
         assert phase_def.drain in bundle.agents.agent_drains, (
             f"Generated local template left phase {phase_name!r} drain {phase_def.drain!r} unbound"

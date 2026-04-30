@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 from unittest.mock import MagicMock
 
-from ralph.config.enums import PHASE_DEVELOPMENT
 from ralph.config.models import UnifiedConfig
 from ralph.pipeline.effects import FanOutDevelopmentEffect, InvokeAgentEffect
 from ralph.pipeline.runner import _determine_effect_from_policy
@@ -16,7 +15,7 @@ def _make_policy_bundle(max_workers: int = 4) -> MagicMock:
     para = PhaseParallelization(max_parallel_workers=max_workers, post_fanout_verification=False)
     dev_phase = MagicMock(requires_commit=False, drain="development", role="execution")
     dev_phase.parallelization = para
-    bundle.pipeline.phases = {PHASE_DEVELOPMENT: dev_phase}
+    bundle.pipeline.phases = {"development": dev_phase}
     bundle.agents.agent_drains = {
         "development": MagicMock(chain="developer"),
     }
@@ -28,7 +27,7 @@ def _make_policy_bundle(max_workers: int = 4) -> MagicMock:
 
 class TestOldCheckpointLoads:
     def test_old_checkpoint_missing_work_units_gets_empty_default(self) -> None:
-        sample = PipelineState(phase=PHASE_DEVELOPMENT).model_dump(mode="json")
+        sample = PipelineState(phase="development").model_dump(mode="json")
         sample.pop("work_units", None)
         sample.pop("worker_states", None)
 
@@ -37,7 +36,7 @@ class TestOldCheckpointLoads:
         assert loaded.worker_states == {}
 
     def test_old_checkpoint_takes_serial_path(self) -> None:
-        state = PipelineState(phase=PHASE_DEVELOPMENT, work_units=())
+        state = PipelineState(phase="development", work_units=())
         policy_bundle = _make_policy_bundle()
 
         effect = _determine_effect_from_policy(state, policy_bundle, config=UnifiedConfig())
@@ -46,7 +45,7 @@ class TestOldCheckpointLoads:
         assert not isinstance(effect, FanOutDevelopmentEffect)
 
     def test_fan_out_not_emitted_for_empty_work_units(self) -> None:
-        state = PipelineState(phase=PHASE_DEVELOPMENT, work_units=())
+        state = PipelineState(phase="development", work_units=())
         policy_bundle = _make_policy_bundle()
 
         effect = _determine_effect_from_policy(state, policy_bundle, config=UnifiedConfig())

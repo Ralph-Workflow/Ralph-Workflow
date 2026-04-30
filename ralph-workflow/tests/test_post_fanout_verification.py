@@ -5,7 +5,6 @@ from __future__ import annotations
 import typing
 from typing import TYPE_CHECKING
 
-from ralph.config.enums import PHASE_COMPLETE, PHASE_FAILED
 from ralph.pipeline.effects import FanOutDevelopmentEffect
 from ralph.pipeline.events import PostFanoutVerificationEvent
 from ralph.pipeline.reducer import reduce as reducer_reduce
@@ -22,14 +21,14 @@ def _minimal_policy() -> PipelinePolicy:
             "development": PhaseDefinition(
                 drain="development",
                 transitions=PhaseTransition(
-                    on_success=PHASE_COMPLETE,
-                    on_failure=PHASE_FAILED,
+                    on_success="complete",
+                    on_failure="failed",
                     on_loopback="development",
                 ),
             ),
         },
         entry_phase="development",
-        terminal_phase=PHASE_COMPLETE,
+        terminal_phase="complete",
     )
 
 _EXIT_CODE_VERIFY_FAIL = 2
@@ -133,8 +132,6 @@ class TestVerificationSkippedWhenWorkerFails:
 class TestVerificationFailureMarksPhase:
     def test_post_fanout_verification_event_failure_enters_failed_recovery(self) -> None:
         """PostFanoutVerificationEvent(success=False) must route state to failed phase."""
-        from ralph.config.enums import PHASE_FAILED  # noqa: PLC0415
-
         state = PipelineState(phase="development", worker_states={})
         event = PostFanoutVerificationEvent(
             success=False,
@@ -142,7 +139,7 @@ class TestVerificationFailureMarksPhase:
             error="workspace verification failed (exit code 1)",
         )
         new_state, _ = reducer_reduce(state, event, _minimal_policy())
-        assert new_state.phase == PHASE_FAILED
+        assert new_state.phase == "failed"
         assert "workspace verification failed" in (new_state.last_error or "")
 
     def test_post_fanout_verification_event_success_is_noop(self) -> None:

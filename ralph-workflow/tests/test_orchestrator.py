@@ -14,11 +14,6 @@ from typing import Any
 
 import pytest
 
-from ralph.config.enums import (
-    PHASE_COMPLETE,
-    PHASE_DEVELOPMENT,
-    PHASE_FAILED,
-)
 from ralph.pipeline.effects import (
     ExitSuccessEffect,
     PreparePromptEffect,
@@ -168,8 +163,8 @@ class TestDetermineNextEffect:
     """Tests for determine_next_effect function."""
 
     def test_complete_phase_returns_exit_success(self) -> None:
-        """Test that PHASE_COMPLETE returns ExitSuccessEffect."""
-        state = _make_state(phase=PHASE_COMPLETE)
+        """Test that "complete" returns ExitSuccessEffect."""
+        state = _make_state(phase="complete")
         agents = _make_minimal_agents_policy()
         pipeline = _make_minimal_pipeline_policy()
 
@@ -178,10 +173,10 @@ class TestDetermineNextEffect:
         assert isinstance(effect, ExitSuccessEffect)
 
     def test_failed_phase_returns_prepare_prompt_for_recovery(self) -> None:
-        """PHASE_FAILED should re-enter recovery instead of returning exit failure."""
+        """"failed" should re-enter recovery instead of returning exit failure."""
         state = _make_state(
-            phase=PHASE_FAILED,
-            previous_phase=PHASE_DEVELOPMENT,
+            phase="failed",
+            previous_phase="development",
             last_error="Test error",
             current_drain="development",
         )
@@ -191,7 +186,7 @@ class TestDetermineNextEffect:
         effect = determine_next_effect(state, pipeline, agents)
 
         assert isinstance(effect, PreparePromptEffect)
-        assert effect.phase == PHASE_DEVELOPMENT
+        assert effect.phase == "development"
 
     def test_unknown_phase_raises_handler_not_found(self) -> None:
         """Test that an unknown phase raises PhaseHandlerNotFoundError."""
@@ -304,7 +299,7 @@ class TestCommitBudgetRouting:
             review_budget_remaining=0,
         )
         next_phase = resolve_post_commit_phase(state, _make_minimal_pipeline_policy())
-        assert next_phase == PHASE_COMPLETE
+        assert next_phase == "complete"
 
 
 class TestResolveNextPhase:

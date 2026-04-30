@@ -17,8 +17,6 @@ from rich.text import Text
 from ralph.agents.invoke import AgentInactivityTimeoutError, AgentInvocationError
 from ralph.agents.parsers import AgentOutputLine, ClaudeParser
 from ralph.config.enums import (
-    PHASE_DEVELOPMENT,
-    PHASE_FAILED,
     AgentTransport,
     JsonParserType,
     Verbosity,
@@ -367,8 +365,8 @@ class TestDetermineEffect:
     def test_failed_phase_returns_prepare_prompt_for_recovery(self) -> None:
         bundle = _load_default_policy_bundle()
         state = PipelineState(
-            phase=PHASE_FAILED,
-            previous_phase=PHASE_DEVELOPMENT,
+            phase="failed_terminal",
+            previous_phase="development",
             last_error="Something went wrong",
             current_drain="development",
         )
@@ -377,7 +375,7 @@ class TestDetermineEffect:
             state, bundle, WorkspaceScope("/tmp/worktree")
         )
         assert isinstance(effect, PreparePromptEffect)
-        assert effect.phase == PHASE_DEVELOPMENT
+        assert effect.phase == "development"
 
     def test_unknown_phase_returns_exit_failure(self) -> None:
         bundle = _load_default_policy_bundle()
@@ -1030,7 +1028,7 @@ class TestPipelineRunnerLoop:
         self, monkeypatch
     ) -> None:
         state = PipelineState(
-            phase=PHASE_DEVELOPMENT,
+            phase="development",
             work_units=(WorkUnit(unit_id="unit-a", description="A"),),
             phase_chains={"development": AgentChainState(agents=["claude"])},
         )
@@ -1070,7 +1068,7 @@ class TestPipelineRunnerLoop:
         assert result == 0
         assert saved_states
         recovered_state = saved_states[0]
-        assert recovered_state.phase == PHASE_DEVELOPMENT
+        assert recovered_state.phase == "development"
         assert recovered_state.chain_for_phase("development").retries == 1
         assert recovered_state.last_error is not None
         assert "SystemExit" in recovered_state.last_error
@@ -1078,14 +1076,14 @@ class TestPipelineRunnerLoop:
 
     def test_failed_state_reenters_recovery_loop(self, monkeypatch) -> None:
         state = PipelineState(
-            phase=PHASE_FAILED,
-            previous_phase=PHASE_DEVELOPMENT,
+            phase="failed",
+            previous_phase="development",
             last_error="bad error",
             current_drain="development",
         )
         effects = iter(
             [
-                PreparePromptEffect(phase=PHASE_DEVELOPMENT, iteration=0, drain="development"),
+                PreparePromptEffect(phase="development", iteration=0, drain="development"),
                 ExitSuccessEffect(),
             ]
         )
@@ -1291,7 +1289,7 @@ class TestPipelineRunnerLoop:
                 notify_calls.append(state)
 
         state = PipelineState(
-            phase=PHASE_FAILED,
+            phase="failed",
             previous_phase="planning",
             last_error="pre-failed for seed test",
         )
@@ -2932,7 +2930,7 @@ class TestPhaseHandlerExceptionGuard:
     ) -> None:
         """PhaseFailureEvent(recoverable=True) should route through reducer retry."""
         state = PipelineState(
-            phase=PHASE_DEVELOPMENT,
+            phase="development",
             dev_chain=AgentChainState(agents=["claude"], current_index=0, retries=0),
         )
         event = PhaseFailureEvent(
@@ -2945,15 +2943,15 @@ class TestPhaseHandlerExceptionGuard:
 
         # Should increment retries, not fail
         assert new_state.chain_for_phase("development").retries == 1
-        assert new_state.phase == PHASE_DEVELOPMENT
+        assert new_state.phase == "development"
         assert effects == []
 
     def test_phase_failure_event_not_recoverable_transitions_to_failed(
         self,
     ) -> None:
-        """PhaseFailureEvent(recoverable=False) should transition to PHASE_FAILED."""
+        """PhaseFailureEvent(recoverable=False) should transition to "failed"."""
         state = PipelineState(
-            phase=PHASE_DEVELOPMENT,
+            phase="development",
             dev_chain=AgentChainState(agents=["claude"], current_index=0, retries=0),
         )
         event = PhaseFailureEvent(
@@ -2964,7 +2962,7 @@ class TestPhaseHandlerExceptionGuard:
 
         new_state, _effects = reducer_reduce(state, event, _load_default_policy_bundle().pipeline)
 
-        assert new_state.phase == PHASE_FAILED
+        assert new_state.phase == "failed_terminal"
         assert new_state.last_error is not None
         assert "FAILURE" in new_state.last_error
 

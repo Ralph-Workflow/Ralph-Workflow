@@ -5,12 +5,6 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from ralph.config.enums import (
-    PHASE_DEVELOPMENT_COMMIT,
-    PHASE_FIX,
-    PHASE_PLANNING,
-    PHASE_REVIEW_COMMIT,
-)
 from ralph.mcp.artifacts.commit_message import COMMIT_MESSAGE_ARTIFACT
 from ralph.phases import (
     HANDLERS,
@@ -89,7 +83,7 @@ def test_development_commit_defers_to_runner_on_invoke_agent() -> None:
     ctx = _stub_context(commit_message_present=True)
     effect = InvokeAgentEffect(
         agent_name="dev",
-        phase=PHASE_DEVELOPMENT_COMMIT,
+        phase="development_commit",
         prompt_file="dev-plan.txt",
     )
 
@@ -99,7 +93,7 @@ def test_development_commit_defers_to_runner_on_invoke_agent() -> None:
 def test_development_commit_ignores_prepare_prompt_effect() -> None:
     ctx = _stub_context_no_exists()
     effect = PreparePromptEffect(
-        phase=PHASE_DEVELOPMENT_COMMIT,
+        phase="development_commit",
         iteration=1,
     )
 
@@ -110,7 +104,7 @@ def test_review_commit_defers_to_runner_on_invoke_agent() -> None:
     ctx = _stub_context(commit_message_present=True)
     effect = InvokeAgentEffect(
         agent_name="review",
-        phase=PHASE_REVIEW_COMMIT,
+        phase="review_commit",
         prompt_file="review-plan.txt",
     )
 
@@ -121,7 +115,7 @@ def test_development_commit_emits_skip_when_no_diff(tmp_git_repo: Path) -> None:
     ctx = _fs_context(tmp_git_repo)
     effect = InvokeAgentEffect(
         agent_name="dev",
-        phase=PHASE_DEVELOPMENT_COMMIT,
+        phase="development_commit",
         prompt_file="dev-plan.txt",
     )
 
@@ -133,7 +127,7 @@ def test_development_commit_defers_when_diff_exists(tmp_git_repo: Path) -> None:
     ctx = _fs_context(tmp_git_repo, write_commit_message=True)
     effect = InvokeAgentEffect(
         agent_name="dev",
-        phase=PHASE_DEVELOPMENT_COMMIT,
+        phase="development_commit",
         prompt_file="dev-plan.txt",
     )
 
@@ -147,7 +141,7 @@ def test_development_commit_missing_commit_message_emits_retry_in_session(
     ctx = _fs_context(tmp_git_repo)  # no commit_message written
     effect = InvokeAgentEffect(
         agent_name="dev",
-        phase=PHASE_DEVELOPMENT_COMMIT,
+        phase="development_commit",
         prompt_file="dev-plan.txt",
     )
 
@@ -164,7 +158,7 @@ def test_review_commit_emits_skip_when_no_diff(tmp_git_repo: Path) -> None:
     ctx = _fs_context(tmp_git_repo)
     effect = InvokeAgentEffect(
         agent_name="review",
-        phase=PHASE_REVIEW_COMMIT,
+        phase="review_commit",
         prompt_file="review-plan.txt",
     )
 
@@ -176,7 +170,7 @@ def test_review_commit_defers_when_diff_exists(tmp_git_repo: Path) -> None:
     ctx = _fs_context(tmp_git_repo, write_commit_message=True)
     effect = InvokeAgentEffect(
         agent_name="review",
-        phase=PHASE_REVIEW_COMMIT,
+        phase="review_commit",
         prompt_file="review-plan.txt",
     )
 
@@ -190,7 +184,7 @@ def test_review_commit_missing_commit_message_emits_retry_in_session(
     ctx = _fs_context(tmp_git_repo)  # no commit_message written
     effect = InvokeAgentEffect(
         agent_name="review",
-        phase=PHASE_REVIEW_COMMIT,
+        phase="review_commit",
         prompt_file="review-plan.txt",
     )
 
@@ -207,7 +201,7 @@ def test_handle_commit_delegates_based_on_phase() -> None:
     ctx = _stub_context(commit_message_present=True)
     effect = InvokeAgentEffect(
         agent_name="dev",
-        phase=PHASE_DEVELOPMENT_COMMIT,
+        phase="development_commit",
         prompt_file="plan.md",
     )
 
@@ -217,7 +211,7 @@ def test_handle_commit_delegates_based_on_phase() -> None:
 def test_handle_commit_returns_empty_for_prepare_prompt_and_review_phase() -> None:
     ctx = _stub_context_no_exists()
     effect = PreparePromptEffect(
-        phase=PHASE_REVIEW_COMMIT,
+        phase="review_commit",
         iteration=2,
     )
 
@@ -233,7 +227,7 @@ def test_handle_commit_returns_empty_for_unknown_phase() -> None:
 
 def test_handle_planning_prepares_prompt_and_advances() -> None:
     ctx = _stub_context_no_exists()
-    effect = PreparePromptEffect(phase=PHASE_PLANNING, iteration=3)
+    effect = PreparePromptEffect(phase="planning", iteration=3)
 
     assert handle_planning(effect, ctx) == [PipelineEvent.PROMPT_PREPARED]
 
@@ -273,7 +267,7 @@ def test_handle_planning_prepare_prompt_preserves_resumable_plan_draft(
         encoding="utf-8",
     )
 
-    effect = PreparePromptEffect(phase=PHASE_PLANNING, iteration=3)
+    effect = PreparePromptEffect(phase="planning", iteration=3)
 
     assert handle_planning(effect, ctx) == [PipelineEvent.PROMPT_PREPARED]
     assert draft_path.exists()
@@ -342,7 +336,7 @@ def test_handle_planning_prepare_prompt_clears_draft_when_final_plan_is_newer(
         encoding="utf-8",
     )
 
-    effect = PreparePromptEffect(phase=PHASE_PLANNING, iteration=3)
+    effect = PreparePromptEffect(phase="planning", iteration=3)
 
     assert handle_planning(effect, ctx) == [PipelineEvent.PROMPT_PREPARED]
     assert not draft_path.exists()
@@ -363,7 +357,7 @@ def test_handle_planning_invokes_agent_successfully() -> None:
     )
     effect = InvokeAgentEffect(
         agent_name="planner",
-        phase=PHASE_PLANNING,
+        phase="planning",
         prompt_file="planning.txt",
     )
 
@@ -377,7 +371,7 @@ def test_handle_planning_missing_plan_artifact_emits_retry_in_session() -> None:
 
     effect = InvokeAgentEffect(
         agent_name="planner",
-        phase=PHASE_PLANNING,
+        phase="planning",
         prompt_file="planning.txt",
     )
 
@@ -401,7 +395,7 @@ def test_handle_planning_invalid_work_units_emits_retry_in_session() -> None:
 
     effect = InvokeAgentEffect(
         agent_name="planner",
-        phase=PHASE_PLANNING,
+        phase="planning",
         prompt_file="planning.txt",
     )
 
@@ -428,7 +422,7 @@ def test_handle_planning_reads_plan_artifact_path_and_validates_schema() -> None
     )
 
     effect = InvokeAgentEffect(
-        agent_name="planner", phase=PHASE_PLANNING, prompt_file="planning.txt"
+        agent_name="planner", phase="planning", prompt_file="planning.txt"
     )
 
     assert handle_planning(effect, ctx) == [PipelineEvent.AGENT_SUCCESS]
@@ -449,7 +443,7 @@ def test_handle_planning_invalid_plan_schema_emits_retry_in_session() -> None:
     )
 
     effect = InvokeAgentEffect(
-        agent_name="planner", phase=PHASE_PLANNING, prompt_file="planning.txt"
+        agent_name="planner", phase="planning", prompt_file="planning.txt"
     )
 
     result = handle_planning(effect, ctx)
@@ -468,7 +462,7 @@ def test_handle_planning_accepts_noop_plan() -> None:
     workspace.read.return_value = '{"type":"plan","content":{"noop":true}}'
 
     effect = InvokeAgentEffect(
-        agent_name="planner", phase=PHASE_PLANNING, prompt_file="planning.txt"
+        agent_name="planner", phase="planning", prompt_file="planning.txt"
     )
 
     assert handle_planning(effect, ctx) == [PipelineEvent.AGENT_SUCCESS]
@@ -526,7 +520,7 @@ def test_handle_planning_ignores_unrelated_effects() -> None:
 
 def test_handle_fix_prepares_prompt_with_iteration_context() -> None:
     ctx = _stub_context_no_exists()
-    effect = PreparePromptEffect(phase=PHASE_FIX, iteration=5)
+    effect = PreparePromptEffect(phase="fix", iteration=5)
 
     assert handle_fix(effect, ctx) == [PipelineEvent.PROMPT_PREPARED]
 
@@ -542,7 +536,7 @@ def test_handle_fix_invokes_agent_successfully(tmp_path: Path) -> None:
     )
     effect = InvokeAgentEffect(
         agent_name="fixer",
-        phase=PHASE_FIX,
+        phase="fix",
         prompt_file="fix.txt",
     )
 
@@ -553,7 +547,7 @@ def test_handle_fix_missing_artifact_emits_retry_in_session() -> None:
     ctx = _stub_context_no_exists()
     effect = InvokeAgentEffect(
         agent_name="fixer",
-        phase=PHASE_FIX,
+        phase="fix",
         prompt_file="fix.txt",
     )
 

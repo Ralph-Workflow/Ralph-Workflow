@@ -27,7 +27,6 @@ from pathlib import Path
 
 from rich.console import Console
 
-from ralph.config.enums import PHASE_DEVELOPMENT, PHASE_DEVELOPMENT_ANALYSIS
 from ralph.mcp.server.factory import McpServerHandle
 from ralph.pipeline import runner as runner_module
 from ralph.pipeline.effects import FanOutDevelopmentEffect, InvokeAgentEffect
@@ -60,7 +59,7 @@ def _make_policy_bundle(max_workers: int = 4) -> MagicMock:
     para = PhaseParallelization(max_parallel_workers=max_workers, post_fanout_verification=True)
     dev_phase = MagicMock(requires_commit=False, drain="development", role="execution")
     dev_phase.parallelization = para
-    bundle.pipeline.phases = {PHASE_DEVELOPMENT: dev_phase}
+    bundle.pipeline.phases = {"development": dev_phase}
     bundle.agents.agent_drains = {
         "development": MagicMock(chain="developer"),
     }
@@ -152,7 +151,7 @@ class TestSameWorkspaceFanOutE2E:
 
         unit_a = _make_work_unit("unit-a")
         unit_b = _make_work_unit("unit-b")
-        state = PipelineState(phase=PHASE_DEVELOPMENT, work_units=(unit_a, unit_b))
+        state = PipelineState(phase="development", work_units=(unit_a, unit_b))
         policy_bundle = _make_policy_bundle(max_workers=2)
 
         effect = runner_module._determine_effect_from_policy(
@@ -168,7 +167,7 @@ class TestSameWorkspaceFanOutE2E:
         from ralph.config.models import UnifiedConfig  # noqa: PLC0415
 
         state = PipelineState(
-            phase=PHASE_DEVELOPMENT, work_units=(_make_work_unit("unit-a"),)
+            phase="development", work_units=(_make_work_unit("unit-a"),)
         )
         policy_bundle = _make_policy_bundle(max_workers=4)
 
@@ -177,7 +176,7 @@ class TestSameWorkspaceFanOutE2E:
         )
 
         assert isinstance(effect, InvokeAgentEffect)
-        assert effect.phase == PHASE_DEVELOPMENT
+        assert effect.phase == "development"
 
     def test_fan_out_advances_to_development_analysis_after_all_succeed(self) -> None:
         """After ALL_WORKERS_COMPLETE, reducer advances phase to development_analysis."""
@@ -189,7 +188,7 @@ class TestSameWorkspaceFanOutE2E:
             for uid in ("unit-a", "unit-b")
         }
         effect = FanOutDevelopmentEffect(work_units=units, max_workers=2)
-        initial_state = PipelineState(phase=PHASE_DEVELOPMENT, work_units=units)
+        initial_state = PipelineState(phase="development", work_units=units)
 
         events = asyncio.run(
             coordinator.run_fan_out(
@@ -206,7 +205,7 @@ class TestSameWorkspaceFanOutE2E:
         for event in events:
             reduced_state, _ = reducer_reduce(reduced_state, event, policy_bundle.pipeline)
 
-        assert reduced_state.phase == PHASE_DEVELOPMENT_ANALYSIS, (
+        assert reduced_state.phase == "development_analysis", (
             f"Expected development_analysis after fan-out, got {reduced_state.phase!r}"
         )
         assert reduced_state.worker_states["unit-a"].status == WorkerStatus.SUCCEEDED
@@ -256,7 +255,7 @@ class TestSameWorkspaceFanOutE2E:
             for uid in ("unit-a", "unit-b")
         }
         effect = FanOutDevelopmentEffect(work_units=units, max_workers=2)
-        initial_state = PipelineState(phase=PHASE_DEVELOPMENT, work_units=units)
+        initial_state = PipelineState(phase="development", work_units=units)
 
         events = asyncio.run(
             coordinator.run_fan_out(
@@ -272,7 +271,7 @@ class TestSameWorkspaceFanOutE2E:
             reduced_state, _ = reducer_reduce(reduced_state, event, policy_bundle.pipeline)
 
         # Phase advanced to development_analysis — no merge/worktree event in the chain
-        assert reduced_state.phase == PHASE_DEVELOPMENT_ANALYSIS
+        assert reduced_state.phase == "development_analysis"
         # Verify there are no merge-related intermediate phases
         git_merge_events = [
             e for e in events
@@ -318,7 +317,7 @@ class TestSameWorkspaceFanOutE2E:
         }
         effect = FanOutDevelopmentEffect(work_units=units, max_workers=2)
         display = RecordingDisplay()
-        initial_state = PipelineState(phase=PHASE_DEVELOPMENT, work_units=units)
+        initial_state = PipelineState(phase="development", work_units=units)
 
         events = asyncio.run(
             coordinator.run_fan_out(
@@ -349,7 +348,7 @@ class TestSameWorkspaceFanOutE2E:
         state = initial_state
         for event in events:
             state, _ = reducer_reduce(state, event, policy_bundle.pipeline)
-        assert state.phase == PHASE_DEVELOPMENT_ANALYSIS
+        assert state.phase == "development_analysis"
 
         # Per-worker artifact directories exist and are separate
         artifact_a = tmp_path / ".agent" / "workers" / "unit-a" / "artifacts"
@@ -546,7 +545,7 @@ class TestRunnerAnalysisHandoffIntegration:
 
         scope = WorkspaceScope(root=tmp_path, allowed_roots=frozenset([tmp_path]))
         initial_state = PipelineState(
-            phase=PHASE_DEVELOPMENT,
+            phase="development",
             work_units=(unit_a, unit_b),
         )
 
@@ -602,7 +601,7 @@ class TestRunnerAnalysisHandoffIntegration:
 
         scope = WorkspaceScope(root=tmp_path, allowed_roots=frozenset([tmp_path]))
         initial_state = PipelineState(
-            phase=PHASE_DEVELOPMENT,
+            phase="development",
             work_units=(unit_a, unit_b),
         )
 

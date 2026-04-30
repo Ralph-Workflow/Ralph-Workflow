@@ -171,19 +171,22 @@ def _render_decision_branches(lines: list[str], phase: PhaseExplanation) -> None
 def _render_loopback_arrow(lines: list[str], phase: PhaseExplanation) -> None:
     """Render loopback annotation if applicable.
 
-    Emits 'loop back to <target>' below the phase box, with an optional
-    [LOOPBACK: counter=..., max=...] annotation when the loopback consumes a
-    loop counter (i.e. when loop_policy.loopback_review_outcome is set).
+    Emits '<<==[loopback]== returns to TARGET' below the phase box using
+    left-pointing arrows so readers cannot mistake it for a forward arrow.
+    Adds a [LOOPBACK: counter=..., max=...] annotation when the loopback
+    consumes a loop counter (i.e. when loop_policy.loopback_review_outcome is set).
+    A '>> RE-ENTRY from SOURCE_loopback' banner is appended to indicate where
+    execution re-enters the loop.
     """
     if phase.on_loopback and phase.on_loopback != phase.on_success:
         target = phase.on_loopback
-        lines.append(f"    | loop back to {target}")
-        lines.append(f"    +---^  (returns to '{target}' phase)")
+        lines.append(f"    <<==[loopback]== returns to '{target}'")
         if phase.loop_policy is not None and phase.loop_policy.loopback_review_outcome is not None:
             lp = phase.loop_policy
             lines.append(
                 f"    [LOOPBACK: counter={lp.iteration_state_field}, max={lp.max_iterations}]"
             )
+        lines.append(f"    >> RE-ENTRY from {phase.name}_loopback")
 
 
 def _render_terminal_marker(lines: list[str], phase: PhaseExplanation) -> None:

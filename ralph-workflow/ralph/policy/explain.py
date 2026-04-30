@@ -129,6 +129,37 @@ class PolicyExplanation:
     recovery: RecoveryExplanation | None = None
 
 
+def explain_routing_decision(
+    phase: str,
+    target: str,
+    reason: str,
+    value: str,
+    *,
+    recovery: bool = False,
+) -> str:
+    """Build a human-readable routing explanation message.
+
+    Used by reducer and handoffs to emit INFO-level routing logs so users can
+    answer 'why did Ralph route here?' from logs alone.
+
+    Args:
+        phase: The current phase that is routing.
+        target: The target phase being routed to.
+        reason: What triggered the routing (e.g. 'decision', 'signal', 'gate').
+        value: The value of the triggering reason (e.g. 'completed', 'success').
+        recovery: True when this is a terminal failure/recovery route.
+
+    Returns:
+        A formatted routing explanation string.
+    """
+    if recovery:
+        return (
+            f"policy: '{phase}' routed to '{target}' because recovery was triggered "
+            f"({reason}: {value})"
+        )
+    return f"policy: '{phase}' routed to '{target}' because the configured {reason} was '{value}'"
+
+
 def explain_policy(bundle: PolicyBundle) -> PolicyExplanation:
     """Convert a PolicyBundle into a structured human-readable explanation.
 

@@ -6,7 +6,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from unittest.mock import MagicMock
 
-from ralph.config.enums import PHASE_DEVELOPMENT
 from ralph.pipeline.effects import FanOutDevelopmentEffect
 from ralph.pipeline.runner import _execute_fan_out_sync
 from ralph.pipeline.state import PipelineState
@@ -75,7 +74,7 @@ def _make_mock_policy_bundle() -> MagicMock:
     para = PhaseParallelization(max_parallel_workers=8, post_fanout_verification=False)
     dev_phase = MagicMock(requires_commit=False, drain="development", role="execution")
     dev_phase.parallelization = para
-    bundle.pipeline.phases = {PHASE_DEVELOPMENT: dev_phase}
+    bundle.pipeline.phases = {"development": dev_phase}
     bundle.agents.agent_drains = {}
     bundle.agents.agent_chains = {}
     return bundle
@@ -133,7 +132,7 @@ class TestParallelResume:
             "unit-4": _make_worker_state("unit-4", WorkerStatus.PENDING),
         }
         state = PipelineState(
-            phase=PHASE_DEVELOPMENT,
+            phase="development",
             work_units=units,
             worker_states=worker_states,
         )
@@ -179,7 +178,7 @@ class TestParallelResume:
             "unit-2": _make_worker_state("unit-2", WorkerStatus.PENDING),
         }
         state = PipelineState(
-            phase=PHASE_DEVELOPMENT,
+            phase="development",
             work_units=units,
             worker_states=worker_states,
         )
@@ -221,7 +220,7 @@ class TestParallelResume:
             "unit-4": _make_worker_state("unit-4", WorkerStatus.PENDING),
         }
         state = PipelineState(
-            phase=PHASE_DEVELOPMENT,
+            phase="development",
             work_units=units,
             worker_states=worker_states,
         )

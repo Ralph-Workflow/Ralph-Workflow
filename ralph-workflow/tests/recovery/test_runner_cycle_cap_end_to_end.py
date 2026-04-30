@@ -5,7 +5,7 @@ and exit with code 1 only when the configured CycleCap is exceeded — never bef
 
 This test uses a two-agent chain to also verify fallover behavior:
 - First agent (claude) fails and exhausts budget → falls over to second agent (opencode)
-- Second agent (opencode) fails and exhausts budget → chain exhausted, PHASE_FAILED
+- Second agent (opencode) fails and exhausts budget → chain exhausted, "failed"
 - Recovery cycle completes; runner loops until CycleCap is hit
 """
 
@@ -101,10 +101,10 @@ def test_runner_exits_via_cycle_cap_not_premature_termination(
     With a two-agent chain (claude -> opencode, each with max_retries=1)
     and CycleCap=3:
     - Cycle 1: claude fails -> budget exhausted -> fallover to opencode ->
-      opencode fails -> chain exhausted -> PHASE_FAILED (count=1)
+      opencode fails -> chain exhausted -> "failed" (count=1)
     - Recovery: PreparePromptEffect -> back to development
-    - Cycle 2: same sequence -> PHASE_FAILED (count=2)
-    - Cycle 3: same sequence -> PHASE_FAILED (count=3) ->
+    - Cycle 2: same sequence -> "failed" (count=2)
+    - Cycle 3: same sequence -> "failed" (count=3) ->
       Cap check: count(3) >= cap(3) -> ExitFailureEffect -> runner returns 1
 
     Total invocations: 6 (2 agents x 3 cycles).

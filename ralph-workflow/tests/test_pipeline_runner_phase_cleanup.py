@@ -20,7 +20,7 @@ import psutil
 import pytest
 
 import ralph.process.manager as _mgr
-from ralph.config.enums import PHASE_COMPLETE, Verbosity
+from ralph.config.enums import Verbosity
 from ralph.pipeline import runner as runner_module
 from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.events import PipelineEvent
@@ -81,14 +81,14 @@ def _apply_runner_stubs(
     *,
     fake_execute_agent_effect: object,
 ) -> None:
-    complete_state = PipelineState(phase=PHASE_COMPLETE)
+    complete_state = PipelineState(phase="complete")
     monkeypatch.setattr(
         runner_module, "resolve_workspace_scope", lambda: WorkspaceScope(tmp_path)
     )
     monkeypatch.setattr(runner_module, "_write_start_commit_if_absent", lambda _: None)
     monkeypatch.setattr(runner_module, "_validate_custom_mcp_servers", lambda _: 0)
     _mock_bundle = MagicMock()
-    _mock_bundle.pipeline.terminal_phase = PHASE_COMPLETE
+    _mock_bundle.pipeline.terminal_phase = "complete"
     monkeypatch.setattr(runner_module, "load_policy_or_die", lambda *a, **kw: _mock_bundle)
     monkeypatch.setattr(runner_module, "AgentRegistry", MagicMock())
     monkeypatch.setattr(

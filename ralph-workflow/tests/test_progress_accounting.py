@@ -15,13 +15,6 @@ from typing import TYPE_CHECKING, Any, cast
 
 import pytest
 
-from ralph.config.enums import (
-    PHASE_COMPLETE,
-    PHASE_DEVELOPMENT,
-    PHASE_FAILED,
-    PHASE_FIX,
-    PHASE_REVIEW,
-)
 from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.progress import advance_phase, apply_commit_outcome
 from ralph.pipeline.reducer import reduce as reducer_reduce
@@ -62,9 +55,9 @@ def _progress_policy() -> PipelinePolicy:
         phases={
             "planning": PhaseDefinition(
                 drain="planning",
-                transitions=PhaseTransition(on_success=PHASE_DEVELOPMENT),
+                transitions=PhaseTransition(on_success="development"),
             ),
-            PHASE_DEVELOPMENT: PhaseDefinition(
+            "development": PhaseDefinition(
                 drain="development",
                 transitions=PhaseTransition(on_success="development_analysis"),
             ),
@@ -72,29 +65,29 @@ def _progress_policy() -> PipelinePolicy:
                 drain="development_analysis",
                 transitions=PhaseTransition(
                     on_success="development_commit",
-                    on_loopback=PHASE_DEVELOPMENT,
-                    on_failure=PHASE_FAILED,
+                    on_loopback="development",
+                    on_failure="failed",
                 ),
             ),
             "development_commit": PhaseDefinition(
                 drain="development_commit",
                 role="commit",
-                transitions=PhaseTransition(on_success=PHASE_REVIEW),
+                transitions=PhaseTransition(on_success="review"),
                 commit_policy=PhaseCommitPolicy(
                     increments_counter="iteration",
                     loop_resets=["development_analysis_iteration"],
                 ),
             ),
-            PHASE_REVIEW: PhaseDefinition(
+            "review": PhaseDefinition(
                 drain="review",
-                transitions=PhaseTransition(on_success="review_analysis", on_loopback=PHASE_FIX),
+                transitions=PhaseTransition(on_success="review_analysis", on_loopback="fix"),
             ),
             "review_analysis": PhaseDefinition(
                 drain="review_analysis",
                 transitions=PhaseTransition(
                     on_success="review_commit",
-                    on_loopback=PHASE_FIX,
-                    on_failure=PHASE_FAILED,
+                    on_loopback="fix",
+                    on_failure="failed",
                 ),
                 loop_policy=PhaseLoopPolicy(
                     max_iterations=2,
@@ -102,29 +95,29 @@ def _progress_policy() -> PipelinePolicy:
                     loopback_review_outcome="has_issues",
                 ),
             ),
-            PHASE_FIX: PhaseDefinition(
+            "fix": PhaseDefinition(
                 drain="fix",
-                transitions=PhaseTransition(on_success="review_analysis", on_loopback=PHASE_REVIEW),
+                transitions=PhaseTransition(on_success="review_analysis", on_loopback="review"),
             ),
             "review_commit": PhaseDefinition(
                 drain="review_commit",
                 role="commit",
-                transitions=PhaseTransition(on_success=PHASE_COMPLETE),
+                transitions=PhaseTransition(on_success="complete"),
                 commit_policy=PhaseCommitPolicy(
                     increments_counter="reviewer_pass",
                     loop_resets=["review_analysis_iteration"],
                 ),
             ),
-            PHASE_COMPLETE: PhaseDefinition(
+            "complete": PhaseDefinition(
                 drain="complete",
                 transitions=PhaseTransition(
-                    on_success=PHASE_COMPLETE,
-                    on_loopback=PHASE_COMPLETE,
+                    on_success="complete",
+                    on_loopback="complete",
                 ),
             ),
         },
         entry_phase="planning",
-        terminal_phase=PHASE_COMPLETE,
+        terminal_phase="complete",
         post_commit_routes=[
             PostCommitRoute(
                 when=PostCommitRouteWhen(phase="development_commit", budget_state="remaining"),
@@ -132,15 +125,15 @@ def _progress_policy() -> PipelinePolicy:
             ),
             PostCommitRoute(
                 when=PostCommitRouteWhen(phase="development_commit", budget_state="exhausted"),
-                target=PHASE_REVIEW,
+                target="review",
             ),
             PostCommitRoute(
                 when=PostCommitRouteWhen(phase="review_commit", budget_state="remaining"),
-                target=PHASE_REVIEW,
+                target="review",
             ),
             PostCommitRoute(
                 when=PostCommitRouteWhen(phase="review_commit", budget_state="exhausted"),
-                target=PHASE_COMPLETE,
+                target="complete",
             ),
         ],
     )
@@ -157,7 +150,7 @@ def test_review_analysis_loopback_updates_only_review_analysis_fields() -> None:
 
     new_state, _ = _reduce(state, PipelineEvent.ANALYSIS_LOOPBACK, policy)
 
-    assert new_state.phase == PHASE_FIX
+    assert new_state.phase == "fix"
     assert new_state.previous_phase == "review_analysis"
     assert new_state.reviewer_pass == 1
     assert new_state.review_analysis_iteration == 1
@@ -178,7 +171,7 @@ def test_capped_review_analysis_loopback_preserves_outer_progress_and_marks_issu
 
     new_state, _ = _reduce(state, PipelineEvent.ANALYSIS_LOOPBACK, policy)
 
-    assert new_state.phase == PHASE_FIX
+    assert new_state.phase == "fix"
     assert new_state.previous_phase == "review_analysis"
     assert new_state.reviewer_pass == 1
     assert new_state.review_analysis_iteration == FORCED_REVIEW_ANALYSIS_ITERATION
@@ -198,7 +191,7 @@ def test_skipped_development_commit_preserves_outer_progress_but_resets_inner_lo
 
     new_state, _ = _reduce(state, PipelineEvent.COMMIT_SKIPPED, policy)
 
-    assert new_state.phase == PHASE_REVIEW
+    assert new_state.phase == "review"
     assert new_state.previous_phase == "development_commit"
     assert new_state.iteration == COMPLETED_DEVELOPMENT_CYCLES
     assert new_state.development_analysis_iteration == 0
@@ -217,7 +210,7 @@ def test_skipped_review_commit_does_not_increment_outer_progress_but_resets_inne
 
     new_state, _ = _reduce(state, PipelineEvent.COMMIT_SKIPPED, policy)
 
-    assert new_state.phase == PHASE_COMPLETE
+    assert new_state.phase == "complete"
     assert new_state.previous_phase == "review_commit"
     assert new_state.reviewer_pass == 1
     assert new_state.review_analysis_iteration == 0
@@ -236,14 +229,14 @@ def test_commit_budget_routes_use_post_commit_policy_after_budget_is_consumed() 
 
     new_state, _ = _reduce(state, PipelineEvent.COMMIT_SUCCESS, policy)
 
-    assert new_state.phase == PHASE_REVIEW
+    assert new_state.phase == "review"
     assert new_state.iteration == 1
     assert new_state.development_budget_remaining == 0
 
 
 def test_checkpoint_builder_derives_progress_mirrors_from_pipeline_state() -> None:
     state = PipelineState(
-        phase=PHASE_REVIEW,
+        phase="review",
         iteration=1,
         reviewer_pass=COMPLETED_REVIEW_PASSES,
     )
@@ -275,26 +268,26 @@ class TestProgressPolicyRequired:
                     drain="development_commit",
                     role="commit",
                     transitions=PhaseTransition(
-                        on_success=PHASE_COMPLETE,
-                        on_failure=PHASE_FAILED,
+                        on_success="complete",
+                        on_failure="failed",
                     ),
                     commit_policy=PhaseCommitPolicy(
                         increments_counter="iteration",
                         loop_resets=["development_analysis_iteration"],
                     ),
                 ),
-                PHASE_COMPLETE: PhaseDefinition(
+                "complete": PhaseDefinition(
                     drain="complete",
                     role="terminal",
                     terminal_outcome="success",
                     transitions=PhaseTransition(
-                        on_success=PHASE_COMPLETE,
-                        on_loopback=PHASE_COMPLETE,
+                        on_success="complete",
+                        on_loopback="complete",
                     ),
                 ),
             },
             entry_phase="feature_commit",
-            terminal_phase=PHASE_COMPLETE,
+            terminal_phase="complete",
         )
 
     def test_apply_commit_outcome_requires_policy(self) -> None:
@@ -304,7 +297,7 @@ class TestProgressPolicyRequired:
             iteration=1,
             development_analysis_iteration=0,
         )
-        advanced_state = state.copy_with(phase=PHASE_COMPLETE)
+        advanced_state = state.copy_with(phase="complete")
 
         with pytest.raises(ValueError, match="requires PipelinePolicy"):
             apply_commit_outcome(state, advanced_state, skipped=False, policy=None)
@@ -317,7 +310,7 @@ class TestProgressPolicyRequired:
             iteration=1,
             development_analysis_iteration=0,
         )
-        advanced_state = state.copy_with(phase=PHASE_COMPLETE)
+        advanced_state = state.copy_with(phase="complete")
 
         result = apply_commit_outcome(state, advanced_state, skipped=False, policy=policy)
         # skipped=False increments iteration per commit_policy.increments_counter="iteration"

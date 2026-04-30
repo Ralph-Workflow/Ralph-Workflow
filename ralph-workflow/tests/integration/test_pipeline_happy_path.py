@@ -241,9 +241,9 @@ class TestPipelineHappyPath:
         assert pipeline_policy.entry_phase == "planning"
         assert pipeline_policy.terminal_phase == "complete"
 
-        # Verify phases reference bound drains (skip terminal phase)
-        for phase_name, phase_def in pipeline_policy.phases.items():
-            if phase_name == pipeline_policy.terminal_phase:
+        # Verify phases reference bound drains (skip terminal-role phases)
+        for phase_def in pipeline_policy.phases.values():
+            if phase_def.role == "terminal":
                 continue
             assert phase_def.drain in agents_policy.agent_drains
 

@@ -13,7 +13,6 @@ if TYPE_CHECKING:
 
 from ralph.agents.executor import WorkerResult
 from ralph.agents.subprocess_executor import agent_process_label
-from ralph.config.enums import PHASE_DEVELOPMENT
 from ralph.pipeline import checkpoint
 from ralph.pipeline.effects import FanOutDevelopmentEffect
 from ralph.pipeline.parallel import coordinator
@@ -121,7 +120,7 @@ def test_parallel_hard_kill(tmp_path: Path) -> None:
         units = tuple(_make_work_unit(f"unit-{index}") for index in range(_NUM_WORKERS))
         executor = SleeperExecutor()
         effect = FanOutDevelopmentEffect(work_units=units, max_workers=_NUM_WORKERS)
-        state = PipelineState(phase=PHASE_DEVELOPMENT, work_units=units)
+        state = PipelineState(phase="development", work_units=units)
         checkpoint_path = tmp_path / "checkpoint.json"
         worktree_dirs = [tmp_path / unit.unit_id for unit in units]
 
@@ -134,7 +133,7 @@ def test_parallel_hard_kill(tmp_path: Path) -> None:
         assert _wait_for_pids_gone(executor.pids, timeout_s=1.5)
 
         interrupted_state = PipelineState(
-            phase=PHASE_DEVELOPMENT,
+            phase="development",
             work_units=units,
             interrupted_by_user=True,
         )

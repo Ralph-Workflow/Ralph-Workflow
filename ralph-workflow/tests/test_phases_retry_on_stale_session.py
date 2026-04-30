@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING
 
 from ralph.agents.idle_watchdog import WatchdogFireReason
 from ralph.agents.invoke import AgentInactivityTimeoutError, AgentInvocationError, InvokeOptions
-from ralph.config.enums import PHASE_DEVELOPMENT, AgentTransport
+from ralph.config.enums import AgentTransport
 from ralph.config.models import AgentConfig, GeneralConfig, UnifiedConfig
 from ralph.pipeline import runner as runner_module
 from ralph.pipeline.effects import InvokeAgentEffect
@@ -40,7 +40,7 @@ def _make_state(
     session_preserve: bool = False,
 ) -> PipelineState:
     return PipelineState(
-        phase=PHASE_DEVELOPMENT,
+        phase="development",
         dev_chain=AgentChainState(agents=["claude"], current_index=0, retries=0),
         last_agent_session_id=last_session_id,
         session_preserve_retry_pending=session_preserve,
@@ -144,7 +144,7 @@ def test_runner_stale_session_internal_retry_succeeds(
 
     effect = InvokeAgentEffect(
         agent_name="claude",
-        phase=PHASE_DEVELOPMENT,
+        phase="development",
         prompt_file=str(prompt_file),
     )
     config = _make_config()
@@ -228,7 +228,7 @@ def test_runner_inactivity_timeout_with_captured_session_retries_fresh(
     result = runner_module._execute_agent_effect(
         InvokeAgentEffect(
             agent_name="claude",
-            phase=PHASE_DEVELOPMENT,
+            phase="development",
             prompt_file=str(prompt_file),
         ),
         _make_config(),
@@ -296,7 +296,7 @@ def test_runner_stale_session_with_parsed_session_id_retries_fresh(
     result = runner_module._execute_agent_effect(
         InvokeAgentEffect(
             agent_name="claude",
-            phase=PHASE_DEVELOPMENT,
+            phase="development",
             prompt_file=str(prompt_file),
         ),
         _make_config(),
@@ -360,7 +360,7 @@ def test_runner_stale_session_exhausts_retries_returns_failure(
     result = runner_module._execute_agent_effect(
         InvokeAgentEffect(
             agent_name="claude",
-            phase=PHASE_DEVELOPMENT,
+            phase="development",
             prompt_file=str(prompt_file),
         ),
         config,
@@ -435,7 +435,7 @@ def test_runner_opencode_stale_session_internal_retry_succeeds(
 
     effect = InvokeAgentEffect(
         agent_name="opencode",
-        phase=PHASE_DEVELOPMENT,
+        phase="development",
         prompt_file=str(prompt_file),
     )
     config = _make_config()
@@ -511,7 +511,7 @@ def test_runner_opencode_unknown_session_stale_message_triggers_retry(
     result = runner_module._execute_agent_effect(
         InvokeAgentEffect(
             agent_name="opencode",
-            phase=PHASE_DEVELOPMENT,
+            phase="development",
             prompt_file=str(prompt_file),
         ),
         _make_config(),
@@ -556,11 +556,11 @@ def test_stale_session_path_full_sequence(tmp_path: Path, monkeypatch: pytest.Mo
         f"No conversation found with session ID: {session_id}",
     )
 
-    registry = AgentBudgetRegistry().set_budget(PHASE_DEVELOPMENT, "claude", max_retries=3)
+    registry = AgentBudgetRegistry().set_budget("development", "claude", max_retries=3)
     controller = RecoveryController(cycle_cap=10, budget_registry=registry)
     state = _make_state(last_session_id=session_id, session_preserve=True)
 
-    new_state, _, evt = controller.handle(state, exc, phase=PHASE_DEVELOPMENT, agent="claude")
+    new_state, _, evt = controller.handle(state, exc, phase="development", agent="claude")
 
     assert evt.counted_against_budget is True
     assert evt.category == "agent"
@@ -568,14 +568,14 @@ def test_stale_session_path_full_sequence(tmp_path: Path, monkeypatch: pytest.Mo
     assert new_state.last_agent_session_id is None
     assert new_state.session_preserve_retry_pending is False
 
-    assert new_state.phase == PHASE_DEVELOPMENT
+    assert new_state.phase == "development"
 
-    hint_file = tmp_path / ".agent" / "tmp" / f"last_retry_error_{PHASE_DEVELOPMENT}.txt"
+    hint_file = tmp_path / ".agent" / "tmp" / f"last_retry_error_{"development"}.txt"
     assert hint_file.exists()
     hint_content = hint_file.read_text(encoding="utf-8")
     assert "session" in hint_content.lower()
 
-    budget = controller.budget_registry.get(PHASE_DEVELOPMENT, "claude")
+    budget = controller.budget_registry.get("development", "claude")
     assert budget is not None
     assert budget.consumed == 1
 
@@ -594,11 +594,11 @@ def test_stale_session_attempt2_uses_fresh_session(
         f"No conversation found with session ID: {session_id}",
     )
 
-    registry = AgentBudgetRegistry().set_budget(PHASE_DEVELOPMENT, "claude", max_retries=3)
+    registry = AgentBudgetRegistry().set_budget("development", "claude", max_retries=3)
     controller = RecoveryController(cycle_cap=10, budget_registry=registry)
     state = _make_state(last_session_id=session_id, session_preserve=True)
 
-    new_state, _, _ = controller.handle(state, exc, phase=PHASE_DEVELOPMENT, agent="claude")
+    new_state, _, _ = controller.handle(state, exc, phase="development", agent="claude")
 
     resume_session_id = (
         new_state.last_agent_session_id
@@ -620,19 +620,19 @@ def test_classifier_stale_session_only_on_exact_substring() -> None:
         1,
         "No conversation found with session ID: abc123",
     )
-    failure = classifier.classify(stale_exc, phase=PHASE_DEVELOPMENT, agent="claude")
+    failure = classifier.classify(stale_exc, phase="development", agent="claude")
     assert failure.reset_session is True
     assert failure.category == FailureCategory.AGENT
 
     generic_exc = AgentInvocationError("claude", 1, "agent exited unexpectedly")
-    generic_failure = classifier.classify(generic_exc, phase=PHASE_DEVELOPMENT, agent="claude")
+    generic_failure = classifier.classify(generic_exc, phase="development", agent="claude")
     assert generic_failure.reset_session is False
 
 
 def test_stale_session_phase_remains_active(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Stale-session failure does not advance to PHASE_FAILED on first occurrence."""
+    """Stale-session failure does not advance to "failed" on first occurrence."""
     monkeypatch.chdir(tmp_path)
     (tmp_path / ".agent" / "tmp").mkdir(parents=True)
 
@@ -641,11 +641,11 @@ def test_stale_session_phase_remains_active(
         1,
         "No conversation found with session ID: xyz",
     )
-    registry = AgentBudgetRegistry().set_budget(PHASE_DEVELOPMENT, "claude", max_retries=3)
+    registry = AgentBudgetRegistry().set_budget("development", "claude", max_retries=3)
     controller = RecoveryController(cycle_cap=10, budget_registry=registry)
     state = _make_state(last_session_id="xyz")
 
-    new_state, effects, _ = controller.handle(state, exc, phase=PHASE_DEVELOPMENT, agent="claude")
+    new_state, effects, _ = controller.handle(state, exc, phase="development", agent="claude")
 
-    assert new_state.phase == PHASE_DEVELOPMENT
+    assert new_state.phase == "development"
     assert effects == []

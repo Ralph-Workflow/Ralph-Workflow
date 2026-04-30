@@ -21,6 +21,8 @@ from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
     from ralph.config.enums import PipelinePhase
+from loguru import logger
+
 from ralph.pipeline import progress
 from ralph.pipeline.effects import Effect, SaveCheckpointEffect
 from ralph.pipeline.events import (
@@ -36,6 +38,7 @@ from ralph.pipeline.events import (
 from ralph.pipeline.handoffs import resolve_next_phase, resolve_post_commit_phase
 from ralph.pipeline.state import CommitState, PipelineState
 from ralph.pipeline.worker_state import WorkerState, WorkerStatus
+from ralph.policy.explain import explain_routing_decision
 from ralph.policy.models import PhaseDefinition, PhaseLoopPolicy
 
 if TYPE_CHECKING:
@@ -277,8 +280,14 @@ def _enter_failed_recovery(
     policy: PipelinePolicy | None = None,
 ) -> tuple[PipelineState, list[Effect]]:
     """Transition to the policy-declared terminal failure route."""
+    target = _terminal_failure_route(policy)
+    logger.bind(component="policy.routing").info(
+        explain_routing_decision(
+            state.phase, target, "failure", reason, recovery=True
+        )
+    )
     new_state = state.copy_with(
-        phase=_terminal_failure_route(policy),
+        phase=target,
         previous_phase=state.phase,
         last_error=reason,
         recovery_epoch=state.recovery_epoch + 1,
@@ -460,14 +469,12 @@ def _handle_capped_analysis_loopback_policy_driven(
 
     iteration_field: str = loop_policy.iteration_state_field
     current_iteration = state.get_loop_iteration(iteration_field)
-    _cap: int | None = state.loop_caps.get(iteration_field)
-    if _cap is None:
-        if iteration_field == "development_analysis_iteration":
-            _cap = state.max_development_analysis_iterations
-        elif iteration_field == "review_analysis_iteration":
-            _cap = state.max_review_analysis_iterations
-        else:
-            _cap = loop_policy.max_iterations
+    _cap_value: int | None = state.loop_caps.get(iteration_field)
+    _cap: int = _cap_value if _cap_value is not None else (
+        policy.loop_counters[iteration_field].default_max
+        if iteration_field in policy.loop_counters
+        else loop_policy.max_iterations
+    )
     max_iterations: int = _cap
     # Apply progress tracking up front so it is preserved even if routing fails.
     clamped = max(0, min(current_iteration + 1, max_iterations))
@@ -564,6 +571,11 @@ def _handle_analysis_decision(
         )
         return _enter_failed_recovery(progress_state, failure_reason, policy)
 
+    logger.bind(component="policy.routing").info(
+        explain_routing_decision(
+            event.phase, route.target, "decision", event.decision
+        )
+    )
     new_state, effects = _advance_phase(progress_state, route.target, policy)
     return _restore_work_units(state, new_state), effects
 
@@ -590,6 +602,11 @@ def _handle_review_clean(
         and phase_def.clean_outcome in phase_def.bypass_routes
     ):
         next_phase = phase_def.bypass_routes[phase_def.clean_outcome]
+        logger.bind(component="policy.routing").info(
+            explain_routing_decision(
+                state.phase, next_phase, "bypass route", phase_def.clean_outcome
+            )
+        )
         new_state, effects = _advance_phase(state, next_phase, policy)
         return new_state.copy_with(review_outcome=None), effects
 
@@ -806,6 +823,9 @@ def _resolve_or_terminal(
             f"Routing error after {label} in '{state.phase}': {exc}",
             policy,
         )
+    logger.bind(component="policy.routing").info(
+        explain_routing_decision(state.phase, next_phase, "signal", signal)
+    )
     return _advance_phase(state, next_phase, policy)
 
 

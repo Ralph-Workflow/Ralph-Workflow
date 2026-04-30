@@ -8,10 +8,6 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
-from ralph.config.enums import (
-    PHASE_DEVELOPMENT_ANALYSIS,
-    PHASE_REVIEW_ANALYSIS,
-)
 from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.reducer import reduce as reducer_reduce
 from ralph.pipeline.state import PipelineState
@@ -52,7 +48,7 @@ class TestDevAnalysisCapTriggeredCorrectionRouting:
         """At max-1 iterations, ANALYSIS_LOOPBACK still routes to development."""
         policy = _load_default_policy()
         state = PipelineState(
-            phase=PHASE_DEVELOPMENT_ANALYSIS,
+            phase="development_analysis",
             development_analysis_iteration=2,  # max-1 where max=3
             max_development_analysis_iterations=_DEV_MAX_ANALYSIS,
             development_budget_remaining=3,
@@ -86,7 +82,7 @@ class TestReviewAnalysisCapTriggeredCorrectionRouting:
         """At max-1 iterations, ANALYSIS_LOOPBACK still routes to fix."""
         policy = _load_default_policy()
         state = PipelineState(
-            phase=PHASE_REVIEW_ANALYSIS,
+            phase="review_analysis",
             review_analysis_iteration=1,  # max-1 where max=2
             max_review_analysis_iterations=_REVIEW_MAX_ANALYSIS,
             reviewer_pass=0,

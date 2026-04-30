@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 
-from ralph.config.enums import PHASE_DEVELOPMENT
 from ralph.pipeline.effects import FanOutDevelopmentEffect
 from ralph.pipeline.events import (
     Event,
@@ -65,7 +64,7 @@ def test_one_failure_cancels_all() -> None:
         "unit-C": FakeRun(outputs=_long_running_outputs(), exit_code=0, duration_ms=1000),
     }
     effect = FanOutDevelopmentEffect(work_units=units, max_workers=3)
-    state = PipelineState(phase=PHASE_DEVELOPMENT, work_units=units)
+    state = PipelineState(phase="development", work_units=units)
 
     events = _run_fan_out(effect, state, runs)
 
@@ -104,7 +103,7 @@ def test_failed_state_transitions_reflect_failure() -> None:
         "unit-C": FakeRun(outputs=_long_running_outputs(), exit_code=0, duration_ms=1000),
     }
     effect = FanOutDevelopmentEffect(work_units=units, max_workers=3)
-    initial_state = PipelineState(phase=PHASE_DEVELOPMENT, work_units=units)
+    initial_state = PipelineState(phase="development", work_units=units)
 
     events = _run_fan_out(effect, initial_state, runs)
 
@@ -112,7 +111,7 @@ def test_failed_state_transitions_reflect_failure() -> None:
     for event in events:
         reduced_state, _ = reducer_reduce(reduced_state, event)
 
-    assert reduced_state.phase == PHASE_DEVELOPMENT
+    assert reduced_state.phase == "development"
     assert reduced_state.worker_states["unit-A"].status == WorkerStatus.FAILED
     assert reduced_state.worker_states["unit-B"].status == WorkerStatus.FAILED
     assert reduced_state.worker_states["unit-C"].status == WorkerStatus.FAILED

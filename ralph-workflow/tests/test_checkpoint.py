@@ -6,7 +6,6 @@ from pathlib import Path
 
 import pytest
 
-from ralph.config.enums import PHASE_DEVELOPMENT, PHASE_REVIEW
 from ralph.pipeline import checkpoint as ckpt
 from ralph.pipeline.state import (
     AgentChainState,
@@ -24,7 +23,7 @@ TOTAL_AGENT_CALLS = 10
 def test_save_and_load_checkpoint(tmp_path: Path) -> None:
     """Test saving and loading a checkpoint."""
     state = PipelineState(
-        phase=PHASE_DEVELOPMENT,
+        phase="development",
         iteration=DEVELOPMENT_ITERATION,
         total_iterations=TOTAL_ITERATIONS,
     )
@@ -35,7 +34,7 @@ def test_save_and_load_checkpoint(tmp_path: Path) -> None:
 
     loaded = ckpt.load(path)
     assert loaded is not None
-    assert loaded.phase == PHASE_DEVELOPMENT
+    assert loaded.phase == "development"
     assert loaded.iteration == DEVELOPMENT_ITERATION
     assert loaded.total_iterations == TOTAL_ITERATIONS
 
@@ -60,7 +59,7 @@ def test_checkpoint_exists(tmp_path: Path) -> None:
 def test_checkpoint_inspect(tmp_path: Path) -> None:
     """Test checkpoint inspection."""
     state = PipelineState(
-        phase=PHASE_REVIEW,
+        phase="review",
         iteration=1,
         total_iterations=3,
         reviewer_pass=0,
@@ -87,7 +86,7 @@ def test_checkpoint_remove(tmp_path: Path) -> None:
 def test_checkpoint_roundtrip_full_state(tmp_path: Path) -> None:
     """Test saving and loading full state with all fields."""
     state = PipelineState(
-        phase=PHASE_DEVELOPMENT,
+        phase="development",
         iteration=3,
         total_iterations=TOTAL_ITERATIONS,
         reviewer_pass=1,
@@ -194,7 +193,7 @@ def test_load_drops_unknown_failure_sentinel(tmp_path: Path) -> None:
 
     # Create a checkpoint with the forbidden sentinel
     state_with_sentinel = PipelineState(
-        phase=PHASE_DEVELOPMENT,
+        phase="development",
         iteration=1,
         last_error="Unknown failure",
     )
@@ -215,7 +214,7 @@ def test_load_drops_empty_string_sentinel(tmp_path: Path) -> None:
     path = tmp_path / "checkpoint.json"
 
     state_with_empty = PipelineState(
-        phase=PHASE_DEVELOPMENT,
+        phase="development",
         iteration=1,
         last_error="",
     )
@@ -231,7 +230,7 @@ def test_load_drops_none_sentinel(tmp_path: Path) -> None:
     path = tmp_path / "checkpoint.json"
 
     state_with_none = PipelineState(
-        phase=PHASE_DEVELOPMENT,
+        phase="development",
         iteration=1,
         last_error="None",
     )
@@ -248,7 +247,7 @@ def test_load_preserves_valid_last_error(tmp_path: Path) -> None:
 
     valid_error = "development: Missing planning artifact at .agent/artifacts/plan.json"
     state_with_valid = PipelineState(
-        phase=PHASE_DEVELOPMENT,
+        phase="development",
         iteration=1,
         last_error=valid_error,
     )

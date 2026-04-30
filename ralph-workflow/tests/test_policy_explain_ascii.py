@@ -93,10 +93,13 @@ class TestRenderExplanationAscii:
         explanation = explain_policy(bundle)
         output = render_explanation_ascii(explanation)
 
-        # New loopback format: "    | loop back to <target>"
-        assert "loop back to development" in output
-        # Old format must NOT be present
+        # New loopback format uses left-pointing arrows so it cannot be
+        # mistaken for a forward arrow.
+        assert "<<==[loopback]=="  in output
+        assert "returns to '" in output
+        # Old formats must NOT be present
         assert "<--[loopback]--" not in output
+        assert "loop back to development" not in output
 
     def test_renders_fanout_annotation(self) -> None:
         """Default pipeline diagram contains fanout annotation for development phase."""

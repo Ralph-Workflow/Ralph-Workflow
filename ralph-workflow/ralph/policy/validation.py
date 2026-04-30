@@ -410,18 +410,32 @@ def _validate_recovery_failed_route(
 ) -> None:
     """Validate that recovery.failed_route is consistent with declared terminal phases.
 
-    failed_route must be 'failed', 'phase_failed', 'exit_failure', or reference
-    a phase that exists in the pipeline. These pseudo-phases are always valid.
+    failed_route must reference a phase declared in pipeline.phases (preferably one
+    with role='terminal' and terminal_outcome='failure'), or the deprecated pseudo-phase
+    'failed' (which emits a deprecation warning). The legacy pseudo-phases 'phase_failed'
+    and 'exit_failure' are no longer accepted.
     """
     failed_route = policy.recovery.failed_route
-    if failed_route in ("failed", "phase_failed", "exit_failure"):
+    if failed_route in ("phase_failed", "exit_failure"):
+        errors.append(
+            f"recovery.failed_route: '{failed_route}' is no longer supported. "
+            f"Declare a terminal failure phase with role='terminal' and "
+            f"terminal_outcome='failure' and reference it via recovery.failed_route "
+            f"(and optionally recovery.terminal_failure_phase). "
+            f"See docs/sphinx/policy-driven-overhaul-migration.md."
+        )
+        return
+    if failed_route == "failed":
+        # Deprecated alias — still accepted but emits warning elsewhere
         return
     # Must reference a known phase
     if failed_route not in policy.phases:
         errors.append(
             f"recovery.failed_route: '{failed_route}' "
-            f"is not a known phase. Must be 'failed', 'phase_failed', 'exit_failure', or "
-            f"a phase defined in pipeline.phases. Known phases: {sorted(policy.phases.keys())}"
+            f"is not a known phase. Must reference a phase defined in pipeline.phases "
+            f"(with role='terminal' and terminal_outcome='failure') or the deprecated "
+            f"pseudo-phase 'failed'. "
+            f"Known phases: {sorted(policy.phases.keys())}"
         )
 
 
@@ -459,6 +473,29 @@ def _validate_reachability(policy: PipelinePolicy, errors: list[str]) -> None:
             f"'{policy.entry_phase}'): {unreachable}. "
             f"Remove these phases or add transitions leading to them."
         )
+
+
+def _validate_no_legacy_phase_constants(
+    policy: PipelinePolicy,
+    errors: list[str],
+) -> None:
+    """Validate that the policy does not rely on removed legacy pseudo-phase constants.
+
+    Flags phases that are named after deprecated pseudo-phase tokens but are not
+    properly declared as terminal phases.
+
+    Each error includes the field path, the offending value, and a migration hint.
+    """
+    for phase_name in ("phase_failed", "exit_failure"):
+        if phase_name in policy.phases:
+            phase_def = policy.phases[phase_name]
+            if phase_def.role != "terminal" or phase_def.terminal_outcome != "failure":
+                errors.append(
+                    f"phases.{phase_name}: this name is a legacy pseudo-phase token. "
+                    f"If you intended a terminal failure phase, set role='terminal' and "
+                    f"terminal_outcome='failure'. "
+                    f"See docs/sphinx/policy-driven-overhaul-migration.md."
+                )
 
 
 def validate_policy_completeness(bundle: PolicyBundle) -> None:
@@ -516,6 +553,9 @@ def validate_policy_completeness(bundle: PolicyBundle) -> None:
 
     # Validate recovery.failed_route consistency
     _validate_recovery_failed_route(policy, errors)
+
+    # Validate that legacy pseudo-phase tokens are not used
+    _validate_no_legacy_phase_constants(policy, errors)
 
     # Validate that every declared phase is reachable from the entry point
     _validate_reachability(policy, errors)

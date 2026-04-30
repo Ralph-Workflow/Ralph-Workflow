@@ -10,7 +10,6 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
-from ralph.config.enums import PHASE_DEVELOPMENT, PHASE_FAILED
 from ralph.executor.process import ProcessResult
 from ralph.pipeline import runner as runner_module
 from ralph.pipeline.effects import FanOutDevelopmentEffect
@@ -35,8 +34,8 @@ def _make_policy_bundle(max_workers: int = 2) -> MagicMock:
     para = PhaseParallelization(max_parallel_workers=max_workers, post_fanout_verification=True)
     dev_phase = MagicMock(requires_commit=False, drain="development", role="execution")
     dev_phase.parallelization = para
-    bundle.pipeline.phases = {PHASE_DEVELOPMENT: dev_phase}
-    bundle.pipeline.recovery.failed_route = PHASE_FAILED
+    bundle.pipeline.phases = {"development": dev_phase}
+    bundle.pipeline.recovery.failed_route = "failed_terminal"
     return bundle
 
 
@@ -49,7 +48,7 @@ class TestSerializedPostFanoutVerification:
             max_workers=1,
             run_post_fanout_verification=True,
         )
-        state = PipelineState(phase=PHASE_DEVELOPMENT, work_units=(unit,))
+        state = PipelineState(phase="development", work_units=(unit,))
         policy_bundle = _make_policy_bundle(max_workers=1)
         workspace_scope = WorkspaceScope(tmp_path)
 
@@ -110,7 +109,7 @@ class TestSerializedPostFanoutVerification:
             max_workers=1,
             run_post_fanout_verification=True,
         )
-        state = PipelineState(phase=PHASE_DEVELOPMENT, work_units=(unit,))
+        state = PipelineState(phase="development", work_units=(unit,))
         policy_bundle = _make_policy_bundle(max_workers=1)
         workspace_scope = WorkspaceScope(tmp_path)
 
@@ -168,7 +167,7 @@ class TestSerializedPostFanoutVerification:
             max_workers=1,
             run_post_fanout_verification=False,
         )
-        state = PipelineState(phase=PHASE_DEVELOPMENT, work_units=(unit,))
+        state = PipelineState(phase="development", work_units=(unit,))
         policy_bundle = _make_policy_bundle(max_workers=1)
         workspace_scope = WorkspaceScope(tmp_path)
         verify_calls: list[str] = []
@@ -218,7 +217,7 @@ class TestSerializedPostFanoutVerification:
         """_determine_effect_from_policy sets run_post_fanout_verification=True for >=2 units."""
         unit_a = _make_work_unit("unit-a")
         unit_b = _make_work_unit("unit-b")
-        state = PipelineState(phase=PHASE_DEVELOPMENT, work_units=(unit_a, unit_b))
+        state = PipelineState(phase="development", work_units=(unit_a, unit_b))
         policy_bundle = _make_policy_bundle(max_workers=2)
 
         effect = runner_module._determine_effect_from_policy(state, policy_bundle)
@@ -239,7 +238,7 @@ class TestSerializedPostFanoutVerification:
             max_workers=1,
             run_post_fanout_verification=True,
         )
-        state = PipelineState(phase=PHASE_DEVELOPMENT, work_units=(unit,))
+        state = PipelineState(phase="development", work_units=(unit,))
         policy_bundle = _make_policy_bundle(max_workers=1)
         workspace_scope = WorkspaceScope(tmp_path)
         verify_calls: list[str] = []
@@ -291,7 +290,7 @@ class TestSerializedPostFanoutVerification:
     def test_post_fanout_verification_failure_routes_to_recovery(
         self, monkeypatch, tmp_path
     ) -> None:
-        """When verification fails, the returned state must be PHASE_FAILED
+        """When verification fails, the returned state must be "failed"
         with last_error containing the verification failure message."""
         unit = _make_work_unit("unit-a")
         effect = FanOutDevelopmentEffect(
@@ -299,11 +298,11 @@ class TestSerializedPostFanoutVerification:
             max_workers=1,
             run_post_fanout_verification=True,
         )
-        # Exhaust the dev_chain retries so the reducer transitions to PHASE_FAILED
+        # Exhaust the dev_chain retries so the reducer transitions to "failed"
         # rather than scheduling another retry attempt.
         exhausted_chain = AgentChainState(agents=[], current_index=0, retries=_MAX_AGENT_RETRIES)
         state = PipelineState(
-            phase=PHASE_DEVELOPMENT, work_units=(unit,), dev_chain=exhausted_chain
+            phase="development", work_units=(unit,), dev_chain=exhausted_chain
         )
         policy_bundle = _make_policy_bundle(max_workers=1)
         workspace_scope = WorkspaceScope(tmp_path)
@@ -351,8 +350,8 @@ class TestSerializedPostFanoutVerification:
             workspace_scope=workspace_scope,
         )
 
-        assert final_state.phase == PHASE_FAILED, (
-            f"Expected PHASE_FAILED after verification failure, got: {final_state.phase}"
+        assert final_state.phase == "failed_terminal", (
+            f"Expected 'failed_terminal' after verification failure, got: {final_state.phase}"
         )
         assert final_state.last_error is not None, (
             "last_error must be set after verification failure"
@@ -381,7 +380,7 @@ class TestSerializedPostFanoutVerification:
             max_workers=2,
             run_post_fanout_verification=True,
         )
-        state = PipelineState(phase=PHASE_DEVELOPMENT, work_units=(unit_a, unit_b))
+        state = PipelineState(phase="development", work_units=(unit_a, unit_b))
         policy_bundle = _make_policy_bundle(max_workers=2)
         workspace_scope = WorkspaceScope(tmp_path)
 

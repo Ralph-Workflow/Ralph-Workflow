@@ -207,7 +207,6 @@ class TestParseAnalysisDecisionPhaseNameParameter:
     """parse_analysis_decision uses phase_name for policy lookup, drain_name for artifact path."""
 
     def _make_custom_analysis_policy(self) -> object:
-        from ralph.config.enums import PHASE_COMPLETE, PHASE_FAILED  # noqa: PLC0415
         from ralph.policy.models import (  # noqa: PLC0415
             PhaseDecisionRoute,
             PhaseDefinition,
@@ -224,7 +223,7 @@ class TestParseAnalysisDecisionPhaseNameParameter:
                     transitions=PhaseTransition(
                         on_success="development_commit",
                         on_loopback="development",
-                        on_failure=PHASE_FAILED,
+                        on_failure="failed",
                     ),
                     loop_policy=PhaseLoopPolicy(
                         max_iterations=3,
@@ -238,7 +237,7 @@ class TestParseAnalysisDecisionPhaseNameParameter:
                             target="development", reset_loop=False
                         ),
                         "failed": PhaseDecisionRoute(
-                            target=PHASE_FAILED, reset_loop=False
+                            target="failed", reset_loop=False
                         ),
                     },
                 ),
@@ -246,8 +245,8 @@ class TestParseAnalysisDecisionPhaseNameParameter:
                     drain="development_commit",
                     role="commit",
                     transitions=PhaseTransition(
-                        on_success=PHASE_COMPLETE,
-                        on_failure=PHASE_FAILED,
+                        on_success="complete",
+                        on_failure="failed",
                     ),
                 ),
                 "development": PhaseDefinition(
@@ -255,21 +254,21 @@ class TestParseAnalysisDecisionPhaseNameParameter:
                     role="execution",
                     transitions=PhaseTransition(
                         on_success="custom_analysis",
-                        on_failure=PHASE_FAILED,
+                        on_failure="failed",
                     ),
                 ),
-                PHASE_COMPLETE: PhaseDefinition(
+                "complete": PhaseDefinition(
                     drain="complete",
                     role="terminal",
                     terminal_outcome="success",
                     transitions=PhaseTransition(
-                        on_success=PHASE_COMPLETE,
-                        on_loopback=PHASE_COMPLETE,
+                        on_success="complete",
+                        on_loopback="complete",
                     ),
                 ),
             },
             entry_phase="development",
-            terminal_phase=PHASE_COMPLETE,
+            terminal_phase="complete",
         )
 
     def test_phase_name_parameter_used_for_policy_lookup(self) -> None:
@@ -315,7 +314,6 @@ class TestRegisterRoleHandlers:
     """register_role_handlers wires generic handlers for analysis- and commit-role phases."""
 
     def _make_analysis_policy(self) -> object:
-        from ralph.config.enums import PHASE_COMPLETE, PHASE_FAILED  # noqa: PLC0415
         from ralph.policy.models import (  # noqa: PLC0415
             PhaseDecisionRoute,
             PhaseDefinition,
@@ -330,9 +328,9 @@ class TestRegisterRoleHandlers:
                     drain="development_analysis",
                     role="analysis",
                     transitions=PhaseTransition(
-                        on_success=PHASE_COMPLETE,
-                        on_loopback=PHASE_COMPLETE,
-                        on_failure=PHASE_FAILED,
+                        on_success="complete",
+                        on_loopback="complete",
+                        on_failure="failed",
                     ),
                     loop_policy=PhaseLoopPolicy(
                         max_iterations=3,
@@ -340,26 +338,25 @@ class TestRegisterRoleHandlers:
                     ),
                     decisions={
                         "completed": PhaseDecisionRoute(
-                            target=PHASE_COMPLETE, reset_loop=True
+                            target="complete", reset_loop=True
                         ),
                     },
                 ),
-                PHASE_COMPLETE: PhaseDefinition(
+                "complete": PhaseDefinition(
                     drain="complete",
                     role="terminal",
                     terminal_outcome="success",
                     transitions=PhaseTransition(
-                        on_success=PHASE_COMPLETE,
-                        on_loopback=PHASE_COMPLETE,
+                        on_success="complete",
+                        on_loopback="complete",
                     ),
                 ),
             },
             entry_phase="my_custom_analysis",
-            terminal_phase=PHASE_COMPLETE,
+            terminal_phase="complete",
         )
 
     def _make_commit_policy(self) -> object:
-        from ralph.config.enums import PHASE_COMPLETE, PHASE_FAILED  # noqa: PLC0415
         from ralph.policy.models import (  # noqa: PLC0415
             PhaseCommitPolicy,
             PhaseDefinition,
@@ -373,26 +370,26 @@ class TestRegisterRoleHandlers:
                     drain="development_commit",
                     role="commit",
                     transitions=PhaseTransition(
-                        on_success=PHASE_COMPLETE,
-                        on_failure=PHASE_FAILED,
+                        on_success="complete",
+                        on_failure="failed",
                     ),
                     commit_policy=PhaseCommitPolicy(
                         increments_counter="iteration",
                         loop_resets=["development_analysis_iteration"],
                     ),
                 ),
-                PHASE_COMPLETE: PhaseDefinition(
+                "complete": PhaseDefinition(
                     drain="complete",
                     role="terminal",
                     terminal_outcome="success",
                     transitions=PhaseTransition(
-                        on_success=PHASE_COMPLETE,
-                        on_loopback=PHASE_COMPLETE,
+                        on_success="complete",
+                        on_loopback="complete",
                     ),
                 ),
             },
             entry_phase="my_custom_commit",
-            terminal_phase=PHASE_COMPLETE,
+            terminal_phase="complete",
         )
 
     def test_register_role_handlers_registers_analysis_phase(self) -> None:

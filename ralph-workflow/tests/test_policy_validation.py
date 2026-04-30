@@ -1465,8 +1465,8 @@ class TestValidatePolicyCompletenessNewRules:
         bundle = PolicyBundle(agents=agents, pipeline=pipeline, artifacts=artifacts)
         validate_policy_completeness(bundle)  # must not raise
 
-    def test_recovery_failed_route_phase_failed_is_valid(self) -> None:
-        """recovery.failed_route='phase_failed' is always valid."""
+    def test_recovery_failed_route_phase_failed_is_rejected(self) -> None:
+        """recovery.failed_route='phase_failed' is rejected with migration hint."""
         agents = self._minimal_agents(["planning", "complete"])
         pipeline = PipelinePolicy(
             phases={
@@ -1495,10 +1495,11 @@ class TestValidatePolicyCompletenessNewRules:
         )
         artifacts = ArtifactsPolicy(artifacts={})
         bundle = PolicyBundle(agents=agents, pipeline=pipeline, artifacts=artifacts)
-        validate_policy_completeness(bundle)  # must not raise
+        with pytest.raises(PolicyValidationError, match="no longer supported"):
+            validate_policy_completeness(bundle)
 
-    def test_recovery_failed_route_exit_failure_is_valid(self) -> None:
-        """recovery.failed_route='exit_failure' is always valid."""
+    def test_recovery_failed_route_exit_failure_is_rejected(self) -> None:
+        """recovery.failed_route='exit_failure' is rejected with migration hint."""
         agents = self._minimal_agents(["planning", "complete"])
         pipeline = PipelinePolicy(
             phases={
@@ -1527,7 +1528,8 @@ class TestValidatePolicyCompletenessNewRules:
         )
         artifacts = ArtifactsPolicy(artifacts={})
         bundle = PolicyBundle(agents=agents, pipeline=pipeline, artifacts=artifacts)
-        validate_policy_completeness(bundle)  # must not raise
+        with pytest.raises(PolicyValidationError, match="no longer supported"):
+            validate_policy_completeness(bundle)
 
 
     def test_review_role_requires_issues_outcome(self) -> None:

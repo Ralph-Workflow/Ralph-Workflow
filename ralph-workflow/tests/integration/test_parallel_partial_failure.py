@@ -19,7 +19,6 @@ if TYPE_CHECKING:
 
 from rich.console import Console
 
-from ralph.config.enums import PHASE_DEVELOPMENT, PHASE_FAILED
 from ralph.pipeline import runner as runner_module
 from ralph.pipeline.effects import FanOutDevelopmentEffect
 from ralph.pipeline.events import (
@@ -78,8 +77,8 @@ def _make_policy_bundle(max_workers: int = 4) -> MagicMock:
     para = PhaseParallelization(max_parallel_workers=max_workers, post_fanout_verification=True)
     dev_phase = MagicMock(requires_commit=False, drain="development")
     dev_phase.parallelization = para
-    bundle.pipeline.phases = {PHASE_DEVELOPMENT: dev_phase}
-    bundle.pipeline.recovery.failed_route = PHASE_FAILED
+    bundle.pipeline.phases = {"development": dev_phase}
+    bundle.pipeline.recovery.failed_route = "failed_terminal"
     bundle.agents.agent_drains = {
         "development": MagicMock(chain="developer"),
     }
@@ -132,7 +131,7 @@ class TestPartialFailureReporting:
             ),
         }
         effect = FanOutDevelopmentEffect(work_units=units, max_workers=3)
-        state = PipelineState(phase=PHASE_DEVELOPMENT, work_units=units)
+        state = PipelineState(phase="development", work_units=units)
 
         events = _run_fan_out(effect, state, runs)
 
@@ -165,7 +164,7 @@ class TestPartialFailureReporting:
                 raise_on_start=RuntimeError("unit-a failed"),
             ),
         }
-        initial_state = PipelineState(phase=PHASE_DEVELOPMENT, work_units=units)
+        initial_state = PipelineState(phase="development", work_units=units)
         effect = FanOutDevelopmentEffect(work_units=units, max_workers=3)
 
         events = _run_fan_out(effect, initial_state, runs)
@@ -194,7 +193,7 @@ class TestPartialFailureReporting:
             ),
         }
         effect = FanOutDevelopmentEffect(work_units=units, max_workers=2)
-        state = PipelineState(phase=PHASE_DEVELOPMENT, work_units=units)
+        state = PipelineState(phase="development", work_units=units)
 
         events = _run_fan_out(effect, state, runs)
 
@@ -209,15 +208,15 @@ class TestPartialFailureReporting:
     def test_one_success_one_failure_routes_to_phase_failed_with_sorted_attribution(
         self,
     ) -> None:
-        """ALL_WORKERS_COMPLETE after partial failure routes to PHASE_FAILED with attribution.
+        """ALL_WORKERS_COMPLETE after partial failure routes to "failed" with attribution.
 
         The coordinator does not emit ALL_WORKERS_COMPLETE when workers fail, but the
         reducer's contract must still be correct: when ALL_WORKERS_COMPLETE is processed
-        and there are failed workers, the final state must be PHASE_FAILED with sorted
+        and there are failed workers, the final state must be "failed" with sorted
         attribution in last_error. This test exercises that reducer contract directly.
 
         Asserts:
-        - Final reduced state is PHASE_FAILED
+        - Final reduced state is "failed"
         - last_error contains the failing unit's id (unit-beta)
         - last_error does NOT contain the succeeding unit's id (unit-alpha)
         """
@@ -237,14 +236,14 @@ class TestPartialFailureReporting:
             PipelineEvent.ALL_WORKERS_COMPLETE,
         ]
 
-        initial_state = PipelineState(phase=PHASE_DEVELOPMENT, work_units=units)
+        initial_state = PipelineState(phase="development", work_units=units)
         state = initial_state
         bundle = _make_policy_bundle()
         for event in events:
             state, _ = reducer_reduce(state, event, bundle.pipeline)
 
-        assert state.phase == PHASE_FAILED, (
-            f"Expected PHASE_FAILED after partial failure + ALL_WORKERS_COMPLETE, "
+        assert state.phase == "failed_terminal", (
+            f"Expected 'failed_terminal' after partial failure + ALL_WORKERS_COMPLETE, "
             f"got {state.phase!r}"
         )
         assert state.last_error is not None, "last_error must be set after worker failure"
@@ -279,13 +278,13 @@ class TestPartialFailureReporting:
             PipelineEvent.ALL_WORKERS_COMPLETE,
         ]
 
-        initial_state = PipelineState(phase=PHASE_DEVELOPMENT, work_units=units)
+        initial_state = PipelineState(phase="development", work_units=units)
         state = initial_state
         bundle = _make_policy_bundle()
         for event in events:
             state, _ = reducer_reduce(state, event, bundle.pipeline)
 
-        assert state.phase == PHASE_FAILED
+        assert state.phase == "failed_terminal"
         assert state.last_error is not None
         # Both failing units must be named; the reducer sorts failed_unit_ids alphabetically
         assert "unit-beta" in (state.last_error or ""), (
@@ -306,7 +305,7 @@ class TestPartialFailureHandoffContent:
 
     These tests verify that when 1 of 2 workers fails, the resulting handoff
     artifact contains both unit_ids, marks the right worker as failed, and
-    reports phase state as PHASE_FAILED (not PHASE_DEVELOPMENT_ANALYSIS).
+    reports phase state as "failed" (not "development_analysis").
     """
 
     def test_partial_failure_development_result_md_contains_both_unit_ids(
@@ -329,7 +328,7 @@ class TestPartialFailureHandoffContent:
 
         scope = WorkspaceScope(root=tmp_path, allowed_roots=frozenset([tmp_path]))
         initial_state = PipelineState(
-            phase=PHASE_DEVELOPMENT,
+            phase="development",
             work_units=(unit_a, unit_b),
         )
 
@@ -361,10 +360,10 @@ class TestPartialFailureHandoffContent:
             workspace_scope=scope,
         )
 
-        # State must be PHASE_FAILED — never PHASE_DEVELOPMENT_ANALYSIS on partial failure
-        assert final_state.phase == PHASE_FAILED, (
-            f"Partial failure must produce PHASE_FAILED, got {final_state.phase!r}. "
-            "PHASE_DEVELOPMENT_ANALYSIS must only be reached when ALL workers succeed."
+        # State must be terminal failure — never "development_analysis" on partial failure
+        assert final_state.phase == "failed_terminal", (
+            f"Partial failure must produce 'failed_terminal', got {final_state.phase!r}. "
+            "'development_analysis' must only be reached when ALL workers succeed."
         )
 
         # DEVELOPMENT_RESULT.md must contain both unit_ids
@@ -409,7 +408,7 @@ class TestPartialFailureHandoffContent:
 
         scope = WorkspaceScope(root=tmp_path, allowed_roots=frozenset([tmp_path]))
         initial_state = PipelineState(
-            phase=PHASE_DEVELOPMENT,
+            phase="development",
             work_units=(unit_a, unit_b),
         )
 
