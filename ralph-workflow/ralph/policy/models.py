@@ -36,6 +36,10 @@ PhaseRole = Literal[
     "fanout_join",
 ]
 
+# Role identifier constant — use this in non-model modules instead of the
+# string literal "review" to avoid colliding with the default phase name 'review'.
+ROLE_REVIEW: Literal["review"] = "review"
+
 
 class _FrozenPolicyModel(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     """Private base for frozen policy models.

@@ -17,6 +17,7 @@ from ralph.mcp.artifacts.plan import PLAN_ARTIFACT_PATH
 from ralph.mcp.tools.names import SUBMIT_ARTIFACT_TOOL, claude_tool_name_prefix
 from ralph.phases.required_artifacts import resolve_required_artifact, retry_hint_path
 from ralph.pipeline.cycle_baseline import read_cycle_baseline
+from ralph.policy.models import ROLE_REVIEW
 from ralph.prompts.commit import CommitPromptPayloadConfig, prompt_commit_message
 from ralph.prompts.debug_dump import dump_rendered_prompt, prompt_dump_path
 from ralph.prompts.developer import (
@@ -164,7 +165,7 @@ def _render_prompt_for_phase(  # noqa: PLR0913
         )
 
     # Template-based prompt: review, analysis, or other execution-role phases
-    if phase_role in ("review", "analysis", "execution", "verification"):
+    if phase_role in (ROLE_REVIEW, "analysis", "execution", "verification"):
         template = context.registry.get_template(template_name)
         diff_content = _git_diff(workspace_root)
         latest_artifact_content, latest_artifact_path = _latest_artifact_content(
