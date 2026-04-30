@@ -115,7 +115,7 @@ def _build_custom_bundle() -> PolicyBundle:
         budget_counters={
             "build_pass": BudgetCounterConfig(description="build passes completed")
         },
-        recovery=RecoveryPolicy(terminal_recovery_route="crashed"),
+        recovery=RecoveryPolicy(failed_route="crashed"),
     )
     agents = AgentsPolicy(
         agent_chains={"main": AgentChainConfig(agents=["claude"])},
@@ -457,4 +457,4 @@ class TestCustomPipelinePolicyValidation:
     def test_terminal_recovery_route_is_custom_phase(
         self, custom_bundle: PolicyBundle
     ) -> None:
-        assert custom_bundle.pipeline.recovery.terminal_recovery_route == "crashed"
+        assert custom_bundle.pipeline.recovery.failed_route == "crashed"

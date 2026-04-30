@@ -1341,9 +1341,9 @@ class TestValidatePolicyCompletenessNewRules:
         validate_policy_completeness(bundle)  # must not raise
 
     def test_recovery_terminal_recovery_route_unknown_phase_raises_policy_error(self) -> None:
-        """terminal_recovery_route referencing an undeclared phase fails completeness validation.
+        """failed_route referencing an undeclared phase fails completeness validation.
 
-        RecoveryPolicy.terminal_recovery_route accepts any string (phase_failed, exit_failure,
+        RecoveryPolicy.failed_route accepts any string (phase_failed, exit_failure,
         or a declared phase name). An undeclared phase name is rejected by
         validate_policy_completeness, not at Pydantic model level.
         """
@@ -1369,7 +1369,7 @@ class TestValidatePolicyCompletenessNewRules:
             terminal_phase="complete",
             recovery=RecoveryPolicy(
                 cycle_cap=200,
-                terminal_recovery_route="nonexistent_phase",
+                failed_route="nonexistent_phase",
                 preserve_session_on_categories=("agent",),
             ),
         )
@@ -1379,7 +1379,7 @@ class TestValidatePolicyCompletenessNewRules:
             validate_policy_completeness(bundle)
 
     def test_recovery_terminal_recovery_route_declared_phase_accepted(self) -> None:
-        """terminal_recovery_route set to a declared pipeline phase is valid."""
+        """failed_route set to a declared pipeline phase is valid."""
         agents = self._minimal_agents(["planning", "complete"])
         pipeline = PipelinePolicy(
             phases={
@@ -1402,7 +1402,7 @@ class TestValidatePolicyCompletenessNewRules:
             terminal_phase="complete",
             recovery=RecoveryPolicy(
                 cycle_cap=200,
-                terminal_recovery_route="planning",  # declared phase — valid
+                failed_route="planning",  # declared phase — valid
                 preserve_session_on_categories=("agent",),
             ),
         )
@@ -1411,7 +1411,7 @@ class TestValidatePolicyCompletenessNewRules:
         validate_policy_completeness(bundle)  # must not raise
 
     def test_recovery_terminal_recovery_route_phase_failed_is_valid(self) -> None:
-        """recovery.terminal_recovery_route='phase_failed' is always valid."""
+        """recovery.failed_route='phase_failed' is always valid."""
         agents = self._minimal_agents(["planning", "complete"])
         pipeline = PipelinePolicy(
             phases={
@@ -1434,7 +1434,7 @@ class TestValidatePolicyCompletenessNewRules:
             terminal_phase="complete",
             recovery=RecoveryPolicy(
                 cycle_cap=200,
-                terminal_recovery_route="phase_failed",
+                failed_route="phase_failed",
                 preserve_session_on_categories=("agent",),
             ),
         )
@@ -1443,7 +1443,7 @@ class TestValidatePolicyCompletenessNewRules:
         validate_policy_completeness(bundle)  # must not raise
 
     def test_recovery_terminal_recovery_route_exit_failure_is_valid(self) -> None:
-        """recovery.terminal_recovery_route='exit_failure' is always valid."""
+        """recovery.failed_route='exit_failure' is always valid."""
         agents = self._minimal_agents(["planning", "complete"])
         pipeline = PipelinePolicy(
             phases={
@@ -1466,7 +1466,7 @@ class TestValidatePolicyCompletenessNewRules:
             terminal_phase="complete",
             recovery=RecoveryPolicy(
                 cycle_cap=200,
-                terminal_recovery_route="exit_failure",
+                failed_route="exit_failure",
                 preserve_session_on_categories=("agent",),
             ),
         )

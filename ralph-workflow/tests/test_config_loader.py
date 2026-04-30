@@ -268,3 +268,99 @@ def test_agent_transport_enum() -> None:
     assert str(AgentTransport.CODEX) == "codex"
     assert str(AgentTransport.OPENCODE) == "opencode"
     assert str(AgentTransport.GENERIC) == "generic"
+
+
+_DEFAULT_WAITING_STATUS_INTERVAL = 30.0
+_DEFAULT_SUSPECT_THRESHOLD = 600.0
+_CUSTOM_WAITING_INTERVAL = 60.0
+_CUSTOM_SUSPECT_THRESHOLD = 120.0
+_SMALL_MAX_WAITING = 100.0
+_LARGE_SUSPECT = 200.0
+_VALID_SUSPECT = 300.0
+
+
+def test_general_config_waiting_status_interval_defaults() -> None:
+    """New waiting-status interval field has correct default."""
+    cfg = GeneralConfig()
+    assert cfg.agent_waiting_status_interval_seconds == _DEFAULT_WAITING_STATUS_INTERVAL
+
+
+def test_general_config_suspect_waiting_on_child_defaults() -> None:
+    """New suspicion threshold field has correct default."""
+    cfg = GeneralConfig()
+    assert cfg.agent_suspect_waiting_on_child_seconds == _DEFAULT_SUSPECT_THRESHOLD
+
+
+def test_general_config_suspect_waiting_on_child_can_be_none() -> None:
+    """Suspicion threshold may be explicitly disabled."""
+    cfg = GeneralConfig(agent_suspect_waiting_on_child_seconds=None)
+    assert cfg.agent_suspect_waiting_on_child_seconds is None
+
+
+def test_general_config_suspect_above_max_raises() -> None:
+    """suspect_waiting_on_child >= idle_max_waiting_on_child is invalid."""
+    _assert_validation_error(
+        lambda: GeneralConfig(
+            agent_idle_max_waiting_on_child_seconds=_SMALL_MAX_WAITING,
+            agent_suspect_waiting_on_child_seconds=_LARGE_SUSPECT,
+        )
+    )
+
+
+def test_general_config_suspect_equal_to_max_raises() -> None:
+    """suspect_waiting_on_child == idle_max_waiting_on_child is invalid."""
+    _assert_validation_error(
+        lambda: GeneralConfig(
+            agent_idle_max_waiting_on_child_seconds=_SMALL_MAX_WAITING,
+            agent_suspect_waiting_on_child_seconds=_SMALL_MAX_WAITING,
+        )
+    )
+
+
+def test_general_config_suspect_below_max_valid() -> None:
+    """suspect_waiting_on_child < idle_max_waiting_on_child is valid."""
+    cfg = GeneralConfig(
+        agent_idle_max_waiting_on_child_seconds=1800.0,
+        agent_suspect_waiting_on_child_seconds=_VALID_SUSPECT,
+    )
+    assert cfg.agent_suspect_waiting_on_child_seconds == _VALID_SUSPECT
+
+
+def test_load_config_waiting_status_interval_roundtrips(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Operator-set waiting_status_interval_seconds survives config load."""
+    monkeypatch.setattr(
+        "ralph.config.loader.GLOBAL_CONFIG_PATH", tmp_path / GLOBAL_CONFIG_PATH.name
+    )
+    local_path = tmp_path / ".agent" / "ralph-workflow.toml"
+    local_path.parent.mkdir(parents=True)
+    local_path.write_text(
+        f"[general]\nagent_waiting_status_interval_seconds = {_CUSTOM_WAITING_INTERVAL}\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr("ralph.config.loader.LOCAL_CONFIG_PATH", local_path)
+
+    config = load_config(workspace_scope=_scope_for(tmp_path))
+
+    assert config.general.agent_waiting_status_interval_seconds == _CUSTOM_WAITING_INTERVAL
+
+
+def test_load_config_suspect_threshold_roundtrips(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Operator-set agent_suspect_waiting_on_child_seconds survives config load."""
+    monkeypatch.setattr(
+        "ralph.config.loader.GLOBAL_CONFIG_PATH", tmp_path / GLOBAL_CONFIG_PATH.name
+    )
+    local_path = tmp_path / ".agent" / "ralph-workflow.toml"
+    local_path.parent.mkdir(parents=True)
+    local_path.write_text(
+        f"[general]\nagent_suspect_waiting_on_child_seconds = {_CUSTOM_SUSPECT_THRESHOLD}\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr("ralph.config.loader.LOCAL_CONFIG_PATH", local_path)
+
+    config = load_config(workspace_scope=_scope_for(tmp_path))
+
+    assert config.general.agent_suspect_waiting_on_child_seconds == _CUSTOM_SUSPECT_THRESHOLD

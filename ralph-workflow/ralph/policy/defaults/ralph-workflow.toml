@@ -51,6 +51,9 @@
 # max_cycles = 3                        # max full fallback cycles through a drain (>=1)
 # execution_history_limit = 1000        # max execution history entries in memory (>=1)
 # agent_idle_timeout_seconds = 300.0    # max idle seconds before killing a stalled agent process (>0)
+# agent_idle_max_waiting_on_child_seconds = 1800.0  # hard ceiling on cumulative WAITING_ON_CHILD deferral (>0)
+# agent_waiting_status_interval_seconds = 30.0      # periodic status emission cadence while WAITING_ON_CHILD (>0)
+# agent_suspect_waiting_on_child_seconds = 600.0    # suspicion threshold; emits a warning but does not stop the run (<max_waiting_on_child_seconds)
 
 # [general.provider_fallback] — Provider/model fallbacks keyed by agent name
 # Uncomment and list agents as keys; each value is an ordered list of fallback models/providers

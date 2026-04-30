@@ -173,6 +173,13 @@ class GeneralConfig(_FrozenConfigModel):  # type: ignore[explicit-any]  # reason
         agent_max_session_seconds: Absolute wall-clock ceiling for the entire agent
             session. Activity cannot reset this ceiling. When set, must be greater
             than agent_idle_timeout_seconds.
+        agent_waiting_status_interval_seconds: How often a periodic status update is
+            emitted while WAITING_ON_CHILD deferral is active. Controls only emission
+            cadence; does NOT affect timeout safety or ceiling math.
+        agent_suspect_waiting_on_child_seconds: Cumulative WAITING_ON_CHILD time after
+            which a 'suspected frozen' warning is emitted. Purely informational; does
+            NOT shorten the hard-stop ceiling. Must be less than
+            agent_idle_max_waiting_on_child_seconds when set. None disables suspicion.
     """
 
     verbosity: int = 2
@@ -270,6 +277,25 @@ class GeneralConfig(_FrozenConfigModel):  # type: ignore[explicit-any]  # reason
             " when set."
         ),
     )
+    agent_waiting_status_interval_seconds: float = Field(
+        default=30.0,
+        gt=0.0,
+        description=(
+            "How often in seconds a periodic PROGRESS status update is emitted while"
+            " WAITING_ON_CHILD deferral is active. Controls only emission cadence;"
+            " does NOT affect timeout safety or ceiling math."
+        ),
+    )
+    agent_suspect_waiting_on_child_seconds: float | None = Field(
+        default=600.0,
+        gt=0.0,
+        description=(
+            "Cumulative WAITING_ON_CHILD time in seconds after which a 'suspected"
+            " frozen' warning is emitted. Purely informational; does NOT shorten the"
+            " hard-stop ceiling. Must be strictly less than"
+            " agent_idle_max_waiting_on_child_seconds when set."
+        ),
+    )
 
     @model_validator(mode="after")
     def _validate_session_ceiling(self) -> GeneralConfig:
@@ -280,6 +306,18 @@ class GeneralConfig(_FrozenConfigModel):  # type: ignore[explicit-any]  # reason
             msg = (
                 "agent_max_session_seconds must be >= agent_idle_timeout_seconds"
                 f" (got {self.agent_max_session_seconds} < {self.agent_idle_timeout_seconds})"
+            )
+            raise ValueError(msg)
+        if (
+            self.agent_suspect_waiting_on_child_seconds is not None
+            and self.agent_suspect_waiting_on_child_seconds
+            >= self.agent_idle_max_waiting_on_child_seconds
+        ):
+            msg = (
+                "agent_suspect_waiting_on_child_seconds must be strictly less than"
+                " agent_idle_max_waiting_on_child_seconds"
+                f" (got {self.agent_suspect_waiting_on_child_seconds}"
+                f" >= {self.agent_idle_max_waiting_on_child_seconds})"
             )
             raise ValueError(msg)
         return self

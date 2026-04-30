@@ -16,6 +16,7 @@ DESCENDANT_HANG.  See ralph.agents.post_exit_watchdog for the post-exit family.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import TYPE_CHECKING
@@ -23,14 +24,15 @@ from typing import TYPE_CHECKING
 from loguru import logger
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
-
     from ralph.agents.execution_state import AgentExecutionState
     from ralph.agents.timeout_clock import Clock
 
 __all__ = [
     "IdleWatchdog",
     "TimeoutPolicy",
+    "WaitingStatusEvent",
+    "WaitingStatusKind",
+    "WaitingStatusListener",
     "WatchdogFireReason",
     "WatchdogVerdict",
 ]
@@ -60,6 +62,57 @@ class WatchdogFireReason(StrEnum):
     DESCENDANT_HANG = "descendant_hang"
 
 
+class WaitingStatusKind(StrEnum):
+    """Kind of waiting-status event emitted by IdleWatchdog.
+
+    ENTERED: transition into WAITING_ON_CHILD deferral.
+    PROGRESS: periodic status update while still waiting (rate-limited).
+    SUSPECTED_FROZEN: cumulative wait crossed suspect threshold; child may be frozen.
+    EXITED: transition out of WAITING_ON_CHILD (activity or drain resumed).
+    HARD_STOP: cumulative ceiling crossed; watchdog about to fire CHILDREN_PERSIST_TOO_LONG.
+    """
+
+    ENTERED = "entered"
+    PROGRESS = "progress"
+    SUSPECTED_FROZEN = "suspected_frozen"
+    EXITED = "exited"
+    HARD_STOP = "hard_stop"
+
+
+@dataclass(frozen=True)
+class WaitingStatusEvent:
+    """Structured status event emitted by IdleWatchdog during WAITING_ON_CHILD deferral.
+
+    This dataclass is frozen so subscribers cannot accidentally mutate shared state.
+
+    The ``diagnostic`` dict is a forward-compatible extension point for Phase 3
+    corroborating signals (workspace_event_delta, oldest_child_seconds,
+    scoped_child_active, etc.). This plan ships only the throttle, transition,
+    suspicion, and hard-stop summary semantics; Phase 3 fields are out of scope.
+
+    Attributes:
+        kind: The type of event (ENTERED, PROGRESS, SUSPECTED_FROZEN, EXITED, HARD_STOP).
+        cumulative_seconds: Cumulative WAITING_ON_CHILD seconds across the session so far.
+        current_run_seconds: Seconds spent in the current WAITING_ON_CHILD run.
+        idle_elapsed_seconds: Seconds since last record_activity() call.
+        ceiling_seconds: The max_waiting_on_child_seconds ceiling.
+        suspect_threshold_seconds: The suspect_waiting_on_child_seconds threshold, or None.
+        diagnostic: Optional dict of extra diagnostic keys for HARD_STOP events.
+    """
+
+    kind: WaitingStatusKind
+    cumulative_seconds: float
+    current_run_seconds: float
+    idle_elapsed_seconds: float
+    ceiling_seconds: float
+    suspect_threshold_seconds: float | None
+    diagnostic: dict[str, str | int | float | bool] = field(default_factory=dict)
+
+
+#: Listener callable type for waiting-status events.
+WaitingStatusListener = Callable[[WaitingStatusEvent], None]
+
+
 @dataclass(frozen=True)
 class TimeoutPolicy:
     """Consolidated timeout configuration for all agent timeout dimensions.
@@ -77,6 +130,11 @@ class TimeoutPolicy:
     4. PROCESS_EXIT_HANG — subprocess closed stdout but did not exit within budget.
     5. DESCENDANT_HANG — descendant-wait deadline elapsed with persistent WAITING_ON_CHILD
        (post-exit only, owned by PostExitWatchdog).
+
+    Suspicion is purely informational and does NOT affect any fire condition. The
+    ``suspect_waiting_on_child_seconds`` threshold exists only to emit an elevated
+    warning event before the hard stop; crossing it never shortens the hard-stop
+    ceiling.
 
     Attributes:
         idle_timeout_seconds: Maximum seconds without output before watchdog may fire.
@@ -101,6 +159,14 @@ class TimeoutPolicy:
         process_exit_wait_seconds: Maximum time to wait for a subprocess to exit after
             its stdout closes. Prevents hanging on subprocesses that close stdout but
             never call exit().
+        waiting_status_interval_seconds: How often to emit a PROGRESS status event
+            while WAITING_ON_CHILD deferral is active. Controls only the status
+            emission cadence; does NOT affect timeout safety or ceiling math.
+        suspect_waiting_on_child_seconds: Cumulative WAITING time after which a
+            SUSPECTED_FROZEN event is emitted. Purely informational — does NOT
+            shorten the hard-stop ceiling or change the watchdog verdict.
+            Must be strictly less than max_waiting_on_child_seconds when set.
+            None disables suspicion events.
     """
 
     idle_timeout_seconds: float | None
@@ -112,8 +178,15 @@ class TimeoutPolicy:
     descendant_wait_timeout_seconds: float = 30.0
     descendant_wait_poll_seconds: float = 0.5
     process_exit_wait_seconds: float = 30.0
+    waiting_status_interval_seconds: float = 30.0
+    suspect_waiting_on_child_seconds: float | None = 600.0
 
     def __post_init__(self) -> None:
+        self._validate_idle_fields()
+        self._validate_session_and_poll_fields()
+        self._validate_waiting_status_fields()
+
+    def _validate_idle_fields(self) -> None:
         if self.idle_timeout_seconds is not None and self.idle_timeout_seconds <= 0:
             msg = "idle_timeout_seconds must be positive"
             raise ValueError(msg)
@@ -126,6 +199,8 @@ class TimeoutPolicy:
         ):
             msg = "max_waiting_on_child_seconds must be >= idle_timeout_seconds when both set"
             raise ValueError(msg)
+
+    def _validate_session_and_poll_fields(self) -> None:
         if self.max_session_seconds is not None and self.max_session_seconds <= 0:
             msg = "max_session_seconds must be positive"
             raise ValueError(msg)
@@ -152,6 +227,21 @@ class TimeoutPolicy:
             msg = "process_exit_wait_seconds must be >= 0"
             raise ValueError(msg)
 
+    def _validate_waiting_status_fields(self) -> None:
+        if self.waiting_status_interval_seconds <= 0:
+            msg = "waiting_status_interval_seconds must be positive"
+            raise ValueError(msg)
+        if self.suspect_waiting_on_child_seconds is not None:
+            if self.suspect_waiting_on_child_seconds <= 0:
+                msg = "suspect_waiting_on_child_seconds must be positive"
+                raise ValueError(msg)
+            if self.suspect_waiting_on_child_seconds >= self.max_waiting_on_child_seconds:
+                msg = (
+                    "suspect_waiting_on_child_seconds must be strictly less than"
+                    " max_waiting_on_child_seconds"
+                )
+                raise ValueError(msg)
+
 
 @dataclass
 class IdleWatchdog:
@@ -171,6 +261,15 @@ class IdleWatchdog:
 
     The session ceiling (max_session_seconds) is checked first on every evaluate()
     call and cannot be defeated by activity — record_activity() does not reset it.
+
+    Status events are emitted via the optional listener:
+    - ENTERED once when WAITING_ON_CHILD deferral begins.
+    - PROGRESS at most once per waiting_status_interval_seconds (rate-limited).
+    - SUSPECTED_FROZEN once per WAITING run when suspect threshold is crossed.
+    - EXITED when transitioning out of WAITING_ON_CHILD.
+    - HARD_STOP immediately before returning FIRE for CHILDREN_PERSIST_TOO_LONG.
+
+    Listener exceptions are caught and logged at DEBUG; they never propagate.
     """
 
     _config: TimeoutPolicy
@@ -182,10 +281,18 @@ class IdleWatchdog:
     _in_drain_window: bool = field(default=False, init=False)
     _drain_started_at: float | None = field(default=None, init=False)
     _last_fire_reason: WatchdogFireReason | None = field(default=None, init=False)
+    _last_waiting_status_at: float | None = field(default=None, init=False)
+    _suspicion_announced_for_run: bool = field(default=False, init=False)
 
-    def __init__(self, config: TimeoutPolicy, clock: Clock) -> None:
+    def __init__(
+        self,
+        config: TimeoutPolicy,
+        clock: Clock,
+        listener: WaitingStatusListener | None = None,
+    ) -> None:
         self._config = config
         self._clock = clock
+        self._listener = listener
         now = clock.monotonic()
         self._last_activity = now
         self._session_started_at = now
@@ -194,6 +301,8 @@ class IdleWatchdog:
         self._in_drain_window = False
         self._drain_started_at = None
         self._last_fire_reason = None
+        self._last_waiting_status_at = None
+        self._suspicion_announced_for_run = False
         self._log = logger.bind(component="idle_watchdog")
 
     @property
@@ -229,11 +338,51 @@ class IdleWatchdog:
         cumulative total is preserved across WAITING<->ACTIVE oscillation.
         Double-counting is prevented by only calling this on transitions (not on
         consecutive WAITING evaluations).
+
+        Emits a EXITED event if we were actually in a WAITING run.
         """
         if self._waiting_on_child_started_at is not None:
             elapsed = now - self._waiting_on_child_started_at
-            self._cumulative_waiting_on_child_seconds += max(0.0, elapsed)
+            current_run_elapsed = max(0.0, elapsed)
+            idle_elapsed = now - self._last_activity
+            self._cumulative_waiting_on_child_seconds += current_run_elapsed
+            self._emit(
+                WaitingStatusKind.EXITED,
+                current_run_seconds=current_run_elapsed,
+                idle_elapsed=idle_elapsed,
+            )
             self._waiting_on_child_started_at = None
+            self._last_waiting_status_at = None
+            self._suspicion_announced_for_run = False
+
+    def _emit(
+        self,
+        kind: WaitingStatusKind,
+        current_run_seconds: float,
+        idle_elapsed: float,
+        *,
+        diagnostic: dict[str, str | int | float | bool] | None = None,
+    ) -> None:
+        """Build and dispatch a WaitingStatusEvent to the listener.
+
+        Never propagates listener exceptions; logs at DEBUG if one is raised.
+        """
+        if self._listener is None:
+            return
+        candidate_total = self._cumulative_waiting_on_child_seconds + current_run_seconds
+        event = WaitingStatusEvent(
+            kind=kind,
+            cumulative_seconds=candidate_total,
+            current_run_seconds=current_run_seconds,
+            idle_elapsed_seconds=idle_elapsed,
+            ceiling_seconds=self._config.max_waiting_on_child_seconds,
+            suspect_threshold_seconds=self._config.suspect_waiting_on_child_seconds,
+            diagnostic=dict(diagnostic) if diagnostic else {},
+        )
+        try:
+            self._listener(event)
+        except Exception:
+            self._log.debug("idle watchdog: listener raised (suppressed)")
 
     def evaluate(
         self,
@@ -351,15 +500,26 @@ class IdleWatchdog:
         Accumulates time within the current run WITHOUT mutating the cumulative
         total (which is only updated on transition out of WAITING). The ceiling
         check uses cumulative + current-run total to avoid double-counting.
+
+        Emits structured status events (ENTERED, PROGRESS, SUSPECTED_FROZEN,
+        HARD_STOP) rather than per-tick debug spam. Status emission cadence is
+        governed by waiting_status_interval_seconds and does NOT affect ceiling math.
         """
         idle_elapsed = now - self._last_activity
         if self._waiting_on_child_started_at is None:
             # Transition INTO WAITING_ON_CHILD state.
             self._waiting_on_child_started_at = now
+            self._last_waiting_status_at = now
+            self._suspicion_announced_for_run = False
             self._log.info(
                 "idle watchdog: entering WAITING_ON_CHILD deferral idle_elapsed={}s cumulative={}s",
                 round(idle_elapsed, 1),
                 round(self._cumulative_waiting_on_child_seconds, 1),
+            )
+            self._emit(
+                WaitingStatusKind.ENTERED,
+                current_run_seconds=0.0,
+                idle_elapsed=idle_elapsed,
             )
 
         current_run_elapsed = now - self._waiting_on_child_started_at
@@ -367,6 +527,20 @@ class IdleWatchdog:
 
         if candidate_total >= self._config.max_waiting_on_child_seconds:
             self._last_fire_reason = WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG
+            diag: dict[str, str | int | float | bool] = {
+                "cumulative": round(candidate_total, 1),
+                "run_elapsed": round(current_run_elapsed, 1),
+                "idle_elapsed": round(idle_elapsed, 1),
+                "ceiling": self._config.max_waiting_on_child_seconds,
+            }
+            if self._config.suspect_waiting_on_child_seconds is not None:
+                diag["suspect_threshold"] = self._config.suspect_waiting_on_child_seconds
+            self._emit(
+                WaitingStatusKind.HARD_STOP,
+                current_run_seconds=current_run_elapsed,
+                idle_elapsed=idle_elapsed,
+                diagnostic=diag,
+            )
             self._log.warning(
                 "idle watchdog: FIRE reason={} idle_elapsed={}s cumulative_waiting={}s",
                 WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG,
@@ -375,11 +549,40 @@ class IdleWatchdog:
             )
             return WatchdogVerdict.FIRE
 
-        self._log.debug(
-            "idle watchdog: WAITING_ON_CHILD deferred cumulative_candidate={}s ceiling={}s",
-            round(candidate_total, 3),
-            self._config.max_waiting_on_child_seconds,
-        )
+        # Suspicion threshold: emit once per WAITING run, does not change verdict.
+        if (
+            self._config.suspect_waiting_on_child_seconds is not None
+            and not self._suspicion_announced_for_run
+            and candidate_total >= self._config.suspect_waiting_on_child_seconds
+        ):
+            self._suspicion_announced_for_run = True
+            self._log.warning(
+                "idle watchdog: SUSPECTED_FROZEN candidate_total={}s suspect={}s ceiling={}s",
+                round(candidate_total, 1),
+                self._config.suspect_waiting_on_child_seconds,
+                self._config.max_waiting_on_child_seconds,
+            )
+            self._emit(
+                WaitingStatusKind.SUSPECTED_FROZEN,
+                current_run_seconds=current_run_elapsed,
+                idle_elapsed=idle_elapsed,
+            )
+
+        # Periodic PROGRESS emission — throttled to waiting_status_interval_seconds.
+        assert self._last_waiting_status_at is not None
+        if now - self._last_waiting_status_at >= self._config.waiting_status_interval_seconds:
+            self._last_waiting_status_at = now
+            self._log.info(
+                "idle watchdog: WAITING_ON_CHILD progress cumulative={}s ceiling={}s",
+                round(candidate_total, 1),
+                self._config.max_waiting_on_child_seconds,
+            )
+            self._emit(
+                WaitingStatusKind.PROGRESS,
+                current_run_seconds=current_run_elapsed,
+                idle_elapsed=idle_elapsed,
+            )
+
         return WatchdogVerdict.WAITING_ON_CHILD
 
     def _handle_active_branch(self, now: float) -> WatchdogVerdict:

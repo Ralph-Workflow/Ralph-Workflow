@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from ralph.agents.invoke import InvokeOptions, _policy_from_options
 from ralph.config.loader import GLOBAL_CONFIG_PATH, load_config
 from ralph.workspace.scope import WorkspaceScope
 
@@ -12,6 +13,9 @@ if TYPE_CHECKING:
 
 MAIN_DEVELOPER_ITERS = 8
 CHILD_DEVELOPER_ITERS = 3
+_CUSTOM_WAITING_INTERVAL = 60.0
+_CUSTOM_SUSPECT_THRESHOLD = 120.0
+_IDLE_TIMEOUT = 300.0
 
 
 def test_load_config_uses_main_worktree_as_propagation_layer(
@@ -79,3 +83,25 @@ def test_load_config_prefers_child_worktree_local_override(
     )
 
     assert config.general.developer_iters == CHILD_DEVELOPER_ITERS
+
+
+def test_waiting_status_interval_propagates_to_timeout_policy() -> None:
+    """Non-default waiting_status_interval_seconds reaches TimeoutPolicy via InvokeOptions."""
+    opts = InvokeOptions(
+        idle_timeout_seconds=_IDLE_TIMEOUT,
+        waiting_status_interval_seconds=_CUSTOM_WAITING_INTERVAL,
+    )
+    policy = _policy_from_options(opts)
+
+    assert policy.waiting_status_interval_seconds == _CUSTOM_WAITING_INTERVAL
+
+
+def test_suspect_threshold_propagates_to_timeout_policy() -> None:
+    """Non-default suspect_waiting_on_child_seconds reaches TimeoutPolicy via InvokeOptions."""
+    opts = InvokeOptions(
+        idle_timeout_seconds=_IDLE_TIMEOUT,
+        suspect_waiting_on_child_seconds=_CUSTOM_SUSPECT_THRESHOLD,
+    )
+    policy = _policy_from_options(opts)
+
+    assert policy.suspect_waiting_on_child_seconds == _CUSTOM_SUSPECT_THRESHOLD

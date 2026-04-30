@@ -2221,11 +2221,26 @@ def _execute_agent_effect(  # noqa: PLR0913
         effect.phase, effect.agent_name, _display_console(display), state
     )
 
+    from ralph.agents.idle_watchdog import WaitingStatusEvent  # noqa: PLC0415,TC001
     from ralph.agents.invoke import (  # noqa: PLC0415
         AgentInactivityTimeoutError,
         InvokeOptions,
         extract_session_id,
     )
+
+    _display_subscriber = _subscriber_for_display(display)
+
+    def _waiting_listener(event: WaitingStatusEvent) -> None:
+        if _display_subscriber is None:
+            return
+        try:
+            _display_subscriber.record_waiting_status(
+                event,
+                unit_id=effect.agent_name,
+                agent_name=effect.agent_name,
+            )
+        except Exception:
+            logger.debug("waiting_listener.record_waiting_status failed", exc_info=True)
 
     attempt_prompt_file = effect.prompt_file
     resume_session_id: str | None = (
@@ -2293,9 +2308,12 @@ def _execute_agent_effect(  # noqa: PLR0913
                 descendant_wait_poll_seconds=config.general.agent_descendant_wait_poll_seconds,
                 process_exit_wait_seconds=config.general.agent_process_exit_wait_seconds,
                 max_session_seconds=config.general.agent_max_session_seconds,
+                waiting_status_interval_seconds=config.general.agent_waiting_status_interval_seconds,
+                suspect_waiting_on_child_seconds=config.general.agent_suspect_waiting_on_child_seconds,
                 session_id=resume_session_id,
                 system_prompt_file=system_prompt_file,
                 phase=str(effect.phase),
+                waiting_listener=_waiting_listener,
             )
             output_lines = deps.invoke_agent(agent_config, attempt_prompt_file, options=options)
             if _verbosity_rank(verbosity) >= _VERBOSITY_RANK[Verbosity.NORMAL]:

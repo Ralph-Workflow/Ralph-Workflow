@@ -36,6 +36,7 @@ from ralph.agents.execution_state import (
 from ralph.agents.idle_watchdog import (
     IdleWatchdog,
     TimeoutPolicy,
+    WaitingStatusListener,
     WatchdogFireReason,
     WatchdogVerdict,
 )
@@ -87,6 +88,10 @@ class InvokeOptions:
         descendant_wait_timeout_seconds: Optional ceiling for descendant-wait.
         process_exit_wait_seconds: Optional timeout for post-EOF subprocess exit.
         max_session_seconds: Optional absolute session wall-clock ceiling.
+        waiting_status_interval_seconds: Optional periodic status emission cadence while
+            WAITING_ON_CHILD. Does NOT affect timeout safety or ceiling math.
+        suspect_waiting_on_child_seconds: Optional suspicion threshold in seconds;
+            emits a warning event but does NOT shorten the hard-stop ceiling.
     """
 
     model_flag: str | None = None
@@ -104,9 +109,12 @@ class InvokeOptions:
     descendant_wait_poll_seconds: float | None = None
     process_exit_wait_seconds: float | None = None
     max_session_seconds: float | None = None
+    waiting_status_interval_seconds: float | None = None
+    suspect_waiting_on_child_seconds: float | None = None
     pure: bool = False
     system_prompt_file: str | None = None
     phase: str | None = None
+    waiting_listener: WaitingStatusListener | None = None
 
 
 @dataclass(frozen=True)
@@ -452,6 +460,7 @@ def invoke_agent(
             execution_strategy=execution_strategy,
             liveness_probe=liveness_probe,
             phase=opts.phase,
+            waiting_listener=opts.waiting_listener,
             _clock=_clock,
         )
         yield from lines_iter
@@ -488,6 +497,7 @@ def _run_subprocess_and_read_lines(  # noqa: PLR0913
     execution_strategy: GenericExecutionStrategy | OpenCodeExecutionStrategy | None = None,
     liveness_probe: LivenessProbe | None = None,
     phase: str | None = None,
+    waiting_listener: WaitingStatusListener | None = None,
     _clock: Clock | None = None,
 ) -> Iterator[str]:
     """Run subprocess and yield output lines.
@@ -526,6 +536,7 @@ def _run_subprocess_and_read_lines(  # noqa: PLR0913
             policy=policy,
             execution_strategy=strategy,
             liveness_probe=probe,
+            waiting_listener=waiting_listener,
             _clock=clock,
         )
         parsed_output: list[str] = []
@@ -689,6 +700,20 @@ def _agent_command_name(config: AgentConfig) -> str:
 def _policy_from_options(opts: InvokeOptions) -> TimeoutPolicy:
     """Build a TimeoutPolicy from InvokeOptions, falling back to policy defaults for None fields."""
     _base = TimeoutPolicy(idle_timeout_seconds=opts.idle_timeout_seconds)
+    _effective_max = (
+        opts.max_waiting_on_child_seconds
+        if opts.max_waiting_on_child_seconds is not None
+        else _base.max_waiting_on_child_seconds
+    )
+    # Prefer opts values; fall back to TimeoutPolicy defaults. Disable suspicion when
+    # it would be >= the max ceiling (e.g. in tests with small max).
+    _suspect = (
+        opts.suspect_waiting_on_child_seconds
+        if opts.suspect_waiting_on_child_seconds is not None
+        else _base.suspect_waiting_on_child_seconds
+    )
+    if _suspect is not None and _effective_max is not None and _suspect >= _effective_max:
+        _suspect = None
     return TimeoutPolicy(
         idle_timeout_seconds=opts.idle_timeout_seconds,
         drain_window_seconds=(
@@ -696,11 +721,7 @@ def _policy_from_options(opts: InvokeOptions) -> TimeoutPolicy:
             if opts.drain_window_seconds is not None
             else _base.drain_window_seconds
         ),
-        max_waiting_on_child_seconds=(
-            opts.max_waiting_on_child_seconds
-            if opts.max_waiting_on_child_seconds is not None
-            else _base.max_waiting_on_child_seconds
-        ),
+        max_waiting_on_child_seconds=_effective_max,
         max_session_seconds=(
             opts.max_session_seconds
             if opts.max_session_seconds is not None
@@ -731,6 +752,12 @@ def _policy_from_options(opts: InvokeOptions) -> TimeoutPolicy:
             if opts.process_exit_wait_seconds is not None
             else _base.process_exit_wait_seconds
         ),
+        waiting_status_interval_seconds=(
+            opts.waiting_status_interval_seconds
+            if opts.waiting_status_interval_seconds is not None
+            else _base.waiting_status_interval_seconds
+        ),
+        suspect_waiting_on_child_seconds=_suspect,
     )
 
 
@@ -740,6 +767,7 @@ def _read_lines_from_process(  # noqa: PLR0915
     policy: TimeoutPolicy,
     execution_strategy: GenericExecutionStrategy | OpenCodeExecutionStrategy | None = None,
     liveness_probe: LivenessProbe | None = None,
+    waiting_listener: WaitingStatusListener | None = None,
     _clock: Clock | None = None,
 ) -> Iterator[str]:
     """Read lines from subprocess stdout in a background thread.
@@ -758,7 +786,7 @@ def _read_lines_from_process(  # noqa: PLR0915
     lines_event = threading.Event()
     clock: Clock = _clock or SystemClock()
 
-    watchdog = IdleWatchdog(policy, clock)
+    watchdog = IdleWatchdog(policy, clock, waiting_listener)
     last_activity_kind = "none"
 
     reader_done: list[bool] = [False]  # mutable for closure capture

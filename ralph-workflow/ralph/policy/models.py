@@ -267,21 +267,17 @@ class RecoveryPolicy(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reaso
 
     @model_validator(mode="before")
     @classmethod
-    def _migrate_terminal_recovery_route(cls, data: object) -> object:
-        """Migrate deprecated terminal_recovery_route to failed_route."""
+    def _reject_terminal_recovery_route(cls, data: object) -> object:
+        """Reject the deprecated terminal_recovery_route field with an actionable error."""
         if not isinstance(data, dict):
             return data
         d = cast("dict[str, object]", dict(data))
-        if "terminal_recovery_route" in d and "failed_route" not in d:
-            d["failed_route"] = d.pop("terminal_recovery_route")
-        elif "terminal_recovery_route" in d:
-            d.pop("terminal_recovery_route")
+        if "terminal_recovery_route" in d:
+            raise ValueError(
+                "recovery.terminal_recovery_route is deprecated; rename it to "
+                "recovery.failed_route. See docs/migration/policy-v2.md."
+            )
         return d
-
-    @property
-    def terminal_recovery_route(self) -> str:
-        """Deprecated alias for failed_route. Use failed_route instead."""
-        return self.failed_route
 
 
 # ---------------------------------------------------------------------------
@@ -366,7 +362,14 @@ class PhaseDefinition(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reas
         commit_policy: Required when role='commit'; declares commit semantics.
         verification: Optional verification gating policy.
         terminal_outcome: Explicit terminal outcome; required when role='terminal'.
-        bypass_routes: Named bypass routes (e.g. review_clean -> review_commit).
+        bypass_routes: Named bypass routes (e.g. clean -> review_commit).
+        clean_outcome: For role='review': the bypass_routes key that means the review
+            is clean (no issues). The reducer looks up this key in bypass_routes to
+            find the target phase for a clean review. Required when bypass_routes is
+            non-empty and role='review'.
+        issues_outcome: For role='review': the value to set as review_outcome when
+            issues are found. Required when role='review'. Drives review_outcome
+            propagation so the pipeline knows what kind of issues were flagged.
         requires_commit: Deprecated. Use role='commit' instead.
         embeds_analysis: Deprecated. Use role='analysis' instead.
         prompt_template: File-backed .jinja prompt template for this phase.
@@ -417,6 +420,21 @@ class PhaseDefinition(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reas
     bypass_routes: dict[str, str] = Field(
         default_factory=dict,
         description="Named bypass routes (outcome -> target phase)",
+    )
+    clean_outcome: str | None = Field(
+        default=None,
+        description=(
+            "For role='review': the bypass_routes key that signals a clean review. "
+            "The reducer looks up this key in bypass_routes to find the target phase. "
+            "Required when role='review' and bypass_routes is non-empty."
+        ),
+    )
+    issues_outcome: str | None = Field(
+        default=None,
+        description=(
+            "For role='review': the value to set as review_outcome when issues are found. "
+            "Required when role='review'. Drives review_outcome propagation downstream."
+        ),
     )
 
     # Legacy fields — deprecated, use role instead

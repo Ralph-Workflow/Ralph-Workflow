@@ -20,7 +20,12 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
 
 from ralph.agents.execution_state import AgentExecutionState, GenericExecutionStrategy
-from ralph.agents.idle_watchdog import TimeoutPolicy, WatchdogFireReason
+from ralph.agents.idle_watchdog import (
+    TimeoutPolicy,
+    WaitingStatusEvent,
+    WaitingStatusKind,
+    WatchdogFireReason,
+)
 from ralph.agents.invoke import _IdleStreamTimeoutError, _read_lines_from_process
 from ralph.agents.timeout_clock import FakeClock
 
@@ -130,6 +135,7 @@ def test_watchdog_fires_even_when_classify_quiet_raises() -> None:
         max_waiting_on_child_seconds=max_waiting,
         drain_window_seconds=0.0,
         idle_poll_interval_seconds=0.05,
+        suspect_waiting_on_child_seconds=None,
     )
     clock = FakeClock(start=0.0)
 
@@ -173,6 +179,7 @@ def test_classify_quiet_exception_defers_not_fires() -> None:
         max_waiting_on_child_seconds=max_waiting,
         drain_window_seconds=0.5,
         idle_poll_interval_seconds=0.05,
+        suspect_waiting_on_child_seconds=None,
     )
     clock = FakeClock(start=0.0)
     _reader_release = threading.Event()
@@ -264,6 +271,7 @@ def test_cumulative_ceiling_fires_with_oscillating_heartbeat() -> None:
         max_waiting_on_child_seconds=max_waiting,
         drain_window_seconds=drain_window,
         idle_poll_interval_seconds=poll_interval,
+        suspect_waiting_on_child_seconds=None,
     )
     clock = FakeClock(start=0.0)
 
@@ -298,3 +306,78 @@ def test_cumulative_ceiling_fires_with_oscillating_heartbeat() -> None:
         _release.set()
 
     assert exc_info.value.reason == WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG
+
+
+# ---------------------------------------------------------------------------
+# New integration test: listener wiring + no per-tick spam
+# ---------------------------------------------------------------------------
+
+_MAX_PROGRESS_EVENTS = 3
+_MAX_TOTAL_EVENTS = 6
+
+
+def test_invoke_emits_waiting_listener_events_not_per_tick_log() -> None:
+    """_read_lines_from_process emits structured listener events, not per-tick debug spam.
+
+    Asserts:
+    - Exactly 1 ENTERED event.
+    - At least 1 PROGRESS event.
+    - At most 3 PROGRESS events (proves throttling — status_interval=1.0s over ~2s).
+    - Exactly 1 HARD_STOP event.
+    - Total events <= 6.
+    """
+    idle_timeout = 0.5
+    max_waiting = 2.0
+    status_interval = 1.0
+
+    policy = TimeoutPolicy(
+        idle_timeout_seconds=idle_timeout,
+        max_waiting_on_child_seconds=max_waiting,
+        drain_window_seconds=0.0,
+        idle_poll_interval_seconds=0.05,
+        waiting_status_interval_seconds=status_interval,
+        suspect_waiting_on_child_seconds=None,
+    )
+    clock = FakeClock(start=0.0)
+
+    _reader_release = threading.Event()
+
+    def _blocking_stdout() -> Iterator[str]:
+        # Blocks the reader thread so the main loop takes the empty-queue path.
+        _reader_release.wait()
+        yield from ()
+
+    handle = _FakeManagedHandle(_blocking_stdout())
+    captured_events: list[WaitingStatusEvent] = []
+
+    def _listener(event: WaitingStatusEvent) -> None:
+        captured_events.append(event)
+
+    try:
+        with pytest.raises(_IdleStreamTimeoutError) as exc_info:
+            for _ in _read_lines_from_process(
+                handle,
+                policy=policy,
+                execution_strategy=_WaitingStrategy(),
+                waiting_listener=_listener,
+                _clock=clock,
+            ):
+                pass
+    finally:
+        _reader_release.set()
+
+    assert exc_info.value.reason == WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG
+
+    entered = [e for e in captured_events if e.kind == WaitingStatusKind.ENTERED]
+    progress = [e for e in captured_events if e.kind == WaitingStatusKind.PROGRESS]
+    hard_stops = [e for e in captured_events if e.kind == WaitingStatusKind.HARD_STOP]
+
+    assert len(entered) == 1, f"Expected 1 ENTERED, got {len(entered)}"
+    assert len(progress) >= 1, f"Expected >=1 PROGRESS, got {len(progress)}"
+    assert len(progress) <= _MAX_PROGRESS_EVENTS, (
+        f"Expected <={_MAX_PROGRESS_EVENTS} PROGRESS (throttled), got {len(progress)}"
+    )
+    assert len(hard_stops) == 1, f"Expected 1 HARD_STOP, got {len(hard_stops)}"
+    assert len(captured_events) <= _MAX_TOTAL_EVENTS, (
+        f"Expected <={_MAX_TOTAL_EVENTS} total events, got {len(captured_events)}"
+    )

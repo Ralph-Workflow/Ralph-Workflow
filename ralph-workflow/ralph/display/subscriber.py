@@ -195,6 +195,41 @@ class PipelineSubscriber:
         if snapshot is not None:
             self._publish(snapshot)
 
+    def record_waiting_status(
+        self,
+        event: object,
+        *,
+        unit_id: str | None = None,
+        agent_name: str | None = None,
+    ) -> None:
+        """Record a waiting-status event from IdleWatchdog and push a fresh snapshot."""
+        from ralph.agents.idle_watchdog import WaitingStatusEvent, WaitingStatusKind  # noqa: PLC0415,I001
+
+        if not isinstance(event, WaitingStatusEvent):
+            return
+        kind_label = str(event.kind)
+        line = (
+            f"Background child work {kind_label}"
+            f" (cumulative={event.cumulative_seconds:.0f}s,"
+            f" run={event.current_run_seconds:.0f}s,"
+            f" ceiling={event.ceiling_seconds:.0f}s)"
+        )
+        with self._lock:
+            if unit_id is not None:
+                self._active_unit_id = unit_id
+            if agent_name is not None:
+                self._active_agent = agent_name
+            self._last_activity_line = line
+            if event.kind in (WaitingStatusKind.SUSPECTED_FROZEN, WaitingStatusKind.HARD_STOP):
+                self._append_decision_log_locked(
+                    phase=self._previous_phase or "unknown",
+                    decision=kind_label,
+                    reason=line,
+                )
+            snapshot = self._build_snapshot_locked(self._last_state)
+        if snapshot is not None:
+            self._publish(snapshot)
+
     def record_analysis(self, phase: str, decision: str, reason: str | None = None) -> None:
         """Record an analysis result; updates the analysis panel and decision log."""
         with self._lock:
