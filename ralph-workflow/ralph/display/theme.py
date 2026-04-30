@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 from typing import Final
 
 from rich.console import Console
@@ -18,13 +17,13 @@ REDDISH_PURPLE: Final[str] = "#CC79A7"
 BLACK: Final[str] = "#000000"
 
 STATUS_STYLES: Final[dict[str, tuple[str, str, str]]] = {
-    "success": (f"bold {BLUISH_GREEN}", "✓", "PASS"),
-    "running": (SKY_BLUE, "◐", "RUN"),
-    "warning": (f"bold {ORANGE}", "⚠", "WARN"),
-    "error": (f"bold {VERMILLION}", "✗", "FAIL"),
-    "skipped": (YELLOW, "○", "SKIP"),
-    "pending": ("dim", "○", "WAIT"),
-    "info": (BLUE, "ℹ", "INFO"),  # noqa: RUF001
+    "success": (f"bold {BLUISH_GREEN}", "\u2713", "PASS"),
+    "running": (SKY_BLUE, "\u25d0", "RUN"),
+    "warning": (f"bold {ORANGE}", "\u26a0", "WARN"),
+    "error": (f"bold {VERMILLION}", "\u2717", "FAIL"),
+    "skipped": (YELLOW, "\u25cb", "SKIP"),
+    "pending": ("dim", "\u25cb", "WAIT"),
+    "info": (BLUE, "\u2139", "INFO"),
 }
 
 _THEME_STYLES: Final[dict[str, str]] = {
@@ -91,19 +90,25 @@ def make_console(
     force_terminal: bool | None = None,
     width: int | None = None,
 ) -> Console:
-    """Create a Console using Ralph's shared theme and predictable rendering."""
-    resolved_no_color = no_color
-    if resolved_no_color is None:
-        if "NO_COLOR" in os.environ and force_terminal is None:
-            resolved_no_color = True
-        elif "FORCE_COLOR" in os.environ:
-            resolved_no_color = False
-    resolved_force_terminal = force_terminal
-    if resolved_force_terminal is None:
-        if "NO_COLOR" in os.environ:
-            resolved_force_terminal = False
-        elif "FORCE_COLOR" in os.environ:
-            resolved_force_terminal = True
+    """Create a Console using Ralph's shared theme and predictable rendering.
+
+    This is a pure constructor - no environment reads. All decisions about
+    no_color and force_terminal must be passed explicitly via the corresponding
+    arguments. The caller is responsible for resolving environment variables
+    before calling this function.
+
+    Args:
+        no_color: If True, disables color output. If False, enables color.
+            If None, defaults to False (color enabled).
+        force_terminal: If True, forces terminal detection on. If False, forces it off.
+            If None, defaults to False.
+        width: Optional terminal width override.
+
+    Returns:
+        Configured Console instance with Ralph's theme.
+    """
+    resolved_no_color = no_color if no_color is not None else False
+    resolved_force_terminal = force_terminal if force_terminal is not None else False
     return Console(
         theme=RALPH_THEME,
         no_color=resolved_no_color,

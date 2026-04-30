@@ -12,38 +12,29 @@ from typing import TYPE_CHECKING
 from rich.table import Table
 
 from ralph.config.models import AgentConfig
-from ralph.display.context import DisplayContext, make_display_context
 
 if TYPE_CHECKING:
-    from rich.console import Console
-
+    from ralph.display.context import DisplayContext
 
 AgentTable = Mapping[str, AgentConfig]
 
 
-def _should_show_secondary(display_context: DisplayContext | None) -> bool:
-    """Return False when in compact mode with an injected display_context, else True."""
-    return display_context is None or display_context.mode != "compact"
+def _should_show_secondary(display_context: DisplayContext) -> bool:
+    """Return False when in compact mode, else True."""
+    return display_context.mode != "compact"
 
 
 def display_agents_table(
     agents: AgentTable,
-    console: Console | None = None,
-    display_context: DisplayContext | None = None,
+    display_context: DisplayContext,
 ) -> None:
     """Display a formatted table of agents.
 
     Args:
         agents: Dictionary of agent configurations.
-        console: Rich console for output.
-        display_context: Optional display context for adaptive layout.
+        display_context: DisplayContext providing the console and mode for output.
     """
-    if display_context is not None:
-        c = display_context.console
-    elif console is not None:
-        c = console
-    else:
-        c = make_display_context().console
+    c = display_context.console
 
     show_secondary = _should_show_secondary(display_context)
     table = Table(title="Configured Agents", show_header=True)
@@ -65,22 +56,15 @@ def display_agents_table(
 
 def display_providers_table(
     providers: list[str],
-    console: Console | None = None,
-    display_context: DisplayContext | None = None,
+    display_context: DisplayContext,
 ) -> None:
     """Display a formatted table of providers.
 
     Args:
         providers: List of provider names.
-        console: Rich console for output.
-        display_context: Optional display context for adaptive layout.
+        display_context: DisplayContext providing the console and mode for output.
     """
-    if display_context is not None:
-        c = display_context.console
-    elif console is not None:
-        c = console
-    else:
-        c = make_display_context().console
+    c = display_context.console
 
     show_status = _should_show_secondary(display_context)
     table = Table(title="Available Providers", show_header=True)

@@ -17,6 +17,7 @@ from ralph.cli.commands import commit as commit_module
 from ralph.cli.commands.commit import CommitAttemptContext, _invoke_commit_agent_attempt
 from ralph.config.enums import AgentTransport, JsonParserType
 from ralph.config.models import AgentConfig
+from ralph.display.context import make_display_context
 
 
 def _claude_commit_agent() -> AgentConfig:
@@ -37,6 +38,9 @@ def test_commit_invocation_passes_default_current_prompt_to_materialize_system_p
     prompt_file.parent.mkdir(parents=True, exist_ok=True)
     prompt_file.write_text("Generate a commit message.", encoding="utf-8")
 
+    # Create a minimal display context for the internal function
+    display_context = make_display_context()
+
     with (
         patch("ralph.cli.commands.commit.materialize_system_prompt") as mock_materialize,
         patch("ralph.cli.commands.commit.invoke_agent", return_value=iter([])),
@@ -52,6 +56,7 @@ def test_commit_invocation_passes_default_current_prompt_to_materialize_system_p
                 verbose=False,
                 extra_env={},
             ),
+            display_context=display_context,
         )
 
     mock_materialize.assert_called_once()

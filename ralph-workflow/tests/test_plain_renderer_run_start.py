@@ -6,13 +6,14 @@ from io import StringIO
 
 from rich.console import Console
 
+from ralph.display.context import make_display_context
 from ralph.display.plain_renderer import _TAG_CATEGORY, _TAGS, PlainLogRenderer, RunStartOrientation
 
 
 def _make_renderer() -> tuple[PlainLogRenderer, StringIO]:
     buf = StringIO()
     console = Console(file=buf, force_terminal=False, highlight=False, color_system=None, width=200)
-    return PlainLogRenderer(console), buf
+    return PlainLogRenderer(make_display_context(console=console, env={})), buf
 
 
 def _orientation(**kwargs: object) -> RunStartOrientation:

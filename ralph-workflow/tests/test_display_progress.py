@@ -217,12 +217,14 @@ def test_load_get_ipython_various_behaviors(monkeypatch):
 def test_ralph_progress_check_jupyter(monkeypatch):
     monkeypatch.setattr(progress, "_IPYTHON_AVAILABLE", True)
     monkeypatch.setattr(progress, "_GET_IPYTHON", _ipython_object)
-    rp = progress.RalphProgress()
+    ctx = make_display_context()
+    rp = progress.RalphProgress(ctx)
     assert rp._check_jupyter()
 
     # When IPython returns None
     monkeypatch.setattr(progress, "_GET_IPYTHON", lambda: None)
-    rp = progress.RalphProgress()
+    ctx = make_display_context()
+    rp = progress.RalphProgress(ctx)
     assert not rp._check_jupyter()
 
     # When IPython accessor raises
@@ -230,30 +232,31 @@ def test_ralph_progress_check_jupyter(monkeypatch):
         raise RuntimeError
 
     monkeypatch.setattr(progress, "_GET_IPYTHON", raising)
-    rp = progress.RalphProgress()
+    ctx = make_display_context()
+    rp = progress.RalphProgress(ctx)
     assert not rp._check_jupyter()
 
 
 def test_ralph_progress_is_tty_considers_rich_and_stderr(monkeypatch):
     monkeypatch.setattr(progress, "_RICH_AVAILABLE", True)
     monkeypatch.setattr(sys, "stderr", _DummyTTY())
-    assert progress.RalphProgress()._is_tty()
+    ctx = make_display_context()
+    assert progress.RalphProgress(ctx)._is_tty()
 
     monkeypatch.setattr(progress, "_RICH_AVAILABLE", False)
-    assert not progress.RalphProgress()._is_tty()
+    assert not progress.RalphProgress(ctx)._is_tty()
 
 
 def test_rich_progress_context_manager_sets_state(monkeypatch):
+    """Test that _rich_progress uses context console and correct progress settings."""
     dummy = _DummyRichProgress()
-
-    def console_factory(*, stderr: bool, theme: object = None) -> str:
-        assert stderr
-        return "console"
+    captured_args: dict[str, object] = {}
 
     def progress_factory(
         *args: object, console: object | None = None, **kwargs: object
     ) -> _DummyRichProgress:
-        assert console == "console"
+        captured_args["console"] = console
+        captured_args["kwargs"] = kwargs
         assert kwargs.get("transient") is False
         assert kwargs.get("auto_refresh") is True
         return dummy
@@ -265,14 +268,20 @@ def test_rich_progress_context_manager_sets_state(monkeypatch):
     monkeypatch.setattr(
         progress,
         "_load_rich_components",
-        lambda: (console_factory, progress_factory, columns),
+        lambda: (None, progress_factory, columns),
     )
 
-    rp = progress.RalphProgress()
+    # Create a context with a specific console
+    buf = StringIO()
+    shared_console = Console(file=buf, force_terminal=False, width=120, theme=RALPH_THEME)
+    ctx = make_display_context(console=shared_console, env={})
+
+    rp = progress.RalphProgress(ctx)
     with rp._rich_progress() as manager:
         assert manager is dummy
         assert rp._progress is dummy
-        assert rp._console == "console"
+        # The console should be the one from the context
+        assert captured_args["console"] is shared_console
 
     assert dummy.exited
     assert rp._progress is None
@@ -314,7 +323,8 @@ def test_rich_progress_uses_injected_console_when_context_supplied(monkeypatch):
 
 def test_rich_progress_context_manager_raises_when_missing(monkeypatch):
     monkeypatch.setattr(progress, "_load_rich_components", lambda: None)
-    rp = progress.RalphProgress()
+    ctx = make_display_context()
+    rp = progress.RalphProgress(ctx)
     with pytest.raises(RuntimeError, match="rich is unavailable"), rp._rich_progress():
         pass
 
@@ -323,7 +333,8 @@ def test_tqdm_progress_context_manager_sets_and_clears(monkeypatch):
     bar = _DummyTqdmBar()
     monkeypatch.setattr(progress, "_load_tqdm_factory", lambda: lambda **kwargs: bar)
 
-    rp = progress.RalphProgress()
+    ctx = make_display_context()
+    rp = progress.RalphProgress(ctx)
     with rp._tqdm_progress() as manager:
         assert manager is bar
         assert rp._tqdm is bar
@@ -335,13 +346,15 @@ def test_tqdm_progress_context_manager_sets_and_clears(monkeypatch):
 
 def test_tqdm_progress_context_manager_raises_when_missing(monkeypatch):
     monkeypatch.setattr(progress, "_load_tqdm_factory", lambda: None)
-    rp = progress.RalphProgress()
+    ctx = make_display_context()
+    rp = progress.RalphProgress(ctx)
     with pytest.raises(RuntimeError, match="tqdm is unavailable"), rp._tqdm_progress():
         pass
 
 
 def test_phase_manager_with_and_without_progress():
-    rp = progress.RalphProgress()
+    ctx = make_display_context()
+    rp = progress.RalphProgress(ctx)
     stub = _DummyProgressProto()
     rp._progress = stub
     with rp.phase(12, "Phase") as phase_ctx:
@@ -356,7 +369,8 @@ def test_phase_manager_with_and_without_progress():
 
 
 def test_add_task_respects_progress_and_dummy_fallback():
-    rp = progress.RalphProgress()
+    ctx = make_display_context()
+    rp = progress.RalphProgress(ctx)
     stub = _DummyProgressProto()
     rp._progress = stub
     task_id = rp.add_task("Task", total=TASK_TOTAL, completed=2, parent=TASK_PARENT)
@@ -371,7 +385,8 @@ def test_add_task_respects_progress_and_dummy_fallback():
 
 
 def test_update_uses_rich_when_available(monkeypatch):
-    rp = progress.RalphProgress()
+    ctx = make_display_context()
+    rp = progress.RalphProgress(ctx)
     stub = _DummyProgressProto()
     rp._progress = stub
     rp.update(task=1, completed=5, advance=3, description="desc")
@@ -386,7 +401,8 @@ def test_update_uses_rich_when_available(monkeypatch):
 
 
 def test_update_uses_tqdm_fallback():
-    rp = progress.RalphProgress()
+    ctx = make_display_context()
+    rp = progress.RalphProgress(ctx)
     rp._progress = None
     rp._tqdm = _DummyTqdm()
     rp.update(task=TASK_PARENT, completed=COMPLETED_VALUE, advance=4)
@@ -397,8 +413,9 @@ def test_update_uses_tqdm_fallback():
 
 def test_get_progress_singleton(monkeypatch):
     monkeypatch.setattr(progress._ProgressSingleton, "_instances", {})
-    first = progress.get_progress()
-    second = progress.get_progress()
+    ctx = make_display_context()
+    first = progress.get_progress(ctx)
+    second = progress.get_progress(ctx)
     assert first is second
 
 

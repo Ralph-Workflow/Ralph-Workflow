@@ -8,8 +8,9 @@ from typing import TYPE_CHECKING, Protocol, cast
 if TYPE_CHECKING:
     from types import ModuleType
 
+    from ralph.display.context import DisplayContext
+
 from ralph import __version__
-from ralph.display.context import DisplayContext, make_display_context
 
 ASCII_ART = (
     " ____       _       _     _     ",
@@ -99,16 +100,13 @@ def render_banner(
 
 def show_banner(
     *,
-    display_context: DisplayContext | None = None,
+    display_context: DisplayContext,
     console: SupportsPrint | None = None,
     version: str = __version__,
 ) -> None:
     """Print the Ralph Workflow welcome banner to the provided console."""
-    resolved_context: DisplayContext = (
-        display_context if display_context is not None else make_display_context()
-    )
+    compact = display_context.mode == "compact"
     console_instance: SupportsPrint = (
-        console if console is not None else cast("SupportsPrint", resolved_context.console)
+        console if console is not None else cast("SupportsPrint", display_context.console)
     )
-    compact = resolved_context.mode == "compact"
     console_instance.print(render_banner(version=version, compact=compact))

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import contextlib
-import os
 import queue
 import time
 import uuid
@@ -13,7 +12,7 @@ from typing import TYPE_CHECKING, Literal, cast
 from ralph.display.activity_router import ActivityRouter
 from ralph.display.completion_summary import emit_completion_summary
 from ralph.display.content_condenser import condense_content
-from ralph.display.context import DisplayContext, make_display_context
+from ralph.display.context import DisplayContext
 from ralph.display.lifecycle_filter import is_bare_lifecycle as _is_bare_lifecycle
 from ralph.display.long_content_summary import build_headline_or_placeholder
 from ralph.display.phase_banner import show_phase_transition
@@ -23,7 +22,6 @@ from ralph.display.subscriber import PipelineSubscriber
 from ralph.display.tool_args import format_tool_input, friendly_tool_name
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
     from types import TracebackType
 
     from rich.console import Console
@@ -55,24 +53,19 @@ class ParallelDisplay:
         "_workspace_root",
     )
 
-    def __init__(  # noqa: PLR0913
+    def __init__(
         self,
-        console: Console | None = None,
-        env: Mapping[str, str] | None = None,
+        display_context: DisplayContext,
         *,
-        mode: Literal["compact", "medium", "wide"] | None = None,
         subscriber: PipelineSubscriber | None = None,
         workspace_root: Path | None = None,
         run_id: str | None = None,
     ) -> None:
-        resolved_env = dict(os.environ if env is None else env)
-        self._ctx: DisplayContext = make_display_context(
-            env=resolved_env,
-            console=console,
-            force_mode=mode,
-        )
+        if not isinstance(display_context, DisplayContext):
+            raise TypeError("display_context is required")
+        self._ctx = display_context
 
-        self._plain_renderer = PlainLogRenderer(self._ctx.console, context=self._ctx)
+        self._plain_renderer = PlainLogRenderer(self._ctx)
         self._workspace_root: Path = workspace_root if workspace_root is not None else Path.cwd()
 
         # Per-unit raw overflow logs, lazy-created on first oversized emit
@@ -242,15 +235,15 @@ class ParallelDisplay:
     def stop(self) -> None:
         self._plain_renderer.flush_blocks()
 
-    def emit(self, unit_id: str, line: str) -> None:
+    def emit(self, unit_id: str | None, line: str) -> None:
         """Emit a raw line directly to the plain renderer.
 
         Bare lifecycle tokens (e.g. prefixed transcript noise) are silently
-        dropped before reaching the renderer.
+        dropped before reaching the renderer. If unit_id is None, defaults to "run".
         """
         if _is_bare_lifecycle(line):
             return
-        self._plain_renderer.emit_log_line(unit_id, line)
+        self._plain_renderer.emit_log_line(unit_id or "run", line)
 
     def emit_parsed_event(
         self,
@@ -284,7 +277,7 @@ class ParallelDisplay:
 
     def emit_phase_transition(self, from_phase: str, to_phase: str) -> None:
         self._plain_renderer.flush_blocks()
-        show_phase_transition(from_phase, to_phase, console=self._ctx.console)
+        show_phase_transition(from_phase, to_phase, display_context=self._ctx)
         with contextlib.suppress(Exception):
             self._subscriber.record_phase_transition(from_phase, to_phase)
 
@@ -324,7 +317,6 @@ class ParallelDisplay:
                     snapshot = self._subscriber.build_snapshot(last_state)
                     if snapshot is not None:
                         emit_completion_summary(
-                            self._ctx.console,
                             snapshot,
                             workspace_root=self._workspace_root,
                             dropped_count=self._subscriber.dropped_count,
@@ -333,6 +325,7 @@ class ParallelDisplay:
                             tool_call_count=self._plain_renderer.tool_calls_count,
                             error_count=self._plain_renderer.errors_count,
                             elapsed_seconds=self._plain_renderer.run_elapsed_seconds,
+                            display_context=self._ctx,
                         )
                 except Exception as exc:
                     self._plain_renderer.emit_warn_line(

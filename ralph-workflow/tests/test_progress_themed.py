@@ -6,12 +6,22 @@ from io import StringIO
 
 from rich.console import Console
 
+from ralph.display.context import make_display_context
 from ralph.display.status import display_progress
 from ralph.display.theme import RALPH_THEME
 
 
 def test_display_progress_task_uses_theme_key_in_description() -> None:
-    p = display_progress(current=0, total=10, phase="Planning")
+    console = Console(
+        file=StringIO(),
+        force_terminal=True,
+        color_system="truecolor",
+        theme=RALPH_THEME,
+        width=200,
+        highlight=False,
+    )
+    ctx = make_display_context(console=console, env={})
+    p = display_progress(current=0, total=10, phase="Planning", display_context=ctx)
     assert len(p.tasks) == 1
     assert "[theme.cat.meta]Planning[/theme.cat.meta]" in p.tasks[0].description
 

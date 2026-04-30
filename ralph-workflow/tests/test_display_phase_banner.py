@@ -7,7 +7,7 @@ from io import StringIO
 
 from rich.console import Console
 
-from ralph.display.context import make_display_context
+from ralph.display.context import DisplayContext, make_display_context
 from ralph.display.phase_banner import (
     _MAJOR_TRANSITIONS,
     _TRANSITION_DESCRIPTIONS,
@@ -21,9 +21,14 @@ from ralph.display.phase_banner import (
 )
 
 
+def _ctx_from_console(console: Console) -> DisplayContext:
+    """Create a DisplayContext from a Console for testing."""
+    return make_display_context(console=console)
+
+
 def test_show_phase_transition_renders_styled_output() -> None:
     console = Console(record=True)
-    show_phase_transition("planning", "development", console=console)
+    show_phase_transition("planning", "development", display_context=_ctx_from_console(console))
     output = console.export_text()
     assert "Planning" in output
     assert "Development" in output
@@ -31,7 +36,9 @@ def test_show_phase_transition_renders_styled_output() -> None:
 
 def test_show_phase_transition_minor_renders_rule() -> None:
     console = Console(record=True)
-    show_phase_transition("development", "development_analysis", console=console)
+    show_phase_transition(
+        "development", "development_analysis", display_context=_ctx_from_console(console)
+    )
     output = console.export_text()
     assert "Development" in output
     assert "Development Analysis" in output
@@ -40,7 +47,7 @@ def test_show_phase_transition_minor_renders_rule() -> None:
 def test_show_phase_start_with_iteration() -> None:
     console = Console(record=True)
     ctx = PhaseStartContext(iteration=1, total_iterations=5)
-    show_phase_start("development", ctx=ctx, console=console)
+    show_phase_start("development", ctx=ctx, display_context=_ctx_from_console(console))
     output = console.export_text()
     assert "Development" in output
     assert "2/5" in output
@@ -49,7 +56,7 @@ def test_show_phase_start_with_iteration() -> None:
 def test_show_phase_start_with_reviewer_pass() -> None:
     console = Console(record=True)
     ctx = PhaseStartContext(reviewer_pass=0, total_reviewer_passes=3)
-    show_phase_start("review", ctx=ctx, console=console)
+    show_phase_start("review", ctx=ctx, display_context=_ctx_from_console(console))
     output = console.export_text()
     assert "Review" in output
     assert "1/3" in output
@@ -57,7 +64,9 @@ def test_show_phase_start_with_reviewer_pass() -> None:
 
 def test_show_phase_complete_with_decision() -> None:
     console = Console(record=True)
-    show_phase_complete("review_analysis", decision="approved", console=console)
+    show_phase_complete(
+        "review_analysis", decision="approved", display_context=_ctx_from_console(console)
+    )
     output = console.export_text()
     assert "approved" in output
     assert "Review Analysis" in output
@@ -80,7 +89,7 @@ def test_phase_style_returns_correct_styles() -> None:
 
 def test_show_phase_start_without_counters() -> None:
     console = Console(record=True)
-    show_phase_start("planning", console=console)
+    show_phase_start("planning", display_context=_ctx_from_console(console))
     output = console.export_text()
     assert "Planning" in output
     assert "▶" in output
@@ -88,7 +97,7 @@ def test_show_phase_start_without_counters() -> None:
 
 def test_show_phase_start_with_agent_name() -> None:
     console = Console(record=True)
-    show_phase_start("development", agent_name="claude", console=console)
+    show_phase_start("development", agent_name="claude", display_context=_ctx_from_console(console))
     output = console.export_text()
     assert "Development" in output
     assert "claude" in output
@@ -98,7 +107,7 @@ def test_show_phase_start_zero_indexed_boundary() -> None:
     """Iteration 0 should display as 1 (1-indexed for users)."""
     console = Console(record=True)
     ctx = PhaseStartContext(iteration=0, total_iterations=5)
-    show_phase_start("development", ctx=ctx, console=console)
+    show_phase_start("development", ctx=ctx, display_context=_ctx_from_console(console))
     output = console.export_text()
     assert "1/5" in output
 
@@ -107,14 +116,14 @@ def test_show_phase_start_last_iteration_boundary() -> None:
     """Last iteration (N-1) should display as N/N."""
     console = Console(record=True)
     ctx = PhaseStartContext(iteration=4, total_iterations=5)
-    show_phase_start("development", ctx=ctx, console=console)
+    show_phase_start("development", ctx=ctx, display_context=_ctx_from_console(console))
     output = console.export_text()
     assert "5/5" in output
 
 
 def test_show_phase_complete_without_decision() -> None:
     console = Console(record=True)
-    show_phase_complete("development", console=console)
+    show_phase_complete("development", display_context=_ctx_from_console(console))
     output = console.export_text()
     assert "Development" in output
     assert "complete" in output
@@ -126,7 +135,7 @@ def test_show_phase_transition_with_context() -> None:
         "planning",
         "development",
         context={"iteration": "1/5"},
-        console=console,
+        display_context=_ctx_from_console(console),
     )
     output = console.export_text()
     assert "Planning" in output
@@ -140,7 +149,10 @@ def test_show_phase_transition_with_context() -> None:
 def test_major_transition_analysis_to_commit() -> None:
     """Analysis approved → commit should be a major (double-rule) transition."""
     console = Console(record=True, width=120)
-    show_phase_transition("development_analysis", "development_commit", console=console)
+    show_phase_transition(
+        "development_analysis", "development_commit",
+        display_context=_ctx_from_console(console),
+    )
     output = console.export_text()
     assert "Development Analysis" in output
     assert "Development Commit" in output
@@ -150,7 +162,10 @@ def test_major_transition_analysis_to_commit() -> None:
 def test_major_transition_analysis_loopback() -> None:
     """Analysis loopback → development should be a major transition."""
     console = Console(record=True, width=120)
-    show_phase_transition("development_analysis", "development", console=console)
+    show_phase_transition(
+        "development_analysis", "development",
+        display_context=_ctx_from_console(console),
+    )
     output = console.export_text()
     assert "Development Analysis" in output
     assert "Development" in output
@@ -160,7 +175,10 @@ def test_major_transition_analysis_loopback() -> None:
 def test_major_transition_review_analysis_to_fix() -> None:
     """Review analysis → fix should be a major transition."""
     console = Console(record=True, width=120)
-    show_phase_transition("review_analysis", "fix", console=console)
+    show_phase_transition(
+        "review_analysis", "fix",
+        display_context=_ctx_from_console(console),
+    )
     output = console.export_text()
     assert "Review Analysis" in output
     assert "Fix" in output
@@ -170,7 +188,10 @@ def test_major_transition_review_analysis_to_fix() -> None:
 def test_major_transition_review_analysis_to_review_commit() -> None:
     """Review analysis approved → review_commit should be a major transition."""
     console = Console(record=True, width=120)
-    show_phase_transition("review_analysis", "review_commit", console=console)
+    show_phase_transition(
+        "review_analysis", "review_commit",
+        display_context=_ctx_from_console(console),
+    )
     output = console.export_text()
     assert "Review Analysis" in output
     assert "Review Commit" in output
@@ -180,7 +201,10 @@ def test_major_transition_review_analysis_to_review_commit() -> None:
 def test_major_transition_review_commit_to_development() -> None:
     """Review commit → development (continue dev) should be major."""
     console = Console(record=True, width=120)
-    show_phase_transition("review_commit", "development", console=console)
+    show_phase_transition(
+        "review_commit", "development",
+        display_context=_ctx_from_console(console),
+    )
     output = console.export_text()
     assert "Review Commit" in output
     assert "Development" in output
@@ -190,7 +214,7 @@ def test_major_transition_review_commit_to_development() -> None:
 def test_major_transition_review_commit_to_planning() -> None:
     """Review commit → planning (re-plan) should be major."""
     console = Console(record=True, width=120)
-    show_phase_transition("review_commit", "planning", console=console)
+    show_phase_transition("review_commit", "planning", display_context=_ctx_from_console(console))
     output = console.export_text()
     assert "Review Commit" in output
     assert "Planning" in output
@@ -200,7 +224,10 @@ def test_major_transition_review_commit_to_planning() -> None:
 def test_major_transition_review_commit_to_complete() -> None:
     """Review commit → complete should be major."""
     console = Console(record=True, width=120)
-    show_phase_transition("review_commit", "complete", console=console)
+    show_phase_transition(
+        "review_commit", "complete",
+        display_context=_ctx_from_console(console),
+    )
     output = console.export_text()
     assert "Review Commit" in output
     assert "Complete" in output
@@ -210,7 +237,10 @@ def test_major_transition_review_commit_to_complete() -> None:
 def test_major_transition_fix_to_review() -> None:
     """Fix → review should be major with description."""
     console = Console(record=True, width=120)
-    show_phase_transition("fix", "review", console=console)
+    show_phase_transition(
+        "fix", "review",
+        display_context=_ctx_from_console(console),
+    )
     output = console.export_text()
     assert "Fix" in output
     assert "Review" in output
@@ -220,7 +250,10 @@ def test_major_transition_fix_to_review() -> None:
 def test_minor_transition_dev_to_analysis_has_description() -> None:
     """Dev → analysis is a minor transition but should have a description."""
     console = Console(record=True, width=120)
-    show_phase_transition("development", "development_analysis", console=console)
+    show_phase_transition(
+        "development", "development_analysis",
+        display_context=_ctx_from_console(console),
+    )
     output = console.export_text()
     assert "Development" in output
     assert "Development Analysis" in output
@@ -230,7 +263,10 @@ def test_minor_transition_dev_to_analysis_has_description() -> None:
 def test_minor_transition_review_to_analysis_has_description() -> None:
     """Review → review_analysis is minor but should have description."""
     console = Console(record=True, width=120)
-    show_phase_transition("review", "review_analysis", console=console)
+    show_phase_transition(
+        "review", "review_analysis",
+        display_context=_ctx_from_console(console),
+    )
     output = console.export_text()
     assert "Review" in output
     assert "Review Analysis" in output
@@ -240,7 +276,10 @@ def test_minor_transition_review_to_analysis_has_description() -> None:
 def test_unknown_transition_renders_gracefully() -> None:
     """Unknown transition pair should still render without crashing."""
     console = Console(record=True, width=120)
-    show_phase_transition("unknown_phase", "another_unknown", console=console)
+    show_phase_transition(
+        "unknown_phase", "another_unknown",
+        display_context=_ctx_from_console(console),
+    )
     output = console.export_text()
     assert "Unknown Phase" in output
     assert "Another Unknown" in output
@@ -260,7 +299,7 @@ def test_transition_descriptions_render_in_major_banners() -> None:
         if (from_phase, to_phase) not in _MAJOR_TRANSITIONS:
             continue
         console = Console(record=True, width=120)
-        show_phase_transition(from_phase, to_phase, console=console)
+        show_phase_transition(from_phase, to_phase, display_context=_ctx_from_console(console))
         output = console.export_text()
         # Description should appear in the output (at least a substring)
         assert description[:20] in output, (
@@ -272,7 +311,7 @@ def test_show_phase_start_reviewer_pass_zero_boundary() -> None:
     """Reviewer pass 0 should display as 1/N (1-indexed)."""
     console = Console(record=True)
     ctx = PhaseStartContext(reviewer_pass=0, total_reviewer_passes=3)
-    show_phase_start("review", ctx=ctx, console=console)
+    show_phase_start("review", ctx=ctx, display_context=_ctx_from_console(console))
     output = console.export_text()
     assert "1/3" in output
 
@@ -281,7 +320,7 @@ def test_show_phase_start_reviewer_pass_last_boundary() -> None:
     """Last reviewer pass (N-1) should display as N/N."""
     console = Console(record=True)
     ctx = PhaseStartContext(reviewer_pass=2, total_reviewer_passes=3)
-    show_phase_start("review", ctx=ctx, console=console)
+    show_phase_start("review", ctx=ctx, display_context=_ctx_from_console(console))
     output = console.export_text()
     assert "3/3" in output
 
@@ -296,7 +335,7 @@ def test_show_phase_start_dev_analysis_shows_analysis_counter() -> None:
         development_analysis_iteration=1,
         max_development_analysis_iterations=3,
     )
-    show_phase_start("development_analysis", ctx=ctx, console=console)
+    show_phase_start("development_analysis", ctx=ctx, display_context=_ctx_from_console(console))
     output = console.export_text()
     assert "Development Analysis" in output
     assert "[analysis 2/3]" in output
@@ -309,7 +348,7 @@ def test_show_phase_start_dev_analysis_zero_index_shows_one() -> None:
         development_analysis_iteration=0,
         max_development_analysis_iterations=3,
     )
-    show_phase_start("development_analysis", ctx=ctx, console=console)
+    show_phase_start("development_analysis", ctx=ctx, display_context=_ctx_from_console(console))
     output = console.export_text()
     assert "[analysis 1/3]" in output
 
@@ -321,7 +360,7 @@ def test_show_phase_start_dev_analysis_at_max_shows_max() -> None:
         development_analysis_iteration=2,
         max_development_analysis_iterations=3,
     )
-    show_phase_start("development_analysis", ctx=ctx, console=console)
+    show_phase_start("development_analysis", ctx=ctx, display_context=_ctx_from_console(console))
     output = console.export_text()
     assert "[analysis 3/3]" in output
 
@@ -333,7 +372,7 @@ def test_show_phase_start_review_analysis_shows_analysis_counter() -> None:
         review_analysis_iteration=0,
         max_review_analysis_iterations=2,
     )
-    show_phase_start("review_analysis", ctx=ctx, console=console)
+    show_phase_start("review_analysis", ctx=ctx, display_context=_ctx_from_console(console))
     output = console.export_text()
     assert "Review Analysis" in output
     assert "[analysis 1/2]" in output
@@ -346,7 +385,7 @@ def test_show_phase_start_review_analysis_at_max_shows_max() -> None:
         review_analysis_iteration=1,
         max_review_analysis_iterations=2,
     )
-    show_phase_start("review_analysis", ctx=ctx, console=console)
+    show_phase_start("review_analysis", ctx=ctx, display_context=_ctx_from_console(console))
     output = console.export_text()
     assert "[analysis 2/2]" in output
 
@@ -359,7 +398,7 @@ def test_show_phase_start_dev_analysis_no_suffix_without_context() -> None:
         total_iterations=5,
         # No development_analysis_iteration or max set
     )
-    show_phase_start("development_analysis", ctx=ctx, console=console)
+    show_phase_start("development_analysis", ctx=ctx, display_context=_ctx_from_console(console))
     output = console.export_text()
     assert "Development Analysis" in output
     assert "[analysis" not in output
@@ -374,7 +413,7 @@ def test_show_phase_start_development_no_analysis_suffix() -> None:
         development_analysis_iteration=2,
         max_development_analysis_iterations=3,
     )
-    show_phase_start("development", ctx=ctx, console=console)
+    show_phase_start("development", ctx=ctx, display_context=_ctx_from_console(console))
     output = console.export_text()
     assert "Development" in output
     assert "[analysis" not in output
@@ -389,7 +428,7 @@ def test_show_phase_start_review_no_analysis_suffix() -> None:
         review_analysis_iteration=1,
         max_review_analysis_iterations=2,
     )
-    show_phase_start("review", ctx=ctx, console=console)
+    show_phase_start("review", ctx=ctx, display_context=_ctx_from_console(console))
     output = console.export_text()
     assert "Review" in output
     assert "[analysis" not in output
@@ -404,7 +443,7 @@ def test_show_phase_start_combines_iteration_and_analysis_counters() -> None:
         development_analysis_iteration=1,
         max_development_analysis_iterations=3,
     )
-    show_phase_start("development_analysis", ctx=ctx, console=console)
+    show_phase_start("development_analysis", ctx=ctx, display_context=_ctx_from_console(console))
     output = console.export_text()
     assert "Development Analysis" in output
     assert "[iteration 3/5]" in output
@@ -424,7 +463,7 @@ def test_show_phase_start_from_state_forwards_counters() -> None:
     )
     buf = StringIO()
     console = Console(file=buf, force_terminal=False, color_system=None, width=200)
-    show_phase_start_from_state(stub, "development", console=console)
+    show_phase_start_from_state(stub, "development", display_context=_ctx_from_console(console))
     output = buf.getvalue()
     assert "iteration 1/3" in output
     assert "pass 2/2" in output
@@ -435,7 +474,7 @@ def test_show_phase_start_from_state_tolerates_missing_attrs() -> None:
     stub = types.SimpleNamespace(iteration=0, total_iterations=3)
     buf = StringIO()
     console = Console(file=buf, force_terminal=False, color_system=None, width=200)
-    show_phase_start_from_state(stub, "planning", console=console)
+    show_phase_start_from_state(stub, "planning", display_context=_ctx_from_console(console))
     output = buf.getvalue()
     assert "iteration 1/3" in output
     assert "Planning" in output

@@ -15,6 +15,7 @@ from ralph.agents.idle_watchdog import WatchdogFireReason
 from ralph.agents.invoke import AgentInactivityTimeoutError, AgentInvocationError, InvokeOptions
 from ralph.config.enums import PHASE_DEVELOPMENT, AgentTransport
 from ralph.config.models import AgentConfig, GeneralConfig, UnifiedConfig
+from ralph.display.context import make_display_context
 from ralph.pipeline import runner as runner_module
 from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.events import PipelineEvent
@@ -161,6 +162,7 @@ def test_runner_stale_session_internal_retry_succeeds(
             ),
         ),
         WorkspaceScope(tmp_path),
+        display_context=make_display_context(),
         state=state,
     )
 
@@ -244,6 +246,7 @@ def test_runner_inactivity_timeout_with_captured_session_retries_fresh(
             ),
         ),
         WorkspaceScope(tmp_path),
+        display_context=make_display_context(),
         state=_make_state(),
     )
 
@@ -312,6 +315,7 @@ def test_runner_stale_session_with_parsed_session_id_retries_fresh(
             ),
         ),
         WorkspaceScope(tmp_path),
+        display_context=make_display_context(),
         state=_make_state(last_session_id="stale-original", session_preserve=True),
     )
 
@@ -372,6 +376,7 @@ def test_runner_stale_session_exhausts_retries_returns_failure(
             ),
         ),
         WorkspaceScope(tmp_path),
+        display_context=make_display_context(),
         state=state,
     )
 
@@ -457,6 +462,7 @@ def test_runner_opencode_stale_session_internal_retry_succeeds(
             ),
         ),
         WorkspaceScope(tmp_path),
+        display_context=make_display_context(),
         state=state,
     )
 
@@ -528,6 +534,7 @@ def test_runner_opencode_unknown_session_stale_message_triggers_retry(
             ),
         ),
         WorkspaceScope(tmp_path),
+        display_context=make_display_context(),
         state=_make_state(last_session_id="deadbeef", session_preserve=True),
     )
 

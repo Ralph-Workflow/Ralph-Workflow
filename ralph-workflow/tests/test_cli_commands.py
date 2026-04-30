@@ -17,7 +17,7 @@ from ralph.cli.commands import diagnose as diagnose_module
 from ralph.cli.commands import init as init_module
 from ralph.config.enums import AgentTransport, JsonParserType, ReviewDepth
 from ralph.config.models import AgentConfig, UnifiedConfig
-from ralph.display.context import DisplayContext
+from ralph.display.context import DisplayContext, make_display_context
 from ralph.display.theme import RALPH_THEME
 from ralph.mcp.artifacts.commit_message import write_commit_message_artifact
 from ralph.mcp.protocol.session import AgentSession
@@ -1308,12 +1308,13 @@ def test_generate_commit_msg_accepts_raw_commit_payload_written_by_agent(
 def test_check_git_repo_errors(monkeypatch: pytest.MonkeyPatch) -> None:
     stream = StringIO()
     console = Console(file=stream, force_terminal=False, color_system=None, theme=RALPH_THEME)
+    ctx = make_display_context(console=console, env={})
 
     def raise_repo() -> Path:
         raise RuntimeError("missing")
 
     monkeypatch.setattr(diagnose_module, "find_repo_root", raise_repo)
-    diagnose_module._check_git_repo(console=console)
+    diagnose_module._check_git_repo(display_context=ctx)
     assert "Git Repository" in stream.getvalue()
     assert "Error" in stream.getvalue()
 
@@ -1321,10 +1322,11 @@ def test_check_git_repo_errors(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_check_git_repo_clean_state(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     stream = StringIO()
     console = Console(file=stream, force_terminal=False, color_system=None, theme=RALPH_THEME)
+    ctx = make_display_context(console=console, env={})
     monkeypatch.setattr(diagnose_module, "find_repo_root", lambda: tmp_path)
     monkeypatch.setattr(diagnose_module, "is_repo_clean", lambda root: True)
 
-    diagnose_module._check_git_repo(console=console)
+    diagnose_module._check_git_repo(display_context=ctx)
     output = stream.getvalue()
     assert "Working tree" in output
     assert "Clean" in output
@@ -1333,6 +1335,7 @@ def test_check_git_repo_clean_state(monkeypatch: pytest.MonkeyPatch, tmp_path: P
 def test_check_configuration_success(monkeypatch: pytest.MonkeyPatch) -> None:
     stream = StringIO()
     console = Console(file=stream, force_terminal=False, color_system=None, theme=RALPH_THEME)
+    ctx = make_display_context(console=console, env={})
     config = SimpleNamespace(
         general=SimpleNamespace(
             developer_iters=4,
@@ -1342,7 +1345,7 @@ def test_check_configuration_success(monkeypatch: pytest.MonkeyPatch) -> None:
         )
     )
     monkeypatch.setattr(diagnose_module, "load_config", lambda *args, **kwargs: config)
-    diagnose_module._check_configuration(None, {}, console=console)
+    diagnose_module._check_configuration(None, {}, display_context=ctx)
     output = stream.getvalue()
     assert "Config loaded" in output
     assert "Developer iters" in output
@@ -1351,30 +1354,33 @@ def test_check_configuration_success(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_check_configuration_failure(monkeypatch: pytest.MonkeyPatch) -> None:
     stream = StringIO()
     console = Console(file=stream, force_terminal=False, color_system=None, theme=RALPH_THEME)
+    ctx = make_display_context(console=console, env={})
 
     def raise_config(*args: object, **kwargs: object) -> None:
         raise RuntimeError("boom")
 
     monkeypatch.setattr(diagnose_module, "load_config", raise_config)
-    diagnose_module._check_configuration(None, {}, console=console)
+    diagnose_module._check_configuration(None, {}, display_context=ctx)
     assert "Error" in stream.getvalue()
 
 
 def test_check_agents_no_agents(monkeypatch: pytest.MonkeyPatch) -> None:
     stream = StringIO()
     console = Console(file=stream, force_terminal=False, color_system=None, theme=RALPH_THEME)
+    ctx = make_display_context(console=console, env={})
     fake_registry = SimpleNamespace(list_agents=lambda: [])
     monkeypatch.setattr(diagnose_module, "load_config", lambda *args, **kwargs: SimpleNamespace())
     monkeypatch.setattr(
         diagnose_module, "AgentRegistry", SimpleNamespace(from_config=lambda c: fake_registry)
     )
-    diagnose_module._check_agents({}, console=console)
+    diagnose_module._check_agents({}, display_context=ctx)
     assert "No agents configured" in stream.getvalue()
 
 
 def test_check_agents_with_configured_agent(monkeypatch: pytest.MonkeyPatch) -> None:
     stream = StringIO()
     console = Console(file=stream, force_terminal=False, color_system=None, theme=RALPH_THEME)
+    ctx = make_display_context(console=console, env={})
     agent = AgentConfig(cmd="agent", can_commit=True)
     fake_registry = SimpleNamespace(
         list_agents=lambda: ["alpha"],
@@ -1387,7 +1393,7 @@ def test_check_agents_with_configured_agent(monkeypatch: pytest.MonkeyPatch) -> 
     monkeypatch.setattr(
         diagnose_module, "check_agent_availability", lambda r: [("alpha", "available")]
     )
-    diagnose_module._check_agents({}, console=console)
+    diagnose_module._check_agents({}, display_context=ctx)
     output = stream.getvalue()
     assert "Configured" in output
     assert "alpha" in output
@@ -1396,12 +1402,13 @@ def test_check_agents_with_configured_agent(monkeypatch: pytest.MonkeyPatch) -> 
 def test_check_agents_failure(monkeypatch: pytest.MonkeyPatch) -> None:
     stream = StringIO()
     console = Console(file=stream, force_terminal=False, color_system=None, theme=RALPH_THEME)
+    ctx = make_display_context(console=console, env={})
 
     def raise_config(*args: object, **kwargs: object) -> None:
         raise RuntimeError("boom")
 
     monkeypatch.setattr(diagnose_module, "load_config", raise_config)
-    diagnose_module._check_agents({}, console=console)
+    diagnose_module._check_agents({}, display_context=ctx)
     assert "Error" in stream.getvalue()
 
 
@@ -1410,13 +1417,14 @@ def test_check_workspace_files_reports_status(
 ) -> None:
     stream = StringIO()
     console = Console(file=stream, force_terminal=False, color_system=None, theme=RALPH_THEME)
+    ctx = make_display_context(console=console, env={})
     monkeypatch.chdir(tmp_path)
     (tmp_path / "PROMPT.md").write_text("prompt")
     agent_dir = tmp_path / ".agent"
     agent_dir.mkdir()
     (agent_dir / "ralph-workflow.toml").write_text("config")
 
-    diagnose_module._check_workspace_files(console=console)
+    diagnose_module._check_workspace_files(display_context=ctx)
     output = stream.getvalue()
     assert "PROMPT.md" in output
     assert "Exists" in output
@@ -1569,8 +1577,9 @@ def test_init_command_fallback_next_steps_do_not_advertise_template_labels(
 def test_display_tables_render() -> None:
     buffer = StringIO()
     console = Console(file=buffer, force_terminal=False, color_system=None, theme=RALPH_THEME)
+    ctx = make_display_context(console=console, env={})
     agent = AgentConfig(cmd="agent", can_commit=False)
-    options_module.display_agents_table({"alpha": agent}, console=console)
+    options_module.display_agents_table({"alpha": agent}, display_context=ctx)
     rendered = buffer.getvalue()
     assert "Configured" in rendered
     assert "Agents" in rendered
@@ -1579,7 +1588,7 @@ def test_display_tables_render() -> None:
 
     buffer.truncate(0)
     buffer.seek(0)
-    options_module.display_providers_table(["opencode"], console=console)
+    options_module.display_providers_table(["opencode"], display_context=ctx)
     rendered = buffer.getvalue()
     assert "Available" in rendered
     assert "Providers" in rendered

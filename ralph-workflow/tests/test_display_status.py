@@ -12,7 +12,8 @@ _PROGRESS_TOTAL = 5
 
 def test_display_phase_shows_phase_and_iteration() -> None:
     console = Console(record=True, theme=RALPH_THEME)
-    status.display_phase("Planning", iteration=1, total=3, console=console)
+    ctx = make_display_context(console=console)
+    status.display_phase("Planning", iteration=1, total=3, display_context=ctx)
 
     output = console.export_text()
 
@@ -21,10 +22,13 @@ def test_display_phase_shows_phase_and_iteration() -> None:
 
 
 def test_display_progress_sets_task_state() -> None:
+    console = Console(record=True, theme=RALPH_THEME)
+    ctx = make_display_context(console=console)
     progress = status.display_progress(
         current=_PROGRESS_COMPLETED,
         total=_PROGRESS_TOTAL,
         phase="Execution",
+        display_context=ctx,
     )
 
     assert len(progress.tasks) == 1
@@ -46,7 +50,8 @@ def test_display_status_summary_renders_metrics() -> None:
     )
 
     console = Console(record=True, theme=RALPH_THEME)
-    status.display_status_summary(summary, console=console)
+    ctx = make_display_context(console=console)
+    status.display_status_summary(summary, display_context=ctx)
 
     output = console.export_text()
 
@@ -65,6 +70,7 @@ def test_display_phase_uses_injected_display_context_width() -> None:
     )
     ctx = make_display_context(env={"COLUMNS": "60"})
     import dataclasses  # noqa: PLC0415
+
     recording_ctx = dataclasses.replace(ctx, console=console)
 
     status.display_phase("Planning", iteration=1, total=3, display_context=recording_ctx)
@@ -83,6 +89,7 @@ def test_create_progress_bar_uses_injected_display_context() -> None:
     )
     ctx = make_display_context(env={"COLUMNS": "120"})
     import dataclasses  # noqa: PLC0415
+
     recording_ctx = dataclasses.replace(ctx, console=console)
 
     progress = status.create_progress_bar(display_context=recording_ctx)

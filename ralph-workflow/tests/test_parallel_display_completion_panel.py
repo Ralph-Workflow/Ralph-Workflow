@@ -8,6 +8,7 @@ from unittest.mock import patch
 
 from rich.console import Console
 
+from ralph.display.context import make_display_context
 from ralph.display.parallel_display import ParallelDisplay
 from ralph.display.subscriber import PipelineSubscriber
 from ralph.pipeline.state import PipelineState
@@ -30,7 +31,11 @@ def _make_display(tmp_path: Path) -> tuple[ParallelDisplay, Console]:
         workspace_root=tmp_path,
         run_id="test-run",
     )
-    display = ParallelDisplay(console=console, workspace_root=tmp_path, subscriber=subscriber)
+    display = ParallelDisplay(
+        make_display_context(console=console, env={}),
+        workspace_root=tmp_path,
+        subscriber=subscriber,
+    )
     return display, console
 
 

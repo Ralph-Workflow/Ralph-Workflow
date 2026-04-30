@@ -12,10 +12,8 @@ from rich.progress import BarColumn, Progress, SpinnerColumn, TaskProgressColumn
 from rich.table import Table
 from rich.text import Text
 
-from ralph.display.context import DisplayContext, make_display_context
-
 if TYPE_CHECKING:
-    from rich.console import Console
+    from ralph.display.context import DisplayContext
 
 
 @dataclass(frozen=True)
@@ -30,23 +28,11 @@ class StatusSummary:
     metrics: dict[str, int]
 
 
-def _resolve_console(
-    console: Console | None,
-    display_context: DisplayContext | None,
-) -> Console:
-    if console is not None:
-        return console
-    if display_context is not None:
-        return display_context.console
-    return make_display_context().console
-
-
 def display_phase(
     phase: str,
     iteration: int,
     total: int,
-    console: Console | None = None,
-    display_context: DisplayContext | None = None,
+    display_context: DisplayContext,
 ) -> None:
     """Display current phase.
 
@@ -54,10 +40,9 @@ def display_phase(
         phase: Current phase name.
         iteration: Current iteration number.
         total: Total iterations.
-        console: Rich console for output.
-        display_context: Optional display context for adaptive layout.
+        display_context: DisplayContext providing the console for output.
     """
-    c = _resolve_console(console, display_context)
+    c = display_context.console
     c.print(f"[theme.cat.meta]Phase:[/theme.cat.meta] {phase}")
     c.print(Text(f"Iteration {iteration} of {total}", style="theme.text.muted"))
 
@@ -66,8 +51,7 @@ def display_progress(
     current: int,
     total: int,
     phase: str,
-    console: Console | None = None,
-    display_context: DisplayContext | None = None,
+    display_context: DisplayContext,
 ) -> Progress:
     """Create a progress bar for pipeline execution.
 
@@ -75,13 +59,12 @@ def display_progress(
         current: Current progress value.
         total: Total progress value.
         phase: Current phase name.
-        console: Rich console for output.
-        display_context: Optional display context for adaptive layout.
+        display_context: DisplayContext providing the console for output.
 
     Returns:
         Progress bar instance.
     """
-    c = _resolve_console(console, display_context)
+    c = display_context.console
     progress = Progress(
         SpinnerColumn(),
         TextColumn("[progress.description]{task.description}"),
@@ -95,17 +78,15 @@ def display_progress(
 
 def display_status_summary(
     summary: StatusSummary,
-    console: Console | None = None,
-    display_context: DisplayContext | None = None,
+    display_context: DisplayContext,
 ) -> None:
     """Display a comprehensive status summary.
 
     Args:
         summary: Status summary data.
-        console: Rich console for output.
-        display_context: Optional display context for adaptive layout.
+        display_context: DisplayContext providing the console for output.
     """
-    c = _resolve_console(console, display_context)
+    c = display_context.console
 
     table = Table(
         title="Pipeline Status",
@@ -126,19 +107,17 @@ def display_status_summary(
 
 
 def create_progress_bar(
-    console: Console | None = None,
-    display_context: DisplayContext | None = None,
+    display_context: DisplayContext,
 ) -> Progress:
     """Create a configured progress bar.
 
     Args:
-        console: Rich console for output.
-        display_context: Optional display context for adaptive layout.
+        display_context: DisplayContext providing the console for output.
 
     Returns:
         Configured Progress instance.
     """
-    c = _resolve_console(console, display_context)
+    c = display_context.console
     return Progress(
         SpinnerColumn(),
         TextColumn("[progress.description]{task.description}"),

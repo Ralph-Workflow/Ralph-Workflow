@@ -28,6 +28,8 @@ from ralph.mcp.artifacts.handoffs import (
 if TYPE_CHECKING:
     from rich.console import Console
 
+    from ralph.display.context import DisplayContext
+
 
 _ARTIFACTS_DIR = ".agent/artifacts"
 
@@ -129,14 +131,14 @@ def _read_json_defensive(path: Path) -> dict[str, object] | None:
     return cast("dict[str, object]", parsed_obj)
 
 
-def render_missing_plan_hint(console: Console) -> None:
+def render_missing_plan_hint(display_context: DisplayContext) -> None:
     """Emit a plain INFO line when the plan artifact is absent at phase completion.
 
     Call this from the planning phase completion handler when plan.json is not
     on disk so the log stream always has a [plan] entry rather than silence.
     """
     timestamp = datetime.now(UTC).isoformat()
-    console.print(
+    display_context.console.print(
         f"{timestamp} INFO META [plan] (no plan artifact on disk)",
         markup=False,
         highlight=False,
@@ -146,7 +148,7 @@ def render_missing_plan_hint(console: Console) -> None:
 
 def render_plan_artifact(
     workspace_root: Path,
-    console: Console,
+    display_context: DisplayContext,
 ) -> None:
     """Render the agent-facing plan handoff, falling back to the JSON summary.
 
@@ -160,13 +162,13 @@ def render_plan_artifact(
         workspace_root / _ARTIFACTS_DIR / "plan.json",
     )
     if markdown:
-        _render_text_block("PLAN", markdown, "planning", console)
+        _render_text_block("PLAN", markdown, "planning", display_context.console)
         return
 
     plan = read_plan_artifact(workspace_root)
 
     if plan is None:
-        render_missing_plan_hint(console)
+        render_missing_plan_hint(display_context)
         return
 
     lines: list[str] = []
@@ -181,13 +183,13 @@ def render_plan_artifact(
         lines.append("  Risks:")
         lines.extend(f"    - {risk}" for risk in plan.risks_mitigations)
 
-    _render_titled_lines("PLAN", "planning", lines, console)
+    _render_titled_lines("PLAN", "planning", lines, display_context.console)
 
 
 def render_analysis_decision(
     workspace_root: Path,
     drain: str,
-    console: Console,
+    display_context: DisplayContext,
 ) -> None:
     """Render an analysis decision artifact as a titled block."""
     artifact_type = _analysis_handoff_artifact_type(drain)
@@ -198,7 +200,12 @@ def render_analysis_decision(
             workspace_root / _ARTIFACTS_DIR / f"{artifact_type}.json",
         )
         if markdown:
-            _render_text_block(f"ANALYSIS: {drain}", markdown, "development_analysis", console)
+            _render_text_block(
+                f"ANALYSIS: {drain}",
+                markdown,
+                "development_analysis",
+                display_context.console,
+            )
             return
 
     summary = read_latest_analysis_decision(workspace_root, drain)
@@ -208,12 +215,17 @@ def render_analysis_decision(
     lines = [f"  decision: {summary.decision}"]
     if summary.reason:
         lines.append(f"  reason: {summary.reason}")
-    _render_titled_lines(f"ANALYSIS: {drain}", "development_analysis", lines, console)
+    _render_titled_lines(
+        f"ANALYSIS: {drain}",
+        "development_analysis",
+        lines,
+        display_context.console,
+    )
 
 
 def render_commit_message(
     workspace_root: Path,
-    console: Console,
+    display_context: DisplayContext,
 ) -> None:
     """Render the commit message artifact as a titled block."""
     try:
@@ -228,7 +240,7 @@ def render_commit_message(
         "COMMIT MESSAGE",
         message,
         "development_commit",
-        console,
+        display_context.console,
         indent=True,
     )
 
@@ -243,7 +255,7 @@ def _analysis_handoff_artifact_type(drain: str) -> str | None:
 
 def render_development_artifact(
     workspace_root: Path,
-    console: Console,
+    display_context: DisplayContext,
 ) -> None:
     """Render development results using the authoritative Markdown handoff."""
     markdown = _resolve_authoritative_markdown_handoff(
@@ -252,7 +264,7 @@ def render_development_artifact(
         workspace_root / _ARTIFACTS_DIR / "development_result.json",
     )
     if markdown:
-        _render_text_block("DEVELOPMENT RESULT", markdown, "development", console)
+        _render_text_block("DEVELOPMENT RESULT", markdown, "development", display_context.console)
         return
 
     found = _read_json_defensive(workspace_root / _ARTIFACTS_DIR / "development_result.json")
@@ -262,13 +274,13 @@ def render_development_artifact(
         "DEVELOPMENT RESULT",
         json.dumps(found, indent=2),
         "development",
-        console,
+        display_context.console,
     )
 
 
 def render_review_artifact(
     workspace_root: Path,
-    console: Console,
+    display_context: DisplayContext,
 ) -> None:
     """Render review findings using the authoritative Markdown handoff."""
     markdown = _resolve_authoritative_markdown_handoff(
@@ -277,18 +289,23 @@ def render_review_artifact(
         workspace_root / _ARTIFACTS_DIR / "issues.json",
     )
     if markdown:
-        _render_text_block("REVIEW ISSUES", markdown, "review", console)
+        _render_text_block("REVIEW ISSUES", markdown, "review", display_context.console)
         return
 
     found = _read_json_defensive(workspace_root / _ARTIFACTS_DIR / "issues.json")
     if found is None:
         return
-    _render_text_block("REVIEW ISSUES", json.dumps(found, indent=2), "review", console)
+    _render_text_block(
+        "REVIEW ISSUES",
+        json.dumps(found, indent=2),
+        "review",
+        display_context.console,
+    )
 
 
 def render_fix_artifact(
     workspace_root: Path,
-    console: Console,
+    display_context: DisplayContext,
 ) -> None:
     """Render fix result artifacts as a titled block."""
     markdown = _resolve_authoritative_markdown_handoff(
@@ -297,7 +314,7 @@ def render_fix_artifact(
         workspace_root / _ARTIFACTS_DIR / "fix_result.json",
     )
     if markdown:
-        _render_text_block("FIX", markdown, "fix", console)
+        _render_text_block("FIX", markdown, "fix", display_context.console)
         return
 
     found = _first_json_candidate(
@@ -308,7 +325,7 @@ def render_fix_artifact(
         return
 
     lines = _render_fix_json_summary(found)
-    _render_titled_lines("FIX", "fix", lines, console)
+    _render_titled_lines("FIX", "fix", lines, display_context.console)
 
 
 def _first_json_candidate(*candidates: Path) -> dict[str, object] | None:

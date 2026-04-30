@@ -7,6 +7,7 @@ from io import StringIO
 import pytest
 from rich.console import Console
 
+from ralph.display.context import make_display_context
 from ralph.display.plain_renderer import PlainLogRenderer
 from ralph.display.theme import RALPH_THEME
 
@@ -22,7 +23,7 @@ def _make_color_renderer() -> tuple[PlainLogRenderer, StringIO]:
         width=200,
         highlight=False,
     )
-    return PlainLogRenderer(console), buf
+    return PlainLogRenderer(make_display_context(console=console, env={})), buf
 
 
 def _make_plain_renderer() -> tuple[PlainLogRenderer, StringIO]:
@@ -34,7 +35,7 @@ def _make_plain_renderer() -> tuple[PlainLogRenderer, StringIO]:
         width=200,
         highlight=False,
     )
-    return PlainLogRenderer(console), buf
+    return PlainLogRenderer(make_display_context(console=console, env={})), buf
 
 
 def test_level_badge_produces_ansi_when_color_enabled() -> None:

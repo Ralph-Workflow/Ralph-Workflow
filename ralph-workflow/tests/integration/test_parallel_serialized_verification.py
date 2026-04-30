@@ -11,6 +11,7 @@ from __future__ import annotations
 from unittest.mock import MagicMock
 
 from ralph.config.enums import PHASE_DEVELOPMENT, PHASE_FAILED
+from ralph.display.context import make_display_context
 from ralph.executor.process import ProcessResult
 from ralph.pipeline import runner as runner_module
 from ralph.pipeline.effects import FanOutDevelopmentEffect
@@ -20,6 +21,10 @@ from ralph.policy.models import PhaseParallelization
 from ralph.workspace.scope import WorkspaceScope
 
 _MAX_AGENT_RETRIES = 3
+
+def _legacy_display() -> runner_module._LegacyConsoleDisplay:
+    return runner_module._LegacyConsoleDisplay(make_display_context())
+
 
 
 def _make_work_unit(unit_id: str) -> WorkUnit:
@@ -93,7 +98,7 @@ class TestSerializedPostFanoutVerification:
         runner_module._execute_fan_out_sync(
             effect=effect,
             state=state,
-            display=runner_module._LegacyConsoleDisplay(),
+            display=_legacy_display(),
             policy_bundle=policy_bundle,
             workspace_scope=workspace_scope,
         )
@@ -149,7 +154,7 @@ class TestSerializedPostFanoutVerification:
         runner_module._execute_fan_out_sync(
             effect=effect,
             state=state,
-            display=runner_module._LegacyConsoleDisplay(),
+            display=_legacy_display(),
             policy_bundle=policy_bundle,
             workspace_scope=workspace_scope,
         )
@@ -205,7 +210,7 @@ class TestSerializedPostFanoutVerification:
         runner_module._execute_fan_out_sync(
             effect=effect,
             state=state,
-            display=runner_module._LegacyConsoleDisplay(),
+            display=_legacy_display(),
             policy_bundle=policy_bundle,
             workspace_scope=workspace_scope,
         )
@@ -279,7 +284,7 @@ class TestSerializedPostFanoutVerification:
         runner_module._execute_fan_out_sync(
             effect=effect,
             state=state,
-            display=runner_module._LegacyConsoleDisplay(),
+            display=_legacy_display(),
             policy_bundle=policy_bundle,
             workspace_scope=workspace_scope,
         )
@@ -346,7 +351,7 @@ class TestSerializedPostFanoutVerification:
         final_state = runner_module._execute_fan_out_sync(
             effect=effect,
             state=state,
-            display=runner_module._LegacyConsoleDisplay(),
+            display=_legacy_display(),
             policy_bundle=policy_bundle,
             workspace_scope=workspace_scope,
         )
@@ -426,7 +431,7 @@ class TestSerializedPostFanoutVerification:
         runner_module._execute_fan_out_sync(
             effect=effect,
             state=state,
-            display=runner_module._LegacyConsoleDisplay(),
+            display=_legacy_display(),
             policy_bundle=policy_bundle,
             workspace_scope=workspace_scope,
         )

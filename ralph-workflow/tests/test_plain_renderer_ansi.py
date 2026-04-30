@@ -6,13 +6,14 @@ from io import StringIO
 
 from rich.console import Console
 
+from ralph.display.context import make_display_context
 from ralph.display.plain_renderer import PlainLogRenderer
 
 
 def _make_renderer() -> tuple[PlainLogRenderer, StringIO]:
     buffer = StringIO()
     console = Console(file=buffer, force_terminal=False, highlight=False)
-    renderer = PlainLogRenderer(console)
+    renderer = PlainLogRenderer(make_display_context(console=console, env={}))
     return renderer, buffer
 
 

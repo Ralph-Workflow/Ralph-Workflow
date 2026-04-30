@@ -7,6 +7,7 @@ from unittest.mock import patch
 
 from rich.console import Console
 
+from ralph.display.context import make_display_context
 from ralph.display.plain_renderer import PlainLogRenderer
 
 # Threshold for number of fragments in dedup test
@@ -16,7 +17,7 @@ _THREE_FRAGMENTS = 3
 def _make_renderer() -> tuple[PlainLogRenderer, StringIO]:
     buf = StringIO()
     console = Console(file=buf, force_terminal=False, highlight=False, color_system=None, width=200)
-    return PlainLogRenderer(console), buf
+    return PlainLogRenderer(make_display_context(console=console, env={})), buf
 
 
 def test_identical_consecutive_text_fragments_suppressed() -> None:

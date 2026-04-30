@@ -11,6 +11,7 @@ import pytest
 from rich.console import Console
 
 from ralph.config.models import AgentConfig
+from ralph.display.context import make_display_context
 from ralph.display.parallel_display import ParallelDisplay
 from ralph.pipeline import runner as runner_module
 from ralph.pipeline.effects import ExitSuccessEffect, InvokeAgentEffect
@@ -106,7 +107,7 @@ def test_run_streams_transcript_output_without_dashboard(monkeypatch: pytest.Mon
     state = PipelineState(phase="planning")
     rendered = io.StringIO()
     test_console = Console(file=rendered, force_terminal=True, no_color=False, width=120)
-    display = ParallelDisplay(test_console, env={})
+    display = ParallelDisplay(make_display_context(console=test_console, env={}))
 
     def stub_determine_effect(_state: object, _bundle: object) -> object:
         return effects.pop(0)
@@ -161,7 +162,12 @@ def test_single_agent_visual_parity(monkeypatch: pytest.MonkeyPatch) -> None:
     effects = _make_effect_sequence()
     state = PipelineState(phase="planning")
     rendered = io.StringIO()
-    display = ParallelDisplay(Console(file=rendered, force_terminal=False, width=120), env={})
+    display = ParallelDisplay(
+        make_display_context(
+            console=Console(file=rendered, force_terminal=False, width=120),
+            env={},
+        )
+    )
     next_states = iter(
         [
             state.copy_with(phase="development"),
@@ -263,8 +269,10 @@ def test_run_notifies_dashboard_subscriber_after_reduce(monkeypatch: pytest.Monk
     )
 
     display = ParallelDisplay(
-        Console(file=io.StringIO(), force_terminal=False, width=120),
-        env={},
+        make_display_context(
+            console=Console(file=io.StringIO(), force_terminal=False, width=120),
+            env={},
+        )
     )
 
     result = runner_module.run(

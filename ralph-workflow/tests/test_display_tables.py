@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import io
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 from rich.console import Console
 
@@ -34,7 +34,8 @@ UnifiedConfig.model_rebuild()
 def _capture_output(func: Callable[..., None], *args: Any, **kwargs: Any) -> str:
     stream = io.StringIO()
     console = Console(file=stream, color_system=None, force_terminal=False, theme=RALPH_THEME)
-    kwargs.setdefault("console", console)
+    ctx = make_display_context(console=console)
+    kwargs.setdefault("display_context", ctx)
     func(*args, **kwargs)
     return stream.getvalue()
 
@@ -126,7 +127,7 @@ def test_show_checkpoint_summary_formats_values() -> None:
 # --- Tests for compact mode column suppression ---
 
 
-def _make_display_context_for_mode(mode: str) -> DisplayContext:
+def _make_display_context_for_mode(mode: Literal["compact", "medium", "wide"]) -> DisplayContext:
     """Create a DisplayContext for the specified mode."""
     stream = io.StringIO()
     console = Console(file=stream, color_system=None, force_terminal=False, theme=RALPH_THEME)

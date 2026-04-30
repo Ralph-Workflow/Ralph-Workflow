@@ -10,6 +10,7 @@ from rich.text import Text
 
 from ralph.agents.availability import HasListAgents, check_agent_availability
 from ralph.banner import show_banner
+from ralph.display.context import DisplayContext
 
 if TYPE_CHECKING:
     from ralph.config.bootstrap import BootstrapResult
@@ -109,7 +110,7 @@ def emit_first_run_welcome(
     *,
     agent_registry: HasListAgents | None = None,
     is_regenerate: bool = False,
-    display_context: DisplayContext | None = None,
+    display_context: DisplayContext,
 ) -> None:
     """Print a structured first-run welcome panel.
 
@@ -118,7 +119,7 @@ def emit_first_run_welcome(
         results: Bootstrap results from a bootstrap operation.
         agent_registry: Optional agent registry for availability checking.
         is_regenerate: Whether this is a regenerate (--regenerate-config) operation.
-        display_context: Optional display context for adaptive layout.
+        display_context: Display context for adaptive layout (required).
     """
     if all(r.action == "skipped" for r in results):
         return

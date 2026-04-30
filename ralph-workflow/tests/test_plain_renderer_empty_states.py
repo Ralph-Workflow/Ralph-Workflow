@@ -7,6 +7,7 @@ from io import StringIO
 
 from rich.console import Console
 
+from ralph.display.context import make_display_context
 from ralph.display.plain_renderer import PlainLogRenderer
 from ralph.display.snapshot import PipelineSnapshot
 
@@ -20,7 +21,7 @@ def _make_renderer() -> tuple[PlainLogRenderer, StringIO]:
         color_system=None,
         width=200,
     )
-    return PlainLogRenderer(console), buf
+    return PlainLogRenderer(make_display_context(console=console, env={})), buf
 
 
 def _make_snapshot(

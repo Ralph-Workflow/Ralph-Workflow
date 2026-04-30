@@ -6,6 +6,7 @@ from io import StringIO
 
 from rich.console import Console
 
+from ralph.display.context import make_display_context
 from ralph.display.snapshot import PipelineSnapshot, WorkerSnapshot
 
 plain_renderer = importlib.import_module("ralph.display.plain_renderer")
@@ -88,7 +89,10 @@ def _make_worker(*, unit_id: str = "worker-1", status: str = "RUNNING") -> Worke
 def _make_renderer() -> tuple[PlainLogRenderer, StringIO]:
     stream = StringIO()
     console = Console(file=stream, force_terminal=False, color_system=None, width=200)
-    renderer = PlainLogRenderer(console, clock=lambda: FIXED_TIME)
+    renderer = PlainLogRenderer(
+        make_display_context(console=console, env={}),
+        clock=lambda: FIXED_TIME,
+    )
     return renderer, stream
 
 

@@ -17,6 +17,7 @@ from ralph.display.artifact_renderer import (
     render_plan_artifact,
     render_review_artifact,
 )
+from ralph.display.context import DisplayContext, make_display_context
 
 
 def _make_console() -> Console:
@@ -26,6 +27,11 @@ def _make_console() -> Console:
         color_system=None,
         width=120,
     )
+
+
+def _make_display_context() -> DisplayContext:
+    console = _make_console()
+    return make_display_context(console=console, env={})
 
 
 def _console_output(console: Console) -> str:
@@ -51,9 +57,9 @@ class TestRenderPlanArtifact:
             ),
             encoding="utf-8",
         )
-        console = _make_console()
-        render_plan_artifact(tmp_path, console)
-        output = _console_output(console)
+        ctx = _make_display_context()
+        render_plan_artifact(tmp_path, ctx)
+        output = _console_output(ctx.console)
         assert "PLAN" in output
         assert "Test plan" in output
         assert "item1" in output
@@ -73,9 +79,9 @@ class TestRenderPlanArtifact:
             "- **api** — Update API surface\n"
         )
         (agent_dir / "PLAN.md").write_text(plan_markdown, encoding="utf-8")
-        console = _make_console()
-        render_plan_artifact(tmp_path, console)
-        output = _console_output(console)
+        ctx = _make_display_context()
+        render_plan_artifact(tmp_path, ctx)
+        output = _console_output(ctx.console)
         assert "PLAN" in output
         assert "Add regression tests" in output
         assert "Fix pipeline routing" in output
@@ -122,16 +128,16 @@ class TestRenderPlanArtifact:
             ),
             encoding="utf-8",
         )
-        console = _make_console()
-        render_plan_artifact(tmp_path, console)
-        output = _console_output(console)
+        ctx = _make_display_context()
+        render_plan_artifact(tmp_path, ctx)
+        output = _console_output(ctx.console)
         assert "Fresh plan context" in output
         assert "STALE PLAN" not in output
 
     def test_emits_hint_when_file_absent(self, tmp_path: Path) -> None:
-        console = _make_console()
-        render_plan_artifact(tmp_path, console)
-        output = _console_output(console)
+        ctx = _make_display_context()
+        render_plan_artifact(tmp_path, ctx)
+        output = _console_output(ctx.console)
         assert "[plan]" in output
         assert "no plan artifact on disk" in output
 
@@ -139,9 +145,9 @@ class TestRenderPlanArtifact:
         artifacts_dir = tmp_path / ".agent" / "artifacts"
         artifacts_dir.mkdir(parents=True)
         (artifacts_dir / "plan.json").write_text("not valid json{", encoding="utf-8")
-        console = _make_console()
-        render_plan_artifact(tmp_path, console)
-        output = _console_output(console)
+        ctx = _make_display_context()
+        render_plan_artifact(tmp_path, ctx)
+        output = _console_output(ctx.console)
         assert "[plan]" in output
         assert "no plan artifact on disk" in output
 
@@ -169,9 +175,9 @@ class TestRenderAnalysisDecision:
             ),
             encoding="utf-8",
         )
-        console = _make_console()
-        render_analysis_decision(tmp_path, "development_analysis", console)
-        output = _console_output(console)
+        ctx = _make_display_context()
+        render_analysis_decision(tmp_path, "development_analysis", ctx)
+        output = _console_output(ctx.console)
         assert "ANALYSIS: development_analysis" in output
         assert "Use the freshly regenerated handoff." in output
         assert "STALE ANALYSIS" not in output
@@ -191,17 +197,17 @@ class TestRenderAnalysisDecision:
             ),
             encoding="utf-8",
         )
-        console = _make_console()
-        render_analysis_decision(tmp_path, "development_analysis", console)
-        output = _console_output(console)
+        ctx = _make_display_context()
+        render_analysis_decision(tmp_path, "development_analysis", ctx)
+        output = _console_output(ctx.console)
         assert "ANALYSIS: development_analysis" in output
         assert "approved" in output
         assert "Code looks good" in output
 
     def test_no_output_when_file_absent(self, tmp_path: Path) -> None:
-        console = _make_console()
-        render_analysis_decision(tmp_path, "nonexistent_phase", console)
-        output = _console_output(console)
+        ctx = _make_display_context()
+        render_analysis_decision(tmp_path, "nonexistent_phase", ctx)
+        output = _console_output(ctx.console)
         assert output == ""
 
     def test_no_output_for_malformed_json(self, tmp_path: Path) -> None:
@@ -211,9 +217,9 @@ class TestRenderAnalysisDecision:
             "invalid json{{{",
             encoding="utf-8",
         )
-        console = _make_console()
-        render_analysis_decision(tmp_path, "review_analysis", console)
-        output = _console_output(console)
+        ctx = _make_display_context()
+        render_analysis_decision(tmp_path, "review_analysis", ctx)
+        output = _console_output(ctx.console)
         assert output == ""
 
 
@@ -235,26 +241,26 @@ class TestRenderCommitMessage:
             "updated_at": "2026-04-19T12:00:00Z",
         }
         (tmp_dir / "commit_message.json").write_text(json.dumps(artifact), encoding="utf-8")
-        console = _make_console()
-        render_commit_message(tmp_path, console)
-        output = _console_output(console)
+        ctx = _make_display_context()
+        render_commit_message(tmp_path, ctx)
+        output = _console_output(ctx.console)
         assert "COMMIT MESSAGE" in output
         assert "feat: add new feature" in output
         assert "This is the commit body" in output
 
     def test_no_output_when_file_absent(self, tmp_path: Path) -> None:
-        console = _make_console()
-        render_commit_message(tmp_path, console)
-        output = _console_output(console)
+        ctx = _make_display_context()
+        render_commit_message(tmp_path, ctx)
+        output = _console_output(ctx.console)
         assert output == ""
 
     def test_no_output_for_malformed_json(self, tmp_path: Path) -> None:
         tmp_dir = tmp_path / ".agent" / "tmp"
         tmp_dir.mkdir(parents=True)
         (tmp_dir / "commit_message.json").write_text("not json at all", encoding="utf-8")
-        console = _make_console()
-        render_commit_message(tmp_path, console)
-        output = _console_output(console)
+        ctx = _make_display_context()
+        render_commit_message(tmp_path, ctx)
+        output = _console_output(ctx.console)
         assert output == ""
 
 
@@ -266,9 +272,9 @@ class TestRenderDevelopmentArtifact:
             "# Development Result\n\n## Summary\n\nImplemented the feature.\n",
             encoding="utf-8",
         )
-        console = _make_console()
-        render_development_artifact(tmp_path, console)
-        output = _console_output(console)
+        ctx = _make_display_context()
+        render_development_artifact(tmp_path, ctx)
+        output = _console_output(ctx.console)
         assert "DEVELOPMENT RESULT" in output
         assert "Implemented the feature." in output
 
@@ -281,9 +287,9 @@ class TestRenderReviewArtifact:
             "# Review Issues\n\n## Summary\n\nReview found gaps.\n",
             encoding="utf-8",
         )
-        console = _make_console()
-        render_review_artifact(tmp_path, console)
-        output = _console_output(console)
+        ctx = _make_display_context()
+        render_review_artifact(tmp_path, ctx)
+        output = _console_output(ctx.console)
         assert "REVIEW ISSUES" in output
         assert "Review found gaps." in output
 
@@ -311,9 +317,9 @@ class TestRenderReviewArtifact:
             ),
             encoding="utf-8",
         )
-        console = _make_console()
-        render_review_artifact(tmp_path, console)
-        output = _console_output(console)
+        ctx = _make_display_context()
+        render_review_artifact(tmp_path, ctx)
+        output = _console_output(ctx.console)
         assert "Fresh review findings." in output
         assert "STALE ISSUES" not in output
 
@@ -333,9 +339,9 @@ class TestRenderFixArtifact:
             ),
             encoding="utf-8",
         )
-        console = _make_console()
-        render_fix_artifact(tmp_path, console)
-        output = _console_output(console)
+        ctx = _make_display_context()
+        render_fix_artifact(tmp_path, ctx)
+        output = _console_output(ctx.console)
         assert "FIX" in output
         assert "2 issue(s) addressed" in output
         assert "Bug in foo" in output
@@ -348,9 +354,9 @@ class TestRenderFixArtifact:
             "# Fix Result\n\n## Summary\n\nApplied the fixes.\n",
             encoding="utf-8",
         )
-        console = _make_console()
-        render_fix_artifact(tmp_path, console)
-        output = _console_output(console)
+        ctx = _make_display_context()
+        render_fix_artifact(tmp_path, ctx)
+        output = _console_output(ctx.console)
         assert "FIX" in output
         assert "Applied the fixes." in output
 
@@ -369,23 +375,23 @@ class TestRenderFixArtifact:
             ),
             encoding="utf-8",
         )
-        console = _make_console()
-        render_fix_artifact(tmp_path, console)
-        output = _console_output(console)
+        ctx = _make_display_context()
+        render_fix_artifact(tmp_path, ctx)
+        output = _console_output(ctx.console)
         assert "FIX" in output
         assert "Applied the fixes." in output
 
     def test_no_output_when_no_file_present(self, tmp_path: Path) -> None:
-        console = _make_console()
-        render_fix_artifact(tmp_path, console)
-        output = _console_output(console)
+        ctx = _make_display_context()
+        render_fix_artifact(tmp_path, ctx)
+        output = _console_output(ctx.console)
         assert output == ""
 
     def test_no_output_for_malformed_json(self, tmp_path: Path) -> None:
         artifacts_dir = tmp_path / ".agent" / "artifacts"
         artifacts_dir.mkdir(parents=True)
         (artifacts_dir / "issues.json").write_text("broken json", encoding="utf-8")
-        console = _make_console()
-        render_fix_artifact(tmp_path, console)
-        output = _console_output(console)
+        ctx = _make_display_context()
+        render_fix_artifact(tmp_path, ctx)
+        output = _console_output(ctx.console)
         assert output == ""

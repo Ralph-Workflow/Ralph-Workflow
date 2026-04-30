@@ -30,7 +30,7 @@ from ralph.cli.main import (
     app,
 )
 from ralph.config.enums import ReviewDepth, Verbosity
-from ralph.display.context import make_display_context
+from ralph.display.context import DisplayContext, make_display_context
 from ralph.display.theme import RALPH_THEME
 from ralph.workspace.scope import WorkspaceScope
 
@@ -39,6 +39,11 @@ KEYBOARD_INTERRUPT_EXIT_CODE = 130
 USAGE_ERROR_EXIT_CODE = 2
 DEFAULT_DEVELOPER_ITERS = 3
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
+
+def _make_display_context_for_console(console: Console) -> DisplayContext:
+    """Create a DisplayContext for a given console."""
+    return make_display_context(console=console, env={})
 
 
 class CliResult:
@@ -240,7 +245,10 @@ def test_handle_list_agents_success(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("ralph.cli.main.load_config", fake_load_config)
     monkeypatch.setattr("ralph.cli.main.display_agents_table", fake_display_agents_table)
 
-    exit_code = _handle_list_agents("/tmp/config.toml", {}, True)
+    stream = StringIO()
+    console = Console(file=stream, force_terminal=False, color_system=None, theme=RALPH_THEME)
+    ctx = _make_display_context_for_console(console)
+    exit_code = _handle_list_agents("/tmp/config.toml", {}, True, display_context=ctx)
     assert exit_code == 0
     assert called["agents"] is sentinel
 
@@ -253,7 +261,10 @@ def test_handle_list_agents_failure(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr("ralph.cli.main.load_config", fake_load_config)
 
-    exit_code = _handle_list_agents(None, {}, True)
+    stream = StringIO()
+    console = Console(file=stream, force_terminal=False, color_system=None, theme=RALPH_THEME)
+    ctx = _make_display_context_for_console(console)
+    exit_code = _handle_list_agents(None, {}, True, display_context=ctx)
     assert exit_code == 1
 
 
@@ -332,7 +343,10 @@ def test_handle_list_agents_injects_workspace_scope_for_implicit_config(
         "ralph.cli.main.display_agents_table", lambda _agents, *, display_context=None: None
     )
 
-    assert _handle_list_agents(None, {}, True) == 0
+    stream = StringIO()
+    console = Console(file=stream, force_terminal=False, color_system=None, theme=RALPH_THEME)
+    ctx = _make_display_context_for_console(console)
+    assert _handle_list_agents(None, {}, True, display_context=ctx) == 0
     assert called["kwargs"] == {"workspace_scope": scope}
 
 
@@ -347,7 +361,10 @@ def test_handle_list_providers_success(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr("ralph.cli.main.display_providers_table", fake_display_providers_table)
 
-    exit_code = _handle_list_providers(True)
+    stream = StringIO()
+    console = Console(file=stream, force_terminal=False, color_system=None, theme=RALPH_THEME)
+    ctx = _make_display_context_for_console(console)
+    exit_code = _handle_list_providers(True, display_context=ctx)
     assert exit_code == 0
     assert recorded == [["opencode"]]
 
@@ -360,7 +377,10 @@ def test_handle_list_providers_failure(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr("ralph.cli.main.fetch_providers", fake_fetch)
 
-    exit_code = _handle_list_providers(True)
+    stream = StringIO()
+    console = Console(file=stream, force_terminal=False, color_system=None, theme=RALPH_THEME)
+    ctx = _make_display_context_for_console(console)
+    exit_code = _handle_list_providers(True, display_context=ctx)
     assert exit_code == 1
 
 
@@ -376,8 +396,11 @@ def test_handle_commit_plumbing_invokes_commit(monkeypatch: pytest.MonkeyPatch) 
 
     monkeypatch.setattr("ralph.cli.main.commit_plumbing", fake_commit_plumbing)
 
+    stream = StringIO()
+    console = Console(file=stream, force_terminal=False, color_system=None, theme=RALPH_THEME)
+    ctx = _make_display_context_for_console(console)
     options = CommitPlumbingOptions(generate_commit_msg=True)
-    result = _handle_commit_plumbing(options)
+    result = _handle_commit_plumbing(options, display_context=ctx)
     assert result == 0
     assert calls
 
@@ -397,8 +420,11 @@ def test_handle_commit_plumbing_no_flags_does_not_call_commit(
 
     monkeypatch.setattr("ralph.cli.main.commit_plumbing", fake_commit_plumbing)
 
+    stream = StringIO()
+    console = Console(file=stream, force_terminal=False, color_system=None, theme=RALPH_THEME)
+    ctx = _make_display_context_for_console(console)
     options = CommitPlumbingOptions()
-    result = _handle_commit_plumbing(options)
+    result = _handle_commit_plumbing(options, display_context=ctx)
     assert result is None
     assert not called
 
@@ -425,8 +451,16 @@ def test_run_pipeline_success(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr("ralph.cli.main.run_pipeline", fake_run_pipeline)
 
+    stream = StringIO()
+    console = Console(file=stream, force_terminal=False, color_system=None, theme=RALPH_THEME)
+    ctx = _make_display_context_for_console(console)
     exit_code = _run_pipeline(
-        "/tmp/config.toml", {"foo": "bar"}, dry_run=True, resume=True, no_resume=False
+        "/tmp/config.toml",
+        {"foo": "bar"},
+        dry_run=True,
+        resume=True,
+        no_resume=False,
+        display_context=ctx,
     )
     assert exit_code == RUN_PIPELINE_SUCCESS
     assert recorded["config_path"] == Path("/tmp/config.toml")

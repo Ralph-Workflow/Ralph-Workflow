@@ -7,6 +7,7 @@ from unittest.mock import MagicMock
 
 from ralph.config.enums import PHASE_DEVELOPMENT, PHASE_PLANNING
 from ralph.config.models import UnifiedConfig
+from ralph.display.context import make_display_context
 from ralph.pipeline import runner as runner_module
 from ralph.pipeline.effects import FanOutDevelopmentEffect, InvokeAgentEffect
 from ralph.pipeline.events import PipelineEvent
@@ -15,6 +16,10 @@ from ralph.pipeline.work_units import WorkUnit
 from ralph.pipeline.worker_state import WorkerState, WorkerStatus
 from ralph.policy.models import PhaseParallelization
 from ralph.workspace.scope import WorkspaceScope
+
+
+def _legacy_display() -> runner_module._LegacyConsoleDisplay:
+    return runner_module._LegacyConsoleDisplay(make_display_context())
 
 
 def _make_work_unit(unit_id: str) -> WorkUnit:
@@ -157,7 +162,7 @@ def test_execute_fan_out_sync_wires_signal_handlers_and_same_workspace_context(
     runner_module._execute_fan_out_sync(
         effect=effect,
         state=state,
-        display=runner_module._LegacyConsoleDisplay(),
+        display=_legacy_display(),
         policy_bundle=policy_bundle,
         workspace_scope=workspace_scope,
     )
@@ -208,7 +213,7 @@ def test_execute_fan_out_sync_converts_unexpected_coordinator_error_to_failed_re
     recovered = runner_module._execute_fan_out_sync(
         effect=effect,
         state=state,
-        display=runner_module._LegacyConsoleDisplay(),
+        display=_legacy_display(),
         policy_bundle=policy_bundle,
         workspace_scope=workspace_scope,
     )
@@ -269,7 +274,7 @@ def test_execute_fan_out_sync_requeues_running_workers_via_reducer_event(
     result = runner_module._execute_fan_out_sync(
         effect=effect,
         state=state,
-        display=runner_module._LegacyConsoleDisplay(),
+        display=_legacy_display(),
         policy_bundle=policy_bundle,
         workspace_scope=workspace_scope,
     )
@@ -327,7 +332,7 @@ def test_execute_fan_out_sync_uses_parallel_display_subscriber_when_not_provided
     runner_module._execute_fan_out_sync(
         effect=effect,
         state=state,
-        display=runner_module._LegacyConsoleDisplay(),
+        display=_legacy_display(),
         policy_bundle=policy_bundle,
         workspace_scope=workspace_scope,
         dashboard_subscriber=None,
@@ -384,7 +389,7 @@ def test_execute_fan_out_sync_notifies_dashboard_subscriber_after_each_reduce(
     runner_module._execute_fan_out_sync(
         effect=effect,
         state=state,
-        display=runner_module._LegacyConsoleDisplay(),
+        display=_legacy_display(),
         policy_bundle=policy_bundle,
         workspace_scope=workspace_scope,
         dashboard_subscriber=_Subscriber(),

@@ -17,6 +17,7 @@ import pytest
 from rich.console import Console
 
 from ralph.display.activity_model import ActivityEventKind
+from ralph.display.context import make_display_context
 from ralph.display.parallel_display import ParallelDisplay
 
 if TYPE_CHECKING:
@@ -33,7 +34,10 @@ def _make_display(
 ) -> tuple[ParallelDisplay, io.StringIO, Console]:
     buf = io.StringIO()
     console = Console(file=buf, force_terminal=False, color_system=None, width=200)
-    pd = ParallelDisplay(console, {"CI": "1"}, workspace_root=tmp_path)
+    pd = ParallelDisplay(
+        make_display_context(console=console, env={"CI": "1"}),
+        workspace_root=tmp_path,
+    )
     return pd, buf, console
 
 

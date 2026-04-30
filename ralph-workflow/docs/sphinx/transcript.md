@@ -3,6 +3,66 @@
 Ralph Workflow emits a structured, line-oriented transcript to stdout. Every line
 has a fixed format that can be machine-parsed or read directly in a terminal.
 
+## Display Architecture
+
+`DisplayContext` (from `ralph.display`) is the **single source of truth** for all
+display decisions: console, theme, terminal width, color policy, display mode, and
+adaptive character limits.
+
+### Dependency Injection Contract
+
+Every renderer function requires a `display_context: DisplayContext` argument.
+No renderer may construct its own `rich.Console`. Callers must create a
+`DisplayContext` via `make_display_context()` before invoking any renderer.
+
+```python
+from ralph.display import make_display_context
+
+ctx = make_display_context()          # uses terminal width, NO_COLOR, etc.
+show_phase_start("planning", display_context=ctx)
+```
+
+### Width and Mode Precedence
+
+| Priority | Source | Effect |
+|----------|--------|--------|
+| 1 | `RALPH_FORCE_NARROW=1\|true\|yes\|on` | Forces `compact` mode regardless of width |
+| 2 | `force_width` argument to `make_display_context()` | Overrides all width detection |
+| 3 | `COLUMNS=<N>` env var (positive int) | Overrides console.width |
+| 4 | `console.width` (actual terminal width) | Default fallback |
+
+### Mode Thresholds
+
+| Mode | Width | Description |
+|------|-------|-------------|
+| `compact` | < 60 cols | Suppresses secondary columns, extra blank lines, descriptive rules |
+| `medium` | 60–99 cols | Standard layout with moderate condensing |
+| `wide` | ≥ 100 cols | Full multi-line layout with all sections |
+
+### Color Precedence
+
+| Priority | Env var | Effect |
+|----------|---------|--------|
+| 1 | `NO_COLOR=<any>` | Disables all ANSI color output |
+| 2 | `FORCE_COLOR=<any>` | Forces ANSI color on (even when not a TTY) |
+
+`NO_COLOR` takes precedence over `FORCE_COLOR` per standard CLI conventions.
+
+### SIGWINCH Refresh (POSIX)
+
+On POSIX systems (non-Windows), a `SIGWINCH` signal handler is installed at pipeline
+start via `install_sigwinch_refresher()`. When the terminal is resized:
+
+1. The signal handler calls `DisplayContext.refreshed()` which re-reads the current
+   terminal width and recomputes mode and adaptive limits.
+2. Renderers that buffer adaptive limits (e.g., `PlainLogRenderer`) refresh their context
+   at phase boundaries via `flush_blocks()`.
+3. The runner keeps its live display object and nested plain renderer synced with the
+   refreshed context, so later banners and summaries render with the new mode.
+
+The signal handler is installed only from the main thread ( `signal.signal` requires it).
+On Windows, the refresher is a no-op.
+
 ## Line Format
 
 ```
@@ -80,23 +140,28 @@ bounded by `content-start` / `content-end` tags. Within a block:
 
 When a block ends, Ralph Workflow may append summary lines depending on configuration:
 
-- `↳ summary:` — static truncation summary (always present for very long blocks)
-- `↳ preview:` — first *N* characters of the block content
-- `↳ ai-summary:` — LLM-generated one-line summary (requires `RALPH_LONG_CONTENT_AI_SUMMARY`)
+- `⇳ summary:` — static truncation summary (always present for very long blocks)
+- `⇳ preview:` — first *N* characters of the block content
+- `⇳ ai-summary:` — LLM-generated one-line summary (requires `RALPH_LONG_CONTENT_AI_SUMMARY`)
 
 ## `[run-end]` Panel
 
-At the end of every pipeline run, a `[run-end]` block reports:
+At the end of every pipeline run, a `[run-end]` block reports the run summary.
+The format adapts to the display mode:
 
+**Compact mode** (`< 60` cols): abbreviated 3-line summary:
 ```
-MILESTONE META [run-end] ◆ Ralph Workflow run end
-INFO      META [run-end] phase=complete
-INFO      META [run-end] elapsed=42.3s
-INFO      META [run-end] content_blocks=12
-INFO      META [run-end] thinking_blocks=4
-INFO      META [run-end] tool_calls=28
-INFO      META [run-end] errors=0
-INFO      META [run-end] agent_calls=7
+<ISO-TS> MILESTONE META [run-end] <phase> | <elapsed>s
+<ISO-TS> INFO     META [run-end] agent=N content=X thinking=Y tools=Z errors=W
+<ISO-TS> INFO     META [run-end] pr=<url>
+```
+
+**Wide mode** (`>= 100` cols): multi-line with grouped counters and PR at end:
+```
+<ISO-TS> MILESTONE META [run-end] ◆ Ralph Workflow run end
+<ISO-TS> INFO     META [run-end] phase=<phase> elapsed=<elapsed>s
+<ISO-TS> INFO     META [run-end] agent_calls=N content_blocks=X thinking_blocks=Y tool_calls=Z errors=W
+<ISO-TS> INFO     META [run-end] pr=<url>
 ```
 
 `phase=complete` indicates success; `phase=failed` indicates the pipeline terminated
@@ -108,17 +173,19 @@ with an error.
 |----------|---------|--------|
 | `RALPH_STREAMING_DEDUP` | `1` | Deduplicate identical consecutive streaming chunks |
 | `RALPH_STREAMING_CHECKPOINTS` | `0` | Emit `content-checkpoint` lines during streaming |
-| `RALPH_LONG_CONTENT_SUMMARY` | `1` | Append `↳ summary:` after very long content blocks |
-| `RALPH_LONG_CONTENT_AI_SUMMARY` | `0` | Append `↳ ai-summary:` (requires LLM round-trip) |
-| `NO_COLOR` | unset | Disable all ANSI colour output |
-| `FORCE_COLOR` | unset | Force ANSI colour even when stdout is not a TTY |
+| `RALPH_LONG_CONTENT_SUMMARY` | `1` | Append `⇳ summary:` after very long content blocks |
+| `RALPH_LONG_CONTENT_AI_SUMMARY` | `0` | Append `⇳ ai-summary:` (requires LLM round-trip) |
+| `NO_COLOR` | unset | Disable all ANSI colour output (any value) |
+| `FORCE_COLOR` | unset | Force ANSI colour even when stdout is not a TTY (any value) |
+| `RALPH_FORCE_NARROW` | unset | Force compact mode display; set to `1`, `true`, `yes`, or `on` |
+| `COLUMNS` | unset | Override terminal width; positive integer |
 
 ## Related Modules
 
-- `ralph.display` — public display API
-- `ralph.display.plain_renderer` — line-format renderer
+- `ralph.display` — public display API and `DisplayContext` factory
+- `ralph.display.plain_renderer` — line-format renderer with SIGWINCH-aware resize
 - `ralph.display.long_content_summary` — streaming block summarisation
-- `ralph.display.completion_summary` — `[run-end]` panel renderer
+- `ralph.display.completion_summary` — `[run-end]` panel renderer with mode-adaptive layout
 
 ## Related pages
 

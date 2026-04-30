@@ -1,4 +1,4 @@
-"""Behavior tests for ParallelDisplay emit_* helpers and lines-mode parity."""
+"""Behavior tests for ParallelDisplay emit_* helpers."""
 
 from __future__ import annotations
 
@@ -7,6 +7,7 @@ import queue
 
 from rich.console import Console
 
+from ralph.display.context import make_display_context
 from ralph.display.parallel_display import ParallelDisplay, _strip_markup
 from ralph.pipeline.state import PipelineState
 
@@ -16,11 +17,14 @@ def test_strip_markup_removes_rich_tags() -> None:
     assert _strip_markup("plain text") == "plain text"
 
 
-def test_lines_mode_emit_strips_rich_markup() -> None:
+def test_medium_mode_emit_strips_rich_markup() -> None:
+    """In medium mode, emit strips rich markup from lines."""
     buf = io.StringIO()
     console = Console(file=buf, force_terminal=False, width=120, color_system=None)
-    pd = ParallelDisplay(console, {"CI": "1"}, mode="lines")
-    assert pd.mode == "lines"
+    pd = ParallelDisplay(
+        make_display_context(console=console, env={"CI": "1"}, force_mode="medium")
+    )
+    assert pd.mode == "medium"
     pd.emit("unit-1", "[green]hello[/green]")
     text = buf.getvalue()
     assert "hello" in text
@@ -28,7 +32,7 @@ def test_lines_mode_emit_strips_rich_markup() -> None:
     assert "[green]" not in text
 
 
-def test_emit_analysis_result_in_lines_mode_records_to_decision_log() -> None:
+def test_emit_analysis_result_in_medium_mode_records_to_decision_log() -> None:
     """emit_analysis_result records to decision_log but does NOT emit to console.
 
     The analysis decision is rendered as a titled block by render_analysis_decision
@@ -36,7 +40,9 @@ def test_emit_analysis_result_in_lines_mode_records_to_decision_log() -> None:
     """
     buf = io.StringIO()
     console = Console(file=buf, force_terminal=False, width=120, color_system=None)
-    pd = ParallelDisplay(console, {"CI": "1"}, mode="lines")
+    pd = ParallelDisplay(
+        make_display_context(console=console, env={"CI": "1"}, force_mode="medium")
+    )
     pd.emit_analysis_result("development_analysis", "proceed", "all tests pass")
     text = buf.getvalue()
     # emit_analysis_result should NOT emit to console - the titled block is
@@ -47,9 +53,10 @@ def test_emit_analysis_result_in_lines_mode_records_to_decision_log() -> None:
     assert any(entry[1].lower() == "proceed" and "all tests pass" in entry[2] for entry in log), log
 
 
-def test_emit_analysis_result_updates_subscriber_state_in_dashboard_mode() -> None:
+def test_emit_analysis_result_updates_subscriber_state_in_medium_mode() -> None:
+    """emit_analysis_result updates subscriber state in medium mode."""
     console = Console(file=io.StringIO(), force_terminal=True, width=120)
-    pd = ParallelDisplay(console, {}, mode="dashboard")
+    pd = ParallelDisplay(make_display_context(console=console, env={}, force_mode="medium"))
     pd.emit_analysis_result("development_analysis", "proceed", "all good")
     # subscriber state should reflect the analysis result
     subscriber = pd.subscriber
@@ -58,17 +65,23 @@ def test_emit_analysis_result_updates_subscriber_state_in_dashboard_mode() -> No
 
 
 def test_emit_phase_transition_records_into_decision_log() -> None:
+    """emit_phase_transition records to decision_log."""
     console = Console(file=io.StringIO(), force_terminal=False, width=120, color_system=None)
-    pd = ParallelDisplay(console, {"CI": "1"}, mode="lines")
+    pd = ParallelDisplay(
+        make_display_context(console=console, env={"CI": "1"}, force_mode="medium")
+    )
     pd.emit_phase_transition("planning", "development")
     log = pd.subscriber.decision_log
     assert any(entry[0] == "planning" and "development" in entry[1] for entry in log), log
 
 
-def test_emit_phase_transition_writes_banner_in_lines_mode() -> None:
+def test_emit_phase_transition_writes_banner_in_medium_mode() -> None:
+    """emit_phase_transition writes banner in medium mode."""
     buf = io.StringIO()
     console = Console(file=buf, force_terminal=False, width=120, color_system=None)
-    pd = ParallelDisplay(console, {"CI": "1"}, mode="lines")
+    pd = ParallelDisplay(
+        make_display_context(console=console, env={"CI": "1"}, force_mode="medium")
+    )
     pd.emit_phase_transition("planning", "development")
     text = buf.getvalue()
     assert "Planning" in text
@@ -78,7 +91,7 @@ def test_emit_phase_transition_writes_banner_in_lines_mode() -> None:
 def test_record_activity_updates_snapshot_fields() -> None:
     """record_activity propagates to snapshot fields and build_snapshot mirrors notify."""
     console = Console(file=io.StringIO(), force_terminal=True, width=120)
-    pd = ParallelDisplay(console, env={}, mode="dashboard")
+    pd = ParallelDisplay(make_display_context(console=console, env={}, force_mode="medium"))
 
     pd.subscriber.record_activity(
         unit_id="developer",

@@ -13,12 +13,9 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
-from ralph.display.context import DisplayContext, make_display_context
-
 if TYPE_CHECKING:
-    from rich.console import Console
-
     from ralph.config.models import UnifiedConfig
+    from ralph.display.context import DisplayContext
 
 
 @dataclass(frozen=True)
@@ -40,41 +37,27 @@ class CheckpointSummaryOptions:
     total_reviewer_passes: int
 
 
-def _resolve_console(
-    console: Console | None,
-    display_context: DisplayContext | None,
-) -> Console:
-    if console is not None:
-        return console
-    if display_context is not None:
-        return display_context.console
-    return make_display_context().console
+def _should_show_secondary(display_context: DisplayContext) -> bool:
+    """Return False when in compact mode, else True."""
+    return display_context.mode != "compact"
 
 
-def _should_show_secondary(display_context: DisplayContext | None) -> bool:
-    """Return False when in compact mode with an injected display_context, else True."""
-    return display_context is None or display_context.mode != "compact"
-
-
-def _table_expand(display_context: DisplayContext | None) -> bool:
-    if display_context is None:
-        return False
+def _table_expand(display_context: DisplayContext) -> bool:
+    """Return True when in wide mode (tables should expand)."""
     return display_context.mode == "wide"
 
 
 def show_agents(
     config: UnifiedConfig,
-    console: Console | None = None,
-    display_context: DisplayContext | None = None,
+    display_context: DisplayContext,
 ) -> None:
     """Render agent table for --list-agents.
 
     Args:
         config: Unified configuration containing agent definitions.
-        console: Rich console for output.
-        display_context: Optional display context for adaptive layout.
+        display_context: DisplayContext providing the console and mode for output.
     """
-    c = _resolve_console(console, display_context)
+    c = display_context.console
     expand = _table_expand(display_context)
     show_secondary = _should_show_secondary(display_context)
     table = Table(
@@ -113,17 +96,15 @@ def show_agents(
 
 def show_providers(
     providers: list[str],
-    console: Console | None = None,
-    display_context: DisplayContext | None = None,
+    display_context: DisplayContext,
 ) -> None:
     """Render providers table for --list-providers.
 
     Args:
         providers: List of provider names.
-        console: Rich console for output.
-        display_context: Optional display context for adaptive layout.
+        display_context: DisplayContext providing the console and mode for output.
     """
-    c = _resolve_console(console, display_context)
+    c = display_context.console
     expand = _table_expand(display_context)
     show_status = _should_show_secondary(display_context)
     table = Table(
@@ -156,19 +137,17 @@ def show_providers(
 
 def show_config(
     config: UnifiedConfig,
-    console: Console | None = None,
-    display_context: DisplayContext | None = None,
+    display_context: DisplayContext,
 ) -> None:
     """Render effective config for --check-config.
 
     Args:
         config: Unified configuration.
-        console: Rich console for output.
-        display_context: Optional display context for adaptive layout.
+        display_context: DisplayContext providing the console and mode for output.
     """
-    c = _resolve_console(console, display_context)
+    c = display_context.console
     config_json = config.model_dump_json(indent=2)
-    if display_context is not None and display_context.mode == "compact":
+    if display_context.mode == "compact":
         c.print(config_json)
     else:
         c.print(
@@ -182,17 +161,15 @@ def show_config(
 
 def show_metrics(
     metrics: dict[str, int],
-    console: Console | None = None,
-    display_context: DisplayContext | None = None,
+    display_context: DisplayContext,
 ) -> None:
     """Render metrics table.
 
     Args:
         metrics: Dictionary of metric name to value.
-        console: Rich console for output.
-        display_context: Optional display context for adaptive layout.
+        display_context: DisplayContext providing the console and mode for output.
     """
-    c = _resolve_console(console, display_context)
+    c = display_context.console
     expand = _table_expand(display_context)
     table = Table(
         title="Pipeline Metrics",
@@ -213,17 +190,15 @@ def show_metrics(
 
 def show_checkpoint_summary(
     options: CheckpointSummaryOptions,
-    console: Console | None = None,
-    display_context: DisplayContext | None = None,
+    display_context: DisplayContext,
 ) -> None:
     """Render checkpoint summary.
 
     Args:
         options: Checkpoint summary options.
-        console: Rich console for output.
-        display_context: Optional display context for adaptive layout.
+        display_context: DisplayContext providing the console and mode for output.
     """
-    c = _resolve_console(console, display_context)
+    c = display_context.console
     expand = _table_expand(display_context)
     show_secondary = _should_show_secondary(display_context)
     table = Table(

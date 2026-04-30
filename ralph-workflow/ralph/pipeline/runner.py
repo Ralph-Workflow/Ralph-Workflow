@@ -39,7 +39,6 @@ from ralph.display.artifact_renderer import (
     render_review_artifact,
 )
 from ralph.display.context import DisplayContext, make_display_context
-from ralph.display.parallel_display import ParallelDisplay
 from ralph.display.phase_banner import (
     PhaseStartContext,
     show_phase_complete,
@@ -106,6 +105,7 @@ if TYPE_CHECKING:
     from ralph.agents.executor import AgentExecutor
     from ralph.agents.invoke import InvokeOptions
     from ralph.config.models import AgentConfig, UnifiedConfig
+    from ralph.display.parallel_display import ParallelDisplay
     from ralph.display.subscriber import PipelineSubscriber
     from ralph.interrupt.asyncio_bridge import SignalBridge
     from ralph.mcp.upstream.agent_probe import AgentProbeReport
@@ -119,6 +119,10 @@ if TYPE_CHECKING:
 
     class _PipelineSubscriber(Protocol):
         def notify(self, state: PipelineState) -> None: ...
+
+
+class _ConsoleLikeDisplay(Protocol):
+    console: Console
 
 
 class _ConnectivityMonitorLike(Protocol):
@@ -159,6 +163,18 @@ class _RunEndDisplay(Protocol):
 
 class _SessionCapture(threading.local):
     session_id: str | None = None
+
+
+class _DisplayContextOwner(Protocol):
+    _ctx: DisplayContext
+
+
+class _PlainRendererContextOwner(Protocol):
+    _ctx: DisplayContext
+
+
+class _DisplayWithPlainRenderer(_DisplayContextOwner, Protocol):
+    _plain_renderer: _PlainRendererContextOwner
 
 
 _session_capture_local = _SessionCapture()
@@ -209,6 +225,13 @@ _VERBOSITY_RANK: dict[Verbosity, int] = {
 def _verbosity_rank(verbosity: Verbosity) -> int:
     """Return a numeric rank for a Verbosity enum value (QUIET=0 .. DEBUG=4)."""
     return _VERBOSITY_RANK.get(verbosity, _VERBOSITY_RANK[Verbosity.VERBOSE])
+
+
+def _sync_live_display_context(display: _DisplayContextOwner, ctx: DisplayContext) -> None:
+    """Keep the runner's active display and nested renderer on the same context."""
+    display._ctx = ctx
+    if hasattr(display, "_plain_renderer"):
+        cast("_DisplayWithPlainRenderer", display)._plain_renderer._ctx = ctx
 
 
 def _normalize_verbosity(value: Verbosity | int | None) -> Verbosity:
@@ -348,20 +371,13 @@ _PROBE_AGENT_TRANSPORTS = _default_probe_agent_transports
 
 
 class _LegacyConsoleDisplay:
-    """Legacy console display that uses a DisplayContext for themed output.
+    """Legacy console display that uses a caller-provided DisplayContext."""
 
-    Args:
-        display_context: Optional DisplayContext. When None, a new one is created
-            lazily via make_display_context() to ensure consistent theming.
-    """
-
-    def __init__(self, display_context: DisplayContext | None = None) -> None:
+    def __init__(self, display_context: DisplayContext) -> None:
         self._ctx = display_context
 
     @property
     def console(self) -> Console:
-        if self._ctx is None:
-            self._ctx = make_display_context()
         return self._ctx.console
 
     def __enter__(self) -> _LegacyConsoleDisplay:
@@ -383,9 +399,24 @@ def _display_console(
     display_context: DisplayContext | None = None,
 ) -> Console:
     if display is None:
-        ctx = display_context if display_context is not None else make_display_context()
-        return ctx.console
+        if display_context is None:
+            raise TypeError("display_context is required when display is None")
+        return display_context.console
     return display.console
+
+
+def _get_display_context(
+    display: ParallelDisplay | _LegacyConsoleDisplay | None,
+    display_context: DisplayContext | None = None,
+) -> DisplayContext:
+    """Extract DisplayContext from display or use the caller-provided context."""
+    if display is None:
+        if display_context is None:
+            raise TypeError("display_context is required when display is None")
+        return display_context
+    ctx = display._ctx
+    assert ctx is not None
+    return ctx
 
 
 def _emit_display_line(
@@ -395,8 +426,9 @@ def _emit_display_line(
     display_context: DisplayContext | None = None,
 ) -> None:
     if display is None:
-        ctx = display_context if display_context is not None else make_display_context()
-        c = ctx.console
+        if display_context is None:
+            raise TypeError("display_context is required when display is None")
+        c = display_context.console
         if unit_id is None:
             c.print(line)
             return
@@ -414,11 +446,14 @@ def _resolve_display(
 ) -> ParallelDisplay | _LegacyConsoleDisplay:
     if display is not None:
         return display
+    if display_context is None:
+        raise TypeError("display_context is required when display is None")
     return _LegacyConsoleDisplay(display_context)
 
 
 def _build_default_display(
     workspace_root: Path,
+    display_context: DisplayContext,
 ) -> ParallelDisplay | _LegacyConsoleDisplay:
     """Construct the default ParallelDisplay for the verbose run path.
 
@@ -433,8 +468,7 @@ def _build_default_display(
         )
 
         return _ParallelDisplay(
-            console=None,
-            env=dict(os.environ),
+            display_context,
             workspace_root=workspace_root,
             run_id=str(uuid.uuid4()),
         )
@@ -443,7 +477,7 @@ def _build_default_display(
             "ParallelDisplay unavailable or failed to initialize; falling back to legacy console",
             exc_info=True,
         )
-        return _LegacyConsoleDisplay()
+        return _LegacyConsoleDisplay(display_context)
 
 
 def _execute_effect_with_optional_display(  # noqa: PLR0913
@@ -651,6 +685,7 @@ def _run_pipeline_step(  # noqa: PLR0913
     workspace_scope: WorkspaceScope,
     config: UnifiedConfig,
     display: ParallelDisplay | _LegacyConsoleDisplay,
+    display_context: DisplayContext,
     verbosity: Verbosity,
     registry: _RegistryLike,
     pipeline_subscriber: _PipelineSubscriber | None,
@@ -720,6 +755,7 @@ def _run_pipeline_step(  # noqa: PLR0913
                     workspace=workspace,
                     workspace_scope=workspace_scope,
                     display=display,
+                    display_context=display_context,
                     verbosity=verbosity,
                 )
 
@@ -803,12 +839,12 @@ def _phase_context(
 def _show_phase_start_with_context(
     phase: str,
     agent_name: str,
-    console: Console | None,
+    display_context: DisplayContext,
     state: PipelineState | None,
 ) -> None:
     """Helper to call show_phase_start with PhaseStartContext when state is available."""
     if state is None:
-        show_phase_start(phase, agent_name=agent_name, console=console)
+        show_phase_start(phase, agent_name=agent_name, display_context=display_context)
         return
 
     # Build PhaseStartContext from state
@@ -822,7 +858,7 @@ def _show_phase_start_with_context(
         review_analysis_iteration=state.review_analysis_iteration,
         max_review_analysis_iterations=state.max_review_analysis_iterations,
     )
-    show_phase_start(phase, ctx=ctx, agent_name=agent_name, console=console)
+    show_phase_start(phase, ctx=ctx, agent_name=agent_name, display_context=display_context)
 
 
 def _emit_phase_transition_if_changed(
@@ -843,16 +879,18 @@ def _emit_phase_transition_if_changed(
     if _verbosity_rank(verbosity) <= _VERBOSITY_RANK[Verbosity.QUIET]:
         return state.phase
 
+    ctx = _get_display_context(display)
+
     # Emit phase completion for the phase we're leaving
     try:
-        show_phase_complete(previous_phase)
+        show_phase_complete(previous_phase, display_context=ctx)
     except Exception:  # pragma: no cover - defensive
         logger.debug("show_phase_complete failed", exc_info=True)
 
     # Emit transition to the new phase
     context = _phase_context(state, previous_phase, pipeline_policy) or None
     try:
-        show_phase_transition(previous_phase, state.phase, context=context)
+        show_phase_transition(previous_phase, state.phase, context=context, display_context=ctx)
     except Exception:  # pragma: no cover - defensive
         logger.debug("show_phase_transition failed", exc_info=True)
     return state.phase
@@ -864,6 +902,7 @@ def _emit_final_summary(
     *,
     subscriber: PipelineSubscriber | None = None,
     display: ParallelDisplay | _LegacyConsoleDisplay | None = None,
+    display_context: DisplayContext,
 ) -> None:
     """Emit an end-of-run completion summary panel.
 
@@ -900,25 +939,16 @@ def _emit_final_summary(
                 prompt_preview=(),
                 run_id=None,
             )
-        if isinstance(display, ParallelDisplay) or (
-            isinstance(display, _LegacyConsoleDisplay) and display._ctx is not None
-        ):
-            ctx = display._ctx
-            assert ctx is not None
-            emit_completion_summary(
-                ctx.console,
-                snapshot,
-                workspace_root=workspace_root,
-                dropped_count=dropped_count,
-                context=ctx,
-            )
-        else:
-            emit_completion_summary(
-                make_display_context().console,
-                snapshot,
-                workspace_root=workspace_root,
-                dropped_count=dropped_count,
-            )
+        ctx = _get_display_context(display, display_context)
+        emit_completion_summary(
+            snapshot,
+            workspace_root=workspace_root,
+            dropped_count=dropped_count,
+            include_context_sections=not (
+                isinstance(display, _LegacyConsoleDisplay) or state.interrupted_by_user
+            ),
+            display_context=ctx,
+        )
     except Exception:
         logger.debug("Failed to emit completion summary", exc_info=True)
 
@@ -954,6 +984,7 @@ def run(  # noqa: PLR0912, PLR0913, PLR0915
     dashboard_subscriber: _PipelineSubscriber | None = None,
     verbosity: Verbosity | None = None,
     connectivity_monitor: _ConnectivityMonitorLike | None = None,
+    display_context: DisplayContext | None = None,
     _recovery_sleep: Callable[[float], None] | None = None,
 ) -> int:
     """Execute the pipeline event loop.
@@ -1085,11 +1116,27 @@ def run(  # noqa: PLR0912, PLR0913, PLR0915
         pipeline_subscriber = dashboard_subscriber
 
     if display is not None:
+        display_context = display._ctx
+    elif display_context is None:
+        display_context = make_display_context()
+
+    if display is not None:
         active_display: ParallelDisplay | _LegacyConsoleDisplay = display
     elif is_quiet:
-        active_display = _LegacyConsoleDisplay()
+        active_display = _LegacyConsoleDisplay(display_context)
     else:
-        active_display = _build_default_display(workspace_scope.root)
+        active_display = _build_default_display(workspace_scope.root, display_context)
+
+    # Install SIGWINCH refresher for adaptive terminal resize on POSIX.
+    # The refresher reads the current console width and recomputes mode/limits.
+    from ralph.display.context import install_sigwinch_refresher  # noqa: PLC0415
+
+    if isinstance(active_display, _LegacyConsoleDisplay) or hasattr(active_display, "_ctx"):
+        ctx_holder = [active_display._ctx]
+        install_sigwinch_refresher(
+            ctx_holder,
+            on_refresh=lambda ctx: _sync_live_display_context(active_display, ctx),
+        )
 
     effective_pipeline_subscriber = dashboard_subscriber or pipeline_subscriber
     if effective_pipeline_subscriber is None and hasattr(active_display, "subscriber"):
@@ -1147,6 +1194,7 @@ def run(  # noqa: PLR0912, PLR0913, PLR0915
                         workspace_scope=workspace_scope,
                         config=config,
                         display=active_display,
+                        display_context=display_context,
                         verbosity=effective_verbosity,
                         registry=registry,
                         pipeline_subscriber=effective_pipeline_subscriber,
@@ -1222,6 +1270,7 @@ def run(  # noqa: PLR0912, PLR0913, PLR0915
             workspace_scope.root,
             subscriber=cast("PipelineSubscriber | None", effective_pipeline_subscriber),
             display=active_display,
+            display_context=display_context,
         )
         with suppress(Exception):
             clear_cycle_baseline(workspace_scope.root)
@@ -1279,15 +1328,18 @@ def _apply_connectivity_check(
 
 
 def _fan_out_display_and_subscriber(
-    display: ParallelDisplay | _LegacyConsoleDisplay,
+    display: ParallelDisplay | _LegacyConsoleDisplay | _ConsoleLikeDisplay,
     pipeline_subscriber: _PipelineSubscriber | None,
     dashboard_subscriber: _PipelineSubscriber | None,
 ) -> tuple[ParallelDisplay, _PipelineSubscriber | None]:
     from ralph.display.parallel_display import ParallelDisplay as _ParallelDisplay  # noqa: PLC0415
 
-    parallel_display: ParallelDisplay = (
-        display if isinstance(display, _ParallelDisplay) else _ParallelDisplay(display.console)
-    )
+    if isinstance(display, _ParallelDisplay):
+        parallel_display = display
+    elif isinstance(display, _LegacyConsoleDisplay):
+        parallel_display = _ParallelDisplay(display._ctx)
+    else:
+        parallel_display = _ParallelDisplay(make_display_context(console=display.console))
     effective_pipeline_subscriber = dashboard_subscriber or pipeline_subscriber
     if effective_pipeline_subscriber is None and hasattr(parallel_display, "subscriber"):
         effective_pipeline_subscriber = cast(
@@ -1724,7 +1776,6 @@ def _materialize_prepared_prompt(
     pipeline_policy: PipelinePolicy,
     workspace_scope: WorkspaceScope,
 ) -> None:
-    import os  # noqa: PLC0415
 
     workspace = FsWorkspace(
         workspace_scope.root,
@@ -2093,6 +2144,7 @@ def _phase_event_after_agent_run(  # noqa: PLR0913
     workspace: FsWorkspace,
     workspace_scope: WorkspaceScope | None = None,
     display: ParallelDisplay | _LegacyConsoleDisplay | None = None,
+    display_context: DisplayContext | None = None,
     verbosity: Verbosity = Verbosity.VERBOSE,
 ) -> Event:
     ctx = PhaseContext.model_construct(
@@ -2103,7 +2155,7 @@ def _phase_event_after_agent_run(  # noqa: PLR0913
         agents_policy=policy_bundle.agents,
         artifacts_policy=policy_bundle.artifacts,
         config=config,
-        console=_display_console(display),
+        console=_display_console(display, display_context),
     )
     try:
         events = handle_phase(effect, ctx)
@@ -2130,6 +2182,7 @@ def _phase_event_after_agent_run(  # noqa: PLR0913
             event,
             Path(workspace.absolute_path(".")),
             display,
+            display_context=display_context,
             verbosity=verbosity,
         )
 
@@ -2158,18 +2211,19 @@ def _phase_event_after_agent_run(  # noqa: PLR0913
     return event
 
 
-def _render_phase_artifact_handoff(  # noqa: PLR0912
+def _render_phase_artifact_handoff(  # noqa: PLR0912, PLR0913
     phase: str,
     event: Event,
     workspace_root: Path,
     display: ParallelDisplay | _LegacyConsoleDisplay | None,
     *,
+    display_context: DisplayContext | None = None,
     verbosity: Verbosity = Verbosity.VERBOSE,
 ) -> None:
-    console_obj = _display_console(display)
+    ctx = _get_display_context(display, display_context)
 
     if phase == "planning" and event == PipelineEvent.AGENT_SUCCESS:
-        render_plan_artifact(workspace_root, console_obj)
+        render_plan_artifact(workspace_root, ctx)
         if verbosity != Verbosity.QUIET and hasattr(display, "emit_phase_close"):
             with suppress(Exception):
                 from ralph.display.artifact_reader import read_plan_artifact  # noqa: PLC0415
@@ -2184,7 +2238,7 @@ def _render_phase_artifact_handoff(  # noqa: PLR0912
                 cast("ParallelDisplay", display).emit_phase_close(phase, produced)
         return
     if phase == "development" and event == PipelineEvent.AGENT_SUCCESS:
-        render_development_artifact(workspace_root, console_obj)
+        render_development_artifact(workspace_root, ctx)
         if verbosity != Verbosity.QUIET and hasattr(display, "emit_phase_close"):
             with suppress(Exception):
                 dev_result_path = workspace_root / DEV_RESULT_ARTIFACT_JSON_PATH
@@ -2196,7 +2250,7 @@ def _render_phase_artifact_handoff(  # noqa: PLR0912
                 cast("ParallelDisplay", display).emit_phase_close(phase, produced)
         return
     if phase == "review" and event == PipelineEvent.AGENT_SUCCESS:
-        render_review_artifact(workspace_root, console_obj)
+        render_review_artifact(workspace_root, ctx)
         if verbosity != Verbosity.QUIET and hasattr(display, "emit_phase_close"):
             with suppress(Exception):
                 import json  # noqa: PLC0415
@@ -2225,13 +2279,13 @@ def _render_phase_artifact_handoff(  # noqa: PLR0912
                 )
         return
     if phase == "fix" and event == PipelineEvent.AGENT_SUCCESS:
-        render_fix_artifact(workspace_root, console_obj)
+        render_fix_artifact(workspace_root, ctx)
         if verbosity != Verbosity.QUIET and hasattr(display, "emit_phase_close"):
             with suppress(Exception):
                 cast("ParallelDisplay", display).emit_phase_close(phase, "fix: applied")
         return
     if phase in {"development_analysis", "review_analysis"}:
-        render_analysis_decision(workspace_root, phase, console_obj)
+        render_analysis_decision(workspace_root, phase, ctx)
 
 
 def _commit_effect(workspace_root: Path) -> CommitEffect:
@@ -2332,10 +2386,17 @@ def _execute_agent_effect(  # noqa: PLR0913, PLR0915
     workspace_scope: WorkspaceScope,
     *,
     display: ParallelDisplay | _LegacyConsoleDisplay | None = None,
+    display_context: DisplayContext | None = None,
     verbosity: Verbosity = Verbosity.VERBOSE,
     state: PipelineState | None = None,
 ) -> PipelineEvent:
-    _emit_display_line(display, None, _status_text("Invoking agent", effect.agent_name, "cyan"))
+    resolved_display_context = _get_display_context(display, display_context)
+    _emit_display_line(
+        display,
+        None,
+        _status_text("Invoking agent", effect.agent_name, "cyan"),
+        resolved_display_context,
+    )
     registry = deps.agent_registry.from_config(config)
     agent_config = registry.get(effect.agent_name)
     if agent_config is None:
@@ -2343,7 +2404,7 @@ def _execute_agent_effect(  # noqa: PLR0913, PLR0915
         return PipelineEvent.AGENT_FAILURE
 
     _show_phase_start_with_context(
-        effect.phase, effect.agent_name, _display_console(display), state
+        effect.phase, effect.agent_name, resolved_display_context, state
     )
 
     from ralph.agents.idle_watchdog import WaitingStatusEvent  # noqa: PLC0415,TC001
@@ -2491,6 +2552,7 @@ def _execute_agent_effect(  # noqa: PLR0913, PLR0915
                     str(agent_config.json_parser),
                     effect.agent_name,
                     display,
+                    display_context=resolved_display_context,
                     raw_output_sink=raw_output,
                     rendered_output_sink=rendered_output,
                 )
@@ -2761,7 +2823,7 @@ def _execute_commit_effect(  # noqa: PLR0913
         sha = create_commit(str(repo_root), message)
         logger.info("Created commit: {}", sha[:8])
         with suppress(Exception):
-            render_commit_message(repo_root, _display_console(display))
+            render_commit_message(repo_root, _get_display_context(display))
         if verbosity != Verbosity.QUIET and hasattr(display, "emit_phase_close"):
             with suppress(Exception):
                 cast("ParallelDisplay", display).emit_phase_close("commit", "commit: prepared")
@@ -2838,6 +2900,7 @@ def _stream_parsed_agent_activity(  # noqa: PLR0913
     agent_name: str,
     display: ParallelDisplay | _LegacyConsoleDisplay | None = None,
     *,
+    display_context: DisplayContext | None = None,
     raw_output_sink: list[str] | None = None,
     rendered_output_sink: list[str] | None = None,
 ) -> None:
@@ -2864,7 +2927,7 @@ def _stream_parsed_agent_activity(  # noqa: PLR0913
                 agent_name, kind, parsed_line.content, parsed_line.metadata or {}
             )
         elif rendered is not None:
-            _emit_display_line(display, None, rendered)
+            _emit_display_line(display, None, rendered, display_context)
         if subscriber is not None:
             _record_activity_on_subscriber(subscriber, parsed_line, rendered, agent_name)
 

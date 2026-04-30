@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Final
 
 from rich.text import Text
 
-from ralph.display.context import DisplayContext, make_display_context
+from ralph.display.context import DisplayContext
 from ralph.display.long_content_summary import build_ai_summary, build_headline_or_placeholder
 from ralph.display.snapshot import PipelineSnapshot, snapshot_from_state
 
@@ -229,17 +229,13 @@ class PlainLogRenderer:
 
     def __init__(
         self,
-        console_or_context: Console | DisplayContext,
+        display_context: DisplayContext,
         *,
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
-        context: DisplayContext | None = None,
     ) -> None:
-        if isinstance(console_or_context, DisplayContext):
-            self._ctx = console_or_context
-        elif context is not None:
-            self._ctx = context
-        else:
-            self._ctx = make_display_context(console=console_or_context)
+        if not isinstance(display_context, DisplayContext):
+            raise TypeError("display_context is required")
+        self._ctx = display_context
         self._clock = clock
         self._last_phase: str | None = None
         self._last_iteration: int | None = None
@@ -720,92 +716,100 @@ class PlainLogRenderer:
         total_agent_calls: int = 0,
         pr_url: str | None = None,
     ) -> None:
-        """Emit a one-time MILESTONE orientation block at pipeline stop."""
+        """Emit a one-time MILESTONE orientation block at pipeline stop.
+
+        Compact mode (<=3 lines): phase+elapsed on one line, counters on one line.
+        Wide mode: one line per field with counters grouped, PR last.
+        """
         self.flush_blocks()
         timestamp = self._format_timestamp(self._clock())
         total_elapsed_s = 0.0
         if self._run_start_time is not None:
             total_elapsed_s = round(max(0.0, time.monotonic() - self._run_start_time), 1)
-        self._console.print(
-            self._build_line(timestamp, "MILESTONE", "META", "[run-end] ◆ Ralph Workflow run end"),
-            markup=False,
-            highlight=False,
-            no_wrap=True,
-        )
-        self._console.print(
-            self._build_line(timestamp, "INFO", "META", f"[run-end] phase={phase}"),
-            markup=False,
-            highlight=False,
-            no_wrap=True,
-        )
-        self._console.print(
-            self._build_line(timestamp, "INFO", "META", f"[run-end] elapsed={total_elapsed_s}s"),
-            markup=False,
-            highlight=False,
-            no_wrap=True,
-        )
-        self._console.print(
-            self._build_line(
-                timestamp,
-                "INFO",
-                "META",
-                f"[run-end] content_blocks={self._run_counters.content_blocks}",
-            ),
-            markup=False,
-            highlight=False,
-            no_wrap=True,
-        )
-        self._console.print(
-            self._build_line(
-                timestamp,
-                "INFO",
-                "META",
-                f"[run-end] thinking_blocks={self._run_counters.thinking_blocks}",
-            ),
-            markup=False,
-            highlight=False,
-            no_wrap=True,
-        )
-        self._console.print(
-            self._build_line(
-                timestamp,
-                "INFO",
-                "META",
-                f"[run-end] tool_calls={self._run_counters.tool_calls}",
-            ),
-            markup=False,
-            highlight=False,
-            no_wrap=True,
-        )
-        self._console.print(
-            self._build_line(
-                timestamp,
-                "INFO",
-                "META",
-                f"[run-end] errors={self._run_counters.errors}",
-            ),
-            markup=False,
-            highlight=False,
-            no_wrap=True,
-        )
-        self._console.print(
-            self._build_line(
-                timestamp,
-                "INFO",
-                "META",
-                f"[run-end] agent_calls={total_agent_calls}",
-            ),
-            markup=False,
-            highlight=False,
-            no_wrap=True,
-        )
-        if pr_url is not None:
+
+        is_compact = self._ctx.mode == "compact"
+
+        if is_compact:
+            # Compact: 3 lines max — phase+elapsed, counters, PR
             self._console.print(
-                self._build_line(timestamp, "INFO", "META", f"[run-end] pr={_sanitize(pr_url)}"),
+                self._build_line(
+                    timestamp,
+                    "MILESTONE",
+                    "META",
+                    f"[run-end] {phase} | {total_elapsed_s}s",
+                ),
                 markup=False,
                 highlight=False,
                 no_wrap=True,
             )
+            # Counters on one line
+            self._console.print(
+                self._build_line(
+                    timestamp,
+                    "INFO",
+                    "META",
+                    f"[run-end] agent={total_agent_calls}"
+                    f" content={self._run_counters.content_blocks}"
+                    f" thinking={self._run_counters.thinking_blocks}"
+                    f" tools={self._run_counters.tool_calls}"
+                    f" errors={self._run_counters.errors}",
+                ),
+                markup=False,
+                highlight=False,
+                no_wrap=True,
+            )
+            if pr_url is not None:
+                self._console.print(
+                    self._build_line(
+                        timestamp, "INFO", "META", f"[run-end] pr={_sanitize(pr_url)}"
+                    ),
+                    markup=False,
+                    highlight=False,
+                    no_wrap=True,
+                )
+        else:
+            # Wide: multi-line, counters grouped, PR last
+            self._console.print(
+                self._build_line(
+                    timestamp, "MILESTONE", "META", "[run-end] ◆ Ralph Workflow run end"
+                ),
+                markup=False,
+                highlight=False,
+                no_wrap=True,
+            )
+            self._console.print(
+                self._build_line(
+                    timestamp, "INFO", "META", f"[run-end] phase={phase} elapsed={total_elapsed_s}s"
+                ),
+                markup=False,
+                highlight=False,
+                no_wrap=True,
+            )
+            # Counters grouped
+            self._console.print(
+                self._build_line(
+                    timestamp,
+                    "INFO",
+                    "META",
+                    f"[run-end] agent_calls={total_agent_calls}"
+                    f" content_blocks={self._run_counters.content_blocks}"
+                    f" thinking_blocks={self._run_counters.thinking_blocks}"
+                    f" tool_calls={self._run_counters.tool_calls}"
+                    f" errors={self._run_counters.errors}",
+                ),
+                markup=False,
+                highlight=False,
+                no_wrap=True,
+            )
+            if pr_url is not None:
+                self._console.print(
+                    self._build_line(
+                        timestamp, "INFO", "META", f"[run-end] pr={_sanitize(pr_url)}"
+                    ),
+                    markup=False,
+                    highlight=False,
+                    no_wrap=True,
+                )
 
     @property
     def content_blocks_count(self) -> int:
@@ -881,7 +885,14 @@ class PlainLogRenderer:
             )
 
     def flush_blocks(self) -> None:
-        """Close all open streaming blocks. Call on phase transitions and stop."""
+        """Close all open streaming blocks and refresh display context.
+
+        Called on phase transitions and pipeline stop. Refreshes the
+        DisplayContext to pick up any terminal resize that occurred,
+        ensuring subsequent rendering uses the current width and mode.
+        """
+        # Refresh context to pick up new terminal size (SIGWINCH on POSIX).
+        self._ctx = self._ctx.refreshed()
         timestamp = self._format_timestamp(self._clock())
         unit_ids = list(self._active_block.keys())
         for unit_id in unit_ids:
@@ -1100,12 +1111,11 @@ class PlainModeAdapter:
 
     def __init__(
         self,
-        console_or_context: Console | DisplayContext,
+        display_context: DisplayContext,
         *,
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
-        context: DisplayContext | None = None,
     ) -> None:
-        self._renderer = PlainLogRenderer(console_or_context, clock=clock, context=context)
+        self._renderer = PlainLogRenderer(display_context, clock=clock)
 
     def notify(self, state: PipelineState) -> None:
         self._renderer.emit_snapshot(

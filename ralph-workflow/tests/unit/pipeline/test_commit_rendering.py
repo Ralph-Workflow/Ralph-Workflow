@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING
 from rich.console import Console
 
 from ralph.display.artifact_renderer import render_commit_message
+from ralph.display.context import make_display_context
 from ralph.display.parallel_display import ParallelDisplay
 from ralph.display.plain_renderer import PlainLogRenderer
 from ralph.display.snapshot import PipelineSnapshot
@@ -52,7 +53,8 @@ class TestRenderCommitMessageIntegration:
 
         output_buffer: io.StringIO = io.StringIO()
         console = Console(file=output_buffer, force_terminal=True, color_system=None, width=120)
-        render_commit_message(tmp_path, console)
+        ctx = make_display_context(console=console, env={})
+        render_commit_message(tmp_path, ctx)
 
         output = output_buffer.getvalue()
         assert "COMMIT MESSAGE" in output
@@ -63,7 +65,8 @@ class TestRenderCommitMessageIntegration:
         # No .agent/tmp/commit_message.json - commit was skipped
         output_buffer: io.StringIO = io.StringIO()
         console = Console(file=output_buffer, force_terminal=True, color_system=None, width=120)
-        render_commit_message(tmp_path, console)
+        ctx = make_display_context(console=console, env={})
+        render_commit_message(tmp_path, ctx)
 
         output = output_buffer.getvalue()
         assert output == ""
@@ -76,7 +79,8 @@ class TestRenderCommitMessageIntegration:
 
         output_buffer: io.StringIO = io.StringIO()
         console = Console(file=output_buffer, force_terminal=True, color_system=None, width=120)
-        render_commit_message(tmp_path, console)
+        ctx = make_display_context(console=console, env={})
+        render_commit_message(tmp_path, ctx)
 
         output = output_buffer.getvalue()
         # Defensive: malformed JSON should not crash and should produce no output
@@ -109,9 +113,10 @@ class TestRenderCommitMessageIntegration:
 
         output_buffer: io.StringIO = io.StringIO()
         console = Console(file=output_buffer, force_terminal=True, color_system=None, width=120)
+        ctx = make_display_context(console=console, env={})
 
         # Simulate the pipeline calling render_commit_message once after a successful commit
-        render_commit_message(tmp_path, console)
+        render_commit_message(tmp_path, ctx)
 
         output = output_buffer.getvalue()
         # Should appear exactly once
@@ -138,7 +143,7 @@ class TestAnalysisDecisionDeDuplication:
         """
         buf = io.StringIO()
         console = Console(file=buf, force_terminal=False, width=120, color_system=None)
-        pd = ParallelDisplay(console, {"CI": "1"}, mode="lines")
+        pd = ParallelDisplay(make_display_context(console=console, env={"CI": "1"}))
 
         pd.emit_analysis_result("development_analysis", "proceed", "looks good")
 
@@ -157,7 +162,7 @@ class TestAnalysisDecisionDeDuplication:
         """
         stream: io.StringIO = io.StringIO()
         console = Console(file=stream, force_terminal=False, color_system=None, width=200)
-        renderer = PlainLogRenderer(console)
+        renderer = PlainLogRenderer(make_display_context(console=console, env={}))
 
         # Snapshot with development_analysis phase
         snapshot = PipelineSnapshot(
@@ -203,7 +208,7 @@ class TestAnalysisDecisionDeDuplication:
         """
         stream: io.StringIO = io.StringIO()
         console = Console(file=stream, force_terminal=False, color_system=None, width=200)
-        renderer = PlainLogRenderer(console)
+        renderer = PlainLogRenderer(make_display_context(console=console, env={}))
 
         # Snapshot with 'review' phase (not 'review_analysis')
         snapshot = PipelineSnapshot(

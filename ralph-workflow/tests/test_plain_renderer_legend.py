@@ -6,13 +6,14 @@ from io import StringIO
 
 from rich.console import Console
 
+from ralph.display.context import make_display_context
 from ralph.display.plain_renderer import PlainLogRenderer, RunStartOrientation
 
 
 def _make_renderer() -> tuple[PlainLogRenderer, StringIO]:
     buf = StringIO()
     console = Console(file=buf, color_system=None, force_terminal=False, width=200, highlight=False)
-    return PlainLogRenderer(console), buf
+    return PlainLogRenderer(make_display_context(console=console, env={})), buf
 
 
 def test_run_start_emits_legend_line_by_default() -> None:

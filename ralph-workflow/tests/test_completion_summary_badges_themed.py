@@ -8,6 +8,7 @@ from io import StringIO
 from rich.console import Console
 
 from ralph.display.completion_summary import emit_completion_summary
+from ralph.display.context import make_display_context
 from ralph.display.snapshot import PipelineSnapshot
 from ralph.display.theme import RALPH_THEME
 
@@ -47,9 +48,9 @@ def _make_snapshot() -> PipelineSnapshot:
     )
 
 
-def test_badges_emit_ansi_on_tty() -> None:
-    buf = StringIO()
-    c = Console(
+def _themed_context(buf: StringIO) -> object:
+    """Create a DisplayContext for themed (color) output."""
+    console = Console(
         file=buf,
         force_terminal=True,
         color_system="truecolor",
@@ -57,39 +58,51 @@ def test_badges_emit_ansi_on_tty() -> None:
         width=200,
         highlight=False,
     )
-    emit_completion_summary(c, _make_snapshot())
-    assert "\x1b[" in buf.getvalue()
+    return make_display_context(console=console, env={})
 
 
-def test_badges_no_ansi_on_plain() -> None:
-    buf = StringIO()
-    c = Console(
+def _plain_context(buf: StringIO) -> object:
+    """Create a DisplayContext for plain (no color) output."""
+    console = Console(
         file=buf,
         force_terminal=False,
         color_system=None,
         width=200,
     )
-    emit_completion_summary(c, _make_snapshot())
+    return make_display_context(console=console, env={})
+
+
+def test_badges_emit_ansi_on_tty() -> None:
+    buf = StringIO()
+    ctx = _themed_context(buf)
+    emit_completion_summary(_make_snapshot(), display_context=ctx)
+    assert "\x1b[" in buf.getvalue()
+
+
+def test_badges_no_ansi_on_plain() -> None:
+    buf = StringIO()
+    ctx = _plain_context(buf)
+    emit_completion_summary(_make_snapshot(), display_context=ctx)
     out = buf.getvalue()
     assert "\x1b[" not in out
 
 
 def test_pass_badge_label_present_on_plain() -> None:
     buf = StringIO()
-    c = Console(file=buf, force_terminal=False, color_system=None, width=200)
-    emit_completion_summary(c, _make_snapshot())
+    ctx = _plain_context(buf)
+    emit_completion_summary(_make_snapshot(), display_context=ctx)
     assert "[PASS]" in buf.getvalue()
 
 
 def test_warn_badge_label_present_on_plain() -> None:
     buf = StringIO()
-    c = Console(file=buf, force_terminal=False, color_system=None, width=200)
-    emit_completion_summary(c, _make_snapshot())
+    ctx = _plain_context(buf)
+    emit_completion_summary(_make_snapshot(), display_context=ctx)
     assert "[WARN]" in buf.getvalue()
 
 
 def test_fail_badge_label_present_on_plain() -> None:
     buf = StringIO()
-    c = Console(file=buf, force_terminal=False, color_system=None, width=200)
-    emit_completion_summary(c, _make_snapshot())
+    ctx = _plain_context(buf)
+    emit_completion_summary(_make_snapshot(), display_context=ctx)
     assert "[FAIL]" in buf.getvalue()

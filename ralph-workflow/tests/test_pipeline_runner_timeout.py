@@ -8,6 +8,7 @@ import pytest
 from pydantic import ValidationError
 
 from ralph.config.models import AgentConfig, GeneralConfig, UnifiedConfig
+from ralph.display.context import make_display_context
 from ralph.mcp.protocol.env import AGENT_LABEL_SCOPE_ENV, MCP_RUN_ID_ENV
 from ralph.pipeline import runner as runner_module
 from ralph.pipeline.effects import InvokeAgentEffect
@@ -90,7 +91,9 @@ def test_config_idle_timeout_flows_to_invoke_options(
         agent_registry=_registry_factory(config),
     )
 
-    runner_module._execute_agent_effect(effect, config, deps, WorkspaceScope(tmp_path))
+    runner_module._execute_agent_effect(
+        effect, config, deps, WorkspaceScope(tmp_path), display_context=make_display_context()
+    )
 
     assert captured.get("idle_timeout_seconds") == custom_timeout
 
@@ -179,7 +182,9 @@ def _run_with_config(
         agent_invocation_error=RuntimeError,
         agent_registry=_registry_factory(config),
     )
-    runner_module._execute_agent_effect(effect, config, deps, WorkspaceScope(tmp_path))
+    runner_module._execute_agent_effect(
+        effect, config, deps, WorkspaceScope(tmp_path), display_context=make_display_context()
+    )
 
 
 def test_runner_sets_agent_label_scope_to_run_id(

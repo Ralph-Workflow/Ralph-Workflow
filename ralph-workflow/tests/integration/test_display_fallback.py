@@ -5,6 +5,7 @@ from io import StringIO
 
 from rich.console import Console
 
+from ralph.display.context import make_display_context
 from ralph.display.parallel_display import ParallelDisplay
 from ralph.pipeline.worker_state import WorkerStatus
 
@@ -27,7 +28,7 @@ def _make_display(
             highlight=False,
             width=columns,
         )
-    return ParallelDisplay(console=console, env={}), buffer
+    return ParallelDisplay(make_display_context(console=console, env={})), buffer
 
 
 def _lines(buffer: StringIO) -> list[str]:
