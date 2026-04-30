@@ -422,7 +422,9 @@ def test_materialize_prepared_prompt_uses_worker_namespace_from_env(
     workspace_scope = WorkspaceScope(tmp_path)
     effect = PreparePromptEffect(phase="development", iteration=1)
 
-    runner_module._materialize_prepared_prompt(effect, policy.pipeline, workspace_scope)
+    runner_module._materialize_prepared_prompt(
+        effect, policy.pipeline, policy.artifacts, workspace_scope
+    )
 
     assert len(recorded_kwargs) == 1
     wn = recorded_kwargs[0].get("worker_namespace")
@@ -456,7 +458,9 @@ def test_materialize_prepared_prompt_no_namespace_without_env(
     workspace_scope = WorkspaceScope(tmp_path)
     effect = PreparePromptEffect(phase="development", iteration=1)
 
-    runner_module._materialize_prepared_prompt(effect, policy.pipeline, workspace_scope)
+    runner_module._materialize_prepared_prompt(
+        effect, policy.pipeline, policy.artifacts, workspace_scope
+    )
 
     assert len(recorded_kwargs) == 1
     assert recorded_kwargs[0].get("worker_namespace") is None

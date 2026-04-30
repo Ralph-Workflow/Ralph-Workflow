@@ -358,7 +358,7 @@ def _validate_verification_phase(
 
     verification-role phases must declare:
     - verification.block: the gating policy (kind, gate_for, on_failure_route)
-    - verification.kind: one of 'artifact', 'make_target', 'none'
+    - verification.kind: one of 'artifact', 'none'
     - verification.gate_for: one of 'advancement', 'completion', 'release'
     - verification.on_failure_route: either None or a known phase/terminal pseudo-phase
     """
@@ -375,10 +375,13 @@ def _validate_verification_phase(
         return
 
     kind = phase_def.verification.kind
-    if kind not in ("artifact", "make_target", "none"):
+    if kind not in ("artifact", "none"):
         errors.append(
             f"phases.{phase_name}.verification.kind: must be one of "
-            f"'artifact', 'make_target', 'none' (got '{kind}')"
+            f"'artifact', 'none' (got '{kind}'). "
+            f"Note: 'make_target' has been removed; use kind='artifact' with a "
+            f"verification artifact or kind='none'. "
+            f"See docs/sphinx/policy-driven-overhaul-migration.md."
         )
 
     gate_for = phase_def.verification.gate_for
@@ -390,13 +393,15 @@ def _validate_verification_phase(
 
     on_failure_route = phase_def.verification.on_failure_route
     if on_failure_route is not None:
-        ts = policy.terminal_states()
         known_phases = sorted(policy.phases.keys())
-        if on_failure_route not in ts and on_failure_route not in policy.phases:
+        if on_failure_route not in policy.phases:
             errors.append(
                 f"phases.{phase_name}.verification.on_failure_route: "
-                f"'{on_failure_route}' is not a known phase or terminal pseudo-phase. "
-                f"Known phases: {known_phases}"
+                f"'{on_failure_route}' is not a declared phase. "
+                f"Declare a phase with role='terminal' and terminal_outcome='failure' "
+                f"and reference it here. "
+                f"Known phases: {known_phases}. "
+                f"See docs/sphinx/policy-driven-overhaul-migration.md."
             )
 
 
@@ -407,9 +412,9 @@ def _validate_recovery_failed_route(
     """Validate that recovery.failed_route is consistent with declared terminal phases.
 
     failed_route must reference a phase declared in pipeline.phases (preferably one
-    with role='terminal' and terminal_outcome='failure'), or the deprecated pseudo-phase
-    'failed' (which emits a deprecation warning). The legacy pseudo-phases 'phase_failed'
-    and 'exit_failure' are no longer accepted.
+    with role='terminal' and terminal_outcome='failure'). The legacy pseudo-phases
+    'phase_failed', 'exit_failure', and the deprecated bare 'failed' alias are no
+    longer accepted when 'failed' is not an explicitly declared phase.
     """
     failed_route = policy.recovery.failed_route
     if failed_route in ("phase_failed", "exit_failure"):
@@ -421,17 +426,16 @@ def _validate_recovery_failed_route(
             f"See docs/sphinx/policy-driven-overhaul-migration.md."
         )
         return
-    if failed_route == "failed":
-        # Deprecated alias — still accepted but emits warning elsewhere
-        return
-    # Must reference a known phase
+    # 'failed' is no longer accepted as an undeclared pseudo-phase alias.
+    # Declare a phase with role='terminal' and terminal_outcome='failure' and
+    # set recovery.failed_route to that phase name.
     if failed_route not in policy.phases:
         errors.append(
             f"recovery.failed_route: '{failed_route}' "
-            f"is not a known phase. Must reference a phase defined in pipeline.phases "
-            f"(with role='terminal' and terminal_outcome='failure') or the deprecated "
-            f"pseudo-phase 'failed'. "
-            f"Known phases: {sorted(policy.phases.keys())}"
+            f"is not a declared phase. Must reference a phase defined in pipeline.phases "
+            f"(with role='terminal' and terminal_outcome='failure'). "
+            f"Known phases: {sorted(policy.phases.keys())}. "
+            f"See docs/sphinx/policy-driven-overhaul-migration.md."
         )
 
 

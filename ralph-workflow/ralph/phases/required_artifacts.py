@@ -1,12 +1,10 @@
 """Centralized required-artifact metadata for all pipeline phases.
 
-Every phase that demands a typed artifact as output is registered here.
-Importing from this module (rather than duplicating string constants) is the
-single source of truth for artifact paths and types.
-
-The module-level REQUIRED_ARTIFACTS dict remains as the canonical built-in
-registry. build_required_artifacts() derives a custom registry from an
-ArtifactsPolicy for policy-driven artifact lookup.
+Artifact metadata is derived exclusively from ArtifactsPolicy via
+resolve_required_artifact() and build_required_artifacts(). Artifact JSON
+and markdown paths come from the contract fields declared in artifacts.toml
+(artifact_json_path and markdown_summary_path). There are no built-in
+override tables — all path overrides must be declared in artifacts.toml.
 """
 
 from __future__ import annotations
@@ -15,7 +13,6 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from ralph.mcp.artifacts.development_result import normalize_development_result_content
-from ralph.mcp.artifacts.plan import PLAN_ARTIFACT_PATH
 from ralph.mcp.artifacts.typed_artifacts import (
     normalize_fix_result_content,
     normalize_issues_content,
@@ -26,25 +23,11 @@ if TYPE_CHECKING:
 
     from ralph.policy.models import ArtifactsPolicy
 
-ISSUES_ARTIFACT_JSON_PATH = ".agent/artifacts/issues.json"
-FIX_RESULT_ARTIFACT_JSON_PATH = ".agent/artifacts/fix_result.json"
-DEV_ANALYSIS_DECISION_JSON_PATH = ".agent/artifacts/development_analysis_decision.json"
-REVIEW_ANALYSIS_DECISION_JSON_PATH = ".agent/artifacts/review_analysis_decision.json"
-DEV_RESULT_ARTIFACT_JSON_PATH = ".agent/artifacts/development_result.json"
-
-_PLAN_ARTIFACT_JSON_PATH = PLAN_ARTIFACT_PATH
-
 # Normalizers keyed by artifact_type — used by build_required_artifacts()
 _ARTIFACT_TYPE_NORMALIZERS: dict[str, Callable[[dict[str, object]], dict[str, object]]] = {
     "development_result": normalize_development_result_content,
     "fix_result": normalize_fix_result_content,
     "issues": normalize_issues_content,
-}
-
-# Markdown path overrides keyed by artifact_type
-_ARTIFACT_TYPE_MARKDOWN_PATHS: dict[str, str] = {
-    "plan": ".agent/PLAN.md",
-    "development_result": ".agent/DEVELOPMENT_RESULT.md",
 }
 
 
@@ -59,52 +42,6 @@ class RequiredArtifact:
     normalizer: Callable[[dict[str, object]], dict[str, object]] | None
 
 
-REQUIRED_ARTIFACTS: dict[str, RequiredArtifact] = {
-    "planning": RequiredArtifact(
-        phase="planning",
-        artifact_type="plan",
-        json_path=_PLAN_ARTIFACT_JSON_PATH,
-        markdown_path=".agent/PLAN.md",
-        normalizer=None,
-    ),
-    "development": RequiredArtifact(
-        phase="development",
-        artifact_type="development_result",
-        json_path=DEV_RESULT_ARTIFACT_JSON_PATH,
-        markdown_path=".agent/DEVELOPMENT_RESULT.md",
-        normalizer=normalize_development_result_content,
-    ),
-    "development_analysis": RequiredArtifact(
-        phase="development_analysis",
-        artifact_type="development_analysis_decision",
-        json_path=DEV_ANALYSIS_DECISION_JSON_PATH,
-        markdown_path=None,
-        normalizer=None,
-    ),
-    "review": RequiredArtifact(
-        phase="review",
-        artifact_type="issues",
-        json_path=ISSUES_ARTIFACT_JSON_PATH,
-        markdown_path=None,
-        normalizer=normalize_issues_content,
-    ),
-    "review_analysis": RequiredArtifact(
-        phase="review_analysis",
-        artifact_type="review_analysis_decision",
-        json_path=REVIEW_ANALYSIS_DECISION_JSON_PATH,
-        markdown_path=None,
-        normalizer=None,
-    ),
-    "fix": RequiredArtifact(
-        phase="fix",
-        artifact_type="fix_result",
-        json_path=FIX_RESULT_ARTIFACT_JSON_PATH,
-        markdown_path=None,
-        normalizer=normalize_fix_result_content,
-    ),
-}
-
-
 def build_required_artifacts(
     artifacts_policy: ArtifactsPolicy,
 ) -> dict[str, RequiredArtifact]:
@@ -112,7 +49,8 @@ def build_required_artifacts(
 
     Derives the artifact table from the loaded artifacts.toml. Each artifact
     contract in the policy produces a RequiredArtifact entry keyed by drain name.
-    Normalizers and markdown paths are resolved from the built-in registries.
+    JSON and markdown paths come from the policy contract fields (artifact_json_path
+    and markdown_summary_path) with a conventional fallback for the JSON path.
 
     Args:
         artifacts_policy: Loaded artifacts policy.
@@ -125,9 +63,9 @@ def build_required_artifacts(
         drain = str(contract.drain)
         artifact_type = contract.artifact_type
 
-        # Build the JSON path based on artifact type convention
-        json_path = _artifact_type_to_json_path(artifact_type)
-        markdown_path = _ARTIFACT_TYPE_MARKDOWN_PATHS.get(artifact_type)
+        # Use policy-declared paths; fall back to convention for json_path only.
+        json_path = contract.artifact_json_path or f".agent/artifacts/{artifact_type}.json"
+        markdown_path = contract.markdown_summary_path
         normalizer = _ARTIFACT_TYPE_NORMALIZERS.get(artifact_type)
 
         result[drain] = RequiredArtifact(
@@ -140,18 +78,29 @@ def build_required_artifacts(
     return result
 
 
-def _artifact_type_to_json_path(artifact_type: str) -> str:
-    """Convert artifact_type to its conventional JSON path.
+def resolve_required_artifact(
+    artifacts_policy: ArtifactsPolicy,
+    *,
+    drain: str,
+) -> RequiredArtifact | None:
+    """Resolve the required artifact for a drain from the artifacts policy.
 
-    Uses the same path conventions as the built-in REQUIRED_ARTIFACTS dict.
-    Falls back to a derived path for unknown artifact types.
+    Returns None when the drain has no artifact contract in the policy.
+    Callers must declare artifacts in artifacts.toml — there is no built-in
+    fallback registry.
+
+    Args:
+        artifacts_policy: Loaded artifacts policy.
+        drain: The drain name to look up.
+
+    Returns:
+        RequiredArtifact if the drain has a contract, None otherwise.
     """
-    # Check built-in artifacts for an exact match
-    for ra in REQUIRED_ARTIFACTS.values():
-        if ra.artifact_type == artifact_type:
-            return ra.json_path
-    # Derive path for unknown artifact types
-    return f".agent/artifacts/{artifact_type}.json"
+    try:
+        registry = build_required_artifacts(artifacts_policy)
+        return registry.get(drain)
+    except AttributeError:
+        return None
 
 
 def retry_hint_path(phase: str) -> str:
@@ -159,11 +108,26 @@ def retry_hint_path(phase: str) -> str:
     return f".agent/tmp/last_retry_error_{phase}.txt"
 
 
-def build_retry_hint(phase: str, detail: str) -> str:
-    """Build a retry hint message for a phase that failed to submit a required artifact."""
-    ra = REQUIRED_ARTIFACTS.get(phase)
+def build_retry_hint(
+    phase: str,
+    detail: str,
+    *,
+    registry: dict[str, RequiredArtifact] | None = None,
+) -> str:
+    """Build a retry hint message for a phase that failed to submit a required artifact.
+
+    Args:
+        phase: Pipeline phase name.
+        detail: Error detail message.
+        registry: Optional policy-derived artifact registry. When provided,
+            the hint includes the specific artifact type and path.
+    """
+    ra = registry.get(phase) if registry is not None else None
     if ra is None:
-        return detail
+        return (
+            f"PREVIOUS ATTEMPT FAILED: The agent did not submit the required "
+            f"artifact before declaring completion.\n\nDetails: {detail}"
+        )
     return (
         f"PREVIOUS ATTEMPT FAILED: The agent did not submit the required "
         f"'{ra.artifact_type}' artifact at '{ra.json_path}' before declaring completion.\n\n"
@@ -189,15 +153,10 @@ def build_missing_input_hint(phase: str, upstream_phase: str, artifact_path: str
 
 
 __all__ = [
-    "DEV_ANALYSIS_DECISION_JSON_PATH",
-    "DEV_RESULT_ARTIFACT_JSON_PATH",
-    "FIX_RESULT_ARTIFACT_JSON_PATH",
-    "ISSUES_ARTIFACT_JSON_PATH",
-    "REQUIRED_ARTIFACTS",
-    "REVIEW_ANALYSIS_DECISION_JSON_PATH",
     "RequiredArtifact",
     "build_missing_input_hint",
     "build_required_artifacts",
     "build_retry_hint",
+    "resolve_required_artifact",
     "retry_hint_path",
 ]

@@ -22,7 +22,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
     from pathlib import Path
 
-pytestmark = pytest.mark.timeout_seconds(30)
+pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(30)]
 
 
 @pytest.fixture(autouse=True)

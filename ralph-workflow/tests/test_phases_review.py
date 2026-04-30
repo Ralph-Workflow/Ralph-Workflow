@@ -6,14 +6,15 @@ import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock
 
+import pytest
 from git import Repo
 
 from ralph.git.operations import get_head_sha
 from ralph.phases import PhaseContext
+from ralph.phases.analysis import handle_generic_analysis_phase
 from ralph.phases.review import (
     REVIEW_BASELINE_MARKER,
     handle_review,
-    handle_review_analysis,
 )
 from ralph.pipeline.effects import Effect, InvokeAgentEffect, PreparePromptEffect
 from ralph.pipeline.events import AnalysisDecisionEvent, PhaseFailureEvent, PipelineEvent
@@ -92,6 +93,7 @@ class TestHandleReview:
         )
         assert handle_review(effect, ctx) == [PipelineEvent.REVIEW_CLEAN]
 
+    @pytest.mark.subprocess_e2e
     def test_review_proceeds_when_new_commits_exist(self, tmp_git_repo: Path) -> None:
         ctx = _fs_context(tmp_git_repo)
         baseline = get_head_sha(tmp_git_repo)
@@ -152,6 +154,8 @@ class TestHandleReviewAnalysis:
 
     def _mock_invoke_effect(self) -> MagicMock:
         effect = MagicMock(spec=InvokeAgentEffect)
+        effect.phase = "review_analysis"
+        effect.drain = None
         return effect
 
     def test_proceed_decision_returns_analysis_decision_event(self) -> None:
@@ -159,8 +163,9 @@ class TestHandleReviewAnalysis:
         ctx = self._make_context()
         ctx.workspace.exists.return_value = True
         ctx.workspace.read.return_value = '{"status": "completed"}'
+        ctx.artifacts_policy.artifacts = {}
 
-        result = handle_review_analysis(effect, ctx)
+        result = handle_generic_analysis_phase(effect, ctx)
         assert len(result) == 1
         assert isinstance(result[0], AnalysisDecisionEvent)
         assert result[0].phase == "review_analysis"
@@ -171,8 +176,9 @@ class TestHandleReviewAnalysis:
         ctx = self._make_context()
         ctx.workspace.exists.return_value = True
         ctx.workspace.read.return_value = '{"status": "unknown"}'
+        ctx.artifacts_policy.artifacts = {}
 
-        result = handle_review_analysis(effect, ctx)
+        result = handle_generic_analysis_phase(effect, ctx)
         assert len(result) == 1
         event = result[0]
         assert isinstance(event, PhaseFailureEvent)
@@ -184,8 +190,9 @@ class TestHandleReviewAnalysis:
         ctx = self._make_context()
         ctx.workspace.exists.return_value = True
         ctx.workspace.read.return_value = '{"status": "revise"}'
+        ctx.artifacts_policy.artifacts = {}
 
-        result = handle_review_analysis(effect, ctx)
+        result = handle_generic_analysis_phase(effect, ctx)
         assert len(result) == 1
         event = result[0]
         assert isinstance(event, PhaseFailureEvent)
@@ -197,8 +204,9 @@ class TestHandleReviewAnalysis:
         ctx = self._make_context()
         ctx.workspace.exists.return_value = True
         ctx.workspace.read.return_value = '{"status": "failed"}'
+        ctx.artifacts_policy.artifacts = {}
 
-        result = handle_review_analysis(effect, ctx)
+        result = handle_generic_analysis_phase(effect, ctx)
         assert len(result) == 1
         assert isinstance(result[0], AnalysisDecisionEvent)
         assert result[0].phase == "review_analysis"
@@ -209,8 +217,9 @@ class TestHandleReviewAnalysis:
         ctx = self._make_context()
         ctx.workspace.exists.return_value = True
         ctx.workspace.read.return_value = '{"status": "escalate"}'
+        ctx.artifacts_policy.artifacts = {}
 
-        result = handle_review_analysis(effect, ctx)
+        result = handle_generic_analysis_phase(effect, ctx)
         assert len(result) == 1
         event = result[0]
         assert isinstance(event, PhaseFailureEvent)
@@ -222,7 +231,7 @@ class TestHandleReviewAnalysis:
         ctx = self._make_context()
         ctx.workspace.exists.return_value = False
 
-        result = handle_review_analysis(effect, ctx)
+        result = handle_generic_analysis_phase(effect, ctx)
         assert len(result) == 1
         event = result[0]
         assert isinstance(event, PhaseFailureEvent)
@@ -230,9 +239,9 @@ class TestHandleReviewAnalysis:
         assert event.recoverable is True
         assert "review_analysis_decision" in event.reason
 
-    def test_non_invoke_effect_returns_empty_list(self) -> None:
+    def test_prepare_prompt_effect_returns_prompt_prepared(self) -> None:
         effect = MagicMock(spec=PreparePromptEffect)
         ctx = self._make_context()
 
-        result = handle_review_analysis(effect, ctx)
-        assert result == []
+        result = handle_generic_analysis_phase(effect, ctx)
+        assert result == [PipelineEvent.PROMPT_PREPARED]

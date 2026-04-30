@@ -22,10 +22,11 @@ from ralph.mcp.upstream.config import UPSTREAM_MCP_CONFIG_ENV, UpstreamMcpServer
 from ralph.mcp.upstream.models import UpstreamCallError
 from ralph.mcp.upstream.registry import UpstreamRegistry
 from ralph.phases import PhaseContext
-from ralph.phases.planning import handle_planning
+from ralph.phases.execution import handle_execution_phase
 from ralph.pipeline import runner as runner_module
 from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.events import PipelineEvent
+from ralph.policy.loader import load_policy
 from ralph.workspace.fs import FsWorkspace
 
 # Lazy imports for multimodal tests that require optional dependencies
@@ -464,15 +465,16 @@ def test_planning_session_can_submit_plan_over_mcp_and_handle_planning_consumes_
         state,
     )
 
+    policy = load_policy(tmp_path / ".agent")
     ctx = PhaseContext.model_construct(
         workspace=workspace,
         registry=object(),
         chain_manager=object(),
-        pipeline_policy=object(),
+        pipeline_policy=policy.pipeline,
         agents_policy=object(),
-        artifacts_policy=object(),
+        artifacts_policy=policy.artifacts,
     )
-    planning_result = handle_planning(
+    planning_result = handle_execution_phase(
         InvokeAgentEffect(agent_name="planner", phase="planning", prompt_file="planning.txt"),
         ctx,
     )

@@ -32,7 +32,7 @@ if TYPE_CHECKING:
 PACKAGE_ROOT = Path(__file__).resolve().parents[2]
 FAKE_STDIO_MCP = PACKAGE_ROOT / "tests" / "fixtures" / "fake_stdio_mcp.py"
 BROKEN_CANARY = "sk-fake-leak-canary-test-12345"
-pytestmark = pytest.mark.timeout_seconds(2.5)
+pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(2.5)]
 
 
 class _RunningServer:

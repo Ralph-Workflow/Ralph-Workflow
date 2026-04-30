@@ -54,6 +54,12 @@ def _make_policy_bundle() -> PolicyBundle:
                 drain="development",
                 transitions=PhaseTransition(on_success="complete"),
             ),
+            "complete": PhaseDefinition(
+                drain="complete",
+                role="terminal",
+                terminal_outcome="success",
+                transitions=PhaseTransition(on_success="complete"),
+            ),
         },
         entry_phase="development",
         terminal_phase="complete",

@@ -94,7 +94,7 @@ def _build_custom_bundle() -> PolicyBundle:
                 role="verification",
                 transitions=PhaseTransition(on_success="done", on_failure="crashed"),
                 verification=PhaseVerificationPolicy(
-                    kind="make_target",
+                    kind="artifact",
                     gate_for="advancement",
                     on_failure_route="crashed",
                 ),

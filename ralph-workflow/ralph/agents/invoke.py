@@ -135,8 +135,8 @@ class InvokeOptions:
     suspect_waiting_on_child_seconds: float | None = None
     pure: bool = False
     system_prompt_file: str | None = None
-    phase: str | None = None
     waiting_listener: WaitingStatusListener | None = None
+    required_artifact: RequiredArtifact | None = None
 
 
 @dataclass(frozen=True)
@@ -162,6 +162,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
 
     from ralph.config.models import AgentConfig
+    from ralph.phases.required_artifacts import RequiredArtifact
 
 # Runtime imports with graceful fallback when watchdog is not available
 try:
@@ -515,9 +516,9 @@ def invoke_agent(
             policy=policy,
             execution_strategy=execution_strategy,
             liveness_probe=liveness_probe,
-            phase=opts.phase,
             waiting_listener=opts.waiting_listener,
             monitor=monitor,
+            required_artifact=opts.required_artifact,
             _clock=_clock,
         )
         yield from lines_iter
@@ -553,9 +554,9 @@ def _run_subprocess_and_read_lines(  # noqa: PLR0913
     policy: TimeoutPolicy,
     execution_strategy: GenericExecutionStrategy | OpenCodeExecutionStrategy | None = None,
     liveness_probe: LivenessProbe | None = None,
-    phase: str | None = None,
     waiting_listener: WaitingStatusListener | None = None,
     monitor: WorkspaceMonitor | None = None,
+    required_artifact: RequiredArtifact | None = None,
     _clock: Clock | None = None,
 ) -> Iterator[str]:
     """Run subprocess and yield output lines.
@@ -646,9 +647,9 @@ def _run_subprocess_and_read_lines(  # noqa: PLR0913
             _CompletionCheckOptions(
                 execution_strategy=strategy,
                 workspace_path=workspace_path,
-                phase=phase,
                 liveness_probe=probe,
                 policy=policy,
+                required_artifact=required_artifact,
             ),
             _clock=clock,
         )
@@ -1055,7 +1056,6 @@ def _log_workspace_completion(monitor: WorkspaceMonitor | None) -> None:
 class _CompletionCheckOptions:
     execution_strategy: GenericExecutionStrategy | OpenCodeExecutionStrategy | None = None
     workspace_path: Path | None = None
-    phase: str | None = None
     # LivenessProbe for checking whether Ralph-tracked child agents are still active.
     # When None, classify_exit falls back to handle.has_live_descendants() only.
     liveness_probe: LivenessProbe | None = None
@@ -1064,6 +1064,7 @@ class _CompletionCheckOptions:
     policy: TimeoutPolicy = field(
         default_factory=lambda: TimeoutPolicy(idle_timeout_seconds=None)
     )
+    required_artifact: RequiredArtifact | None = None
 
 
 def _wait_for_completion_grace(
@@ -1082,9 +1083,7 @@ def _wait_for_completion_grace(
       RESUMABLE_CONTINUE if grace deadline elapses with no signals and no children.
     """
     assert opts.workspace_path is not None
-    assert opts.phase is not None
     workspace_path = opts.workspace_path
-    phase = opts.phase
     execution_strategy = opts.execution_strategy
     assert execution_strategy is not None
 
@@ -1094,8 +1093,8 @@ def _wait_for_completion_grace(
     def classify_exit_state() -> AgentExecutionState:
         signals = evaluate_completion(
             workspace_path,
-            phase,
             list(parsed_output) if parsed_output else [],
+            required_artifact=opts.required_artifact,
         )
         return execution_strategy.classify_exit(handle, signals, liveness_probe=probe)
 
@@ -1135,9 +1134,7 @@ def _wait_for_descendants_then_recheck(
         the active polling loop, never after deadline.
     """
     assert opts.workspace_path is not None
-    assert opts.phase is not None
     workspace_path = opts.workspace_path
-    phase = opts.phase
     execution_strategy = opts.execution_strategy
     assert execution_strategy is not None
 
@@ -1147,8 +1144,8 @@ def _wait_for_descendants_then_recheck(
     def classify_exit_state() -> AgentExecutionState:
         signals = evaluate_completion(
             workspace_path,
-            phase,
             list(parsed_output) if parsed_output else [],
+            required_artifact=opts.required_artifact,
         )
         return execution_strategy.classify_exit(handle, signals, liveness_probe=probe)
 
@@ -1202,12 +1199,12 @@ def _check_process_result(
         and opts.execution_strategy is not None
         and opts.execution_strategy.supports_session_continuation()
         and opts.workspace_path is not None
-        and opts.phase is not None
+        and opts.required_artifact is not None
     ):
         signals = evaluate_completion(
             opts.workspace_path,
-            opts.phase,
             list(parsed_output) if parsed_output else [],
+            required_artifact=opts.required_artifact,
         )
         # First classification: check completion signals and immediate child status
         exit_state = opts.execution_strategy.classify_exit(

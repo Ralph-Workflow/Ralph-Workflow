@@ -1,7 +1,6 @@
 .PHONY: help install dev install-dev test test-unit test-integration lint typecheck build build-wheel build-sdist publish test-pypi test-pypi-upload twine-upload twine-upload-testpypi clean dist clean-dist fmt format-check ruff-fix mypy-fix pre-commit dist-homebrew verify coverage dist-binary dist-pypi dist-all formula-check dead-code docs docs-linkcheck serve-docs
 
 PYTEST_WORKERS ?= 8
-COVERAGE_WORKERS ?= 16
 
 help:
 	@echo "Ralph Workflow - Makefile commands"
@@ -9,9 +8,10 @@ help:
 	@echo "  install         Install package and refresh pipx executable"
 	@echo "  dev             Install package in editable mode with dev dependencies"
 	@echo "  install-dev     Alias for dev"
-	@echo "  test           Run the full pytest suite without coverage"
+	@echo "  test           Run the full pytest suite without coverage (excludes subprocess_e2e)"
 	@echo "  test-unit      Run unit/root tests without tests/integration/"
-	@echo "  test-integration Run tests/integration/ only"
+	@echo "  test-integration Run tests/integration/ only (excludes subprocess_e2e)"
+	@echo "  test-subprocess-e2e Run tests that require real subprocesses or network sockets (60s limit)"
 	@echo "  lint           Run ruff linting"
 	@echo "  typecheck      Run mypy type checking"
 	@echo "  fmt            Format code with ruff"
@@ -52,18 +52,22 @@ install-dev: dev
 
 # Testing
 test:
-	uv run python -m ralph.verify_timeout --suite-timeout 30 -- pytest tests/ -q -n $(PYTEST_WORKERS)
+	uv run python -m ralph.verify_timeout --suite-timeout 30 -- pytest tests/ -q -n $(PYTEST_WORKERS) -m "not subprocess_e2e"
 
 test-unit:
-	uv run python -m ralph.verify_timeout --suite-timeout 30 -- pytest tests/ -q -n $(PYTEST_WORKERS) --ignore=tests/integration
+	uv run python -m ralph.verify_timeout --suite-timeout 30 -- pytest tests/ -q -n $(PYTEST_WORKERS) --ignore=tests/integration -m "not subprocess_e2e"
 
 test-integration:
-	uv run python -m ralph.verify_timeout --suite-timeout 30 -- pytest tests/integration/ -q -n $(PYTEST_WORKERS)
+	uv run python -m ralph.verify_timeout --suite-timeout 30 -- pytest tests/integration/ -q -n $(PYTEST_WORKERS) -m "not subprocess_e2e"
 
 coverage: test-cov
 
+test-subprocess-e2e:
+	uv run python -m ralph.verify_timeout --suite-timeout 60 -- pytest tests/ -q -n $(PYTEST_WORKERS) -m subprocess_e2e
+
 test-cov:
-	uv run python -m ralph.verify_timeout --suite-timeout 30 -- pytest tests/ -q -n $(PYTEST_WORKERS) --cov=ralph --cov-report=term-missing --cov-fail-under=80
+	RALPH_PYTEST_TEST_TIMEOUT_SECONDS=2 uv run python -m ralph.verify_timeout --suite-timeout 30 -- pytest tests/ -q -n $(PYTEST_WORKERS) -m "not subprocess_e2e" --cov=ralph --cov-report=
+	uv run coverage report --data-file=.coverage.pytest --fail-under=80
 
 # Linting
 lint:
@@ -143,6 +147,7 @@ verify:
 	@$(MAKE) typecheck
 	@$(MAKE) docs
 	@$(MAKE) test-cov
+	@$(MAKE) test-subprocess-e2e
 
 dist-binary:
 	@echo "Building PyInstaller binary..."

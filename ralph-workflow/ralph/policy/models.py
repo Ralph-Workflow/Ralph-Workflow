@@ -189,12 +189,13 @@ class PhaseVerificationPolicy(_FrozenPolicyModel):  # type: ignore[explicit-any]
     """Verification gating semantics for a phase.
 
     Attributes:
-        kind: Kind of verification (artifact, make_target, or none).
+        kind: Kind of verification: 'artifact' checks for a required artifact;
+            'none' skips gate validation.
         gate_for: What this verification gates (advancement, completion, release).
         on_failure_route: Phase to route to on verification failure (None = fail pipeline).
     """
 
-    kind: Literal["artifact", "make_target", "none"]
+    kind: Literal["artifact", "none"]
     gate_for: Literal["advancement", "completion", "release"]
     on_failure_route: str | None = None
 
@@ -527,23 +528,16 @@ class PostCommitRoute(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reas
 
 
 def _terminal_phase_names(policy: PipelinePolicy) -> set[str]:
-    """Return all terminal phase names from policy (declared + deprecated aliases).
+    """Return all terminal phase names from policy.
 
     Includes:
     - policy.terminal_phase (the declared success terminal)
     - policy.recovery.failed_route (the failure route or declared phase)
     - Any phase with role='terminal'
-    - Deprecated pseudo-phase aliases 'failed' and 'complete'
-
-    The legacy pseudo-phases 'phase_failed' and 'exit_failure' are no longer
-    accepted as terminal states; configs using them must migrate to a declared
-    terminal phase with role='terminal' and terminal_outcome='failure'.
     """
     names: set[str] = {
         policy.terminal_phase,
         policy.recovery.failed_route,
-        "failed",
-        "complete",
     }
     names.update(name for name, defn in policy.phases.items() if defn.role == "terminal")
     return names
@@ -803,6 +797,10 @@ class ArtifactContract(_FrozenPolicyModel):  # type: ignore[explicit-any]  # rea
         artifact_type: Type identifier for the artifact (e.g., planning_json).
         decision_vocabulary: Valid values for the decision field (for analysis drains).
         prompt_template: Optional template for generating prompts (None = use default).
+        artifact_json_path: Override path for the artifact JSON file. When set,
+            overrides the default '.agent/artifacts/<artifact_type>.json' path.
+        markdown_summary_path: Path to the human-readable markdown summary for this
+            artifact. When set, the runner renders a markdown handoff at this path.
     """
 
     drain: str = Field(..., description="Drain this artifact is submitted at")
@@ -817,6 +815,20 @@ class ArtifactContract(_FrozenPolicyModel):  # type: ignore[explicit-any]  # rea
     prompt_template: str | None = Field(
         default=None,
         description="Optional custom prompt template path",
+    )
+    artifact_json_path: str | None = Field(
+        default=None,
+        description=(
+            "Override path for the artifact JSON file. "
+            "When None, falls back to '.agent/artifacts/<artifact_type>.json'."
+        ),
+    )
+    markdown_summary_path: str | None = Field(
+        default=None,
+        description=(
+            "Path to the human-readable markdown summary for this artifact. "
+            "When set, the runner writes a markdown handoff at this path."
+        ),
     )
 
 

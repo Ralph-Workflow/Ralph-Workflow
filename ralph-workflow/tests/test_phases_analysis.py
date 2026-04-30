@@ -482,6 +482,70 @@ class TestRegisterRoleHandlers:
         finally:
             HANDLERS.pop("my_custom_commit", None)
 
+    def test_register_role_handlers_registers_execution_phase(self) -> None:
+        """register_role_handlers adds handle_execution_phase for execution-role phases."""
+        from ralph.phases import HANDLERS, register_role_handlers  # noqa: PLC0415
+        from ralph.phases.execution import handle_execution_phase  # noqa: PLC0415
+        from ralph.policy.models import (  # noqa: PLC0415
+            PhaseDefinition,
+            PhaseTransition,
+            PipelinePolicy,
+        )
+
+        policy = PipelinePolicy(
+            phases={
+                "my_custom_build": PhaseDefinition(
+                    drain="my_custom_build",
+                    role="execution",
+                    transitions=PhaseTransition(on_success="done"),
+                ),
+                "done": PhaseDefinition(
+                    drain="done",
+                    role="terminal",
+                    terminal_outcome="success",
+                    transitions=PhaseTransition(on_success="done", on_loopback="done"),
+                ),
+            },
+            entry_phase="my_custom_build",
+            terminal_phase="done",
+        )
+        HANDLERS.pop("my_custom_build", None)
+        register_role_handlers(policy)
+        assert HANDLERS.get("my_custom_build") is handle_execution_phase
+        HANDLERS.pop("my_custom_build", None)
+
+    def test_register_role_handlers_registers_review_phase(self) -> None:
+        """register_role_handlers adds handle_review for review-role phases."""
+        from ralph.phases import HANDLERS, register_role_handlers  # noqa: PLC0415
+        from ralph.phases.review import handle_review  # noqa: PLC0415
+        from ralph.policy.models import (  # noqa: PLC0415
+            PhaseDefinition,
+            PhaseTransition,
+            PipelinePolicy,
+        )
+
+        policy = PipelinePolicy(
+            phases={
+                "my_custom_audit": PhaseDefinition(
+                    drain="my_custom_audit",
+                    role="review",
+                    transitions=PhaseTransition(on_success="done"),
+                ),
+                "done": PhaseDefinition(
+                    drain="done",
+                    role="terminal",
+                    terminal_outcome="success",
+                    transitions=PhaseTransition(on_success="done", on_loopback="done"),
+                ),
+            },
+            entry_phase="my_custom_audit",
+            terminal_phase="done",
+        )
+        HANDLERS.pop("my_custom_audit", None)
+        register_role_handlers(policy)
+        assert HANDLERS.get("my_custom_audit") is handle_review
+        HANDLERS.pop("my_custom_audit", None)
+
     def test_unregistered_phase_raises_handler_not_found(self) -> None:
         """handle_phase raises PhaseHandlerNotFoundError for unregistered phase names."""
         import pytest  # noqa: PLC0415

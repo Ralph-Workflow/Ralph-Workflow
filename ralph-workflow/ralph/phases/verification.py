@@ -6,7 +6,6 @@ configured verification kind.
 
 Verification kinds:
 - artifact: the configured artifact path must exist and be non-empty
-- make_target: stub — emits PhaseFailureEvent with explicit 'not yet executable' error
 - none: purely declarative gate; always passes
 
 On gate failure, when on_failure_route is set, the handler emits
@@ -17,11 +16,11 @@ When on_failure_route is unset, the pipeline halts at the terminal failure route
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, NoReturn
 
 from loguru import logger
 
-from ralph.phases.required_artifacts import REQUIRED_ARTIFACTS
+from ralph.phases.required_artifacts import build_required_artifacts
 from ralph.pipeline.effects import Effect, InvokeAgentEffect, PreparePromptEffect
 from ralph.pipeline.events import Event, PhaseFailureEvent, PipelineEvent
 
@@ -40,7 +39,8 @@ def _check_artifact_gate(
     Returns:
         Tuple of (gate_passed, failure_reason). failure_reason is None if gate passed.
     """
-    ra = REQUIRED_ARTIFACTS.get(phase_def.drain)
+    registry = build_required_artifacts(ctx.artifacts_policy)
+    ra = registry.get(phase_def.drain)
     artifact_path = (
         ra.json_path if ra is not None
         else f".agent/artifacts/{phase_def.drain}_verification.json"
@@ -65,25 +65,12 @@ def _check_artifact_gate(
         )
 
 
-def _check_make_target_gate() -> tuple[bool, str]:
-    """Check make_target verification gate.
-
-    Returns:
-        Tuple of (gate_passed, failure_reason). make_target always fails with reason.
-    """
-    return False, (
-        "make_target verification is declared but not yet executable; "
-        "declare kind='artifact' (with a verification artifact) or kind='none' "
-        "(purely declarative gate) in this phase's verification block"
-    )
-
 
 def handle_verification_phase(effect: Effect, ctx: PhaseContext) -> list[Event]:
     """Generic handler for verification-role phases.
 
     Dispatches on phase_def.verification.kind:
     - 'artifact': requires the configured artifact path to exist and be non-empty
-    - 'make_target': stub — emits explicit failure with 'not yet executable' reason
     - 'none': purely declarative; emits AGENT_SUCCESS to advance
 
     On gate failure, when on_failure_route is set, emits
@@ -130,6 +117,10 @@ def _handle_verification_invoke(
     return _emit_verification_failure(phase_name, failure_reason, v.on_failure_route)
 
 
+def _assert_never(value: NoReturn) -> NoReturn:
+    raise AssertionError(f"Unexpected value: {value!r}")
+
+
 def _gate_result_for_kind(
     v: PhaseVerificationPolicy,
     ctx: PhaseContext,
@@ -140,10 +131,10 @@ def _gate_result_for_kind(
     match v.kind:
         case "artifact":
             return _check_artifact_gate(ctx, phase_name, phase_def)
-        case "make_target":
-            return _check_make_target_gate()
         case "none":
             return True, None
+        case _ as unreachable:  # pragma: no cover
+            _assert_never(unreachable)
 
 
 def _emit_verification_failure(

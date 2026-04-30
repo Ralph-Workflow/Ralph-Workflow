@@ -58,13 +58,7 @@ from ralph.mcp.protocol.session import MCP_ENDPOINT_ENV, MCP_RUN_ID_ENV, AgentSe
 from ralph.mcp.server.lifecycle import shutdown_mcp_server, start_mcp_server
 from ralph.mcp.session_plan import build_session_mcp_plan
 from ralph.phases import PhaseContext, handle_phase, register_role_handlers
-from ralph.phases.required_artifacts import (
-    DEV_ANALYSIS_DECISION_JSON_PATH,
-    DEV_RESULT_ARTIFACT_JSON_PATH,
-    FIX_RESULT_ARTIFACT_JSON_PATH,
-    ISSUES_ARTIFACT_JSON_PATH,
-    REVIEW_ANALYSIS_DECISION_JSON_PATH,
-)
+from ralph.phases.required_artifacts import build_required_artifacts
 from ralph.pipeline import checkpoint as ckpt
 from ralph.pipeline.cycle_baseline import (
     clear_cycle_baseline,
@@ -111,9 +105,16 @@ if TYPE_CHECKING:
     from ralph.mcp.upstream.agent_probe import AgentProbeReport
     from ralph.mcp.upstream.config import UpstreamMcpServer
     from ralph.mcp.upstream.validation import UpstreamValidationReport
+    from ralph.phases.required_artifacts import RequiredArtifact
     from ralph.pipeline.parallel import coordinator as parallel_coordinator
     from ralph.pipeline.work_units import WorkUnit
-    from ralph.policy.models import AgentsPolicy, PhaseDefinition, PipelinePolicy, PolicyBundle
+    from ralph.policy.models import (
+        AgentsPolicy,
+        ArtifactsPolicy,
+        PhaseDefinition,
+        PipelinePolicy,
+        PolicyBundle,
+    )
     from ralph.recovery.connectivity import ConnectivityState
     from ralph.recovery.controller import RecoveryController
 
@@ -455,57 +456,23 @@ def _execute_effect_with_optional_display(  # noqa: PLR0913
     verbosity: Verbosity = Verbosity.VERBOSE,
     state: PipelineState | None = None,
 ) -> Event:
-    params = signature(_execute_effect).parameters
+    params = frozenset(signature(_execute_effect).parameters)
     has_display = "display" in params
     has_verbosity = "verbosity" in params
     has_state = "state" in params
-
-    result: Event
-    if len(params) == _LEGACY_EXECUTE_EFFECT_ARITY:
-        result = _execute_effect(effect, config, workspace_scope)
-    elif has_display:
-        if has_verbosity and has_state:
-            result = _execute_effect(
-                effect,
-                config,
-                workspace_scope,
-                display=display,
-                verbosity=verbosity,
-                state=state,
-            )
-        elif has_verbosity:
-            result = _execute_effect(
-                effect,
-                config,
-                workspace_scope,
-                display=display,
-                verbosity=verbosity,
-            )
-        elif has_state:
-            result = _execute_effect(
-                effect,
-                config,
-                workspace_scope,
-                display=display,
-                state=state,
-            )
-        else:
-            result = _execute_effect(effect, config, workspace_scope, display=display)
-    elif has_verbosity and has_state:
-        result = _execute_effect(
-            effect,
-            config,
-            workspace_scope,
-            verbosity=verbosity,
-            state=state,
+    if has_state and has_verbosity:
+        return _execute_effect(
+            effect, config, workspace_scope,
+            display=display, verbosity=verbosity, state=state,
         )
-    elif has_verbosity:
-        result = _execute_effect(effect, config, workspace_scope, verbosity=verbosity)
-    elif has_state:
-        result = _execute_effect(effect, config, workspace_scope, state=state)
-    else:
-        result = _execute_effect(effect, config, workspace_scope)
-    return result
+    if has_verbosity:
+        return _execute_effect(
+            effect, config, workspace_scope,
+            display=display, verbosity=verbosity,
+        )
+    if has_display:
+        return _execute_effect(effect, config, workspace_scope, display=display)
+    return _execute_effect(effect, config, workspace_scope)
 
 
 def _invoke_execute_effect_with_optional_display(  # noqa: PLR0913
@@ -517,32 +484,11 @@ def _invoke_execute_effect_with_optional_display(  # noqa: PLR0913
     verbosity: Verbosity,
     state: PipelineState,
 ) -> Event:
-    params = signature(_execute_effect_with_optional_display).parameters
-    has_state = "state" in params
-    has_verbosity = "verbosity" in params
-
-    if has_state and has_verbosity:
-        return _execute_effect_with_optional_display(
-            effect,
-            config,
-            workspace_scope,
-            display=display,
-            verbosity=verbosity,
-            state=state,
-        )
-    if has_verbosity:
-        return _execute_effect_with_optional_display(
-            effect,
-            config,
-            workspace_scope,
-            display=display,
-            verbosity=verbosity,
-        )
     return _execute_effect_with_optional_display(
-        effect,
-        config,
-        workspace_scope,
+        effect, config, workspace_scope,
         display=display,
+        verbosity=verbosity,
+        state=state,
     )
 
 
@@ -663,6 +609,7 @@ def _run_pipeline_step(  # noqa: PLR0913
             effect=effect,
             state=state,
             pipeline_policy=policy_bundle.pipeline,
+            artifacts_policy=policy_bundle.artifacts,
             workspace_scope=workspace_scope,
             display=display,
             pipeline_subscriber=pipeline_subscriber,
@@ -690,8 +637,8 @@ def _run_pipeline_step(  # noqa: PLR0913
                 effect,
                 workspace,
                 policy_bundle.pipeline,
+                policy_bundle.artifacts,
                 registry,
-                workspace_scope,
             )
             event = _invoke_execute_effect_with_optional_display(
                 effect,
@@ -1117,8 +1064,14 @@ def run(  # noqa: PLR0912, PLR0913, PLR0915
                     _prompt_path: str | None = None
                     if effective_pipeline_subscriber is not None:
                         _prompt_path = getattr(effective_pipeline_subscriber, "_prompt_path", None)
-                    _dev_phase = policy_bundle.pipeline.phases.get("development")
-                    _dev_para = _dev_phase.parallelization if _dev_phase is not None else None
+                    _dev_para = next(
+                        (
+                            p.parallelization
+                            for p in policy_bundle.pipeline.phases.values()
+                            if p.parallelization is not None
+                        ),
+                        None,
+                    )
                     _parallel_max_workers: int | None = (
                         _dev_para.max_parallel_workers if _dev_para is not None else None
                     )
@@ -1672,6 +1625,7 @@ def _handle_inline_effect(  # noqa: PLR0913
     effect: Effect,
     state: PipelineState,
     pipeline_policy: PipelinePolicy,
+    artifacts_policy: ArtifactsPolicy,
     workspace_scope: WorkspaceScope,
     display: ParallelDisplay | _LegacyConsoleDisplay | None = None,
     pipeline_subscriber: _PipelineSubscriber | None = None,
@@ -1686,7 +1640,7 @@ def _handle_inline_effect(  # noqa: PLR0913
         return new_state
 
     if isinstance(effect, PreparePromptEffect):
-        _materialize_prepared_prompt(effect, pipeline_policy, workspace_scope)
+        _materialize_prepared_prompt(effect, pipeline_policy, artifacts_policy, workspace_scope)
         prepared_state = state
         if state.phase == pipeline_policy.recovery.failed_route:
             prepared_state = _reset_phase_chain_for_recovery(state, effect.phase)
@@ -1730,6 +1684,7 @@ def _handle_inline_effect(  # noqa: PLR0913
 def _materialize_prepared_prompt(
     effect: PreparePromptEffect,
     pipeline_policy: PipelinePolicy,
+    artifacts_policy: ArtifactsPolicy,
     workspace_scope: WorkspaceScope,
 ) -> None:
     import os  # noqa: PLC0415
@@ -1744,6 +1699,7 @@ def _materialize_prepared_prompt(
         phase=effect.phase,
         workspace=workspace,
         pipeline_policy=pipeline_policy,
+        artifacts_policy=artifacts_policy,
         session_caps=SessionCapabilities.defaults_for_drain(
             _prompt_session_drain_for_phase(
                 effect.drain or resolve_phase_drain(effect.phase, pipeline_policy) or effect.phase
@@ -1758,8 +1714,8 @@ def _materialize_agent_prompt_if_needed(
     effect: Effect,
     workspace: FsWorkspace,
     pipeline_policy: PipelinePolicy,
+    artifacts_policy: ArtifactsPolicy,
     registry: _RegistryLike,
-    workspace_scope: WorkspaceScope,
 ) -> None:
     if not isinstance(effect, InvokeAgentEffect):
         return
@@ -1773,13 +1729,14 @@ def _materialize_agent_prompt_if_needed(
         phase=effect.phase,
         workspace=workspace,
         pipeline_policy=pipeline_policy,
+        artifacts_policy=artifacts_policy,
         session_caps=SessionCapabilities.defaults_for_drain(
             _prompt_session_drain_for_phase(
                 effect.drain or resolve_phase_drain(effect.phase, pipeline_policy) or effect.phase
             ),
             tool_name_prefix=tool_name_prefix,
         ),
-        workspace_root=workspace_scope.root,
+        workspace_root=workspace.root,
     )
 
 
@@ -2017,21 +1974,9 @@ def _agents_for_phase(
 
 
 def _config_drain_candidates(*, phase: str, policy_drain: str | None) -> tuple[str, ...]:
-    generic_aliases = {
-        "development_analysis": "analysis",
-        "review_analysis": "analysis",
-        "development_commit": "commit",
-        "review_commit": "commit",
-    }
-    ordered = [candidate for candidate in (policy_drain, phase) if candidate]
-    for candidate in tuple(ordered):
-        alias = generic_aliases.get(candidate)
-        if alias is not None:
-            ordered.append(alias)
-
     deduped: list[str] = []
-    for candidate in ordered:
-        if candidate not in deduped:
+    for candidate in (policy_drain, phase):
+        if candidate and candidate not in deduped:
             deduped.append(candidate)
     return tuple(deduped)
 
@@ -2139,6 +2084,8 @@ def _phase_event_after_agent_run(  # noqa: PLR0913
             Path(workspace.absolute_path(".")),
             display,
             verbosity=verbosity,
+            drain=effect.drain,
+            policy_bundle=policy_bundle,
         )
 
     if (
@@ -2166,51 +2113,75 @@ def _phase_event_after_agent_run(  # noqa: PLR0913
     return event
 
 
-def _render_phase_artifact_handoff(  # noqa: PLR0912
+def _render_phase_artifact_handoff(  # noqa: PLR0913
     phase: str,
     event: Event,
     workspace_root: Path,
     display: ParallelDisplay | _LegacyConsoleDisplay | None,
     *,
     verbosity: Verbosity = Verbosity.VERBOSE,
+    drain: str | None = None,
+    policy_bundle: PolicyBundle | None = None,
 ) -> None:
+    effective_drain = drain or phase
+    ra = (
+        build_required_artifacts(policy_bundle.artifacts).get(effective_drain)
+        if policy_bundle is not None
+        else None
+    )
+    if ra is None:
+        return
+    artifact_type = ra.artifact_type
     console_obj = _display_console(display)
+    if artifact_type.endswith("_analysis_decision"):
+        render_analysis_decision(workspace_root, phase, console_obj)
+        return
+    if event == PipelineEvent.AGENT_SUCCESS:
+        _render_success_artifact(
+            artifact_type, phase, workspace_root, console_obj, display, verbosity, ra
+        )
 
-    if phase == "planning" and event == PipelineEvent.AGENT_SUCCESS:
+
+def _render_success_artifact(  # noqa: PLR0913
+    artifact_type: str,
+    phase: str,
+    workspace_root: Path,
+    console_obj: Console,
+    display: ParallelDisplay | _LegacyConsoleDisplay | None,
+    verbosity: Verbosity,
+    ra: RequiredArtifact,
+) -> None:
+    if artifact_type == "plan":
         render_plan_artifact(workspace_root, console_obj)
         if verbosity != Verbosity.QUIET and hasattr(display, "emit_phase_close"):
             with suppress(Exception):
                 from ralph.display.artifact_reader import read_plan_artifact  # noqa: PLC0415
 
                 plan = read_plan_artifact(workspace_root)
-                if plan is not None:
-                    produced = (
-                        f"plan: {plan.total_steps} step(s), {len(plan.risks_mitigations)} risk(s)"
-                    )
-                else:
-                    produced = "plan: (no plan artifact on disk)"
+                produced = (
+                    f"plan: {plan.total_steps} step(s), {len(plan.risks_mitigations)} risk(s)"
+                    if plan is not None
+                    else "plan: (no plan artifact on disk)"
+                )
                 cast("ParallelDisplay", display).emit_phase_close(phase, produced)
-        return
-    if phase == "development" and event == PipelineEvent.AGENT_SUCCESS:
+    elif artifact_type == "development_result":
         render_development_artifact(workspace_root, console_obj)
         if verbosity != Verbosity.QUIET and hasattr(display, "emit_phase_close"):
             with suppress(Exception):
-                dev_result_path = workspace_root / DEV_RESULT_ARTIFACT_JSON_PATH
                 produced = (
-                    "development: result artifact present"
-                    if dev_result_path.exists()
-                    else "development: no result artifact"
+                    f"{phase}: result artifact present"
+                    if (workspace_root / ra.json_path).exists()
+                    else f"{phase}: no result artifact"
                 )
                 cast("ParallelDisplay", display).emit_phase_close(phase, produced)
-        return
-    if phase == "review" and event == PipelineEvent.AGENT_SUCCESS:
+    elif artifact_type == "issues":
         render_review_artifact(workspace_root, console_obj)
         if verbosity != Verbosity.QUIET and hasattr(display, "emit_phase_close"):
             with suppress(Exception):
                 import json  # noqa: PLC0415
 
-                issues_path = workspace_root / ".agent" / "artifacts" / "issues.json"
                 issue_count = 0
+                issues_path = workspace_root / ra.json_path
                 if issues_path.exists():
                     try:
                         issues_data = json.loads(issues_path.read_text(encoding="utf-8"))  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
@@ -2229,17 +2200,13 @@ def _render_phase_artifact_handoff(  # noqa: PLR0912
                     except Exception:
                         pass
                 cast("ParallelDisplay", display).emit_phase_close(
-                    phase, f"review: {issue_count} issue(s)"
+                    phase, f"{phase}: {issue_count} issue(s)"
                 )
-        return
-    if phase == "fix" and event == PipelineEvent.AGENT_SUCCESS:
+    elif artifact_type == "fix_result":
         render_fix_artifact(workspace_root, console_obj)
         if verbosity != Verbosity.QUIET and hasattr(display, "emit_phase_close"):
             with suppress(Exception):
-                cast("ParallelDisplay", display).emit_phase_close(phase, "fix: applied")
-        return
-    if phase in {"development_analysis", "review_analysis"}:
-        render_analysis_decision(workspace_root, phase, console_obj)
+                cast("ParallelDisplay", display).emit_phase_close(phase, f"{phase}: applied")
 
 
 def _commit_effect(workspace_root: Path) -> CommitEffect:
@@ -2254,6 +2221,7 @@ def _execute_effect(  # noqa: PLR0913
     display: ParallelDisplay | _LegacyConsoleDisplay | None = None,
     verbosity: Verbosity = Verbosity.VERBOSE,
     state: PipelineState | None = None,
+    policy_bundle: PolicyBundle | None = None,
 ) -> PipelineEvent:
     """Execute an effect and return the resulting event.
 
@@ -2286,6 +2254,7 @@ def _execute_effect(  # noqa: PLR0913
             display=display,
             verbosity=verbosity,
             state=state,
+            policy_bundle=policy_bundle,
         )
     if isinstance(effect, CommitEffect):
         return _execute_commit_effect(
@@ -2342,6 +2311,7 @@ def _execute_agent_effect(  # noqa: PLR0913, PLR0915
     display: ParallelDisplay | _LegacyConsoleDisplay | None = None,
     verbosity: Verbosity = Verbosity.VERBOSE,
     state: PipelineState | None = None,
+    policy_bundle: PolicyBundle | None = None,
 ) -> PipelineEvent:
     _emit_display_line(display, None, _status_text("Invoking agent", effect.agent_name, "cyan"))
     registry = deps.agent_registry.from_config(config)
@@ -2459,6 +2429,7 @@ def _execute_agent_effect(  # noqa: PLR0913, PLR0915
                 workspace,
                 effect.phase,
                 drain=effect.drain,
+                policy_bundle=policy_bundle,
             )
             bridge = start_mcp_server(
                 session,
@@ -2489,8 +2460,14 @@ def _execute_agent_effect(  # noqa: PLR0913, PLR0915
                 suspect_waiting_on_child_seconds=config.general.agent_suspect_waiting_on_child_seconds,
                 session_id=resume_session_id,
                 system_prompt_file=system_prompt_file,
-                phase=str(effect.phase),
                 waiting_listener=_waiting_listener,
+                required_artifact=(
+                    build_required_artifacts(policy_bundle.artifacts).get(
+                        effect.drain or effect.phase
+                    )
+                    if policy_bundle is not None
+                    else None
+                ),
             )
             output_lines = deps.invoke_agent(agent_config, attempt_prompt_file, options=options)
             if _verbosity_rank(verbosity) >= _VERBOSITY_RANK[Verbosity.NORMAL]:
@@ -2700,6 +2677,7 @@ def _clear_phase_output_artifacts(
     phase: str,
     *,
     drain: str | None = None,
+    policy_bundle: PolicyBundle | None = None,
 ) -> None:
     """Remove stale per-phase artifacts before invoking an agent.
 
@@ -2708,33 +2686,32 @@ def _clear_phase_output_artifacts(
     prior interrupted run. Cleanup keys off the active drain when available so
     custom phase names still clear the correct per-drain artifacts.
     """
-    for path in _phase_output_artifact_paths(phase, drain=drain):
+    for path in _phase_output_artifact_paths(phase, drain=drain, policy_bundle=policy_bundle):
         workspace.remove(path)
 
 
-def _phase_output_artifact_paths(phase: str, *, drain: str | None = None) -> tuple[str, ...]:
-    artifact_paths_by_drain = {
-        "development": (
-            DEV_RESULT_ARTIFACT_JSON_PATH,
-            ".agent/artifacts/parallel_development_summary.json",
-            ".agent/DEVELOPMENT_RESULT.md",
-        ),
-        "development_analysis": (
-            DEV_ANALYSIS_DECISION_JSON_PATH,
-            ".agent/DEVELOPMENT_ANALYSIS_DECISION.md",
-        ),
-        "review": (ISSUES_ARTIFACT_JSON_PATH, ".agent/ISSUES.md"),
-        "review_analysis": (
-            REVIEW_ANALYSIS_DECISION_JSON_PATH,
-            ".agent/REVIEW_ANALYSIS_DECISION.md",
-        ),
-        "fix": (FIX_RESULT_ARTIFACT_JSON_PATH, ".agent/FIX_RESULT.md"),
-        "development_commit": (COMMIT_MESSAGE_ARTIFACT,),
-        "review_commit": (COMMIT_MESSAGE_ARTIFACT,),
-    }
-    if drain is not None and drain in artifact_paths_by_drain:
-        return artifact_paths_by_drain[drain]
-    return artifact_paths_by_drain.get(phase, ())
+def _phase_output_artifact_paths(
+    phase: str, *, drain: str | None = None, policy_bundle: PolicyBundle | None = None
+) -> tuple[str, ...]:
+    paths: list[str] = []
+    effective_drain = drain or phase
+    ra = (
+        build_required_artifacts(policy_bundle.artifacts).get(effective_drain)
+        if policy_bundle is not None
+        else None
+    )
+    if ra is not None:
+        paths.append(ra.json_path)
+        if ra.markdown_path is not None:
+            paths.append(ra.markdown_path)
+    if policy_bundle is not None:
+        phase_def = policy_bundle.pipeline.phases.get(phase)
+        if phase_def is not None:
+            if phase_def.parallelization is not None:
+                paths.append(".agent/artifacts/parallel_development_summary.json")
+            if phase_def.role == "commit" and ra is None:
+                paths.append(COMMIT_MESSAGE_ARTIFACT)
+    return tuple(paths)
 
 
 def _default_mcp_capabilities_for_phase(phase: str) -> set[str]:

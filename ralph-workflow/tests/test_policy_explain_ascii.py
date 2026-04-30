@@ -108,8 +108,8 @@ class TestRenderExplanationAscii:
         explanation = explain_policy(bundle)
         output = render_explanation_ascii(explanation)
 
-        # Fanout annotation format: [fanout: max_workers=N, max_units=M]
-        assert "[fanout:" in output
+        # Fanout annotation format: >>> FAN_OUT (max_workers=N, max_units=M) >>>
+        assert ">>> FAN_OUT" in output
         # Should mention development phase in context of fanout
         assert "development" in output
 
@@ -342,6 +342,36 @@ class TestRenderExplanationAscii:
             "Explanation: phase 'review' bypasses to 'review_commit' "
             "when the configured outcome is 'review_clean'."
         ) in output
+
+
+class TestDefaultPolicyAsciiSnapshot:
+    """Snapshot test locking down the ASCII output for the default pipeline policy.
+
+    To regenerate the fixture:
+        uv run --directory ralph-workflow python -c "
+        from ralph.policy.loader import load_policy
+        from ralph.policy.explain import explain_policy
+        from ralph.policy.render import render_explanation_ascii
+        from pathlib import Path
+        b = load_policy(Path('ralph/policy/defaults'))
+        print(render_explanation_ascii(explain_policy(b)))
+        " > tests/fixtures/policy_explain_default.txt
+    """
+
+    _FIXTURE = Path(__file__).parent / "fixtures" / "policy_explain_default.txt"
+
+    def test_default_ascii_matches_fixture(self) -> None:
+        """Default policy ASCII diagram must match the committed fixture exactly."""
+        policy_dir = _get_default_policy_path()
+        bundle = load_policy(policy_dir)
+        explanation = explain_policy(bundle)
+        actual = render_explanation_ascii(explanation)
+        expected = self._FIXTURE.read_text().rstrip("\n")
+        assert actual == expected, (
+            "Default policy ASCII diagram has changed. "
+            "If the change is intentional, regenerate the fixture using the "
+            "instructions in the class docstring."
+        )
 
 
 class TestVerificationAsciiAnnotation:

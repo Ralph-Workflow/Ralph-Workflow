@@ -12,6 +12,8 @@ import pytest
 
 from ralph.interrupt.controller import INTERRUPT_EXIT_CODE
 
+pytestmark = pytest.mark.subprocess_e2e
+
 PYTHON = sys.executable
 REPO_ROOT = Path(__file__).resolve().parents[2]
 _STUBBORN_CHILD = (

@@ -11,6 +11,7 @@ from ralph.policy.models import (
     AgentChainConfig,
     AgentDrainConfig,
     AgentsPolicy,
+    ArtifactsPolicy,
     PhaseDefinition,
     PhaseTransition,
     PipelinePolicy,
@@ -43,7 +44,7 @@ def _policy_bundle() -> SimpleNamespace:
         entry_phase="planning",
         terminal_phase="complete",
     )
-    return SimpleNamespace(agents=agents, pipeline=pipeline)
+    return SimpleNamespace(agents=agents, pipeline=pipeline, artifacts=ArtifactsPolicy())
 
 
 def test_run_completes_in_serial_mode_without_fan_out(

@@ -59,20 +59,6 @@ def resolve_next_phase(
     terminal_states = pipeline_policy.terminal_states()
 
     if target in terminal_states:
-        # Emit a deprecation warning for the legacy pseudo-phases when a real
-        # terminal phase is declared, so users can migrate their configs.
-        if target in ("failed", "complete") and any(
-            defn.role == "terminal" for defn in pipeline_policy.phases.values()
-        ):
-            from loguru import logger  # noqa: PLC0415
-
-            logger.warning(
-                "Transition target '{}' from phase '{}' uses a legacy pseudo-phase token. "
-                "Declare a terminal phase with role='terminal' and reference it directly. "
-                "See docs/sphinx/policy-driven-overhaul-migration.md.",
-                target,
-                current_phase,
-            )
         return target
 
     if target not in pipeline_policy.phases:

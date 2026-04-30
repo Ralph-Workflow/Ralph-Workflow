@@ -7,9 +7,9 @@ tool. Explicit completion and artifact presence are separate signals; the
 explicit-complete flag is never auto-set just because a phase has no required
 artifact entry.
 
-Phases without a required artifact entry in REQUIRED_ARTIFACTS return
-required_artifact_present=False. OpenCode agents running such phases must still
-call declare_complete explicitly rather than relying on implicit success.
+Phases without a required artifact return required_artifact_present=False.
+OpenCode agents running such phases must still call declare_complete explicitly
+rather than relying on implicit success.
 """
 
 from __future__ import annotations
@@ -19,6 +19,8 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+    from ralph.phases.required_artifacts import RequiredArtifact
 
 _EXPLICIT_COMPLETION_MARKER = "Task declared complete:"
 
@@ -59,8 +61,9 @@ def extract_explicit_completion(raw_output: list[str]) -> bool:
 
 def evaluate_completion(
     workspace: Path,
-    phase: str,
     raw_output: list[str] | None = None,
+    *,
+    required_artifact: RequiredArtifact | None = None,
 ) -> CompletionSignals:
     """Check whether the agent run produced a required artifact or explicit completion.
 
@@ -73,16 +76,14 @@ def evaluate_completion(
 
     Args:
         workspace: Workspace root path.
-        phase: Pipeline phase name to look up.
         raw_output: Raw NDJSON lines from agent stdout for explicit-completion detection.
+        required_artifact: Policy-derived artifact metadata.
 
     Returns:
         CompletionSignals reflecting current artifact state and explicit completion.
     """
-    from ralph.phases.required_artifacts import REQUIRED_ARTIFACTS  # noqa: PLC0415
-
     explicit = extract_explicit_completion(raw_output or [])
-    ra = REQUIRED_ARTIFACTS.get(phase)
+    ra = required_artifact
     if ra is None:
         return CompletionSignals(
             explicit_complete=explicit,

@@ -442,6 +442,13 @@ ralph.phases.development
    :members:
    :show-inheritance:
 
+ralph.phases.execution
+~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.phases.execution
+   :members:
+   :show-inheritance:
+
 ralph.phases.fix
 ~~~~~~~~~~~~~~~~
 

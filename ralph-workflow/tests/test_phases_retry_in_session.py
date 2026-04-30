@@ -2,14 +2,34 @@
 
 from __future__ import annotations
 
+import tempfile
+from pathlib import Path
 from unittest.mock import MagicMock
 
+from ralph.phases import PhaseContext
 from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.events import PhaseFailureEvent, PipelineEvent
 from ralph.pipeline.reducer import reduce as reducer_reduce
 from ralph.pipeline.state import AgentChainState, PipelineState
+from ralph.policy.loader import load_policy
 from ralph.policy.models import PhaseDefinition, PhaseTransition, PipelinePolicy
 from ralph.recovery.controller import RecoveryController
+
+
+def _default_policy_context(workspace=None) -> PhaseContext:
+    with tempfile.TemporaryDirectory() as tmp:
+        policy = load_policy(Path(tmp) / ".agent")
+    ws = workspace if workspace is not None else MagicMock()
+    if workspace is None:
+        ws.exists.return_value = False
+    return PhaseContext.construct(
+        workspace=ws,
+        registry=object(),
+        chain_manager=object(),
+        pipeline_policy=policy.pipeline,
+        artifacts_policy=policy.artifacts,
+        agents_policy=object(),
+    )
 
 
 def _state_with_session(phase: str = "development_analysis") -> PipelineState:
@@ -166,6 +186,12 @@ def _minimal_analysis_policy() -> PipelinePolicy:
                 role="analysis",
                 transitions=PhaseTransition(on_success="complete"),
             ),
+            "complete": PhaseDefinition(
+                drain="complete",
+                role="terminal",
+                terminal_outcome="success",
+                transitions=PhaseTransition(on_success="complete"),
+            ),
         },
         entry_phase="development_analysis",
     )
@@ -208,39 +234,42 @@ class TestPhaseHandlerRetryInSessionFlags:
     """Phase handlers must emit retry_in_session=True for missing artifact failures."""
 
     def test_development_missing_planning_artifact_is_retry_in_session(self) -> None:
-        from ralph.phases.development import handle_development  # noqa: PLC0415
+        from ralph.phases.execution import handle_execution_phase  # noqa: PLC0415
 
-        effect = MagicMock(spec=InvokeAgentEffect)
-        ctx = MagicMock()
-        ctx.workspace.exists.return_value = False
+        effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="dev.txt")
+        ctx = _default_policy_context()
 
-        events = handle_development(effect, ctx)
+        events = handle_execution_phase(effect, ctx)
 
         failure_events = [e for e in events if isinstance(e, PhaseFailureEvent)]
         assert len(failure_events) == 1
         assert failure_events[0].retry_in_session is True
 
     def test_development_analysis_missing_artifact_is_retry_in_session(self) -> None:
-        from ralph.phases.development import handle_development_analysis  # noqa: PLC0415
+        from ralph.phases.analysis import handle_generic_analysis_phase  # noqa: PLC0415
 
         effect = MagicMock(spec=InvokeAgentEffect)
+        effect.phase = "development_analysis"
+        effect.drain = None
         ctx = MagicMock()
         ctx.workspace.exists.return_value = False
 
-        events = handle_development_analysis(effect, ctx)
+        events = handle_generic_analysis_phase(effect, ctx)
 
         failure_events = [e for e in events if isinstance(e, PhaseFailureEvent)]
         assert len(failure_events) == 1
         assert failure_events[0].retry_in_session is True
 
     def test_review_analysis_missing_artifact_is_retry_in_session(self) -> None:
-        from ralph.phases.review import handle_review_analysis  # noqa: PLC0415
+        from ralph.phases.analysis import handle_generic_analysis_phase  # noqa: PLC0415
 
         effect = MagicMock(spec=InvokeAgentEffect)
+        effect.phase = "review_analysis"
+        effect.drain = None
         ctx = MagicMock()
         ctx.workspace.exists.return_value = False
 
-        events = handle_review_analysis(effect, ctx)
+        events = handle_generic_analysis_phase(effect, ctx)
 
         failure_events = [e for e in events if isinstance(e, PhaseFailureEvent)]
         assert len(failure_events) == 1
@@ -260,26 +289,12 @@ class TestPhaseHandlerRetryInSessionFlags:
         assert failure_events[0].retry_in_session is True
 
     def test_planning_missing_plan_artifact_is_retry_in_session(self) -> None:
-        from ralph.phases.planning import handle_planning  # noqa: PLC0415
+        from ralph.phases.execution import handle_execution_phase  # noqa: PLC0415
 
-        effect = MagicMock(spec=InvokeAgentEffect)
-        ctx = MagicMock()
-        ctx.workspace.exists.return_value = False
+        effect = InvokeAgentEffect(agent_name="planner", phase="planning", prompt_file="plan.txt")
+        ctx = _default_policy_context()
 
-        events = handle_planning(effect, ctx)
-
-        failure_events = [e for e in events if isinstance(e, PhaseFailureEvent)]
-        assert len(failure_events) == 1
-        assert failure_events[0].retry_in_session is True
-
-    def test_fix_missing_fix_result_artifact_is_retry_in_session(self) -> None:
-        from ralph.phases.fix import handle_fix  # noqa: PLC0415
-
-        effect = MagicMock(spec=InvokeAgentEffect)
-        ctx = MagicMock()
-        ctx.workspace.exists.return_value = False
-
-        events = handle_fix(effect, ctx)
+        events = handle_execution_phase(effect, ctx)
 
         failure_events = [e for e in events if isinstance(e, PhaseFailureEvent)]
         assert len(failure_events) == 1

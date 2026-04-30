@@ -59,6 +59,7 @@ def _render_development_analysis(
             phase="development_analysis",
             workspace=workspace,
             pipeline_policy=policy.pipeline,
+            artifacts_policy=policy.artifacts,
             session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT),
             workspace_root=tmp_path,
         )
@@ -79,6 +80,7 @@ def _render_review_analysis(
             phase="review_analysis",
             workspace=workspace,
             pipeline_policy=policy.pipeline,
+            artifacts_policy=policy.artifacts,
             session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.REVIEW),
             workspace_root=tmp_path,
         )

@@ -268,12 +268,12 @@ class TestCreateInitialState:
         assert chain is not None
         assert chain.agents == ["codex"]
 
-    def test_initial_state_maps_analysis_phases_to_config_analysis_drain(self) -> None:
+    def test_initial_state_maps_analysis_phases_to_config_drain_by_full_name(self) -> None:
         config = MagicMock()
         config.general.developer_iters = DEVELOPER_ITERATIONS
         config.general.reviewer_reviews = REVIEWER_PASSES
         config.agent_chains = {"analysis_chain": ["config-analysis-agent"]}
-        config.agent_drains = {"analysis": "analysis_chain"}
+        config.agent_drains = {"development_analysis": "analysis_chain"}
         agents_policy = AgentsPolicy(
             agent_chains={"planner_chain": AgentChainConfig(agents=["claude"])},
             agent_drains={"planning": AgentDrainConfig(chain="planner_chain")},
@@ -501,12 +501,12 @@ class TestDetermineEffect:
         assert isinstance(effect, InvokeAgentEffect)
         assert effect.agent_name == "claude"
 
-    def test_review_analysis_phase_uses_config_analysis_binding(self) -> None:
+    def test_review_analysis_phase_uses_config_drain_by_full_name(self) -> None:
         bundle = _load_default_policy_bundle()
         state = PipelineState(phase="review_analysis")
         config = _config_with_agents(
             agent_chains={"analysis_chain": ["analysis-agent"]},
-            agent_drains={"analysis": "analysis_chain"},
+            agent_drains={"review_analysis": "analysis_chain"},
         )
 
         effect = runner_module._determine_effect_from_policy(
@@ -661,7 +661,7 @@ class TestDetermineEffect:
         )
         config = MagicMock()
         config.agent_chains = {"commit_chain": ["ccs/mm"]}
-        config.agent_drains = {"commit": "commit_chain"}
+        config.agent_drains = {"development_commit": "commit_chain"}
 
         effect = runner_module._determine_effect_from_policy(
             state,
@@ -682,6 +682,7 @@ class TestDetermineEffect:
             effect=PreparePromptEffect(phase="development", iteration=0, drain="development"),
             state=state,
             pipeline_policy=bundle.pipeline,
+            artifacts_policy=bundle.artifacts,
             workspace_scope=WorkspaceScope("/tmp/worktree"),
         )
 
@@ -691,9 +692,11 @@ class TestDetermineEffect:
 
 
 def test_phase_output_artifact_paths_use_policy_drains_for_custom_phases() -> None:
+    policy_bundle = _load_default_policy_bundle()
     assert runner_module._phase_output_artifact_paths(
         "feature_analysis",
         drain="development_analysis",
+        policy_bundle=policy_bundle,
     ) == (
         ".agent/artifacts/development_analysis_decision.json",
         ".agent/DEVELOPMENT_ANALYSIS_DECISION.md",
@@ -701,6 +704,7 @@ def test_phase_output_artifact_paths_use_policy_drains_for_custom_phases() -> No
     assert runner_module._phase_output_artifact_paths(
         "feature_commit",
         drain="development_commit",
+        policy_bundle=policy_bundle,
     ) == (
         ".agent/tmp/commit_message.json",
     )
@@ -733,12 +737,13 @@ def test_materialize_agent_prompt_if_needed_prefixes_claude_tools(monkeypatch: M
                 transport=AgentTransport.CLAUDE,
             )
 
+    bundle = _load_default_policy_bundle()
     runner_module._materialize_agent_prompt_if_needed(
         InvokeAgentEffect(agent_name="planner", phase="planning", prompt_file="planning.txt"),
-        MagicMock(),
-        _load_default_policy_bundle().pipeline,
+        MagicMock(spec=["root"]),
+        bundle.pipeline,
+        bundle.artifacts,
         Registry(),
-        WorkspaceScope("/tmp/worktree"),
     )
 
     session_caps = cast("SessionCapabilities", captured["session_caps"])
@@ -1558,6 +1563,7 @@ class TestExecuteAgentEffect:
                 agent_registry=runner_module.AgentRegistry,
             ),
             WorkspaceScope(tmp_path),
+            policy_bundle=_load_default_policy_bundle(),
         )
 
         assert result == PipelineEvent.AGENT_SUCCESS
@@ -2017,7 +2023,7 @@ def test_determine_effect_invokes_commit_agent_when_agent_not_yet_invoked(
     workspace_scope = WorkspaceScope(root=tmp_path, allowed_roots=[tmp_path])
     config = _config_with_agents(
         agent_chains={"commit_chain": ["commit-agent"]},
-        agent_drains={"commit": "commit_chain"},
+        agent_drains={"development_commit": "commit_chain"},
     )
 
     effect = runner_module._determine_effect_from_policy(
@@ -2180,10 +2186,7 @@ class TestPhaseEventAfterAgentRun:
         output = io.StringIO()
         console = Console(file=output, force_terminal=False, color_system=None, width=120)
         display = ParallelDisplay(console=console, env={})
-        policy_bundle = MagicMock()
-        policy_bundle.pipeline = MagicMock()
-        policy_bundle.agents = MagicMock()
-        policy_bundle.artifacts = MagicMock()
+        policy_bundle = _load_default_policy_bundle()
         workspace = MagicMock()
         workspace.absolute_path.side_effect = lambda path: str(tmp_path / path)
 

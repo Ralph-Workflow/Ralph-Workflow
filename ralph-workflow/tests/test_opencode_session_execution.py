@@ -37,6 +37,7 @@ from ralph.agents.invoke import (
 from ralph.agents.registry import _builtin_agents
 from ralph.config.enums import AgentTransport, JsonParserType
 from ralph.config.models import AgentConfig, UnifiedConfig
+from ralph.phases.required_artifacts import RequiredArtifact
 from ralph.pipeline import runner as runner_module
 from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.events import PipelineEvent
@@ -366,7 +367,6 @@ class TestRunnerSessionContinuation:
         )
 
         seen_session_ids: list[str | None] = []
-        seen_phases: list[str | None] = []
 
         def fake_invoke_agent(
             config: AgentConfig,
@@ -376,7 +376,6 @@ class TestRunnerSessionContinuation:
         ) -> Iterator[object]:
             del config, prompt_file
             seen_session_ids.append(options.session_id if options is not None else None)
-            seen_phases.append(options.phase if options is not None else None)
             if len(seen_session_ids) == 1:
 
                 def _first() -> Iterator[object]:
@@ -400,9 +399,6 @@ class TestRunnerSessionContinuation:
         assert result == PipelineEvent.AGENT_SUCCESS
         assert seen_session_ids == [None, "sess-1"], (
             f"Expected [None, 'sess-1'], got {seen_session_ids}"
-        )
-        assert seen_phases[1] == "development", (
-            f"Phase must be propagated on retry; got {seen_phases[1]!r}"
         )
 
     def test_opencode_resumable_exit_no_more_attempts_returns_failure(
@@ -585,7 +581,6 @@ class TestCheckProcessResultCompletionSeam:
             _CompletionCheckOptions(
                 execution_strategy=strategy,
                 workspace_path=tmp_path,
-                phase="development",
             ),
         )
         # No exception raised means explicit_complete=True → TERMINAL_COMPLETE
@@ -608,7 +603,13 @@ class TestCheckProcessResultCompletionSeam:
             _CompletionCheckOptions(
                 execution_strategy=strategy,
                 workspace_path=tmp_path,
-                phase="development",
+                required_artifact=RequiredArtifact(
+                    phase="development",
+                    artifact_type="development_result",
+                    json_path=".agent/artifacts/development_result.json",
+                    markdown_path=None,
+                    normalizer=None,
+                ),
             ),
         )
         # No exception raised means required_artifact_present=True → TERMINAL_COMPLETE
@@ -628,7 +629,13 @@ class TestCheckProcessResultCompletionSeam:
                 _CompletionCheckOptions(
                     execution_strategy=strategy,
                     workspace_path=tmp_path,
-                    phase="development",  # has required artifact but file doesn't exist
+                    required_artifact=RequiredArtifact(
+                        phase="development",
+                        artifact_type="development_result",
+                        json_path=".agent/artifacts/development_result.json",
+                        markdown_path=None,
+                        normalizer=None,
+                    ),
                     policy=TimeoutPolicy(idle_timeout_seconds=None, parent_exit_grace_seconds=0.0),
                 ),
             )
@@ -927,7 +934,7 @@ class TestCheckProcessResultWaitsForLiveChildren:
         probe = FakeLivenessProbe(active=True)  # Always active
 
         # Fake evaluate_completion to always return no signals
-        def _fake_evaluate_completion(workspace, phase, raw_output):
+        def _fake_evaluate_completion(workspace, raw_output, *, required_artifact=None):
             return CompletionSignals(False, False, ())
 
         monkeypatch.setattr(
@@ -962,8 +969,14 @@ class TestCheckProcessResultWaitsForLiveChildren:
                 _CompletionCheckOptions(
                     execution_strategy=strategy,
                     workspace_path=tmp_path,
-                    phase="development",
                     liveness_probe=probe,
+                    required_artifact=RequiredArtifact(
+                        phase="development",
+                        artifact_type="development_result",
+                        json_path=".agent/artifacts/development_result.json",
+                        markdown_path=None,
+                        normalizer=None,
+                    ),
                     policy=TimeoutPolicy(
                         idle_timeout_seconds=None,
                         descendant_wait_timeout_seconds=0.1,
@@ -979,7 +992,7 @@ class TestCheckProcessResultWaitsForLiveChildren:
 
         evaluate_calls = [0]
 
-        def _fake_evaluate_completion(workspace, phase, raw_output):
+        def _fake_evaluate_completion(workspace, raw_output, *, required_artifact=None):
             evaluate_calls[0] += 1
             return CompletionSignals(False, False, ())
 
@@ -1009,8 +1022,14 @@ class TestCheckProcessResultWaitsForLiveChildren:
                 _CompletionCheckOptions(
                     execution_strategy=strategy,
                     workspace_path=tmp_path,
-                    phase="development",
                     liveness_probe=probe,
+                    required_artifact=RequiredArtifact(
+                        phase="development",
+                        artifact_type="development_result",
+                        json_path=".agent/artifacts/development_result.json",
+                        markdown_path=None,
+                        normalizer=None,
+                    ),
                     policy=TimeoutPolicy(
                         idle_timeout_seconds=None,
                         parent_exit_grace_seconds=1.0,
@@ -1034,7 +1053,7 @@ class TestCheckProcessResultWaitsForLiveChildren:
         """
         probe = FakeLivenessProbe(active=True)  # Always active
 
-        def _fake_evaluate_completion(workspace, phase, raw_output):
+        def _fake_evaluate_completion(workspace, raw_output, *, required_artifact=None):
             return CompletionSignals(False, False, ())
 
         monkeypatch.setattr(
@@ -1065,7 +1084,6 @@ class TestCheckProcessResultWaitsForLiveChildren:
                 _CompletionCheckOptions(
                     execution_strategy=strategy,
                     workspace_path=tmp_path,
-                    phase="development",
                     liveness_probe=probe,
                     policy=TimeoutPolicy(
                         idle_timeout_seconds=None,
@@ -1105,7 +1123,7 @@ class TestCheckProcessResultWaitsForLiveChildren:
         call_count = [0]
         _artifact_appears_on = 3  # initial check + first loop poll + second loop poll
 
-        def _fake_evaluate_completion(workspace, phase, raw_output):
+        def _fake_evaluate_completion(workspace, raw_output, *, required_artifact=None):
             call_count[0] += 1
             if call_count[0] >= _artifact_appears_on:
                 # Simulate artifact appearing between polls 1 and 2
@@ -1131,7 +1149,6 @@ class TestCheckProcessResultWaitsForLiveChildren:
                 _CompletionCheckOptions(
                     execution_strategy=strategy,
                     workspace_path=tmp_path,
-                    phase="development",
                     liveness_probe=probe,
                     policy=TimeoutPolicy(
                         idle_timeout_seconds=None,
@@ -1155,7 +1172,7 @@ class TestCheckProcessResultWaitsForLiveChildren:
         call_count = [0]
         _artifact_appears_on = 3  # initial check + first loop poll + second loop poll
 
-        def _fake_evaluate_completion(workspace, phase, raw_output):
+        def _fake_evaluate_completion(workspace, raw_output, *, required_artifact=None):
             call_count[0] += 1
             if call_count[0] >= _artifact_appears_on:
                 # Simulate explicit_complete appearing between polls
@@ -1178,7 +1195,6 @@ class TestCheckProcessResultWaitsForLiveChildren:
                 _CompletionCheckOptions(
                     execution_strategy=strategy,
                     workspace_path=tmp_path,
-                    phase="development",
                     liveness_probe=probe,
                     policy=TimeoutPolicy(
                         idle_timeout_seconds=None,
@@ -1214,7 +1230,9 @@ class TestCheckProcessResultWaitsForLiveChildren:
         call_count = [0]
         _artifact_appears_on = 3  # initial check + first loop poll + second loop poll
 
-        def _fake_evaluate_completion_with_artifact(workspace, phase, raw_output):
+        def _fake_evaluate_completion_with_artifact(
+            workspace, raw_output, *, required_artifact=None
+        ):
             call_count[0] += 1
             if call_count[0] >= _artifact_appears_on:
                 # After descendants finish, artifact appears
@@ -1240,7 +1258,6 @@ class TestCheckProcessResultWaitsForLiveChildren:
                 _CompletionCheckOptions(
                     execution_strategy=strategy,
                     workspace_path=tmp_path,
-                    phase="development",
                     liveness_probe=probe,
                     policy=TimeoutPolicy(
                         idle_timeout_seconds=None,
@@ -1265,7 +1282,7 @@ class TestCheckProcessResultWaitsForLiveChildren:
         call_count = [0]
         _artifact_appears_on = 2  # first loop poll + final recheck
 
-        def _fake_evaluate_completion(workspace, phase, raw_output):
+        def _fake_evaluate_completion(workspace, raw_output, *, required_artifact=None):
             call_count[0] += 1
             # First poll (inside wait loop): no completion
             # Second call (final recheck after deadline): completion appears!
@@ -1293,7 +1310,6 @@ class TestCheckProcessResultWaitsForLiveChildren:
                 _CompletionCheckOptions(
                     execution_strategy=strategy,
                     workspace_path=tmp_path,
-                    phase="development",
                     liveness_probe=probe,
                     policy=TimeoutPolicy(
                         idle_timeout_seconds=None,
@@ -1322,7 +1338,7 @@ class TestCheckProcessResultWaitsForLiveChildren:
 
         call_count = [0]
 
-        def _fake_evaluate_completion(workspace, phase, raw_output):
+        def _fake_evaluate_completion(workspace, raw_output, *, required_artifact=None):
             call_count[0] += 1
             if call_count[0] == 1:
                 return CompletionSignals(False, False, ())
@@ -1348,7 +1364,6 @@ class TestCheckProcessResultWaitsForLiveChildren:
                 _CompletionCheckOptions(
                     execution_strategy=strategy,
                     workspace_path=tmp_path,
-                    phase="development",
                     liveness_probe=probe,
                     policy=TimeoutPolicy(
                         idle_timeout_seconds=None,
@@ -1367,7 +1382,7 @@ class TestCheckProcessResultWaitsForLiveChildren:
         strategy = OpenCodeExecutionStrategy()
         handle = _FakeHandle(returncode=0, has_descendants=False)
 
-        def _fake_evaluate_completion(workspace, phase, raw_output):
+        def _fake_evaluate_completion(workspace, raw_output, *, required_artifact=None):
             return CompletionSignals(False, False, ())
 
         monkeypatch.setattr(
@@ -1391,8 +1406,14 @@ class TestCheckProcessResultWaitsForLiveChildren:
                 _CompletionCheckOptions(
                     execution_strategy=strategy,
                     workspace_path=tmp_path,
-                    phase="development",
                     liveness_probe=probe,
+                    required_artifact=RequiredArtifact(
+                        phase="development",
+                        artifact_type="development_result",
+                        json_path=".agent/artifacts/development_result.json",
+                        markdown_path=None,
+                        normalizer=None,
+                    ),
                     policy=TimeoutPolicy(
                         idle_timeout_seconds=None,
                         parent_exit_grace_seconds=1.0,
@@ -1424,7 +1445,7 @@ class TestCheckProcessResultWaitsForLiveChildren:
         strategy = OpenCodeExecutionStrategy()
         handle = _FakeHandle(returncode=0, has_descendants=False)
 
-        def _fake_evaluate_completion(workspace, phase, raw_output):
+        def _fake_evaluate_completion(workspace, raw_output, *, required_artifact=None):
             return CompletionSignals(False, False, ())
 
         monkeypatch.setattr(
@@ -1451,8 +1472,14 @@ class TestCheckProcessResultWaitsForLiveChildren:
                 _CompletionCheckOptions(
                     execution_strategy=strategy,
                     workspace_path=tmp_path,
-                    phase="development",
                     liveness_probe=probe,
+                    required_artifact=RequiredArtifact(
+                        phase="development",
+                        artifact_type="development_result",
+                        json_path=".agent/artifacts/development_result.json",
+                        markdown_path=None,
+                        normalizer=None,
+                    ),
                     policy=TimeoutPolicy(
                         idle_timeout_seconds=None,
                         parent_exit_grace_seconds=1.0,

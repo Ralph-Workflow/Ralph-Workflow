@@ -1619,6 +1619,7 @@ class TestValidatePolicyCompletenessReachability:
             },
             entry_phase="planning",
             terminal_phase="complete",
+            recovery=RecoveryPolicy(failed_route="complete"),
         )
         bundle = PolicyBundle(
             agents=agents, pipeline=pipeline, artifacts=ArtifactsPolicy(artifacts={})
@@ -1644,6 +1645,7 @@ class TestValidatePolicyCompletenessReachability:
             },
             entry_phase="planning",
             terminal_phase="complete",
+            recovery=RecoveryPolicy(failed_route="complete"),
         )
         bundle = PolicyBundle(
             agents=agents, pipeline=pipeline, artifacts=ArtifactsPolicy(artifacts={})
@@ -1673,6 +1675,7 @@ class TestValidatePolicyCompletenessReachability:
             },
             entry_phase="planning",
             terminal_phase="complete",
+            recovery=RecoveryPolicy(failed_route="complete"),
         )
         bundle = PolicyBundle(
             agents=agents, pipeline=pipeline, artifacts=ArtifactsPolicy(artifacts={})
@@ -1705,6 +1708,7 @@ class TestValidatePolicyCompletenessReachability:
             },
             entry_phase="execution",
             terminal_phase="complete",
+            recovery=RecoveryPolicy(failed_route="complete"),
         )
         bundle = PolicyBundle(
             agents=agents, pipeline=pipeline, artifacts=ArtifactsPolicy(artifacts={})
@@ -1742,6 +1746,7 @@ class TestValidatePolicyCompletenessReachability:
             loop_counters={"development_analysis_iteration": LoopCounterConfig(default_max=3)},
             entry_phase="analysis",
             terminal_phase="complete",
+            recovery=RecoveryPolicy(failed_route="complete"),
         )
         artifacts = ArtifactsPolicy(
             artifacts={
@@ -1776,7 +1781,7 @@ class TestValidatePolicyCompletenessReachability:
                     role="commit",
                     transitions=PhaseTransition(
                         on_success="complete",
-                        on_failure="failed",
+                        on_failure=None,
                     ),
                     commit_policy=PhaseCommitPolicy(
                         increments_counter="none",
@@ -1787,6 +1792,7 @@ class TestValidatePolicyCompletenessReachability:
             },
             entry_phase="review",
             terminal_phase="complete",
+            recovery=RecoveryPolicy(failed_route="complete"),
         )
         bundle = PolicyBundle(
             agents=agents, pipeline=pipeline, artifacts=ArtifactsPolicy(artifacts={})
@@ -1817,6 +1823,7 @@ class TestValidatePolicyCompletenessReachability:
             },
             entry_phase="planning",
             terminal_phase="complete",
+            recovery=RecoveryPolicy(failed_route="complete"),
         )
         bundle = PolicyBundle(
             agents=agents, pipeline=pipeline, artifacts=ArtifactsPolicy(artifacts={})
@@ -1867,7 +1874,7 @@ class TestValidatePostCommitRoutesCoverage:
                     role="commit",
                     transitions=PhaseTransition(
                         on_success="complete",
-                        on_failure="failed",
+                        on_failure=None,
                     ),
                     commit_policy=PhaseCommitPolicy(
                         increments_counter="cycles",
@@ -1879,6 +1886,7 @@ class TestValidatePostCommitRoutesCoverage:
             entry_phase="work",
             terminal_phase="complete",
             budget_counters={"cycles": BudgetCounterConfig(tracks_budget=True)},
+            recovery=RecoveryPolicy(failed_route="complete"),
         )
         bundle = PolicyBundle(
             agents=agents, pipeline=pipeline, artifacts=ArtifactsPolicy(artifacts={})
@@ -1904,7 +1912,7 @@ class TestValidatePostCommitRoutesCoverage:
                     role="commit",
                     transitions=PhaseTransition(
                         on_success="complete",
-                        on_failure="failed",
+                        on_failure=None,
                     ),
                     commit_policy=PhaseCommitPolicy(
                         increments_counter="cycles",
@@ -1922,6 +1930,7 @@ class TestValidatePostCommitRoutesCoverage:
                     target="work",
                 ),
             ],
+            recovery=RecoveryPolicy(failed_route="complete"),
         )
         bundle = PolicyBundle(
             agents=agents, pipeline=pipeline, artifacts=ArtifactsPolicy(artifacts={})
@@ -1943,7 +1952,7 @@ class TestValidatePostCommitRoutesCoverage:
                     role="commit",
                     transitions=PhaseTransition(
                         on_success="complete",
-                        on_failure="failed",
+                        on_failure=None,
                     ),
                     commit_policy=PhaseCommitPolicy(
                         increments_counter="cycles",
@@ -1955,6 +1964,7 @@ class TestValidatePostCommitRoutesCoverage:
             entry_phase="work",
             terminal_phase="complete",
             budget_counters={"cycles": BudgetCounterConfig(tracks_budget=False)},
+            recovery=RecoveryPolicy(failed_route="complete"),
         )
         bundle = PolicyBundle(
             agents=agents, pipeline=pipeline, artifacts=ArtifactsPolicy(artifacts={})
@@ -1996,6 +2006,7 @@ class TestValidatePolicyCompletenessVerificationRole:
             },
             entry_phase="verify",
             terminal_phase="complete",
+            recovery=RecoveryPolicy(failed_route="complete"),
         )
         bundle = PolicyBundle(agents=agents, pipeline=pipeline, artifacts=ArtifactsPolicy())
         with pytest.raises(PolicyValidationError, match="requires a verification block"):
@@ -2030,13 +2041,19 @@ class TestValidatePolicyCompletenessVerificationRole:
             },
             entry_phase="verify",
             terminal_phase="complete",
+            recovery=RecoveryPolicy(failed_route="complete"),
         )
         bundle = PolicyBundle(agents=agents, pipeline=pipeline, artifacts=ArtifactsPolicy())
         with pytest.raises(PolicyValidationError, match="nonexistent_phase"):
             validate_policy_completeness(bundle)
 
-    def test_verification_on_failure_route_failed_pseudo_accepted(self) -> None:
-        """on_failure_route to 'failed' pseudo-phase passes."""
+    def test_verification_on_failure_route_failed_undeclared_rejected(self) -> None:
+        """on_failure_route to undeclared 'failed' pseudo-phase is now rejected.
+
+        The bare 'failed' alias is no longer a valid pseudo-phase target.
+        Declare a phase with role='terminal' and terminal_outcome='failure' and
+        reference it via on_failure_route.
+        """
         agents = self._agents(["verify", "complete"])
         pipeline = PipelinePolicy(
             phases={
@@ -2054,9 +2071,11 @@ class TestValidatePolicyCompletenessVerificationRole:
             },
             entry_phase="verify",
             terminal_phase="complete",
+            recovery=RecoveryPolicy(failed_route="complete"),
         )
         bundle = PolicyBundle(agents=agents, pipeline=pipeline, artifacts=ArtifactsPolicy())
-        validate_policy_completeness(bundle)  # must not raise
+        with pytest.raises(PolicyValidationError, match="'failed' is not a declared phase"):
+            validate_policy_completeness(bundle)
 
     def test_verification_on_failure_route_legacy_pseudo_rejected(self) -> None:
         """on_failure_route to 'phase_failed' or 'exit_failure' pseudo-phases is rejected."""
@@ -2078,6 +2097,7 @@ class TestValidatePolicyCompletenessVerificationRole:
                 },
                 entry_phase="verify",
                 terminal_phase="complete",
+                recovery=RecoveryPolicy(failed_route="complete"),
             )
             bundle = PolicyBundle(agents=agents, pipeline=pipeline, artifacts=ArtifactsPolicy())
             with pytest.raises(PolicyValidationError, match=pseudo):
@@ -2108,6 +2128,7 @@ class TestValidatePolicyCompletenessVerificationRole:
             },
             entry_phase="verify",
             terminal_phase="complete",
+            recovery=RecoveryPolicy(failed_route="crashed"),
         )
         bundle = PolicyBundle(agents=agents, pipeline=pipeline, artifacts=ArtifactsPolicy())
         validate_policy_completeness(bundle)  # must not raise
@@ -2131,6 +2152,7 @@ class TestValidatePolicyCompletenessVerificationRole:
             },
             entry_phase="verify",
             terminal_phase="complete",
+            recovery=RecoveryPolicy(failed_route="complete"),
         )
         bundle = PolicyBundle(agents=agents, pipeline=pipeline, artifacts=ArtifactsPolicy())
         validate_policy_completeness(bundle)  # must not raise

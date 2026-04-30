@@ -9,6 +9,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 import loguru
+import pytest
 
 from ralph.phases import PhaseContext, get_handler, register_role_handlers
 from ralph.phases.verification import handle_verification_phase
@@ -147,21 +148,13 @@ class TestVerificationArtifactGate:
 
 
 class TestVerificationMakeTargetKind:
-    def test_make_target_kind_stub_returns_failure(self, tmp_path: Path) -> None:
-        drain = "gate"
-        verification = PhaseVerificationPolicy(
-            kind="make_target",
-            gate_for="advancement",
-            on_failure_route=None,
-        )
-        ctx = _make_context(tmp_path, drain, verification)
+    def test_make_target_kind_is_rejected_by_policy(self) -> None:
+        from pydantic import ValidationError  # noqa: PLC0415
 
-        result = handle_verification_phase(_invoke_effect(drain), ctx)
-        assert len(result) == 1
-        event = result[0]
-        assert isinstance(event, PhaseFailureEvent)
-        assert event.recoverable is False
-        assert "make_target verification is declared but not yet executable" in event.reason
+        with pytest.raises(ValidationError):
+            PhaseVerificationPolicy(
+                **{"kind": "make_target", "gate_for": "advancement", "on_failure_route": None}
+            )
 
 
 class TestVerificationNoneKind:

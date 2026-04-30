@@ -118,15 +118,15 @@ def register_handler(phase_name: str) -> Callable[[PhaseHandler], PhaseHandler]:
 def register_role_handlers(policy: PipelinePolicy) -> None:
     """Register generic handlers for policy-declared role-based phases.
 
-    Called at policy-load time to ensure every phase with role='commit',
-    role='analysis', or role='verification' has a handler registered, even if
-    the phase name is not one of the canonical built-in names.
+    Called at policy-load time to ensure every phase with a recognized role has
+    a handler registered, even if the phase name is not one of the canonical
+    built-in names.
 
+    - Execution-role phases are mapped to the generic ``handle_execution_phase``.
     - Commit-role phases are mapped to the generic ``handle_commit_phase``.
-    - Analysis-role phases are mapped to the generic
-      ``handle_generic_analysis_phase``.
-    - Verification-role phases are mapped to the generic
-      ``handle_verification_phase``.
+    - Analysis-role phases are mapped to the generic ``handle_generic_analysis_phase``.
+    - Review-role phases are mapped to the generic ``handle_review``.
+    - Verification-role phases are mapped to the generic ``handle_verification_phase``.
 
     Phases already registered via ``@register_handler`` are not overwritten.
 
@@ -135,15 +135,23 @@ def register_role_handlers(policy: PipelinePolicy) -> None:
     """
     from ralph.phases.analysis import handle_generic_analysis_phase  # noqa: PLC0415
     from ralph.phases.commit import handle_commit_phase  # noqa: PLC0415
+    from ralph.phases.execution import handle_execution_phase  # noqa: PLC0415
+    from ralph.phases.review import handle_review  # noqa: PLC0415
     from ralph.phases.verification import handle_verification_phase  # noqa: PLC0415
 
     for phase_name, phase_def in policy.phases.items():
-        if phase_def.role == "commit" and phase_name not in HANDLERS:
+        if phase_def.role == "execution" and phase_name not in HANDLERS:
+            logger.debug("Registering generic execution handler for phase '{}'", phase_name)
+            HANDLERS[phase_name] = handle_execution_phase
+        elif phase_def.role == "commit" and phase_name not in HANDLERS:
             logger.debug("Registering generic commit handler for phase '{}'", phase_name)
             HANDLERS[phase_name] = handle_commit_phase
         elif phase_def.role == "analysis" and phase_name not in HANDLERS:
             logger.debug("Registering generic analysis handler for phase '{}'", phase_name)
             HANDLERS[phase_name] = handle_generic_analysis_phase
+        elif phase_def.role == "review" and phase_name not in HANDLERS:
+            logger.debug("Registering generic review handler for phase '{}'", phase_name)
+            HANDLERS[phase_name] = handle_review
         elif phase_def.role == "verification" and phase_name not in HANDLERS:
             logger.debug("Registering generic verification handler for phase '{}'", phase_name)
             HANDLERS[phase_name] = handle_verification_phase
@@ -198,9 +206,7 @@ def handle_phase(
 # Import and register all built-in handlers (imported for side effects only)
 from ralph.phases import analysis as _analysis  # noqa: E402, F401
 from ralph.phases import commit as _commit  # noqa: E402, F401
-from ralph.phases import development as _development  # noqa: E402, F401
-from ralph.phases import fix as _fix  # noqa: E402, F401
-from ralph.phases import planning as _planning  # noqa: E402, F401
+from ralph.phases import execution as _execution  # noqa: E402, F401
 from ralph.phases import review as _review  # noqa: E402, F401
 from ralph.phases import verification as _verification  # noqa: E402, F401
 
