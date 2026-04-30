@@ -7,8 +7,10 @@ from loguru import logger
 
 from ralph.agents.execution_state import AgentExecutionState
 from ralph.agents.idle_watchdog import (
+    CorroborationSnapshot,
     IdleWatchdog,
     TimeoutPolicy,
+    WaitingCorroborator,
     WaitingStatusEvent,
     WaitingStatusKind,
     WatchdogFireReason,
@@ -636,6 +638,7 @@ def _make_watchdog_with_listener(  # noqa: PLR0913
     status_interval: float = 30.0,
     suspect: float | None = 600.0,
     listener: list[WaitingStatusEvent] | None = None,
+    corroborator: WaitingCorroborator | None = None,
 ) -> tuple[IdleWatchdog, FakeClock, list[WaitingStatusEvent]]:
     captured: list[WaitingStatusEvent] = listener if listener is not None else []
     config = TimeoutPolicy(
@@ -646,7 +649,7 @@ def _make_watchdog_with_listener(  # noqa: PLR0913
         suspect_waiting_on_child_seconds=suspect,
     )
     clock = FakeClock(start=start)
-    watchdog = IdleWatchdog(config, clock, listener=captured.append)
+    watchdog = IdleWatchdog(config, clock, listener=captured.append, corroborator=corroborator)
     return watchdog, clock, captured
 
 
@@ -811,3 +814,169 @@ def test_validation_rejects_suspect_equal_to_ceiling() -> None:
             max_waiting_on_child_seconds=100,
             suspect_waiting_on_child_seconds=100,
         )
+
+
+# ---------------------------------------------------------------------------
+# Corroborator tests (Phase 3 implementation)
+# ---------------------------------------------------------------------------
+
+
+def test_corroborator_diag_attached_to_progress() -> None:
+    """workspace_event_delta == 0 in PROGRESS when event_count unchanged between entry and tick."""
+    call_count = 0
+
+    def _corroborator() -> CorroborationSnapshot:
+        nonlocal call_count
+        call_count += 1
+        return CorroborationSnapshot(workspace_event_count=5)
+
+    watchdog, clock, events = _make_watchdog_with_listener(
+        idle_timeout=1.0,
+        max_waiting=1000.0,
+        status_interval=10.0,
+        suspect=None,
+        corroborator=_corroborator,
+    )
+    clock.advance(1.1)  # past idle deadline
+    watchdog.evaluate(classify_quiet=_waiting)  # ENTERED — captures entry_corroboration
+    clock.advance(11.0)  # past status_interval
+    watchdog.evaluate(classify_quiet=_waiting)  # PROGRESS
+    progress = [e for e in events if e.kind == WaitingStatusKind.PROGRESS]
+    assert len(progress) >= 1
+    assert progress[0].diagnostic.get("workspace_event_delta") == 0
+
+
+_WS_ENTRY_COUNT = 5
+_WS_FINAL_COUNT = 9
+_WS_EXPECTED_DELTA = _WS_FINAL_COUNT - _WS_ENTRY_COUNT
+
+
+def test_corroborator_workspace_activity_increment() -> None:
+    """workspace_event_delta == 4 in PROGRESS when event_count goes from 5 to 9."""
+    call_count = 0
+    counts = [_WS_ENTRY_COUNT, _WS_FINAL_COUNT, _WS_FINAL_COUNT]
+
+    def _corroborator() -> CorroborationSnapshot:
+        nonlocal call_count
+        count = counts[min(call_count, len(counts) - 1)]
+        call_count += 1
+        return CorroborationSnapshot(workspace_event_count=count)
+
+    watchdog, clock, events = _make_watchdog_with_listener(
+        idle_timeout=1.0,
+        max_waiting=1000.0,
+        status_interval=10.0,
+        suspect=None,
+        corroborator=_corroborator,
+    )
+    clock.advance(1.1)
+    watchdog.evaluate(classify_quiet=_waiting)  # ENTERED — entry count=5
+    clock.advance(11.0)
+    watchdog.evaluate(classify_quiet=_waiting)  # PROGRESS — current count=9
+    progress = [e for e in events if e.kind == WaitingStatusKind.PROGRESS]
+    assert len(progress) >= 1
+    assert progress[0].diagnostic.get("workspace_event_delta") == _WS_EXPECTED_DELTA
+
+
+def test_corroborator_suspected_frozen_evidence_workspace_quiet() -> None:
+    """SUSPECTED_FROZEN evidence has 'time_and_workspace_quiet' when workspace count unchanged."""
+    suspect_threshold = 5.0
+
+    def _corroborator() -> CorroborationSnapshot:
+        return CorroborationSnapshot(
+            workspace_event_count=7,
+            oldest_child_seconds=suspect_threshold + 1.0,
+        )
+
+    watchdog, clock, events = _make_watchdog_with_listener(
+        idle_timeout=1.0,
+        max_waiting=1000.0,
+        status_interval=100.0,
+        suspect=suspect_threshold,
+        corroborator=_corroborator,
+    )
+    clock.advance(1.1)
+    watchdog.evaluate(classify_quiet=_waiting)  # ENTERED — entry count=7
+    clock.advance(suspect_threshold + 1.0)
+    watchdog.evaluate(classify_quiet=_waiting)  # crosses suspect threshold
+    suspected = [e for e in events if e.kind == WaitingStatusKind.SUSPECTED_FROZEN]
+    assert len(suspected) == 1
+    evidence = str(suspected[0].diagnostic.get("evidence", ""))
+    assert "time_and_workspace_quiet" in evidence
+
+
+def test_corroborator_suspected_frozen_evidence_lifecycle_only() -> None:
+    """SUSPECTED_FROZEN evidence has 'time_and_lifecycle_only' when last activity unmeaningful."""
+    suspect_threshold = 5.0
+
+    def _corroborator() -> CorroborationSnapshot:
+        return CorroborationSnapshot(last_activity_was_meaningful=False)
+
+    watchdog, clock, events = _make_watchdog_with_listener(
+        idle_timeout=1.0,
+        max_waiting=1000.0,
+        status_interval=100.0,
+        suspect=suspect_threshold,
+        corroborator=_corroborator,
+    )
+    clock.advance(1.1)
+    watchdog.evaluate(classify_quiet=_waiting)  # ENTERED
+    clock.advance(suspect_threshold + 1.0)
+    watchdog.evaluate(classify_quiet=_waiting)  # SUSPECTED_FROZEN
+    suspected = [e for e in events if e.kind == WaitingStatusKind.SUSPECTED_FROZEN]
+    assert len(suspected) == 1
+    evidence = str(suspected[0].diagnostic.get("evidence", ""))
+    assert "time_and_lifecycle_only" in evidence
+
+
+def test_corroborator_exception_does_not_propagate() -> None:
+    """When corroborator raises, watchdog still emits events and no corroboration keys appear."""
+
+    def _bad_corroborator() -> CorroborationSnapshot:
+        raise RuntimeError("corroborator exploded")
+
+    watchdog, clock, events = _make_watchdog_with_listener(
+        idle_timeout=1.0,
+        max_waiting=1000.0,
+        status_interval=100.0,
+        suspect=None,
+        corroborator=_bad_corroborator,
+    )
+    clock.advance(1.1)
+    result = watchdog.evaluate(classify_quiet=_waiting)
+    assert result == WatchdogVerdict.WAITING_ON_CHILD
+    entered = [e for e in events if e.kind == WaitingStatusKind.ENTERED]
+    assert len(entered) == 1
+    # Entry event has no corroboration keys since the corroborator raised
+    assert "workspace_event_delta" not in entered[0].diagnostic
+
+
+_HARD_STOP_OLDEST_CHILD_SECS = 42.0
+
+
+def test_hard_stop_diag_includes_corroboration() -> None:
+    """HARD_STOP diagnostic contains scoped_child_active and oldest_child_seconds."""
+
+    def _corroborator() -> CorroborationSnapshot:
+        return CorroborationSnapshot(
+            scoped_child_active=True, oldest_child_seconds=_HARD_STOP_OLDEST_CHILD_SECS
+        )
+
+    hard_stop_max = 5.0
+    watchdog, clock, events = _make_watchdog_with_listener(
+        idle_timeout=1.0,
+        max_waiting=hard_stop_max,
+        status_interval=100.0,
+        suspect=None,
+        corroborator=_corroborator,
+    )
+    clock.advance(1.1)
+    watchdog.evaluate(classify_quiet=_waiting)  # ENTERED
+    clock.advance(hard_stop_max)
+    result = watchdog.evaluate(classify_quiet=_waiting)
+    assert result == WatchdogVerdict.FIRE
+    hard_stops = [e for e in events if e.kind == WaitingStatusKind.HARD_STOP]
+    assert len(hard_stops) == 1
+    diag = hard_stops[0].diagnostic
+    assert diag.get("scoped_child_active") is True
+    assert diag.get("oldest_child_seconds") == _HARD_STOP_OLDEST_CHILD_SECS

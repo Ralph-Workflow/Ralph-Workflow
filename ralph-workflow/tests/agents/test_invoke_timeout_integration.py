@@ -381,3 +381,69 @@ def test_invoke_emits_waiting_listener_events_not_per_tick_log() -> None:
     assert len(captured_events) <= _MAX_TOTAL_EVENTS, (
         f"Expected <={_MAX_TOTAL_EVENTS} total events, got {len(captured_events)}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Corroboration diagnostic in HARD_STOP (Phase 3 integration)
+# ---------------------------------------------------------------------------
+
+
+def test_children_persist_hard_stop_includes_corroboration_diagnostic() -> None:
+    """HARD_STOP event and _IdleStreamTimeoutError message contain corroboration fields.
+
+    Asserts:
+    - _IdleStreamTimeoutError message contains 'cumulative=' and 'scoped_child_active='.
+    - Captured HARD_STOP WaitingStatusEvent.diagnostic includes 'evidence' and 'cumulative'.
+    """
+    idle_timeout = 0.5
+    max_waiting = 2.0
+    status_interval = 100.0  # suppress PROGRESS noise
+
+    policy = TimeoutPolicy(
+        idle_timeout_seconds=idle_timeout,
+        max_waiting_on_child_seconds=max_waiting,
+        drain_window_seconds=0.0,
+        idle_poll_interval_seconds=0.05,
+        waiting_status_interval_seconds=status_interval,
+        suspect_waiting_on_child_seconds=None,
+    )
+    clock = FakeClock(start=0.0)
+
+    _reader_release = threading.Event()
+
+    def _blocking_stdout() -> Iterator[str]:
+        _reader_release.wait()
+        yield from ()
+
+    handle = _FakeManagedHandle(_blocking_stdout())
+    captured_events: list[WaitingStatusEvent] = []
+
+    def _listener(event: WaitingStatusEvent) -> None:
+        captured_events.append(event)
+
+    try:
+        with pytest.raises(_IdleStreamTimeoutError) as exc_info:
+            for _ in _read_lines_from_process(
+                handle,
+                policy=policy,
+                execution_strategy=_WaitingStrategy(),
+                waiting_listener=_listener,
+                _clock=clock,
+            ):
+                pass
+    finally:
+        _reader_release.set()
+
+    assert exc_info.value.reason == WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG
+
+    # Error message must contain core corroboration fields
+    err_msg = str(exc_info.value)
+    assert "cumulative=" in err_msg, f"Expected 'cumulative=' in: {err_msg}"
+    assert "scoped_child_active=" in err_msg, f"Expected 'scoped_child_active=' in: {err_msg}"
+
+    # HARD_STOP event diagnostic must contain timing fields
+    hard_stops = [e for e in captured_events if e.kind == WaitingStatusKind.HARD_STOP]
+    assert len(hard_stops) == 1, f"Expected 1 HARD_STOP, got {len(hard_stops)}"
+    diag = hard_stops[0].diagnostic
+    assert "cumulative" in diag, f"Expected 'cumulative' key in diagnostic: {diag}"
+    assert "evidence" in diag, f"Expected 'evidence' key in HARD_STOP diagnostic: {diag}"

@@ -262,6 +262,12 @@ def test_run_subprocess_and_read_lines_wraps_idle_stream_timeout(
         def wait(self, timeout: float | None = None) -> int:
             return self.returncode
 
+        def terminate(self) -> None:
+            pass
+
+        def kill(self) -> None:
+            pass
+
     monkeypatch.setattr(
         "ralph.agents.invoke.subprocess.Popen",
         lambda *args, **kwargs: FakeProcess(),
@@ -3570,10 +3576,14 @@ def test_invoke_agent_passes_config_drain_window_to_watchdog(
     original_init = IdleWatchdog.__init__
 
     def capturing_init(
-        self: IdleWatchdog, cfg: TimeoutPolicy, clock: Clock, listener: object = None
+        self: IdleWatchdog,
+        cfg: TimeoutPolicy,
+        clock: Clock,
+        listener: object = None,
+        **kwargs: object,
     ) -> None:
         captured_config.append(cfg)
-        original_init(self, cfg, clock, listener)
+        original_init(self, cfg, clock, listener, **kwargs)
 
     monkeypatch.setattr(IdleWatchdog, "__init__", capturing_init)
 
