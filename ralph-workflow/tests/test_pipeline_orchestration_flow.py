@@ -6,6 +6,9 @@ from pathlib import Path
 from typing import cast
 from unittest.mock import MagicMock
 
+from rich.console import Console
+
+from ralph.display.context import make_display_context
 from ralph.pipeline import runner as runner_module
 from ralph.pipeline.effects import (
     CommitEffect,
@@ -20,6 +23,13 @@ from ralph.pipeline.state import AgentChainState, CommitState, PipelineState, Re
 from ralph.policy.loader import load_policy
 
 _EXPECTED_RECOVERY_DETERMINE_CALLS = 2
+
+
+def _install_runner_display_context(monkeypatch) -> Console:
+    console = Console(record=True, force_terminal=False, width=120, color_system=None)
+    ctx = make_display_context(console=console, force_width=120, force_mode="wide")
+    monkeypatch.setattr(runner_module, "make_display_context", lambda **_kwargs: ctx)
+    return console
 
 
 def _load_default_bundle():
@@ -191,8 +201,7 @@ def test_run_recovers_when_planner_does_not_submit_plan_artifact(
         lambda _effect, _config, _workspace_scope: PipelineEvent.AGENT_SUCCESS,
     )
     monkeypatch.setattr(runner_module.ckpt, "save", MagicMock())
-    console_mock = MagicMock()
-    monkeypatch.setattr(runner_module, "console", console_mock)
+    _install_runner_display_context(monkeypatch)
 
     result = runner_module.run(config, initial_state=state)
 

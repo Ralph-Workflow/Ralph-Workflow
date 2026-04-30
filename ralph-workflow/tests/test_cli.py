@@ -30,6 +30,7 @@ from ralph.cli.main import (
     app,
 )
 from ralph.config.enums import ReviewDepth, Verbosity
+from ralph.display.context import make_display_context
 from ralph.display.theme import RALPH_THEME
 from ralph.workspace.scope import WorkspaceScope
 
@@ -232,7 +233,7 @@ def test_handle_list_agents_success(monkeypatch: pytest.MonkeyPatch) -> None:
         called["kwargs"] = kwargs
         return SimpleNamespace(agents=sentinel)
 
-    def fake_display_agents_table(agents: dict[str, object]) -> None:
+    def fake_display_agents_table(agents: dict[str, object], *, display_context=None) -> None:
         called["agents"] = agents
 
     monkeypatch.setattr("ralph.cli.main.load_config", fake_load_config)
@@ -326,7 +327,9 @@ def test_handle_list_agents_injects_workspace_scope_for_implicit_config(
 
     monkeypatch.setattr("ralph.cli.main.resolve_workspace_scope", lambda: scope)
     monkeypatch.setattr("ralph.cli.main.load_config", fake_load_config)
-    monkeypatch.setattr("ralph.cli.main.display_agents_table", lambda _agents: None)
+    monkeypatch.setattr(
+        "ralph.cli.main.display_agents_table", lambda _agents, *, display_context=None: None
+    )
 
     assert _handle_list_agents(None, {}, True) == 0
     assert called["kwargs"] == {"workspace_scope": scope}
@@ -338,7 +341,7 @@ def test_handle_list_providers_success(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("ralph.cli.main.fetch_providers", lambda: ["opencode"])
     recorded: list[object] = []
 
-    def fake_display_providers_table(providers: object) -> None:
+    def fake_display_providers_table(providers: object, *, display_context=None) -> None:
         recorded.append(providers)
 
     monkeypatch.setattr("ralph.cli.main.display_providers_table", fake_display_providers_table)
@@ -365,7 +368,9 @@ def test_handle_commit_plumbing_invokes_commit(monkeypatch: pytest.MonkeyPatch) 
 
     calls: list[CommitPlumbingOptions] = []
 
-    def fake_commit_plumbing(*, options: CommitPlumbingOptions | None = None) -> None:
+    def fake_commit_plumbing(
+        *, options: CommitPlumbingOptions | None = None, display_context=None
+    ) -> None:
         calls.append(options or CommitPlumbingOptions())
 
     monkeypatch.setattr("ralph.cli.main.commit_plumbing", fake_commit_plumbing)
@@ -383,7 +388,9 @@ def test_handle_commit_plumbing_no_flags_does_not_call_commit(
 
     called = False
 
-    def fake_commit_plumbing(*, options: CommitPlumbingOptions | None = None) -> None:
+    def fake_commit_plumbing(
+        *, options: CommitPlumbingOptions | None = None, display_context=None
+    ) -> None:
         nonlocal called
         called = True
 
@@ -400,14 +407,15 @@ def test_run_pipeline_success(monkeypatch: pytest.MonkeyPatch) -> None:
 
     recorded: dict[str, object] = {}
 
-    def fake_run_pipeline(
+    def fake_run_pipeline(  # noqa: PLR0913
         *,
-        config_path: Path | None,
-        cli_overrides: dict[str, object],
-        dry_run: bool,
-        resume: bool,
-        verbosity: object = None,
-    ) -> int:  # type: ignore[override]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+        config_path,
+        cli_overrides,
+        dry_run,
+        resume,
+        verbosity=None,
+        display_context=None,
+    ):  # type: ignore[override]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
         recorded["config_path"] = config_path
         recorded["cli_overrides"] = cli_overrides
         recorded["dry_run"] = dry_run
@@ -435,9 +443,10 @@ def test_run_pipeline_keyboard_interrupt(monkeypatch: pytest.MonkeyPatch) -> Non
     )
     stream = StringIO()
     console = Console(file=stream, force_terminal=False, color_system=None, theme=RALPH_THEME)
+    ctx = make_display_context(console=console)
 
     exit_code = _run_pipeline(
-        None, {}, dry_run=False, resume=False, no_resume=False, console=console
+        None, {}, dry_run=False, resume=False, no_resume=False, display_context=ctx
     )
     assert exit_code == KEYBOARD_INTERRUPT_EXIT_CODE
     assert "Interrupted by user" in stream.getvalue()
@@ -458,9 +467,10 @@ def test_run_pipeline_exception(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("ralph.cli.main.logger.exception", capture_exception)
     stream = StringIO()
     console = Console(file=stream, force_terminal=False, color_system=None, theme=RALPH_THEME)
+    ctx = make_display_context(console=console)
 
     exit_code = _run_pipeline(
-        None, {}, dry_run=False, resume=False, no_resume=False, console=console
+        None, {}, dry_run=False, resume=False, no_resume=False, display_context=ctx
     )
     assert exit_code == 1
     assert logged == ["Pipeline failed: {}"]

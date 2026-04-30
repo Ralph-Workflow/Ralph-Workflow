@@ -118,6 +118,7 @@ def show_phase_transition(
         display_context: DisplayContext whose console takes precedence over console.
     """
     c = _resolve_console(console, display_context)
+    ctx = display_context if display_context is not None else make_display_context(console=c)
 
     style = _phase_style(to_phase)
     from_label = _phase_label(from_phase)
@@ -125,16 +126,28 @@ def show_phase_transition(
     description = _TRANSITION_DESCRIPTIONS.get((from_phase, to_phase))
 
     is_major = (from_phase, to_phase) in _MAJOR_TRANSITIONS
-    mode = display_context.mode if display_context is not None else "wide"
+    mode = ctx.mode
 
     if is_major:
         if mode == "compact":
             slim_title = Text()
             slim_title.append(f"{from_label} → {to_label}", style=style)
             c.print(Rule(title=slim_title, style=style))
+        elif mode == "medium":
+            # Medium: denser banner with Rule separators but no description
+            c.print(Rule(style=style))
+            banner = Text()
+            banner.append(f"  {from_label}", style="theme.text.muted")
+            banner.append(" → ", style="theme.text.emphasis")
+            banner.append(to_label, style=style)
+            if context:
+                detail = "  ".join(f"{k}={v}" for k, v in context.items())
+                banner.append(f"  ({detail})", style="theme.text.muted")
+            c.print(banner)
+            c.print(Rule(style=style))
         else:
-            if mode != "medium":
-                c.print()
+            # Wide: full banner with leading blank line and description
+            c.print()
             c.print(Rule(style=style))
             banner = Text()
             banner.append(f"  {from_label}", style="theme.text.muted")

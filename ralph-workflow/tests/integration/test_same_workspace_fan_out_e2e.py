@@ -13,6 +13,7 @@ All workers use FakeAgentExecutor (no subprocess, no real MCP).
 from __future__ import annotations
 
 import asyncio
+import io
 import json
 from collections import defaultdict
 from dataclasses import dataclass
@@ -23,6 +24,8 @@ if TYPE_CHECKING:
     import pytest
 
 from pathlib import Path
+
+from rich.console import Console
 
 from ralph.config.enums import PHASE_DEVELOPMENT, PHASE_DEVELOPMENT_ANALYSIS
 from ralph.mcp.server.factory import McpServerHandle
@@ -68,6 +71,9 @@ def _make_policy_bundle(max_workers: int = 4) -> MagicMock:
 
 
 class _FakeDisplay:
+    def __init__(self) -> None:
+        self.console = Console(file=io.StringIO(), force_terminal=False, color_system=None)
+
     def emit(self, unit_id: str | None, line: str) -> None:
         del unit_id, line
 

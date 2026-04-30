@@ -17,7 +17,6 @@ import typer.testing
 from loguru import logger
 from rich.text import Text
 
-# Late imports to avoid circular dependencies
 from ralph import __version__
 from ralph.api.opencode import list_providers as fetch_providers
 from ralph.cli.commands.cleanup import cleanup
@@ -26,10 +25,7 @@ from ralph.cli.commands.diagnose import diagnose_command
 from ralph.cli.commands.explain import explain_command
 from ralph.cli.commands.init import init_command
 from ralph.cli.commands.run import run_pipeline
-from ralph.cli.options import (
-    display_agents_table,
-    display_providers_table,
-)
+from ralph.cli.options import display_agents_table, display_providers_table
 from ralph.config.bootstrap import (
     ensure_global_config,
     ensure_global_mcp_config,
@@ -38,6 +34,7 @@ from ralph.config.bootstrap import (
 from ralph.config.enums import ReviewDepth, Verbosity
 from ralph.config.loader import load_config
 from ralph.config.welcome import emit_first_run_welcome
+from ralph.display.context import DisplayContext
 from ralph.display.context import make_display_context as _make_display_context
 from ralph.pipeline import checkpoint as ckpt
 from ralph.workspace.scope import resolve_workspace_scope
@@ -494,11 +491,11 @@ def main(  # noqa: PLR0913
     )
 
     # Check for early exit commands
-    exit_code = _handle_list_agents(config, cli_overrides, list_agents)
+    exit_code = _handle_list_agents(config, cli_overrides, list_agents, display_context=_cli_ctx)
     if exit_code is not None:
         raise typer.Exit(code=exit_code)
 
-    exit_code = _handle_list_providers(list_providers)
+    exit_code = _handle_list_providers(list_providers, display_context=_cli_ctx)
     if exit_code is not None:
         raise typer.Exit(code=exit_code)
 
@@ -515,7 +512,7 @@ def main(  # noqa: PLR0913
         raise typer.Exit(code=exit_code)
 
     if init is not None:
-        init_command(init, _config_path(config))
+        init_command(init, _config_path(config), display_context=_cli_ctx)
         raise typer.Exit()
 
     if regenerate_config:
@@ -535,6 +532,7 @@ def main(  # noqa: PLR0913
             config_path=_config_path(config),
             cli_overrides=cli_overrides,
         ),
+        display_context=_cli_ctx,
     )
     if exit_code is not None:
         raise typer.Exit(code=exit_code)
@@ -545,7 +543,7 @@ def main(  # noqa: PLR0913
 
     # Run the main pipeline
     exit_code = _run_pipeline(
-        config, cli_overrides, dry_run, resume, no_resume, verbosity, console=_console
+        config, cli_overrides, dry_run, resume, no_resume, verbosity, display_context=_cli_ctx
     )
     raise typer.Exit(code=exit_code)
 
@@ -558,6 +556,7 @@ def _handle_list_agents(
     config: str | None,
     cli_overrides: dict[str, object],
     list_agents: bool,
+    display_context: DisplayContext | None = None,
 ) -> int | None:
     """Handle --list-agents flag.
 
@@ -565,6 +564,7 @@ def _handle_list_agents(
         config: Path to config file.
         cli_overrides: CLI overrides dict.
         list_agents: Whether flag was set.
+        display_context: Optional display context for adaptive layout.
 
     Returns:
         Exit code or None to continue.
@@ -576,18 +576,22 @@ def _handle_list_agents(
         workspace_scope = None if config_path is not None else resolve_workspace_scope()
         cfg = load_config(config_path, cli_overrides, workspace_scope=workspace_scope)
         agents: Mapping[str, AgentConfig] = cfg.agents
-        display_agents_table(agents)
+        display_agents_table(agents, display_context=display_context)
         return 0
     except Exception as e:
         logger.error("Failed to list agents: {}", e)
         return 1
 
 
-def _handle_list_providers(list_providers: bool) -> int | None:
+def _handle_list_providers(
+    list_providers: bool,
+    display_context: DisplayContext | None = None,
+) -> int | None:
     """Handle --list-providers flag.
 
     Args:
         list_providers: Whether flag was set.
+        display_context: Optional display context for adaptive layout.
 
     Returns:
         Exit code or None to continue.
@@ -596,7 +600,7 @@ def _handle_list_providers(list_providers: bool) -> int | None:
         return None
     try:
         providers = fetch_providers()
-        display_providers_table(providers)
+        display_providers_table(providers, display_context=display_context)
         return 0
     except Exception as e:
         logger.error("Failed to list providers: {}", e)
@@ -663,11 +667,13 @@ def _handle_check_mcp(check_mcp: bool, *, console: Console | None = None) -> int
 
 def _handle_commit_plumbing(
     options: CommitPlumbingOptions,
+    display_context: DisplayContext | None = None,
 ) -> int | None:
     """Handle commit plumbing commands.
 
     Args:
         options: Commit plumbing options.
+        display_context: Optional display context for consistent rendering.
 
     Returns:
         Exit code or None to continue.
@@ -679,7 +685,7 @@ def _handle_commit_plumbing(
     ):
         return None
 
-    commit_plumbing(options=options)
+    commit_plumbing(options=options, display_context=display_context)
     return 0
 
 
@@ -691,7 +697,7 @@ def _run_pipeline(  # noqa: PLR0913
     no_resume: bool,
     verbosity: Verbosity = Verbosity.VERBOSE,
     *,
-    console: Console | None = None,
+    display_context: DisplayContext | None = None,
 ) -> int:
     """Run the main pipeline.
 
@@ -702,12 +708,13 @@ def _run_pipeline(  # noqa: PLR0913
         resume: Whether to resume.
         no_resume: Whether to ignore checkpoint.
         verbosity: Verbosity level.
-        console: Rich console for output.
+        display_context: Optional display context for consistent rendering.
 
     Returns:
         Exit code.
     """
-    c = console if console is not None else _get_cli_context().console
+    ctx = display_context if display_context is not None else _get_cli_context()
+    c = ctx.console
     try:
         exit_code = run_pipeline(
             config_path=_config_path(config),
@@ -715,6 +722,7 @@ def _run_pipeline(  # noqa: PLR0913
             dry_run=dry_run,
             resume=resume and not no_resume,
             verbosity=verbosity,
+            display_context=ctx,
         )
         return exit_code
     except KeyboardInterrupt:

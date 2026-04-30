@@ -24,6 +24,7 @@ from ralph.config.enums import (
     Verbosity,
 )
 from ralph.config.models import AgentConfig, CcsConfig, UnifiedConfig
+from ralph.display.context import make_display_context
 from ralph.display.parallel_display import ParallelDisplay
 from ralph.mcp.protocol.capability_mapping import SessionDrain
 from ralph.mcp.tools.names import claude_tool_name_prefix
@@ -94,6 +95,17 @@ def _registry_factory(return_value):
             return instance
 
     return Registry
+
+
+def _install_runner_display_context(
+    monkeypatch: MonkeyPatch,
+    *,
+    width: int = 120,
+) -> Console:
+    console = Console(record=True, force_terminal=False, width=width, color_system=None)
+    ctx = make_display_context(console=console, force_width=width, force_mode="wide")
+    monkeypatch.setattr(runner_module, "make_display_context", lambda **_kwargs: ctx)
+    return console
 
 
 def _config_with_agents(
@@ -811,7 +823,7 @@ class TestPipelineRunnerLoop:
         def stub_reducer_with_policy(current_state, event, _policy=None):
             return stub_reducer(current_state, event)
 
-        console_mock = MagicMock()
+        captured_console = _install_runner_display_context(monkeypatch)
         monkeypatch.setattr(
             runner_module,
             "_call_determine_effect_from_policy",
@@ -819,7 +831,6 @@ class TestPipelineRunnerLoop:
         )
         monkeypatch.setattr(runner_module, "reducer_reduce", stub_reducer_with_policy)
         monkeypatch.setattr(runner_module.ckpt, "save", ckpt_save)
-        monkeypatch.setattr(runner_module, "console", console_mock)
 
         result = runner_module.run(MagicMock(), initial_state=state, verbosity=Verbosity.QUIET)
 
@@ -827,14 +838,12 @@ class TestPipelineRunnerLoop:
         ckpt_save.assert_called_once_with(state)
         assert reducer_events == [PipelineEvent.CHECKPOINT_SAVED]
         # Verify success message was printed (among other display calls)
-        printed_args = [
-            str(call.args[0]) if call.args else "" for call in console_mock.print.call_args_list
-        ]
-        assert any("Pipeline completed successfully" in arg for arg in printed_args)
+        printed = captured_console.export_text()
+        assert "Pipeline completed successfully" in printed
 
     def test_exit_failure_effect_enters_recovery(self, monkeypatch) -> None:
         state = PipelineState(phase="planning")
-        console_mock = MagicMock()
+        captured_console = _install_runner_display_context(monkeypatch)
         effects = iter([ExitFailureEffect(reason="bad"), ExitSuccessEffect()])
 
         monkeypatch.setattr(
@@ -842,18 +851,13 @@ class TestPipelineRunnerLoop:
             "_call_determine_effect_from_policy",
             lambda *_args, **_kwargs: next(effects),
         )
-        monkeypatch.setattr(runner_module, "console", console_mock)
         monkeypatch.setattr(runner_module.ckpt, "save", MagicMock())
 
         result = runner_module.run(MagicMock(), initial_state=state, verbosity=Verbosity.QUIET)
 
         assert result == 0
-        rendered_texts = [
-            call.args[0]
-            for call in console_mock.print.call_args_list
-            if call.args and isinstance(call.args[0], Text)
-        ]
-        assert any(r.plain == "Recovery triggered: bad" for r in rendered_texts)
+        printed = captured_console.export_text()
+        assert "Recovery triggered: bad" in printed
 
     def test_keyboard_interrupt_triggers_checkpoint_and_returns_130(self, monkeypatch) -> None:
         state = MagicMock()
@@ -1116,13 +1120,12 @@ class TestPipelineRunnerLoop:
         execute_effect = MagicMock(return_value=PipelineEvent.AGENT_FAILURE)
         reducer = MagicMock()
         ckpt_save = MagicMock()
-        console_mock = MagicMock()
+        _install_runner_display_context(monkeypatch)
 
         monkeypatch.setattr(runner_module, "_determine_effect_from_policy", stub_determine_effect)
         monkeypatch.setattr(runner_module, "_execute_effect", execute_effect)
         monkeypatch.setattr(runner_module, "reducer_reduce", reducer)
         monkeypatch.setattr(runner_module.ckpt, "save", ckpt_save)
-        monkeypatch.setattr(runner_module, "console", console_mock)
 
         result = runner_module.run(MagicMock(), initial_state=state, verbosity=Verbosity.QUIET)
 
@@ -1154,7 +1157,7 @@ class TestPipelineRunnerLoop:
 
         execute_effect = MagicMock(return_value=PipelineEvent.AGENT_SUCCESS)
         ckpt_save = MagicMock()
-        console_mock = MagicMock()
+        _install_runner_display_context(monkeypatch)
         materialize = MagicMock(return_value=".agent/tmp/planning_prompt.md")
         handle_phase = MagicMock(return_value=[PipelineEvent.AGENT_SUCCESS])
 
@@ -1164,7 +1167,6 @@ class TestPipelineRunnerLoop:
         monkeypatch.setattr(runner_module, "handle_phase", handle_phase)
         monkeypatch.setattr(runner_module, "reducer_reduce", MagicMock(return_value=(state, None)))
         monkeypatch.setattr(runner_module.ckpt, "save", ckpt_save)
-        monkeypatch.setattr(runner_module, "console", console_mock)
 
         result = runner_module.run(MagicMock(), initial_state=state, verbosity=Verbosity.QUIET)
 
@@ -1193,7 +1195,7 @@ class TestPipelineRunnerLoop:
         materialize = MagicMock(return_value=".agent/tmp/planning_prompt.md")
         handle_phase = MagicMock(return_value=[PipelineEvent.AGENT_SUCCESS])
         ckpt_save = MagicMock()
-        console_mock = MagicMock()
+        _install_runner_display_context(monkeypatch)
         policy_bundle = load_policy(tmp_path / ".agent")
 
         monkeypatch.setattr(runner_module, "_determine_effect_from_policy", stub_determine_effect)
@@ -1203,7 +1205,6 @@ class TestPipelineRunnerLoop:
         monkeypatch.setattr(runner_module, "load_policy_or_die", lambda _path: policy_bundle)
         monkeypatch.setattr(runner_module, "reducer_reduce", reducer)
         monkeypatch.setattr(runner_module.ckpt, "save", ckpt_save)
-        monkeypatch.setattr(runner_module, "console", console_mock)
 
         result = runner_module.run(MagicMock(), initial_state=state, verbosity=Verbosity.QUIET)
 
@@ -1241,7 +1242,7 @@ class TestPipelineRunnerLoop:
         materialize = MagicMock(return_value=".agent/tmp/planning_prompt.md")
         handle_phase = MagicMock(return_value=[PipelineEvent.AGENT_FAILURE])
         ckpt_save = MagicMock()
-        console_mock = MagicMock()
+        _install_runner_display_context(monkeypatch)
         policy_bundle = load_policy(tmp_path / ".agent")
 
         monkeypatch.setattr(runner_module, "_determine_effect_from_policy", stub_determine_effect)
@@ -1251,7 +1252,6 @@ class TestPipelineRunnerLoop:
         monkeypatch.setattr(runner_module, "load_policy_or_die", lambda _path: policy_bundle)
         monkeypatch.setattr(runner_module, "reducer_reduce", reducer)
         monkeypatch.setattr(runner_module.ckpt, "save", ckpt_save)
-        monkeypatch.setattr(runner_module, "console", console_mock)
 
         result = runner_module.run(
             MagicMock(), initial_state=planning_state, verbosity=Verbosity.QUIET
@@ -1285,7 +1285,7 @@ class TestPipelineRunnerLoop:
         )
         effects = iter([PreparePromptEffect(phase="planning", iteration=0), ExitSuccessEffect()])
 
-        monkeypatch.setattr(runner_module, "console", MagicMock())
+        _install_runner_display_context(monkeypatch)
         monkeypatch.setattr(runner_module.ckpt, "save", MagicMock())
         monkeypatch.setattr(
             runner_module,
@@ -1772,8 +1772,7 @@ class TestExecuteAgentEffect:
             lambda *_args, **_kwargs: FakeBridge(),
         )
 
-        console_mock = MagicMock()
-        monkeypatch.setattr(runner_module, "console", console_mock)
+        captured_console = _install_runner_display_context(monkeypatch)
 
         result = runner_module._execute_agent_effect(
             effect,
@@ -1792,9 +1791,7 @@ class TestExecuteAgentEffect:
         )
 
         assert result == PipelineEvent.AGENT_SUCCESS
-        printed = "\n".join(
-            " ".join(str(arg) for arg in call.args) for call in console_mock.print.call_args_list
-        )
+        printed = captured_console.export_text()
         assert "thinking" in printed
         assert "bash" in printed
 
@@ -1826,8 +1823,7 @@ class TestExecuteAgentEffect:
             lambda *_args, **_kwargs: FakeBridge(),
         )
 
-        console_mock = MagicMock()
-        monkeypatch.setattr(runner_module, "console", console_mock)
+        captured_console = _install_runner_display_context(monkeypatch)
 
         result = runner_module._execute_agent_effect(
             effect,
@@ -1847,9 +1843,7 @@ class TestExecuteAgentEffect:
         )
 
         assert result == PipelineEvent.AGENT_SUCCESS
-        printed = "\n".join(
-            " ".join(str(arg) for arg in call.args) for call in console_mock.print.call_args_list
-        )
+        printed = captured_console.export_text()
         # Lifecycle events (thread.started) are suppressed — no noise in output
         assert "message_start" not in printed
         # Meaningful events still stream
@@ -2721,7 +2715,7 @@ class TestStartCommitCapture:
             lambda _state, _bundle, _scope: ExitSuccessEffect(),
         )
         monkeypatch.setattr(runner_module.ckpt, "save", MagicMock())
-        monkeypatch.setattr(runner_module, "console", MagicMock())
+        _install_runner_display_context(monkeypatch)
 
         state = MagicMock()
         state.phase = "planning"
@@ -2772,7 +2766,7 @@ class TestStartCommitCapture:
             lambda _state, _bundle, _scope: ExitSuccessEffect(),
         )
         monkeypatch.setattr(runner_module.ckpt, "save", MagicMock())
-        monkeypatch.setattr(runner_module, "console", MagicMock())
+        _install_runner_display_context(monkeypatch)
 
         state = MagicMock()
         state.phase = "planning"
@@ -2826,7 +2820,7 @@ def test_run_continues_when_mcp_toml_has_no_servers(
         lambda _state, _bundle, _scope: ExitSuccessEffect(),
     )
     monkeypatch.setattr(runner_module.ckpt, "save", MagicMock())
-    monkeypatch.setattr(runner_module, "console", MagicMock())
+    _install_runner_display_context(monkeypatch)
 
     state = MagicMock()
     state.phase = "planning"
@@ -3044,7 +3038,7 @@ class TestCycleBaselineLifecycle:
             lambda _state, _bundle, _scope: ExitSuccessEffect(),
         )
         monkeypatch.setattr(runner_module.ckpt, "save", MagicMock())
-        monkeypatch.setattr(runner_module, "console", MagicMock())
+        _install_runner_display_context(monkeypatch)
 
         state = MagicMock()
         state.phase = "planning"
@@ -3083,7 +3077,7 @@ class TestCycleBaselineLifecycle:
             lambda _state, _bundle, _scope: ExitSuccessEffect(),
         )
         monkeypatch.setattr(runner_module.ckpt, "save", MagicMock())
-        monkeypatch.setattr(runner_module, "console", MagicMock())
+        _install_runner_display_context(monkeypatch)
         monkeypatch.setattr(runner_module, "clear_cycle_baseline", _spy_clear)
 
         state = MagicMock()
@@ -3135,7 +3129,7 @@ class TestCycleBaselineLifecycle:
             lambda: WorkspaceScope(tmp_git_repo),
         )
         monkeypatch.setattr(runner_module.ckpt, "save", MagicMock())
-        monkeypatch.setattr(runner_module, "console", MagicMock())
+        _install_runner_display_context(monkeypatch)
         monkeypatch.setattr(
             runner_module,
             "_execute_commit_effect",

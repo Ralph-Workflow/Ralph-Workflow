@@ -19,6 +19,7 @@ from ralph.mcp.artifacts.bridge import (
 )
 from ralph.mcp.artifacts.file_backend import FileBackend
 from ralph.mcp.artifacts.store import ArtifactExistsError, ArtifactNotFoundError
+from ralph.mcp.protocol.transport import StdioTransport
 from ralph.mcp.upstream.client import HttpUpstreamClient
 from ralph.mcp.upstream.config import UpstreamMcpServer
 from ralph.mcp.upstream.models import UpstreamCallError
@@ -425,17 +426,21 @@ class TestStartClose:
         # Custom transport's start should not be called
         transport.start.assert_not_called()
 
-    def test_start_sets_running_flag(self) -> None:
+    @patch.object(StdioTransport, "start")
+    def test_start_sets_running_flag(self, mock_start: MagicMock) -> None:
         bridge = self._make_bridge()
         assert bridge._running is False
         bridge.start()
         assert bridge._running is True
+        mock_start.assert_called_once_with()
 
-    def test_start_without_stdio_transport(self) -> None:
+    @patch.object(StdioTransport, "start")
+    def test_start_without_stdio_transport(self, mock_start: MagicMock) -> None:
         bridge = self._make_bridge()
         # No transport specified, StdioTransport is used by default with noop command
         bridge.start()
         assert bridge._running is True
+        mock_start.assert_called_once_with()
 
     @patch.object(MCPBridge, "start")
     async def test_run_loop(self, mock_start: MagicMock) -> None:

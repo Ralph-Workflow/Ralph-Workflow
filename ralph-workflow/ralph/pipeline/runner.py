@@ -24,7 +24,6 @@ from typing import TYPE_CHECKING, Protocol, cast
 
 from git import InvalidGitRepositoryError, Repo
 from loguru import logger
-from rich.console import Console
 from rich.text import Text
 
 from ralph.agents.chain import ChainManager
@@ -42,6 +41,8 @@ from ralph.display.artifact_renderer import (
     render_plan_artifact,
     render_review_artifact,
 )
+from ralph.display.context import DisplayContext, make_display_context
+from ralph.display.parallel_display import ParallelDisplay
 from ralph.display.phase_banner import (
     PhaseStartContext,
     show_phase_complete,
@@ -101,10 +102,11 @@ from ralph.workspace.scope import WorkspaceScope, resolve_workspace_scope
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable, Iterator
 
+    from rich.console import Console
+
     from ralph.agents.executor import AgentExecutor
     from ralph.agents.invoke import InvokeOptions
     from ralph.config.models import AgentConfig, UnifiedConfig
-    from ralph.display.parallel_display import ParallelDisplay
     from ralph.display.subscriber import PipelineSubscriber
     from ralph.interrupt.asyncio_bridge import SignalBridge
     from ralph.mcp.upstream.agent_probe import AgentProbeReport
@@ -124,9 +126,7 @@ class _ConnectivityMonitorLike(Protocol):
     @property
     def current_state(self) -> ConnectivityState: ...
 
-    def add_listener(
-        self, cb: Callable[[object], None]
-    ) -> Callable[[], None]: ...
+    def add_listener(self, cb: Callable[[object], None]) -> Callable[[], None]: ...
 
 
 class _InvokeAgentFn(Protocol):
@@ -158,7 +158,6 @@ class _RunEndDisplay(Protocol):
     ) -> None: ...
 
 
-console = Console()
 class _SessionCapture(threading.local):
     session_id: str | None = None
 
@@ -350,9 +349,21 @@ _PROBE_AGENT_TRANSPORTS = _default_probe_agent_transports
 
 
 class _LegacyConsoleDisplay:
+    """Legacy console display that uses a DisplayContext for themed output.
+
+    Args:
+        display_context: Optional DisplayContext. When None, a new one is created
+            lazily via make_display_context() to ensure consistent theming.
+    """
+
+    def __init__(self, display_context: DisplayContext | None = None) -> None:
+        self._ctx = display_context
+
     @property
     def console(self) -> Console:
-        return console
+        if self._ctx is None:
+            self._ctx = make_display_context()
+        return self._ctx.console
 
     def __enter__(self) -> _LegacyConsoleDisplay:
         return self
@@ -361,17 +372,20 @@ class _LegacyConsoleDisplay:
         return None
 
     def emit(self, unit_id: str | None, line: Text | str) -> None:
+        c = self.console
         if unit_id is None:
-            console.print(line)
+            c.print(line)
             return
-        console.print(f"[{unit_id}] {line}")
+        c.print(f"[{unit_id}] {line}")
 
 
 def _display_console(
     display: ParallelDisplay | _LegacyConsoleDisplay | None,
+    display_context: DisplayContext | None = None,
 ) -> Console:
     if display is None:
-        return console
+        ctx = display_context if display_context is not None else make_display_context()
+        return ctx.console
     return display.console
 
 
@@ -379,12 +393,15 @@ def _emit_display_line(
     display: ParallelDisplay | _LegacyConsoleDisplay | None,
     unit_id: str | None,
     line: Text | str,
+    display_context: DisplayContext | None = None,
 ) -> None:
     if display is None:
+        ctx = display_context if display_context is not None else make_display_context()
+        c = ctx.console
         if unit_id is None:
-            console.print(line)
+            c.print(line)
             return
-        console.print(f"[{unit_id}] {line}")
+        c.print(f"[{unit_id}] {line}")
         return
     if isinstance(display, _LegacyConsoleDisplay):
         display.emit(unit_id, line)
@@ -394,10 +411,11 @@ def _emit_display_line(
 
 def _resolve_display(
     display: ParallelDisplay | None,
+    display_context: DisplayContext | None = None,
 ) -> ParallelDisplay | _LegacyConsoleDisplay:
     if display is not None:
         return display
-    return _LegacyConsoleDisplay()
+    return _LegacyConsoleDisplay(display_context)
 
 
 def _build_default_display(
@@ -416,7 +434,7 @@ def _build_default_display(
         )
 
         return _ParallelDisplay(
-            console=console,
+            console=None,
             env=dict(os.environ),
             workspace_root=workspace_root,
             run_id=str(uuid.uuid4()),
@@ -591,9 +609,7 @@ def _reduce_runtime_recovery(
         reason=reason,
         recoverable=True,
     )
-    recovered_state, effects = reducer_reduce(
-        state, failure_event, pipeline_policy, recovery=None
-    )
+    recovered_state, effects = reducer_reduce(state, failure_event, pipeline_policy, recovery=None)
     return recovered_state, effects
 
 
@@ -687,9 +703,14 @@ def _run_pipeline_step(  # noqa: PLR0913
                     verbosity=verbosity,
                 )
 
-        if isinstance(effect, CommitEffect) and state.phase == "development_commit" and event in (
-            PipelineEvent.COMMIT_SUCCESS,
-            PipelineEvent.COMMIT_SKIPPED,
+        if (
+            isinstance(effect, CommitEffect)
+            and state.phase == "development_commit"
+            and event
+            in (
+                PipelineEvent.COMMIT_SUCCESS,
+                PipelineEvent.COMMIT_SKIPPED,
+            )
         ):
             clear_cycle_baseline(workspace_scope.root)
         next_state, _ = reducer_reduce(state, event, policy_bundle.pipeline)
@@ -811,6 +832,7 @@ def _emit_final_summary(
     workspace_root: Path,
     *,
     subscriber: PipelineSubscriber | None = None,
+    display: ParallelDisplay | _LegacyConsoleDisplay | None = None,
 ) -> None:
     """Emit an end-of-run completion summary panel.
 
@@ -821,6 +843,9 @@ def _emit_final_summary(
     When a ``subscriber`` is supplied, the snapshot is built from its
     accumulated state (decision log, analysis, plan) so the panel mirrors
     what the live display showed during the run.
+
+    When ``display`` is supplied, its console is used to ensure consistent
+    theming rather than creating a new unthemed console.
     """
     try:
         from ralph.display.completion_summary import emit_completion_summary  # noqa: PLC0415
@@ -844,12 +869,25 @@ def _emit_final_summary(
                 prompt_preview=(),
                 run_id=None,
             )
-        emit_completion_summary(
-            console,
-            snapshot,
-            workspace_root=workspace_root,
-            dropped_count=dropped_count,
-        )
+        if isinstance(display, ParallelDisplay) or (
+            isinstance(display, _LegacyConsoleDisplay) and display._ctx is not None
+        ):
+            ctx = display._ctx
+            assert ctx is not None
+            emit_completion_summary(
+                ctx.console,
+                snapshot,
+                workspace_root=workspace_root,
+                dropped_count=dropped_count,
+                context=ctx,
+            )
+        else:
+            emit_completion_summary(
+                make_display_context().console,
+                snapshot,
+                workspace_root=workspace_root,
+                dropped_count=dropped_count,
+            )
     except Exception:
         logger.debug("Failed to emit completion summary", exc_info=True)
 
@@ -925,6 +963,7 @@ def run(  # noqa: PLR0912, PLR0913, PLR0915
     from ralph.recovery.controller import RecoveryController as _RecoveryController  # noqa: PLC0415
     from ralph.recovery.events import FailureEvent as _FailureEvent  # noqa: PLC0415
     from ralph.recovery.events import FalloverEvent as _FalloverEvent  # noqa: PLC0415
+
     _sleep = _recovery_sleep or time.sleep
     _cycle_cap: int = 200
     _raw_cycle_cap: object = getattr(state, "recovery_cycle_cap", 200)
@@ -935,6 +974,7 @@ def run(  # noqa: PLR0912, PLR0913, PLR0915
         import asyncio as _asyncio_mon  # noqa: PLC0415
 
         from ralph.recovery.connectivity import ConnectivityMonitor as _ConnMon  # noqa: PLC0415
+
         _real_monitor = _ConnMon()
         connectivity_monitor = _real_monitor
         _mon_loop = _asyncio_mon.new_event_loop()
@@ -954,6 +994,7 @@ def run(  # noqa: PLR0912, PLR0913, PLR0915
 
         def _stop_mon() -> None:
             import asyncio as _asyncio_stop  # noqa: PLC0415
+
             future = _asyncio_stop.run_coroutine_threadsafe(_real_monitor.stop(), _mon_loop)
             with suppress(Exception):
                 future.result(timeout=2.0)
@@ -982,14 +1023,22 @@ def run(  # noqa: PLR0912, PLR0913, PLR0915
             logger.bind(recovery=True).info(
                 "FAILURE phase={} agent={} category={} counted={}"
                 " chain_cap={} cycle={} delay_ms={} remaining={}",
-                evt.phase, evt.agent, evt.category, evt.counted_against_budget,
-                evt.chain_capacity_remaining, evt.recovery_cycle, evt.retry_delay_ms,
+                evt.phase,
+                evt.agent,
+                evt.category,
+                evt.counted_against_budget,
+                evt.chain_capacity_remaining,
+                evt.recovery_cycle,
+                evt.retry_delay_ms,
                 remaining,
             )
         elif isinstance(evt, _FalloverEvent):
             logger.bind(recovery=True).info(
                 "FALLOVER phase={} from={} to={} reason={}",
-                evt.phase, evt.from_agent, evt.to_agent, evt.reason,
+                evt.phase,
+                evt.from_agent,
+                evt.to_agent,
+                evt.reason,
             )
 
     _unsubscribe_bus = _controller.event_bus.subscribe(_log_recovery_event)
@@ -1129,11 +1178,11 @@ def run(  # noqa: PLR0912, PLR0913, PLR0915
             state,
             workspace_scope.root,
             subscriber=cast("PipelineSubscriber | None", effective_pipeline_subscriber),
+            display=active_display,
         )
         with suppress(Exception):
             clear_cycle_baseline(workspace_scope.root)
     return exit_code
-
 
 
 def _apply_connectivity_check(
@@ -1194,7 +1243,7 @@ def _fan_out_display_and_subscriber(
     from ralph.display.parallel_display import ParallelDisplay as _ParallelDisplay  # noqa: PLC0415
 
     parallel_display: ParallelDisplay = (
-        display if isinstance(display, _ParallelDisplay) else _ParallelDisplay(console)
+        display if isinstance(display, _ParallelDisplay) else _ParallelDisplay(display.console)
     )
     effective_pipeline_subscriber = dashboard_subscriber or pipeline_subscriber
     if effective_pipeline_subscriber is None and hasattr(parallel_display, "subscriber"):
@@ -1302,23 +1351,27 @@ def _write_parallel_development_summary(  # noqa: PLR0913
             status = "failed"
             final_message = ws.error_message
 
-        workers.append({
-            "unit_id": uid,
-            "status": status,
-            "artifact_count": artifact_count,
-            "final_message": final_message,
-        })
+        workers.append(
+            {
+                "unit_id": uid,
+                "status": status,
+                "artifact_count": artifact_count,
+                "final_message": final_message,
+            }
+        )
 
     any_failed = any(w["status"] in ("failed", "cancelled", "blocked") for w in workers)
     all_succeeded = not any_failed and len(workers) > 0
 
     if verify_ran and not verify_passed:
-        workers.append({
-            "unit_id": "__verify__",
-            "status": "failed",
-            "artifact_count": 0,
-            "final_message": "workspace verification failed",
-        })
+        workers.append(
+            {
+                "unit_id": "__verify__",
+                "status": "failed",
+                "artifact_count": 0,
+                "final_message": "workspace verification failed",
+            }
+        )
         any_failed = True
         all_succeeded = False
 
@@ -1413,9 +1466,7 @@ async def _run_fan_out_async(  # noqa: PLR0913, PLR0915
         try:
             validate_for_same_workspace(WorkUnitsPlan(work_units=list(effect.work_units)))
         except WorkUnitsValidationError as exc:
-            failure_reason = (
-                f"Parallel plan rejected (same-workspace safety check failed): {exc}"
-            )
+            failure_reason = f"Parallel plan rejected (same-workspace safety check failed): {exc}"
             logger.error(failure_reason)
             recovered, _ = _reduce_runtime_recovery(
                 current,
@@ -1479,9 +1530,7 @@ async def _run_fan_out_async(  # noqa: PLR0913, PLR0915
             _notify_pipeline_subscriber(pipeline_subscriber, current)
             _save_checkpoint_or_log(
                 current,
-                message=(
-                    "Checkpoint save failed after verification in phase={phase}: {err}"
-                ),
+                message=("Checkpoint save failed after verification in phase={phase}: {err}"),
             )
             if not verify_passed:
                 _write_parallel_development_summary(
@@ -1838,9 +1887,10 @@ def _determine_effect_from_policy(  # noqa: PLR0911
         try:
             validate_for_same_workspace(WorkUnitsPlan(work_units=list(state.work_units)))
         except WorkUnitsValidationError as exc:
-            offending = ", ".join(
-                u.unit_id for u in state.work_units if not u.allowed_directories
-            ) or "(see details)"
+            offending = (
+                ", ".join(u.unit_id for u in state.work_units if not u.allowed_directories)
+                or "(see details)"
+            )
             return ExitFailureEffect(
                 reason=f"parallel preflight rejected plan: {exc} (offending units: {offending})"
             )
@@ -2181,8 +2231,13 @@ def _execute_effect(  # noqa: PLR0913
 
     if isinstance(effect, InvokeAgentEffect):
         return _execute_agent_effect(
-            effect, config, deps, workspace_scope,
-            display=display, verbosity=verbosity, state=state,
+            effect,
+            config,
+            deps,
+            workspace_scope,
+            display=display,
+            verbosity=verbosity,
+            state=state,
         )
     if isinstance(effect, CommitEffect):
         return _execute_commit_effect(
@@ -2349,7 +2404,6 @@ def _same_agent_recovery_attempts(config: UnifiedConfig) -> int:
     return raw if isinstance(raw, int) and raw >= 0 else 1
 
 
-
 def _build_agent_recovery_plan(  # noqa: PLR0913
     *,
     exc: Exception,
@@ -2434,6 +2488,7 @@ def _retryable_agent_failure_reason(
 
     raw_details = "\n".join(_recovery_error_parts(exc))
     from ralph.recovery.classifier import _SESSION_NOT_FOUND_SUBSTRINGS  # noqa: PLC0415
+
     if any(s in raw_details for s in _SESSION_NOT_FOUND_SUBSTRINGS):
         return "a stale session ID (fresh session required)"
 

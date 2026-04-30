@@ -7,6 +7,7 @@ per-unit status is reported correctly for all workers.
 from __future__ import annotations
 
 import asyncio
+import io
 import json
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
@@ -15,6 +16,8 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     import pytest
+
+from rich.console import Console
 
 from ralph.config.enums import PHASE_DEVELOPMENT, PHASE_FAILED
 from ralph.pipeline import runner as runner_module
@@ -46,6 +49,9 @@ def _make_work_unit(uid: str, deps: list[str] | None = None) -> WorkUnit:
 
 
 class _FakeDisplay:
+    def __init__(self) -> None:
+        self.console = Console(file=io.StringIO(), force_terminal=False, color_system=None)
+
     def emit(self, unit_id: str | None, line: str) -> None:
         del unit_id, line
 

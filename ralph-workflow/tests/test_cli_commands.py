@@ -17,6 +17,7 @@ from ralph.cli.commands import diagnose as diagnose_module
 from ralph.cli.commands import init as init_module
 from ralph.config.enums import AgentTransport, JsonParserType, ReviewDepth
 from ralph.config.models import AgentConfig, UnifiedConfig
+from ralph.display.context import DisplayContext
 from ralph.display.theme import RALPH_THEME
 from ralph.mcp.artifacts.commit_message import write_commit_message_artifact
 from ralph.mcp.protocol.session import AgentSession
@@ -34,7 +35,26 @@ _SUMMARY_RETRY_FAILURES = 2
 def _attach_console(monkeypatch: pytest.MonkeyPatch, module: object) -> StringIO:
     stream = StringIO()
     console = Console(file=stream, force_terminal=False, color_system=None, theme=RALPH_THEME)
-    monkeypatch.setattr(module, "console", console)
+
+    ctx = DisplayContext(
+        console=console,
+        theme=RALPH_THEME,
+        width=80,
+        mode="wide",
+        narrow=False,
+        color_enabled=True,
+        headline_max_chars=120,
+        condenser_soft_limit=400,
+        condenser_hard_limit=4000,
+        streaming_checkpoint_chars=4000,
+        thinking_preview_min_chars=80,
+        tool_result_headline_min_chars=80,
+    )
+
+    def fake_make_display_context(**kwargs):
+        return ctx
+
+    monkeypatch.setattr(module, "make_display_context", fake_make_display_context)
     return stream
 
 

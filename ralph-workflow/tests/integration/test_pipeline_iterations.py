@@ -9,10 +9,12 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import TYPE_CHECKING
-from unittest.mock import MagicMock
+
+from rich.console import Console
 
 from ralph.config.enums import Verbosity
 from ralph.config.models import GeneralConfig, UnifiedConfig
+from ralph.display.context import make_display_context
 from ralph.pipeline import runner
 from ralph.pipeline.checkpoint import load as ckpt_load
 from ralph.pipeline.checkpoint import save as ckpt_save
@@ -33,6 +35,12 @@ DEVELOPMENT_CYCLES_TWO = 2
 DEVELOPMENT_CYCLES_THREE = 3
 REVIEW_CYCLES_TWO = 2
 MAX_REVIEW_ANALYSIS_ITERATIONS = 2
+
+
+def _install_runner_display_context(monkeypatch: MonkeyPatch) -> None:
+    console = Console(record=True, force_terminal=False, width=120, color_system=None)
+    ctx = make_display_context(console=console, force_width=120, force_mode="wide")
+    monkeypatch.setattr(runner, "make_display_context", lambda **_kwargs: ctx)
 
 
 class LoopbackOnceInvoker(MockAgentInvoker):
@@ -159,7 +167,7 @@ def _run_pipeline(
     monkeypatch.setattr(runner, "_execute_effect", fake_execute_effect)
     monkeypatch.setattr(runner, "_phase_event_after_agent_run", fake_phase_event_after_agent_run)
     monkeypatch.setattr(runner.ckpt, "save", capture_saved_state)
-    monkeypatch.setattr(runner, "console", MagicMock())
+    _install_runner_display_context(monkeypatch)
 
     result = runner.run(config, initial_state=initial_state, verbosity=Verbosity.QUIET)
     return result, saved_states

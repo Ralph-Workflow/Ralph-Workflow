@@ -19,6 +19,7 @@ import ralph.display.parallel_display as pd_module
 from ralph.config.enums import Verbosity
 from ralph.config.models import GeneralConfig, UnifiedConfig
 from ralph.display.activity_model import ActivityEventKind
+from ralph.display.context import make_display_context
 from ralph.pipeline import runner as runner_module
 from ralph.pipeline.effects import (
     CommitEffect,
@@ -105,7 +106,13 @@ def _install_runner_stubs(
     captured_console = Console(
         record=True, force_terminal=False, width=300, color_system=None
     )
-    monkeypatch.setattr(runner_module, "console", captured_console)
+    monkeypatch.setattr(
+        runner_module,
+        "make_display_context",
+        lambda **_kwargs: make_display_context(
+            console=captured_console, force_width=300, force_mode="wide"
+        ),
+    )
     monkeypatch.setattr(runner_module, "resolve_workspace_scope", lambda: WorkspaceScope(tmp_path))
     monkeypatch.setattr(runner_module, "load_policy_or_die", lambda _path: policy_bundle)
     monkeypatch.setattr(runner_module, "_materialize_agent_prompt_if_needed", lambda *a, **kw: None)
@@ -120,7 +127,9 @@ def _install_runner_stubs(
 
     def spy_init(self: object, *args: object, **kwargs: object) -> None:
         captured_displays.append(self)
-        real_init(self, *args, **kwargs)
+        updated_kwargs = dict(kwargs)
+        updated_kwargs["console"] = captured_console
+        real_init(self, *args, **updated_kwargs)
 
     monkeypatch.setattr(pd_module.ParallelDisplay, "__init__", spy_init)
 

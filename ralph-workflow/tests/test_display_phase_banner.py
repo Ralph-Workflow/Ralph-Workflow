@@ -7,6 +7,7 @@ from io import StringIO
 
 from rich.console import Console
 
+from ralph.display.context import make_display_context
 from ralph.display.phase_banner import (
     _MAJOR_TRANSITIONS,
     _TRANSITION_DESCRIPTIONS,
@@ -439,3 +440,63 @@ def test_show_phase_start_from_state_tolerates_missing_attrs() -> None:
     assert "iteration 1/3" in output
     assert "Planning" in output
     assert "pass" not in output
+
+
+# --- Tests for compact/medium/wide mode banners ---
+
+
+def test_show_phase_transition_compact_mode_no_leading_blank_line() -> None:
+    """Compact mode major transition has no leading blank line and one Rule."""
+    console = Console(record=True, width=80)
+    ctx = make_display_context(console=console, force_mode="compact")
+    show_phase_transition("planning", "development", display_context=ctx)
+    output = console.export_text()
+
+    assert "Planning" in output
+    assert "Development" in output
+    # Compact: no leading blank line (first char should be the Rule character)
+    lines = output.split("\n")
+    assert lines[0].strip() != ""  # First line is not blank
+    # Should have exactly one Rule line (compact shows single rule with title)
+    rule_lines = [line for line in lines if "─" in line or "━" in line]
+    assert len(rule_lines) == 1
+
+
+def test_show_phase_transition_medium_mode_has_two_rules_no_description() -> None:
+    """Medium mode major transition has two Rules but no description text."""
+    console = Console(record=True, width=80)
+    ctx = make_display_context(console=console, force_mode="medium")
+    show_phase_transition("planning", "development", display_context=ctx)
+    output = console.export_text()
+
+    assert "Planning" in output
+    assert "Development" in output
+    # Medium should have two Rule lines (opening and closing)
+    lines = output.split("\n")
+    rule_lines = [line for line in lines if "─" in line or "━" in line]
+    expected_rule_count = 2
+    assert len(rule_lines) == expected_rule_count, (
+        f"Expected {expected_rule_count} rule lines for medium mode, got: {rule_lines}"
+    )
+    # Medium should NOT contain the description text
+    assert "Plan ready" not in output
+
+
+def test_show_phase_transition_wide_mode_has_description_and_leading_blank() -> None:
+    """Wide mode major transition has leading blank, description text, and two Rules."""
+    console = Console(record=True, width=120)
+    ctx = make_display_context(console=console, force_mode="wide")
+    show_phase_transition("planning", "development", display_context=ctx)
+    output = console.export_text()
+
+    assert "Planning" in output
+    assert "Development" in output
+    # Wide should have leading blank line
+    lines = output.split("\n")
+    assert lines[0] == ""  # First line is blank
+    # Wide should have description text
+    assert "Plan ready" in output
+    # Wide should have two Rule lines
+    rule_lines = [line for line in lines if "─" in line or "━" in line]
+    expected_rule_count = 2
+    assert len(rule_lines) == expected_rule_count

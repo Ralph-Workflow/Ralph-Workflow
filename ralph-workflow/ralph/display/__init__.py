@@ -2,6 +2,16 @@
 
 These exports cover progress rendering, phase/status display, and simple table
 views used by CLI diagnostics and listing commands.
+
+.. important::
+   Renderers in this package MUST NOT construct their own ``rich.Console``.
+   All rendering depends on a ``DisplayContext`` that is constructed once via
+   ``make_display_context()`` and threaded through the call graph. When a
+   renderer receives ``display_context=None``, it creates a fresh context via
+   ``make_display_context()`` whose mode is determined by the terminal
+   environment (via ``RALPH_FORCE_NARROW``, ``RALPH_FORCE_WIDE``, or actual
+   terminal width detection). Compact mode column suppression is only applied
+   when an explicit ``display_context`` with ``mode=='compact'`` is passed.
 """
 
 from ralph.display.artifact_renderer import (

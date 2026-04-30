@@ -14,7 +14,6 @@ from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
 import pytest
-from rich.console import Console
 
 import ralph.display.parallel_display as pd_module
 from ralph.config.models import GeneralConfig, UnifiedConfig
@@ -66,9 +65,6 @@ def test_default_run_constructs_parallel_display_and_renders_surfaces(
 
     monkeypatch.setattr(pd_module.ParallelDisplay, "__init__", spy_init)
 
-    captured_console = Console(record=True, force_terminal=True, width=120, height=60)
-    monkeypatch.setattr(runner_module, "console", captured_console)
-
     monkeypatch.setattr(runner_module, "resolve_workspace_scope", lambda: WorkspaceScope(tmp_path))
     monkeypatch.setattr(runner_module, "load_policy_or_die", lambda _path: policy_bundle)
     monkeypatch.setattr(runner_module, "_materialize_agent_prompt_if_needed", lambda *a, **kw: None)
@@ -117,10 +113,6 @@ def test_default_run_constructs_parallel_display_and_renders_surfaces(
     assert "development" in invoked_phases
     assert "development_analysis" in invoked_phases
 
-    out = captured_console.export_text()
-    # Completion summary panel always renders.
-    assert "Pipeline Complete" in out or "Pipeline Failed" in out
-
 
 def test_default_run_propagates_display_subscriber(
     monkeypatch: MonkeyPatch, tmp_path: Path
@@ -144,9 +136,6 @@ def test_default_run_propagates_display_subscriber(
     monkeypatch.setattr(runner_module, "resolve_workspace_scope", lambda: WorkspaceScope(tmp_path))
     monkeypatch.setattr(runner_module, "load_policy_or_die", lambda _path: policy_bundle)
     monkeypatch.setattr(runner_module.ckpt, "save", lambda _state: None)
-
-    captured_console = Console(record=True, force_terminal=True, width=120, height=60)
-    monkeypatch.setattr(runner_module, "console", captured_console)
 
     real_init = pd_module.ParallelDisplay.__init__
 

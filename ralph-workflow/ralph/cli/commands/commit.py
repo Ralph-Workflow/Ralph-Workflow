@@ -26,7 +26,7 @@ from ralph.agents.registry import AgentRegistry
 from ralph.config.enums import AgentTransport
 from ralph.config.loader import load_config
 from ralph.display.artifact_renderer import render_commit_message
-from ralph.display.context import make_display_context
+from ralph.display.context import DisplayContext, make_display_context
 from ralph.git.operations import (
     create_commit,
     find_repo_root,
@@ -56,7 +56,9 @@ if TYPE_CHECKING:
 
     from ralph.config.models import AgentConfig, UnifiedConfig
 
-console = make_display_context().console
+def _resolve_ctx(display_context: DisplayContext | None) -> DisplayContext:
+    return display_context if display_context is not None else make_display_context()
+
 
 # Maximum number of staged files to display in output
 _MAX_DISPLAY_FILES = 5
@@ -123,12 +125,16 @@ class CommitAgentResult:
 def commit_plumbing(
     *,
     options: CommitPlumbingOptions | None = None,
+    display_context: DisplayContext | None = None,
 ) -> None:
     """Handle commit plumbing operations.
 
     Args:
         options: Commit plumbing options.
+        display_context: Optional display context for consistent rendering.
     """
+    ctx = _resolve_ctx(display_context)
+    console = ctx.console
     opts = options or CommitPlumbingOptions()
 
     try:
@@ -150,7 +156,7 @@ def commit_plumbing(
         return
 
     if opts.show_commit_msg:
-        _show_commit_message(repo_root)
+        _show_commit_message(repo_root, ctx)
         return
 
     if opts.generate_commit_msg or opts.generate_commit:
@@ -158,6 +164,7 @@ def commit_plumbing(
             repo_root=repo_root,
             config=config,
             options=opts,
+            display_context=ctx,
         )
         return
 
@@ -171,7 +178,10 @@ def _handle_agent_commit_generation(
     repo_root: Path,
     config: UnifiedConfig,
     options: CommitPlumbingOptions,
+    display_context: DisplayContext | None = None,
 ) -> None:
+    ctx = _resolve_ctx(display_context)
+    console = ctx.console
     generate = options.generate_commit_msg or options.generate_commit
     apply = options.generate_commit
     git_user_name = config.general.git_user_name
@@ -204,6 +214,7 @@ def _handle_agent_commit_generation(
         agents=agents,
         verbose=config.general.verbosity >= _VERBOSE_THRESHOLD,
         agent_idle_timeout_seconds=config.general.agent_idle_timeout_seconds,
+        display_context=ctx,
     )
 
     if result.skipped:
@@ -218,7 +229,7 @@ def _handle_agent_commit_generation(
                 style="theme.status.error",
             )
         )
-        _print_commit_failure_details(result.failure_details)
+        _print_commit_failure_details(result.failure_details, ctx)
         return
 
     persisted_message = read_commit_message_artifact(repo_root)
@@ -361,6 +372,7 @@ def _generate_commit_message_with_chain(  # noqa: PLR0913
     agents: list[str],
     verbose: bool,
     agent_idle_timeout_seconds: float = 300.0,
+    display_context: DisplayContext | None = None,
 ) -> CommitAgentResult:
     template_dirs = (repo_root / ".agent" / "prompts" / "commit", *default_template_dirs(repo_root))
     template_registry = TemplateRegistry(template_dirs=template_dirs)
@@ -387,6 +399,7 @@ def _generate_commit_message_with_chain(  # noqa: PLR0913
                 verbose=verbose,
                 extra_env=extra_env,
                 agent_idle_timeout_seconds=agent_idle_timeout_seconds,
+                display_context=display_context,
             )
             failure_details.extend(result.failure_details)
 
@@ -408,6 +421,7 @@ def _generate_commit_message_with_agent(  # noqa: PLR0913
     verbose: bool,
     extra_env: dict[str, str],
     agent_idle_timeout_seconds: float = 300.0,
+    display_context: DisplayContext | None = None,
 ) -> CommitAgentResult:
     failure_details: list[str] = []
     attempt_context = CommitAttemptContext(
@@ -420,6 +434,7 @@ def _generate_commit_message_with_agent(  # noqa: PLR0913
         agent,
         prompt_file=prompt_file,
         attempt_context=attempt_context,
+        display_context=display_context,
     )
     if initial_attempt.failure_detail:
         failure_details.append(initial_attempt.failure_detail)
@@ -435,6 +450,7 @@ def _generate_commit_message_with_agent(  # noqa: PLR0913
             prompt_file=prompt_file,
             attempt_context=attempt_context,
             session_id=initial_attempt.resume_session_id,
+            display_context=display_context,
         )
         if session_retry.failure_detail:
             failure_details.append(session_retry.failure_detail)
@@ -456,6 +472,7 @@ def _generate_commit_message_with_agent(  # noqa: PLR0913
         prompt_file=summary_prompt_file,
         attempt_context=attempt_context,
         session_id=initial_attempt.resume_session_id,
+        display_context=display_context,
     )
     if summary_retry.failure_detail:
         failure_details.append(summary_retry.failure_detail)
@@ -475,6 +492,7 @@ def _invoke_commit_agent_attempt(
     prompt_file: str,
     attempt_context: CommitAttemptContext,
     session_id: str | None = None,
+    display_context: DisplayContext | None = None,
 ) -> CommitAgentAttempt:
     delete_commit_message_artifacts(attempt_context.repo_root)
     try:
@@ -508,6 +526,7 @@ def _invoke_commit_agent_attempt(
             parser_type=str(agent.json_parser),
             agent_name=agent.cmd.split()[0],
             verbose=attempt_context.verbose,
+            display_context=display_context,
         )
     except AgentInvocationError as exc:
         return CommitAgentAttempt(
@@ -622,7 +641,9 @@ def _write_commit_prompt_file(repo_root: Path, prompt: str) -> str:
     return str(prompt_path)
 
 
-def _show_commit_message(repo_root: Path) -> None:
+def _show_commit_message(repo_root: Path, display_context: DisplayContext | None = None) -> None:
+    ctx = _resolve_ctx(display_context)
+    console = ctx.console
     commit_message = read_commit_message_artifact(repo_root)
     if commit_message is None:
         console.print(Text("No commit message generated yet", style="theme.status.error"))
@@ -632,7 +653,12 @@ def _show_commit_message(repo_root: Path) -> None:
     render_commit_message(repo_root, console)
 
 
-def _print_commit_failure_details(failure_details: list[str]) -> None:
+def _print_commit_failure_details(
+    failure_details: list[str],
+    display_context: DisplayContext | None = None,
+) -> None:
+    ctx = _resolve_ctx(display_context)
+    console = ctx.console
     for detail in failure_details:
         console.print(Text(detail, style="theme.status.error"))
 
@@ -680,7 +706,10 @@ def _collect_commit_agent_output(
     parser_type: str,
     agent_name: str,
     verbose: bool,
+    display_context: DisplayContext | None = None,
 ) -> tuple[list[str], list[str]]:
+    ctx = _resolve_ctx(display_context)
+    console = ctx.console
     parser = _resolve_commit_parser(parser_type)
     parsed_output: list[str] = []
     raw_output: list[str] = []

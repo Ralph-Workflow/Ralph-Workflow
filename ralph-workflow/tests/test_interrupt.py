@@ -168,7 +168,6 @@ def test_run_pipeline_saves_interrupted_resume_checkpoint(
     )
     monkeypatch.setattr(run_command_module.ckpt, "load", lambda: resumed_state)
     monkeypatch.setattr(run_command_module.ckpt, "save", saved_states.append)
-    monkeypatch.setattr(run_command_module.console, "print", lambda *args, **kwargs: None)
 
     def raise_keyboard_interrupt(
         config: UnifiedConfig,

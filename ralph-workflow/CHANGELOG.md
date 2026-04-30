@@ -48,6 +48,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `FanOutDevelopmentEffect.run_post_fanout_verification` now defaults to `False` and is driven by
   the `parallel_execution.post_fanout_verification` policy field. The previous hardcoded `True`
   would have triggered `make verify` in all fan-out runs, including unit tests.
+- **Display: completed DisplayContext dependency injection across CLI runner and command modules.**
+  Module-level `console` globals removed from `init.py`, `commit.py`, and `runner.py`; all rendering
+  now threads `DisplayContext` explicitly. `_LegacyConsoleDisplay` accepts an optional injected
+  context and uses it for themed output. Added a real `medium`-mode rendering branch in
+  `phase_banner.py` (two `Rule` separators, no description text, no leading blank line) and
+  compact-mode column suppression for tables (`show_agents` hides Parser/Can Commit, `show_providers`
+  hides Status, `show_checkpoint_summary` hides Review Pass, `show_config` uses plain text instead of Panel).
 - Documentation (`getting-started.md`, `concepts.md`, `parallel-mode.md`, `parallel-fan-out.md`)
   truthfully describes v1 same-workspace behavior: no worktrees, no separate git branches for each worker, no
   post-fanout merge step; soft isolation by path fencing and per-worker namespaces only.

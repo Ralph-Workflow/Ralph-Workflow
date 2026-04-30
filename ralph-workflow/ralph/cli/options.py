@@ -21,6 +21,11 @@ if TYPE_CHECKING:
 AgentTable = Mapping[str, AgentConfig]
 
 
+def _should_show_secondary(display_context: DisplayContext | None) -> bool:
+    """Return False when in compact mode with an injected display_context, else True."""
+    return display_context is None or display_context.mode != "compact"
+
+
 def display_agents_table(
     agents: AgentTable,
     console: Console | None = None,
@@ -39,17 +44,21 @@ def display_agents_table(
         c = console
     else:
         c = make_display_context().console
+
+    show_secondary = _should_show_secondary(display_context)
     table = Table(title="Configured Agents", show_header=True)
     table.add_column("Name", style="theme.cat.meta")
     table.add_column("Command")
-    table.add_column("Parser", style="theme.cat.cont")
-    table.add_column("Can Commit", justify="center")
+    if show_secondary:
+        table.add_column("Parser", style="theme.cat.cont")
+        table.add_column("Can Commit", justify="center")
 
     for name, agent in agents.items():
-        cmd = agent.cmd
-        parser = str(agent.json_parser)
-        can_commit = "yes" if agent.can_commit else "no"
-        table.add_row(name, cmd, parser, can_commit)
+        if show_secondary:
+            can_commit_str = "yes" if agent.can_commit else "no"
+            table.add_row(name, agent.cmd, str(agent.json_parser), can_commit_str)
+        else:
+            table.add_row(name, agent.cmd)
 
     c.print(table)
 
@@ -72,10 +81,17 @@ def display_providers_table(
         c = console
     else:
         c = make_display_context().console
+
+    show_status = _should_show_secondary(display_context)
     table = Table(title="Available Providers", show_header=True)
     table.add_column("Provider", style="theme.cat.meta")
+    if show_status:
+        table.add_column("Status", justify="center")
 
     for provider in providers:
-        table.add_row(provider)
+        if show_status:
+            table.add_row(provider, "Available")
+        else:
+            table.add_row(provider)
 
     c.print(table)

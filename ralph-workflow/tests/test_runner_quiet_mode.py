@@ -10,6 +10,7 @@ from rich.console import Console
 import ralph.display.parallel_display as pd_module
 from ralph.config.enums import Verbosity
 from ralph.config.models import GeneralConfig, UnifiedConfig
+from ralph.display.context import make_display_context
 from ralph.pipeline import runner as runner_module
 from ralph.pipeline.effects import (
     CommitEffect,
@@ -25,6 +26,11 @@ if TYPE_CHECKING:
 
 
 DEFAULT_POLICY_DIR = Path(__file__).parent.parent / "ralph" / "policy" / "defaults"
+
+
+def _install_runner_display_context(monkeypatch: MonkeyPatch, console: Console) -> None:
+    ctx = make_display_context(console=console, force_width=console.width, force_mode="wide")
+    monkeypatch.setattr(runner_module, "make_display_context", lambda **_kwargs: ctx)
 
 
 def _config() -> UnifiedConfig:
@@ -73,7 +79,7 @@ def test_quiet_mode_suppresses_dashboard_header_and_phase_banners(
     policy_bundle = load_policy(DEFAULT_POLICY_DIR)
 
     captured_console = Console(record=True, force_terminal=False, width=120, color_system=None)
-    monkeypatch.setattr(runner_module, "console", captured_console)
+    _install_runner_display_context(monkeypatch, captured_console)
 
     constructed_displays: list[object] = []
     real_init = pd_module.ParallelDisplay.__init__
@@ -117,7 +123,7 @@ def test_quiet_mode_renders_completion_summary_on_failure(
     policy_bundle = load_policy(DEFAULT_POLICY_DIR)
 
     captured_console = Console(record=True, force_terminal=False, width=120, color_system=None)
-    monkeypatch.setattr(runner_module, "console", captured_console)
+    _install_runner_display_context(monkeypatch, captured_console)
 
     monkeypatch.setattr(runner_module, "resolve_workspace_scope", lambda: WorkspaceScope(tmp_path))
     monkeypatch.setattr(runner_module, "load_policy_or_die", lambda _path: policy_bundle)

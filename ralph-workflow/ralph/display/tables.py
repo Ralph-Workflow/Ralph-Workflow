@@ -51,6 +51,11 @@ def _resolve_console(
     return make_display_context().console
 
 
+def _should_show_secondary(display_context: DisplayContext | None) -> bool:
+    """Return False when in compact mode with an injected display_context, else True."""
+    return display_context is None or display_context.mode != "compact"
+
+
 def _table_expand(display_context: DisplayContext | None) -> bool:
     if display_context is None:
         return False
@@ -71,6 +76,7 @@ def show_agents(
     """
     c = _resolve_console(console, display_context)
     expand = _table_expand(display_context)
+    show_secondary = _should_show_secondary(display_context)
     table = Table(
         title="Configured Agents",
         show_header=True,
@@ -81,19 +87,26 @@ def show_agents(
     )
     table.add_column("Name", style="theme.cat.meta")
     table.add_column("Command")
-    table.add_column("Parser", style="theme.cat.cont")
-    table.add_column("Can Commit", justify="center")
+    if show_secondary:
+        table.add_column("Parser", style="theme.cat.cont")
+        table.add_column("Can Commit", justify="center")
 
     if not config.agents:
-        table.add_row(Text("No agents configured", style="theme.text.muted"), "", "", "")
+        if show_secondary:
+            table.add_row(Text("No agents configured", style="theme.text.muted"), "", "", "")
+        else:
+            table.add_row(Text("No agents configured", style="theme.text.muted"), "")
     else:
         for name, agent in config.agents.items():
-            table.add_row(
-                name,
-                agent.cmd,
-                agent.json_parser.value,
-                "yes" if agent.can_commit else "no",
-            )
+            if show_secondary:
+                table.add_row(
+                    name,
+                    agent.cmd,
+                    agent.json_parser.value,
+                    "yes" if agent.can_commit else "no",
+                )
+            else:
+                table.add_row(name, agent.cmd)
 
     c.print(table)
 
@@ -112,6 +125,7 @@ def show_providers(
     """
     c = _resolve_console(console, display_context)
     expand = _table_expand(display_context)
+    show_status = _should_show_secondary(display_context)
     table = Table(
         title="Available Providers",
         show_header=True,
@@ -121,14 +135,21 @@ def show_providers(
         header_style="theme.text.emphasis",
     )
     table.add_column("Provider", style="theme.cat.meta")
-    table.add_column("Status", justify="center")
+    if show_status:
+        table.add_column("Status", justify="center")
 
     if not providers:
-        table.add_row(Text("No providers available", style="theme.text.muted"), "")
+        if show_status:
+            table.add_row(Text("No providers available", style="theme.text.muted"), "")
+        else:
+            table.add_row(Text("No providers available", style="theme.text.muted"))
     else:
         for provider in providers:
-            t = Text("Available", style="theme.status.success")
-            table.add_row(provider, t)
+            if show_status:
+                t = Text("Available", style="theme.status.success")
+                table.add_row(provider, t)
+            else:
+                table.add_row(provider)
 
     c.print(table)
 
@@ -147,13 +168,16 @@ def show_config(
     """
     c = _resolve_console(console, display_context)
     config_json = config.model_dump_json(indent=2)
-    c.print(
-        Panel(
-            config_json,
-            title="Effective Configuration",
-            border_style="theme.phase.planning",
+    if display_context is not None and display_context.mode == "compact":
+        c.print(config_json)
+    else:
+        c.print(
+            Panel(
+                config_json,
+                title="Effective Configuration",
+                border_style="theme.phase.planning",
+            )
         )
-    )
 
 
 def show_metrics(
@@ -201,6 +225,7 @@ def show_checkpoint_summary(
     """
     c = _resolve_console(console, display_context)
     expand = _table_expand(display_context)
+    show_secondary = _should_show_secondary(display_context)
     table = Table(
         title="Checkpoint Summary",
         show_header=False,
@@ -213,6 +238,7 @@ def show_checkpoint_summary(
 
     table.add_row("Phase", options.phase)
     table.add_row("Iteration", f"{options.iteration}/{options.total_iterations}")
-    table.add_row("Review Pass", f"{options.reviewer_pass}/{options.total_reviewer_passes}")
+    if show_secondary:
+        table.add_row("Review Pass", f"{options.reviewer_pass}/{options.total_reviewer_passes}")
 
     c.print(table)

@@ -2,10 +2,16 @@
 
 from __future__ import annotations
 
+from io import StringIO
 from typing import TYPE_CHECKING
+
+from rich.console import Console
+from rich.text import Text
 
 from ralph.cli.commands import run as run_module
 from ralph.config.models import UnifiedConfig
+from ralph.display.context import DisplayContext
+from ralph.display.theme import RALPH_THEME
 from ralph.pipeline.state import PipelineState
 from ralph.policy.models import (
     AgentChainConfig,
@@ -92,12 +98,58 @@ def _policy_bundle_for_testing() -> PolicyBundle:
     )
 
 
-class _CaptureConsole:
+class _CaptureConsole(Console):
+    """A Rich Console that also captures output in .lines."""
+
     def __init__(self) -> None:
+        super().__init__(
+            file=StringIO(),
+            color_system=None,
+            force_terminal=False,
+            theme=RALPH_THEME,
+        )
+        self._string_io = self.file  # type: ignore[assignment]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
         self.lines: list[str] = []
 
     def print(self, *args: object, **kwargs: object) -> None:
-        self.lines.append(" ".join(str(arg) for arg in args))
+        # Capture in lines for backward compatibility with existing tests
+        for arg in args:
+            if isinstance(arg, Text):
+                self.lines.append(arg.plain)
+            else:
+                self.lines.append(str(arg))
+        # Also print to parent (writes to StringIO)
+        super().print(*args, **kwargs)
+
+    def getvalue(self) -> str:
+        return self._string_io.getvalue()
+
+
+def _attach_display_context(
+    monkeypatch: pytest.MonkeyPatch,
+    module: object,
+    console: _CaptureConsole,
+) -> None:
+    """Patch module's make_display_context to return a context with our captured console."""
+    ctx = DisplayContext(
+        console=console,
+        theme=RALPH_THEME,
+        width=80,
+        mode="wide",
+        narrow=False,
+        color_enabled=True,
+        headline_max_chars=120,
+        condenser_soft_limit=400,
+        condenser_hard_limit=4000,
+        streaming_checkpoint_chars=4000,
+        thinking_preview_min_chars=80,
+        tool_result_headline_min_chars=80,
+    )
+
+    def fake_make_display_context(**kwargs):
+        return ctx
+
+    monkeypatch.setattr(module, "make_display_context", fake_make_display_context)
 
 
 def _fake_config(developer_iters: int = 1, reviewer_reviews: int = 1) -> UnifiedConfig:
@@ -146,7 +198,7 @@ def test_run_pipeline_resume_without_checkpoint_prints_notice(
     _configure_workspace(monkeypatch, tmp_path)
     monkeypatch.setattr(run_module, "load_config", lambda *args, **kwargs: _fake_config())
     console = _CaptureConsole()
-    monkeypatch.setattr(run_module, "console", console)
+    _attach_display_context(monkeypatch, run_module, console)
     monkeypatch.setattr(run_module.ckpt, "load", lambda: None)
     monkeypatch.setattr(run_module, "_run_func", lambda *_args, **_kwargs: 0)
 
@@ -167,7 +219,7 @@ def test_run_pipeline_dry_run_reports_summary(
     monkeypatch.setattr(run_module, "_run_func", lambda *_args, **_kwargs: 0)
 
     console = _CaptureConsole()
-    monkeypatch.setattr(run_module, "console", console)
+    _attach_display_context(monkeypatch, run_module, console)
 
     assert run_module.run_pipeline(dry_run=True, resume=True) == 0
     assert "Dry run mode" in console.lines[0]
@@ -197,7 +249,7 @@ def test_run_pipeline_builds_preflight_registry_from_config(
     console = _CaptureConsole()
 
     monkeypatch.setattr(run_module, "load_config", lambda *args, **kwargs: config)
-    monkeypatch.setattr(run_module, "console", console)
+    _attach_display_context(monkeypatch, run_module, console)
     monkeypatch.setattr(run_module, "AgentRegistry", _RegistryWithFromConfigOnly)
     monkeypatch.setattr(run_module, "_run_func", lambda *_args, **_kwargs: 0)
 
@@ -280,7 +332,7 @@ def test_run_pipeline_runner_unavailable(
     console = _CaptureConsole()
     logged: list[str] = []
 
-    monkeypatch.setattr(run_module, "console", console)
+    _attach_display_context(monkeypatch, run_module, console)
     monkeypatch.setattr(
         run_module.logger, "error", lambda message, *args, **kwargs: logged.append(message)
     )
@@ -311,7 +363,7 @@ def test_run_pipeline_runner_exception(
     monkeypatch.setattr(run_module, "_run_func", raising_runner)
     # Suppress any logging to avoid noise in test output
     monkeypatch.setattr(run_module.logger, "critical", lambda *args, **kwargs: None)
-    monkeypatch.setattr(run_module, "console", console)
+    _attach_display_context(monkeypatch, run_module, console)
 
     assert run_module.run_pipeline() == 1
     assert any("Pipeline failed" in line for line in console.lines)

@@ -25,6 +25,7 @@ import pytest
 
 from ralph.mcp.protocol import startup
 from ralph.mcp.protocol.capability_mapping import Capability, SessionDrain
+from ralph.mcp.protocol.env import MCP_SESSION_FILE_ENV
 from ralph.mcp.protocol.session import AgentSession
 from ralph.mcp.tools.names import VISIT_URL_TOOL, upstream_proxy_tool_name
 from ralph.process.manager import ManagedProcess, get_process_manager, reset_process_manager
@@ -36,7 +37,7 @@ if TYPE_CHECKING:
 PACKAGE_ROOT = Path(__file__).resolve().parents[2]
 FAKE_STDIO_MCP = PACKAGE_ROOT / "tests" / "fixtures" / "fake_stdio_mcp.py"
 
-pytestmark = pytest.mark.timeout_seconds(2.5)
+pytestmark = pytest.mark.timeout_seconds(10)
 
 
 class _RunningServer:
@@ -120,7 +121,6 @@ def _bootstrap_visit_url_mock() -> str:
         import runpy
         import sys
 
-        # Patch fetch_url before the server module loads
         import ralph.mcp.webvisit.fetcher as fetcher_module
 
         mock_outcome = fetcher_module.FetchOutcome(
@@ -134,7 +134,6 @@ def _bootstrap_visit_url_mock() -> str:
             return mock_outcome
         fetcher_module.fetch_url = patched_fetch
 
-        # Also patch extract_readable
         import ralph.mcp.webvisit.extractor as extractor_module
 
         mock_page = extractor_module.ExtractedPage(
@@ -146,7 +145,6 @@ def _bootstrap_visit_url_mock() -> str:
             return mock_page
         extractor_module.extract_readable = patched_extract
 
-        # Now run the actual server
         sys.argv = [
             "ralph.mcp.server",
             "--workspace",
@@ -189,6 +187,7 @@ def _run_server(
     upstream_payload: str | None = None,
     bootstrap_text: str | None = None,
     session_json: str | None = None,
+    session_file: Path | None = None,
 ) -> Iterator[_RunningServer]:
     port = _reserve_port()
     endpoint = f"http://127.0.0.1:{port}/mcp"
@@ -202,6 +201,10 @@ def _run_server(
         env["RALPH_MCP_SESSION_JSON"] = session_json
     else:
         env.pop("RALPH_MCP_SESSION_JSON", None)
+    if session_file is not None:
+        env[str(MCP_SESSION_FILE_ENV)] = str(session_file)
+    else:
+        env.pop(str(MCP_SESSION_FILE_ENV), None)
 
     if bootstrap_text is None:
         command = [
@@ -237,138 +240,25 @@ def _run_server(
         server.stop()
 
 
-@pytest.fixture
-def temp_workspace(tmp_path: Path) -> Generator[Path, None, None]:
-    workspace = tmp_path / "workspace"
-    workspace.mkdir()
-    yield workspace
+def _session_payload(drain_str: str) -> dict[str, object]:
+    session_drain = SessionDrain(drain_str)
+    default_caps = DEFAULT_CAPABILITIES.get(session_drain, ())
+    session = AgentSession(
+        session_id=f"test-{drain_str}",
+        run_id="run-1",
+        drain=drain_str,
+        capabilities={cap.value for cap in default_caps},
+    )
+    return {
+        "session_id": session.session_id,
+        "run_id": session.run_id,
+        "drain": session.drain,
+        "capabilities": list(session.capabilities),
+    }
 
 
-@pytest.fixture
-def fake_upstream_payload() -> str:
-    return _fake_stdio_payload(sys.executable)
-
-
-class TestVisitUrlPhaseVisibility:
-    """Test that visit_url is visible and callable for every SessionDrain."""
-
-    @pytest.mark.parametrize("drain_str", [d.value for d in SessionDrain])
-    def test_visit_url_is_visible_and_callable_for_drain(
-        self,
-        temp_workspace: Path,
-        drain_str: str,
-    ) -> None:
-        """visit_url must appear in tools/list and be callable for every drain."""
-        _write_mcp_toml(
-            temp_workspace,
-            """
-            [web_visit]
-            enabled = true
-            """,
-        )
-
-        session_drain = SessionDrain(drain_str)
-        default_caps = DEFAULT_CAPABILITIES.get(session_drain, ())
-        session = AgentSession(
-            session_id=f"test-{drain_str}",
-            run_id="run-1",
-            drain=drain_str,
-            capabilities={cap.value for cap in default_caps},
-        )
-
-        session_json = json.dumps(
-            {
-                "session_id": session.session_id,
-                "run_id": session.run_id,
-                "drain": session.drain,
-                "capabilities": list(session.capabilities),
-            }
-        )
-
-        with _run_server(
-            temp_workspace,
-            bootstrap_text=_bootstrap_visit_url_mock(),
-            session_json=session_json,
-        ) as server:
-            session_id = _do_initialize(server.endpoint)
-            tools = _do_tools_list(server.endpoint, session_id)
-            tool_names = {t["name"] for t in tools}
-
-            assert VISIT_URL_TOOL in tool_names, (
-                f"visit_url not in tools/list for drain {drain_str}; "
-                f"got: {sorted(tool_names)}"
-            )
-
-            result = _do_tool_call(
-                server.endpoint, session_id, VISIT_URL_TOOL, {"url": "https://example.com/page"}
-            )
-
-            assert result.get("isError") is not True, (
-                f"visit_url returned error for drain {drain_str}: {result}"
-            )
-            content = result.get("content", [])
-            assert len(content) >= 1
-            text_block = content[0]
-            assert text_block.get("type") == "text"
-            inner = json.loads(text_block["text"])
-            assert inner.get("status") == "ok", f"Expected status=ok for drain {drain_str}: {inner}"
-
-
-class TestUpstreamToolPhaseVisibility:
-    """Test that upstream proxy tools are visible for every drain that grants UPSTREAM_TOOL_USE."""
-
-    @pytest.mark.parametrize("drain_str", [d.value for d in SessionDrain])
-    def test_upstream_proxy_listed_for_drain(
-        self,
-        temp_workspace: Path,
-        drain_str: str,
-        fake_upstream_payload: str,
-    ) -> None:
-        """Upstream proxy tools must appear in tools/list for drains with UPSTREAM_TOOL_USE."""
-        _write_mcp_toml(
-            temp_workspace,
-            """
-            [web_visit]
-            enabled = true
-            """,
-        )
-
-        session_drain = SessionDrain(drain_str)
-        default_caps = DEFAULT_CAPABILITIES.get(session_drain, ())
-        session = AgentSession(
-            session_id=f"test-{drain_str}",
-            run_id="run-1",
-            drain=drain_str,
-            capabilities={cap.value for cap in default_caps},
-        )
-
-        proxy_alias = upstream_proxy_tool_name("fake_crawl", "fake_tool")
-
-        session_json = json.dumps(
-            {
-                "session_id": session.session_id,
-                "run_id": session.run_id,
-                "drain": session.drain,
-                "capabilities": list(session.capabilities),
-            }
-        )
-
-        with _run_server(
-            temp_workspace,
-            bootstrap_text=_bootstrap_plain(),
-            upstream_payload=fake_upstream_payload,
-            session_json=session_json,
-        ) as server:
-            session_id = _do_initialize(server.endpoint)
-            tools = _do_tools_list(server.endpoint, session_id)
-            tool_names = {t["name"] for t in tools}
-
-            has_upstream_cap = Capability.UPSTREAM_TOOL_USE in default_caps
-            if has_upstream_cap:
-                assert proxy_alias in tool_names, (
-                    f"upstream proxy {proxy_alias} not in tools/list for drain {drain_str} "
-                    f"(which has UPSTREAM_TOOL_USE); got: {sorted(tool_names)}"
-                )
+def _write_session_file(session_file: Path, drain_str: str) -> None:
+    session_file.write_text(json.dumps(_session_payload(drain_str)), encoding="utf-8")
 
 
 def _do_initialize(base_url: str) -> str:
@@ -428,3 +318,92 @@ def _do_tool_call(
     result = response["result"]
     assert isinstance(result, dict)
     return result
+
+
+def test_visit_url_is_visible_and_callable_for_all_drains(tmp_path: Path) -> None:
+    """visit_url must appear in tools/list and be callable for every drain."""
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    _write_mcp_toml(
+        workspace,
+        """
+        [web_visit]
+        enabled = true
+        """,
+    )
+    session_file = workspace / "session.json"
+    _write_session_file(session_file, SessionDrain.PLANNING.value)
+
+    with _run_server(
+        workspace,
+        bootstrap_text=_bootstrap_visit_url_mock(),
+        session_file=session_file,
+    ) as server:
+        for drain in SessionDrain:
+            _write_session_file(session_file, drain.value)
+            session_id = _do_initialize(server.endpoint)
+            tools = _do_tools_list(server.endpoint, session_id)
+            tool_names = {tool["name"] for tool in tools}
+
+            assert VISIT_URL_TOOL in tool_names, (
+                f"visit_url not in tools/list for drain {drain.value}; got: {sorted(tool_names)}"
+            )
+
+            result = _do_tool_call(
+                server.endpoint,
+                session_id,
+                VISIT_URL_TOOL,
+                {"url": "https://example.com/page"},
+            )
+            assert result.get("isError") is not True, (
+                f"visit_url returned error for drain {drain.value}: {result}"
+            )
+            content = result.get("content", [])
+            assert len(content) >= 1
+            text_block = content[0]
+            assert text_block.get("type") == "text"
+            inner = json.loads(text_block["text"])
+            assert inner.get("status") == "ok", (
+                f"Expected status=ok for drain {drain.value}: {inner}"
+            )
+
+
+def test_upstream_proxy_listed_for_drains_with_upstream_capability(tmp_path: Path) -> None:
+    """Upstream proxy tools must appear in tools/list for drains with UPSTREAM_TOOL_USE."""
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    _write_mcp_toml(
+        workspace,
+        """
+        [web_visit]
+        enabled = true
+        """,
+    )
+    session_file = workspace / "session.json"
+    _write_session_file(session_file, SessionDrain.PLANNING.value)
+    proxy_alias = upstream_proxy_tool_name("fake_crawl", "fake_tool")
+
+    with _run_server(
+        workspace,
+        bootstrap_text=_bootstrap_plain(),
+        upstream_payload=_fake_stdio_payload(sys.executable),
+        session_file=session_file,
+    ) as server:
+        for drain in SessionDrain:
+            _write_session_file(session_file, drain.value)
+            session_id = _do_initialize(server.endpoint)
+            tools = _do_tools_list(server.endpoint, session_id)
+            tool_names = {tool["name"] for tool in tools}
+
+            default_caps = DEFAULT_CAPABILITIES.get(drain, ())
+            has_upstream_cap = Capability.UPSTREAM_TOOL_USE in default_caps
+            if has_upstream_cap:
+                assert proxy_alias in tool_names, (
+                    f"upstream proxy {proxy_alias} not in tools/list for drain {drain.value} "
+                    f"(which has UPSTREAM_TOOL_USE); got: {sorted(tool_names)}"
+                )
+            else:
+                assert proxy_alias not in tool_names, (
+                    f"upstream proxy {proxy_alias} unexpectedly visible for drain {drain.value}; "
+                    f"got: {sorted(tool_names)}"
+                )
