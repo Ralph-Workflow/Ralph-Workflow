@@ -84,10 +84,28 @@ def test_record_waiting_status_kind_specific_lines(tmp_path: Path) -> None:
     assert "may be frozen" in line
     assert "time_and_workspace_quiet" in line
 
-    # EXITED clears the waiting status line
+    # EXITED publishes a resumed-activity line, then clears the field.
+    # Seed _last_state so the subscriber can build snapshots.
+    from ralph.pipeline.state import PipelineState  # noqa: PLC0415
+
+    state = PipelineState(
+        phase="development", iteration=1, total_iterations=1,
+        reviewer_pass=0, total_reviewer_passes=1,
+    )
+    sub.notify(state)
+    while not sub.queue.empty():
+        sub.queue.get_nowait()  # drain previous snapshots
     sub.record_waiting_status(_event(WaitingStatusKind.EXITED))
     line = _last_line(sub)
-    assert line is None
+    assert line is None  # field is cleared after one-shot publication
+    # Queue must contain a snapshot with the resumed-activity line
+    published = []
+    while not sub.queue.empty():
+        published.append(sub.queue.get_nowait())
+    assert any(
+        s.waiting_status_line is not None and "resumed activity" in s.waiting_status_line
+        for s in published
+    ), "EXITED must publish a snapshot with 'resumed activity' before clearing"
 
     # HARD_STOP with scoped_child_active and oldest_child_seconds
     sub.record_waiting_status(
@@ -161,12 +179,32 @@ def test_record_waiting_status_writes_to_waiting_field_not_activity_line(tmp_pat
 
 
 def test_record_waiting_status_clears_field_on_exited(tmp_path: Path) -> None:
-    """EXITED event clears _waiting_status_line back to None."""
+    """EXITED event surfaces a resumed-activity line then clears _waiting_status_line."""
+    from ralph.pipeline.state import PipelineState  # noqa: PLC0415
+
     sub = _make_subscriber(tmp_path)
+    # Seed state so the subscriber can build snapshots.
+    state = PipelineState(
+        phase="development", iteration=1, total_iterations=1,
+        reviewer_pass=0, total_reviewer_passes=1,
+    )
+    sub.notify(state)
     sub.record_waiting_status(_event(WaitingStatusKind.ENTERED))
     assert getattr(sub, "_waiting_status_line", None) is not None
+    # Drain queue from ENTERED/notify snapshots so we can inspect only EXITED output.
+    while not sub.queue.empty():
+        sub.queue.get_nowait()
     sub.record_waiting_status(_event(WaitingStatusKind.EXITED))
+    # Field must be cleared after publication.
     assert getattr(sub, "_waiting_status_line", None) is None
+    # At least one published snapshot must carry the resumed-activity line.
+    published = []
+    while not sub.queue.empty():
+        published.append(sub.queue.get_nowait())
+    assert any(
+        s.waiting_status_line is not None and "resumed activity" in s.waiting_status_line
+        for s in published
+    ), "EXITED must publish a snapshot with 'resumed activity' before clearing"
 
 
 def test_snapshot_includes_waiting_status_field(tmp_path: Path) -> None:

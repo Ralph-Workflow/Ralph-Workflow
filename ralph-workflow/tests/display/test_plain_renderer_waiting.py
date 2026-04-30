@@ -110,6 +110,34 @@ def test_waiting_line_does_not_overwrite_activity_line() -> None:
     assert "mcp__ralph__read_file" in out
 
 
+def test_waiting_exited_renders_info_level_once() -> None:
+    """An EXITED waiting_status_line is emitted as INFO [waiting] exactly once."""
+    renderer, buf = _make_renderer()
+    snap = _base_snapshot(
+        waiting_status_line="Background child work resumed activity (run=60s, cumulative=120s)",
+    )
+    renderer.emit_snapshot(snap)
+    out = buf.getvalue()
+    assert "[waiting]" in out
+    assert "resumed activity" in out
+    assert "INFO" in out
+
+
+def test_waiting_exited_does_not_persist_after_cleared() -> None:
+    """After an EXITED snapshot, a cleared snapshot emits no [waiting] line."""
+    renderer, buf = _make_renderer()
+    snap_exited = _base_snapshot(
+        waiting_status_line="Background child work resumed activity (run=60s, cumulative=120s)",
+    )
+    renderer.emit_snapshot(snap_exited)
+    buf.truncate(0)
+    buf.seek(0)
+    snap_cleared = _base_snapshot(waiting_status_line=None)
+    renderer.emit_snapshot(snap_cleared)
+    out = buf.getvalue()
+    assert "[waiting]" not in out
+
+
 def test_waiting_none_emits_no_waiting_line() -> None:
     """No [waiting] line is emitted when waiting_status_line is None."""
     renderer, buf = _make_renderer()

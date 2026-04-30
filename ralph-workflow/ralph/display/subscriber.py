@@ -253,15 +253,13 @@ class PipelineSubscriber:
                     f"Background child work hit hard ceiling"
                     f" (cumulative={cum}s, ceiling={ceil}s, scoped_child_active={scoped})"
                 )
+        snapshots_to_publish: list[PipelineSnapshot] = []
         with self._lock:
             if unit_id is not None:
                 self._active_unit_id = unit_id
             if agent_name is not None:
                 self._active_agent = agent_name
-            if event.kind == WaitingStatusKind.EXITED:
-                self._waiting_status_line = None
-            else:
-                self._waiting_status_line = line
+            self._waiting_status_line = line
             if event.kind in (WaitingStatusKind.SUSPECTED_FROZEN, WaitingStatusKind.HARD_STOP):
                 self._append_decision_log_locked(
                     phase=self._previous_phase or "unknown",
@@ -269,8 +267,15 @@ class PipelineSubscriber:
                     reason=line,
                 )
             snapshot = self._build_snapshot_locked(self._last_state)
-        if snapshot is not None:
-            self._publish(snapshot)
+            if snapshot is not None:
+                snapshots_to_publish.append(snapshot)
+            if event.kind == WaitingStatusKind.EXITED:
+                self._waiting_status_line = None
+                cleared = self._build_snapshot_locked(self._last_state)
+                if cleared is not None:
+                    snapshots_to_publish.append(cleared)
+        for s in snapshots_to_publish:
+            self._publish(s)
 
     def record_analysis(self, phase: str, decision: str, reason: str | None = None) -> None:
         """Record an analysis result; updates the analysis panel and decision log."""
