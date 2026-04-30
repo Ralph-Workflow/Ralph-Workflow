@@ -213,6 +213,31 @@ def test_emit_completion_summary_writes_to_console() -> None:
     assert "Pipeline Complete" in out
 
 
+def test_completion_summary_surfaces_children_persist_diagnostic() -> None:
+    """CHILDREN_PERSIST_TOO_LONG last_error produces a parsed Reason line."""
+    error = (
+        "Agent kept child agents alive without producing output for 1800s"
+        " (cumulative=1800.0s, scoped_child_active=True, oldest_child_seconds=720.0s,"
+        " workspace_event_delta=0, lifecycle_only_activity=True)"
+    )
+    snap = _make_snapshot(phase="failed", last_error=error, pr_url=None)
+    text = _render_plain(snap)
+    # Key parts of the original error are present (console may wrap long lines)
+    assert "kept child agents alive" in text
+    # Parsed reason line is also present
+    assert "Reason: long child wait" in text
+    assert "cumulative=1800.0s" in text
+    assert "scoped_child_active=True" in text
+
+
+def test_completion_summary_unchanged_for_other_errors() -> None:
+    """Unrelated errors do not produce an extra Reason line."""
+    snap = _make_snapshot(phase="failed", last_error="Some other failure", pr_url=None)
+    text = _render_plain(snap)
+    assert "Some other failure" in text
+    assert "Reason: long child wait" not in text
+
+
 def test_emit_completion_summary_uses_subscriber_decision_log(tmp_path: Path) -> None:
     """Snapshot built via subscriber.build_snapshot drives the completion panel."""
     queue: Queue = Queue(maxsize=64)

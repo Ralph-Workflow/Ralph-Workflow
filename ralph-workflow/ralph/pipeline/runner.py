@@ -2303,7 +2303,37 @@ def _execute_effect(  # noqa: PLR0913
     return PipelineEvent.AGENT_FAILURE
 
 
-def _execute_agent_effect(  # noqa: PLR0913
+def _dispatch_waiting_event(
+    event: object,
+    *,
+    subscriber: PipelineSubscriber | None,
+    unit_id: str,
+    agent_name: str,
+    cloud_progress: Callable[[object], None] | None,
+) -> None:
+    """Dispatch a WaitingStatusEvent to the subscriber and optionally to cloud.
+
+    Exposed as a free function so tests can exercise it without a full pipeline.
+    """
+    from ralph.agents.idle_watchdog import WaitingStatusEvent, WaitingStatusKind  # noqa: PLC0415
+
+    if subscriber is not None:
+        try:
+            subscriber.record_waiting_status(event, unit_id=unit_id, agent_name=agent_name)
+        except Exception:
+            logger.debug("_dispatch_waiting_event.record_waiting_status failed", exc_info=True)
+
+    if cloud_progress is None or not isinstance(event, WaitingStatusEvent):
+        return
+    if event.kind not in (WaitingStatusKind.SUSPECTED_FROZEN, WaitingStatusKind.HARD_STOP):
+        return
+    try:
+        cloud_progress(event)
+    except Exception:
+        logger.debug("_dispatch_waiting_event.cloud_progress failed", exc_info=True)
+
+
+def _execute_agent_effect(  # noqa: PLR0913, PLR0915
     effect: InvokeAgentEffect,
     config: UnifiedConfig,
     deps: _AgentExecutionDeps,
@@ -2332,18 +2362,62 @@ def _execute_agent_effect(  # noqa: PLR0913
     )
 
     _display_subscriber = _subscriber_for_display(display)
+    _cloud_progress_fn: Callable[[object], None] | None = None
+    if config.cloud.enabled and config.cloud.api_url and config.cloud.api_key:
+        from datetime import UTC, datetime  # noqa: PLC0415
+
+        from ralph.cloud.client import (  # noqa: PLC0415
+            CloudClient,
+            CloudClientConfig,
+            ProgressEventType,
+            ProgressUpdate,
+        )
+
+        _cloud_cfg = CloudClientConfig(
+            enabled=True,
+            api_url=str(config.cloud.api_url),
+            api_key=config.cloud.api_key,
+            timeout_secs=float(config.cloud.timeout_secs),
+        )
+        _cloud_run_id = _display_subscriber.run_id if _display_subscriber is not None else "unknown"
+
+        def _cloud_progress_fn(evt: object) -> None:
+            from ralph.agents.idle_watchdog import (  # noqa: PLC0415
+                WaitingStatusEvent,
+                WaitingStatusKind,
+            )
+            if not isinstance(evt, WaitingStatusEvent):
+                return
+            event_type = (
+                ProgressEventType.CHILD_WAITING_SUSPECTED_FROZEN
+                if evt.kind == WaitingStatusKind.SUSPECTED_FROZEN
+                else ProgressEventType.CHILD_WAITING_HARD_STOP
+            )
+            update = ProgressUpdate(
+                timestamp=datetime.now(UTC),
+                phase=str(effect.phase),
+                message=f"child waiting {evt.kind.value}",
+                event_type=event_type,
+                metadata=dict(
+                    agent_name=effect.agent_name,
+                    kind=evt.kind.value,
+                    cumulative_seconds=evt.cumulative_seconds,
+                    current_run_seconds=evt.current_run_seconds,
+                    ceiling_seconds=evt.ceiling_seconds,
+                    **evt.diagnostic,
+                ),
+            )
+            with CloudClient(_cloud_cfg) as _cl:
+                _cl.report_progress(_cloud_run_id, update)
 
     def _waiting_listener(event: WaitingStatusEvent) -> None:
-        if _display_subscriber is None:
-            return
-        try:
-            _display_subscriber.record_waiting_status(
-                event,
-                unit_id=effect.agent_name,
-                agent_name=effect.agent_name,
-            )
-        except Exception:
-            logger.debug("waiting_listener.record_waiting_status failed", exc_info=True)
+        _dispatch_waiting_event(
+            event,
+            subscriber=_display_subscriber,
+            unit_id=effect.agent_name,
+            agent_name=effect.agent_name,
+            cloud_progress=_cloud_progress_fn,
+        )
 
     attempt_prompt_file = effect.prompt_file
     resume_session_id: str | None = (

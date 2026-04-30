@@ -41,7 +41,7 @@ Drain class groupings used in this table:
 | `git_diff` | `git.diff_read` | all | Current git diff |
 | `git_log` | `git.status_read` | all | Recent commit log |
 | `git_show` | `git.status_read` | all | Show a git object |
-| `exec` | `process.exec_bounded` | write drains | Execute a bounded shell command |
+| `exec` | `process.exec_bounded` | write drains | Execute a bounded subprocess from the workspace root |
 | `ralph_submit_artifact` | `artifact.submit` | all | Submit a structured artifact |
 | `ralph_submit_plan_section` | `artifact.submit` | planning | Submit one section of the plan draft |
 | `ralph_finalize_plan` | `artifact.submit` | planning | Finalize and validate the plan draft |
@@ -57,6 +57,21 @@ Drain class groupings used in this table:
 
 Claude exposes every tool as `mcp__ralph__<tool>` (e.g., `mcp__ralph__read_file`).
 See `ralph.mcp.tools.names` for the canonical name constants.
+
+### exec invocation notes
+
+`exec` accepts any of these calling styles:
+
+- `{"command": "python", "args": ["-m", "pytest"]}`
+- `{"command": "python -m pytest"}`
+- `{"command": ["python", "-m", "pytest"]}`
+- `{"argv": ["python", "-m", "pytest"]}`
+
+Quoted arguments inside string forms are preserved, so values containing spaces stay as a
+single argument. Ralph Workflow still does **not** emulate a shell: shell control operators
+such as `|`, `&&`, `;`, `>`, and `<` are rejected instead of being interpreted, and the
+error message explicitly says that `exec` runs a subprocess rather than a shell. If you need
+file edits, git operations, or structured reads, prefer the dedicated MCP tools.
 
 ### read_file response shapes
 

@@ -28,8 +28,10 @@ if TYPE_CHECKING:
     from ralph.agents.timeout_clock import Clock
 
 __all__ = [
+    "CorroborationSnapshot",
     "IdleWatchdog",
     "TimeoutPolicy",
+    "WaitingCorroborator",
     "WaitingStatusEvent",
     "WaitingStatusKind",
     "WaitingStatusListener",
@@ -111,6 +113,27 @@ class WaitingStatusEvent:
 
 #: Listener callable type for waiting-status events.
 WaitingStatusListener = Callable[[WaitingStatusEvent], None]
+
+
+@dataclass(frozen=True)
+class CorroborationSnapshot:
+    """Advisory snapshot of corroborating signals for WAITING_ON_CHILD diagnosis.
+
+    All fields are Optional so callers without a given source can leave them None.
+    Corroborators are advisory only; they NEVER affect WatchdogVerdict. The hard
+    stop is determined solely by max_waiting_on_child_seconds and max_session_seconds.
+    """
+
+    workspace_event_count: int | None = None
+    oldest_child_seconds: float | None = None
+    scoped_child_active: bool | None = None
+    scoped_child_count: int | None = None
+    terminal_child_events_total: int | None = None
+    last_activity_was_meaningful: bool | None = None
+
+
+#: Corroborator callable type — advisory only, never changes the watchdog verdict.
+WaitingCorroborator = Callable[[], CorroborationSnapshot]
 
 
 @dataclass(frozen=True)
@@ -289,10 +312,13 @@ class IdleWatchdog:
         config: TimeoutPolicy,
         clock: Clock,
         listener: WaitingStatusListener | None = None,
+        *,
+        corroborator: WaitingCorroborator | None = None,
     ) -> None:
         self._config = config
         self._clock = clock
         self._listener = listener
+        self._corroborator = corroborator
         now = clock.monotonic()
         self._last_activity = now
         self._session_started_at = now
@@ -303,6 +329,7 @@ class IdleWatchdog:
         self._last_fire_reason = None
         self._last_waiting_status_at = None
         self._suspicion_announced_for_run = False
+        self._entry_corroboration: CorroborationSnapshot | None = None
         self._log = logger.bind(component="idle_watchdog")
 
     @property
@@ -354,6 +381,73 @@ class IdleWatchdog:
             self._waiting_on_child_started_at = None
             self._last_waiting_status_at = None
             self._suspicion_announced_for_run = False
+            self._entry_corroboration = None
+
+    def _safe_corroborate(self) -> CorroborationSnapshot:
+        """Call the corroborator safely, returning an empty snapshot on None or error."""
+        if self._corroborator is None:
+            return CorroborationSnapshot()
+        try:
+            return self._corroborator()
+        except Exception:
+            self._log.debug("idle watchdog: corroborator raised (suppressed)")
+            return CorroborationSnapshot()
+
+    def _build_corroboration_diag(
+        self,
+        current: CorroborationSnapshot,
+    ) -> dict[str, str | int | float | bool]:
+        """Build a diagnostic dict comparing current corroboration snapshot to entry baseline."""
+        diag: dict[str, str | int | float | bool] = {}
+        entry = self._entry_corroboration
+        if (
+            current.workspace_event_count is not None
+            and entry is not None
+            and entry.workspace_event_count is not None
+        ):
+            diag["workspace_event_delta"] = (
+                current.workspace_event_count - entry.workspace_event_count
+            )
+        if current.oldest_child_seconds is not None:
+            diag["oldest_child_seconds"] = current.oldest_child_seconds
+        if current.scoped_child_active is not None:
+            diag["scoped_child_active"] = current.scoped_child_active
+        if current.scoped_child_count is not None:
+            diag["scoped_child_count"] = current.scoped_child_count
+        if (
+            current.terminal_child_events_total is not None
+            and entry is not None
+            and entry.terminal_child_events_total is not None
+        ):
+            diag["terminal_child_events_since_entry"] = (
+                current.terminal_child_events_total - entry.terminal_child_events_total
+            )
+        if current.last_activity_was_meaningful is False:
+            diag["lifecycle_only_activity"] = True
+        return diag
+
+    def _build_evidence_string(
+        self,
+        diag: dict[str, str | int | float | bool],
+    ) -> str:
+        """Compose a human-readable evidence label for a SUSPECTED_FROZEN event."""
+        suspect = self._config.suspect_waiting_on_child_seconds
+        tokens: list[str] = []
+        ws_delta = diag.get("workspace_event_delta")
+        oldest = diag.get("oldest_child_seconds")
+        if (
+            isinstance(ws_delta, (int, float))
+            and ws_delta == 0
+            and isinstance(oldest, (int, float))
+            and suspect is not None
+            and oldest >= suspect
+        ):
+            tokens.append("time_and_workspace_quiet")
+        if diag.get("scoped_child_active") is True:
+            tokens.append("time_and_scoped_child_active")
+        if diag.get("lifecycle_only_activity") is True:
+            tokens.append("time_and_lifecycle_only")
+        return "+".join(tokens) if tokens else "time_only"
 
     def _emit(
         self,
@@ -507,7 +601,8 @@ class IdleWatchdog:
         """
         idle_elapsed = now - self._last_activity
         if self._waiting_on_child_started_at is None:
-            # Transition INTO WAITING_ON_CHILD state.
+            # Transition INTO WAITING_ON_CHILD state — capture entry baseline FIRST.
+            self._entry_corroboration = self._safe_corroborate()
             self._waiting_on_child_started_at = now
             self._last_waiting_status_at = now
             self._suspicion_announced_for_run = False
@@ -527,6 +622,9 @@ class IdleWatchdog:
 
         if candidate_total >= self._config.max_waiting_on_child_seconds:
             self._last_fire_reason = WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG
+            current_corr_hs = self._safe_corroborate()
+            corr_diag_hs = self._build_corroboration_diag(current_corr_hs)
+            corr_diag_hs["evidence"] = self._build_evidence_string(corr_diag_hs)
             diag: dict[str, str | int | float | bool] = {
                 "cumulative": round(candidate_total, 1),
                 "run_elapsed": round(current_run_elapsed, 1),
@@ -535,6 +633,9 @@ class IdleWatchdog:
             }
             if self._config.suspect_waiting_on_child_seconds is not None:
                 diag["suspect_threshold"] = self._config.suspect_waiting_on_child_seconds
+            for k, v in corr_diag_hs.items():
+                if k not in diag:
+                    diag[k] = v
             self._emit(
                 WaitingStatusKind.HARD_STOP,
                 current_run_seconds=current_run_elapsed,
@@ -556,6 +657,9 @@ class IdleWatchdog:
             and candidate_total >= self._config.suspect_waiting_on_child_seconds
         ):
             self._suspicion_announced_for_run = True
+            current_corr_sf = self._safe_corroborate()
+            corr_diag_sf = self._build_corroboration_diag(current_corr_sf)
+            corr_diag_sf["evidence"] = self._build_evidence_string(corr_diag_sf)
             self._log.warning(
                 "idle watchdog: SUSPECTED_FROZEN candidate_total={}s suspect={}s ceiling={}s",
                 round(candidate_total, 1),
@@ -566,12 +670,15 @@ class IdleWatchdog:
                 WaitingStatusKind.SUSPECTED_FROZEN,
                 current_run_seconds=current_run_elapsed,
                 idle_elapsed=idle_elapsed,
+                diagnostic=corr_diag_sf,
             )
 
         # Periodic PROGRESS emission — throttled to waiting_status_interval_seconds.
         assert self._last_waiting_status_at is not None
         if now - self._last_waiting_status_at >= self._config.waiting_status_interval_seconds:
             self._last_waiting_status_at = now
+            current_corr_pr = self._safe_corroborate()
+            corr_diag_pr = self._build_corroboration_diag(current_corr_pr)
             self._log.info(
                 "idle watchdog: WAITING_ON_CHILD progress cumulative={}s ceiling={}s",
                 round(candidate_total, 1),
@@ -581,6 +688,7 @@ class IdleWatchdog:
                 WaitingStatusKind.PROGRESS,
                 current_run_seconds=current_run_elapsed,
                 idle_elapsed=idle_elapsed,
+                diagnostic=corr_diag_pr,
             )
 
         return WatchdogVerdict.WAITING_ON_CHILD

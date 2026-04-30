@@ -6,6 +6,7 @@ from the workspace root after capability checks and blacklist filtering.
 
 from __future__ import annotations
 
+import shlex
 import subprocess
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -32,6 +33,12 @@ _TIMEOUT_NOTE_THRESHOLD_MS = 60_000
 _KILL_SIGNAL_ARG_COUNT = 2
 _ARCHIVE_EXTENSIONS = (".tar", ".zip", ".gz", ".bz2", ".xz")
 _ARCHIVE_EXTRACT_FLAGS = ("-x", "--extract", "-d", "--delete")
+_SHELL_OPERATOR_TOKENS = frozenset({"|", "||", "&&", ";", "&", ">", ">>", "<", "<<"})
+_EXEC_USAGE_EXAMPLES = (
+    'Examples: {"command": "python -m pytest"}, '
+    '{"command": ["python", "-m", "pytest"]}, '
+    '{"argv": ["python", "-m", "pytest"]}.'
+)
 
 _BLACKLIST_DESCRIPTIONS = {
     "version_control": "version control system",
@@ -97,16 +104,10 @@ class WorkspaceWithRoot(Protocol):
 
 def parse_exec_params(params: Mapping[str, object]) -> ExecParams:
     """Parse and validate exec tool parameters."""
-    command_value = params.get("command")
-    if not isinstance(command_value, str):
-        raise InvalidParamsError("Missing 'command' parameter")
-
-    args_value = params.get("args")
-    args = (
-        [value for value in args_value if isinstance(value, str)]
-        if isinstance(args_value, list)
-        else []
-    )
+    command_tokens = _parse_exec_command_tokens(params)
+    args = _parse_exec_args(params.get("args"))
+    command = command_tokens[0] if command_tokens else ""
+    merged_args = [*command_tokens[1:], *args]
 
     timeout_value = params.get("timeout_ms", _DEFAULT_TIMEOUT_MS)
     timeout_ms = (
@@ -115,8 +116,72 @@ def parse_exec_params(params: Mapping[str, object]) -> ExecParams:
         else _DEFAULT_TIMEOUT_MS
     )
 
-    return ExecParams(command=command_value, args=args, timeout_ms=timeout_ms)
+    return ExecParams(command=command, args=merged_args, timeout_ms=timeout_ms)
 
+
+def _parse_exec_command_tokens(params: Mapping[str, object]) -> list[str]:
+    command_value = params.get("command")
+    if isinstance(command_value, str):
+        return _parse_shell_words(command_value, field_name="command")
+    if isinstance(command_value, list):
+        return _coerce_argv_tokens(command_value, field_name="command")
+    if command_value is not None:
+        raise InvalidParamsError(
+            "'command' must be a string or string array. " + _EXEC_USAGE_EXAMPLES
+        )
+
+    argv_value = params.get("argv")
+    if isinstance(argv_value, str):
+        return _parse_shell_words(argv_value, field_name="argv")
+    if isinstance(argv_value, list):
+        return _coerce_argv_tokens(argv_value, field_name="argv")
+    if argv_value is not None:
+        raise InvalidParamsError(
+            "'argv' must be a string or string array. " + _EXEC_USAGE_EXAMPLES
+        )
+
+    raise InvalidParamsError("Missing 'command' or 'argv' parameter. " + _EXEC_USAGE_EXAMPLES)
+
+
+def _parse_exec_args(args_value: object) -> list[str]:
+    if isinstance(args_value, list):
+        return [value for value in args_value if isinstance(value, str)]
+    if isinstance(args_value, str):
+        return _parse_shell_words(args_value, field_name="args")
+    return []
+
+
+def _coerce_argv_tokens(values: list[object], *, field_name: str) -> list[str]:
+    tokens = [value for value in values if isinstance(value, str)]
+    if not tokens:
+        raise InvalidParamsError(f"{field_name} must include at least one string token")
+    if any(token in _SHELL_OPERATOR_TOKENS for token in tokens):
+        raise InvalidParamsError(
+            f"{field_name} must not use shell control operators: exec does not run a shell. "
+            "Pass a plain command and arguments instead."
+        )
+    return tokens
+
+
+def _parse_shell_words(value: str, *, field_name: str) -> list[str]:
+    stripped = value.strip()
+    if not stripped:
+        return []
+
+    try:
+        lexer = shlex.shlex(stripped, posix=True, punctuation_chars="|&;<>")
+        lexer.whitespace_split = True
+        lexer.commenters = ""
+        tokens = list(lexer)
+    except ValueError as exc:
+        raise InvalidParamsError(f"Malformed {field_name} value: {exc}") from exc
+
+    if any(token in _SHELL_OPERATOR_TOKENS for token in tokens):
+        raise InvalidParamsError(
+            f"{field_name} must not use shell control operators: exec does not run a shell. "
+            "Pass a plain command and arguments instead."
+        )
+    return tokens
 
 def check_command(command: str, args: list[str]) -> str | None:
     """Return a denial reason when a command matches the blacklist policy."""

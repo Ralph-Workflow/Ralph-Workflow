@@ -83,6 +83,7 @@ class PipelineSubscriber:
         self._active_command: str | None = None
         self._active_pattern: str | None = None
         self._last_activity_line: str | None = None
+        self._waiting_status_line: str | None = None
         self._analysis_phase: str | None = None
         self._analysis_decision: str | None = None
         self._analysis_reason: str | None = None
@@ -111,6 +112,10 @@ class PipelineSubscriber:
     def last_state(self) -> PipelineState | None:
         with self._lock:
             return self._last_state
+
+    @property
+    def run_id(self) -> str:
+        return self._run_id
 
     @property
     def last_tool_name(self) -> str | None:
@@ -195,7 +200,7 @@ class PipelineSubscriber:
         if snapshot is not None:
             self._publish(snapshot)
 
-    def record_waiting_status(
+    def record_waiting_status(  # noqa: PLR0912
         self,
         event: object,
         *,
@@ -207,28 +212,70 @@ class PipelineSubscriber:
 
         if not isinstance(event, WaitingStatusEvent):
             return
-        kind_label = str(event.kind)
-        line = (
-            f"Background child work {kind_label}"
-            f" (cumulative={event.cumulative_seconds:.0f}s,"
-            f" run={event.current_run_seconds:.0f}s,"
-            f" ceiling={event.ceiling_seconds:.0f}s)"
-        )
+        cum = f"{event.cumulative_seconds:.0f}"
+        ceil = f"{event.ceiling_seconds:.0f}"
+        run = f"{event.current_run_seconds:.0f}"
+        if event.kind == WaitingStatusKind.ENTERED:
+            line = f"Background child work started waiting (cumulative={cum}s, ceiling={ceil}s)"
+        elif event.kind == WaitingStatusKind.PROGRESS:
+            delta = event.diagnostic.get("workspace_event_delta")
+            if delta is not None:
+                line = (
+                    f"Background child work still active"
+                    f" (run={run}s, cumulative={cum}s, ceiling={ceil}s,"
+                    f" workspace_events_since_wait={delta})"
+                )
+            else:
+                line = (
+                    f"Background child work still active"
+                    f" (run={run}s, cumulative={cum}s, ceiling={ceil}s)"
+                )
+        elif event.kind == WaitingStatusKind.SUSPECTED_FROZEN:
+            evidence = str(event.diagnostic.get("evidence", "unknown"))
+            line = (
+                f"Background child work may be frozen"
+                f" (cumulative={cum}s, ceiling={ceil}s, evidence={evidence})"
+            )
+        elif event.kind == WaitingStatusKind.EXITED:
+            line = f"Background child work resumed activity (run={run}s, cumulative={cum}s)"
+        elif event.kind == WaitingStatusKind.HARD_STOP:
+            scoped = event.diagnostic.get("scoped_child_active", "?")
+            oldest_val = event.diagnostic.get("oldest_child_seconds")
+            if oldest_val is not None:
+                oldest_str = f"{float(oldest_val):.0f}"
+                line = (
+                    f"Background child work hit hard ceiling"
+                    f" (cumulative={cum}s, ceiling={ceil}s,"
+                    f" scoped_child_active={scoped}, oldest_child_seconds={oldest_str}s)"
+                )
+            else:
+                line = (
+                    f"Background child work hit hard ceiling"
+                    f" (cumulative={cum}s, ceiling={ceil}s, scoped_child_active={scoped})"
+                )
+        snapshots_to_publish: list[PipelineSnapshot] = []
         with self._lock:
             if unit_id is not None:
                 self._active_unit_id = unit_id
             if agent_name is not None:
                 self._active_agent = agent_name
-            self._last_activity_line = line
+            self._waiting_status_line = line
             if event.kind in (WaitingStatusKind.SUSPECTED_FROZEN, WaitingStatusKind.HARD_STOP):
                 self._append_decision_log_locked(
                     phase=self._previous_phase or "unknown",
-                    decision=kind_label,
+                    decision=event.kind.name,
                     reason=line,
                 )
             snapshot = self._build_snapshot_locked(self._last_state)
-        if snapshot is not None:
-            self._publish(snapshot)
+            if snapshot is not None:
+                snapshots_to_publish.append(snapshot)
+            if event.kind == WaitingStatusKind.EXITED:
+                self._waiting_status_line = None
+                cleared = self._build_snapshot_locked(self._last_state)
+                if cleared is not None:
+                    snapshots_to_publish.append(cleared)
+        for s in snapshots_to_publish:
+            self._publish(s)
 
     def record_analysis(self, phase: str, decision: str, reason: str | None = None) -> None:
         """Record an analysis result; updates the analysis panel and decision log."""
@@ -352,6 +399,7 @@ class PipelineSubscriber:
             active_command=self._active_command,
             active_pattern=self._active_pattern,
             last_activity_line=self._last_activity_line,
+            waiting_status_line=self._waiting_status_line,
             analysis_phase=self._analysis_phase,
             analysis_decision=self._analysis_decision,
             analysis_reason=self._analysis_reason,

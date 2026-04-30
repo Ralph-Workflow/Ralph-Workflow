@@ -20,12 +20,14 @@ import subprocess
 import sys
 import threading
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import IO, TYPE_CHECKING, Protocol, cast, runtime_checkable
 
 from loguru import logger
 from tqdm import tqdm
 
+from ralph.agents.activity import AgentActivityKind
 from ralph.agents.completion_signals import evaluate_completion
 from ralph.agents.execution_state import (
     AgentExecutionState,
@@ -34,8 +36,11 @@ from ralph.agents.execution_state import (
     strategy_for_transport,
 )
 from ralph.agents.idle_watchdog import (
+    CorroborationSnapshot,
     IdleWatchdog,
     TimeoutPolicy,
+    WaitingStatusEvent,
+    WaitingStatusKind,
     WaitingStatusListener,
     WatchdogFireReason,
     WatchdogVerdict,
@@ -64,9 +69,26 @@ from ralph.mcp.transport.common import (
 )
 from ralph.mcp.transport.opencode import build_opencode_provider_config
 from ralph.process.liveness import DefaultLivenessProbe, LivenessProbe
-from ralph.process.manager import ManagedProcess, get_process_manager
+from ralph.process.manager import (
+    ManagedProcess,
+    ProcessEvent,
+    ProcessStatus,
+    get_process_manager,
+)
 
 _MODELED_FLAG_PARTS = 2
+
+try:
+    import psutil as _invoke_psutil
+except ImportError:
+    _invoke_psutil = None  # type: ignore[assignment]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+
+_NON_MEANINGFUL_ACTIVITY_KINDS: frozenset[AgentActivityKind] = frozenset(
+    {AgentActivityKind.LIFECYCLE}
+)
+_TERMINAL_PROCESS_STATUSES: frozenset[ProcessStatus] = frozenset(
+    {ProcessStatus.EXITED, ProcessStatus.KILLED, ProcessStatus.FAILED}
+)
 
 
 @dataclass(frozen=True)
@@ -177,12 +199,32 @@ class _ObserverProtocol(_HasStop, Protocol):
 class _IdleStreamTimeoutError(RuntimeError):
     """Raised when an agent process stops producing output for too long."""
 
-    def __init__(self, timeout_seconds: float, reason: WatchdogFireReason) -> None:
+    def __init__(
+        self,
+        timeout_seconds: float,
+        reason: WatchdogFireReason,
+        *,
+        diagnostic: dict[str, str | int | float | bool] | None = None,
+    ) -> None:
         self.timeout_seconds = timeout_seconds
         self.reason = reason
+        self.diagnostic = diagnostic
         if reason == WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG:
             duration = f"{timeout_seconds:.0f}s"
-            msg = f"Agent kept child agents alive without producing output for {duration}"
+            base_msg = f"Agent kept child agents alive without producing output for {duration}"
+            if diagnostic:
+                cum = diagnostic.get("cumulative", "?")
+                scoped = diagnostic.get("scoped_child_active", "?")
+                oldest = diagnostic.get("oldest_child_seconds", "?")
+                ws_delta = diagnostic.get("workspace_event_delta", "?")
+                lo = diagnostic.get("lifecycle_only_activity", "?")
+                msg = (
+                    f"{base_msg} (cumulative={cum}s, scoped_child_active={scoped},"
+                    f" oldest_child_seconds={oldest}s, workspace_event_delta={ws_delta},"
+                    f" lifecycle_only_activity={lo})"
+                )
+            else:
+                msg = base_msg
         elif reason == WatchdogFireReason.SESSION_CEILING_EXCEEDED:
             duration = f"{timeout_seconds:.0f}s"
             msg = f"Agent exceeded max session wall-clock of {duration}"
@@ -237,7 +279,7 @@ class AgentInvocationError(Exception):
 class AgentInactivityTimeoutError(AgentInvocationError):
     """Raised when an agent stalls without producing output."""
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         agent_name: str,
         timeout_seconds: float,
@@ -245,13 +287,27 @@ class AgentInactivityTimeoutError(AgentInvocationError):
         *,
         reason: WatchdogFireReason | None = None,
         session_resume_safe: bool = False,
+        diagnostic: dict[str, str | int | float | bool] | None = None,
     ) -> None:
         self.timeout_seconds = timeout_seconds
         self.reason = reason
         self.session_resume_safe = session_resume_safe
         if reason == WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG:
             duration = f"{timeout_seconds:.0f}s"
-            stderr_msg = f"Agent kept child agents alive without producing output for {duration}"
+            base_msg = f"Agent kept child agents alive without producing output for {duration}"
+            if diagnostic:
+                cum = diagnostic.get("cumulative", "?")
+                scoped = diagnostic.get("scoped_child_active", "?")
+                oldest = diagnostic.get("oldest_child_seconds", "?")
+                ws_delta = diagnostic.get("workspace_event_delta", "?")
+                lo = diagnostic.get("lifecycle_only_activity", "?")
+                stderr_msg = (
+                    f"{base_msg} (cumulative={cum}s, scoped_child_active={scoped},"
+                    f" oldest_child_seconds={oldest}s, workspace_event_delta={ws_delta},"
+                    f" lifecycle_only_activity={lo})"
+                )
+            else:
+                stderr_msg = base_msg
         elif reason == WatchdogFireReason.SESSION_CEILING_EXCEEDED:
             duration = f"{timeout_seconds:.0f}s"
             stderr_msg = f"Agent exceeded max session wall-clock of {duration}"
@@ -461,6 +517,7 @@ def invoke_agent(
             liveness_probe=liveness_probe,
             phase=opts.phase,
             waiting_listener=opts.waiting_listener,
+            monitor=monitor,
             _clock=_clock,
         )
         yield from lines_iter
@@ -498,6 +555,7 @@ def _run_subprocess_and_read_lines(  # noqa: PLR0913
     liveness_probe: LivenessProbe | None = None,
     phase: str | None = None,
     waiting_listener: WaitingStatusListener | None = None,
+    monitor: WorkspaceMonitor | None = None,
     _clock: Clock | None = None,
 ) -> Iterator[str]:
     """Run subprocess and yield output lines.
@@ -537,6 +595,7 @@ def _run_subprocess_and_read_lines(  # noqa: PLR0913
             execution_strategy=strategy,
             liveness_probe=probe,
             waiting_listener=waiting_listener,
+            monitor=monitor,
             _clock=clock,
         )
         parsed_output: list[str] = []
@@ -577,6 +636,7 @@ def _run_subprocess_and_read_lines(  # noqa: PLR0913
                 exc.timeout_seconds,
                 parsed_output,
                 reason=exc.reason,
+                diagnostic=exc.diagnostic,
             ) from exc
 
         _check_process_result(
@@ -761,13 +821,14 @@ def _policy_from_options(opts: InvokeOptions) -> TimeoutPolicy:
     )
 
 
-def _read_lines_from_process(  # noqa: PLR0915
+def _read_lines_from_process(  # noqa: PLR0913,PLR0915
     handle: ManagedProcess,
     *,
     policy: TimeoutPolicy,
     execution_strategy: GenericExecutionStrategy | OpenCodeExecutionStrategy | None = None,
     liveness_probe: LivenessProbe | None = None,
     waiting_listener: WaitingStatusListener | None = None,
+    monitor: WorkspaceMonitor | None = None,
     _clock: Clock | None = None,
 ) -> Iterator[str]:
     """Read lines from subprocess stdout in a background thread.
@@ -786,7 +847,65 @@ def _read_lines_from_process(  # noqa: PLR0915
     lines_event = threading.Event()
     clock: Clock = _clock or SystemClock()
 
-    watchdog = IdleWatchdog(policy, clock, waiting_listener)
+    terminal_child_events_counter: list[int] = [0]
+    last_activity_meaningful: list[bool] = [False]
+    _last_hard_stop_event: list[WaitingStatusEvent | None] = [None]
+
+    def _terminal_listener(event: ProcessEvent) -> None:
+        if (
+            event.record.label is not None
+            and event.record.label.startswith("invoke:")
+            and event.new_status in _TERMINAL_PROCESS_STATUSES
+        ):
+            terminal_child_events_counter[0] += 1
+
+    _unsubscribe_terminal = get_process_manager().register_listener(_terminal_listener)
+
+    def _internal_waiting_listener(evt: WaitingStatusEvent) -> None:
+        if evt.kind == WaitingStatusKind.HARD_STOP:
+            _last_hard_stop_event[0] = evt
+        if waiting_listener is not None:
+            waiting_listener(evt)
+
+    def _corroborate() -> CorroborationSnapshot:
+        ws_count: int | None = monitor.event_count if monitor is not None else None
+        oldest_secs: float | None = None
+        scoped_active: bool | None = None
+        scoped_count: int | None = None
+        try:
+            active_records = get_process_manager().list_active()
+            desc_pids: set[int] = set()
+            if _invoke_psutil is not None:
+                try:
+                    root = _invoke_psutil.Process(handle.pid)
+                    desc_pids = {p.pid for p in root.children(recursive=True)}
+                except Exception:
+                    desc_pids = set()
+            scoped_recs = [r for r in active_records if r.pid in desc_pids]
+            scoped_count = len(scoped_recs)
+            scoped_active = scoped_count > 0
+            if scoped_recs:
+                now_utc = datetime.now(UTC)
+                oldest_secs = max(
+                    (now_utc - r.started_at).total_seconds() for r in scoped_recs
+                )
+        except Exception:
+            logger.debug("corroborator: process scan failed (suppressed)")
+        return CorroborationSnapshot(
+            workspace_event_count=ws_count,
+            oldest_child_seconds=oldest_secs,
+            scoped_child_active=scoped_active,
+            scoped_child_count=scoped_count,
+            terminal_child_events_total=terminal_child_events_counter[0],
+            last_activity_was_meaningful=last_activity_meaningful[0],
+        )
+
+    watchdog = IdleWatchdog(
+        policy,
+        clock,
+        listener=_internal_waiting_listener,
+        corroborator=_corroborate,
+    )
     last_activity_kind = "none"
 
     reader_done: list[bool] = [False]  # mutable for closure capture
@@ -854,31 +973,53 @@ def _read_lines_from_process(  # noqa: PLR0915
             pending = list(lines_queue)
             lines_queue.clear()
         handle.terminate(grace_period_s=0.5)
-        return pending, _IdleStreamTimeoutError(timeout_val, fire_reason)
+        hs_event = _last_hard_stop_event[0]
+        hard_stop_diag = hs_event.diagnostic if hs_event is not None else None
+        return pending, _IdleStreamTimeoutError(
+            timeout_val,
+            fire_reason,
+            diagnostic=hard_stop_diag,
+        )
 
-    while True:
-        # Clear event BEFORE checking queue+done so we cannot miss a set() that
-        # races between the check and the wait_for_event call below.
-        lines_event.clear()
+    try:
+        while True:
+            # Clear event BEFORE checking queue+done so we cannot miss a set() that
+            # races between the check and the wait_for_event call below.
+            lines_event.clear()
 
-        queued_line: str | None = None
-        is_done = False
-        with lines_lock:
-            if lines_queue:
-                queued_line = lines_queue.pop(0)
-            elif reader_done[0]:
-                is_done = True
+            queued_line: str | None = None
+            is_done = False
+            with lines_lock:
+                if lines_queue:
+                    queued_line = lines_queue.pop(0)
+                elif reader_done[0]:
+                    is_done = True
 
-        if queued_line is not None:
-            activity_signal = strategy.classify_activity_line(queued_line)
-            if activity_signal is not None:
-                last_activity_kind = str(activity_signal.kind)
-                watchdog.record_activity()
-            yield queued_line
-            # Evaluate after every yield: SESSION_CEILING_EXCEEDED can fire even
-            # under continuous output; classify_quiet still consults the strategy
-            # because a whitespace/no-activity line must not force the ACTIVE branch
-            # when children are alive.
+            if queued_line is not None:
+                activity_signal = strategy.classify_activity_line(queued_line)
+                if activity_signal is not None:
+                    last_activity_kind = str(activity_signal.kind)
+                    last_activity_meaningful[0] = (
+                        activity_signal.kind not in _NON_MEANINGFUL_ACTIVITY_KINDS
+                    )
+                    watchdog.record_activity()
+                yield queued_line
+                # Evaluate after every yield: SESSION_CEILING_EXCEEDED can fire even
+                # under continuous output; classify_quiet still consults the strategy
+                # because a whitespace/no-activity line must not force the ACTIVE branch
+                # when children are alive.
+                fire_result = _handle_fire_verdict(
+                    watchdog.evaluate(classify_quiet=_safe_classify_quiet)
+                )
+                if fire_result is not None:
+                    pending_lines, exc = fire_result
+                    yield from pending_lines
+                    raise exc
+                continue
+
+            if is_done:
+                break
+
             fire_result = _handle_fire_verdict(
                 watchdog.evaluate(classify_quiet=_safe_classify_quiet)
             )
@@ -886,23 +1027,13 @@ def _read_lines_from_process(  # noqa: PLR0915
                 pending_lines, exc = fire_result
                 yield from pending_lines
                 raise exc
-            continue
 
-        if is_done:
-            break
+            # Wake immediately when a line arrives; FakeClock just advances time.
+            clock.wait_for_event(lines_event, policy.idle_poll_interval_seconds)
 
-        fire_result = _handle_fire_verdict(
-            watchdog.evaluate(classify_quiet=_safe_classify_quiet)
-        )
-        if fire_result is not None:
-            pending_lines, exc = fire_result
-            yield from pending_lines
-            raise exc
-
-        # Wake immediately when a line arrives; FakeClock just advances time.
-        clock.wait_for_event(lines_event, policy.idle_poll_interval_seconds)
-
-    reader.join(timeout=10)
+        reader.join(timeout=10)
+    finally:
+        _unsubscribe_terminal()
 
 
 def _log_workspace_completion(monitor: WorkspaceMonitor | None) -> None:

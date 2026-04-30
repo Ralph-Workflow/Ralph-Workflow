@@ -54,6 +54,7 @@ _TAGS: Final[tuple[str, ...]] = (
     "progress",
     "run-start",
     "run-end",
+    "waiting",
     "status-content",
     "content-start",
     "content-continue",
@@ -105,6 +106,7 @@ _TAG_CATEGORY: Final[dict[str, str]] = {
     "progress": "META",
     "run-start": "META",
     "run-end": "META",
+    "waiting": "META",
     "content": "CONT",
     "thinking": "CONT",
     "tool": "CONT",
@@ -256,6 +258,7 @@ class PlainLogRenderer:
             | None
         ) = None
         self._last_analysis_signature: tuple[str | None, str | None, str | None] | None = None
+        self._last_waiting_signature: str | None = None
         # Global single-block streaming state: at most one unit has an active block.
         # _active_block maps unit_id -> (base_tag, accumulated_content).
         # Invariant: len(_active_block) <= 1.
@@ -305,6 +308,7 @@ class PlainLogRenderer:
         texts: list[Text] = []
         texts.extend(self._phase_lines(snapshot, timestamp))
         texts.extend(self._plan_lines(snapshot, timestamp))
+        texts.extend(self._waiting_lines(snapshot, timestamp))
         texts.extend(self._activity_lines(snapshot, timestamp))
         texts.extend(self._analysis_lines(snapshot, timestamp))
         texts.extend(self._decision_log_lines(snapshot, timestamp))
@@ -385,6 +389,22 @@ class PlainLogRenderer:
         if snapshot.active_pattern:
             parts.append(f"pattern={_sanitize(snapshot.active_pattern)}")
         return parts
+
+    def _waiting_lines(self, snapshot: PipelineSnapshot, timestamp: str) -> list[Text]:
+        line = snapshot.waiting_status_line
+        if not line:
+            return []
+        if line == self._last_waiting_signature:
+            return []
+        self._last_waiting_signature = line
+        sanitized = _sanitize(line)
+        if "hit hard ceiling" in sanitized:
+            level = "ERROR"
+        elif "may be frozen" in sanitized:
+            level = "WARN"
+        else:
+            level = "INFO"
+        return [self._build_line(timestamp, level, "META", f"[waiting] {sanitized}")]
 
     def _activity_lines(self, snapshot: PipelineSnapshot, timestamp: str) -> list[Text]:
         activity_parts = self._build_activity_parts(snapshot)

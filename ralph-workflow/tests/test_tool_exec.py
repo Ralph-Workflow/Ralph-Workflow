@@ -7,7 +7,11 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from ralph.mcp.tools.coordination import CapabilityDeniedError, InvalidParamsError
+from ralph.mcp.tools.coordination import (
+    CapabilityDeniedError,
+    InvalidParamsError,
+    ToolContent,
+)
 from ralph.mcp.tools.exec import (
     _DEFAULT_TIMEOUT_MS as DEFAULT_TIMEOUT_MS,
 )
@@ -77,12 +81,16 @@ class TestParseExecParams:
 
     def test_missing_command_raises(self) -> None:
         params: dict[str, object] = {"args": []}
-        with pytest.raises(InvalidParamsError):
+        with pytest.raises(
+            InvalidParamsError,
+            match="Missing 'command' or 'argv' parameter",
+        ) as exc_info:
             parse_exec_params(params)
+        assert "python -m pytest" in str(exc_info.value)
 
     def test_non_string_command_raises(self) -> None:
         params: dict[str, object] = {"command": 123, "args": []}
-        with pytest.raises(InvalidParamsError):
+        with pytest.raises(InvalidParamsError, match="must be a string or string array"):
             parse_exec_params(params)
 
     def test_invalid_timeout_uses_default(self) -> None:
@@ -94,6 +102,57 @@ class TestParseExecParams:
         params: dict[str, object] = {"command": "ls", "args": [], "timeout_ms": "fast"}
         result = parse_exec_params(params)
         assert result.timeout_ms == DEFAULT_TIMEOUT_MS
+
+    def test_splits_command_string_into_command_and_args(self) -> None:
+        params = {"command": "python -m pytest tests/test_tool_exec.py"}
+        result = parse_exec_params(params)
+        assert result.command == "python"
+        assert result.args == ["-m", "pytest", "tests/test_tool_exec.py"]
+
+    def test_accepts_command_as_argv_list(self) -> None:
+        params = {"command": ["python", "-m", "pytest", "tests/test_tool_exec.py"]}
+        result = parse_exec_params(params)
+        assert result.command == "python"
+        assert result.args == ["-m", "pytest", "tests/test_tool_exec.py"]
+
+    def test_accepts_argv_alias_when_command_missing(self) -> None:
+        params = {"argv": ["python", "-m", "pytest", "tests/test_tool_exec.py"]}
+        result = parse_exec_params(params)
+        assert result.command == "python"
+        assert result.args == ["-m", "pytest", "tests/test_tool_exec.py"]
+
+    def test_command_argv_list_with_shell_operator_raises(self) -> None:
+        params = {"command": ["ls", "|", "grep", "py"]}
+        with pytest.raises(InvalidParamsError, match="does not run a shell"):
+            parse_exec_params(params)
+
+    def test_preserves_quoted_spaces_in_command_string(self) -> None:
+        params = {"command": "python -c \"print('hello world')\""}
+        result = parse_exec_params(params)
+        assert result.command == "python"
+        assert result.args == ["-c", "print('hello world')"]
+
+    def test_accepts_string_args_and_splits_them(self) -> None:
+        params = {"command": "python", "args": "-m pytest tests/test_tool_exec.py"}
+        result = parse_exec_params(params)
+        assert result.command == "python"
+        assert result.args == ["-m", "pytest", "tests/test_tool_exec.py"]
+
+    def test_command_tokens_prepend_explicit_args(self) -> None:
+        params = {"command": "python -m pytest", "args": ["-q", "tests/test_tool_exec.py"]}
+        result = parse_exec_params(params)
+        assert result.command == "python"
+        assert result.args == ["-m", "pytest", "-q", "tests/test_tool_exec.py"]
+
+    def test_shell_operator_command_string_raises(self) -> None:
+        params = {"command": "ls | grep py"}
+        with pytest.raises(InvalidParamsError, match="does not run a shell"):
+            parse_exec_params(params)
+
+    def test_malformed_command_string_raises(self) -> None:
+        params = {"command": "python -c \"print('hello')"}
+        with pytest.raises(InvalidParamsError):
+            parse_exec_params(params)
 
 
 # =============================================================================
@@ -342,6 +401,11 @@ class TestApplyExecPolicy:
         with pytest.raises(CapabilityDeniedError):
             apply_exec_policy("git", ["status"])
 
+    def test_embedded_blacklisted_command_is_denied_after_parse(self) -> None:
+        parsed = parse_exec_params({"command": "sudo ls"})
+        with pytest.raises(CapabilityDeniedError):
+            apply_exec_policy(parsed.command, parsed.args)
+
 
 # =============================================================================
 # run_command tests
@@ -460,7 +524,9 @@ class TestHandleExecCommand:
 
         result = handle_exec_command(session, workspace, params)
         assert result.is_error is False
-        assert "hello" in result.content[0].text
+        content = result.content[0]
+        assert isinstance(content, ToolContent)
+        assert "hello" in content.text
 
     def test_exec_without_capability_raises(self, tmp_path: Path) -> None:
         session = MockSession(set())  # No capabilities

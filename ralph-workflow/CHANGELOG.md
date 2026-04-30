@@ -8,6 +8,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Dedicated `waiting_status_line` field on `PipelineSnapshot`.** Child-wait status updates
+  are now routed to a separate `waiting_status_line` field instead of overwriting
+  `last_activity_line`, so agent tool/content activity and waiting status can be displayed
+  independently without clobbering each other.
+- **Kind-specific `[waiting]` rendering in `PlainLogRenderer`.** Waiting status lines now
+  render with a distinct `[waiting]` tag and level: `INFO` for ENTERED/PROGRESS/EXITED,
+  `WARN` for SUSPECTED_FROZEN, and `ERROR` for HARD_STOP. The renderer deduplicates
+  consecutive identical waiting lines.
+- **Cloud progress forwarding for SUSPECTED_FROZEN and HARD_STOP events.** When cloud
+  reporting is configured, the `_dispatch_waiting_event` function forwards suspect and
+  hard-stop events to `CloudClient.report_progress` with structured metadata
+  (`kind`, `cumulative_seconds`, `ceiling_seconds`, diagnostic fields). PROGRESS and other
+  events are not forwarded to avoid cloud chatter. Cloud failures are swallowed defensively.
+- **CHILDREN_PERSIST_TOO_LONG diagnostic in completion summary.** When the pipeline ends
+  with a long-child-wait timeout, the completion summary now appends a parsed `Reason:`
+  line with `cumulative`, `scoped_child_active`, `oldest_child_seconds`,
+  `workspace_event_delta`, and `evidence` fields extracted from the error string.
+  The original error text remains unchanged; the reason line is purely additive.
+- **`_dispatch_waiting_event` free function for testable cloud-listener seam.** Extracted
+  from the runner's closure so tests can inject a fake cloud reporter without a full
+  pipeline. The subscriber and cloud reporter are both optional injected parameters.
 - **`DisplayContext` single source of truth for rendering.** All display code now receives an
   injected `DisplayContext` (frozen dataclass) that owns the Rich console, Okabe-Ito theme,
   resolved terminal width, colour policy, and adaptive layout limits. No renderer constructs
