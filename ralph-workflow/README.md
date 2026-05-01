@@ -41,8 +41,8 @@ The runtime validates that policy is semantically complete at startup and reject
 - Transition graph (`on_success`, `on_failure`, `on_loopback`)
 - Analysis loop bounds and iteration counters
 - Decision vocabulary and per-decision routing
-- Commit counter type and loop reset behavior
-- Post-commit budget-guarded routing
+- Budget counters and the commit counter that each commit phase increments
+- Post-commit budget-guarded routing (`remaining`, `exhausted`, `no_review`)
 - Retry and fallback strategy per phase
 - Recovery cycle cap and terminal routing
 - Parallel execution constraints
@@ -51,6 +51,15 @@ The runtime validates that policy is semantically complete at startup and reject
 **To understand why Ralph Workflow routed a certain way**, read the active `.agent/pipeline.toml` — all routing decisions trace back to declared policy, not code branches.
 
 **To add or change workflow behavior**, update `pipeline.toml`. Incomplete policy is rejected at startup with a `PolicyValidationError` listing the missing fields.
+
+**To override a budget counter cap at runtime** without editing `pipeline.toml`, use the `--counter` flag:
+
+```bash
+ralph --counter iteration=2         # limit developer cycles to 2
+ralph --counter reviewer_pass=1     # limit review passes to 1
+```
+
+Counter names must match `[budget_counters.<name>]` entries declared in `pipeline.toml`. Use `--check-policy` to confirm effective caps after overrides.
 
 ## Inspecting the active policy
 

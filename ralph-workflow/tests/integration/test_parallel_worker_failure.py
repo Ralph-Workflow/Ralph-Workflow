@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 
-from ralph.pipeline.effects import FanOutDevelopmentEffect
+from ralph.pipeline.effects import FanOutEffect
 from ralph.pipeline.events import (
     Event,
     PipelineEvent,
@@ -26,7 +26,7 @@ def _long_running_outputs() -> list[str]:
 
 
 def _run_fan_out(
-    effect: FanOutDevelopmentEffect,
+    effect: FanOutEffect,
     state: PipelineState,
     runs: dict[str, FakeRun],
 ) -> list[Event]:
@@ -63,7 +63,7 @@ def test_one_failure_cancels_all() -> None:
         "unit-B": FakeRun(outputs=_long_running_outputs(), exit_code=0, duration_ms=1000),
         "unit-C": FakeRun(outputs=_long_running_outputs(), exit_code=0, duration_ms=1000),
     }
-    effect = FanOutDevelopmentEffect(work_units=units, max_workers=3)
+    effect = FanOutEffect(work_units=units, max_workers=3)
     state = PipelineState(phase="development", work_units=units)
 
     events = _run_fan_out(effect, state, runs)
@@ -102,7 +102,7 @@ def test_failed_state_transitions_reflect_failure() -> None:
         "unit-B": FakeRun(outputs=_long_running_outputs(), exit_code=0, duration_ms=1000),
         "unit-C": FakeRun(outputs=_long_running_outputs(), exit_code=0, duration_ms=1000),
     }
-    effect = FanOutDevelopmentEffect(work_units=units, max_workers=3)
+    effect = FanOutEffect(work_units=units, max_workers=3)
     initial_state = PipelineState(phase="development", work_units=units)
 
     events = _run_fan_out(effect, initial_state, runs)

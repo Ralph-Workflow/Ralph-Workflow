@@ -69,7 +69,7 @@ The ASCII diagram is the first visual output from `--explain-policy`. It shows:
 - **Decision branches** — `+--[decision_name]--> target` shows routing for specific decisions
 - **Loopback arrows** — `| loop back to target` with `+---^` shows retry/request-changes routing
 - **Terminal markers** — `==SUCCESS==>` or `==FAILURE==>` marks terminal outcomes
-- **Fanout annotations** — `[fanout: max_workers=N, max_units=M]` on phases with parallelization
+- **Fanout annotations** — `>>> FAN_OUT (max_workers=N, max_units=M, post_fanout_verify=yes/no) >>>` before phases with parallelization
 - **Loop annotations** — `[loop: counter=NAME, max=N]` on phases with bounded iteration
 
 ```
@@ -82,13 +82,14 @@ WORKFLOW DIAGRAM
 +----------------+
     |
     v
-[fanout: max_workers=8, max_units=50]
+>>> FAN_OUT (max_workers=8, max_units=50) >>>
 +----------------+
 |  development   |
 | role=execution |
 +----------------+
-    | loop back to development
-    +---^  (returns to 'development' phase)
+    <<==[loopback]== returns to 'development'
+    >> RE-ENTRY at development
+<<< REJOIN
     |
     v
 [loop: counter=development_analysis_iteration, max=3]
@@ -98,8 +99,9 @@ WORKFLOW DIAGRAM
 +----------------------+
     +--[failed]--> development
     +--[request_changes]--> development
-    | loop back to development
-    +---^  (returns to 'development' phase)
+    <<==[loopback]== returns to 'development'
+    [LOOPBACK: counter=development_analysis_iteration, max=3]
+    >> RE-ENTRY at development
     |
     v
 +--------------------+
@@ -112,8 +114,8 @@ WORKFLOW DIAGRAM
 |    review   |
 | role=review |
 +-------------+
-    | loop back to fix
-    +---^  (returns to 'fix' phase)
+    <<==[loopback]== returns to 'fix'
+    >> RE-ENTRY at fix
     |
     v
 [loop: counter=review_analysis_iteration, max=2]
@@ -123,9 +125,9 @@ WORKFLOW DIAGRAM
 +-----------------+
     +--[failed]--> fix
     +--[request_changes]--> fix
-    | loop back to fix
-    +---^  (returns to 'fix' phase)
+    <<==[loopback]== returns to 'fix'
     [LOOPBACK: counter=review_analysis_iteration, max=2]
+    >> RE-ENTRY at fix
     |
     v
 +---------------+
@@ -139,12 +141,26 @@ WORKFLOW DIAGRAM
 | role=terminal |
 +---------------+
 ==SUCCESS==>
++-----------------+
+| failed_terminal |
+|  role=terminal  |
++-----------------+
+==FAILURE==>
 +----------------+
 |      fix       |
 | role=execution |
 +----------------+
-    | loop back to review
-    +---^  (returns to 'review' phase)
+    <<==[loopback]== returns to 'review'
+    >> RE-ENTRY at review
+
+Legend:
+  =ENTRY=>           pipeline entry point
+  ==SUCCESS==>       terminal success outcome
+  ==FAILURE==>       terminal failure outcome
+  +--[decision]-->   analysis decision branch
+  <<==[loopback]==   loopback to earlier phase
+  >>> FAN_OUT ...    parallel worker fan-out
+  <<< REJOIN         workers rejoin after fan-out
 ```
 
 ### Reading the diagram
@@ -155,11 +171,12 @@ WORKFLOW DIAGRAM
 | `=ENTRY=>` | Entry phase — where every run starts |
 | `==SUCCESS==>` | Terminal success — marks a phase declared with `terminal_outcome='success'` |
 | `==FAILURE==>` | Terminal failure — marks a phase declared with `terminal_outcome='failure'`; only policy-declared terminal phases receive this marker |
-| `\| loop back to X` | Loopback edge — routes BACK to phase X on loopback signal |
-| `+---^  (returns to 'X' phase)` | Continuation of loopback annotation |
-| `[LOOPBACK: counter=N, max=M]` | Loopback consumes loop counter N (present only when loopback_review_outcome is set) |
+| `` <<==[loopback]== returns to 'X' `` | Loopback edge — routes BACK to phase X on loopback signal |
+| `` >> RE-ENTRY at X `` | The phase where control re-enters after a loopback |
+| `[LOOPBACK: counter=N, max=M]` | Loopback consumes loop counter N; present when loopback increments a loop counter |
 | `+--[decision]--> Y` | Decision branch — routes to Y when decision is emitted |
-| `[fanout: ...]` | Fanout annotation — phase supports parallel execution |
+| `` >>> FAN_OUT (max_workers=N, max_units=M) >>> `` | Fan-out — phase fans out to parallel workers |
+| `` <<< REJOIN `` | Workers rejoin after fan-out completes |
 | `[loop: ...]` | Loop annotation — phase has bounded iteration |
 
 ## Explanation sentences
@@ -236,12 +253,15 @@ Explanation: phase 'development_analysis' loops back to 'development' until 3 at
     Chain      : development_commit → agents: [claude]
     Retry      : up to 3 retries per agent, then fail
     On success → review
-    On failure → failed
+    On failure → failed_terminal
     Commit     : increments 'iteration'
                  resets loop counters: ['development_analysis_iteration']
                  requires artifact: yes
     When is commit required? When this phase is active and the agent
       produces changes that need to be committed.
+Explanation: after commit phase 'development_commit' with budget_state 'remaining' → routes to 'planning' because the workflow policy declares this post_commit_route
+Explanation: after commit phase 'development_commit' with budget_state 'exhausted' → routes to 'review' because the workflow policy declares this post_commit_route
+Explanation: after commit phase 'development_commit' with budget_state 'no_review' → routes to 'complete' because the workflow policy declares this post_commit_route
 
   Phase: review
     Role       : review (agent performs code review)
@@ -251,8 +271,10 @@ Explanation: phase 'development_analysis' loops back to 'development' until 3 at
     On success → review_analysis
     On failure → pipeline fails (no on_failure route)
     On loopback → fix
-    Bypass [review_clean] → review_commit
-Explanation: phase 'review' bypasses to 'review_commit' when the configured outcome is 'review_clean'.
+    Bypass [clean] → review_commit
+    Clean outcome: clean
+    Issues outcome: has_issues
+Explanation: phase 'review' bypasses to 'review_commit' when the configured outcome is 'clean'.
 
   Phase: review_analysis
     Role       : analysis (agent reviews output, decides next step)
@@ -328,7 +350,7 @@ PARALLEL EXECUTION
 RECOVERY POLICY
 ----------------------------------------------------------------------
   Max recovery cycles : 200
-  Terminal failure route: failed
+  Terminal failure route: failed_terminal
   Session preserved on: agent
 
 ======================================================================

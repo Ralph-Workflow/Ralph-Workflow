@@ -202,8 +202,8 @@ def test_dev_runs_exactly_2_cycles_with_d2(
     assert final_state.reviewer_pass == 0
     assert final_state.get_loop_iteration("development_analysis_iteration") == 0
     assert final_state.get_loop_iteration("review_analysis_iteration") == 0
-    assert final_state.development_budget_remaining == 0
-    assert final_state.review_budget_remaining == 0
+    assert final_state.get_budget_remaining("iteration") == 0
+    assert final_state.get_budget_remaining("reviewer_pass") == 0
 
 
 def test_dev_runs_exactly_3_cycles_with_d3(
@@ -226,7 +226,7 @@ def test_dev_runs_exactly_3_cycles_with_d3(
     assert final_state.phase == "complete"
     assert final_state.iteration == DEVELOPMENT_CYCLES_THREE
     assert final_state.get_loop_iteration("development_analysis_iteration") == 0
-    assert final_state.development_budget_remaining == 0
+    assert final_state.get_budget_remaining("iteration") == 0
 
 
 def test_review_runs_exactly_2_cycles_with_r2(
@@ -250,7 +250,7 @@ def test_review_runs_exactly_2_cycles_with_r2(
     assert final_state.reviewer_pass == REVIEW_CYCLES_TWO
     assert final_state.get_loop_iteration("development_analysis_iteration") == 0
     assert final_state.get_loop_iteration("review_analysis_iteration") == 0
-    assert final_state.review_budget_remaining == 0
+    assert final_state.get_budget_remaining("reviewer_pass") == 0
 
 
 def test_no_review_when_reviewer_reviews_zero(
@@ -274,7 +274,7 @@ def test_no_review_when_reviewer_reviews_zero(
     assert final_state.phase == "complete"
     assert final_state.iteration == DEVELOPMENT_CYCLES_TWO
     assert final_state.reviewer_pass == 0
-    assert final_state.review_budget_remaining == 0
+    assert final_state.get_budget_remaining("reviewer_pass") == 0
 
 
 def test_analysis_loopback_preserves_budget(
@@ -302,7 +302,7 @@ def test_analysis_loopback_preserves_budget(
         and state.previous_phase == "development_analysis"
         and state.get_loop_iteration("development_analysis_iteration") == 1
     )
-    assert loopback_state.development_budget_remaining == starting_budget
+    assert loopback_state.get_budget_remaining("iteration") == starting_budget
     final_state = saved_states[-1]
     assert final_state.iteration == DEVELOPMENT_CYCLES_TWO
     assert final_state.get_loop_iteration("development_analysis_iteration") == 0
@@ -393,17 +393,15 @@ def test_checkpoint_resume_preserves_budget(
     checkpoint_path = tmp_path / "checkpoint.json"
     state = PipelineState(
         phase="planning",
-        total_iterations=1,
-        total_reviewer_passes=0,
-        development_budget_remaining=1,
-        review_budget_remaining=0,
+        budget_caps={"iteration": 1, "reviewer_pass": 0},
+        budget_remaining={"iteration": 1, "reviewer_pass": 0},
     )
     ckpt_save(state, checkpoint_path)
 
     loaded = ckpt_load(checkpoint_path)
 
     assert loaded is not None
-    assert loaded.development_budget_remaining == 1
+    assert loaded.get_budget_remaining("iteration") == 1
 
     result, saved_states = _run_pipeline(
         monkeypatch,
@@ -418,4 +416,4 @@ def test_checkpoint_resume_preserves_budget(
     final_state = saved_states[-1]
     assert final_state.phase == "complete"
     assert final_state.iteration == 1
-    assert final_state.development_budget_remaining == 0
+    assert final_state.get_budget_remaining("iteration") == 0

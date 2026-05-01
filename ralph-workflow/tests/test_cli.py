@@ -442,6 +442,7 @@ def test_run_pipeline_success(monkeypatch: pytest.MonkeyPatch) -> None:
         resume,
         verbosity=None,
         display_context=None,
+        counter_overrides=None,
     ):  # type: ignore[override]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
         recorded["config_path"] = config_path
         recorded["cli_overrides"] = cli_overrides
@@ -630,3 +631,111 @@ def test_explain_policy_prints_workflow_diagram(cli_runner: CliRunner) -> None:
     # Should contain bypass_routes explanation sentence for the review phase
     assert "Explanation: phase 'review' bypasses to 'review_commit'" in result.stdout
 
+
+class TestParseCounterOverrides:
+    """Tests for _parse_counter_overrides helper."""
+
+    def test_parses_single_valid_entry(self) -> None:
+        from ralph.cli.main import _parse_counter_overrides  # noqa: PLC0415
+
+        result = _parse_counter_overrides(["iteration=3"])
+        assert result == {"iteration": 3}
+
+    def test_parses_multiple_entries(self) -> None:
+        from ralph.cli.main import _parse_counter_overrides  # noqa: PLC0415
+
+        result = _parse_counter_overrides(["iteration=3", "reviewer_pass=1"])
+        assert result == {"iteration": 3, "reviewer_pass": 1}
+
+    def test_empty_list_returns_empty_dict(self) -> None:
+        from ralph.cli.main import _parse_counter_overrides  # noqa: PLC0415
+
+        assert _parse_counter_overrides([]) == {}
+
+    def test_missing_equals_raises_usage_error(self) -> None:
+        from ralph.cli.main import _parse_counter_overrides  # noqa: PLC0415
+
+        with pytest.raises(click.UsageError, match="invalid format"):
+            _parse_counter_overrides(["iteration3"])
+
+    def test_blank_name_raises_usage_error(self) -> None:
+        from ralph.cli.main import _parse_counter_overrides  # noqa: PLC0415
+
+        with pytest.raises(click.UsageError, match="blank counter name"):
+            _parse_counter_overrides(["=5"])
+
+    def test_non_integer_value_raises_usage_error(self) -> None:
+        from ralph.cli.main import _parse_counter_overrides  # noqa: PLC0415
+
+        with pytest.raises(click.UsageError, match="not a valid integer"):
+            _parse_counter_overrides(["iteration=abc"])
+
+    def test_zero_value_is_valid(self) -> None:
+        from ralph.cli.main import _parse_counter_overrides  # noqa: PLC0415
+
+        result = _parse_counter_overrides(["reviewer_pass=0"])
+        assert result == {"reviewer_pass": 0}
+
+
+class TestDeprecatedCounterFlags:
+    """Tests for deprecated --developer-iters and --reviewer-reviews flags."""
+
+    def test_developer_iters_emits_deprecation_warning(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        warnings: list[str] = []
+        monkeypatch.setattr(
+            "ralph.cli.main.logger.warning",
+            lambda msg, *args, **kwargs: warnings.append(str(msg)),
+        )
+        monkeypatch.setattr("ralph.cli.main.run_pipeline", lambda **kw: 0)
+        monkeypatch.setattr(
+            "ralph.cli.main._bootstrap_global_configs", lambda *, display_context: None
+        )
+        monkeypatch.setattr("ralph.cli.main._configure_logging", lambda v: None)
+
+        runner = TyperCliRunner()
+        runner.invoke(app, ["--developer-iters", "3", "--dry-run"], catch_exceptions=False)
+
+        assert any("deprecated" in w.lower() for w in warnings)
+
+    def test_reviewer_reviews_emits_deprecation_warning(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        warnings: list[str] = []
+        monkeypatch.setattr(
+            "ralph.cli.main.logger.warning",
+            lambda msg, *args, **kwargs: warnings.append(str(msg)),
+        )
+        monkeypatch.setattr("ralph.cli.main.run_pipeline", lambda **kw: 0)
+        monkeypatch.setattr(
+            "ralph.cli.main._bootstrap_global_configs", lambda *, display_context: None
+        )
+        monkeypatch.setattr("ralph.cli.main._configure_logging", lambda v: None)
+
+        runner = TyperCliRunner()
+        runner.invoke(app, ["--reviewer-reviews", "1", "--dry-run"], catch_exceptions=False)
+
+        assert any("deprecated" in w.lower() for w in warnings)
+
+    def test_counter_flag_passes_overrides_to_run_pipeline(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        captured: dict[str, object] = {}
+        monkeypatch.setattr(
+            "ralph.cli.main.run_pipeline",
+            lambda **kw: captured.update(kw) or 0,
+        )
+        monkeypatch.setattr(
+            "ralph.cli.main._bootstrap_global_configs", lambda *, display_context: None
+        )
+        monkeypatch.setattr("ralph.cli.main._configure_logging", lambda v: None)
+
+        runner = TyperCliRunner()
+        runner.invoke(
+            app,
+            ["--counter", "iteration=2", "--counter", "reviewer_pass=1", "--dry-run"],
+            catch_exceptions=False,
+        )
+
+        assert captured.get("counter_overrides") == {"iteration": 2, "reviewer_pass": 1}

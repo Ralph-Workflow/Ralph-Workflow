@@ -120,16 +120,14 @@ def initial_state() -> PipelineState:
     """
     return PipelineState(
         phase="planning",
-        total_iterations=1,
-        total_reviewer_passes=1,
+        budget_caps={"iteration": 1, "reviewer_pass": 1},
+        budget_remaining={"iteration": 1, "reviewer_pass": 1},
         phase_chains={
             "development": AgentChainState(agents=["claude"]),
             "review": AgentChainState(agents=["claude"]),
         },
         rebase=RebaseState(),
         commit=CommitState(),
-        development_budget_remaining=1,
-        review_budget_remaining=1,
     )
 
 
@@ -165,11 +163,9 @@ class TestPipelineHappyPath:
         agents_policy, pipeline_policy, _ = default_policy
 
         # Set state to development_commit phase with exhausted budget
-        state = initial_state.model_copy(
-            update={
-                "phase": "development_commit",
-                "development_budget_remaining": 0,
-            }
+        state = (
+            initial_state.copy_with(phase="development_commit")
+            .with_budget_remaining("iteration", 0)
         )
 
         effect = determine_next_effect(state, pipeline_policy, agents_policy)
@@ -187,11 +183,9 @@ class TestPipelineHappyPath:
         agents_policy, pipeline_policy, _ = default_policy
 
         # Set state to review_commit phase
-        state = initial_state.model_copy(
-            update={
-                "phase": "review_commit",
-                "review_budget_remaining": 0,
-            }
+        state = (
+            initial_state.copy_with(phase="review_commit")
+            .with_budget_remaining("reviewer_pass", 0)
         )
 
         effect = determine_next_effect(state, pipeline_policy, agents_policy)
@@ -309,12 +303,7 @@ class TestPipelinePhaseTransitions:
         agents_policy, pipeline_policy, _ = default_policy
 
         # Set state to development with remaining budget
-        state = initial_state.model_copy(
-            update={
-                "phase": "development",
-                "development_budget_remaining": 1,
-            }
-        )
+        state = initial_state.copy_with(phase="development").with_budget_remaining("iteration", 1)
 
         effect = determine_next_effect(state, pipeline_policy, agents_policy)
 
@@ -331,12 +320,7 @@ class TestPipelinePhaseTransitions:
         agents_policy, pipeline_policy, _ = default_policy
 
         # Set state to review
-        state = initial_state.model_copy(
-            update={
-                "phase": "review",
-                "review_budget_remaining": 1,
-            }
-        )
+        state = initial_state.copy_with(phase="review").with_budget_remaining("reviewer_pass", 1)
 
         effect = determine_next_effect(state, pipeline_policy, agents_policy)
 

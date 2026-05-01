@@ -23,7 +23,7 @@ def _build_state() -> PipelineState:
     return PipelineState(
         phase="development",
         iteration=DEVELOPMENT_ITERATION,
-        total_iterations=TOTAL_ITERATIONS,
+        budget_caps={"iteration": TOTAL_ITERATIONS},
     )
 
 
@@ -48,7 +48,7 @@ async def test_save_async_roundtrip(tmp_path: Path) -> None:
     assert loaded is not None
     assert loaded.phase == "development"
     assert loaded.iteration == DEVELOPMENT_ITERATION
-    assert loaded.total_iterations == TOTAL_ITERATIONS
+    assert loaded.budget_caps.get("iteration") == TOTAL_ITERATIONS
 
 
 async def test_load_async_returns_state(tmp_path: Path) -> None:
@@ -82,7 +82,7 @@ async def test_save_async_and_load_async_roundtrip(tmp_path: Path) -> None:
     assert loaded is not None
     assert loaded.phase == state.phase
     assert loaded.iteration == state.iteration
-    assert loaded.total_iterations == state.total_iterations
+    assert loaded.budget_caps == state.budget_caps
 
 
 async def test_save_async_nonblocking(tmp_path: Path) -> None:

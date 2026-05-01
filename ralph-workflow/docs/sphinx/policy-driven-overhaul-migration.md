@@ -243,6 +243,66 @@ routing. Compare it against your expected workflow before running the pipeline.
 See [Policy Explanation](policy-explanation.md) for a full walkthrough of the explain
 output.
 
+## Policy-driven iteration: latest changes
+
+This section documents the specific items removed or tightened in the most recent
+iterative improvement to the policy-driven model.
+
+### Removed legacy PipelineState budget fields
+
+The following four fields were removed from `PipelineState`:
+
+- `total_iterations`
+- `total_reviewer_passes`
+- `development_budget_remaining`
+- `review_budget_remaining`
+
+All code that previously read these fields now uses the generic policy-keyed accessors
+`state.get_outer_progress(counter)` and `state.get_budget_remaining(counter)`. Old
+checkpoint JSON containing these field names is still loaded correctly — the migration
+validator converts them to the generic `outer_progress`, `budget_remaining`, and
+`budget_caps` dicts automatically at load time.
+
+**What this means for you:** If you have custom code outside Ralph Workflow that reads
+these fields from a checkpoint JSON, update it to read from the corresponding
+generic dicts using the policy-declared counter name (e.g., `outer_progress["iteration"]`
+for the development iteration count).
+
+### FanOutEffect rename (FanOutDevelopmentEffect deprecated)
+
+The internal effect class `FanOutDevelopmentEffect` was renamed to `FanOutEffect` to
+make it phase-agnostic. The old name is kept as a backward-compat module-level alias
+and emits a `DeprecationWarning` when accessed.
+
+**What this means for you:** Update any in-tree imports from
+`from ralph.pipeline.effects import FanOutDevelopmentEffect` to
+`from ralph.pipeline.effects import FanOutEffect`. The alias works in this release but
+will be removed in a future version.
+
+### New strict validation rules
+
+Three new checks were added to `validate_policy_completeness`:
+
+1. **`skip_invocation` requires `on_success`:** A phase with `skip_invocation = true` must
+   declare `transitions.on_success`. Without it, the routing cannot proceed after the
+   phase is skipped. Fix: add `on_success = "<next-phase>"` to the phase's
+   `[phases.<name>.transitions]` block.
+
+2. **Parallelization consistency:** When a phase declares `[parallelization]`,
+   `max_work_units` must be >= `max_parallel_workers`. A `max_work_units` smaller than
+   `max_parallel_workers` is a configuration error — the excess workers can never be
+   used, and the policy is misleading. Fix: reduce `max_parallel_workers` or increase
+   `max_work_units`.
+
+3. **Unknown `--counter` names rejected:** When `--counter NAME=VALUE` is passed,
+   `NAME` must be declared in `pipeline.toml` under `[budget_counters.NAME]`. Unknown
+   counter names are rejected at startup with a `PolicyValidationError` that lists the
+   declared counters. Fix: either add the counter to `pipeline.toml` or correct the
+   counter name in the CLI invocation.
+
+The `--check-policy` command now validates these rules as well, so you can verify your
+configuration before a full pipeline run.
+
 ## Related pages
 
 - [Configuration](configuration.md) — full `pipeline.toml` field reference

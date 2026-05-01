@@ -94,10 +94,8 @@ def test_quiet_mode_suppresses_dashboard_header_and_phase_banners(
 
     state = PipelineState(
         phase="planning",
-        total_iterations=1,
-        total_reviewer_passes=0,
-        development_budget_remaining=1,
-        review_budget_remaining=0,
+        budget_caps={"iteration": 1, "reviewer_pass": 0},
+        budget_remaining={"iteration": 1, "reviewer_pass": 0},
     )
 
     exit_code = runner_module.run(_config(), initial_state=state, verbosity=Verbosity.QUIET)

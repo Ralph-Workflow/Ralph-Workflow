@@ -38,7 +38,7 @@ if TYPE_CHECKING:
     from ralph.agents.executor import AgentExecutor, WorkerResult
     from ralph.display.activity_router import ActivityRouter
     from ralph.display.parallel_display import ParallelDisplay
-    from ralph.pipeline.effects import FanOutDevelopmentEffect
+    from ralph.pipeline.effects import FanOutEffect
     from ralph.pipeline.parallel.mode import SameWorkspaceContext
     from ralph.pipeline.parallel.worker_session import WorkerSessionBundle
     from ralph.pipeline.work_units import WorkUnit
@@ -63,7 +63,7 @@ class ParallelCoordinator:
 
     async def run_fan_out(
         self,
-        effect: FanOutDevelopmentEffect,
+        effect: FanOutEffect,
         executor: AgentExecutor,
         display: ParallelDisplay,
         ctx: _WorkerContext | None = None,
@@ -453,7 +453,7 @@ async def _run_worker(
 
 
 async def run_fan_out(
-    effect: FanOutDevelopmentEffect,
+    effect: FanOutEffect,
     executor: AgentExecutor,
     display: ParallelDisplay,
     ctx: _WorkerContext | None = None,

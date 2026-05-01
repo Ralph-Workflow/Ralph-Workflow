@@ -327,10 +327,10 @@ def test_policy_agent_success_in_development_routes_to_analysis() -> None:
 def test_policy_agent_success_in_planning_routes_to_development_without_consuming_budget() -> None:
     policy = _policy_with_post_commit_routes()
     starting_budget = 2
-    state = PipelineState(phase="planning", development_budget_remaining=starting_budget)
+    state = PipelineState(phase="planning", budget_remaining={"iteration": starting_budget})
     new_state, _ = _reduce(state, PipelineEvent.AGENT_SUCCESS, policy)
     assert new_state.phase == "development"
-    assert new_state.development_budget_remaining == starting_budget
+    assert new_state.get_budget_remaining("iteration") == starting_budget
 
 
 def test_policy_agent_success_with_embeds_analysis_delegates_to_analysis_path() -> None:
@@ -376,7 +376,7 @@ def test_review_issues_found_advances_to_fix_without_completing_pass() -> None:
     state = PipelineState(
         phase="review",
         reviewer_pass=0,
-        total_reviewer_passes=2,
+        budget_caps={"reviewer_pass": 2},
     )
     new_state, _ = _reduce(state, PipelineEvent.REVIEW_ISSUES_FOUND, policy)
     assert new_state.phase == "fix"
@@ -390,7 +390,7 @@ def test_fix_success_returns_to_review_analysis() -> None:
     state = PipelineState(
         phase="fix",
         reviewer_pass=0,
-        total_reviewer_passes=2,
+        budget_caps={"reviewer_pass": 2},
     )
     new_state, _ = _reduce(state, PipelineEvent.FIX_SUCCESS, policy)
     assert new_state.phase == "review_analysis"
@@ -399,7 +399,7 @@ def test_fix_success_returns_to_review_analysis() -> None:
 def test_commit_success_advances_to_complete() -> None:
     """Test that COMMIT_SUCCESS advances to complete phase."""
     policy = _policy_with_post_commit_routes()
-    state = PipelineState(phase="review_commit", review_budget_remaining=0)
+    state = PipelineState(phase="review_commit", budget_remaining={"reviewer_pass": 0})
     new_state, _ = _reduce(state, PipelineEvent.COMMIT_SUCCESS, policy)
     assert new_state.phase == "complete"
 
@@ -462,12 +462,15 @@ def test_phase_advance_preserves_development_budget_until_commit_outcome() -> No
     """Advancing to development should not consume budget before commit outcome."""
     policy = _policy_with_transition("development")
     starting_budget = 2
-    state = PipelineState(phase="budget_transition", development_budget_remaining=starting_budget)
+    state = PipelineState(
+        phase="budget_transition",
+        budget_remaining={"iteration": starting_budget},
+    )
 
     new_state, _ = _reduce(state, PipelineEvent.PHASE_ADVANCE, policy)
 
     assert new_state.phase == "development"
-    assert new_state.development_budget_remaining == starting_budget
+    assert new_state.get_budget_remaining("iteration") == starting_budget
 
 
 def test_phase_advance_updates_current_drain_from_target_phase_policy() -> None:
@@ -484,12 +487,12 @@ def test_phase_advance_updates_current_drain_from_target_phase_policy() -> None:
 def test_phase_advance_clamps_review_budget_at_zero() -> None:
     """Review budget should never go negative when advancing to review."""
     policy = _policy_with_transition("review")
-    state = PipelineState(phase="budget_transition", review_budget_remaining=0)
+    state = PipelineState(phase="budget_transition", budget_remaining={"reviewer_pass": 0})
 
     new_state, _ = _reduce(state, PipelineEvent.PHASE_ADVANCE, policy)
 
     assert new_state.phase == "review"
-    assert new_state.review_budget_remaining == 0
+    assert new_state.get_budget_remaining("reviewer_pass") == 0
 
 
 def test_commit_success_routes_development_commit_to_planning_when_budget_still_remains() -> None:
@@ -500,8 +503,7 @@ def test_commit_success_routes_development_commit_to_planning_when_budget_still_
     policy = _policy_with_post_commit_routes()
     state = PipelineState(
         phase="development_commit",
-        development_budget_remaining=2,
-        review_budget_remaining=1,
+        budget_remaining={"iteration": 2, "reviewer_pass": 1},
     )
 
     new_state, _ = _reduce(state, PipelineEvent.COMMIT_SUCCESS, policy)
@@ -509,7 +511,7 @@ def test_commit_success_routes_development_commit_to_planning_when_budget_still_
     assert new_state.phase == "planning"
     assert new_state.previous_phase == "development_commit"
     assert new_state.current_drain == "planning"
-    assert new_state.development_budget_remaining == 1
+    assert new_state.get_budget_remaining("iteration") == 1
 
 
 def test_commit_success_increments_development_iteration_with_policy() -> None:
@@ -518,16 +520,15 @@ def test_commit_success_increments_development_iteration_with_policy() -> None:
     state = PipelineState(
         phase="development_commit",
         iteration=0,
-        total_iterations=2,
-        development_budget_remaining=1,
-        review_budget_remaining=1,
+        budget_caps={"iteration": 2},
+        budget_remaining={"iteration": 1, "reviewer_pass": 1},
     )
 
     new_state, _ = _reduce(state, PipelineEvent.COMMIT_SUCCESS, policy)
 
     assert new_state.phase == "review"
     assert new_state.iteration == 1
-    assert new_state.development_budget_remaining == 0
+    assert new_state.get_budget_remaining("iteration") == 0
 
 
 def test_commit_success_routes_development_commit_to_review_when_budget_exhausted() -> None:
@@ -535,8 +536,7 @@ def test_commit_success_routes_development_commit_to_review_when_budget_exhauste
     policy = _policy_with_post_commit_routes()
     state = PipelineState(
         phase="development_commit",
-        development_budget_remaining=0,
-        review_budget_remaining=1,
+        budget_remaining={"iteration": 0, "reviewer_pass": 1},
     )
 
     new_state, _ = _reduce(state, PipelineEvent.COMMIT_SUCCESS, policy)
@@ -548,13 +548,13 @@ def test_commit_success_routes_development_commit_to_review_when_budget_exhauste
 def test_commit_success_routes_review_commit_to_review_when_budget_still_remains() -> None:
     """COMMIT_SUCCESS should route review_commit to review when budget remains after consumption."""
     policy = _policy_with_post_commit_routes()
-    state = PipelineState(phase="review_commit", review_budget_remaining=2)
+    state = PipelineState(phase="review_commit", budget_remaining={"reviewer_pass": 2})
 
     new_state, _ = _reduce(state, PipelineEvent.COMMIT_SUCCESS, policy)
 
     assert new_state.phase == "review"
     assert new_state.previous_phase == "review_commit"
-    assert new_state.review_budget_remaining == 1
+    assert new_state.get_budget_remaining("reviewer_pass") == 1
 
 
 def test_commit_success_increments_reviewer_pass_with_policy() -> None:
@@ -563,21 +563,21 @@ def test_commit_success_increments_reviewer_pass_with_policy() -> None:
     state = PipelineState(
         phase="review_commit",
         reviewer_pass=0,
-        total_reviewer_passes=2,
-        review_budget_remaining=1,
+        budget_caps={"reviewer_pass": 2},
+        budget_remaining={"reviewer_pass": 1},
     )
 
     new_state, _ = _reduce(state, PipelineEvent.COMMIT_SUCCESS, policy)
 
     assert new_state.phase == "complete"
     assert new_state.reviewer_pass == 1
-    assert new_state.review_budget_remaining == 0
+    assert new_state.get_budget_remaining("reviewer_pass") == 0
 
 
 def test_commit_success_routes_review_commit_to_complete_when_budget_exhausted() -> None:
     """COMMIT_SUCCESS should route review_commit to complete when budget exhausted."""
     policy = _policy_with_post_commit_routes()
-    state = PipelineState(phase="review_commit", review_budget_remaining=0)
+    state = PipelineState(phase="review_commit", budget_remaining={"reviewer_pass": 0})
 
     new_state, _ = _reduce(state, PipelineEvent.COMMIT_SUCCESS, policy)
 
@@ -683,7 +683,7 @@ class TestAnalysisDecisionDispatch:
         state = PipelineState(
             phase="development_analysis",
             iteration=0,
-            total_iterations=2,
+            budget_caps={"iteration": 2},
         )
         new_state, _ = _reduce(state, PipelineEvent.ANALYSIS_SUCCESS, policy)
         assert new_state.phase == "development_commit"
@@ -695,7 +695,7 @@ class TestAnalysisDecisionDispatch:
         state = PipelineState(
             phase="development_analysis",
             iteration=0,
-            total_iterations=2,
+            budget_caps={"iteration": 2},
         )
         new_state, _ = _reduce(state, PipelineEvent.ANALYSIS_LOOPBACK, policy)
         assert new_state.phase == "development"
@@ -706,12 +706,12 @@ class TestAnalysisDecisionDispatch:
         initial_budget = 2
         state = PipelineState(
             phase="development_analysis",
-            development_budget_remaining=initial_budget,
+            budget_remaining={"iteration": initial_budget},
         )
         policy = _policy_with_post_commit_routes()
         new_state, _ = _reduce(state, PipelineEvent.ANALYSIS_LOOPBACK, policy)
         assert new_state.phase == "development"
-        assert new_state.development_budget_remaining == initial_budget
+        assert new_state.get_budget_remaining("iteration") == initial_budget
 
     def test_analysis_success_routes_review_analysis_to_commit(self) -> None:
         """Test that ANALYSIS_SUCCESS in review_analysis routes to review_commit."""
@@ -719,7 +719,7 @@ class TestAnalysisDecisionDispatch:
         state = PipelineState(
             phase="review_analysis",
             reviewer_pass=0,
-            total_reviewer_passes=2,
+            budget_caps={"reviewer_pass": 2},
         )
         new_state, _ = _reduce(state, PipelineEvent.ANALYSIS_SUCCESS, policy)
         assert new_state.phase == "review_commit"
@@ -731,7 +731,7 @@ class TestAnalysisDecisionDispatch:
         state = PipelineState(
             phase="review_analysis",
             reviewer_pass=0,
-            total_reviewer_passes=2,
+            budget_caps={"reviewer_pass": 2},
         )
         new_state, _ = _reduce(state, PipelineEvent.ANALYSIS_LOOPBACK, policy)
         assert new_state.phase == "fix"
@@ -743,7 +743,7 @@ class TestAnalysisDecisionDispatch:
         state = PipelineState(
             phase="review_analysis",
             reviewer_pass=0,
-            total_reviewer_passes=2,
+            budget_caps={"reviewer_pass": 2},
         )
 
         new_state, _ = _reduce(state, PipelineEvent.ANALYSIS_LOOPBACK, policy)
@@ -758,7 +758,7 @@ class TestAnalysisDecisionDispatch:
         state = PipelineState(
             phase="review_analysis",
             reviewer_pass=1,
-            total_reviewer_passes=2,
+            budget_caps={"reviewer_pass": 2},
         )
 
         new_state, _ = _reduce(state, PipelineEvent.ANALYSIS_SUCCESS, policy)
@@ -923,7 +923,7 @@ class TestAnalysisDecisionDispatch:
             phase="development_commit",
             loop_iterations={"development_analysis_iteration": 2},
             loop_caps={"development_analysis_iteration": 3},
-            development_budget_remaining=0,
+            budget_remaining={"iteration": 0},
         )
         new_state, _ = _reduce(state, PipelineEvent.COMMIT_SUCCESS, policy)
         assert new_state.get_loop_iteration("development_analysis_iteration") == 0
@@ -1023,7 +1023,7 @@ class TestAnalysisDecisionDispatch:
             phase="review_commit",
             loop_iterations={"review_analysis_iteration": 2},
             loop_caps={"review_analysis_iteration": 3},
-            review_budget_remaining=0,
+            budget_remaining={"reviewer_pass": 0},
         )
         new_state, _ = _reduce(state, PipelineEvent.COMMIT_SUCCESS, policy)
         assert new_state.get_loop_iteration("review_analysis_iteration") == 0
@@ -1391,9 +1391,8 @@ def test_commit_skipped_advances_without_iteration_increment() -> None:
     state = PipelineState(
         phase="development_commit",
         iteration=0,
-        total_iterations=2,
-        development_budget_remaining=1,
-        review_budget_remaining=1,
+        budget_caps={"iteration": 2},
+        budget_remaining={"iteration": 1, "reviewer_pass": 1},
     )
 
     new_state, _ = _reduce(state, PipelineEvent.COMMIT_SKIPPED, policy)
@@ -1401,7 +1400,7 @@ def test_commit_skipped_advances_without_iteration_increment() -> None:
     assert new_state.phase == "review"
     assert new_state.previous_phase == "development_commit"
     assert new_state.iteration == 0
-    assert new_state.development_budget_remaining == 0
+    assert new_state.get_budget_remaining("iteration") == 0
 
 
 def test_commit_skipped_in_review_commit_advances_without_reviewer_pass_increment() -> None:
@@ -1410,8 +1409,8 @@ def test_commit_skipped_in_review_commit_advances_without_reviewer_pass_incremen
     state = PipelineState(
         phase="review_commit",
         reviewer_pass=0,
-        total_reviewer_passes=2,
-        review_budget_remaining=1,
+        budget_caps={"reviewer_pass": 2},
+        budget_remaining={"reviewer_pass": 1},
     )
 
     new_state, _ = _reduce(state, PipelineEvent.COMMIT_SKIPPED, policy)
@@ -1419,7 +1418,7 @@ def test_commit_skipped_in_review_commit_advances_without_reviewer_pass_incremen
     assert new_state.phase == "complete"
     assert new_state.previous_phase == "review_commit"
     assert new_state.reviewer_pass == 0
-    assert new_state.review_budget_remaining == 0
+    assert new_state.get_budget_remaining("reviewer_pass") == 0
 
 
 def test_commit_skipped_routes_to_complete_when_budget_exhausted() -> None:
@@ -1428,7 +1427,7 @@ def test_commit_skipped_routes_to_complete_when_budget_exhausted() -> None:
     state = PipelineState(
         phase="review_commit",
         reviewer_pass=0,
-        review_budget_remaining=0,
+        budget_remaining={"reviewer_pass": 0},
     )
 
     new_state, _ = _reduce(state, PipelineEvent.COMMIT_SKIPPED, policy)
@@ -1440,7 +1439,11 @@ def test_commit_skipped_routes_to_complete_when_budget_exhausted() -> None:
 def test_commit_skipped_without_policy_advances_to_complete() -> None:
     """COMMIT_SKIPPED on review_commit with exhausted budget advances to complete."""
     policy = _policy_with_post_commit_routes()
-    state = PipelineState(phase="review_commit", reviewer_pass=1, review_budget_remaining=0)
+    state = PipelineState(
+        phase="review_commit",
+        reviewer_pass=1,
+        budget_remaining={"reviewer_pass": 0},
+    )
     new_state, _ = _reduce(state, PipelineEvent.COMMIT_SKIPPED, policy)
     assert new_state.phase == "complete"
     assert new_state.reviewer_pass == 1
@@ -1454,7 +1457,7 @@ def test_commit_skipped_without_policy_advances_to_complete() -> None:
 def test_review_clean_with_policy_routes_to_review_commit_not_analysis() -> None:
     """REVIEW_CLEAN with policy must route directly to review_commit (bypassing review_analysis)."""
     policy = _policy_with_post_commit_routes()
-    state = PipelineState(phase="review", review_budget_remaining=1)
+    state = PipelineState(phase="review", budget_remaining={"reviewer_pass": 1})
     new_state, _ = _reduce(state, PipelineEvent.REVIEW_CLEAN, policy)
 
     assert new_state.phase == "review_commit"
@@ -1465,7 +1468,7 @@ def test_review_clean_with_policy_routes_to_review_commit_not_analysis() -> None
 def test_review_clean_via_bypass_routes_skips_analysis() -> None:
     """REVIEW_CLEAN routes directly to review_commit via bypass_routes, skipping review_analysis."""
     policy = _policy_with_post_commit_routes()
-    state = PipelineState(phase="review", review_budget_remaining=1)
+    state = PipelineState(phase="review", budget_remaining={"reviewer_pass": 1})
     new_state, _ = _reduce(state, PipelineEvent.REVIEW_CLEAN, policy)
 
     assert new_state.phase == "review_commit"
@@ -1635,8 +1638,7 @@ def test_full_noop_pipeline_flow_reaches_complete_without_billing_counters() -> 
         phase="planning",
         iteration=0,
         reviewer_pass=0,
-        development_budget_remaining=2,
-        review_budget_remaining=1,
+        budget_remaining={"iteration": 2, "reviewer_pass": 1},
     )
     new_state, _ = _reduce(state, PipelineEvent.AGENT_SUCCESS, policy)
     assert new_state.phase == "development"
@@ -1677,7 +1679,7 @@ def test_full_noop_pipeline_flow_reaches_complete_without_billing_counters() -> 
     assert new_state.phase == "development_commit"
 
     # Step 8: development_commit → COMMIT_SKIPPED → review (budget exhausted)
-    state = new_state.copy_with(development_budget_remaining=0)
+    state = new_state.with_budget_remaining("iteration", 0)
     new_state, _ = _reduce(state, PipelineEvent.COMMIT_SKIPPED, policy)
     assert new_state.phase == "review"
     assert new_state.iteration == 0
@@ -1689,7 +1691,7 @@ def test_full_noop_pipeline_flow_reaches_complete_without_billing_counters() -> 
     assert new_state.reviewer_pass == 0
 
     # Step 10: review_commit → COMMIT_SKIPPED → complete (budget exhausted)
-    state = new_state.copy_with(review_budget_remaining=0)
+    state = new_state.with_budget_remaining("reviewer_pass", 0)
     new_state, _ = _reduce(state, PipelineEvent.COMMIT_SKIPPED, policy)
     assert new_state.phase == "complete"
     assert new_state.reviewer_pass == 0

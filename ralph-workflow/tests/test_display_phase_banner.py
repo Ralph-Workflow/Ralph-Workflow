@@ -458,9 +458,8 @@ def test_show_phase_start_combines_iteration_and_analysis_counters() -> None:
 def test_show_phase_start_from_state_forwards_counters() -> None:
     stub = types.SimpleNamespace(
         iteration=0,
-        total_iterations=3,
         reviewer_pass=1,
-        total_reviewer_passes=2,
+        budget_caps={"iteration": 3, "reviewer_pass": 2},
         agent_name="coder",
     )
     buf = StringIO()
@@ -473,7 +472,7 @@ def test_show_phase_start_from_state_forwards_counters() -> None:
 
 
 def test_show_phase_start_from_state_tolerates_missing_attrs() -> None:
-    stub = types.SimpleNamespace(iteration=0, total_iterations=3)
+    stub = types.SimpleNamespace(iteration=0, budget_caps={"iteration": 3})
     buf = StringIO()
     console = Console(file=buf, force_terminal=False, color_system=None, width=200)
     show_phase_start_from_state(stub, "planning", display_context=_ctx_from_console(console))

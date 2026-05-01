@@ -19,7 +19,7 @@ from unittest.mock import MagicMock
 from ralph.display.context import make_display_context
 from ralph.executor.process import ProcessResult
 from ralph.pipeline import runner as runner_module
-from ralph.pipeline.effects import FanOutDevelopmentEffect
+from ralph.pipeline.effects import FanOutEffect
 from ralph.pipeline.events import PipelineEvent, WorkerCompletedEvent, WorkerFailedEvent
 from ralph.pipeline.parallel import coordinator
 from ralph.pipeline.state import PipelineState
@@ -106,7 +106,7 @@ class TestFanoutVerificationAndHandoff:
 
         unit_a = _make_work_unit("unit-a")
         unit_b = _make_work_unit("unit-b")
-        effect = FanOutDevelopmentEffect(
+        effect = FanOutEffect(
             work_units=(unit_a, unit_b),
             max_workers=2,
             run_post_fanout_verification=True,
@@ -165,7 +165,7 @@ class TestFanoutVerificationAndHandoff:
 
         unit_a = _make_work_unit("unit-a")
         unit_b = _make_work_unit("unit-b")
-        effect = FanOutDevelopmentEffect(
+        effect = FanOutEffect(
             work_units=(unit_a, unit_b),
             max_workers=2,
             run_post_fanout_verification=False,
@@ -215,7 +215,7 @@ class TestFanoutVerificationAndHandoff:
 
         unit_a = _make_work_unit("unit-a")
         unit_b = _make_work_unit("unit-b")
-        effect = FanOutDevelopmentEffect(
+        effect = FanOutEffect(
             work_units=(unit_a, unit_b),
             max_workers=2,
             run_post_fanout_verification=True,

@@ -2,7 +2,7 @@
 
 Proves the full supported path:
   planning artifact with >=2 disjoint work_units
-  → FanOutDevelopmentEffect from _determine_effect_from_policy
+  → FanOutEffect from _determine_effect_from_policy
   → coordinator.run_fan_out produces ALL_WORKERS_COMPLETE
   → reducer advances to development_analysis (no merge/worktree step)
   → per-worker evidence stays in its own namespace
@@ -29,7 +29,7 @@ from rich.console import Console
 
 from ralph.mcp.server.factory import McpServerHandle
 from ralph.pipeline import runner as runner_module
-from ralph.pipeline.effects import FanOutDevelopmentEffect, InvokeAgentEffect
+from ralph.pipeline.effects import FanOutEffect, InvokeAgentEffect
 from ralph.pipeline.events import PipelineEvent, WorkerCompletedEvent, WorkerFailedEvent
 from ralph.pipeline.parallel import coordinator
 from ralph.pipeline.parallel.mode import SameWorkspaceContext
@@ -146,7 +146,7 @@ class TestSameWorkspaceFanOutE2E:
     """End-to-end test of the same-workspace parallel fan-out path."""
 
     def test_two_disjoint_units_emit_fan_out_effect(self) -> None:
-        """_determine_effect_from_policy emits FanOutDevelopmentEffect for >=2 work units."""
+        """_determine_effect_from_policy emits FanOutEffect for >=2 work units."""
         from ralph.config.models import UnifiedConfig  # noqa: PLC0415
 
         unit_a = _make_work_unit("unit-a")
@@ -158,7 +158,7 @@ class TestSameWorkspaceFanOutE2E:
             state, policy_bundle, config=UnifiedConfig()
         )
 
-        assert isinstance(effect, FanOutDevelopmentEffect)
+        assert isinstance(effect, FanOutEffect)
         assert {u.unit_id for u in effect.work_units} == {"unit-a", "unit-b"}
         assert effect.run_post_fanout_verification is True
 
@@ -187,7 +187,7 @@ class TestSameWorkspaceFanOutE2E:
             uid: FakeRun(outputs=[f"done-{uid}"], exit_code=0, duration_ms=1)
             for uid in ("unit-a", "unit-b")
         }
-        effect = FanOutDevelopmentEffect(work_units=units, max_workers=2)
+        effect = FanOutEffect(work_units=units, max_workers=2)
         initial_state = PipelineState(phase="development", work_units=units)
 
         events = asyncio.run(
@@ -220,7 +220,7 @@ class TestSameWorkspaceFanOutE2E:
             "unit-a": FakeRun(outputs=["result-a"], exit_code=0, duration_ms=1),
             "unit-b": FakeRun(outputs=["result-b"], exit_code=0, duration_ms=1),
         }
-        effect = FanOutDevelopmentEffect(work_units=units, max_workers=2)
+        effect = FanOutEffect(work_units=units, max_workers=2)
 
         events = asyncio.run(
             coordinator.run_fan_out(
@@ -254,7 +254,7 @@ class TestSameWorkspaceFanOutE2E:
             uid: FakeRun(outputs=[f"done-{uid}"], exit_code=0, duration_ms=1)
             for uid in ("unit-a", "unit-b")
         }
-        effect = FanOutDevelopmentEffect(work_units=units, max_workers=2)
+        effect = FanOutEffect(work_units=units, max_workers=2)
         initial_state = PipelineState(phase="development", work_units=units)
 
         events = asyncio.run(
@@ -315,7 +315,7 @@ class TestSameWorkspaceFanOutE2E:
             "unit-a": FakeRun(outputs=["ok-a"], exit_code=0, duration_ms=1),
             "unit-b": FakeRun(outputs=["ok-b"], exit_code=0, duration_ms=1),
         }
-        effect = FanOutDevelopmentEffect(work_units=units, max_workers=2)
+        effect = FanOutEffect(work_units=units, max_workers=2)
         display = RecordingDisplay()
         initial_state = PipelineState(phase="development", work_units=units)
 
@@ -412,7 +412,7 @@ class TestSameWorkspaceFanOutE2E:
                 side_effect=_attempt_forbidden_write,
             ),
         }
-        effect = FanOutDevelopmentEffect(work_units=units, max_workers=1)
+        effect = FanOutEffect(work_units=units, max_workers=1)
         display = RecordingDisplay()
 
         events = asyncio.run(
@@ -490,7 +490,7 @@ class TestSameWorkspaceFanOutE2E:
             "unit-a": FakeRun(outputs=["ok-a"], exit_code=0, duration_ms=1),
             "unit-b": FakeRun(outputs=["ok-b"], exit_code=0, duration_ms=1),
         }
-        effect = FanOutDevelopmentEffect(work_units=units, max_workers=2)
+        effect = FanOutEffect(work_units=units, max_workers=2)
         display = RecordingDisplay()
 
         events = asyncio.run(
@@ -563,7 +563,7 @@ class TestRunnerAnalysisHandoffIntegration:
         monkeypatch.setattr(ckpt, "save", lambda state: None)
 
         bundle = _make_policy_bundle(max_workers=2)
-        effect = FanOutDevelopmentEffect(
+        effect = FanOutEffect(
             work_units=(unit_a, unit_b),
             max_workers=2,
             run_post_fanout_verification=False,
@@ -619,7 +619,7 @@ class TestRunnerAnalysisHandoffIntegration:
         monkeypatch.setattr(ckpt, "save", lambda state: None)
 
         bundle = _make_policy_bundle(max_workers=2)
-        effect = FanOutDevelopmentEffect(
+        effect = FanOutEffect(
             work_units=(unit_a, unit_b),
             max_workers=2,
             run_post_fanout_verification=False,

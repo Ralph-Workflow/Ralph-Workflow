@@ -35,7 +35,7 @@ from ralph.pipeline.effects import (
     Effect,
     ExitFailureEffect,
     ExitSuccessEffect,
-    FanOutDevelopmentEffect,
+    FanOutEffect,
     InvokeAgentEffect,
     PreparePromptEffect,
     SaveCheckpointEffect,
@@ -51,6 +51,7 @@ from ralph.policy.models import (
     AgentDrainConfig,
     AgentsPolicy,
     ArtifactsPolicy,
+    BudgetCounterConfig,
     PhaseCommitPolicy,
     PhaseDefinition,
     PhaseTransition,
@@ -173,14 +174,18 @@ class TestCreateInitialState:
             },
             entry_phase="planning",
             terminal_phase="complete",
+            budget_counters={
+                "iteration": BudgetCounterConfig(),
+                "reviewer_pass": BudgetCounterConfig(),
+            },
         )
 
         state = runner_module._create_initial_state(
             config, agents_policy=agents_policy, pipeline_policy=pipeline_policy
         )
         assert state.phase == "planning"
-        assert state.total_iterations == DEVELOPER_ITERATIONS
-        assert state.total_reviewer_passes == REVIEWER_PASSES
+        assert state.budget_caps.get("iteration") == DEVELOPER_ITERATIONS
+        assert state.budget_caps.get("reviewer_pass") == REVIEWER_PASSES
         assert state.chain_for_phase("development").agents == ["claude"]
         assert state.chain_for_phase("review").agents == ["claude"]
 
@@ -314,7 +319,7 @@ class TestCreateInitialState:
         state = runner_module._create_initial_state(
             config, pipeline_policy=_load_default_policy_bundle().pipeline
         )
-        assert state.development_budget_remaining == DEVELOPER_ITERATIONS
+        assert state.get_budget_remaining("iteration") == DEVELOPER_ITERATIONS
 
     def test_creates_state_with_correct_review_budget(self) -> None:
         config = MagicMock()
@@ -324,7 +329,7 @@ class TestCreateInitialState:
         state = runner_module._create_initial_state(
             config, pipeline_policy=_load_default_policy_bundle().pipeline
         )
-        assert state.review_budget_remaining == REVIEWER_PASSES
+        assert state.get_budget_remaining("reviewer_pass") == REVIEWER_PASSES
 
     def test_creates_state_with_zero_review_budget_when_r_zero(self) -> None:
         config = MagicMock()
@@ -334,7 +339,7 @@ class TestCreateInitialState:
         state = runner_module._create_initial_state(
             config, pipeline_policy=_load_default_policy_bundle().pipeline
         )
-        assert state.review_budget_remaining == 0
+        assert state.get_budget_remaining("reviewer_pass") == 0
 
 
 class TestDetermineEffect:
@@ -348,8 +353,7 @@ class TestDetermineEffect:
         state = MagicMock()
         state.phase = phase
         state.iteration = iteration
-        state.total_iterations = total_iterations
-        state.total_reviewer_passes = 1
+        state.budget_caps = {"iteration": total_iterations, "reviewer_pass": 1}
         state.current_agent.return_value = current_agent
         return state
 
@@ -418,7 +422,7 @@ class TestDetermineEffect:
 
         effect = runner_module._determine_effect_from_policy(state, bundle, config=config)
 
-        assert isinstance(effect, FanOutDevelopmentEffect)
+        assert isinstance(effect, FanOutEffect)
         assert {u.unit_id for u in effect.work_units} == {"unit-a", "unit-b"}
 
     def test_development_phase_with_single_work_unit_uses_invoke_agent_effect(self) -> None:
@@ -475,7 +479,7 @@ class TestDetermineEffect:
             state, bundle, WorkspaceScope("/tmp/worktree")
         )
 
-        assert isinstance(effect, FanOutDevelopmentEffect)
+        assert isinstance(effect, FanOutEffect)
         assert effect.work_units[0].unit_id == "unit-a"
 
     def test_commit_phase_with_requires_commit_uses_commit_effect(self, tmp_path: Path) -> None:
@@ -1043,7 +1047,7 @@ class TestPipelineRunnerLoop:
         )
         effects = iter(
             [
-                FanOutDevelopmentEffect(
+                FanOutEffect(
                     work_units=(WorkUnit(unit_id="unit-a", description="A"),),
                     max_workers=1,
                 ),
@@ -3029,9 +3033,8 @@ def test_phase_start_banner_emitted_to_parallel_display_console(
     state = PipelineState(
         phase="development",
         iteration=0,
-        total_iterations=3,
         reviewer_pass=0,
-        total_reviewer_passes=1,
+        budget_caps={"iteration": 3, "reviewer_pass": 1},
     )
 
     runner_module._execute_agent_effect(
@@ -3210,11 +3213,19 @@ class TestPhaseContextRoleBasedDispatch:
         return _phase_context(state, previous_phase, policy)
 
     def test_execution_role_shows_iteration_context(self) -> None:
+        # Policy must have a commit phase so _find_commit_counter_from_phase can derive the
+        # counter name from the transition chain: build -> build_commit (increments 'iteration').
         policy = _make_minimal_policy(
             {
                 "build": PhaseDefinition(
                     drain="development",
                     role="execution",
+                    transitions=PhaseTransition(on_success="build_commit"),
+                ),
+                "build_commit": PhaseDefinition(
+                    drain="development_commit",
+                    role="commit",
+                    commit_policy=PhaseCommitPolicy(increments_counter="iteration"),
                     transitions=PhaseTransition(on_success="done"),
                 ),
                 "done": PhaseDefinition(
@@ -3225,17 +3236,25 @@ class TestPhaseContextRoleBasedDispatch:
                 ),
             }
         )
-        state = PipelineState(phase="build", iteration=2, total_iterations=5)
+        state = PipelineState(phase="build", iteration=2, budget_caps={"iteration": 5})
         ctx = self._call(state, "planning", policy)
         assert ctx.get("iteration") == "3/5"
 
     def test_review_role_shows_pass_context(self) -> None:
+        # Policy must have a commit phase so _find_commit_counter_from_phase can derive the
+        # counter name from the transition chain: qa -> qa_commit (increments 'reviewer_pass').
         policy = _make_minimal_policy(
             {
                 "qa": PhaseDefinition(
                     drain="review",
                     role="review",
                     issues_outcome="issues_found",
+                    transitions=PhaseTransition(on_success="qa_commit"),
+                ),
+                "qa_commit": PhaseDefinition(
+                    drain="review_commit",
+                    role="commit",
+                    commit_policy=PhaseCommitPolicy(increments_counter="reviewer_pass"),
                     transitions=PhaseTransition(on_success="done"),
                 ),
                 "done": PhaseDefinition(
@@ -3246,7 +3265,7 @@ class TestPhaseContextRoleBasedDispatch:
                 ),
             }
         )
-        state = PipelineState(phase="qa", reviewer_pass=1, total_reviewer_passes=3)
+        state = PipelineState(phase="qa", reviewer_pass=1, budget_caps={"reviewer_pass": 3})
         ctx = self._call(state, "planning", policy)
         assert ctx.get("pass") == "2/3"
 
@@ -3364,7 +3383,7 @@ class TestPhaseContextRoleBasedDispatch:
                 ),
             }
         )
-        state = PipelineState(phase="gate", iteration=2, total_iterations=5)
+        state = PipelineState(phase="gate", iteration=2, budget_caps={"iteration": 5})
         ctx = self._call(state, "planning", policy)
         assert "iteration" not in ctx
 

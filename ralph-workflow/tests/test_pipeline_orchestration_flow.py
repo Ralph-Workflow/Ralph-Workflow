@@ -41,8 +41,8 @@ def _make_initial_state() -> PipelineState:
     bundle = _load_default_bundle()
     return PipelineState(
         phase=bundle.pipeline.entry_phase,
-        total_iterations=1,
-        total_reviewer_passes=1,
+        budget_caps={"iteration": 1, "reviewer_pass": 1},
+        budget_remaining={"iteration": 1, "reviewer_pass": 1},
         phase_chains={
             "development": AgentChainState(
                 agents=bundle.agents.agent_chains["development"].agents,
@@ -53,8 +53,6 @@ def _make_initial_state() -> PipelineState:
         },
         rebase=RebaseState(),
         commit=CommitState(),
-        development_budget_remaining=1,
-        review_budget_remaining=1,
     )
 
 
@@ -133,8 +131,7 @@ def test_run_recovers_when_planner_does_not_submit_plan_artifact(
     state = PipelineState(
         phase="planning",
         phase_chains={"planning": AgentChainState(agents=["claude"], current_index=0, retries=3)},
-        total_iterations=1,
-        total_reviewer_passes=1,
+        budget_caps={"iteration": 1, "reviewer_pass": 1},
         rebase=RebaseState(),
         commit=CommitState(),
     )

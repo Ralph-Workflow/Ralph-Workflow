@@ -55,8 +55,9 @@ See [Policy Explanation](policy-explanation.md) for the full policy inspection c
 
 | Flag | Short | Default | Description |
 |------|-------|---------|-------------|
-| `--developer-iters N` | `-D` | `5` | Maximum developer agent iterations per run |
-| `--reviewer-reviews N` | `-R` | `2` | Maximum review-fix cycles (0 skips review entirely) |
+| `--counter NAME=VALUE` | | | Override a named budget or loop counter declared in `pipeline.toml` (e.g. `--counter iteration=3`). Repeatable. |
+| `--developer-iters N` | `-D` | `5` | *(Deprecated — use `--counter` instead)* Maximum developer agent iterations per run. Overrides the `default_max` of the `iteration` loop/budget counter. |
+| `--reviewer-reviews N` | `-R` | `2` | *(Deprecated — use `--counter` instead)* Maximum review-fix cycles (0 skips review entirely). Overrides the `default_max` of the `reviewer_pass` budget counter. |
 | `--review-depth <mode>` | | `standard` | Review depth: `standard`, `comprehensive`, `security`, `incremental` |
 | `--developer-agent <name>` | `-a` | (from config) | Override the developer agent by name |
 | `--reviewer-agent <name>` | `-r` | (from config) | Override the reviewer agent by name |

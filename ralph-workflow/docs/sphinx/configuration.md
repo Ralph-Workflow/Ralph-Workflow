@@ -264,7 +264,7 @@ Declares a loop iteration counter referenced by `loop_policy.iteration_state_fie
 
 | Field | Description |
 |-------|-------------|
-| `default_max` | Default cap (can be overridden by `--developer-iters` / `--reviewer-reviews`) |
+| `default_max` | Default cap (can be overridden at runtime with `--counter NAME=VALUE`; `--developer-iters` / `--reviewer-reviews` are deprecated aliases) |
 | `description` | Human-readable description |
 
 ### `[budget_counters.<name>]`

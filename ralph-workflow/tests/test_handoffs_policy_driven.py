@@ -68,8 +68,7 @@ class TestComputeBudgetStateUsingCommitPolicy:
         policy = _feature_commit_policy()
         state = PipelineState(
             phase="feature_commit",
-            development_budget_remaining=2,
-            review_budget_remaining=1,
+            budget_remaining={"iteration": 2, "reviewer_pass": 1},
         )
         next_phase = resolve_post_commit_phase(state, policy)
         assert next_phase == "feature_commit"
@@ -78,8 +77,7 @@ class TestComputeBudgetStateUsingCommitPolicy:
         policy = _feature_commit_policy()
         state = PipelineState(
             phase="feature_commit",
-            development_budget_remaining=0,
-            review_budget_remaining=1,
+            budget_remaining={"iteration": 0, "reviewer_pass": 1},
         )
         next_phase = resolve_post_commit_phase(state, policy)
         assert next_phase == "complete"
@@ -117,7 +115,7 @@ class TestComputeBudgetStateUsingCommitPolicy:
         )
         state = PipelineState(
             phase="plain_commit",
-            development_budget_remaining=5,
+            budget_remaining={"iteration": 5},
         )
         next_phase = resolve_post_commit_phase(state, policy)
         assert next_phase == "complete"

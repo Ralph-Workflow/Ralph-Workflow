@@ -24,6 +24,7 @@ from ralph.policy.validation import (
     PolicyValidationError,
     validate_agent_chains_satisfiable,
     validate_checkpoint_against_policy,
+    validate_policy_completeness,
     validate_recovery_config,
 )
 from ralph.workspace.scope import WorkspaceScope, resolve_workspace_scope
@@ -161,6 +162,7 @@ def _run_policy_preflight_checks(
     config: UnifiedConfig,
     policy_bundle: PolicyBundle,
     initial_state: PipelineState | None,
+    counter_overrides: dict[str, int],
     *,
     display_context: DisplayContext,
 ) -> int:
@@ -179,6 +181,13 @@ def _run_policy_preflight_checks(
         console.print(_preflight_error_text(e.message))
         return _EXIT_PREFLIGHT
 
+    if counter_overrides:
+        try:
+            validate_policy_completeness(policy_bundle, cli_counter_overrides=counter_overrides)
+        except PolicyValidationError as e:
+            console.print(_preflight_error_text(e.message))
+            return _EXIT_PREFLIGHT
+
     if initial_state is not None:
         try:
             validate_checkpoint_against_policy(initial_state, policy_bundle)
@@ -192,11 +201,12 @@ def _run_policy_preflight_checks(
     return _EXIT_SUCCESS
 
 
-def _run_preflight_checks(
+def _run_preflight_checks(  # noqa: PLR0913
     config: UnifiedConfig,
     workspace_scope: WorkspaceScope | None,
     policy_bundle: object,
     initial_state: PipelineState | None,
+    counter_overrides: dict[str, int],
     *,
     display_context: DisplayContext,
 ) -> int:
@@ -235,6 +245,7 @@ def _run_preflight_checks(
             config,
             loaded_policy_bundle,
             initial_state,
+            counter_overrides,
             display_context=display_context,
         )
 
@@ -255,11 +266,12 @@ def _print_dry_run(
     console.print(_detail_text("Review passes", str(config.general.reviewer_reviews)))
 
 
-def _execute_pipeline(
+def _execute_pipeline(  # noqa: PLR0913
     config: UnifiedConfig,
     initial_state: PipelineState | None,
     policy_bundle: object,
     verbosity: Verbosity | None,
+    counter_overrides: dict[str, int],
     *,
     display_context: DisplayContext,
 ) -> int:
@@ -283,6 +295,8 @@ def _execute_pipeline(
             kwargs["policy_bundle"] = policy_bundle
         if "display_context" in runner_params:
             kwargs["display_context"] = display_context
+        if counter_overrides and "counter_overrides" in runner_params:
+            kwargs["counter_overrides"] = counter_overrides
         return _run_func(config, initial_state, **kwargs)
     except KeyboardInterrupt:
         console.print(Text("\nInterrupted by user", style="theme.status.warning"))
@@ -356,6 +370,7 @@ def run_pipeline(  # noqa: PLR0913
     verbosity: Verbosity | None = None,
     *,
     display_context: DisplayContext | None = None,
+    counter_overrides: dict[str, int] | None = None,
 ) -> int:
     """Run the Ralph Workflow pipeline (backward compatibility wrapper).
 
@@ -367,11 +382,13 @@ def run_pipeline(  # noqa: PLR0913
         verbosity: Optional explicit verbosity passed through to the runner.
         display_context: Display context for consistent rendering. If None, a default
             context is created using make_display_context().
+        counter_overrides: Optional budget counter overrides from --counter flags.
 
     Returns:
         Exit code (0 for success, non-zero for failure).
     """
     ctx = display_context if display_context is not None else make_display_context()
+    effective_counter_overrides = counter_overrides or {}
     # Phase 1: Load configuration
     load_result = _load_configuration(
         config_path, cli_overrides or {}, resume, display_context=ctx
@@ -385,6 +402,7 @@ def run_pipeline(  # noqa: PLR0913
         load_result.workspace_scope,
         load_result.policy_bundle,
         load_result.initial_state,
+        effective_counter_overrides,
         display_context=ctx,
     )
     if preflight_result != _EXIT_SUCCESS:
@@ -403,5 +421,6 @@ def run_pipeline(  # noqa: PLR0913
         load_result.initial_state,
         load_result.policy_bundle,
         verbosity,
+        effective_counter_overrides,
         display_context=ctx,
     )

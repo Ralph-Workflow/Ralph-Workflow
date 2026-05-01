@@ -25,7 +25,7 @@ def test_save_and_load_checkpoint(tmp_path: Path) -> None:
     state = PipelineState(
         phase="development",
         iteration=DEVELOPMENT_ITERATION,
-        total_iterations=TOTAL_ITERATIONS,
+        budget_caps={"iteration": TOTAL_ITERATIONS},
     )
     path = tmp_path / "checkpoint.json"
 
@@ -36,7 +36,7 @@ def test_save_and_load_checkpoint(tmp_path: Path) -> None:
     assert loaded is not None
     assert loaded.phase == "development"
     assert loaded.iteration == DEVELOPMENT_ITERATION
-    assert loaded.total_iterations == TOTAL_ITERATIONS
+    assert loaded.budget_caps.get("iteration") == TOTAL_ITERATIONS
 
 
 def test_load_nonexistent_checkpoint(tmp_path: Path) -> None:
@@ -61,9 +61,8 @@ def test_checkpoint_inspect(tmp_path: Path) -> None:
     state = PipelineState(
         phase="review",
         iteration=1,
-        total_iterations=3,
         reviewer_pass=0,
-        total_reviewer_passes=2,
+        budget_caps={"iteration": 3, "reviewer_pass": 2},
     )
     path = tmp_path / "checkpoint.json"
     ckpt.save(state, path)
@@ -88,9 +87,8 @@ def test_checkpoint_roundtrip_full_state(tmp_path: Path) -> None:
     state = PipelineState(
         phase="development",
         iteration=3,
-        total_iterations=TOTAL_ITERATIONS,
         reviewer_pass=1,
-        total_reviewer_passes=2,
+        budget_caps={"iteration": TOTAL_ITERATIONS, "reviewer_pass": 2},
         review_outcome="has_issues",
         phase_chains={
             "development": AgentChainState(agents=["claude", "opencode"], current_index=1),

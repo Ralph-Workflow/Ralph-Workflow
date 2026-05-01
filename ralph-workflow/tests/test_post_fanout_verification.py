@@ -5,7 +5,7 @@ from __future__ import annotations
 import typing
 from typing import TYPE_CHECKING
 
-from ralph.pipeline.effects import FanOutDevelopmentEffect
+from ralph.pipeline.effects import FanOutEffect
 from ralph.pipeline.events import PostFanoutVerificationEvent
 from ralph.pipeline.reducer import reduce as reducer_reduce
 from ralph.pipeline.state import PipelineState
@@ -43,8 +43,8 @@ def _make_scope(tmp_path: Path) -> WorkspaceScope:
 
 class TestVerificationRunsOnlyWhenFlagTrue:
     def test_verification_flag_defaults_to_false_on_effect(self) -> None:
-        """FanOutDevelopmentEffect.run_post_fanout_verification must default to False."""
-        effect = FanOutDevelopmentEffect(
+        """FanOutEffect.run_post_fanout_verification must default to False."""
+        effect = FanOutEffect(
             work_units=(
                 WorkUnit(unit_id="unit-a", description="A", allowed_directories=["src/a"]),
             ),
@@ -56,12 +56,12 @@ class TestVerificationRunsOnlyWhenFlagTrue:
 
     def test_verification_only_runs_when_flag_true(self) -> None:
         """Verification conditional: flag=False means _run_post_fanout_verification never called."""
-        effect_false = FanOutDevelopmentEffect(
+        effect_false = FanOutEffect(
             work_units=(WorkUnit(unit_id="u", description="u", allowed_directories=["src/u"]),),
             max_workers=1,
             run_post_fanout_verification=False,
         )
-        effect_true = FanOutDevelopmentEffect(
+        effect_true = FanOutEffect(
             work_units=(WorkUnit(unit_id="u", description="u", allowed_directories=["src/u"]),),
             max_workers=1,
             run_post_fanout_verification=True,
@@ -96,7 +96,7 @@ class TestVerificationRunsOnlyWhenFlagTrue:
 class TestVerificationSkippedWhenWorkerFails:
     def test_verification_skipped_when_any_worker_failed(self) -> None:
         """When any worker failed, the verification block must be skipped."""
-        effect = FanOutDevelopmentEffect(
+        effect = FanOutEffect(
             work_units=(
                 WorkUnit(unit_id="unit-a", description="A", allowed_directories=["src/a"]),
             ),
@@ -115,7 +115,7 @@ class TestVerificationSkippedWhenWorkerFails:
 
     def test_verification_runs_when_no_worker_failed(self) -> None:
         """When all workers succeeded and flag=True, verification block must run."""
-        effect = FanOutDevelopmentEffect(
+        effect = FanOutEffect(
             work_units=(WorkUnit(unit_id="u", description="u", allowed_directories=["src/u"]),),
             max_workers=1,
             run_post_fanout_verification=True,
@@ -188,7 +188,7 @@ class TestVerificationRunsSeriallyAfterAllWorkers:
 
         from ralph.pipeline.runner import _write_parallel_development_summary  # noqa: PLC0415
 
-        effect = FanOutDevelopmentEffect(
+        effect = FanOutEffect(
             work_units=(
                 WorkUnit(unit_id="unit-a", description="A", allowed_directories=["src/a"]),
             ),

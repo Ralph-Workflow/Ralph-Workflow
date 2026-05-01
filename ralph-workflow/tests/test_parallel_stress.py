@@ -17,7 +17,7 @@ from unittest.mock import MagicMock
 from hypothesis import given, settings  # pyright: ignore[reportMissingImports]
 from hypothesis import strategies as st  # pyright: ignore[reportMissingImports]
 
-from ralph.pipeline.effects import FanOutDevelopmentEffect
+from ralph.pipeline.effects import FanOutEffect
 from ralph.pipeline.parallel import coordinator
 from ralph.pipeline.reducer import reduce as reducer_reduce
 from ralph.pipeline.state import PipelineState
@@ -81,7 +81,7 @@ def test_coordinator_all_units_reach_terminal_state(
         for unit in units
     }
     executor = FakeAgentExecutor(runs)
-    effect = FanOutDevelopmentEffect(work_units=tuple(units), max_workers=n_units)
+    effect = FanOutEffect(work_units=tuple(units), max_workers=n_units)
     state = PipelineState(phase="planning", work_units=tuple(units))
     display: Any = _FakeDisplay()
 
@@ -119,7 +119,7 @@ def test_coordinator_succeeded_deps_also_succeeded(edge_seed: int) -> None:
     units = _build_acyclic_dag(n, edge_seed)
     runs = {unit.unit_id: FakeRun(outputs=["ok"], exit_code=0, duration_ms=1) for unit in units}
     executor = FakeAgentExecutor(runs)
-    effect = FanOutDevelopmentEffect(work_units=tuple(units), max_workers=n)
+    effect = FanOutEffect(work_units=tuple(units), max_workers=n)
     state = PipelineState(phase="planning", work_units=tuple(units))
     display: Any = _FakeDisplay()
 

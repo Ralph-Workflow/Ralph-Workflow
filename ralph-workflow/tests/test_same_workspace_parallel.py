@@ -12,7 +12,7 @@ import pytest
 
 from ralph.display.parallel_display import ParallelDisplay
 from ralph.mcp.artifacts.store import list_artifacts
-from ralph.pipeline.effects import FanOutDevelopmentEffect
+from ralph.pipeline.effects import FanOutEffect
 from ralph.pipeline.events import WorkerFailedEvent
 from ralph.pipeline.parallel import coordinator
 from ralph.pipeline.parallel.coordinator import (
@@ -254,7 +254,7 @@ class TestNoGitStatusFallback:
             def set_status(self, unit_id: str, status: object) -> None:
                 pass
 
-        effect = FanOutDevelopmentEffect(work_units=(unit,), max_workers=1)
+        effect = FanOutEffect(work_units=(unit,), max_workers=1)
         executor = FakeAgentExecutor(
             {"unit-a": FakeRun(outputs=["done"], exit_code=0, duration_ms=1)}
         )
@@ -402,7 +402,7 @@ class TestNoMergeStepContract:
         monkeypatch.setattr(_subprocess, "Popen", _RecordingPopen)
 
         unit = _make_unit("unit-a")
-        effect = FanOutDevelopmentEffect(work_units=(unit,), max_workers=1)
+        effect = FanOutEffect(work_units=(unit,), max_workers=1)
 
         class _FakeDisplay(ParallelDisplay):
             def __init__(self) -> None:
@@ -432,7 +432,7 @@ class TestNoMergeStepContract:
     def test_event_stream_contains_no_merge_or_worktree_events(self, tmp_path: Path) -> None:
         """Event stream from fan-out must not contain any merge, worktree, or branch events."""
         unit = _make_unit("unit-b")
-        effect = FanOutDevelopmentEffect(work_units=(unit,), max_workers=1)
+        effect = FanOutEffect(work_units=(unit,), max_workers=1)
 
         class _FakeDisplay(ParallelDisplay):
             def __init__(self) -> None:
@@ -523,7 +523,7 @@ class TestRunnerNoMergeStep:
         monkeypatch.setattr(_subprocess, "Popen", _RecordingPopen)
 
         unit = _make_unit("unit-runner", ["src/runner"])
-        effect = FanOutDevelopmentEffect(work_units=(unit,), max_workers=1)
+        effect = FanOutEffect(work_units=(unit,), max_workers=1)
 
         class _FakeDisplay(ParallelDisplay):
             def __init__(self) -> None:
@@ -556,7 +556,7 @@ class TestRunnerNoMergeStep:
         import asyncio  # noqa: PLC0415
 
         unit = _make_unit("unit-ev", ["src/ev"])
-        effect = FanOutDevelopmentEffect(work_units=(unit,), max_workers=1)
+        effect = FanOutEffect(work_units=(unit,), max_workers=1)
 
         class _FakeDisplay(ParallelDisplay):
             def __init__(self) -> None:

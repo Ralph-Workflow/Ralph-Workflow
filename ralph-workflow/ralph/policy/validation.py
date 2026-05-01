@@ -598,7 +598,65 @@ def _validate_review_phase_outcome_complete(
             )
 
 
-def validate_policy_completeness(bundle: PolicyBundle) -> None:
+def _validate_skip_invocation_has_on_success(
+    phase_name: str, phase_def: object, errors: list[str]
+) -> None:
+    """Validate that skip_invocation phases declare an on_success transition."""
+    from ralph.policy.models import PhaseDefinition  # noqa: PLC0415
+
+    if not isinstance(phase_def, PhaseDefinition):
+        return
+    if phase_def.skip_invocation and not phase_def.transitions.on_success:
+        errors.append(
+            f"phases.{phase_name}: skip_invocation=true requires transitions.on_success "
+            f"to be set so routing can proceed without invoking an agent. "
+            f"Add on_success = '<target_phase>' under [phases.{phase_name}.transitions]."
+        )
+
+
+def _validate_parallelization_consistency(
+    phase_name: str, phase_def: object, errors: list[str]
+) -> None:
+    """Validate that max_work_units >= max_parallel_workers when parallelization is declared."""
+    from ralph.policy.models import PhaseDefinition  # noqa: PLC0415
+
+    if not isinstance(phase_def, PhaseDefinition):
+        return
+    para = phase_def.parallelization
+    if para is None:
+        return
+    if para.max_work_units < para.max_parallel_workers:
+        errors.append(
+            f"phases.{phase_name}: parallelization.max_work_units ({para.max_work_units}) "
+            f"must be >= parallelization.max_parallel_workers ({para.max_parallel_workers}). "
+            f"The runtime caps workers to max_work_units, so declaring more workers than "
+            f"work units makes the policy misleading. "
+            f"Increase max_work_units or decrease max_parallel_workers."
+        )
+
+
+def _validate_cli_counter_overrides(
+    policy: PipelinePolicy,
+    cli_counter_overrides: dict[str, int],
+    errors: list[str],
+) -> None:
+    """Validate that every CLI counter override names a declared budget counter."""
+    declared = set(policy.budget_counters.keys())
+    unknown = sorted(k for k in cli_counter_overrides if k not in declared)
+    if unknown:
+        declared_list = sorted(declared) if declared else ["(none declared)"]
+        errors.append(
+            f"--counter override(s) {unknown} are not declared in pipeline.budget_counters. "
+            f"Declared counters: {declared_list}. "
+            f"Add [budget_counters.<name>] to pipeline.toml or remove the --counter flag."
+        )
+
+
+def validate_policy_completeness(
+    bundle: PolicyBundle,
+    *,
+    cli_counter_overrides: dict[str, int] | None = None,
+) -> None:
     """Validate that the policy bundle is semantically complete for policy-driven orchestration.
 
     Enforces that every non-terminal phase has all the fields required for the runtime
@@ -606,6 +664,8 @@ def validate_policy_completeness(bundle: PolicyBundle) -> None:
 
     Args:
         bundle: Currently loaded policy bundle.
+        cli_counter_overrides: Optional mapping of counter name to override value from CLI.
+            When supplied, every key must appear in policy.budget_counters.
 
     Raises:
         PolicyValidationError: If any phase is missing required policy fields.
@@ -651,6 +711,9 @@ def validate_policy_completeness(bundle: PolicyBundle) -> None:
         if role == "verification":
             _validate_verification_phase(phase_name, phase_def, policy, errors)
 
+        _validate_skip_invocation_has_on_success(phase_name, phase_def, errors)
+        _validate_parallelization_consistency(phase_name, phase_def, errors)
+
     # Validate recovery.failed_route consistency
     _validate_recovery_failed_route(policy, errors)
 
@@ -668,6 +731,10 @@ def validate_policy_completeness(bundle: PolicyBundle) -> None:
 
     # Validate that a terminal-failure phase is declared when failures can occur
     _validate_terminal_failure_phase_declared(policy, errors)
+
+    # Validate CLI counter overrides reference declared budget counters
+    if cli_counter_overrides:
+        _validate_cli_counter_overrides(policy, cli_counter_overrides, errors)
 
     if errors:
         raise PolicyValidationError(

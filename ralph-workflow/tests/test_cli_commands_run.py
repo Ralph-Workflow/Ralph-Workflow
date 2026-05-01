@@ -389,3 +389,46 @@ def test_run_pipeline_injects_workspace_scope_when_config_path_is_implicit(
 def test_standalone_run_module_is_not_a_cli_surface() -> None:
     """Cleanup should remove the standalone run.py CLI entry surface."""
     assert not hasattr(run_module, "app")
+
+
+class TestValidateCounterOverrides:
+    """Tests for CLI counter override validation via the shared policy validator."""
+
+    def _pipeline_with_counters(self, *counter_names: str) -> PipelinePolicy:
+        from ralph.policy.models import BudgetCounterConfig  # noqa: PLC0415
+
+        return PipelinePolicy(
+            phases={
+                "work": PhaseDefinition(
+                    drain="work",
+                    transitions=PhaseTransition(on_success="work"),
+                )
+            },
+            entry_phase="work",
+            terminal_phase="work",
+            budget_counters={name: BudgetCounterConfig() for name in counter_names},
+        )
+
+    def test_unknown_counter_raises_policy_validation_error(self) -> None:
+        from ralph.policy.validation import _validate_cli_counter_overrides  # noqa: PLC0415
+
+        policy = self._pipeline_with_counters("declared_counter")
+        errors: list[str] = []
+        _validate_cli_counter_overrides(policy, {"unknown_counter": 3}, errors)
+        assert any("unknown_counter" in e for e in errors)
+
+    def test_declared_counter_passes_validation(self) -> None:
+        from ralph.policy.validation import _validate_cli_counter_overrides  # noqa: PLC0415
+
+        policy = self._pipeline_with_counters("my_counter")
+        errors: list[str] = []
+        _validate_cli_counter_overrides(policy, {"my_counter": 5}, errors)
+        assert errors == []
+
+    def test_empty_overrides_passes_validation(self) -> None:
+        from ralph.policy.validation import _validate_cli_counter_overrides  # noqa: PLC0415
+
+        policy = self._pipeline_with_counters()
+        errors: list[str] = []
+        _validate_cli_counter_overrides(policy, {}, errors)
+        assert errors == []

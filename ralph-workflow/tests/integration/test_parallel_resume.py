@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from unittest.mock import MagicMock
 
-from ralph.pipeline.effects import FanOutDevelopmentEffect
+from ralph.pipeline.effects import FanOutEffect
 from ralph.pipeline.runner import _execute_fan_out_sync
 from ralph.pipeline.state import PipelineState
 from ralph.pipeline.work_units import WorkUnit
@@ -136,7 +136,7 @@ class TestParallelResume:
             work_units=units,
             worker_states=worker_states,
         )
-        effect = FanOutDevelopmentEffect(work_units=units, max_workers=5)
+        effect = FanOutEffect(work_units=units, max_workers=5)
         fake_executor = _fake_executor_for(["unit-2", "unit-3", "unit-4"])
         scope = MagicMock()
         scope.root = tmp_path
@@ -182,7 +182,7 @@ class TestParallelResume:
             work_units=units,
             worker_states=worker_states,
         )
-        effect = FanOutDevelopmentEffect(work_units=units, max_workers=3)
+        effect = FanOutEffect(work_units=units, max_workers=3)
         fake_executor = _fake_executor_for(["unit-0", "unit-1", "unit-2"])
         scope = MagicMock()
         scope.root = tmp_path
@@ -224,7 +224,7 @@ class TestParallelResume:
             work_units=units,
             worker_states=worker_states,
         )
-        effect = FanOutDevelopmentEffect(work_units=units, max_workers=5)
+        effect = FanOutEffect(work_units=units, max_workers=5)
         fake_executor = _fake_executor_for(["unit-2", "unit-3", "unit-4"])
         scope = MagicMock()
         scope.root = tmp_path

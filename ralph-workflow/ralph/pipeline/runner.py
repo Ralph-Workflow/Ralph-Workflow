@@ -69,7 +69,7 @@ from ralph.pipeline.effects import (
     Effect,
     ExitFailureEffect,
     ExitSuccessEffect,
-    FanOutDevelopmentEffect,
+    FanOutEffect,
     InvokeAgentEffect,
     PreparePromptEffect,
     SaveCheckpointEffect,
@@ -192,6 +192,7 @@ _LEGACY_EXECUTE_EFFECT_ARITY = 3
 _POLICY_LOADER_CONFIG_ARITY = 2
 _RECOVERY_CONTEXT_LINES = 12
 _MIN_WORK_UNITS_FOR_PARALLEL_PREFLIGHT = 2
+_DEFAULT_BUDGET_CAP = 5
 _TRANSIENT_CONNECTIVITY_MARKERS = (
     "connection refused",
     "network is unreachable",
@@ -652,7 +653,7 @@ def _run_pipeline_step(  # noqa: PLR0913
         if inline_result is not None:
             return inline_result
 
-        if isinstance(effect, FanOutDevelopmentEffect):
+        if isinstance(effect, FanOutEffect):
             return _execute_fan_out_sync(
                 effect=effect,
                 state=state,
@@ -752,6 +753,29 @@ def _run_pipeline_step(  # noqa: PLR0913
         return recovered_state
 
 
+def _find_commit_counter_from_phase(
+    phase_name: str,
+    policy: PipelinePolicy,
+) -> str | None:
+    """Trace on_success transitions from phase_name to the nearest commit phase.
+
+    Returns the increments_counter name from that commit phase, or None if not found.
+    Used to derive policy-declared counter names for display without hardcoding.
+    """
+    visited: set[str] = set()
+    current: str | None = phase_name
+    while current and current not in visited:
+        visited.add(current)
+        phase_def = policy.phases.get(current)
+        if phase_def is None:
+            break
+        if phase_def.role == "commit" and phase_def.commit_policy is not None:
+            counter = phase_def.commit_policy.increments_counter
+            return counter if counter and counter != "none" else None
+        current = phase_def.transitions.on_success if phase_def.transitions else None
+    return None
+
+
 def _phase_context(
     state: PipelineState,
     previous_phase: str,
@@ -766,9 +790,17 @@ def _phase_context(
     previous_role = previous_phase_def.role if previous_phase_def is not None else None
 
     if current_role == "execution":
-        context["iteration"] = f"{state.iteration + 1}/{state.total_iterations}"
+        exec_counter = _find_commit_counter_from_phase(state.phase, pipeline_policy)
+        if exec_counter:
+            iter_cur = state.get_outer_progress(exec_counter) + 1
+            iter_cap = state.get_budget_cap(exec_counter)
+            context["iteration"] = f"{iter_cur}/{iter_cap}"
     if current_role == "review":
-        context["pass"] = f"{state.reviewer_pass + 1}/{state.total_reviewer_passes}"
+        review_counter = _find_commit_counter_from_phase(state.phase, pipeline_policy)
+        if review_counter:
+            pass_cur = state.get_outer_progress(review_counter) + 1
+            pass_cap = state.get_budget_cap(review_counter)
+            context["pass"] = f"{pass_cur}/{pass_cap}"
     if previous_role == "analysis":
         if current_role == "commit":
             context["decision"] = "approved"
@@ -810,11 +842,29 @@ def _show_phase_start_with_context(
             analysis_iteration = state.loop_iterations.get(field)
             max_analysis_iterations = state.loop_caps.get(field)
 
+    exec_counter: str | None = None
+    review_counter: str | None = None
+    if pipeline_policy is not None:
+        phase_def_for_ctx = pipeline_policy.phases.get(phase)
+        if phase_def_for_ctx is not None:
+            if phase_def_for_ctx.role == "execution":
+                exec_counter = _find_commit_counter_from_phase(phase, pipeline_policy)
+            elif phase_def_for_ctx.role == "review":
+                review_counter = _find_commit_counter_from_phase(phase, pipeline_policy)
+    else:
+        # No policy available: fall back to budget_caps key presence for display.
+        # This path only occurs when called without a policy bundle (e.g. in tests
+        # or legacy contexts). Production runs always have a policy bundle.
+        if "iteration" in state.budget_caps:
+            exec_counter = "iteration"
+        if "reviewer_pass" in state.budget_caps:
+            review_counter = "reviewer_pass"
+
     ctx = PhaseStartContext(
-        iteration=state.iteration,
-        total_iterations=state.total_iterations,
-        reviewer_pass=state.reviewer_pass,
-        total_reviewer_passes=state.total_reviewer_passes,
+        iteration=state.get_outer_progress(exec_counter) if exec_counter else None,
+        total_iterations=state.get_budget_cap(exec_counter) if exec_counter else None,
+        reviewer_pass=state.get_outer_progress(review_counter) if review_counter else None,
+        total_reviewer_passes=state.get_budget_cap(review_counter) if review_counter else None,
         analysis_iteration=analysis_iteration,
         max_analysis_iterations=max_analysis_iterations,
     )
@@ -961,6 +1011,7 @@ def run(  # noqa: PLR0912, PLR0913, PLR0915
     verbosity: Verbosity | None = None,
     connectivity_monitor: _ConnectivityMonitorLike | None = None,
     display_context: DisplayContext | None = None,
+    counter_overrides: dict[str, int] | None = None,
     _recovery_sleep: Callable[[float], None] | None = None,
 ) -> int:
     """Execute the pipeline event loop.
@@ -990,6 +1041,7 @@ def run(  # noqa: PLR0912, PLR0913, PLR0915
         config,
         agents_policy=policy_bundle.agents,
         pipeline_policy=policy_bundle.pipeline,
+        counter_overrides=counter_overrides,
     )
 
     effective_verbosity = _normalize_verbosity(
@@ -1082,10 +1134,9 @@ def run(  # noqa: PLR0912, PLR0913, PLR0915
     _unsubscribe_bus = _controller.event_bus.subscribe(_log_recovery_event)
 
     logger.info(
-        "Starting pipeline: phase={}, iterations={}, reviews={}",
+        "Starting pipeline: phase={}, budget_caps={}",
         state.phase,
-        state.total_iterations,
-        state.total_reviewer_passes,
+        state.budget_caps,
     )
 
     if pipeline_subscriber is None:
@@ -1369,7 +1420,7 @@ def _fan_out_worker_context(
 
 def _resume_fan_out_state(
     state: PipelineState,
-    effect: FanOutDevelopmentEffect,
+    effect: FanOutEffect,
     pipeline_policy: PipelinePolicy,
     pipeline_subscriber: _PipelineSubscriber | None,
 ) -> tuple[PipelineState, tuple[WorkUnit, ...]]:
@@ -1386,7 +1437,7 @@ def _resume_fan_out_state(
 
 def _write_parallel_development_summary(  # noqa: PLR0913
     workspace_scope: WorkspaceScope,
-    effect: FanOutDevelopmentEffect,
+    effect: FanOutEffect,
     state: PipelineState,
     *,
     verify_ran: bool,
@@ -1506,7 +1557,7 @@ async def _run_post_fanout_verification(workspace_scope: WorkspaceScope) -> str 
 
 async def _run_fan_out_async(  # noqa: PLR0913, PLR0915
     *,
-    effect: FanOutDevelopmentEffect,
+    effect: FanOutEffect,
     state: PipelineState,
     display: ParallelDisplay,
     policy_bundle: PolicyBundle,
@@ -1572,7 +1623,11 @@ async def _run_fan_out_async(  # noqa: PLR0913, PLR0915
             return current
 
         fan_out_events = await coordinator.run_fan_out(
-            effect=FanOutDevelopmentEffect(work_units=resume_units, max_workers=effect.max_workers),
+            effect=FanOutEffect(
+                work_units=resume_units,
+                max_workers=effect.max_workers,
+                phase=effect.phase,
+            ),
             executor=executor,
             display=display,
             ctx=worker_ctx,
@@ -1658,7 +1713,7 @@ async def _run_fan_out_async(  # noqa: PLR0913, PLR0915
 
 def _execute_fan_out_sync(  # noqa: PLR0913
     *,
-    effect: FanOutDevelopmentEffect,
+    effect: FanOutEffect,
     state: PipelineState,
     display: ParallelDisplay | _LegacyConsoleDisplay,
     policy_bundle: PolicyBundle,
@@ -1838,6 +1893,7 @@ def _create_initial_state(
     *,
     agents_policy: AgentsPolicy | None = None,
     pipeline_policy: PipelinePolicy,
+    counter_overrides: dict[str, int] | None = None,
 ) -> PipelineState:
     """Create initial pipeline state from configuration.
 
@@ -1855,12 +1911,21 @@ def _create_initial_state(
         pipeline_policy=pipeline_policy,
     )
 
+    caps: dict[str, int] = {
+        name: (cfg.default_max if cfg.default_max is not None else _DEFAULT_BUDGET_CAP)
+        for name, cfg in pipeline_policy.budget_counters.items()
+    }
+    if "iteration" in caps:
+        caps["iteration"] = config.general.developer_iters
+    if "reviewer_pass" in caps:
+        caps["reviewer_pass"] = config.general.reviewer_reviews
+    if counter_overrides:
+        caps.update(counter_overrides)
+
     return PipelineState(
         phase=entry_phase,
-        total_iterations=config.general.developer_iters,
-        total_reviewer_passes=config.general.reviewer_reviews,
-        development_budget_remaining=config.general.developer_iters,
-        review_budget_remaining=config.general.reviewer_reviews,
+        budget_caps=caps,
+        budget_remaining=dict(caps),
         phase_chains=phase_chains,
         rebase=RebaseState(),
         commit=CommitState(),
@@ -1971,10 +2036,11 @@ def _determine_effect_from_policy(  # noqa: PLR0911
             return ExitFailureEffect(
                 reason=f"parallel preflight rejected plan: {exc} (offending units: {offending})"
             )
-        return FanOutDevelopmentEffect(
+        return FanOutEffect(
             work_units=state.work_units,
             max_workers=phase_para.max_parallel_workers,
             run_post_fanout_verification=phase_para.post_fanout_verification,
+            phase=str(state.phase),
         )
 
     agent_name = _agent_name_for_phase_from_policy(state, policy_bundle, config=config)

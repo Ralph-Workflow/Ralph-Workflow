@@ -65,11 +65,11 @@ class CLIOverrideInput:
     git_user_email: str | None = None
 
 
-class GeneralOverrides(TypedDict):
+class GeneralOverrides(TypedDict, total=False):
     """General configuration overrides."""
 
-    developer_iters: int | None
-    reviewer_reviews: int | None
+    developer_iters: int
+    reviewer_reviews: int
     review_depth: str | None
     git_user_name: str | None
     git_user_email: str | None
@@ -261,6 +261,7 @@ def _handle_early_exit_flags(
     explain_policy: bool,
     explain_policy_dir: str | None,
     check_policy: bool,
+    counter_overrides: dict[str, int] | None = None,
 ) -> None:
     """Handle version and explain-policy early-exit flags before any bootstrap."""
     if version:
@@ -272,10 +273,10 @@ def _handle_early_exit_flags(
     if check_policy:
         from pathlib import Path as _Path  # noqa: PLC0415
         policy_dir = _Path(explain_policy_dir) if explain_policy_dir else None
-        raise typer.Exit(code=check_policy_command(policy_dir))
+        raise typer.Exit(code=check_policy_command(policy_dir, counter_overrides=counter_overrides))
 
 
-def main(  # noqa: PLR0913
+def main(  # noqa: PLR0913, PLR0912
     ctx: typer.Context,
     config: Annotated[
         str | None,
@@ -286,23 +287,36 @@ def main(  # noqa: PLR0913
         ),
     ] = None,
     developer_iters: Annotated[
-        int,
+        int | None,
         typer.Option(
             "--developer-iters",
             "-D",
             min=1,
-            help="Number of developer agent iterations",
+            help=(
+                "[deprecated] Number of developer iterations. "
+                "Use --counter iteration=N instead."
+            ),
         ),
-    ] = 5,
+    ] = None,
     reviewer_reviews: Annotated[
-        int,
+        int | None,
         typer.Option(
             "--reviewer-reviews",
             "-R",
             min=0,
-            help="Number of review-fix cycles (0=skip review)",
+            help=(
+                "[deprecated] Number of review-fix cycles. "
+                "Use --counter reviewer_pass=N instead."
+            ),
         ),
-    ] = 2,
+    ] = None,
+    counter: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--counter",
+            help="Override a policy-declared budget counter: NAME=VALUE (repeatable)",
+        ),
+    ] = None,
     developer_agent: Annotated[
         str | None,
         typer.Option(
@@ -471,11 +485,28 @@ def main(  # noqa: PLR0913
     ] = False,
 ) -> None:
     """Run the Ralph Workflow multi-agent pipeline or execute a sub-operation."""
+    # Parse --counter NAME=VALUE entries early so --check-policy can validate them.
+    raw_counter_entries: list[str] = list(counter) if counter else []
+    if developer_iters is not None:
+        logger.warning(
+            "--developer-iters is deprecated; use --counter iteration={} instead",
+            developer_iters,
+        )
+        raw_counter_entries.append(f"iteration={developer_iters}")
+    if reviewer_reviews is not None:
+        logger.warning(
+            "--reviewer-reviews is deprecated; use --counter reviewer_pass={} instead",
+            reviewer_reviews,
+        )
+        raw_counter_entries.append(f"reviewer_pass={reviewer_reviews}")
+    counter_overrides = _parse_counter_overrides(raw_counter_entries)
+
     _handle_early_exit_flags(
         version=version,
         explain_policy=explain_policy,
         explain_policy_dir=explain_policy_dir,
         check_policy=check_policy,
+        counter_overrides=counter_overrides,
     )
 
     if resume and no_resume:
@@ -561,7 +592,14 @@ def main(  # noqa: PLR0913
 
     # Run the main pipeline
     exit_code = _run_pipeline(
-        config, cli_overrides, dry_run, resume, no_resume, verbosity, display_context=_cli_ctx
+        config,
+        cli_overrides,
+        dry_run,
+        resume,
+        no_resume,
+        verbosity,
+        counter_overrides=counter_overrides,
+        display_context=_cli_ctx,
     )
     raise typer.Exit(code=exit_code)
 
@@ -718,6 +756,7 @@ def _run_pipeline(  # noqa: PLR0913
     no_resume: bool,
     verbosity: Verbosity = Verbosity.VERBOSE,
     *,
+    counter_overrides: dict[str, int] | None = None,
     display_context: DisplayContext,
 ) -> int:
     """Run the main pipeline.
@@ -729,6 +768,7 @@ def _run_pipeline(  # noqa: PLR0913
         resume: Whether to resume.
         no_resume: Whether to ignore checkpoint.
         verbosity: Verbosity level.
+        counter_overrides: Budget counter overrides from --counter flags.
         display_context: Display context for consistent rendering.
 
     Returns:
@@ -743,6 +783,7 @@ def _run_pipeline(  # noqa: PLR0913
             resume=resume and not no_resume,
             verbosity=verbosity,
             display_context=display_context,
+            counter_overrides=counter_overrides or {},
         )
         return exit_code
     except KeyboardInterrupt:
@@ -783,6 +824,40 @@ def _configure_logging(verbosity: Verbosity) -> None:
         )
 
 
+def _parse_counter_overrides(raw_entries: list[str]) -> dict[str, int]:
+    """Parse a list of NAME=VALUE strings into a counter overrides dict.
+
+    Args:
+        raw_entries: List of strings in "NAME=VALUE" format.
+
+    Returns:
+        Dict mapping counter name to integer override value.
+
+    Raises:
+        click.UsageError: If any entry is malformed (no '=', blank name, non-integer value).
+    """
+    result: dict[str, int] = {}
+    for entry in raw_entries:
+        if "=" not in entry:
+            raise click.UsageError(
+                f"--counter: invalid format {entry!r} — expected NAME=VALUE"
+            )
+        name, _, raw_value = entry.partition("=")
+        name = name.strip()
+        if not name:
+            raise click.UsageError(
+                f"--counter: blank counter name in {entry!r}"
+            )
+        try:
+            value = int(raw_value)
+        except ValueError:
+            raise click.UsageError(
+                f"--counter {name!r}: value {raw_value!r} is not a valid integer"
+            ) from None
+        result[name] = value
+    return result
+
+
 def _build_cli_overrides(
     input: CLIOverrideInput,
 ) -> dict[str, object]:
@@ -796,8 +871,6 @@ def _build_cli_overrides(
     """
     overrides: CLIOverrides = {
         "general": {
-            "developer_iters": None,
-            "reviewer_reviews": None,
             "review_depth": None,
             "git_user_name": None,
             "git_user_email": None,

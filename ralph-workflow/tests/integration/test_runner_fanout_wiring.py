@@ -8,7 +8,7 @@ from unittest.mock import MagicMock
 from ralph.config.models import UnifiedConfig
 from ralph.display.context import make_display_context
 from ralph.pipeline import runner as runner_module
-from ralph.pipeline.effects import FanOutDevelopmentEffect, InvokeAgentEffect
+from ralph.pipeline.effects import FanOutEffect, InvokeAgentEffect
 from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.state import AgentChainState, PipelineState
 from ralph.pipeline.work_units import WorkUnit
@@ -69,7 +69,7 @@ class TestFanOutRouting:
         assert effect.phase == "development"
 
     def test_fanout_when_work_units_present(self) -> None:
-        """When work_units present, development phase uses FanOutDevelopmentEffect."""
+        """When work_units present, development phase uses FanOutEffect."""
         units = (
             _make_work_unit("unit-a"),
             _make_work_unit("unit-b"),
@@ -84,7 +84,7 @@ class TestFanOutRouting:
             config=UnifiedConfig(),
         )
 
-        assert isinstance(effect, FanOutDevelopmentEffect)
+        assert isinstance(effect, FanOutEffect)
         assert effect.work_units == units
         assert effect.max_workers == max_workers
 
@@ -122,7 +122,7 @@ def test_execute_fan_out_sync_wires_signal_handlers_and_same_workspace_context(
     monkeypatch, tmp_path
 ) -> None:
     unit = _make_work_unit("unit-a")
-    effect = FanOutDevelopmentEffect(work_units=(unit,), max_workers=1)
+    effect = FanOutEffect(work_units=(unit,), max_workers=1)
     state = PipelineState(
         phase="development",
         work_units=(unit,),
@@ -178,7 +178,7 @@ def test_execute_fan_out_sync_converts_unexpected_coordinator_error_to_failed_re
     monkeypatch, tmp_path
 ) -> None:
     unit = _make_work_unit("unit-a")
-    effect = FanOutDevelopmentEffect(work_units=(unit,), max_workers=1)
+    effect = FanOutEffect(work_units=(unit,), max_workers=1)
     state = PipelineState(
         phase="development",
         work_units=(unit,),
@@ -232,7 +232,7 @@ def test_execute_fan_out_sync_requeues_running_workers_via_reducer_event(
     assert resumed_event is not None
 
     unit = _make_work_unit("unit-a")
-    effect = FanOutDevelopmentEffect(work_units=(unit,), max_workers=1)
+    effect = FanOutEffect(work_units=(unit,), max_workers=1)
     state = PipelineState(
         phase="development",
         work_units=(unit,),
@@ -286,7 +286,7 @@ def test_execute_fan_out_sync_uses_parallel_display_subscriber_when_not_provided
     monkeypatch, tmp_path
 ) -> None:
     unit = _make_work_unit("unit-a")
-    effect = FanOutDevelopmentEffect(work_units=(unit,), max_workers=1)
+    effect = FanOutEffect(work_units=(unit,), max_workers=1)
     state = PipelineState(phase="development", work_units=(unit,))
     policy_bundle = _make_policy_bundle(max_workers=1)
     workspace_scope = WorkspaceScope(tmp_path)
@@ -345,7 +345,7 @@ def test_execute_fan_out_sync_notifies_dashboard_subscriber_after_each_reduce(
     monkeypatch, tmp_path
 ) -> None:
     unit = _make_work_unit("unit-a")
-    effect = FanOutDevelopmentEffect(work_units=(unit,), max_workers=1)
+    effect = FanOutEffect(work_units=(unit,), max_workers=1)
     state = PipelineState(phase="development", work_units=(unit,))
     policy_bundle = _make_policy_bundle(max_workers=1)
     workspace_scope = WorkspaceScope(tmp_path)

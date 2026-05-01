@@ -245,6 +245,17 @@ at least one matching `post_commit_routes` entry, so incomplete configurations a
 rejected at startup rather than silently routing on `on_success`. See
 `ralph.policy.validation._validate_post_commit_routes_coverage`.
 
+To override a budget counter cap at runtime without editing policy, use `--counter`:
+
+```bash
+ralph --counter iteration=2       # override the 'iteration' counter cap to 2
+ralph --counter attempts=3        # override a custom 'attempts' counter
+```
+
+The counter name must match a `[budget_counters.<name>]` declaration in `pipeline.toml`.
+Passing an undeclared counter name is rejected at startup as a policy validation error.
+Use `ralph --check-policy --counter NAME=N` to verify effective caps before running.
+
 ## Recovery Policy
 
 The `[recovery]` block in `pipeline.toml` governs pipeline-wide failure behavior.

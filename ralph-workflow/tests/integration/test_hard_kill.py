@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 from ralph.agents.executor import WorkerResult
 from ralph.agents.subprocess_executor import agent_process_label
 from ralph.pipeline import checkpoint
-from ralph.pipeline.effects import FanOutDevelopmentEffect
+from ralph.pipeline.effects import FanOutEffect
 from ralph.pipeline.parallel import coordinator
 from ralph.pipeline.state import PipelineState
 from ralph.pipeline.work_units import WorkUnit
@@ -89,7 +89,7 @@ def _wait_for_pids_gone(pids: list[int], timeout_s: float = 0.5) -> bool:
 
 
 async def _run_with_cancel(
-    effect: FanOutDevelopmentEffect,
+    effect: FanOutEffect,
     state: PipelineState,
     executor: SleeperExecutor,
     checkpoint_path: Path,
@@ -119,7 +119,7 @@ def test_parallel_hard_kill(tmp_path: Path) -> None:
     try:
         units = tuple(_make_work_unit(f"unit-{index}") for index in range(_NUM_WORKERS))
         executor = SleeperExecutor()
-        effect = FanOutDevelopmentEffect(work_units=units, max_workers=_NUM_WORKERS)
+        effect = FanOutEffect(work_units=units, max_workers=_NUM_WORKERS)
         state = PipelineState(phase="development", work_units=units)
         checkpoint_path = tmp_path / "checkpoint.json"
         worktree_dirs = [tmp_path / unit.unit_id for unit in units]

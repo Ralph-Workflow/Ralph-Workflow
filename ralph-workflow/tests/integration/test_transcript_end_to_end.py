@@ -174,10 +174,8 @@ def test_transcript_ordering_run_start_phase_transitions_streaming_phase_close_c
 
     state = PipelineState(
         phase="planning",
-        total_iterations=1,
-        total_reviewer_passes=1,
-        development_budget_remaining=1,
-        review_budget_remaining=1,
+        budget_caps={"iteration": 1, "reviewer_pass": 1},
+        budget_remaining={"iteration": 1, "reviewer_pass": 1},
     )
 
     exit_code = runner_module.run(_config(), initial_state=state)
@@ -253,10 +251,8 @@ def test_quiet_mode_suppresses_run_start_and_phase_close(
 
     state = PipelineState(
         phase="planning",
-        total_iterations=1,
-        total_reviewer_passes=0,
-        development_budget_remaining=1,
-        review_budget_remaining=0,
+        budget_caps={"iteration": 1, "reviewer_pass": 0},
+        budget_remaining={"iteration": 1, "reviewer_pass": 0},
     )
 
     # Run with Verbosity.QUIET

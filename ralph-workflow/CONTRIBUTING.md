@@ -38,11 +38,14 @@ The runtime is a generic policy interpreter that validates and enforces these de
 3. Update the `POLICY COMPLETENESS` comment in `ralph/policy/defaults/pipeline.toml`.
 4. Add tests in `tests/test_policy_validation.py` covering the new validation rule.
 
-**Adding a new loop iteration counter (for a custom analysis phase):**
+**Adding a new budget or loop counter:**
 
-1. Add an `int` field to `PipelineState` in `ralph/pipeline/state.py`.
-2. Add entries to `_LOOP_ITERATION_FIELD_MAP` and `_LOOP_MAX_ITERATION_FIELD_MAP`.
-3. The field is then available for use as `iteration_state_field` in `loop_policy`.
+Adding a new budget counter or loop iteration counter is a `pipeline.toml`-only change. No runtime code changes are required.
+
+- For a budget counter (e.g., iteration caps): add a `[budget_counters.<name>]` entry with `default_max` and `description`.
+- For a loop counter (e.g., per-analysis iteration bounds): add a `[loop_counters.<name>]` entry with `default_max` and `description`, then reference the counter name in the phase's `loop_policy.iteration_state_field` field.
+- Override counter caps at run time with `--counter NAME=VALUE`; the counter name must be declared in `pipeline.toml` or Ralph Workflow will reject the run with a validation error.
+- The runtime automatically tracks and enforces every counter declared in policy.
 
 **Changing workflow behavior** (routing, retries, analysis bounds, commit semantics):
 Update the relevant `pipeline.toml` fields instead of adding code branches. If behavior is not expressible as policy, first extend the policy schema — do not add hardcoded phase-name logic to the reducer.

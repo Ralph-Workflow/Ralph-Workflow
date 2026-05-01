@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ralph.pipeline import runner as runner_module
-from ralph.pipeline.effects import ExitFailureEffect, FanOutDevelopmentEffect, InvokeAgentEffect
+from ralph.pipeline.effects import ExitFailureEffect, FanOutEffect, InvokeAgentEffect
 from ralph.pipeline.state import PipelineState
 from ralph.pipeline.work_units import WorkUnit
 from ralph.policy.loader import load_policy
@@ -72,7 +72,7 @@ class TestRunnerBoundaryPreflightRejection:
             ),
         )
         effect = runner_module._determine_effect_from_policy(state, bundle)
-        assert isinstance(effect, FanOutDevelopmentEffect)
+        assert isinstance(effect, FanOutEffect)
         assert {u.unit_id for u in effect.work_units} == {"unit-a", "unit-b"}
 
     def test_runner_does_not_fall_back_to_single_worker(self) -> None:
@@ -106,7 +106,7 @@ class TestRunnerBoundaryPreflightRejection:
         )
 
     def test_runner_post_fanout_verification_defaults_to_false(self) -> None:
-        """FanOutDevelopmentEffect.run_post_fanout_verification must default to False."""
+        """FanOutEffect.run_post_fanout_verification must default to False."""
         bundle = _load_default_policy_bundle()
         state = PipelineState(
             phase="development",
@@ -116,7 +116,7 @@ class TestRunnerBoundaryPreflightRejection:
             ),
         )
         effect = runner_module._determine_effect_from_policy(state, bundle)
-        assert isinstance(effect, FanOutDevelopmentEffect)
+        assert isinstance(effect, FanOutEffect)
         assert effect.run_post_fanout_verification is False, (
             "run_post_fanout_verification must default to False so tests never run make verify"
         )
@@ -137,7 +137,7 @@ class TestRunnerBoundaryPreflightRejection:
         assert "does not declare parallelization" in effect.reason
 
     def test_runner_uses_phase_scoped_max_parallel_workers(self) -> None:
-        """FanOutDevelopmentEffect must use max_workers from the phase's parallelization."""
+        """FanOutEffect must use max_workers from the phase's parallelization."""
         from unittest.mock import MagicMock  # noqa: PLC0415
 
         from ralph.policy.models import PhaseParallelization  # noqa: PLC0415
@@ -159,11 +159,11 @@ class TestRunnerBoundaryPreflightRejection:
             ),
         )
         effect = runner_module._determine_effect_from_policy(state, bundle)
-        assert isinstance(effect, FanOutDevelopmentEffect)
+        assert isinstance(effect, FanOutEffect)
         assert effect.max_workers == 1
 
     def test_runner_post_fanout_verification_reads_phase_scoped_value(self) -> None:
-        """FanOutDevelopmentEffect.run_post_fanout_verification reads from phase parallelization."""
+        """FanOutEffect.run_post_fanout_verification reads from phase parallelization."""
         from unittest.mock import MagicMock  # noqa: PLC0415
 
         from ralph.policy.models import PhaseParallelization  # noqa: PLC0415
@@ -184,5 +184,5 @@ class TestRunnerBoundaryPreflightRejection:
             ),
         )
         effect = runner_module._determine_effect_from_policy(state, bundle)
-        assert isinstance(effect, FanOutDevelopmentEffect)
+        assert isinstance(effect, FanOutEffect)
         assert effect.run_post_fanout_verification is True

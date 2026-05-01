@@ -12,33 +12,35 @@ from ralph.pipeline.work_units import WorkUnit
 
 
 def test_fan_out_effect_frozen() -> None:
-    effect = effects.FanOutDevelopmentEffect(work_units=(), max_workers=2)
+    effect = effects.FanOutEffect(work_units=(), max_workers=2)
 
     with pytest.raises(FrozenInstanceError):
         effect.max_workers = 3  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
 
 
 def test_fan_out_effect_fields() -> None:
-    effect_fields = fields(effects.FanOutDevelopmentEffect)
-    hints = get_type_hints(effects.FanOutDevelopmentEffect)
+    effect_fields = fields(effects.FanOutEffect)
+    hints = get_type_hints(effects.FanOutEffect)
 
     assert [field.name for field in effect_fields] == [
         "work_units",
         "max_workers",
         "run_post_fanout_verification",
+        "phase",
     ]
     assert hints["work_units"] == tuple[WorkUnit, ...]
     assert hints["max_workers"] is int
     assert hints["run_post_fanout_verification"] is bool
+    assert hints["phase"] is str
 
 
 def test_fan_out_effect_run_post_fanout_verification_defaults_false() -> None:
-    effect = effects.FanOutDevelopmentEffect(work_units=(), max_workers=1)
+    effect = effects.FanOutEffect(work_units=(), max_workers=1)
     assert effect.run_post_fanout_verification is False
 
 
 def test_fan_out_effect_run_post_fanout_verification_settable() -> None:
-    effect = effects.FanOutDevelopmentEffect(
+    effect = effects.FanOutEffect(
         work_units=(), max_workers=1, run_post_fanout_verification=True
     )
     assert effect.run_post_fanout_verification is True

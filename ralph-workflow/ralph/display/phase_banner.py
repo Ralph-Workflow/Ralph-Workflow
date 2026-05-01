@@ -411,6 +411,15 @@ def _get_str_attr(obj: object, attr: str) -> str | None:
     return val if isinstance(val, str) else None
 
 
+def _get_budget_cap_from_state(state: object, counter_name: str) -> int | None:
+    """Extract a budget cap from a state object's budget_caps dict."""
+    caps: object = getattr(state, "budget_caps", None)
+    if isinstance(caps, dict):
+        val = caps.get(counter_name)
+        return val if isinstance(val, int) else None
+    return None
+
+
 def show_phase_start_from_state(
     state: object,
     phase: str,
@@ -420,9 +429,9 @@ def show_phase_start_from_state(
     """Display phase start using counters extracted from a pipeline state object."""
     ctx = PhaseStartContext(
         iteration=_get_int_attr(state, "iteration"),
-        total_iterations=_get_int_attr(state, "total_iterations"),
+        total_iterations=_get_budget_cap_from_state(state, "iteration"),
         reviewer_pass=_get_int_attr(state, "reviewer_pass"),
-        total_reviewer_passes=_get_int_attr(state, "total_reviewer_passes"),
+        total_reviewer_passes=_get_budget_cap_from_state(state, "reviewer_pass"),
         agent_name=_get_str_attr(state, "agent_name"),
     )
     show_phase_start(phase, ctx=ctx, display_context=display_context)

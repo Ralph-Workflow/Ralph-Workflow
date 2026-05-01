@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from typing import TYPE_CHECKING
 
-from ralph.pipeline.effects import FanOutDevelopmentEffect
+from ralph.pipeline.effects import FanOutEffect
 from ralph.pipeline.runner import _write_parallel_development_summary
 from ralph.pipeline.state import PipelineState
 from ralph.pipeline.work_units import WorkUnit
@@ -22,12 +22,12 @@ def _make_scope(tmp_path: Path) -> WorkspaceScope:
     return WorkspaceScope(root=tmp_path, allowed_roots=frozenset([tmp_path]))
 
 
-def _make_effect(*unit_specs: tuple[str, list[str]]) -> FanOutDevelopmentEffect:
+def _make_effect(*unit_specs: tuple[str, list[str]]) -> FanOutEffect:
     units = tuple(
         WorkUnit(unit_id=uid, description=f"Unit {uid}", allowed_directories=dirs)
         for uid, dirs in unit_specs
     )
-    return FanOutDevelopmentEffect(work_units=units, max_workers=len(units))
+    return FanOutEffect(work_units=units, max_workers=len(units))
 
 
 def _write_fake_artifact(tmp_path: Path, unit_id: str) -> None:

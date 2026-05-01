@@ -9,17 +9,23 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
-def check_policy_command(policy_dir: Path | None = None) -> int:
+def check_policy_command(
+    policy_dir: Path | None = None,
+    counter_overrides: dict[str, int] | None = None,
+) -> int:
     """Validate the active policy and print a pass/fail summary to stdout.
 
     Resolves the policy directory the same way as --explain-policy, loads and
     validates the policy, then prints a summary of what was found or the
-    validation error.
+    validation error. When counter_overrides are supplied, validates that every
+    key is declared in pipeline.budget_counters.
 
     Args:
         policy_dir: Directory containing policy TOML files. Defaults to the
             workspace-local .agent directory (if it contains TOML files),
             then the bundled defaults.
+        counter_overrides: Budget counter overrides from --counter flags. Any key
+            not declared in pipeline.budget_counters raises a PolicyValidationError.
 
     Returns:
         Exit code: 0 on success, 1 on general error, 2 on policy validation error.
@@ -27,7 +33,10 @@ def check_policy_command(policy_dir: Path | None = None) -> int:
     from ralph.cli.commands.explain import _resolve_policy_dir  # noqa: PLC0415
     from ralph.policy.loader import PolicyValidationError as LoaderValidationError  # noqa: PLC0415
     from ralph.policy.loader import load_policy  # noqa: PLC0415
-    from ralph.policy.validation import PolicyValidationError  # noqa: PLC0415
+    from ralph.policy.validation import (  # noqa: PLC0415
+        PolicyValidationError,
+        validate_policy_completeness,
+    )
 
     try:
         if policy_dir is not None:
@@ -41,6 +50,9 @@ def check_policy_command(policy_dir: Path | None = None) -> int:
 
         bundle = load_policy(resolved_dir)
 
+        if counter_overrides:
+            validate_policy_completeness(bundle, cli_counter_overrides=counter_overrides)
+
         phase_count = len(bundle.pipeline.phases)
         drain_count = len(bundle.agents.agent_drains)
         artifact_count = len(bundle.artifacts.artifacts)
@@ -53,6 +65,14 @@ def check_policy_command(policy_dir: Path | None = None) -> int:
         print(f"  artifact contracts: {artifact_count}")
         print(f"  loop counters: {loop_count}")
         print(f"  budget counters: {budget_count}")
+
+        if counter_overrides and bundle.pipeline.budget_counters:
+            print("  effective budget caps (after --counter overrides):")
+            for name, cfg in bundle.pipeline.budget_counters.items():
+                default_max = cfg.default_max if cfg.default_max is not None else 5
+                effective = counter_overrides.get(name, default_max)
+                print(f"    {name}: {effective}")
+
         return 0
 
     except (PolicyValidationError, LoaderValidationError) as exc:

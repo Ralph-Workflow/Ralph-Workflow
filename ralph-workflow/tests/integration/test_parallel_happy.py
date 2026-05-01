@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 
-from ralph.pipeline.effects import FanOutDevelopmentEffect
+from ralph.pipeline.effects import FanOutEffect
 from ralph.pipeline.events import Event, PipelineEvent, WorkerCompletedEvent
 from ralph.pipeline.parallel import coordinator
 from ralph.pipeline.reducer import reduce as reducer_reduce
@@ -18,7 +18,7 @@ def _make_work_unit(uid: str) -> WorkUnit:
 
 
 def _run_fan_out(
-    effect: FanOutDevelopmentEffect,
+    effect: FanOutEffect,
     state: PipelineState,
     runs: dict[str, FakeRun],
 ) -> list[Event]:
@@ -49,7 +49,7 @@ def test_three_workers_all_succeed() -> None:
         unit.unit_id: FakeRun(outputs=[f"done-{unit.unit_id}"], exit_code=0, duration_ms=1)
         for unit in units
     }
-    effect = FanOutDevelopmentEffect(work_units=units, max_workers=3)
+    effect = FanOutEffect(work_units=units, max_workers=3)
     state = PipelineState(phase="development", work_units=units)
 
     events = _run_fan_out(effect, state, runs)
@@ -93,7 +93,7 @@ def test_happy_path_state_transitions() -> None:
         for unit in units
     }
     initial_state = PipelineState(phase="development", work_units=units)
-    effect = FanOutDevelopmentEffect(work_units=units, max_workers=3)
+    effect = FanOutEffect(work_units=units, max_workers=3)
     policy = _fan_out_policy()
 
     events = _run_fan_out(effect, initial_state, runs)

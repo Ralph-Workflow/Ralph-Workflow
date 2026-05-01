@@ -20,7 +20,7 @@ if TYPE_CHECKING:
 from rich.console import Console
 
 from ralph.pipeline import runner as runner_module
-from ralph.pipeline.effects import FanOutDevelopmentEffect
+from ralph.pipeline.effects import FanOutEffect
 from ralph.pipeline.events import (
     Event,
     PipelineEvent,
@@ -59,7 +59,7 @@ class _FakeDisplay:
 
 
 def _run_fan_out(
-    effect: FanOutDevelopmentEffect,
+    effect: FanOutEffect,
     state: PipelineState,
     runs: dict[str, FakeRun],
 ) -> list[Event]:
@@ -130,7 +130,7 @@ class TestPartialFailureReporting:
                 raise_on_start=RuntimeError("unit-a failed"),
             ),
         }
-        effect = FanOutDevelopmentEffect(work_units=units, max_workers=3)
+        effect = FanOutEffect(work_units=units, max_workers=3)
         state = PipelineState(phase="development", work_units=units)
 
         events = _run_fan_out(effect, state, runs)
@@ -165,7 +165,7 @@ class TestPartialFailureReporting:
             ),
         }
         initial_state = PipelineState(phase="development", work_units=units)
-        effect = FanOutDevelopmentEffect(work_units=units, max_workers=3)
+        effect = FanOutEffect(work_units=units, max_workers=3)
 
         events = _run_fan_out(effect, initial_state, runs)
 
@@ -192,7 +192,7 @@ class TestPartialFailureReporting:
                 raise_on_start=RuntimeError("specific error for unit-a"),
             ),
         }
-        effect = FanOutDevelopmentEffect(work_units=units, max_workers=2)
+        effect = FanOutEffect(work_units=units, max_workers=2)
         state = PipelineState(phase="development", work_units=units)
 
         events = _run_fan_out(effect, state, runs)
@@ -346,7 +346,7 @@ class TestPartialFailureHandoffContent:
         monkeypatch.setattr(ckpt, "save", lambda state: None)
 
         bundle = _make_policy_bundle(max_workers=2)
-        effect = FanOutDevelopmentEffect(
+        effect = FanOutEffect(
             work_units=(unit_a, unit_b),
             max_workers=2,
             run_post_fanout_verification=False,
@@ -426,7 +426,7 @@ class TestPartialFailureHandoffContent:
         monkeypatch.setattr(ckpt, "save", lambda state: None)
 
         bundle = _make_policy_bundle(max_workers=2)
-        effect = FanOutDevelopmentEffect(
+        effect = FanOutEffect(
             work_units=(unit_a, unit_b),
             max_workers=2,
             run_post_fanout_verification=False,

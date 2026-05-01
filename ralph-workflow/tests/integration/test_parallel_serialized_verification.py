@@ -13,7 +13,7 @@ from unittest.mock import MagicMock
 from ralph.display.context import make_display_context
 from ralph.executor.process import ProcessResult
 from ralph.pipeline import runner as runner_module
-from ralph.pipeline.effects import FanOutDevelopmentEffect
+from ralph.pipeline.effects import FanOutEffect
 from ralph.pipeline.state import AgentChainState, PipelineState
 from ralph.pipeline.work_units import WorkUnit
 from ralph.policy.models import PhaseParallelization
@@ -48,7 +48,7 @@ class TestSerializedPostFanoutVerification:
     def test_verification_runs_once_after_workers_succeed(self, monkeypatch, tmp_path) -> None:
         """Post-fanout verification runs exactly once after all workers finish."""
         unit = _make_work_unit("unit-a")
-        effect = FanOutDevelopmentEffect(
+        effect = FanOutEffect(
             work_units=(unit,),
             max_workers=1,
             run_post_fanout_verification=True,
@@ -109,7 +109,7 @@ class TestSerializedPostFanoutVerification:
     def test_verification_runs_after_fan_out_not_before(self, monkeypatch, tmp_path) -> None:
         """Verification must run after coordinator.run_fan_out returns, never before."""
         unit = _make_work_unit("unit-a")
-        effect = FanOutDevelopmentEffect(
+        effect = FanOutEffect(
             work_units=(unit,),
             max_workers=1,
             run_post_fanout_verification=True,
@@ -167,7 +167,7 @@ class TestSerializedPostFanoutVerification:
     ) -> None:
         """When run_post_fanout_verification=False, no verification command is called."""
         unit = _make_work_unit("unit-a")
-        effect = FanOutDevelopmentEffect(
+        effect = FanOutEffect(
             work_units=(unit,),
             max_workers=1,
             run_post_fanout_verification=False,
@@ -227,7 +227,7 @@ class TestSerializedPostFanoutVerification:
 
         effect = runner_module._determine_effect_from_policy(state, policy_bundle)
 
-        assert isinstance(effect, FanOutDevelopmentEffect)
+        assert isinstance(effect, FanOutEffect)
         assert effect.run_post_fanout_verification is True, (
             "_determine_effect_from_policy must enable run_post_fanout_verification "
             "for same-workspace parallel execution"
@@ -238,7 +238,7 @@ class TestSerializedPostFanoutVerification:
         from ralph.pipeline.events import WorkerFailedEvent  # noqa: PLC0415
 
         unit = _make_work_unit("unit-a")
-        effect = FanOutDevelopmentEffect(
+        effect = FanOutEffect(
             work_units=(unit,),
             max_workers=1,
             run_post_fanout_verification=True,
@@ -298,7 +298,7 @@ class TestSerializedPostFanoutVerification:
         """When verification fails, the returned state must be "failed"
         with last_error containing the verification failure message."""
         unit = _make_work_unit("unit-a")
-        effect = FanOutDevelopmentEffect(
+        effect = FanOutEffect(
             work_units=(unit,),
             max_workers=1,
             run_post_fanout_verification=True,
@@ -382,7 +382,7 @@ class TestSerializedPostFanoutVerification:
 
         unit_a = _make_work_unit("unit-a")
         unit_b = _make_work_unit("unit-b")
-        effect = FanOutDevelopmentEffect(
+        effect = FanOutEffect(
             work_units=(unit_a, unit_b),
             max_workers=2,
             run_post_fanout_verification=True,

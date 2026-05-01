@@ -17,7 +17,7 @@ from ralph.agents.executor import WorkerResult
 from ralph.display.activity_router import ActivityRouter
 from ralph.mcp.protocol.env import AGENT_LABEL_SCOPE_ENV
 from ralph.mcp.server.factory import McpServerHandle
-from ralph.pipeline.effects import FanOutDevelopmentEffect
+from ralph.pipeline.effects import FanOutEffect
 from ralph.pipeline.events import (
     Event,
     PipelineEvent,
@@ -171,7 +171,7 @@ class _LoggingExecutor:
 async def test_happy_path_three_units(tmp_path: Path) -> None:
     run_fan_out = _load_run_fan_out()
     units = (make_unit("unit-a"), make_unit("unit-b"), make_unit("unit-c"))
-    effect = FanOutDevelopmentEffect(work_units=units, max_workers=3)
+    effect = FanOutEffect(work_units=units, max_workers=3)
     executor = FakeAgentExecutor(
         {
             "unit-a": FakeRun(outputs=["a1", "a2"], exit_code=0, duration_ms=10),
@@ -203,7 +203,7 @@ async def test_happy_path_three_units(tmp_path: Path) -> None:
 async def test_failure_cancels_siblings(tmp_path: Path) -> None:
     run_fan_out = _load_run_fan_out()
     units = (make_unit("unit-a"), make_unit("unit-b"), make_unit("unit-z"))
-    effect = FanOutDevelopmentEffect(work_units=units, max_workers=3)
+    effect = FanOutEffect(work_units=units, max_workers=3)
     executor = FakeAgentExecutor(
         {
             "unit-a": FakeRun(outputs=["a1", "a2", "a3"], exit_code=0, duration_ms=10),
@@ -241,7 +241,7 @@ async def test_respects_dag_order(tmp_path: Path) -> None:
         make_unit("unit-b", ["unit-a"]),
         make_unit("unit-c", ["unit-b"]),
     )
-    effect = FanOutDevelopmentEffect(work_units=units, max_workers=3)
+    effect = FanOutEffect(work_units=units, max_workers=3)
     executor = FakeAgentExecutor(
         {
             "unit-a": FakeRun(outputs=["a"], exit_code=0, duration_ms=10),
@@ -270,7 +270,7 @@ async def test_respects_dag_order(tmp_path: Path) -> None:
 async def test_respects_max_workers_cap(tmp_path: Path) -> None:
     run_fan_out = _load_run_fan_out()
     units = tuple(make_unit(f"unit-{index}") for index in range(TOTAL_CAP_UNITS))
-    effect = FanOutDevelopmentEffect(work_units=units, max_workers=MAX_CAP_WORKERS)
+    effect = FanOutEffect(work_units=units, max_workers=MAX_CAP_WORKERS)
     executor = FakeAgentExecutor(
         {
             unit.unit_id: FakeRun(
@@ -298,7 +298,7 @@ async def test_empty_work_units(tmp_path: Path) -> None:
     run_fan_out = _load_run_fan_out()
 
     events = await run_fan_out(
-        effect=FanOutDevelopmentEffect(work_units=(), max_workers=2),
+        effect=FanOutEffect(work_units=(), max_workers=2),
         executor=FakeAgentExecutor({}),
         display=RecordingDisplay(),
         ctx=make_worker_context(),
@@ -309,7 +309,7 @@ async def test_empty_work_units(tmp_path: Path) -> None:
 
 async def test_failed_dependency_marks_blocked_unit_failed(tmp_path: Path) -> None:
     run_fan_out = _load_run_fan_out()
-    effect = FanOutDevelopmentEffect(
+    effect = FanOutEffect(
         work_units=(make_unit("unit-a"), make_unit("unit-b", ["unit-a"])),
         max_workers=2,
     )
@@ -347,7 +347,7 @@ async def test_same_workspace_creates_worker_session_and_shuts_down_mcp(
 ) -> None:
     run_fan_out = _load_run_fan_out()
     unit = WorkUnit(unit_id="unit-a", description="Unit unit-a", allowed_directories=["src"])
-    effect = FanOutDevelopmentEffect(work_units=(unit,), max_workers=1)
+    effect = FanOutEffect(work_units=(unit,), max_workers=1)
     display = RecordingDisplay()
     mcp_factory = _RecordingMcpFactory()
 
@@ -377,7 +377,7 @@ async def test_empirical_success_artifact_beats_nonzero_exit(tmp_path: Path) -> 
     """Same-workspace worker with nonzero exit code succeeds when an artifact is present."""
     run_fan_out = _load_run_fan_out()
     unit = WorkUnit(unit_id="unit-a", description="Unit unit-a", allowed_directories=["src"])
-    effect = FanOutDevelopmentEffect(work_units=(unit,), max_workers=1)
+    effect = FanOutEffect(work_units=(unit,), max_workers=1)
     display = RecordingDisplay()
     mcp_factory = _RecordingMcpFactory()
 
@@ -407,7 +407,7 @@ async def test_empirical_failure_no_artifact_despite_zero_exit(tmp_path: Path) -
     """Same-workspace worker with zero exit code fails when no artifact is submitted."""
     run_fan_out = _load_run_fan_out()
     unit = WorkUnit(unit_id="unit-a", description="Unit unit-a", allowed_directories=["src"])
-    effect = FanOutDevelopmentEffect(work_units=(unit,), max_workers=1)
+    effect = FanOutEffect(work_units=(unit,), max_workers=1)
     display = RecordingDisplay()
     mcp_factory = _RecordingMcpFactory()
 
@@ -443,7 +443,7 @@ async def test_activity_router_is_passed_to_subprocess_worker_executor(
     module = importlib.import_module("ralph.pipeline.parallel.coordinator")
     run_fan_out = _load_run_fan_out()
     unit = WorkUnit(unit_id="unit-a", description="Unit unit-a", allowed_directories=["src"])
-    effect = FanOutDevelopmentEffect(work_units=(unit,), max_workers=1)
+    effect = FanOutEffect(work_units=(unit,), max_workers=1)
     display = RecordingDisplay()
     mcp_factory = _RecordingMcpFactory()
     router = ActivityRouter()
@@ -522,7 +522,7 @@ async def test_activity_router_is_passed_to_subprocess_worker_executor(
 async def test_worker_logs_are_routed_to_per_worker_sink(tmp_path: Path) -> None:
     run_fan_out = _load_run_fan_out()
     unit = make_unit("unit-a")
-    effect = FanOutDevelopmentEffect(work_units=(unit,), max_workers=1)
+    effect = FanOutEffect(work_units=(unit,), max_workers=1)
     display = RecordingDisplay()
 
     events = await run_fan_out(
@@ -544,7 +544,7 @@ async def test_subprocess_worker_receives_ralph_worker_artifact_dir(
     module = importlib.import_module("ralph.pipeline.parallel.coordinator")
     run_fan_out = _load_run_fan_out()
     unit = WorkUnit(unit_id="unit-b", description="Unit unit-b", allowed_directories=["src"])
-    effect = FanOutDevelopmentEffect(work_units=(unit,), max_workers=1)
+    effect = FanOutEffect(work_units=(unit,), max_workers=1)
     display = RecordingDisplay()
     mcp_factory = _RecordingMcpFactory()
     recorded_extra_envs: list[dict[str, str]] = []
@@ -640,7 +640,7 @@ async def test_subprocess_workers_receive_per_worker_agent_label_scope(
         description="Unit unit-scope-b",
         allowed_directories=["src/b"],
     )
-    effect = FanOutDevelopmentEffect(work_units=(unit_a, unit_b), max_workers=2)
+    effect = FanOutEffect(work_units=(unit_a, unit_b), max_workers=2)
     display = RecordingDisplay()
     mcp_factory = _RecordingMcpFactory()
     recorded_extra_envs: list[dict[str, str]] = []
@@ -720,7 +720,7 @@ async def test_subprocess_workers_receive_per_worker_agent_label_scope(
 async def test_fan_out_start_log_line(tmp_path: Path) -> None:
     run_fan_out = _load_run_fan_out()
     # Use empty work_units so fan_out returns immediately after emitting the log.
-    effect = FanOutDevelopmentEffect(work_units=(), max_workers=2)
+    effect = FanOutEffect(work_units=(), max_workers=2)
     display = RecordingDisplay()
     ctx = make_worker_context(
         same_workspace=SameWorkspaceContext(
@@ -777,7 +777,7 @@ class TestPreflightRejection:
             description="Unit B",
             allowed_directories=["src/sub"],  # 'src' is a prefix of 'src/sub' → overlap
         )
-        effect = FanOutDevelopmentEffect(work_units=(unit_a, unit_b), max_workers=2)
+        effect = FanOutEffect(work_units=(unit_a, unit_b), max_workers=2)
         executor = FakeAgentExecutor({
             "unit-a": FakeRun(outputs=[], exit_code=0, duration_ms=1),
             "unit-b": FakeRun(outputs=[], exit_code=0, duration_ms=1),
@@ -808,7 +808,7 @@ class TestPreflightRejection:
             description="Unit without edit areas",
             allowed_directories=[],  # missing required edit area
         )
-        effect = FanOutDevelopmentEffect(work_units=(unit_no_dirs,), max_workers=1)
+        effect = FanOutEffect(work_units=(unit_no_dirs,), max_workers=1)
         executor = FakeAgentExecutor({
             "unit-nodirs": FakeRun(outputs=[], exit_code=0, duration_ms=1),
         })
@@ -834,7 +834,7 @@ class TestPreflightRejection:
             description="Unit with reserved path",
             allowed_directories=[".agent"],  # reserved path
         )
-        effect = FanOutDevelopmentEffect(work_units=(unit_reserved,), max_workers=1)
+        effect = FanOutEffect(work_units=(unit_reserved,), max_workers=1)
         executor = FakeAgentExecutor({
             "unit-reserved": FakeRun(outputs=[], exit_code=0, duration_ms=1),
         })

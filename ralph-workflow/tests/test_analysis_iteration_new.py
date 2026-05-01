@@ -152,8 +152,7 @@ class TestDevCommitSuccessIncrementsIteration:
         state = PipelineState(
             phase="development_commit",
             iteration=0,
-            development_budget_remaining=3,
-            review_budget_remaining=2,
+            budget_remaining={"iteration": 3, "reviewer_pass": 2},
         )
         policy = _dev_analysis_policy()
         new_state, _ = _reduce(state, PipelineEvent.COMMIT_SUCCESS, policy)
@@ -168,8 +167,7 @@ class TestReviewCommitSuccessIncrementsReviewerPass:
         state = PipelineState(
             phase="review_commit",
             reviewer_pass=0,
-            development_budget_remaining=3,
-            review_budget_remaining=2,
+            budget_remaining={"iteration": 3, "reviewer_pass": 2},
         )
         policy = _dev_analysis_policy()
         new_state, _ = _reduce(state, PipelineEvent.COMMIT_SUCCESS, policy)
@@ -219,8 +217,7 @@ class TestDevCommitSuccessResetsDevAnalysisIteration:
             phase="development_commit",
             loop_iterations={"development_analysis_iteration": 3},
             iteration=0,
-            development_budget_remaining=3,
-            review_budget_remaining=2,
+            budget_remaining={"iteration": 3, "reviewer_pass": 2},
         )
         policy = _dev_analysis_policy()
         new_state, _ = _reduce(state, PipelineEvent.COMMIT_SUCCESS, policy)
@@ -274,8 +271,7 @@ class TestReviewCommitSuccessResetsReviewAnalysisIteration:
             phase="review_commit",
             loop_iterations={"review_analysis_iteration": 2},
             reviewer_pass=0,
-            development_budget_remaining=3,
-            review_budget_remaining=2,
+            budget_remaining={"iteration": 3, "reviewer_pass": 2},
         )
         policy = _dev_analysis_policy()
         new_state, _ = _reduce(state, PipelineEvent.COMMIT_SUCCESS, policy)

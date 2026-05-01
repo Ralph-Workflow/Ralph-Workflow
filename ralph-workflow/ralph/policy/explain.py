@@ -99,6 +99,15 @@ class TerminalOutcomeExplanation:
 
 
 @dataclass
+class PostCommitRouteExplanation:
+    """Explanation of a single post-commit route entry."""
+
+    phase: str
+    budget_state: str
+    target: str
+
+
+@dataclass
 class ParallelExplanation:
     """Explanation of the parallel execution policy."""
 
@@ -106,6 +115,7 @@ class ParallelExplanation:
     max_parallel_workers: int
     max_work_units: int
     require_allowed_directories: bool
+    post_fanout_verification: bool = False
 
 
 @dataclass
@@ -128,6 +138,8 @@ class PolicyExplanation:
     budget_counters: list[BudgetCounterExplanation] = field(default_factory=list)
     terminal_outcomes: list[TerminalOutcomeExplanation] = field(default_factory=list)
     parallel_execution: ParallelExplanation | None = None
+    parallel_executions: list[ParallelExplanation] = field(default_factory=list)
+    post_commit_routes: list[PostCommitRouteExplanation] = field(default_factory=list)
     recovery: RecoveryExplanation | None = None
 
 
@@ -281,18 +293,31 @@ def explain_policy(bundle: PolicyBundle) -> PolicyExplanation:
             )
         )
 
-    # Parallel execution
+    # Post-commit routes at the policy level
+    for route in pipeline.post_commit_routes:
+        explanation.post_commit_routes.append(
+            PostCommitRouteExplanation(
+                phase=route.when.phase,
+                budget_state=route.when.budget_state,
+                target=route.target,
+            )
+        )
+
+    # Parallel execution — collect all phases, keep first as backward-compat singleton
     for phase_name, phase_def in pipeline.phases.items():
         if phase_def.parallelization is None:
             continue
         pe = phase_def.parallelization
-        explanation.parallel_execution = ParallelExplanation(
+        pe_expl = ParallelExplanation(
             phase=phase_name,
             max_parallel_workers=pe.max_parallel_workers,
             max_work_units=pe.max_work_units,
             require_allowed_directories=pe.require_allowed_directories,
+            post_fanout_verification=pe.post_fanout_verification,
         )
-        break
+        explanation.parallel_executions.append(pe_expl)
+        if explanation.parallel_execution is None:
+            explanation.parallel_execution = pe_expl
 
     # Recovery
     r = pipeline.recovery

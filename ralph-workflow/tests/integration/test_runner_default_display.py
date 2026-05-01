@@ -99,10 +99,8 @@ def test_default_run_constructs_parallel_display_and_renders_surfaces(
 
     state = PipelineState(
         phase="planning",
-        total_iterations=1,
-        total_reviewer_passes=0,
-        development_budget_remaining=1,
-        review_budget_remaining=0,
+        budget_caps={"iteration": 1, "reviewer_pass": 0},
+        budget_remaining={"iteration": 1, "reviewer_pass": 0},
     )
 
     exit_code = runner_module.run(_config(), initial_state=state)
@@ -212,10 +210,6 @@ def test_sigwinch_refresh_updates_live_display_context(
 
     state = PipelineState(
         phase="complete",
-        total_iterations=0,
-        total_reviewer_passes=0,
-        development_budget_remaining=0,
-        review_budget_remaining=0,
     )
 
     exit_code = runner_module.run(

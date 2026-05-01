@@ -145,7 +145,7 @@ def test_review_analysis_loopback_updates_only_review_analysis_fields() -> None:
         phase="review_analysis",
         reviewer_pass=1,
         loop_iterations={"review_analysis_iteration": 0},
-        review_budget_remaining=INITIAL_REVIEW_BUDGET,
+        budget_remaining={"reviewer_pass": INITIAL_REVIEW_BUDGET},
         )
 
     new_state, _ = _reduce(state, PipelineEvent.ANALYSIS_LOOPBACK, policy)
@@ -154,7 +154,7 @@ def test_review_analysis_loopback_updates_only_review_analysis_fields() -> None:
     assert new_state.previous_phase == "review_analysis"
     assert new_state.reviewer_pass == 1
     assert new_state.get_loop_iteration("review_analysis_iteration") == 1
-    assert new_state.review_budget_remaining == INITIAL_REVIEW_BUDGET
+    assert new_state.get_budget_remaining("reviewer_pass") == INITIAL_REVIEW_BUDGET
     assert new_state.review_outcome is not None
 
 
@@ -166,7 +166,7 @@ def test_capped_review_analysis_loopback_preserves_outer_progress_and_marks_issu
         reviewer_pass=1,
         loop_iterations={"review_analysis_iteration": 1},
         loop_caps={"review_analysis_iteration": FORCED_REVIEW_ANALYSIS_ITERATION},
-        review_budget_remaining=1,
+        budget_remaining={"reviewer_pass": 1},
         )
 
     new_state, _ = _reduce(state, PipelineEvent.ANALYSIS_LOOPBACK, policy)
@@ -178,7 +178,7 @@ def test_capped_review_analysis_loopback_preserves_outer_progress_and_marks_issu
         new_state.get_loop_iteration("review_analysis_iteration")
         == FORCED_REVIEW_ANALYSIS_ITERATION
     )
-    assert new_state.review_budget_remaining == 1
+    assert new_state.get_budget_remaining("reviewer_pass") == 1
     assert new_state.review_outcome is not None
 
 
@@ -188,8 +188,7 @@ def test_skipped_development_commit_preserves_outer_progress_but_resets_inner_lo
         phase="development_commit",
         iteration=COMPLETED_DEVELOPMENT_CYCLES,
         loop_iterations={"development_analysis_iteration": 3},
-        development_budget_remaining=1,
-        review_budget_remaining=1,
+        budget_remaining={"iteration": 1, "reviewer_pass": 1},
     )
 
     new_state, _ = _reduce(state, PipelineEvent.COMMIT_SKIPPED, policy)
@@ -198,7 +197,7 @@ def test_skipped_development_commit_preserves_outer_progress_but_resets_inner_lo
     assert new_state.previous_phase == "development_commit"
     assert new_state.iteration == COMPLETED_DEVELOPMENT_CYCLES
     assert new_state.get_loop_iteration("development_analysis_iteration") == 0
-    assert new_state.development_budget_remaining == 0
+    assert new_state.get_budget_remaining("iteration") == 0
 
 
 def test_skipped_review_commit_does_not_increment_outer_progress_but_resets_inner_loop() -> None:
@@ -207,7 +206,7 @@ def test_skipped_review_commit_does_not_increment_outer_progress_but_resets_inne
         phase="review_commit",
         reviewer_pass=1,
         loop_iterations={"review_analysis_iteration": 2},
-        review_budget_remaining=1,
+        budget_remaining={"reviewer_pass": 1},
         review_outcome="has_issues",
     )
 
@@ -217,7 +216,7 @@ def test_skipped_review_commit_does_not_increment_outer_progress_but_resets_inne
     assert new_state.previous_phase == "review_commit"
     assert new_state.reviewer_pass == 1
     assert new_state.get_loop_iteration("review_analysis_iteration") == 0
-    assert new_state.review_budget_remaining == 0
+    assert new_state.get_budget_remaining("reviewer_pass") == 0
     assert new_state.review_outcome is not None
 
 
@@ -226,15 +225,14 @@ def test_commit_budget_routes_use_post_commit_policy_after_budget_is_consumed() 
     state = PipelineState(
         phase="development_commit",
         iteration=0,
-        development_budget_remaining=1,
-        review_budget_remaining=1,
+        budget_remaining={"iteration": 1, "reviewer_pass": 1},
     )
 
     new_state, _ = _reduce(state, PipelineEvent.COMMIT_SUCCESS, policy)
 
     assert new_state.phase == "review"
     assert new_state.iteration == 1
-    assert new_state.development_budget_remaining == 0
+    assert new_state.get_budget_remaining("iteration") == 0
 
 
 def test_checkpoint_builder_derives_progress_mirrors_from_pipeline_state() -> None:

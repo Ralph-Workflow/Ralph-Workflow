@@ -10,7 +10,7 @@ import sys
 import pytest
 
 from ralph.mcp.server.factory import McpServerHandle
-from ralph.pipeline.effects import FanOutDevelopmentEffect
+from ralph.pipeline.effects import FanOutEffect
 from ralph.pipeline.events import PipelineEvent, WorkerFailedEvent
 from ralph.pipeline.parallel.mode import SameWorkspaceContext
 from ralph.pipeline.work_units import WorkUnit
@@ -117,7 +117,7 @@ async def test_nonzero_exit_with_artifact_is_treated_as_success(tmp_path) -> Non
     """
     module = _load_coordinator()
     unit = _make_unit("unit-a")
-    effect = FanOutDevelopmentEffect(work_units=(unit,), max_workers=1)
+    effect = FanOutEffect(work_units=(unit,), max_workers=1)
     display = _RecordingDisplay()
     mcp_factory = _RecordingMcpFactory()
 
@@ -154,7 +154,7 @@ async def test_zero_exit_without_artifact_is_treated_as_failure(tmp_path) -> Non
     """
     module = _load_coordinator()
     unit = _make_unit("unit-a")
-    effect = FanOutDevelopmentEffect(work_units=(unit,), max_workers=1)
+    effect = FanOutEffect(work_units=(unit,), max_workers=1)
     display = _RecordingDisplay()
     mcp_factory = _RecordingMcpFactory()
 

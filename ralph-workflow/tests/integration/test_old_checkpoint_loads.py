@@ -4,7 +4,7 @@ import json
 from unittest.mock import MagicMock
 
 from ralph.config.models import UnifiedConfig
-from ralph.pipeline.effects import FanOutDevelopmentEffect, InvokeAgentEffect
+from ralph.pipeline.effects import FanOutEffect, InvokeAgentEffect
 from ralph.pipeline.runner import _determine_effect_from_policy
 from ralph.pipeline.state import PipelineState
 from ralph.policy.models import PhaseParallelization
@@ -42,7 +42,7 @@ class TestOldCheckpointLoads:
         effect = _determine_effect_from_policy(state, policy_bundle, config=UnifiedConfig())
 
         assert isinstance(effect, InvokeAgentEffect)
-        assert not isinstance(effect, FanOutDevelopmentEffect)
+        assert not isinstance(effect, FanOutEffect)
 
     def test_fan_out_not_emitted_for_empty_work_units(self) -> None:
         state = PipelineState(phase="development", work_units=())
@@ -50,4 +50,4 @@ class TestOldCheckpointLoads:
 
         effect = _determine_effect_from_policy(state, policy_bundle, config=UnifiedConfig())
 
-        assert not isinstance(effect, FanOutDevelopmentEffect)
+        assert not isinstance(effect, FanOutEffect)

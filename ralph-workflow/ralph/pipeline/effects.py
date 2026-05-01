@@ -153,8 +153,8 @@ class ExitFailureEffect:
 
 
 @dataclass(frozen=True)
-class FanOutDevelopmentEffect:
-    """Effect to fan out development work across same-workspace workers.
+class FanOutEffect:
+    """Effect to fan out parallel work for any phase whose [parallelization] policy is declared.
 
     Workers run in the shared checkout. Each worker is restricted to its declared
     ``allowed_directories`` and writes its outputs to a per-worker namespace under
@@ -166,11 +166,27 @@ class FanOutDevelopmentEffect:
         run_post_fanout_verification: When True, the runner will execute a serialized
             workspace-wide verification step after all workers finish. Defaults to False
             so unit tests do not invoke ``make verify``.
+        phase: The pipeline phase for which fan-out is occurring. Defaults to empty
+            string for backward compatibility; the runner always populates this.
     """
 
     work_units: tuple[WorkUnit, ...]
     max_workers: int
     run_post_fanout_verification: bool = False
+    phase: str = ""
+
+
+def __getattr__(name: str) -> object:
+    if name == "FanOutDevelopmentEffect":
+        import warnings  # noqa: PLC0415
+        warnings.warn(
+            "FanOutDevelopmentEffect is deprecated; use FanOutEffect instead. "
+            "# reason: deprecation alias",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return FanOutEffect
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 # Union type for all effects
@@ -182,5 +198,5 @@ Effect = (
     | SaveCheckpointEffect
     | ExitSuccessEffect
     | ExitFailureEffect
-    | FanOutDevelopmentEffect
+    | FanOutEffect
 )

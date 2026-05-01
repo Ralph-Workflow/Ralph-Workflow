@@ -124,9 +124,10 @@ def _render_fanout_annotation(
 ) -> None:
     """Render fanout annotation line if applicable."""
     if parallel_phase == phase_name and pe is not None:
+        verify = "yes" if pe.post_fanout_verification else "no"
         lines.append(
             f">>> FAN_OUT (max_workers={pe.max_parallel_workers}, "
-            f"max_units={pe.max_work_units}) >>>"
+            f"max_units={pe.max_work_units}, post_fanout_verify={verify}) >>>"
         )
 
 
@@ -166,6 +167,15 @@ def _render_decision_branches(lines: list[str], phase: PhaseExplanation) -> None
     for decision_name, target in sorted(phase.decisions.items()):
         if target != phase.on_success:
             lines.append(f"    +--[{decision_name}]--> {target}")
+
+
+def _render_verification_failure_arrow(lines: list[str], phase: PhaseExplanation) -> None:
+    """Render verification on_failure_route arrow if it differs from on_failure."""
+    if phase.verification is None:
+        return
+    v = phase.verification
+    if v.on_failure_route and v.on_failure_route != phase.on_failure:
+        lines.append(f"    +--[on_failure_route]--> {v.on_failure_route}")
 
 
 def _render_loopback_arrow(lines: list[str], phase: PhaseExplanation) -> None:
@@ -247,8 +257,8 @@ def render_explanation_ascii(exp: PolicyExplanation) -> str:
        ==FAILURE==> for terminal_outcome="failure". Only policy-declared
        terminal phases get markers.
 
-    7. FANOUT ANNOTATION: [fanout: max_workers=N, max_units=M] appears
-       above the phase box for the parallel-eligible phase.
+    7. FANOUT ANNOTATION: >>> FAN_OUT (max_workers=N, max_units=M, post_fanout_verify=yes/no)
+       appears above the phase box for the parallel-eligible phase.
 
     8. LOOP ANNOTATION: [loop: counter=NAME, max=N] appears above the
        phase box for phases with loop_policy.
@@ -269,9 +279,14 @@ def render_explanation_ascii(exp: PolicyExplanation) -> str:
     spine_order = _compute_success_spine(exp)
     lines: list[str] = []
 
-    parallel_phase = None
-    if exp.parallel_execution is not None:
-        parallel_phase = exp.parallel_execution.phase
+    # Build a lookup of all parallel phases from parallel_executions.
+    # Also include parallel_execution (singular) if not already covered,
+    # so code that constructs PolicyExplanation directly still renders correctly.
+    parallel_phases: dict[str, ParallelExplanation] = {
+        pe.phase: pe for pe in exp.parallel_executions
+    }
+    if exp.parallel_execution is not None and exp.parallel_execution.phase not in parallel_phases:
+        parallel_phases[exp.parallel_execution.phase] = exp.parallel_execution
 
     for i, phase_name in enumerate(spine_order):
         phase = phase_map.get(phase_name)
@@ -281,9 +296,10 @@ def render_explanation_ascii(exp: PolicyExplanation) -> str:
         # Determine the next phase on the success spine
         next_phase = spine_order[i + 1] if i + 1 < len(spine_order) else None
 
-        is_fanout = parallel_phase == phase_name and exp.parallel_execution is not None
+        pe_for_phase = parallel_phases.get(phase_name)
+        is_fanout = pe_for_phase is not None
         _render_fanout_annotation(
-            lines, phase_name, parallel_phase, exp.parallel_execution
+            lines, phase_name, phase_name if is_fanout else None, pe_for_phase
         )
         _render_loop_annotation(lines, phase)
         _render_verification_annotation(lines, phase)
@@ -293,6 +309,7 @@ def render_explanation_ascii(exp: PolicyExplanation) -> str:
 
         _render_phase_box(lines, phase_name, phase.role)
         _render_decision_branches(lines, phase)
+        _render_verification_failure_arrow(lines, phase)
         _render_loopback_arrow(lines, phase)
         _render_terminal_marker(lines, phase)
         if is_fanout:
@@ -363,7 +380,12 @@ def render_explanation_text(exp: PolicyExplanation) -> str:
             desc = f" — {bc.description}" if bc.description else ""
             lines.append(f"  {bc.name}: {tracked}{desc}")
 
-    if exp.parallel_execution is not None:
+    if exp.post_commit_routes:
+        _render_post_commit_routes_text(exp, lines)
+
+    if exp.parallel_executions:
+        _render_parallel_executions_text(exp, lines)
+    elif exp.parallel_execution is not None:
         _render_parallel_text(exp, lines)
 
     if exp.recovery is not None:
@@ -442,8 +464,41 @@ def _render_explanation_sentences(phase: PhaseExplanation) -> list[str]:
     return sentences
 
 
+def _render_post_commit_routes_text(exp: PolicyExplanation, lines: list[str]) -> None:
+    """Render the post-commit routes section."""
+    lines.append("")
+    lines.append("-" * 70)
+    lines.append("POST-COMMIT ROUTES")
+    lines.append("-" * 70)
+    lines.extend(
+        f"  phase {route.phase} (budget={route.budget_state}) → {route.target}"
+        for route in exp.post_commit_routes
+    )
+
+
+def _render_parallel_executions_text(exp: PolicyExplanation, lines: list[str]) -> None:
+    """Render all parallel execution phases."""
+    lines.append("")
+    lines.append("-" * 70)
+    lines.append("PARALLEL EXECUTION")
+    lines.append("-" * 70)
+    for pe in exp.parallel_executions:
+        verify = "yes" if pe.post_fanout_verification else "no"
+        req = "yes" if pe.require_allowed_directories else "no"
+        lines.append(f"  Fanout phase : {pe.phase}")
+        lines.append(f"  Max workers  : {pe.max_parallel_workers}")
+        lines.append(f"  Max work units: {pe.max_work_units}")
+        lines.append(f"  Require allowed_directories: {req}")
+        lines.append(f"  post_fanout_verify: {verify}")
+        lines.append(
+            f"  When is parallel execution allowed? "
+            f"When the planning artifact declares multiple work_units "
+            f"(up to {pe.max_work_units}) for phase '{pe.phase}'."
+        )
+
+
 def _render_parallel_text(exp: PolicyExplanation, lines: list[str]) -> None:
-    """Render the parallel execution section."""
+    """Render the parallel execution section (single-phase fallback)."""
     pe = exp.parallel_execution
     if pe is None:
         return
@@ -451,11 +506,13 @@ def _render_parallel_text(exp: PolicyExplanation, lines: list[str]) -> None:
     lines.append("-" * 70)
     lines.append("PARALLEL EXECUTION")
     lines.append("-" * 70)
+    verify = "yes" if pe.post_fanout_verification else "no"
     lines.append(f"  Fanout phase : {pe.phase}")
     lines.append(f"  Max workers  : {pe.max_parallel_workers}")
     lines.append(f"  Max work units: {pe.max_work_units}")
     req = "yes" if pe.require_allowed_directories else "no"
     lines.append(f"  Require allowed_directories: {req}")
+    lines.append(f"  post_fanout_verify: {verify}")
     lines.append(
         f"  When is parallel execution allowed? "
         f"When the planning artifact declares multiple work_units "

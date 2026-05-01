@@ -5,7 +5,7 @@
 +----------------+
     |
     v
->>> FAN_OUT (max_workers=8, max_units=50) >>>
+>>> FAN_OUT (max_workers=8, max_units=50, post_fanout_verify=no) >>>
 +----------------+
 |  development   |
 | role=execution |

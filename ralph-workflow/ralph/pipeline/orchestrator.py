@@ -63,7 +63,7 @@ def determine_next_effect(
     which effect to emit based on:
     - The current phase definition (drain, transitions)
     - State flags (prompt prepared, agent invoked, analysis complete)
-    - Budget counters (development_budget_remaining, review_budget_remaining)
+    - Budget counters (budget_remaining['iteration'], budget_remaining['reviewer_pass'])
 
     Args:
         state: Current pipeline state.
