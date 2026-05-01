@@ -20,6 +20,13 @@ from ralph.mcp.transport.common import (
     set_upstream_mcp_config,
 )
 
+_CAPABILITY_PRESETS: dict[str, frozenset[str]] = {
+    "planning": frozenset(),
+    "review": frozenset({"run.report_progress"}),
+    "analysis": frozenset({"process.exec_bounded", "run.report_progress"}),
+    "commit": frozenset({"run.report_progress"}),
+}
+
 if TYPE_CHECKING:
     from pathlib import Path
 
@@ -55,8 +62,8 @@ def build_session_mcp_plan(
         )
     )
 
-    drain_class = drain_class_for_session(drain, agents_policy)
-    is_commit = drain_class.value == "commit"
+    capability_cls = _resolve_capability_cls(drain, agents_policy)
+    is_commit = capability_cls == DrainClass.COMMIT
 
     if mcp_config.web_search.enabled and not is_commit:
         capabilities.add("web.search")
@@ -83,17 +90,39 @@ def build_session_mcp_plan(
     )
 
 
+def _resolve_capability_cls(
+    drain: str,
+    agents_policy: AgentsPolicy | None = None,
+) -> DrainClass:
+    """Resolve the effective capability class for a drain.
+
+    Uses capability_class from agents_policy when declared, falling back to
+    drain_class. This is the single source of truth for MCP surface selection.
+    """
+    drain_class = drain_class_for_session(drain, agents_policy)
+    if agents_policy is not None:
+        drain_cfg = agents_policy.agent_drains.get(drain)
+        if drain_cfg is not None and drain_cfg.capability_class is not None:
+            return DrainClass(drain_cfg.capability_class)
+    return drain_class
+
+
+_DEVELOPMENT_EXTRA: frozenset[str] = frozenset({
+    "workspace.write_ephemeral",
+    "workspace.write_tracked",
+    "workspace.edit",
+    "workspace.delete",
+    "process.exec_bounded",
+    "run.report_progress",
+    "env.read",
+})
+
+
 def _base_capabilities_for_drain(
     drain: str,
     agents_policy: AgentsPolicy | None = None,
 ) -> set[str]:
-    drain_class = drain_class_for_session(drain, agents_policy)
-    # capability_class overrides drain_class for MCP tool surface selection
-    capability_cls: DrainClass = drain_class
-    if agents_policy is not None:
-        drain_cfg = agents_policy.agent_drains.get(drain)
-        if drain_cfg is not None and drain_cfg.capability_class is not None:
-            capability_cls = DrainClass(drain_cfg.capability_class)
+    capability_cls = _resolve_capability_cls(drain, agents_policy)
 
     base = {
         "workspace.read",
@@ -103,24 +132,11 @@ def _base_capabilities_for_drain(
         "workspace.metadata_read",
     }
 
-    if capability_cls == DrainClass.PLANNING:
-        return base
-    if capability_cls == DrainClass.REVIEW:
-        return base | {"run.report_progress"}
-    if capability_cls == DrainClass.ANALYSIS:
-        return base | {"process.exec_bounded", "run.report_progress"}
-    # Commit drains are strictly read-only: git.write is reserved to the orchestrator.
-    if capability_cls == DrainClass.COMMIT:
-        return base | {"run.report_progress"}
-    return base | {
-        "workspace.write_ephemeral",
-        "workspace.write_tracked",
-        "workspace.edit",
-        "workspace.delete",
-        "process.exec_bounded",
-        "run.report_progress",
-        "env.read",
-    }
+    cls_value = capability_cls.value
+    if cls_value in _CAPABILITY_PRESETS:
+        return base | _CAPABILITY_PRESETS[cls_value]
+    # development and fix classes: full write surface
+    return base | _DEVELOPMENT_EXTRA
 
 
 __all__ = ["SessionMcpPlan", "build_session_mcp_plan"]

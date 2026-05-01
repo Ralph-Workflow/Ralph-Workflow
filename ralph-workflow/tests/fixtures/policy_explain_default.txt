@@ -12,7 +12,8 @@
 +----------------+
     <<==[loopback]== returns to 'development'
     >> RE-ENTRY at development
-<<< REJOIN
++================+
+<<< REJOIN >>>
     |
     v
 [loop: counter=development_analysis_iteration, max=3]
@@ -20,7 +21,7 @@
 | development_analysis |
 |    role=analysis     |
 +----------------------+
-    +--[failed]--> development
+    +--[failed]-----------> development
     +--[request_changes]--> development
     <<==[loopback]== returns to 'development'
     [LOOPBACK: counter=development_analysis_iteration, max=3]
@@ -46,7 +47,7 @@
 | review_analysis |
 |  role=analysis  |
 +-----------------+
-    +--[failed]--> fix
+    +--[failed]-----------> fix
     +--[request_changes]--> fix
     <<==[loopback]== returns to 'fix'
     [LOOPBACK: counter=review_analysis_iteration, max=2]
@@ -84,4 +85,4 @@ Legend:
   <<==[loopback]==   loopback to earlier phase
   +--[workflow_fallback]--> fallback on chain exhaustion
   >>> FAN_OUT ...    parallel worker fan-out
-  <<< REJOIN         workers rejoin after fan-out
+  <<< REJOIN >>>     workers rejoin after fan-out

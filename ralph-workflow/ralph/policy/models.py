@@ -75,8 +75,9 @@ class AgentDrainConfig(_FrozenPolicyModel):  # type: ignore[explicit-any]  # rea
         default=None,
         description=(
             "Drain capability class — one of planning|development|analysis|review|fix|commit. "
-            "Required for custom drains not in the canonical SessionDrain enum. "
-            "When None for a canonical drain, the SessionDrain enum mapping is used as fallback."
+            "Required when forbid_sibling_drain_inference=true. "
+            "Explicit drain_class always takes precedence over enum-based inference. "
+            "Set this to declare the workflow role classifier for this drain."
         ),
     )
     capability_class: str | None = Field(

@@ -312,6 +312,67 @@ class TestPhaseFailureEvent:
         assert new_state.recovery_epoch == 1
         assert effects == []
 
+    def test_phase_failure_not_recoverable_routes_via_workflow_fallback_when_declared(
+        self,
+    ) -> None:
+        """Non-recoverable PhaseFailureEvent routes to workflow_fallback.target when declared.
+
+        Policy-declared workflow_fallback takes precedence over recovery.failed_route
+        for non-recoverable failures, matching the same precedence used in
+        _handle_agent_failure for chain exhaustion.
+        """
+        from ralph.policy.models import PhaseWorkflowFallback  # noqa: PLC0415
+
+        policy = PipelinePolicy(
+            phases={
+                "development": PhaseDefinition(
+                    drain="development",
+                    workflow_fallback=PhaseWorkflowFallback(target="fallback_phase"),
+                    transitions=PhaseTransition(on_success="complete"),
+                ),
+                "fallback_phase": PhaseDefinition(
+                    drain="development",
+                    transitions=PhaseTransition(on_success="complete"),
+                ),
+                "failed_terminal": PhaseDefinition(
+                    drain="development",
+                    role="terminal",
+                    terminal_outcome="failure",
+                    transitions=PhaseTransition(on_success="failed_terminal"),
+                ),
+            },
+            entry_phase="development",
+            terminal_phase="complete",
+            recovery=RecoveryPolicy(failed_route="failed_terminal"),
+        )
+        state = PipelineState(phase="development")
+        event = PhaseFailureEvent(
+            phase="development",
+            reason="non-recoverable agent error",
+            recoverable=False,
+        )
+        new_state, effects = _reduce(state, event, policy)
+        assert new_state.phase == "fallback_phase", (
+            f"Expected workflow_fallback target 'fallback_phase' but got '{new_state.phase}'"
+        )
+        assert new_state.last_error == "development: non-recoverable agent error"
+        assert effects == []
+
+    def test_phase_failure_not_recoverable_enters_terminal_when_no_workflow_fallback(
+        self,
+    ) -> None:
+        """Non-recoverable PhaseFailureEvent without workflow_fallback routes to failed_route."""
+        state = PipelineState(phase="development")
+        event = PhaseFailureEvent(
+            phase="development",
+            reason="non-recoverable agent error",
+            recoverable=False,
+        )
+        new_state, effects = _reduce(state, event, _basic_pipeline_policy())
+        assert new_state.phase == "failed_terminal"
+        assert new_state.recovery_epoch == 1
+        assert effects == []
+
 
 # =============================================================================
 # Existing reducer tests (unchanged)

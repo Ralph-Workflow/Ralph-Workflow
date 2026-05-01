@@ -322,7 +322,26 @@ def _handle_phase_failure(
         if event.retry_in_session and state.last_agent_session_id:
             state_with_error = state_with_error.copy_with(session_preserve_retry_pending=True)
         return _handle_agent_failure(state_with_error, policy=policy)
-    # Non-recoverable failures enter centralized recovery using the policy-declared route.
+    # Non-recoverable failures: check workflow_fallback before global failure route.
+    # Policy-declared workflow_fallback takes precedence over recovery.failed_route.
+    if policy is not None:
+        phase_def = policy.phases.get(event.phase)
+        if phase_def is not None and phase_def.workflow_fallback is not None:
+            fallback_target = phase_def.workflow_fallback.target
+            logger.bind(component="policy.routing").info(
+                explain_routing_decision(
+                    event.phase,
+                    fallback_target,
+                    "workflow_fallback",
+                    "non-recoverable failure — routing via policy workflow_fallback",
+                )
+            )
+            new_state = state.copy_with(
+                phase=fallback_target,
+                previous_phase=event.phase,
+                last_error=failure_message,
+            )
+            return new_state, []
     return _enter_failed_recovery(state, failure_message, policy=policy)
 
 

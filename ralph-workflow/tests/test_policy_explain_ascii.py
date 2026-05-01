@@ -81,10 +81,11 @@ class TestRenderExplanationAscii:
         explanation = explain_policy(bundle)
         output = render_explanation_ascii(explanation)
 
-        # Decision branches use the format +--[decision_name]--> target
+        # Decision branches use the format +--[decision_name]---...---> target
         # 'completed' equals on_success so not rendered; we check others
-        assert "+--[failed]-->" in output
-        assert "+--[request_changes]-->" in output
+        # Use prefix check to handle padding alignment
+        assert "+--[failed]" in output
+        assert "+--[request_changes]" in output
 
     def test_renders_loopback_arrow(self) -> None:
         """Default pipeline diagram contains loopback annotations."""
@@ -276,9 +277,15 @@ class TestRenderExplanationAscii:
         explanation = explain_policy(bundle)
         output = render_explanation_ascii(explanation)
 
-        assert "+--[failed]--> development" in output
-        assert "+--[failed]--> fix" in output
-        assert "+--[failed]--> failed" not in output
+        lines = output.split("\n")
+        # Check that failed routes to development/fix (padding-agnostic)
+        assert any("[failed]" in line and "-->" in line and "development" in line for line in lines)
+        assert any("[failed]" in line and "-->" in line and "fix" in line for line in lines)
+        # failed should not route to 'failed' (terminal) — it should route to a rework phase
+        assert not any(
+            "[failed]" in line and line.rstrip().endswith("--> failed")
+            for line in lines
+        )
 
     def test_parallel_fanout_rejoin_shape_visible(self) -> None:
         """Default pipeline ASCII diagram shows both FAN_OUT and REJOIN annotations.

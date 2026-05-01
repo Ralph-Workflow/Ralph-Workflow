@@ -334,3 +334,48 @@ def test_capabilities_use_policy_declared_drain_capability_class(
     assert "workspace.write_tracked" in plan.capabilities
     assert "workspace.edit" in plan.capabilities
     assert "workspace.read" in plan.capabilities
+
+
+def test_capability_class_commit_suppresses_web_search_when_enabled(
+    isolated_home: Path,
+    tmp_path: Path,
+) -> None:
+    """capability_class='commit' suppresses web.search/web.visit even when the mcp.toml
+    enables them, proving that is_commit uses the resolved capability_class not drain_class.
+    """
+    del isolated_home
+    from ralph.policy.models import (  # noqa: PLC0415
+        AgentChainConfig,
+        AgentDrainConfig,
+        AgentsPolicy,
+    )
+
+    agent_dir = tmp_path / ".agent"
+    agent_dir.mkdir()
+    (agent_dir / "mcp.toml").write_text(
+        "[web_search]\nenabled = true\n[web_visit]\nenabled = true\n",
+        encoding="utf-8",
+    )
+
+    agents_policy = AgentsPolicy(
+        agent_chains={"my_chain": AgentChainConfig(agents=["claude"])},
+        agent_drains={
+            "my_planning_drain": AgentDrainConfig(
+                chain="my_chain",
+                drain_class="planning",
+                capability_class="commit",
+            )
+        },
+    )
+
+    plan = build_session_mcp_plan(
+        transport=AgentTransport.CLAUDE,
+        drain="my_planning_drain",
+        workspace_path=tmp_path,
+        agents_policy=agents_policy,
+    )
+
+    # capability_class='commit' suppresses web.search and web.visit even though
+    # drain_class='planning' wouldn't normally suppress them.
+    assert "web.search" not in plan.capabilities
+    assert "web.visit" not in plan.capabilities

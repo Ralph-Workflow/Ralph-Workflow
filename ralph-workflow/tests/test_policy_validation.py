@@ -288,14 +288,26 @@ class TestForbidSiblingDrainInference:
                 "review_commit": AgentChainConfig(agents=["claude"]),
             },
             agent_drains={
-                "planning": AgentDrainConfig(chain="planning"),
-                "development": AgentDrainConfig(chain="development"),
-                "development_analysis": AgentDrainConfig(chain="development_analysis"),
-                "development_commit": AgentDrainConfig(chain="development_commit"),
-                "review": AgentDrainConfig(chain="review"),
-                "review_analysis": AgentDrainConfig(chain="review_analysis"),
-                "fix": AgentDrainConfig(chain="fix"),
-                "review_commit": AgentDrainConfig(chain="review_commit"),
+                "planning": AgentDrainConfig(
+                    chain="planning", drain_class="planning"
+                ),
+                "development": AgentDrainConfig(
+                    chain="development", drain_class="development"
+                ),
+                "development_analysis": AgentDrainConfig(
+                    chain="development_analysis", drain_class="analysis"
+                ),
+                "development_commit": AgentDrainConfig(
+                    chain="development_commit", drain_class="commit"
+                ),
+                "review": AgentDrainConfig(chain="review", drain_class="review"),
+                "review_analysis": AgentDrainConfig(
+                    chain="review_analysis", drain_class="analysis"
+                ),
+                "fix": AgentDrainConfig(chain="fix", drain_class="fix"),
+                "review_commit": AgentDrainConfig(
+                    chain="review_commit", drain_class="commit"
+                ),
             },
         )
 
@@ -374,8 +386,8 @@ class TestForbidSiblingDrainInference:
                 "development": AgentChainConfig(agents=["claude"]),
             },
             agent_drains={
-                "planning": AgentDrainConfig(chain="planning"),
-                "development": AgentDrainConfig(chain="development"),
+                "planning": AgentDrainConfig(chain="planning", drain_class="planning"),
+                "development": AgentDrainConfig(chain="development", drain_class="development"),
                 # review, review_analysis, review_commit, fix are intentionally NOT bound
                 # but they are also NOT in the pipeline - so no error is expected
             },

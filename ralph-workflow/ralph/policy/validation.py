@@ -150,6 +150,21 @@ def validate_drain_contracts(bundle: PolicyBundle) -> None:
             f"'chain' binding in agents.toml when forbid_sibling_drain_inference=true."
         )
 
+    drains_without_class: list[str] = [
+        drain
+        for drain in required_drains
+        if drain in bundle.agents.agent_drains
+        and bundle.agents.agent_drains[drain].drain_class is None
+    ]
+
+    if drains_without_class:
+        raise PolicyValidationError(
+            f"Implicit sibling-drain inference is forbidden, but the following "
+            f"pipeline drains have no explicit drain_class: {sorted(drains_without_class)}. "
+            f"Set drain_class on each drain in agents.toml "
+            f"(one of: planning, development, analysis, review, fix, commit)."
+        )
+
 
 class PolicyValidationError(Exception):
     """Raised when a policy validation rule is violated.

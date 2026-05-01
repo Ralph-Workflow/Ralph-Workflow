@@ -161,12 +161,16 @@ def _render_phase_box(lines: list[str], phase_name: str, role: str | None) -> No
 
 
 def _render_decision_branches(lines: list[str], phase: PhaseExplanation) -> None:
-    """Render decision branch rows for a phase."""
+    """Render decision branch rows for a phase, aligned to the longest label."""
     if not phase.decisions:
         return
-    for decision_name, target in sorted(phase.decisions.items()):
-        if target != phase.on_success:
-            lines.append(f"    +--[{decision_name}]--> {target}")
+    non_success = {k: v for k, v in phase.decisions.items() if v != phase.on_success}
+    if not non_success:
+        return
+    max_len = max(len(k) for k in non_success)
+    for decision_name, target in sorted(non_success.items()):
+        pad = "-" * (max_len - len(decision_name))
+        lines.append(f"    +--[{decision_name}]{pad}--> {target}")
 
 
 def _render_verification_failure_arrow(lines: list[str], phase: PhaseExplanation) -> None:
@@ -176,6 +180,15 @@ def _render_verification_failure_arrow(lines: list[str], phase: PhaseExplanation
     v = phase.verification
     if v.on_failure_route and v.on_failure_route != phase.on_failure:
         lines.append(f"    +--[on_failure_route]--> {v.on_failure_route}")
+
+
+def _render_workflow_fallback_arrow(lines: list[str], phase: PhaseExplanation) -> None:
+    """Render workflow_fallback arrow when declared on this phase."""
+    if phase.workflow_fallback is None:
+        return
+    fallback_target, fallback_note = phase.workflow_fallback
+    note_str = f" ({fallback_note})" if fallback_note else ""
+    lines.append(f"    +--[workflow_fallback]--> {fallback_target}{note_str}")
 
 
 def _render_loopback_arrow(lines: list[str], phase: PhaseExplanation) -> None:
@@ -310,10 +323,12 @@ def render_explanation_ascii(exp: PolicyExplanation) -> str:
         _render_phase_box(lines, phase_name, phase.role)
         _render_decision_branches(lines, phase)
         _render_verification_failure_arrow(lines, phase)
+        _render_workflow_fallback_arrow(lines, phase)
         _render_loopback_arrow(lines, phase)
         _render_terminal_marker(lines, phase)
         if is_fanout:
-            lines.append("<<< REJOIN")
+            lines.append("+================+")
+            lines.append("<<< REJOIN >>>")
         _render_happy_path_arrow(lines, phase, next_phase)
 
     lines.append("")
@@ -325,7 +340,7 @@ def render_explanation_ascii(exp: PolicyExplanation) -> str:
     lines.append("  <<==[loopback]==   loopback to earlier phase")
     lines.append("  +--[workflow_fallback]--> fallback on chain exhaustion")
     lines.append("  >>> FAN_OUT ...    parallel worker fan-out")
-    lines.append("  <<< REJOIN         workers rejoin after fan-out")
+    lines.append("  <<< REJOIN >>>     workers rejoin after fan-out")
 
     return "\n".join(lines)
 

@@ -252,3 +252,153 @@ class TestAsciiFanoutRejoinContract:
         assert fanout_pos < rejoin_pos, (
             ">>> FAN_OUT must appear before <<< REJOIN in the ASCII output"
         )
+
+    def test_rejoin_has_divider_line(self) -> None:
+        """<<< REJOIN is preceded by a divider line +================+ for visual bracketing."""
+        output = render_explanation_ascii(self._fanout_explanation())
+        assert "+================+" in output
+        # Divider must appear before the REJOIN marker
+        divider_pos = output.index("+================+")
+        rejoin_pos = output.index("<<< REJOIN")
+        assert divider_pos < rejoin_pos, (
+            "+================+ divider must appear before <<< REJOIN marker"
+        )
+
+
+class TestAsciiWorkflowFallbackContract:
+    """Workflow fallback arrow: +--[workflow_fallback]--> target."""
+
+    def _fallback_explanation(self) -> PolicyExplanation:
+        from ralph.policy.explain import PhaseExplanation, PolicyExplanation  # noqa: PLC0415
+
+        work = PhaseExplanation(
+            name="work",
+            role="execution",
+            drain="work",
+            chain="work_chain",
+            agents=["claude"],
+            max_retries=1,
+            skip_invocation=False,
+            on_success="done",
+            on_failure=None,
+            on_loopback=None,
+            bypass_routes={},
+            decisions={},
+            loop_policy=None,
+            commit_policy=None,
+            terminal_outcome=None,
+            is_entry=True,
+            is_terminal=False,
+            workflow_fallback=("fallback_phase", "agents exhausted"),
+        )
+        done = _make_phase(
+            "done",
+            role="terminal",
+            terminal_outcome="success",
+            is_terminal=True,
+        )
+        fallback_phase = _make_phase(
+            "fallback_phase",
+            on_success="done",
+        )
+        return PolicyExplanation(
+            entry_phase="work",
+            terminal_phase="done",
+            phases=[work, done, fallback_phase],
+            terminal_outcomes=[
+                TerminalOutcomeExplanation(phase="done", outcome="success")
+            ],
+            recovery=_minimal_recovery(),
+        )
+
+    def test_workflow_fallback_arrow_present(self) -> None:
+        """Phase with workflow_fallback renders +--[workflow_fallback]--> target."""
+        output = render_explanation_ascii(self._fallback_explanation())
+        assert "+--[workflow_fallback]-->" in output
+
+    def test_workflow_fallback_shows_target(self) -> None:
+        """Workflow fallback arrow includes the target phase name."""
+        output = render_explanation_ascii(self._fallback_explanation())
+        assert "+--[workflow_fallback]--> fallback_phase" in output
+
+    def test_workflow_fallback_shows_note(self) -> None:
+        """Workflow fallback arrow includes the optional note when set."""
+        output = render_explanation_ascii(self._fallback_explanation())
+        assert "(agents exhausted)" in output
+
+    def test_workflow_fallback_without_note(self) -> None:
+        """Workflow fallback arrow without note renders correctly (no parentheses)."""
+        from ralph.policy.explain import PhaseExplanation, PolicyExplanation  # noqa: PLC0415
+
+        work = PhaseExplanation(
+            name="work",
+            role="execution",
+            drain="work",
+            chain="work_chain",
+            agents=["claude"],
+            max_retries=1,
+            skip_invocation=False,
+            on_success="done",
+            on_failure=None,
+            on_loopback=None,
+            bypass_routes={},
+            decisions={},
+            loop_policy=None,
+            commit_policy=None,
+            terminal_outcome=None,
+            is_entry=True,
+            is_terminal=False,
+            workflow_fallback=("fallback_phase", None),
+        )
+        done = _make_phase("done", role="terminal", terminal_outcome="success", is_terminal=True)
+        exp = PolicyExplanation(
+            entry_phase="work",
+            terminal_phase="done",
+            phases=[work, done],
+            terminal_outcomes=[TerminalOutcomeExplanation(phase="done", outcome="success")],
+            recovery=_minimal_recovery(),
+        )
+        output = render_explanation_ascii(exp)
+        assert "+--[workflow_fallback]--> fallback_phase" in output
+        assert "(" not in output.split("+--[workflow_fallback]-->")[1].split("\n")[0]
+
+
+class TestAsciiDecisionAlignment:
+    """Decision branches are padded/aligned to the longest decision label."""
+
+    def _decision_explanation(self) -> PolicyExplanation:
+        analysis = _make_phase(
+            "analysis",
+            role="analysis",
+            on_success="done",
+            on_loopback="rework",
+            decisions={"completed": "done", "request_changes": "rework", "failed": "rework"},
+            is_entry=True,
+        )
+        rework = _make_phase("rework", on_success="analysis")
+        done = _make_phase("done", role="terminal", terminal_outcome="success", is_terminal=True)
+        return PolicyExplanation(
+            entry_phase="analysis",
+            terminal_phase="done",
+            phases=[analysis, rework, done],
+            terminal_outcomes=[TerminalOutcomeExplanation(phase="done", outcome="success")],
+            recovery=_minimal_recovery(),
+        )
+
+    def test_decisions_are_aligned(self) -> None:
+        """All decision arrows end with --> at the same column."""
+        output = render_explanation_ascii(self._decision_explanation())
+        lines = output.split("\n")
+        # Diagram decision lines are indented with 4 spaces; legend lines have 2-space indent
+        decision_lines = [
+            line for line in lines
+            if line.startswith("    +--[") and "-->" in line
+            and "workflow_fallback" not in line
+        ]
+        assert len(decision_lines) >= 2  # noqa: PLR2004
+        # Find the position of '-->' in each line
+        arrow_positions = [line.index("-->") for line in decision_lines]
+        assert len(set(arrow_positions)) == 1, (
+            f"Decision arrows should be aligned but got positions: {arrow_positions}\n"
+            + "\n".join(decision_lines)
+        )
