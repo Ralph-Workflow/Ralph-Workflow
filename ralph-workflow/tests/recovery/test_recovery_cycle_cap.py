@@ -7,7 +7,6 @@ from pathlib import Path
 
 import pytest
 
-from ralph.config.enums import PHASE_DEVELOPMENT
 from ralph.pipeline.effects import ExitFailureEffect
 from ralph.pipeline.state import AgentChainState, PipelineState
 from ralph.policy.loader import load_policy
@@ -27,8 +26,8 @@ _MIN_REASON_LEN = 20
 
 def _make_state(agents: list[str], cycle_count: int = 0) -> PipelineState:
     return PipelineState(
-        phase=PHASE_DEVELOPMENT,
-        dev_chain=AgentChainState(agents=agents, current_index=0, retries=0),
+        phase="development",
+        phase_chains={"development": AgentChainState(agents=agents, current_index=0, retries=0)},
         recovery_cycle_count=cycle_count,
         recovery_cycle_cap=_CYCLE_CAP,
     )
@@ -49,7 +48,7 @@ def test_env_failure_does_not_increment_cycle_count() -> None:
     new_state, effects, _ = controller.handle(
         state,
         ConnectionError("network unreachable"),
-        phase=PHASE_DEVELOPMENT,
+        phase="development",
         agent="claude",
     )
 
@@ -59,7 +58,7 @@ def test_env_failure_does_not_increment_cycle_count() -> None:
 
 def test_agent_failure_chain_exhaustion_increments_cycle_count() -> None:
     """Agent chain exhaustion increments recovery_cycle_count."""
-    registry = AgentBudgetRegistry().set_budget(PHASE_DEVELOPMENT, "claude", max_retries=1)
+    registry = AgentBudgetRegistry().set_budget("development", "claude", max_retries=1)
     controller = RecoveryController(
         cycle_cap=10, budget_registry=registry, policy_bundle=_minimal_policy_bundle()
     )
@@ -68,7 +67,7 @@ def test_agent_failure_chain_exhaustion_increments_cycle_count() -> None:
     new_state, _, _ = controller.handle(
         state,
         _AgentInactivityTimeoutError("idle"),
-        phase=PHASE_DEVELOPMENT,
+        phase="development",
         agent="claude",
     )
 
@@ -77,7 +76,7 @@ def test_agent_failure_chain_exhaustion_increments_cycle_count() -> None:
 
 def test_cycle_cap_exceeded_emits_exit_failure_effect() -> None:
     """When recovery_cycle_count >= cap, an ExitFailureEffect is produced."""
-    registry = AgentBudgetRegistry().set_budget(PHASE_DEVELOPMENT, "claude", max_retries=1)
+    registry = AgentBudgetRegistry().set_budget("development", "claude", max_retries=1)
     controller = RecoveryController(
         cycle_cap=_CYCLE_CAP, budget_registry=registry, policy_bundle=_minimal_policy_bundle()
     )
@@ -87,7 +86,7 @@ def test_cycle_cap_exceeded_emits_exit_failure_effect() -> None:
     _new_state, effects, _ = controller.handle(
         state,
         _AgentInactivityTimeoutError("idle timeout again"),
-        phase=PHASE_DEVELOPMENT,
+        phase="development",
         agent="claude",
     )
 

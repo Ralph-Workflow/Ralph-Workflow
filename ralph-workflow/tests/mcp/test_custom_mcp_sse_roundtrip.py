@@ -28,7 +28,7 @@ _EXPECTED_TRANSPORT_COUNT = len(
     [AgentTransport.CLAUDE, AgentTransport.CODEX, AgentTransport.OPENCODE]
 )
 
-pytestmark = pytest.mark.timeout_seconds(20)
+pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(20)]
 
 
 @contextmanager

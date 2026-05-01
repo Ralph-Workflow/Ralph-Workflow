@@ -40,6 +40,8 @@ def _make_snapshot(  # noqa: PLR0913
     last_error: str | None = None,
     workers: tuple[WorkerSnapshot, ...] = (),
     plan_risks: tuple[str, ...] = (),
+    is_terminal_success: bool = True,
+    is_terminal_failure: bool = False,
 ) -> PipelineSnapshot:
     return PipelineSnapshot(
         phase=phase,
@@ -68,6 +70,8 @@ def _make_snapshot(  # noqa: PLR0913
         plan_current_step=3,
         plan_risks=plan_risks,
         decision_log=decision_log,
+        is_terminal_success=is_terminal_success,
+        is_terminal_failure=is_terminal_failure,
     )
 
 
@@ -85,7 +89,15 @@ def test_render_success_title_and_plan_summary() -> None:
 
 
 def test_render_failure_uses_failed_title() -> None:
-    text = _render_plain(_make_snapshot(phase="failed", last_error="boom", pr_url=None))
+    text = _render_plain(
+        _make_snapshot(
+            phase="failed",
+            last_error="boom",
+            pr_url=None,
+            is_terminal_success=False,
+            is_terminal_failure=True,
+        )
+    )
     assert "Pipeline Failed" in text
     assert "boom" in text
 

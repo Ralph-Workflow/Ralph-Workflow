@@ -27,24 +27,28 @@ drain = "planning"
 artifact_type = "plan"
 decision_vocabulary = []
 prompt_template = "planning.jinja"
+markdown_summary_path = ".agent/PLAN.md"
 
 [artifacts.development_output]
 drain = "development"
 artifact_type = "development_result"
 decision_vocabulary = []
 prompt_template = "developer_iteration.jinja"
+markdown_summary_path = ".agent/DEVELOPMENT_RESULT.md"
 
 [artifacts.review_output]
 drain = "review"
 artifact_type = "issues"
 decision_vocabulary = []
 prompt_template = "review.jinja"
+markdown_summary_path = ".agent/ISSUES.md"
 
 [artifacts.fix_output]
 drain = "fix"
 artifact_type = "fix_result"
 decision_vocabulary = []
 prompt_template = "fix_mode.jinja"
+markdown_summary_path = ".agent/FIX_RESULT.md"
 
 # ---------------------------------------------------------------------------
 # Development analysis decision
@@ -59,6 +63,7 @@ decision_vocabulary = [
     "failed",
 ]
 prompt_template = "development_analysis.jinja"
+markdown_summary_path = ".agent/DEVELOPMENT_ANALYSIS_DECISION.md"
 
 # ---------------------------------------------------------------------------
 # Review analysis decision
@@ -73,6 +78,7 @@ decision_vocabulary = [
     "failed",
 ]
 prompt_template = "review_analysis.jinja"
+markdown_summary_path = ".agent/REVIEW_ANALYSIS_DECISION.md"
 
 # ---------------------------------------------------------------------------
 # Development commit artifact
@@ -83,6 +89,7 @@ drain = "development_commit"
 artifact_type = "commit_message"
 decision_vocabulary = []
 prompt_template = "development_commit_message.jinja"
+artifact_json_path = ".agent/tmp/commit_message.json"
 
 # ---------------------------------------------------------------------------
 # Review commit artifact
@@ -93,3 +100,4 @@ drain = "review_commit"
 artifact_type = "commit_message"
 decision_vocabulary = []
 prompt_template = "commit_message.jinja"
+artifact_json_path = ".agent/tmp/commit_message.json"

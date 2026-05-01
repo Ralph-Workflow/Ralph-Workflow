@@ -446,7 +446,8 @@ class PlainLogRenderer:
         if not snapshot.analysis_phase or not snapshot.analysis_decision:
             return []
 
-        if snapshot.analysis_phase in ("development_analysis", "review_analysis"):
+        # Skip analysis display for analysis-role phases (their decisions go to the log)
+        if snapshot.current_phase_role == "analysis":
             return []
 
         reason = f" — {_sanitize(snapshot.analysis_reason)}" if snapshot.analysis_reason else ""
@@ -462,7 +463,7 @@ class PlainLogRenderer:
     def _decision_log_lines(self, snapshot: PipelineSnapshot, timestamp: str) -> list[Text]:
         if snapshot.decision_log:
             return []
-        if snapshot.phase in ("development_analysis", "review_analysis"):
+        if snapshot.current_phase_role == "analysis":
             return []
         if self._emitted_empty_decision_log:
             return []
@@ -486,7 +487,7 @@ class PlainLogRenderer:
         return texts
 
     def _result_lines(self, snapshot: PipelineSnapshot, timestamp: str) -> list[Text]:
-        if snapshot.phase == "failed" and snapshot.last_error:
+        if snapshot.is_terminal_failure and snapshot.last_error:
             return [
                 self._build_line(
                     timestamp,
@@ -495,7 +496,7 @@ class PlainLogRenderer:
                     f"[failure] {_sanitize(snapshot.last_error)}",
                 )
             ]
-        if snapshot.phase != "complete":
+        if not snapshot.is_terminal_success:
             return []
 
         texts = [self._build_line(timestamp, "SUCCESS", "META", "[result] pipeline complete")]

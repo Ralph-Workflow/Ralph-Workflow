@@ -132,17 +132,3 @@ class AnalysisDecision(StrEnum):
 # ---------------------------------------------------------------------------
 
 PipelinePhase = str
-
-# Well-known phase name constants. These match the default pipeline.toml.
-# User-defined phases from a custom pipeline.toml can use any string value.
-PHASE_PLANNING: PipelinePhase = "planning"
-PHASE_DEVELOPMENT: PipelinePhase = "development"
-PHASE_DEVELOPMENT_ANALYSIS: PipelinePhase = "development_analysis"
-PHASE_DEVELOPMENT_COMMIT: PipelinePhase = "development_commit"
-PHASE_REVIEW: PipelinePhase = "review"
-PHASE_REVIEW_ANALYSIS: PipelinePhase = "review_analysis"
-PHASE_FIX: PipelinePhase = "fix"
-PHASE_REVIEW_COMMIT: PipelinePhase = "review_commit"
-PHASE_COMPLETE: PipelinePhase = "complete"
-PHASE_FAILED: PipelinePhase = "failed"
-PHASE_INTERRUPTED: PipelinePhase = "interrupted"

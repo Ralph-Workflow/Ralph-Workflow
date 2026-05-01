@@ -38,7 +38,7 @@ class PhaseFailureEvent:
     This event carries a recoverable flag that determines how the reducer
     processes the failure:
     - recoverable=True: routes through _handle_agent_failure retry/fallback logic
-    - recoverable=False: routes directly to PHASE_FAILED (terminal failure)
+    - recoverable=False: routes directly to the terminal failure phase
 
     Attributes:
         phase: Name of the phase that generated this event.

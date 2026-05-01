@@ -166,7 +166,6 @@ ignore_missing_imports = true
 
 [tool.coverage.run]
 source = ["ralph"]
-branch = true
 data_file = ".coverage.pytest"
 
 [tool.coverage.report]

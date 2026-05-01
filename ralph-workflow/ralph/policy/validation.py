@@ -197,7 +197,6 @@ def _validate_analysis_phase(
 
     if not isinstance(phase_def, PhaseDefinition) or not isinstance(bundle, PolicyBundle):
         return
-    from ralph.pipeline.state import PipelineState  # noqa: PLC0415
 
     if phase_def.loop_policy is None:
         errors.append(
@@ -206,15 +205,12 @@ def _validate_analysis_phase(
         )
     else:
         field = phase_def.loop_policy.iteration_state_field
-        known_fields = PipelineState.known_loop_iteration_fields()
-        # Accept legacy built-in fields OR any counter declared in pipeline.loop_counters
-        if field not in known_fields and field not in bundle.pipeline.loop_counters:
+        # All loop counters must be declared in pipeline.loop_counters
+        if field not in bundle.pipeline.loop_counters:
             errors.append(
                 f"phases.{phase_name}.loop_policy.iteration_state_field: "
-                f"'{field}' is not a known PipelineState counter field and is not "
-                f"declared in pipeline.loop_counters. "
-                f"Known built-in fields: {sorted(known_fields)}. "
-                f"Add [loop_counters.{field}] to pipeline.toml to declare a custom counter."
+                f"'{field}' is not declared in pipeline.loop_counters. "
+                f"Add [loop_counters.{field}] to pipeline.toml to declare this counter."
             )
     if not phase_def.decisions:
         errors.append(
@@ -362,7 +358,7 @@ def _validate_verification_phase(
 
     verification-role phases must declare:
     - verification.block: the gating policy (kind, gate_for, on_failure_route)
-    - verification.kind: one of 'artifact', 'make_target', 'none'
+    - verification.kind: one of 'artifact', 'none'
     - verification.gate_for: one of 'advancement', 'completion', 'release'
     - verification.on_failure_route: either None or a known phase/terminal pseudo-phase
     """
@@ -379,10 +375,13 @@ def _validate_verification_phase(
         return
 
     kind = phase_def.verification.kind
-    if kind not in ("artifact", "make_target", "none"):
+    if kind not in ("artifact", "none"):
         errors.append(
             f"phases.{phase_name}.verification.kind: must be one of "
-            f"'artifact', 'make_target', 'none' (got '{kind}')"
+            f"'artifact', 'none' (got '{kind}'). "
+            f"Note: 'make_target' has been removed; use kind='artifact' with a "
+            f"verification artifact or kind='none'. "
+            f"See docs/sphinx/policy-driven-overhaul-migration.md."
         )
 
     gate_for = phase_def.verification.gate_for
@@ -394,13 +393,15 @@ def _validate_verification_phase(
 
     on_failure_route = phase_def.verification.on_failure_route
     if on_failure_route is not None:
-        ts = policy.terminal_states()
         known_phases = sorted(policy.phases.keys())
-        if on_failure_route not in ts and on_failure_route not in policy.phases:
+        if on_failure_route not in policy.phases:
             errors.append(
                 f"phases.{phase_name}.verification.on_failure_route: "
-                f"'{on_failure_route}' is not a known phase or terminal pseudo-phase. "
-                f"Known phases: {known_phases}"
+                f"'{on_failure_route}' is not a declared phase. "
+                f"Declare a phase with role='terminal' and terminal_outcome='failure' "
+                f"and reference it here. "
+                f"Known phases: {known_phases}. "
+                f"See docs/sphinx/policy-driven-overhaul-migration.md."
             )
 
 
@@ -410,18 +411,31 @@ def _validate_recovery_failed_route(
 ) -> None:
     """Validate that recovery.failed_route is consistent with declared terminal phases.
 
-    failed_route must be 'failed', 'phase_failed', 'exit_failure', or reference
-    a phase that exists in the pipeline. These pseudo-phases are always valid.
+    failed_route must reference a phase declared in pipeline.phases (preferably one
+    with role='terminal' and terminal_outcome='failure'). The legacy pseudo-phases
+    'phase_failed', 'exit_failure', and the deprecated bare 'failed' alias are no
+    longer accepted when 'failed' is not an explicitly declared phase.
     """
     failed_route = policy.recovery.failed_route
-    if failed_route in ("failed", "phase_failed", "exit_failure"):
+    if failed_route in ("phase_failed", "exit_failure"):
+        errors.append(
+            f"recovery.failed_route: '{failed_route}' is no longer supported. "
+            f"Declare a terminal failure phase with role='terminal' and "
+            f"terminal_outcome='failure' and reference it via recovery.failed_route "
+            f"(and optionally recovery.terminal_failure_phase). "
+            f"See docs/sphinx/policy-driven-overhaul-migration.md."
+        )
         return
-    # Must reference a known phase
+    # 'failed' is no longer accepted as an undeclared pseudo-phase alias.
+    # Declare a phase with role='terminal' and terminal_outcome='failure' and
+    # set recovery.failed_route to that phase name.
     if failed_route not in policy.phases:
         errors.append(
             f"recovery.failed_route: '{failed_route}' "
-            f"is not a known phase. Must be 'failed', 'phase_failed', 'exit_failure', or "
-            f"a phase defined in pipeline.phases. Known phases: {sorted(policy.phases.keys())}"
+            f"is not a declared phase. Must reference a phase defined in pipeline.phases "
+            f"(with role='terminal' and terminal_outcome='failure'). "
+            f"Known phases: {sorted(policy.phases.keys())}. "
+            f"See docs/sphinx/policy-driven-overhaul-migration.md."
         )
 
 
@@ -459,6 +473,129 @@ def _validate_reachability(policy: PipelinePolicy, errors: list[str]) -> None:
             f"'{policy.entry_phase}'): {unreachable}. "
             f"Remove these phases or add transitions leading to them."
         )
+
+
+def _validate_no_legacy_phase_constants(
+    policy: PipelinePolicy,
+    errors: list[str],
+) -> None:
+    """Validate that the policy does not rely on removed legacy pseudo-phase constants.
+
+    Flags phases that are named after deprecated pseudo-phase tokens but are not
+    properly declared as terminal phases.
+
+    Each error includes the field path, the offending value, and a migration hint.
+    """
+    for phase_name in ("phase_failed", "exit_failure"):
+        if phase_name in policy.phases:
+            phase_def = policy.phases[phase_name]
+            if phase_def.role != "terminal" or phase_def.terminal_outcome != "failure":
+                errors.append(
+                    f"phases.{phase_name}: this name is a legacy pseudo-phase token. "
+                    f"If you intended a terminal failure phase, set role='terminal' and "
+                    f"terminal_outcome='failure'. "
+                    f"See docs/sphinx/policy-driven-overhaul-migration.md."
+                )
+
+
+def _validate_post_commit_routes_complete(
+    policy: PipelinePolicy,
+    errors: list[str],
+) -> None:
+    """Validate that budget-tracked commit phases declare all three post_commit_route states.
+
+    When a commit-role phase increments a budget-tracking counter, it must declare
+    post_commit_routes for all three budget_states (remaining, exhausted, no_review)
+    so the runtime always has an unambiguous route after commit regardless of budget.
+    """
+    required_states = {"remaining", "exhausted", "no_review"}
+
+    for phase_name, phase_def in policy.phases.items():
+        if phase_def.role != "commit" or phase_def.commit_policy is None:
+            continue
+        counter = phase_def.commit_policy.increments_counter
+        if not counter or counter == "none":
+            continue
+        counter_cfg = policy.budget_counters.get(counter)
+        if counter_cfg is None or not counter_cfg.tracks_budget:
+            continue
+
+        declared_states = {
+            r.when.budget_state
+            for r in policy.post_commit_routes
+            if r.when.phase == phase_name
+        }
+        missing = required_states - declared_states
+        if missing:
+            errors.append(
+                f"phases.{phase_name}: increments budget-tracking counter '{counter}' "
+                f"but post_commit_routes do not cover all budget states. "
+                f"Missing: {sorted(missing)}. "
+                f"Add [[post_commit_routes]] entries with when.phase='{phase_name}' "
+                f"for each missing budget_state. "
+                f"See docs/sphinx/policy-driven-overhaul-migration.md."
+            )
+
+
+def _validate_terminal_failure_phase_declared(
+    policy: PipelinePolicy,
+    errors: list[str],
+) -> None:
+    """Validate that a terminal-failure phase exists when failures can occur.
+
+    When any phase declares on_failure routing or verification.on_failure_route,
+    some phase with role='terminal' and terminal_outcome='failure' must exist
+    so the runtime has a policy-declared destination for failures rather than
+    falling back to a hidden 'failed' alias.
+    """
+    has_failure_route = any(
+        phase_def.transitions.on_failure is not None
+        or (
+            phase_def.verification is not None
+            and phase_def.verification.on_failure_route is not None
+        )
+        for phase_def in policy.phases.values()
+    )
+    if not has_failure_route:
+        return
+
+    has_terminal_failure = any(
+        phase_def.role == "terminal" and phase_def.terminal_outcome == "failure"
+        for phase_def in policy.phases.values()
+    )
+    if not has_terminal_failure:
+        errors.append(
+            "Policy declares on_failure or verification.on_failure_route transitions "
+            "but no phase has role='terminal' and terminal_outcome='failure'. "
+            "Add a terminal failure phase so the runtime routes failures to a "
+            "policy-declared destination instead of a hidden built-in fallback. "
+            "See docs/sphinx/policy-driven-overhaul-migration.md."
+        )
+
+
+def _validate_review_phase_outcome_complete(
+    policy: PipelinePolicy,
+    errors: list[str],
+) -> None:
+    """Validate that review-role phases have bypass_routes covering their clean_outcome.
+
+    When a review phase declares clean_outcome, that value must be a key in
+    bypass_routes so the runtime can route on a clean review without falling
+    back to hidden semantics.
+    """
+    for phase_name, phase_def in policy.phases.items():
+        if phase_def.role != "review":
+            continue
+        if phase_def.clean_outcome is None:
+            continue
+        if phase_def.clean_outcome not in phase_def.bypass_routes:
+            errors.append(
+                f"phases.{phase_name}: clean_outcome='{phase_def.clean_outcome}' "
+                f"is not a key in bypass_routes. "
+                f"Add bypass_routes.{phase_def.clean_outcome} = '<target_phase>' "
+                f"so the runtime can route on a clean review. "
+                f"See docs/sphinx/policy-driven-overhaul-migration.md."
+            )
 
 
 def validate_policy_completeness(bundle: PolicyBundle) -> None:
@@ -517,8 +654,20 @@ def validate_policy_completeness(bundle: PolicyBundle) -> None:
     # Validate recovery.failed_route consistency
     _validate_recovery_failed_route(policy, errors)
 
+    # Validate that legacy pseudo-phase tokens are not used
+    _validate_no_legacy_phase_constants(policy, errors)
+
     # Validate that every declared phase is reachable from the entry point
     _validate_reachability(policy, errors)
+
+    # Validate that budget-tracked commit phases cover all three budget states
+    _validate_post_commit_routes_complete(policy, errors)
+
+    # Validate that review phases have bypass routes covering their clean_outcome
+    _validate_review_phase_outcome_complete(policy, errors)
+
+    # Validate that a terminal-failure phase is declared when failures can occur
+    _validate_terminal_failure_phase_declared(policy, errors)
 
     if errors:
         raise PolicyValidationError(

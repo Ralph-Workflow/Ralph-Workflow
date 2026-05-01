@@ -203,7 +203,7 @@ def render_analysis_decision(
             _render_text_block(
                 f"ANALYSIS: {drain}",
                 markdown,
-                "development_analysis",
+                "analysis",
                 display_context.console,
             )
             return
@@ -217,7 +217,7 @@ def render_analysis_decision(
         lines.append(f"  reason: {summary.reason}")
     _render_titled_lines(
         f"ANALYSIS: {drain}",
-        "development_analysis",
+        "analysis",
         lines,
         display_context.console,
     )
@@ -239,18 +239,18 @@ def render_commit_message(
     _render_text_block(
         "COMMIT MESSAGE",
         message,
-        "development_commit",
+        "commit",
         display_context.console,
         indent=True,
     )
 
 
 def _analysis_handoff_artifact_type(drain: str) -> str | None:
-    mapping = {
-        "development_analysis": "development_analysis_decision",
-        "review_analysis": "review_analysis_decision",
-    }
-    return mapping.get(drain)
+    # Derive artifact type using the {drain}_decision naming convention.
+    # Canonical drains (development_analysis, review_analysis) have registered
+    # handoff paths; custom drain names fall through to read_latest_analysis_decision
+    # when no handoff file is found.
+    return f"{drain}_decision"
 
 
 def render_development_artifact(

@@ -17,34 +17,30 @@ from __future__ import annotations
 import json
 from contextlib import suppress
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from git import InvalidGitRepositoryError
 from loguru import logger
 
 from ralph.git.operations import GitOperationError, get_head_sha, has_commits_since
-from ralph.phases import PhaseContext, register_handler
-from ralph.phases.analysis import parse_analysis_decision_status
+
+if TYPE_CHECKING:
+    from ralph.phases import PhaseContext
 from ralph.phases.artifacts import (
     PhaseArtifactError,
     load_phase_artifact,
     unwrap_phase_artifact_content,
 )
-from ralph.phases.required_artifacts import (
-    ISSUES_ARTIFACT_JSON_PATH,
-    REVIEW_ANALYSIS_DECISION_JSON_PATH,
-    build_retry_hint,
-    retry_hint_path,
-)
+from ralph.phases.required_artifacts import build_retry_hint, retry_hint_path
 from ralph.pipeline.effects import Effect, InvokeAgentEffect, PreparePromptEffect
 from ralph.pipeline.events import (
-    AnalysisDecisionEvent,
     Event,
     PhaseFailureEvent,
     PipelineEvent,
 )
 
 REVIEW_BASELINE_MARKER = ".agent/tmp/last_reviewed_sha.txt"
-REVIEW_ISSUES_ARTIFACT_PATH = ISSUES_ARTIFACT_JSON_PATH
+REVIEW_ISSUES_ARTIFACT_PATH = ".agent/artifacts/issues.json"
 
 
 def _workspace_absolute_path(ctx: PhaseContext, rel: str) -> str | None:
@@ -107,7 +103,6 @@ def _write_retry_hint(ctx: PhaseContext, phase: str, detail: str) -> None:
         ctx.workspace.write(hint_path, hint)
 
 
-@register_handler("review")
 def handle_review(effect: Effect, ctx: PhaseContext) -> list[Event]:
     """Handle the review phase.
 
@@ -172,55 +167,4 @@ def handle_review(effect: Effect, ctx: PhaseContext) -> list[Event]:
     return []
 
 
-@register_handler("review_analysis")
-def handle_review_analysis(effect: Effect, ctx: PhaseContext) -> list[Event]:
-    """Handle the review analysis step.
 
-    After the review agent completes, reads the review analysis artifact
-    to determine routing via policy-declared decision routes.
-
-    Args:
-        effect: The effect that triggered this phase.
-        ctx: Phase context with workspace and policy.
-
-    Returns:
-        List of events to emit.
-    """
-    if isinstance(effect, InvokeAgentEffect):
-        artifact_path = REVIEW_ANALYSIS_DECISION_JSON_PATH
-        if not ctx.workspace.exists(artifact_path):
-            detail = (
-                "Missing required analysis artifact at "
-                f"{artifact_path}; the agent must submit "
-                "review_analysis_decision before declaring completion"
-            )
-            logger.warning(
-                "Review analysis completed without required artifact at {}",
-                artifact_path,
-            )
-            _write_retry_hint(ctx, "review_analysis", detail)
-            return [
-                PhaseFailureEvent(
-                    phase="review_analysis",
-                    reason=detail,
-                    recoverable=True,
-                    retry_in_session=True,
-                )
-            ]
-
-        status = parse_analysis_decision_status(ctx, "review_analysis")
-        if status is None:
-            logger.warning("Review analysis decision could not be determined")
-            return [
-                PhaseFailureEvent(
-                    phase="review_analysis",
-                    reason="Unroutable review analysis decision",
-                    recoverable=True,
-                    retry_in_session=True,
-                )
-            ]
-
-        logger.info("Review analysis decision: {}", status)
-        return [AnalysisDecisionEvent(phase="review_analysis", decision=status)]
-
-    return []

@@ -13,7 +13,6 @@ import json
 from typing import TYPE_CHECKING
 
 from ralph.agents.invoke import AgentInactivityTimeoutError, OpenCodeResumableExitError
-from ralph.config.enums import PHASE_DEVELOPMENT
 from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.runner import _build_agent_recovery_plan
 
@@ -24,7 +23,7 @@ if TYPE_CHECKING:
 def _make_effect(
     *,
     agent_name: str = "opencode",
-    phase: str = PHASE_DEVELOPMENT,
+    phase: str = "development",
     prompt_file: str = "PROMPT.md",
 ) -> InvokeAgentEffect:
     return InvokeAgentEffect(

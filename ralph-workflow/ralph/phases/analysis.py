@@ -14,16 +14,24 @@ only — it is NOT used for reducer routing.
 
 from __future__ import annotations
 
+import json
+from contextlib import suppress
 from typing import TYPE_CHECKING
 
 from loguru import logger
 
+from ralph.mcp.artifacts.plan import PLAN_ARTIFACT_PATH, PlanArtifactValidationError, is_noop_plan
 from ralph.phases.artifacts import (
+    PhaseArtifactError,
     decision_vocabulary_for_drain,
     load_phase_artifact,
     unwrap_phase_artifact_content,
 )
-from ralph.phases.required_artifacts import REQUIRED_ARTIFACTS
+from ralph.phases.required_artifacts import (
+    build_retry_hint,
+    resolve_required_artifact,
+    retry_hint_path,
+)
 from ralph.pipeline.effects import Effect, InvokeAgentEffect, PreparePromptEffect
 from ralph.pipeline.events import (
     AnalysisDecisionEvent,
@@ -63,7 +71,7 @@ def parse_analysis_decision_status(
     """
     policy_phase_name = phase_name if phase_name is not None else drain_name
     artifact_type = f"{drain_name}_decision"
-    ra = REQUIRED_ARTIFACTS.get(drain_name)
+    ra = resolve_required_artifact(ctx.artifacts_policy, drain=drain_name)
     artifact_path = ra.json_path if ra is not None else f".agent/artifacts/{artifact_type}.json"
 
     if not ctx.workspace.exists(artifact_path):
@@ -110,6 +118,28 @@ def parse_analysis_decision_status(
         return None
 
 
+def _has_noop_plan(ctx: PhaseContext) -> bool:
+    """Return True if a noop plan artifact is present in the workspace.
+
+    Used to short-circuit analysis phases when the upstream execution produced
+    no meaningful work (e.g. a planning artifact that declares skip=True).
+    Only fires when the plan artifact exists and is parseable as a noop.
+    """
+    if not ctx.workspace.exists(PLAN_ARTIFACT_PATH):
+        return False
+    with suppress(
+        json.JSONDecodeError,
+        PlanArtifactValidationError,
+        PhaseArtifactError,
+        ValueError,
+        Exception,
+    ):
+        wrapper = load_phase_artifact(ctx.workspace, PLAN_ARTIFACT_PATH)
+        raw = unwrap_phase_artifact_content(wrapper, expected_type="plan")
+        return is_noop_plan(raw)
+    return False
+
+
 def handle_generic_analysis_phase(effect: Effect, ctx: PhaseContext) -> list[Event]:
     """Generic handler for analysis-role phases registered via register_role_handlers.
 
@@ -136,7 +166,13 @@ def handle_generic_analysis_phase(effect: Effect, ctx: PhaseContext) -> list[Eve
         phase_name = str(effect.phase)
         drain_name = effect.drain if effect.drain is not None else phase_name
 
-        ra = REQUIRED_ARTIFACTS.get(drain_name)
+        # Short-circuit when the upstream execution was a noop. No analysis
+        # decision artifact will have been produced for a noop plan.
+        if _has_noop_plan(ctx):
+            logger.info("Analysis phase '{}': plan is a no-op — skipping analysis", phase_name)
+            return [PipelineEvent.ANALYSIS_SUCCESS]
+
+        ra = resolve_required_artifact(ctx.artifacts_policy, drain=drain_name)
         artifact_path = (
             ra.json_path if ra is not None
             else f".agent/artifacts/{drain_name}_decision.json"
@@ -152,6 +188,11 @@ def handle_generic_analysis_phase(effect: Effect, ctx: PhaseContext) -> list[Eve
                 phase_name,
                 artifact_path,
             )
+            with suppress(Exception):
+                ctx.workspace.write(
+                    retry_hint_path(phase_name),
+                    build_retry_hint(phase_name, detail),
+                )
             return [
                 PhaseFailureEvent(
                     phase=phase_name,

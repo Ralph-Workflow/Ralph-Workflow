@@ -1,7 +1,7 @@
 """Phase transition display for Ralph pipeline.
 
 Renders visually distinct banners and separators at pipeline phase boundaries
-so the user can easily follow the flow of planning \u2192 development \u2192 review \u2192 \u2026
+so the user can easily follow the flow of planning → development → review → …
 """
 
 from __future__ import annotations
@@ -12,8 +12,12 @@ from typing import TYPE_CHECKING, Literal
 from rich.rule import Rule
 from rich.text import Text
 
+from ralph.display.context import DisplayContext, make_display_context
+
 if TYPE_CHECKING:
-    from ralph.display.context import DisplayContext
+    from rich.console import Console
+
+    from ralph.policy.models import PipelinePolicy
 
 _PHASE_STYLES: dict[str, str] = {
     "planning": "theme.phase.planning",
@@ -27,6 +31,12 @@ _PHASE_STYLES: dict[str, str] = {
     "fix": "theme.phase.fix",
     "complete": "theme.phase.complete",
     "failed": "theme.phase.failed",
+    # Role-name aliases used by policy-driven callers (role → closest canonical style)
+    "execution": "theme.phase.development",
+    "analysis": "theme.phase.development_analysis",
+    "verification": "theme.phase.development_analysis",
+    "terminal": "theme.phase.complete",
+    "fanout_join": "theme.phase.development",
 }
 
 _MAJOR_TRANSITIONS: frozenset[tuple[str, str]] = frozenset(
@@ -47,30 +57,74 @@ _MAJOR_TRANSITIONS: frozenset[tuple[str, str]] = frozenset(
 )
 
 _TRANSITION_DESCRIPTIONS: dict[tuple[str, str], str] = {
-    ("planning", "development"): "Plan ready \u2014 starting development",
-    ("development", "development_analysis"): "Development complete \u2014 analyzing results",
-    ("development_analysis", "development_commit"): "Analysis approved \u2014 committing changes",
+    ("planning", "development"): "Plan ready — starting development",
+    ("development", "development_analysis"): "Development complete — analyzing results",
+    ("development_analysis", "development_commit"): "Analysis approved — committing changes",
     ("development_analysis", "development"): (
-        "Analysis requested changes \u2014 returning to development"
+        "Analysis requested changes — returning to development"
     ),
-    ("development_commit", "review"): "Changes committed \u2014 starting review",
-    ("development_commit", "planning"): "Commit complete \u2014 re-planning needed",
-    ("review", "review_analysis"): "Review complete \u2014 analyzing findings",
+    ("development_commit", "review"): "Changes committed — starting review",
+    ("development_commit", "planning"): "Commit complete — re-planning needed",
+    ("review", "review_analysis"): "Review complete — analyzing findings",
     (
         "review_analysis",
         "review_commit",
-    ): "Review analysis approved \u2014 committing review changes",
-    ("review_analysis", "fix"): "Review found issues \u2014 routing to fix",
-    ("fix", "review"): "Fix complete \u2014 re-reviewing",
-    ("review_commit", "complete"): "Review changes committed \u2014 pipeline complete",
-    ("review_commit", "development"): "Review committed \u2014 continuing development",
-    ("review_commit", "planning"): "Review committed \u2014 re-planning needed",
+    ): "Review analysis approved — committing review changes",
+    ("review_analysis", "fix"): "Review found issues — routing to fix",
+    ("fix", "review"): "Fix complete — re-reviewing",
+    ("review_commit", "complete"): "Review changes committed — pipeline complete",
+    ("review_commit", "development"): "Review committed — continuing development",
+    ("review_commit", "planning"): "Review committed — re-planning needed",
     ("review", "complete"): "All reviews passed",
 }
 
+# Role-pair based major transitions (used when pipeline_policy is available)
+_MAJOR_ROLE_PAIRS: frozenset[tuple[str, str]] = frozenset(
+    {
+        ("execution", "analysis"),
+        ("analysis", "commit"),
+        ("commit", "review"),
+        ("review", "analysis"),
+        ("analysis", "execution"),
+        ("commit", "execution"),
+        ("commit", "terminal"),
+        ("review", "terminal"),
+        ("execution", "terminal"),
+    }
+)
 
-def _phase_style(phase: str) -> str:
-    """Return the rich style string for a phase name."""
+# Role-pair based transition descriptions
+_ROLE_PAIR_DESCRIPTIONS: dict[tuple[str, str], str] = {
+    ("execution", "analysis"): "Work complete — analyzing results",
+    ("analysis", "commit"): "Analysis approved — committing changes",
+    ("analysis", "execution"): "Analysis requested changes — returning to work",
+    ("commit", "review"): "Changes committed — starting review",
+    ("commit", "execution"): "Commit complete — continuing work",
+    ("review", "analysis"): "Review complete — analyzing findings",
+    ("analysis", "review"): "Analysis approved — reviewing changes",
+    ("commit", "terminal"): "Commit complete — pipeline finished",
+    ("review", "terminal"): "Review complete — pipeline finished",
+}
+
+
+def _phase_style(phase: str, pipeline_policy: PipelinePolicy | None = None) -> str:
+    """Return the rich style string for a phase name or role.
+
+    When pipeline_policy is provided, the style is derived from the phase's
+    declared role so renamed phases render with the correct color. Falls back
+    to the name-based _PHASE_STYLES dict (which also accepts role names) when
+    no policy is available or the phase is not in the policy.
+    """
+    if pipeline_policy is not None:
+        phase_def = pipeline_policy.phases.get(phase)
+        if phase_def is not None:
+            role = phase_def.role or ""
+            terminal_outcome = phase_def.terminal_outcome
+            if role == "terminal" and terminal_outcome == "failure":
+                return "theme.phase.failed"
+            style = _PHASE_STYLES.get(role)
+            if style is not None:
+                return style
     return _PHASE_STYLES.get(phase, "theme.text.muted")
 
 
@@ -152,54 +206,124 @@ def _render_transition_banner(
         c.print(Rule(style=options.style))
 
 
-def show_phase_transition(
+def _resolve_transition_meta(
+    from_phase: str,
+    to_phase: str,
+    pipeline_policy: PipelinePolicy | None,
+) -> tuple[str | None, bool]:
+    """Return (description, is_major) for a phase transition.
+
+    Uses role-pair tables when policy is available, name-pair tables otherwise.
+    """
+    description: str | None = None
+    is_major: bool
+    if pipeline_policy is not None:
+        phases = pipeline_policy.phases
+        from_def = phases.get(from_phase)
+        to_def = phases.get(to_phase)
+        if from_def is not None and to_def is not None:
+            from_role = from_def.role or ""
+            to_role = to_def.role or ""
+            description = _ROLE_PAIR_DESCRIPTIONS.get((from_role, to_role))
+            is_major = (from_role, to_role) in _MAJOR_ROLE_PAIRS
+        else:
+            is_major = (from_phase, to_phase) in _MAJOR_TRANSITIONS
+    else:
+        is_major = (from_phase, to_phase) in _MAJOR_TRANSITIONS
+    if description is None:
+        description = _TRANSITION_DESCRIPTIONS.get((from_phase, to_phase))
+    return description, is_major
+
+
+def _render_major_transition(  # noqa: PLR0913
+    c: Console,
+    from_label: str,
+    to_label: str,
+    style: str,
+    description: str | None,
+    context: dict[str, object] | None,
+    mode: str,
+    arrow: str,
+) -> None:
+    """Render a major (prominent) phase transition banner."""
+    if mode == "compact":
+        slim_title = Text()
+        slim_title.append(f"{from_label} → {to_label}", style=style)
+        c.print(Rule(title=slim_title, style=style))
+        return
+    if mode != "medium":
+        c.print()
+    c.print(Rule(style=style))
+    banner = Text()
+    banner.append(f"  {from_label}", style="theme.text.muted")
+    banner.append(f" {arrow} ", style="theme.text.emphasis")
+    banner.append(to_label, style=style)
+    if context:
+        detail = "  ".join(f"{k}={v}" for k, v in context.items())
+        banner.append(f"  ({detail})", style="theme.text.muted")
+    c.print(banner)
+    if description:
+        c.print(Text(f"  {description}", style="theme.text.dim_italic"))
+    c.print(Rule(style=style))
+
+
+def _resolve_console(
+    console: Console | None,
+    display_context: DisplayContext | None,
+) -> Console:
+    if display_context is not None:
+        return display_context.console
+    if console is not None:
+        return console
+    raise TypeError("console or display_context is required")
+
+
+def show_phase_transition(  # noqa: PLR0913
     from_phase: str,
     to_phase: str,
     *,
     context: dict[str, object] | None = None,
-    display_context: DisplayContext,
+    console: Console | None = None,
+    display_context: DisplayContext | None = None,
+    pipeline_policy: PipelinePolicy | None = None,
 ) -> None:
     """Display a visual transition between pipeline phases.
 
-    Major transitions (e.g. planning \u2192 development) get a prominent banner.
-    Minor transitions (e.g. development \u2192 development_analysis) get a simple rule.
+    Major transitions (e.g. planning → development) get a prominent banner.
+    Minor transitions (e.g. development → development_analysis) get a simple rule.
 
-    Args:
-        from_phase: The phase being left.
-        to_phase: The phase being entered.
-        context: Optional key-value context to display alongside the transition.
-        display_context: DisplayContext providing console and mode.
+    When pipeline_policy is provided, styles and descriptions are derived from
+    declared phase roles so renamed phases render correctly.
     """
-    style = _phase_style(to_phase)
+    c = _resolve_console(console, display_context)
+    ctx = display_context if display_context is not None else make_display_context(console=c)
+
+    style = _phase_style(to_phase, pipeline_policy)
     from_label = _phase_label(from_phase)
     to_label = _phase_label(to_phase)
-    description = _TRANSITION_DESCRIPTIONS.get((from_phase, to_phase))
-
-    is_major = (from_phase, to_phase) in _MAJOR_TRANSITIONS
+    description, is_major = _resolve_transition_meta(from_phase, to_phase, pipeline_policy)
 
     if is_major:
-        banner_options = _BannerOptions(
-            from_label=from_label,
-            to_label=to_label,
-            description=description,
-            context=context,
-            style=style,
+        _render_major_transition(
+            c,
+            from_label,
+            to_label,
+            style,
+            description,
+            context,
+            ctx.mode,
+            ctx.glyph_for("arrow"),
         )
-        _render_transition_banner(
-            display_context,
-            banner_options,
-            is_major=True,
-        )
-    else:
-        # Minor transition: simple rule with title
-        if display_context.mode != "compact":
-            display_context.console.print()
-        title = Text()
-        arrow = display_context.glyph_for("arrow")
-        title.append(f"{from_label} {arrow} {to_label}")
-        if description:
-            title.append(f"  {description}", style="theme.text.dim_italic")
-        display_context.console.print(Rule(title=title, style=style))
+        return
+
+    if ctx.mode != "compact":
+        c.print()
+    title = Text()
+    arrow = ctx.glyph_for("arrow")
+    title.append(f"{from_label} {arrow} {to_label}")
+    if description:
+        title.append(f"  {description}", style="theme.text.dim_italic")
+    c.print(Rule(title=title, style=style))
 
 
 @dataclass(frozen=True)
@@ -211,10 +335,8 @@ class PhaseStartContext:
     reviewer_pass: int | None = None
     total_reviewer_passes: int | None = None
     agent_name: str | None = None
-    development_analysis_iteration: int | None = None
-    max_development_analysis_iterations: int | None = None
-    review_analysis_iteration: int | None = None
-    max_review_analysis_iterations: int | None = None
+    analysis_iteration: int | None = None
+    max_analysis_iterations: int | None = None
 
 
 def _build_analysis_suffix(
@@ -225,27 +347,25 @@ def _build_analysis_suffix(
     return f" [analysis {iteration + 1}/{max_iterations}]"
 
 
-def show_phase_start(
+def show_phase_start(  # noqa: PLR0913
     phase: str,
     *,
     ctx: PhaseStartContext | None = None,
     agent_name: str | None = None,
-    display_context: DisplayContext,
+    console: Console | None = None,
+    display_context: DisplayContext | None = None,
+    pipeline_policy: PipelinePolicy | None = None,
 ) -> None:
-    """Display the start of a pipeline phase.
-
-    Args:
-        phase: Phase name.
-        ctx: Optional context with iteration/reviewer counters.
-        agent_name: Name of the agent being invoked (shortcut; also settable via ctx).
-        display_context: DisplayContext providing the console for output.
-    """
-    c = display_context.console
-    style = _phase_style(phase)
+    """Display the start of a pipeline phase."""
+    c = _resolve_console(console, display_context)
+    effective_ctx = (
+        display_context if display_context is not None else make_display_context(console=c)
+    )
+    style = _phase_style(phase, pipeline_policy)
     label = _phase_label(phase)
 
     line = Text()
-    start_glyph = display_context.glyph_for("start")
+    start_glyph = effective_ctx.glyph_for("start")
     line.append(f"{start_glyph} ", style=style)
     line.append(label, style=style)
 
@@ -261,23 +381,12 @@ def show_phase_start(
                 style="theme.text.muted",
             )
         if (
-            phase == "development_analysis"
-            and ctx.development_analysis_iteration is not None
-            and ctx.max_development_analysis_iterations is not None
+            ctx.analysis_iteration is not None
+            and ctx.max_analysis_iterations is not None
         ):
             suffix = _build_analysis_suffix(
-                ctx.development_analysis_iteration,
-                ctx.max_development_analysis_iterations,
-            )
-            line.append(suffix, style="theme.text.muted")
-        if (
-            phase == "review_analysis"
-            and ctx.review_analysis_iteration is not None
-            and ctx.max_review_analysis_iterations is not None
-        ):
-            suffix = _build_analysis_suffix(
-                ctx.review_analysis_iteration,
-                ctx.max_review_analysis_iterations,
+                ctx.analysis_iteration,
+                ctx.max_analysis_iterations,
             )
             line.append(suffix, style="theme.text.muted")
         effective_agent = ctx.agent_name or agent_name
@@ -308,25 +417,13 @@ def show_phase_start_from_state(
     *,
     display_context: DisplayContext,
 ) -> None:
-    """Display phase start using counters extracted from a pipeline state object.
-
-    Args:
-        state: Any object with optional iteration/reviewer/analysis counter attributes.
-        phase: Phase name to display.
-        display_context: DisplayContext providing the console for output.
-    """
+    """Display phase start using counters extracted from a pipeline state object."""
     ctx = PhaseStartContext(
         iteration=_get_int_attr(state, "iteration"),
         total_iterations=_get_int_attr(state, "total_iterations"),
         reviewer_pass=_get_int_attr(state, "reviewer_pass"),
         total_reviewer_passes=_get_int_attr(state, "total_reviewer_passes"),
         agent_name=_get_str_attr(state, "agent_name"),
-        development_analysis_iteration=_get_int_attr(state, "development_analysis_iteration"),
-        max_development_analysis_iterations=_get_int_attr(
-            state, "max_development_analysis_iterations"
-        ),
-        review_analysis_iteration=_get_int_attr(state, "review_analysis_iteration"),
-        max_review_analysis_iterations=_get_int_attr(state, "max_review_analysis_iterations"),
     )
     show_phase_start(phase, ctx=ctx, display_context=display_context)
 
@@ -335,24 +432,23 @@ def show_phase_complete(
     phase: str,
     *,
     decision: str | None = None,
-    display_context: DisplayContext,
+    console: Console | None = None,
+    display_context: DisplayContext | None = None,
+    pipeline_policy: PipelinePolicy | None = None,
 ) -> None:
-    """Display phase completion with an optional decision outcome.
-
-    Args:
-        phase: Phase that completed.
-        decision: Optional decision (e.g. 'approved', 'needs changes').
-        display_context: DisplayContext providing the console for output.
-    """
-    c = display_context.console
-    style = _phase_style(phase)
+    """Display phase completion with an optional decision outcome."""
+    c = _resolve_console(console, display_context)
+    effective_ctx = (
+        display_context if display_context is not None else make_display_context(console=c)
+    )
+    style = _phase_style(phase, pipeline_policy)
     label = _phase_label(phase)
 
     line = Text()
-    success_glyph = display_context.glyph_for("success")
+    success_glyph = effective_ctx.glyph_for("success")
     line.append(f"{success_glyph} ", style=style)
     line.append(f"{label} complete", style=style)
     if decision is not None:
-        line.append(f" \u2014 {decision}", style="theme.text.emphasis")
+        line.append(f" — {decision}", style="theme.text.emphasis")
 
     c.print(line)

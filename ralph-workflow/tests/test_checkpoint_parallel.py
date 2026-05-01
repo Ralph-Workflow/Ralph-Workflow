@@ -36,7 +36,7 @@ def test_round_trip_with_workers() -> None:
         "task-b": _ws("task-b", WorkerStatus.FAILED),
         "task-c": _ws("task-c", WorkerStatus.RUNNING),
     }
-    state = PipelineState(work_units=work_units, worker_states=worker_states)
+    state = PipelineState(phase="planning", work_units=work_units, worker_states=worker_states)
 
     restored = PipelineState.model_validate_json(state.model_dump_json())
 
@@ -49,7 +49,7 @@ def test_round_trip_with_workers() -> None:
 
 def test_round_trip_empty_parallel_fields() -> None:
     """PipelineState with empty work_units and worker_states round-trips cleanly."""
-    state = PipelineState(work_units=(), worker_states={})
+    state = PipelineState(phase="planning", work_units=(), worker_states={})
 
     restored = PipelineState.model_validate_json(state.model_dump_json())
 
@@ -60,6 +60,7 @@ def test_round_trip_empty_parallel_fields() -> None:
 def test_old_checkpoint_without_parallel_fields() -> None:
     """Legacy JSON missing work_units + worker_states loads with default empty values."""
     state = PipelineState(
+        phase="planning",
         work_units=(_wu("u1"), _wu("u2")),
         worker_states={"u1": _ws("u1", WorkerStatus.SUCCEEDED)},
     )
@@ -89,7 +90,9 @@ def test_worker_status_enum_serializes() -> None:
 @pytest.mark.parametrize("status", list(WorkerStatus))
 def test_worker_status_values_round_trip(status: WorkerStatus) -> None:
     """Each WorkerStatus value serializes to its string name and deserialises back."""
-    state = PipelineState(worker_states={"w": WorkerState(unit_id="w", status=status)})
+    state = PipelineState(
+        phase="planning", worker_states={"w": WorkerState(unit_id="w", status=status)}
+    )
 
     restored = PipelineState.model_validate_json(state.model_dump_json())
 

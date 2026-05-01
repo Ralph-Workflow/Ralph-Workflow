@@ -310,6 +310,30 @@ RECOVERY POLICY
 ======================================================================
 ```
 
+## Why this routed here
+
+Every routing decision the pipeline makes traces back to a single declared field in
+`pipeline.toml`. The explanation output makes that trace explicit.
+
+| Runtime event | Explanation sentence source |
+|---------------|-----------------------------|
+| Analysis decision → phase | `phases.<name>.decisions.<decision>.target` |
+| Terminal pipeline outcome | `phases.<name>.terminal_outcome` |
+| Review bypass | `phases.<name>.bypass_routes.<outcome>` |
+| Loop cap exhausted | `phases.<name>.loop_policy.max_iterations` |
+| Verification failure | `phases.<name>.verification.on_failure_route` |
+| Parallel execution rejected | Absence of `phases.<name>.parallelization` |
+| Post-commit route | `[[post_commit_routes]]` entry matching phase and budget_state |
+
+When a run routes somewhere unexpected, run `ralph --explain-policy` and find the
+corresponding `Explanation:` sentence. The sentence names the exact policy field that
+produced the route. If the field is wrong, update `pipeline.toml`; if the field is
+correct but the runtime ignores it, that is a bug.
+
+To confirm which specific decision produced a route, check the run transcript for the
+phase's artifact decision or review outcome, then cross-reference against the matching
+`Explanation:` sentence in the explanation output.
+
 ## Why this is useful
 
 Reading the explanation output answers "what will Ralph Workflow do?" without reading

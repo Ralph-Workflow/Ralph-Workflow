@@ -66,6 +66,7 @@ Ralph Workflow
    :caption: Reference
 
    reference
+   agents
 
 .. toctree::
    :maxdepth: 2

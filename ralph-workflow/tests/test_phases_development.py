@@ -1,4 +1,4 @@
-"""Tests for ralph/phases/development.py — development phase handler."""
+"""Tests for the development execution phase handled by handle_execution_phase."""
 
 from __future__ import annotations
 
@@ -10,10 +10,9 @@ from unittest.mock import MagicMock
 
 from rich.console import Console
 
-from ralph.phases.development import (
-    handle_development,
-    handle_development_analysis,
-)
+from ralph.phases import PhaseContext
+from ralph.phases.analysis import handle_generic_analysis_phase
+from ralph.phases.execution import handle_execution_phase
 from ralph.pipeline.effects import Effect, InvokeAgentEffect, PreparePromptEffect
 from ralph.pipeline.events import AnalysisDecisionEvent, PhaseFailureEvent, PipelineEvent
 from ralph.policy.loader import load_policy
@@ -35,25 +34,37 @@ _VALID_DEV_RESULT_JSON = json.dumps({
 
 
 class TestHandleDevelopment:
-    def _make_context(self) -> MagicMock:
-        return MagicMock()
+    @classmethod
+    def _make_context(cls, workspace=None, console=None) -> PhaseContext:
+        with tempfile.TemporaryDirectory() as tmp:
+            policy = load_policy(Path(tmp) / ".agent")
+        ws = workspace if workspace is not None else MagicMock()
+        return PhaseContext.construct(
+            workspace=ws,
+            registry=object(),
+            chain_manager=object(),
+            pipeline_policy=policy.pipeline,
+            artifacts_policy=policy.artifacts,
+            agents_policy=object(),
+            console=console,
+        )
 
     def test_prepare_prompt_effect_returns_prompt_prepared(self) -> None:
-        effect = MagicMock(spec=PreparePromptEffect)
-        effect.iteration = 1
+        effect = PreparePromptEffect(phase="development", iteration=1)
         ctx = self._make_context()
 
-        result = handle_development(effect, ctx)
+        result = handle_execution_phase(effect, ctx)
         assert result == [PipelineEvent.PROMPT_PREPARED]
 
     def test_invoke_agent_effect_without_plan_artifact_returns_phase_failure_recoverable(
         self,
     ) -> None:
-        effect = MagicMock(spec=InvokeAgentEffect)
-        ctx = self._make_context()
-        ctx.workspace.exists.return_value = False
+        workspace = MagicMock()
+        workspace.exists.return_value = False
+        ctx = self._make_context(workspace)
 
-        result = handle_development(effect, ctx)
+        effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="dev.txt")
+        result = handle_execution_phase(effect, ctx)
         assert len(result) == 1
         event = result[0]
         assert isinstance(event, PhaseFailureEvent)
@@ -64,14 +75,16 @@ class TestHandleDevelopment:
     def test_invoke_agent_effect_with_invalid_work_units_returns_phase_failure_recoverable(
         self,
     ) -> None:
-        effect = MagicMock(spec=InvokeAgentEffect)
-        ctx = self._make_context()
-        ctx.workspace.exists.side_effect = lambda path: path == ".agent/artifacts/plan.json"
-        ctx.workspace.read.return_value = (
+        workspace = MagicMock()
+        workspace.exists.side_effect = lambda path: path == ".agent/artifacts/plan.json"
+        workspace.read.return_value = (
             '{"work_units":[{"unit_id":"u1","description":"A","allowed_directories":["src"],'
             '"dependencies":["missing"]}]}'
         )
-        result = handle_development(effect, ctx)
+        ctx = self._make_context(workspace)
+
+        effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="dev.txt")
+        result = handle_execution_phase(effect, ctx)
         assert len(result) == 1
         event = result[0]
         assert isinstance(event, PhaseFailureEvent)
@@ -79,47 +92,50 @@ class TestHandleDevelopment:
         assert event.recoverable is True
 
     def test_invoke_agent_effect_with_valid_work_units_returns_agent_success(self) -> None:
-        effect = MagicMock(spec=InvokeAgentEffect)
-        ctx = self._make_context()
-        ctx.workspace.exists.side_effect = lambda path: path in {
+        workspace = MagicMock()
+        workspace.exists.side_effect = lambda path: path in {
             ".agent/artifacts/plan.json",
             ".agent/artifacts/development_result.json",
         }
-        ctx.workspace.read.side_effect = lambda path: (
+        workspace.read.side_effect = lambda path: (
             _VALID_DEV_RESULT_JSON
             if path == ".agent/artifacts/development_result.json"
             else _VALID_PLAN_JSON
         )
+        ctx = self._make_context(workspace)
 
-        result = handle_development(effect, ctx)
+        effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="dev.txt")
+        result = handle_execution_phase(effect, ctx)
         assert result == [PipelineEvent.AGENT_SUCCESS]
 
     def test_invoke_agent_effect_succeeds_even_when_console_is_present(self) -> None:
-        effect = MagicMock(spec=InvokeAgentEffect)
-        ctx = self._make_context()
-        ctx.workspace.exists.side_effect = lambda path: path in {
+        workspace = MagicMock()
+        workspace.exists.side_effect = lambda path: path in {
             ".agent/artifacts/plan.json",
             ".agent/artifacts/development_result.json",
         }
-        ctx.workspace.read.side_effect = lambda path: (
+        workspace.read.side_effect = lambda path: (
             _VALID_DEV_RESULT_JSON
             if path == ".agent/artifacts/development_result.json"
             else _VALID_PLAN_JSON
         )
-        ctx.console = Console(file=StringIO(), force_terminal=True, color_system=None, width=120)
+        console = Console(file=StringIO(), force_terminal=True, color_system=None, width=120)
+        ctx = self._make_context(workspace, console=console)
 
-        result = handle_development(effect, ctx)
+        effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="dev.txt")
+        result = handle_execution_phase(effect, ctx)
         assert result == [PipelineEvent.AGENT_SUCCESS]
 
     def test_invoke_agent_effect_without_development_result_returns_phase_failure(
         self,
     ) -> None:
-        effect = MagicMock(spec=InvokeAgentEffect)
-        ctx = self._make_context()
-        ctx.workspace.exists.side_effect = lambda path: path == ".agent/artifacts/plan.json"
-        ctx.workspace.read.return_value = _VALID_PLAN_JSON
+        workspace = MagicMock()
+        workspace.exists.side_effect = lambda path: path == ".agent/artifacts/plan.json"
+        workspace.read.return_value = _VALID_PLAN_JSON
+        ctx = self._make_context(workspace)
 
-        result = handle_development(effect, ctx)
+        effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="dev.txt")
+        result = handle_execution_phase(effect, ctx)
         assert len(result) == 1
         event = result[0]
         assert isinstance(event, PhaseFailureEvent)
@@ -131,7 +147,7 @@ class TestHandleDevelopment:
         effect = MagicMock(spec=Effect)
         ctx = self._make_context()
 
-        result = handle_development(effect, ctx)
+        result = handle_execution_phase(effect, ctx)
         assert result == []
 
 
@@ -147,6 +163,8 @@ class TestHandleDevelopmentAnalysis:
 
     def _mock_invoke_effect(self) -> MagicMock:
         effect = MagicMock(spec=InvokeAgentEffect)
+        effect.phase = "development_analysis"
+        effect.drain = None
         return effect
 
     def test_proceed_decision_returns_analysis_decision_event(self) -> None:
@@ -156,7 +174,7 @@ class TestHandleDevelopmentAnalysis:
         ctx.workspace.read.return_value = '{"status": "completed"}'
         ctx.artifacts_policy.artifacts = {}
 
-        result = handle_development_analysis(effect, ctx)
+        result = handle_generic_analysis_phase(effect, ctx)
         assert len(result) == 1
         assert isinstance(result[0], AnalysisDecisionEvent)
         assert result[0].decision == "completed"
@@ -168,7 +186,7 @@ class TestHandleDevelopmentAnalysis:
         ctx.workspace.read.return_value = '{"status": "unknown"}'
         ctx.artifacts_policy.artifacts = {}
 
-        result = handle_development_analysis(effect, ctx)
+        result = handle_generic_analysis_phase(effect, ctx)
         assert len(result) == 1
         assert isinstance(result[0], PhaseFailureEvent)
         assert result[0].recoverable is True
@@ -180,7 +198,7 @@ class TestHandleDevelopmentAnalysis:
         ctx.workspace.read.return_value = '{"status": "revise"}'
         ctx.artifacts_policy.artifacts = {}
 
-        result = handle_development_analysis(effect, ctx)
+        result = handle_generic_analysis_phase(effect, ctx)
         assert len(result) == 1
         assert isinstance(result[0], PhaseFailureEvent)
         assert result[0].recoverable is True
@@ -192,7 +210,7 @@ class TestHandleDevelopmentAnalysis:
         ctx.workspace.read.return_value = '{"status": "failed"}'
         ctx.artifacts_policy.artifacts = {}
 
-        result = handle_development_analysis(effect, ctx)
+        result = handle_generic_analysis_phase(effect, ctx)
         assert len(result) == 1
         assert isinstance(result[0], AnalysisDecisionEvent)
         assert result[0].decision == "failed"
@@ -204,7 +222,7 @@ class TestHandleDevelopmentAnalysis:
         ctx.workspace.read.return_value = '{"status": "escalate"}'
         ctx.artifacts_policy.artifacts = {}
 
-        result = handle_development_analysis(effect, ctx)
+        result = handle_generic_analysis_phase(effect, ctx)
         assert len(result) == 1
         assert isinstance(result[0], PhaseFailureEvent)
         assert result[0].recoverable is True
@@ -214,7 +232,7 @@ class TestHandleDevelopmentAnalysis:
         ctx = self._make_context()
         ctx.workspace.exists.return_value = False
 
-        result = handle_development_analysis(effect, ctx)
+        result = handle_generic_analysis_phase(effect, ctx)
         assert len(result) == 1
         event = result[0]
         assert isinstance(event, PhaseFailureEvent)
@@ -223,8 +241,8 @@ class TestHandleDevelopmentAnalysis:
         assert "development_analysis_decision" in event.reason
 
     def test_non_invoke_effect_returns_empty_list(self) -> None:
-        effect = MagicMock(spec=PreparePromptEffect)
+        effect = MagicMock(spec=Effect)
         ctx = self._make_context()
 
-        result = handle_development_analysis(effect, ctx)
+        result = handle_generic_analysis_phase(effect, ctx)
         assert result == []

@@ -8,8 +8,8 @@ the handler emits ``COMMIT_SKIPPED`` so the reducer can advance routing without
 incrementing iteration/reviewer_pass counters for a no-op pass.
 
 The generic handle_commit_phase() function works for any phase with role='commit'.
-It is registered via register_role_handlers(policy) at policy-load time, in addition
-to the canonical development_commit/review_commit handlers registered at import time.
+It is registered exclusively via register_role_handlers(policy) at policy-load time
+for all commit-role phases declared in the active pipeline policy.
 """
 
 from __future__ import annotations
@@ -21,11 +21,11 @@ from loguru import logger
 
 from ralph.git.operations import GitOperationError, has_uncommitted_changes
 from ralph.mcp.artifacts.commit_message import COMMIT_MESSAGE_ARTIFACT
-from ralph.phases import PhaseContext, register_handler
-from ralph.pipeline.effects import Effect, InvokeAgentEffect, PreparePromptEffect
+from ralph.pipeline.effects import Effect, InvokeAgentEffect
 from ralph.pipeline.events import PhaseFailureEvent, PipelineEvent
 
 if TYPE_CHECKING:
+    from ralph.phases import PhaseContext
     from ralph.pipeline.events import Event
 
 
@@ -92,23 +92,4 @@ def handle_commit_phase(effect: Effect, ctx: PhaseContext) -> list[Event]:
     return []
 
 
-@register_handler("development_commit")
-def handle_development_commit(effect: Effect, ctx: PhaseContext) -> list[Event]:
-    """Handle the development commit phase."""
-    return handle_commit_phase(effect, ctx)
 
-
-@register_handler("review_commit")
-def handle_review_commit(effect: Effect, ctx: PhaseContext) -> list[Event]:
-    """Handle the review commit phase."""
-    return handle_commit_phase(effect, ctx)
-
-
-def handle_commit(effect: Effect, ctx: PhaseContext) -> list[Event]:
-    """Compatibility wrapper for commit handling.
-
-    Dispatches to the generic commit phase handler for any commit-role phase.
-    """
-    if isinstance(effect, (InvokeAgentEffect, PreparePromptEffect)):
-        return handle_commit_phase(effect, ctx)
-    return []

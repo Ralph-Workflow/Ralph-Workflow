@@ -2,7 +2,7 @@
 
 These tests verify that when a phase handler or agent raises an exception,
 the pipeline converts it to PhaseFailureEvent(recoverable=True) and routes
-through the retry/fallback chain before reaching PHASE_FAILED.
+through the retry/fallback chain before reaching "failed".
 
 This file was added as part of the fix for the bug where the pipeline
 failed with 'Unknown failure' bypassing the retry/fallback chain.
@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import pytest
 
-from ralph.config.enums import PHASE_COMPLETE, PHASE_DEVELOPMENT, PHASE_FAILED
 from ralph.pipeline.effects import Effect, ExitFailureEffect
 from ralph.pipeline.events import PhaseFailureEvent
 from ralph.pipeline.reducer import reduce as reducer_reduce
@@ -27,17 +26,17 @@ _EXPECTED_TOTAL_RETRIES = 6
 def _minimal_policy() -> PipelinePolicy:
     return PipelinePolicy(
         phases={
-            PHASE_DEVELOPMENT: PhaseDefinition(
+            "development": PhaseDefinition(
                 drain="development",
                 transitions=PhaseTransition(
-                    on_success=PHASE_COMPLETE,
-                    on_failure=PHASE_FAILED,
-                    on_loopback=PHASE_DEVELOPMENT,
+                    on_success="complete",
+                    on_failure="failed",
+                    on_loopback="development",
                 ),
             ),
         },
-        entry_phase=PHASE_DEVELOPMENT,
-        terminal_phase=PHASE_COMPLETE,
+        entry_phase="development",
+        terminal_phase="complete",
     )
 
 
@@ -52,16 +51,16 @@ class TestRecoveryFirstBehavior:
     """Regression tests for the recover-first invariant."""
 
     def test_phase_handler_crash_exhausts_retries_then_fallbacks(self) -> None:
-        """A phase that always fails must exhaust retries and fallbacks before PHASE_FAILED.
+        """A phase that always fails must exhaust retries and fallbacks before "failed".
 
         This is the single most important regression guard for the bug where
         the pipeline exited on the first exception instead of walking the full
         retry/fallback chain.
         """
-        # State with a 2-agent dev_chain
+        # State with a 2-agent phase chain
         state = PipelineState(
-            phase=PHASE_DEVELOPMENT,
-            dev_chain=AgentChainState(agents=["claude", "opencode"], current_index=0, retries=0),
+            phase="development",
+            phase_chains={"development": AgentChainState(agents=["claude", "opencode"], current_index=0, retries=0)},  # noqa: E501
         )
 
         # PhaseFailureEvent that simulates a handler crash
@@ -74,14 +73,14 @@ class TestRecoveryFirstBehavior:
         # Agent 0: 3 retries (retries 0->1->2->3)
         for expected_retries in range(1, 4):
             state, effects = _reduce(state, crash_event)
-            assert state.phase == PHASE_DEVELOPMENT
+            assert state.phase == "development"
             assert state.chain_for_phase("development").current_index == 0
             assert state.chain_for_phase("development").retries == expected_retries
             assert effects == []
 
         # 4th crash on agent 0: fallback to agent 1 (retries reset to 0)
         state, effects = _reduce(state, crash_event)
-        assert state.phase == PHASE_DEVELOPMENT
+        assert state.phase == "development"
         assert state.chain_for_phase("development").current_index == 1
         assert state.chain_for_phase("development").retries == 0
         assert state.metrics.total_fallbacks == 1
@@ -90,14 +89,14 @@ class TestRecoveryFirstBehavior:
         # Agent 1: 3 more retries (retries 0->1->2->3)
         for expected_retries in range(1, 4):
             state, effects = _reduce(state, crash_event)
-            assert state.phase == PHASE_DEVELOPMENT
+            assert state.phase == "development"
             assert state.chain_for_phase("development").current_index == 1
             assert state.chain_for_phase("development").retries == expected_retries
             assert effects == []
 
-        # Final crash on agent 1 (chain exhausted): PHASE_FAILED with descriptive reason
+        # Final crash on agent 1 (chain exhausted): "failed" with descriptive reason
         state, effects = _reduce(state, crash_event)
-        assert state.phase == PHASE_FAILED
+        assert state.phase == "failed"
         assert state.last_error is not None
         assert "Phase handler crashed: RuntimeError: boom" in state.last_error
         assert state.last_error != "Unknown failure"
@@ -111,14 +110,14 @@ class TestRecoveryFirstBehavior:
     ) -> None:
         """PhaseFailureEvent with empty reason must still produce a descriptive last_error."""
         state = PipelineState(
-            phase=PHASE_DEVELOPMENT,
-            dev_chain=AgentChainState(agents=["claude"], current_index=0, retries=3),
+            phase="development",
+            phase_chains={"development": AgentChainState(agents=["claude"], current_index=0, retries=3)},  # noqa: E501
         )
         event = PhaseFailureEvent(phase="development", reason="", recoverable=True)
 
         new_state, effects = _reduce(state, event)
 
-        assert new_state.phase == PHASE_FAILED
+        assert new_state.phase == "failed"
         assert new_state.last_error is not None
         assert new_state.last_error != ""
         assert new_state.last_error != "Unknown failure"
@@ -131,14 +130,14 @@ class TestRecoveryFirstBehavior:
     ) -> None:
         """Whitespace-only reason must still produce a descriptive last_error."""
         state = PipelineState(
-            phase=PHASE_DEVELOPMENT,
-            dev_chain=AgentChainState(agents=["claude"], current_index=0, retries=3),
+            phase="development",
+            phase_chains={"development": AgentChainState(agents=["claude"], current_index=0, retries=3)},  # noqa: E501
         )
         event = PhaseFailureEvent(phase="development", reason="   ", recoverable=True)
 
         new_state, effects = _reduce(state, event)
 
-        assert new_state.phase == PHASE_FAILED
+        assert new_state.phase == "failed"
         assert new_state.last_error is not None
         assert new_state.last_error.strip() != ""
         assert new_state.last_error != "Unknown failure"
@@ -199,14 +198,14 @@ class TestRecoveryFirstBehavior:
 def test_phase_failure_recoverable_empty_reason_produces_descriptive_error() -> None:
     """PhaseFailureEvent with empty reason must still produce a descriptive last_error."""
     state = PipelineState(
-        phase=PHASE_DEVELOPMENT,
-        dev_chain=AgentChainState(agents=["claude"], current_index=0, retries=3),
+        phase="development",
+        phase_chains={"development": AgentChainState(agents=["claude"], current_index=0, retries=3)},  # noqa: E501
     )
     event = PhaseFailureEvent(phase="development", reason="", recoverable=True)
 
     new_state, effects = _reduce(state, event)
 
-    assert new_state.phase == PHASE_FAILED
+    assert new_state.phase == "failed"
     assert new_state.last_error is not None
     assert new_state.last_error != ""
     assert new_state.last_error != "Unknown failure"
@@ -218,14 +217,14 @@ def test_phase_failure_recoverable_empty_reason_produces_descriptive_error() -> 
 def test_phase_failure_recoverable_whitespace_reason_produces_descriptive_error() -> None:
     """Whitespace-only reason must still produce a descriptive last_error."""
     state = PipelineState(
-        phase=PHASE_DEVELOPMENT,
-        dev_chain=AgentChainState(agents=["claude"], current_index=0, retries=3),
+        phase="development",
+        phase_chains={"development": AgentChainState(agents=["claude"], current_index=0, retries=3)},  # noqa: E501
     )
     event = PhaseFailureEvent(phase="development", reason="   ", recoverable=True)
 
     new_state, effects = _reduce(state, event)
 
-    assert new_state.phase == PHASE_FAILED
+    assert new_state.phase == "failed"
     assert new_state.last_error is not None
     assert new_state.last_error.strip() != ""
     assert new_state.last_error != "Unknown failure"
@@ -236,15 +235,12 @@ def test_phase_failure_recoverable_whitespace_reason_produces_descriptive_error(
 
 def test_phase_failure_not_recoverable_empty_reason_produces_descriptive_error() -> None:
     """PhaseFailureEvent(recoverable=False) with empty reason produces descriptive error."""
-    state = PipelineState(
-        phase=PHASE_DEVELOPMENT,
-        dev_chain=AgentChainState(agents=["claude"], current_index=0, retries=0),
-    )
+    state = PipelineState(phase="development")
     event = PhaseFailureEvent(phase="development_analysis", reason="", recoverable=False)
 
     new_state, effects = _reduce(state, event)
 
-    assert new_state.phase == PHASE_FAILED
+    assert new_state.phase == "failed"
     assert new_state.last_error is not None
     assert new_state.last_error != ""
     assert new_state.last_error != "Unknown failure"

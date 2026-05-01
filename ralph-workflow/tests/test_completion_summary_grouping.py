@@ -28,6 +28,8 @@ def _make_snapshot(  # noqa: PLR0913
     last_error: str | None = None,
     pr_url: str | None = None,
     plan_risks: tuple[str, ...] = (),
+    is_terminal_success: bool = True,
+    is_terminal_failure: bool = False,
 ) -> PipelineSnapshot:
     return PipelineSnapshot(
         phase=phase,
@@ -56,6 +58,8 @@ def _make_snapshot(  # noqa: PLR0913
         plan_current_step=2,
         plan_risks=plan_risks,
         decision_log=decision_log,
+        is_terminal_success=is_terminal_success,
+        is_terminal_failure=is_terminal_failure,
     )
 
 
@@ -130,7 +134,14 @@ def test_group_contains_pipeline_complete_title() -> None:
 
 
 def test_group_contains_pipeline_failed_title_on_failure() -> None:
-    out = _render_group(_make_snapshot(phase="failed", last_error="crash"))
+    out = _render_group(
+        _make_snapshot(
+            phase="failed",
+            last_error="crash",
+            is_terminal_success=False,
+            is_terminal_failure=True,
+        )
+    )
     assert "Pipeline Failed" in out
 
 

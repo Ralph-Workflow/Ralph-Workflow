@@ -25,6 +25,7 @@ def test_materialize_prompt_for_phase_renders_planning_prompt_to_agent_tmp(tmp_p
         phase="planning",
         workspace=workspace,
         pipeline_policy=policy.pipeline,
+        artifacts_policy=policy.artifacts,
         session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.PLANNING),
         workspace_root=tmp_path,
     )
@@ -139,6 +140,7 @@ def test_materialize_development_phase_surfaces_bare_fallbacks_for_shared_mcp_to
         phase="development",
         workspace=workspace,
         pipeline_policy=policy.pipeline,
+        artifacts_policy=policy.artifacts,
         session_caps=SessionCapabilities.defaults_for_drain(
             SessionDrain.DEVELOPMENT,
             tool_name_prefix="mcp__ralph__",
@@ -168,6 +170,7 @@ def test_materialize_development_prompt_reads_agent_plan_markdown_handoff(
         phase="development",
         workspace=workspace,
         pipeline_policy=policy.pipeline,
+        artifacts_policy=policy.artifacts,
         session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT),
         workspace_root=tmp_path,
     )
@@ -205,6 +208,7 @@ def test_materialize_development_prompt_uses_analysis_feedback_handoff(
         phase="development",
         workspace=workspace,
         pipeline_policy=policy.pipeline,
+        artifacts_policy=policy.artifacts,
         session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT),
         workspace_root=tmp_path,
     )
@@ -240,6 +244,7 @@ def test_materialize_development_analysis_uses_markdown_result_handoff(
         phase="development_analysis",
         workspace=workspace,
         pipeline_policy=policy.pipeline,
+        artifacts_policy=policy.artifacts,
         session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT),
         workspace_root=tmp_path,
     )
@@ -282,6 +287,7 @@ def test_materialize_fix_prompt_uses_markdown_issues_handoff(
         phase="fix",
         workspace=workspace,
         pipeline_policy=policy.pipeline,
+        artifacts_policy=policy.artifacts,
         session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.FIX),
         workspace_root=tmp_path,
     )
@@ -317,6 +323,7 @@ def test_materialize_fix_prompt_uses_review_analysis_feedback_handoff(
         phase="fix",
         workspace=workspace,
         pipeline_policy=policy.pipeline,
+        artifacts_policy=policy.artifacts,
         session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.FIX),
         workspace_root=tmp_path,
     )
@@ -358,6 +365,7 @@ def test_materialize_development_prefers_structured_plan_artifact_over_plan_md(
         phase="development",
         workspace=workspace,
         pipeline_policy=policy.pipeline,
+        artifacts_policy=policy.artifacts,
         session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT),
         workspace_root=tmp_path,
     )
@@ -387,6 +395,7 @@ def test_materialize_planning_prompt_uses_file_reference_for_large_prompt(tmp_pa
         phase="planning",
         workspace=workspace,
         pipeline_policy=policy.pipeline,
+        artifacts_policy=policy.artifacts,
         session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.PLANNING),
         workspace_root=tmp_path,
     )

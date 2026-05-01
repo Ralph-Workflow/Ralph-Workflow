@@ -17,8 +17,6 @@ from rich.text import Text
 from ralph.agents.invoke import AgentInactivityTimeoutError, AgentInvocationError
 from ralph.agents.parsers import AgentOutputLine, ClaudeParser
 from ralph.config.enums import (
-    PHASE_DEVELOPMENT,
-    PHASE_FAILED,
     AgentTransport,
     JsonParserType,
     Verbosity,
@@ -270,12 +268,12 @@ class TestCreateInitialState:
         assert chain is not None
         assert chain.agents == ["codex"]
 
-    def test_initial_state_maps_analysis_phases_to_config_analysis_drain(self) -> None:
+    def test_initial_state_maps_analysis_phases_to_config_drain_by_full_name(self) -> None:
         config = MagicMock()
         config.general.developer_iters = DEVELOPER_ITERATIONS
         config.general.reviewer_reviews = REVIEWER_PASSES
         config.agent_chains = {"analysis_chain": ["config-analysis-agent"]}
-        config.agent_drains = {"analysis": "analysis_chain"}
+        config.agent_drains = {"development_analysis": "analysis_chain"}
         agents_policy = AgentsPolicy(
             agent_chains={"planner_chain": AgentChainConfig(agents=["claude"])},
             agent_drains={"planning": AgentDrainConfig(chain="planner_chain")},
@@ -367,8 +365,8 @@ class TestDetermineEffect:
     def test_failed_phase_returns_prepare_prompt_for_recovery(self) -> None:
         bundle = _load_default_policy_bundle()
         state = PipelineState(
-            phase=PHASE_FAILED,
-            previous_phase=PHASE_DEVELOPMENT,
+            phase="failed_terminal",
+            previous_phase="development",
             last_error="Something went wrong",
             current_drain="development",
         )
@@ -377,7 +375,7 @@ class TestDetermineEffect:
             state, bundle, WorkspaceScope("/tmp/worktree")
         )
         assert isinstance(effect, PreparePromptEffect)
-        assert effect.phase == PHASE_DEVELOPMENT
+        assert effect.phase == "development"
 
     def test_unknown_phase_returns_exit_failure(self) -> None:
         bundle = _load_default_policy_bundle()
@@ -503,12 +501,12 @@ class TestDetermineEffect:
         assert isinstance(effect, InvokeAgentEffect)
         assert effect.agent_name == "claude"
 
-    def test_review_analysis_phase_uses_config_analysis_binding(self) -> None:
+    def test_review_analysis_phase_uses_config_drain_by_full_name(self) -> None:
         bundle = _load_default_policy_bundle()
         state = PipelineState(phase="review_analysis")
         config = _config_with_agents(
             agent_chains={"analysis_chain": ["analysis-agent"]},
-            agent_drains={"analysis": "analysis_chain"},
+            agent_drains={"review_analysis": "analysis_chain"},
         )
 
         effect = runner_module._determine_effect_from_policy(
@@ -520,8 +518,10 @@ class TestDetermineEffect:
     def test_review_analysis_prefers_its_own_bound_chain_over_review_chain(self) -> None:
         state = PipelineState(
             phase="review_analysis",
-            rev_chain=AgentChainState(agents=["reviewer-agent"]),
-            review_analysis_chain=AgentChainState(agents=["analysis-agent"]),
+            phase_chains={
+                "review": AgentChainState(agents=["reviewer-agent"]),
+                "review_analysis": AgentChainState(agents=["analysis-agent"]),
+            },
         )
         bundle = PolicyBundle(
             agents=AgentsPolicy(
@@ -661,7 +661,7 @@ class TestDetermineEffect:
         )
         config = MagicMock()
         config.agent_chains = {"commit_chain": ["ccs/mm"]}
-        config.agent_drains = {"commit": "commit_chain"}
+        config.agent_drains = {"development_commit": "commit_chain"}
 
         effect = runner_module._determine_effect_from_policy(
             state,
@@ -682,6 +682,7 @@ class TestDetermineEffect:
             effect=PreparePromptEffect(phase="development", iteration=0, drain="development"),
             state=state,
             pipeline_policy=bundle.pipeline,
+            artifacts_policy=bundle.artifacts,
             workspace_scope=WorkspaceScope("/tmp/worktree"),
         )
 
@@ -691,9 +692,11 @@ class TestDetermineEffect:
 
 
 def test_phase_output_artifact_paths_use_policy_drains_for_custom_phases() -> None:
+    policy_bundle = _load_default_policy_bundle()
     assert runner_module._phase_output_artifact_paths(
         "feature_analysis",
         drain="development_analysis",
+        policy_bundle=policy_bundle,
     ) == (
         ".agent/artifacts/development_analysis_decision.json",
         ".agent/DEVELOPMENT_ANALYSIS_DECISION.md",
@@ -701,6 +704,7 @@ def test_phase_output_artifact_paths_use_policy_drains_for_custom_phases() -> No
     assert runner_module._phase_output_artifact_paths(
         "feature_commit",
         drain="development_commit",
+        policy_bundle=policy_bundle,
     ) == (
         ".agent/tmp/commit_message.json",
     )
@@ -733,12 +737,13 @@ def test_materialize_agent_prompt_if_needed_prefixes_claude_tools(monkeypatch: M
                 transport=AgentTransport.CLAUDE,
             )
 
+    bundle = _load_default_policy_bundle()
     runner_module._materialize_agent_prompt_if_needed(
         InvokeAgentEffect(agent_name="planner", phase="planning", prompt_file="planning.txt"),
-        MagicMock(),
-        _load_default_policy_bundle().pipeline,
+        MagicMock(spec=["root"]),
+        bundle.pipeline,
+        bundle.artifacts,
         Registry(),
-        WorkspaceScope("/tmp/worktree"),
     )
 
     session_caps = cast("SessionCapabilities", captured["session_caps"])
@@ -1032,7 +1037,7 @@ class TestPipelineRunnerLoop:
         self, monkeypatch
     ) -> None:
         state = PipelineState(
-            phase=PHASE_DEVELOPMENT,
+            phase="development",
             work_units=(WorkUnit(unit_id="unit-a", description="A"),),
             phase_chains={"development": AgentChainState(agents=["claude"])},
         )
@@ -1072,7 +1077,7 @@ class TestPipelineRunnerLoop:
         assert result == 0
         assert saved_states
         recovered_state = saved_states[0]
-        assert recovered_state.phase == PHASE_DEVELOPMENT
+        assert recovered_state.phase == "development"
         assert recovered_state.chain_for_phase("development").retries == 1
         assert recovered_state.last_error is not None
         assert "SystemExit" in recovered_state.last_error
@@ -1080,14 +1085,14 @@ class TestPipelineRunnerLoop:
 
     def test_failed_state_reenters_recovery_loop(self, monkeypatch) -> None:
         state = PipelineState(
-            phase=PHASE_FAILED,
-            previous_phase=PHASE_DEVELOPMENT,
+            phase="failed",
+            previous_phase="development",
             last_error="bad error",
             current_drain="development",
         )
         effects = iter(
             [
-                PreparePromptEffect(phase=PHASE_DEVELOPMENT, iteration=0, drain="development"),
+                PreparePromptEffect(phase="development", iteration=0, drain="development"),
                 ExitSuccessEffect(),
             ]
         )
@@ -1230,7 +1235,7 @@ class TestPipelineRunnerLoop:
     ) -> None:
         planning_state = PipelineState(
             phase="planning",
-            planning_chain=AgentChainState(agents=["claude"], current_index=0, retries=3),
+            phase_chains={"planning": AgentChainState(agents=["claude"], current_index=0, retries=3)},  # noqa: E501
         )
         failed_state = planning_state.copy_with(
             phase="failed",
@@ -1293,7 +1298,7 @@ class TestPipelineRunnerLoop:
                 notify_calls.append(state)
 
         state = PipelineState(
-            phase=PHASE_FAILED,
+            phase="failed",
             previous_phase="planning",
             last_error="pre-failed for seed test",
         )
@@ -1565,6 +1570,7 @@ class TestExecuteAgentEffect:
             ),
             WorkspaceScope(tmp_path),
             display_context=make_display_context(),
+            policy_bundle=_load_default_policy_bundle(),
         )
 
         assert result == PipelineEvent.AGENT_SUCCESS
@@ -2034,7 +2040,7 @@ def test_determine_effect_invokes_commit_agent_when_agent_not_yet_invoked(
     workspace_scope = WorkspaceScope(root=tmp_path, allowed_roots=[tmp_path])
     config = _config_with_agents(
         agent_chains={"commit_chain": ["commit-agent"]},
-        agent_drains={"commit": "commit_chain"},
+        agent_drains={"development_commit": "commit_chain"},
     )
 
     effect = runner_module._determine_effect_from_policy(
@@ -2197,10 +2203,7 @@ class TestPhaseEventAfterAgentRun:
         output = io.StringIO()
         console = Console(file=output, force_terminal=False, color_system=None, width=120)
         display = ParallelDisplay(make_display_context(console=console, env={}))
-        policy_bundle = MagicMock()
-        policy_bundle.pipeline = MagicMock()
-        policy_bundle.agents = MagicMock()
-        policy_bundle.artifacts = MagicMock()
+        policy_bundle = _load_default_policy_bundle()
         workspace = MagicMock()
         workspace.absolute_path.side_effect = lambda path: str(tmp_path / path)
 
@@ -2952,8 +2955,8 @@ class TestPhaseHandlerExceptionGuard:
     ) -> None:
         """PhaseFailureEvent(recoverable=True) should route through reducer retry."""
         state = PipelineState(
-            phase=PHASE_DEVELOPMENT,
-            dev_chain=AgentChainState(agents=["claude"], current_index=0, retries=0),
+            phase="development",
+            phase_chains={"development": AgentChainState(agents=["claude"], current_index=0, retries=0)},  # noqa: E501
         )
         event = PhaseFailureEvent(
             phase="development",
@@ -2965,17 +2968,14 @@ class TestPhaseHandlerExceptionGuard:
 
         # Should increment retries, not fail
         assert new_state.chain_for_phase("development").retries == 1
-        assert new_state.phase == PHASE_DEVELOPMENT
+        assert new_state.phase == "development"
         assert effects == []
 
     def test_phase_failure_event_not_recoverable_transitions_to_failed(
         self,
     ) -> None:
-        """PhaseFailureEvent(recoverable=False) should transition to PHASE_FAILED."""
-        state = PipelineState(
-            phase=PHASE_DEVELOPMENT,
-            dev_chain=AgentChainState(agents=["claude"], current_index=0, retries=0),
-        )
+        """PhaseFailureEvent(recoverable=False) should transition to "failed"."""
+        state = PipelineState(phase="development")
         event = PhaseFailureEvent(
             phase="development_analysis",
             reason="Analysis decision: FAILURE",
@@ -2984,7 +2984,7 @@ class TestPhaseHandlerExceptionGuard:
 
         new_state, _effects = reducer_reduce(state, event, _load_default_policy_bundle().pipeline)
 
-        assert new_state.phase == PHASE_FAILED
+        assert new_state.phase == "failed_terminal"
         assert new_state.last_error is not None
         assert "FAILURE" in new_state.last_error
 

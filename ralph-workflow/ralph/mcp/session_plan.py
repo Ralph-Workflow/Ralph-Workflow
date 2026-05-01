@@ -23,6 +23,8 @@ from ralph.mcp.transport.common import (
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from ralph.policy.models import AgentsPolicy
+
 
 @dataclass(frozen=True)
 class SessionMcpPlan:
@@ -35,6 +37,7 @@ def build_session_mcp_plan(
     transport: AgentTransport | None,
     drain: str,
     workspace_path: Path | None,
+    agents_policy: AgentsPolicy | None = None,
 ) -> SessionMcpPlan:
     """Build the runtime MCP plan for a new agent session.
 
@@ -43,7 +46,7 @@ def build_session_mcp_plan(
     tool registry matches what the agent is expected to see.
     """
 
-    capabilities = _base_capabilities_for_drain(drain)
+    capabilities = _base_capabilities_for_drain(drain, agents_policy)
     mcp_config = load_mcp_config(
         config_path=(
             (workspace_path / ".agent" / "mcp.toml")
@@ -52,7 +55,7 @@ def build_session_mcp_plan(
         )
     )
 
-    drain_class = drain_class_for_session(drain)
+    drain_class = drain_class_for_session(drain, agents_policy)
     is_commit = drain_class.value == "commit"
 
     if mcp_config.web_search.enabled and not is_commit:
@@ -80,8 +83,11 @@ def build_session_mcp_plan(
     )
 
 
-def _base_capabilities_for_drain(drain: str) -> set[str]:
-    drain_class = drain_class_for_session(drain)
+def _base_capabilities_for_drain(
+    drain: str,
+    agents_policy: AgentsPolicy | None = None,
+) -> set[str]:
+    drain_class = drain_class_for_session(drain, agents_policy)
     base = {
         "workspace.read",
         "git.status_read",

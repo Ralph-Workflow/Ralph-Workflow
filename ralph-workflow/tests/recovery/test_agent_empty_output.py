@@ -5,7 +5,6 @@ from __future__ import annotations
 import tempfile
 from pathlib import Path
 
-from ralph.config.enums import PHASE_DEVELOPMENT, PHASE_FAILED
 from ralph.pipeline.state import AgentChainState, PipelineState
 from ralph.policy.loader import load_policy
 from ralph.recovery.budget import AgentBudgetRegistry
@@ -21,8 +20,8 @@ def _minimal_policy_bundle():
 
 def _make_state(agents: list[str]) -> PipelineState:
     return PipelineState(
-        phase=PHASE_DEVELOPMENT,
-        dev_chain=AgentChainState(agents=agents, current_index=0, retries=0),
+        phase="development",
+        phase_chains={"development": AgentChainState(agents=agents, current_index=0, retries=0)},
     )
 
 
@@ -32,7 +31,7 @@ def _make_registry_with_budget(phase: str, agent: str, max_retries: int = 1) -> 
 
 def test_agent_fault_debits_budget() -> None:
     """An agent-attributable fault decrements the budget."""
-    registry = _make_registry_with_budget(PHASE_DEVELOPMENT, "claude", max_retries=2)
+    registry = _make_registry_with_budget("development", "claude", max_retries=2)
     controller = RecoveryController(cycle_cap=10, budget_registry=registry)
     state = _make_state(["claude"])
 
@@ -44,20 +43,20 @@ def test_agent_fault_debits_budget() -> None:
     _, _, evt = controller.handle(
         state,
         _AgentTimeoutError("agent timed out with no output"),
-        phase=PHASE_DEVELOPMENT,
+        phase="development",
         agent="claude",
     )
 
     assert evt.category == "agent"
     assert evt.counted_against_budget is True
-    state_after = controller.budget_registry.get(PHASE_DEVELOPMENT, "claude")
+    state_after = controller.budget_registry.get("development", "claude")
     assert state_after is not None
     assert state_after.consumed == 1
 
 
 def test_agent_fault_causes_fallover_when_budget_exhausted() -> None:
     """When agent budget is exhausted, controller falls over to next agent."""
-    registry = _make_registry_with_budget(PHASE_DEVELOPMENT, "claude", max_retries=1)
+    registry = _make_registry_with_budget("development", "claude", max_retries=1)
     collected_fallovers: list[FalloverEvent] = []
 
     bus = FailureEventBus()
@@ -78,7 +77,7 @@ def test_agent_fault_causes_fallover_when_budget_exhausted() -> None:
     new_state, _, _ = controller.handle(
         state,
         _AgentTimeoutError("agent idle timeout"),
-        phase=PHASE_DEVELOPMENT,
+        phase="development",
         agent="claude",
     )
 
@@ -90,8 +89,8 @@ def test_agent_fault_causes_fallover_when_budget_exhausted() -> None:
 
 
 def test_agent_fault_chain_exhaustion_enters_phase_failed() -> None:
-    """When entire chain is exhausted, state enters PHASE_FAILED."""
-    registry = _make_registry_with_budget(PHASE_DEVELOPMENT, "claude", max_retries=1)
+    """When entire chain is exhausted, state enters "failed"."""
+    registry = _make_registry_with_budget("development", "claude", max_retries=1)
     controller = RecoveryController(
         cycle_cap=10, budget_registry=registry, policy_bundle=_minimal_policy_bundle()
     )
@@ -105,11 +104,11 @@ def test_agent_fault_chain_exhaustion_enters_phase_failed() -> None:
     new_state, _, _ = controller.handle(
         state,
         _AgentTimeoutError("agent idle timeout"),
-        phase=PHASE_DEVELOPMENT,
+        phase="development",
         agent="claude",
     )
 
-    assert new_state.phase == PHASE_FAILED
+    assert new_state.phase == "failed_terminal"
     assert new_state.recovery_cycle_count == 1
     assert new_state.last_error is not None
     assert (
@@ -128,7 +127,7 @@ def test_empty_output_message_classified_as_agent_fault() -> None:
 
     failure = classifier.classify(
         FakeInvocationError("agent produced empty output, no progress"),
-        phase=PHASE_DEVELOPMENT,
+        phase="development",
         agent="claude",
     )
 

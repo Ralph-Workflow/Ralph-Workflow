@@ -8,10 +8,6 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
-from ralph.config.enums import (
-    PHASE_DEVELOPMENT_ANALYSIS,
-    PHASE_REVIEW_ANALYSIS,
-)
 from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.reducer import reduce as reducer_reduce
 from ralph.pipeline.state import PipelineState
@@ -52,22 +48,22 @@ class TestDevAnalysisCapTriggeredCorrectionRouting:
         """At max-1 iterations, ANALYSIS_LOOPBACK still routes to development."""
         policy = _load_default_policy()
         state = PipelineState(
-            phase=PHASE_DEVELOPMENT_ANALYSIS,
-            development_analysis_iteration=2,  # max-1 where max=3
-            max_development_analysis_iterations=_DEV_MAX_ANALYSIS,
+            phase="development_analysis",
+            loop_iterations={"development_analysis_iteration": 2},  # max-1 where max=3
+            loop_caps={"development_analysis_iteration": _DEV_MAX_ANALYSIS},
             development_budget_remaining=3,
         )
 
         new_state, _ = _reduce(state, PipelineEvent.ANALYSIS_LOOPBACK, policy)
         assert new_state.phase == "development"
-        assert new_state.development_analysis_iteration == _DEV_MAX_ANALYSIS
+        assert new_state.get_loop_iteration("development_analysis_iteration") == _DEV_MAX_ANALYSIS
 
     def test_dev_analysis_commit_resets_counter_and_increments_iteration(self) -> None:
         """COMMIT_SUCCESS after cap resets analysis_iteration and increments iteration."""
         policy = _load_default_policy()
         state = PipelineState(
             phase="development_commit",
-            development_analysis_iteration=_DEV_MAX_ANALYSIS,
+            loop_iterations={"development_analysis_iteration": _DEV_MAX_ANALYSIS},
             iteration=1,
             development_budget_remaining=3,
             review_budget_remaining=2,
@@ -76,7 +72,7 @@ class TestDevAnalysisCapTriggeredCorrectionRouting:
         new_state, _ = _reduce(state, PipelineEvent.COMMIT_SUCCESS, policy)
         expected_iteration = state.iteration + 1
         assert new_state.iteration == expected_iteration
-        assert new_state.development_analysis_iteration == 0
+        assert new_state.get_loop_iteration("development_analysis_iteration") == 0
 
 
 class TestReviewAnalysisCapTriggeredCorrectionRouting:
@@ -86,9 +82,9 @@ class TestReviewAnalysisCapTriggeredCorrectionRouting:
         """At max-1 iterations, ANALYSIS_LOOPBACK still routes to fix."""
         policy = _load_default_policy()
         state = PipelineState(
-            phase=PHASE_REVIEW_ANALYSIS,
-            review_analysis_iteration=1,  # max-1 where max=2
-            max_review_analysis_iterations=_REVIEW_MAX_ANALYSIS,
+            phase="review_analysis",
+            loop_iterations={"review_analysis_iteration": 1},  # max-1 where max=2
+            loop_caps={"review_analysis_iteration": _REVIEW_MAX_ANALYSIS},
             reviewer_pass=0,
             development_budget_remaining=3,
             review_budget_remaining=2,
@@ -96,7 +92,7 @@ class TestReviewAnalysisCapTriggeredCorrectionRouting:
 
         new_state, _ = _reduce(state, PipelineEvent.ANALYSIS_LOOPBACK, policy)
         assert new_state.phase == "fix"
-        assert new_state.review_analysis_iteration == _REVIEW_MAX_ANALYSIS
+        assert new_state.get_loop_iteration("review_analysis_iteration") == _REVIEW_MAX_ANALYSIS
 
     def test_review_analysis_commit_resets_counter_and_increments_reviewer_pass(
         self,
@@ -105,7 +101,7 @@ class TestReviewAnalysisCapTriggeredCorrectionRouting:
         policy = _load_default_policy()
         state = PipelineState(
             phase="review_commit",
-            review_analysis_iteration=_REVIEW_MAX_ANALYSIS,
+            loop_iterations={"review_analysis_iteration": _REVIEW_MAX_ANALYSIS},
             reviewer_pass=0,
             development_budget_remaining=3,
             review_budget_remaining=2,
@@ -114,4 +110,4 @@ class TestReviewAnalysisCapTriggeredCorrectionRouting:
         new_state, _ = _reduce(state, PipelineEvent.COMMIT_SUCCESS, policy)
         expected_reviewer_pass = state.reviewer_pass + 1
         assert new_state.reviewer_pass == expected_reviewer_pass
-        assert new_state.review_analysis_iteration == 0
+        assert new_state.get_loop_iteration("review_analysis_iteration") == 0

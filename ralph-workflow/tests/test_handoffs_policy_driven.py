@@ -7,7 +7,6 @@ declares the correct increments_counter.
 
 from __future__ import annotations
 
-from ralph.config.enums import PHASE_COMPLETE, PHASE_FAILED
 from ralph.pipeline.handoffs import resolve_post_commit_phase
 from ralph.pipeline.state import PipelineState
 from ralph.policy.models import (
@@ -28,26 +27,26 @@ def _feature_commit_policy() -> PipelinePolicy:
                 drain="development_commit",
                 role="commit",
                 transitions=PhaseTransition(
-                    on_success=PHASE_COMPLETE,
-                    on_failure=PHASE_FAILED,
+                    on_success="complete",
+                    on_failure="failed",
                 ),
                 commit_policy=PhaseCommitPolicy(
                     increments_counter="iteration",
                     loop_resets=["development_analysis_iteration"],
                 ),
             ),
-            PHASE_COMPLETE: PhaseDefinition(
+            "complete": PhaseDefinition(
                 drain="complete",
                 role="terminal",
                 terminal_outcome="success",
                 transitions=PhaseTransition(
-                    on_success=PHASE_COMPLETE,
-                    on_loopback=PHASE_COMPLETE,
+                    on_success="complete",
+                    on_loopback="complete",
                 ),
             ),
         },
         entry_phase="feature_commit",
-        terminal_phase=PHASE_COMPLETE,
+        terminal_phase="complete",
         budget_counters={"iteration": BudgetCounterConfig()},
         post_commit_routes=[
             PostCommitRoute(
@@ -56,7 +55,7 @@ def _feature_commit_policy() -> PipelinePolicy:
             ),
             PostCommitRoute(
                 when=PostCommitRouteWhen(phase="feature_commit", budget_state="exhausted"),
-                target=PHASE_COMPLETE,
+                target="complete",
             ),
         ],
     )
@@ -83,7 +82,7 @@ class TestComputeBudgetStateUsingCommitPolicy:
             review_budget_remaining=1,
         )
         next_phase = resolve_post_commit_phase(state, policy)
-        assert next_phase == PHASE_COMPLETE
+        assert next_phase == "complete"
 
     def test_phase_without_commit_policy_falls_back_to_on_success(self) -> None:
         policy = PipelinePolicy(
@@ -92,23 +91,23 @@ class TestComputeBudgetStateUsingCommitPolicy:
                     drain="development_commit",
                     role="commit",
                     transitions=PhaseTransition(
-                        on_success=PHASE_COMPLETE,
-                        on_failure=PHASE_FAILED,
+                        on_success="complete",
+                        on_failure="failed",
                     ),
                     # commit_policy absent
                 ),
-                PHASE_COMPLETE: PhaseDefinition(
+                "complete": PhaseDefinition(
                     drain="complete",
                     role="terminal",
                     terminal_outcome="success",
                     transitions=PhaseTransition(
-                        on_success=PHASE_COMPLETE,
-                        on_loopback=PHASE_COMPLETE,
+                        on_success="complete",
+                        on_loopback="complete",
                     ),
                 ),
             },
             entry_phase="plain_commit",
-            terminal_phase=PHASE_COMPLETE,
+            terminal_phase="complete",
             post_commit_routes=[
                 PostCommitRoute(
                     when=PostCommitRouteWhen(phase="plain_commit", budget_state="remaining"),
@@ -121,4 +120,4 @@ class TestComputeBudgetStateUsingCommitPolicy:
             development_budget_remaining=5,
         )
         next_phase = resolve_post_commit_phase(state, policy)
-        assert next_phase == PHASE_COMPLETE
+        assert next_phase == "complete"

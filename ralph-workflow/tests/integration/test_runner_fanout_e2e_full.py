@@ -16,7 +16,6 @@ import json
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
-from ralph.config.enums import PHASE_DEVELOPMENT
 from ralph.display.context import make_display_context
 from ralph.executor.process import ProcessResult
 from ralph.pipeline import runner as runner_module
@@ -55,7 +54,7 @@ def _make_policy_bundle(max_workers: int = 2) -> MagicMock:
     )
     dev_phase = MagicMock(requires_commit=False, drain="development")
     dev_phase.parallelization = para
-    bundle.pipeline.phases = {PHASE_DEVELOPMENT: dev_phase}
+    bundle.pipeline.phases = {"development": dev_phase}
     # Raise AttributeError if old parallel_execution path is accessed
     type(bundle.pipeline).parallel_execution = property(  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
         lambda self: (_ for _ in ()).throw(  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
@@ -112,7 +111,7 @@ class TestFanoutVerificationAndHandoff:
             max_workers=2,
             run_post_fanout_verification=True,
         )
-        state = PipelineState(phase=PHASE_DEVELOPMENT, work_units=(unit_a, unit_b))
+        state = PipelineState(phase="development", work_units=(unit_a, unit_b))
         workspace_scope = WorkspaceScope(tmp_path)
         policy_bundle = _make_policy_bundle(max_workers=2)
 
@@ -171,7 +170,7 @@ class TestFanoutVerificationAndHandoff:
             max_workers=2,
             run_post_fanout_verification=False,
         )
-        state = PipelineState(phase=PHASE_DEVELOPMENT, work_units=(unit_a, unit_b))
+        state = PipelineState(phase="development", work_units=(unit_a, unit_b))
         workspace_scope = WorkspaceScope(tmp_path)
         policy_bundle = _make_policy_bundle(max_workers=2)
 
@@ -221,7 +220,7 @@ class TestFanoutVerificationAndHandoff:
             max_workers=2,
             run_post_fanout_verification=True,
         )
-        state = PipelineState(phase=PHASE_DEVELOPMENT, work_units=(unit_a, unit_b))
+        state = PipelineState(phase="development", work_units=(unit_a, unit_b))
         workspace_scope = WorkspaceScope(tmp_path)
         policy_bundle = _make_policy_bundle(max_workers=2)
 

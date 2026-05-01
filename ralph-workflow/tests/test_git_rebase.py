@@ -164,6 +164,7 @@ def test_rebase_onto_detects_conflicts(monkeypatch: pytest.MonkeyPatch, tmp_git_
     assert result.files == ["README.md"]
 
 
+@pytest.mark.subprocess_e2e
 def test_get_conflicted_files_reports_conflicts(tmp_git_repo: Path) -> None:
     repo = Repo(tmp_git_repo)
     base = repo.active_branch.name
@@ -265,6 +266,7 @@ def test_continue_rebase_at_requires_active_rebase(tmp_git_repo: Path) -> None:
         continue_rebase_at(tmp_git_repo)
 
 
+@pytest.mark.subprocess_e2e
 def test_continue_rebase_at_blocks_when_index_has_conflicts(tmp_git_repo: Path) -> None:
     base_branch = _setup_conflicted_rebase(tmp_git_repo)
 
@@ -306,6 +308,7 @@ def _assert_full_lifecycle(events: list, label_prefix: str) -> None:
         )
 
 
+@pytest.mark.subprocess_e2e
 def test_subprocess_executor_emits_process_manager_events(tmp_git_repo: Path) -> None:
     """Real SubprocessExecutor routes git calls through ProcessManager with full lifecycle."""
     reset_process_manager()

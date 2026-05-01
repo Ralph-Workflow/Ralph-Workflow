@@ -63,6 +63,7 @@ _REQUIRED_CAPABILITIES = {
 
 
 @pytest.mark.integration
+@pytest.mark.subprocess_e2e
 @pytest.mark.timeout_seconds(30)
 class TestHttpMcpServer:
     """Test the Ralph MCP HTTP server by booting it and walking the JSON-RPC handshake."""
@@ -730,6 +731,7 @@ def _do_read_file_test(base_url: str, session_id: str) -> None:
 
 
 @pytest.mark.integration
+@pytest.mark.subprocess_e2e
 @pytest.mark.timeout_seconds(30)
 class TestStdioUpstreamClient:
     """Test Ralph's MCP client code path using the fake stdio fixture."""

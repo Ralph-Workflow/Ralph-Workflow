@@ -18,44 +18,33 @@ modifying source code.
 Budget counters (budget_remaining / outer_progress) track remaining budget
 and completed cycles for each policy-declared budget counter.
 
-Legacy checkpoint fields are migrated to the generic dicts at deserialise time
-via the _migrate_legacy_state_fields model_validator.
+Legacy checkpoint fields (budget fields only) are migrated to the generic
+dicts at deserialise time via the _migrate_legacy_state_fields model_validator.
 """
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Final, cast
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from ralph.config.enums import (
-    PHASE_COMPLETE,
-    PipelinePhase,
-)
-from ralph.pipeline._chain_migration import LEGACY_CHAIN_FIELD_TO_PHASE
+from ralph.config.enums import PipelinePhase  # noqa: TC001
 from ralph.pipeline.work_units import WorkUnit  # noqa: TC001
 from ralph.pipeline.worker_state import WorkerState  # noqa: TC001
 
 if TYPE_CHECKING:
     from ralph.policy.models import DrainName, PipelinePolicy
 
-# Legacy loop iteration field names → their corresponding max-cap field names.
-_LEGACY_LOOP_FIELDS: dict[str, str] = {
-    "development_analysis_iteration": "max_development_analysis_iterations",
-    "review_analysis_iteration": "max_review_analysis_iterations",
-}
+_UNSET_PHASE: Final[str] = "__unset__"
 
-# Legacy budget remaining fields → counter name mappings for migration.
-_LEGACY_BUDGET_REMAINING_MAP: dict[str, str] = {
-    "development_budget_remaining": "iteration",
-    "review_budget_remaining": "reviewer_pass",
-}
-
-# Legacy outer-progress fields → counter name mappings for migration.
-_LEGACY_OUTER_PROGRESS_MAP: dict[str, str] = {
-    "iteration": "iteration",
-    "reviewer_pass": "reviewer_pass",
-}
+def _migrate_counter_field(
+    d: dict[str, object],
+    target: dict[str, object],
+    legacy_field: str,
+    counter_name: str,
+) -> None:
+    if counter_name not in target and legacy_field in d:
+        target[counter_name] = d[legacy_field]
 
 
 class _FrozenPipelineStateModel(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
@@ -168,21 +157,16 @@ class PipelineState(_FrozenPipelineStateModel):  # type: ignore[explicit-any]  #
         budget_remaining: Remaining budget keyed by budget counter name.
         outer_progress: Completed cycle counts keyed by budget counter name.
 
-    LEGACY FIELDS (backward-compat aliases, populated from policy at startup):
+    LEGACY FIELDS (backward-compat, populated from policy at startup):
         iteration: Alias for outer_progress['iteration'] (dev cycles completed).
         total_iterations: Total allowed development iterations.
         reviewer_pass: Alias for outer_progress['reviewer_pass'] (review passes).
         total_reviewer_passes: Total allowed review passes.
         development_budget_remaining: Alias for budget_remaining['iteration'].
         review_budget_remaining: Alias for budget_remaining['reviewer_pass'].
-        review_issues_found: Whether review found issues (derived from review_outcome).
-        development_analysis_iteration: Alias for loop_iterations['development_analysis_iteration'].
-        max_development_analysis_iterations: Alias for loop_caps['development_analysis_iteration'].
-        review_analysis_iteration: Alias for loop_iterations['review_analysis_iteration'].
-        max_review_analysis_iterations: Alias for loop_caps['review_analysis_iteration'].
     """
 
-    phase: PipelinePhase = "planning"
+    phase: PipelinePhase = _UNSET_PHASE
     previous_phase: PipelinePhase | None = None
 
     # Legacy budget fields — kept as real fields for display/checkpoint compat.
@@ -208,13 +192,6 @@ class PipelineState(_FrozenPipelineStateModel):  # type: ignore[explicit-any]  #
     budget_remaining: dict[str, int] = Field(default_factory=dict)
     outer_progress: dict[str, int] = Field(default_factory=dict)
 
-    # Legacy analysis iteration fields — kept for backward compat with display/checkpoint.
-    # These are mirrored from loop_iterations at startup.
-    development_analysis_iteration: int = Field(default=0, ge=0)
-    max_development_analysis_iterations: int = Field(default=3, ge=0)
-    review_analysis_iteration: int = Field(default=0, ge=0)
-    max_review_analysis_iterations: int = Field(default=2, ge=0)
-
     rebase: RebaseState = Field(default_factory=RebaseState)
     commit: CommitState = Field(default_factory=CommitState)
     metrics: RunMetrics = Field(default_factory=RunMetrics)
@@ -229,7 +206,7 @@ class PipelineState(_FrozenPipelineStateModel):  # type: ignore[explicit-any]  #
     last_reviewed_sha: str | None = None
 
     # Policy-derived fields (set at startup and after phase transitions)
-    policy_entry_phase: PipelinePhase = "planning"
+    policy_entry_phase: PipelinePhase = _UNSET_PHASE
     current_drain: str | None = None
 
     work_units: tuple[WorkUnit, ...] = Field(default_factory=tuple)
@@ -245,6 +222,29 @@ class PipelineState(_FrozenPipelineStateModel):  # type: ignore[explicit-any]  #
     last_agent_session_id: str | None = None
     session_preserve_retry_pending: bool = False
 
+    @model_validator(mode="after")
+    def _validate_phase_set(self) -> PipelineState:
+        if self.phase == _UNSET_PHASE:
+            raise ValueError(
+                "PipelineState requires phase to be set from PipelinePolicy.entry_phase "
+                "before construction; use PipelineState.from_policy(policy) "
+                "or pass phase= explicitly."
+            )
+        return self
+
+    @classmethod
+    def from_policy(cls, policy: PipelinePolicy, **overrides: object) -> PipelineState:
+        """Construct initial pipeline state from a loaded PipelinePolicy.
+
+        The entry phase is derived from policy.entry_phase so no workflow
+        entry semantics are embedded in this class.
+        """
+        return cls(
+            phase=policy.entry_phase,
+            policy_entry_phase=policy.entry_phase,
+            **overrides,  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+        )
+
     @model_validator(mode="before")
     @classmethod
     def _migrate_legacy_state_fields(cls, data: object) -> object:
@@ -252,40 +252,11 @@ class PipelineState(_FrozenPipelineStateModel):  # type: ignore[explicit-any]  #
 
         Handles old checkpoints that stored:
         - Typed chain fields → migrated into phase_chains
-        - Legacy loop iteration fields → migrated into loop_iterations / loop_caps
         - Legacy budget fields → migrated into budget_remaining / outer_progress
         """
         if not isinstance(data, dict):
             return data
         d = cast("dict[str, object]", dict(data))
-
-        # Migrate typed chain fields into phase_chains
-        _raw = d.get("phase_chains")
-        raw_chains = cast("dict[str, object]", _raw) if _raw is not None else {}
-        phase_chains: dict[str, object] = dict(raw_chains)
-        for old_field, phase_key in LEGACY_CHAIN_FIELD_TO_PHASE.items():
-            if old_field in d:
-                val = d.pop(old_field)
-                if val is not None and phase_key not in phase_chains:
-                    phase_chains[phase_key] = val
-        d["phase_chains"] = phase_chains
-
-        # Migrate legacy loop iteration fields into loop_iterations and loop_caps
-        _raw_li = d.get("loop_iterations")
-        loop_iterations: dict[str, object] = dict(
-            cast("dict[str, object]", _raw_li) if _raw_li is not None else {}
-        )
-        _raw_lc = d.get("loop_caps")
-        loop_caps: dict[str, object] = dict(
-            cast("dict[str, object]", _raw_lc) if _raw_lc is not None else {}
-        )
-        for iter_field, cap_field in _LEGACY_LOOP_FIELDS.items():
-            if iter_field not in loop_iterations and iter_field in d:
-                loop_iterations[iter_field] = d[iter_field]
-            if iter_field not in loop_caps and cap_field in d:
-                loop_caps[iter_field] = d[cap_field]
-        d["loop_iterations"] = loop_iterations
-        d["loop_caps"] = loop_caps
 
         # Migrate legacy budget fields into budget_remaining and outer_progress
         _raw_br = d.get("budget_remaining")
@@ -296,12 +267,10 @@ class PipelineState(_FrozenPipelineStateModel):  # type: ignore[explicit-any]  #
         outer_progress_data: dict[str, object] = dict(
             cast("dict[str, object]", _raw_op) if _raw_op is not None else {}
         )
-        for legacy_field, counter_name in _LEGACY_BUDGET_REMAINING_MAP.items():
-            if counter_name not in budget_remaining and legacy_field in d:
-                budget_remaining[counter_name] = d[legacy_field]
-        for legacy_field, counter_name in _LEGACY_OUTER_PROGRESS_MAP.items():
-            if counter_name not in outer_progress_data and legacy_field in d:
-                outer_progress_data[counter_name] = d[legacy_field]
+        _migrate_counter_field(d, budget_remaining, "development_budget_remaining", "iteration")
+        _migrate_counter_field(d, budget_remaining, "review_budget_remaining", "reviewer_pass")
+        _migrate_counter_field(d, outer_progress_data, "iteration", "iteration")
+        _migrate_counter_field(d, outer_progress_data, "reviewer_pass", "reviewer_pass")
         d["budget_remaining"] = budget_remaining
         d["outer_progress"] = outer_progress_data
 
@@ -391,34 +360,17 @@ class PipelineState(_FrozenPipelineStateModel):  # type: ignore[explicit-any]  #
             return {str(k): int(val) for k, val in v.items()}
         raise TypeError(f"Expected dict for outer_progress, got {type(v).__name__!r}")
 
-    @classmethod
-    def known_loop_iteration_fields(cls) -> frozenset[str]:
-        """Return the set of known loop iteration state field names.
-
-        This is no longer a hardcoded set — it returns the legacy field names
-        that are always supported. Custom fields declared in policy loop_counters
-        are also valid; they are validated against policy at load time.
-        """
-        return frozenset(_LEGACY_LOOP_FIELDS.keys())
-
-    @property
-    def review_issues_found(self) -> bool:
-        """Backward-compat derived property: True when review_outcome indicates issues."""
-        return self.review_outcome is not None and self.review_outcome != "clean"
-
-    def is_complete(self, policy: PipelinePolicy | None = None) -> bool:
+    def is_complete(self, policy: PipelinePolicy) -> bool:
         """Check if pipeline has reached a terminal success state.
 
         Args:
-            policy: Optional PipelinePolicy. When provided, compares against
-                policy.terminal_phase. When None, falls back to comparing
-                against 'complete' only as a backwards-compat aid.
+            policy: PipelinePolicy. Compares current phase against
+                policy.terminal_phase to determine completion.
+
+        Raises:
+            RuntimeError: When policy is None (routing requires loaded policy).
         """
-        if policy is not None:
-            terminal = policy.terminal_phase
-            return self.phase == terminal
-        # Backward compat: fall back to comparing against 'complete'
-        return self.phase == PHASE_COMPLETE
+        return self.phase == policy.terminal_phase
 
     def current_agent(self) -> str | None:
         """Get the current agent for the active phase."""
@@ -469,54 +421,16 @@ class PipelineState(_FrozenPipelineStateModel):  # type: ignore[explicit-any]  #
     def get_loop_iteration(self, field_name: str) -> int:
         """Get the loop iteration counter for a policy-declared iteration field.
 
-        Checks loop_iterations dict first. Falls back to legacy typed fields for
-        the two built-in counters.
-
         Args:
             field_name: The iteration_state_field value from PhaseLoopPolicy.
 
         Returns:
-            Current iteration count.
+            Current iteration count (0 when not yet set).
         """
-        if field_name in self.loop_iterations:
-            return self.loop_iterations[field_name]
-        if field_name == "development_analysis_iteration":
-            return self.development_analysis_iteration
-        if field_name == "review_analysis_iteration":
-            return self.review_analysis_iteration
-        return 0
-
-    def get_max_loop_iteration(self, field_name: str) -> int:
-        """Get the runtime cap for a loop iteration field from state.
-
-        Returns the state-level maximum. For built-in counters, falls back to
-        the legacy typed cap field.
-
-        Args:
-            field_name: The iteration_state_field value from PhaseLoopPolicy.
-
-        Returns:
-            Maximum iteration count.
-
-        Raises:
-            AttributeError: If field_name is not a known counter.
-        """
-        if field_name in self.loop_caps:
-            return self.loop_caps[field_name]
-        if field_name == "development_analysis_iteration":
-            return self.max_development_analysis_iterations
-        if field_name == "review_analysis_iteration":
-            return self.max_review_analysis_iterations
-        raise AttributeError(
-            f"Unknown loop cap for field '{field_name}'. "
-            f"Declare it in pipeline.loop_counters and initialize in loop_caps."
-        )
+        return self.loop_iterations.get(field_name, 0)
 
     def with_loop_iteration(self, field_name: str, value: int) -> PipelineState:
         """Return a copy with the specified loop iteration field set to value.
-
-        Updates loop_iterations dict. Also updates legacy typed fields for the
-        two built-in counters to keep display/checkpoint in sync.
 
         Args:
             field_name: The iteration_state_field value from PhaseLoopPolicy.
@@ -525,14 +439,9 @@ class PipelineState(_FrozenPipelineStateModel):  # type: ignore[explicit-any]  #
         Returns:
             New PipelineState with the iteration counter updated.
         """
-        updates: dict[str, object] = {
-            "loop_iterations": {**self.loop_iterations, field_name: value},
-        }
-        if field_name == "development_analysis_iteration":
-            updates["development_analysis_iteration"] = value
-        elif field_name == "review_analysis_iteration":
-            updates["review_analysis_iteration"] = value
-        return self.copy_with(**updates)
+        return self.copy_with(
+            loop_iterations={**self.loop_iterations, field_name: value},
+        )
 
     def get_budget_remaining(self, counter_name: str) -> int:
         """Get the remaining budget for a policy-declared budget counter.

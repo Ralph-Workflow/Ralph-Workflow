@@ -141,7 +141,7 @@ role = "commit"
 prompt_template = "development_commit_message.jinja"
 [phases.development_commit.transitions]
 on_success = "review"
-on_failure = "failed"
+on_failure = "failed_terminal"
 [phases.development_commit.commit_policy]
 requires_artifact = true
 skipped_advances_progress = true
@@ -196,7 +196,7 @@ role = "commit"
 prompt_template = "commit_message.jinja"
 [phases.review_commit.transitions]
 on_success = "complete"
-on_failure = "failed"
+on_failure = "failed_terminal"
 [phases.review_commit.commit_policy]
 requires_artifact = true
 skipped_advances_progress = true
@@ -213,6 +213,17 @@ terminal_outcome = "success"
 [phases.complete.transitions]
 on_success = "complete"
 on_loopback = "complete"
+
+# The 'failed_terminal' phase is the declared terminal failure phase.
+# A MUST be declared when recovery.failed_route points to a phase-based route;
+# the legacy pseudo-phases 'phase_failed' and 'exit_failure' are no longer accepted.
+[phases.failed_terminal]
+drain = "failed_terminal"
+role = "terminal"
+terminal_outcome = "failure"
+[phases.failed_terminal.transitions]
+on_success = "failed_terminal"
+on_loopback = "failed_terminal"
 
 # ---------------------------------------------------------------------------
 # Post-commit budget-guarded routing
@@ -268,6 +279,12 @@ target = "complete"
 phase = "review_commit"
 budget_state = "exhausted"
 
+[[post_commit_routes]]
+target = "complete"
+[post_commit_routes.when]
+phase = "review_commit"
+budget_state = "no_review"
+
 # ---------------------------------------------------------------------------
 # Pipeline entry and terminal configuration
 # ---------------------------------------------------------------------------
@@ -291,8 +308,9 @@ retry_in_session = false
 [recovery]
 cycle_cap = 200
 # failed_route: phase to route to on terminal pipeline failure.
-# 'failed', 'phase_failed', 'exit_failure' are built-in pseudo-phases;
-# any declared pipeline phase name with role='terminal' is also valid.
-# Use terminal_failure_phase to declare an explicit terminal failure phase.
-failed_route = "failed"
+# Must reference either the declared terminal failure phase (recommended)
+# or the deprecated pseudo-phase 'failed' (emits a deprecation warning).
+# The legacy pseudo-phases 'phase_failed' and 'exit_failure' are no longer accepted.
+failed_route = "failed_terminal"
+terminal_failure_phase = "failed_terminal"
 preserve_session_on_categories = ["agent"]

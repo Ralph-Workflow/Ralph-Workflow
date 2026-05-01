@@ -277,6 +277,7 @@ def test_process_group_is_torn_down_on_terminate() -> None:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.subprocess_e2e
 def test_recursive_process_tree_teardown() -> None:
     """Both the parent and its forked grandchild are gone after shutdown_all_for_label."""
     pm = _make_pm()
@@ -334,6 +335,7 @@ def test_end_to_end_sigterm_trap_child() -> None:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.subprocess_e2e
 def test_atexit_reaps_grandchild() -> None:
     """ProcessManager atexit hook terminates tracked children at interpreter exit."""
 

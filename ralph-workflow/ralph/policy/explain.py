@@ -50,6 +50,8 @@ class PhaseExplanation:
     is_entry: bool = False
     is_terminal: bool = False
     verification: VerificationExplanation | None = None
+    has_parallelization: bool = False
+    post_commit_routes_info: list[tuple[str, str]] = field(default_factory=list)
 
 
 @dataclass
@@ -129,6 +131,37 @@ class PolicyExplanation:
     recovery: RecoveryExplanation | None = None
 
 
+def explain_routing_decision(
+    phase: str,
+    target: str,
+    reason: str,
+    value: str,
+    *,
+    recovery: bool = False,
+) -> str:
+    """Build a human-readable routing explanation message.
+
+    Used by reducer and handoffs to emit INFO-level routing logs so users can
+    answer 'why did Ralph route here?' from logs alone.
+
+    Args:
+        phase: The current phase that is routing.
+        target: The target phase being routed to.
+        reason: What triggered the routing (e.g. 'decision', 'signal', 'gate').
+        value: The value of the triggering reason (e.g. 'completed', 'success').
+        recovery: True when this is a terminal failure/recovery route.
+
+    Returns:
+        A formatted routing explanation string.
+    """
+    if recovery:
+        return (
+            f"policy: '{phase}' routed to '{target}' because recovery was triggered "
+            f"({reason}: {value})"
+        )
+    return f"policy: '{phase}' routed to '{target}' because the configured {reason} was '{value}'"
+
+
 def explain_policy(bundle: PolicyBundle) -> PolicyExplanation:
     """Convert a PolicyBundle into a structured human-readable explanation.
 
@@ -186,6 +219,12 @@ def explain_policy(bundle: PolicyBundle) -> PolicyExplanation:
                 on_failure_route=v.on_failure_route,
             )
 
+        post_commit_routes_info: list[tuple[str, str]] = [
+            (route.when.budget_state, route.target)
+            for route in pipeline.post_commit_routes
+            if route.when.phase == phase_name
+        ]
+
         phase_expl = PhaseExplanation(
             name=phase_name,
             role=phase_def.role,
@@ -207,6 +246,8 @@ def explain_policy(bundle: PolicyBundle) -> PolicyExplanation:
             is_entry=(phase_name == pipeline.entry_phase),
             is_terminal=(phase_name == pipeline.terminal_phase),
             verification=verification_expl,
+            has_parallelization=phase_def.parallelization is not None,
+            post_commit_routes_info=post_commit_routes_info,
         )
         explanation.phases.append(phase_expl)
 

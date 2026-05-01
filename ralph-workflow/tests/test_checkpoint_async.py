@@ -9,7 +9,6 @@ from __future__ import annotations
 import asyncio
 from typing import TYPE_CHECKING
 
-from ralph.config.enums import PHASE_DEVELOPMENT
 from ralph.pipeline import checkpoint as ckpt
 from ralph.pipeline.state import PipelineState
 
@@ -22,7 +21,7 @@ TOTAL_ITERATIONS = 5
 
 def _build_state() -> PipelineState:
     return PipelineState(
-        phase=PHASE_DEVELOPMENT,
+        phase="development",
         iteration=DEVELOPMENT_ITERATION,
         total_iterations=TOTAL_ITERATIONS,
     )
@@ -47,7 +46,7 @@ async def test_save_async_roundtrip(tmp_path: Path) -> None:
     loaded = ckpt.load(path)
 
     assert loaded is not None
-    assert loaded.phase == PHASE_DEVELOPMENT
+    assert loaded.phase == "development"
     assert loaded.iteration == DEVELOPMENT_ITERATION
     assert loaded.total_iterations == TOTAL_ITERATIONS
 
@@ -61,7 +60,7 @@ async def test_load_async_returns_state(tmp_path: Path) -> None:
     loaded = await ckpt.load_async(path)
 
     assert loaded is not None
-    assert loaded.phase == PHASE_DEVELOPMENT
+    assert loaded.phase == "development"
     assert loaded.iteration == DEVELOPMENT_ITERATION
 
 

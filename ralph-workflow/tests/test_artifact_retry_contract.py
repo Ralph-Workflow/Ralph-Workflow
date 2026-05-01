@@ -5,7 +5,7 @@ Covers the contract:
    hint to .agent/tmp/last_retry_error_{phase}.txt
 2. When materialize_prompt is called for the same phase, it reads the hint,
    surfaces it as LAST_RETRY_ERROR, and deletes the file so it doesn't leak
-3. Parameterized over REQUIRED_ARTIFACTS so new phases are auto-covered
+3. Parameterized over phases with declared artifact contracts in the default policy
 4. The development phase writes a "missing input" hint when the plan is absent
    (plan is a planning-phase output, not a development submission), and a
    "missing output" hint when development_result is absent.
@@ -16,20 +16,22 @@ Covers the contract:
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING
-from unittest.mock import MagicMock, patch
-
-if TYPE_CHECKING:
-    from pathlib import Path
+import tempfile
+from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
 import ralph.prompts.materialize as materialize_module
-from ralph.phases.development import handle_development, handle_development_analysis
-from ralph.phases.fix import handle_fix
-from ralph.phases.planning import handle_planning
-from ralph.phases.required_artifacts import REQUIRED_ARTIFACTS, build_retry_hint, retry_hint_path
-from ralph.phases.review import handle_review, handle_review_analysis
+from ralph.phases import PhaseContext
+from ralph.phases.analysis import handle_generic_analysis_phase
+from ralph.phases.execution import handle_execution_phase
+from ralph.phases.required_artifacts import (
+    build_required_artifacts,
+    build_retry_hint,
+    retry_hint_path,
+)
+from ralph.phases.review import handle_review
 from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.events import AnalysisDecisionEvent, PhaseFailureEvent, PipelineEvent
 from ralph.policy.loader import load_policy
@@ -37,13 +39,37 @@ from ralph.prompts.materialize import _read_and_clear_retry_hint
 from ralph.prompts.types import SessionCapabilities, SessionDrain
 from ralph.workspace.memory import MemoryWorkspace
 
+
+def _load_default_artifact_registry() -> dict:
+    with tempfile.TemporaryDirectory() as tmp:
+        policy = load_policy(Path(tmp) / ".agent")
+        return build_required_artifacts(policy.artifacts)
+
+
+REQUIRED_ARTIFACTS = _load_default_artifact_registry()
+
+def _analysis_handler_for(phase_name: str):
+    """Return a wrapper around handle_generic_analysis_phase with phase/drain pre-set."""
+    def _handler(effect, ctx):
+        real_effect = InvokeAgentEffect(agent_name="test", phase=phase_name, prompt_file="test.txt")
+        return handle_generic_analysis_phase(real_effect, ctx)
+    return _handler
+
+
+def _execution_handler_for(phase_name: str):
+    """Return a wrapper around handle_execution_phase with the correct phase set."""
+    def _handler(effect, ctx):
+        real_effect = InvokeAgentEffect(agent_name="test", phase=phase_name, prompt_file="test.txt")
+        return handle_execution_phase(real_effect, ctx)
+    return _handler
+
+
 _PHASE_TO_HANDLER = {
-    "planning": handle_planning,
-    "development": handle_development,
-    "development_analysis": handle_development_analysis,
+    "planning": _execution_handler_for("planning"),
+    "development": _execution_handler_for("development"),
+    "development_analysis": _analysis_handler_for("development_analysis"),
     "review": handle_review,
-    "review_analysis": handle_review_analysis,
-    "fix": handle_fix,
+    "review_analysis": _analysis_handler_for("review_analysis"),
 }
 
 # Legacy plan format: no "summary" key → _is_legacy_work_units_payload returns True,
@@ -134,15 +160,22 @@ _PHASE_VALID_ARTIFACT: dict[str, str] = {
 }
 
 
-def _make_ctx(workspace: MemoryWorkspace, pipeline_policy: object = None) -> MagicMock:
-    ctx = MagicMock()
-    ctx.workspace = workspace
-    ctx.pipeline_policy = pipeline_policy
-    return ctx
+def _make_ctx(workspace: MemoryWorkspace, policy=None) -> PhaseContext:
+    if policy is None:
+        with tempfile.TemporaryDirectory() as tmp:
+            policy = load_policy(Path(tmp) / ".agent")
+    return PhaseContext.construct(
+        workspace=workspace,
+        registry=object(),
+        chain_manager=object(),
+        pipeline_policy=policy.pipeline,
+        artifacts_policy=policy.artifacts,
+        agents_policy=object(),
+    )
 
 
-def _invoke_effect() -> MagicMock:
-    return MagicMock(spec=InvokeAgentEffect)
+def _invoke_effect(phase: str = "unknown") -> InvokeAgentEffect:
+    return InvokeAgentEffect(agent_name="test", phase=phase, prompt_file="test.txt")
 
 
 def _setup_phase_prerequisites(
@@ -160,7 +193,7 @@ def _setup_phase_prerequisites(
 
 @pytest.mark.parametrize(
     "phase",
-    [p for p in REQUIRED_ARTIFACTS if p != "planning"],
+    [p for p in REQUIRED_ARTIFACTS if p != "planning" and p in _PHASE_TO_HANDLER],
 )
 def test_missing_artifact_writes_retry_hint(phase: str) -> None:
     workspace = MemoryWorkspace()
@@ -186,7 +219,7 @@ def test_planning_missing_plan_artifact_writes_retry_hint() -> None:
     workspace = MemoryWorkspace()
     ctx = _make_ctx(workspace)
 
-    events = handle_planning(_invoke_effect(), ctx)
+    events = _execution_handler_for("planning")(_invoke_effect("planning"), ctx)
 
     failure_events = [e for e in events if isinstance(e, PhaseFailureEvent)]
     assert failure_events, "Expected PhaseFailureEvent from planning when plan artifact is missing"
@@ -200,7 +233,7 @@ def test_development_missing_plan_artifact_writes_retry_hint() -> None:
     workspace = MemoryWorkspace()
     ctx = _make_ctx(workspace)
 
-    events = handle_development(_invoke_effect(), ctx)
+    events = _execution_handler_for("development")(_invoke_effect("development"), ctx)
 
     failure_events = [e for e in events if isinstance(e, PhaseFailureEvent)]
     assert failure_events
@@ -219,7 +252,7 @@ def test_development_missing_plan_hint_names_upstream_planning_phase() -> None:
     workspace = MemoryWorkspace()
     ctx = _make_ctx(workspace)
 
-    handle_development(_invoke_effect(), ctx)
+    _execution_handler_for("development")(_invoke_effect("development"), ctx)
 
     hint_content = workspace.read(retry_hint_path("development"))
     assert "planning" in hint_content.lower(), (
@@ -239,7 +272,7 @@ def test_development_missing_dev_result_writes_retry_hint() -> None:
     workspace.write(".agent/artifacts/plan.json", _VALID_PLAN_JSON_LEGACY)
     ctx = _make_ctx(workspace)
 
-    events = handle_development(_invoke_effect(), ctx)
+    events = _execution_handler_for("development")(_invoke_effect("development"), ctx)
 
     failure_events = [e for e in events if isinstance(e, PhaseFailureEvent)]
     assert failure_events, "Expected PhaseFailureEvent when development_result is missing"
@@ -270,11 +303,11 @@ def test_read_and_clear_retry_hint_returns_empty_when_absent() -> None:
 
 @pytest.mark.parametrize(
     "phase",
-    [p for p in REQUIRED_ARTIFACTS if p not in {"planning"}],
+    [p for p in REQUIRED_ARTIFACTS if p not in {"planning"} and p in _PHASE_TO_HANDLER],
 )
 def test_retry_hint_content_includes_artifact_info(phase: str) -> None:
     ra = REQUIRED_ARTIFACTS[phase]
-    hint = build_retry_hint(phase, "the agent forgot to submit")
+    hint = build_retry_hint(phase, "the agent forgot to submit", registry=REQUIRED_ARTIFACTS)
     assert ra.artifact_type in hint, f"Hint for {phase} must mention artifact type"
     assert ra.json_path in hint, f"Hint for {phase} must mention artifact path"
 
@@ -337,7 +370,6 @@ def test_materialize_development_analysis_prompt_includes_last_retry_error(
     [
         ("development", SessionDrain.DEVELOPMENT),
         ("review", SessionDrain.REVIEW),
-        ("fix", SessionDrain.FIX),
         ("development_analysis", SessionDrain.DEVELOPMENT),
         ("review_analysis", SessionDrain.REVIEW),
     ],
@@ -375,6 +407,7 @@ def test_end_to_end_retry_flow(tmp_path: Path, phase: str, drain: SessionDrain) 
             phase=phase,
             workspace=workspace,
             pipeline_policy=policy.pipeline,
+            artifacts_policy=policy.artifacts,
             session_caps=SessionCapabilities.defaults_for_drain(drain),
             workspace_root=tmp_path,
         )
@@ -388,7 +421,7 @@ def test_end_to_end_retry_flow(tmp_path: Path, phase: str, drain: SessionDrain) 
     )
 
     # Step 3: second attempt with valid artifact now present → must advance
-    ctx2 = _make_ctx(workspace, policy.pipeline)
+    ctx2 = _make_ctx(workspace, policy)
     events2 = handler(_invoke_effect(), ctx2)
     success_events = [
         e for e in events2

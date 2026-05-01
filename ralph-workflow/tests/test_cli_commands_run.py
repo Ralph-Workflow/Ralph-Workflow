@@ -34,25 +34,6 @@ if TYPE_CHECKING:
 
 _EXIT_PREFLIGHT = 2
 
-ACTIVE_AGENT_CHAINS = {
-    "planning": ["claude"],
-    "development": ["claude", "opencode"],
-    "analysis": ["claude"],
-    "review": ["claude"],
-    "fix": ["claude"],
-    "commit": ["claude"],
-}
-
-ACTIVE_AGENT_DRAINS = {
-    "planning": "planning",
-    "development": "development",
-    "development_analysis": "analysis",
-    "development_commit": "commit",
-    "review": "review",
-    "review_analysis": "analysis",
-    "review_commit": "commit",
-    "fix": "fix",
-}
 
 
 def _policy_bundle_for_testing() -> PolicyBundle:
@@ -156,10 +137,22 @@ def _attach_display_context(
     monkeypatch.setattr(module, "make_display_context", fake_make_display_context)
 
 
+_DEFAULT_DRAINS = [
+    "planning",
+    "development",
+    "development_analysis",
+    "development_commit",
+    "review",
+    "review_analysis",
+    "review_commit",
+    "fix",
+]
+
+
 def _fake_config(developer_iters: int = 1, reviewer_reviews: int = 1) -> UnifiedConfig:
     config = UnifiedConfig(
-        agent_chains=dict(ACTIVE_AGENT_CHAINS),
-        agent_drains=dict(ACTIVE_AGENT_DRAINS),
+        agent_chains={d: ["claude"] for d in _DEFAULT_DRAINS},
+        agent_drains={d: d for d in _DEFAULT_DRAINS},
     )
     general = config.general.model_copy(
         update={

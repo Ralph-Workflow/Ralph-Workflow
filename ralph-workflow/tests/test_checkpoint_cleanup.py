@@ -30,7 +30,7 @@ def test_no_tmp_file_safe_on_init(tmp_path: Path) -> None:
 
 def test_actual_checkpoint_preserved(tmp_path: Path) -> None:
     path = tmp_path / "checkpoint.json"
-    state = PipelineState(iteration=THIRD_ITERATION)
+    state = PipelineState(phase="planning", iteration=THIRD_ITERATION)
     ckpt.save(state, path)
 
     tmp = Path(str(path) + ".tmp")

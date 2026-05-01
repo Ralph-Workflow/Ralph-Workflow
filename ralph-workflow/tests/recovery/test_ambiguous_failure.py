@@ -6,7 +6,6 @@ import io
 
 from loguru import logger
 
-from ralph.config.enums import PHASE_DEVELOPMENT
 from ralph.pipeline.state import AgentChainState, PipelineState
 from ralph.recovery.budget import AgentBudgetRegistry
 from ralph.recovery.classifier import FailureCategory, FailureClassifier
@@ -17,8 +16,8 @@ def _make_state(agents: list[str] | None = None) -> PipelineState:
     if agents is None:
         agents = ["claude"]
     return PipelineState(
-        phase=PHASE_DEVELOPMENT,
-        dev_chain=AgentChainState(agents=agents, current_index=0, retries=0),
+        phase="development",
+        phase_chains={"development": AgentChainState(agents=agents, current_index=0, retries=0)},
     )
 
 
@@ -28,7 +27,7 @@ def test_unknown_exception_is_ambiguous() -> None:
 
     failure = classifier.classify(
         RuntimeError("something went wrong but not sure what"),
-        phase=PHASE_DEVELOPMENT,
+        phase="development",
         agent="claude",
     )
 
@@ -42,7 +41,7 @@ def test_generic_exception_message_ambiguous() -> None:
 
     failure = classifier.classify(
         ValueError("invalid input provided"),
-        phase=PHASE_DEVELOPMENT,
+        phase="development",
         agent="claude",
     )
 
@@ -52,14 +51,14 @@ def test_generic_exception_message_ambiguous() -> None:
 
 def test_ambiguous_failure_does_not_debit_budget() -> None:
     """Ambiguous failures must not count against the agent budget."""
-    registry = AgentBudgetRegistry().set_budget(PHASE_DEVELOPMENT, "claude", max_retries=3)
+    registry = AgentBudgetRegistry().set_budget("development", "claude", max_retries=3)
     controller = RecoveryController(cycle_cap=10, budget_registry=registry)
     state = _make_state()
 
     _, _, evt = controller.handle(
         state,
         RuntimeError("something unexpected happened"),
-        phase=PHASE_DEVELOPMENT,
+        phase="development",
         agent="claude",
     )
 
@@ -67,7 +66,7 @@ def test_ambiguous_failure_does_not_debit_budget() -> None:
     assert evt.category == "ambiguous"
 
     # Budget should not be debited
-    budget_state = controller.budget_registry.get(PHASE_DEVELOPMENT, "claude")
+    budget_state = controller.budget_registry.get("development", "claude")
     assert budget_state is not None
     assert budget_state.consumed == 0
 
@@ -80,11 +79,11 @@ def test_ambiguous_failure_returns_state_without_phase_change() -> None:
     new_state, effects, evt = controller.handle(
         state,
         OSError("some system error"),
-        phase=PHASE_DEVELOPMENT,
+        phase="development",
         agent="claude",
     )
 
-    assert new_state.phase == PHASE_DEVELOPMENT
+    assert new_state.phase == "development"
     assert effects == []  # No exit effect
     assert evt.counted_against_budget is False
 
@@ -95,7 +94,7 @@ def test_ambiguous_failure_is_flagged_in_reason() -> None:
 
     failure = classifier.classify(
         Exception("an exception without clear attribution"),
-        phase=PHASE_DEVELOPMENT,
+        phase="development",
         agent="claude",
     )
 
@@ -110,7 +109,7 @@ def test_ambiguous_failure_emits_warning_log() -> None:
         classifier = FailureClassifier()
         failure = classifier.classify(
             RuntimeError("unrelated failure"),
-            phase=PHASE_DEVELOPMENT,
+            phase="development",
             agent="claude",
         )
         assert failure.category == FailureCategory.AMBIGUOUS
@@ -127,7 +126,7 @@ def test_connection_refused_is_not_ambiguous() -> None:
 
     failure = classifier.classify(
         ConnectionRefusedError("connection refused"),
-        phase=PHASE_DEVELOPMENT,
+        phase="development",
         agent="claude",
     )
 
@@ -141,7 +140,7 @@ def test_timeout_error_is_environmental() -> None:
 
     failure = classifier.classify(
         TimeoutError("operation timed out"),
-        phase=PHASE_DEVELOPMENT,
+        phase="development",
         agent="claude",
     )
 
@@ -160,7 +159,7 @@ def test_agent_inactivity_timeout_is_agent_fault() -> None:
 
     failure = classifier.classify(
         AgentInactivityTimeoutError("agent idle for too long"),
-        phase=PHASE_DEVELOPMENT,
+        phase="development",
         agent="claude",
     )
 

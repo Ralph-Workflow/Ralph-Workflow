@@ -8,7 +8,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum, StrEnum
-from typing import cast
+from typing import TYPE_CHECKING, cast
+
+if TYPE_CHECKING:
+    from ralph.policy.models import AgentsPolicy
 
 
 class SessionDrain(StrEnum):
@@ -375,47 +378,125 @@ def _resolved_policy_status(
     return None
 
 
-def drain_class_for_session(drain: SessionDrain | str) -> DrainClass:
-    """Classify a session drain into its drain class."""
-    session_drain = _coerce_session_drain(drain)
-    mapping: dict[SessionDrain, DrainClass] = {
-        SessionDrain.PLANNING: DrainClass.PLANNING,
-        SessionDrain.DEVELOPMENT: DrainClass.DEVELOPMENT,
-        SessionDrain.DEVELOPMENT_ANALYSIS: DrainClass.ANALYSIS,
-        SessionDrain.REVIEW_ANALYSIS: DrainClass.ANALYSIS,
-        SessionDrain.DEVELOPMENT_COMMIT: DrainClass.COMMIT,
-        SessionDrain.REVIEW_COMMIT: DrainClass.COMMIT,
-        SessionDrain.ANALYSIS: DrainClass.ANALYSIS,
-        SessionDrain.REVIEW: DrainClass.REVIEW,
-        SessionDrain.FIX: DrainClass.FIX,
-        SessionDrain.COMMIT: DrainClass.COMMIT,
-    }
-    return mapping[session_drain]
+_DRAIN_SUBSTRING_CLASSES: list[tuple[str, DrainClass]] = [
+    ("analysis", DrainClass.ANALYSIS),
+    ("commit", DrainClass.COMMIT),
+    ("review", DrainClass.REVIEW),
+    ("fix", DrainClass.FIX),
+    ("development", DrainClass.DEVELOPMENT),
+    ("planning", DrainClass.PLANNING),
+]
 
 
-def drain_to_access_mode(drain: SessionDrain | str) -> AccessMode:
+def drain_class_for_drain_name(
+    name: str,
+    agents_policy: AgentsPolicy | None = None,
+) -> DrainClass:
+    """Resolve the drain class for any policy-declared drain name.
+
+    Resolution order:
+    1. Explicit drain_class on the AgentDrainConfig (highest priority).
+    2. Substring heuristics on the drain name.
+    3. PolicyValidationError when nothing matches.
+    """
+    from ralph.policy.validation import PolicyValidationError  # noqa: PLC0415
+
+    if agents_policy is not None:
+        drain_cfg = agents_policy.agent_drains.get(name)
+        if drain_cfg is not None and drain_cfg.drain_class is not None:
+            explicit = drain_cfg.drain_class
+            for substring, dc in _DRAIN_SUBSTRING_CLASSES:
+                if explicit == substring:
+                    return dc
+            raise PolicyValidationError(
+                f"Drain '{name}' has drain_class '{explicit}' which is not a known DrainClass"
+            )
+
+    normalized = _normalize_token(name)
+    for substring, dc in _DRAIN_SUBSTRING_CLASSES:
+        if substring in normalized:
+            return dc
+    raise PolicyValidationError(
+        f"Drain {name!r} has no resolvable drain_class; "
+        f"declare drain_class in agents.toml"
+    )
+
+
+def drain_class_for_session(
+    drain: SessionDrain | str,
+    agents_policy: AgentsPolicy | None = None,
+) -> DrainClass:
+    """Classify a session drain into its drain class.
+
+    Accepts any policy-declared drain name, falling through to substring
+    heuristics when the drain is not in the canonical SessionDrain enum.
+
+    When the drain has an explicit drain_class declared in agents_policy, any
+    resolution error is propagated immediately (invalid config, not a soft miss).
+    When no explicit drain_class is declared, falls back to the canonical
+    SessionDrain enum for known built-in drains.
+    """
+    from ralph.policy.validation import PolicyValidationError  # noqa: PLC0415
+
+    drain_str = str(drain)
+    # If the drain has an explicit drain_class in policy, fail fast on bad config
+    has_explicit_drain_class = (
+        agents_policy is not None
+        and agents_policy.agent_drains.get(drain_str) is not None
+        and agents_policy.agent_drains[drain_str].drain_class is not None
+    )
+    try:
+        return drain_class_for_drain_name(drain_str, agents_policy)
+    except PolicyValidationError:
+        if has_explicit_drain_class:
+            raise  # explicit drain_class is invalid — propagate, do not swallow
+        # No explicit drain_class and no substring match: fall through to canonical enum
+
+    # Fall back to the canonical SessionDrain enum for known built-in drains
+    try:
+        session_drain = _coerce_session_drain(drain)
+        mapping: dict[SessionDrain, DrainClass] = {
+            SessionDrain.PLANNING: DrainClass.PLANNING,
+            SessionDrain.DEVELOPMENT: DrainClass.DEVELOPMENT,
+            SessionDrain.DEVELOPMENT_ANALYSIS: DrainClass.ANALYSIS,
+            SessionDrain.REVIEW_ANALYSIS: DrainClass.ANALYSIS,
+            SessionDrain.DEVELOPMENT_COMMIT: DrainClass.COMMIT,
+            SessionDrain.REVIEW_COMMIT: DrainClass.COMMIT,
+            SessionDrain.ANALYSIS: DrainClass.ANALYSIS,
+            SessionDrain.REVIEW: DrainClass.REVIEW,
+            SessionDrain.FIX: DrainClass.FIX,
+            SessionDrain.COMMIT: DrainClass.COMMIT,
+        }
+        return mapping[session_drain]
+    except (ValueError, KeyError) as exc:
+        raise PolicyValidationError(
+            f"Drain {drain!r} has no resolvable drain_class; "
+            f"declare drain_class in agents.toml"
+        ) from exc
+
+
+def drain_to_access_mode(
+    drain: SessionDrain | str,
+    agents_policy: AgentsPolicy | None = None,
+) -> AccessMode:
     """Determine the MCP access mode for a session drain."""
-    if drain_class_for_session(drain).allows_write():
+    if drain_class_for_session(drain, agents_policy).allows_write():
         return AccessMode.READ_WRITE
     return AccessMode.READ_ONLY
 
 
-def drain_to_policy_mode(drain: SessionDrain | str) -> PolicyMode:
-    """Map a session drain to the matching policy mode."""
-    session_drain = _coerce_session_drain(drain)
-    mapping: dict[SessionDrain, PolicyMode] = {
-        SessionDrain.PLANNING: PolicyMode.PLANNING,
-        SessionDrain.DEVELOPMENT: PolicyMode.DEVELOPMENT,
-        SessionDrain.DEVELOPMENT_ANALYSIS: PolicyMode.ANALYSIS,
-        SessionDrain.REVIEW_ANALYSIS: PolicyMode.ANALYSIS,
-        SessionDrain.DEVELOPMENT_COMMIT: PolicyMode.COMMIT,
-        SessionDrain.REVIEW_COMMIT: PolicyMode.COMMIT,
-        SessionDrain.ANALYSIS: PolicyMode.ANALYSIS,
-        SessionDrain.REVIEW: PolicyMode.REVIEW,
-        SessionDrain.FIX: PolicyMode.FIX,
-        SessionDrain.COMMIT: PolicyMode.COMMIT,
-    }
-    return mapping[session_drain]
+def drain_to_policy_mode(
+    drain: SessionDrain | str,
+    agents_policy: AgentsPolicy | None = None,
+) -> PolicyMode:
+    """Map a session drain to the matching policy mode.
+
+    Accepts any policy-declared drain name by resolving its class through
+    drain_class_for_session. DrainClass and PolicyMode share the same
+    vocabulary, so the mapping is a direct value lookup.
+    """
+    dc = drain_class_for_session(drain, agents_policy)
+    return PolicyMode(dc.value)
 
 
 def lookup_ralph_capability(capability: McpCapability | str) -> Capability | None:

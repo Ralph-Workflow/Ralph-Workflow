@@ -125,8 +125,8 @@ def _render_fanout_annotation(
     """Render fanout annotation line if applicable."""
     if parallel_phase == phase_name and pe is not None:
         lines.append(
-            f"[fanout: max_workers={pe.max_parallel_workers}, "
-            f"max_units={pe.max_work_units}]"
+            f">>> FAN_OUT (max_workers={pe.max_parallel_workers}, "
+            f"max_units={pe.max_work_units}) >>>"
         )
 
 
@@ -171,19 +171,22 @@ def _render_decision_branches(lines: list[str], phase: PhaseExplanation) -> None
 def _render_loopback_arrow(lines: list[str], phase: PhaseExplanation) -> None:
     """Render loopback annotation if applicable.
 
-    Emits 'loop back to <target>' below the phase box, with an optional
-    [LOOPBACK: counter=..., max=...] annotation when the loopback consumes a
-    loop counter (i.e. when loop_policy.loopback_review_outcome is set).
+    Emits '<<==[loopback]== returns to TARGET' below the phase box using
+    left-pointing arrows so readers cannot mistake it for a forward arrow.
+    Adds a [LOOPBACK: counter=..., max=...] annotation when the loopback
+    consumes a loop counter (i.e. when loop_policy is set).
+    A '>> RE-ENTRY at TARGET' banner is placed at the loopback target box
+    to show both ends of the cycle clearly.
     """
     if phase.on_loopback and phase.on_loopback != phase.on_success:
         target = phase.on_loopback
-        lines.append(f"    | loop back to {target}")
-        lines.append(f"    +---^  (returns to '{target}' phase)")
-        if phase.loop_policy is not None and phase.loop_policy.loopback_review_outcome is not None:
+        lines.append(f"    <<==[loopback]== returns to '{target}'")
+        if phase.loop_policy is not None:
             lp = phase.loop_policy
             lines.append(
                 f"    [LOOPBACK: counter={lp.iteration_state_field}, max={lp.max_iterations}]"
             )
+        lines.append(f"    >> RE-ENTRY at {target}")
 
 
 def _render_terminal_marker(lines: list[str], phase: PhaseExplanation) -> None:
@@ -234,10 +237,11 @@ def render_explanation_ascii(exp: PolicyExplanation) -> str:
        render "    +--[decision_name]--> target_phase" (4-space indent).
 
     5. LOOPBACK: When on_loopback differs from on_success, render
-       "    | loop back to target_phase" and
-       "    +---^  (returns to 'target_phase' phase)".
-       If loop_policy.loopback_review_outcome is also set, render a third line:
-       "    [LOOPBACK: counter=NAME, max=N]".
+       "    <<==[loopback]== returns to 'target_phase'"
+       When loop_policy is set, also render:
+       "    [LOOPBACK: counter=NAME, max=N]"
+       And always append the re-entry banner:
+       "    >> RE-ENTRY at target_phase"
 
     6. TERMINAL MARKERS: ==SUCCESS==> for terminal_outcome="success";
        ==FAILURE==> for terminal_outcome="failure". Only policy-declared
@@ -277,6 +281,7 @@ def render_explanation_ascii(exp: PolicyExplanation) -> str:
         # Determine the next phase on the success spine
         next_phase = spine_order[i + 1] if i + 1 < len(spine_order) else None
 
+        is_fanout = parallel_phase == phase_name and exp.parallel_execution is not None
         _render_fanout_annotation(
             lines, phase_name, parallel_phase, exp.parallel_execution
         )
@@ -290,7 +295,19 @@ def render_explanation_ascii(exp: PolicyExplanation) -> str:
         _render_decision_branches(lines, phase)
         _render_loopback_arrow(lines, phase)
         _render_terminal_marker(lines, phase)
+        if is_fanout:
+            lines.append("<<< REJOIN")
         _render_happy_path_arrow(lines, phase, next_phase)
+
+    lines.append("")
+    lines.append("Legend:")
+    lines.append("  =ENTRY=>           pipeline entry point")
+    lines.append("  ==SUCCESS==>       terminal success outcome")
+    lines.append("  ==FAILURE==>       terminal failure outcome")
+    lines.append("  +--[decision]-->   analysis decision branch")
+    lines.append("  <<==[loopback]==   loopback to earlier phase")
+    lines.append("  >>> FAN_OUT ...    parallel worker fan-out")
+    lines.append("  <<< REJOIN         workers rejoin after fan-out")
 
     return "\n".join(lines)
 
@@ -402,6 +419,25 @@ def _render_explanation_sentences(phase: PhaseExplanation) -> list[str]:
             f"verification gate before {v.gate_for}; failure routes to "
             f"'{failure_target}'."
         )
+        if v.on_failure_route:
+            sentences.append(
+                f"Explanation: phase '{phase.name}' fails verification "
+                f"→ routes to '{v.on_failure_route}' because the policy "
+                f"declares verification.on_failure_route"
+            )
+
+    if not phase.has_parallelization and phase.role not in {"terminal", "fanout_join"}:
+        sentences.append(
+            f"Explanation: parallel execution is rejected at phase "
+            f"'{phase.name}' because no parallelization policy is declared"
+        )
+
+    for budget_state, target in phase.post_commit_routes_info:
+        sentences.append(
+            f"Explanation: after commit phase '{phase.name}' with budget_state "
+            f"'{budget_state}' → routes to '{target}' because the workflow "
+            f"policy declares this post_commit_route"
+        )
 
     return sentences
 
@@ -506,10 +542,6 @@ def _render_phase_verification(phase: PhaseExplanation, lines: list[str]) -> Non
     if v.kind == "artifact":
         lines.append(
             "               An artifact file must be present and non-empty before advancement."
-        )
-    elif v.kind == "make_target":
-        lines.append(
-            "               NOT YET IMPLEMENTED — declare kind='artifact' or kind='none'."
         )
     elif v.kind == "none":
         lines.append(

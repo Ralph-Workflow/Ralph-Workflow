@@ -27,6 +27,7 @@ from ralph.agents.invoke import (
     _CompletionCheckOptions,
 )
 from ralph.agents.timeout_clock import FakeClock
+from ralph.phases.required_artifacts import RequiredArtifact
 from ralph.process.child_liveness import ChildLivenessRegistry
 from ralph.process.liveness import DefaultLivenessProbe, FakeLivenessProbe
 
@@ -288,7 +289,13 @@ class TestPostExitViaCheckProcessResult:
                 execution_strategy=strategy,
                 liveness_probe=probe,
                 workspace_path=tmp_path,
-                phase="development",
+                required_artifact=RequiredArtifact(
+                    phase="development",
+                    artifact_type="development_result",
+                    json_path=".agent/artifacts/development_result.json",
+                    markdown_path=None,
+                    normalizer=None,
+                ),
                 policy=TimeoutPolicy(
                     idle_timeout_seconds=None,
                     parent_exit_grace_seconds=1.0,
@@ -331,7 +338,13 @@ class TestPostExitViaCheckProcessResult:
                     execution_strategy=strategy,
                     liveness_probe=probe,
                     workspace_path=tmp_path,
-                    phase="development",
+                    required_artifact=RequiredArtifact(
+                        phase="development",
+                        artifact_type="development_result",
+                        json_path=".agent/artifacts/development_result.json",
+                        markdown_path=None,
+                        normalizer=None,
+                    ),
                     policy=TimeoutPolicy(
                         idle_timeout_seconds=None,
                         parent_exit_grace_seconds=0.0,

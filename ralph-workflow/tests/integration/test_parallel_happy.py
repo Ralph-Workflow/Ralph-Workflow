@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 
-from ralph.config.enums import PHASE_DEVELOPMENT, PHASE_DEVELOPMENT_ANALYSIS
 from ralph.pipeline.effects import FanOutDevelopmentEffect
 from ralph.pipeline.events import Event, PipelineEvent, WorkerCompletedEvent
 from ralph.pipeline.parallel import coordinator
@@ -51,7 +50,7 @@ def test_three_workers_all_succeed() -> None:
         for unit in units
     }
     effect = FanOutDevelopmentEffect(work_units=units, max_workers=3)
-    state = PipelineState(phase=PHASE_DEVELOPMENT, work_units=units)
+    state = PipelineState(phase="development", work_units=units)
 
     events = _run_fan_out(effect, state, runs)
 
@@ -67,18 +66,18 @@ def test_three_workers_all_succeed() -> None:
 def _fan_out_policy() -> PipelinePolicy:
     return PipelinePolicy(
         phases={
-            PHASE_DEVELOPMENT: PhaseDefinition(
+            "development": PhaseDefinition(
                 drain="development",
                 role="execution",
-                transitions=PhaseTransition(on_success=PHASE_DEVELOPMENT_ANALYSIS),
+                transitions=PhaseTransition(on_success="development_analysis"),
             ),
-            PHASE_DEVELOPMENT_ANALYSIS: PhaseDefinition(
+            "development_analysis": PhaseDefinition(
                 drain="development_analysis",
                 role="analysis",
                 transitions=PhaseTransition(on_success="complete"),
             ),
         },
-        entry_phase=PHASE_DEVELOPMENT,
+        entry_phase="development",
         terminal_phase="complete",
     )
 
@@ -93,7 +92,7 @@ def test_happy_path_state_transitions() -> None:
         unit.unit_id: FakeRun(outputs=[f"done-{unit.unit_id}"], exit_code=0, duration_ms=1)
         for unit in units
     }
-    initial_state = PipelineState(phase=PHASE_DEVELOPMENT, work_units=units)
+    initial_state = PipelineState(phase="development", work_units=units)
     effect = FanOutDevelopmentEffect(work_units=units, max_workers=3)
     policy = _fan_out_policy()
 
@@ -104,7 +103,7 @@ def test_happy_path_state_transitions() -> None:
         reduced_state, _ = reducer_reduce(reduced_state, event, policy)
 
     assert PipelineEvent.ALL_WORKERS_COMPLETE in events
-    assert reduced_state.phase == PHASE_DEVELOPMENT_ANALYSIS
+    assert reduced_state.phase == "development_analysis"
     assert reduced_state.worker_states["unit-A"].status == WorkerStatus.SUCCEEDED
     assert reduced_state.worker_states["unit-B"].status == WorkerStatus.SUCCEEDED
     assert reduced_state.worker_states["unit-C"].status == WorkerStatus.SUCCEEDED

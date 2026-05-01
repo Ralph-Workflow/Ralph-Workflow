@@ -36,7 +36,7 @@ def test_dropped_count_increments_on_queue_full(subscriber: PipelineSubscriber) 
     state.total_iterations = 1
     state.reviewer_pass = 0
     state.total_reviewer_passes = 0
-    state.review_issues_found = False
+    state.review_outcome = None
     state.interrupted_by_user = False
     state.last_error = None
     state.pr_url = None
@@ -82,7 +82,7 @@ def test_no_loguru_debug_on_drop(
     state.total_iterations = 1
     state.reviewer_pass = 0
     state.total_reviewer_passes = 0
-    state.review_issues_found = False
+    state.review_outcome = None
     state.interrupted_by_user = False
     state.last_error = None
     state.pr_url = None

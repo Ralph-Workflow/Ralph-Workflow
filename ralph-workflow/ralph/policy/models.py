@@ -36,6 +36,10 @@ PhaseRole = Literal[
     "fanout_join",
 ]
 
+# Role identifier constant — use this in non-model modules instead of the
+# string literal "review" to avoid colliding with the default phase name 'review'.
+ROLE_REVIEW: Literal["review"] = "review"
+
 
 class _FrozenPolicyModel(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     """Private base for frozen policy models.
@@ -58,9 +62,31 @@ class AgentDrainConfig(_FrozenPolicyModel):  # type: ignore[explicit-any]  # rea
 
     Attributes:
         chain: Name of the agent chain to invoke when this drain is active.
+        drain_class: Explicit capability class for this drain. When set, overrides
+            the substring-match fallback in drain_class_for_drain_name. Must be one
+            of: planning, development, analysis, review, fix, commit.
     """
 
     chain: str = Field(..., description="Agent chain name to bind to this drain")
+    drain_class: str | None = Field(
+        default=None,
+        description=(
+            "Drain capability class — one of planning|development|analysis|review|fix|commit. "
+            "When None, drain_class_for_drain_name infers a default from the drain name "
+            "or raises PolicyValidationError for ambiguous names."
+        ),
+    )
+
+    @model_validator(mode="after")
+    def _validate_drain_class_value(self) -> AgentDrainConfig:
+        """Validate drain_class against the allowed vocabulary when set."""
+        allowed = {"planning", "development", "analysis", "review", "fix", "commit"}
+        if self.drain_class is not None and self.drain_class not in allowed:
+            raise ValueError(
+                f"drain_class '{self.drain_class}' is not valid; "
+                f"must be one of: {', '.join(sorted(allowed))}"
+            )
+        return self
 
 
 class AgentChainConfig(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
@@ -189,12 +215,13 @@ class PhaseVerificationPolicy(_FrozenPolicyModel):  # type: ignore[explicit-any]
     """Verification gating semantics for a phase.
 
     Attributes:
-        kind: Kind of verification (artifact, make_target, or none).
+        kind: Kind of verification: 'artifact' checks for a required artifact;
+            'none' skips gate validation.
         gate_for: What this verification gates (advancement, completion, release).
         on_failure_route: Phase to route to on verification failure (None = fail pipeline).
     """
 
-    kind: Literal["artifact", "make_target", "none"]
+    kind: Literal["artifact", "none"]
     gate_for: Literal["advancement", "completion", "release"]
     on_failure_route: str | None = None
 
@@ -238,8 +265,10 @@ class RecoveryPolicy(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reaso
     Attributes:
         cycle_cap: Maximum full-chain exhaustion cycles before exit.
         failed_route: Phase to route to on terminal pipeline failure.
-            'failed', 'phase_failed', and 'exit_failure' are built-in pseudo-phases;
-            any declared pipeline phase name with role='terminal' is also valid.
+            Only 'failed' is accepted as a deprecated alias (emits deprecation
+            warning). Declare a phase with role='terminal' and
+            terminal_outcome='failure' and reference it here.
+            'phase_failed' and 'exit_failure' are no longer accepted.
         terminal_failure_phase: Optional name of the declared terminal failure phase
             (must have role='terminal' and terminal_outcome='failure' in pipeline.phases).
             When set, enables BFS reachability validation for failure paths.
@@ -251,8 +280,9 @@ class RecoveryPolicy(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reaso
         default="failed",
         description=(
             "Phase to route to on terminal pipeline failure. "
-            "'failed', 'phase_failed', and 'exit_failure' are built-in pseudo-phases; "
-            "any declared pipeline phase name is also valid."
+            "'failed' is a deprecated pseudo-phase (still accepted, emits warning). "
+            "Preferred: declare a phase with role='terminal' and terminal_outcome='failure' "
+            "and reference it here. 'phase_failed' and 'exit_failure' are no longer accepted."
         ),
     )
     terminal_failure_phase: str | None = Field(
@@ -267,8 +297,8 @@ class RecoveryPolicy(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reaso
 
     @model_validator(mode="before")
     @classmethod
-    def _reject_terminal_recovery_route(cls, data: object) -> object:
-        """Reject the deprecated terminal_recovery_route field with an actionable error."""
+    def _reject_legacy_route_fields(cls, data: object) -> object:
+        """Reject removed/deprecated recovery fields with actionable errors."""
         if not isinstance(data, dict):
             return data
         d = cast("dict[str, object]", dict(data))
@@ -276,6 +306,21 @@ class RecoveryPolicy(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reaso
             raise ValueError(
                 "recovery.terminal_recovery_route is deprecated; rename it to "
                 "recovery.failed_route. See docs/migration/policy-v2.md."
+            )
+        failed_route = d.get("failed_route")
+        if failed_route in ("phase_failed", "exit_failure"):
+            raise ValueError(
+                f"recovery.failed_route: '{failed_route}' is no longer supported. "
+                "Declare a terminal failure phase with role='terminal' and "
+                "terminal_outcome='failure' and reference it via recovery.failed_route "
+                "(and optionally recovery.terminal_failure_phase). "
+                "See docs/sphinx/policy-driven-overhaul-migration.md."
+            )
+        if failed_route == "failed":
+            logger.warning(
+                "recovery.failed_route: 'failed' is a deprecated pseudo-phase alias. "
+                "Declare a phase with role='terminal' and terminal_outcome='failure' "
+                "and reference it via recovery.failed_route instead."
             )
         return d
 
@@ -509,21 +554,16 @@ class PostCommitRoute(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reas
 
 
 def _terminal_phase_names(policy: PipelinePolicy) -> set[str]:
-    """Return all terminal phase names from policy (declared + pseudo-phases).
+    """Return all terminal phase names from policy.
 
     Includes:
     - policy.terminal_phase (the declared success terminal)
-    - policy.recovery.failed_route (the failure route pseudo-phase or declared phase)
+    - policy.recovery.failed_route (the failure route or declared phase)
     - Any phase with role='terminal'
-    - The canonical pseudo-phase tokens 'failed', 'complete', 'phase_failed', 'exit_failure'
     """
     names: set[str] = {
         policy.terminal_phase,
         policy.recovery.failed_route,
-        "failed",
-        "complete",
-        "phase_failed",
-        "exit_failure",
     }
     names.update(name for name, defn in policy.phases.items() if defn.role == "terminal")
     return names
@@ -783,6 +823,10 @@ class ArtifactContract(_FrozenPolicyModel):  # type: ignore[explicit-any]  # rea
         artifact_type: Type identifier for the artifact (e.g., planning_json).
         decision_vocabulary: Valid values for the decision field (for analysis drains).
         prompt_template: Optional template for generating prompts (None = use default).
+        artifact_json_path: Override path for the artifact JSON file. When set,
+            overrides the default '.agent/artifacts/<artifact_type>.json' path.
+        markdown_summary_path: Path to the human-readable markdown summary for this
+            artifact. When set, the runner renders a markdown handoff at this path.
     """
 
     drain: str = Field(..., description="Drain this artifact is submitted at")
@@ -797,6 +841,20 @@ class ArtifactContract(_FrozenPolicyModel):  # type: ignore[explicit-any]  # rea
     prompt_template: str | None = Field(
         default=None,
         description="Optional custom prompt template path",
+    )
+    artifact_json_path: str | None = Field(
+        default=None,
+        description=(
+            "Override path for the artifact JSON file. "
+            "When None, falls back to '.agent/artifacts/<artifact_type>.json'."
+        ),
+    )
+    markdown_summary_path: str | None = Field(
+        default=None,
+        description=(
+            "Path to the human-readable markdown summary for this artifact. "
+            "When set, the runner writes a markdown handoff at this path."
+        ),
     )
 
 

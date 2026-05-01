@@ -33,6 +33,8 @@ from ralph.mcp.protocol.capability_mapping import (
     lookup_ralph_capability,
     policy_from_outcome,
 )
+from ralph.policy.models import AgentChainConfig, AgentDrainConfig, AgentsPolicy
+from ralph.policy.validation import PolicyValidationError
 from ralph.prompts.template_variables import CapabilitySet
 
 # =============================================================================
@@ -250,7 +252,7 @@ class TestDrainClassForSession:
         assert drain_class_for_session("commit") == DrainClass.COMMIT
 
     def test_unknown_raises(self) -> None:
-        with pytest.raises(ValueError):
+        with pytest.raises(PolicyValidationError):
             drain_class_for_session("unknown")
 
 
@@ -278,9 +280,19 @@ class TestDrainToPolicyMode:
     def test_fix(self) -> None:
         assert drain_to_policy_mode("fix") == PolicyMode.FIX
 
-    def test_unknown_raises(self) -> None:
-        with pytest.raises(ValueError):
+    def test_unknown_raises_policy_validation_error(self) -> None:
+        with pytest.raises(PolicyValidationError):
             drain_to_policy_mode("unknown")
+
+    def test_custom_drain_with_explicit_drain_class(self) -> None:
+        policy = AgentsPolicy(
+            agent_chains={"c": AgentChainConfig(agents=["agent"])},
+            agent_drains={"my_custom_audit": AgentDrainConfig(chain="c", drain_class="analysis")},
+        )
+        assert drain_to_policy_mode("my_custom_audit", policy) == PolicyMode.ANALYSIS
+
+    def test_custom_commit_drain_via_substring(self) -> None:
+        assert drain_to_policy_mode("feature_commit") == PolicyMode.COMMIT
 
 
 # =============================================================================

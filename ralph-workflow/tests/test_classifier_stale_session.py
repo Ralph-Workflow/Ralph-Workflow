@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import pytest
 
-from ralph.config.enums import PHASE_DEVELOPMENT
 from ralph.recovery.classifier import FailureCategory, FailureClassifier
 
 
@@ -31,7 +30,7 @@ _CLASSIFIER = FailureClassifier()
 def test_opencode_stale_session_message_sets_reset_session_true(message: str) -> None:
     """OpenCode stale-session substrings trigger reset_session=True and AGENT category."""
     exc = _AgentInvocationError(message)
-    failure = _CLASSIFIER.classify(exc, phase=PHASE_DEVELOPMENT, agent="opencode")
+    failure = _CLASSIFIER.classify(exc, phase="development", agent="opencode")
 
     assert failure.reset_session is True, (
         f"Expected reset_session=True for message {message!r}, got False"
@@ -45,15 +44,15 @@ def test_opencode_stale_session_message_sets_reset_session_true(message: str) ->
 def test_opencode_stale_session_attributed_to_agent() -> None:
     """OpenCode stale-session failure is attributed to the agent."""
     exc = _AgentInvocationError("Session not found: abc123")
-    failure = _CLASSIFIER.classify(exc, phase=PHASE_DEVELOPMENT, agent="opencode")
+    failure = _CLASSIFIER.classify(exc, phase="development", agent="opencode")
 
     assert failure.attributed_agent == "opencode"
-    assert failure.attributed_phase == PHASE_DEVELOPMENT
+    assert failure.attributed_phase == "development"
 
 
 def test_unrelated_opencode_error_does_not_trigger_reset_session() -> None:
     """Non-stale-session OpenCode errors keep reset_session=False."""
     exc = _AgentInvocationError("Agent 'opencode' failed with code 1: some other error")
-    failure = _CLASSIFIER.classify(exc, phase=PHASE_DEVELOPMENT, agent="opencode")
+    failure = _CLASSIFIER.classify(exc, phase="development", agent="opencode")
 
     assert failure.reset_session is False

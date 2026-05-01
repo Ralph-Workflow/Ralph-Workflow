@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 
-from ralph.config.enums import PHASE_DEVELOPMENT
 from ralph.pipeline.events import PhaseFailureEvent
 from ralph.pipeline.reducer import reduce
 from ralph.pipeline.state import AgentChainState, PipelineState
@@ -17,8 +16,8 @@ from ralph.recovery.testing import FakeConnectivityMonitor
 
 def _make_state(agents: list[str]) -> PipelineState:
     return PipelineState(
-        phase=PHASE_DEVELOPMENT,
-        dev_chain=AgentChainState(agents=agents, current_index=0, retries=0),
+        phase="development",
+        phase_chains={"development": AgentChainState(agents=agents, current_index=0, retries=0)},
     )
 
 
@@ -34,11 +33,11 @@ def test_environmental_failure_does_not_debit_budget() -> None:
     new_state, effects, evt = controller.handle(
         state,
         ConnectionError("connection reset by peer"),
-        phase=PHASE_DEVELOPMENT,
+        phase="development",
         agent="claude",
     )
 
-    assert new_state.phase == PHASE_DEVELOPMENT
+    assert new_state.phase == "development"
     assert effects == []
     assert evt.counted_against_budget is False
     assert evt.category == "environmental"
@@ -54,13 +53,13 @@ def test_environmental_failure_via_message_substring() -> None:
     new_state, effects, evt = controller.handle(
         state,
         "ECONNREFUSED: connection refused to 127.0.0.1:8080",
-        phase=PHASE_DEVELOPMENT,
+        phase="development",
         agent="claude",
     )
 
     assert evt.category == "environmental"
     assert evt.counted_against_budget is False
-    assert new_state.phase == PHASE_DEVELOPMENT
+    assert new_state.phase == "development"
     assert effects == []
 
 
@@ -70,14 +69,14 @@ def test_environmental_failure_via_reducer_with_controller() -> None:
     state = _make_state(["claude"])
 
     event = PhaseFailureEvent(
-        phase=PHASE_DEVELOPMENT,
+        phase="development",
         reason="connection reset by peer",
         recoverable=True,
     )
 
     new_state, _ = reduce(state, event, None, recovery=controller)
 
-    assert new_state.phase == PHASE_DEVELOPMENT
+    assert new_state.phase == "development"
 
 
 def test_connectivity_monitor_state_transitions() -> None:
@@ -106,7 +105,7 @@ def test_environmental_failure_no_fallover_record() -> None:
     controller.handle(
         state,
         ConnectionError("Temporary failure in name resolution"),
-        phase=PHASE_DEVELOPMENT,
+        phase="development",
         agent="claude",
     )
 
@@ -176,7 +175,7 @@ def test_offline_inhibits_agent_invocation_via_recovery_controller() -> None:
     bus = FailureEventBus()
     bus.subscribe(lambda evt: collected_events.append(evt) if isinstance(evt, FailureEvent) else None)  # noqa: E501
 
-    registry = AgentBudgetRegistry().set_budget(PHASE_DEVELOPMENT, "claude", max_retries=3)
+    registry = AgentBudgetRegistry().set_budget("development", "claude", max_retries=3)
     controller = RecoveryController(cycle_cap=10, event_bus=bus, budget_registry=registry)
     state = _make_state(["claude"])
 
@@ -207,7 +206,7 @@ def test_offline_inhibits_agent_invocation_via_recovery_controller() -> None:
     _, _, evt = controller.handle(
         state,
         ConnectionError("pre-existing connection reset"),
-        phase=PHASE_DEVELOPMENT,
+        phase="development",
         agent="claude",
     )
 
@@ -216,7 +215,7 @@ def test_offline_inhibits_agent_invocation_via_recovery_controller() -> None:
     assert evt.category == "environmental"
 
     # Budget is unchanged
-    budget = controller.budget_registry.get(PHASE_DEVELOPMENT, "claude")
+    budget = controller.budget_registry.get("development", "claude")
     assert budget is not None
     assert budget.consumed == 0
     assert budget.remaining == 3  # noqa: PLR2004
@@ -235,7 +234,7 @@ def test_offline_period_does_not_debit_budget_on_recovery_resume() -> None:
     bus = FailureEventBus()
     bus.subscribe(lambda evt: collected.append(evt) if isinstance(evt, FailureEvent) else None)
 
-    registry = AgentBudgetRegistry().set_budget(PHASE_DEVELOPMENT, "claude", max_retries=3)
+    registry = AgentBudgetRegistry().set_budget("development", "claude", max_retries=3)
     controller = RecoveryController(cycle_cap=10, event_bus=bus, budget_registry=registry)
     state = _make_state(["claude"])
 
@@ -256,13 +255,13 @@ def test_offline_period_does_not_debit_budget_on_recovery_resume() -> None:
     assert len(collected) == 0
 
     # Budget still intact
-    budget = controller.budget_registry.get(PHASE_DEVELOPMENT, "claude")
+    budget = controller.budget_registry.get("development", "claude")
     assert budget is not None
     assert budget.remaining == 3  # noqa: PLR2004
 
     # Now simulate a successful agent invocation after resume
     # (no failure - just a state update showing no budget consumed)
     new_state = state.copy_with(last_retry_delay_ms=0)
-    assert new_state.phase == PHASE_DEVELOPMENT
+    assert new_state.phase == "development"
     # No budget was consumed during offline period
     assert budget.remaining == 3  # noqa: PLR2004

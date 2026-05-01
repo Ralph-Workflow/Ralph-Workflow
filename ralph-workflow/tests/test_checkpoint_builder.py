@@ -54,7 +54,7 @@ def test_checkpoint_builder_requires_pipeline_state() -> None:
 
 def test_checkpoint_payload_round_trips_to_dict() -> None:
     """Built payloads should serialize into JSON-safe dictionaries."""
-    payload = CheckpointBuilder.new().state(PipelineState()).build()
+    payload = CheckpointBuilder.new().state(PipelineState(phase="planning")).build()
 
     data = payload.to_dict()
 

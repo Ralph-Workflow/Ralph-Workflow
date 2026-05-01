@@ -34,6 +34,7 @@ class TestOldCheckpointCompatibility:
     ) -> None:
         """Legacy checkpoint JSON without work_units/worker_states loads with empty defaults."""
         state = PipelineState(
+            phase="planning",
             work_units=(_wu("u1"), _wu("u2")),
             worker_states={"u1": WorkerState(unit_id="u1", status=WorkerStatus.SUCCEEDED)},
         )
@@ -67,7 +68,7 @@ class TestOldCheckpointCompatibility:
             allowed_directories=["src/c"],
             dependencies=["task-a"],
         )
-        state = PipelineState(work_units=(unit_a, unit_b, unit_c))
+        state = PipelineState(phase="planning", work_units=(unit_a, unit_b, unit_c))
         checkpoint_path = tmp_path / ".agent" / "checkpoint.json"
         checkpoint_path.parent.mkdir(parents=True)
 
@@ -91,7 +92,7 @@ class TestOldCheckpointCompatibility:
         accidentally by subsequent copy_with calls in the pipeline.
         """
         original_units = (_wu("unit-x"), _wu("unit-y"))
-        state = PipelineState(work_units=original_units)
+        state = PipelineState(phase="planning", work_units=original_units)
 
         updated = state.copy_with(work_units=(_wu("unit-z"),))
 
@@ -102,6 +103,7 @@ class TestOldCheckpointCompatibility:
     def test_worker_state_status_round_trip(self, tmp_path: Path) -> None:
         """Worker statuses (SUCCEEDED, FAILED) survive JSON serialization."""
         state = PipelineState(
+            phase="planning",
             work_units=(_wu("wa"), _wu("wb")),
             worker_states={
                 "wa": WorkerState(unit_id="wa", status=WorkerStatus.SUCCEEDED),
@@ -125,6 +127,7 @@ class TestOldCheckpointCompatibility:
     def test_all_worker_statuses_round_trip(self, tmp_path: Path, status: WorkerStatus) -> None:
         """Every WorkerStatus value survives a checkpoint save/load cycle."""
         state = PipelineState(
+            phase="planning",
             work_units=(_wu("w1"),),
             worker_states={"w1": WorkerState(unit_id="w1", status=status)},
         )

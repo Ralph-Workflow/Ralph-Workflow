@@ -15,15 +15,9 @@ from ralph.mcp.artifacts.handoffs import (
 )
 from ralph.mcp.artifacts.plan import PLAN_ARTIFACT_PATH
 from ralph.mcp.tools.names import SUBMIT_ARTIFACT_TOOL, claude_tool_name_prefix
-from ralph.phases.required_artifacts import (
-    DEV_ANALYSIS_DECISION_JSON_PATH,
-    DEV_RESULT_ARTIFACT_JSON_PATH,
-    FIX_RESULT_ARTIFACT_JSON_PATH,
-    ISSUES_ARTIFACT_JSON_PATH,
-    REVIEW_ANALYSIS_DECISION_JSON_PATH,
-    retry_hint_path,
-)
+from ralph.phases.required_artifacts import resolve_required_artifact, retry_hint_path
 from ralph.pipeline.cycle_baseline import read_cycle_baseline
+from ralph.policy.models import ROLE_REVIEW
 from ralph.prompts.commit import CommitPromptPayloadConfig, prompt_commit_message
 from ralph.prompts.debug_dump import dump_rendered_prompt, prompt_dump_path
 from ralph.prompts.developer import (
@@ -44,11 +38,10 @@ from ralph.prompts.types import SessionCapabilities, capability_template_variabl
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+    from ralph.phases.required_artifacts import RequiredArtifact
     from ralph.pipeline.work_units import WorkUnit
-    from ralph.policy.models import PipelinePolicy
+    from ralph.policy.models import ArtifactsPolicy, PipelinePolicy
     from ralph.workspace.protocol import Workspace
-
-_ANALYSIS_PHASES = frozenset({"development_analysis", "review_analysis"})
 
 
 def materialize_prompt_for_phase(  # noqa: PLR0913
@@ -56,6 +49,7 @@ def materialize_prompt_for_phase(  # noqa: PLR0913
     phase: str,
     workspace: Workspace,
     pipeline_policy: PipelinePolicy,
+    artifacts_policy: ArtifactsPolicy | None = None,
     session_caps: SessionCapabilities,
     workspace_root: Path,
     worker_namespace: Path | None = None,
@@ -64,6 +58,7 @@ def materialize_prompt_for_phase(  # noqa: PLR0913
         phase=phase,
         workspace=workspace,
         pipeline_policy=pipeline_policy,
+        artifacts_policy=artifacts_policy,
         session_caps=session_caps,
         workspace_root=workspace_root,
         worker_namespace=worker_namespace,
@@ -100,6 +95,7 @@ def _render_prompt_for_phase(  # noqa: PLR0913
     phase: str,
     workspace: Workspace,
     pipeline_policy: PipelinePolicy,
+    artifacts_policy: ArtifactsPolicy | None,
     session_caps: SessionCapabilities,
     workspace_root: Path,
     worker_namespace: Path | None = None,
@@ -109,7 +105,16 @@ def _render_prompt_for_phase(  # noqa: PLR0913
     prompt_content = _read_optional(workspace, "PROMPT.md")
     current_prompt_path = _persist_current_prompt(workspace_root, prompt_content)
     plan_content, plan_path = _resolve_plan_handoff(workspace)
-    if phase == "planning":
+
+    phase_def = pipeline_policy.phases.get(phase)
+    phase_role = phase_def.role if phase_def is not None else None
+    drain = phase_def.drain if phase_def is not None else phase
+    drain_artifact_type = (
+        _drain_artifact_type(drain, artifacts_policy) if artifacts_policy else None
+    )
+
+    # Planning-style prompt: execution role producing a plan artifact
+    if phase_role == "execution" and drain_artifact_type == "plan":
         last_retry_error = _read_and_clear_retry_hint(workspace, phase)
         return prompt_planning_xml_with_context(
             context=context,
@@ -121,10 +126,11 @@ def _render_prompt_for_phase(  # noqa: PLR0913
             session_caps=session_caps,
             template_name=template_name,
         )
-    if phase == "development":
+
+    # Developer-style prompt: execution role producing a development_result artifact
+    if phase_role == "execution" and drain_artifact_type == "development_result":
         analysis_feedback_content, analysis_feedback_path = _resolve_loopback_analysis_feedback(
-            workspace,
-            phase,
+            workspace, phase, pipeline_policy, artifacts_policy
         )
         last_retry_error = _read_and_clear_retry_hint(workspace, phase)
         return prompt_developer_iteration_xml_with_context(
@@ -142,15 +148,33 @@ def _render_prompt_for_phase(  # noqa: PLR0913
             session_caps=session_caps,
             template_name=template_name,
         )
-    if phase in {"review", "fix", "development_analysis", "review_analysis"}:
+
+    # Commit-style prompt: commit role
+    if phase_role == "commit":
+        return prompt_commit_message(
+            _commit_phase_diff(workspace_root),
+            template_registry=context.registry,
+            partials=context.partials,
+            submit_artifact_tool_names=SUBMIT_ARTIFACT_TOOL.prompt_aliases(
+                tool_name_prefix=session_caps.tool_name_prefix,
+            ),
+            payload_config=CommitPromptPayloadConfig(
+                output_dir=workspace_root / ".agent" / "tmp" / "prompt_payloads",
+                name_prefix=phase,
+            ),
+        )
+
+    # Template-based prompt: review, analysis, or other execution-role phases
+    if phase_role in (ROLE_REVIEW, "analysis", "execution", "verification"):
         template = context.registry.get_template(template_name)
         diff_content = _git_diff(workspace_root)
-        latest_artifact_content, latest_artifact_path = _latest_artifact_content(workspace, phase)
+        latest_artifact_content, latest_artifact_path = _latest_artifact_content(
+            workspace, phase, pipeline_policy, artifacts_policy
+        )
         issues_content, issues_path = _resolve_issues_content(workspace)
         fix_result_content, fix_result_path = _resolve_fix_result_content(workspace)
         analysis_feedback_content, analysis_feedback_path = _resolve_loopback_analysis_feedback(
-            workspace,
-            phase,
+            workspace, phase, pipeline_policy, artifacts_policy
         )
         last_retry_error = _read_and_clear_retry_hint(workspace, phase)
         variables = _phase_payload_variables(
@@ -177,12 +201,12 @@ def _render_prompt_for_phase(  # noqa: PLR0913
             variables["FIX_RESULT_PATH"] = fix_result_path
         if analysis_feedback_path:
             variables["ANALYSIS_FEEDBACK_PATH"] = analysis_feedback_path
-        if phase == "fix":
+        if phase_def is not None and phase_def.skip_invocation:
             variables["HIDE_ARTIFACT_SUBMISSION_GUIDANCE"] = "true"
         variables.update(_current_prompt_variables(prompt_content, current_prompt_path))
-        # For analysis phases, PROMPT and PLAN are SECONDARY context: force path
+        # For analysis roles, PROMPT and PLAN are SECONDARY context: force path
         # references regardless of content size so they are never inlined.
-        if phase in _ANALYSIS_PHASES:
+        if phase_role == "analysis":
             variables.update(
                 _force_plan_path_for_analysis(
                     workspace_root=workspace_root,
@@ -198,20 +222,8 @@ def _render_prompt_for_phase(  # noqa: PLR0913
             _merged_variables(variables, session_caps),
             context.partials,
         )
-    if phase in {"development_commit", "review_commit"}:
-        return prompt_commit_message(
-            _commit_phase_diff(workspace_root),
-            template_registry=context.registry,
-            partials=context.partials,
-            submit_artifact_tool_names=SUBMIT_ARTIFACT_TOOL.prompt_aliases(
-                tool_name_prefix=session_caps.tool_name_prefix,
-            ),
-            payload_config=CommitPromptPayloadConfig(
-                output_dir=workspace_root / ".agent" / "tmp" / "prompt_payloads",
-                name_prefix=phase,
-            ),
-        )
-    msg = f"Unsupported phase '{phase}' for prompt materialization"
+
+    msg = f"Unsupported phase '{phase}' (role={phase_role!r}) for prompt materialization"
     raise ValueError(msg)
 
 
@@ -533,7 +545,7 @@ def _resolve_issues_content(workspace: Workspace) -> tuple[str, str]:
     content, path = _resolve_agent_handoff(
         workspace,
         artifact_type="issues",
-        artifact_path=ISSUES_ARTIFACT_JSON_PATH,
+        artifact_path=".agent/artifacts/issues.json",
     )
     return content or "(no review issues available)", path
 
@@ -542,51 +554,103 @@ def _resolve_fix_result_content(workspace: Workspace) -> tuple[str, str]:
     content, path = _resolve_agent_handoff(
         workspace,
         artifact_type="fix_result",
-        artifact_path=FIX_RESULT_ARTIFACT_JSON_PATH,
+        artifact_path=".agent/artifacts/fix_result.json",
     )
     return content or "(no fix result available)", path
 
 
-def _resolve_loopback_analysis_feedback(workspace: Workspace, phase: str) -> tuple[str, str]:
-    sources = {
-        "development": (
-            "development_analysis_decision",
-            DEV_ANALYSIS_DECISION_JSON_PATH,
-        ),
-        "fix": (
-            "review_analysis_decision",
-            REVIEW_ANALYSIS_DECISION_JSON_PATH,
-        ),
-    }
-    source = sources.get(phase)
-    if source is None:
+def _resolve_loopback_analysis_feedback(
+    workspace: Workspace,
+    phase: str,
+    pipeline_policy: PipelinePolicy,
+    artifacts_policy: ArtifactsPolicy | None,
+) -> tuple[str, str]:
+    """Return the analysis decision feedback that loopbacks into this phase."""
+    if artifacts_policy is None:
         return "", ""
-    artifact_type, artifact_path = source
+    for pdef in pipeline_policy.phases.values():
+        if pdef.role == "analysis" and pdef.transitions.on_loopback == phase:
+            ra = resolve_required_artifact(artifacts_policy, drain=pdef.drain)
+            if ra is not None:
+                content, path = _resolve_agent_handoff(
+                    workspace,
+                    artifact_type=ra.artifact_type,
+                    artifact_path=ra.json_path,
+                )
+                return content or "", path
+    return "", ""
+
+
+def _latest_artifact_content(
+    workspace: Workspace,
+    phase: str,
+    pipeline_policy: PipelinePolicy,
+    artifacts_policy: ArtifactsPolicy | None,
+) -> tuple[str, str]:
+    """Return the primary work artifact that this phase needs as input context.
+
+    Traverses the pipeline graph backwards, skipping commit, analysis, and
+    skip_invocation execution phases, to find the last phase that produces
+    a concrete work artifact.
+    """
+    if artifacts_policy is None:
+        return "", ""
+    ra = _find_work_artifact(phase, pipeline_policy, artifacts_policy)
+    if ra is None:
+        return "", ""
     content, path = _resolve_agent_handoff(
         workspace,
-        artifact_type=artifact_type,
-        artifact_path=artifact_path,
+        artifact_type=ra.artifact_type,
+        artifact_path=ra.json_path,
     )
     return content or "", path
 
 
-def _latest_artifact_content(workspace: Workspace, phase: str) -> tuple[str, str]:
-    handoff_sources = {
-        "development_analysis": ("development_result", DEV_RESULT_ARTIFACT_JSON_PATH),
-        "review_analysis": ("issues", ISSUES_ARTIFACT_JSON_PATH),
-        "fix": ("issues", ISSUES_ARTIFACT_JSON_PATH),
-        "review": ("development_result", DEV_RESULT_ARTIFACT_JSON_PATH),
-    }
-    source = handoff_sources.get(phase)
-    if source is None:
-        return "", ""
-    artifact_type, artifact_path = source
-    content, path = _resolve_agent_handoff(
-        workspace,
-        artifact_type=artifact_type,
-        artifact_path=artifact_path,
-    )
-    return content or "", path
+def _drain_artifact_type(drain: str, artifacts_policy: ArtifactsPolicy) -> str | None:
+    """Return the artifact_type produced by the given drain, or None."""
+    ra = resolve_required_artifact(artifacts_policy, drain=drain)
+    return ra.artifact_type if ra is not None else None
+
+
+def _predecessors(phase: str, pipeline_policy: PipelinePolicy) -> list[str]:
+    """Return all phases that can transition to the given phase."""
+    result = []
+    for name, pdef in pipeline_policy.phases.items():
+        t = pdef.transitions
+        if phase in (t.on_success, t.on_loopback):
+            result.append(name)
+    return result
+
+
+def _find_work_artifact(
+    phase: str,
+    pipeline_policy: PipelinePolicy,
+    artifacts_policy: ArtifactsPolicy,
+) -> RequiredArtifact | None:
+    """Find the primary work artifact for the given phase via backwards graph traversal.
+
+    Skips commit-role, analysis-role, and skip_invocation execution phases until
+    it finds an execution or review phase that produces a concrete work artifact.
+    """
+    visited: set[str] = set()
+    queue = list(_predecessors(phase, pipeline_policy))
+    while queue:
+        current = queue.pop(0)
+        if current in visited:
+            continue
+        visited.add(current)
+        pdef = pipeline_policy.phases.get(current)
+        if pdef is None:
+            continue
+        role = pdef.role
+        skip = role in ("commit", "analysis") or (
+            role == "execution" and pdef.skip_invocation
+        )
+        if skip:
+            queue.extend(_predecessors(current, pipeline_policy))
+        else:
+            return resolve_required_artifact(artifacts_policy, drain=pdef.drain)
+    return None
 
 
 def _git_diff(workspace_root: Path) -> str:

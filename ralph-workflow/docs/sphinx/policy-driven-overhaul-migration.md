@@ -68,6 +68,28 @@ names like `development_commit` or `review_commit`.
 recognize any specific phase names. Custom pipelines with non-default phase names work
 the same as the built-in defaults.
 
+## Hidden behavior removed in this iteration
+
+The following runtime behaviors were previously hardcoded and are now fully replaced by
+policy declarations. Configurations that relied on the old implicit behavior will fail
+`validate_policy_completeness()` at startup with a `PolicyValidationError`.
+
+| Removed hidden behavior | Replaced by |
+|-------------------------|-------------|
+| `drain_to_policy_mode()` recognized only built-in drain name substrings | `AgentDrainConfig.drain_class` field — set explicitly in `ralph-workflow.toml` agent_drains entries; substring matching is the fallback, not the authority |
+| Analysis loop cap read from `PipelineState.loop_caps` only | Cap resolution now falls back to `pipeline.loop_counters[field].default_max`, then `loop_policy.max_iterations`; `loop_caps` is an optional runtime override |
+| `_handle_analysis_decision` required `loop_caps` pre-populated | Now resolved from policy without requiring state initialization |
+| `access_mode_for_drain()` / `build_session_mcp_plan()` ignored `AgentsPolicy` | Both now accept `agents_policy` and pass it to drain classification, so custom drain names declared with `drain_class` receive the correct MCP mode |
+| Phase banner (`show_phase_transition`, `show_phase_start`, `show_phase_complete`) used hardcoded canonical phase name tables | All three functions accept an optional `pipeline_policy` parameter; when provided, styles and transition descriptions are derived from the phase's declared `role` so renamed phases render correctly |
+| `artifact_renderer` rendered analysis/commit artifacts with hardcoded drain names | `render_analysis_decision` uses style `"analysis"` and `render_commit_message` uses style `"commit"`; `_analysis_handoff_artifact_type` uses the naming convention `{drain}_decision` so custom drain names work automatically |
+| `drain_class_for_session` swallowed `PolicyValidationError` when no substring match found | Errors for drains with an explicit `drain_class` in agents policy are now propagated immediately; only drains with no explicit class fall through to the canonical enum fallback |
+| `validate_policy_completeness` did not check post-commit route coverage | New check requires all three budget states (`remaining`, `exhausted`, `no_review`) to be covered by `[[post_commit_routes]]` entries for each commit-role phase that increments a `tracks_budget=true` counter |
+| `validate_policy_completeness` did not check `clean_outcome` coverage | New check requires that every review-role phase whose `clean_outcome` is set also has a matching key in `bypass_routes` |
+
+If you are writing integration tests that exercise these code paths, update them to
+pass policy-declared `drain_class` values rather than relying on substring matching of
+drain names.
+
 ## How to migrate an existing `pipeline.toml`
 
 If you have a project-local `.agent/pipeline.toml` that predates the policy-driven

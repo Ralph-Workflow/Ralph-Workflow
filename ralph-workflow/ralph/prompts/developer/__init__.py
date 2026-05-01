@@ -7,7 +7,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ralph.mcp.artifacts.plan import PLAN_ARTIFACT_PATH
-from ralph.phases.required_artifacts import DEV_RESULT_ARTIFACT_JSON_PATH
 from ralph.prompts import template_engine
 from ralph.prompts.payload_refs import build_prompt_payload_variables, write_payload_to_directory
 from ralph.prompts.template_engine import TemplateRenderingError, render_template
@@ -48,7 +47,9 @@ def prompt_developer_iteration_xml_with_context(
     template_content = context.registry.get_template(template_name)
 
     base_vars: dict[str, str] = {
-        "DEVELOPMENT_RESULT_XML_PATH": workspace.absolute_path(DEV_RESULT_ARTIFACT_JSON_PATH),
+        "DEVELOPMENT_RESULT_XML_PATH": workspace.absolute_path(
+            ".agent/artifacts/development_result.json"
+        ),
         "DEVELOPMENT_RESULT_XSD_PATH": workspace.absolute_path(
             ".agent/artifacts/development_result.schema.json"
         ),

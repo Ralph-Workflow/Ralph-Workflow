@@ -56,13 +56,16 @@ def resolve_next_phase(
         )
         raise ValueError(msg)
 
-    if target in ("failed", "complete"):
+    terminal_states = pipeline_policy.terminal_states()
+
+    if target in terminal_states:
         return target
 
     if target not in pipeline_policy.phases:
         msg = (
             f"Transition from '{current_phase}' on signal '{signal}' "
-            f"references unknown phase '{target}'"
+            f"references unknown phase '{target}'. "
+            f"Either add '{target}' to pipeline.phases or use the declared terminal phase."
         )
         raise ValueError(msg)
 

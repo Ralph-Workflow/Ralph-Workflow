@@ -302,6 +302,7 @@ def test_handle_inline_effect_notifies_dashboard_subscriber_after_checkpoint_red
         effect=runner_module.SaveCheckpointEffect(),
         state=state,
         pipeline_policy=MagicMock(),
+        artifacts_policy=MagicMock(),
         workspace_scope=WorkspaceScope(Path.cwd()),
         dashboard_subscriber=_Subscriber(),
     )
@@ -335,6 +336,7 @@ def test_handle_inline_effect_notifies_dashboard_subscriber_after_prepare_prompt
             effect=effect,
             state=state,
             pipeline_policy=MagicMock(),
+            artifacts_policy=MagicMock(),
             workspace_scope=WorkspaceScope(Path.cwd()),
             dashboard_subscriber=_Subscriber(),
         )

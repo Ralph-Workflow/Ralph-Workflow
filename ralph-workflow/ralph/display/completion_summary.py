@@ -146,7 +146,7 @@ def render_completion_summary(  # noqa: PLR0913
     error_count: int = 0,
     elapsed_seconds: float | None = None,
 ) -> Text:
-    failed = snapshot.phase == "failed"
+    failed = snapshot.is_terminal_failure
     lines: list[str] = ["Pipeline Failed" if failed else "Pipeline Complete"]
 
     if snapshot.plan_summary:
@@ -216,7 +216,7 @@ def _render_compact_group(  # noqa: PLR0912, PLR0913
     include_context_sections: bool = True,
 ) -> Group:
     """Compact single-column layout: section tags replace Rule headers."""
-    failed = snapshot.phase == "failed"
+    failed = snapshot.is_terminal_failure
     style = _phase_style("failed" if failed else "complete")
     title = "Pipeline Failed" if failed else "Pipeline Complete"
 
@@ -332,7 +332,7 @@ def render_completion_summary_group(  # noqa: PLR0912, PLR0913, PLR0915
             include_context_sections=include_context_sections,
         )
 
-    failed = snapshot.phase == "failed"
+    failed = snapshot.is_terminal_failure
     style = _phase_style("failed" if failed else "complete")
     title = "Pipeline Failed" if failed else "Pipeline Complete"
 

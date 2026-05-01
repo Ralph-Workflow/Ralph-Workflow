@@ -5,7 +5,6 @@ from __future__ import annotations
 from typing import Any, cast
 from unittest.mock import MagicMock
 
-from ralph.config.enums import PHASE_DEVELOPMENT, PHASE_PLANNING
 from ralph.config.models import UnifiedConfig
 from ralph.display.context import make_display_context
 from ralph.pipeline import runner as runner_module
@@ -38,8 +37,8 @@ def _make_policy_bundle(max_workers: int = 4) -> MagicMock:
     plan_phase = MagicMock(requires_commit=False, drain="planning", role="execution")
     plan_phase.parallelization = None
     bundle.pipeline.phases = {
-        PHASE_DEVELOPMENT: dev_phase,
-        PHASE_PLANNING: plan_phase,
+        "development": dev_phase,
+        "planning": plan_phase,
     }
     bundle.agents.agent_drains = {
         "development": MagicMock(chain="developer"),
@@ -57,7 +56,7 @@ class TestFanOutRouting:
 
     def test_serial_when_no_work_units(self) -> None:
         """When work_units=(), development phase uses InvokeAgentEffect (serial path)."""
-        state = PipelineState(phase=PHASE_DEVELOPMENT, work_units=())
+        state = PipelineState(phase="development", work_units=())
         policy_bundle = _make_policy_bundle()
 
         effect = runner_module._determine_effect_from_policy(
@@ -67,7 +66,7 @@ class TestFanOutRouting:
         )
 
         assert isinstance(effect, InvokeAgentEffect)
-        assert effect.phase == PHASE_DEVELOPMENT
+        assert effect.phase == "development"
 
     def test_fanout_when_work_units_present(self) -> None:
         """When work_units present, development phase uses FanOutDevelopmentEffect."""
@@ -76,7 +75,7 @@ class TestFanOutRouting:
             _make_work_unit("unit-b"),
         )
         max_workers = 3
-        state = PipelineState(phase=PHASE_DEVELOPMENT, work_units=units)
+        state = PipelineState(phase="development", work_units=units)
         policy_bundle = _make_policy_bundle(max_workers=max_workers)
 
         effect = runner_module._determine_effect_from_policy(
@@ -91,7 +90,7 @@ class TestFanOutRouting:
 
     def test_serial_when_single_work_unit(self) -> None:
         """Single work_unit falls through to InvokeAgentEffect — fan-out requires >=2 units."""
-        state = PipelineState(phase=PHASE_DEVELOPMENT, work_units=(_make_work_unit("unit-a"),))
+        state = PipelineState(phase="development", work_units=(_make_work_unit("unit-a"),))
         policy_bundle = _make_policy_bundle()
 
         effect = runner_module._determine_effect_from_policy(
@@ -101,12 +100,12 @@ class TestFanOutRouting:
         )
 
         assert isinstance(effect, InvokeAgentEffect)
-        assert effect.phase == PHASE_DEVELOPMENT
+        assert effect.phase == "development"
 
     def test_non_development_phase_not_affected(self) -> None:
         """Other phases always use InvokeAgentEffect regardless of work_units."""
         units = (_make_work_unit("unit-a"),)
-        state = PipelineState(phase=PHASE_PLANNING, work_units=units)
+        state = PipelineState(phase="planning", work_units=units)
         policy_bundle = _make_policy_bundle()
 
         effect = runner_module._determine_effect_from_policy(
@@ -116,7 +115,7 @@ class TestFanOutRouting:
         )
 
         assert isinstance(effect, InvokeAgentEffect)
-        assert effect.phase == PHASE_PLANNING
+        assert effect.phase == "planning"
 
 
 def test_execute_fan_out_sync_wires_signal_handlers_and_same_workspace_context(
@@ -125,7 +124,7 @@ def test_execute_fan_out_sync_wires_signal_handlers_and_same_workspace_context(
     unit = _make_work_unit("unit-a")
     effect = FanOutDevelopmentEffect(work_units=(unit,), max_workers=1)
     state = PipelineState(
-        phase=PHASE_DEVELOPMENT,
+        phase="development",
         work_units=(unit,),
         phase_chains={"development": AgentChainState(agents=["claude"])},
     )
@@ -181,7 +180,7 @@ def test_execute_fan_out_sync_converts_unexpected_coordinator_error_to_failed_re
     unit = _make_work_unit("unit-a")
     effect = FanOutDevelopmentEffect(work_units=(unit,), max_workers=1)
     state = PipelineState(
-        phase=PHASE_DEVELOPMENT,
+        phase="development",
         work_units=(unit,),
         phase_chains={"development": AgentChainState(agents=["claude"])},
     )
@@ -218,7 +217,7 @@ def test_execute_fan_out_sync_converts_unexpected_coordinator_error_to_failed_re
         workspace_scope=workspace_scope,
     )
 
-    assert recovered.phase == PHASE_DEVELOPMENT
+    assert recovered.phase == "development"
     assert recovered.chain_for_phase("development").retries == 1
     assert recovered.recovery_epoch == 0
     assert recovered.last_error is not None
@@ -235,7 +234,7 @@ def test_execute_fan_out_sync_requeues_running_workers_via_reducer_event(
     unit = _make_work_unit("unit-a")
     effect = FanOutDevelopmentEffect(work_units=(unit,), max_workers=1)
     state = PipelineState(
-        phase=PHASE_DEVELOPMENT,
+        phase="development",
         work_units=(unit,),
         worker_states={"unit-a": WorkerState(unit_id="unit-a", status=WorkerStatus.RUNNING)},
     )
@@ -288,7 +287,7 @@ def test_execute_fan_out_sync_uses_parallel_display_subscriber_when_not_provided
 ) -> None:
     unit = _make_work_unit("unit-a")
     effect = FanOutDevelopmentEffect(work_units=(unit,), max_workers=1)
-    state = PipelineState(phase=PHASE_DEVELOPMENT, work_units=(unit,))
+    state = PipelineState(phase="development", work_units=(unit,))
     policy_bundle = _make_policy_bundle(max_workers=1)
     workspace_scope = WorkspaceScope(tmp_path)
     notified_phases: list[str] = []
@@ -347,7 +346,7 @@ def test_execute_fan_out_sync_notifies_dashboard_subscriber_after_each_reduce(
 ) -> None:
     unit = _make_work_unit("unit-a")
     effect = FanOutDevelopmentEffect(work_units=(unit,), max_workers=1)
-    state = PipelineState(phase=PHASE_DEVELOPMENT, work_units=(unit,))
+    state = PipelineState(phase="development", work_units=(unit,))
     policy_bundle = _make_policy_bundle(max_workers=1)
     workspace_scope = WorkspaceScope(tmp_path)
     reduced_phases: list[str] = []
@@ -428,7 +427,9 @@ def test_materialize_prepared_prompt_uses_worker_namespace_from_env(
     workspace_scope = WorkspaceScope(tmp_path)
     effect = PreparePromptEffect(phase="development", iteration=1)
 
-    runner_module._materialize_prepared_prompt(effect, policy.pipeline, workspace_scope)
+    runner_module._materialize_prepared_prompt(
+        effect, policy.pipeline, policy.artifacts, workspace_scope
+    )
 
     assert len(recorded_kwargs) == 1
     wn = recorded_kwargs[0].get("worker_namespace")
@@ -462,7 +463,9 @@ def test_materialize_prepared_prompt_no_namespace_without_env(
     workspace_scope = WorkspaceScope(tmp_path)
     effect = PreparePromptEffect(phase="development", iteration=1)
 
-    runner_module._materialize_prepared_prompt(effect, policy.pipeline, workspace_scope)
+    runner_module._materialize_prepared_prompt(
+        effect, policy.pipeline, policy.artifacts, workspace_scope
+    )
 
     assert len(recorded_kwargs) == 1
     assert recorded_kwargs[0].get("worker_namespace") is None

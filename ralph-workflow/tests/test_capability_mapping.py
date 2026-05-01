@@ -14,6 +14,8 @@ from ralph.mcp.protocol.capability_mapping import (
     drain_to_policy_mode,
     lookup_ralph_capability,
 )
+from ralph.policy.models import AgentChainConfig, AgentDrainConfig, AgentsPolicy
+from ralph.policy.validation import PolicyValidationError
 
 
 def test_drain_class_preserves_analysis_identity() -> None:
@@ -31,12 +33,17 @@ def test_drain_policy_mode_preserves_read_only_drain_identity() -> None:
     assert drain_to_policy_mode(SessionDrain.REVIEW) is PolicyMode.REVIEW
 
 
-@pytest.mark.parametrize("lossy_alias", ["dev", "fixer", "read_only"])
-def test_lossy_role_aliases_are_rejected(lossy_alias: str) -> None:
-    """Role aliases should not be silently normalized into a drain."""
+@pytest.mark.parametrize("unresolvable_alias", ["dev", "read_only"])
+def test_lossy_role_aliases_are_rejected(unresolvable_alias: str) -> None:
+    """Aliases with no substring match raise PolicyValidationError."""
 
-    with pytest.raises(ValueError, match="Unknown session drain"):
-        drain_class_for_session(lossy_alias)
+    with pytest.raises(PolicyValidationError):
+        drain_class_for_session(unresolvable_alias)
+
+
+def test_fixer_resolves_to_fix_via_substring() -> None:
+    """'fixer' contains 'fix' so it resolves to FIX via substring matching."""
+    assert drain_class_for_session("fixer") is DrainClass.FIX
 
 
 class TestNewCapabilities:
@@ -76,3 +83,41 @@ class TestNewCapabilities:
         """Unknown capability strings return None."""
         result = lookup_ralph_capability("nonexistent.capability")
         assert result is None
+
+
+class TestDrainClassForSessionWithPolicy:
+    """Tests for drain_class_for_session with an explicit AgentsPolicy."""
+
+    def _agents(self, drain: str, drain_class: str) -> AgentsPolicy:
+        return AgentsPolicy(
+            agent_chains={"default": AgentChainConfig(agents=["agent"])},
+            agent_drains={
+                drain: AgentDrainConfig(chain="default", drain_class=drain_class)
+            },
+        )
+
+    def test_explicit_drain_class_resolves_correctly(self) -> None:
+        """Explicit drain_class='analysis' resolves to DrainClass.ANALYSIS."""
+        policy = self._agents("my_custom_drain", "analysis")
+        assert drain_class_for_session("my_custom_drain", policy) is DrainClass.ANALYSIS
+
+    def test_explicit_drain_class_commit_resolves_correctly(self) -> None:
+        """Explicit drain_class='commit' resolves to DrainClass.COMMIT."""
+        policy = self._agents("my_commit_drain", "commit")
+        assert drain_class_for_session("my_commit_drain", policy) is DrainClass.COMMIT
+
+    def test_ambiguous_drain_without_explicit_class_raises(self) -> None:
+        """Custom drain with no explicit drain_class and no substring match raises."""
+        policy = AgentsPolicy(
+            agent_chains={"default": AgentChainConfig(agents=["agent"])},
+            agent_drains={
+                "ambiguous": AgentDrainConfig(chain="default", drain_class=None)
+            },
+        )
+        with pytest.raises(PolicyValidationError):
+            drain_class_for_session("ambiguous", policy)
+
+    def test_explicit_drain_class_overrides_substring_heuristic(self) -> None:
+        """Explicit drain_class='review' wins over 'fix' substring in drain name."""
+        policy = self._agents("bugfix_reviewer", "review")
+        assert drain_class_for_session("bugfix_reviewer", policy) is DrainClass.REVIEW

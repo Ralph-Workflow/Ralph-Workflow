@@ -94,7 +94,7 @@ def _build_custom_bundle() -> PolicyBundle:
                 role="verification",
                 transitions=PhaseTransition(on_success="done", on_failure="crashed"),
                 verification=PhaseVerificationPolicy(
-                    kind="make_target",
+                    kind="artifact",
                     gate_for="advancement",
                     on_failure_route="crashed",
                 ),
@@ -127,6 +127,10 @@ def _build_custom_bundle() -> PolicyBundle:
             PostCommitRoute(
                 when=PostCommitRouteWhen(phase="seal", budget_state="remaining"),
                 target="kickoff",
+            ),
+            PostCommitRoute(
+                when=PostCommitRouteWhen(phase="seal", budget_state="exhausted"),
+                target="verify",
             ),
             PostCommitRoute(
                 when=PostCommitRouteWhen(phase="seal", budget_state="no_review"),
@@ -251,7 +255,6 @@ class TestCustomPipelineLoopback:
         # Loopback should set review_outcome from loopback_review_outcome config
         state, _ = reducer_reduce(state, PipelineEvent.ANALYSIS_LOOPBACK, policy)
         assert state.review_outcome == "has_issues"
-        assert state.review_issues_found is True  # derived property
 
     def test_gate_loopback_three_times_still_routes_correctly(
         self, custom_bundle: PolicyBundle

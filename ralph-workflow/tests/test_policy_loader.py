@@ -146,6 +146,9 @@ def test_load_policy_accepts_legacy_nested_pipeline_table(tmp_path: Path) -> Non
             [pipeline.phases.complete.transitions]
             on_success = "complete"
             on_loopback = "complete"
+
+            [pipeline.recovery]
+            failed_route = "complete"
             """
         )
     )
@@ -184,6 +187,9 @@ def test_load_policy_ignores_invalid_agents_toml_when_unified_config_is_provided
             [phases.complete.transitions]
             on_success = "complete"
             on_loopback = "complete"
+
+            [recovery]
+            failed_route = "complete"
             """
         ),
         encoding="utf-8",
@@ -221,6 +227,9 @@ def test_load_policy_uses_unified_config_for_agents_policy_when_provided(tmp_pat
             [phases.complete.transitions]
             on_success = "complete"
             on_loopback = "complete"
+
+            [recovery]
+            failed_route = "complete"
             """
         ),
         encoding="utf-8",

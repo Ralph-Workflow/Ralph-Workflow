@@ -32,6 +32,29 @@ if TYPE_CHECKING:
     from ralph.policy.models import PipelinePolicy
 
 
+def review_issues_found(state: PipelineState, policy: PipelinePolicy | None = None) -> bool:
+    """Return True when the current review outcome indicates issues were found.
+
+    When policy is provided, checks the active review phase's clean_outcome to
+    determine whether the stored review_outcome represents an issues-found state.
+    When policy is None or no review phase with clean_outcome is declared, falls
+    back to checking whether review_outcome is non-None.
+    """
+    if state.review_outcome is None:
+        return False
+    if policy is not None:
+        from ralph.policy.models import PhaseDefinition  # noqa: PLC0415
+
+        for phase_def in policy.phases.values():
+            if (
+                isinstance(phase_def, PhaseDefinition)
+                and phase_def.role == "review"
+                and phase_def.clean_outcome is not None
+            ):
+                return state.review_outcome != phase_def.clean_outcome
+    return True
+
+
 def advance_phase(
     state: PipelineState,
     target_phase: PipelinePhase,

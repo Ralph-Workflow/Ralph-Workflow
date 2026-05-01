@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from ralph.config.enums import PHASE_DEVELOPMENT
 from ralph.pipeline.events import WorkerFailedEvent
 from ralph.pipeline.reducer import reduce
 from ralph.pipeline.state import AgentChainState, PipelineState
@@ -25,7 +24,7 @@ def _make_state_with_workers(unit_ids: list[str]) -> PipelineState:
         uid: WorkerState(unit_id=uid, status=WorkerStatus.RUNNING) for uid in unit_ids
     }
     return PipelineState(
-        phase=PHASE_DEVELOPMENT,
+        phase="development",
         work_units=work_units,
         worker_states=worker_states,
     )
@@ -38,8 +37,8 @@ def _make_state_with_workers_and_chain(unit_ids: list[str], agents: list[str]) -
         uid: WorkerState(unit_id=uid, status=WorkerStatus.RUNNING) for uid in unit_ids
     }
     return PipelineState(
-        phase=PHASE_DEVELOPMENT,
-        dev_chain=AgentChainState(agents=agents, current_index=0, retries=0),
+        phase="development",
+        phase_chains={"development": AgentChainState(agents=agents, current_index=0, retries=0)},
         work_units=work_units,
         worker_states=worker_states,
     )
@@ -56,7 +55,7 @@ def test_single_worker_failure_sets_failed_status() -> None:
     assert new_state.worker_states["w1"].status == WorkerStatus.FAILED
     assert new_state.worker_states["w2"].status == WorkerStatus.RUNNING
     # Pipeline phase unchanged — worker failures don't terminate
-    assert new_state.phase == PHASE_DEVELOPMENT
+    assert new_state.phase == "development"
     assert effects == []
 
 
@@ -81,7 +80,7 @@ def test_worker_failure_routes_through_recovery_controller() -> None:
     bus.subscribe(lambda evt: collected.append(evt) if isinstance(evt, FailureEvent) else None)
 
     registry = AgentBudgetRegistry().set_budget(
-        PHASE_DEVELOPMENT, "claude", max_retries=3
+        "development", "claude", max_retries=3
     )
     controller = RecoveryController(cycle_cap=10, event_bus=bus, budget_registry=registry)
 
@@ -95,7 +94,7 @@ def test_worker_failure_routes_through_recovery_controller() -> None:
     assert new_state.worker_states["w1"].status == WorkerStatus.FAILED
     assert new_state.worker_states["w2"].status == WorkerStatus.RUNNING
     # Phase unchanged because environmental failures don't trigger phase transition
-    assert new_state.phase == PHASE_DEVELOPMENT
+    assert new_state.phase == "development"
     # Failure event was published to the bus
     assert len(collected) == 1
     assert collected[0].category == "environmental"
@@ -109,7 +108,7 @@ def test_worker_failure_with_agent_timeout_routes_through_recovery() -> None:
     bus.subscribe(lambda evt: collected.append(evt) if isinstance(evt, FailureEvent) else None)
 
     registry = AgentBudgetRegistry().set_budget(
-        PHASE_DEVELOPMENT, "claude", max_retries=3
+        "development", "claude", max_retries=3
     )
     controller = RecoveryController(cycle_cap=10, event_bus=bus, budget_registry=registry)
 
@@ -143,5 +142,5 @@ def test_worker_failure_legacy_path_without_recovery_controller() -> None:
     # Worker is marked FAILED
     assert new_state.worker_states["w1"].status == WorkerStatus.FAILED
     # Phase unchanged
-    assert new_state.phase == PHASE_DEVELOPMENT
+    assert new_state.phase == "development"
     assert effects == []

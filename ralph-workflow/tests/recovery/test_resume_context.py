@@ -6,7 +6,6 @@ import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
 
-from ralph.config.enums import PHASE_DEVELOPMENT, PHASE_FAILED
 from ralph.pipeline.state import AgentChainState, FalloverRecord, PipelineState
 from ralph.policy.loader import load_policy
 from ralph.recovery.budget import AgentBudgetRegistry
@@ -26,8 +25,10 @@ def _make_state_with_recovery_context(
     if fallover_history is None:
         fallover_history = []
     return PipelineState(
-        phase=PHASE_DEVELOPMENT,
-        dev_chain=AgentChainState(agents=["claude", "opencode"], current_index=1, retries=0),
+        phase="development",
+        phase_chains={
+            "development": AgentChainState(agents=["claude", "opencode"], current_index=1, retries=0)  # noqa: E501
+        },
         fallover_history=tuple(fallover_history),
         recovery_cycle_count=recovery_cycle_count,
         last_failure_category=last_failure_category,
@@ -37,15 +38,15 @@ def _make_state_with_recovery_context(
 def _make_state(agents: list[str]) -> PipelineState:
     """Simple helper for single-agent chain state."""
     return PipelineState(
-        phase=PHASE_DEVELOPMENT,
-        dev_chain=AgentChainState(agents=agents, current_index=0, retries=0),
+        phase="development",
+        phase_chains={"development": AgentChainState(agents=agents, current_index=0, retries=0)},
     )
 
 
 def test_fallover_history_preserved_in_state() -> None:
     """Fallover history is preserved through state transitions."""
     fallover_record = FalloverRecord(
-        phase=PHASE_DEVELOPMENT,
+        phase="development",
         from_agent="claude",
         to_agent="opencode",
         timestamp_iso=datetime.now(UTC).isoformat(),
@@ -72,7 +73,7 @@ def test_last_failure_category_preserved() -> None:
 def test_state_copy_with_preserves_recovery_fields() -> None:
     """copy_with preserves recovery-related fields."""
     fallover_record = FalloverRecord(
-        phase=PHASE_DEVELOPMENT,
+        phase="development",
         from_agent="claude",
         to_agent="opencode",
         timestamp_iso=datetime.now(UTC).isoformat(),
@@ -84,7 +85,7 @@ def test_state_copy_with_preserves_recovery_fields() -> None:
     )
 
     # Copy with a different phase
-    new_state = state.copy_with(phase=PHASE_FAILED)
+    new_state = state.copy_with(phase="failed")
 
     # Recovery fields should be preserved
     assert new_state.recovery_cycle_count == state.recovery_cycle_count
@@ -95,7 +96,7 @@ def test_state_copy_with_preserves_recovery_fields() -> None:
 def test_checkpoint_round_trip_preserves_recovery_context() -> None:
     """Loading a checkpoint restores recovery context exactly."""
     fallover_record = FalloverRecord(
-        phase=PHASE_DEVELOPMENT,
+        phase="development",
         from_agent="claude",
         to_agent="opencode",
         timestamp_iso=datetime.now(UTC).isoformat(),
@@ -118,9 +119,9 @@ def test_checkpoint_round_trip_preserves_recovery_context() -> None:
 def test_controller_budget_registry_seed_from_checkpoint() -> None:
     """Budget registry can be seeded to match checkpoint state."""
     # Simulate a checkpoint where claude has 1 failure consumed
-    registry = AgentBudgetRegistry().set_budget(PHASE_DEVELOPMENT, "claude", max_retries=3)
+    registry = AgentBudgetRegistry().set_budget("development", "claude", max_retries=3)
     registry = registry.debit(
-        PHASE_DEVELOPMENT,
+        "development",
         "claude",
         type("FakeFailure", (), {"counts_against_budget": True})(),
     )
@@ -129,7 +130,7 @@ def test_controller_budget_registry_seed_from_checkpoint() -> None:
     _make_state_with_recovery_context(recovery_cycle_count=1)
 
     # Verify budget state reflects checkpoint
-    budget = controller.budget_registry.get(PHASE_DEVELOPMENT, "claude")
+    budget = controller.budget_registry.get("development", "claude")
     assert budget is not None
     assert budget.consumed == 1
     assert budget.remaining == 2  # noqa: PLR2004
@@ -139,11 +140,11 @@ def test_resume_after_single_agent_chain_exhaustion_increments_count() -> None:
     """After exhausting a single-agent chain, recovery_cycle_count increments.
 
     When an agent exhausts its budget with no next agent to fall over to,
-    the chain is exhausted and the pipeline enters PHASE_FAILED.
+    the chain is exhausted and the pipeline enters "failed".
     recovery_cycle_count increments. fallover_history does NOT grow because
     there is no next agent to fall over to.
     """
-    registry = AgentBudgetRegistry().set_budget(PHASE_DEVELOPMENT, "claude", max_retries=1)
+    registry = AgentBudgetRegistry().set_budget("development", "claude", max_retries=1)
     controller = RecoveryController(
         cycle_cap=10, budget_registry=registry, policy_bundle=_minimal_policy_bundle()
     )
@@ -158,12 +159,12 @@ def test_resume_after_single_agent_chain_exhaustion_increments_count() -> None:
     new_state, _, _ = controller.handle(
         state,
         _AgentTimeoutError("claude idle"),
-        phase=PHASE_DEVELOPMENT,
+        phase="development",
         agent="claude",
     )
 
-    # Chain exhausted with no next agent -> enters PHASE_FAILED
-    assert new_state.phase == PHASE_FAILED
+    # Chain exhausted with no next agent -> enters "failed"
+    assert new_state.phase == "failed_terminal"
     assert new_state.recovery_cycle_count == 1
 
     # Fallover history should be EMPTY because there's no next agent
@@ -177,7 +178,7 @@ def test_resume_after_two_agent_chain_first_exhausted() -> None:
     the chain falls over and fallover_history records the transition.
     recovery_cycle_count does NOT increment yet (chain not fully exhausted).
     """
-    registry = AgentBudgetRegistry().set_budget(PHASE_DEVELOPMENT, "claude", max_retries=1)
+    registry = AgentBudgetRegistry().set_budget("development", "claude", max_retries=1)
     controller = RecoveryController(cycle_cap=10, budget_registry=registry)
     state = _make_state(["claude", "opencode"])  # Two-agent chain
 
@@ -190,12 +191,12 @@ def test_resume_after_two_agent_chain_first_exhausted() -> None:
     new_state, _, _ = controller.handle(
         state,
         _AgentTimeoutError("claude idle"),
-        phase=PHASE_DEVELOPMENT,
+        phase="development",
         agent="claude",
     )
 
     # Phase still DEVELOPMENT (not failed) - fallover happened
-    assert new_state.phase == PHASE_DEVELOPMENT
+    assert new_state.phase == "development"
     assert new_state.chain_for_phase("development").current_index == 1  # fell over to opencode
     # recovery_cycle_count does NOT increment until full chain exhaustion
     assert new_state.recovery_cycle_count == 0
@@ -208,7 +209,7 @@ def test_resume_after_two_agent_chain_first_exhausted() -> None:
 
 def test_checkpoint_round_trip_after_partial_recovery() -> None:
     """Mid-recovery checkpoint round-trip preserves fallover_history and cycle count."""
-    registry = AgentBudgetRegistry().set_budget(PHASE_DEVELOPMENT, "claude", max_retries=1)
+    registry = AgentBudgetRegistry().set_budget("development", "claude", max_retries=1)
     controller = RecoveryController(cycle_cap=10, budget_registry=registry)
     state = _make_state(["claude", "opencode"])
 
@@ -221,7 +222,7 @@ def test_checkpoint_round_trip_after_partial_recovery() -> None:
     new_state, _, _ = controller.handle(
         state,
         _AgentTimeoutError("claude idle"),
-        phase=PHASE_DEVELOPMENT,
+        phase="development",
         agent="claude",
     )
 
