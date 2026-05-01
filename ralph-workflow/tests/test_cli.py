@@ -523,6 +523,8 @@ def test_build_cli_overrides_sets_values() -> None:
         review_depth=ReviewDepth.SECURITY,
         git_user_name="Jane",
         git_user_email="jane@example.com",
+        developer_iters=7,
+        reviewer_reviews=3,
     )
 
     overrides = cast("dict[str, object]", _build_cli_overrides(cli_input))
@@ -531,6 +533,8 @@ def test_build_cli_overrides_sets_values() -> None:
     assert general["review_depth"] == ReviewDepth.SECURITY.value
     assert general["git_user_name"] == "Jane"
     assert general["git_user_email"] == "jane@example.com"
+    assert general["developer_iters"] == 7  # noqa: PLR2004
+    assert general["reviewer_reviews"] == 3  # noqa: PLR2004
     assert execution == {}
     assert overrides["developer_agent"] == "dev"
     assert overrides["reviewer_agent"] == "rev"
@@ -672,24 +676,22 @@ class TestParseCounterOverrides:
         assert result == {"reviewer_pass": 0}
 
 
-class TestRemovedCounterFlags:
-    """Tests that removed --developer-iters and --reviewer-reviews flags are rejected."""
+class TestIterationCounterFlags:
+    def test_developer_iters_flag_sets_config_override(self) -> None:
+        overrides = cast(
+            "dict[str, object]",
+            _build_cli_overrides(CLIOverrideInput(developer_iters=3)),
+        )
+        general = cast("dict[str, object]", overrides["general"])
+        assert general["developer_iters"] == 3  # noqa: PLR2004
 
-    def test_developer_iters_flag_removed(
-        self,
-    ) -> None:
-        runner = TyperCliRunner()
-        result = runner.invoke(app, ["--developer-iters", "3"])
-
-        assert result.exit_code != 0
-
-    def test_reviewer_reviews_flag_removed(
-        self,
-    ) -> None:
-        runner = TyperCliRunner()
-        result = runner.invoke(app, ["--reviewer-reviews", "1"])
-
-        assert result.exit_code != 0
+    def test_reviewer_reviews_flag_sets_config_override(self) -> None:
+        overrides = cast(
+            "dict[str, object]",
+            _build_cli_overrides(CLIOverrideInput(reviewer_reviews=1)),
+        )
+        general = cast("dict[str, object]", overrides["general"])
+        assert general["reviewer_reviews"] == 1
 
     def test_counter_flag_passes_overrides_to_run_pipeline(
         self, monkeypatch: pytest.MonkeyPatch

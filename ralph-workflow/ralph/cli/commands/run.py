@@ -267,6 +267,8 @@ def _print_dry_run(
     )
     phase = initial_state.phase if initial_state else fallback_phase
     console.print(_detail_text("Phase", phase))
+    console.print(_detail_text("Iterations", str(config.general.developer_iters)))
+    console.print(_detail_text("Review passes", str(config.general.reviewer_reviews)))
 
 
 def _execute_pipeline(  # noqa: PLR0913

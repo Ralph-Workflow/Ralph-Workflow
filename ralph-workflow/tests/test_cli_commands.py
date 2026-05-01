@@ -1344,6 +1344,8 @@ def test_check_configuration_success(monkeypatch: pytest.MonkeyPatch) -> None:
     ctx = make_display_context(console=console, env={})
     config = SimpleNamespace(
         general=SimpleNamespace(
+            developer_iters=5,
+            reviewer_reviews=2,
             review_depth=ReviewDepth.SECURITY,
             workflow=SimpleNamespace(checkpoint_enabled=False),
         )

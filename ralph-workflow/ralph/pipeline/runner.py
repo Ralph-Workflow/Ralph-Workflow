@@ -1188,6 +1188,8 @@ def run(  # noqa: PLR0912, PLR0913, PLR0915
                         developer_model=getattr(config, "developer_model", None),  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
                         reviewer_agent=getattr(config, "reviewer_agent", None),  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
                         reviewer_model=getattr(config, "reviewer_model", None),  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+                        developer_iters=config.general.developer_iters,
+                        reviewer_reviews=config.general.reviewer_reviews,
                         parallel_max_workers=_parallel_max_workers,
                         plan_present=_plan_present,
                         verbosity=str(effective_verbosity.value)
@@ -1897,6 +1899,10 @@ def _create_initial_state(
         name: cfg.default_max
         for name, cfg in pipeline_policy.budget_counters.items()
     }
+    if "iteration" in caps:
+        caps["iteration"] = config.general.developer_iters
+    if "reviewer_pass" in caps:
+        caps["reviewer_pass"] = config.general.reviewer_reviews
     if counter_overrides:
         caps.update(counter_overrides)
 

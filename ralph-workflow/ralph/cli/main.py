@@ -61,15 +61,17 @@ class CLIOverrideInput:
     review_depth: ReviewDepth | None = None
     git_user_name: str | None = None
     git_user_email: str | None = None
+    developer_iters: int | None = None
+    reviewer_reviews: int | None = None
 
 
 class GeneralOverrides(TypedDict, total=False):
-    """General configuration overrides."""
-
     review_depth: str | None
     git_user_name: str | None
     git_user_email: str | None
     execution: dict[str, bool]
+    developer_iters: int
+    reviewer_reviews: int
 
 
 class CLIOverrides(TypedDict):
@@ -272,7 +274,7 @@ def _handle_early_exit_flags(
         raise typer.Exit(code=check_policy_command(policy_dir, counter_overrides=counter_overrides))
 
 
-def main(  # noqa: PLR0913, PLR0912
+def main(  # noqa: PLR0913
     ctx: typer.Context,
     config: Annotated[
         str | None,
@@ -288,8 +290,7 @@ def main(  # noqa: PLR0913, PLR0912
             "--developer-iters",
             "-D",
             min=1,
-            help="Removed. Use --counter iteration=N instead.",
-            hidden=True,
+            help="Maximum developer agent iterations per run.",
         ),
     ] = None,
     reviewer_reviews: Annotated[
@@ -298,8 +299,7 @@ def main(  # noqa: PLR0913, PLR0912
             "--reviewer-reviews",
             "-R",
             min=0,
-            help="Removed. Use --counter reviewer_pass=N instead.",
-            hidden=True,
+            help="Maximum reviewer re-review passes.",
         ),
     ] = None,
     counter: Annotated[
@@ -478,16 +478,6 @@ def main(  # noqa: PLR0913, PLR0912
 ) -> None:
     """Run the Ralph Workflow multi-agent pipeline or execute a sub-operation."""
     # Parse --counter NAME=VALUE entries early so --check-policy can validate them.
-    if developer_iters is not None:
-        raise typer.BadParameter(
-            "--developer-iters has been removed. Use --counter iteration=N instead.",
-            param_hint="'--developer-iters'",
-        )
-    if reviewer_reviews is not None:
-        raise typer.BadParameter(
-            "--reviewer-reviews has been removed. Use --counter reviewer_pass=N instead.",
-            param_hint="'--reviewer-reviews'",
-        )
     raw_counter_entries: list[str] = list(counter) if counter else []
     counter_overrides = _parse_counter_overrides(raw_counter_entries)
 
@@ -524,6 +514,8 @@ def main(  # noqa: PLR0913, PLR0912
             review_depth=review_depth,
             git_user_name=git_user_name,
             git_user_email=git_user_email,
+            developer_iters=developer_iters,
+            reviewer_reviews=reviewer_reviews,
         ),
     )
 
@@ -890,6 +882,12 @@ def _build_cli_overrides(
 
     if input.git_user_email is not None:
         overrides["general"]["git_user_email"] = input.git_user_email
+
+    if input.developer_iters is not None:
+        overrides["general"]["developer_iters"] = input.developer_iters
+
+    if input.reviewer_reviews is not None:
+        overrides["general"]["reviewer_reviews"] = input.reviewer_reviews
 
     return dict(overrides)
 
