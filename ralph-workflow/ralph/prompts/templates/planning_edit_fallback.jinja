@@ -1,0 +1,29 @@
+PLANNING EDIT MODE
+
+{% include 'shared/_unattended_mode.j2' %}
+
+The prior plan was rejected by planning analysis.
+
+Canonical request file: `{{PROMPT_PATH}}`
+Canonical current plan file: `{{PLAN_PATH}}`
+Canonical analysis feedback file: `{{ANALYSIS_FEEDBACK_PATH}}`
+
+ORIGINAL REQUEST:
+{{PROMPT}}
+
+CURRENT PLAN:
+{{PLAN}}
+
+ANALYSIS FEEDBACK:
+{{ANALYSIS_FEEDBACK}}
+
+Not submitting the revised plan is a FAILURE.
+
+Use `{{GET_PLAN_DRAFT_TOOL_NAME}}` to inspect the current finalized plan or staged draft before editing.
+Use `{{SUBMIT_PLAN_SECTION_TOOL_NAME}}` to replace only the sections that need revision.
+Use `{{FINALIZE_PLAN_TOOL_NAME}}` after revising the affected sections so the updated plan replaces the prior finalized plan.
+Use `{{DISCARD_PLAN_DRAFT_TOOL_NAME}}` only when the existing plan is unsalvageable and you must restart from section 1.
+
+Revise the existing plan incrementally. Preserve sections that still hold up, replace only the sections that need correction, and finalize the revised draft when it is coherent and executor-ready.
+Do not edit `.agent/artifacts/plan.json` directly.
+Do not submit a fresh full `artifact_type="plan"` payload unless the plan is genuinely short and a complete atomic replacement is clearly the safest option.

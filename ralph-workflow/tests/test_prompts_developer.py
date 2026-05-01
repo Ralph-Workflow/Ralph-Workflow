@@ -14,6 +14,19 @@ from ralph.prompts.template_engine import TemplateRenderingError
 from ralph.prompts.types import SessionCapabilities, SessionDrain
 from ralph.workspace.memory import MemoryWorkspace
 
+PLANNING_EDIT_GET_DRAFT_TEXT = (
+    "Use `ralph_get_plan_draft` to inspect the current finalized plan "
+    "or staged draft before editing."
+)
+PLANNING_EDIT_SECTION_REPLACE_TEXT = (
+    "Use `ralph_submit_plan_section` to replace only the sections "
+    "that need revision."
+)
+PLANNING_EDIT_FINALIZE_TEXT = (
+    "Use `ralph_finalize_plan` after revising the affected sections so "
+    "the updated plan replaces the prior finalized plan."
+)
+
 
 def test_developer_iteration_prompt_includes_plan_and_unattended_section(tmp_path):
     context = TemplateContext.default()
@@ -107,6 +120,33 @@ def test_planning_prompt_describes_detailed_raw_plan_payload_contract(tmp_path):
     assert '"risks_mitigations": [' in prompt
     assert '"verification_strategy": [' in prompt
     assert "`summary.scope_items` must contain at least 3 concrete items" in prompt
+
+
+def test_planning_edit_prompt_teaches_mcp_plan_revision_flow(tmp_path):
+    context = TemplateContext.default()
+    workspace = MemoryWorkspace(root=str(tmp_path))
+    session_caps = SessionCapabilities.defaults_for_drain(SessionDrain.PLANNING)
+
+    prompt = prompt_planning_xml_with_context(
+        context=context,
+        inputs=PlanningPromptInputs(
+            prompt_content="Revise the unattended pipeline fix plan",
+            analysis_feedback_content="The previous plan needs narrower verification.",
+            analysis_feedback_path=workspace.absolute_path(".agent/PLANNING_ANALYSIS_DECISION.md"),
+        ),
+        workspace=workspace,
+        session_caps=session_caps,
+        template_name="planning_edit.jinja",
+    )
+
+    assert "PLANNING EDIT MODE" in prompt
+    assert "The prior plan was rejected by planning analysis." in prompt
+    assert PLANNING_EDIT_GET_DRAFT_TEXT in prompt
+    assert PLANNING_EDIT_SECTION_REPLACE_TEXT in prompt
+    assert PLANNING_EDIT_FINALIZE_TEXT in prompt
+    assert "Use `ralph_discard_plan_draft` only when the existing plan is unsalvageable" in prompt
+    assert "artifact_type=\"plan\"" not in prompt
+    assert workspace.absolute_path(".agent/PLANNING_ANALYSIS_DECISION.md") in prompt
 
 
 def test_planning_prompt_fallback_uses_json_plan_artifact_contract(tmp_path):

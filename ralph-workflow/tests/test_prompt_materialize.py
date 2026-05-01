@@ -12,6 +12,19 @@ from ralph.prompts.materialize import materialize_prompt_for_phase, prompt_file_
 from ralph.prompts.types import SessionCapabilities, SessionDrain
 from ralph.workspace.memory import MemoryWorkspace
 
+PLANNING_EDIT_GET_DRAFT_TEXT = (
+    "Use `ralph_get_plan_draft` to inspect the current finalized plan "
+    "or staged draft before editing."
+)
+PLANNING_EDIT_SECTION_REPLACE_TEXT = (
+    "Use `ralph_submit_plan_section` to replace only the sections "
+    "that need revision."
+)
+PLANNING_EDIT_FINALIZE_TEXT = (
+    "Use `ralph_finalize_plan` after revising the affected sections so "
+    "the updated plan replaces the prior finalized plan."
+)
+
 if TYPE_CHECKING:
     from pathlib import Path
 
@@ -33,9 +46,51 @@ def test_materialize_prompt_for_phase_renders_planning_prompt_to_agent_tmp(tmp_p
     assert prompt_path == ".agent/tmp/planning_prompt.md"
     rendered = workspace.read(prompt_path)
     assert "PLANNING MODE" in rendered
+    assert "PLANNING EDIT MODE" not in rendered
     current_prompt_path = tmp_path / ".agent" / "CURRENT_PROMPT.md"
     assert str(current_prompt_path) in rendered
     assert current_prompt_path.read_text(encoding="utf-8") == "Plan the template migration"
+
+
+def test_materialize_planning_loopback_uses_edit_prompt_and_analysis_feedback_handoff(
+    tmp_path: Path,
+) -> None:
+    policy = load_policy(tmp_path / ".agent")
+    workspace = MemoryWorkspace(root=str(tmp_path))
+    workspace.write("PROMPT.md", "Revise the pipeline plan")
+    workspace.write(
+        ".agent/artifacts/planning_analysis_decision.json",
+        json.dumps(
+            {
+                "type": "planning_analysis_decision",
+                "content": {
+                    "status": "request_changes",
+                    "summary": "The plan needs revisions.",
+                    "what_came_up_short": ["Verification commands are too vague."],
+                    "how_to_fix": ["Edit the existing plan draft instead of restarting."],
+                },
+            }
+        ),
+    )
+
+    prompt_path = materialize_prompt_for_phase(
+        phase="planning",
+        workspace=workspace,
+        pipeline_policy=policy.pipeline,
+        artifacts_policy=policy.artifacts,
+        session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.PLANNING),
+        workspace_root=tmp_path,
+    )
+
+    rendered = workspace.read(prompt_path)
+    assert "PLANNING EDIT MODE" in rendered
+    assert str(tmp_path / ".agent" / "PLANNING_ANALYSIS_DECISION.md") in rendered
+    assert "Read the complete analysis feedback from file at" in rendered
+    assert "This file is the authoritative source for analysis feedback in this prompt." in rendered
+    assert PLANNING_EDIT_GET_DRAFT_TEXT in rendered
+    assert PLANNING_EDIT_SECTION_REPLACE_TEXT in rendered
+    assert PLANNING_EDIT_FINALIZE_TEXT in rendered
+    assert "The plan needs revisions." not in rendered
 
 
 def test_prompt_file_for_phase_uses_agent_tmp_file_name() -> None:

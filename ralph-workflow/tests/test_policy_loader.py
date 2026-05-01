@@ -26,6 +26,8 @@ from ralph.policy.loader import (
 )
 from ralph.policy.validation import PolicyValidationError as PolicyContractValidationError
 
+PLANNING_ANALYSIS_DEFAULT_MAX_ITERATIONS = 10
+
 
 class _DummyValidationError:
     def __init__(self, errors: list[dict[str, object]]) -> None:
@@ -437,7 +439,15 @@ def test_default_policy_routes_planning_through_planning_analysis() -> None:
     assert planning_analysis.transitions.on_success == "development"
     assert planning_analysis.transitions.on_loopback == "planning"
     assert planning_analysis.loop_policy is not None
+    assert (
+        planning_analysis.loop_policy.max_iterations
+        == PLANNING_ANALYSIS_DEFAULT_MAX_ITERATIONS
+    )
     assert planning_analysis.loop_policy.iteration_state_field == "planning_analysis_iteration"
+    assert (
+        bundle.pipeline.loop_counters["planning_analysis_iteration"].default_max
+        == PLANNING_ANALYSIS_DEFAULT_MAX_ITERATIONS
+    )
     assert bundle.agents.agent_drains["planning_analysis"].drain_class == "analysis"
     contract = bundle.artifacts.artifacts["planning_analysis_decision"]
     assert contract.artifact_type == "planning_analysis_decision"

@@ -44,6 +44,7 @@ def test_legacy_prompt_families_have_file_backed_jinja_templates() -> None:
         "development_commit_message.jinja",
         "fix_mode.jinja",
         "planning.jinja",
+        "planning_edit.jinja",
         "planning_analysis.jinja",
         "review.jinja",
         "review_analysis.jinja",
@@ -154,7 +155,8 @@ PLANNING_ANALYSIS_FRESH_SUBMIT_EXAMPLE = (
     '"content":"{\\"status\\":\\"completed\\",\\"summary\\":\\"...\\"}"'
 )
 PLANNING_DISCOVERY_PREFLIGHT_GUIDANCE = (
-    "Before you commit to a file path, pattern, dependency, or verification command, inspect it yourself"
+    "Before you commit to a file path, pattern, dependency, or verification "
+    "command, inspect it yourself"
 )
 PLANNING_NO_VAGUE_PATTERN_GUIDANCE = (
     'Do not use phrases like "follow the existing pattern" unless you name the exact reference file'
@@ -166,6 +168,18 @@ PLANNING_ANALYSIS_CRITIC_GUIDANCE = "You are a lightweight plan critic"
 PLANNING_ANALYSIS_MISSING_WORK_GUIDANCE = "Missing work"
 PLANNING_ANALYSIS_CONTRADICTIONS_GUIDANCE = "Contradictions or inconsistency"
 PLANNING_ANALYSIS_RESEARCH_BURDEN_GUIDANCE = "Executor research burden"
+PLANNING_EDIT_GET_DRAFT_GUIDANCE = (
+    "Use `{{GET_PLAN_DRAFT_TOOL_NAME}}` to inspect the current finalized plan "
+    "or staged draft before editing."
+)
+PLANNING_EDIT_SECTION_REPLACE_GUIDANCE = (
+    "Use `{{SUBMIT_PLAN_SECTION_TOOL_NAME}}` to replace only the sections "
+    "that need revision."
+)
+PLANNING_EDIT_FINALIZE_GUIDANCE = (
+    "Use `{{FINALIZE_PLAN_TOOL_NAME}}` after revising the affected sections so "
+    "the updated plan replaces the prior finalized plan."
+)
 
 
 def _assert_shared_analysis_guidance(
@@ -252,6 +266,18 @@ def test_planning_prompt_requires_verified_low_research_executor_handoff() -> No
     assert PLANNING_NO_VAGUE_PATTERN_GUIDANCE in planning
     assert PLANNING_LOW_RESEARCH_EXECUTOR_GUIDANCE in planning
 
+
+
+def test_planning_edit_prompt_teaches_incremental_mcp_revision_flow() -> None:
+    planning_edit = (TEMPLATES_ROOT / "planning_edit.jinja").read_text(encoding="utf-8")
+
+    assert "PLANNING EDIT MODE" in planning_edit
+    assert "The prior plan was rejected by planning analysis." in planning_edit
+    assert PLANNING_EDIT_GET_DRAFT_GUIDANCE in planning_edit
+    assert PLANNING_EDIT_SECTION_REPLACE_GUIDANCE in planning_edit
+    assert PLANNING_EDIT_FINALIZE_GUIDANCE in planning_edit
+    assert "artifact_type=\"plan\"" not in planning_edit
+    assert "Not submitting the revised plan is a FAILURE." in planning_edit
 
 
 def test_planning_analysis_prompt_demands_gap_and_consistency_critique() -> None:

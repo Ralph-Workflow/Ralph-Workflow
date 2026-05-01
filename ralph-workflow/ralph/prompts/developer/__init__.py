@@ -33,6 +33,10 @@ class DeveloperPromptInputs:
 @dataclass(frozen=True)
 class PlanningPromptInputs:
     prompt_content: str | None
+    plan_content: str | None = None
+    analysis_feedback_content: str | None = None
+    plan_path: str = ""
+    analysis_feedback_path: str = ""
     last_retry_error: str = ""
 
 
@@ -138,6 +142,26 @@ def prompt_planning_xml_with_context(
             workspace.absolute_path(".agent/CURRENT_PROMPT.md"),
         )
     )
+    payload_values = {
+        "PLAN": inputs.plan_content or "(no plan available)",
+        "ANALYSIS_FEEDBACK": inputs.analysis_feedback_content or "",
+    }
+    base_vars.update(
+        _prompt_payload_variables(
+            payload_values,
+            workspace=workspace,
+            prompt_name_prefix="planning",
+        )
+    )
+    if inputs.plan_path:
+        base_vars.update({"PLAN": "", "PLAN_PATH": inputs.plan_path})
+    if inputs.analysis_feedback_path:
+        base_vars.update(
+            {
+                "ANALYSIS_FEEDBACK": "",
+                "ANALYSIS_FEEDBACK_PATH": inputs.analysis_feedback_path,
+            }
+        )
 
     capability_vars = capability_template_variables(
         session_caps.capabilities,
@@ -150,13 +174,30 @@ def prompt_planning_xml_with_context(
     try:
         return render_template(template_content, variables, context.partials)
     except TemplateRenderingError:
+        fallback_template = (
+            "planning_edit_fallback.jinja"
+            if template_name == "planning_edit.jinja"
+            else "planning_fallback.jinja"
+        )
         return _render_static_fallback(
             context,
-            "planning_fallback.jinja",
+            fallback_template,
             {
                 **capability_vars,
                 "PROMPT": inputs.prompt_content or "No requirements provided",
+                "PLAN": inputs.plan_content or "(no plan available)",
+                "ANALYSIS_FEEDBACK": inputs.analysis_feedback_content or "",
                 "PROMPT_PATH": workspace.absolute_path(".agent/CURRENT_PROMPT.md"),
+                "PLAN_PATH": inputs.plan_path
+                or str(
+                    Path(workspace.absolute_path(".agent/tmp/prompt_payloads"))
+                    / "planning_plan.txt"
+                ),
+                "ANALYSIS_FEEDBACK_PATH": inputs.analysis_feedback_path
+                or str(
+                    Path(workspace.absolute_path(".agent/tmp/prompt_payloads"))
+                    / "planning_analysis_feedback.txt"
+                ),
             },
         )
 

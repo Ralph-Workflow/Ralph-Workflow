@@ -115,11 +115,20 @@ def _render_prompt_for_phase(  # noqa: PLR0913
 
     # Planning-style prompt: execution role producing a plan artifact
     if phase_role == "execution" and drain_artifact_type == "plan":
+        analysis_feedback_content, analysis_feedback_path = _resolve_loopback_analysis_feedback(
+            workspace, phase, pipeline_policy, artifacts_policy
+        )
+        if analysis_feedback_path and phase_def is not None and phase_def.loopback_prompt_template:
+            template_name = phase_def.loopback_prompt_template
         last_retry_error = _read_and_clear_retry_hint(workspace, phase)
         return prompt_planning_xml_with_context(
             context=context,
             inputs=PlanningPromptInputs(
                 prompt_content=prompt_content,
+                plan_content=plan_content,
+                analysis_feedback_content=analysis_feedback_content,
+                plan_path=plan_path,
+                analysis_feedback_path=analysis_feedback_path,
                 last_retry_error=last_retry_error,
             ),
             workspace=workspace,

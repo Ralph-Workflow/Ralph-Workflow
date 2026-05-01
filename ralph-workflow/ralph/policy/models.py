@@ -463,6 +463,9 @@ class PhaseDefinition(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reas
             propagation so the pipeline knows what kind of issues were flagged.
         prompt_template: File-backed .jinja prompt template for this phase.
         continuation_template: Optional continuation .jinja prompt template.
+        loopback_prompt_template: Optional alternate .jinja prompt template to use
+            when the phase is re-entered from an analysis loopback with structured
+            feedback to incorporate.
         parallelization: Optional transition-scoped parallelization policy. When None,
             multi-work-unit plans must not fan out from this phase.
         workflow_fallback: Optional policy-declared fallback when this phase's agent chain
@@ -535,6 +538,13 @@ class PhaseDefinition(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reas
     continuation_template: str | None = Field(
         default=None,
         description="Optional continuation .jinja prompt template for this phase",
+    )
+    loopback_prompt_template: str | None = Field(
+        default=None,
+        description=(
+            "Optional alternate .jinja prompt template for loopback retries that "
+            "need structured upstream feedback."
+        ),
     )
     parallelization: PhaseParallelization | None = Field(
         default=None,

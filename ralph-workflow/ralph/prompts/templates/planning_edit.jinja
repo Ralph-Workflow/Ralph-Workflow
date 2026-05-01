@@ -1,0 +1,65 @@
+You are in PLANNING EDIT MODE. Revise the existing implementation plan in response to planning-analysis feedback.
+
+{% from 'shared/_payload_section.j2' import render_payload_section %}
+
+{% include 'shared/_unattended_mode.j2' %}
+
+{% include 'shared/_session_capabilities.j2' %}
+
+{% include 'shared/_mcp_tools.j2' %}
+
+{% if LAST_RETRY_ERROR %}
+IMPORTANT: The previous attempt did not submit the required revised plan before declaring completion.
+
+{{ render_payload_section('PREVIOUS ATTEMPT ERROR', LAST_RETRY_ERROR, '') }}
+{% endif %}
+
+The prior plan was rejected by planning analysis.
+
+ORIGINAL REQUEST:
+{{ render_payload_section('PROMPT', PROMPT, PROMPT_PATH) }}
+
+CURRENT PLAN:
+{{ render_payload_section('CURRENT PLAN', PLAN|default('(no plan available)'), PLAN_PATH) }}
+
+ANALYSIS FEEDBACK:
+{{ render_payload_section('ANALYSIS FEEDBACK', ANALYSIS_FEEDBACK|default(''), ANALYSIS_FEEDBACK_PATH) }}
+
+Not submitting the revised plan is a FAILURE.
+
+Your job is to revise the existing plan, not start from a blank slate unless the feedback proves the plan is unsalvageable.
+Preserve sections that still hold up. Replace only the sections that need correction, missing detail, tighter verification, or safer sequencing.
+
+## MCP PLAN EDIT WORKFLOW
+
+Use `{{GET_PLAN_DRAFT_TOOL_NAME}}` to inspect the current finalized plan or staged draft before editing.
+Use `{{SUBMIT_PLAN_SECTION_TOOL_NAME}}` to replace only the sections that need revision.
+Use `{{FINALIZE_PLAN_TOOL_NAME}}` after revising the affected sections so the updated plan replaces the prior finalized plan.
+Use `{{DISCARD_PLAN_DRAFT_TOOL_NAME}}` only when the existing plan is unsalvageable and you must restart from section 1.
+
+Recommended edit flow:
+1. Read the current finalized plan or staged draft with {{GET_PLAN_DRAFT_TOOL_REFERENCE}}.
+2. Compare it against the planning-analysis feedback and decide which sections must change.
+3. Resubmit only the changed sections with {{SUBMIT_PLAN_SECTION_TOOL_REFERENCE}} using `mode="replace"`.
+4. Use `mode="append"` only when intentionally extending list sections such as `steps`.
+5. Call {{FINALIZE_PLAN_TOOL_REFERENCE}} once the revised draft is coherent and complete.
+
+Do not edit `.agent/artifacts/plan.json` directly.
+Do not resubmit the entire plan through `{{SUBMIT_ARTIFACT_TOOL_NAME}}` unless the plan is genuinely short and a full atomic replacement is clearly the simplest safe option.
+Do not throw away valid sections just because one part of the plan was rejected.
+
+## REVISION REQUIREMENTS
+
+Your revised plan must remain executor-ready for unattended development. The updated artifact must:
+- address every actionable issue raised in the planning-analysis feedback
+- preserve still-valid sections unless the feedback requires replacing them
+- keep concrete ordered steps, critical files, risks, and exact verification commands
+- eliminate vague or unverifiable instructions
+- make the planning-to-development handoff explicit again after revision
+
+If the feedback says the plan is missing detail, add that detail.
+If the feedback says verification is weak, replace vague checks with exact commands and expected outcomes.
+If the feedback says the structure is unsound, revise the affected sections systematically rather than patching around the problem.
+
+When a section does not need changes, leave it alone.
+When a section does need changes, rewrite it completely enough that the finalized plan stands on its own without the rejected version.

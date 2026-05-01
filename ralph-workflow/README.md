@@ -179,7 +179,7 @@ ralph --diagnose
 When you run `ralph`, the workflow moves through a structured sequence of phases:
 
 1. **Planning** — a planning agent reads `PROMPT.md` and produces a structured plan
-2. **Planning analysis** — the workflow checks whether the proposed plan is executor-ready or needs another planning pass
+2. **Planning analysis** — the workflow checks whether the proposed plan is executor-ready or needs another planning pass; when it sends planning back for revision, Ralph Workflow surfaces the prior planning-analysis feedback so the planner can edit the existing plan incrementally via the plan-draft MCP tools
 3. **Development** — a developer agent implements the work
 4. **Development analysis** — the workflow decides whether to iterate or continue
 5. **Development commit** — changes are committed
