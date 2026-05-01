@@ -394,7 +394,7 @@ def render_explanation_text(exp: PolicyExplanation) -> str:
         for bc in exp.budget_counters:
             tracked = "tracked (exhaustion matters)" if bc.tracks_budget else "not tracked"
             desc = f" — {bc.description}" if bc.description else ""
-            lines.append(f"  {bc.name}: {tracked}{desc}")
+            lines.append(f"  {bc.name}: {tracked}, default_max={bc.default_max}{desc}")
 
     if exp.post_commit_routes:
         _render_post_commit_routes_text(exp, lines)

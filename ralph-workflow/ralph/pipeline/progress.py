@@ -1,21 +1,22 @@
 """Canonical workflow progress accounting.
 
 This module owns all mutations for workflow progress fields, including completed
-outer progress (``iteration`` and ``reviewer_pass``), inner analysis-loop
-counters, routing budgets, review-issue flags tied to progress boundaries, and
-checkpoint-facing progress mirrors derived from canonical state.
+outer progress counters, inner analysis-loop counters, routing budgets, review-issue
+flags tied to progress boundaries, and checkpoint-facing progress mirrors derived
+from canonical state and active policy.
 
 Contract:
 
-* ``iteration`` counts completed development cycles only.
-* ``reviewer_pass`` counts completed review passes only.
-* Analysis loopbacks mutate only the inner loop counter for the current
-  cycle or pass.
-* Capped analysis loopback preserves outer progress and carries the inner
-  loop counter to the cap until analysis or commit outcome resets it.
+* Outer progress counters are named by policy (via budget_counters); the runtime
+  never assumes a specific counter name.
+* Analysis loopbacks mutate only the inner loop counter for the current cycle or pass.
+* Capped analysis loopback preserves outer progress and carries the inner loop counter
+  to the cap until analysis or commit outcome resets it.
 * Skipped commits route onward without incrementing outer progress, but they end
   the current inner loop and therefore reset the corresponding analysis counter.
-* Checkpoint mirrors must derive directly from canonical ``PipelineState``.
+* Checkpoint mirrors derive from canonical ``PipelineState`` and policy-declared budget
+  counters: the first budget-tracked counter (in commit-phase BFS order) maps to
+  ``actual_developer_runs``; the second maps to ``actual_reviewer_runs``.
 """
 
 from __future__ import annotations
@@ -173,8 +174,70 @@ def _apply_commit_outcome_policy_driven(
     )
 
 
-def derive_run_context_progress(state: PipelineState, run_context: RunContext) -> RunContext:
-    """Derive checkpoint-facing progress mirrors from canonical pipeline state."""
+def _tracked_budget_counters_in_commit_order(policy: PipelinePolicy) -> list[str]:
+    """Return tracked budget counter names in the order their commit phases appear in BFS."""
+    phases = policy.phases
+    visited: set[str] = set()
+    queue: list[str] = [policy.entry_phase]
+    result: list[str] = []
+    seen: set[str] = set()
+
+    while queue:
+        current = queue.pop(0)
+        if current in visited or current not in phases:
+            continue
+        visited.add(current)
+        phase_def = phases[current]
+
+        if phase_def.role == "commit" and phase_def.commit_policy is not None:
+            counter = phase_def.commit_policy.increments_counter
+            if (
+                counter
+                and counter != "none"
+                and counter not in seen
+                and counter in policy.budget_counters
+                and policy.budget_counters[counter].tracks_budget
+            ):
+                result.append(counter)
+                seen.add(counter)
+
+        t = phase_def.transitions
+        next_phases: list[str] = [
+            ph for ph in [t.on_success, t.on_failure, t.on_loopback]
+            if ph and ph not in visited
+        ]
+        next_phases.extend(
+            dr.target for dr in phase_def.decisions.values() if dr.target not in visited
+        )
+        next_phases.extend(
+            tgt for tgt in phase_def.bypass_routes.values() if tgt not in visited
+        )
+        queue.extend(next_phases)
+
+    return result
+
+
+def derive_run_context_progress(
+    state: PipelineState,
+    run_context: RunContext,
+    policy: PipelinePolicy | None = None,
+) -> RunContext:
+    """Derive checkpoint-facing progress mirrors from canonical pipeline state.
+
+    When policy is provided, resolves counter names by BFS through commit phases;
+    the first budget-tracked counter maps to actual_developer_runs, the second to
+    actual_reviewer_runs. When policy is None, falls back to the legacy hardcoded
+    counter names ('iteration' and 'reviewer_pass') for backward compatibility.
+    """
+    if policy is not None:
+        tracked = _tracked_budget_counters_in_commit_order(policy)
+        dev_counter = tracked[0] if len(tracked) > 0 else None
+        rev_counter = tracked[1] if len(tracked) > 1 else None
+        return replace(
+            run_context,
+            actual_developer_runs=state.get_outer_progress(dev_counter) if dev_counter else 0,
+            actual_reviewer_runs=state.get_outer_progress(rev_counter) if rev_counter else 0,
+        )
     return replace(
         run_context,
         actual_developer_runs=state.get_outer_progress("iteration"),

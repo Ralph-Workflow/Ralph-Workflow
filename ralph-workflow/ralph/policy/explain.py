@@ -89,6 +89,7 @@ class BudgetCounterExplanation:
     name: str
     description: str
     tracks_budget: bool
+    default_max: int = 0
 
 
 @dataclass
@@ -301,6 +302,7 @@ def explain_policy(bundle: PolicyBundle) -> PolicyExplanation:
                 name=bc_name,
                 description=bc_cfg.description,
                 tracks_budget=bc_cfg.tracks_budget,
+                default_max=bc_cfg.default_max,
             )
         )
 

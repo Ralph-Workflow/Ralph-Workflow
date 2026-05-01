@@ -650,6 +650,22 @@ def _validate_parallelization_consistency(
         )
 
 
+def _validate_tracked_counters_have_positive_max(
+    policy: PipelinePolicy,
+    errors: list[str],
+) -> None:
+    """Validate that budget-tracked counters have a positive default_max."""
+    for counter_name, counter_cfg in policy.budget_counters.items():
+        if counter_cfg.tracks_budget and counter_cfg.default_max == 0:
+            errors.append(
+                f"budget_counters.{counter_name}: tracks_budget=True with default_max=0 "
+                f"means the pipeline cannot start (budget exhausted before any cycle "
+                f"completes). Set default_max > 0 for tracked counters, or set "
+                f"tracks_budget=False if this counter should not gate advancement. "
+                f"See [budget_counters.{counter_name}].default_max in pipeline.toml."
+            )
+
+
 def _validate_cli_counter_overrides(
     policy: PipelinePolicy,
     cli_counter_overrides: dict[str, int],
@@ -746,6 +762,9 @@ def validate_policy_completeness(
 
     # Validate that a terminal-failure phase is declared when failures can occur
     _validate_terminal_failure_phase_declared(policy, errors)
+
+    # Validate that budget-tracked counters have positive default_max
+    _validate_tracked_counters_have_positive_max(policy, errors)
 
     # Validate CLI counter overrides reference declared budget counters
     if cli_counter_overrides:

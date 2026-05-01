@@ -20,6 +20,7 @@ from ralph.pipeline.progress import advance_phase, apply_commit_outcome
 from ralph.pipeline.reducer import reduce as reducer_reduce
 from ralph.pipeline.state import PipelineState
 from ralph.policy.models import (
+    BudgetCounterConfig,
     PhaseCommitPolicy,
     PhaseDefinition,
     PhaseLoopPolicy,
@@ -251,6 +252,107 @@ def test_checkpoint_builder_derives_progress_mirrors_from_pipeline_state() -> No
 
     assert payload.run_context.actual_developer_runs == 1
     assert payload.run_context.actual_reviewer_runs == COMPLETED_REVIEW_PASSES
+
+
+def test_checkpoint_builder_derives_progress_from_policy_with_custom_counter_names() -> None:
+    """When policy is supplied, checkpoint mirrors use BFS-ordered tracked counters.
+
+    Proves the runtime never hardcodes canonical counter names: a renamed policy
+    ('design_cycles' and 'audit_passes') still populates actual_developer_runs and
+    actual_reviewer_runs correctly via policy-driven BFS resolution.
+    """
+    custom_policy = PipelinePolicy(
+        entry_phase="design",
+        terminal_phase="done",
+        budget_counters={
+            "design_cycles": BudgetCounterConfig(
+                tracks_budget=True, description="design cycle counter", default_max=5
+            ),
+            "audit_passes": BudgetCounterConfig(
+                tracks_budget=True, description="audit pass counter", default_max=2
+            ),
+        },
+        phases={
+            "design": PhaseDefinition(
+                drain="design",
+                role="execution",
+                transitions=PhaseTransition(on_success="design_commit"),
+            ),
+            "design_commit": PhaseDefinition(
+                drain="design_commit",
+                role="commit",
+                transitions=PhaseTransition(on_success="audit"),
+                commit_policy=PhaseCommitPolicy(
+                    increments_counter="design_cycles",
+                    loop_resets=[],
+                ),
+            ),
+            "audit": PhaseDefinition(
+                drain="audit",
+                role="execution",
+                transitions=PhaseTransition(on_success="audit_commit"),
+            ),
+            "audit_commit": PhaseDefinition(
+                drain="audit_commit",
+                role="commit",
+                transitions=PhaseTransition(on_success="done"),
+                commit_policy=PhaseCommitPolicy(
+                    increments_counter="audit_passes",
+                    loop_resets=[],
+                ),
+            ),
+            "done": PhaseDefinition(
+                drain="done",
+                role="terminal",
+                terminal_outcome="success",
+                transitions=PhaseTransition(on_success="done"),
+            ),
+        },
+        post_commit_routes=[
+            PostCommitRoute(
+                when=PostCommitRouteWhen(phase="design_commit", budget_state="remaining"),
+                target="design",
+            ),
+            PostCommitRoute(
+                when=PostCommitRouteWhen(phase="design_commit", budget_state="exhausted"),
+                target="audit",
+            ),
+            PostCommitRoute(
+                when=PostCommitRouteWhen(phase="design_commit", budget_state="no_review"),
+                target="done",
+            ),
+            PostCommitRoute(
+                when=PostCommitRouteWhen(phase="audit_commit", budget_state="remaining"),
+                target="audit",
+            ),
+            PostCommitRoute(
+                when=PostCommitRouteWhen(phase="audit_commit", budget_state="exhausted"),
+                target="done",
+            ),
+            PostCommitRoute(
+                when=PostCommitRouteWhen(phase="audit_commit", budget_state="no_review"),
+                target="done",
+            ),
+        ],
+    )
+    state = PipelineState(
+        phase="audit",
+        outer_progress={"design_cycles": 3, "audit_passes": 1},
+    )
+    context = RunContext.new()
+
+    payload = (
+        CheckpointBuilder.new()
+        .state(state)
+        .run_context(context)
+        .pipeline_policy(custom_policy)
+        .build()
+    )
+
+    # 'design_cycles' is the first tracked counter in BFS commit order → developer runs
+    assert payload.run_context.actual_developer_runs == 3  # noqa: PLR2004
+    # 'audit_passes' is the second tracked counter → reviewer runs
+    assert payload.run_context.actual_reviewer_runs == 1
 
 
 class TestProgressPolicyRequired:
