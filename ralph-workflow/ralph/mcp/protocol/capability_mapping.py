@@ -414,54 +414,18 @@ def drain_class_for_session(
 ) -> DrainClass:
     """Classify a session drain into its drain class.
 
-    Resolves the drain class for the given drain name using the following
-    precedence:
-
-    1. When ``agents_policy`` is provided, the drain must be declared in
-       ``agents_policy.agent_drains`` with an explicit ``drain_class`` field.
-       A missing declaration or an invalid ``drain_class`` value raises
-       ``PolicyValidationError`` immediately.
-    2. When ``agents_policy`` is ``None`` (legacy callers that have not been
-       updated to pass policy), the canonical ``SessionDrain`` enum mapping is
-       used as a fallback and a warning is emitted.  Custom drains that are not
-       in the canonical enum still raise ``PolicyValidationError``.
+    Resolution is policy-defined only: callers must supply ``agents_policy`` and
+    the drain must be declared there with an explicit ``drain_class``.
     """
     from ralph.policy.validation import PolicyValidationError  # noqa: PLC0415
 
-    drain_str = str(drain)
-
-    if agents_policy is not None:
-        # Policy-aware path: require explicit drain_class declaration.
-        return drain_class_for_drain_name(drain_str, agents_policy)
-
-    # Legacy path: agents_policy not provided.  Fall back to the canonical
-    # SessionDrain enum mapping and warn so callers can be updated.
-    from loguru import logger as _logger  # noqa: PLC0415
-    _logger.warning(
-        "drain_class_for_session called without agents_policy for drain {!r}; "
-        "pass agents_policy so drain_class is resolved from policy declarations",
-        drain_str,
-    )
-    try:
-        session_drain = _coerce_session_drain(drain)
-        mapping: dict[SessionDrain, DrainClass] = {
-            SessionDrain.PLANNING: DrainClass.PLANNING,
-            SessionDrain.DEVELOPMENT: DrainClass.DEVELOPMENT,
-            SessionDrain.DEVELOPMENT_ANALYSIS: DrainClass.ANALYSIS,
-            SessionDrain.REVIEW_ANALYSIS: DrainClass.ANALYSIS,
-            SessionDrain.DEVELOPMENT_COMMIT: DrainClass.COMMIT,
-            SessionDrain.REVIEW_COMMIT: DrainClass.COMMIT,
-            SessionDrain.ANALYSIS: DrainClass.ANALYSIS,
-            SessionDrain.REVIEW: DrainClass.REVIEW,
-            SessionDrain.FIX: DrainClass.FIX,
-            SessionDrain.COMMIT: DrainClass.COMMIT,
-        }
-        return mapping[session_drain]
-    except (ValueError, KeyError) as exc:
+    if agents_policy is None:
         raise PolicyValidationError(
-            f"Drain {drain!r} has no resolvable drain_class; "
-            f"declare drain_class in agents.toml"
-        ) from exc
+            f"Drain {drain!r} cannot resolve drain_class without agents_policy; "
+            "pass the active agents policy so drain_class is read from declarations"
+        )
+
+    return drain_class_for_drain_name(str(drain), agents_policy)
 
 
 def drain_to_access_mode(

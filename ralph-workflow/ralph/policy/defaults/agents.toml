@@ -46,12 +46,22 @@ agents = ["claude"]
 max_retries = 2
 retry_delay_ms = 500
 
+[agent_chains.analysis]
+agents = ["claude"]
+max_retries = 2
+retry_delay_ms = 500
+
 [agent_chains.fix]
 agents = ["claude"]
 max_retries = 3
 retry_delay_ms = 1000
 
 [agent_chains.review_commit]
+agents = ["claude"]
+max_retries = 2
+retry_delay_ms = 500
+
+[agent_chains.commit]
 agents = ["claude"]
 max_retries = 2
 retry_delay_ms = 500
@@ -84,10 +94,18 @@ drain_class = "review"
 chain = "review_analysis"
 drain_class = "analysis"
 
+[agent_drains.analysis]
+chain = "analysis"
+drain_class = "analysis"
+
 [agent_drains.fix]
 chain = "fix"
 drain_class = "fix"
 
 [agent_drains.review_commit]
 chain = "review_commit"
+drain_class = "commit"
+
+[agent_drains.commit]
+chain = "commit"
 drain_class = "commit"

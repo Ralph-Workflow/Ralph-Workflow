@@ -7,8 +7,10 @@ and applying commit messages.
 from __future__ import annotations
 
 import json
+import typing
 import uuid
 from dataclasses import dataclass, field
+from inspect import signature
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
@@ -41,6 +43,7 @@ from ralph.mcp.protocol.session import MCP_ENDPOINT_ENV, MCP_RUN_ID_ENV, AgentSe
 from ralph.mcp.server.lifecycle import SessionBridgeLike, start_mcp_server
 from ralph.mcp.session_plan import build_session_mcp_plan
 from ralph.mcp.tools.names import SUBMIT_ARTIFACT_TOOL, claude_tool_name, claude_tool_name_prefix
+from ralph.policy.loader import load_agents_policy
 from ralph.prompts.commit import (
     CommitPromptPayloadConfig,
     prompt_commit_message,
@@ -57,6 +60,7 @@ if TYPE_CHECKING:
 
     from ralph.config.models import AgentConfig, UnifiedConfig
     from ralph.display.context import DisplayContext
+    from ralph.policy.models import AgentsPolicy
 
 # Maximum number of staged files to display in output
 _MAX_DISPLAY_FILES = 5
@@ -212,6 +216,7 @@ def _handle_agent_commit_generation(
         registry=registry,
         agents=agents,
         verbose=config.general.verbosity >= _VERBOSE_THRESHOLD,
+        agents_policy=load_agents_policy(repo_root / ".agent", config=config),
         agent_idle_timeout_seconds=config.general.agent_idle_timeout_seconds,
         display_context=ctx,
     )
@@ -370,12 +375,21 @@ def _generate_commit_message_with_chain(  # noqa: PLR0913
     registry: AgentRegistry,
     agents: list[str],
     verbose: bool,
+    agents_policy: AgentsPolicy,
     agent_idle_timeout_seconds: float = 300.0,
     display_context: DisplayContext,
 ) -> CommitAgentResult:
     template_dirs = (repo_root / ".agent" / "prompts" / "commit", *default_template_dirs(repo_root))
     template_registry = TemplateRegistry(template_dirs=template_dirs)
-    bridge = _start_commit_bridge(repo_root)
+    start_commit_bridge_params = signature(_start_commit_bridge).parameters
+    if "agents_policy" in start_commit_bridge_params:
+        bridge = _start_commit_bridge(repo_root, agents_policy=agents_policy)
+    else:
+        legacy_start_commit_bridge = cast(
+            "typing.Callable[[Path], SessionBridgeLike]",
+            _start_commit_bridge,
+        )
+        bridge = legacy_start_commit_bridge(repo_root)
     extra_env = _commit_bridge_env(bridge)
     failure_details: list[str] = []
 
@@ -874,11 +888,12 @@ def _parsed_output_from_invocation_error(exc: AgentInvocationError) -> list[str]
     return parsed_output
 
 
-def _start_commit_bridge(repo_root: Path) -> SessionBridgeLike:
+def _start_commit_bridge(repo_root: Path, *, agents_policy: AgentsPolicy) -> SessionBridgeLike:
     session_mcp_plan = build_session_mcp_plan(
         transport=None,
         drain="commit",
         workspace_path=repo_root,
+        agents_policy=agents_policy,
     )
     session = AgentSession(
         session_id=f"commit-{uuid.uuid4().hex[:8]}",

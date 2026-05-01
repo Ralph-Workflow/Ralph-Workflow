@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, cast
 
 import pytest
+from loguru import logger
 
 # Config imports for multimodal tests
 from ralph.config.mcp_models import McpConfig, MediaConfig
@@ -399,14 +400,49 @@ def test_build_fastmcp_server_normalizes_tool_result_payload(tmp_path: Path) -> 
     assert isinstance(result["content"], list)
 
 
+def test_default_planning_capabilities_do_not_warn_when_policy_is_available(
+    tmp_path: Path,
+) -> None:
+    policy_bundle = load_policy(tmp_path / ".agent")
+    warnings: list[str] = []
+    sink_id = logger.add(lambda message: warnings.append(str(message)), level="WARNING")
+    try:
+        observed = runner_module._default_mcp_capabilities_for_phase(
+            "planning",
+            agents_policy=policy_bundle.agents,
+        )
+    finally:
+        logger.remove(sink_id)
+
+    expected = set(
+        runner_module.build_session_mcp_plan(
+            transport=None,
+            drain="planning",
+            workspace_path=None,
+            agents_policy=policy_bundle.agents,
+        ).capabilities
+    )
+
+    assert observed == expected
+    assert not any(
+        "drain_class_for_session called without agents_policy" in warning
+        for warning in warnings
+    )
+
+
+
 def test_planning_session_can_submit_plan_over_mcp_and_handle_planning_consumes_it(
     tmp_path: Path,
 ) -> None:
+    policy_bundle = load_policy(tmp_path / ".agent")
     session = AgentSession(
         session_id="planning-session",
         run_id="planning-run",
         drain="planning",
-        capabilities=runner_module._default_mcp_capabilities_for_phase("planning"),
+        capabilities=runner_module._default_mcp_capabilities_for_phase(
+            "planning",
+            agents_policy=policy_bundle.agents,
+        ),
     )
     workspace = FsWorkspace(tmp_path)
     registry = server_runtime.build_ralph_tool_registry(session, workspace)

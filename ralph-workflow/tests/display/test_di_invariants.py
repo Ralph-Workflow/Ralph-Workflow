@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import io
 import tokenize
+from functools import cache, lru_cache
 from pathlib import Path
 
 import pytest
@@ -29,7 +30,8 @@ _THEME_ALLOWED = {"theme.py"}
 _ENV_ALLOWED = {"context.py", "content_condenser.py"}
 
 
-def _code_only_lines(path: Path) -> set[int]:
+@cache
+def _code_only_lines(path: Path) -> frozenset[int]:
     """Return the set of 1-based line numbers that contain only code tokens.
 
     Lines that are exclusively comment or string tokens are excluded so that
@@ -60,10 +62,11 @@ def _code_only_lines(path: Path) -> set[int]:
         ]
         if all(t.type in (tokenize.STRING, tokenize.COMMENT) for t in row_tokens):
             non_code_lines.add(row)
-    return code_lines - non_code_lines
+    return frozenset(code_lines - non_code_lines)
 
 
-def _scan_lines(path: Path) -> list[str]:
+@cache
+def _scan_lines(path: Path) -> tuple[str, ...]:
     """Return code-only, non-exempted lines from path."""
     source_lines = path.read_text(encoding="utf-8").splitlines()
     code_line_nums = _code_only_lines(path)
@@ -74,15 +77,16 @@ def _scan_lines(path: Path) -> list[str]:
         if "# noqa: di-allow" in line:
             continue
         result.append(line)
-    return result
+    return tuple(result)
 
 
-def _all_display_files() -> list[Path]:
+@lru_cache(maxsize=1)
+def _all_display_files() -> tuple[Path, ...]:
     """Return all *.py files under ralph/display/ plus banner.py."""
     files = sorted(_DISPLAY_DIR.glob("*.py"))
     if _BANNER_FILE.exists():
         files.append(_BANNER_FILE)
-    return files
+    return tuple(files)
 
 
 @pytest.mark.timeout_seconds(5)

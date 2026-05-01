@@ -20,6 +20,7 @@ from ralph.policy.loader import (
     _format_validation_error_messages,
     _format_validation_location,
     _format_validation_message,
+    build_agents_policy_from_config,
     load_policy,
     load_policy_or_die,
 )
@@ -199,6 +200,31 @@ def test_load_policy_ignores_invalid_agents_toml_when_unified_config_is_provided
 
     assert bundle.agents.agent_chains["planning"].agents == ["codex"]
     assert bundle.agents.agent_drains["planning"].chain == "planning"
+
+
+
+def test_load_policy_synthesizes_drain_class_from_unified_config_builtin_drains() -> None:
+    config = UnifiedConfig(
+        agent_chains={
+            "planning": ["codex"],
+            "development": ["codex"],
+            "analysis": ["codex"],
+            "commit": ["codex"],
+        },
+        agent_drains={
+            "planning": "planning",
+            "development": "development",
+            "development_analysis": "analysis",
+            "development_commit": "commit",
+        },
+    )
+
+    agents_policy = build_agents_policy_from_config(config)
+
+    assert agents_policy.agent_drains["planning"].drain_class == "planning"
+    assert agents_policy.agent_drains["development"].drain_class == "development"
+    assert agents_policy.agent_drains["development_analysis"].drain_class == "analysis"
+    assert agents_policy.agent_drains["development_commit"].drain_class == "commit"
 
 
 def test_load_policy_uses_unified_config_for_agents_policy_when_provided(tmp_path: Path) -> None:

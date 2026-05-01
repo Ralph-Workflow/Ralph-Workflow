@@ -79,7 +79,7 @@ from ralph.pipeline.handoffs import resolve_phase_drain
 from ralph.pipeline.reducer import reduce as reducer_reduce
 from ralph.pipeline.state import AgentChainState, CommitState, PipelineState, RebaseState
 from ralph.pipeline.worker_state import WorkerStatus
-from ralph.policy.loader import load_policy_or_die
+from ralph.policy.loader import load_agents_policy, load_policy_or_die
 from ralph.process.manager import get_process_manager, process_phase_scope
 from ralph.prompts.materialize import (
     materialize_prompt_for_phase,
@@ -2491,6 +2491,12 @@ def _execute_agent_effect(  # noqa: PLR0913, PLR0915
         logger.error("Agent not found: {}", effect.agent_name)
         return PipelineEvent.AGENT_FAILURE
 
+    effective_agents_policy = (
+        policy_bundle.agents
+        if policy_bundle is not None
+        else load_agents_policy(workspace_scope.root / ".agent", config=config)
+    )
+
     _show_phase_start_with_context(
         effect.phase,
         effect.agent_name,
@@ -2591,7 +2597,7 @@ def _execute_agent_effect(  # noqa: PLR0913, PLR0915
                 transport=agent_config.transport,
                 drain=effect.drain or effect.phase,
                 workspace_path=workspace_scope.root,
-                agents_policy=policy_bundle.agents if policy_bundle is not None else None,
+                agents_policy=effective_agents_policy,
             )
             session = AgentSession(
                 session_id=f"{effect.phase}-{uuid.uuid4().hex[:8]}",
@@ -2897,12 +2903,17 @@ def _phase_output_artifact_paths(
     return tuple(paths)
 
 
-def _default_mcp_capabilities_for_phase(phase: str) -> set[str]:
+def _default_mcp_capabilities_for_phase(
+    phase: str,
+    *,
+    agents_policy: AgentsPolicy | None = None,
+) -> set[str]:
     return set(
         build_session_mcp_plan(
             transport=None,
             drain=phase,
             workspace_path=None,
+            agents_policy=agents_policy,
         ).capabilities
     )
 

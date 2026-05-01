@@ -1,6 +1,6 @@
 .PHONY: help install dev install-dev test test-unit test-integration lint typecheck build build-wheel build-sdist publish test-pypi test-pypi-upload twine-upload twine-upload-testpypi clean dist clean-dist fmt format-check ruff-fix mypy-fix pre-commit dist-homebrew verify coverage dist-binary dist-pypi dist-all formula-check dead-code docs docs-linkcheck serve-docs
 
-PYTEST_WORKERS ?= 4
+PYTEST_WORKERS ?= 8
 
 help:
 	@echo "Ralph Workflow - Makefile commands"

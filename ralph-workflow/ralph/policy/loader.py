@@ -204,17 +204,33 @@ def _validate_artifacts(data: dict[str, object]) -> ArtifactsPolicy:
         ) from exc
 
 
+def _config_defines_agent_policy(config: object) -> bool:
+    chains: object = getattr(config, "agent_chains", None)
+    drains: object = getattr(config, "agent_drains", None)
+    return (
+        isinstance(chains, Mapping)
+        and isinstance(drains, Mapping)
+        and bool(chains)
+        and bool(drains)
+    )
+
+
 def build_agents_policy_from_config(config: UnifiedConfig) -> AgentsPolicy:
     """Synthesize the active agents policy from the main Ralph config.
 
     User-facing chain order and drain routing live in ``ralph-workflow.toml``.
     This helper converts the flat ``UnifiedConfig`` representation into the richer
-    ``AgentsPolicy`` model used by the runtime. All drains declared in
-    ``config.agent_drains`` are included unconditionally — no hardcoded built-in
-    drain filter is applied.
+    ``AgentsPolicy`` model used by the runtime.
+
+    Canonical built-in drains are upgraded to explicit ``drain_class`` declarations
+    here so downstream runtime code can resolve classes from policy alone without
+    relying on hidden enum fallbacks.
     """
-    retry_budget = config.general.max_retries
-    retry_delay_ms = config.general.retry_delay_ms
+    general: object = getattr(config, "general", None)
+    retry_budget_value: object = getattr(general, "max_retries", 3)
+    retry_delay_ms_value: object = getattr(general, "retry_delay_ms", 1000)
+    retry_budget = retry_budget_value if isinstance(retry_budget_value, int) else 3
+    retry_delay_ms = retry_delay_ms_value if isinstance(retry_delay_ms_value, int) else 1000
     chain_configs = {
         name: AgentChainConfig(
             agents=list(agents),
@@ -224,8 +240,20 @@ def build_agents_policy_from_config(config: UnifiedConfig) -> AgentsPolicy:
         for name, agents in config.agent_chains.items()
     }
 
+    builtin_drain_classes = {
+        "planning": "planning",
+        "development": "development",
+        "development_analysis": "analysis",
+        "review_analysis": "analysis",
+        "analysis": "analysis",
+        "review": "review",
+        "fix": "fix",
+        "development_commit": "commit",
+        "review_commit": "commit",
+        "commit": "commit",
+    }
     drain_configs = {
-        drain: AgentDrainConfig(chain=chain)
+        drain: AgentDrainConfig(chain=chain, drain_class=builtin_drain_classes.get(drain))
         for drain, chain in config.agent_drains.items()
     }
 
@@ -233,6 +261,44 @@ def build_agents_policy_from_config(config: UnifiedConfig) -> AgentsPolicy:
         agent_chains=chain_configs,
         agent_drains=drain_configs,
     )
+
+
+_DEFAULT_AGENTS_POLICY_CACHE: list[AgentsPolicy] = []
+
+
+def _cached_default_agents_policy() -> AgentsPolicy:
+    if not _DEFAULT_AGENTS_POLICY_CACHE:
+        _DEFAULT_AGENTS_POLICY_CACHE.append(
+            _validate_agents(_load_toml(_default_dir() / "agents.toml"))
+        )
+    return _DEFAULT_AGENTS_POLICY_CACHE[0]
+
+
+
+def load_agents_policy(config_dir: Path, config: UnifiedConfig | None = None) -> AgentsPolicy:
+    """Load only the agents policy, using config synthesis when available.
+
+    This is for call sites that need drain/chain declarations without requiring a
+    full pipeline/artifact bundle.
+    """
+    agents_path = config_dir / "agents.toml"
+
+    agents_policy = (
+        build_agents_policy_from_config(config)
+        if config is not None and _config_defines_agent_policy(config)
+        else None
+    )
+    if agents_policy is not None:
+        return agents_policy
+
+    if not agents_path.exists():
+        return _cached_default_agents_policy()
+
+    agents_data = _load_toml(agents_path)
+    if not agents_data:
+        return _cached_default_agents_policy()
+    return _validate_agents(agents_data)
+
 
 
 def load_policy(config_dir: Path, config: UnifiedConfig | None = None) -> PolicyBundle:
@@ -251,13 +317,9 @@ def load_policy(config_dir: Path, config: UnifiedConfig | None = None) -> Policy
         PolicyValidationError: If any TOML file fails validation or the bundle
             is semantically incomplete for policy-driven orchestration.
     """
-    agents_path = config_dir / "agents.toml"
     pipeline_path = config_dir / "pipeline.toml"
     artifacts_path = config_dir / "artifacts.toml"
 
-    agents_data: dict[str, object] = {}
-    if config is None:
-        agents_data = _load_toml(agents_path)
     pipeline_data = _load_toml(pipeline_path)
     artifacts_data = _load_toml(artifacts_path)
 
@@ -269,12 +331,7 @@ def load_policy(config_dir: Path, config: UnifiedConfig | None = None) -> Policy
     if not artifacts_data:
         artifacts_data = _load_toml(_default_dir() / "artifacts.toml")
 
-    agents_policy = build_agents_policy_from_config(config) if config is not None else None
-    if agents_policy is None:
-        # Backward-compatibility path for direct policy loading without a main config.
-        if not agents_data:
-            agents_data = _load_toml(_default_dir() / "agents.toml")
-        agents_policy = _validate_agents(agents_data)
+    agents_policy = load_agents_policy(config_dir, config=config)
     pipeline_policy = _validate_pipeline(pipeline_data)
     artifacts_policy = _validate_artifacts(artifacts_data)
 

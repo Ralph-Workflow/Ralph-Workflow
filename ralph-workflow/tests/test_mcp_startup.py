@@ -18,6 +18,7 @@ from ralph.mcp.upstream.config import (
     normalize_upstream_mcp_servers,
     serialize_upstream_mcp_servers,
 )
+from ralph.policy.models import AgentChainConfig, AgentDrainConfig, AgentsPolicy
 
 if TYPE_CHECKING:
     import socket
@@ -26,36 +27,68 @@ EXPECTED_HEARTBEAT_MISSES = 4
 EXPECTED_PREFLIGHT_ATTEMPTS = 2
 
 
+_DEFUALT_AGENTS_POLICY = AgentsPolicy(
+    agent_chains={"default": AgentChainConfig(agents=["agent"])},
+    agent_drains={
+        "planning": AgentDrainConfig(chain="default", drain_class="planning"),
+        "development": AgentDrainConfig(chain="default", drain_class="development"),
+        "fix": AgentDrainConfig(chain="default", drain_class="fix"),
+        "development_analysis": AgentDrainConfig(chain="default", drain_class="analysis"),
+        "review_analysis": AgentDrainConfig(chain="default", drain_class="analysis"),
+        "development_commit": AgentDrainConfig(chain="default", drain_class="commit"),
+        "review_commit": AgentDrainConfig(chain="default", drain_class="commit"),
+    },
+)
+
+
 def _append_sleep(target: list[float], seconds: float) -> None:
     target.append(seconds)
 
 
 def test_access_mode_for_drain_planning_is_read_only() -> None:
-    assert startup.access_mode_for_drain(SessionDrain.PLANNING) is AccessMode.READ_ONLY
+    assert (
+        startup.access_mode_for_drain(SessionDrain.PLANNING, _DEFUALT_AGENTS_POLICY)
+        is AccessMode.READ_ONLY
+    )
 
 
 def test_access_mode_for_drain_development_allows_write() -> None:
-    assert startup.access_mode_for_drain(SessionDrain.DEVELOPMENT) is AccessMode.READ_WRITE
+    assert (
+        startup.access_mode_for_drain(SessionDrain.DEVELOPMENT, _DEFUALT_AGENTS_POLICY)
+        is AccessMode.READ_WRITE
+    )
 
 
 def test_access_mode_for_drain_accepts_string_alias() -> None:
-    assert startup.access_mode_for_drain("fix") is AccessMode.READ_WRITE
+    assert startup.access_mode_for_drain("fix", _DEFUALT_AGENTS_POLICY) is AccessMode.READ_WRITE
 
 
 def test_access_mode_for_development_analysis_is_read_only() -> None:
-    assert startup.access_mode_for_drain("development_analysis") is AccessMode.READ_ONLY
+    assert (
+        startup.access_mode_for_drain("development_analysis", _DEFUALT_AGENTS_POLICY)
+        is AccessMode.READ_ONLY
+    )
 
 
 def test_access_mode_for_development_commit_is_read_only() -> None:
-    assert startup.access_mode_for_drain("development_commit") is AccessMode.READ_ONLY
+    assert (
+        startup.access_mode_for_drain("development_commit", _DEFUALT_AGENTS_POLICY)
+        is AccessMode.READ_ONLY
+    )
 
 
 def test_access_mode_for_review_analysis_is_read_only() -> None:
-    assert startup.access_mode_for_drain("review_analysis") is AccessMode.READ_ONLY
+    assert (
+        startup.access_mode_for_drain("review_analysis", _DEFUALT_AGENTS_POLICY)
+        is AccessMode.READ_ONLY
+    )
 
 
 def test_access_mode_for_review_commit_is_read_only() -> None:
-    assert startup.access_mode_for_drain("review_commit") is AccessMode.READ_ONLY
+    assert (
+        startup.access_mode_for_drain("review_commit", _DEFUALT_AGENTS_POLICY)
+        is AccessMode.READ_ONLY
+    )
 
 
 def test_parse_tcp_endpoint_requires_tcp_scheme() -> None:

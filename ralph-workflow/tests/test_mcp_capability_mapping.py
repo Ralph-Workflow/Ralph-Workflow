@@ -232,24 +232,46 @@ class TestNormalizePolicyOutcome:
 # =============================================================================
 
 
+def _builtin_agents_policy() -> AgentsPolicy:
+    return AgentsPolicy(
+        agent_chains={"default": AgentChainConfig(agents=["agent"])},
+        agent_drains={
+            "planning": AgentDrainConfig(chain="default", drain_class="planning"),
+            "development": AgentDrainConfig(chain="default", drain_class="development"),
+            "analysis": AgentDrainConfig(chain="default", drain_class="analysis"),
+            "review": AgentDrainConfig(chain="default", drain_class="review"),
+            "fix": AgentDrainConfig(chain="default", drain_class="fix"),
+            "commit": AgentDrainConfig(chain="default", drain_class="commit"),
+        },
+    )
+
+
 class TestDrainClassForSession:
     def test_planning(self) -> None:
-        assert drain_class_for_session("planning") == DrainClass.PLANNING
+        assert drain_class_for_session(
+            "planning", _builtin_agents_policy()
+        ) == DrainClass.PLANNING
 
     def test_development(self) -> None:
-        assert drain_class_for_session("development") == DrainClass.DEVELOPMENT
+        assert drain_class_for_session(
+            "development", _builtin_agents_policy()
+        ) == DrainClass.DEVELOPMENT
 
     def test_analysis(self) -> None:
-        assert drain_class_for_session("analysis") == DrainClass.ANALYSIS
+        assert drain_class_for_session(
+            "analysis", _builtin_agents_policy()
+        ) == DrainClass.ANALYSIS
 
     def test_review(self) -> None:
-        assert drain_class_for_session("review") == DrainClass.REVIEW
+        assert drain_class_for_session(
+            "review", _builtin_agents_policy()
+        ) == DrainClass.REVIEW
 
     def test_fix(self) -> None:
-        assert drain_class_for_session("fix") == DrainClass.FIX
+        assert drain_class_for_session("fix", _builtin_agents_policy()) == DrainClass.FIX
 
     def test_commit(self) -> None:
-        assert drain_class_for_session("commit") == DrainClass.COMMIT
+        assert drain_class_for_session("commit", _builtin_agents_policy()) == DrainClass.COMMIT
 
     def test_unknown_raises(self) -> None:
         with pytest.raises(PolicyValidationError):
@@ -258,27 +280,31 @@ class TestDrainClassForSession:
 
 class TestDrainToAccessMode:
     def test_development_allows_write(self) -> None:
-        assert drain_to_access_mode("development") == AccessMode.READ_WRITE
+        assert drain_to_access_mode(
+            "development", _builtin_agents_policy()
+        ) == AccessMode.READ_WRITE
 
     def test_fix_allows_write(self) -> None:
-        assert drain_to_access_mode("fix") == AccessMode.READ_WRITE
+        assert drain_to_access_mode("fix", _builtin_agents_policy()) == AccessMode.READ_WRITE
 
     def test_planning_readonly(self) -> None:
-        assert drain_to_access_mode("planning") == AccessMode.READ_ONLY
+        assert drain_to_access_mode("planning", _builtin_agents_policy()) == AccessMode.READ_ONLY
 
     def test_review_readonly(self) -> None:
-        assert drain_to_access_mode("review") == AccessMode.READ_ONLY
+        assert drain_to_access_mode("review", _builtin_agents_policy()) == AccessMode.READ_ONLY
 
     def test_analysis_readonly(self) -> None:
-        assert drain_to_access_mode("analysis") == AccessMode.READ_ONLY
+        assert drain_to_access_mode("analysis", _builtin_agents_policy()) == AccessMode.READ_ONLY
 
 
 class TestDrainToPolicyMode:
     def test_development(self) -> None:
-        assert drain_to_policy_mode("development") == PolicyMode.DEVELOPMENT
+        assert drain_to_policy_mode(
+            "development", _builtin_agents_policy()
+        ) == PolicyMode.DEVELOPMENT
 
     def test_fix(self) -> None:
-        assert drain_to_policy_mode("fix") == PolicyMode.FIX
+        assert drain_to_policy_mode("fix", _builtin_agents_policy()) == PolicyMode.FIX
 
     def test_unknown_raises_policy_validation_error(self) -> None:
         with pytest.raises(PolicyValidationError):

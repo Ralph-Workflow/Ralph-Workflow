@@ -10,10 +10,7 @@ from typing import TYPE_CHECKING, cast
 from ralph.mcp.protocol.capability_mapping import (
     Capability as RalphCapability,
 )
-from ralph.mcp.protocol.capability_mapping import (
-    SessionDrain,
-    drain_class_for_session,
-)
+from ralph.mcp.protocol.capability_mapping import SessionDrain
 from ralph.mcp.tools.names import (
     ARTIFACT_TOOLS,
     COORDINATE_TOOL,
@@ -191,7 +188,7 @@ DEFAULT_POLICY_FLAGS: dict[SessionDrain, tuple[PolicyFlag, ...]] = {
 }
 
 
-def default_capability_identifiers_for_drain(drain: SessionDrain | str) -> set[str]:
+def default_capability_identifiers_for_drain(drain: SessionDrain) -> set[str]:
     """Return the canonical default capability identifiers for a drain."""
     return {cap.value for cap in DEFAULT_CAPABILITIES.get(_default_drain_key(drain), ())}
 
@@ -325,10 +322,8 @@ def default_caps_and_flags_for_drain(drain: SessionDrain) -> tuple[CapabilitySet
     return (CapabilitySet.defaults_for_drain(drain), PolicyFlagSet.defaults_for_drain(drain))
 
 
-def _default_drain_key(drain: SessionDrain | str) -> SessionDrain:
-    if drain in DEFAULT_CAPABILITIES or drain in DEFAULT_POLICY_FLAGS:
-        return drain if isinstance(drain, SessionDrain) else SessionDrain(drain)
-    return SessionDrain(drain_class_for_session(drain).value)
+def _default_drain_key(drain: SessionDrain) -> SessionDrain:
+    return drain
 
 
 def capability_template_variables(

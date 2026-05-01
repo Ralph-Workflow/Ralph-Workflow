@@ -18,19 +18,44 @@ from ralph.policy.models import AgentChainConfig, AgentDrainConfig, AgentsPolicy
 from ralph.policy.validation import PolicyValidationError
 
 
+def test_drain_class_requires_policy_for_canonical_drains() -> None:
+    """Canonical drains must be resolved from declared policy, not hidden fallback."""
+
+    with pytest.raises(PolicyValidationError):
+        drain_class_for_session(SessionDrain.PLANNING)
+
+
+
 def test_drain_class_preserves_analysis_identity() -> None:
     """Analysis must not collapse to planning drain class."""
 
-    assert drain_class_for_session(SessionDrain.PLANNING) is DrainClass.PLANNING
-    assert drain_class_for_session(SessionDrain.ANALYSIS) is DrainClass.ANALYSIS
+    policy = AgentsPolicy(
+        agent_chains={"default": AgentChainConfig(agents=["agent"])},
+        agent_drains={
+            "planning": AgentDrainConfig(chain="default", drain_class="planning"),
+            "analysis": AgentDrainConfig(chain="default", drain_class="analysis"),
+        },
+    )
+
+    assert drain_class_for_session(SessionDrain.PLANNING, policy) is DrainClass.PLANNING
+    assert drain_class_for_session(SessionDrain.ANALYSIS, policy) is DrainClass.ANALYSIS
 
 
 def test_drain_policy_mode_preserves_read_only_drain_identity() -> None:
     """Read-only drains keep distinct policy identities."""
 
-    assert drain_to_policy_mode(SessionDrain.PLANNING) is PolicyMode.PLANNING
-    assert drain_to_policy_mode(SessionDrain.ANALYSIS) is PolicyMode.ANALYSIS
-    assert drain_to_policy_mode(SessionDrain.REVIEW) is PolicyMode.REVIEW
+    policy = AgentsPolicy(
+        agent_chains={"default": AgentChainConfig(agents=["agent"])},
+        agent_drains={
+            "planning": AgentDrainConfig(chain="default", drain_class="planning"),
+            "analysis": AgentDrainConfig(chain="default", drain_class="analysis"),
+            "review": AgentDrainConfig(chain="default", drain_class="review"),
+        },
+    )
+
+    assert drain_to_policy_mode(SessionDrain.PLANNING, policy) is PolicyMode.PLANNING
+    assert drain_to_policy_mode(SessionDrain.ANALYSIS, policy) is PolicyMode.ANALYSIS
+    assert drain_to_policy_mode(SessionDrain.REVIEW, policy) is PolicyMode.REVIEW
 
 
 @pytest.mark.parametrize("unresolvable_alias", ["dev", "read_only"])

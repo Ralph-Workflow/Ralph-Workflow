@@ -8,6 +8,7 @@ import pytest
 from ralph.config.enums import AgentTransport
 from ralph.mcp.session_plan import build_session_mcp_plan
 from ralph.mcp.upstream.config import UPSTREAM_MCP_CONFIG_ENV, load_upstream_mcp_servers
+from ralph.policy.models import AgentChainConfig, AgentDrainConfig, AgentsPolicy
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -20,6 +21,51 @@ def isolated_home(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
     return home
+
+
+
+_DEFAULT_AGENTS_POLICY = AgentsPolicy(
+    agent_chains={
+        "planning": AgentChainConfig(agents=["claude"], max_retries=2, retry_delay_ms=1000),
+        "development": AgentChainConfig(
+            agents=["claude", "opencode"], max_retries=3, retry_delay_ms=1000
+        ),
+        "development_analysis": AgentChainConfig(
+            agents=["claude"], max_retries=2, retry_delay_ms=500
+        ),
+        "development_commit": AgentChainConfig(
+            agents=["claude"], max_retries=2, retry_delay_ms=500
+        ),
+        "review": AgentChainConfig(agents=["claude"], max_retries=3, retry_delay_ms=1000),
+        "review_analysis": AgentChainConfig(
+            agents=["claude"], max_retries=2, retry_delay_ms=500
+        ),
+        "analysis": AgentChainConfig(agents=["claude"], max_retries=2, retry_delay_ms=500),
+        "fix": AgentChainConfig(agents=["claude"], max_retries=3, retry_delay_ms=1000),
+        "review_commit": AgentChainConfig(
+            agents=["claude"], max_retries=2, retry_delay_ms=500
+        ),
+        "commit": AgentChainConfig(agents=["claude"], max_retries=2, retry_delay_ms=500),
+    },
+    agent_drains={
+        "planning": AgentDrainConfig(chain="planning", drain_class="planning"),
+        "development": AgentDrainConfig(chain="development", drain_class="development"),
+        "development_analysis": AgentDrainConfig(
+            chain="development_analysis", drain_class="analysis"
+        ),
+        "development_commit": AgentDrainConfig(chain="development_commit", drain_class="commit"),
+        "review": AgentDrainConfig(chain="review", drain_class="review"),
+        "review_analysis": AgentDrainConfig(chain="review_analysis", drain_class="analysis"),
+        "analysis": AgentDrainConfig(chain="analysis", drain_class="analysis"),
+        "fix": AgentDrainConfig(chain="fix", drain_class="fix"),
+        "review_commit": AgentDrainConfig(chain="review_commit", drain_class="commit"),
+        "commit": AgentDrainConfig(chain="commit", drain_class="commit"),
+    },
+)
+
+
+def _default_agents_policy(_workspace_path: Path) -> AgentsPolicy:
+    return _DEFAULT_AGENTS_POLICY
 
 
 def test_session_mcp_plan_derives_web_and_upstream_capabilities_from_live_config(
@@ -57,6 +103,7 @@ enabled = true
         transport=AgentTransport.CLAUDE,
         drain="planning",
         workspace_path=tmp_path,
+        agents_policy=_default_agents_policy(tmp_path),
     )
 
     assert "web.search" in plan.capabilities
@@ -90,6 +137,7 @@ enabled = true
         transport=AgentTransport.CLAUDE,
         drain="commit",
         workspace_path=tmp_path,
+        agents_policy=_default_agents_policy(tmp_path),
     )
 
     assert "web.search" not in plan.capabilities
@@ -106,6 +154,7 @@ def test_session_mcp_plan_grants_read_diff_and_exec_for_development_analysis(
         transport=AgentTransport.CLAUDE,
         drain="development_analysis",
         workspace_path=tmp_path,
+        agents_policy=_default_agents_policy(tmp_path),
     )
 
     assert "workspace.read" in plan.capabilities
@@ -127,6 +176,7 @@ def test_session_mcp_plan_grants_read_diff_and_exec_for_review_analysis(
         transport=AgentTransport.CLAUDE,
         drain="review_analysis",
         workspace_path=tmp_path,
+        agents_policy=_default_agents_policy(tmp_path),
     )
 
     assert "workspace.read" in plan.capabilities
@@ -168,6 +218,7 @@ class TestWorkspaceMetadataReadGrantedToAllDrains:
             transport=AgentTransport.CLAUDE,
             drain=drain,
             workspace_path=tmp_path,
+            agents_policy=_default_agents_policy(tmp_path),
         )
 
         assert "workspace.metadata_read" in plan.capabilities
@@ -192,6 +243,7 @@ class TestWorkspaceEditAndDeleteGrantedToDevAndFixDrains:
             transport=AgentTransport.CLAUDE,
             drain=drain,
             workspace_path=tmp_path,
+            agents_policy=_default_agents_policy(tmp_path),
         )
 
         assert "workspace.edit" in plan.capabilities
@@ -222,6 +274,7 @@ class TestWorkspaceEditAndDeleteGrantedToDevAndFixDrains:
             transport=AgentTransport.CLAUDE,
             drain=drain,
             workspace_path=tmp_path,
+            agents_policy=_default_agents_policy(tmp_path),
         )
 
         assert "workspace.edit" not in plan.capabilities
@@ -261,6 +314,7 @@ enabled = true
             transport=AgentTransport.CLAUDE,
             drain=drain,
             workspace_path=commit_drain_workspace,
+            agents_policy=_default_agents_policy(commit_drain_workspace),
         )
 
         assert "git.write" not in plan.capabilities
@@ -287,6 +341,7 @@ enabled = true
             transport=AgentTransport.CLAUDE,
             drain=drain,
             workspace_path=tmp_path,
+            agents_policy=_default_agents_policy(tmp_path),
         )
 
         assert "workspace.read" in plan.capabilities
