@@ -127,10 +127,10 @@ class TestPhaseStyleIsRoleDriven:
         style = _phase_style("done", policy)
         assert style == "theme.phase.complete"
 
-    def test_without_policy_falls_back_to_name_based_style(self) -> None:
-        # Without policy, canonical name lookup works
+    def test_without_policy_canonical_name_returns_muted(self) -> None:
+        # Without policy, canonical phase names are not recognized (only roles are)
         style = _phase_style("planning")
-        assert style == "theme.phase.planning"
+        assert style == "theme.text.muted"
 
     def test_unknown_phase_without_policy_returns_muted(self) -> None:
         style = _phase_style("some_custom_phase")

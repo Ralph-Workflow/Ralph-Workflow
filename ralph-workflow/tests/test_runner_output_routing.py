@@ -107,7 +107,11 @@ def test_run_streams_transcript_output_without_dashboard(monkeypatch: pytest.Mon
     state = PipelineState(phase="planning")
     rendered = io.StringIO()
     test_console = Console(file=rendered, force_terminal=True, no_color=False, width=120)
-    display = ParallelDisplay(make_display_context(console=test_console, env={}))
+    policy_bundle = _load_default_policy_bundle()
+    display = ParallelDisplay(
+        make_display_context(console=test_console, env={}),
+        pipeline_policy=policy_bundle.pipeline,
+    )
 
     def stub_determine_effect(_state: object, _bundle: object) -> object:
         return effects.pop(0)
@@ -162,11 +166,13 @@ def test_single_agent_visual_parity(monkeypatch: pytest.MonkeyPatch) -> None:
     effects = _make_effect_sequence()
     state = PipelineState(phase="planning")
     rendered = io.StringIO()
+    policy_bundle = _load_default_policy_bundle()
     display = ParallelDisplay(
         make_display_context(
             console=Console(file=rendered, force_terminal=False, width=120),
             env={},
-        )
+        ),
+        pipeline_policy=policy_bundle.pipeline,
     )
     next_states = iter(
         [

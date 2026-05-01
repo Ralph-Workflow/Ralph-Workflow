@@ -456,6 +456,7 @@ def _resolve_display(
 def _build_default_display(
     workspace_root: Path,
     display_context: DisplayContext,
+    pipeline_policy: PolicyBundle | None = None,
 ) -> ParallelDisplay | _LegacyConsoleDisplay:
     """Construct the default ParallelDisplay for the verbose run path.
 
@@ -473,6 +474,7 @@ def _build_default_display(
             display_context,
             workspace_root=workspace_root,
             run_id=str(uuid.uuid4()),
+            pipeline_policy=pipeline_policy.pipeline if pipeline_policy is not None else None,
         )
     except Exception:
         logger.debug(
@@ -1152,7 +1154,9 @@ def run(  # noqa: PLR0912, PLR0913, PLR0915
     elif is_quiet:
         active_display = _LegacyConsoleDisplay(display_context)
     else:
-        active_display = _build_default_display(workspace_scope.root, display_context)
+        active_display = _build_default_display(
+            workspace_scope.root, display_context, policy_bundle
+        )
 
     # Install SIGWINCH refresher for adaptive terminal resize on POSIX.
     # The refresher reads the current console width and recomputes mode/limits.
@@ -2289,6 +2293,8 @@ def _render_phase_artifact_handoff(  # noqa: PLR0913
         return
 
     if event == PipelineEvent.AGENT_SUCCESS:
+        phase_def = policy_bundle.pipeline.phases.get(phase) if policy_bundle is not None else None
+        phase_role = phase_def.role if phase_def is not None else None
         _render_success_artifact(
             artifact_type,
             phase,
@@ -2297,6 +2303,7 @@ def _render_phase_artifact_handoff(  # noqa: PLR0913
             display,
             verbosity,
             required_artifact,
+            phase_role=phase_role,
         )
 
 
@@ -2308,6 +2315,8 @@ def _render_success_artifact(  # noqa: PLR0913
     display: ParallelDisplay | _LegacyConsoleDisplay | None,
     verbosity: Verbosity,
     ra: RequiredArtifact,
+    *,
+    phase_role: str | None = None,
 ) -> None:
     if artifact_type == "plan":
         render_plan_artifact(workspace_root, display_context)
@@ -2321,7 +2330,9 @@ def _render_success_artifact(  # noqa: PLR0913
                     if plan is not None
                     else "plan: (no plan artifact on disk)"
                 )
-                cast("ParallelDisplay", display).emit_phase_close(phase, produced)
+                cast("ParallelDisplay", display).emit_phase_close(
+                    phase, produced, phase_role=phase_role
+                )
         return
 
     if artifact_type == "development_result":
@@ -2333,7 +2344,9 @@ def _render_success_artifact(  # noqa: PLR0913
                     if (workspace_root / ra.json_path).exists()
                     else f"{phase}: no result artifact"
                 )
-                cast("ParallelDisplay", display).emit_phase_close(phase, produced)
+                cast("ParallelDisplay", display).emit_phase_close(
+                    phase, produced, phase_role=phase_role
+                )
         return
 
     if artifact_type == "issues":
@@ -2362,7 +2375,7 @@ def _render_success_artifact(  # noqa: PLR0913
                     except Exception:
                         pass
                 cast("ParallelDisplay", display).emit_phase_close(
-                    phase, f"{phase}: {issue_count} issue(s)"
+                    phase, f"{phase}: {issue_count} issue(s)", phase_role=phase_role
                 )
         return
 
@@ -2370,7 +2383,9 @@ def _render_success_artifact(  # noqa: PLR0913
         render_fix_artifact(workspace_root, display_context)
         if verbosity != Verbosity.QUIET and hasattr(display, "emit_phase_close"):
             with suppress(Exception):
-                cast("ParallelDisplay", display).emit_phase_close(phase, f"{phase}: applied")
+                cast("ParallelDisplay", display).emit_phase_close(
+                    phase, f"{phase}: applied", phase_role=phase_role
+                )
 
 
 def _commit_effect(workspace_root: Path) -> CommitEffect:

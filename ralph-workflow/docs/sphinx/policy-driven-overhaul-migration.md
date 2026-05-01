@@ -357,3 +357,38 @@ configuration before a full pipeline run.
 - [Configuration](configuration.md) — full `pipeline.toml` field reference
 - [Policy Explanation](policy-explanation.md) — `ralph --explain-policy` walkthrough
 - [Concepts](concepts.md) — phase roles, loop counters, budget counters
+
+## Display layer migrated to role-only resolution
+
+### Display milestone levels, banner styles, and section styles are now role-only
+
+The display layer previously consulted hardcoded canonical phase-name tables
+(`LEVELS`, `_PHASE_STYLES`, `_TRANSITION_DESCRIPTIONS`, `_style_for_role` fallbacks)
+as a silent compatibility shim. This meant a user with renamed phases could
+still silently fall through to canonical-name styling when the role-based
+lookup did not resolve.
+
+**After the change:**
+
+- `plain_renderer.LEVELS` is keyed by phase ROLE only (`execution`, `analysis`,
+  `review`, `commit`, `verification`, `terminal`, `fanout_join`). Milestone
+  level resolution uses `snapshot.current_phase_role` (populated from policy)
+  rather than the phase name string. Terminal failure / interruption are
+  resolved from explicit semantic flags (`is_terminal_failure`,
+  `interrupted_by_user`).
+- `phase_banner._PHASE_STYLES` is keyed by role only. Without a `PipelinePolicy`,
+  the function returns `theme.text.muted` (no canonical-name lookup).
+- The phase-name-pair description table `_TRANSITION_DESCRIPTIONS` and
+  `_MAJOR_TRANSITIONS` were removed. Banner descriptions and major-transition
+  detection use only `_ROLE_PAIR_DESCRIPTIONS` and `_MAJOR_ROLE_PAIRS`.
+- `completion_summary._style_for_role` and `_style_for_terminal_failure` no
+  longer accept canonical-phase-name fallback arguments. When no policy phase
+  matches the requested role, they return `theme.text.muted`.
+- `cli/commands/run.py` `_print_dry_run` displays `policy.entry_phase` instead
+  of the literal string `"planning"`.
+
+**What this means for you:** No `pipeline.toml` changes are required. If you
+were relying on the canonical-name compatibility fallback (e.g., your custom
+phase happened to be named `"planning"` so it picked up the planning style),
+update to use the role-derived style by setting the appropriate `role` on the
+phase. Custom-named phases now produce correct, role-driven UI deterministically.

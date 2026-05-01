@@ -130,25 +130,24 @@ def _dropped_count_line(dropped: int) -> str:
 def _style_for_role(
     role: str,
     pipeline_policy: PipelinePolicy | None,
-    fallback_phase: str,
 ) -> str:
-    """Return the style for the first phase with the given role, or fall back to a phase name."""
+    """Return the style for the first phase with the given role, or muted when none matches."""
     if pipeline_policy is not None:
         for phase_name, phase_def in pipeline_policy.phases.items():
             if phase_def.role == role:
                 return _phase_style(phase_name, pipeline_policy)
-    return _phase_style(fallback_phase)
+    return "theme.text.muted"
 
 
 def _style_for_terminal_failure(
     pipeline_policy: PipelinePolicy | None,
 ) -> str:
-    """Return the style for the terminal failure phase, or fall back to 'failed'."""
+    """Return the style for the terminal failure phase, or the failed theme default."""
     if pipeline_policy is not None:
         for phase_name, phase_def in pipeline_policy.phases.items():
             if phase_def.role == "terminal" and phase_def.terminal_outcome == "failure":
                 return _phase_style(phase_name, pipeline_policy)
-    return _phase_style("failed")
+    return "theme.phase.failed"
 
 
 def _make_badge_text(badge: str, rest: str) -> Text:
@@ -239,10 +238,14 @@ def _render_compact_group(  # noqa: PLR0912, PLR0913
     error_count: int = 0,
     elapsed_seconds: float | None = None,
     include_context_sections: bool = True,
+    pipeline_policy: PipelinePolicy | None = None,
 ) -> Group:
     """Compact single-column layout: section tags replace Rule headers."""
     failed = snapshot.is_terminal_failure
-    style = _phase_style("failed" if failed else "complete")
+    if failed:
+        style = _style_for_terminal_failure(pipeline_policy)
+    else:
+        style = _style_for_role("terminal", pipeline_policy)
     title = "Pipeline Failed" if failed else "Pipeline Complete"
 
     renderables: list[Text] = [Text(title, style=style)]
@@ -356,10 +359,14 @@ def render_completion_summary_group(  # noqa: PLR0912, PLR0913, PLR0915
             error_count=error_count,
             elapsed_seconds=elapsed_seconds,
             include_context_sections=include_context_sections,
+            pipeline_policy=pipeline_policy,
         )
 
     failed = snapshot.is_terminal_failure
-    style = _phase_style("failed" if failed else "complete")
+    if failed:
+        style = _style_for_terminal_failure(pipeline_policy)
+    else:
+        style = _style_for_role("terminal", pipeline_policy)
     title = "Pipeline Failed" if failed else "Pipeline Complete"
 
     renderables: list[Rule | Text] = []
@@ -369,7 +376,7 @@ def render_completion_summary_group(  # noqa: PLR0912, PLR0913, PLR0915
 
     # Plan section
     if include_context_sections and (snapshot.plan_summary or snapshot.plan_scope_items):
-        plan_style = _style_for_role("execution", pipeline_policy, "planning")
+        plan_style = _style_for_role("execution", pipeline_policy)
         renderables.append(Rule("Plan", style=plan_style))
         if snapshot.plan_summary:
             renderables.append(Text(f"  {snapshot.plan_summary}"))
@@ -422,7 +429,7 @@ def render_completion_summary_group(  # noqa: PLR0912, PLR0913, PLR0915
     # Commit section
     commit_lines = _commit_message_lines(workspace_root)
     if commit_lines or snapshot.pr_url:
-        commit_style = _style_for_role("commit", pipeline_policy, "development_commit")
+        commit_style = _style_for_role("commit", pipeline_policy)
         renderables.append(Rule("Commit", style=commit_style))
         renderables.extend(Text(f"  {ln}") for ln in commit_lines)
         if snapshot.pr_url:
@@ -430,7 +437,7 @@ def render_completion_summary_group(  # noqa: PLR0912, PLR0913, PLR0915
 
     # Risks section
     if include_context_sections and snapshot.plan_risks:
-        renderables.append(Rule("Open Risks", style=_style_for_role("fix", pipeline_policy, "fix")))
+        renderables.append(Rule("Open Risks", style=_style_for_role("fix", pipeline_policy)))
         renderables.extend(Text(f"  - {risk}") for risk in snapshot.plan_risks)
 
     # Error section

@@ -14,6 +14,7 @@ from rich.console import Console
 from ralph.display.context import DisplayContext, make_display_context
 from ralph.display.phase_banner import show_phase_complete, show_phase_start, show_phase_transition
 from ralph.display.theme import ASCII_GLYPHS, UNICODE_GLYPHS
+from ralph.policy.models import PhaseDefinition, PhaseTransition, PipelinePolicy, RecoveryPolicy
 
 _WIDE_EXPECTED_RULES = 2
 
@@ -37,12 +38,46 @@ def _export(ctx: DisplayContext) -> str:
     return ctx.console.export_text()
 
 
+def _make_execution_to_analysis_policy() -> PipelinePolicy:
+    """A policy with 'design' (execution) → 'audit' (analysis) producing a major transition."""
+    return PipelinePolicy(
+        entry_phase="design",
+        terminal_phase="done",
+        phases={
+            "design": PhaseDefinition(
+                drain="design",
+                role="execution",
+                transitions=PhaseTransition(on_success="audit"),
+            ),
+            "audit": PhaseDefinition(
+                drain="audit",
+                role="analysis",
+                transitions=PhaseTransition(on_success="done"),
+            ),
+            "halt": PhaseDefinition(
+                drain="halt",
+                role="terminal",
+                terminal_outcome="failure",
+                transitions=PhaseTransition(on_success="halt", on_loopback="halt"),
+            ),
+            "done": PhaseDefinition(
+                drain="done",
+                role="terminal",
+                terminal_outcome="success",
+                transitions=PhaseTransition(on_success="done", on_loopback="done"),
+            ),
+        },
+        recovery=RecoveryPolicy(failed_route="halt"),
+    )
+
+
 # --- Compact mode ---
 
 def test_compact_major_transition_no_leading_blank() -> None:
     """Compact: major transition emits no leading blank line."""
     ctx = _make_ctx("compact")
-    show_phase_transition("planning", "development", display_context=ctx)
+    policy = _make_execution_to_analysis_policy()
+    show_phase_transition("design", "audit", pipeline_policy=policy, display_context=ctx)
     output = _export(ctx)
     lines = output.split("\n")
     assert lines[0].strip() != "", "Compact mode must not have a leading blank line"
@@ -51,7 +86,8 @@ def test_compact_major_transition_no_leading_blank() -> None:
 def test_compact_major_transition_one_rule() -> None:
     """Compact: major transition emits exactly one Rule (trailing)."""
     ctx = _make_ctx("compact")
-    show_phase_transition("planning", "development", display_context=ctx)
+    policy = _make_execution_to_analysis_policy()
+    show_phase_transition("design", "audit", pipeline_policy=policy, display_context=ctx)
     output = _export(ctx)
     rule_lines = [ln for ln in output.split("\n") if "─" in ln or "━" in ln]
     assert len(rule_lines) == 1, f"Expected 1 rule line, got {len(rule_lines)}: {rule_lines}"
@@ -62,7 +98,8 @@ def test_compact_major_transition_one_rule() -> None:
 def test_wide_major_transition_has_two_rules() -> None:
     """Wide: major transition emits two Rules (separator + trailing)."""
     ctx = _make_ctx("wide")
-    show_phase_transition("planning", "development", display_context=ctx)
+    policy = _make_execution_to_analysis_policy()
+    show_phase_transition("design", "audit", pipeline_policy=policy, display_context=ctx)
     output = _export(ctx)
     rule_lines = [ln for ln in output.split("\n") if "─" in ln or "━" in ln]
     assert len(rule_lines) == _WIDE_EXPECTED_RULES, (
@@ -73,7 +110,8 @@ def test_wide_major_transition_has_two_rules() -> None:
 def test_wide_major_transition_has_leading_blank() -> None:
     """Wide: major transition starts with a blank line."""
     ctx = _make_ctx("wide")
-    show_phase_transition("planning", "development", display_context=ctx)
+    policy = _make_execution_to_analysis_policy()
+    show_phase_transition("design", "audit", pipeline_policy=policy, display_context=ctx)
     output = _export(ctx)
     lines = output.split("\n")
     assert lines[0] == "", "Wide mode must start with a blank line"

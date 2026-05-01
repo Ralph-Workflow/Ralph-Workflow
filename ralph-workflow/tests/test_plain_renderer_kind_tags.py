@@ -265,20 +265,20 @@ def test_non_streaming_kind_closes_other_unit_block() -> None:
 # --- Phase level tests ---
 
 
-def test_phase_lines_use_milestone_for_planning() -> None:
-    assert LEVELS["planning"] == "MILESTONE"
+def test_phase_lines_use_milestone_for_execution_role() -> None:
+    assert LEVELS["execution"] == "MILESTONE"
 
 
-def test_phase_lines_use_milestone_for_development() -> None:
-    assert LEVELS["development"] == "MILESTONE"
+def test_phase_lines_use_milestone_for_review_role() -> None:
+    assert LEVELS["review"] == "MILESTONE"
 
 
-def test_phase_lines_use_success_for_complete() -> None:
-    assert LEVELS["complete"] == "SUCCESS"
+def test_phase_lines_use_success_for_terminal_role() -> None:
+    assert LEVELS["terminal"] == "SUCCESS"
 
 
-def test_phase_lines_use_error_for_failed() -> None:
-    assert LEVELS["failed"] == "ERROR"
+def test_phase_lines_use_info_for_analysis_role() -> None:
+    assert LEVELS["analysis"] == "INFO"
 
 
 # --- Streaming sequence number tests (Step 10) ---

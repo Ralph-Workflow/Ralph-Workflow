@@ -19,7 +19,7 @@ def _make_renderer() -> tuple[PlainLogRenderer, StringIO]:
 
 def test_phase_close_emits_single_line() -> None:
     renderer, buf = _make_renderer()
-    renderer.emit_phase_close("planning", "plan: 5 step(s), 2 risk(s)")
+    renderer.emit_phase_close("planning", "plan: 5 step(s), 2 risk(s)", phase_role="execution")
     lines = [ln for ln in buf.getvalue().splitlines() if ln.strip()]
     assert len(lines) == 1
     milestone = UNICODE_GLYPHS["milestone"]
@@ -61,7 +61,7 @@ def test_phase_close_tag_is_registered() -> None:
 
 def test_phase_close_trims_empty_produced() -> None:
     renderer, buf = _make_renderer()
-    renderer.emit_phase_close("planning", "")
+    renderer.emit_phase_close("planning", "", phase_role="execution")
     lines = [ln for ln in buf.getvalue().splitlines() if ln.strip()]
     assert len(lines) == 1
     line = lines[0]
@@ -71,22 +71,22 @@ def test_phase_close_trims_empty_produced() -> None:
     assert line.endswith(suffix), f"expected line to end with {suffix}, got: {line}"
 
 
-def test_phase_close_non_milestone_phase_has_no_glyph() -> None:
-    """Non-milestone phases (complete, failed, interrupted) emit no glyph prefix."""
+def test_phase_close_non_milestone_role_has_no_glyph() -> None:
+    """Non-milestone roles (terminal, analysis) emit no glyph prefix."""
     renderer, buf = _make_renderer()
-    renderer.emit_phase_close("complete", "result: done")
+    renderer.emit_phase_close("done", "result: done", phase_role="terminal")
     out = buf.getvalue()
-    assert "[phase-close] phase=complete result: done" in out
+    assert "[phase-close] phase=done result: done" in out
     assert UNICODE_GLYPHS["milestone"] not in out
 
 
-def test_phase_close_milestone_phase_ascii_glyph() -> None:
-    """RALPH_FORCE_ASCII=1 emits ASCII milestone glyph (* not ◆) for milestone phases."""
+def test_phase_close_milestone_role_ascii_glyph() -> None:
+    """RALPH_FORCE_ASCII=1 emits ASCII milestone glyph (* not ◆) for milestone roles."""
     buf = StringIO()
     console = Console(file=buf, force_terminal=False, highlight=False, color_system=None, width=200)
     ctx = make_display_context(console=console, env={"RALPH_FORCE_ASCII": "1"})
     renderer = PlainLogRenderer(ctx)
-    renderer.emit_phase_close("planning", "plan: 3 step(s)")
+    renderer.emit_phase_close("planning", "plan: 3 step(s)", phase_role="execution")
     out = buf.getvalue()
     assert "[phase-close] * phase=planning" in out
     assert UNICODE_GLYPHS["milestone"] not in out

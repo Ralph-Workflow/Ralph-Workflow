@@ -30,6 +30,7 @@ if TYPE_CHECKING:
     from ralph.display.plain_renderer import RunStartOrientation
     from ralph.display.snapshot import PipelineSnapshot
     from ralph.pipeline.worker_state import WorkerStatus
+    from ralph.policy.models import PipelinePolicy
 
 _DEFAULT_SNAPSHOT_QUEUE_MAXSIZE: int = 64
 _MAX_OVERFLOW_FILE_BYTES: int = 50 * 1024 * 1024  # 50 MB guard
@@ -60,6 +61,7 @@ class ParallelDisplay:
         subscriber: PipelineSubscriber | None = None,
         workspace_root: Path | None = None,
         run_id: str | None = None,
+        pipeline_policy: PipelinePolicy | None = None,
     ) -> None:
         if not isinstance(display_context, DisplayContext):
             raise TypeError("display_context is required")
@@ -92,6 +94,7 @@ class ParallelDisplay:
                 workspace_root=self._workspace_root,
                 run_id=effective_run_id,
                 on_snapshot=self._plain_renderer.emit_snapshot,
+                pipeline_policy=pipeline_policy,
             )
 
     @property
@@ -297,10 +300,10 @@ class ParallelDisplay:
         with contextlib.suppress(Exception):
             self._plain_renderer.begin_phase(phase)
 
-    def emit_phase_close(self, phase: str, produced: str) -> None:
+    def emit_phase_close(self, phase: str, produced: str, *, phase_role: str | None = None) -> None:
         """Emit a single-line recap at the end of a phase."""
         with contextlib.suppress(Exception):
-            self._plain_renderer.emit_phase_close(phase, produced)
+            self._plain_renderer.emit_phase_close(phase, produced, phase_role=phase_role)
 
     def emit_run_end(
         self,

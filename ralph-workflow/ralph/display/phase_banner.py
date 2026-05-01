@@ -20,62 +20,14 @@ if TYPE_CHECKING:
     from ralph.policy.models import PipelinePolicy
 
 _PHASE_STYLES: dict[str, str] = {
-    "planning": "theme.phase.planning",
-    "development": "theme.phase.development",
-    "development_analysis": "theme.phase.development_analysis",
-    "development_commit": "theme.phase.development_commit",
-    "review": "theme.phase.review",
-    "review_analysis": "theme.phase.review_analysis",
-    "review_commit": "theme.phase.review_commit",
-    "commit": "theme.phase.commit",
-    "fix": "theme.phase.fix",
-    "complete": "theme.phase.complete",
-    "failed": "theme.phase.failed",
-    # Role-name aliases used by policy-driven callers (role → closest canonical style)
     "execution": "theme.phase.development",
     "analysis": "theme.phase.development_analysis",
+    "review": "theme.phase.review",
+    "commit": "theme.phase.commit",
+    "fix": "theme.phase.fix",
     "verification": "theme.phase.development_analysis",
     "terminal": "theme.phase.complete",
     "fanout_join": "theme.phase.development",
-}
-
-_MAJOR_TRANSITIONS: frozenset[tuple[str, str]] = frozenset(
-    {
-        ("planning", "development"),
-        ("development_analysis", "development_commit"),
-        ("development_analysis", "development"),
-        ("development_commit", "review"),
-        ("review", "complete"),
-        ("review_analysis", "review_commit"),
-        ("review_analysis", "fix"),
-        ("fix", "review"),
-        ("review_commit", "complete"),
-        ("review_commit", "development"),
-        ("review_commit", "planning"),
-        ("development_commit", "planning"),
-    }
-)
-
-_TRANSITION_DESCRIPTIONS: dict[tuple[str, str], str] = {
-    ("planning", "development"): "Plan ready — starting development",
-    ("development", "development_analysis"): "Development complete — analyzing results",
-    ("development_analysis", "development_commit"): "Analysis approved — committing changes",
-    ("development_analysis", "development"): (
-        "Analysis requested changes — returning to development"
-    ),
-    ("development_commit", "review"): "Changes committed — starting review",
-    ("development_commit", "planning"): "Commit complete — re-planning needed",
-    ("review", "review_analysis"): "Review complete — analyzing findings",
-    (
-        "review_analysis",
-        "review_commit",
-    ): "Review analysis approved — committing review changes",
-    ("review_analysis", "fix"): "Review found issues — routing to fix",
-    ("fix", "review"): "Fix complete — re-reviewing",
-    ("review_commit", "complete"): "Review changes committed — pipeline complete",
-    ("review_commit", "development"): "Review committed — continuing development",
-    ("review_commit", "planning"): "Review committed — re-planning needed",
-    ("review", "complete"): "All reviews passed",
 }
 
 # Role-pair based major transitions (used when pipeline_policy is available)
@@ -104,6 +56,7 @@ _ROLE_PAIR_DESCRIPTIONS: dict[tuple[str, str], str] = {
     ("analysis", "review"): "Analysis approved — reviewing changes",
     ("commit", "terminal"): "Commit complete — pipeline finished",
     ("review", "terminal"): "Review complete — pipeline finished",
+    ("execution", "terminal"): "Work complete — pipeline finished",
 }
 
 
@@ -111,9 +64,9 @@ def _phase_style(phase: str, pipeline_policy: PipelinePolicy | None = None) -> s
     """Return the rich style string for a phase name or role.
 
     When pipeline_policy is provided, the style is derived from the phase's
-    declared role so renamed phases render with the correct color. Falls back
-    to the name-based _PHASE_STYLES dict (which also accepts role names) when
-    no policy is available or the phase is not in the policy.
+    declared role so renamed phases render with the correct color. Without a
+    policy, the input is treated as a role key — canonical phase names are not
+    recognized and return the muted default.
     """
     if pipeline_policy is not None:
         phase_def = pipeline_policy.phases.get(phase)
@@ -213,25 +166,20 @@ def _resolve_transition_meta(
 ) -> tuple[str | None, bool]:
     """Return (description, is_major) for a phase transition.
 
-    Uses role-pair tables when policy is available, name-pair tables otherwise.
+    Uses role-pair tables when policy is available. Without policy, no
+    description is shown and the transition is treated as minor.
     """
-    description: str | None = None
-    is_major: bool
-    if pipeline_policy is not None:
-        phases = pipeline_policy.phases
-        from_def = phases.get(from_phase)
-        to_def = phases.get(to_phase)
-        if from_def is not None and to_def is not None:
-            from_role = from_def.role or ""
-            to_role = to_def.role or ""
-            description = _ROLE_PAIR_DESCRIPTIONS.get((from_role, to_role))
-            is_major = (from_role, to_role) in _MAJOR_ROLE_PAIRS
-        else:
-            is_major = (from_phase, to_phase) in _MAJOR_TRANSITIONS
-    else:
-        is_major = (from_phase, to_phase) in _MAJOR_TRANSITIONS
-    if description is None:
-        description = _TRANSITION_DESCRIPTIONS.get((from_phase, to_phase))
+    if pipeline_policy is None:
+        return None, False
+    phases = pipeline_policy.phases
+    from_def = phases.get(from_phase)
+    to_def = phases.get(to_phase)
+    if from_def is None or to_def is None:
+        return None, False
+    from_role = from_def.role or ""
+    to_role = to_def.role or ""
+    description = _ROLE_PAIR_DESCRIPTIONS.get((from_role, to_role))
+    is_major = (from_role, to_role) in _MAJOR_ROLE_PAIRS
     return description, is_major
 
 

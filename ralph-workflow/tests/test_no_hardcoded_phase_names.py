@@ -214,3 +214,83 @@ class TestArtifactToolHasNoCanonicalDrainNames:
             "Analysis drain derivation must use suffix-based fallback or policy lookup, "
             "not hardcoded drain mappings."
         )
+
+
+# Names that are EXCLUSIVELY canonical phase names and can never appear as
+# legitimate role values, decision outcomes, or other non-phase strings in
+# the display layer. "complete" and "failed" are excluded here because they
+# also appear as decision outcome keys in _DECISION_LABELS — the guard targets
+# only phase-name-based routing/styling fallbacks.
+DISPLAY_BANNED_PHASE_NAMES = frozenset({
+    "planning",
+    "development",
+    "development_analysis",
+    "development_commit",
+    "review_analysis",
+    "review_commit",
+    "failed_terminal",
+})
+
+
+class TestDisplayLayerHasNoCanonicalPhaseNames:
+    """Display modules must not embed canonical phase name literals as routing keys."""
+
+    @pytest.fixture(scope="class")
+    def plain_renderer_source(self) -> str:
+        return (RALPH_ROOT / "display" / "plain_renderer.py").read_text(encoding="utf-8")
+
+    def test_plain_renderer_levels_dict_has_no_canonical_phase_keys(
+        self, plain_renderer_source: str
+    ) -> None:
+        literals = _string_literals_in_source(plain_renderer_source)
+        violations = DISPLAY_BANNED_PHASE_NAMES & literals
+        msg = (
+            f"plain_renderer.py contains canonical phase name literal(s): {sorted(violations)}."
+            " LEVELS and other display constants must use role keys only."
+        )
+        assert not violations, msg
+
+    @pytest.fixture(scope="class")
+    def phase_banner_source(self) -> str:
+        return (RALPH_ROOT / "display" / "phase_banner.py").read_text(encoding="utf-8")
+
+    def test_phase_banner_has_no_canonical_phase_pair_table(
+        self, phase_banner_source: str
+    ) -> None:
+        literals = _string_literals_in_source(phase_banner_source)
+        violations = DISPLAY_BANNED_PHASE_NAMES & literals
+        assert not violations, (
+            f"phase_banner.py contains canonical phase name literal(s): {sorted(violations)}. "
+            "_PHASE_STYLES and transition tables must use role keys only. "
+            "See docs/sphinx/policy-driven-overhaul-migration.md for migration details."
+        )
+
+    @pytest.fixture(scope="class")
+    def completion_summary_source(self) -> str:
+        return (RALPH_ROOT / "display" / "completion_summary.py").read_text(encoding="utf-8")
+
+    def test_completion_summary_has_no_canonical_phase_fallback_literals(
+        self, completion_summary_source: str
+    ) -> None:
+        literals = _string_literals_in_source(completion_summary_source)
+        violations = DISPLAY_BANNED_PHASE_NAMES & literals
+        msg = (
+            f"completion_summary.py contains canonical phase name literal(s): {sorted(violations)}."
+            " _style_for_role and _style_for_terminal_failure must use role keys only."
+        )
+        assert not violations, msg
+
+    @pytest.fixture(scope="class")
+    def run_command_source(self) -> str:
+        return (RALPH_ROOT / "cli" / "commands" / "run.py").read_text(encoding="utf-8")
+
+    def test_run_command_dry_run_has_no_canonical_phase_fallback(
+        self, run_command_source: str
+    ) -> None:
+        literals = _string_literals_in_function(run_command_source, "_print_dry_run")
+        violations = DISPLAY_BANNED_PHASE_NAMES & literals
+        assert not violations, (
+            f"_print_dry_run contains canonical phase name literal(s): {sorted(violations)}. "
+            "Use policy_bundle.pipeline.entry_phase instead of a hardcoded phase name. "
+            "See docs/sphinx/policy-driven-overhaul-migration.md for migration details."
+        )

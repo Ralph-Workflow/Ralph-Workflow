@@ -255,13 +255,18 @@ def _run_preflight_checks(  # noqa: PLR0913
 def _print_dry_run(
     initial_state: PipelineState | None,
     config: UnifiedConfig,
+    policy_bundle: PolicyBundle | None,
     *,
     display_context: DisplayContext,
 ) -> None:
     """Print dry-run information."""
     console = display_context.console
     console.print(Text("Dry run mode", style="theme.cat.meta"))
-    console.print(_detail_text("Phase", initial_state.phase if initial_state else "planning"))
+    fallback_phase = (
+        policy_bundle.pipeline.entry_phase if policy_bundle is not None else "unknown"
+    )
+    phase = initial_state.phase if initial_state else fallback_phase
+    console.print(_detail_text("Phase", phase))
 
 
 def _execute_pipeline(  # noqa: PLR0913
@@ -409,7 +414,10 @@ def run_pipeline(  # noqa: PLR0913
     # Phase 3: Handle dry-run
     if dry_run:
         _print_dry_run(
-            load_result.initial_state, load_result.config, display_context=ctx
+            load_result.initial_state,
+            load_result.config,
+            load_result.policy_bundle,
+            display_context=ctx,
         )
         return _EXIT_SUCCESS
 

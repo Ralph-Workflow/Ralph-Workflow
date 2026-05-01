@@ -21,8 +21,7 @@ if TYPE_CHECKING:
 
     from ralph.pipeline.state import PipelineState
 
-# Role-keyed level map (primary lookup when pipeline_policy is available)
-_ROLE_LEVELS: Final[dict[str, str]] = {
+LEVELS: Final[dict[str, str]] = {
     "execution": "MILESTONE",
     "review": "MILESTONE",
     "fix": "MILESTONE",
@@ -31,26 +30,6 @@ _ROLE_LEVELS: Final[dict[str, str]] = {
     "verification": "INFO",
     "terminal": "SUCCESS",
     "fanout_join": "INFO",
-}
-
-# Legacy phase-name entries kept as a compatibility layer.
-# Role names are also included here so LEVELS.get(role) works for consumers
-# that do not have policy context.
-LEVELS: Final[dict[str, str]] = {
-    # Role names (primary keys)
-    "execution": "MILESTONE",
-    "review": "MILESTONE",
-    "fix": "MILESTONE",
-    "analysis": "INFO",
-    "commit": "INFO",
-    "verification": "INFO",
-    "terminal": "SUCCESS",
-    # Canonical phase names (compatibility layer — kept for legacy callers)
-    "development": "MILESTONE",
-    "planning": "MILESTONE",
-    "complete": "SUCCESS",
-    "failed": "ERROR",
-    "interrupted": "WARN",
 }
 
 # Closed set of tags for structured log lines
@@ -320,7 +299,13 @@ class PlainLogRenderer:
         if snapshot.phase != self._last_phase:
             self._last_phase = snapshot.phase
             self._last_iteration = snapshot.iteration
-            level = LEVELS.get(snapshot.phase, "INFO")
+            role = snapshot.current_phase_role
+            if snapshot.is_terminal_failure:
+                level = "ERROR"
+            elif snapshot.interrupted_by_user:
+                level = "WARN"
+            else:
+                level = LEVELS.get(role, "INFO") if role is not None else "INFO"
             marker = f"{self._ctx.glyph_for('milestone')} " if level == "MILESTONE" else ""
             return [self._build_line(timestamp, level, "META", f"[phase] {marker}{snapshot.phase}")]
         if snapshot.iteration != self._last_iteration:
@@ -703,7 +688,7 @@ class PlainLogRenderer:
         if self._run_start_time is None:
             self._run_start_time = time.monotonic()
 
-    def emit_phase_close(self, phase: str, produced: str) -> None:
+    def emit_phase_close(self, phase: str, produced: str, *, phase_role: str | None = None) -> None:
         """Emit a single-line recap after a phase's artifact blocks are rendered."""
         self.flush_blocks()
         timestamp = self._format_timestamp(self._clock())
@@ -721,7 +706,7 @@ class PlainLogRenderer:
         )
         glyph_prefix = (
             f"{self._ctx.glyph_for('milestone')} "
-            if LEVELS.get(phase) == "MILESTONE"
+            if phase_role is not None and LEVELS.get(phase_role) == "MILESTONE"
             else ""
         )
         if clean_produced:

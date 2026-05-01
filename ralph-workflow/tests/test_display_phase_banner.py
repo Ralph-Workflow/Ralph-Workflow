@@ -9,8 +9,8 @@ from rich.console import Console
 
 from ralph.display.context import DisplayContext, make_display_context
 from ralph.display.phase_banner import (
-    _MAJOR_TRANSITIONS,
-    _TRANSITION_DESCRIPTIONS,
+    _MAJOR_ROLE_PAIRS,
+    _ROLE_PAIR_DESCRIPTIONS,
     PhaseStartContext,
     _phase_label,
     _phase_style,
@@ -84,13 +84,18 @@ def test_phase_label_converts_underscore_names() -> None:
     assert _phase_label("planning") == "Planning"
 
 
-def test_phase_style_returns_correct_styles() -> None:
-    assert _phase_style("planning") == "theme.phase.planning"
-    assert _phase_style("development") == "theme.phase.development"
+def test_phase_style_canonical_names_without_policy_return_muted() -> None:
+    assert _phase_style("planning") == "theme.text.muted"
+    assert _phase_style("development") == "theme.text.muted"
+    assert _phase_style("complete") == "theme.text.muted"
+    assert _phase_style("failed") == "theme.text.muted"
+
+
+def test_phase_style_role_names_without_policy_return_correct_styles() -> None:
     assert _phase_style("review") == "theme.phase.review"
     assert _phase_style("fix") == "theme.phase.fix"
-    assert _phase_style("complete") == "theme.phase.complete"
-    assert _phase_style("failed") == "theme.phase.failed"
+    assert _phase_style("execution") == "theme.phase.development"
+    assert _phase_style("terminal") == "theme.phase.complete"
 
 
 def test_show_phase_start_without_counters() -> None:
@@ -136,147 +141,86 @@ def test_show_phase_complete_without_decision() -> None:
 
 
 def test_show_phase_transition_with_context() -> None:
-    console = Console(record=True)
+    # Context dict is only rendered for major transitions (requires a policy that resolves
+    # to a major role pair). Use execution → analysis as the canonical major pair.
+    policy = _make_two_phase_policy("execution", "analysis", "planning", "analysis_phase")
+    console = Console(record=True, width=120)
     show_phase_transition(
         "planning",
-        "development",
+        "analysis_phase",
         context={"iteration": "1/5"},
+        pipeline_policy=policy,
         display_context=_ctx_from_console(console),
     )
     output = console.export_text()
     assert "Planning" in output
-    assert "Development" in output
+    assert "Analysis Phase" in output
     assert "iteration=1/5" in output
 
 
 # --- New tests for expanded transitions and descriptions ---
 
 
-def test_major_transition_analysis_to_commit() -> None:
-    """Analysis approved → commit should be a major (double-rule) transition."""
+def test_major_transition_analysis_to_commit_with_policy() -> None:
+    """Analysis approved → commit should be a major transition when policy is provided."""
+    policy = _make_two_phase_policy("analysis", "commit", "dev_analysis", "dev_commit")
     console = Console(record=True, width=120)
     show_phase_transition(
-        "development_analysis", "development_commit",
+        "dev_analysis", "dev_commit",
+        pipeline_policy=policy,
         display_context=_ctx_from_console(console),
     )
     output = console.export_text()
-    assert "Development Analysis" in output
-    assert "Development Commit" in output
+    assert "Dev Analysis" in output
+    assert "Dev Commit" in output
     assert "Analysis approved" in output
 
 
-def test_major_transition_analysis_loopback() -> None:
-    """Analysis loopback → development should be a major transition."""
+def test_major_transition_analysis_loopback_with_policy() -> None:
+    """Analysis loopback → execution should be a major transition when policy is provided."""
+    policy = _make_two_phase_policy("analysis", "execution", "check", "work")
     console = Console(record=True, width=120)
     show_phase_transition(
-        "development_analysis", "development",
+        "check", "work",
+        pipeline_policy=policy,
         display_context=_ctx_from_console(console),
     )
     output = console.export_text()
-    assert "Development Analysis" in output
-    assert "Development" in output
+    assert "Check" in output
+    assert "Work" in output
     assert "Analysis requested changes" in output
 
 
-def test_major_transition_review_analysis_to_fix() -> None:
-    """Review analysis → fix should be a major transition."""
+def test_major_transition_review_to_terminal_with_policy() -> None:
+    """Review → terminal should be a major transition when policy provides roles."""
+    terminal_name = "done"
+    policy = PipelinePolicy(
+        phases={
+            "review_phase": PhaseDefinition(
+                drain="review_phase",
+                role="review",
+                transitions=PhaseTransition(on_success=terminal_name),
+            ),
+            terminal_name: PhaseDefinition(
+                drain=terminal_name,
+                role="terminal",
+                terminal_outcome="success",
+                transitions=PhaseTransition(on_success=terminal_name),
+            ),
+        },
+        entry_phase="review_phase",
+        terminal_phase=terminal_name,
+        recovery=RecoveryPolicy(failed_route=terminal_name),
+    )
     console = Console(record=True, width=120)
     show_phase_transition(
-        "review_analysis", "fix",
+        "review_phase", terminal_name,
+        pipeline_policy=policy,
         display_context=_ctx_from_console(console),
     )
     output = console.export_text()
-    assert "Review Analysis" in output
-    assert "Fix" in output
-    assert "Review found issues" in output
-
-
-def test_major_transition_review_analysis_to_review_commit() -> None:
-    """Review analysis approved → review_commit should be a major transition."""
-    console = Console(record=True, width=120)
-    show_phase_transition(
-        "review_analysis", "review_commit",
-        display_context=_ctx_from_console(console),
-    )
-    output = console.export_text()
-    assert "Review Analysis" in output
-    assert "Review Commit" in output
-    assert "approved" in output
-
-
-def test_major_transition_review_commit_to_development() -> None:
-    """Review commit → development (continue dev) should be major."""
-    console = Console(record=True, width=120)
-    show_phase_transition(
-        "review_commit", "development",
-        display_context=_ctx_from_console(console),
-    )
-    output = console.export_text()
-    assert "Review Commit" in output
-    assert "Development" in output
-    assert "continuing development" in output
-
-
-def test_major_transition_review_commit_to_planning() -> None:
-    """Review commit → planning (re-plan) should be major."""
-    console = Console(record=True, width=120)
-    show_phase_transition("review_commit", "planning", display_context=_ctx_from_console(console))
-    output = console.export_text()
-    assert "Review Commit" in output
-    assert "Planning" in output
-    assert "re-planning" in output
-
-
-def test_major_transition_review_commit_to_complete() -> None:
-    """Review commit → complete should be major."""
-    console = Console(record=True, width=120)
-    show_phase_transition(
-        "review_commit", "complete",
-        display_context=_ctx_from_console(console),
-    )
-    output = console.export_text()
-    assert "Review Commit" in output
-    assert "Complete" in output
-    assert "pipeline complete" in output
-
-
-def test_major_transition_fix_to_review() -> None:
-    """Fix → review should be major with description."""
-    console = Console(record=True, width=120)
-    show_phase_transition(
-        "fix", "review",
-        display_context=_ctx_from_console(console),
-    )
-    output = console.export_text()
-    assert "Fix" in output
-    assert "Review" in output
-    assert "re-reviewing" in output
-
-
-def test_minor_transition_dev_to_analysis_has_description() -> None:
-    """Dev → analysis is a minor transition but should have a description."""
-    console = Console(record=True, width=120)
-    show_phase_transition(
-        "development", "development_analysis",
-        display_context=_ctx_from_console(console),
-    )
-    output = console.export_text()
-    assert "Development" in output
-    assert "Development Analysis" in output
-    assert "analyzing results" in output
-
-
-def test_minor_transition_review_to_analysis_has_description() -> None:
-    """Review → review_analysis is minor but should have description."""
-    console = Console(record=True, width=120)
-    show_phase_transition(
-        "review", "review_analysis",
-        display_context=_ctx_from_console(console),
-    )
-    output = console.export_text()
-    assert "Review" in output
-    assert "Review Analysis" in output
-    assert "analyzing findings" in output
+    assert "Review Phase" in output
+    assert "Done" in output
 
 
 def test_unknown_transition_renders_gracefully() -> None:
@@ -291,26 +235,42 @@ def test_unknown_transition_renders_gracefully() -> None:
     assert "Another Unknown" in output
 
 
-def test_all_major_transitions_have_descriptions() -> None:
-    """Every major transition should have a description for good UX."""
-    for from_phase, to_phase in _MAJOR_TRANSITIONS:
-        assert (from_phase, to_phase) in _TRANSITION_DESCRIPTIONS, (
-            f"Major transition ({from_phase}, {to_phase}) has no description"
+def test_all_major_role_pairs_have_descriptions() -> None:
+    """Every major role-pair transition should have a description for good UX."""
+    for from_role, to_role in _MAJOR_ROLE_PAIRS:
+        assert (from_role, to_role) in _ROLE_PAIR_DESCRIPTIONS, (
+            f"Major role-pair ({from_role}, {to_role}) has no description"
         )
 
 
-def test_transition_descriptions_render_in_major_banners() -> None:
-    """Major transitions should include the description text in output."""
-    for (from_phase, to_phase), description in _TRANSITION_DESCRIPTIONS.items():
-        if (from_phase, to_phase) not in _MAJOR_TRANSITIONS:
+def test_role_pair_descriptions_render_in_major_banners() -> None:
+    """Major role-pair transitions should include the description text in output."""
+    for (from_role, to_role), description in _ROLE_PAIR_DESCRIPTIONS.items():
+        if (from_role, to_role) not in _MAJOR_ROLE_PAIRS:
             continue
+        policy = _make_two_phase_policy(from_role, to_role, "phase_a", "phase_b")
         console = Console(record=True, width=120)
-        show_phase_transition(from_phase, to_phase, display_context=_ctx_from_console(console))
-        output = console.export_text()
-        # Description should appear in the output (at least a substring)
-        assert description[:20] in output, (
-            f"Description '{description}' not found in output for ({from_phase}, {to_phase})"
+        show_phase_transition(
+            "phase_a", "phase_b",
+            pipeline_policy=policy,
+            display_context=_ctx_from_console(console),
         )
+        output = console.export_text()
+        assert description[:20] in output, (
+            f"Description '{description}' not found for role-pair ({from_role}, {to_role})"
+        )
+
+
+def test_transition_without_policy_renders_as_minor_no_description() -> None:
+    """Without policy, transitions are always minor with no description."""
+    console = Console(record=True, width=120)
+    show_phase_transition(
+        "development", "development_analysis",
+        display_context=_ctx_from_console(console),
+    )
+    output = console.export_text()
+    assert "Development" in output
+    assert "Development Analysis" in output
 
 
 def test_show_phase_start_reviewer_pass_zero_boundary() -> None:
@@ -485,11 +445,39 @@ def test_show_phase_start_from_state_tolerates_missing_attrs() -> None:
 # --- Tests for compact/medium/wide mode banners ---
 
 
+def _make_execution_to_analysis_policy() -> PipelinePolicy:
+    """Build a policy with execution → analysis → terminal for mode transition tests."""
+    return PipelinePolicy(
+        phases={
+            "planning": PhaseDefinition(
+                drain="planning",
+                role="execution",
+                transitions=PhaseTransition(on_success="development"),
+            ),
+            "development": PhaseDefinition(
+                drain="development",
+                role="analysis",
+                transitions=PhaseTransition(on_success="done"),
+            ),
+            "done": PhaseDefinition(
+                drain="done",
+                role="terminal",
+                terminal_outcome="success",
+                transitions=PhaseTransition(on_success="done"),
+            ),
+        },
+        entry_phase="planning",
+        terminal_phase="done",
+        recovery=RecoveryPolicy(failed_route="done"),
+    )
+
+
 def test_show_phase_transition_compact_mode_no_leading_blank_line() -> None:
     """Compact mode major transition has no leading blank line and one Rule."""
     console = Console(record=True, width=80)
     ctx = make_display_context(console=console, force_mode="compact")
-    show_phase_transition("planning", "development", display_context=ctx)
+    policy = _make_execution_to_analysis_policy()
+    show_phase_transition("planning", "development", pipeline_policy=policy, display_context=ctx)
     output = console.export_text()
 
     assert "Planning" in output
@@ -506,7 +494,8 @@ def test_show_phase_transition_medium_mode_has_two_rules_with_description() -> N
     """Medium mode major transition keeps both Rules and the description text."""
     console = Console(record=True, width=80)
     ctx = make_display_context(console=console, force_mode="medium")
-    show_phase_transition("planning", "development", display_context=ctx)
+    policy = _make_execution_to_analysis_policy()
+    show_phase_transition("planning", "development", pipeline_policy=policy, display_context=ctx)
     output = console.export_text()
 
     assert "Planning" in output
@@ -518,15 +507,16 @@ def test_show_phase_transition_medium_mode_has_two_rules_with_description() -> N
     assert len(rule_lines) == expected_rule_count, (
         f"Expected {expected_rule_count} rule lines for medium mode, got: {rule_lines}"
     )
-    # Medium should still preserve the description text for readability.
-    assert "Plan ready" in output
+    # Medium should still preserve the description text (execution → analysis)
+    assert "Work complete" in output
 
 
 def test_show_phase_transition_wide_mode_has_description_and_leading_blank() -> None:
     """Wide mode major transition has leading blank, description text, and two Rules."""
     console = Console(record=True, width=120)
     ctx = make_display_context(console=console, force_mode="wide")
-    show_phase_transition("planning", "development", display_context=ctx)
+    policy = _make_execution_to_analysis_policy()
+    show_phase_transition("planning", "development", pipeline_policy=policy, display_context=ctx)
     output = console.export_text()
 
     assert "Planning" in output
@@ -534,8 +524,8 @@ def test_show_phase_transition_wide_mode_has_description_and_leading_blank() -> 
     # Wide should have leading blank line
     lines = output.split("\n")
     assert lines[0] == ""  # First line is blank
-    # Wide should have description text
-    assert "Plan ready" in output
+    # Wide should have description text (execution → analysis)
+    assert "Work complete" in output
     # Wide should have two Rule lines
     rule_lines = [line for line in lines if "─" in line or "━" in line]
     expected_rule_count = 2
@@ -624,8 +614,8 @@ class TestPolicyDrivenPhaseBanner:
         assert "My Work" in output
         assert "My Check" in output
 
-    def test_transition_without_policy_falls_back_to_name_lookup(self) -> None:
-        """No policy → name-based lookup still works for canonical names."""
+    def test_transition_without_policy_renders_as_minor(self) -> None:
+        """No policy → transition renders as minor (no description)."""
         console = Console(record=True)
         show_phase_transition("planning", "development", console=console)
         output = console.export_text()

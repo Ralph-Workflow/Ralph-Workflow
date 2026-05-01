@@ -20,6 +20,7 @@ PLAN_STEP_COUNT = 2
 def _make_snapshot(  # noqa: PLR0913
     *,
     phase: str = "development",
+    current_phase_role: str | None = "execution",
     iteration: int = 1,
     total_iterations: int = 3,
     workers: tuple[WorkerSnapshot, ...] = (),
@@ -69,6 +70,7 @@ def _make_snapshot(  # noqa: PLR0913
         active_workdir=active_workdir,
         active_command=active_command,
         last_activity_line=last_activity_line,
+        current_phase_role=current_phase_role,
     )
 
 
