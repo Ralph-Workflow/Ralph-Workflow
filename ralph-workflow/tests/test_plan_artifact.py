@@ -183,6 +183,22 @@ def test_validate_plan_section_steps_append_mode_accepts_single_item() -> None:
     assert fragment["number"] == 1
 
 
+def test_validate_plan_section_work_units_append_mode_accepts_single_item() -> None:
+    fragment = validate_plan_section(
+        "work_units",
+        {
+            "unit_id": "api",
+            "description": "Update API handlers",
+            "allowed_directories": ["src/api/"],
+            "dependencies": [],
+        },
+        mode="append",
+    )
+
+    assert isinstance(fragment, dict)
+    assert fragment["unit_id"] == "api"
+
+
 def test_validate_plan_section_rejects_unknown_section_name() -> None:
     with pytest.raises(PlanArtifactValidationError, match="unknown plan section"):
         validate_plan_section("bogus", {})

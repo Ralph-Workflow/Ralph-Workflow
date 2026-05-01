@@ -16,6 +16,7 @@ FORMAT_DOC_ARTIFACT_TYPES: tuple[str, ...] = (
     "issues",
     "fix_result",
     "development_analysis_decision",
+    "planning_analysis_decision",
     "review_analysis_decision",
 )
 

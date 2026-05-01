@@ -151,7 +151,7 @@ PLAN_SECTION_LIST_ITEM_MODELS: dict[str, type[BaseModel]] = {
 }
 
 PLAN_SECTION_NAMES: frozenset[str] = frozenset(
-    set(PLAN_SECTION_OBJECT_MODELS) | set(PLAN_SECTION_LIST_ITEM_MODELS)
+    set(PLAN_SECTION_OBJECT_MODELS) | set(PLAN_SECTION_LIST_ITEM_MODELS) | {"work_units"}
 )
 
 
@@ -241,6 +241,19 @@ def validate_plan_section(
         except ValidationError as exc:
             raise PlanArtifactValidationError(_format_validation_error(exc)) from exc
         return _dump_model(validated)
+
+    if section == "work_units":
+        from ralph.pipeline.work_units import WorkUnit  # noqa: PLC0415
+
+        if mode == "replace":
+            if not isinstance(payload, list):
+                raise PlanArtifactValidationError(
+                    "section 'work_units' with mode='replace' must be a JSON array"
+                )
+            return [_validate_list_item(section, WorkUnit, item) for item in payload]
+        if mode == "append":
+            return _validate_list_item(section, WorkUnit, payload)
+        raise PlanArtifactValidationError(f"unknown mode '{mode}' for section '{section}'")
 
     if section in PLAN_SECTION_LIST_ITEM_MODELS:
         item_model = PLAN_SECTION_LIST_ITEM_MODELS[section]
@@ -352,6 +365,41 @@ def delete_plan_draft(artifact_dir: Path, *, backend: FileBackend = DEFAULT_FILE
         return False
     backend.unlink(draft_path)
     return True
+
+
+def load_plan_artifact_sections(
+    artifact_dir: Path, *, backend: FileBackend = DEFAULT_FILE_BACKEND
+) -> dict[str, object] | None:
+    """Load the normalized sections from a finalized plan artifact if present."""
+    plan_path = artifact_dir / "plan.json"
+    if not backend.exists(plan_path):
+        return None
+
+    result: dict[str, object] | None = None
+    try:
+        raw = backend.read_text(plan_path, encoding="utf-8")
+        parsed = cast("object", json.loads(raw))
+        if not isinstance(parsed, dict):
+            logger.warning("Plan artifact at {} is not a JSON object", plan_path)
+            return None
+        parsed_dict = cast("dict[str, object]", parsed)
+        content = parsed_dict.get("content") if parsed_dict.get("type") == "plan" else parsed_dict
+        if not isinstance(content, dict):
+            logger.warning("Plan artifact at {} has no valid 'content' object", plan_path)
+            return None
+        normalized = normalize_plan_artifact_content(cast("dict[str, object]", content))
+        if normalized.get("noop") is not True:
+            result = normalized
+    except (OSError, json.JSONDecodeError) as exc:
+        logger.warning("Failed to read plan artifact at {}: {}", plan_path, exc)
+    except PlanArtifactValidationError as exc:
+        logger.warning(
+            "Plan artifact at {} failed validation for draft hydration: {}",
+            plan_path,
+            exc,
+        )
+
+    return result
 
 
 def render_plan_markdown(content: Mapping[str, object]) -> str:
@@ -538,6 +586,7 @@ __all__ = [
     "delete_plan_draft",
     "finalize_plan_draft",
     "is_noop_plan",
+    "load_plan_artifact_sections",
     "load_plan_draft",
     "merge_plan_section",
     "new_plan_draft",

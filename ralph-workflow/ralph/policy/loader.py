@@ -244,6 +244,7 @@ def build_agents_policy_from_config(config: UnifiedConfig) -> AgentsPolicy:
         "planning": "planning",
         "development": "development",
         "development_analysis": "analysis",
+        "planning_analysis": "analysis",
         "review_analysis": "analysis",
         "analysis": "analysis",
         "review": "review",

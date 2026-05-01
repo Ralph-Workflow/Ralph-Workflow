@@ -43,7 +43,14 @@ commit = "commit"
 drain = "planning"
 prompt_template = "planning.jinja"
 [phases.planning.transitions]
+on_success = "planning_analysis"
+
+[phases.planning_analysis]
+drain = "planning_analysis"
+prompt_template = "planning_analysis.jinja"
+[phases.planning_analysis.transitions]
 on_success = "development"
+on_loopback = "planning"
 
 [phases.development]
 drain = "development"

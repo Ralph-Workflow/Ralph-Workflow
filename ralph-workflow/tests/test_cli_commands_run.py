@@ -139,6 +139,7 @@ def _attach_display_context(
 
 _DEFAULT_DRAINS = [
     "planning",
+    "planning_analysis",
     "development",
     "development_analysis",
     "development_commit",

@@ -5,6 +5,18 @@
 +----------------+
     |
     v
+[loop: counter=planning_analysis_iteration, max=2]
++-------------------+
+| planning_analysis |
+|   role=analysis   |
++-------------------+
+    +--[failed]-----------> planning
+    +--[request_changes]--> planning
+    <<==[loopback]== returns to 'planning'
+    [LOOPBACK: counter=planning_analysis_iteration, max=2]
+    >> RE-ENTRY at planning
+    |
+    v
 >>> FAN_OUT (max_workers=8, max_units=50, post_fanout_verify=no) >>>
 +----------------+
 |  development   |

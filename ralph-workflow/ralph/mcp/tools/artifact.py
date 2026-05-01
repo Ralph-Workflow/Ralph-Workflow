@@ -33,6 +33,7 @@ from ralph.mcp.artifacts.plan import (
     SectionMode,
     delete_plan_draft,
     finalize_plan_draft,
+    load_plan_artifact_sections,
     load_plan_draft,
     merge_plan_section,
     new_plan_draft,
@@ -69,7 +70,13 @@ if TYPE_CHECKING:
     from ralph.policy.models import PipelinePolicy
 
 _TYPED_ARTIFACT_TYPES = frozenset(
-    {"issues", "fix_result", "development_analysis_decision", "review_analysis_decision"}
+    {
+        "issues",
+        "fix_result",
+        "development_analysis_decision",
+        "planning_analysis_decision",
+        "review_analysis_decision",
+    }
 )
 
 _KNOWN_ARTIFACT_TYPES = frozenset(
@@ -196,9 +203,12 @@ def handle_submit_plan_section(
         raise InvalidParamsError(f"[{section}] {exc}") from exc
 
     artifact_dir = _resolve_artifact_dir(session, workspace)
-    draft = load_plan_draft(artifact_dir, backend=resolved_deps.backend) or new_plan_draft(
-        now_iso=resolved_deps.now_iso
-    )
+    draft = load_plan_draft(artifact_dir, backend=resolved_deps.backend)
+    if draft is None:
+        hydrated_sections = load_plan_artifact_sections(artifact_dir, backend=resolved_deps.backend)
+        draft = new_plan_draft(now_iso=resolved_deps.now_iso)
+        if hydrated_sections is not None:
+            draft["sections"] = hydrated_sections
     current_sections = cast("dict[str, object]", draft.get("sections", {}))
     updated_sections = merge_plan_section(current_sections, section, fragment, mode)
     draft["sections"] = updated_sections
@@ -279,7 +289,15 @@ def handle_get_plan_draft(
     artifact_dir = _resolve_artifact_dir(session, workspace)
     draft = load_plan_draft(artifact_dir, backend=resolved_deps.backend)
     if draft is None:
-        response: dict[str, object] = {"staged_sections": []}
+        hydrated_sections = load_plan_artifact_sections(artifact_dir, backend=resolved_deps.backend)
+        if hydrated_sections is None:
+            response: dict[str, object] = {"staged_sections": []}
+        else:
+            response = {
+                "staged_sections": sorted(hydrated_sections.keys()),
+                "draft": hydrated_sections,
+                "source": "finalized_plan",
+            }
     else:
         sections = cast("dict[str, object]", draft.get("sections", {}))
         response = {
@@ -287,6 +305,7 @@ def handle_get_plan_draft(
             "started_at": draft.get("started_at"),
             "updated_at": draft.get("updated_at"),
             "draft": sections,
+            "source": "draft",
         }
 
     return ToolResult(
@@ -407,14 +426,16 @@ def _prepare_artifact_submission(
                 materialize_format_doc(
                     base_path, "development_analysis_decision", backend=backend
                 )
+                materialize_format_doc(base_path, "planning_analysis_decision", backend=backend)
                 materialize_format_doc(base_path, "review_analysis_decision", backend=backend)
                 materialize_format_index(base_path, backend=backend)
                 raise InvalidParamsError(
-                    "artifact_type 'analysis_decision' can only be used inside a "
-                    "development_analysis or review_analysis drain session. "
-                    "Submit artifact_type 'development_analysis_decision' or "
-                    "'review_analysis_decision' directly instead. "
-                    "Read '.agent/artifact-formats/artifact_formats_index.md' "
+                    "artifact_type 'analysis_decision' can only be used inside "
+                    "an analysis drain session such as development_analysis, "
+                    "planning_analysis, or review_analysis. Submit the "
+                    "drain-specific '*_analysis_decision' artifact type "
+                    "directly instead when needed. Read "
+                    "'.agent/artifact-formats/artifact_formats_index.md' "
                     "for the full list of valid artifact_type values. "
                     "Do NOT rely on the raw error text."
                 ) from None
@@ -617,6 +638,45 @@ def _normalize_commit_message_payload(
         raise InvalidParamsError(str(exc)) from exc
 
 
+def _analysis_decision_vocabulary_for_artifact_type(
+    artifact_type: str,
+    *,
+    workspace_root: Path | None,
+) -> frozenset[str] | None:
+    if workspace_root is None:
+        return None
+
+    artifacts_path = workspace_root / ".agent" / "artifacts.toml"
+    if not artifacts_path.exists():
+        return None
+
+    try:
+        import tomllib  # noqa: PLC0415
+
+        with artifacts_path.open("rb") as f:
+            data = cast("dict[str, object]", tomllib.load(f))
+    except (OSError, ValueError):
+        return None
+
+    artifacts_obj = data.get("artifacts")
+    if not isinstance(artifacts_obj, dict):
+        return None
+
+    drain_name = artifact_type.removesuffix("_decision")
+    for contract_obj in artifacts_obj.values():
+        if not isinstance(contract_obj, dict):
+            continue
+        contract = cast("dict[str, object]", contract_obj)
+        if contract.get("drain") != drain_name:
+            continue
+        if contract.get("artifact_type") != artifact_type:
+            continue
+        raw_vocab = contract.get("decision_vocabulary")
+        if isinstance(raw_vocab, list):
+            return frozenset(str(v) for v in raw_vocab)
+    return None
+
+
 def _normalize_plan_payload(parsed_content: dict[str, object]) -> dict[str, object]:
     try:
         return normalize_plan_artifact_content(parsed_content)
@@ -647,15 +707,19 @@ def _normalize_typed_artifact_payload(
     workspace_root: Path | None = None,
     backend: FileBackend = DEFAULT_FILE_BACKEND,
 ) -> dict[str, object]:
-    normalizers = {
-        "issues": normalize_issues_content,
-        "fix_result": normalize_fix_result_content,
-        "development_analysis_decision": normalize_analysis_decision_content,
-        "review_analysis_decision": normalize_analysis_decision_content,
-    }
-    normalize = normalizers[artifact_type]
     try:
-        return normalize(parsed_content)
+        if artifact_type == "issues":
+            return normalize_issues_content(parsed_content)
+        if artifact_type == "fix_result":
+            return normalize_fix_result_content(parsed_content)
+        allowed_statuses = _analysis_decision_vocabulary_for_artifact_type(
+            artifact_type,
+            workspace_root=workspace_root,
+        )
+        return normalize_analysis_decision_content(
+            parsed_content,
+            allowed_statuses=allowed_statuses,
+        )
     except TypedArtifactValidationError as exc:
         if workspace_root is not None:
             _raise_format_doc_error(artifact_type, workspace_root, backend, exc)

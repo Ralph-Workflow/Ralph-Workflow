@@ -255,6 +255,84 @@ def test_materialize_development_analysis_uses_markdown_result_handoff(
     assert "Implemented the feature." not in rendered
 
 
+def test_materialize_planning_analysis_uses_markdown_plan_handoff(
+    tmp_path: Path,
+) -> None:
+    policy = load_policy(tmp_path / ".agent")
+    workspace = MemoryWorkspace(root=str(tmp_path))
+    workspace.write("PROMPT.md", "Analyze the plan")
+    workspace.write(
+        ".agent/artifacts/plan.json",
+        json.dumps(
+            {
+                "type": "plan",
+                "content": {
+                    "summary": {
+                        "context": "Fresh plan context.",
+                        "scope_items": [
+                            {"text": "Add policy-defined planning analysis"},
+                            {"text": "Keep artifacts generic"},
+                            {"text": "Verify the loop end-to-end"},
+                        ],
+                    },
+                    "steps": [
+                        {
+                            "number": 1,
+                            "title": "Add policy",
+                            "content": "Introduce a planning analysis phase before development.",
+                            "step_type": "file_change",
+                            "priority": "high",
+                            "targets": [
+                                {
+                                    "path": "ralph/policy/defaults/pipeline.toml",
+                                    "action": "modify",
+                                }
+                            ],
+                            "depends_on": [],
+                        }
+                    ],
+                    "critical_files": {
+                        "primary_files": [
+                            {
+                                "path": "ralph/policy/defaults/pipeline.toml",
+                                "action": "modify",
+                            }
+                        ],
+                        "reference_files": [],
+                    },
+                    "risks_mitigations": [
+                        {
+                            "risk": "Hardcoded analysis artifact handling",
+                            "mitigation": "Generalize it first",
+                        }
+                    ],
+                    "verification_strategy": [
+                        {
+                            "method": "pytest tests/test_policy_loader.py -q",
+                            "expected_outcome": "passes",
+                        }
+                    ],
+                    "work_units": [],
+                },
+            }
+        ),
+    )
+
+    prompt_path = materialize_prompt_for_phase(
+        phase="planning_analysis",
+        workspace=workspace,
+        pipeline_policy=policy.pipeline,
+        artifacts_policy=policy.artifacts,
+        session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT),
+        workspace_root=tmp_path,
+    )
+
+    rendered = workspace.read(prompt_path)
+    assert str(tmp_path / ".agent" / "PLAN.md") in rendered
+    assert "Read the complete latest artifact from file at" in rendered
+    assert "Fresh plan context." not in rendered
+
+
 def test_materialize_fix_prompt_uses_markdown_issues_handoff(
     tmp_path: Path,
 ) -> None:

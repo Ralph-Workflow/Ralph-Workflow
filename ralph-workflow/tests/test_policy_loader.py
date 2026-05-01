@@ -412,10 +412,33 @@ def test_default_policy_failed_analysis_decisions_route_to_same_rework_target() 
     bundle = load_policy(defaults_dir)
     development_decisions = bundle.pipeline.phases["development_analysis"].decisions
     review_decisions = bundle.pipeline.phases["review_analysis"].decisions
+    planning_decisions = bundle.pipeline.phases["planning_analysis"].decisions
 
     assert development_decisions is not None
     assert review_decisions is not None
+    assert planning_decisions is not None
     assert development_decisions["failed"].target == development_decisions["request_changes"].target
     assert review_decisions["failed"].target == review_decisions["request_changes"].target
+    assert planning_decisions["failed"].target == planning_decisions["request_changes"].target
     assert development_decisions["failed"].target == "development"
     assert review_decisions["failed"].target == "fix"
+    assert planning_decisions["failed"].target == "planning"
+
+
+def test_default_policy_routes_planning_through_planning_analysis() -> None:
+    defaults_dir = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
+
+    bundle = load_policy(defaults_dir)
+    planning = bundle.pipeline.phases["planning"]
+    planning_analysis = bundle.pipeline.phases["planning_analysis"]
+
+    assert planning.transitions.on_success == "planning_analysis"
+    assert planning_analysis.role == "analysis"
+    assert planning_analysis.transitions.on_success == "development"
+    assert planning_analysis.transitions.on_loopback == "planning"
+    assert planning_analysis.loop_policy is not None
+    assert planning_analysis.loop_policy.iteration_state_field == "planning_analysis_iteration"
+    assert bundle.agents.agent_drains["planning_analysis"].drain_class == "analysis"
+    contract = bundle.artifacts.artifacts["planning_analysis_decision"]
+    assert contract.artifact_type == "planning_analysis_decision"
+    assert contract.prompt_template == "planning_analysis.jinja"

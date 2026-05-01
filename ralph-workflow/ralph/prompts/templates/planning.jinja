@@ -37,6 +37,12 @@ Submission protocol:
 USER REQUIREMENTS:
 {{ render_payload_section('PROMPT', PROMPT, PROMPT_PATH) }}
 
+## DISCOVERY PREFLIGHT
+
+Before you commit to a file path, pattern, dependency, or verification command, inspect it yourself with non-mutating tools.
+Check the repository structure, read the referenced files, and confirm the commands or tests actually exist.
+If you have not verified something yet, do not present it as settled fact — add an explicit discovery step instead.
+
 Your plan must be executor-ready for unattended development. The submitted artifact must:
 - Capture the problem context and the concrete user-facing outcome
 - Break the work into ordered implementation steps with enough detail to execute without re-planning
@@ -47,6 +53,10 @@ Your plan must be executor-ready for unattended development. The submitted artif
 - Make the planning-to-development handoff explicit so the development agent can start immediately
 
 Prefer concrete actions and acceptance criteria over vague advice. This is an unattended pipeline: do not ask for clarification, do not defer decisions, and do not leave the executor to infer missing structure.
+If the executor would need to stop and research basic repository structure, guess which file owns a behavior, invent a verification command, or choose among multiple plausible approaches, the plan is underspecified.
+Do not use phrases like "follow the existing pattern" unless you name the exact reference file or test that demonstrates the pattern.
+Do not use phrases like "run tests" unless you provide the exact command and the expected passing result.
+For every concrete requirement or acceptance criterion in the PROMPT, make sure the plan maps it to implementation steps and verification that prove the outcome.
 
 Default submission flow:
 1. Use {{SUBMIT_PLAN_SECTION_TOOL_REFERENCE}} to stage `summary`.

@@ -179,14 +179,15 @@ ralph --diagnose
 When you run `ralph`, the workflow moves through a structured sequence of phases:
 
 1. **Planning** — a planning agent reads `PROMPT.md` and produces a structured plan
-2. **Development** — a developer agent implements the work
-3. **Development analysis** — the workflow decides whether to iterate or continue
-4. **Development commit** — changes are committed
-5. **Review** — a reviewer agent inspects the result and produces issues if needed
-6. **Review analysis** — the workflow decides whether to loop to fix or continue
-7. **Fix** — a fix agent resolves issues found during review
-8. **Review commit** — final changes are committed
-9. **Complete** — the workflow ends successfully
+2. **Planning analysis** — the workflow checks whether the proposed plan is executor-ready or needs another planning pass
+3. **Development** — a developer agent implements the work
+4. **Development analysis** — the workflow decides whether to iterate or continue
+5. **Development commit** — changes are committed
+6. **Review** — a reviewer agent inspects the result and produces issues if needed
+7. **Review analysis** — the workflow decides whether to loop to fix or continue
+8. **Fix** — a fix agent resolves issues found during review
+9. **Review commit** — final changes are committed
+10. **Complete** — the workflow ends successfully
 
 If review finds significant problems, the review → fix cycle repeats up to the configured limit.
 

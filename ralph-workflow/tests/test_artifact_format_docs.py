@@ -191,6 +191,7 @@ def test_bundled_examples_validate_through_real_normalizers(tmp_path: Path) -> N
         "issues",
         "fix_result",
         "development_analysis_decision",
+        "planning_analysis_decision",
         "review_analysis_decision",
     }
 
@@ -221,6 +222,7 @@ def test_format_doc_mentions_required_fields() -> None:
         "issues": ["path", "severity", "summary"],
         "fix_result": ["summary", "files_changed"],
         "development_analysis_decision": ["status", "summary", "what_came_up_short", "how_to_fix"],
+        "planning_analysis_decision": ["status", "summary", "what_came_up_short", "how_to_fix"],
         "review_analysis_decision": ["status", "summary", "what_came_up_short", "how_to_fix"],
     }
 
@@ -367,9 +369,12 @@ def test_analysis_decision_without_drain_points_to_index(tmp_path: Path) -> None
         )
     message = str(exc_info.value)
     assert ".agent/artifact-formats/artifact_formats_index.md" in message
-    # Both analysis decision docs should be materialized
+    # All analysis decision docs should be materialized
     assert (
         tmp_path / ".agent" / "artifact-formats" / "development_analysis_decision.md"
+    ).exists()
+    assert (
+        tmp_path / ".agent" / "artifact-formats" / "planning_analysis_decision.md"
     ).exists()
     assert (
         tmp_path / ".agent" / "artifact-formats" / "review_analysis_decision.md"

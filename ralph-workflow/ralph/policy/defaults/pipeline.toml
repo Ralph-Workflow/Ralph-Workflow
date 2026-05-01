@@ -68,6 +68,10 @@
 default_max = 3
 description = "Development analysis loop iteration counter"
 
+[loop_counters.planning_analysis_iteration]
+default_max = 2
+description = "Planning analysis loop iteration counter"
+
 [loop_counters.review_analysis_iteration]
 default_max = 2
 description = "Review analysis loop iteration counter"
@@ -99,7 +103,27 @@ drain = "planning"
 role = "execution"
 prompt_template = "planning.jinja"
 [phases.planning.transitions]
+on_success = "planning_analysis"
+
+[phases.planning_analysis]
+drain = "planning_analysis"
+role = "analysis"
+prompt_template = "planning_analysis.jinja"
+[phases.planning_analysis.transitions]
 on_success = "development"
+on_loopback = "planning"
+[phases.planning_analysis.loop_policy]
+max_iterations = 2
+iteration_state_field = "planning_analysis_iteration"
+[phases.planning_analysis.decisions.completed]
+target = "development"
+reset_loop = true
+[phases.planning_analysis.decisions.request_changes]
+target = "planning"
+reset_loop = false
+[phases.planning_analysis.decisions.failed]
+target = "planning"
+reset_loop = false
 
 [phases.development]
 drain = "development"

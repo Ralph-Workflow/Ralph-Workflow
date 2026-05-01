@@ -66,6 +66,21 @@ prompt_template = "development_analysis.jinja"
 markdown_summary_path = ".agent/DEVELOPMENT_ANALYSIS_DECISION.md"
 
 # ---------------------------------------------------------------------------
+# Planning analysis decision
+# ---------------------------------------------------------------------------
+
+[artifacts.planning_analysis_decision]
+drain = "planning_analysis"
+artifact_type = "planning_analysis_decision"
+decision_vocabulary = [
+    "completed",
+    "request_changes",
+    "failed",
+]
+prompt_template = "planning_analysis.jinja"
+markdown_summary_path = ".agent/PLANNING_ANALYSIS_DECISION.md"
+
+# ---------------------------------------------------------------------------
 # Review analysis decision
 # ---------------------------------------------------------------------------
 

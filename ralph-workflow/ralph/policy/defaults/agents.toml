@@ -31,6 +31,11 @@ agents = ["claude"]
 max_retries = 2
 retry_delay_ms = 500
 
+[agent_chains.planning_analysis]
+agents = ["claude"]
+max_retries = 2
+retry_delay_ms = 500
+
 [agent_chains.development_commit]
 agents = ["claude"]
 max_retries = 2
@@ -80,6 +85,10 @@ drain_class = "development"
 
 [agent_drains.development_analysis]
 chain = "development_analysis"
+drain_class = "analysis"
+
+[agent_drains.planning_analysis]
+chain = "planning_analysis"
 drain_class = "analysis"
 
 [agent_drains.development_commit]

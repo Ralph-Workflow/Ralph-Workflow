@@ -1,13 +1,16 @@
 """Structured validation for typed non-plan artifact payloads.
 
-Covers: issues, fix_result, development_analysis_decision, review_analysis_decision.
+Covers: issues, fix_result, and analysis decision artifacts.
 """
 
 from __future__ import annotations
 
 import tomllib
 from pathlib import Path
-from typing import Literal, cast
+from typing import TYPE_CHECKING, Literal, cast
+
+if TYPE_CHECKING:
+    from collections.abc import Collection
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
@@ -102,9 +105,6 @@ class AnalysisDecision(BaseModel):  # type: ignore[explicit-any]  # reason: exte
 
     @model_validator(mode="after")
     def _check_status_and_remediation(self) -> AnalysisDecision:
-        if self.status not in _ANALYSIS_DECISION_VOCABULARY:
-            allowed = sorted(_ANALYSIS_DECISION_VOCABULARY)
-            raise ValueError(f"status must be one of {allowed}")
         if self.status in ("request_changes", "failed"):
             if not self.what_came_up_short:
                 raise ValueError(
@@ -137,8 +137,22 @@ def normalize_fix_result_content(content: dict[str, object]) -> dict[str, object
     return _validate(FixResult, content)
 
 
-def normalize_analysis_decision_content(content: dict[str, object]) -> dict[str, object]:
-    return _validate(AnalysisDecision, content)
+def normalize_analysis_decision_content(
+    content: dict[str, object],
+    *,
+    allowed_statuses: Collection[str] | None = None,
+) -> dict[str, object]:
+    normalized = _validate(AnalysisDecision, content)
+    statuses = (
+        frozenset(allowed_statuses)
+        if allowed_statuses is not None
+        else _ANALYSIS_DECISION_VOCABULARY
+    )
+    status = normalized.get("status")
+    if not isinstance(status, str) or status not in statuses:
+        allowed = sorted(statuses)
+        raise TypedArtifactValidationError(f"status must be one of {allowed}")
+    return normalized
 
 
 __all__ = [

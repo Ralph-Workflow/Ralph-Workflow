@@ -75,6 +75,7 @@ This example shows the minimum fields needed to submit each type:
 | `issues` | Report issues found during review | `.agent/artifact-formats/issues.md` |
 | `fix_result` | Report the outcome of a fix task | `.agent/artifact-formats/fix_result.md` |
 | `development_analysis_decision` | Report a development analysis decision | `.agent/artifact-formats/development_analysis_decision.md` |
+| `planning_analysis_decision` | Report a planning analysis decision | `.agent/artifact-formats/planning_analysis_decision.md` |
 | `review_analysis_decision` | Report a review analysis decision | `.agent/artifact-formats/review_analysis_decision.md` |
 | `plan` | Submit a full implementation plan (uses special flow) | Uses `ralph_submit_plan_section` / `ralph_finalize_plan` |
 

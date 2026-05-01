@@ -24,6 +24,7 @@ ACTIVE_AGENT_CHAINS = {
 
 ACTIVE_AGENT_DRAINS = {
     "planning": "planning",
+    "planning_analysis": "analysis",
     "development": "development",
     "development_analysis": "analysis",
     "development_commit": "commit",

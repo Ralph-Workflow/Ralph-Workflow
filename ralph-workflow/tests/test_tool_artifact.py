@@ -181,6 +181,118 @@ def test_prepare_artifact_submission_maps_generic_analysis_decision_to_review_dr
     assert parsed_content["status"] == "request_changes"
 
 
+def test_handle_submit_artifact_honors_active_policy_analysis_vocabulary(tmp_path: Path) -> None:
+    agent_dir = tmp_path / ".agent"
+    agent_dir.mkdir()
+    (agent_dir / "pipeline.toml").write_text(
+        """
+entry_phase = \"planning\"
+terminal_phase = \"complete\"
+
+[loop_counters.planning_analysis_iteration]
+default_max = 2
+
+[phases.planning]
+drain = \"planning\"
+role = \"execution\"
+[phases.planning.transitions]
+on_success = \"planning_analysis\"
+
+[phases.planning_analysis]
+drain = \"planning_analysis\"
+role = \"analysis\"
+prompt_template = \"planning_analysis.jinja\"
+[phases.planning_analysis.transitions]
+on_success = \"complete\"
+on_loopback = \"planning\"
+[phases.planning_analysis.loop_policy]
+max_iterations = 2
+iteration_state_field = \"planning_analysis_iteration\"
+[phases.planning_analysis.decisions.accepted]
+target = \"complete\"
+reset_loop = true
+[phases.planning_analysis.decisions.revise]
+target = \"planning\"
+reset_loop = false
+
+[phases.complete]
+drain = \"complete\"
+role = \"terminal\"
+terminal_outcome = \"success\"
+[phases.complete.transitions]
+on_success = \"complete\"
+on_loopback = \"complete\"
+
+[phases.failed_terminal]
+drain = \"complete\"
+role = \"terminal\"
+terminal_outcome = \"failure\"
+[phases.failed_terminal.transitions]
+on_success = \"failed_terminal\"
+on_loopback = \"failed_terminal\"
+""".strip(),
+        encoding="utf-8",
+    )
+    (agent_dir / "artifacts.toml").write_text(
+        """
+[artifacts.planning_output]
+drain = \"planning\"
+artifact_type = \"plan\"
+prompt_template = \"planning.jinja\"
+markdown_summary_path = \".agent/PLAN.md\"
+
+[artifacts.planning_analysis_decision]
+drain = \"planning_analysis\"
+artifact_type = \"planning_analysis_decision\"
+decision_vocabulary = [\"accepted\", \"revise\"]
+prompt_template = \"planning_analysis.jinja\"
+markdown_summary_path = \".agent/PLANNING_ANALYSIS_DECISION.md\"
+""".strip(),
+        encoding="utf-8",
+    )
+    (agent_dir / "agents.toml").write_text(
+        """
+[agent_chains.planning]
+agents = [\"claude\"]
+
+[agent_chains.planning_analysis]
+agents = [\"claude\"]
+
+[agent_chains.complete]
+agents = [\"claude\"]
+
+[agent_chains.failed_terminal]
+agents = [\"claude\"]
+
+[agent_drains.planning]
+chain = \"planning\"
+drain_class = \"planning\"
+
+[agent_drains.planning_analysis]
+chain = \"planning_analysis\"
+drain_class = \"analysis\"
+
+[agent_drains.complete]
+chain = \"complete\"
+
+[agent_drains.failed_terminal]
+chain = \"failed_terminal\"
+""".strip(),
+        encoding="utf-8",
+    )
+
+    result = handle_submit_artifact(
+        MockSession(drain="planning_analysis"),
+        MockWorkspace(tmp_path),
+        {
+            "artifact_type": "planning_analysis_decision",
+            "content": _content({"status": "accepted", "summary": "Looks good."}),
+        },
+    )
+
+    assert result.is_error is False
+
+
 def test_prepare_artifact_submission_rejects_generic_analysis_decision_outside_analysis_drain() -> (
     None
 ):
@@ -866,6 +978,62 @@ def test_handle_submit_artifact_invalid_review_analysis_decision_points_to_forma
     assert content.startswith("# review_analysis_decision artifact format")
 
 
+def test_handle_submit_artifact_accepts_generic_planning_analysis_decision_and_mirrors_handoff(
+    tmp_path: Path,
+) -> None:
+    result = handle_submit_artifact(
+        MockSession(drain="planning_analysis"),
+        MockWorkspace(tmp_path),
+        {
+            "artifact_type": "analysis_decision",
+            "content": _content(
+                {
+                    "status": "request_changes",
+                    "summary": "The plan is missing executable verification steps.",
+                    "what_came_up_short": [
+                        "Verification strategy does not include exact commands."
+                    ],
+                    "how_to_fix": [
+                        "Add explicit commands and expected outcomes for each verification step."
+                    ],
+                }
+            ),
+        },
+    )
+
+    assert result.is_error is False
+    decision_md = (tmp_path / ".agent" / "PLANNING_ANALYSIS_DECISION.md").read_text(
+        encoding="utf-8"
+    )
+    assert "# Planning Analysis Decision" in decision_md
+    assert "The plan is missing executable verification steps." in decision_md
+    assert "Add explicit commands and expected outcomes for each verification step." in decision_md
+
+
+def test_handle_submit_artifact_invalid_planning_analysis_decision_points_to_format_doc(
+    tmp_path: Path,
+) -> None:
+    with pytest.raises(
+        InvalidParamsError,
+        match=r"\.agent/artifact-formats/planning_analysis_decision\.md",
+    ):
+        handle_submit_artifact(
+            MockSession(drain="planning_analysis"),
+            MockWorkspace(tmp_path),
+            {
+                "artifact_type": "planning_analysis_decision",
+                "content": _content({"garbage": "value"}),
+            },
+        )
+    assert (
+        tmp_path / ".agent" / "artifact-formats" / "planning_analysis_decision.md"
+    ).exists()
+    content = (
+        tmp_path / ".agent" / "artifact-formats" / "planning_analysis_decision.md"
+    ).read_text(encoding="utf-8")
+    assert content.startswith("# planning_analysis_decision artifact format")
+
+
 def test_plan_validation_error_is_not_redirected_through_format_doc(tmp_path: Path) -> None:
     with pytest.raises(InvalidParamsError, match="verification_strategy"):
         handle_submit_artifact(
@@ -1088,6 +1256,28 @@ def test_get_plan_draft_when_absent_returns_empty_list(tmp_path: Path) -> None:
     assert payload == {"staged_sections": []}
 
 
+def test_get_plan_draft_hydrates_from_existing_plan_artifact(tmp_path: Path) -> None:
+    plan = _full_plan_payload()
+    handle_submit_artifact(
+        MockSession(),
+        MockWorkspace(tmp_path),
+        {"artifact_type": "plan", "content": _content(plan)},
+    )
+
+    result = handle_get_plan_draft(MockSession(), MockWorkspace(tmp_path), {})
+
+    payload = json.loads(cast("ToolContent", result.content[0]).text)
+    assert sorted(payload["staged_sections"]) == [
+        "critical_files",
+        "risks_mitigations",
+        "steps",
+        "summary",
+        "verification_strategy",
+    ]
+    assert payload["source"] == "finalized_plan"
+    assert payload["draft"]["summary"]["context"] == plan["summary"]["context"]
+
+
 def test_discard_plan_draft_deletes_draft_file(tmp_path: Path) -> None:
     plan = _full_plan_payload()
     _submit_section(tmp_path, "summary", plan["summary"])
@@ -1152,3 +1342,72 @@ def test_full_plan_submission_clears_existing_draft(tmp_path: Path) -> None:
 
     assert not draft_path.exists()
     assert (tmp_path / ".agent" / "artifacts" / "plan.json").exists()
+
+
+def test_submit_plan_section_can_edit_existing_finalized_plan_without_resubmitting_everything(
+    tmp_path: Path,
+) -> None:
+    plan = _full_plan_payload()
+    handle_submit_artifact(
+        MockSession(),
+        MockWorkspace(tmp_path),
+        {"artifact_type": "plan", "content": _content(plan)},
+    )
+
+    updated_verification = [
+        {
+            "method": "uv run pytest -q tests/test_tool_artifact.py",
+            "expected_outcome": "planning artifact edit flow passes",
+        }
+    ]
+    _submit_section(tmp_path, "verification_strategy", updated_verification)
+    result = handle_finalize_plan(MockSession(), MockWorkspace(tmp_path), {})
+
+    assert result.is_error is False
+    stored = json.loads(
+        (tmp_path / ".agent" / "artifacts" / "plan.json").read_text(encoding="utf-8")
+    )
+    assert stored["content"]["summary"]["context"] == plan["summary"]["context"]
+    assert stored["content"]["verification_strategy"] == updated_verification
+
+
+def test_submit_plan_section_can_edit_work_units_on_existing_finalized_plan(
+    tmp_path: Path,
+) -> None:
+    plan = _full_plan_payload()
+    plan["work_units"] = [
+        {
+            "unit_id": "api",
+            "description": "Update API handlers",
+            "allowed_directories": ["src/api/"],
+            "dependencies": [],
+        }
+    ]
+    handle_submit_artifact(
+        MockSession(),
+        MockWorkspace(tmp_path),
+        {"artifact_type": "plan", "content": _content(plan)},
+    )
+
+    updated_work_units = [
+        {
+            "unit_id": "api",
+            "description": "Update API and contract tests",
+            "allowed_directories": ["src/api/", "tests/api/"],
+            "dependencies": [],
+        }
+    ]
+    _submit_section(tmp_path, "work_units", updated_work_units)
+    result = handle_finalize_plan(MockSession(), MockWorkspace(tmp_path), {})
+
+    assert result.is_error is False
+    stored = json.loads(
+        (tmp_path / ".agent" / "artifacts" / "plan.json").read_text(encoding="utf-8")
+    )
+    assert stored["content"]["work_units"] == [
+        {
+            "unit_id": "api",
+            "description": "Update API and contract tests",
+            "allowed_directories": ["src/api/", "tests/api/"],
+        }
+    ]

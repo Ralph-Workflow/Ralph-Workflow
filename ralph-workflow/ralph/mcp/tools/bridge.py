@@ -1085,7 +1085,8 @@ def _tool_specs(mcp_config: McpConfig) -> tuple[ToolSpec, ...]:
                             "description": (
                                 "Type of artifact as a string: plan, development_result, "
                                 "issues, fix_result, commit_message, "
-                                "development_analysis_decision, or review_analysis_decision "
+                                "development_analysis_decision, planning_analysis_decision, "
+                                "or review_analysis_decision "
                                 "(example values: 'plan', 'development_result', 'issues')."
                             ),
                         },

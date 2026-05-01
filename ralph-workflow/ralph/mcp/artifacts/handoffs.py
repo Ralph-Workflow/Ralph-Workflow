@@ -27,6 +27,7 @@ HANDOFF_PATHS: dict[str, str] = {
     "parallel_development_summary": ".agent/DEVELOPMENT_RESULT.md",
     "fix_result": ".agent/FIX_RESULT.md",
     "development_analysis_decision": ".agent/DEVELOPMENT_ANALYSIS_DECISION.md",
+    "planning_analysis_decision": ".agent/PLANNING_ANALYSIS_DECISION.md",
     "review_analysis_decision": ".agent/REVIEW_ANALYSIS_DECISION.md",
 }
 
@@ -96,10 +97,8 @@ def _render_by_artifact_type(artifact_type: str, content: Mapping[str, object]) 
                 for field in field_names
             ],
         )
-    if artifact_type in {"development_analysis_decision", "review_analysis_decision"}:
-        title = "# Development Analysis Decision"
-        if artifact_type == "review_analysis_decision":
-            title = "# Review Analysis Decision"
+    if artifact_type.endswith("_analysis_decision"):
+        title = f"# {artifact_type.replace('_', ' ').title()}"
         return _render_analysis_decision_markdown(title, content)
     return _render_key_value_markdown(
         title=f"# {artifact_type.replace('_', ' ').title()}",

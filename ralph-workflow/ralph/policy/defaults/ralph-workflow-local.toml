@@ -143,6 +143,7 @@ commit = ["claude/haiku"]
 
 [agent_drains]
 planning = "planning"
+planning_analysis = "analysis"
 development = "development"
 development_analysis = "analysis"
 development_commit = "commit"

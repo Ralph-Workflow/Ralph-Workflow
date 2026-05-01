@@ -44,6 +44,7 @@ def test_legacy_prompt_families_have_file_backed_jinja_templates() -> None:
         "development_commit_message.jinja",
         "fix_mode.jinja",
         "planning.jinja",
+        "planning_analysis.jinja",
         "review.jinja",
         "review_analysis.jinja",
     }
@@ -79,6 +80,7 @@ def test_default_artifacts_policy_references_file_backed_templates() -> None:
     )
 
     assert 'prompt_template = "planning.jinja"' in artifacts_toml
+    assert 'prompt_template = "planning_analysis.jinja"' in artifacts_toml
     assert 'prompt_template = "development_analysis.jinja"' in artifacts_toml
     assert 'prompt_template = "review_analysis.jinja"' in artifacts_toml
     assert 'prompt_template = "development_commit_message.jinja"' in artifacts_toml
@@ -147,6 +149,23 @@ REVIEW_ANALYSIS_FRESH_SUBMIT_EXAMPLE = (
     '"artifact_type":"review_analysis_decision",'
     '"content":"{\\"status\\":\\"completed\\",\\"summary\\":\\"...\\"}"'
 )
+PLANNING_ANALYSIS_FRESH_SUBMIT_EXAMPLE = (
+    '"artifact_type":"planning_analysis_decision",'
+    '"content":"{\\"status\\":\\"completed\\",\\"summary\\":\\"...\\"}"'
+)
+PLANNING_DISCOVERY_PREFLIGHT_GUIDANCE = (
+    "Before you commit to a file path, pattern, dependency, or verification command, inspect it yourself"
+)
+PLANNING_NO_VAGUE_PATTERN_GUIDANCE = (
+    'Do not use phrases like "follow the existing pattern" unless you name the exact reference file'
+)
+PLANNING_LOW_RESEARCH_EXECUTOR_GUIDANCE = (
+    "If the executor would need to stop and research basic repository structure"
+)
+PLANNING_ANALYSIS_CRITIC_GUIDANCE = "You are a lightweight plan critic"
+PLANNING_ANALYSIS_MISSING_WORK_GUIDANCE = "Missing work"
+PLANNING_ANALYSIS_CONTRADICTIONS_GUIDANCE = "Contradictions or inconsistency"
+PLANNING_ANALYSIS_RESEARCH_BURDEN_GUIDANCE = "Executor research burden"
 
 
 def _assert_shared_analysis_guidance(
@@ -190,27 +209,58 @@ def test_analysis_templates_require_exact_artifact_types_and_detailed_fix_sectio
     development_analysis = (TEMPLATES_ROOT / "development_analysis.jinja").read_text(
         encoding="utf-8"
     )
+    planning_analysis = (TEMPLATES_ROOT / "planning_analysis.jinja").read_text(encoding="utf-8")
     review_analysis = (TEMPLATES_ROOT / "review_analysis.jinja").read_text(encoding="utf-8")
 
     assert 'artifact_type="development_analysis_decision"' in development_analysis
+    assert 'artifact_type="planning_analysis_decision"' in planning_analysis
     assert 'artifact_type="review_analysis_decision"' in review_analysis
     assert "what_came_up_short" in development_analysis
     assert "how_to_fix" in development_analysis
+    assert "what_came_up_short" in planning_analysis
+    assert "how_to_fix" in planning_analysis
     assert "what_came_up_short" in review_analysis
     assert "how_to_fix" in review_analysis
     assert "Not submitting the analysis artifact is a FAILURE." in development_analysis
+    assert "Not submitting the analysis artifact is a FAILURE." in planning_analysis
     assert "Not submitting the analysis artifact is a FAILURE." in review_analysis
     assert "SUBMIT_ARTIFACT_TOOL_REFERENCE" in development_analysis
+    assert "SUBMIT_ARTIFACT_TOOL_REFERENCE" in planning_analysis
     assert "SUBMIT_ARTIFACT_TOOL_REFERENCE" in review_analysis
+    assert "approved" not in planning_analysis
     assert "approved" not in review_analysis
+    assert "reject" not in planning_analysis
     assert "reject" not in review_analysis
     assert "Use `content` for a freshly generated JSON string." in development_analysis
+    assert "Use `content` for a freshly generated JSON string." in planning_analysis
     assert "Use `content` for a freshly generated JSON string." in review_analysis
     assert "content_path" not in development_analysis
+    assert "content_path" not in planning_analysis
     assert "content_path" not in review_analysis
     assert DEVELOPMENT_ANALYSIS_FRESH_SUBMIT_EXAMPLE in development_analysis
+    assert PLANNING_ANALYSIS_FRESH_SUBMIT_EXAMPLE in planning_analysis
     assert REVIEW_ANALYSIS_FRESH_SUBMIT_EXAMPLE in review_analysis
     _assert_shared_analysis_guidance(development_analysis, review_analysis)
+    _assert_shared_analysis_guidance(planning_analysis, review_analysis)
+
+
+
+def test_planning_prompt_requires_verified_low_research_executor_handoff() -> None:
+    planning = (TEMPLATES_ROOT / "planning.jinja").read_text(encoding="utf-8")
+
+    assert PLANNING_DISCOVERY_PREFLIGHT_GUIDANCE in planning
+    assert PLANNING_NO_VAGUE_PATTERN_GUIDANCE in planning
+    assert PLANNING_LOW_RESEARCH_EXECUTOR_GUIDANCE in planning
+
+
+
+def test_planning_analysis_prompt_demands_gap_and_consistency_critique() -> None:
+    planning_analysis = (TEMPLATES_ROOT / "planning_analysis.jinja").read_text(encoding="utf-8")
+
+    assert PLANNING_ANALYSIS_CRITIC_GUIDANCE in planning_analysis
+    assert PLANNING_ANALYSIS_MISSING_WORK_GUIDANCE in planning_analysis
+    assert PLANNING_ANALYSIS_CONTRADICTIONS_GUIDANCE in planning_analysis
+    assert PLANNING_ANALYSIS_RESEARCH_BURDEN_GUIDANCE in planning_analysis
 
 
 def test_fix_and_developer_iteration_templates_use_analysis_context_partial() -> None:
@@ -300,6 +350,46 @@ def test_review_analysis_prompt_taught_variants_submit_successfully(tmp_path: Pa
 
 
 
+def test_planning_analysis_prompt_taught_variants_submit_successfully(tmp_path: Path) -> None:
+    session = _ApprovedSession(drain="planning_analysis")
+    workspace = _Workspace(tmp_path)
+    payloads = [
+        {"status": "completed", "summary": "The plan is executor-ready."},
+        {
+            "status": "request_changes",
+            "summary": "The plan needs another pass.",
+            "what_came_up_short": [
+                "Critical files do not identify the real execution touchpoints."
+            ],
+            "how_to_fix": [
+                "Update critical_files and add exact verification commands."
+            ],
+        },
+        {
+            "status": "failed",
+            "summary": "The planning analysis could not approve this plan.",
+            "what_came_up_short": [
+                "The plan is missing executable implementation steps."
+            ],
+            "how_to_fix": [
+                "Rewrite the steps so a weaker unattended agent can execute them literally."
+            ],
+        },
+    ]
+
+    for index, payload in enumerate(payloads):
+        result = handle_submit_artifact(
+            session,
+            workspace,
+            {
+                "artifact_type": "planning_analysis_decision",
+                "content": json.dumps(payload),
+            },
+        )
+        assert result.is_error is False, f"payload #{index} should submit successfully"
+
+
+
 def test_commit_prompt_taught_variants_submit_successfully(tmp_path: Path) -> None:
     session = _ApprovedSession(drain="development_commit")
     workspace = _Workspace(tmp_path)
@@ -324,13 +414,17 @@ def test_analysis_templates_define_failed_as_stronger_major_remediation() -> Non
     development_analysis = (TEMPLATES_ROOT / "development_analysis.jinja").read_text(
         encoding="utf-8"
     )
+    planning_analysis = (TEMPLATES_ROOT / "planning_analysis.jinja").read_text(encoding="utf-8")
     review_analysis = (TEMPLATES_ROOT / "review_analysis.jinja").read_text(encoding="utf-8")
 
     assert "major incompleteness" in development_analysis.lower()
+    assert "major incompleteness" in planning_analysis.lower()
     assert "major incompleteness" in review_analysis.lower()
     assert "start over" in development_analysis.lower() or "redo" in development_analysis.lower()
+    assert "start over" in planning_analysis.lower() or "redo" in planning_analysis.lower()
     assert "start over" in review_analysis.lower() or "redo" in review_analysis.lower()
     assert "security vulnerability, or data loss risk" not in development_analysis
+    assert "security vulnerability, or data loss risk" not in planning_analysis
     assert "fundamentally incomplete or missed critical issues" not in review_analysis
 
 
