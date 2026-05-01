@@ -119,6 +119,14 @@ def _progress_policy() -> PipelinePolicy:
         },
         entry_phase="planning",
         terminal_phase="complete",
+        budget_counters={
+            "iteration": BudgetCounterConfig(
+                tracks_budget=True, description="development iteration counter", default_max=3
+            ),
+            "reviewer_pass": BudgetCounterConfig(
+                tracks_budget=True, description="review pass counter", default_max=2
+            ),
+        },
         post_commit_routes=[
             PostCommitRoute(
                 when=PostCommitRouteWhen(phase="development_commit", budget_state="remaining"),
@@ -236,6 +244,7 @@ def test_commit_budget_routes_use_post_commit_policy_after_budget_is_consumed() 
 
 
 def test_checkpoint_builder_derives_progress_mirrors_from_pipeline_state() -> None:
+    policy = _progress_policy()
     state = PipelineState(
         phase="review",
         outer_progress={"iteration": 1, "reviewer_pass": COMPLETED_REVIEW_PASSES},
@@ -248,7 +257,13 @@ def test_checkpoint_builder_derives_progress_mirrors_from_pipeline_state() -> No
         actual_reviewer_runs=9,
     )
 
-    payload = CheckpointBuilder.new().state(state).run_context(stale_context).build()
+    payload = (
+        CheckpointBuilder.new()
+        .state(state)
+        .run_context(stale_context)
+        .pipeline_policy(policy)
+        .build()
+    )
 
     assert payload.run_context.actual_developer_runs == 1
     assert payload.run_context.actual_reviewer_runs == COMPLETED_REVIEW_PASSES

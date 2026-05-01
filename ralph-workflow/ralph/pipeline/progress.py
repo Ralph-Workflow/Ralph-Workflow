@@ -224,10 +224,9 @@ def derive_run_context_progress(
 ) -> RunContext:
     """Derive checkpoint-facing progress mirrors from canonical pipeline state.
 
-    When policy is provided, resolves counter names by BFS through commit phases;
+    Resolves counter names by BFS through commit phases in the active policy;
     the first budget-tracked counter maps to actual_developer_runs, the second to
-    actual_reviewer_runs. When policy is None, falls back to the legacy hardcoded
-    counter names ('iteration' and 'reviewer_pass') for backward compatibility.
+    actual_reviewer_runs. When policy is None, both fields are set to 0.
     """
     if policy is not None:
         tracked = _tracked_budget_counters_in_commit_order(policy)
@@ -240,6 +239,6 @@ def derive_run_context_progress(
         )
     return replace(
         run_context,
-        actual_developer_runs=state.get_outer_progress("iteration"),
-        actual_reviewer_runs=state.get_outer_progress("reviewer_pass"),
+        actual_developer_runs=0,
+        actual_reviewer_runs=0,
     )
