@@ -785,13 +785,13 @@ def _phase_context(
         if exec_counter:
             iter_cur = state.get_outer_progress(exec_counter) + 1
             iter_cap = state.get_budget_cap(exec_counter)
-            context["iteration"] = f"{iter_cur}/{iter_cap}"
+            context[exec_counter] = f"{iter_cur}/{iter_cap}"
     if current_role == "review":
         review_counter = _find_commit_counter_from_phase(state.phase, pipeline_policy)
         if review_counter:
             pass_cur = state.get_outer_progress(review_counter) + 1
             pass_cap = state.get_budget_cap(review_counter)
-            context["pass"] = f"{pass_cur}/{pass_cap}"
+            context[review_counter] = f"{pass_cur}/{pass_cap}"
     if previous_role == "analysis":
         if current_role == "commit":
             context["decision"] = "approved"

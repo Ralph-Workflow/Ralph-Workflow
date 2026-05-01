@@ -107,10 +107,7 @@ def test_show_metrics_lists_all_metrics() -> None:
 def test_show_checkpoint_summary_formats_values() -> None:
     options = CheckpointSummaryOptions(
         phase="review",
-        iteration=2,
-        total_iterations=7,
-        reviewer_pass=1,
-        total_reviewer_passes=3,
+        budget_progress={"iteration": (2, 7), "reviewer_pass": (1, 3)},
     )
 
     output = _capture_output(show_checkpoint_summary, options)
@@ -118,9 +115,9 @@ def test_show_checkpoint_summary_formats_values() -> None:
     assert "Checkpoint Summary" in output
     assert "Phase" in output
     assert "review" in output
-    assert "Iteration" in output
+    assert "iteration" in output
     assert "2/7" in output
-    assert "Review Pass" in output
+    assert "reviewer_pass" in output
     assert "1/3" in output
 
 
@@ -208,14 +205,11 @@ def test_show_providers_wide_mode_shows_status() -> None:
     assert "Available" in output
 
 
-def test_show_checkpoint_summary_compact_mode_hides_review_pass() -> None:
-    """Compact mode should hide Review Pass row."""
+def test_show_checkpoint_summary_compact_mode_shows_all_counters() -> None:
+    """All budget counters are shown regardless of display mode."""
     options = CheckpointSummaryOptions(
         phase="review",
-        iteration=2,
-        total_iterations=7,
-        reviewer_pass=1,
-        total_reviewer_passes=3,
+        budget_progress={"iteration": (2, 7), "reviewer_pass": (1, 3)},
     )
 
     ctx = _make_display_context_for_mode("compact")
@@ -225,19 +219,17 @@ def test_show_checkpoint_summary_compact_mode_hides_review_pass() -> None:
 
     assert "Phase" in output
     assert "review" in output
-    assert "Iteration" in output
+    assert "iteration" in output
     assert "2/7" in output
-    assert "Review Pass" not in output
+    assert "reviewer_pass" in output
+    assert "1/3" in output
 
 
-def test_show_checkpoint_summary_wide_mode_shows_review_pass() -> None:
-    """Wide mode should show Review Pass row."""
+def test_show_checkpoint_summary_wide_mode_shows_all_counters() -> None:
+    """Wide mode shows all budget counters."""
     options = CheckpointSummaryOptions(
         phase="review",
-        iteration=2,
-        total_iterations=7,
-        reviewer_pass=1,
-        total_reviewer_passes=3,
+        budget_progress={"iteration": (2, 7), "reviewer_pass": (1, 3)},
     )
 
     ctx = _make_display_context_for_mode("wide")
@@ -247,9 +239,9 @@ def test_show_checkpoint_summary_wide_mode_shows_review_pass() -> None:
 
     assert "Phase" in output
     assert "review" in output
-    assert "Iteration" in output
+    assert "iteration" in output
     assert "2/7" in output
-    assert "Review Pass" in output
+    assert "reviewer_pass" in output
     assert "1/3" in output
 
 

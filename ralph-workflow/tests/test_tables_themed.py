@@ -125,8 +125,8 @@ def test_show_config_no_ansi_on_plain() -> None:
 
 def test_show_checkpoint_summary_emits_ansi_on_tty() -> None:
     opts = CheckpointSummaryOptions(
-        phase="review", iteration=1, total_iterations=3,
-        reviewer_pass=0, total_reviewer_passes=2,
+        phase="review",
+        budget_progress={"iteration": (1, 3), "reviewer_pass": (0, 2)},
     )
     buf = StringIO()
     ctx = _themed_context(buf)
@@ -136,8 +136,8 @@ def test_show_checkpoint_summary_emits_ansi_on_tty() -> None:
 
 def test_show_checkpoint_summary_no_ansi_on_plain() -> None:
     opts = CheckpointSummaryOptions(
-        phase="review", iteration=1, total_iterations=3,
-        reviewer_pass=0, total_reviewer_passes=2,
+        phase="review",
+        budget_progress={"iteration": (1, 3), "reviewer_pass": (0, 2)},
     )
     buf = StringIO()
     ctx = _plain_context(buf)

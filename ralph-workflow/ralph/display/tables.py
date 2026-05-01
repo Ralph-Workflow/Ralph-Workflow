@@ -6,7 +6,7 @@ list and display commands using the rich library.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from rich.panel import Panel
@@ -24,17 +24,11 @@ class CheckpointSummaryOptions:
 
     Attributes:
         phase: Current pipeline phase.
-        iteration: Current iteration.
-        total_iterations: Total iterations.
-        reviewer_pass: Current reviewer pass.
-        total_reviewer_passes: Total reviewer passes.
+        budget_progress: Mapping of policy counter name to (completed, cap) tuple.
     """
 
     phase: str
-    iteration: int
-    total_iterations: int
-    reviewer_pass: int
-    total_reviewer_passes: int
+    budget_progress: dict[str, tuple[int, int]] = field(default_factory=dict)
 
 
 def _should_show_secondary(display_context: DisplayContext) -> bool:
@@ -217,7 +211,6 @@ def show_checkpoint_summary(
     """
     c = display_context.console
     expand = _table_expand(display_context)
-    show_secondary = _should_show_secondary(display_context)
     table = Table(
         title="Checkpoint Summary",
         show_header=False,
@@ -232,8 +225,7 @@ def show_checkpoint_summary(
     table.add_column("Value")
 
     table.add_row("Phase", options.phase)
-    table.add_row("Iteration", f"{options.iteration}/{options.total_iterations}")
-    if show_secondary:
-        table.add_row("Review Pass", f"{options.reviewer_pass}/{options.total_reviewer_passes}")
+    for counter_name, (completed, cap) in options.budget_progress.items():
+        table.add_row(counter_name, f"{completed}/{cap}")
 
     c.print(table)

@@ -3223,7 +3223,7 @@ class TestPhaseContextRoleBasedDispatch:
             phase="qa", outer_progress={"reviewer_pass": 1}, budget_caps={"reviewer_pass": 3}
         )
         ctx = self._call(state, "planning", policy)
-        assert ctx.get("pass") == "2/3"
+        assert ctx.get("reviewer_pass") == "2/3"
 
     def test_analysis_to_commit_shows_approved_decision(self) -> None:
         policy = _make_minimal_policy(
