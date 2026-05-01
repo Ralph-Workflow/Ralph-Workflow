@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING
 from rich.console import Console
 
 from ralph.config.enums import Verbosity
-from ralph.config.models import GeneralConfig, UnifiedConfig
+from ralph.config.models import UnifiedConfig
 from ralph.display.context import make_display_context
 from ralph.pipeline import runner
 from ralph.pipeline.checkpoint import load as ckpt_load
@@ -120,21 +120,17 @@ class ReviewCommitSkippedInvoker(MockAgentInvoker):
         return PipelineEvent.COMMIT_SUCCESS
 
 
-def _config(developer_iters: int, reviewer_reviews: int) -> UnifiedConfig:
-    return UnifiedConfig(
-        general=GeneralConfig(
-            developer_iters=developer_iters,
-            reviewer_reviews=reviewer_reviews,
-        )
-    )
+def _config() -> UnifiedConfig:
+    return UnifiedConfig()
 
 
-def _run_pipeline(
+def _run_pipeline(  # noqa: PLR0913
     monkeypatch: MonkeyPatch,
     tmp_path: Path,
     mock_agent_invoker: MockAgentInvoker,
     config: UnifiedConfig,
     initial_state: PipelineState | None = None,
+    counter_overrides: dict[str, int] | None = None,
 ) -> tuple[int, list[PipelineState]]:
     saved_states: list[PipelineState] = []
     policy_bundle = load_policy(DEFAULT_POLICY_DIR)
@@ -169,7 +165,10 @@ def _run_pipeline(
     monkeypatch.setattr(runner.ckpt, "save", capture_saved_state)
     _install_runner_display_context(monkeypatch)
 
-    result = runner.run(config, initial_state=initial_state, verbosity=Verbosity.QUIET)
+    result = runner.run(
+        config, initial_state=initial_state, verbosity=Verbosity.QUIET,
+        counter_overrides=counter_overrides,
+    )
     return result, saved_states
 
 
@@ -189,7 +188,8 @@ def test_dev_runs_exactly_2_cycles_with_d2(
         monkeypatch,
         tmp_path,
         mock_agent_invoker,
-        _config(developer_iters=DEVELOPMENT_CYCLES_TWO, reviewer_reviews=0),
+        _config(),
+        counter_overrides={"iteration": DEVELOPMENT_CYCLES_TWO, "reviewer_pass": 0},
     )
 
     assert result == 0
@@ -215,7 +215,8 @@ def test_dev_runs_exactly_3_cycles_with_d3(
         monkeypatch,
         tmp_path,
         mock_agent_invoker,
-        _config(developer_iters=DEVELOPMENT_CYCLES_THREE, reviewer_reviews=0),
+        _config(),
+        counter_overrides={"iteration": DEVELOPMENT_CYCLES_THREE, "reviewer_pass": 0},
     )
 
     assert result == 0
@@ -238,7 +239,8 @@ def test_review_runs_exactly_2_cycles_with_r2(
         monkeypatch,
         tmp_path,
         mock_agent_invoker,
-        _config(developer_iters=1, reviewer_reviews=REVIEW_CYCLES_TWO),
+        _config(),
+        counter_overrides={"iteration": 1, "reviewer_pass": REVIEW_CYCLES_TWO},
     )
 
     assert result == 0
@@ -253,7 +255,7 @@ def test_review_runs_exactly_2_cycles_with_r2(
     assert final_state.get_budget_remaining("reviewer_pass") == 0
 
 
-def test_no_review_when_reviewer_reviews_zero(
+def test_no_review_when_reviewer_pass_cap_zero(
     monkeypatch: MonkeyPatch,
     tmp_path: Path,
     mock_agent_invoker: MockAgentInvoker,
@@ -262,7 +264,8 @@ def test_no_review_when_reviewer_reviews_zero(
         monkeypatch,
         tmp_path,
         mock_agent_invoker,
-        _config(developer_iters=DEVELOPMENT_CYCLES_TWO, reviewer_reviews=0),
+        _config(),
+        counter_overrides={"iteration": DEVELOPMENT_CYCLES_TWO, "reviewer_pass": 0},
     )
 
     assert result == 0
@@ -288,7 +291,8 @@ def test_analysis_loopback_preserves_budget(
         monkeypatch,
         tmp_path,
         invoker,
-        _config(developer_iters=DEVELOPMENT_CYCLES_TWO, reviewer_reviews=0),
+        _config(),
+        counter_overrides={"iteration": DEVELOPMENT_CYCLES_TWO, "reviewer_pass": 0},
     )
 
     assert result == 0
@@ -319,7 +323,8 @@ def test_review_analysis_loopback_is_persisted_as_inner_progress_only(
         monkeypatch,
         tmp_path,
         invoker,
-        _config(developer_iters=1, reviewer_reviews=1),
+        _config(),
+        counter_overrides={"iteration": 1, "reviewer_pass": 1},
     )
 
     assert result == 0
@@ -344,7 +349,8 @@ def test_review_analysis_cap_routes_through_final_fix_with_persisted_max_counter
         monkeypatch,
         tmp_path,
         invoker,
-        _config(developer_iters=1, reviewer_reviews=1),
+        _config(),
+        counter_overrides={"iteration": 1, "reviewer_pass": 1},
     )
 
     assert result == 0
@@ -375,7 +381,8 @@ def test_skipped_review_commit_preserves_outer_progress_in_persisted_state(
         monkeypatch,
         tmp_path,
         invoker,
-        _config(developer_iters=1, reviewer_reviews=1),
+        _config(),
+        counter_overrides={"iteration": 1, "reviewer_pass": 1},
     )
 
     assert result == 0
@@ -407,8 +414,9 @@ def test_checkpoint_resume_preserves_budget(
         monkeypatch,
         tmp_path,
         mock_agent_invoker,
-        _config(developer_iters=1, reviewer_reviews=0),
+        _config(),
         initial_state=loaded,
+        counter_overrides={"iteration": 1, "reviewer_pass": 0},
     )
 
     assert result == 0

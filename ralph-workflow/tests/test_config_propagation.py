@@ -11,8 +11,8 @@ from ralph.workspace.scope import WorkspaceScope
 if TYPE_CHECKING:
     from pathlib import Path
 
-MAIN_DEVELOPER_ITERS = 8
-CHILD_DEVELOPER_ITERS = 3
+_MAIN_WAITING_INTERVAL = 45.0
+_CHILD_WAITING_INTERVAL = 90.0
 _CUSTOM_WAITING_INTERVAL = 60.0
 _CUSTOM_SUSPECT_THRESHOLD = 120.0
 _IDLE_TIMEOUT = 300.0
@@ -26,7 +26,7 @@ def test_load_config_uses_main_worktree_as_propagation_layer(
     main_repo.mkdir()
     (main_repo / ".agent").mkdir()
     (main_repo / ".agent" / "ralph-workflow.toml").write_text(
-        "[general]\ndeveloper_iters = 8\n",
+        f"[general]\nagent_waiting_status_interval_seconds = {_MAIN_WAITING_INTERVAL}\n",
         encoding="utf-8",
     )
 
@@ -46,7 +46,7 @@ def test_load_config_uses_main_worktree_as_propagation_layer(
         )
     )
 
-    assert config.general.developer_iters == MAIN_DEVELOPER_ITERS
+    assert config.general.agent_waiting_status_interval_seconds == _MAIN_WAITING_INTERVAL
 
 
 def test_load_config_prefers_child_worktree_local_override(
@@ -57,7 +57,7 @@ def test_load_config_prefers_child_worktree_local_override(
     main_repo.mkdir()
     (main_repo / ".agent").mkdir()
     (main_repo / ".agent" / "ralph-workflow.toml").write_text(
-        "[general]\ndeveloper_iters = 8\n",
+        f"[general]\nagent_waiting_status_interval_seconds = {_MAIN_WAITING_INTERVAL}\n",
         encoding="utf-8",
     )
 
@@ -65,7 +65,7 @@ def test_load_config_prefers_child_worktree_local_override(
     child_worktree.mkdir()
     (child_worktree / ".agent").mkdir()
     (child_worktree / ".agent" / "ralph-workflow.toml").write_text(
-        "[general]\ndeveloper_iters = 3\n",
+        f"[general]\nagent_waiting_status_interval_seconds = {_CHILD_WAITING_INTERVAL}\n",
         encoding="utf-8",
     )
 
@@ -82,7 +82,7 @@ def test_load_config_prefers_child_worktree_local_override(
         )
     )
 
-    assert config.general.developer_iters == CHILD_DEVELOPER_ITERS
+    assert config.general.agent_waiting_status_interval_seconds == _CHILD_WAITING_INTERVAL
 
 
 def test_waiting_status_interval_propagates_to_timeout_policy() -> None:

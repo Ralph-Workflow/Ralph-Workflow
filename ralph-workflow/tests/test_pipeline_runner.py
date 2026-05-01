@@ -137,8 +137,6 @@ def test_resolve_display_defaults_to_legacy_console_display() -> None:
 class TestCreateInitialState:
     def test_creates_state_with_planning_phase(self) -> None:
         config = MagicMock()
-        config.general.developer_iters = DEVELOPER_ITERATIONS
-        config.general.reviewer_reviews = REVIEWER_PASSES
         config.agent_chains = {"dev": ["claude"], "rev": ["claude"]}
         config.agent_drains = {"development": "dev", "review": "rev", "planning": "dev"}
         agents_policy = AgentsPolicy(
@@ -181,7 +179,10 @@ class TestCreateInitialState:
         )
 
         state = runner_module._create_initial_state(
-            config, agents_policy=agents_policy, pipeline_policy=pipeline_policy
+            config,
+            agents_policy=agents_policy,
+            pipeline_policy=pipeline_policy,
+            counter_overrides={"iteration": DEVELOPER_ITERATIONS, "reviewer_pass": REVIEWER_PASSES},
         )
         assert state.phase == "planning"
         assert state.budget_caps.get("iteration") == DEVELOPER_ITERATIONS
@@ -191,8 +192,6 @@ class TestCreateInitialState:
 
     def test_empty_agent_chains(self) -> None:
         config = MagicMock()
-        config.general.developer_iters = 1
-        config.general.reviewer_reviews = 1
         config.agent_chains = {}
 
         state = runner_module._create_initial_state(
@@ -205,8 +204,6 @@ class TestCreateInitialState:
 
     def test_initial_state_prefers_config_drain_bindings_over_policy_chains(self) -> None:
         config = MagicMock()
-        config.general.developer_iters = DEVELOPER_ITERATIONS
-        config.general.reviewer_reviews = REVIEWER_PASSES
         config.agent_chains = {"plan_chain": ["codex"]}
         config.agent_drains = {"planning": "plan_chain"}
         agents_policy = AgentsPolicy(
@@ -238,8 +235,6 @@ class TestCreateInitialState:
 
     def test_initial_state_tracks_custom_phase_chain_from_policy(self) -> None:
         config = MagicMock()
-        config.general.developer_iters = DEVELOPER_ITERATIONS
-        config.general.reviewer_reviews = REVIEWER_PASSES
         config.agent_chains = {"dev_chain": ["codex"]}
         config.agent_drains = {"development": "dev_chain"}
         agents_policy = AgentsPolicy(
@@ -275,8 +270,6 @@ class TestCreateInitialState:
 
     def test_initial_state_maps_analysis_phases_to_config_drain_by_full_name(self) -> None:
         config = MagicMock()
-        config.general.developer_iters = DEVELOPER_ITERATIONS
-        config.general.reviewer_reviews = REVIEWER_PASSES
         config.agent_chains = {"analysis_chain": ["config-analysis-agent"]}
         config.agent_drains = {"development_analysis": "analysis_chain"}
         agents_policy = AgentsPolicy(
@@ -313,31 +306,31 @@ class TestCreateInitialState:
 
     def test_creates_state_with_correct_development_budget(self) -> None:
         config = MagicMock()
-        config.general.developer_iters = DEVELOPER_ITERATIONS
-        config.general.reviewer_reviews = REVIEWER_PASSES
         config.agent_chains = {"development": ["claude"], "review": ["claude"]}
         state = runner_module._create_initial_state(
-            config, pipeline_policy=_load_default_policy_bundle().pipeline
+            config,
+            pipeline_policy=_load_default_policy_bundle().pipeline,
+            counter_overrides={"iteration": DEVELOPER_ITERATIONS},
         )
         assert state.get_budget_remaining("iteration") == DEVELOPER_ITERATIONS
 
     def test_creates_state_with_correct_review_budget(self) -> None:
         config = MagicMock()
-        config.general.developer_iters = DEVELOPER_ITERATIONS
-        config.general.reviewer_reviews = REVIEWER_PASSES
         config.agent_chains = {"development": ["claude"], "review": ["claude"]}
         state = runner_module._create_initial_state(
-            config, pipeline_policy=_load_default_policy_bundle().pipeline
+            config,
+            pipeline_policy=_load_default_policy_bundle().pipeline,
+            counter_overrides={"reviewer_pass": REVIEWER_PASSES},
         )
         assert state.get_budget_remaining("reviewer_pass") == REVIEWER_PASSES
 
     def test_creates_state_with_zero_review_budget_when_r_zero(self) -> None:
         config = MagicMock()
-        config.general.developer_iters = 1
-        config.general.reviewer_reviews = 0
         config.agent_chains = {"development": ["claude"], "review": ["claude"]}
         state = runner_module._create_initial_state(
-            config, pipeline_policy=_load_default_policy_bundle().pipeline
+            config,
+            pipeline_policy=_load_default_policy_bundle().pipeline,
+            counter_overrides={"reviewer_pass": 0},
         )
         assert state.get_budget_remaining("reviewer_pass") == 0
 

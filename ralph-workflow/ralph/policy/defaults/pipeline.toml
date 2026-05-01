@@ -308,9 +308,9 @@ retry_in_session = false
 [recovery]
 cycle_cap = 200
 # failed_route: phase to route to on terminal pipeline failure.
-# Must reference either the declared terminal failure phase (recommended)
-# or the deprecated pseudo-phase 'failed' (emits a deprecation warning).
-# The legacy pseudo-phases 'phase_failed' and 'exit_failure' are no longer accepted.
+# Must reference a real phase declared above with role='terminal' and
+# terminal_outcome='failure'. The values 'failed', 'phase_failed', and
+# 'exit_failure' are all rejected at startup with a validation error.
 failed_route = "failed_terminal"
 terminal_failure_phase = "failed_terminal"
 preserve_session_on_categories = ["agent"]

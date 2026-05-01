@@ -17,8 +17,6 @@
 # ---------------------------------------------------------------------------
 [general]
 # verbosity = 2                         # 0=quiet 1=normal 2=verbose 3=full 4=debug
-# developer_iters = 5                   # developer iterations per run (>=1)
-# reviewer_reviews = 2                  # review-fix cycles (0 = skip review, >=0)
 # max_development_analysis_iterations = 3  # max development analysis loop budget (>=0)
 # max_review_analysis_iterations = 2    # max review analysis loop budget (>=0)
 # developer_context = 1                 # developer context level (>=1)

@@ -26,7 +26,6 @@ from ralph.workspace.scope import WorkspaceScope
 
 _EXPECTED_LOCAL_CONFIG_COUNT = 4
 _EXPECTED_REGENERATE_COUNT = 7
-_DEFAULT_DEVELOPER_ITERS = 5
 
 
 def test_ensure_global_config_creates_when_absent(tmp_path: Path) -> None:
@@ -156,7 +155,7 @@ def test_ensure_global_config_round_trips_through_loader(
 
     scope = WorkspaceScope(tmp_path)
     cfg = loader_module.load_config(workspace_scope=scope)
-    assert cfg.general.developer_iters == _DEFAULT_DEVELOPER_ITERS
+    assert cfg.general.verbosity is not None
 
 
 def test_bundled_global_template_parses_as_valid_toml() -> None:

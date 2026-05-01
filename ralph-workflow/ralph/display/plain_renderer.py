@@ -218,8 +218,6 @@ class RunStartOrientation:
     developer_model: str | None = None
     reviewer_agent: str | None = None
     reviewer_model: str | None = None
-    developer_iters: int | None = None
-    reviewer_reviews: int | None = None
     parallel_max_workers: int | None = None
     plan_present: bool = False
     verbosity: str | None = None
@@ -573,7 +571,7 @@ class PlainLogRenderer:
         else:
             self._emit_run_start_wide(timestamp, orientation)
 
-    def _emit_run_start_compact(  # noqa: PLR0912
+    def _emit_run_start_compact(
         self, timestamp: str, orientation: RunStartOrientation
     ) -> None:
         """Compact layout: max 4 [run-start] lines (milestone + up to 3 content)."""
@@ -603,13 +601,6 @@ class PlainLogRenderer:
             agents_iters_parts.append(f"reviewer={_sanitize(orientation.reviewer_agent)}")
         if orientation.reviewer_model is not None:
             agents_iters_parts.append(f"model={_sanitize(orientation.reviewer_model)}")
-        iter_compact: list[str] = []
-        if orientation.developer_iters is not None:
-            iter_compact.append(f"dev:{orientation.developer_iters}")
-        if orientation.reviewer_reviews is not None:
-            iter_compact.append(f"reviewer:{orientation.reviewer_reviews}")
-        if iter_compact:
-            agents_iters_parts.append(f"iterations={' '.join(iter_compact)}")
         if agents_iters_parts:
             self._console.print(
                 self._build_line(
@@ -675,25 +666,6 @@ class PlainLogRenderer:
             self._console.print(
                 self._build_line(
                     timestamp, "INFO", "META", f"[run-start] {' '.join(agents_parts)}"
-                ),
-                markup=False,
-                highlight=False,
-                no_wrap=True,
-            )
-
-        # iterations on one line
-        iter_parts: list[str] = []
-        if orientation.developer_iters is not None:
-            iter_parts.append(f"dev:{orientation.developer_iters}")
-        if orientation.reviewer_reviews is not None:
-            iter_parts.append(f"reviewer:{orientation.reviewer_reviews}")
-        if iter_parts:
-            self._console.print(
-                self._build_line(
-                    timestamp,
-                    "INFO",
-                    "META",
-                    f"[run-start] iterations={' '.join(iter_parts)}",
                 ),
                 markup=False,
                 highlight=False,

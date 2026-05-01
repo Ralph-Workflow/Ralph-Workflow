@@ -37,8 +37,6 @@ def _config() -> UnifiedConfig:
     return UnifiedConfig(
         general=GeneralConfig(
             verbosity=0,
-            developer_iters=1,
-            reviewer_reviews=0,
         )
     )
 

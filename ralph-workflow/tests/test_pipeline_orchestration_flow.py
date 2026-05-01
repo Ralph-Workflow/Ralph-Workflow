@@ -137,8 +137,6 @@ def test_run_recovers_when_planner_does_not_submit_plan_artifact(
     )
 
     config = MagicMock()
-    config.general.developer_iters = 1
-    config.general.reviewer_reviews = 1
     config.general.verbosity = 0
     config.agent_chains = {}
     config.agent_drains = {}

@@ -149,18 +149,11 @@ _DEFAULT_DRAINS = [
 ]
 
 
-def _fake_config(developer_iters: int = 1, reviewer_reviews: int = 1) -> UnifiedConfig:
-    config = UnifiedConfig(
+def _fake_config() -> UnifiedConfig:
+    return UnifiedConfig(
         agent_chains={d: ["claude"] for d in _DEFAULT_DRAINS},
         agent_drains={d: d for d in _DEFAULT_DRAINS},
     )
-    general = config.general.model_copy(
-        update={
-            "developer_iters": developer_iters,
-            "reviewer_reviews": reviewer_reviews,
-        }
-    )
-    return config.model_copy(update={"general": general})
 
 
 def _configure_workspace(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> WorkspaceScope:
@@ -208,7 +201,7 @@ def test_run_pipeline_dry_run_reports_summary(
     tmp_path: Path,
 ) -> None:
     _configure_workspace(monkeypatch, tmp_path)
-    config = _fake_config(developer_iters=4, reviewer_reviews=2)
+    config = _fake_config()
     state = PipelineState(phase="review")
 
     monkeypatch.setattr(run_module, "load_config", lambda *args, **kwargs: config)
@@ -221,8 +214,6 @@ def test_run_pipeline_dry_run_reports_summary(
     assert run_module.run_pipeline(dry_run=True, resume=True) == 0
     assert "Dry run mode" in console.lines[0]
     assert "Phase: review" in console.lines[1]
-    assert "Iterations: 4" in console.lines[2]
-    assert "Review passes: 2" in console.lines[3]
 
 
 class _RegistryWithFromConfigOnly:

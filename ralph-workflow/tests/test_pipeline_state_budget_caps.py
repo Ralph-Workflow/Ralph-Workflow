@@ -1,7 +1,7 @@
 """Tests for budget_caps seeding in PipelineState initial construction.
 
 Asserts that _create_initial_state seeds budget_caps from policy-declared
-budget_counters, with config.general overrides for the canonical counters.
+budget_counters using their default_max values and counter_overrides.
 """
 
 from __future__ import annotations
@@ -46,17 +46,15 @@ def _minimal_policy(**extra: Any) -> PipelinePolicy:
     )
 
 
-def _config(developer_iters: int = 5, reviewer_reviews: int = 2) -> MagicMock:
+def _config() -> MagicMock:
     cfg = MagicMock()
-    cfg.general.developer_iters = developer_iters
-    cfg.general.reviewer_reviews = reviewer_reviews
     cfg.agent_chains = {}
     cfg.agent_drains = {}
     return cfg
 
 
 class TestBudgetCapsSeeding:
-    def test_policy_counters_seeded_from_config_general(self) -> None:
+    def test_counter_overrides_set_initial_caps(self) -> None:
         policy = _minimal_policy(
             budget_counters={
                 "iteration": BudgetCounterConfig(),
@@ -64,7 +62,9 @@ class TestBudgetCapsSeeding:
             }
         )
         state = runner_module._create_initial_state(
-            _config(_CONFIG_ITERS, _CONFIG_REVIEWS), pipeline_policy=policy
+            _config(),
+            pipeline_policy=policy,
+            counter_overrides={"iteration": _CONFIG_ITERS, "reviewer_pass": _CONFIG_REVIEWS},
         )
         assert state.budget_caps["iteration"] == _CONFIG_ITERS
         assert state.budget_caps["reviewer_pass"] == _CONFIG_REVIEWS
@@ -90,7 +90,9 @@ class TestBudgetCapsSeeding:
                 "attempts": BudgetCounterConfig(default_max=4),
             }
         )
-        state = runner_module._create_initial_state(_config(6), pipeline_policy=policy)
+        state = runner_module._create_initial_state(
+            _config(), pipeline_policy=policy, counter_overrides={"iteration": 6}
+        )
         assert state.get_budget_remaining("iteration") == state.budget_caps["iteration"]
         assert state.get_budget_remaining("attempts") == state.budget_caps["attempts"]
 
@@ -104,17 +106,19 @@ class TestBudgetCapsSeeding:
             budget_counters={"reviewer_pass": BudgetCounterConfig()}
         )
         state = runner_module._create_initial_state(
-            _config(10, _CONFIG_REVIEWS), pipeline_policy=policy
+            _config(),
+            pipeline_policy=policy,
+            counter_overrides={"reviewer_pass": _CONFIG_REVIEWS},
         )
         assert "iteration" not in state.budget_caps
         assert state.budget_caps["reviewer_pass"] == _CONFIG_REVIEWS
 
-    def test_zero_reviewer_reviews_caps_at_zero(self) -> None:
+    def test_zero_reviewer_pass_counter_override(self) -> None:
         policy = _minimal_policy(
             budget_counters={"reviewer_pass": BudgetCounterConfig()}
         )
         state = runner_module._create_initial_state(
-            _config(reviewer_reviews=0), pipeline_policy=policy
+            _config(), pipeline_policy=policy, counter_overrides={"reviewer_pass": 0}
         )
         assert state.budget_caps["reviewer_pass"] == 0
         assert state.get_budget_remaining("reviewer_pass") == 0

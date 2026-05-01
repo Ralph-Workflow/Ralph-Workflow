@@ -1344,8 +1344,6 @@ def test_check_configuration_success(monkeypatch: pytest.MonkeyPatch) -> None:
     ctx = make_display_context(console=console, env={})
     config = SimpleNamespace(
         general=SimpleNamespace(
-            developer_iters=4,
-            reviewer_reviews=2,
             review_depth=ReviewDepth.SECURITY,
             workflow=SimpleNamespace(checkpoint_enabled=False),
         )
@@ -1354,7 +1352,7 @@ def test_check_configuration_success(monkeypatch: pytest.MonkeyPatch) -> None:
     diagnose_module._check_configuration(None, {}, display_context=ctx)
     output = stream.getvalue()
     assert "Config loaded" in output
-    assert "Developer iters" in output
+    assert "Review depth" in output
 
 
 def test_check_configuration_failure(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1466,8 +1464,6 @@ def test_diagnose_uses_display_context_console(
         "load_config",
         lambda *a, **kw: SimpleNamespace(
             general=SimpleNamespace(
-                developer_iters=3,
-                reviewer_reviews=1,
                 review_depth=ReviewDepth.STANDARD,
                 workflow=SimpleNamespace(checkpoint_enabled=True),
             )

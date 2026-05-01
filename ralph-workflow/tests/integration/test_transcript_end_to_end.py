@@ -17,7 +17,7 @@ from rich.console import Console
 
 import ralph.display.parallel_display as pd_module
 from ralph.config.enums import Verbosity
-from ralph.config.models import GeneralConfig, UnifiedConfig
+from ralph.config.models import UnifiedConfig
 from ralph.display.activity_model import ActivityEventKind
 from ralph.display.context import make_display_context
 from ralph.pipeline import runner as runner_module
@@ -38,13 +38,7 @@ DEFAULT_POLICY_DIR = Path(__file__).parent.parent.parent / "ralph" / "policy" / 
 
 
 def _config() -> UnifiedConfig:
-    return UnifiedConfig(
-        general=GeneralConfig(
-            verbosity=2,
-            developer_iters=1,
-            reviewer_reviews=1,
-        )
-    )
+    return UnifiedConfig()
 
 
 def _install_runner_stubs(
@@ -256,13 +250,7 @@ def test_quiet_mode_suppresses_run_start_and_phase_close(
     )
 
     # Run with Verbosity.QUIET
-    quiet_config = UnifiedConfig(
-        general=GeneralConfig(
-            verbosity=0,
-            developer_iters=1,
-            reviewer_reviews=0,
-        )
-    )
+    quiet_config = UnifiedConfig()
     exit_code = runner_module.run(quiet_config, initial_state=state, verbosity=Verbosity.QUIET)
     assert exit_code == 0
 

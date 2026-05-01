@@ -305,8 +305,6 @@ def _check_configuration(
         workspace_scope = None if config_path is not None else resolve_workspace_scope()
         config = load_config(config_path, cli_overrides, workspace_scope=workspace_scope)
         table.add_row("Config loaded", Text("Success", style="theme.status.success"))
-        table.add_row("Developer iters", str(config.general.developer_iters))
-        table.add_row("Reviewer reviews", str(config.general.reviewer_reviews))
         table.add_row("Review depth", config.general.review_depth.value)
         table.add_row("Checkpoint enabled", str(config.general.workflow.checkpoint_enabled))
     except Exception as e:

@@ -414,31 +414,34 @@ def drain_class_for_session(
 ) -> DrainClass:
     """Classify a session drain into its drain class.
 
-    Accepts any policy-declared drain name, falling through to substring
-    heuristics when the drain is not in the canonical SessionDrain enum.
+    Resolves the drain class for the given drain name using the following
+    precedence:
 
-    When the drain has an explicit drain_class declared in agents_policy, any
-    resolution error is propagated immediately (invalid config, not a soft miss).
-    When no explicit drain_class is declared, falls back to the canonical
-    SessionDrain enum for known built-in drains.
+    1. When ``agents_policy`` is provided, the drain must be declared in
+       ``agents_policy.agent_drains`` with an explicit ``drain_class`` field.
+       A missing declaration or an invalid ``drain_class`` value raises
+       ``PolicyValidationError`` immediately.
+    2. When ``agents_policy`` is ``None`` (legacy callers that have not been
+       updated to pass policy), the canonical ``SessionDrain`` enum mapping is
+       used as a fallback and a warning is emitted.  Custom drains that are not
+       in the canonical enum still raise ``PolicyValidationError``.
     """
     from ralph.policy.validation import PolicyValidationError  # noqa: PLC0415
 
     drain_str = str(drain)
-    # If the drain has an explicit drain_class in policy, fail fast on bad config
-    has_explicit_drain_class = (
-        agents_policy is not None
-        and agents_policy.agent_drains.get(drain_str) is not None
-        and agents_policy.agent_drains[drain_str].drain_class is not None
-    )
-    try:
-        return drain_class_for_drain_name(drain_str, agents_policy)
-    except PolicyValidationError:
-        if has_explicit_drain_class:
-            raise  # explicit drain_class is invalid — propagate, do not swallow
-        # No explicit drain_class and no substring match: fall through to canonical enum
 
-    # Fall back to the canonical SessionDrain enum for known built-in drains
+    if agents_policy is not None:
+        # Policy-aware path: require explicit drain_class declaration.
+        return drain_class_for_drain_name(drain_str, agents_policy)
+
+    # Legacy path: agents_policy not provided.  Fall back to the canonical
+    # SessionDrain enum mapping and warn so callers can be updated.
+    from loguru import logger as _logger  # noqa: PLC0415
+    _logger.warning(
+        "drain_class_for_session called without agents_policy for drain {!r}; "
+        "pass agents_policy so drain_class is resolved from policy declarations",
+        drain_str,
+    )
     try:
         session_drain = _coerce_session_drain(drain)
         mapping: dict[SessionDrain, DrainClass] = {

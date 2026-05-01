@@ -86,8 +86,6 @@ def test_emit_run_start_no_ansi() -> None:
             developer_model="claude-3-5-sonnet",
             reviewer_agent="claude",
             reviewer_model="claude-3-5-haiku",
-            developer_iters=3,
-            reviewer_reviews=1,
             parallel_max_workers=2,
             plan_present=True,
             verbosity="verbose",
@@ -203,8 +201,6 @@ def test_emit_run_start_compact_mode_max_four_lines() -> None:
             developer_model="claude-3-5-sonnet",
             reviewer_agent="claude",
             reviewer_model="claude-3-5-haiku",
-            developer_iters=3,
-            reviewer_reviews=1,
             parallel_max_workers=2,
             plan_present=True,
             verbosity="verbose",
@@ -218,27 +214,6 @@ def test_emit_run_start_compact_mode_max_four_lines() -> None:
         f" got {len(run_start_lines)}: {run_start_lines}"
     )
 
-
-def test_emit_run_start_compact_mode_agents_iterations_combined() -> None:
-    """Compact mode: agent fields and iterations share one line."""
-    renderer, buf = _make_compact_renderer()
-    renderer.emit_run_start(
-        _orientation(
-            developer_agent="claude",
-            developer_model="claude-3-5-sonnet",
-            developer_iters=3,
-            reviewer_reviews=1,
-        )
-    )
-    out = buf.getvalue()
-    run_start_lines = [
-        ln for ln in out.splitlines() if "[run-start]" in ln and "Ralph Workflow" not in ln
-    ]
-    agents_line = next((ln for ln in run_start_lines if "developer=" in ln), None)
-    assert agents_line is not None, "expected a line with developer= in compact mode"
-    assert "iterations=" in agents_line, (
-        "iterations= must be on the same line as developer= in compact mode"
-    )
 
 
 def test_emit_run_start_compact_mode_legend_omitted() -> None:

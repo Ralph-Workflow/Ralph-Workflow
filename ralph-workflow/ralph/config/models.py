@@ -137,8 +137,6 @@ class GeneralConfig(_FrozenConfigModel):  # type: ignore[explicit-any]  # reason
         behavior: Behavioral flags (interactive, auto-detect, strict validation).
         workflow: Workflow automation flags (checkpoint, auto-rebase).
         execution: Execution behavior flags (universal prompt).
-        developer_iters: Number of developer iterations.
-        reviewer_reviews: Number of reviewer re-review passes.
         developer_context: Developer context level.
         reviewer_context: Reviewer context level.
         review_depth: Review depth level.
@@ -184,8 +182,6 @@ class GeneralConfig(_FrozenConfigModel):  # type: ignore[explicit-any]  # reason
     behavior: GeneralBehaviorFlags = Field(default_factory=GeneralBehaviorFlags)
     workflow: GeneralWorkflowFlags = Field(default_factory=GeneralWorkflowFlags)
     execution: GeneralExecutionFlags = Field(default_factory=GeneralExecutionFlags)
-    developer_iters: int = Field(default=5, ge=1)
-    reviewer_reviews: int = Field(default=2, ge=0)
     developer_context: int = Field(default=1, ge=1)
     reviewer_context: int = Field(default=0, ge=0)
     review_depth: ReviewDepth = ReviewDepth.STANDARD

@@ -50,14 +50,11 @@ use their documented defaults automatically.
 
 ### `[general]`
 
-Core workflow settings: iteration counts, verbosity, review depth, git identity, and
-retry behavior.
+Core workflow settings: verbosity, review depth, git identity, and retry behavior.
 
 | Key | Default | Description |
 |-----|---------|-------------|
 | `verbosity` | `2` | Output verbosity: 0=quiet, 1=normal, 2=verbose, 3=full, 4=debug |
-| `developer_iters` | `5` | Developer agent iterations per run |
-| `reviewer_reviews` | `2` | Review-fix cycles (0 = skip review) |
 | `review_depth` | `"standard"` | `standard`, `comprehensive`, `security`, or `incremental` |
 | `git_user_name` | (from git config) | Git author name for commits |
 | `git_user_email` | (from git config) | Git author email for commits |

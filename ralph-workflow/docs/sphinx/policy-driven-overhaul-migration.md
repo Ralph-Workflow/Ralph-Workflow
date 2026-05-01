@@ -62,9 +62,9 @@ was previously controlled by implicit runtime state and `--developer-iters` /
 routing logic. The `increments_counter` field in each commit-role phase's `commit_policy`
 names the counter to increment.
 
-The CLI flags `--developer-iters` and `--reviewer-reviews` still work but they now
-override the `default_max` of the named counters rather than controlling implicit
-state.
+The CLI flags `--developer-iters` and `--reviewer-reviews` have been removed.
+Use `--counter NAME=VALUE` to override the initial cap of any policy-declared budget
+counter (e.g. `--counter iteration=8` or `--counter reviewer_pass=0`).
 
 ### 4. Phase behavior was partly determined by phase name
 
@@ -174,7 +174,6 @@ output.
   as the bundled defaults in `pipeline.toml`. No changes are required for projects that
   use the default workflow without customization.
 - Agent chain and drain configuration in `ralph-workflow.toml` is unchanged.
-- The CLI flags `--developer-iters` and `--reviewer-reviews` still work.
 - Checkpoint/resume behavior is unchanged.
 - Recovery classification and retry behavior is unchanged.
 

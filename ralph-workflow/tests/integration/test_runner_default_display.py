@@ -19,7 +19,7 @@ from rich.console import Console
 import ralph.display.context as display_context_module
 import ralph.display.parallel_display as pd_module
 from ralph.config.enums import Verbosity
-from ralph.config.models import GeneralConfig, UnifiedConfig
+from ralph.config.models import UnifiedConfig
 from ralph.display.context import make_display_context
 from ralph.pipeline import runner as runner_module
 from ralph.pipeline.effects import (
@@ -39,13 +39,7 @@ DEFAULT_POLICY_DIR = Path(__file__).parent.parent.parent / "ralph" / "policy" / 
 
 
 def _config() -> UnifiedConfig:
-    return UnifiedConfig(
-        general=GeneralConfig(
-            verbosity=2,
-            developer_iters=1,
-            reviewer_reviews=0,
-        )
-    )
+    return UnifiedConfig()
 
 
 @pytest.mark.skipif(

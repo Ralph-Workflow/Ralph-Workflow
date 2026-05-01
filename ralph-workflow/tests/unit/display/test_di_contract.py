@@ -124,7 +124,7 @@ class TestRenderersRequireDisplayContext:
         """show_agents() must fail when called without display_context."""
         config = UnifiedConfig(
             agents={},
-            general=GeneralConfig(developer_iters=1, reviewer_reviews=0),
+            general=GeneralConfig(),
         )
         with pytest.raises(TypeError, match="display_context"):
             show_agents(config=config)  # type: ignore[call-arg]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library

@@ -262,8 +262,6 @@ def _print_dry_run(
     console = display_context.console
     console.print(Text("Dry run mode", style="theme.cat.meta"))
     console.print(_detail_text("Phase", initial_state.phase if initial_state else "planning"))
-    console.print(_detail_text("Iterations", str(config.general.developer_iters)))
-    console.print(_detail_text("Review passes", str(config.general.reviewer_reviews)))
 
 
 def _execute_pipeline(  # noqa: PLR0913
