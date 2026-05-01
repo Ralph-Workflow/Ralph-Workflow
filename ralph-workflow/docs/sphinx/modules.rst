@@ -149,6 +149,13 @@ ralph.cli.commands.run
    :members:
    :show-inheritance:
 
+ralph.cli.commands.check_policy
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.cli.commands.check_policy
+   :members:
+   :show-inheritance:
+
 ralph.cli.commands.explain
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 

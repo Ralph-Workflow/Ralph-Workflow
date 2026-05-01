@@ -16,10 +16,13 @@ the starter sentinel removed before allowing the pipeline to run. See
 
 A named step in the pipeline sequence declared in `.agent/pipeline.toml`.
 Every phase has a **role** that determines what the runtime expects from it and
-how it routes on completion. The bundled defaults define phases named
-`planning`, `development`, `development_analysis`, `development_commit`,
-`review`, `review_analysis`, `fix`, `review_commit`, and `complete`, but these
-are examples — any phase name is valid.
+how it routes on completion. Phase names have **no behavioral meaning** — all
+behavior comes from the `role` field and associated policy declarations.
+
+The bundled defaults define phases named `planning`, `development`,
+`development_analysis`, `development_commit`, `review`, `review_analysis`,
+`fix`, `review_commit`, and `complete`. These are examples only — any name
+works. The runtime does not recognize or treat any phase name specially.
 
 Phase roles:
 
@@ -40,8 +43,13 @@ See `ralph.phases` for phase handlers and `ralph.pipeline` for orchestration.
 
 A named binding that maps a phase to an agent chain. Each phase that invokes an agent
 has a drain; the drain name resolves to a chain via the main Ralph Workflow config (`ralph-workflow.toml`).
-For example, the `development` phase uses the `development` drain, which resolves to the
-configured developer agent chain. See `ralph.policy.models` for the drain/chain data model.
+Drain names have **no behavioral meaning** — they are identifiers only. The runtime
+does not consult drain name substrings to determine behavior; all semantics come from
+the phase `role` and the `drain_class` field declared in `ralph-workflow.toml`.
+
+For example, a phase named `build` with drain `builder` and `role = "execution"` behaves
+identically to the bundled `development` phase — the name difference has no effect.
+See `ralph.policy.models` for the drain/chain data model.
 
 ## Agent
 
@@ -257,6 +265,11 @@ summary. It lists all phases (with roles and drains), loop counters, budget coun
 terminal outcomes, parallel execution settings, and recovery routing. This is useful
 for confirming a configuration before running and for documenting the workflow your
 project uses.
+
+For a fast pass/fail check without the full explanation, use `ralph --check-policy`.
+This validates the policy and prints a brief count summary (phases, drains, artifact
+contracts, loop counters, budget counters). Exit 0 means valid; exit 2 means
+`PolicyValidationError`.
 
 See [Policy Explanation](policy-explanation.md) for the full walkthrough.
 

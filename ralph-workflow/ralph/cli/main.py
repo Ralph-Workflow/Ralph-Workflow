@@ -19,6 +19,7 @@ from rich.text import Text
 
 from ralph import __version__
 from ralph.api.opencode import list_providers as fetch_providers
+from ralph.cli.commands.check_policy import check_policy_command
 from ralph.cli.commands.cleanup import cleanup
 from ralph.cli.commands.commit import CommitPlumbingOptions, commit_plumbing
 from ralph.cli.commands.diagnose import diagnose_command
@@ -259,6 +260,7 @@ def _handle_early_exit_flags(
     version: bool,
     explain_policy: bool,
     explain_policy_dir: str | None,
+    check_policy: bool,
 ) -> None:
     """Handle version and explain-policy early-exit flags before any bootstrap."""
     if version:
@@ -267,6 +269,10 @@ def _handle_early_exit_flags(
         from pathlib import Path as _Path  # noqa: PLC0415
         policy_dir = _Path(explain_policy_dir) if explain_policy_dir else None
         raise typer.Exit(code=explain_command(policy_dir))
+    if check_policy:
+        from pathlib import Path as _Path  # noqa: PLC0415
+        policy_dir = _Path(explain_policy_dir) if explain_policy_dir else None
+        raise typer.Exit(code=check_policy_command(policy_dir))
 
 
 def main(  # noqa: PLR0913
@@ -453,15 +459,23 @@ def main(  # noqa: PLR0913
         typer.Option(
             "--explain-policy-dir",
             hidden=True,
-            help="Policy directory to explain (default: bundled defaults)",
+            help="Policy directory to explain or check (default: bundled defaults)",
         ),
     ] = None,
+    check_policy: Annotated[
+        bool,
+        typer.Option(
+            "--check-policy",
+            help="Validate the active policy and print a summary, then exit",
+        ),
+    ] = False,
 ) -> None:
     """Run the Ralph Workflow multi-agent pipeline or execute a sub-operation."""
     _handle_early_exit_flags(
         version=version,
         explain_policy=explain_policy,
         explain_policy_dir=explain_policy_dir,
+        check_policy=check_policy,
     )
 
     if resume and no_resume:

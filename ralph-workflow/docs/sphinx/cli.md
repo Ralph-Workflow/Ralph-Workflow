@@ -14,7 +14,35 @@ running `ralph` with no flags starts the full pipeline.
 | `--diagnose` | `-d` | `False` | Run full pre-flight diagnostics and print a status table |
 | `--check-config` | | `False` | Load and validate configuration then exit |
 | `--check-mcp` | | `False` | Validate custom MCP server definitions and exit |
+| `--check-policy` | | `False` | Validate the active pipeline policy and print a summary, then exit |
 | `--inspect-checkpoint` | | `False` | Print the contents of the current checkpoint |
+
+### `--check-policy` example
+
+```bash
+ralph --check-policy
+```
+
+Validates the active pipeline policy (project-local `.agent/pipeline.toml` when present,
+otherwise the bundled defaults) and prints a structured summary:
+
+```
+Policy OK: /path/to/.agent
+  phases: 9
+  drains: 9
+  artifact contracts: 8
+  loop counters: 2
+  budget counters: 2
+```
+
+Exits 0 on success, 2 on `PolicyValidationError`, 1 on any other error.
+Use `--explain-policy-dir` to point at a custom policy directory:
+
+```bash
+ralph --check-policy --explain-policy-dir /path/to/policy/dir
+```
+
+See [Policy Explanation](policy-explanation.md) for the full policy inspection command.
 
 ## Setup
 

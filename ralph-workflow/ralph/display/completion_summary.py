@@ -18,6 +18,7 @@ if TYPE_CHECKING:
 
     from ralph.display.context import DisplayContext
     from ralph.display.snapshot import PipelineSnapshot
+    from ralph.policy.models import PipelinePolicy
 
 
 _VERIFICATION_ARTIFACT = ".agent/artifacts/verification.json"
@@ -124,6 +125,30 @@ def _dropped_count_line(dropped: int) -> str:
     if dropped <= 0:
         return ""
     return f"Snapshots dropped: {dropped}"
+
+
+def _style_for_role(
+    role: str,
+    pipeline_policy: PipelinePolicy | None,
+    fallback_phase: str,
+) -> str:
+    """Return the style for the first phase with the given role, or fall back to a phase name."""
+    if pipeline_policy is not None:
+        for phase_name, phase_def in pipeline_policy.phases.items():
+            if phase_def.role == role:
+                return _phase_style(phase_name, pipeline_policy)
+    return _phase_style(fallback_phase)
+
+
+def _style_for_terminal_failure(
+    pipeline_policy: PipelinePolicy | None,
+) -> str:
+    """Return the style for the terminal failure phase, or fall back to 'failed'."""
+    if pipeline_policy is not None:
+        for phase_name, phase_def in pipeline_policy.phases.items():
+            if phase_def.role == "terminal" and phase_def.terminal_outcome == "failure":
+                return _phase_style(phase_name, pipeline_policy)
+    return _phase_style("failed")
 
 
 def _make_badge_text(badge: str, rest: str) -> Text:
@@ -300,6 +325,7 @@ def render_completion_summary_group(  # noqa: PLR0912, PLR0913, PLR0915
     elapsed_seconds: float | None = None,
     include_context_sections: bool = True,
     display_context: DisplayContext,
+    pipeline_policy: PipelinePolicy | None = None,
 ) -> Group:
     """Render the completion summary as a Rich Group with rule-delimited sections.
 
@@ -343,7 +369,8 @@ def render_completion_summary_group(  # noqa: PLR0912, PLR0913, PLR0915
 
     # Plan section
     if include_context_sections and (snapshot.plan_summary or snapshot.plan_scope_items):
-        renderables.append(Rule("Plan", style=_phase_style("planning")))
+        plan_style = _style_for_role("execution", pipeline_policy, "planning")
+        renderables.append(Rule("Plan", style=plan_style))
         if snapshot.plan_summary:
             renderables.append(Text(f"  {snapshot.plan_summary}"))
         if snapshot.plan_scope_items:
@@ -395,19 +422,20 @@ def render_completion_summary_group(  # noqa: PLR0912, PLR0913, PLR0915
     # Commit section
     commit_lines = _commit_message_lines(workspace_root)
     if commit_lines or snapshot.pr_url:
-        renderables.append(Rule("Commit", style=_phase_style("development_commit")))
+        commit_style = _style_for_role("commit", pipeline_policy, "development_commit")
+        renderables.append(Rule("Commit", style=commit_style))
         renderables.extend(Text(f"  {ln}") for ln in commit_lines)
         if snapshot.pr_url:
             renderables.append(Text(f"  PR: {snapshot.pr_url}"))
 
     # Risks section
     if include_context_sections and snapshot.plan_risks:
-        renderables.append(Rule("Open Risks", style=_phase_style("fix")))
+        renderables.append(Rule("Open Risks", style=_style_for_role("fix", pipeline_policy, "fix")))
         renderables.extend(Text(f"  - {risk}") for risk in snapshot.plan_risks)
 
     # Error section
     if snapshot.last_error:
-        renderables.append(Rule("Error", style=_phase_style("failed")))
+        renderables.append(Rule("Error", style=_style_for_terminal_failure(pipeline_policy)))
         renderables.append(Text(f"  {snapshot.last_error}"))
         diag = _children_persist_diagnostic_line(snapshot.last_error)
         if diag:

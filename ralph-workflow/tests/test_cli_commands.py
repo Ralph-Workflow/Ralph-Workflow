@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 import tomllib
 from io import StringIO
 from pathlib import Path
@@ -15,6 +16,7 @@ from ralph.cli import options as options_module
 from ralph.cli.commands import commit as commit_module
 from ralph.cli.commands import diagnose as diagnose_module
 from ralph.cli.commands import init as init_module
+from ralph.cli.commands.check_policy import check_policy_command
 from ralph.config.enums import AgentTransport, JsonParserType, ReviewDepth
 from ralph.config.models import AgentConfig, UnifiedConfig
 from ralph.display.context import DisplayContext, make_display_context
@@ -1634,3 +1636,75 @@ def test_init_command_respects_explicit_config_path(
 
     assert custom.exists()
     assert isinstance(tomllib.loads(custom.read_text()), dict)
+
+
+# ---------------------------------------------------------------------------
+# check_policy command tests
+# ---------------------------------------------------------------------------
+
+_DEFAULTS_DIR = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
+
+
+def _copy_defaults(target: Path) -> None:
+    target.mkdir(parents=True, exist_ok=True)
+    for name in ("agents.toml", "pipeline.toml", "artifacts.toml"):
+        shutil.copy(_DEFAULTS_DIR / name, target / name)
+
+
+class TestCheckPolicyCommand:
+    """check_policy_command validates the active policy and reports results."""
+
+    def test_success_returns_zero_and_prints_ok(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        _copy_defaults(tmp_path)
+        code = check_policy_command(tmp_path)
+        out = capsys.readouterr().out
+        assert code == 0
+        assert "Policy OK" in out
+        assert "phases:" in out
+        assert "drains:" in out
+        assert "artifact contracts:" in out
+
+    def test_success_includes_counts(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        _copy_defaults(tmp_path)
+        check_policy_command(tmp_path)
+        out = capsys.readouterr().out
+        # All count lines are present
+        for label in ("phases:", "drains:", "artifact contracts:",
+                      "loop counters:", "budget counters:"):
+            assert label in out
+
+    def test_missing_directory_returns_one(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        missing = tmp_path / "nonexistent"
+        code = check_policy_command(missing)
+        err = capsys.readouterr().err
+        assert code == 1
+        assert "not found" in err
+
+    def test_invalid_pipeline_returns_two(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        _copy_defaults(tmp_path)
+        # Overwrite pipeline.toml with an invalid transition target
+        (tmp_path / "pipeline.toml").write_text(
+            "[phases.planning]\n"
+            'drain = "planning"\n'
+            'prompt_template = "planning.jinja"\n'
+            "[phases.planning.transitions]\n"
+            'on_success = "no_such_phase"\n'
+            "\n"
+            "[phases.complete]\n"
+            'drain = "complete"\n'
+            "[phases.complete.transitions]\n"
+            'on_success = "complete"\n'
+            'on_loopback = "complete"\n'
+        )
+        code = check_policy_command(tmp_path)
+        err = capsys.readouterr().err
+        assert code == 2  # noqa: PLR2004
+        assert "Policy validation error" in err

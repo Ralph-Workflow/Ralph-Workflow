@@ -162,7 +162,7 @@ def render_plan_artifact(
         workspace_root / _ARTIFACTS_DIR / "plan.json",
     )
     if markdown:
-        _render_text_block("PLAN", markdown, "planning", display_context.console)
+        _render_text_block("PLAN", markdown, "execution", display_context.console)
         return
 
     plan = read_plan_artifact(workspace_root)
@@ -183,7 +183,7 @@ def render_plan_artifact(
         lines.append("  Risks:")
         lines.extend(f"    - {risk}" for risk in plan.risks_mitigations)
 
-    _render_titled_lines("PLAN", "planning", lines, display_context.console)
+    _render_titled_lines("PLAN", "execution", lines, display_context.console)
 
 
 def render_analysis_decision(
@@ -264,7 +264,7 @@ def render_development_artifact(
         workspace_root / _ARTIFACTS_DIR / "development_result.json",
     )
     if markdown:
-        _render_text_block("DEVELOPMENT RESULT", markdown, "development", display_context.console)
+        _render_text_block("DEVELOPMENT RESULT", markdown, "execution", display_context.console)
         return
 
     found = _read_json_defensive(workspace_root / _ARTIFACTS_DIR / "development_result.json")
@@ -273,7 +273,7 @@ def render_development_artifact(
     _render_text_block(
         "DEVELOPMENT RESULT",
         json.dumps(found, indent=2),
-        "development",
+        "execution",
         display_context.console,
     )
 

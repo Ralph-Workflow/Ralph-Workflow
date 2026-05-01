@@ -2209,16 +2209,18 @@ def _render_phase_artifact_handoff(  # noqa: PLR0913
     if required_artifact is None:
         if event != PipelineEvent.AGENT_SUCCESS:
             return
-        if phase == "planning":
-            render_plan_artifact(workspace_root, ctx)
-        elif phase == "development":
-            render_development_artifact(workspace_root, ctx)
-        elif phase == "review":
-            render_review_artifact(workspace_root, ctx)
-        elif phase == "fix":
-            render_fix_artifact(workspace_root, ctx)
-        elif phase in {"development_analysis", "review_analysis"}:
-            render_analysis_decision(workspace_root, effective_drain, ctx)
+        if policy_bundle is not None:
+            phase_def = policy_bundle.pipeline.phases.get(phase)
+            role = phase_def.role if phase_def is not None else None
+            if role == "analysis":
+                render_analysis_decision(workspace_root, effective_drain, ctx)
+            else:
+                logger.debug(
+                    "policy: no renderer for phase '{}' (role={});"
+                    " skipping artifact handoff render",
+                    phase,
+                    role,
+                )
         return
 
     artifact_type = required_artifact.artifact_type

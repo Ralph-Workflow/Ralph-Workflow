@@ -170,3 +170,47 @@ class TestRegisterRoleHandlersIsGeneric:
             f"{sorted(violations)}. "
             "Handler registration must be driven by role values only."
         )
+
+
+class TestRunnerArtifactHandoffIsGeneric:
+    """_render_phase_artifact_handoff must not hardcode canonical phase name literals."""
+
+    @pytest.fixture(scope="class")
+    def runner_source(self) -> str:
+        return (RALPH_ROOT / "pipeline" / "runner.py").read_text(encoding="utf-8")
+
+    def test_render_phase_artifact_handoff_has_no_canonical_phase_literals(
+        self, runner_source: str
+    ) -> None:
+        literals = _string_literals_in_function(runner_source, "_render_phase_artifact_handoff")
+        violations = RUNNER_BANNED_PHASE_NAMES & literals
+        assert not violations, (
+            f"_render_phase_artifact_handoff contains canonical phase name literal(s): "
+            f"{sorted(violations)}. "
+            "Artifact handoff rendering must use role/artifact-type dispatch, not phase names."
+        )
+
+
+class TestArtifactToolHasNoCanonicalDrainNames:
+    """_analysis_decision_artifact_type must not hardcode canonical drain name literals."""
+
+    @pytest.fixture(scope="class")
+    def artifact_source(self) -> str:
+        return (RALPH_ROOT / "mcp" / "tools" / "artifact.py").read_text(encoding="utf-8")
+
+    def test_analysis_decision_artifact_type_has_no_canonical_drain_literals(
+        self, artifact_source: str
+    ) -> None:
+        literals = _string_literals_in_function(
+            artifact_source, "_analysis_decision_artifact_type"
+        )
+        # "development_analysis" and "review_analysis" must not appear as literals
+        # since the function now uses suffix-based fallback or policy-based derivation
+        canonical_drains = frozenset({"development_analysis", "review_analysis"})
+        violations = canonical_drains & literals
+        assert not violations, (
+            f"_analysis_decision_artifact_type contains canonical drain name literal(s): "
+            f"{sorted(violations)}. "
+            "Analysis drain derivation must use suffix-based fallback or policy lookup, "
+            "not hardcoded drain mappings."
+        )

@@ -19,6 +19,30 @@ To inspect a custom policy directory instead:
 ralph --explain-policy --explain-policy-dir /path/to/policy/dir
 ```
 
+## Fast validation without explanation
+
+To check that the policy is valid without producing the full explanation output, use:
+
+```bash
+ralph --check-policy
+```
+
+This validates the same policy source as `--explain-policy` and prints a brief summary:
+
+```
+Policy OK: /path/to/.agent
+  phases: 9
+  drains: 9
+  artifact contracts: 8
+  loop counters: 2
+  budget counters: 2
+```
+
+Exit codes: 0 = valid, 2 = `PolicyValidationError`, 1 = other error.
+`--check-policy` is useful in CI scripts or pre-flight hooks where you want to catch
+invalid policy before starting a run. Accepts `--explain-policy-dir` for a custom
+directory.
+
 ## What the output shows
 
 The explanation covers all policy-declared elements:

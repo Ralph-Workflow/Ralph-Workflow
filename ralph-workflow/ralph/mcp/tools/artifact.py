@@ -66,6 +66,8 @@ from ralph.mcp.tools.coordination import (
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+    from ralph.policy.models import PipelinePolicy
+
 _TYPED_ARTIFACT_TYPES = frozenset(
     {"issues", "fix_result", "development_analysis_decision", "review_analysis_decision"}
 )
@@ -515,29 +517,47 @@ def _canonical_artifact_type(
     artifact_type: str,
     *,
     session_drain: str | None = None,
+    pipeline_policy: PipelinePolicy | None = None,
 ) -> str:
     if artifact_type in {"commit", "skip"}:
         return COMMIT_MESSAGE_TYPE
     if artifact_type == "analysis_decision":
-        return _analysis_decision_artifact_type(session_drain)
+        return _analysis_decision_artifact_type(session_drain, pipeline_policy=pipeline_policy)
     if artifact_type not in _KNOWN_ARTIFACT_TYPES:
         raise InvalidParamsError(f"Unknown artifact_type {artifact_type!r}.")
     return artifact_type
 
 
-def _analysis_decision_artifact_type(session_drain: str | None) -> str:
-    mapping = {
-        "development_analysis": "development_analysis_decision",
-        "review_analysis": "review_analysis_decision",
-    }
-    if session_drain in mapping:
-        return mapping[session_drain]
+def _analysis_decision_artifact_type(
+    session_drain: str | None,
+    *,
+    pipeline_policy: PipelinePolicy | None = None,
+) -> str:
+    """Derive the canonical artifact type for an analysis-drain session.
+
+    When pipeline_policy is provided, the type is derived generically as
+    '{session_drain}_decision' for any drain bound to a phase with role='analysis'.
+    Without a policy, falls back to '{session_drain}_decision' only when the drain
+    name ends with '_analysis' (naming convention).
+
+    The previously hardcoded mapping (development_analysis → development_analysis_decision,
+    review_analysis → review_analysis_decision) has been removed.
+    """
+    if session_drain is None:
+        raise InvalidParamsError("analysis_decision requires an analysis drain session")
+    if pipeline_policy is not None:
+        for phase_def in pipeline_policy.phases.values():
+            if phase_def.drain == session_drain and phase_def.role == "analysis":
+                return f"{session_drain}_decision"
+    # Conservative fallback: naming-convention suffix
+    if session_drain.endswith("_analysis"):
+        return f"{session_drain}_decision"
     raise InvalidParamsError("analysis_decision requires an analysis drain session")
 
 
 def _accepted_persisted_types(artifact_type: str) -> set[str]:
     accepted = {artifact_type}
-    if artifact_type in {"development_analysis_decision", "review_analysis_decision"}:
+    if artifact_type.endswith("_decision"):
         accepted.add("analysis_decision")
     return accepted
 

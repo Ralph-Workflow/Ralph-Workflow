@@ -158,6 +158,91 @@ output.
 - Checkpoint/resume behavior is unchanged.
 - Recovery classification and retry behavior is unchanged.
 
+## Removed in the latest iteration
+
+The following hardcoded behaviors were removed in the current release. They previously
+silently drove workflow behavior even when users renamed phases.
+
+### Phase-name dispatch in `_render_phase_artifact_handoff`
+
+The pipeline runner previously dispatched artifact rendering based on literal phase
+names: `"planning"`, `"development"`, `"review"`, `"fix"`, and a set containing
+`"development_analysis"` and `"review_analysis"`. Renamed phases received no artifact
+UI.
+
+**After the change:** dispatch is role-based. When an analysis-role phase completes,
+`render_analysis_decision` is called regardless of the phase name. When no renderer
+applies, a debug log records `policy: no renderer for phase '...' (role=...); skipping
+artifact handoff render`. Artifact contracts declared in `artifacts.toml` continue to
+drive the primary dispatch path (unchanged).
+
+### Hardcoded drain mapping in `_analysis_decision_artifact_type`
+
+The MCP artifact tool previously used a hardcoded dict mapping canonical drain names to
+their decision artifact types:
+
+```python
+# OLD — removed
+mapping = {
+    "development_analysis": "development_analysis_decision",
+    "review_analysis": "review_analysis_decision",
+}
+```
+
+**After the change:** the artifact type is derived as `"{drain}_decision"` for any drain
+bound to a phase with `role = "analysis"` in the active `PipelinePolicy`. When no
+policy is available, the fallback applies only when the drain name ends with
+`_analysis` (naming convention). Custom drains work automatically when their phase
+declares `role = "analysis"` in `pipeline.toml`.
+
+### Literal phase-name style lookups in the display layer
+
+Four display components previously hardcoded canonical phase names in their style
+lookups:
+
+- `completion_summary.py` — `_phase_style("planning")`, `_phase_style("development_commit")`,
+  `_phase_style("fix")`, `_phase_style("failed")`
+- `artifact_renderer.py` — style literals `"planning"` and `"development"`
+- `plain_renderer.py` — `LEVELS` dict keyed by canonical phase names
+
+**After the change:** style lookups resolve through phase role when a `PipelinePolicy`
+is provided. Role names (`"execution"`, `"analysis"`, `"review"`, `"commit"`,
+`"terminal"`, etc.) are the primary keys. Canonical phase names remain as a
+compatibility layer for contexts without a policy object.
+
+### What this means for configuration
+
+Users who renamed phases previously saw no artifact UI, incorrect milestone log levels,
+and wrong section styles in the completion summary for those phases. All three are now
+correct for any policy-declared phase name.
+
+No `pipeline.toml` changes are required — the new dispatch is automatic when the
+phase role is correctly declared.
+
+## Verifying the migrated policy
+
+After migration, use the policy validator for a fast pass/fail check:
+
+```bash
+ralph --check-policy
+```
+
+This validates the active policy and prints a structured summary (phase count, drain
+count, artifact contracts, loop counters, budget counters) without running the full
+pipeline. Exit 0 means the policy is valid; exit 2 means `PolicyValidationError`.
+
+Then use the policy explainer to confirm the active workflow matches your intent:
+
+```bash
+ralph --explain-policy
+```
+
+The output lists all phases, their roles, loop counters, budget counters, and recovery
+routing. Compare it against your expected workflow before running the pipeline.
+
+See [Policy Explanation](policy-explanation.md) for a full walkthrough of the explain
+output.
+
 ## Related pages
 
 - [Configuration](configuration.md) — full `pipeline.toml` field reference

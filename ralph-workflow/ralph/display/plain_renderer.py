@@ -21,11 +21,33 @@ if TYPE_CHECKING:
 
     from ralph.pipeline.state import PipelineState
 
-LEVELS: Final[dict[str, str]] = {
-    "development": "MILESTONE",
-    "planning": "MILESTONE",
+# Role-keyed level map (primary lookup when pipeline_policy is available)
+_ROLE_LEVELS: Final[dict[str, str]] = {
+    "execution": "MILESTONE",
     "review": "MILESTONE",
     "fix": "MILESTONE",
+    "analysis": "INFO",
+    "commit": "INFO",
+    "verification": "INFO",
+    "terminal": "SUCCESS",
+    "fanout_join": "INFO",
+}
+
+# Legacy phase-name entries kept as a compatibility layer.
+# Role names are also included here so LEVELS.get(role) works for consumers
+# that do not have policy context.
+LEVELS: Final[dict[str, str]] = {
+    # Role names (primary keys)
+    "execution": "MILESTONE",
+    "review": "MILESTONE",
+    "fix": "MILESTONE",
+    "analysis": "INFO",
+    "commit": "INFO",
+    "verification": "INFO",
+    "terminal": "SUCCESS",
+    # Canonical phase names (compatibility layer — kept for legacy callers)
+    "development": "MILESTONE",
+    "planning": "MILESTONE",
     "complete": "SUCCESS",
     "failed": "ERROR",
     "interrupted": "WARN",

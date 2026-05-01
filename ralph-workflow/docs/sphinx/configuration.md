@@ -318,11 +318,106 @@ Applied to all phases without an explicit `retry_policy` block:
 | `terminal_recovery_route` | Where terminal failures route: `"failed"`, `"exit_failure"`, or a declared phase name |
 | `preserve_session_on_categories` | Failure categories that allow session-preserving retry |
 
+## Defining a custom workflow
+
+Phase names, drain names, and counter names have **no behavioral meaning** in
+Ralph Workflow — any name works. The runtime reads role declarations from
+`pipeline.toml` and drives behavior from those; it never consults the literal
+name of a phase or drain.
+
+Here is a worked example replacing the bundled defaults with a fully renamed workflow:
+
+```toml
+# .agent/pipeline.toml — custom phase names: design, build, audit, sign_off, done
+
+entry_phase   = "design"
+terminal_phase = "done"
+
+[phases.design]
+role   = "execution"
+drain  = "planner"
+prompt_template = "planning.jinja"
+[phases.design.transitions]
+on_success = "build"
+
+[phases.build]
+role   = "execution"
+drain  = "builder"
+prompt_template = "development.jinja"
+[phases.build.transitions]
+on_success = "audit"
+on_loopback = "build"
+
+[phases.audit]
+role   = "analysis"
+drain  = "auditor"
+prompt_template = "analysis.jinja"
+[phases.audit.loop_policy]
+iteration_state_field = "audit_round"
+max_iterations        = 3
+[phases.audit.transitions]
+on_success = "sign_off"
+on_loopback = "build"
+[phases.audit.decisions]
+completed       = "sign_off"
+request_changes = "build"
+failed          = "build"
+
+[phases.sign_off]
+role   = "commit"
+drain  = "signer"
+prompt_template = "commit.jinja"
+[phases.sign_off.commit_policy]
+increments_counter = "cycles"
+resets_loop_counters = ["audit_round"]
+[phases.sign_off.transitions]
+on_success = "done"
+on_failure = "done"
+
+[phases.done]
+role             = "terminal"
+terminal_outcome = "success"
+drain            = "done"
+[phases.done.transitions]
+on_success = "done"
+on_loopback = "done"
+
+[loop_counters.audit_round]
+default_max = 3
+description = "Audit iteration counter"
+
+[budget_counters.cycles]
+tracks_budget = true
+description   = "Build cycle counter"
+
+[recovery]
+cycle_cap = 200
+terminal_recovery_route = "done"
+```
+
+This workflow — `design` → `build` → `audit` → `sign_off` → `done` — behaves
+identically to the bundled `planning`/`development`/`development_analysis`/
+`development_commit`/`complete` workflow. No code changes are required; the runtime
+reads the `role` field and applies the same logic regardless of name.
+
+Validate with:
+
+```bash
+ralph --check-policy
+```
+
+And inspect with:
+
+```bash
+ralph --explain-policy
+```
+
 ## Inspecting the active policy
 
 After editing `pipeline.toml`, confirm the workflow is complete and valid:
 
 ```bash
+ralph --check-policy       # fast pass/fail validation
 ralph --check-config       # validate configuration
 ralph --explain-policy     # print a human-readable policy summary
 ```
