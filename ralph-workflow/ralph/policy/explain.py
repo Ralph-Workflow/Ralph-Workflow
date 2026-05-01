@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from ralph.policy.models import PolicyBundle
+    from ralph.policy.models import AgentsPolicy, PhaseDefinition, PipelinePolicy, PolicyBundle
 
 
 @dataclass
@@ -52,6 +52,7 @@ class PhaseExplanation:
     verification: VerificationExplanation | None = None
     has_parallelization: bool = False
     post_commit_routes_info: list[tuple[str, str]] = field(default_factory=list)
+    workflow_fallback: tuple[str, str | None] | None = None
 
 
 @dataclass
@@ -174,6 +175,83 @@ def explain_routing_decision(
     return f"policy: '{phase}' routed to '{target}' because the configured {reason} was '{value}'"
 
 
+def _explain_phase(
+    phase_name: str,
+    phase_def: PhaseDefinition,
+    pipeline: PipelinePolicy,
+    agents: AgentsPolicy,
+) -> PhaseExplanation:
+    drain_name = phase_def.drain
+    drain_config = agents.agent_drains.get(drain_name)
+    chain_name = drain_config.chain if drain_config else None
+    chain_config = agents.agent_chains.get(chain_name) if chain_name else None
+    effective_retry = pipeline.effective_retry_policy(phase_name)
+
+    loop_expl: LoopPolicyExplanation | None = None
+    if phase_def.loop_policy is not None:
+        lp = phase_def.loop_policy
+        loop_expl = LoopPolicyExplanation(
+            max_iterations=lp.max_iterations,
+            iteration_state_field=lp.iteration_state_field,
+            loopback_review_outcome=lp.loopback_review_outcome,
+        )
+
+    commit_expl: CommitPolicyExplanation | None = None
+    if phase_def.commit_policy is not None:
+        cp = phase_def.commit_policy
+        commit_expl = CommitPolicyExplanation(
+            increments_counter=cp.increments_counter,
+            loop_resets=list(cp.loop_resets),
+            requires_artifact=cp.requires_artifact,
+        )
+
+    verification_expl: VerificationExplanation | None = None
+    if phase_def.verification is not None:
+        v = phase_def.verification
+        verification_expl = VerificationExplanation(
+            kind=v.kind,
+            gate_for=v.gate_for,
+            on_failure_route=v.on_failure_route,
+        )
+
+    workflow_fallback_info: tuple[str, str | None] | None = None
+    if phase_def.workflow_fallback is not None:
+        workflow_fallback_info = (
+            phase_def.workflow_fallback.target,
+            phase_def.workflow_fallback.note,
+        )
+
+    return PhaseExplanation(
+        name=phase_name,
+        role=phase_def.role,
+        drain=drain_name,
+        chain=chain_name,
+        agents=list(chain_config.agents) if chain_config else [],
+        max_retries=effective_retry.max_retries,
+        skip_invocation=phase_def.skip_invocation,
+        on_success=phase_def.transitions.on_success,
+        on_failure=phase_def.transitions.on_failure,
+        on_loopback=phase_def.transitions.on_loopback,
+        bypass_routes=dict(phase_def.bypass_routes),
+        decisions={dk: dr.target for dk, dr in phase_def.decisions.items()},
+        loop_policy=loop_expl,
+        commit_policy=commit_expl,
+        terminal_outcome=phase_def.terminal_outcome,
+        clean_outcome=phase_def.clean_outcome,
+        issues_outcome=phase_def.issues_outcome,
+        is_entry=(phase_name == pipeline.entry_phase),
+        is_terminal=(phase_name == pipeline.terminal_phase),
+        verification=verification_expl,
+        has_parallelization=phase_def.parallelization is not None,
+        post_commit_routes_info=[
+            (route.when.budget_state, route.target)
+            for route in pipeline.post_commit_routes
+            if route.when.phase == phase_name
+        ],
+        workflow_fallback=workflow_fallback_info,
+    )
+
+
 def explain_policy(bundle: PolicyBundle) -> PolicyExplanation:
     """Convert a PolicyBundle into a structured human-readable explanation.
 
@@ -191,77 +269,10 @@ def explain_policy(bundle: PolicyBundle) -> PolicyExplanation:
         terminal_phase=pipeline.terminal_phase,
     )
 
-    # Build phase explanations
     for phase_name, phase_def in pipeline.phases.items():
-        drain_name = phase_def.drain
-        drain_config = agents.agent_drains.get(drain_name)
-        chain_name = drain_config.chain if drain_config else None
-        chain_config = agents.agent_chains.get(chain_name) if chain_name else None
-
-        effective_retry = pipeline.effective_retry_policy(phase_name)
-
-        loop_expl: LoopPolicyExplanation | None = None
-        if phase_def.loop_policy is not None:
-            lp = phase_def.loop_policy
-            loop_expl = LoopPolicyExplanation(
-                max_iterations=lp.max_iterations,
-                iteration_state_field=lp.iteration_state_field,
-                loopback_review_outcome=lp.loopback_review_outcome,
-            )
-
-        commit_expl: CommitPolicyExplanation | None = None
-        if phase_def.commit_policy is not None:
-            cp = phase_def.commit_policy
-            commit_expl = CommitPolicyExplanation(
-                increments_counter=cp.increments_counter,
-                loop_resets=list(cp.loop_resets),
-                requires_artifact=cp.requires_artifact,
-            )
-
-        decision_targets = {
-            dk: dr.target for dk, dr in phase_def.decisions.items()
-        }
-
-        verification_expl: VerificationExplanation | None = None
-        if phase_def.verification is not None:
-            v = phase_def.verification
-            verification_expl = VerificationExplanation(
-                kind=v.kind,
-                gate_for=v.gate_for,
-                on_failure_route=v.on_failure_route,
-            )
-
-        post_commit_routes_info: list[tuple[str, str]] = [
-            (route.when.budget_state, route.target)
-            for route in pipeline.post_commit_routes
-            if route.when.phase == phase_name
-        ]
-
-        phase_expl = PhaseExplanation(
-            name=phase_name,
-            role=phase_def.role,
-            drain=drain_name,
-            chain=chain_name,
-            agents=list(chain_config.agents) if chain_config else [],
-            max_retries=effective_retry.max_retries,
-            skip_invocation=phase_def.skip_invocation,
-            on_success=phase_def.transitions.on_success,
-            on_failure=phase_def.transitions.on_failure,
-            on_loopback=phase_def.transitions.on_loopback,
-            bypass_routes=dict(phase_def.bypass_routes),
-            decisions=decision_targets,
-            loop_policy=loop_expl,
-            commit_policy=commit_expl,
-            terminal_outcome=phase_def.terminal_outcome,
-            clean_outcome=phase_def.clean_outcome,
-            issues_outcome=phase_def.issues_outcome,
-            is_entry=(phase_name == pipeline.entry_phase),
-            is_terminal=(phase_name == pipeline.terminal_phase),
-            verification=verification_expl,
-            has_parallelization=phase_def.parallelization is not None,
-            post_commit_routes_info=post_commit_routes_info,
+        explanation.phases.append(
+            _explain_phase(phase_name, phase_def, pipeline, agents)
         )
-        explanation.phases.append(phase_expl)
 
     # Terminal outcomes — all phases with role='terminal' and a declared outcome
     for phase_name, phase_def in pipeline.phases.items():

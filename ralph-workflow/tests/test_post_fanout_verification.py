@@ -22,7 +22,7 @@ def _minimal_policy() -> PipelinePolicy:
                 drain="development",
                 transitions=PhaseTransition(
                     on_success="complete",
-                    on_failure="failed",
+                    on_failure=None,
                     on_loopback="development",
                 ),
             ),
@@ -139,7 +139,7 @@ class TestVerificationFailureMarksPhase:
             error="workspace verification failed (exit code 1)",
         )
         new_state, _ = reducer_reduce(state, event, _minimal_policy())
-        assert new_state.phase == "failed"
+        assert new_state.phase == "failed_terminal"
         assert "workspace verification failed" in (new_state.last_error or "")
 
     def test_post_fanout_verification_event_success_is_noop(self) -> None:

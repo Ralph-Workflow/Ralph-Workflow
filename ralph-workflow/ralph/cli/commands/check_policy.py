@@ -58,6 +58,10 @@ def check_policy_command(
         artifact_count = len(bundle.artifacts.artifacts)
         loop_count = len(bundle.pipeline.loop_counters)
         budget_count = len(bundle.pipeline.budget_counters)
+        workflow_fallback_count = sum(
+            1 for defn in bundle.pipeline.phases.values() if defn.workflow_fallback is not None
+        )
+        terminal_failure_phase = bundle.pipeline.recovery.terminal_failure_phase
 
         print(f"Policy OK: {resolved_dir}")
         print(f"  phases: {phase_count}")
@@ -65,6 +69,9 @@ def check_policy_command(
         print(f"  artifact contracts: {artifact_count}")
         print(f"  loop counters: {loop_count}")
         print(f"  budget counters: {budget_count}")
+        print(f"  workflow fallbacks: {workflow_fallback_count}")
+        if terminal_failure_phase is not None:
+            print(f"  terminal failure phase: {terminal_failure_phase}")
 
         if counter_overrides and bundle.pipeline.budget_counters:
             print("  effective budget caps (after --counter overrides):")

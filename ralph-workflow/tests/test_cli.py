@@ -37,7 +37,6 @@ from ralph.workspace.scope import WorkspaceScope
 RUN_PIPELINE_SUCCESS = 42
 KEYBOARD_INTERRUPT_EXIT_CODE = 130
 USAGE_ERROR_EXIT_CODE = 2
-DEFAULT_DEVELOPER_ITERS = 3
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -517,8 +516,6 @@ def test_build_cli_overrides_sets_values() -> None:
     """CLI overrides mirror the supported inputs only."""
 
     cli_input = CLIOverrideInput(
-        developer_iters=3,
-        reviewer_reviews=1,
         developer_agent="dev",
         reviewer_agent="rev",
         developer_model="dev-model",
@@ -531,8 +528,6 @@ def test_build_cli_overrides_sets_values() -> None:
     overrides = cast("dict[str, object]", _build_cli_overrides(cli_input))
     general = cast("dict[str, object]", overrides["general"])
     execution = cast("dict[str, object]", general["execution"])
-    assert general["developer_iters"] == DEFAULT_DEVELOPER_ITERS
-    assert general["reviewer_reviews"] == 1
     assert general["review_depth"] == ReviewDepth.SECURITY.value
     assert general["git_user_name"] == "Jane"
     assert general["git_user_email"] == "jane@example.com"
@@ -677,46 +672,24 @@ class TestParseCounterOverrides:
         assert result == {"reviewer_pass": 0}
 
 
-class TestDeprecatedCounterFlags:
-    """Tests for deprecated --developer-iters and --reviewer-reviews flags."""
+class TestRemovedCounterFlags:
+    """Tests that removed --developer-iters and --reviewer-reviews flags are rejected."""
 
-    def test_developer_iters_emits_deprecation_warning(
-        self, monkeypatch: pytest.MonkeyPatch
+    def test_developer_iters_flag_removed(
+        self,
     ) -> None:
-        warnings: list[str] = []
-        monkeypatch.setattr(
-            "ralph.cli.main.logger.warning",
-            lambda msg, *args, **kwargs: warnings.append(str(msg)),
-        )
-        monkeypatch.setattr("ralph.cli.main.run_pipeline", lambda **kw: 0)
-        monkeypatch.setattr(
-            "ralph.cli.main._bootstrap_global_configs", lambda *, display_context: None
-        )
-        monkeypatch.setattr("ralph.cli.main._configure_logging", lambda v: None)
-
         runner = TyperCliRunner()
-        runner.invoke(app, ["--developer-iters", "3", "--dry-run"], catch_exceptions=False)
+        result = runner.invoke(app, ["--developer-iters", "3"])
 
-        assert any("deprecated" in w.lower() for w in warnings)
+        assert result.exit_code != 0
 
-    def test_reviewer_reviews_emits_deprecation_warning(
-        self, monkeypatch: pytest.MonkeyPatch
+    def test_reviewer_reviews_flag_removed(
+        self,
     ) -> None:
-        warnings: list[str] = []
-        monkeypatch.setattr(
-            "ralph.cli.main.logger.warning",
-            lambda msg, *args, **kwargs: warnings.append(str(msg)),
-        )
-        monkeypatch.setattr("ralph.cli.main.run_pipeline", lambda **kw: 0)
-        monkeypatch.setattr(
-            "ralph.cli.main._bootstrap_global_configs", lambda *, display_context: None
-        )
-        monkeypatch.setattr("ralph.cli.main._configure_logging", lambda v: None)
-
         runner = TyperCliRunner()
-        runner.invoke(app, ["--reviewer-reviews", "1", "--dry-run"], catch_exceptions=False)
+        result = runner.invoke(app, ["--reviewer-reviews", "1"])
 
-        assert any("deprecated" in w.lower() for w in warnings)
+        assert result.exit_code != 0
 
     def test_counter_flag_passes_overrides_to_run_pipeline(
         self, monkeypatch: pytest.MonkeyPatch

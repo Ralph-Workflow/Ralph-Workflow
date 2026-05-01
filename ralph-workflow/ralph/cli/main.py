@@ -54,8 +54,6 @@ if TYPE_CHECKING:
 class CLIOverrideInput:
     """Input for building CLI overrides."""
 
-    developer_iters: int | None = None
-    reviewer_reviews: int | None = None
     developer_agent: str | None = None
     reviewer_agent: str | None = None
     developer_model: str | None = None
@@ -68,8 +66,6 @@ class CLIOverrideInput:
 class GeneralOverrides(TypedDict, total=False):
     """General configuration overrides."""
 
-    developer_iters: int
-    reviewer_reviews: int
     review_depth: str | None
     git_user_name: str | None
     git_user_email: str | None
@@ -292,10 +288,8 @@ def main(  # noqa: PLR0913, PLR0912
             "--developer-iters",
             "-D",
             min=1,
-            help=(
-                "[deprecated] Number of developer iterations. "
-                "Use --counter iteration=N instead."
-            ),
+            help="Removed. Use --counter iteration=N instead.",
+            hidden=True,
         ),
     ] = None,
     reviewer_reviews: Annotated[
@@ -304,10 +298,8 @@ def main(  # noqa: PLR0913, PLR0912
             "--reviewer-reviews",
             "-R",
             min=0,
-            help=(
-                "[deprecated] Number of review-fix cycles. "
-                "Use --counter reviewer_pass=N instead."
-            ),
+            help="Removed. Use --counter reviewer_pass=N instead.",
+            hidden=True,
         ),
     ] = None,
     counter: Annotated[
@@ -486,19 +478,17 @@ def main(  # noqa: PLR0913, PLR0912
 ) -> None:
     """Run the Ralph Workflow multi-agent pipeline or execute a sub-operation."""
     # Parse --counter NAME=VALUE entries early so --check-policy can validate them.
-    raw_counter_entries: list[str] = list(counter) if counter else []
     if developer_iters is not None:
-        logger.warning(
-            "--developer-iters is deprecated; use --counter iteration={} instead",
-            developer_iters,
+        raise typer.BadParameter(
+            "--developer-iters has been removed. Use --counter iteration=N instead.",
+            param_hint="'--developer-iters'",
         )
-        raw_counter_entries.append(f"iteration={developer_iters}")
     if reviewer_reviews is not None:
-        logger.warning(
-            "--reviewer-reviews is deprecated; use --counter reviewer_pass={} instead",
-            reviewer_reviews,
+        raise typer.BadParameter(
+            "--reviewer-reviews has been removed. Use --counter reviewer_pass=N instead.",
+            param_hint="'--reviewer-reviews'",
         )
-        raw_counter_entries.append(f"reviewer_pass={reviewer_reviews}")
+    raw_counter_entries: list[str] = list(counter) if counter else []
     counter_overrides = _parse_counter_overrides(raw_counter_entries)
 
     _handle_early_exit_flags(
@@ -527,8 +517,6 @@ def main(  # noqa: PLR0913, PLR0912
     # Load configuration
     cli_overrides = _build_cli_overrides(
         CLIOverrideInput(
-            developer_iters=developer_iters,
-            reviewer_reviews=reviewer_reviews,
             developer_agent=developer_agent,
             reviewer_agent=reviewer_agent,
             developer_model=developer_model,
@@ -881,12 +869,6 @@ def _build_cli_overrides(
         "developer_model": None,
         "reviewer_model": None,
     }
-
-    if input.developer_iters is not None:
-        overrides["general"]["developer_iters"] = input.developer_iters
-
-    if input.reviewer_reviews is not None:
-        overrides["general"]["reviewer_reviews"] = input.reviewer_reviews
 
     if input.developer_agent is not None:
         overrides["developer_agent"] = input.developer_agent

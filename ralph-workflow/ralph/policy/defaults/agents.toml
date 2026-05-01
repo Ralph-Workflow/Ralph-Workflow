@@ -62,24 +62,32 @@ retry_delay_ms = 500
 
 [agent_drains.planning]
 chain = "planning"
+drain_class = "planning"
 
 [agent_drains.development]
 chain = "development"
+drain_class = "development"
 
 [agent_drains.development_analysis]
 chain = "development_analysis"
+drain_class = "analysis"
 
 [agent_drains.development_commit]
 chain = "development_commit"
+drain_class = "commit"
 
 [agent_drains.review]
 chain = "review"
+drain_class = "review"
 
 [agent_drains.review_analysis]
 chain = "review_analysis"
+drain_class = "analysis"
 
 [agent_drains.fix]
 chain = "fix"
+drain_class = "fix"
 
 [agent_drains.review_commit]
 chain = "review_commit"
+drain_class = "commit"

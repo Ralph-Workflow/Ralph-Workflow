@@ -67,14 +67,12 @@ The ASCII diagram is the first visual output from `--explain-policy`. It shows:
 - **Entry marker** — `=ENTRY=>` marks the starting phase
 - **Happy-path arrows** — `|` and `v` connect phases on the success path
 - **Decision branches** — `+--[decision_name]--> target` shows routing for specific decisions
-- **Loopback arrows** — `| loop back to target` with `+---^` shows retry/request-changes routing
+- **Loopback arrows** — `<<==[loopback]== returns to 'target'` marks phases that loop back; `>> RE-ENTRY at target` shows the re-entry point so the direction is unambiguous
 - **Terminal markers** — `==SUCCESS==>` or `==FAILURE==>` marks terminal outcomes
 - **Fanout annotations** — `>>> FAN_OUT (max_workers=N, max_units=M, post_fanout_verify=yes/no) >>>` before phases with parallelization
 - **Loop annotations** — `[loop: counter=NAME, max=N]` on phases with bounded iteration
 
 ```
-WORKFLOW DIAGRAM
-======================================================================
 =ENTRY=>
 +----------------+
 |    planning    |
@@ -82,7 +80,7 @@ WORKFLOW DIAGRAM
 +----------------+
     |
     v
->>> FAN_OUT (max_workers=8, max_units=50) >>>
+>>> FAN_OUT (max_workers=8, max_units=50, post_fanout_verify=no) >>>
 +----------------+
 |  development   |
 | role=execution |
@@ -110,57 +108,23 @@ WORKFLOW DIAGRAM
 +--------------------+
     |
     v
-+-------------+
-|    review   |
-| role=review |
-+-------------+
-    <<==[loopback]== returns to 'fix'
-    >> RE-ENTRY at fix
-    |
-    v
-[loop: counter=review_analysis_iteration, max=2]
-+-----------------+
-| review_analysis |
-|  role=analysis  |
-+-----------------+
-    +--[failed]--> fix
-    +--[request_changes]--> fix
-    <<==[loopback]== returns to 'fix'
-    [LOOPBACK: counter=review_analysis_iteration, max=2]
-    >> RE-ENTRY at fix
-    |
-    v
-+---------------+
-| review_commit |
-|  role=commit  |
-+---------------+
-    |
-    v
-+---------------+
-|    complete   |
-| role=terminal |
-+---------------+
+...
 ==SUCCESS==>
 +-----------------+
 | failed_terminal |
 |  role=terminal  |
 +-----------------+
 ==FAILURE==>
-+----------------+
-|      fix       |
-| role=execution |
-+----------------+
-    <<==[loopback]== returns to 'review'
-    >> RE-ENTRY at review
 
 Legend:
-  =ENTRY=>           pipeline entry point
-  ==SUCCESS==>       terminal success outcome
-  ==FAILURE==>       terminal failure outcome
-  +--[decision]-->   analysis decision branch
-  <<==[loopback]==   loopback to earlier phase
-  >>> FAN_OUT ...    parallel worker fan-out
-  <<< REJOIN         workers rejoin after fan-out
+  =ENTRY=>                    pipeline entry point
+  ==SUCCESS==>                terminal success outcome
+  ==FAILURE==>                terminal failure outcome
+  +--[decision]-->            analysis decision branch
+  <<==[loopback]==            loopback to earlier phase
+  +--[workflow_fallback]-->   fallback on chain exhaustion
+  >>> FAN_OUT ...             parallel worker fan-out
+  <<< REJOIN                  workers rejoin after fan-out
 ```
 
 ### Reading the diagram
@@ -175,7 +139,7 @@ Legend:
 | `` >> RE-ENTRY at X `` | The phase where control re-enters after a loopback |
 | `[LOOPBACK: counter=N, max=M]` | Loopback consumes loop counter N; present when loopback increments a loop counter |
 | `+--[decision]--> Y` | Decision branch — routes to Y when decision is emitted |
-| `` >>> FAN_OUT (max_workers=N, max_units=M) >>> `` | Fan-out — phase fans out to parallel workers |
+| `` >>> FAN_OUT (max_workers=N, max_units=M, post_fanout_verify=yes/no) >>> `` | Fan-out — phase fans out to parallel workers |
 | `` <<< REJOIN `` | Workers rejoin after fan-out completes |
 | `[loop: ...]` | Loop annotation — phase has bounded iteration |
 

@@ -66,7 +66,7 @@ def _progress_policy() -> PipelinePolicy:
                 transitions=PhaseTransition(
                     on_success="development_commit",
                     on_loopback="development",
-                    on_failure="failed",
+                    on_failure=None,
                 ),
             ),
             "development_commit": PhaseDefinition(
@@ -87,7 +87,7 @@ def _progress_policy() -> PipelinePolicy:
                 transitions=PhaseTransition(
                     on_success="review_commit",
                     on_loopback="fix",
-                    on_failure="failed",
+                    on_failure=None,
                 ),
                 loop_policy=PhaseLoopPolicy(
                     max_iterations=2,
@@ -270,7 +270,7 @@ class TestProgressPolicyRequired:
                     role="commit",
                     transitions=PhaseTransition(
                         on_success="complete",
-                        on_failure="failed",
+                        on_failure=None,
                     ),
                     commit_policy=PhaseCommitPolicy(
                         increments_counter="iteration",

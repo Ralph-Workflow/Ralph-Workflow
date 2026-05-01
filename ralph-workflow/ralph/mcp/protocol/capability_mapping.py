@@ -378,16 +378,6 @@ def _resolved_policy_status(
     return None
 
 
-_DRAIN_SUBSTRING_CLASSES: list[tuple[str, DrainClass]] = [
-    ("analysis", DrainClass.ANALYSIS),
-    ("commit", DrainClass.COMMIT),
-    ("review", DrainClass.REVIEW),
-    ("fix", DrainClass.FIX),
-    ("development", DrainClass.DEVELOPMENT),
-    ("planning", DrainClass.PLANNING),
-]
-
-
 def drain_class_for_drain_name(
     name: str,
     agents_policy: AgentsPolicy | None = None,
@@ -396,29 +386,25 @@ def drain_class_for_drain_name(
 
     Resolution order:
     1. Explicit drain_class on the AgentDrainConfig (highest priority).
-    2. Substring heuristics on the drain name.
-    3. PolicyValidationError when nothing matches.
+    2. PolicyValidationError when no explicit drain_class is declared.
     """
     from ralph.policy.validation import PolicyValidationError  # noqa: PLC0415
 
     if agents_policy is not None:
         drain_cfg = agents_policy.agent_drains.get(name)
         if drain_cfg is not None and drain_cfg.drain_class is not None:
-            explicit = drain_cfg.drain_class
-            for substring, dc in _DRAIN_SUBSTRING_CLASSES:
-                if explicit == substring:
-                    return dc
-            raise PolicyValidationError(
-                f"Drain '{name}' has drain_class '{explicit}' which is not a known DrainClass"
-            )
-
-    normalized = _normalize_token(name)
-    for substring, dc in _DRAIN_SUBSTRING_CLASSES:
-        if substring in normalized:
-            return dc
+            try:
+                return DrainClass(drain_cfg.drain_class)
+            except ValueError as exc:
+                known = ", ".join(c.value for c in DrainClass)
+                raise PolicyValidationError(
+                    f"Drain '{name}' has drain_class '{drain_cfg.drain_class}' "
+                    f"which is not a valid DrainClass (known: {known})"
+                ) from exc
     raise PolicyValidationError(
-        f"Drain {name!r} has no resolvable drain_class; "
-        f"declare drain_class in agents.toml"
+        f"Drain '{name}' has no drain_class declared in agents.toml; "
+        f"add drain_class = '<class>' under [agent_drains.{name}] "
+        f"(one of: planning, development, analysis, review, fix, commit)."
     )
 
 

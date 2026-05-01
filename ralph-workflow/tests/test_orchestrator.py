@@ -36,6 +36,7 @@ from ralph.policy.models import (
     PipelinePolicy,
     PostCommitRoute,
     PostCommitRouteWhen,
+    RecoveryPolicy,
 )
 
 
@@ -73,7 +74,7 @@ def _make_minimal_pipeline_policy() -> PipelinePolicy:
             ),
             "development": PhaseDefinition(
                 drain="development",
-                embeds_analysis=True,
+                role="analysis",
                 transitions=PhaseTransition(
                     on_success="development_commit",
                     on_loopback="development",
@@ -84,7 +85,7 @@ def _make_minimal_pipeline_policy() -> PipelinePolicy:
                 role="commit",
                 transitions=PhaseTransition(
                     on_success="review",
-                    on_failure="failed",
+                    on_failure="failed_terminal",
                 ),
                 commit_policy=PhaseCommitPolicy(
                     increments_counter="iteration",
@@ -93,7 +94,7 @@ def _make_minimal_pipeline_policy() -> PipelinePolicy:
             ),
             "review": PhaseDefinition(
                 drain="review",
-                embeds_analysis=True,
+                role="analysis",
                 transitions=PhaseTransition(
                     on_success="review_commit",
                     on_loopback="fix",
@@ -108,7 +109,7 @@ def _make_minimal_pipeline_policy() -> PipelinePolicy:
                 role="commit",
                 transitions=PhaseTransition(
                     on_success="complete",
-                    on_failure="failed",
+                    on_failure="failed_terminal",
                 ),
                 commit_policy=PhaseCommitPolicy(
                     increments_counter="reviewer_pass",
@@ -122,9 +123,16 @@ def _make_minimal_pipeline_policy() -> PipelinePolicy:
                     on_loopback="complete",
                 ),
             ),
+            "failed_terminal": PhaseDefinition(
+                drain="development",
+                role="terminal",
+                terminal_outcome="failure",
+                transitions=PhaseTransition(on_success="failed_terminal"),
+            ),
         },
         entry_phase="planning",
         terminal_phase="complete",
+        recovery=RecoveryPolicy(failed_route="failed_terminal"),
         budget_counters={
             "iteration": BudgetCounterConfig(),
             "reviewer_pass": BudgetCounterConfig(),
@@ -173,9 +181,9 @@ class TestDetermineNextEffect:
         assert isinstance(effect, ExitSuccessEffect)
 
     def test_failed_phase_returns_prepare_prompt_for_recovery(self) -> None:
-        """"failed" should re-enter recovery instead of returning exit failure."""
+        """failed_terminal (the failed_route) should re-enter recovery to previous phase."""
         state = _make_state(
-            phase="failed",
+            phase="failed_terminal",
             previous_phase="development",
             last_error="Test error",
             current_drain="development",

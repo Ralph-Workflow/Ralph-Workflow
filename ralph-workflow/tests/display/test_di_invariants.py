@@ -19,6 +19,8 @@ import io
 import tokenize
 from pathlib import Path
 
+import pytest
+
 _DISPLAY_DIR = Path(__file__).parent.parent.parent / "ralph" / "display"
 _BANNER_FILE = Path(__file__).parent.parent.parent / "ralph" / "banner.py"
 
@@ -83,6 +85,7 @@ def _all_display_files() -> list[Path]:
     return files
 
 
+@pytest.mark.timeout_seconds(5)
 def test_no_console_construction_outside_theme() -> None:
     """Console( must only appear in ralph/display/theme.py."""
     violations: list[str] = [
@@ -98,6 +101,7 @@ def test_no_console_construction_outside_theme() -> None:
     )
 
 
+@pytest.mark.timeout_seconds(5)
 def test_no_theme_construction_outside_theme() -> None:
     """Theme( must only appear in ralph/display/theme.py."""
     violations: list[str] = [
@@ -113,6 +117,7 @@ def test_no_theme_construction_outside_theme() -> None:
     )
 
 
+@pytest.mark.timeout_seconds(5)
 def test_no_env_reads_outside_allowed_modules() -> None:
     """os.environ and os.getenv must only appear in context.py and content_condenser.py."""
     violations: list[str] = [

@@ -50,7 +50,7 @@ def _dev_analysis_policy() -> PipelinePolicy:
                 drain="development",
                 transitions=PhaseTransition(
                     on_success="development_analysis",
-                    on_failure="failed",
+                    on_failure=None,
                     on_loopback="development",
                 ),
             ),
@@ -59,7 +59,7 @@ def _dev_analysis_policy() -> PipelinePolicy:
                 role="analysis",
                 transitions=PhaseTransition(
                     on_success="development_commit",
-                    on_failure="failed",
+                    on_failure=None,
                     on_loopback="development",
                 ),
                 loop_policy=PhaseLoopPolicy(
@@ -72,7 +72,7 @@ def _dev_analysis_policy() -> PipelinePolicy:
                 role="commit",
                 transitions=PhaseTransition(
                     on_success="development",
-                    on_failure="failed",
+                    on_failure=None,
                     on_loopback="development",
                 ),
                 commit_policy=PhaseCommitPolicy(
@@ -84,7 +84,7 @@ def _dev_analysis_policy() -> PipelinePolicy:
                 drain="review",
                 transitions=PhaseTransition(
                     on_success="review_analysis",
-                    on_failure="failed",
+                    on_failure=None,
                     on_loopback="review",
                 ),
             ),
@@ -93,7 +93,7 @@ def _dev_analysis_policy() -> PipelinePolicy:
                 role="analysis",
                 transitions=PhaseTransition(
                     on_success="review_commit",
-                    on_failure="failed",
+                    on_failure=None,
                     on_loopback="fix",
                 ),
                 loop_policy=PhaseLoopPolicy(
@@ -105,7 +105,7 @@ def _dev_analysis_policy() -> PipelinePolicy:
                 drain="fix",
                 transitions=PhaseTransition(
                     on_success="review_analysis",  # fix success goes to review_analysis
-                    on_failure="failed",
+                    on_failure=None,
                     on_loopback="review",
                 ),
             ),
@@ -114,7 +114,7 @@ def _dev_analysis_policy() -> PipelinePolicy:
                 role="commit",
                 transitions=PhaseTransition(
                     on_success="review",
-                    on_failure="failed",
+                    on_failure=None,
                     on_loopback="review",
                 ),
                 commit_policy=PhaseCommitPolicy(

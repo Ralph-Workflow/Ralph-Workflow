@@ -14,7 +14,6 @@ from __future__ import annotations
 
 from typing import Literal, cast
 
-from loguru import logger
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 # ---------------------------------------------------------------------------
@@ -62,9 +61,13 @@ class AgentDrainConfig(_FrozenPolicyModel):  # type: ignore[explicit-any]  # rea
 
     Attributes:
         chain: Name of the agent chain to invoke when this drain is active.
-        drain_class: Explicit capability class for this drain. When set, overrides
-            the substring-match fallback in drain_class_for_drain_name. Must be one
-            of: planning, development, analysis, review, fix, commit.
+        drain_class: Explicit capability class for this drain. Required when the drain name
+            cannot be resolved by the SessionDrain enum. Must be one of:
+            planning, development, analysis, review, fix, commit.
+        capability_class: Optional MCP capability set override for this drain. When None,
+            falls back to drain_class. Allows decoupling the workflow role classifier
+            from the MCP capability surface (e.g., a 'planning' drain could use
+            'development' capabilities by setting capability_class='development').
     """
 
     chain: str = Field(..., description="Agent chain name to bind to this drain")
@@ -72,18 +75,31 @@ class AgentDrainConfig(_FrozenPolicyModel):  # type: ignore[explicit-any]  # rea
         default=None,
         description=(
             "Drain capability class — one of planning|development|analysis|review|fix|commit. "
-            "When None, drain_class_for_drain_name infers a default from the drain name "
-            "or raises PolicyValidationError for ambiguous names."
+            "Required for custom drains not in the canonical SessionDrain enum. "
+            "When None for a canonical drain, the SessionDrain enum mapping is used as fallback."
+        ),
+    )
+    capability_class: str | None = Field(
+        default=None,
+        description=(
+            "MCP capability set override — one of planning|development|analysis|review|fix|commit. "
+            "When None, falls back to drain_class for capability planning. "
+            "Use this to decouple the workflow role from the MCP capability surface."
         ),
     )
 
     @model_validator(mode="after")
     def _validate_drain_class_value(self) -> AgentDrainConfig:
-        """Validate drain_class against the allowed vocabulary when set."""
+        """Validate drain_class and capability_class against the allowed vocabulary when set."""
         allowed = {"planning", "development", "analysis", "review", "fix", "commit"}
         if self.drain_class is not None and self.drain_class not in allowed:
             raise ValueError(
                 f"drain_class '{self.drain_class}' is not valid; "
+                f"must be one of: {', '.join(sorted(allowed))}"
+            )
+        if self.capability_class is not None and self.capability_class not in allowed:
+            raise ValueError(
+                f"capability_class '{self.capability_class}' is not valid; "
                 f"must be one of: {', '.join(sorted(allowed))}"
             )
         return self
@@ -273,10 +289,9 @@ class RecoveryPolicy(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reaso
     Attributes:
         cycle_cap: Maximum full-chain exhaustion cycles before exit.
         failed_route: Phase to route to on terminal pipeline failure.
-            Only 'failed' is accepted as a deprecated alias (emits deprecation
-            warning). Declare a phase with role='terminal' and
-            terminal_outcome='failure' and reference it here.
-            'phase_failed' and 'exit_failure' are no longer accepted.
+            Must reference a declared phase with role='terminal' and
+            terminal_outcome='failure'. 'phase_failed', 'exit_failure', and
+            'failed' are no longer accepted.
         terminal_failure_phase: Optional name of the declared terminal failure phase
             (must have role='terminal' and terminal_outcome='failure' in pipeline.phases).
             When set, enables BFS reachability validation for failure paths.
@@ -285,12 +300,12 @@ class RecoveryPolicy(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reaso
 
     cycle_cap: int = Field(default=200, ge=1)
     failed_route: str = Field(
-        default="failed",
+        default="failed_terminal",
         description=(
             "Phase to route to on terminal pipeline failure. "
-            "'failed' is a deprecated pseudo-phase (still accepted, emits warning). "
-            "Preferred: declare a phase with role='terminal' and terminal_outcome='failure' "
-            "and reference it here. 'phase_failed' and 'exit_failure' are no longer accepted."
+            "Must reference a declared phase with role='terminal' and terminal_outcome='failure'. "
+            "'phase_failed', 'exit_failure', and 'failed' are no longer accepted. "
+            "Example: declare [phases.failed_terminal] and set failed_route='failed_terminal'."
         ),
     )
     terminal_failure_phase: str | None = Field(
@@ -325,10 +340,13 @@ class RecoveryPolicy(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reaso
                 "See docs/sphinx/policy-driven-overhaul-migration.md."
             )
         if failed_route == "failed":
-            logger.warning(
-                "recovery.failed_route: 'failed' is a deprecated pseudo-phase alias. "
+            raise ValueError(
+                "recovery.failed_route: 'failed' is no longer accepted as a pseudo-phase alias. "
                 "Declare a phase with role='terminal' and terminal_outcome='failure' "
-                "and reference it via recovery.failed_route instead."
+                "and reference it via recovery.failed_route. "
+                "Example: add [phases.failed_terminal] with role='terminal' and "
+                "terminal_outcome='failure', then set failed_route='failed_terminal'. "
+                "See docs/sphinx/policy-driven-overhaul-migration.md."
             )
         return d
 
@@ -401,6 +419,25 @@ class PhaseParallelization(_FrozenPolicyModel):  # type: ignore[explicit-any]  #
     )
 
 
+class PhaseWorkflowFallback(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+    """Policy-declared workflow-level fallback when a phase's agent chain is exhausted.
+
+    When the agent chain for a phase is fully exhausted, the reducer checks this
+    field first. If set, it routes to `target` instead of the global failure route.
+    This allows per-phase fallback behavior to be expressed in policy.
+
+    Attributes:
+        target: Phase to route to when the agent chain at this phase is exhausted.
+        note: Optional rationale, surfaced by --explain-policy.
+    """
+
+    target: str = Field(..., description="Phase to route to when the agent chain is exhausted")
+    note: str | None = Field(
+        default=None,
+        description="Optional rationale for this fallback, shown by --explain-policy",
+    )
+
+
 class PhaseDefinition(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     """Definition of a single phase in the pipeline graph.
 
@@ -423,12 +460,12 @@ class PhaseDefinition(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reas
         issues_outcome: For role='review': the value to set as review_outcome when
             issues are found. Required when role='review'. Drives review_outcome
             propagation so the pipeline knows what kind of issues were flagged.
-        requires_commit: Deprecated. Use role='commit' instead.
-        embeds_analysis: Deprecated. Use role='analysis' instead.
         prompt_template: File-backed .jinja prompt template for this phase.
         continuation_template: Optional continuation .jinja prompt template.
         parallelization: Optional transition-scoped parallelization policy. When None,
             multi-work-unit plans must not fan out from this phase.
+        workflow_fallback: Optional policy-declared fallback when this phase's agent chain
+            is exhausted. When set, routes to target instead of the global failure route.
     """
 
     drain: str = Field(..., description="Drain binding for this phase")
@@ -490,16 +527,6 @@ class PhaseDefinition(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reas
         ),
     )
 
-    # Legacy fields — deprecated, use role instead
-    requires_commit: bool = Field(
-        default=False,
-        description="Deprecated: use role='commit'.",
-    )
-    embeds_analysis: bool = Field(
-        default=False,
-        description="Deprecated: use role='analysis'.",
-    )
-
     prompt_template: str | None = Field(
         default=None,
         description="File-backed .jinja prompt template for this phase",
@@ -515,26 +542,34 @@ class PhaseDefinition(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reas
             "must not fan out from this phase."
         ),
     )
+    workflow_fallback: PhaseWorkflowFallback | None = Field(
+        default=None,
+        description=(
+            "Policy-declared fallback route when this phase's agent chain is exhausted. "
+            "When set, routes to target instead of the global recovery.failed_route. "
+            "Takes precedence over recovery.failed_route on chain exhaustion."
+        ),
+    )
 
     @model_validator(mode="before")
     @classmethod
-    def _derive_role_from_legacy_flags(cls, data: object) -> object:
-        """Derive role from deprecated embeds_analysis/requires_commit when role is unset."""
+    def _reject_legacy_fields(cls, data: object) -> object:
+        """Reject removed legacy fields with actionable errors."""
         if not isinstance(data, dict):
             return data
         d: dict[str, object] = cast("dict[str, object]", data)
-        if d.get("role") is not None:
-            return d
         if d.get("embeds_analysis"):
-            logger.warning(
-                "Phase uses deprecated 'embeds_analysis=true'; set role='analysis' instead"
+            raise ValueError(
+                "PhaseDefinition.embeds_analysis has been removed. "
+                "Set role='analysis' instead. "
+                "See docs/sphinx/policy-driven-overhaul-migration.md."
             )
-            return {**d, "role": "analysis"}
         if d.get("requires_commit"):
-            logger.warning(
-                "Phase uses deprecated 'requires_commit=true'; set role='commit' instead"
+            raise ValueError(
+                "PhaseDefinition.requires_commit has been removed. "
+                "Set role='commit' instead. "
+                "See docs/sphinx/policy-driven-overhaul-migration.md."
             )
-            return {**d, "role": "commit"}
         return d
 
 
@@ -680,8 +715,9 @@ class PipelinePolicy(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reaso
     @model_validator(mode="after")
     def no_phase_cycles_without_loopback(self) -> PipelinePolicy:
         """Detect obvious infinite loop risks (phase transitions to itself without loopback)."""
+        terminal = self.terminal_states()
         for name, phase_def in self.phases.items():
-            if name == self.terminal_phase:
+            if name in terminal:
                 continue
             t = phase_def.transitions
             if t.on_success == name and t.on_loopback is None:
@@ -788,6 +824,20 @@ class PipelinePolicy(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reaso
                         f"'{counter}' is not declared in budget_counters. "
                         f"Declared counters: {sorted(self.budget_counters.keys())}. "
                         f"Add [budget_counters.{counter}] to pipeline.toml."
+                    )
+        return self
+
+    @model_validator(mode="after")
+    def workflow_fallback_targets_valid(self) -> PipelinePolicy:
+        """Ensure workflow_fallback.target references a known phase or terminal."""
+        ts = self.terminal_states()
+        for phase_name, phase_def in self.phases.items():
+            if phase_def.workflow_fallback is not None:
+                target = phase_def.workflow_fallback.target
+                if target not in ts and target not in self.phases:
+                    raise ValueError(
+                        f"Phase '{phase_name}' workflow_fallback.target "
+                        f"'{target}' is not a known phase or terminal"
                     )
         return self
 
@@ -933,11 +983,10 @@ class PolicyBundle(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reason:
     @model_validator(mode="after")
     def analysis_decision_vocabulary_present(self) -> PolicyBundle:
         """Ensure analysis phases have decision_vocabulary defined."""
-        # Check both new role='analysis' and legacy embeds_analysis=True phases
         analysis_phases = {
             name: defn
             for name, defn in self.pipeline.phases.items()
-            if defn.role == "analysis" or defn.embeds_analysis
+            if defn.role == "analysis"
         }
         for phase_name, phase_def in analysis_phases.items():
             matching_artifacts = [

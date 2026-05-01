@@ -30,7 +30,7 @@ def _minimal_policy() -> PipelinePolicy:
                 drain="development",
                 transitions=PhaseTransition(
                     on_success="complete",
-                    on_failure="failed",
+                    on_failure=None,
                     on_loopback="development",
                 ),
             ),
@@ -96,7 +96,7 @@ class TestRecoveryFirstBehavior:
 
         # Final crash on agent 1 (chain exhausted): "failed" with descriptive reason
         state, effects = _reduce(state, crash_event)
-        assert state.phase == "failed"
+        assert state.phase == "failed_terminal"
         assert state.last_error is not None
         assert "Phase handler crashed: RuntimeError: boom" in state.last_error
         assert state.last_error != "Unknown failure"
@@ -117,7 +117,7 @@ class TestRecoveryFirstBehavior:
 
         new_state, effects = _reduce(state, event)
 
-        assert new_state.phase == "failed"
+        assert new_state.phase == "failed_terminal"
         assert new_state.last_error is not None
         assert new_state.last_error != ""
         assert new_state.last_error != "Unknown failure"
@@ -137,7 +137,7 @@ class TestRecoveryFirstBehavior:
 
         new_state, effects = _reduce(state, event)
 
-        assert new_state.phase == "failed"
+        assert new_state.phase == "failed_terminal"
         assert new_state.last_error is not None
         assert new_state.last_error.strip() != ""
         assert new_state.last_error != "Unknown failure"
@@ -205,7 +205,7 @@ def test_phase_failure_recoverable_empty_reason_produces_descriptive_error() -> 
 
     new_state, effects = _reduce(state, event)
 
-    assert new_state.phase == "failed"
+    assert new_state.phase == "failed_terminal"
     assert new_state.last_error is not None
     assert new_state.last_error != ""
     assert new_state.last_error != "Unknown failure"
@@ -224,7 +224,7 @@ def test_phase_failure_recoverable_whitespace_reason_produces_descriptive_error(
 
     new_state, effects = _reduce(state, event)
 
-    assert new_state.phase == "failed"
+    assert new_state.phase == "failed_terminal"
     assert new_state.last_error is not None
     assert new_state.last_error.strip() != ""
     assert new_state.last_error != "Unknown failure"
@@ -240,7 +240,7 @@ def test_phase_failure_not_recoverable_empty_reason_produces_descriptive_error()
 
     new_state, effects = _reduce(state, event)
 
-    assert new_state.phase == "failed"
+    assert new_state.phase == "failed_terminal"
     assert new_state.last_error is not None
     assert new_state.last_error != ""
     assert new_state.last_error != "Unknown failure"

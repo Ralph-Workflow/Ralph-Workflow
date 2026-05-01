@@ -280,6 +280,28 @@ class TestRenderExplanationAscii:
         assert "+--[failed]--> fix" in output
         assert "+--[failed]--> failed" not in output
 
+    def test_parallel_fanout_rejoin_shape_visible(self) -> None:
+        """Default pipeline ASCII diagram shows both FAN_OUT and REJOIN annotations.
+
+        The parallel shape must be visually legible: the fan-out source phase,
+        the FAN_OUT annotation with parameters, and the REJOIN marker must all
+        appear in the correct order so the reader can see where the parallel
+        branch starts and where it ends.
+        """
+        policy_dir = _get_default_policy_path()
+        bundle = load_policy(policy_dir)
+        explanation = explain_policy(bundle)
+        output = render_explanation_ascii(explanation)
+
+        assert ">>> FAN_OUT" in output
+        assert "max_workers=" in output
+        assert "max_units=" in output
+        assert "<<< REJOIN" in output
+
+        fanout_pos = output.index(">>> FAN_OUT")
+        rejoin_pos = output.index("<<< REJOIN")
+        assert rejoin_pos > fanout_pos, "REJOIN annotation must appear after FAN_OUT"
+
     def test_render_text_emits_bypass_route_sentences(self) -> None:
         """render_explanation_text emits bypass_route explanation sentences."""
         phase = PhaseExplanation(

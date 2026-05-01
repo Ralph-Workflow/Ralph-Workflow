@@ -252,3 +252,52 @@ class TestCliCounterOverrides:
         error_msg = str(exc_info.value)
         assert "bad_counter" in error_msg
         assert "declared_counter" in error_msg
+
+
+class TestLegacyFieldsRejected:
+    """Tests for removed/legacy fields that must be rejected at construction time."""
+
+    def test_failed_route_failed_alias_rejected(self) -> None:
+        """RecoveryPolicy rejects 'failed' as failed_route (removed pseudo-phase alias)."""
+        with pytest.raises(ValueError, match="'failed' is no longer accepted"):
+            RecoveryPolicy(failed_route="failed")
+
+    def test_drain_class_substring_inference_rejected(self) -> None:
+        """Custom drain without drain_class raises PolicyValidationError.
+
+        Pre-v2 behavior silently inferred drain class from name substrings
+        (e.g. a drain named 'custom_fixer_drain' resolved to DrainClass.FIX).
+        That inference was removed; an explicit drain_class is required.
+        """
+        from ralph.mcp.protocol.capability_mapping import drain_class_for_session  # noqa: PLC0415
+
+        agents = AgentsPolicy(
+            agent_chains={"chain": AgentChainConfig(agents=["claude"])},
+            agent_drains={"custom_fixer_drain": AgentDrainConfig(chain="chain")},
+        )
+        with pytest.raises(PolicyValidationError):
+            drain_class_for_session("custom_fixer_drain", agents)
+
+    def test_legacy_phase_field_requires_commit_rejected(self) -> None:
+        """PhaseDefinition with requires_commit=True is rejected with an actionable error."""
+        from pydantic import ValidationError  # noqa: PLC0415
+
+        with pytest.raises(ValidationError, match="requires_commit has been removed"):
+            PhaseDefinition(
+                drain="build",
+                role="execution",
+                requires_commit=True,
+                transitions=PhaseTransition(on_success="done"),
+            )
+
+    def test_legacy_phase_field_embeds_analysis_rejected(self) -> None:
+        """PhaseDefinition with embeds_analysis=True is rejected with an actionable error."""
+        from pydantic import ValidationError  # noqa: PLC0415
+
+        with pytest.raises(ValidationError, match="embeds_analysis has been removed"):
+            PhaseDefinition(
+                drain="build",
+                role="execution",
+                embeds_analysis=True,
+                transitions=PhaseTransition(on_success="done"),
+            )

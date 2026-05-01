@@ -28,7 +28,7 @@ def _feature_commit_policy() -> PipelinePolicy:
                 role="commit",
                 transitions=PhaseTransition(
                     on_success="complete",
-                    on_failure="failed",
+                    on_failure=None,
                 ),
                 commit_policy=PhaseCommitPolicy(
                     increments_counter="iteration",
@@ -90,7 +90,7 @@ class TestComputeBudgetStateUsingCommitPolicy:
                     role="commit",
                     transitions=PhaseTransition(
                         on_success="complete",
-                        on_failure="failed",
+                        on_failure=None,
                     ),
                     # commit_policy absent
                 ),

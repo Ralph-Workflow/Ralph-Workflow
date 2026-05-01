@@ -377,8 +377,25 @@ def _handle_agent_failure(
         new_state = state.with_phase_chain(state.phase, new_chain).copy_with(metrics=new_metrics)
         return new_state, []
 
-    # Chain exhausted: preserve any informative last_error from PhaseFailureEvent,
-    # otherwise construct a descriptive message.
+    # Chain exhausted: check for per-phase workflow_fallback before global failure route.
+    if policy is not None:
+        phase_def = policy.phases.get(state.phase)
+        if phase_def is not None and phase_def.workflow_fallback is not None:
+            fallback_target = phase_def.workflow_fallback.target
+            logger.bind(component="policy.routing").info(
+                explain_routing_decision(
+                    state.phase,
+                    fallback_target,
+                    "workflow_fallback",
+                    "agent chain exhausted — routing via policy workflow_fallback",
+                )
+            )
+            new_state = state.copy_with(
+                phase=fallback_target,
+                previous_phase=state.phase,
+            )
+            return new_state, []
+
     failure_reason = _failure_reason(
         state,
         (

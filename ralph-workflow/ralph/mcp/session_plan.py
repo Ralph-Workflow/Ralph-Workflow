@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 
 from ralph.config.enums import AgentTransport
 from ralph.config.mcp_loader import load_mcp_config
-from ralph.mcp.protocol.capability_mapping import drain_class_for_session
+from ralph.mcp.protocol.capability_mapping import DrainClass, drain_class_for_session
 from ralph.mcp.transport.claude import load_existing_claude_upstream_servers
 from ralph.mcp.transport.common import (
     mcp_toml_as_upstreams,
@@ -88,6 +88,13 @@ def _base_capabilities_for_drain(
     agents_policy: AgentsPolicy | None = None,
 ) -> set[str]:
     drain_class = drain_class_for_session(drain, agents_policy)
+    # capability_class overrides drain_class for MCP tool surface selection
+    capability_cls: DrainClass = drain_class
+    if agents_policy is not None:
+        drain_cfg = agents_policy.agent_drains.get(drain)
+        if drain_cfg is not None and drain_cfg.capability_class is not None:
+            capability_cls = DrainClass(drain_cfg.capability_class)
+
     base = {
         "workspace.read",
         "git.status_read",
@@ -96,14 +103,14 @@ def _base_capabilities_for_drain(
         "workspace.metadata_read",
     }
 
-    if drain_class.value == "planning":
+    if capability_cls == DrainClass.PLANNING:
         return base
-    if drain_class.value == "review":
+    if capability_cls == DrainClass.REVIEW:
         return base | {"run.report_progress"}
-    if drain_class.value == "analysis":
+    if capability_cls == DrainClass.ANALYSIS:
         return base | {"process.exec_bounded", "run.report_progress"}
     # Commit drains are strictly read-only: git.write is reserved to the orchestrator.
-    if drain_class.value == "commit":
+    if capability_cls == DrainClass.COMMIT:
         return base | {"run.report_progress"}
     return base | {
         "workspace.write_ephemeral",

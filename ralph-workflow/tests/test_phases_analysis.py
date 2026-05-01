@@ -223,7 +223,7 @@ class TestParseAnalysisDecisionPhaseNameParameter:
                     transitions=PhaseTransition(
                         on_success="development_commit",
                         on_loopback="development",
-                        on_failure="failed",
+                        on_failure=None,
                     ),
                     loop_policy=PhaseLoopPolicy(
                         max_iterations=3,
@@ -237,7 +237,7 @@ class TestParseAnalysisDecisionPhaseNameParameter:
                             target="development", reset_loop=False
                         ),
                         "failed": PhaseDecisionRoute(
-                            target="failed", reset_loop=False
+                            target="failed_terminal", reset_loop=False
                         ),
                     },
                 ),
@@ -246,7 +246,7 @@ class TestParseAnalysisDecisionPhaseNameParameter:
                     role="commit",
                     transitions=PhaseTransition(
                         on_success="complete",
-                        on_failure="failed",
+                        on_failure=None,
                     ),
                 ),
                 "development": PhaseDefinition(
@@ -254,8 +254,14 @@ class TestParseAnalysisDecisionPhaseNameParameter:
                     role="execution",
                     transitions=PhaseTransition(
                         on_success="custom_analysis",
-                        on_failure="failed",
+                        on_failure=None,
                     ),
+                ),
+                "failed_terminal": PhaseDefinition(
+                    drain="development",
+                    role="terminal",
+                    terminal_outcome="failure",
+                    transitions=PhaseTransition(on_success="failed_terminal"),
                 ),
                 "complete": PhaseDefinition(
                     drain="complete",
@@ -330,7 +336,7 @@ class TestRegisterRoleHandlers:
                     transitions=PhaseTransition(
                         on_success="complete",
                         on_loopback="complete",
-                        on_failure="failed",
+                        on_failure=None,
                     ),
                     loop_policy=PhaseLoopPolicy(
                         max_iterations=3,
@@ -371,7 +377,7 @@ class TestRegisterRoleHandlers:
                     role="commit",
                     transitions=PhaseTransition(
                         on_success="complete",
-                        on_failure="failed",
+                        on_failure=None,
                     ),
                     commit_policy=PhaseCommitPolicy(
                         increments_counter="iteration",

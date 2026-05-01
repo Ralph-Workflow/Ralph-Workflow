@@ -17,6 +17,7 @@ from ralph.policy.models import (
     PhaseDefinition,
     PhaseTransition,
     PipelinePolicy,
+    RecoveryPolicy,
 )
 from ralph.runtime import (
     DEFAULT_TEST_TIMEOUT_SECONDS,
@@ -192,7 +193,7 @@ def minimal_pipeline_policy() -> PipelinePolicy:
             ),
             "development": PhaseDefinition(
                 drain="development",
-                embeds_analysis=True,
+                role="analysis",
                 transitions=PhaseTransition(
                     on_success="development_commit",
                     on_loopback="development",
@@ -200,15 +201,15 @@ def minimal_pipeline_policy() -> PipelinePolicy:
             ),
             "development_commit": PhaseDefinition(
                 drain="development_commit",
-                requires_commit=True,
+                role="commit",
                 transitions=PhaseTransition(
                     on_success="review",
-                    on_failure="failed",
+                    on_failure="failed_terminal",
                 ),
             ),
             "review": PhaseDefinition(
                 drain="review",
-                embeds_analysis=True,
+                role="analysis",
                 transitions=PhaseTransition(
                     on_success="review_commit",
                     on_loopback="fix",
@@ -220,10 +221,10 @@ def minimal_pipeline_policy() -> PipelinePolicy:
             ),
             "review_commit": PhaseDefinition(
                 drain="review_commit",
-                requires_commit=True,
+                role="commit",
                 transitions=PhaseTransition(
                     on_success="complete",
-                    on_failure="failed",
+                    on_failure="failed_terminal",
                 ),
             ),
             "complete": PhaseDefinition(
@@ -233,9 +234,16 @@ def minimal_pipeline_policy() -> PipelinePolicy:
                     on_loopback="complete",
                 ),
             ),
+            "failed_terminal": PhaseDefinition(
+                drain="development",
+                role="terminal",
+                terminal_outcome="failure",
+                transitions=PhaseTransition(on_success="failed_terminal"),
+            ),
         },
         entry_phase="planning",
         terminal_phase="complete",
+        recovery=RecoveryPolicy(failed_route="failed_terminal"),
     )
 
 

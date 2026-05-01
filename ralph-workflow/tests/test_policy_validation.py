@@ -227,7 +227,7 @@ class TestPolicyBundleValidation:
             PolicyBundle(agents=agents, pipeline=pipeline, artifacts=artifacts)
 
     def test_analysis_phase_without_vocabulary_raises(self) -> None:
-        """Test that embeds_analysis phase without decision_vocabulary raises."""
+        """Test that role='analysis' phase without decision_vocabulary raises."""
         # Create valid agents policy
         agents = AgentsPolicy(
             agent_chains={
@@ -245,7 +245,7 @@ class TestPolicyBundleValidation:
             phases={
                 "development": PhaseDefinition(
                     drain="development",
-                    embeds_analysis=True,
+                    role="analysis",
                     transitions=PhaseTransition(
                         on_success="complete",
                         on_loopback="complete",
@@ -335,7 +335,7 @@ class TestForbidSiblingDrainInference:
                     drain="review_commit",
                     transitions=PhaseTransition(
                         on_success="complete",
-                        on_failure="failed",
+                        on_failure=None,
                     ),
                 ),
                 "complete": PhaseDefinition(
@@ -1009,7 +1009,11 @@ class TestValidatePolicyCompletenessNewRules:
         return AgentsPolicy(agent_chains=chains, agent_drains=agent_drains)
 
     def _minimal_analysis_phase(
-        self, name: DrainName, iteration_field: str, on_success: str = "complete"
+        self,
+        name: DrainName,
+        iteration_field: str,
+        on_success: str = "complete",
+        failure_target: str = "failed",
     ) -> PhaseDefinition:
         """Create a minimal analysis phase with required decisions field."""
         return PhaseDefinition(
@@ -1025,7 +1029,7 @@ class TestValidatePolicyCompletenessNewRules:
             ),
             decisions={
                 "completed": PhaseDecisionRoute(target=on_success, reset_loop=True),
-                "failed": PhaseDecisionRoute(target="failed", reset_loop=False),
+                "failed": PhaseDecisionRoute(target=failure_target, reset_loop=False),
             },
         )
 
@@ -1095,7 +1099,7 @@ class TestValidatePolicyCompletenessNewRules:
                     role="analysis",
                     transitions=PhaseTransition(
                         on_success="complete",
-                        on_failure="failed",
+                        on_failure=None,
                         on_loopback="development_analysis",
                     ),
                     loop_policy=PhaseLoopPolicy(
@@ -1148,7 +1152,7 @@ class TestValidatePolicyCompletenessNewRules:
                     role="commit",
                     transitions=PhaseTransition(
                         on_success="complete",
-                        on_failure="failed",
+                        on_failure=None,
                     ),
                     # commit_policy intentionally absent
                 ),
@@ -1184,24 +1188,25 @@ class TestValidatePolicyCompletenessNewRules:
                 "development_analysis": self._minimal_analysis_phase(
                     "development_analysis", "development_analysis_iteration",
                     on_success="development_commit",
+                    failure_target="failed_terminal",
                 ),
                 "development_commit": PhaseDefinition(
                     drain="development_commit",
                     role="commit",
                     transitions=PhaseTransition(
                         on_success="complete",
-                        on_failure="failed",
+                        on_failure=None,
                     ),
                     commit_policy=PhaseCommitPolicy(
                         increments_counter="iteration",
                         loop_resets=["development_analysis_iteration"],
                     ),
                 ),
-                "failed": PhaseDefinition(
+                "failed_terminal": PhaseDefinition(
                     drain="complete",
                     role="terminal",
                     terminal_outcome="failure",
-                    transitions=PhaseTransition(on_success="failed", on_loopback="failed"),
+                    transitions=PhaseTransition(on_success="failed_terminal"),
                 ),
                 "complete": PhaseDefinition(
                     drain="complete",
@@ -1234,24 +1239,25 @@ class TestValidatePolicyCompletenessNewRules:
                 "development_analysis": self._minimal_analysis_phase(
                     "development_analysis", "development_analysis_iteration",
                     on_success="development_commit",
+                    failure_target="failed_terminal",
                 ),
                 "development_commit": PhaseDefinition(
                     drain="development_commit",
                     role="commit",
                     transitions=PhaseTransition(
                         on_success="complete",
-                        on_failure="failed",
+                        on_failure=None,
                     ),
                     commit_policy=PhaseCommitPolicy(
                         increments_counter="none",  # Valid — no outer-progress bump
                         loop_resets=["development_analysis_iteration"],
                     ),
                 ),
-                "failed": PhaseDefinition(
+                "failed_terminal": PhaseDefinition(
                     drain="complete",
                     role="terminal",
                     terminal_outcome="failure",
-                    transitions=PhaseTransition(on_success="failed", on_loopback="failed"),
+                    transitions=PhaseTransition(on_success="failed_terminal"),
                 ),
                 "complete": PhaseDefinition(
                     drain="complete",
@@ -1276,7 +1282,7 @@ class TestValidatePolicyCompletenessNewRules:
         agents = self._minimal_agents(["development_analysis", "development_commit", "complete"])
         dev_analysis_decisions = {
             "completed": PhaseDecisionRoute(target="development_commit", reset_loop=True),
-            "failed": PhaseDecisionRoute(target="failed", reset_loop=False),
+            "failed": PhaseDecisionRoute(target="failed_terminal", reset_loop=False),
         }
         pipeline = PipelinePolicy(
             phases={
@@ -1298,7 +1304,7 @@ class TestValidatePolicyCompletenessNewRules:
                     role="commit",
                     transitions=PhaseTransition(
                         on_success="complete",
-                        on_failure="failed",
+                        on_failure=None,
                     ),
                     commit_policy=PhaseCommitPolicy(
                         increments_counter="iteration",
@@ -1307,11 +1313,11 @@ class TestValidatePolicyCompletenessNewRules:
                         loop_resets=["nonexistent_iteration_field"],
                     ),
                 ),
-                "failed": PhaseDefinition(
+                "failed_terminal": PhaseDefinition(
                     drain="complete",
                     role="terminal",
                     terminal_outcome="failure",
-                    transitions=PhaseTransition(on_success="failed", on_loopback="failed"),
+                    transitions=PhaseTransition(on_success="failed_terminal"),
                 ),
                 "complete": PhaseDefinition(
                     drain="complete",
@@ -1336,7 +1342,7 @@ class TestValidatePolicyCompletenessNewRules:
         agents = self._minimal_agents(["development_analysis", "development_commit", "complete"])
         dev_analysis_decisions = {
             "completed": PhaseDecisionRoute(target="development_commit", reset_loop=True),
-            "failed": PhaseDecisionRoute(target="failed", reset_loop=False),
+            "failed": PhaseDecisionRoute(target="failed_terminal", reset_loop=False),
         }
         pipeline = PipelinePolicy(
             phases={
@@ -1358,7 +1364,7 @@ class TestValidatePolicyCompletenessNewRules:
                     role="commit",
                     transitions=PhaseTransition(
                         on_success="complete",
-                        on_failure="failed",
+                        on_failure=None,
                     ),
                     commit_policy=PhaseCommitPolicy(
                         increments_counter="iteration",
@@ -1366,11 +1372,11 @@ class TestValidatePolicyCompletenessNewRules:
                         loop_resets=["development_analysis_iteration"],
                     ),
                 ),
-                "failed": PhaseDefinition(
+                "failed_terminal": PhaseDefinition(
                     drain="complete",
                     role="terminal",
                     terminal_outcome="failure",
-                    transitions=PhaseTransition(on_success="failed", on_loopback="failed"),
+                    transitions=PhaseTransition(on_success="failed_terminal"),
                 ),
                 "complete": PhaseDefinition(
                     drain="complete",

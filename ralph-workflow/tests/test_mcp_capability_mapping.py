@@ -291,8 +291,9 @@ class TestDrainToPolicyMode:
         )
         assert drain_to_policy_mode("my_custom_audit", policy) == PolicyMode.ANALYSIS
 
-    def test_custom_commit_drain_via_substring(self) -> None:
-        assert drain_to_policy_mode("feature_commit") == PolicyMode.COMMIT
+    def test_custom_commit_drain_without_policy_raises(self) -> None:
+        with pytest.raises(PolicyValidationError):
+            drain_to_policy_mode("feature_commit")
 
 
 # =============================================================================

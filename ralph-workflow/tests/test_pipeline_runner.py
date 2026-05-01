@@ -650,8 +650,8 @@ class TestDetermineEffect:
                 phases={
                     "development_commit": PhaseDefinition(
                         drain="development_commit",
-                        requires_commit=True,
-                        transitions=PhaseTransition(on_success="complete", on_failure="failed"),
+                        role="commit",
+                        transitions=PhaseTransition(on_success="complete"),
                     ),
                     "complete": PhaseDefinition(
                         drain="complete",

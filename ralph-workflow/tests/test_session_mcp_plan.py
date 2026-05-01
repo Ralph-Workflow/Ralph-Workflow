@@ -295,3 +295,42 @@ enabled = true
         assert "artifact.submit" in plan.capabilities
         assert "workspace.metadata_read" in plan.capabilities
         assert "run.report_progress" in plan.capabilities
+
+
+def test_capabilities_use_policy_declared_drain_capability_class(
+    isolated_home: Path,
+    tmp_path: Path,
+) -> None:
+    """When a drain declares capability_class in agents.toml, build_session_mcp_plan
+    resolves MCP capabilities using that class rather than the drain_class.
+    """
+    del isolated_home
+    from ralph.policy.models import (  # noqa: PLC0415
+        AgentChainConfig,
+        AgentDrainConfig,
+        AgentsPolicy,
+    )
+
+    agents_policy = AgentsPolicy(
+        agent_chains={"my_chain": AgentChainConfig(agents=["claude"])},
+        agent_drains={
+            "my_planning_drain": AgentDrainConfig(
+                chain="my_chain",
+                drain_class="planning",
+                capability_class="development",
+            )
+        },
+    )
+
+    plan = build_session_mcp_plan(
+        transport=AgentTransport.CLAUDE,
+        drain="my_planning_drain",
+        workspace_path=tmp_path,
+        agents_policy=agents_policy,
+    )
+
+    # capability_class='development' overrides drain_class='planning', so we get
+    # development write capabilities rather than planning's read-only surface.
+    assert "workspace.write_tracked" in plan.capabilities
+    assert "workspace.edit" in plan.capabilities
+    assert "workspace.read" in plan.capabilities

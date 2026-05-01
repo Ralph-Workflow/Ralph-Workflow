@@ -18,20 +18,28 @@ it does not happen.
 
 ## Assumptions that no longer hold
 
-### 1. Default recovery routing was `"phase_failed"`
+### 1. Default recovery routing was `"phase_failed"` (or `"failed"`)
 
-Earlier builds used `terminal_recovery_route = "phase_failed"` as the internal default.
-This was an internal implementation artifact, not a real pseudo-phase name.
+Earlier builds used `terminal_recovery_route = "phase_failed"` or `failed_route = "failed"`
+as the recovery target. Both were pseudo-phase aliases, not real declared phases.
 
-**After the change:** The default is `terminal_recovery_route = "failed"` which matches
-the built-in pseudo-phase constant. The valid values are:
+**After the change:** `failed_route` must point to a real phase declared in `pipeline.toml`
+with `role = "terminal"` and `terminal_outcome = "failure"`. The values `"phase_failed"`,
+`"exit_failure"`, and `"failed"` are all rejected at startup with a `ValueError`.
 
-- `"failed"` — route terminal failures to the built-in failed state (default)
-- `"exit_failure"` — exit immediately with a non-zero code
-- Any declared phase name — route terminal failures to that phase
+The default bundled pipeline declares:
 
-If your `pipeline.toml` or config code referenced `"phase_failed"` as a route target,
-change it to `"failed"`.
+```toml
+[phases.failed_terminal]
+role = "terminal"
+terminal_outcome = "failure"
+
+[recovery]
+failed_route = "failed_terminal"
+```
+
+If your `pipeline.toml` referenced `"phase_failed"` or `"failed"` as the route target,
+declare a terminal failure phase and point `failed_route` to it.
 
 ### 2. Loop iteration counters were implicit
 
@@ -76,7 +84,7 @@ policy declarations. Configurations that relied on the old implicit behavior wil
 
 | Removed hidden behavior | Replaced by |
 |-------------------------|-------------|
-| `drain_to_policy_mode()` recognized only built-in drain name substrings | `AgentDrainConfig.drain_class` field — set explicitly in `ralph-workflow.toml` agent_drains entries; substring matching is the fallback, not the authority |
+| `drain_to_policy_mode()` resolved drain class by substring matching on the drain name | `AgentDrainConfig.drain_class` field — must be set explicitly in `agents.toml`; substring inference was removed completely |
 | Analysis loop cap read from `PipelineState.loop_caps` only | Cap resolution now falls back to `pipeline.loop_counters[field].default_max`, then `loop_policy.max_iterations`; `loop_caps` is an optional runtime override |
 | `_handle_analysis_decision` required `loop_caps` pre-populated | Now resolved from policy without requiring state initialization |
 | `access_mode_for_drain()` / `build_session_mcp_plan()` ignored `AgentsPolicy` | Both now accept `agents_policy` and pass it to drain classification, so custom drain names declared with `drain_class` receive the correct MCP mode |
@@ -123,8 +131,20 @@ on top of the new structure.
    tracks_budget = true
    ```
 
-3. **Check `terminal_recovery_route`** in `[recovery]`. If it is set to `"phase_failed"`,
-   change it to `"failed"`.
+3. **Check `failed_route`** in `[recovery]`. The values `"phase_failed"`, `"exit_failure"`,
+   and `"failed"` are all rejected. Declare a terminal failure phase and point
+   `failed_route` to it:
+
+   ```toml
+   [phases.failed_terminal]
+   drain = "done"
+   role = "terminal"
+   terminal_outcome = "failure"
+   transitions = { on_success = "failed_terminal" }
+
+   [recovery]
+   failed_route = "failed_terminal"
+   ```
 
 4. **Ensure `entry_phase` and `terminal_phase`** are declared at the top level.
 
@@ -299,6 +319,36 @@ Three new checks were added to `validate_policy_completeness`:
    counter names are rejected at startup with a `PolicyValidationError` that lists the
    declared counters. Fix: either add the counter to `pipeline.toml` or correct the
    counter name in the CLI invocation.
+
+### Rejected legacy fields in this iteration
+
+The following fields and values are now rejected at model construction time (before
+`validate_policy_completeness` even runs):
+
+- **`recovery.failed_route = "failed"`** — the pseudo-phase alias `"failed"` is no longer
+  accepted. Declare a real terminal failure phase and reference it. See migration step 3
+  above.
+
+- **`PhaseDefinition.requires_commit = true`** — this field was removed. Use
+  `role = "commit"` on the phase definition instead.
+
+- **`PhaseDefinition.embeds_analysis = true`** — this field was removed. Use
+  `role = "analysis"` on the phase definition instead.
+
+- **Drain class substring inference** — `drain_class_for_session` no longer infers a
+  drain class from the drain name. Custom drains (any drain not in the canonical
+  `SessionDrain` enum) must declare `drain_class` explicitly in `agents.toml`:
+
+  ```toml
+  [agent_drains.my_custom_drain]
+  chain = "my_chain"
+  drain_class = "development"  # required for non-canonical drain names
+  ```
+
+  The `capability_class` field is also available to decouple the drain’s workflow role
+  from the MCP capability surface it receives:  
+  `capability_class = "analysis"` gives a development-role drain analysis-level MCP
+  permissions.
 
 The `--check-policy` command now validates these rules as well, so you can verify your
 configuration before a full pipeline run.

@@ -28,6 +28,7 @@ from ralph.policy.models import (
     PipelinePolicy,
     PostCommitRoute,
     PostCommitRouteWhen,
+    RecoveryPolicy,
 )
 
 if TYPE_CHECKING:
@@ -50,13 +51,19 @@ def _basic_pipeline_policy() -> PipelinePolicy:
                 drain="development",
                 transitions=PhaseTransition(
                     on_success="complete",
-                    on_failure="failed",
                     on_loopback="development",
                 ),
+            ),
+            "failed_terminal": PhaseDefinition(
+                drain="development",
+                role="terminal",
+                terminal_outcome="failure",
+                transitions=PhaseTransition(on_success="failed_terminal"),
             ),
         },
         entry_phase="development",
         terminal_phase="complete",
+        recovery=RecoveryPolicy(failed_route="failed_terminal"),
     )
 
 
@@ -67,7 +74,6 @@ def _policy_with_transition(target_phase: PipelinePhase) -> PipelinePolicy:
                 drain="development",
                 transitions=PhaseTransition(
                     on_success=target_phase,
-                    on_failure="failed",
                     on_loopback="development",
                 ),
             ),
@@ -75,7 +81,6 @@ def _policy_with_transition(target_phase: PipelinePhase) -> PipelinePolicy:
                 drain="development",
                 transitions=PhaseTransition(
                     on_success="complete",
-                    on_failure="failed",
                     on_loopback="development",
                 ),
             ),
@@ -83,7 +88,6 @@ def _policy_with_transition(target_phase: PipelinePhase) -> PipelinePolicy:
                 drain="review",
                 transitions=PhaseTransition(
                     on_success="complete",
-                    on_failure="failed",
                     on_loopback="review",
                 ),
             ),
@@ -123,7 +127,6 @@ def _policy_with_post_commit_routes() -> PipelinePolicy:
                 role="commit",
                 transitions=PhaseTransition(
                     on_success="review",
-                    on_failure="failed",
                 ),
                 commit_policy=PhaseCommitPolicy(
                     increments_counter="iteration",
@@ -161,7 +164,6 @@ def _policy_with_post_commit_routes() -> PipelinePolicy:
                 role="commit",
                 transitions=PhaseTransition(
                     on_success="complete",
-                    on_failure="failed",
                 ),
                 commit_policy=PhaseCommitPolicy(
                     increments_counter="reviewer_pass",
@@ -250,7 +252,7 @@ class TestPhaseFailureEvent:
         )
         event = PhaseFailureEvent(phase="development", reason="missing artifact", recoverable=True)
         new_state, effects = _reduce(state, event, _basic_pipeline_policy())
-        assert new_state.phase == "failed"
+        assert new_state.phase == "failed_terminal"
         assert new_state.last_error is not None
         assert "development" in new_state.last_error
         assert "missing artifact" in new_state.last_error
@@ -268,7 +270,7 @@ class TestPhaseFailureEvent:
             recoverable=False,
         )
         new_state, effects = _reduce(state, event, _basic_pipeline_policy())
-        assert new_state.phase == "failed"
+        assert new_state.phase == "failed_terminal"
         assert new_state.last_error == "development_analysis: Analysis decision: FAILURE"
         assert new_state.recovery_epoch == 1
         assert effects == []
@@ -285,7 +287,7 @@ class TestPhaseFailureEvent:
             recoverable=True,
         )
         new_state, _effects = _reduce(state, event, _basic_pipeline_policy())
-        assert new_state.phase == "failed"
+        assert new_state.phase == "failed_terminal"
         assert new_state.last_error is not None
         assert "missing planning artifact" in new_state.last_error
         assert "development" in new_state.last_error
@@ -303,7 +305,7 @@ class TestPhaseFailureEvent:
             recoverable=True,
         )
         new_state, effects = _reduce(state, event, _basic_pipeline_policy())
-        assert new_state.phase == "failed"
+        assert new_state.phase == "failed_terminal"
         assert new_state.last_error is not None
         assert new_state.last_error != "Unknown failure"
         assert "Unknown failure" not in new_state.last_error
@@ -333,12 +335,12 @@ def test_policy_agent_success_in_planning_routes_to_development_without_consumin
     assert new_state.get_budget_remaining("iteration") == starting_budget
 
 
-def test_policy_agent_success_with_embeds_analysis_delegates_to_analysis_path() -> None:
+def test_policy_agent_success_in_analysis_role_phase_routes_to_on_success() -> None:
     policy = PipelinePolicy(
         phases={
             "development": PhaseDefinition(
                 drain="development",
-                embeds_analysis=True,
+                role="analysis",
                 transitions=PhaseTransition(
                     on_success="development_commit",
                     on_loopback="development",
@@ -411,7 +413,7 @@ def test_policy_agent_success_unknown_phase_routes_to_failed() -> None:
 
     new_state, effects = _reduce(state, PipelineEvent.AGENT_SUCCESS, policy)
 
-    assert new_state.phase == "failed"
+    assert new_state.phase == "failed_terminal"
     assert new_state.previous_phase == "missing"
     assert new_state.last_error == "Unknown phase: missing"
     assert new_state.recovery_epoch == 1
@@ -425,7 +427,7 @@ def test_phase_advance_event_fails_on_unknown_policy_phase() -> None:
 
     new_state, effects = _reduce(state, PipelineEvent.PHASE_ADVANCE, policy)
 
-    assert new_state.phase == "failed"
+    assert new_state.phase == "failed_terminal"
     assert new_state.previous_phase == "missing"
     assert new_state.recovery_epoch == 1
     assert "missing" in (new_state.last_error or "")
@@ -440,19 +442,25 @@ def test_fix_failure_policy_terminal_transition_emits_exit_failure() -> None:
                 drain="fix",
                 transitions=PhaseTransition(
                     on_success="complete",
-                    on_failure="failed",
                     on_loopback="fix",
                 ),
+            ),
+            "failed_terminal": PhaseDefinition(
+                drain="fix",
+                role="terminal",
+                terminal_outcome="failure",
+                transitions=PhaseTransition(on_success="failed_terminal"),
             ),
         },
         entry_phase="fix",
         terminal_phase="complete",
+        recovery=RecoveryPolicy(failed_route="failed_terminal"),
     )
     state = PipelineState(phase="fix")
 
     new_state, effects = _reduce(state, PipelineEvent.FIX_FAILURE, policy)
 
-    assert new_state.phase == "failed"
+    assert new_state.phase == "failed_terminal"
     assert new_state.previous_phase == "fix"
     assert new_state.recovery_epoch == 1
     assert effects == []
@@ -613,7 +621,7 @@ def test_agent_failure_with_exhausted_chain_enters_recovery() -> None:
         phase_chains={"development": AgentChainState(agents=["claude"], current_index=0, retries=3)},  # noqa: E501
     )
     new_state, effects = _reduce(state, PipelineEvent.AGENT_FAILURE, _basic_pipeline_policy())
-    assert new_state.phase == "failed"
+    assert new_state.phase == "failed_terminal"
     assert new_state.recovery_epoch == 1
     assert effects == []
 
@@ -1033,8 +1041,7 @@ class TestAnalysisDecisionDispatch:
         policy = MagicMock()
         policy.recovery.failed_route = "failed"
         phase_def = MagicMock()
-        phase_def.requires_commit = False
-        phase_def.embeds_analysis = False
+        phase_def.workflow_fallback = None
         phase_def.loop_policy = PhaseLoopPolicy(
             max_iterations=3,
             iteration_state_field="development_analysis_iteration",
@@ -1061,8 +1068,7 @@ class TestAnalysisDecisionDispatch:
         policy = MagicMock()
         policy.recovery.failed_route = "failed"
         phase_def = MagicMock()
-        phase_def.requires_commit = False
-        phase_def.embeds_analysis = False
+        phase_def.workflow_fallback = None
         phase_def.loop_policy = PhaseLoopPolicy(
             max_iterations=3,
             iteration_state_field="review_analysis_iteration",
@@ -1105,8 +1111,7 @@ def test_routing_error_propagates_as_failure_not_silent(
     policy = MagicMock()
     policy.recovery.failed_route = "failed"
     phase_def = MagicMock()
-    phase_def.requires_commit = False
-    phase_def.embeds_analysis = False
+    phase_def.workflow_fallback = None
     phase_def.decisions = {}
     policy.phases.get.return_value = phase_def
 
@@ -1126,7 +1131,6 @@ def test_agent_success_in_requires_commit_phase_marks_agent_invoked_without_adva
     policy = MagicMock()
     phase_def = MagicMock()
     phase_def.role = "commit"
-    phase_def.embeds_analysis = False
     policy.phases.get.return_value = phase_def
 
     state = PipelineState(phase="development_commit", commit=CommitState(agent_invoked=False))
@@ -1141,8 +1145,7 @@ def test_agent_success_in_normal_phase_still_advances() -> None:
     """Sanity check: AGENT_SUCCESS in a normal (non-commit) phase still advances."""
     policy = MagicMock()
     phase_def = MagicMock()
-    phase_def.requires_commit = False
-    phase_def.embeds_analysis = False
+    phase_def.workflow_fallback = None
     policy.phases.get.return_value = phase_def
 
     with patch("ralph.pipeline.reducer.resolve_next_phase", return_value="review"):
@@ -1336,7 +1339,7 @@ def test_all_workers_complete_routes_to_phase_failed_when_worker_failed() -> Non
     policy = _basic_pipeline_policy()
     new_state, effects = _reduce(state, PipelineEvent.ALL_WORKERS_COMPLETE, policy)
 
-    assert new_state.phase == "failed"
+    assert new_state.phase == "failed_terminal"
     assert effects == []
     assert "u2" in (new_state.last_error or "")
 
@@ -1355,7 +1358,7 @@ def test_all_workers_complete_routes_to_phase_failed_when_worker_cancelled() -> 
     policy = _basic_pipeline_policy()
     new_state, effects = _reduce(state, PipelineEvent.ALL_WORKERS_COMPLETE, policy)
 
-    assert new_state.phase == "failed"
+    assert new_state.phase == "failed_terminal"
     assert effects == []
     assert "u1" in (new_state.last_error or "")
 
@@ -1613,9 +1616,9 @@ def test_phase_handler_crash_exhausts_chain_before_failing() -> None:
         assert state.chain_for_phase("development").retries == expected_retries
         assert effects == []
 
-    # Final crash on agent 1 (chain exhausted): "failed" recovery state
+    # Final crash on agent 1 (chain exhausted): recovery state
     state, effects = _reduce(state, crash_event, policy)
-    assert state.phase == "failed"
+    assert state.phase == "failed_terminal"
     assert state.last_error is not None
     assert "Phase handler crashed: RuntimeError: boom" in state.last_error
     assert state.recovery_epoch == 1
@@ -1722,7 +1725,7 @@ def test_all_workers_complete_mixed_statuses_routes_to_phase_failed() -> None:
     policy = _basic_pipeline_policy()
     new_state, effects = _reduce(state, PipelineEvent.ALL_WORKERS_COMPLETE, policy)
 
-    assert new_state.phase == "failed"
+    assert new_state.phase == "failed_terminal"
     assert effects == []
     error = new_state.last_error or ""
     assert "u2" in error

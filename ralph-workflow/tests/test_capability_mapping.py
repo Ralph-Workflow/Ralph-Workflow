@@ -41,9 +41,10 @@ def test_lossy_role_aliases_are_rejected(unresolvable_alias: str) -> None:
         drain_class_for_session(unresolvable_alias)
 
 
-def test_fixer_resolves_to_fix_via_substring() -> None:
-    """'fixer' contains 'fix' so it resolves to FIX via substring matching."""
-    assert drain_class_for_session("fixer") is DrainClass.FIX
+def test_fixer_no_substring_fallback_requires_explicit_drain_class() -> None:
+    """'fixer' has no explicit drain_class; substring inference is gone."""
+    with pytest.raises(PolicyValidationError):
+        drain_class_for_session("fixer")
 
 
 class TestNewCapabilities:

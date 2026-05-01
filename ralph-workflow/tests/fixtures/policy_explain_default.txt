@@ -82,5 +82,6 @@ Legend:
   ==FAILURE==>       terminal failure outcome
   +--[decision]-->   analysis decision branch
   <<==[loopback]==   loopback to earlier phase
+  +--[workflow_fallback]--> fallback on chain exhaustion
   >>> FAN_OUT ...    parallel worker fan-out
   <<< REJOIN         workers rejoin after fan-out

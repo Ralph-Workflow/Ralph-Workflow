@@ -98,7 +98,7 @@ def custom_bundle() -> PolicyBundle:
                 decisions={
                     "completed": PhaseDecisionRoute(target="sign_off", reset_loop=True),
                     "request_changes": PhaseDecisionRoute(target="build", reset_loop=False),
-                    "failed": PhaseDecisionRoute(target="failed", reset_loop=False),
+                    "failed": PhaseDecisionRoute(target="failed_terminal", reset_loop=False),
                 },
             ),
             "sign_off": PhaseDefinition(
@@ -106,7 +106,7 @@ def custom_bundle() -> PolicyBundle:
                 role="commit",
                 transitions=PhaseTransition(
                     on_success="done",
-                    on_failure="failed",
+                    on_failure=None,
                 ),
                 commit_policy=PhaseCommitPolicy(
                     increments_counter="cycles",
@@ -122,13 +122,12 @@ def custom_bundle() -> PolicyBundle:
                     on_loopback="done",
                 ),
             ),
-            "failed": PhaseDefinition(
-                drain="failed",
+            "failed_terminal": PhaseDefinition(
+                drain="done",
                 role="terminal",
                 terminal_outcome="failure",
                 transitions=PhaseTransition(
-                    on_success="failed",
-                    on_loopback="failed",
+                    on_success="failed_terminal",
                 ),
             ),
         },
@@ -228,6 +227,40 @@ class TestCustomPolicyLoopCounterDict:
 
         assert updated.get_loop_iteration("audit_round") == 1
         assert updated.get_loop_iteration("development_analysis_iteration") == 0
+
+
+class TestRunWithFullyRenamedPhases:
+    """All custom-named phases get role-correct handler dispatch without built-in name knowledge."""
+
+    def test_run_with_fully_renamed_phases(
+        self, custom_bundle: PolicyBundle
+    ) -> None:
+        """register_role_handlers maps all custom phase names to role-based handlers.
+
+        Verifies that the runtime has zero built-in phase name knowledge:
+        design (execution), build (execution), audit (analysis), and sign_off (commit)
+        all receive correct generic handlers without any special-case code.
+        """
+        from ralph.phases import HANDLERS, register_role_handlers  # noqa: PLC0415
+        from ralph.phases.analysis import handle_generic_analysis_phase  # noqa: PLC0415
+        from ralph.phases.commit import handle_commit_phase  # noqa: PLC0415
+        from ralph.phases.execution import handle_execution_phase  # noqa: PLC0415
+
+        custom_phases = ["design", "build", "audit", "sign_off"]
+        saved = {p: HANDLERS.pop(p, None) for p in custom_phases}
+        try:
+            register_role_handlers(custom_bundle.pipeline)
+
+            assert HANDLERS.get("design") is handle_execution_phase
+            assert HANDLERS.get("build") is handle_execution_phase
+            assert HANDLERS.get("audit") is handle_generic_analysis_phase
+            assert HANDLERS.get("sign_off") is handle_commit_phase
+        finally:
+            for p in custom_phases:
+                HANDLERS.pop(p, None)
+            for p, h in saved.items():
+                if h is not None:
+                    HANDLERS[p] = h
 
 
 class TestCustomNamedPipelineHandlerDispatch:

@@ -323,6 +323,7 @@ def render_explanation_ascii(exp: PolicyExplanation) -> str:
     lines.append("  ==FAILURE==>       terminal failure outcome")
     lines.append("  +--[decision]-->   analysis decision branch")
     lines.append("  <<==[loopback]==   loopback to earlier phase")
+    lines.append("  +--[workflow_fallback]--> fallback on chain exhaustion")
     lines.append("  >>> FAN_OUT ...    parallel worker fan-out")
     lines.append("  <<< REJOIN         workers rejoin after fan-out")
 
@@ -551,6 +552,12 @@ def _render_phase_routing(phase: PhaseExplanation, lines: list[str]) -> None:
 
     for outcome, target in phase.bypass_routes.items():
         lines.append(f"    Bypass [{outcome}] → {target}")
+
+    if phase.workflow_fallback is not None:
+        fallback_target, fallback_note = phase.workflow_fallback
+        lines.append(f"    Workflow fallback (chain exhausted) → {fallback_target}")
+        if fallback_note:
+            lines.append(f"      Note: {fallback_note}")
 
     if phase.decisions:
         lines.append("    Decisions:")
