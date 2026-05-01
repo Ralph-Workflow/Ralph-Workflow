@@ -268,8 +268,8 @@ class BudgetCounterConfig(_FrozenPolicyModel):  # type: ignore[explicit-any]  # 
         description: Human-readable description of this counter's purpose.
         tracks_budget: Whether remaining budget is tracked (True = exhaustion matters).
         default_max: Default maximum budget when no CLI override is supplied.
-            When None, the runner falls back to config.general values for known
-            counters (iteration, reviewer_pass) or a hardcoded default of 5.
+            Required — must be declared explicitly in pipeline.toml so the
+            runtime never invents a hidden cap. Use --counter NAME=VALUE to override.
     """
 
     description: str = Field(default="", description="Human-readable description")
@@ -277,10 +277,10 @@ class BudgetCounterConfig(_FrozenPolicyModel):  # type: ignore[explicit-any]  # 
         default=True,
         description="Whether remaining budget is tracked for post-commit routing",
     )
-    default_max: int | None = Field(
-        default=None,
+    default_max: int = Field(
+        ...,
         ge=0,
-        description="Default maximum budget (overridable via --counter; falls back to config or 5)",
+        description="Default maximum budget — required so the runtime never invents a hidden cap",
     )
 
 

@@ -30,9 +30,8 @@ def _make_display(tmp_path: Path) -> tuple[ParallelDisplay, StringIO]:
 def _make_mock_state(agent: str = "claude/sonnet") -> MagicMock:
     state = MagicMock()
     state.phase = "development"
-    state.iteration = 1
-    state.budget_caps = {"iteration": 1, "reviewer_pass": 0}
-    state.reviewer_pass = 0
+    state.budget_caps = {"iteration": 1}
+    state.outer_progress = {"iteration": 1}
     state.review_outcome = None
     state.interrupted_by_user = False
     state.last_error = None

@@ -198,8 +198,8 @@ def test_dev_runs_exactly_2_cycles_with_d2(
     assert mock_agent_invoker.count_for("development_commit") == DEVELOPMENT_CYCLES_TWO
     final_state = saved_states[-1]
     assert final_state.phase == "complete"
-    assert final_state.iteration == DEVELOPMENT_CYCLES_TWO
-    assert final_state.reviewer_pass == 0
+    assert final_state.get_outer_progress("iteration") == DEVELOPMENT_CYCLES_TWO
+    assert final_state.get_outer_progress("reviewer_pass") == 0
     assert final_state.get_loop_iteration("development_analysis_iteration") == 0
     assert final_state.get_loop_iteration("review_analysis_iteration") == 0
     assert final_state.get_budget_remaining("iteration") == 0
@@ -225,7 +225,7 @@ def test_dev_runs_exactly_3_cycles_with_d3(
     assert mock_agent_invoker.count_for("development_commit") == DEVELOPMENT_CYCLES_THREE
     final_state = saved_states[-1]
     assert final_state.phase == "complete"
-    assert final_state.iteration == DEVELOPMENT_CYCLES_THREE
+    assert final_state.get_outer_progress("iteration") == DEVELOPMENT_CYCLES_THREE
     assert final_state.get_loop_iteration("development_analysis_iteration") == 0
     assert final_state.get_budget_remaining("iteration") == 0
 
@@ -248,8 +248,8 @@ def test_review_runs_exactly_2_cycles_with_r2(
     assert mock_agent_invoker.count_for("review") == REVIEW_CYCLES_TWO
     final_state = saved_states[-1]
     assert final_state.phase == "complete"
-    assert final_state.iteration == 1
-    assert final_state.reviewer_pass == REVIEW_CYCLES_TWO
+    assert final_state.get_outer_progress("iteration") == 1
+    assert final_state.get_outer_progress("reviewer_pass") == REVIEW_CYCLES_TWO
     assert final_state.get_loop_iteration("development_analysis_iteration") == 0
     assert final_state.get_loop_iteration("review_analysis_iteration") == 0
     assert final_state.get_budget_remaining("reviewer_pass") == 0
@@ -275,8 +275,8 @@ def test_no_review_when_reviewer_pass_cap_zero(
     assert mock_agent_invoker.count_for("development") == DEVELOPMENT_CYCLES_TWO
     final_state = saved_states[-1]
     assert final_state.phase == "complete"
-    assert final_state.iteration == DEVELOPMENT_CYCLES_TWO
-    assert final_state.reviewer_pass == 0
+    assert final_state.get_outer_progress("iteration") == DEVELOPMENT_CYCLES_TWO
+    assert final_state.get_outer_progress("reviewer_pass") == 0
     assert final_state.get_budget_remaining("reviewer_pass") == 0
 
 
@@ -308,7 +308,7 @@ def test_analysis_loopback_preserves_budget(
     )
     assert loopback_state.get_budget_remaining("iteration") == starting_budget
     final_state = saved_states[-1]
-    assert final_state.iteration == DEVELOPMENT_CYCLES_TWO
+    assert final_state.get_outer_progress("iteration") == DEVELOPMENT_CYCLES_TWO
     assert final_state.get_loop_iteration("development_analysis_iteration") == 0
 
 
@@ -329,12 +329,12 @@ def test_review_analysis_loopback_is_persisted_as_inner_progress_only(
 
     assert result == 0
     fix_state = _state_with_phase(saved_states, "fix")
-    assert fix_state.reviewer_pass == 0
+    assert fix_state.get_outer_progress("reviewer_pass") == 0
     assert fix_state.get_loop_iteration("review_analysis_iteration") == 1
     assert fix_state.review_outcome is not None
     final_state = saved_states[-1]
     assert final_state.phase == "complete"
-    assert final_state.reviewer_pass == 1
+    assert final_state.get_outer_progress("reviewer_pass") == 1
     assert final_state.get_loop_iteration("review_analysis_iteration") == 0
 
 
@@ -361,12 +361,12 @@ def test_review_analysis_cap_routes_through_final_fix_with_persisted_max_counter
         and state.previous_phase == "review_analysis"
         and state.get_loop_iteration("review_analysis_iteration") == MAX_REVIEW_ANALYSIS_ITERATIONS
     )
-    assert capped_fix_state.reviewer_pass == 0
+    assert capped_fix_state.get_outer_progress("reviewer_pass") == 0
     assert capped_fix_state.review_outcome is not None
     assert invoker.count_for("fix") == MAX_REVIEW_ANALYSIS_ITERATIONS
     final_state = saved_states[-1]
     assert final_state.phase == "complete"
-    assert final_state.reviewer_pass == 1
+    assert final_state.get_outer_progress("reviewer_pass") == 1
     assert final_state.get_loop_iteration("review_analysis_iteration") == 0
 
 
@@ -388,7 +388,7 @@ def test_skipped_review_commit_preserves_outer_progress_in_persisted_state(
     assert result == 0
     final_state = saved_states[-1]
     assert final_state.phase == "complete"
-    assert final_state.reviewer_pass == 0
+    assert final_state.get_outer_progress("reviewer_pass") == 0
     assert final_state.get_loop_iteration("review_analysis_iteration") == 0
 
 
@@ -423,5 +423,5 @@ def test_checkpoint_resume_preserves_budget(
     assert mock_agent_invoker.count_for("development") == 1
     final_state = saved_states[-1]
     assert final_state.phase == "complete"
-    assert final_state.iteration == 1
+    assert final_state.get_outer_progress("iteration") == 1
     assert final_state.get_budget_remaining("iteration") == 0

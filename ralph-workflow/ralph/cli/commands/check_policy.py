@@ -76,8 +76,7 @@ def check_policy_command(
         if counter_overrides and bundle.pipeline.budget_counters:
             print("  effective budget caps (after --counter overrides):")
             for name, cfg in bundle.pipeline.budget_counters.items():
-                default_max = cfg.default_max if cfg.default_max is not None else 5
-                effective = counter_overrides.get(name, default_max)
+                effective = counter_overrides.get(name, cfg.default_max)
                 print(f"    {name}: {effective}")
 
         return 0

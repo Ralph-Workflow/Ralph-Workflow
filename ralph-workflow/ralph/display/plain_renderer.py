@@ -218,7 +218,7 @@ class PlainLogRenderer:
         self._ctx = display_context
         self._clock = clock
         self._last_phase: str | None = None
-        self._last_iteration: int | None = None
+        self._last_budget_progress: dict[str, int] = {}
         self._last_worker_states: dict[str, str] = {}
         self._last_plan_signature: tuple[str | None, tuple[str, ...], int] | None = None
         self._last_activity_signature: (
@@ -296,9 +296,10 @@ class PlainLogRenderer:
         return [t.plain for t in self._snapshot_texts(snapshot)]
 
     def _phase_lines(self, snapshot: PipelineSnapshot, timestamp: str) -> list[Text]:
+        current_bp = {name: bp.completed for name, bp in snapshot.budget_progress.items()}
         if snapshot.phase != self._last_phase:
             self._last_phase = snapshot.phase
-            self._last_iteration = snapshot.iteration
+            self._last_budget_progress = current_bp
             role = snapshot.current_phase_role
             if snapshot.is_terminal_failure:
                 level = "ERROR"
@@ -308,16 +309,21 @@ class PlainLogRenderer:
                 level = LEVELS.get(role, "INFO") if role is not None else "INFO"
             marker = f"{self._ctx.glyph_for('milestone')} " if level == "MILESTONE" else ""
             return [self._build_line(timestamp, level, "META", f"[phase] {marker}{snapshot.phase}")]
-        if snapshot.iteration != self._last_iteration:
-            self._last_iteration = snapshot.iteration
-            return [
-                self._build_line(
-                    timestamp,
-                    "INFO",
-                    "META",
-                    f"[progress] iteration {snapshot.iteration}/{snapshot.total_iterations}",
-                )
-            ]
+        if current_bp != self._last_budget_progress:
+            prev_bp = self._last_budget_progress
+            self._last_budget_progress = current_bp
+            lines = []
+            for name, bp in snapshot.budget_progress.items():
+                if current_bp.get(name) != prev_bp.get(name):
+                    lines.append(
+                        self._build_line(
+                            timestamp,
+                            "INFO",
+                            "META",
+                            f"[progress] {name} {bp.completed}/{bp.cap}",
+                        )
+                    )
+            return lines
         return []
 
     def _plan_lines(self, snapshot: PipelineSnapshot, timestamp: str) -> list[Text]:

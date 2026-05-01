@@ -17,8 +17,8 @@
 # ---------------------------------------------------------------------------
 [general]
 # verbosity = 2                         # 0=quiet 1=normal 2=verbose 3=full 4=debug
-# max_development_analysis_iterations = 3  # max development analysis loop budget (>=0)
-# max_review_analysis_iterations = 2    # max review analysis loop budget (>=0)
+# Loop iteration caps live in pipeline.toml [loop_counters.*] (see ralph --explain-policy).
+# Override budget caps with: ralph --counter <name>=<value> (e.g. --counter iteration=8).
 # developer_context = 1                 # developer context level (>=1)
 # reviewer_context = 0                  # reviewer context level (>=0)
 # review_depth = "standard"             # standard | comprehensive | security | incremental

@@ -215,7 +215,7 @@ class TestCliCounterOverrides:
             },
             entry_phase="work",
             terminal_phase="complete",
-            budget_counters={counter_name: BudgetCounterConfig(tracks_budget=False)},
+            budget_counters={counter_name: BudgetCounterConfig(tracks_budget=False, default_max=0)},
             recovery=RecoveryPolicy(failed_route="complete"),
         )
         return PolicyBundle(

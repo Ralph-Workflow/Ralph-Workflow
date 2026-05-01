@@ -8,8 +8,9 @@ in pipeline.toml maps raw status strings (from the agent artifact) to
 PhaseDecisionRoute targets. The reducer routes via decisions[status].target
 directly, so the raw status string is passed through as-is.
 
-AnalysisDecision (from ralph.config.enums) is kept as a display/typing aid
-only — it is NOT used for reducer routing.
+Decisions are raw strings from the agent artifact mapped to routes in policy.
+The BaseModel AnalysisDecision in ralph.mcp.artifacts.typed_artifacts is the
+artifact schema; routing uses the raw status string, not a StrEnum.
 """
 
 from __future__ import annotations

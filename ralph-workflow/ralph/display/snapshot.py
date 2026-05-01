@@ -43,15 +43,21 @@ class WorkerSnapshot:
 
 
 @dataclass(frozen=True, slots=True)
+class BudgetProgress:
+    """Immutable progress record for a single policy-declared budget counter."""
+
+    completed: int
+    cap: int
+    description: str
+    tracks_budget: bool
+
+
+@dataclass(frozen=True, slots=True)
 class PipelineSnapshot:
     """Immutable pipeline state snapshot for transcript rendering."""
 
     phase: str
     previous_phase: str | None
-    iteration: int
-    total_iterations: int
-    reviewer_pass: int
-    total_reviewer_passes: int
     review_issues_found: bool
     interrupted_by_user: bool
     last_error: str | None
@@ -96,6 +102,8 @@ class PipelineSnapshot:
     current_phase_role: str | None = None
     previous_phase_role: str | None = None
     terminal_failure_route: str | None = None
+    # Generic budget progress keyed by policy-declared counter name
+    budget_progress: dict[str, BudgetProgress] = field(default_factory=dict)
 
 
 def snapshot_from_state(  # noqa: PLR0913
@@ -167,13 +175,27 @@ def snapshot_from_state(  # noqa: PLR0913
         if terminal_failure_route is None:
             terminal_failure_route = pipeline_policy.recovery.failed_route
 
+    budget_progress: dict[str, BudgetProgress] = {}
+    if pipeline_policy is not None:
+        for bp_name, bp_cfg in pipeline_policy.budget_counters.items():
+            budget_progress[bp_name] = BudgetProgress(
+                completed=state.get_outer_progress(bp_name),
+                cap=state.get_budget_cap(bp_name),
+                description=bp_cfg.description or bp_name,
+                tracks_budget=bp_cfg.tracks_budget,
+            )
+    else:
+        for bp_name, cap in state.budget_caps.items():
+            budget_progress[bp_name] = BudgetProgress(
+                completed=state.get_outer_progress(bp_name),
+                cap=cap,
+                description=bp_name,
+                tracks_budget=False,
+            )
+
     return PipelineSnapshot(
         phase=state.phase,
         previous_phase=state.previous_phase,
-        iteration=state.iteration,
-        total_iterations=state.budget_caps.get("iteration", 0),
-        reviewer_pass=state.reviewer_pass,
-        total_reviewer_passes=state.budget_caps.get("reviewer_pass", 0),
         review_issues_found=_review_issues_found(state, pipeline_policy),
         interrupted_by_user=state.interrupted_by_user,
         last_error=state.last_error,
@@ -216,6 +238,7 @@ def snapshot_from_state(  # noqa: PLR0913
         current_phase_role=current_phase_role,
         previous_phase_role=previous_phase_role,
         terminal_failure_route=terminal_failure_route,
+        budget_progress=budget_progress,
     )
 
 
@@ -262,4 +285,4 @@ def _elapsed_seconds(worker: WorkerState) -> float:
     return (datetime.now(UTC) - worker.started_at).total_seconds()
 
 
-__all__ = ["PipelineSnapshot", "WorkerSnapshot", "snapshot_from_state"]
+__all__ = ["BudgetProgress", "PipelineSnapshot", "WorkerSnapshot", "snapshot_from_state"]

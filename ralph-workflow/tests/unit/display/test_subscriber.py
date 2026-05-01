@@ -21,8 +21,7 @@ def _make_state() -> PipelineState:
     return PipelineState(
         phase="development",
         previous_phase=None,
-        iteration=1,
-        reviewer_pass=0,
+        outer_progress={"iteration": 1},
         budget_caps={"iteration": 5, "reviewer_pass": 2},
         review_issues_found=False,
         interrupted_by_user=False,

@@ -178,7 +178,7 @@ def test_old_checkpoint_with_legacy_continuation_state_still_loads() -> None:
     state = PipelineState.model_validate_json(old_json)
 
     assert state.phase == "development"
-    assert state.iteration == 1
+    assert state.get_outer_progress("iteration") == 1
 
 
 def test_worker_states_none_coerces_to_empty_dict() -> None:

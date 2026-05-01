@@ -64,13 +64,13 @@ class TestDevAnalysisCapTriggeredCorrectionRouting:
         state = PipelineState(
             phase="development_commit",
             loop_iterations={"development_analysis_iteration": _DEV_MAX_ANALYSIS},
-            iteration=1,
+            outer_progress={"iteration": 1},
             budget_remaining={"iteration": 3, "reviewer_pass": 2},
         )
 
         new_state, _ = _reduce(state, PipelineEvent.COMMIT_SUCCESS, policy)
-        expected_iteration = state.iteration + 1
-        assert new_state.iteration == expected_iteration
+        expected_iteration = state.get_outer_progress("iteration") + 1
+        assert new_state.get_outer_progress("iteration") == expected_iteration
         assert new_state.get_loop_iteration("development_analysis_iteration") == 0
 
 
@@ -84,7 +84,6 @@ class TestReviewAnalysisCapTriggeredCorrectionRouting:
             phase="review_analysis",
             loop_iterations={"review_analysis_iteration": 1},  # max-1 where max=2
             loop_caps={"review_analysis_iteration": _REVIEW_MAX_ANALYSIS},
-            reviewer_pass=0,
             budget_remaining={"iteration": 3, "reviewer_pass": 2},
         )
 
@@ -100,11 +99,10 @@ class TestReviewAnalysisCapTriggeredCorrectionRouting:
         state = PipelineState(
             phase="review_commit",
             loop_iterations={"review_analysis_iteration": _REVIEW_MAX_ANALYSIS},
-            reviewer_pass=0,
             budget_remaining={"iteration": 3, "reviewer_pass": 2},
         )
 
         new_state, _ = _reduce(state, PipelineEvent.COMMIT_SUCCESS, policy)
-        expected_reviewer_pass = state.reviewer_pass + 1
-        assert new_state.reviewer_pass == expected_reviewer_pass
+        expected_reviewer_pass = state.get_outer_progress("reviewer_pass") + 1
+        assert new_state.get_outer_progress("reviewer_pass") == expected_reviewer_pass
         assert new_state.get_loop_iteration("review_analysis_iteration") == 0

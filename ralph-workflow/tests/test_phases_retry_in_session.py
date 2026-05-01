@@ -279,6 +279,7 @@ class TestPhaseHandlerRetryInSessionFlags:
         from ralph.phases.review import handle_review  # noqa: PLC0415
 
         effect = MagicMock(spec=InvokeAgentEffect)
+        effect.phase = "review"
         ctx = MagicMock()
         ctx.workspace.exists.return_value = False
 

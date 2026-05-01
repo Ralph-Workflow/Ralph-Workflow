@@ -89,7 +89,7 @@ def test_record_waiting_status_kind_specific_lines(tmp_path: Path) -> None:
     from ralph.pipeline.state import PipelineState  # noqa: PLC0415
 
     state = PipelineState(
-        phase="development", iteration=1, reviewer_pass=0,
+        phase="development",
         budget_caps={"iteration": 1, "reviewer_pass": 1},
     )
     sub.notify(state)
@@ -185,7 +185,7 @@ def test_record_waiting_status_clears_field_on_exited(tmp_path: Path) -> None:
     sub = _make_subscriber(tmp_path)
     # Seed state so the subscriber can build snapshots.
     state = PipelineState(
-        phase="development", iteration=1, reviewer_pass=0,
+        phase="development",
         budget_caps={"iteration": 1, "reviewer_pass": 1},
     )
     sub.notify(state)
@@ -216,8 +216,6 @@ def test_snapshot_includes_waiting_status_field(tmp_path: Path) -> None:
     # Provide a minimal state so build_snapshot succeeds.
     state = PipelineState(
         phase="development",
-        iteration=1,
-        reviewer_pass=0,
         budget_caps={"iteration": 1, "reviewer_pass": 1},
     )
     snapshot = sub.build_snapshot(state)

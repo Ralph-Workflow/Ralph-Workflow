@@ -83,10 +83,12 @@ description = "Review analysis loop iteration counter"
 [budget_counters.iteration]
 description = "Development iteration counter (developer cycles)"
 tracks_budget = true
+default_max = 5
 
 [budget_counters.reviewer_pass]
 description = "Review pass counter"
 tracks_budget = true
+default_max = 1
 
 # ---------------------------------------------------------------------------
 # Phase definitions

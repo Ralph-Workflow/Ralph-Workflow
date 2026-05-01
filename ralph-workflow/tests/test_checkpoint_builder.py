@@ -19,7 +19,10 @@ ITERATION_NUMBER = 2
 
 def test_checkpoint_builder_builds_payload_from_state() -> None:
     """Builder should produce a payload with state, context, and history."""
-    state = PipelineState(phase="development", iteration=ITERATION_NUMBER, reviewer_pass=1)
+    state = PipelineState(
+        phase="development",
+        outer_progress={"iteration": ITERATION_NUMBER, "reviewer_pass": 1},
+    )
     context = RunContext.new().record_developer_iteration()
     history = ExecutionHistory.new().add_step_bounded(
         ExecutionStep.new("development", ITERATION_NUMBER, "agent_run", StepOutcome.success()),
@@ -36,7 +39,7 @@ def test_checkpoint_builder_builds_payload_from_state() -> None:
     )
 
     assert payload.phase == "development"
-    assert payload.iteration == ITERATION_NUMBER
+    assert payload.state.get_outer_progress("iteration") == ITERATION_NUMBER
     assert payload.working_dir == "/tmp/repo"
     assert payload.run_context.actual_developer_runs == ITERATION_NUMBER
     assert len(payload.execution_history.steps) == 1

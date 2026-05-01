@@ -1,8 +1,8 @@
-"""Review phase handler.
+"""Generic review-role phase handler.
 
-The review phase invokes the review agent to review code changes.
-It may embed an analysis step that decides whether to approve the changes
-or request fixes.
+This handler may be registered for any phase declared with role='review'.
+It does not assume the phase is named 'review': all emitted events derive
+the phase name from the incoming effect's phase attribute.
 
 When no new commits have landed since the last successful review pass, the
 handler emits ``REVIEW_CLEAN`` so the reducer routes straight to
@@ -138,10 +138,10 @@ def handle_review(effect: Effect, ctx: PhaseContext) -> list[Event]:
         except (json.JSONDecodeError, PhaseArtifactError, TypeError, ValueError) as exc:
             detail = str(exc)
             logger.warning("Review phase missing fresh issues artifact: {}", detail)
-            _write_retry_hint(ctx, "review", detail)
+            _write_retry_hint(ctx, effect.phase, detail)
             return [
                 PhaseFailureEvent(
-                    phase="review",
+                    phase=effect.phase,
                     reason=f"Missing/invalid issues artifact: {detail}",
                     recoverable=True,
                     retry_in_session=True,

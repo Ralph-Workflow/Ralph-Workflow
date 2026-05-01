@@ -603,10 +603,6 @@ def test_activity_tag_not_emitted_twice_across_snapshots() -> None:
     base_kwargs = {
         "phase": "development",
         "previous_phase": None,
-        "iteration": 1,
-        "total_iterations": 3,
-        "reviewer_pass": 0,
-        "total_reviewer_passes": 1,
         "review_issues_found": False,
         "interrupted_by_user": False,
         "last_error": None,
@@ -663,10 +659,6 @@ def test_activity_appends_path_when_missing() -> None:
     snapshot = PipelineSnapshot(
         phase="development",
         previous_phase=None,
-        iteration=1,
-        total_iterations=3,
-        reviewer_pass=0,
-        total_reviewer_passes=1,
         review_issues_found=False,
         interrupted_by_user=False,
         last_error=None,
@@ -699,10 +691,6 @@ def test_activity_does_not_double_append_path_when_already_present() -> None:
     snapshot = PipelineSnapshot(
         phase="development",
         previous_phase=None,
-        iteration=1,
-        total_iterations=3,
-        reviewer_pass=0,
-        total_reviewer_passes=1,
         review_issues_found=False,
         interrupted_by_user=False,
         last_error=None,

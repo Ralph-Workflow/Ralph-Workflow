@@ -1912,7 +1912,7 @@ class TestValidatePostCommitRoutesCoverage:
             },
             entry_phase="work",
             terminal_phase="complete",
-            budget_counters={"cycles": BudgetCounterConfig(tracks_budget=True)},
+            budget_counters={"cycles": BudgetCounterConfig(tracks_budget=True, default_max=5)},
             recovery=RecoveryPolicy(failed_route="complete"),
         )
         bundle = PolicyBundle(
@@ -1950,7 +1950,7 @@ class TestValidatePostCommitRoutesCoverage:
             },
             entry_phase="work",
             terminal_phase="complete",
-            budget_counters={"cycles": BudgetCounterConfig(tracks_budget=True)},
+            budget_counters={"cycles": BudgetCounterConfig(tracks_budget=True, default_max=5)},
             post_commit_routes=[
                 PostCommitRoute(
                     when=PostCommitRouteWhen(phase="commit", budget_state="remaining"),
@@ -1998,7 +1998,7 @@ class TestValidatePostCommitRoutesCoverage:
             },
             entry_phase="work",
             terminal_phase="complete",
-            budget_counters={"cycles": BudgetCounterConfig(tracks_budget=False)},
+            budget_counters={"cycles": BudgetCounterConfig(tracks_budget=False, default_max=0)},
             recovery=RecoveryPolicy(failed_route="complete"),
         )
         bundle = PolicyBundle(
@@ -2497,7 +2497,7 @@ class TestValidatePostCommitAllBudgetStatesCovered:
             },
             entry_phase="work",
             terminal_phase="complete",
-            budget_counters={"cycles": BudgetCounterConfig(tracks_budget=True)},
+            budget_counters={"cycles": BudgetCounterConfig(tracks_budget=True, default_max=5)},
             post_commit_routes=post_commit,
             recovery=RecoveryPolicy(failed_route="crashed"),
         )

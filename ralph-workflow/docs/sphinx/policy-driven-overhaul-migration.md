@@ -392,3 +392,113 @@ were relying on the canonical-name compatibility fallback (e.g., your custom
 phase happened to be named `"planning"` so it picked up the planning style),
 update to use the role-derived style by setting the appropriate `role` on the
 phase. Custom-named phases now produce correct, role-driven UI deterministically.
+
+## Final iteration: removed legacy state mirrors and silent fallbacks
+
+This section documents the last wave of policy-driven cleanup that removed every
+remaining hardcoded surface inside the runtime.
+
+### Removed `PipelineState.iteration` and `PipelineState.reviewer_pass` scalar fields
+
+`PipelineState` previously carried two named scalar fields that mirrored the
+generic `outer_progress` dict entries `'iteration'` and `'reviewer_pass'`. These
+fields were dead mirrors — any code that wanted a progress counter was already
+expected to call `state.get_outer_progress(counter_name)`.
+
+**After the change:**
+
+- `PipelineState` has no `.iteration` or `.reviewer_pass` attribute. Accessing
+  them raises `AttributeError`.
+- Use `state.get_outer_progress("iteration")` (or whichever counter name your
+  policy declares) everywhere.
+- `state.with_outer_progress(counter_name, value)` is the only write path.
+
+**Migration:** Replace every `state.iteration` / `state.reviewer_pass` access
+with `state.get_outer_progress("<counter_name>")`. The counter name comes from
+your `pipeline.toml` `[budget_counters.*]` key.
+
+### `BudgetCounterConfig.default_max` is now a required field
+
+Previously `BudgetCounterConfig.default_max` defaulted to `None`, and the
+runner silently fell back to `_DEFAULT_BUDGET_CAP = 5` when it was absent.
+This hidden default violated the policy-driven contract: a user who omitted
+`default_max` had a secret cap of 5 that appeared nowhere in policy.
+
+**After the change:**
+
+- `default_max` is a required field (`int`, `ge=0`). Omitting it raises a
+  Pydantic `ValidationError` at policy-load time.
+- The bundled `pipeline.toml` supplies explicit `default_max` for each counter.
+- `_DEFAULT_BUDGET_CAP = 5` is deleted from `runner.py`.
+
+**Migration:** Add `default_max = <value>` to every `[budget_counters.*]`
+section in your `pipeline.toml`. For the standard counters the recommended
+values are `default_max = 5` for `iteration` and `default_max = 1` for
+`reviewer_pass`.
+
+### `PipelineSnapshot` budget fields replaced with `budget_progress` map
+
+The four legacy scalar fields on `PipelineSnapshot` —
+`iteration`, `total_iterations`, `reviewer_pass`, `total_reviewer_passes` —
+have been replaced with a single generic mapping:
+
+```python
+budget_progress: dict[str, BudgetProgress]
+```
+
+Each key is a policy-declared counter name. `BudgetProgress` carries:
+
+| Field | Meaning |
+|-------|---------|
+| `completed` | current `outer_progress[counter]` value |
+| `cap` | effective budget cap for this run |
+| `description` | human-readable label from `BudgetCounterConfig.description` |
+| `tracks_budget` | whether exhausting this counter terminates the pipeline |
+
+**Migration:** Replace `snapshot.iteration` with
+`snapshot.budget_progress["iteration"].completed` (and similarly for other
+fields). Iterate `snapshot.budget_progress.values()` when you need to render
+all tracked counters generically.
+
+### Removed dead `AnalysisDecision` StrEnum from `ralph.config.enums`
+
+`ralph.config.enums.AnalysisDecision` had zero callers and was removed.
+The `AnalysisDecision` BaseModel in `ralph.mcp.artifacts.typed_artifacts` is
+unaffected and continues to validate analysis artifact JSON.
+
+**Migration:** If you imported `from ralph.config.enums import AnalysisDecision`,
+switch to `from ralph.mcp.artifacts.typed_artifacts import AnalysisDecision`.
+
+### `ralph/phases/review.py` uses `effect.phase` for failure events
+
+The review-role handler previously hardcoded the literal string `'review'` in
+`PhaseFailureEvent.phase` and `_write_retry_hint`. This meant a custom phase
+that used the review role but had a different name (e.g. `'audit'`) would emit
+events and write retry-hint files with the wrong phase name.
+
+**After the change:**
+
+- `PhaseFailureEvent(phase=effect.phase, ...)` — uses the runtime phase name
+  carried on the `InvokeAgentEffect`.
+- `_write_retry_hint(ctx, effect.phase, detail)` — retry-hint file path matches
+  the active phase name.
+
+**Migration:** No `pipeline.toml` changes required. Custom review-role phases
+now automatically get correctly named failure events and retry-hint files.
+
+### Config template keys removed
+
+The commented-out keys `max_development_analysis_iterations` and
+`max_review_analysis_iterations` have been removed from the bundled config
+templates (`ralph-workflow.toml` and `ralph-workflow-local.toml`). They were
+already non-functional (the fields were removed from the config model in a
+prior release); the comments are now replaced with a pointer to the canonical
+location:
+
+```toml
+# Loop iteration caps live in pipeline.toml [loop_counters.*] (see ralph --explain-policy).
+# Override budget caps with: ralph --counter <name>=<value> (e.g. --counter iteration=8).
+```
+
+**Migration:** Set `default_max` in `pipeline.toml [budget_counters.*]` and
+use `--counter <name>=<value>` on the CLI to override for a single run.

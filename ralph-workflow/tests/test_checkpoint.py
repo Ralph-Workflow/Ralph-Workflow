@@ -24,7 +24,7 @@ def test_save_and_load_checkpoint(tmp_path: Path) -> None:
     """Test saving and loading a checkpoint."""
     state = PipelineState(
         phase="development",
-        iteration=DEVELOPMENT_ITERATION,
+        outer_progress={"iteration": DEVELOPMENT_ITERATION},
         budget_caps={"iteration": TOTAL_ITERATIONS},
     )
     path = tmp_path / "checkpoint.json"
@@ -35,7 +35,7 @@ def test_save_and_load_checkpoint(tmp_path: Path) -> None:
     loaded = ckpt.load(path)
     assert loaded is not None
     assert loaded.phase == "development"
-    assert loaded.iteration == DEVELOPMENT_ITERATION
+    assert loaded.get_outer_progress("iteration") == DEVELOPMENT_ITERATION
     assert loaded.budget_caps.get("iteration") == TOTAL_ITERATIONS
 
 
@@ -60,8 +60,7 @@ def test_checkpoint_inspect(tmp_path: Path) -> None:
     """Test checkpoint inspection."""
     state = PipelineState(
         phase="review",
-        iteration=1,
-        reviewer_pass=0,
+        outer_progress={"iteration": 1, "reviewer_pass": 0},
         budget_caps={"iteration": 3, "reviewer_pass": 2},
     )
     path = tmp_path / "checkpoint.json"
@@ -86,8 +85,7 @@ def test_checkpoint_roundtrip_full_state(tmp_path: Path) -> None:
     """Test saving and loading full state with all fields."""
     state = PipelineState(
         phase="development",
-        iteration=3,
-        reviewer_pass=1,
+        outer_progress={"iteration": 3, "reviewer_pass": 1},
         budget_caps={"iteration": TOTAL_ITERATIONS, "reviewer_pass": 2},
         review_outcome="has_issues",
         phase_chains={
@@ -108,7 +106,7 @@ def test_checkpoint_roundtrip_full_state(tmp_path: Path) -> None:
 
     assert loaded is not None
     assert loaded.phase == state.phase
-    assert loaded.iteration == state.iteration
+    assert loaded.get_outer_progress("iteration") == state.get_outer_progress("iteration")
     assert loaded.chain_for_phase("development").current_index == 1
     assert loaded.metrics.total_agent_calls == TOTAL_AGENT_CALLS
     assert loaded.git_auth_configured is True
@@ -194,7 +192,6 @@ def test_load_drops_unknown_failure_sentinel(tmp_path: Path) -> None:
     # Create a checkpoint with the forbidden sentinel
     state_with_sentinel = PipelineState(
         phase="development",
-        iteration=1,
         last_error="Unknown failure",
     )
     ckpt.save(state_with_sentinel, path)
@@ -215,7 +212,6 @@ def test_load_drops_empty_string_sentinel(tmp_path: Path) -> None:
 
     state_with_empty = PipelineState(
         phase="development",
-        iteration=1,
         last_error="",
     )
     ckpt.save(state_with_empty, path)
@@ -231,7 +227,6 @@ def test_load_drops_none_sentinel(tmp_path: Path) -> None:
 
     state_with_none = PipelineState(
         phase="development",
-        iteration=1,
         last_error="None",
     )
     ckpt.save(state_with_none, path)
@@ -248,7 +243,6 @@ def test_load_preserves_valid_last_error(tmp_path: Path) -> None:
     valid_error = "development: Missing planning artifact at .agent/artifacts/plan.json"
     state_with_valid = PipelineState(
         phase="development",
-        iteration=1,
         last_error=valid_error,
     )
     ckpt.save(state_with_valid, path)

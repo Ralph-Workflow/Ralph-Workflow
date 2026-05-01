@@ -24,10 +24,6 @@ def _make_snapshot(**kwargs: Any) -> PipelineSnapshot:
     defaults: dict[str, Any] = {
         "phase": "design",
         "previous_phase": None,
-        "iteration": 1,
-        "total_iterations": 3,
-        "reviewer_pass": 0,
-        "total_reviewer_passes": 0,
         "review_issues_found": False,
         "interrupted_by_user": False,
         "last_error": None,

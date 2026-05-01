@@ -52,7 +52,7 @@ def test_show_phase_transition_minor_renders_rule() -> None:
 
 def test_show_phase_start_with_iteration() -> None:
     console = Console(record=True)
-    ctx = PhaseStartContext(iteration=1, total_iterations=5)
+    ctx = PhaseStartContext(budget_progress={"iteration": (1, 5)})
     show_phase_start("development", ctx=ctx, display_context=_ctx_from_console(console))
     output = console.export_text()
     assert "Development" in output
@@ -61,7 +61,7 @@ def test_show_phase_start_with_iteration() -> None:
 
 def test_show_phase_start_with_reviewer_pass() -> None:
     console = Console(record=True)
-    ctx = PhaseStartContext(reviewer_pass=0, total_reviewer_passes=3)
+    ctx = PhaseStartContext(budget_progress={"reviewer_pass": (0, 3)})
     show_phase_start("review", ctx=ctx, display_context=_ctx_from_console(console))
     output = console.export_text()
     assert "Review" in output
@@ -117,7 +117,7 @@ def test_show_phase_start_with_agent_name() -> None:
 def test_show_phase_start_zero_indexed_boundary() -> None:
     """Iteration 0 should display as 1 (1-indexed for users)."""
     console = Console(record=True)
-    ctx = PhaseStartContext(iteration=0, total_iterations=5)
+    ctx = PhaseStartContext(budget_progress={"iteration": (0, 5)})
     show_phase_start("development", ctx=ctx, display_context=_ctx_from_console(console))
     output = console.export_text()
     assert "1/5" in output
@@ -126,7 +126,7 @@ def test_show_phase_start_zero_indexed_boundary() -> None:
 def test_show_phase_start_last_iteration_boundary() -> None:
     """Last iteration (N-1) should display as N/N."""
     console = Console(record=True)
-    ctx = PhaseStartContext(iteration=4, total_iterations=5)
+    ctx = PhaseStartContext(budget_progress={"iteration": (4, 5)})
     show_phase_start("development", ctx=ctx, display_context=_ctx_from_console(console))
     output = console.export_text()
     assert "5/5" in output
@@ -276,7 +276,7 @@ def test_transition_without_policy_renders_as_minor_no_description() -> None:
 def test_show_phase_start_reviewer_pass_zero_boundary() -> None:
     """Reviewer pass 0 should display as 1/N (1-indexed)."""
     console = Console(record=True)
-    ctx = PhaseStartContext(reviewer_pass=0, total_reviewer_passes=3)
+    ctx = PhaseStartContext(budget_progress={"reviewer_pass": (0, 3)})
     show_phase_start("review", ctx=ctx, display_context=_ctx_from_console(console))
     output = console.export_text()
     assert "1/3" in output
@@ -285,7 +285,7 @@ def test_show_phase_start_reviewer_pass_zero_boundary() -> None:
 def test_show_phase_start_reviewer_pass_last_boundary() -> None:
     """Last reviewer pass (N-1) should display as N/N."""
     console = Console(record=True)
-    ctx = PhaseStartContext(reviewer_pass=2, total_reviewer_passes=3)
+    ctx = PhaseStartContext(budget_progress={"reviewer_pass": (2, 3)})
     show_phase_start("review", ctx=ctx, display_context=_ctx_from_console(console))
     output = console.export_text()
     assert "3/3" in output
@@ -360,9 +360,8 @@ def test_show_phase_start_dev_analysis_no_suffix_without_context() -> None:
     """When phase is development_analysis but no counter context, no [analysis] suffix."""
     console = Console(record=True)
     ctx = PhaseStartContext(
-        iteration=0,
-        total_iterations=5,
-        # No development_analysis_iteration or max set
+        budget_progress={"iteration": (0, 5)},
+        # No analysis_iteration or max_analysis_iterations set
     )
     show_phase_start("development_analysis", ctx=ctx, display_context=_ctx_from_console(console))
     output = console.export_text()
@@ -374,8 +373,7 @@ def test_show_phase_start_development_no_analysis_suffix() -> None:
     """When phase is development without analysis_iteration, no [analysis] suffix."""
     console = Console(record=True)
     ctx = PhaseStartContext(
-        iteration=1,
-        total_iterations=5,
+        budget_progress={"iteration": (1, 5)},
     )
     show_phase_start("development", ctx=ctx, display_context=_ctx_from_console(console))
     output = console.export_text()
@@ -387,8 +385,7 @@ def test_show_phase_start_review_no_analysis_suffix() -> None:
     """When phase is review without analysis_iteration, no [analysis] suffix."""
     console = Console(record=True)
     ctx = PhaseStartContext(
-        reviewer_pass=0,
-        total_reviewer_passes=2,
+        budget_progress={"reviewer_pass": (0, 2)},
     )
     show_phase_start("review", ctx=ctx, display_context=_ctx_from_console(console))
     output = console.export_text()
@@ -400,8 +397,7 @@ def test_show_phase_start_combines_iteration_and_analysis_counters() -> None:
     """Both iteration and analysis counters can appear together."""
     console = Console(record=True)
     ctx = PhaseStartContext(
-        iteration=2,
-        total_iterations=5,
+        budget_progress={"iteration": (2, 5)},
         analysis_iteration=1,
         max_analysis_iterations=3,
     )
@@ -417,8 +413,7 @@ def test_show_phase_start_combines_iteration_and_analysis_counters() -> None:
 
 def test_show_phase_start_from_state_forwards_counters() -> None:
     stub = types.SimpleNamespace(
-        iteration=0,
-        reviewer_pass=1,
+        outer_progress={"iteration": 0, "reviewer_pass": 1},
         budget_caps={"iteration": 3, "reviewer_pass": 2},
         agent_name="coder",
     )
@@ -432,7 +427,7 @@ def test_show_phase_start_from_state_forwards_counters() -> None:
 
 
 def test_show_phase_start_from_state_tolerates_missing_attrs() -> None:
-    stub = types.SimpleNamespace(iteration=0, budget_caps={"iteration": 3})
+    stub = types.SimpleNamespace(outer_progress={"iteration": 0}, budget_caps={"iteration": 3})
     buf = StringIO()
     console = Console(file=buf, force_terminal=False, color_system=None, width=200)
     show_phase_start_from_state(stub, "planning", display_context=_ctx_from_console(console))

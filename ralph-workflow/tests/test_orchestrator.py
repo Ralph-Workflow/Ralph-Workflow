@@ -134,8 +134,8 @@ def _make_minimal_pipeline_policy() -> PipelinePolicy:
         terminal_phase="complete",
         recovery=RecoveryPolicy(failed_route="failed_terminal"),
         budget_counters={
-            "iteration": BudgetCounterConfig(),
-            "reviewer_pass": BudgetCounterConfig(),
+            "iteration": BudgetCounterConfig(default_max=5),
+            "reviewer_pass": BudgetCounterConfig(default_max=1),
         },
         post_commit_routes=[
             PostCommitRoute(

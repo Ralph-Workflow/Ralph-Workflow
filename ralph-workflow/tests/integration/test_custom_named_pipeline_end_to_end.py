@@ -75,6 +75,7 @@ def _build_custom_bundle() -> PolicyBundle:
         },
         budget_counters={
             "cycles": BudgetCounterConfig(
+                default_max=_CYCLE_CAP,
                 tracks_budget=True,
                 description="Outer iteration budget",
             ),

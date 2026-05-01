@@ -72,11 +72,11 @@ class PreparePromptEffect:
 
     Attributes:
         phase: Current pipeline phase.
-        iteration: Current iteration number.
+        iteration: Deprecated — kept for prompt-template rendering only; None when not applicable.
     """
 
     phase: PipelinePhase
-    iteration: int
+    iteration: int | None = None
     drain: str | None = None
 
 

@@ -47,7 +47,7 @@ def _feature_commit_policy() -> PipelinePolicy:
         },
         entry_phase="feature_commit",
         terminal_phase="complete",
-        budget_counters={"iteration": BudgetCounterConfig()},
+        budget_counters={"iteration": BudgetCounterConfig(default_max=5)},
         post_commit_routes=[
             PostCommitRoute(
                 when=PostCommitRouteWhen(phase="feature_commit", budget_state="remaining"),

@@ -20,7 +20,6 @@ class CheckpointPayloadDict(TypedDict):
     execution_history: ExecutionHistoryDict
     working_dir: str
     phase: str
-    iteration: int
 
 
 @dataclass(frozen=True)
@@ -37,11 +36,6 @@ class CheckpointPayload:
         """Expose the current phase directly for checkpoint summaries."""
         return self.state.phase
 
-    @property
-    def iteration(self) -> int:
-        """Expose the current iteration directly for checkpoint summaries."""
-        return self.state.iteration
-
     def to_dict(self) -> CheckpointPayloadDict:
         """Return a JSON-safe dictionary representation."""
         payload: CheckpointPayloadDict = {
@@ -50,7 +44,6 @@ class CheckpointPayload:
             "execution_history": self.execution_history.to_dict(),
             "working_dir": self.working_dir,
             "phase": self.phase,
-            "iteration": self.iteration,
         }
         return payload
 

@@ -151,12 +151,11 @@ class TestDevCommitSuccessIncrementsIteration:
         """When development_commit emits COMMIT_SUCCESS, iteration should increment by 1."""
         state = PipelineState(
             phase="development_commit",
-            iteration=0,
             budget_remaining={"iteration": 3, "reviewer_pass": 2},
         )
         policy = _dev_analysis_policy()
         new_state, _ = _reduce(state, PipelineEvent.COMMIT_SUCCESS, policy)
-        assert new_state.iteration == 1
+        assert new_state.get_outer_progress("iteration") == 1
 
 
 class TestReviewCommitSuccessIncrementsReviewerPass:
@@ -166,12 +165,11 @@ class TestReviewCommitSuccessIncrementsReviewerPass:
         """When review_commit emits COMMIT_SUCCESS, reviewer_pass should increment by 1."""
         state = PipelineState(
             phase="review_commit",
-            reviewer_pass=0,
             budget_remaining={"iteration": 3, "reviewer_pass": 2},
         )
         policy = _dev_analysis_policy()
         new_state, _ = _reduce(state, PipelineEvent.COMMIT_SUCCESS, policy)
-        assert new_state.reviewer_pass == 1
+        assert new_state.get_outer_progress("reviewer_pass") == 1
 
 
 class TestDevAnalysisLoopbackIncrementsContinuationCounter:
@@ -216,12 +214,11 @@ class TestDevCommitSuccessResetsDevAnalysisIteration:
         state = PipelineState(
             phase="development_commit",
             loop_iterations={"development_analysis_iteration": 3},
-            iteration=0,
             budget_remaining={"iteration": 3, "reviewer_pass": 2},
         )
         policy = _dev_analysis_policy()
         new_state, _ = _reduce(state, PipelineEvent.COMMIT_SUCCESS, policy)
-        assert new_state.iteration == 1
+        assert new_state.get_outer_progress("iteration") == 1
         assert new_state.get_loop_iteration("development_analysis_iteration") == 0
 
 
@@ -234,14 +231,13 @@ class TestReviewAnalysisLoopbackIncrementsContinuationCounter:
             phase="review_analysis",
             loop_iterations={"review_analysis_iteration": 0},
             loop_caps={"review_analysis_iteration": 2},
-            reviewer_pass=0,
         )
         policy = _dev_analysis_policy()
         new_state, _ = _reduce(state, PipelineEvent.ANALYSIS_LOOPBACK, policy)
         # Routes to fix via on_loopback
         assert new_state.phase == "fix"
         assert new_state.get_loop_iteration("review_analysis_iteration") == 1
-        assert new_state.reviewer_pass == 0
+        assert new_state.get_outer_progress("reviewer_pass") == 0
 
 
 class TestReviewAnalysisLoopbackAtMaxRoutesToFix:
@@ -253,7 +249,6 @@ class TestReviewAnalysisLoopbackAtMaxRoutesToFix:
             phase="review_analysis",
             loop_iterations={"review_analysis_iteration": 1},
             loop_caps={"review_analysis_iteration": 2},
-            reviewer_pass=0,
         )
         policy = _dev_analysis_policy()
         new_state, _ = _reduce(state, PipelineEvent.ANALYSIS_LOOPBACK, policy)
@@ -270,12 +265,11 @@ class TestReviewCommitSuccessResetsReviewAnalysisIteration:
         state = PipelineState(
             phase="review_commit",
             loop_iterations={"review_analysis_iteration": 2},
-            reviewer_pass=0,
             budget_remaining={"iteration": 3, "reviewer_pass": 2},
         )
         policy = _dev_analysis_policy()
         new_state, _ = _reduce(state, PipelineEvent.COMMIT_SUCCESS, policy)
-        assert new_state.reviewer_pass == 1
+        assert new_state.get_outer_progress("reviewer_pass") == 1
         assert new_state.get_loop_iteration("review_analysis_iteration") == 0
 
 

@@ -397,7 +397,7 @@ class TestValidateCounterOverrides:
             },
             entry_phase="work",
             terminal_phase="work",
-            budget_counters={name: BudgetCounterConfig() for name in counter_names},
+            budget_counters={name: BudgetCounterConfig(default_max=5) for name in counter_names},
         )
 
     def test_unknown_counter_raises_policy_validation_error(self) -> None:

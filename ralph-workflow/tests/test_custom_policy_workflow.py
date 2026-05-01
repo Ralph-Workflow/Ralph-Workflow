@@ -71,7 +71,9 @@ def custom_bundle() -> PolicyBundle:
             "audit_round": LoopCounterConfig(default_max=2, description="Audit loop counter"),
         },
         budget_counters={
-            "cycles": BudgetCounterConfig(tracks_budget=True, description="Outer cycle counter"),
+            "cycles": BudgetCounterConfig(
+                tracks_budget=True, description="Outer cycle counter", default_max=5
+            ),
         },
         phases={
             "design": PhaseDefinition(

@@ -162,9 +162,6 @@ class PipelineState(_FrozenPipelineStateModel):  # type: ignore[explicit-any]  #
     phase: PipelinePhase = _UNSET_PHASE
     previous_phase: PipelinePhase | None = None
 
-    iteration: int = 0
-    reviewer_pass: int = 0
-
     # Review outcome tracking (replaces direct review_issues_found writes)
     review_outcome: str | None = None
 
@@ -481,14 +478,7 @@ class PipelineState(_FrozenPipelineStateModel):  # type: ignore[explicit-any]  #
 
     def with_outer_progress(self, counter_name: str, value: int) -> PipelineState:
         """Return a copy with the specified outer progress counter set to value."""
-        updates: dict[str, object] = {
-            "outer_progress": {**self.outer_progress, counter_name: value},
-        }
-        if counter_name == "iteration":
-            updates["iteration"] = value
-        elif counter_name == "reviewer_pass":
-            updates["reviewer_pass"] = value
-        return self.copy_with(**updates)
+        return self.copy_with(outer_progress={**self.outer_progress, counter_name: value})
 
     def with_budget_cap(self, counter_name: str, value: int) -> PipelineState:
         """Return a copy with the specified budget cap set to value."""

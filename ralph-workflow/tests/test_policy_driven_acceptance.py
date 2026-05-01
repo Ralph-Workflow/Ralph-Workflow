@@ -88,7 +88,7 @@ def policy_with_renamed_phases() -> PolicyBundle:
         },
         budget_counters={
             "cycles": BudgetCounterConfig(
-                tracks_budget=True, description="Outer cycle counter"
+                tracks_budget=True, description="Outer cycle counter", default_max=5
             ),
         },
         phases={
@@ -653,7 +653,9 @@ class TestAcceptanceCChangingBehavior:
                 "audit_round": LoopCounterConfig(default_max=2, description="alt audit"),
             },
             budget_counters={
-                "cycles": BudgetCounterConfig(tracks_budget=True, description="alt cycles"),
+                "cycles": BudgetCounterConfig(
+                    tracks_budget=True, description="alt cycles", default_max=5
+                ),
             },
             phases={
                 "design": PhaseDefinition(

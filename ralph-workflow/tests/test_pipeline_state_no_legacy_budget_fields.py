@@ -1,18 +1,17 @@
-"""Guard: PipelineState must not declare the four removed legacy budget fields.
+"""Guard: PipelineState must not declare any of the removed legacy budget fields.
 
-The following four fields were identified as legacy hardcoded budget fields
+The following fields were identified as legacy hardcoded budget fields
 that should no longer be first-class declared fields on PipelineState:
 - total_iterations
 - total_reviewer_passes
 - development_budget_remaining
 - review_budget_remaining
+- iteration          (scalar mirror of outer_progress['iteration'])
+- reviewer_pass      (scalar mirror of outer_progress['reviewer_pass'])
 
-These fields were replaced by the generic budget_remaining / outer_progress dicts
+All of these were replaced by the generic budget_remaining / outer_progress dicts
 keyed by policy-declared counter names. They remain in _migrate_legacy_state_fields
 for checkpoint backward-compat, but must NOT be declared as Pydantic fields.
-
-Note: 'iteration' and 'reviewer_pass' are intentionally kept as convenience
-int fields (they are the outer_progress aliases), so they are NOT forbidden.
 """
 
 from __future__ import annotations
@@ -24,6 +23,8 @@ FORBIDDEN_LEGACY_FIELDS = {
     "total_reviewer_passes",
     "development_budget_remaining",
     "review_budget_remaining",
+    "iteration",
+    "reviewer_pass",
 }
 
 
@@ -68,12 +69,4 @@ class TestNoLegacyBudgetFieldsOnPipelineState:
             "Remove them and use the generic budget_remaining/outer_progress dicts instead."
         )
 
-    def test_iteration_and_reviewer_pass_still_present(self) -> None:
-        """iteration and reviewer_pass are intentionally kept as convenience fields."""
-        model_fields = set(PipelineState.model_fields.keys())
-        assert "iteration" in model_fields, (
-            "PipelineState.iteration must still be present as a convenience field"
-        )
-        assert "reviewer_pass" in model_fields, (
-            "PipelineState.reviewer_pass must still be present as a convenience field"
-        )
+

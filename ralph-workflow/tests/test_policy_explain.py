@@ -202,7 +202,7 @@ class TestExplainPolicy:
             entry_phase="do",
             terminal_phase="done",
             budget_counters={
-                "build_pass": BudgetCounterConfig(description="build passes")
+                "build_pass": BudgetCounterConfig(description="build passes", default_max=5)
             },
         )
         bundle = PolicyBundle(
@@ -486,7 +486,9 @@ class TestExplanationSentencesProductOutcomeD:
                 entry_phase="entry",
                 terminal_phase="complete",
                 budget_counters={
-                    "cycles": BudgetCounterConfig(tracks_budget=True, description="cycle counter"),
+                    "cycles": BudgetCounterConfig(
+                        tracks_budget=True, description="cycle counter", default_max=5
+                    ),
                 },
                 post_commit_routes=[
                     PostCommitRoute(

@@ -121,7 +121,7 @@ def _build_custom_bundle() -> PolicyBundle:
             )
         },
         budget_counters={
-            "build_pass": BudgetCounterConfig(description="build passes completed")
+            "build_pass": BudgetCounterConfig(default_max=5, description="build passes completed")
         },
         post_commit_routes=[
             PostCommitRoute(

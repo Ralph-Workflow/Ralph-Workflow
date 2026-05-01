@@ -6,7 +6,7 @@ so the user can easily follow the flow of planning → development → review �
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Literal
 
 from rich.rule import Rule
@@ -278,10 +278,7 @@ def show_phase_transition(  # noqa: PLR0913
 class PhaseStartContext:
     """Optional counters and metadata for phase start display."""
 
-    iteration: int | None = None
-    total_iterations: int | None = None
-    reviewer_pass: int | None = None
-    total_reviewer_passes: int | None = None
+    budget_progress: dict[str, tuple[int, int]] = field(default_factory=dict)
     agent_name: str | None = None
     analysis_iteration: int | None = None
     max_analysis_iterations: int | None = None
@@ -318,16 +315,12 @@ def show_phase_start(  # noqa: PLR0913
     line.append(label, style=style)
 
     if ctx is not None:
-        if ctx.iteration is not None and ctx.total_iterations is not None:
-            line.append(
-                f" [iteration {ctx.iteration + 1}/{ctx.total_iterations}]",
-                style="theme.text.muted",
-            )
-        if ctx.reviewer_pass is not None and ctx.total_reviewer_passes is not None:
-            line.append(
-                f" [pass {ctx.reviewer_pass + 1}/{ctx.total_reviewer_passes}]",
-                style="theme.text.muted",
-            )
+        for counter_name, (completed, cap) in ctx.budget_progress.items():
+            if cap > 0:
+                line.append(
+                    f" [{counter_name} {completed + 1}/{cap}]",
+                    style="theme.text.muted",
+                )
         if (
             ctx.analysis_iteration is not None
             and ctx.max_analysis_iterations is not None
@@ -347,27 +340,6 @@ def show_phase_start(  # noqa: PLR0913
     c.print(line)
 
 
-def _get_int_attr(obj: object, attr: str) -> int | None:
-    """Extract a typed int attribute from any object, returning None if absent or wrong type."""
-    val: object = getattr(obj, attr, None)
-    return val if isinstance(val, int) else None
-
-
-def _get_str_attr(obj: object, attr: str) -> str | None:
-    """Extract a typed str attribute from any object, returning None if absent or wrong type."""
-    val: object = getattr(obj, attr, None)
-    return val if isinstance(val, str) else None
-
-
-def _get_budget_cap_from_state(state: object, counter_name: str) -> int | None:
-    """Extract a budget cap from a state object's budget_caps dict."""
-    caps: object = getattr(state, "budget_caps", None)
-    if isinstance(caps, dict):
-        val = caps.get(counter_name)
-        return val if isinstance(val, int) else None
-    return None
-
-
 def show_phase_start_from_state(
     state: object,
     phase: str,
@@ -375,14 +347,29 @@ def show_phase_start_from_state(
     display_context: DisplayContext,
 ) -> None:
     """Display phase start using counters extracted from a pipeline state object."""
-    ctx = PhaseStartContext(
-        iteration=_get_int_attr(state, "iteration"),
-        total_iterations=_get_budget_cap_from_state(state, "iteration"),
-        reviewer_pass=_get_int_attr(state, "reviewer_pass"),
-        total_reviewer_passes=_get_budget_cap_from_state(state, "reviewer_pass"),
-        agent_name=_get_str_attr(state, "agent_name"),
+    caps_raw: object = getattr(state, "budget_caps", None)
+    progress_raw: object = getattr(state, "outer_progress", None)
+    agent_raw: object = getattr(state, "agent_name", None)
+    caps: dict[str, int] = (
+        {str(k): int(v) for k, v in caps_raw.items() if isinstance(v, int)}
+        if isinstance(caps_raw, dict)
+        else {}
     )
+    progress: dict[str, int] = (
+        {str(k): int(v) for k, v in progress_raw.items() if isinstance(v, int)}
+        if isinstance(progress_raw, dict)
+        else {}
+    )
+    budget_progress: dict[str, tuple[int, int]] = {
+        name: (progress.get(name, 0), cap)
+        for name, cap in caps.items()
+        if cap > 0
+    }
+    agent_name: str | None = agent_raw if isinstance(agent_raw, str) else None
+    ctx = PhaseStartContext(budget_progress=budget_progress, agent_name=agent_name)
     show_phase_start(phase, ctx=ctx, display_context=display_context)
+
+
 
 
 def show_phase_complete(

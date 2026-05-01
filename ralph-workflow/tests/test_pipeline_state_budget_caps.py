@@ -10,6 +10,7 @@ from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
+from pydantic import ValidationError
 
 from ralph.pipeline import runner as runner_module
 from ralph.pipeline.state import PipelineState
@@ -23,7 +24,6 @@ from ralph.policy.models import (
 _CONFIG_ITERS = 3
 _CONFIG_REVIEWS = 1
 _CUSTOM_MAX = 7
-_FALLBACK_DEFAULT = 5
 
 
 def _minimal_policy(**extra: Any) -> PipelinePolicy:
@@ -57,8 +57,8 @@ class TestBudgetCapsSeeding:
     def test_counter_overrides_set_initial_caps(self) -> None:
         policy = _minimal_policy(
             budget_counters={
-                "iteration": BudgetCounterConfig(),
-                "reviewer_pass": BudgetCounterConfig(),
+                "iteration": BudgetCounterConfig(default_max=5),
+                "reviewer_pass": BudgetCounterConfig(default_max=1),
             }
         )
         state = runner_module._create_initial_state(
@@ -76,17 +76,15 @@ class TestBudgetCapsSeeding:
         state = runner_module._create_initial_state(_config(), pipeline_policy=policy)
         assert state.budget_caps["attempts"] == _CUSTOM_MAX
 
-    def test_custom_counter_without_default_max_falls_back_to_five(self) -> None:
-        policy = _minimal_policy(
-            budget_counters={"attempts": BudgetCounterConfig()}
-        )
-        state = runner_module._create_initial_state(_config(), pipeline_policy=policy)
-        assert state.budget_caps["attempts"] == _FALLBACK_DEFAULT
+    def test_budget_counter_config_requires_explicit_default_max(self) -> None:
+        """BudgetCounterConfig must be constructed with explicit default_max."""
+        with pytest.raises((ValidationError, TypeError)):
+            BudgetCounterConfig()
 
     def test_budget_remaining_mirrors_budget_caps_at_startup(self) -> None:
         policy = _minimal_policy(
             budget_counters={
-                "iteration": BudgetCounterConfig(),
+                "iteration": BudgetCounterConfig(default_max=6),
                 "attempts": BudgetCounterConfig(default_max=4),
             }
         )
@@ -103,7 +101,7 @@ class TestBudgetCapsSeeding:
 
     def test_iteration_not_seeded_when_not_in_policy(self) -> None:
         policy = _minimal_policy(
-            budget_counters={"reviewer_pass": BudgetCounterConfig()}
+            budget_counters={"reviewer_pass": BudgetCounterConfig(default_max=1)}
         )
         state = runner_module._create_initial_state(
             _config(),
@@ -115,7 +113,7 @@ class TestBudgetCapsSeeding:
 
     def test_zero_reviewer_pass_counter_override(self) -> None:
         policy = _minimal_policy(
-            budget_counters={"reviewer_pass": BudgetCounterConfig()}
+            budget_counters={"reviewer_pass": BudgetCounterConfig(default_max=1)}
         )
         state = runner_module._create_initial_state(
             _config(), pipeline_policy=policy, counter_overrides={"reviewer_pass": 0}

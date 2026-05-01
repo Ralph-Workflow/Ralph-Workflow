@@ -192,7 +192,6 @@ _LEGACY_EXECUTE_EFFECT_ARITY = 3
 _POLICY_LOADER_CONFIG_ARITY = 2
 _RECOVERY_CONTEXT_LINES = 12
 _MIN_WORK_UNITS_FOR_PARALLEL_PREFLIGHT = 2
-_DEFAULT_BUDGET_CAP = 5
 _TRANSIENT_CONNECTIVITY_MARKERS = (
     "connection refused",
     "network is unreachable",
@@ -205,16 +204,6 @@ _TRANSIENT_CONNECTIVITY_MARKERS = (
     "enotfound",
     "socket hang up",
 )
-_EVENT_DECISION_LABELS: dict[PipelineEvent, str] = {
-    PipelineEvent.ANALYSIS_SUCCESS: "approved",
-    PipelineEvent.ANALYSIS_LOOPBACK: "needs changes",
-    PipelineEvent.REVIEW_CLEAN: "clean — no issues",
-    PipelineEvent.REVIEW_ISSUES_FOUND: "issues found",
-    PipelineEvent.COMMIT_SUCCESS: "committed",
-    PipelineEvent.COMMIT_SKIPPED: "skipped — nothing to commit",
-    PipelineEvent.FIX_SUCCESS: "fixed",
-}
-
 _VERBOSITY_RANK: dict[Verbosity, int] = {
     Verbosity.QUIET: 0,
     Verbosity.NORMAL: 1,
@@ -844,29 +833,21 @@ def _show_phase_start_with_context(
             analysis_iteration = state.loop_iterations.get(field)
             max_analysis_iterations = state.loop_caps.get(field)
 
-    exec_counter: str | None = None
-    review_counter: str | None = None
+    budget_progress: dict[str, tuple[int, int]] = {}
     if pipeline_policy is not None:
         phase_def_for_ctx = pipeline_policy.phases.get(phase)
         if phase_def_for_ctx is not None:
-            if phase_def_for_ctx.role == "execution":
-                exec_counter = _find_commit_counter_from_phase(phase, pipeline_policy)
-            elif phase_def_for_ctx.role == "review":
-                review_counter = _find_commit_counter_from_phase(phase, pipeline_policy)
-    else:
-        # No policy available: fall back to budget_caps key presence for display.
-        # This path only occurs when called without a policy bundle (e.g. in tests
-        # or legacy contexts). Production runs always have a policy bundle.
-        if "iteration" in state.budget_caps:
-            exec_counter = "iteration"
-        if "reviewer_pass" in state.budget_caps:
-            review_counter = "reviewer_pass"
+            counter: str | None = None
+            if phase_def_for_ctx.role in ("execution", "review"):
+                counter = _find_commit_counter_from_phase(phase, pipeline_policy)
+            if counter is not None:
+                budget_progress[counter] = (
+                    state.get_outer_progress(counter),
+                    state.get_budget_cap(counter),
+                )
 
     ctx = PhaseStartContext(
-        iteration=state.get_outer_progress(exec_counter) if exec_counter else None,
-        total_iterations=state.get_budget_cap(exec_counter) if exec_counter else None,
-        reviewer_pass=state.get_outer_progress(review_counter) if review_counter else None,
-        total_reviewer_passes=state.get_budget_cap(review_counter) if review_counter else None,
+        budget_progress=budget_progress,
         analysis_iteration=analysis_iteration,
         max_analysis_iterations=max_analysis_iterations,
     )
@@ -1780,7 +1761,6 @@ def _handle_inline_effect(  # noqa: PLR0913
                 _write_start_commit_if_absent(workspace_scope.root)
         updated_state = prepared_state.copy_with(
             phase=effect.phase,
-            iteration=effect.iteration,
             current_drain=effect.drain or resolve_phase_drain(effect.phase, pipeline_policy),
         )
         ckpt.save(updated_state)
@@ -1914,7 +1894,7 @@ def _create_initial_state(
     )
 
     caps: dict[str, int] = {
-        name: (cfg.default_max if cfg.default_max is not None else _DEFAULT_BUDGET_CAP)
+        name: cfg.default_max
         for name, cfg in pipeline_policy.budget_counters.items()
     }
     if counter_overrides:
@@ -1976,7 +1956,6 @@ def _recovery_prepare_effect(
     drain = state.current_drain if isinstance(state.current_drain, str) else None
     return PreparePromptEffect(
         phase=target_phase,
-        iteration=state.iteration,
         drain=drain,
     )
 

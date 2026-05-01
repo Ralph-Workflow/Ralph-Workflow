@@ -106,27 +106,6 @@ class PauseOnExit(StrEnum):
     NEVER = "never"
 
 
-class AnalysisDecision(StrEnum):
-    """Decision outcome from an analysis phase.
-
-    These are explicit typed decision points for development_analysis and
-    review_analysis phases, parsed from the MCP artifact status field.
-
-    Attributes:
-        PROCEED: Analysis approved, proceed to next phase (commit).
-        REVISE: Analysis requests changes, loop back to previous phase.
-        COMPLETE: Analysis indicates the task is complete, pipeline can end.
-        ESCALATE: Analysis indicates escalation is needed.
-        FAILURE: Analysis failed, pipeline should fail.
-    """
-
-    PROCEED = "proceed"
-    REVISE = "revise"
-    COMPLETE = "complete"
-    ESCALATE = "escalate"
-    FAILURE = "failure"
-
-
 # ---------------------------------------------------------------------------
 # Pipeline phase type alias — phases come from pipeline.toml, not a fixed enum
 # ---------------------------------------------------------------------------

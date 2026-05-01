@@ -46,10 +46,6 @@ def _make_snapshot(  # noqa: PLR0913
     return PipelineSnapshot(
         phase=phase,
         previous_phase="development_commit",
-        iteration=3,
-        total_iterations=5,
-        reviewer_pass=1,
-        total_reviewer_passes=2,
         review_issues_found=False,
         interrupted_by_user=False,
         last_error=last_error,

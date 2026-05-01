@@ -64,11 +64,19 @@ def _execution_handler_for(phase_name: str):
     return _handler
 
 
+def _review_handler_for(phase_name: str):
+    """Return a wrapper around handle_review with the correct phase set."""
+    def _handler(effect, ctx):
+        real_effect = InvokeAgentEffect(agent_name="test", phase=phase_name, prompt_file="test.txt")
+        return handle_review(real_effect, ctx)
+    return _handler
+
+
 _PHASE_TO_HANDLER = {
     "planning": _execution_handler_for("planning"),
     "development": _execution_handler_for("development"),
     "development_analysis": _analysis_handler_for("development_analysis"),
-    "review": handle_review,
+    "review": _review_handler_for("review"),
     "review_analysis": _analysis_handler_for("review_analysis"),
 }
 

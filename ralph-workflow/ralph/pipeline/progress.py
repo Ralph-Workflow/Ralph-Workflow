@@ -177,6 +177,6 @@ def derive_run_context_progress(state: PipelineState, run_context: RunContext) -
     """Derive checkpoint-facing progress mirrors from canonical pipeline state."""
     return replace(
         run_context,
-        actual_developer_runs=state.iteration,
-        actual_reviewer_runs=state.reviewer_pass,
+        actual_developer_runs=state.get_outer_progress("iteration"),
+        actual_reviewer_runs=state.get_outer_progress("reviewer_pass"),
     )

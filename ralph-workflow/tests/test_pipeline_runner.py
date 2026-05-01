@@ -77,10 +77,6 @@ _AVAILABLE_WIDTH_FLOOR = 40
 _TRUNCATE_RESULT_LEN = 6  # 5 chars + 1 ellipsis char
 
 
-def _event_decision_labels() -> dict[PipelineEvent, str]:
-    return cast("dict[PipelineEvent, str]", runner_module._EVENT_DECISION_LABELS)
-
-
 @lru_cache(maxsize=1)
 def _load_default_policy_bundle() -> PolicyBundle:
     defaults_dir = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
@@ -173,8 +169,8 @@ class TestCreateInitialState:
             entry_phase="planning",
             terminal_phase="complete",
             budget_counters={
-                "iteration": BudgetCounterConfig(),
-                "reviewer_pass": BudgetCounterConfig(),
+                "iteration": BudgetCounterConfig(default_max=5),
+                "reviewer_pass": BudgetCounterConfig(default_max=1),
             },
         )
 
@@ -339,13 +335,11 @@ class TestDetermineEffect:
     def _make_state(
         self,
         phase: str,
-        iteration: int = 0,
         total_iterations: int = 3,
         current_agent: str | None = None,
     ) -> MagicMock:
         state = MagicMock()
         state.phase = phase
-        state.iteration = iteration
         state.budget_caps = {"iteration": total_iterations, "reviewer_pass": 1}
         state.current_agent.return_value = current_agent
         return state
@@ -1148,7 +1142,6 @@ class TestPipelineRunnerLoop:
         assert result == 0
         state.copy_with.assert_called_once_with(
             phase="development",
-            iteration=0,
             current_drain="development",
         )
         execute_effect.assert_not_called()
@@ -2695,39 +2688,6 @@ class TestAvailableWidth:
         assert result == expected
 
 
-class TestEventDecisionLabels:
-    """Tests for _EVENT_DECISION_LABELS mapping."""
-
-    def test_analysis_success_label(self) -> None:
-        assert _event_decision_labels()[PipelineEvent.ANALYSIS_SUCCESS] == "approved"
-
-    def test_analysis_loopback_label(self) -> None:
-        labels = _event_decision_labels()
-        assert labels[PipelineEvent.ANALYSIS_LOOPBACK] == "needs changes"
-
-    def test_review_clean_label(self) -> None:
-        labels = _event_decision_labels()
-        assert labels[PipelineEvent.REVIEW_CLEAN] == "clean — no issues"
-
-    def test_review_issues_found_label(self) -> None:
-        labels = _event_decision_labels()
-        assert labels[PipelineEvent.REVIEW_ISSUES_FOUND] == "issues found"
-
-    def test_commit_success_label(self) -> None:
-        assert _event_decision_labels()[PipelineEvent.COMMIT_SUCCESS] == "committed"
-
-    def test_commit_skipped_label(self) -> None:
-        assert _event_decision_labels()[PipelineEvent.COMMIT_SKIPPED] == (
-            "skipped — nothing to commit"
-        )
-
-    def test_fix_success_label(self) -> None:
-        assert _event_decision_labels()[PipelineEvent.FIX_SUCCESS] == "fixed"
-
-    def test_unknown_event_has_no_label(self) -> None:
-        assert _event_decision_labels().get(PipelineEvent.AGENT_FAILURE) is None
-
-
 class TestStartCommitCapture:
     def test_run_pipeline_writes_start_commit_on_first_invocation(
         self, monkeypatch: MonkeyPatch, tmp_git_repo: Path
@@ -3025,8 +2985,6 @@ def test_phase_start_banner_emitted_to_parallel_display_console(
 
     state = PipelineState(
         phase="development",
-        iteration=0,
-        reviewer_pass=0,
         budget_caps={"iteration": 3, "reviewer_pass": 1},
     )
 
@@ -3041,6 +2999,7 @@ def test_phase_start_banner_emitted_to_parallel_display_console(
         WorkspaceScope(tmp_path),
         display=display,
         state=state,
+        policy_bundle=_load_default_policy_bundle(),
     )
 
     out = buf.getvalue()
@@ -3229,7 +3188,9 @@ class TestPhaseContextRoleBasedDispatch:
                 ),
             }
         )
-        state = PipelineState(phase="build", iteration=2, budget_caps={"iteration": 5})
+        state = PipelineState(
+            phase="build", outer_progress={"iteration": 2}, budget_caps={"iteration": 5}
+        )
         ctx = self._call(state, "planning", policy)
         assert ctx.get("iteration") == "3/5"
 
@@ -3258,7 +3219,9 @@ class TestPhaseContextRoleBasedDispatch:
                 ),
             }
         )
-        state = PipelineState(phase="qa", reviewer_pass=1, budget_caps={"reviewer_pass": 3})
+        state = PipelineState(
+            phase="qa", outer_progress={"reviewer_pass": 1}, budget_caps={"reviewer_pass": 3}
+        )
         ctx = self._call(state, "planning", policy)
         assert ctx.get("pass") == "2/3"
 
@@ -3376,7 +3339,9 @@ class TestPhaseContextRoleBasedDispatch:
                 ),
             }
         )
-        state = PipelineState(phase="gate", iteration=2, budget_caps={"iteration": 5})
+        state = PipelineState(
+            phase="gate", outer_progress={"iteration": 2}, budget_caps={"iteration": 5}
+        )
         ctx = self._call(state, "planning", policy)
         assert "iteration" not in ctx
 

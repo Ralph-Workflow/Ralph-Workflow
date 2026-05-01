@@ -32,9 +32,8 @@ def test_dropped_count_increments_on_queue_full(subscriber: PipelineSubscriber) 
     """PipelineSubscriber should increment dropped_count when queue is full."""
     state = MagicMock()
     state.phase = "planning"
-    state.iteration = 1
-    state.budget_caps = {"iteration": 1, "reviewer_pass": 0}
-    state.reviewer_pass = 0
+    state.budget_caps = {"iteration": 1}
+    state.outer_progress = {"iteration": 1}
     state.review_outcome = None
     state.interrupted_by_user = False
     state.last_error = None
@@ -77,9 +76,8 @@ def test_no_loguru_debug_on_drop(
 
     state = MagicMock()
     state.phase = "planning"
-    state.iteration = 1
-    state.budget_caps = {"iteration": 1, "reviewer_pass": 0}
-    state.reviewer_pass = 0
+    state.budget_caps = {"iteration": 1}
+    state.outer_progress = {"iteration": 1}
     state.review_outcome = None
     state.interrupted_by_user = False
     state.last_error = None

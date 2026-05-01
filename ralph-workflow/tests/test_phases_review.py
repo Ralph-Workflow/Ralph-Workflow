@@ -61,6 +61,7 @@ class TestHandleReview:
         self,
     ) -> None:
         effect = MagicMock(spec=InvokeAgentEffect)
+        effect.phase = "review"
         ctx = self._make_context()
         ctx.workspace.exists.return_value = False
 

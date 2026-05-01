@@ -24,8 +24,7 @@ def _make_state(*, worker_states: dict[str, WorkerState] | None = None) -> Pipel
     return PipelineState(
         phase="development",
         previous_phase="planning",
-        iteration=ITERATION,
-        reviewer_pass=1,
+        outer_progress={"iteration": ITERATION, "reviewer_pass": 1},
         budget_caps={"iteration": TOTAL_ITERATIONS, "reviewer_pass": TOTAL_REVIEWER_PASSES},
         review_outcome="has_issues",
         interrupted_by_user=False,
@@ -75,10 +74,10 @@ def test_snapshot_from_state_projects_exact_fields_and_order() -> None:
 
     assert snapshot.phase == "development"
     assert snapshot.previous_phase == "planning"
-    assert snapshot.iteration == ITERATION
-    assert snapshot.total_iterations == TOTAL_ITERATIONS
-    assert snapshot.reviewer_pass == 1
-    assert snapshot.total_reviewer_passes == TOTAL_REVIEWER_PASSES
+    assert snapshot.budget_progress["iteration"].completed == ITERATION
+    assert snapshot.budget_progress["iteration"].cap == TOTAL_ITERATIONS
+    assert snapshot.budget_progress["reviewer_pass"].completed == 1
+    assert snapshot.budget_progress["reviewer_pass"].cap == TOTAL_REVIEWER_PASSES
     assert snapshot.review_issues_found is True
     assert snapshot.interrupted_by_user is False
     assert snapshot.last_error == "boom"
@@ -167,10 +166,6 @@ def test_snapshot_dataclasses_are_frozen_and_slotted() -> None:
     snapshot = PipelineSnapshot(
         phase="planning",
         previous_phase=None,
-        iteration=0,
-        total_iterations=0,
-        reviewer_pass=0,
-        total_reviewer_passes=0,
         review_issues_found=False,
         interrupted_by_user=False,
         last_error=None,
