@@ -165,6 +165,9 @@ def run_process(
         stdout_bytes, stderr_bytes = handle.communicate(timeout=timeout)
     except subprocess.TimeoutExpired:
         handle.terminate(grace_period_s=0)
+        # After kill, communicate() drains the pipe including any data accumulated
+        # by the internal reader before the timeout fired (Python preserves this
+        # across communicate() calls via self._fileobj2output).
         stdout_bytes, stderr_bytes = handle.communicate()
         raise ProcessExecutionError.from_timeout(
             cmd,

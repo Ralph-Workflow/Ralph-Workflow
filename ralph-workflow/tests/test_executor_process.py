@@ -14,13 +14,16 @@ if TYPE_CHECKING:
 
 PYTHON = sys.executable
 EXIT_CODE = 3
-TIMEOUT_SECONDS = 0.05
+TIMEOUT_SECONDS = 0.5
 SYNC_FAILURE_SCRIPT = (
     f"import sys; print('hello'); print('oops', file=sys.stderr); raise SystemExit({EXIT_CODE})"
 )
-SYNC_TIMEOUT_SCRIPT = "import sys, time; print('before-timeout'); sys.stdout.flush(); time.sleep(1)"
+# Sleep duration (60 s) must exceed TIMEOUT_SECONDS so the process is still
+# alive when the timeout fires. The per-test budget is extended via the marker.
+_SLEEP = "time.sleep(60)"
+SYNC_TIMEOUT_SCRIPT = f"import sys, time; print('before-timeout'); sys.stdout.flush(); {_SLEEP}"
 ASYNC_TIMEOUT_SCRIPT = (
-    "import sys, time; print('before-async-timeout'); sys.stdout.flush(); time.sleep(1)"
+    f"import sys, time; print('before-async-timeout'); sys.stdout.flush(); {_SLEEP}"
 )
 
 
@@ -51,6 +54,7 @@ async def test_run_process_async_captures_output(tmp_path: Path) -> None:
     assert result.stderr == ""
 
 
+@pytest.mark.timeout_seconds(5)
 def test_run_process_timeout_includes_context(tmp_path: Path) -> None:
     """Timeouts should raise a dedicated execution error with partial output."""
     with pytest.raises(ProcessExecutionError) as excinfo:
@@ -70,6 +74,7 @@ def test_run_process_timeout_includes_context(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.timeout_seconds(5)
 async def test_run_process_async_timeout_includes_context(tmp_path: Path) -> None:
     """Async timeouts should terminate the process and expose partial output."""
     with pytest.raises(ProcessExecutionError) as excinfo:
