@@ -24,7 +24,7 @@ dicts at deserialise time via the _migrate_legacy_state_fields model_validator.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Final, cast
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -34,6 +34,8 @@ from ralph.pipeline.worker_state import WorkerState  # noqa: TC001
 
 if TYPE_CHECKING:
     from ralph.policy.models import DrainName, PipelinePolicy
+
+_UNSET_PHASE: Final[str] = "__unset__"
 
 def _migrate_counter_field(
     d: dict[str, object],
@@ -164,7 +166,7 @@ class PipelineState(_FrozenPipelineStateModel):  # type: ignore[explicit-any]  #
         review_budget_remaining: Alias for budget_remaining['reviewer_pass'].
     """
 
-    phase: PipelinePhase = "planning"
+    phase: PipelinePhase = _UNSET_PHASE
     previous_phase: PipelinePhase | None = None
 
     # Legacy budget fields — kept as real fields for display/checkpoint compat.
@@ -204,7 +206,7 @@ class PipelineState(_FrozenPipelineStateModel):  # type: ignore[explicit-any]  #
     last_reviewed_sha: str | None = None
 
     # Policy-derived fields (set at startup and after phase transitions)
-    policy_entry_phase: PipelinePhase = "planning"
+    policy_entry_phase: PipelinePhase = _UNSET_PHASE
     current_drain: str | None = None
 
     work_units: tuple[WorkUnit, ...] = Field(default_factory=tuple)
@@ -219,6 +221,29 @@ class PipelineState(_FrozenPipelineStateModel):  # type: ignore[explicit-any]  #
     last_retry_delay_ms: int = 0
     last_agent_session_id: str | None = None
     session_preserve_retry_pending: bool = False
+
+    @model_validator(mode="after")
+    def _validate_phase_set(self) -> PipelineState:
+        if self.phase == _UNSET_PHASE:
+            raise ValueError(
+                "PipelineState requires phase to be set from PipelinePolicy.entry_phase "
+                "before construction; use PipelineState.from_policy(policy) "
+                "or pass phase= explicitly."
+            )
+        return self
+
+    @classmethod
+    def from_policy(cls, policy: PipelinePolicy, **overrides: object) -> PipelineState:
+        """Construct initial pipeline state from a loaded PipelinePolicy.
+
+        The entry phase is derived from policy.entry_phase so no workflow
+        entry semantics are embedded in this class.
+        """
+        return cls(
+            phase=policy.entry_phase,
+            policy_entry_phase=policy.entry_phase,
+            **overrides,  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+        )
 
     @model_validator(mode="before")
     @classmethod
@@ -403,25 +428,6 @@ class PipelineState(_FrozenPipelineStateModel):  # type: ignore[explicit-any]  #
             Current iteration count (0 when not yet set).
         """
         return self.loop_iterations.get(field_name, 0)
-
-    def get_max_loop_iteration(self, field_name: str) -> int:
-        """Get the runtime cap for a loop iteration field from state.
-
-        Args:
-            field_name: The iteration_state_field value from PhaseLoopPolicy.
-
-        Returns:
-            Maximum iteration count from loop_caps.
-
-        Raises:
-            AttributeError: If field_name is not in loop_caps.
-        """
-        if field_name in self.loop_caps:
-            return self.loop_caps[field_name]
-        raise AttributeError(
-            f"Unknown loop cap for field '{field_name}'. "
-            f"Declare it in pipeline.loop_counters and initialize in loop_caps."
-        )
 
     def with_loop_iteration(self, field_name: str, value: int) -> PipelineState:
         """Return a copy with the specified loop iteration field set to value.

@@ -419,6 +419,25 @@ def _render_explanation_sentences(phase: PhaseExplanation) -> list[str]:
             f"verification gate before {v.gate_for}; failure routes to "
             f"'{failure_target}'."
         )
+        if v.on_failure_route:
+            sentences.append(
+                f"Explanation: phase '{phase.name}' fails verification "
+                f"→ routes to '{v.on_failure_route}' because the policy "
+                f"declares verification.on_failure_route"
+            )
+
+    if not phase.has_parallelization and phase.role not in {"terminal", "fanout_join"}:
+        sentences.append(
+            f"Explanation: parallel execution is rejected at phase "
+            f"'{phase.name}' because no parallelization policy is declared"
+        )
+
+    for budget_state, target in phase.post_commit_routes_info:
+        sentences.append(
+            f"Explanation: after commit phase '{phase.name}' with budget_state "
+            f"'{budget_state}' → routes to '{target}' because the workflow "
+            f"policy declares this post_commit_route"
+        )
 
     return sentences
 

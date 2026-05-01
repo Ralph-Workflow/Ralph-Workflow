@@ -17,16 +17,17 @@ from ralph.display.artifact_reader import (
 from ralph.display.lifecycle_filter import is_bare_lifecycle
 from ralph.display.prompt_reader import find_prompt_path, read_prompt_preview
 from ralph.display.snapshot import PipelineSnapshot, snapshot_from_state
+from ralph.policy.models import ROLE_REVIEW
 
 if TYPE_CHECKING:
     from collections.abc import Callable
     from pathlib import Path
 
     from ralph.pipeline.state import PipelineState
+    from ralph.policy.models import PipelinePolicy
 
 
 _DECISION_LOG_MAX = 16
-_ANALYSIS_PHASES = frozenset({"development_analysis", "review_analysis"})
 
 
 def _now_iso() -> str:
@@ -45,7 +46,7 @@ class PipelineSubscriber:
     flow into the same snapshot queue without breaking the notify(state) contract.
     """
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         *,
         queue: Queue[PipelineSnapshot],
@@ -53,6 +54,7 @@ class PipelineSubscriber:
         run_id: str,
         prompt_reader: Callable[[Path], tuple[str, ...]] = read_prompt_preview,
         on_snapshot: Callable[[PipelineSnapshot], None] | None = None,
+        pipeline_policy: PipelinePolicy | None = None,
     ) -> None:
         self._queue = queue
         self._run_id = run_id
@@ -60,6 +62,7 @@ class PipelineSubscriber:
         self._dropped_count = 0
         self._lock = threading.Lock()
         self._on_snapshot = on_snapshot
+        self._pipeline_policy: PipelinePolicy | None = pipeline_policy
 
         prompt_path = find_prompt_path(workspace_root)
         self._prompt_path: str | None = str(prompt_path) if prompt_path is not None else None
@@ -116,6 +119,10 @@ class PipelineSubscriber:
     @property
     def run_id(self) -> str:
         return self._run_id
+
+    @property
+    def pipeline_policy(self) -> PipelinePolicy | None:
+        return self._pipeline_policy
 
     @property
     def last_tool_name(self) -> str | None:
@@ -299,22 +306,34 @@ class PipelineSubscriber:
             self._previous_phase = cur
             return
 
-        if prev == "development_analysis" and cur in {"development_commit", "development"}:
+        policy = self._pipeline_policy
+        prev_role = policy.phases[prev].role if policy and prev in policy.phases else None
+        cur_role = policy.phases[cur].role if policy and cur in policy.phases else None
+
+        if prev_role == "analysis":
+            # Determine whether the transition is a "proceed" (toward commit) or "revise"
+            commit_role = "commit"
+            decision = "proceed" if cur_role == commit_role else "revise"
             self._append_decision_log_locked(
-                phase="development_analysis",
-                decision="proceed" if cur == "development_commit" else "revise",
+                phase=prev,
+                decision=decision,
                 reason=f"-> {cur}",
             )
-        elif prev == "review_analysis" and cur in {"fix", "review_commit"}:
+        elif prev_role == ROLE_REVIEW:
+            # review role: going to execution-role means revise; commit-role means proceed
+            decision = "revise" if cur_role == "execution" else "proceed"
             self._append_decision_log_locked(
-                phase="review_analysis",
-                decision="revise" if cur == "fix" else "proceed",
+                phase=prev,
+                decision=decision,
                 reason=f"-> {cur}",
             )
-        elif cur in {"complete", "failed"}:
+        elif cur_role == "terminal":
+            cur_def = policy.phases[cur] if policy and cur in policy.phases else None
+            terminal_outcome = cur_def.terminal_outcome if cur_def else None
+            decision = terminal_outcome or cur
             self._append_decision_log_locked(
                 phase=cur,
-                decision=cur,
+                decision=decision,
                 reason=state.last_error or "",
             )
 
@@ -355,14 +374,18 @@ class PipelineSubscriber:
         cur = state.phase
         if prev == cur:
             return
-        if cur in _ANALYSIS_PHASES or prev in _ANALYSIS_PHASES:
-            for drain in (cur, prev):
-                if drain in _ANALYSIS_PHASES:
-                    summary = read_latest_analysis_decision(self._workspace_root, drain)
-                    if summary is not None:
-                        self._analysis_phase = drain
-                        self._analysis_decision = summary.decision
-                        self._analysis_reason = summary.reason
+        policy = self._pipeline_policy
+        # Refresh analysis artifact when entering or leaving an analysis-role phase
+        for phase_name in (cur, prev):
+            if phase_name is None:
+                continue
+            phase_def = policy.phases.get(phase_name) if policy else None
+            if phase_def is not None and phase_def.role == "analysis":
+                summary = read_latest_analysis_decision(self._workspace_root, phase_name)
+                if summary is not None:
+                    self._analysis_phase = phase_name
+                    self._analysis_decision = summary.decision
+                    self._analysis_reason = summary.reason
 
     def _append_decision_log_locked(
         self,
@@ -386,6 +409,7 @@ class PipelineSubscriber:
             prompt_path=self._prompt_path,
             prompt_preview=self._prompt_preview,
             run_id=self._run_id,
+            pipeline_policy=self._pipeline_policy,
             plan_summary=self._plan_summary,
             plan_scope_items=self._plan_scope_items,
             plan_total_steps=self._plan_total_steps,

@@ -223,7 +223,7 @@ class TestCustomPolicyResolvePostCommit:
 class TestCustomPolicyLoopCounterDict:
     def test_loop_counter_increments_on_dict_only(self) -> None:
         """Custom loop counter writes to dict; legacy development_analysis_iteration stays 0."""
-        state = PipelineState()
+        state = PipelineState(phase="planning")
         updated = state.with_loop_iteration("audit_round", 1)
 
         assert updated.get_loop_iteration("audit_round") == 1

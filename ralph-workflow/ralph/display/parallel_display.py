@@ -284,7 +284,12 @@ class ParallelDisplay:
 
     def emit_phase_transition(self, from_phase: str, to_phase: str) -> None:
         self._plain_renderer.flush_blocks()
-        show_phase_transition(from_phase, to_phase, console=self._ctx.console)
+        show_phase_transition(
+            from_phase,
+            to_phase,
+            console=self._ctx.console,
+            pipeline_policy=self._subscriber.pipeline_policy,
+        )
         with contextlib.suppress(Exception):
             self._subscriber.record_phase_transition(from_phase, to_phase)
 
@@ -317,29 +322,32 @@ class ParallelDisplay:
                 total_agent_calls=total_agent_calls,
                 pr_url=pr_url,
             )
-        if phase in {"complete", "failed"}:
-            last_state = self._subscriber.last_state
-            if last_state is not None:
-                try:
-                    snapshot = self._subscriber.build_snapshot(last_state)
-                    if snapshot is not None:
-                        emit_completion_summary(
-                            self._ctx.console,
-                            snapshot,
-                            workspace_root=self._workspace_root,
-                            dropped_count=self._subscriber.dropped_count,
-                            content_block_count=self._plain_renderer.content_blocks_count,
-                            thinking_block_count=self._plain_renderer.thinking_blocks_count,
-                            tool_call_count=self._plain_renderer.tool_calls_count,
-                            error_count=self._plain_renderer.errors_count,
-                            elapsed_seconds=self._plain_renderer.run_elapsed_seconds,
-                        )
-                except Exception as exc:
-                    self._plain_renderer.emit_warn_line(
-                        "run",
-                        "run-end",
-                        f"completion panel failed: {exc}",
+        last_state = self._subscriber.last_state
+        if last_state is not None:
+            try:
+                snapshot = self._subscriber.build_snapshot(last_state)
+                is_terminal = (
+                    snapshot is not None
+                    and (snapshot.is_terminal_success or snapshot.is_terminal_failure)
+                )
+                if is_terminal and snapshot is not None:
+                    emit_completion_summary(
+                        self._ctx.console,
+                        snapshot,
+                        workspace_root=self._workspace_root,
+                        dropped_count=self._subscriber.dropped_count,
+                        content_block_count=self._plain_renderer.content_blocks_count,
+                        thinking_block_count=self._plain_renderer.thinking_blocks_count,
+                        tool_call_count=self._plain_renderer.tool_calls_count,
+                        error_count=self._plain_renderer.errors_count,
+                        elapsed_seconds=self._plain_renderer.run_elapsed_seconds,
                     )
+            except Exception as exc:
+                self._plain_renderer.emit_warn_line(
+                    "run",
+                    "run-end",
+                    f"completion panel failed: {exc}",
+                )
 
     @property
     def console(self) -> Console:

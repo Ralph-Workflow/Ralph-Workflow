@@ -19,6 +19,12 @@ from ralph.display.phase_banner import (
     show_phase_start_from_state,
     show_phase_transition,
 )
+from ralph.policy.models import (
+    PhaseDefinition,
+    PhaseTransition,
+    PipelinePolicy,
+    RecoveryPolicy,
+)
 
 
 def test_show_phase_transition_renders_styled_output() -> None:
@@ -496,3 +502,110 @@ def test_show_phase_transition_wide_mode_has_description_and_leading_blank() -> 
     rule_lines = [line for line in lines if "─" in line or "━" in line]
     expected_rule_count = 2
     assert len(rule_lines) == expected_rule_count
+
+
+def _make_two_phase_policy(
+    from_role: str,
+    to_role: str,
+    from_name: str = "phase_a",
+    to_name: str = "phase_b",
+) -> PipelinePolicy:
+    """Build a minimal two-phase PipelinePolicy for display tests."""
+    terminal_name = "done"
+    return PipelinePolicy(
+        phases={
+            from_name: PhaseDefinition(
+                drain=from_name,
+                role=from_role,
+                transitions=PhaseTransition(on_success=to_name),
+            ),
+            to_name: PhaseDefinition(
+                drain=to_name,
+                role=to_role,
+                transitions=PhaseTransition(on_success=terminal_name),
+            ),
+            terminal_name: PhaseDefinition(
+                drain=terminal_name,
+                role="terminal",
+                terminal_outcome="success",
+                transitions=PhaseTransition(on_success=terminal_name),
+            ),
+        },
+        entry_phase=from_name,
+        terminal_phase=terminal_name,
+        recovery=RecoveryPolicy(failed_route=terminal_name),
+    )
+
+
+class TestPolicyDrivenPhaseBanner:
+    """Phase banner renders correctly when a PipelinePolicy provides role context."""
+
+    def test_phase_style_uses_role_over_name(self) -> None:
+        """A renamed execution phase gets the execution style, not muted fallback."""
+        policy = _make_two_phase_policy("execution", "analysis", "my_work", "my_check")
+        style = _phase_style("my_work", pipeline_policy=policy)
+        assert style == "theme.phase.development"
+
+    def test_phase_style_analysis_role(self) -> None:
+        """A phase with analysis role resolves to development_analysis theme."""
+        policy = _make_two_phase_policy("execution", "analysis", "work", "inspect")
+        style = _phase_style("inspect", pipeline_policy=policy)
+        assert style == "theme.phase.development_analysis"
+
+    def test_phase_style_terminal_failure_role(self) -> None:
+        """A terminal-failure phase gets the failed theme style."""
+        terminal_name = "fail"
+        policy = PipelinePolicy(
+            phases={
+                "start": PhaseDefinition(
+                    drain="start",
+                    role="execution",
+                    transitions=PhaseTransition(on_success=terminal_name),
+                ),
+                terminal_name: PhaseDefinition(
+                    drain=terminal_name,
+                    role="terminal",
+                    terminal_outcome="failure",
+                    transitions=PhaseTransition(on_success=terminal_name),
+                ),
+            },
+            entry_phase="start",
+            terminal_phase=terminal_name,
+            recovery=RecoveryPolicy(failed_route=terminal_name),
+        )
+        style = _phase_style(terminal_name, pipeline_policy=policy)
+        assert style == "theme.phase.failed"
+
+    def test_transition_uses_role_pair_for_major_detection(self) -> None:
+        """execution→analysis transition treated as major when policy provides roles."""
+        policy = _make_two_phase_policy("execution", "analysis", "my_work", "my_check")
+        console = Console(record=True)
+        show_phase_transition("my_work", "my_check", pipeline_policy=policy, console=console)
+        output = console.export_text()
+        # Major transition produces a Rule with the phase label
+        assert "My Work" in output
+        assert "My Check" in output
+
+    def test_transition_without_policy_falls_back_to_name_lookup(self) -> None:
+        """No policy → name-based lookup still works for canonical names."""
+        console = Console(record=True)
+        show_phase_transition("planning", "development", console=console)
+        output = console.export_text()
+        assert "Planning" in output
+        assert "Development" in output
+
+    def test_show_phase_start_with_policy_uses_role_style(self) -> None:
+        """show_phase_start passes through pipeline_policy to _phase_style."""
+        policy = _make_two_phase_policy("execution", "analysis", "my_work", "my_check")
+        console = Console(record=True)
+        show_phase_start("my_work", pipeline_policy=policy, console=console)
+        output = console.export_text()
+        assert "My Work" in output
+
+    def test_show_phase_complete_with_policy_uses_role_style(self) -> None:
+        """show_phase_complete passes through pipeline_policy to _phase_style."""
+        policy = _make_two_phase_policy("execution", "analysis", "my_work", "my_check")
+        console = Console(record=True)
+        show_phase_complete("my_work", pipeline_policy=policy, console=console)
+        output = console.export_text()
+        assert "My Work" in output

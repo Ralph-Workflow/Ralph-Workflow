@@ -260,6 +260,36 @@ project uses.
 
 See [Policy Explanation](policy-explanation.md) for the full walkthrough.
 
+## Policy is the Source of Workflow Truth
+
+All routing decisions, loop bounds, commit semantics, terminal outcomes, and recovery
+behavior are declared in `pipeline.toml`. The runtime is a generic policy interpreter:
+it reads the declared policy and executes it without consulting hardcoded phase names,
+phase name substrings, or built-in behavioral constants.
+
+**Consequence for configuration:** every piece of workflow behavior must be declared
+explicitly. Omitted declarations are rejected by `validate_policy_completeness()` at
+startup, not silently defaulted.
+
+**Consequence for customization:** any phase name, drain name, counter name, or decision
+name you declare will work identically to the bundled defaults. The bundled phase names
+(`planning`, `development`, `development_analysis`, etc.) are examples, not special
+identifiers.
+
+**Consequence for custom drains:** drain-to-capability class mapping reads the
+`drain_class` field in `ralph-workflow.toml` agent_drains entries first. Substring
+matching against built-in drain names is only a fallback. If your project uses a custom
+drain name, declare its `drain_class` explicitly to guarantee correct MCP access mode
+and session plan assignment.
+
+**Consequence for testing:** tests that exercise routing must use the `reduce()` pure
+function with a `PipelinePolicy` object. Any route that does not appear in the policy
+will produce a terminal failure, which is testable. No implicit fallbacks exist to mask
+missing policy declarations.
+
+The `ralph --explain-policy` command renders the current policy as human-readable text
+and ASCII diagram. Treat its output as the ground truth for what the active run will do.
+
 ## Related pages
 
 - [Getting Started](getting-started.md) — first-run walkthrough with phases explained

@@ -82,7 +82,7 @@ def test_coordinator_all_units_reach_terminal_state(
     }
     executor = FakeAgentExecutor(runs)
     effect = FanOutDevelopmentEffect(work_units=tuple(units), max_workers=n_units)
-    state = PipelineState(work_units=tuple(units))
+    state = PipelineState(phase="planning", work_units=tuple(units))
     display: Any = _FakeDisplay()
 
     events = asyncio.run(
@@ -120,7 +120,7 @@ def test_coordinator_succeeded_deps_also_succeeded(edge_seed: int) -> None:
     runs = {unit.unit_id: FakeRun(outputs=["ok"], exit_code=0, duration_ms=1) for unit in units}
     executor = FakeAgentExecutor(runs)
     effect = FanOutDevelopmentEffect(work_units=tuple(units), max_workers=n)
-    state = PipelineState(work_units=tuple(units))
+    state = PipelineState(phase="planning", work_units=tuple(units))
     display: Any = _FakeDisplay()
 
     events = asyncio.run(

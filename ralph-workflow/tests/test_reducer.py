@@ -635,14 +635,14 @@ def test_planning_agent_failure_uses_planning_chain_instead_of_review_chain() ->
 
 def test_checkpoint_saved_increments_count() -> None:
     """Test that CHECKPOINT_SAVED increments the checkpoint counter."""
-    state = PipelineState(checkpoint_saved_count=0)
+    state = PipelineState(phase="planning", checkpoint_saved_count=0)
     new_state, _ = _reduce(state, PipelineEvent.CHECKPOINT_SAVED)
     assert new_state.checkpoint_saved_count == 1
 
 
 def test_interrupted_sets_flag() -> None:
     """Test that INTERRUPTED sets the interrupted_by_user flag."""
-    state = PipelineState(interrupted_by_user=False)
+    state = PipelineState(phase="planning", interrupted_by_user=False)
     new_state, _ = _reduce(state, PipelineEvent.INTERRUPTED)
     assert new_state.interrupted_by_user is True
 

@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from queue import Queue
-from typing import TYPE_CHECKING
 from unittest.mock import patch
 
 from rich.console import Console
@@ -11,9 +11,9 @@ from rich.console import Console
 from ralph.display.parallel_display import ParallelDisplay
 from ralph.display.subscriber import PipelineSubscriber
 from ralph.pipeline.state import PipelineState
+from ralph.policy.loader import load_policy
 
-if TYPE_CHECKING:
-    from pathlib import Path
+_DEFAULT_POLICY = load_policy(Path(__file__).parent.parent / "ralph" / "policy" / "defaults")
 
 
 def _make_display(tmp_path: Path) -> tuple[ParallelDisplay, Console]:
@@ -29,6 +29,7 @@ def _make_display(tmp_path: Path) -> tuple[ParallelDisplay, Console]:
         queue=snapshot_q,
         workspace_root=tmp_path,
         run_id="test-run",
+        pipeline_policy=_DEFAULT_POLICY.pipeline,
     )
     display = ParallelDisplay(console=console, workspace_root=tmp_path, subscriber=subscriber)
     return display, console
@@ -55,10 +56,12 @@ def test_emit_run_end_without_last_state_still_emits_run_end_lines(tmp_path: Pat
 
 
 def test_emit_run_end_failed_state_prints_pipeline_failed_panel(tmp_path: Path) -> None:
+    # Use the actual failure terminal phase from the default policy
+    failure_phase = _DEFAULT_POLICY.pipeline.recovery.failed_route
     display, console = _make_display(tmp_path)
-    state = PipelineState(phase="failed", last_error="something broke")
+    state = PipelineState(phase=failure_phase, last_error="something broke")
     display.subscriber.notify(state)
-    display.emit_run_end(phase="failed", total_agent_calls=0)
+    display.emit_run_end(phase=failure_phase, total_agent_calls=0)
     out = console.export_text()
     assert "Pipeline Failed" in out
     assert "[run-end]" in out

@@ -5,12 +5,18 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+_BUNDLED_DEFAULTS_DIR: Path = Path(__file__).parent.parent.parent / "policy" / "defaults"
 
-def _resolve_policy_dir() -> Path:
+
+def _resolve_policy_dir() -> tuple[Path, bool]:
     """Resolve the policy directory to use when none is explicitly provided.
 
     Prefers the project-local .agent directory if it contains TOML files,
     then falls back to the bundled defaults.
+
+    Returns:
+        Tuple of (policy_dir, is_bundled_default). is_bundled_default is True
+        when no project-local policy was found and the bundled defaults are used.
     """
     try:
         from ralph.workspace.scope import resolve_workspace_scope  # noqa: PLC0415
@@ -18,10 +24,10 @@ def _resolve_policy_dir() -> Path:
         scope = resolve_workspace_scope()
         agent_dir = scope.root / ".agent"
         if agent_dir.is_dir() and any(agent_dir.glob("*.toml")):
-            return agent_dir
+            return agent_dir, False
     except Exception:
         pass
-    return Path(__file__).parent.parent.parent / "policy" / "defaults"
+    return _BUNDLED_DEFAULTS_DIR, True
 
 
 def explain_command(policy_dir: Path | None = None) -> int:
@@ -48,10 +54,19 @@ def explain_command(policy_dir: Path | None = None) -> int:
     from ralph.policy.validation import PolicyValidationError  # noqa: PLC0415
 
     try:
-        resolved_dir = policy_dir if policy_dir is not None else _resolve_policy_dir()
+        if policy_dir is not None:
+            resolved_dir = policy_dir
+            is_bundled = False
+        else:
+            resolved_dir, is_bundled = _resolve_policy_dir()
         if not resolved_dir.is_dir():
             print(f"Policy directory not found: {resolved_dir}", file=sys.stderr)
             return 1
+        if is_bundled:
+            print(
+                "INFO: Using bundled default policy — "
+                "no project-local .agent/*.toml files found"
+            )
         print(f"Policy source: {resolved_dir}")
         bundle = load_policy(resolved_dir)
         explanation = explain_policy(bundle)

@@ -498,6 +498,106 @@ def _validate_no_legacy_phase_constants(
                 )
 
 
+def _validate_post_commit_routes_complete(
+    policy: PipelinePolicy,
+    errors: list[str],
+) -> None:
+    """Validate that budget-tracked commit phases declare all three post_commit_route states.
+
+    When a commit-role phase increments a budget-tracking counter, it must declare
+    post_commit_routes for all three budget_states (remaining, exhausted, no_review)
+    so the runtime always has an unambiguous route after commit regardless of budget.
+    """
+    required_states = {"remaining", "exhausted", "no_review"}
+
+    for phase_name, phase_def in policy.phases.items():
+        if phase_def.role != "commit" or phase_def.commit_policy is None:
+            continue
+        counter = phase_def.commit_policy.increments_counter
+        if not counter or counter == "none":
+            continue
+        counter_cfg = policy.budget_counters.get(counter)
+        if counter_cfg is None or not counter_cfg.tracks_budget:
+            continue
+
+        declared_states = {
+            r.when.budget_state
+            for r in policy.post_commit_routes
+            if r.when.phase == phase_name
+        }
+        missing = required_states - declared_states
+        if missing:
+            errors.append(
+                f"phases.{phase_name}: increments budget-tracking counter '{counter}' "
+                f"but post_commit_routes do not cover all budget states. "
+                f"Missing: {sorted(missing)}. "
+                f"Add [[post_commit_routes]] entries with when.phase='{phase_name}' "
+                f"for each missing budget_state. "
+                f"See docs/sphinx/policy-driven-overhaul-migration.md."
+            )
+
+
+def _validate_terminal_failure_phase_declared(
+    policy: PipelinePolicy,
+    errors: list[str],
+) -> None:
+    """Validate that a terminal-failure phase exists when failures can occur.
+
+    When any phase declares on_failure routing or verification.on_failure_route,
+    some phase with role='terminal' and terminal_outcome='failure' must exist
+    so the runtime has a policy-declared destination for failures rather than
+    falling back to a hidden 'failed' alias.
+    """
+    has_failure_route = any(
+        phase_def.transitions.on_failure is not None
+        or (
+            phase_def.verification is not None
+            and phase_def.verification.on_failure_route is not None
+        )
+        for phase_def in policy.phases.values()
+    )
+    if not has_failure_route:
+        return
+
+    has_terminal_failure = any(
+        phase_def.role == "terminal" and phase_def.terminal_outcome == "failure"
+        for phase_def in policy.phases.values()
+    )
+    if not has_terminal_failure:
+        errors.append(
+            "Policy declares on_failure or verification.on_failure_route transitions "
+            "but no phase has role='terminal' and terminal_outcome='failure'. "
+            "Add a terminal failure phase so the runtime routes failures to a "
+            "policy-declared destination instead of a hidden built-in fallback. "
+            "See docs/sphinx/policy-driven-overhaul-migration.md."
+        )
+
+
+def _validate_review_phase_outcome_complete(
+    policy: PipelinePolicy,
+    errors: list[str],
+) -> None:
+    """Validate that review-role phases have bypass_routes covering their clean_outcome.
+
+    When a review phase declares clean_outcome, that value must be a key in
+    bypass_routes so the runtime can route on a clean review without falling
+    back to hidden semantics.
+    """
+    for phase_name, phase_def in policy.phases.items():
+        if phase_def.role != "review":
+            continue
+        if phase_def.clean_outcome is None:
+            continue
+        if phase_def.clean_outcome not in phase_def.bypass_routes:
+            errors.append(
+                f"phases.{phase_name}: clean_outcome='{phase_def.clean_outcome}' "
+                f"is not a key in bypass_routes. "
+                f"Add bypass_routes.{phase_def.clean_outcome} = '<target_phase>' "
+                f"so the runtime can route on a clean review. "
+                f"See docs/sphinx/policy-driven-overhaul-migration.md."
+            )
+
+
 def validate_policy_completeness(bundle: PolicyBundle) -> None:
     """Validate that the policy bundle is semantically complete for policy-driven orchestration.
 
@@ -559,6 +659,15 @@ def validate_policy_completeness(bundle: PolicyBundle) -> None:
 
     # Validate that every declared phase is reachable from the entry point
     _validate_reachability(policy, errors)
+
+    # Validate that budget-tracked commit phases cover all three budget states
+    _validate_post_commit_routes_complete(policy, errors)
+
+    # Validate that review phases have bypass routes covering their clean_outcome
+    _validate_review_phase_outcome_complete(policy, errors)
+
+    # Validate that a terminal-failure phase is declared when failures can occur
+    _validate_terminal_failure_phase_declared(policy, errors)
 
     if errors:
         raise PolicyValidationError(

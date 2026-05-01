@@ -807,7 +807,12 @@ def _emit_phase_transition_if_changed(
     # Emit transition to the new phase
     context = _phase_context(state, previous_phase, pipeline_policy) or None
     try:
-        show_phase_transition(previous_phase, state.phase, context=context)
+        show_phase_transition(
+            previous_phase,
+            state.phase,
+            context=context,
+            pipeline_policy=pipeline_policy,
+        )
     except Exception:  # pragma: no cover - defensive
         logger.debug("show_phase_transition failed", exc_info=True)
     return state.phase
@@ -2414,6 +2419,7 @@ def _execute_agent_effect(  # noqa: PLR0913, PLR0915
                 transport=agent_config.transport,
                 drain=effect.drain or effect.phase,
                 workspace_path=workspace_scope.root,
+                agents_policy=policy_bundle.agents if policy_bundle is not None else None,
             )
             session = AgentSession(
                 session_id=f"{effect.phase}-{uuid.uuid4().hex[:8]}",

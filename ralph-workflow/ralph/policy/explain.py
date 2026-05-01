@@ -50,6 +50,8 @@ class PhaseExplanation:
     is_entry: bool = False
     is_terminal: bool = False
     verification: VerificationExplanation | None = None
+    has_parallelization: bool = False
+    post_commit_routes_info: list[tuple[str, str]] = field(default_factory=list)
 
 
 @dataclass
@@ -217,6 +219,12 @@ def explain_policy(bundle: PolicyBundle) -> PolicyExplanation:
                 on_failure_route=v.on_failure_route,
             )
 
+        post_commit_routes_info: list[tuple[str, str]] = [
+            (route.when.budget_state, route.target)
+            for route in pipeline.post_commit_routes
+            if route.when.phase == phase_name
+        ]
+
         phase_expl = PhaseExplanation(
             name=phase_name,
             role=phase_def.role,
@@ -238,6 +246,8 @@ def explain_policy(bundle: PolicyBundle) -> PolicyExplanation:
             is_entry=(phase_name == pipeline.entry_phase),
             is_terminal=(phase_name == pipeline.terminal_phase),
             verification=verification_expl,
+            has_parallelization=phase_def.parallelization is not None,
+            post_commit_routes_info=post_commit_routes_info,
         )
         explanation.phases.append(phase_expl)
 

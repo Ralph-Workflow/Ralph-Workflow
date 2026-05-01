@@ -62,9 +62,31 @@ class AgentDrainConfig(_FrozenPolicyModel):  # type: ignore[explicit-any]  # rea
 
     Attributes:
         chain: Name of the agent chain to invoke when this drain is active.
+        drain_class: Explicit capability class for this drain. When set, overrides
+            the substring-match fallback in drain_class_for_drain_name. Must be one
+            of: planning, development, analysis, review, fix, commit.
     """
 
     chain: str = Field(..., description="Agent chain name to bind to this drain")
+    drain_class: str | None = Field(
+        default=None,
+        description=(
+            "Drain capability class — one of planning|development|analysis|review|fix|commit. "
+            "When None, drain_class_for_drain_name infers a default from the drain name "
+            "or raises PolicyValidationError for ambiguous names."
+        ),
+    )
+
+    @model_validator(mode="after")
+    def _validate_drain_class_value(self) -> AgentDrainConfig:
+        """Validate drain_class against the allowed vocabulary when set."""
+        allowed = {"planning", "development", "analysis", "review", "fix", "commit"}
+        if self.drain_class is not None and self.drain_class not in allowed:
+            raise ValueError(
+                f"drain_class '{self.drain_class}' is not valid; "
+                f"must be one of: {', '.join(sorted(allowed))}"
+            )
+        return self
 
 
 class AgentChainConfig(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library

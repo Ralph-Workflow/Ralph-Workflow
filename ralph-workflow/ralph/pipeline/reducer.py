@@ -457,8 +457,8 @@ def _handle_capped_analysis_loopback_policy_driven(
 
     Progress tracking (iteration counter, review_issues_found) is applied
     before routing so that even when routing fails the counters are persisted.
-    The runtime cap comes from state.get_max_loop_iteration (set from config),
-    not from loop_policy.max_iterations.
+    The runtime cap comes from state.loop_caps (set from config) with fallback
+    to policy.loop_counters[field].default_max or loop_policy.max_iterations.
 
     Loopback target comes exclusively from transitions.on_loopback via
     resolve_next_phase — decision keys are vocabulary contracts, not routing keys.
@@ -550,7 +550,12 @@ def _handle_analysis_decision(
         else:
             # Increment counter on loopback (e.g., 'request_changes' decision).
             current = state.get_loop_iteration(iteration_field)
-            max_iter = state.get_max_loop_iteration(iteration_field)
+            _cap_value: int | None = state.loop_caps.get(iteration_field)
+            max_iter: int = _cap_value if _cap_value is not None else (
+                policy.loop_counters[iteration_field].default_max
+                if iteration_field in policy.loop_counters
+                else phase_def.loop_policy.max_iterations
+            )
             clamped = max(0, min(current + 1, max_iter))
             progress_state = progress_state.with_loop_iteration(iteration_field, clamped)
             # Apply loopback_review_outcome when configured and this is a loopback route.

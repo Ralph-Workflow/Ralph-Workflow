@@ -90,6 +90,12 @@ class PipelineSnapshot:
     fallover_history: tuple[tuple[str, str, str, str], ...] = field(default_factory=tuple)
     last_failure_category: str | None = None
     last_connectivity_state: str = "unknown"
+    # Policy-derived terminal flags — populated when pipeline_policy is available
+    is_terminal_success: bool = False
+    is_terminal_failure: bool = False
+    current_phase_role: str | None = None
+    previous_phase_role: str | None = None
+    terminal_failure_route: str | None = None
 
 
 def snapshot_from_state(  # noqa: PLR0913
@@ -129,6 +135,37 @@ def snapshot_from_state(  # noqa: PLR0913
         (fo.phase, fo.from_agent, fo.to_agent, fo.timestamp_iso)
         for fo in state.fallover_history
     )
+
+    is_terminal_success = False
+    is_terminal_failure = False
+    current_phase_role: str | None = None
+    previous_phase_role: str | None = None
+    terminal_failure_route: str | None = None
+
+    if pipeline_policy is not None:
+        phase_def = pipeline_policy.phases.get(state.phase)
+        prev_def = (
+            pipeline_policy.phases.get(state.previous_phase)
+            if state.previous_phase
+            else None
+        )
+        if phase_def is not None:
+            current_phase_role = phase_def.role
+            is_terminal_success = (
+                phase_def.role == "terminal" and phase_def.terminal_outcome == "success"
+            ) or state.phase == pipeline_policy.terminal_phase
+            is_terminal_failure = (
+                phase_def.role == "terminal" and phase_def.terminal_outcome == "failure"
+            )
+        if prev_def is not None:
+            previous_phase_role = prev_def.role
+        # Resolve terminal failure route from the first failure-terminal phase found
+        for _pname, _pdef in pipeline_policy.phases.items():
+            if _pdef.role == "terminal" and _pdef.terminal_outcome == "failure":
+                terminal_failure_route = _pname
+                break
+        if terminal_failure_route is None:
+            terminal_failure_route = pipeline_policy.recovery.failed_route
 
     return PipelineSnapshot(
         phase=state.phase,
@@ -174,6 +211,11 @@ def snapshot_from_state(  # noqa: PLR0913
         fallover_history=fallover_tuples,
         last_failure_category=state.last_failure_category,
         last_connectivity_state=state.last_connectivity_state,
+        is_terminal_success=is_terminal_success,
+        is_terminal_failure=is_terminal_failure,
+        current_phase_role=current_phase_role,
+        previous_phase_role=previous_phase_role,
+        terminal_failure_route=terminal_failure_route,
     )
 
 

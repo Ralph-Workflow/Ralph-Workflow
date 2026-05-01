@@ -129,6 +129,10 @@ def _build_custom_bundle() -> PolicyBundle:
                 target="kickoff",
             ),
             PostCommitRoute(
+                when=PostCommitRouteWhen(phase="seal", budget_state="exhausted"),
+                target="verify",
+            ),
+            PostCommitRoute(
                 when=PostCommitRouteWhen(phase="seal", budget_state="no_review"),
                 target="verify",
             ),

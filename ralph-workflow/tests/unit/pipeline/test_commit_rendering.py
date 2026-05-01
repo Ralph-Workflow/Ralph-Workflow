@@ -159,7 +159,7 @@ class TestAnalysisDecisionDeDuplication:
         console = Console(file=stream, force_terminal=False, color_system=None, width=200)
         renderer = PlainLogRenderer(console)
 
-        # Snapshot with development_analysis phase
+        # Snapshot with analysis role set — renderer suppresses inline [analysis] display
         snapshot = PipelineSnapshot(
             phase="development_analysis",
             previous_phase=None,
@@ -187,6 +187,7 @@ class TestAnalysisDecisionDeDuplication:
             analysis_phase="development_analysis",
             analysis_decision="proceed",
             analysis_reason="all checks pass",
+            current_phase_role="analysis",
         )
 
         renderer.emit_snapshot(snapshot)

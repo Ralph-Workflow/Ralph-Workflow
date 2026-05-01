@@ -15,7 +15,7 @@ from urllib.parse import urljoin, urlparse
 
 import httpx
 
-from ralph.mcp.protocol.capability_mapping import AccessMode, SessionDrain, drain_to_access_mode
+from ralph.mcp.protocol.capability_mapping import AccessMode, drain_to_access_mode
 from ralph.mcp.protocol.env import (
     MCP_HEARTBEAT_INTERVAL_MS_ENV,
     MCP_HEARTBEAT_MISSES_ENV,
@@ -32,6 +32,7 @@ if TYPE_CHECKING:
     import io
 
     from ralph.mcp.upstream.registry import UpstreamRegistry
+    from ralph.policy.models import AgentsPolicy
 
 JsonRpcResponse = dict[str, object]
 
@@ -728,6 +729,9 @@ def heartbeat_policy_from_env(env: Mapping[str, str] | None = None) -> Heartbeat
     )
 
 
-def access_mode_for_drain(drain: SessionDrain | str) -> AccessMode:
+def access_mode_for_drain(
+    drain: str,
+    agents_policy: AgentsPolicy | None = None,
+) -> AccessMode:
     """Expose the MCP access mode mapping from the Rust startup module."""
-    return drain_to_access_mode(drain)
+    return drain_to_access_mode(drain, agents_policy)

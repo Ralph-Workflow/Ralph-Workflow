@@ -279,6 +279,12 @@ target = "complete"
 phase = "review_commit"
 budget_state = "exhausted"
 
+[[post_commit_routes]]
+target = "complete"
+[post_commit_routes.when]
+phase = "review_commit"
+budget_state = "no_review"
+
 # ---------------------------------------------------------------------------
 # Pipeline entry and terminal configuration
 # ---------------------------------------------------------------------------

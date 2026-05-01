@@ -51,7 +51,7 @@ def test_checkpoint_exists(tmp_path: Path) -> None:
     path = tmp_path / "checkpoint.json"
     assert ckpt.exists(path) is False
 
-    state = PipelineState()
+    state = PipelineState(phase="planning")
     ckpt.save(state, path)
     assert ckpt.exists(path) is True
 
@@ -75,7 +75,7 @@ def test_checkpoint_inspect(tmp_path: Path) -> None:
 def test_checkpoint_remove(tmp_path: Path) -> None:
     """Test removing a checkpoint."""
     path = tmp_path / "checkpoint.json"
-    state = PipelineState()
+    state = PipelineState(phase="planning")
     ckpt.save(state, path)
     assert path.exists()
 
@@ -119,7 +119,7 @@ def test_checkpoint_roundtrip_full_state(tmp_path: Path) -> None:
 def test_checkpoint_roundtrip_preserves_current_drain() -> None:
     """Resume checkpoints must keep the exact drain identity."""
 
-    state = PipelineState(current_drain="development_analysis")
+    state = PipelineState(phase="planning", current_drain="development_analysis")
     restored = PipelineState.model_validate_json(state.model_dump_json())
 
     assert restored.current_drain == "development_analysis"
@@ -130,7 +130,7 @@ def test_save_failure_removes_tmp_file(monkeypatch: pytest.MonkeyPatch, tmp_path
 
     path = tmp_path / "checkpoint.json"
     tmp = path.with_suffix(".tmp")
-    state = PipelineState()
+    state = PipelineState(phase="planning")
 
     original_replace = Path.replace
 
