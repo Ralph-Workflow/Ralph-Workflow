@@ -20,7 +20,10 @@ from ralph.display.phase_banner import (
     show_phase_transition,
 )
 from ralph.policy.models import (
+    LoopCounterConfig,
+    PhaseCommitPolicy,
     PhaseDefinition,
+    PhaseLoopPolicy,
     PhaseTransition,
     PipelinePolicy,
     RecoveryPolicy,
@@ -647,3 +650,212 @@ class TestPolicyDrivenPhaseBanner:
         show_phase_complete("my_work", pipeline_policy=policy, console=console)
         output = console.export_text()
         assert "My Work" in output
+
+
+class TestAnalysisExecutionTransitionBannerCounters:
+    """Verify analysis → execution banners show BOTH outer iteration AND analysis counter.
+
+    This is a regression test for the issue where the banner showed only the analysis
+    counter and dropped the outer iteration context, leaving users unable to see both
+    the outer dev iteration and the inner analysis count in the same banner.
+    """
+
+    def test_analysis_to_execution_banner_shows_both_counters_and_final_skip(self) -> None:
+        """Analysis → execution transition must show outer iteration AND analysis counter in banner.
+
+        The banner should show:
+        - The outer iteration counter (e.g., iteration=1/5)
+        - The analysis counter (e.g., Planning Analysis=3/3)
+        - The final-skip indicator (final, skipping next)
+        - The decision (needs changes)
+
+        This verifies the fix for the regression where _phase_context only emitted the
+        analysis counter when previous_role='analysis', dropping the outer iteration
+        counter that should also be visible in the banner alongside it.
+        """
+        policy = PipelinePolicy(
+            phases={
+                "planning_analysis": PhaseDefinition(
+                    drain="planning_analysis",
+                    role="analysis",
+                    loop_policy=PhaseLoopPolicy(
+                        max_iterations=3,
+                        iteration_state_field="planning_analysis_iteration",
+                    ),
+                    transitions=PhaseTransition(on_success="planning"),
+                    decisions={},
+                ),
+                "planning": PhaseDefinition(
+                    drain="planning",
+                    role="execution",
+                    transitions=PhaseTransition(on_success="planning_commit"),
+                ),
+                "planning_commit": PhaseDefinition(
+                    drain="planning_commit",
+                    role="commit",
+                    commit_policy=PhaseCommitPolicy(increments_counter="iteration"),
+                    transitions=PhaseTransition(on_success="done"),
+                ),
+                "done": PhaseDefinition(
+                    drain="planning",
+                    role="terminal",
+                    transitions=PhaseTransition(on_success="done"),
+                    terminal_outcome="success",
+                ),
+            },
+            loop_counters={
+                "planning_analysis_iteration": LoopCounterConfig(default_max=3),
+            },
+        )
+        console = Console(record=True, width=120)
+        # Context that _phase_context would build for this transition:
+        # - Planning Analysis=3/3 (analysis counter, final)
+        # - iteration=1/5 (outer iteration)
+        # - decision=needs changes
+        context = {
+            "Planning Analysis": "3/3",
+            "analysis_status": "final, skipping next",
+            "decision": "needs changes",
+            "iteration": "1/5",
+        }
+        show_phase_transition(
+            "planning_analysis",
+            "planning",
+            context=context,
+            pipeline_policy=policy,
+            display_context=_ctx_from_console(console),
+        )
+        output = console.export_text()
+        # Must show outer iteration counter
+        assert "iteration=1/5" in output, (
+            f"Outer iteration counter missing from banner. Output:\n{output}"
+        )
+        # Must show analysis counter
+        assert "Planning Analysis=3/3" in output, (
+            f"Analysis counter missing from banner. Output:\n{output}"
+        )
+        # Must show final-skip indicator
+        assert "final, skipping next" in output, (
+            f"Final-skip indicator missing from banner. Output:\n{output}"
+        )
+        # Must show decision
+        assert "decision=needs changes" in output, (
+            f"Decision missing from banner. Output:\n{output}"
+        )
+
+    def test_analysis_to_execution_banner_without_final_skip_shows_both_counters(self) -> None:
+        """Analysis → execution transition shows both counters even without final-skip."""
+        policy = PipelinePolicy(
+            phases={
+                "planning_analysis": PhaseDefinition(
+                    drain="planning_analysis",
+                    role="analysis",
+                    loop_policy=PhaseLoopPolicy(
+                        max_iterations=3,
+                        iteration_state_field="planning_analysis_iteration",
+                    ),
+                    transitions=PhaseTransition(on_success="planning"),
+                    decisions={},
+                ),
+                "planning": PhaseDefinition(
+                    drain="planning",
+                    role="execution",
+                    transitions=PhaseTransition(on_success="done"),
+                ),
+                "done": PhaseDefinition(
+                    drain="planning",
+                    role="terminal",
+                    transitions=PhaseTransition(on_success="done"),
+                    terminal_outcome="success",
+                ),
+            },
+            loop_counters={
+                "planning_analysis_iteration": LoopCounterConfig(default_max=3),
+            },
+        )
+        console = Console(record=True, width=120)
+        # Non-final analysis: only 2nd of 3 analyses
+        context = {
+            "Planning Analysis": "2/3",
+            "decision": "needs changes",
+            "iteration": "2/5",
+        }
+        show_phase_transition(
+            "planning_analysis",
+            "planning",
+            context=context,
+            pipeline_policy=policy,
+            display_context=_ctx_from_console(console),
+        )
+        output = console.export_text()
+        # Must show outer iteration counter
+        assert "iteration=2/5" in output, (
+            f"Outer iteration counter missing from banner. Output:\n{output}"
+        )
+        # Must show analysis counter
+        assert "Planning Analysis=2/3" in output, (
+            f"Analysis counter missing from banner. Output:\n{output}"
+        )
+
+    def test_development_analysis_to_execution_banner_shows_both_counters(self) -> None:
+        """development_analysis → development transition shows both counters."""
+        policy = PipelinePolicy(
+            phases={
+                "development_analysis": PhaseDefinition(
+                    drain="development_analysis",
+                    role="analysis",
+                    loop_policy=PhaseLoopPolicy(
+                        max_iterations=3,
+                        iteration_state_field="development_analysis_iteration",
+                    ),
+                    transitions=PhaseTransition(on_success="development"),
+                    decisions={},
+                ),
+                "development": PhaseDefinition(
+                    drain="development",
+                    role="execution",
+                    transitions=PhaseTransition(on_success="development_commit"),
+                ),
+                "development_commit": PhaseDefinition(
+                    drain="development_commit",
+                    role="commit",
+                    commit_policy=PhaseCommitPolicy(increments_counter="iteration"),
+                    transitions=PhaseTransition(on_success="done"),
+                ),
+                "done": PhaseDefinition(
+                    drain="development",
+                    role="terminal",
+                    transitions=PhaseTransition(on_success="done"),
+                    terminal_outcome="success",
+                ),
+            },
+            loop_counters={
+                "development_analysis_iteration": LoopCounterConfig(default_max=3),
+            },
+            entry_phase="development_analysis",
+        )
+        console = Console(record=True, width=120)
+        context = {
+            "Development Analysis": "3/3",
+            "analysis_status": "final, skipping next",
+            "decision": "needs changes",
+            "iteration": "4/10",
+        }
+        show_phase_transition(
+            "development_analysis",
+            "development",
+            context=context,
+            pipeline_policy=policy,
+            display_context=_ctx_from_console(console),
+        )
+        output = console.export_text()
+        # Must show outer iteration counter
+        assert "iteration=4/10" in output, (
+            f"Outer iteration counter missing from banner. Output:\n{output}"
+        )
+        # Must show analysis counter
+        assert "Development Analysis=3/3" in output, (
+            f"Analysis counter missing from banner. Output:\n{output}"
+        )
+        # Must show final-skip indicator
+        assert "final, skipping next" in output
