@@ -30,6 +30,7 @@ from ralph.cli.options import display_agents_table, display_providers_table
 from ralph.config.bootstrap import (
     ensure_global_config,
     ensure_global_mcp_config,
+    ensure_local_main_config,
     regenerate_all,
 )
 from ralph.config.enums import ReviewDepth, Verbosity
@@ -253,6 +254,31 @@ def _handle_regenerate_config(*, display_context: DisplayContext) -> None:
         c.print(Text("No configs found to regenerate", style="theme.text.muted"))
 
 
+
+def _handle_generate_local_config(*, display_context: DisplayContext) -> None:
+    """Create the optional project-local main config override."""
+    console = display_context.console
+    scope = resolve_workspace_scope()
+    result = ensure_local_main_config(scope.local_config_path.parent)
+    if result.action == "created":
+        text = Text("Created local override config: ", style="theme.status.success")
+        text.append(str(result.path))
+        text.append(
+            " (overrides the user-global main config in this repo)",
+            style="theme.text.muted",
+        )
+        console.print(text)
+        return
+    if result.action == "regenerated":
+        text = Text("Regenerated local override config: ", style="theme.status.success")
+        text.append(str(result.path))
+        console.print(text)
+        return
+    text = Text("Local override already exists: ", style="theme.text.muted")
+    text.append(str(result.path))
+    console.print(text)
+
+
 def _handle_early_exit_flags(
     *,
     version: bool,
@@ -409,9 +435,10 @@ def main(  # noqa: PLR0913
         typer.Option(
             "--init",
             help=(
-                "Initialize Ralph Workflow in the current directory (scaffolds PROMPT.md and"
-                " .agent/ configs). Labels are deprecated and ignored; use"
-                " `--init` without a label."
+                "Initialize Ralph Workflow in the current directory (scaffolds PROMPT.md plus"
+                " project-local MCP/pipeline/artifact files). Use"
+                " `--generate-local-config` when you also want a project-local main override."
+                " Labels are deprecated and ignored; use `--init` without a label."
             ),
         ),
     ] = None,
@@ -421,6 +448,15 @@ def main(  # noqa: PLR0913
             "--regenerate-config",
             help="Rewrite global and local configs from bundled defaults"
             " (existing files are backed up to <name>.bak)",
+        ),
+    ] = False,
+    generate_local_config: Annotated[
+        bool,
+        typer.Option(
+            "--generate-local-config",
+            help=(
+                "Create .agent/ralph-workflow.toml as an explicit project-local main override"
+            ),
         ),
     ] = False,
     generate_commit_msg: Annotated[
@@ -546,6 +582,10 @@ def main(  # noqa: PLR0913
 
     if regenerate_config:
         _handle_regenerate_config(display_context=_cli_ctx)
+        raise typer.Exit()
+
+    if generate_local_config:
+        _handle_generate_local_config(display_context=_cli_ctx)
         raise typer.Exit()
 
     if inspect_checkpoint:

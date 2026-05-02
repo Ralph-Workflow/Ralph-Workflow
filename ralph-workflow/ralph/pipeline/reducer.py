@@ -822,6 +822,47 @@ def _handle_phase_advance(
     return _resolve_or_terminal(state, "success", policy, "phase advance")
 
 
+def _resolve_exhausted_analysis_target(
+    state: PipelineState,
+    target_phase: PipelinePhase,
+    policy: PipelinePolicy,
+) -> tuple[PipelineState, PipelinePhase]:
+    """Bypass analysis targets whose loop budget is already exhausted.
+
+    When a non-analysis phase tries to advance into an analysis phase whose loop
+    counter is already at or above its active cap, treat that analysis phase as
+    exhausted for the current cycle and follow its declared success transition
+    instead of re-entering it.
+    """
+    current_state = state
+    current_target = target_phase
+    visited: set[str] = set()
+
+    while current_target not in visited:
+        visited.add(current_target)
+        phase_def = policy.phases.get(current_target)
+        if phase_def is None or not isinstance(phase_def.loop_policy, PhaseLoopPolicy):
+            return current_state, current_target
+
+        iteration_field = phase_def.loop_policy.iteration_state_field
+        current_iteration = current_state.get_loop_iteration(iteration_field)
+        cap_value = current_state.loop_caps.get(iteration_field)
+        max_iterations = cap_value if cap_value is not None else (
+            policy.loop_counters[iteration_field].default_max
+            if iteration_field in policy.loop_counters
+            else phase_def.loop_policy.max_iterations
+        )
+        if current_iteration < max_iterations:
+            return current_state, current_target
+
+        current_state = current_state.with_loop_iteration(iteration_field, 0).copy_with(
+            review_outcome=None
+        )
+        current_target = resolve_next_phase(current_target, "success", policy)
+
+    return current_state, current_target
+
+
 def _advance_phase(
     state: PipelineState,
     target_phase: PipelinePhase,
@@ -837,7 +878,13 @@ def _advance_phase(
     Returns:
         Tuple of (new_state, effects).
     """
-    new_state = progress.advance_phase(state, target_phase, policy=policy)
+    advanced_state = state
+    advanced_target = target_phase
+    if policy is not None:
+        advanced_state, advanced_target = _resolve_exhausted_analysis_target(
+            state, target_phase, policy
+        )
+    new_state = progress.advance_phase(advanced_state, advanced_target, policy=policy)
     return new_state, []
 
 

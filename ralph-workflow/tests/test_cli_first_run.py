@@ -224,6 +224,48 @@ def test_cli_init_idempotent_no_banner_on_second_run(
     )
 
 
+def test_cli_init_does_not_create_local_main_config_when_global_exists(
+    clean_env: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """`ralph --init` should keep using the global main config by default."""
+    runner = CliRunner()
+    monkeypatch.chdir(tmp_path)
+
+    result = runner.invoke(app, ["--init"], catch_exceptions=False)
+
+    assert result.exit_code == 0, f"Expected exit 0, got {result.exit_code}: {result.output}"
+    assert (tmp_path / ".config" / "ralph-workflow.toml").exists()
+    assert not (tmp_path / ".agent" / "ralph-workflow.toml").exists()
+    assert (tmp_path / ".agent" / "mcp.toml").exists()
+    assert (tmp_path / ".agent" / "pipeline.toml").exists()
+    assert (tmp_path / ".agent" / "artifacts.toml").exists()
+
+
+
+def test_cli_generate_local_config_creates_local_main_override(
+    clean_env: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """An explicit local-config command should create `.agent/ralph-workflow.toml`."""
+    runner = CliRunner()
+    monkeypatch.chdir(tmp_path)
+
+    init_result = runner.invoke(app, ["--init"], catch_exceptions=False)
+    assert init_result.exit_code == 0, (
+        f"Expected init exit 0, got {init_result.exit_code}: {init_result.output}"
+    )
+    assert not (tmp_path / ".agent" / "ralph-workflow.toml").exists()
+
+    result = runner.invoke(app, ["--generate-local-config"], catch_exceptions=False)
+
+    assert result.exit_code == 0, f"Expected exit 0, got {result.exit_code}: {result.output}"
+    assert (tmp_path / ".agent" / "ralph-workflow.toml").exists()
+
+
+
 def test_cli_init_creates_self_teaching_prompt_md(
     clean_env: dict[str, str],
     monkeypatch: pytest.MonkeyPatch,

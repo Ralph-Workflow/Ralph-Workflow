@@ -1489,7 +1489,10 @@ def test_init_command_creates_files(monkeypatch: pytest.MonkeyPatch, tmp_path: P
     monkeypatch.chdir(tmp_path)
     init_module.init_command(template="default")
     assert (tmp_path / "PROMPT.md").exists()
-    assert (tmp_path / ".agent" / "ralph-workflow.toml").exists()
+    assert not (tmp_path / ".agent" / "ralph-workflow.toml").exists()
+    assert (tmp_path / ".agent" / "mcp.toml").exists()
+    assert (tmp_path / ".agent" / "pipeline.toml").exists()
+    assert (tmp_path / ".agent" / "artifacts.toml").exists()
     output = stream.getvalue()
     assert "Ralph" in output
     assert "Created" in output
@@ -1549,7 +1552,10 @@ def test_init_command_creates_agent_dir_in_cwd(
     monkeypatch.chdir(tmp_path)
     init_module.init_command(template="default")
     assert (tmp_path / ".agent").is_dir()
-    assert (tmp_path / ".agent" / "ralph-workflow.toml").exists()
+    assert (tmp_path / ".agent" / "mcp.toml").exists()
+    assert (tmp_path / ".agent" / "pipeline.toml").exists()
+    assert (tmp_path / ".agent" / "artifacts.toml").exists()
+    assert not (tmp_path / ".agent" / "ralph-workflow.toml").exists()
 
 
 def test_init_command_fallback_next_steps_do_not_advertise_template_labels(
@@ -1599,7 +1605,7 @@ def test_display_tables_render() -> None:
     assert "opencode" in rendered
 
 
-def test_init_command_writes_local_and_global_configs(
+def test_init_command_writes_support_and_global_configs(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     xdg_dir = tmp_path / "xdg"
@@ -1609,14 +1615,16 @@ def test_init_command_writes_local_and_global_configs(
 
     init_module.init_command(None, None)
 
-    assert (tmp_path / ".agent" / "ralph-workflow.toml").exists()
+    assert not (tmp_path / ".agent" / "ralph-workflow.toml").exists()
     assert (tmp_path / ".agent" / "mcp.toml").exists()
+    assert (tmp_path / ".agent" / "pipeline.toml").exists()
+    assert (tmp_path / ".agent" / "artifacts.toml").exists()
     assert (xdg_dir / "ralph-workflow.toml").exists()
     assert (xdg_dir / "ralph-workflow-mcp.toml").exists()
 
-    agent_cfg_text = (tmp_path / ".agent" / "ralph-workflow.toml").read_text()
-    assert isinstance(tomllib.loads(agent_cfg_text), dict)
     assert isinstance(tomllib.loads((tmp_path / ".agent" / "mcp.toml").read_text()), dict)
+    assert isinstance(tomllib.loads((tmp_path / ".agent" / "pipeline.toml").read_text()), dict)
+    assert isinstance(tomllib.loads((tmp_path / ".agent" / "artifacts.toml").read_text()), dict)
     assert isinstance(tomllib.loads((xdg_dir / "ralph-workflow.toml").read_text()), dict)
     assert isinstance(tomllib.loads((xdg_dir / "ralph-workflow-mcp.toml").read_text()), dict)
 

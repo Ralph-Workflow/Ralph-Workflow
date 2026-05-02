@@ -143,7 +143,9 @@ ralph
 ```
 
 `ralph --init` is the canonical form. Compatibility labels such as `default` are deprecated,
-ignored, and no longer recommended in docs or scripts.
+ignored, and no longer recommended in docs or scripts. `ralph --init` scaffolds the project-local
+support files; use `ralph --generate-local-config` only when this repo needs a main-config override
+instead of inheriting from `~/.config/ralph-workflow.toml`.
 
 ## First-run configuration
 
@@ -153,11 +155,13 @@ On first run, Ralph Workflow creates the standard project and user config files 
 - `~/.config/ralph-workflow.toml` — main Ralph Workflow configuration
 - `~/.config/ralph-workflow-mcp.toml` — MCP servers, web search, and web visit configuration
 
-**Project-local (created by `ralph --init`, lives in your project directory):**
-- `.agent/ralph-workflow.toml` — project-local main config override, including agent chains and drain bindings
+**Project-local support files (created by `ralph --init`, live in your project directory):**
 - `.agent/mcp.toml` — project-local MCP override
 - `.agent/pipeline.toml` — phase graph and orchestration settings
 - `.agent/artifacts.toml` — MCP artifact contracts per drain
+
+**Optional project-local main override (created only when you ask for it):**
+- `.agent/ralph-workflow.toml` — project-specific main config override, including agent chains and drain bindings; generate it with `ralph --generate-local-config`
 
 **Override precedence (highest to lowest):**
 CLI flags → project-local (`.agent/`) → user-global (`~/.config/`) → bundled defaults

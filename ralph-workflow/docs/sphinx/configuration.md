@@ -25,12 +25,17 @@ Ralph Workflow manages a standard first-run config set across two scopes.
 
 | File | Purpose |
 |------|---------|
-| `.agent/ralph-workflow.toml` | Project-specific overrides for the main config, including agent chains and drain bindings |
 | `.agent/mcp.toml` | Project-specific MCP server definitions |
 | `.agent/pipeline.toml` | Phase sequence and parallel execution settings |
 | `.agent/artifacts.toml` | Artifact type schemas and contracts |
+| `.agent/ralph-workflow.toml` | Optional project-specific overrides for the main config, including agent chains and drain bindings |
 
-Run `ralph --init` to create these standard files from the bundled templates.
+Run `ralph --init` to create the standard project-local support files. Generate `.agent/ralph-workflow.toml`
+only when you explicitly want a project-local main override:
+
+```bash
+ralph --generate-local-config
+```
 
 ## Bundled Default Templates
 

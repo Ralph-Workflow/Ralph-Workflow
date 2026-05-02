@@ -111,28 +111,45 @@ def ensure_global_mcp_config(
     return _copy_with_backup(source, target, force)
 
 
-def ensure_local_configs(agent_dir: Path, *, force: bool = False) -> list[BootstrapResult]:
-    """Ensure .agent/ralph-workflow.toml and .agent/mcp.toml exist.
+def ensure_local_main_config(agent_dir: Path, *, force: bool = False) -> BootstrapResult:
+    """Ensure the project-local main override exists.
+
+    Args:
+        agent_dir: The .agent directory to write configs into.
+        force: When True, overwrite an existing file (backing it up first).
+
+    Returns:
+        BootstrapResult describing the action taken for `.agent/ralph-workflow.toml`.
+    """
+    agent_dir.mkdir(parents=True, exist_ok=True)
+    return _copy_with_backup(
+        _get_bundled_defaults_dir() / _LOCAL_CONFIG_SOURCE,
+        agent_dir / _LOCAL_CONFIG_FILENAME,
+        force,
+    )
+
+
+
+def ensure_local_support_configs(agent_dir: Path, *, force: bool = False) -> list[BootstrapResult]:
+    """Ensure the standard project-local policy and MCP files exist.
+
+    This scaffolds the `.agent/` files Ralph needs for project-local runtime behavior
+    without creating the optional project-local main override.
 
     Args:
         agent_dir: The .agent directory to write configs into.
         force: When True, overwrite existing files (backs them up first).
 
     Returns:
-        List of BootstrapResult, one per config file.
+        List of BootstrapResult, one per support file.
     """
     agent_dir.mkdir(parents=True, exist_ok=True)
     results: list[BootstrapResult] = [
         _copy_with_backup(
-            _get_bundled_defaults_dir() / _LOCAL_CONFIG_SOURCE,
-            agent_dir / _LOCAL_CONFIG_FILENAME,
-            force,
-        ),
-        _copy_with_backup(
             _get_bundled_defaults_dir() / "mcp.toml",
             agent_dir / _LOCAL_MCP_FILENAME,
             force,
-        ),
+        )
     ]
     results.extend(
         _copy_with_backup(
@@ -143,6 +160,23 @@ def ensure_local_configs(agent_dir: Path, *, force: bool = False) -> list[Bootst
         for policy_filename in _LOCAL_POLICY_FILENAMES
     )
     return results
+
+
+
+def ensure_local_configs(agent_dir: Path, *, force: bool = False) -> list[BootstrapResult]:
+    """Ensure the full project-local config set exists.
+
+    Args:
+        agent_dir: The .agent directory to write configs into.
+        force: When True, overwrite existing files (backs them up first).
+
+    Returns:
+        List of BootstrapResult, one per config file.
+    """
+    return [
+        ensure_local_main_config(agent_dir, force=force),
+        *ensure_local_support_configs(agent_dir, force=force),
+    ]
 
 
 def _regenerate_existing_advanced_local_configs(agent_dir: Path) -> list[BootstrapResult]:

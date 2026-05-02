@@ -104,6 +104,30 @@ def _append_file_section(content: list[object], heading: str, files: list[str]) 
     content.extend(Text(f"  • {name}") for name in files)
 
 
+
+def _build_next_steps_text() -> Text:
+    """Build the welcome panel next-steps block."""
+    next_steps = Text("Next steps:\n", style="theme.banner.title")
+    next_steps.append("  1. Edit ")
+    next_steps.append("PROMPT.md", style="theme.cat.meta")
+    next_steps.append(" with your implementation task\n")
+    next_steps.append("  2. Install AI agents if missing (e.g., `claude`, `opencode`)\n")
+    next_steps.append("  3. (Optional) Run ")
+    next_steps.append("ralph --generate-local-config", style="theme.cat.meta")
+    next_steps.append(" if this repo needs a project-local main override\n")
+    next_steps.append("  4. (Optional) Run ")
+    next_steps.append("ralph --diagnose", style="theme.cat.meta")
+    next_steps.append(" to verify agents, MCP servers, and config\n")
+    next_steps.append("  5. Run ")
+    next_steps.append("ralph", style="theme.cat.meta")
+    next_steps.append(" to start the pipeline\n")
+    next_steps.append("  6. Run ")
+    next_steps.append("ralph --regenerate-config", style="theme.cat.meta")
+    next_steps.append(" to reset configs")
+    return next_steps
+
+
+
 def emit_first_run_welcome(
     console: object,
     results: list[BootstrapResult],
@@ -167,21 +191,7 @@ def emit_first_run_welcome(
     _append_file_section(content, "Global config files:", global_files)
     _append_file_section(content, "Local config files:", local_files)
 
-    next_steps = Text("Next steps:\n", style="theme.banner.title")
-    next_steps.append("  1. Edit ")
-    next_steps.append("PROMPT.md", style="theme.cat.meta")
-    next_steps.append(" with your implementation task\n")
-    next_steps.append("  2. Install AI agents if missing (e.g., `claude`, `opencode`)\n")
-    next_steps.append("  3. (Optional) Run ")
-    next_steps.append("ralph --diagnose", style="theme.cat.meta")
-    next_steps.append(" to verify agents, MCP servers, and config\n")
-    next_steps.append("  4. Run ")
-    next_steps.append("ralph", style="theme.cat.meta")
-    next_steps.append(" to start the pipeline\n")
-    next_steps.append("  5. Run ")
-    next_steps.append("ralph --regenerate-config", style="theme.cat.meta")
-    next_steps.append(" to reset configs")
-    content.append(next_steps)
+    content.append(_build_next_steps_text())
 
     panel = Panel(
         Group(*content),  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library

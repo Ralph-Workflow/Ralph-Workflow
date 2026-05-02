@@ -17,7 +17,7 @@ from ralph.config.bootstrap import (
     BootstrapResult,
     ensure_global_config,
     ensure_global_mcp_config,
-    ensure_local_configs,
+    ensure_local_support_configs,
 )
 from ralph.config.welcome import emit_first_run_welcome
 
@@ -104,7 +104,7 @@ def init_command(
         shutil.copy2(str(bundled_defaults / "ralph-workflow.toml"), str(config_path))
         console.print(_status_text("Created", str(config_path), "theme.status.success"))
     elif config_path is None:
-        local_results = ensure_local_configs(agent_dir)
+        local_results = ensure_local_support_configs(agent_dir)
         global_results: list[BootstrapResult] = [
             ensure_global_config(),
             ensure_global_mcp_config(),
@@ -166,9 +166,10 @@ def _print_fallback_next_steps(target: Path, *, display_context: DisplayContext)
         " for a step-by-step first-run walkthrough"
     )
     console.print(
-        "  3. (Optional) Override defaults in"
-        " [theme.cat.meta].agent/ralph-workflow.toml[/theme.cat.meta]"
-        " or [theme.cat.meta]~/.config/ralph-workflow.toml[/theme.cat.meta]"
+        "  3. (Optional) Generate a project-local main override with"
+        " [theme.cat.meta]ralph --generate-local-config[/theme.cat.meta]"
+        " when this repo needs settings that differ from"
+        " [theme.cat.meta]~/.config/ralph-workflow.toml[/theme.cat.meta]"
     )
     console.print(
         "  4. (Optional) Configure MCP servers in"

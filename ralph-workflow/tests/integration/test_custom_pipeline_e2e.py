@@ -256,7 +256,7 @@ class TestCustomPipelineLoopback:
         state, _ = reducer_reduce(state, PipelineEvent.ANALYSIS_LOOPBACK, policy)
         assert state.review_outcome == "has_issues"
 
-    def test_gate_loopback_three_times_still_routes_correctly(
+    def test_gate_loopback_three_times_bypasses_exhausted_gate(
         self, custom_bundle: PolicyBundle
     ) -> None:
         policy = custom_bundle.pipeline
@@ -273,9 +273,13 @@ class TestCustomPipelineLoopback:
             assert state.phase == "build", f"iter {i}: Expected build after loopback"
             # Counter should be clamped to max_iterations=3
             assert state.get_loop_iteration("build_loop") == min(i, _BUILD_LOOP_MAX)
-            # Re-enter gate
+            # Re-enter gate until the cap is exhausted, then bypass analysis entirely
             state, _ = reducer_reduce(state, PipelineEvent.AGENT_SUCCESS, policy)
-            assert state.phase == "gate"
+            if i < _BUILD_LOOP_MAX:
+                assert state.phase == "gate"
+            else:
+                assert state.phase == "seal"
+                assert state.get_loop_iteration("build_loop") == 0
 
     def test_gate_success_after_loopback_clears_review_outcome(
         self, custom_bundle: PolicyBundle
