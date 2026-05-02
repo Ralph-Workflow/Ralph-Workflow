@@ -191,9 +191,9 @@ def _setup_phase_prerequisites(
 ) -> None:
     """Write required input artifacts for a phase so we test the *output* contract."""
     plan_json = _VALID_PLAN_JSON_FULL if full_plan else _VALID_PLAN_JSON_LEGACY
-    if phase == "development":
+    if phase in {"development", "development_analysis", "review", "review_analysis", "fix"}:
         workspace.write(".agent/artifacts/plan.json", plan_json)
-    elif phase == "development_analysis":
+    if phase == "development_analysis":
         workspace.write(".agent/artifacts/development_result.json", _VALID_DEV_RESULT_JSON)
     elif phase in {"review_analysis", "fix"}:
         workspace.write(".agent/artifacts/issues.json", _VALID_ISSUES_JSON)
@@ -324,6 +324,7 @@ def test_materialize_review_prompt_includes_last_retry_error(tmp_path: Path) -> 
     policy = load_policy(tmp_path / ".agent")
     workspace = MemoryWorkspace(root=str(tmp_path))
     workspace.write("PROMPT.md", "fix the bug")
+    _setup_phase_prerequisites(workspace, "review", full_plan=True)
     workspace.write(retry_hint_path("review"), "PREVIOUS ATTEMPT FAILED: missing issues.json")
 
     with patch.object(materialize_module, "_git_diff", return_value="diff --git a/x.py"):
@@ -350,10 +351,7 @@ def test_materialize_development_analysis_prompt_includes_last_retry_error(
     policy = load_policy(tmp_path / ".agent")
     workspace = MemoryWorkspace(root=str(tmp_path))
     workspace.write("PROMPT.md", "implement the plan")
-    workspace.write(
-        ".agent/artifacts/development_result.json",
-        _VALID_DEV_RESULT_JSON,
-    )
+    _setup_phase_prerequisites(workspace, "development_analysis", full_plan=True)
     workspace.write(
         retry_hint_path("development_analysis"),
         "PREVIOUS ATTEMPT FAILED: missing decision artifact",

@@ -97,6 +97,17 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
+MINIMAL_PLAN_HANDOFF = (
+    "# Implementation Plan\n\n"
+    "1. Add regression coverage.\n"
+    "2. Tighten non-planning prompt preconditions.\n"
+)
+
+
+def _write_plan_handoff(workspace: MemoryWorkspace) -> None:
+    workspace.write(".agent/PLAN.md", MINIMAL_PLAN_HANDOFF)
+
+
 def test_materialize_prompt_for_phase_renders_planning_prompt_to_agent_tmp(tmp_path: Path) -> None:
     policy = load_policy(tmp_path / ".agent")
     workspace = MemoryWorkspace(root=str(tmp_path))
@@ -531,6 +542,7 @@ def test_materialize_development_prompt_uses_analysis_feedback_handoff(
     policy = load_policy(tmp_path / ".agent")
     workspace = MemoryWorkspace(root=str(tmp_path))
     workspace.write("PROMPT.md", "Implement the feature")
+    _write_plan_handoff(workspace)
     workspace.write(
         ".agent/artifacts/development_analysis_decision.json",
         json.dumps(
@@ -568,6 +580,7 @@ def test_materialize_development_analysis_uses_markdown_result_handoff(
     policy = load_policy(tmp_path / ".agent")
     workspace = MemoryWorkspace(root=str(tmp_path))
     workspace.write("PROMPT.md", "Analyze the implementation")
+    _write_plan_handoff(workspace)
     workspace.write(
         ".agent/artifacts/development_result.json",
         json.dumps(
@@ -681,6 +694,7 @@ def test_materialize_fix_prompt_uses_markdown_issues_handoff(
     policy = load_policy(tmp_path / ".agent")
     workspace = MemoryWorkspace(root=str(tmp_path))
     workspace.write("PROMPT.md", "Apply the fixes")
+    _write_plan_handoff(workspace)
     workspace.write(
         ".agent/artifacts/issues.json",
         json.dumps(
@@ -724,6 +738,7 @@ def test_materialize_fix_prompt_uses_review_analysis_feedback_handoff(
     policy = load_policy(tmp_path / ".agent")
     workspace = MemoryWorkspace(root=str(tmp_path))
     workspace.write("PROMPT.md", "Apply the fixes")
+    _write_plan_handoff(workspace)
     workspace.write(
         ".agent/artifacts/review_analysis_decision.json",
         json.dumps(
@@ -835,6 +850,7 @@ def test_materialize_review_prompt_uses_file_reference_for_large_diff(
     policy = load_policy(tmp_path / ".agent")
     workspace = MemoryWorkspace(root=str(tmp_path))
     workspace.write("PROMPT.md", "Review the changes")
+    _write_plan_handoff(workspace)
     large_diff = "D" * (100 * 1024 + 1)
 
     monkeypatch.setattr(materialize_module, "_git_diff", lambda _workspace_root: large_diff)

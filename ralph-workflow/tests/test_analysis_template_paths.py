@@ -45,6 +45,15 @@ _TEMPLATES_DIR = (
 _MIN_EXPECTED_ANALYSIS_TEMPLATES = 2
 
 
+def _write_plan_handoff(workspace: MemoryWorkspace) -> None:
+    workspace.write(
+        ".agent/PLAN.md",
+        "# Implementation Plan\n\n"
+        "1. Add the missing regression test.\n"
+        "2. Tighten prompt preconditions.\n",
+    )
+
+
 def _render_development_analysis(
     tmp_path: Path,
     *,
@@ -53,6 +62,7 @@ def _render_development_analysis(
     policy = load_policy(tmp_path / ".agent")
     workspace = MemoryWorkspace(root=str(tmp_path))
     workspace.write("PROMPT.md", prompt_content)
+    _write_plan_handoff(workspace)
     workspace.write(".agent/artifacts/development_result.json", _MINIMAL_DEV_RESULT)
     with patch.object(materialize_module, "_git_diff", return_value="diff"):
         path = materialize_prompt_for_phase(
@@ -74,6 +84,7 @@ def _render_review_analysis(
     policy = load_policy(tmp_path / ".agent")
     workspace = MemoryWorkspace(root=str(tmp_path))
     workspace.write("PROMPT.md", prompt_content)
+    _write_plan_handoff(workspace)
     workspace.write(".agent/artifacts/issues.json", _MINIMAL_ISSUES)
     with patch.object(materialize_module, "_git_diff", return_value="diff"):
         path = materialize_prompt_for_phase(
