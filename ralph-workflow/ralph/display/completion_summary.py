@@ -127,19 +127,72 @@ def _dropped_count_line(dropped: int) -> str:
     return f"Snapshots dropped: {dropped}"
 
 
-def _review_summary_line(snapshot: PipelineSnapshot) -> str | None:
-    """Return the review summary line based on review_issues_found and decision_log.
+def _review_summary_line(snapshot: PipelineSnapshot) -> tuple[str, str] | None:
+    """Return (badge, summary) for review section based on review_issues_found and decision_log.
 
     Returns None when no review phase is in the decision log.
+    Badge is 'PASS', 'FAIL', or 'INFO'.
     """
     if snapshot.review_issues_found:
-        return "Review: issues found"
+        return ("FAIL", "issues found")
     has_review = snapshot.decision_log and any(
         "review" in phase.lower() for phase, _, _, _ in snapshot.decision_log
     )
     if has_review:
-        return "Review: clean"
+        return ("PASS", "clean")
     return None
+
+
+def _review_badge_and_count(snapshot: PipelineSnapshot) -> tuple[str, int] | None:
+    """Return (badge, issue_count) for review section.
+
+    Returns None when no review phase is in the decision log.
+    Badge is 'PASS', 'FAIL', or 'INFO'.
+    """
+    if snapshot.review_issues_found:
+        return ("FAIL", 1)
+    has_review = snapshot.decision_log and any(
+        "review" in phase.lower() for phase, _, _, _ in snapshot.decision_log
+    )
+    if has_review:
+        return ("PASS", 0)
+    return None
+
+
+def _analysis_decision_summary(
+    snapshot: PipelineSnapshot,
+) -> list[tuple[str, str, str]]:
+    """Return list of (phase, decision, reason) for analysis decisions.
+
+    Shows analysis decisions with proceed/revise labeling for clarity.
+    """
+    if not snapshot.decision_log:
+        return []
+    results: list[tuple[str, str, str]] = []
+    for phase, decision, reason, _ts in snapshot.decision_log:
+        if "analysis" in phase.lower():
+            # Normalize decision to proceed/revise
+            normalized = decision.lower().strip()
+            if normalized in ("proceed", "complete", "pr_opened"):
+                label = "proceed"
+            elif normalized in ("revise", "failed"):
+                label = "revise"
+            else:
+                label = decision
+            results.append((phase, label, reason))
+    return results
+
+
+def _fixer_iteration_summary(snapshot: PipelineSnapshot) -> str | None:
+    """Return a summary string for fixer iteration context if active."""
+    if snapshot.fixer_iteration is None:
+        return None
+    parts = [f"fixer-iteration={snapshot.fixer_iteration}"]
+    if snapshot.analysis_within_fixer is not None:
+        parts.append(f"analysis-within-fixer={snapshot.analysis_within_fixer}")
+    if snapshot.fixer_phase is not None:
+        parts.append(f"fixer-phase={snapshot.fixer_phase}")
+    return " | ".join(parts)
 
 
 def _style_for_role(
@@ -174,7 +227,7 @@ def _make_badge_text(badge: str, rest: str) -> Text:
     return t
 
 
-def render_completion_summary(  # noqa: PLR0913
+def render_completion_summary(  # noqa: PLR0913, PLR0912, PLR0915
     snapshot: PipelineSnapshot,
     *,
     workspace_root: Path | None = None,
@@ -222,7 +275,25 @@ def render_completion_summary(  # noqa: PLR0913
 
     review_line = _review_summary_line(snapshot)
     if review_line is not None:
-        lines.append(review_line)
+        badge, summary_text = review_line
+        lines.append(f"Review: [{badge}] {summary_text}")
+
+    # Analysis decisions with proceed/revise labeling
+    analysis_decisions = _analysis_decision_summary(snapshot)
+    if analysis_decisions:
+        lines.append("Analysis Decisions:")
+        for phase, decision, reason in analysis_decisions:
+            reason_part = f" — {reason}" if reason else ""
+            lines.append(f"- {phase.replace('_', ' ').title()}: {decision}{reason_part}")
+
+    # Fixer iteration summary
+    fixer_summary = _fixer_iteration_summary(snapshot)
+    if fixer_summary is not None:
+        lines.append(f"Fixer: {fixer_summary}")
+
+    # Outer dev iteration if present
+    if snapshot.outer_dev_iteration is not None:
+        lines.append(f"Outer Dev Iteration: {snapshot.outer_dev_iteration}")
 
     lines.append(_verification_line(workspace_root))
     lines.extend(_commit_message_lines(workspace_root))
@@ -245,7 +316,7 @@ def render_completion_summary(  # noqa: PLR0913
     return Text("\n".join(lines))
 
 
-def _render_compact_group(  # noqa: PLR0912, PLR0913
+def _render_compact_group(  # noqa: PLR0912, PLR0913, PLR0915
     snapshot: PipelineSnapshot,
     *,
     workspace_root: Path | None = None,
@@ -298,7 +369,21 @@ def _render_compact_group(  # noqa: PLR0912, PLR0913
 
     review_line = _review_summary_line(snapshot)
     if review_line is not None:
-        renderables.append(Text(review_line.upper()))
+        badge, summary_text = review_line
+        renderables.append(Text(f"REVIEW: [{badge}] {summary_text}".upper()))
+
+    # Analysis decisions with proceed/revise labeling in compact mode
+    analysis_decisions = _analysis_decision_summary(snapshot)
+    if analysis_decisions:
+        for phase, decision, reason in analysis_decisions:
+            reason_part = f" — {reason}" if reason else ""
+            analysis_line = f"ANALYSIS: {phase.replace('_', ' ').title()}: {decision}{reason_part}"
+            renderables.append(Text(analysis_line.upper()))
+
+    # Fixer iteration summary in compact mode
+    fixer_summary = _fixer_iteration_summary(snapshot)
+    if fixer_summary is not None:
+        renderables.append(Text(f"FIXER: {fixer_summary}".upper()))
 
     renderables.append(Text(f"VERIFICATION: {_verification_line(workspace_root)}"))
 
@@ -433,12 +518,45 @@ def render_completion_summary_group(  # noqa: PLR0912, PLR0913, PLR0915
     else:
         renderables.append(Text("  (none recorded)"))
 
-    review_line = _review_summary_line(snapshot)
-    if review_line is not None:
+    # Enhanced Review section with PASS/FAIL badge and issue count
+    review_info = _review_badge_and_count(snapshot)
+    if review_info is not None:
+        badge, issue_count = review_info
         review_style = _style_for_role("review", pipeline_policy)
         renderables.append(Rule("Review", style=review_style))
-        suffix = review_line.replace("Review:", "").strip()
-        renderables.append(Text(f"  {suffix}"))
+        count_suffix = f" ({issue_count} issue(s))" if issue_count > 0 else " (clean)"
+        renderables.append(_make_badge_text(badge, f"{count_suffix}"))
+
+    # Analysis Decisions section with proceed/revise labeling
+    analysis_decisions = _analysis_decision_summary(snapshot)
+    if analysis_decisions:
+        analysis_style = _style_for_role("analysis", pipeline_policy) if pipeline_policy else style
+        renderables.append(Rule("Analysis Decisions", style=analysis_style))
+        for phase, decision, reason in analysis_decisions:
+            reason_part = f": {decision}" + (f" — {reason}" if reason else "")
+            phase_title = phase.replace('_', ' ').title()
+            # Determine badge based on decision
+            if decision == "proceed":
+                decision_badge = "PASS"
+            elif decision == "revise":
+                decision_badge = "WARN"
+            else:
+                decision_badge = "INFO"
+            renderables.append(
+                _make_badge_text(decision_badge, f" {phase_title}{reason_part}")
+            )
+
+    # Fixer iteration summary section
+    fixer_summary = _fixer_iteration_summary(snapshot)
+    if fixer_summary is not None:
+        fixer_style = "theme.phase.fix"
+        renderables.append(Rule("Fixer", style=fixer_style))
+        renderables.append(Text(f"  {fixer_summary}"))
+
+    # Outer dev iteration if present
+    if snapshot.outer_dev_iteration is not None:
+        outer_dev_text = f"  Outer Dev Iteration: {snapshot.outer_dev_iteration}"
+        renderables.append(Text(outer_dev_text, style="theme.text.emphasis"))
 
     # Verification section
     renderables.append(Rule("Verification", style=style))

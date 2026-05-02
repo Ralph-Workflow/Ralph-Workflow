@@ -282,6 +282,24 @@ class PhaseStartContext:
     agent_name: str | None = None
     analysis_iteration: int | None = None
     max_analysis_iterations: int | None = None
+    outer_iteration: int | None = None  # Outer dev iteration with label 'dev-iteration=X'
+    inner_analysis: int | None = None  # Inner analysis count with label 'analysis=X/Y'
+    budget_remaining: int | None = None  # Remaining budget with label 'budget=Z'
+    fixer_iteration: int | None = None  # Current fixer iteration if in fixer context
+
+
+@dataclass(frozen=True)
+class PhaseStartIterationContext:
+    """Bundled iteration context for show_phase_start_from_state.
+
+    Use this to pass iteration context (outer_dev, inner_analysis, fixer)
+    that cannot be extracted from the raw PipelineState object.
+    """
+
+    outer_iteration: int | None = None
+    inner_analysis: int | None = None
+    budget_remaining: int | None = None
+    fixer_iteration: int | None = None
 
 
 def _build_analysis_suffix(
@@ -290,6 +308,32 @@ def _build_analysis_suffix(
 ) -> str:
     """Build the analysis iteration suffix string."""
     return f" [analysis {iteration + 1}/{max_iterations}]"
+
+
+def _build_outer_iteration_suffix(iteration: int | None) -> str:
+    """Build the outer dev iteration suffix string."""
+    if iteration is None:
+        return ""
+    return f" [dev-iteration={iteration}]"
+
+
+def _build_inner_analysis_suffix(
+    inner: int | None,
+    max_inner: int | None = None,
+) -> str:
+    """Build the inner analysis suffix string."""
+    if inner is None:
+        return ""
+    if max_inner is not None:
+        return f" [analysis={inner}/{max_inner}]"
+    return f" [analysis={inner}]"
+
+
+def _build_budget_remaining_suffix(remaining: int | None) -> str:
+    """Build the budget remaining suffix string."""
+    if remaining is None:
+        return ""
+    return f" [budget={remaining}]"
 
 
 def show_phase_start(  # noqa: PLR0913
@@ -330,6 +374,24 @@ def show_phase_start(  # noqa: PLR0913
                 ctx.max_analysis_iterations,
             )
             line.append(suffix, style="theme.text.muted")
+        # Render outer dev iteration with distinct styling
+        if ctx.outer_iteration is not None:
+            suffix = _build_outer_iteration_suffix(ctx.outer_iteration)
+            line.append(suffix, style="theme.text.emphasis")
+        # Render inner analysis count
+        if ctx.inner_analysis is not None:
+            suffix = _build_inner_analysis_suffix(ctx.inner_analysis)
+            line.append(suffix, style="theme.text.muted")
+        # Render budget remaining
+        if ctx.budget_remaining is not None:
+            suffix = _build_budget_remaining_suffix(ctx.budget_remaining)
+            line.append(suffix, style="theme.level.warn")
+        # Render fixer iteration if in fixer context
+        if ctx.fixer_iteration is not None:
+            line.append(
+                f" [fixer-iteration={ctx.fixer_iteration}]",
+                style="theme.phase.fix",
+            )
         effective_agent = ctx.agent_name or agent_name
     else:
         effective_agent = agent_name
@@ -345,8 +407,20 @@ def show_phase_start_from_state(
     phase: str,
     *,
     display_context: DisplayContext,
+    iteration_context: PhaseStartIterationContext | None = None,
+    analysis_iteration: tuple[int, int] | None = None,
 ) -> None:
-    """Display phase start using counters extracted from a pipeline state object."""
+    """Display phase start using counters extracted from a pipeline state object.
+
+    Args:
+        state: PipelineState or similar object with budget_caps, outer_progress, agent_name.
+        phase: Phase name to display.
+        display_context: DisplayContext for rendering.
+        iteration_context: Optional iteration context for outer_dev, inner_analysis,
+            budget_remaining, and fixer_iteration values that cannot be extracted
+            from the raw state object.
+        analysis_iteration: Tuple of (current, max) analysis iterations for the phase's loop.
+    """
     caps_raw: object = getattr(state, "budget_caps", None)
     progress_raw: object = getattr(state, "outer_progress", None)
     agent_raw: object = getattr(state, "agent_name", None)
@@ -366,7 +440,28 @@ def show_phase_start_from_state(
         if cap > 0
     }
     agent_name: str | None = agent_raw if isinstance(agent_raw, str) else None
-    ctx = PhaseStartContext(budget_progress=budget_progress, agent_name=agent_name)
+
+    outer_iteration: int | None = None
+    inner_analysis: int | None = None
+    budget_remaining: int | None = None
+    fixer_iteration: int | None = None
+
+    if iteration_context is not None:
+        outer_iteration = iteration_context.outer_iteration
+        inner_analysis = iteration_context.inner_analysis
+        budget_remaining = iteration_context.budget_remaining
+        fixer_iteration = iteration_context.fixer_iteration
+
+    ctx = PhaseStartContext(
+        budget_progress=budget_progress,
+        agent_name=agent_name,
+        analysis_iteration=analysis_iteration[0] if analysis_iteration else None,
+        max_analysis_iterations=analysis_iteration[1] if analysis_iteration else None,
+        outer_iteration=outer_iteration,
+        inner_analysis=inner_analysis,
+        budget_remaining=budget_remaining,
+        fixer_iteration=fixer_iteration,
+    )
     show_phase_start(phase, ctx=ctx, display_context=display_context)
 
 

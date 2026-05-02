@@ -40,9 +40,10 @@ from ralph.display.artifact_renderer import (
 )
 from ralph.display.context import DisplayContext, make_display_context
 from ralph.display.phase_banner import (
-    PhaseStartContext,
+    PhaseStartIterationContext,
     show_phase_complete,
     show_phase_start,
+    show_phase_start_from_state,
     show_phase_transition,
 )
 from ralph.interrupt import controller_from_process_manager
@@ -815,7 +816,7 @@ def _show_phase_start_with_context(
     *,
     pipeline_policy: PipelinePolicy | None = None,
 ) -> None:
-    """Helper to call show_phase_start with PhaseStartContext when state is available."""
+    """Helper to call show_phase_start_from_state with iteration context when state is available."""
     if state is None:
         show_phase_start(
             phase,
@@ -834,30 +835,33 @@ def _show_phase_start_with_context(
             analysis_iteration = state.loop_iterations.get(field)
             max_analysis_iterations = state.loop_caps.get(field)
 
-    budget_progress: dict[str, tuple[int, int]] = {}
+    # Extract iteration context values from state
+    outer_iteration: int | None = None
+    budget_remaining: int | None = None
     if pipeline_policy is not None:
-        phase_def_for_ctx = pipeline_policy.phases.get(phase)
-        if phase_def_for_ctx is not None:
-            counter: str | None = None
-            if phase_def_for_ctx.role in ("execution", "review"):
-                counter = _find_commit_counter_from_phase(phase, pipeline_policy)
-            if counter is not None:
-                budget_progress[counter] = (
-                    state.get_outer_progress(counter),
-                    state.get_budget_cap(counter),
-                )
+        counter = _find_commit_counter_from_phase(phase, pipeline_policy)
+        if counter is not None:
+            outer_iteration = state.get_outer_progress(counter)
+            budget_remaining = state.get_budget_remaining(counter)
 
-    ctx = PhaseStartContext(
-        budget_progress=budget_progress,
-        analysis_iteration=analysis_iteration,
-        max_analysis_iterations=max_analysis_iterations,
+    # Build iteration context for display
+    # Note: inner_analysis is intentionally not set here - it tracks analysis-within-fixer
+    # context which requires fixer state tracking that isn't currently in PipelineState.
+    # The analysis_iteration is passed separately via the analysis_iteration parameter.
+    iteration_context = PhaseStartIterationContext(
+        outer_iteration=outer_iteration,
+        budget_remaining=budget_remaining,
     )
-    show_phase_start(
+
+    # Use show_phase_start_from_state which properly handles iteration context
+    show_phase_start_from_state(
+        state,
         phase,
-        ctx=ctx,
-        agent_name=agent_name,
         display_context=display_context,
-        pipeline_policy=pipeline_policy,
+        iteration_context=iteration_context,
+        analysis_iteration=(analysis_iteration, max_analysis_iterations)
+        if analysis_iteration is not None and max_analysis_iterations is not None
+        else None,
     )
 
 
