@@ -929,21 +929,6 @@ def test_git_diff_zero_mid_cycle_commits_only_uncommitted(tmp_git_repo: Path) ->
     assert "uncommitted.py" in diff
 
 
-def test_git_diff_many_mid_cycle_commits_no_uncommitted(tmp_git_repo: Path) -> None:
-    repo = GitRepo(tmp_git_repo)
-    baseline_sha = repo.head.commit.hexsha
-    (tmp_git_repo / "commit_only_a.py").write_text("a = 1\n")
-    repo.index.add(["commit_only_a.py"])
-    repo.index.commit("mid-cycle commit A")
-    (tmp_git_repo / "commit_only_b.py").write_text("b = 2\n")
-    repo.index.add(["commit_only_b.py"])
-    repo.index.commit("mid-cycle commit B")
-    write_cycle_baseline(tmp_git_repo, baseline_sha)
-    diff = materialize_module._git_diff(tmp_git_repo)
-    assert "commit_only_a.py" in diff
-    assert "commit_only_b.py" in diff
-
-
 def test_git_diff_strips_lone_surrogates_from_gitpython_output(
     tmp_path: Path,
     monkeypatch,

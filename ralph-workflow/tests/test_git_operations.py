@@ -276,4 +276,4 @@ def test_push_without_remote(tmp_git_repo: Path) -> None:
     repo.create_head("test-branch")
 
     with pytest.raises(GitOperationError):
-        push(tmp_git_repo, remote="origin", branch="test-branch")
+        push(tmp_git_repo, remote="no-such-remote", branch="test-branch")
