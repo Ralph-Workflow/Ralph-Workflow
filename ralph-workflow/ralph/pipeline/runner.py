@@ -868,6 +868,7 @@ def _show_phase_start_with_context(
         budget_progress=budget_progress,
         analysis_iteration=analysis_iteration,
         max_analysis_iterations=max_analysis_iterations,
+        phase_name=phase.replace("_", " ").title(),
     )
     show_phase_start(
         phase,

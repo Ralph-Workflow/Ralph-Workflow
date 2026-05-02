@@ -207,7 +207,14 @@ def _render_major_transition(  # noqa: PLR0913
     banner.append(f" {arrow} ", style="theme.text.emphasis")
     banner.append(to_label, style=style)
     if context:
-        detail = "  ".join(f"{k}={v}" for k, v in context.items())
+        # Format analysis_status naturally without the key name or = sign
+        formatted_parts = []
+        for k, v in context.items():
+            if k == "analysis_status":
+                formatted_parts.append(str(v))
+            else:
+                formatted_parts.append(f"{k}={v}")
+        detail = "  ".join(formatted_parts)
         banner.append(f"  ({detail})", style="theme.text.muted")
     c.print(banner)
     if description:
@@ -282,14 +289,19 @@ class PhaseStartContext:
     agent_name: str | None = None
     analysis_iteration: int | None = None
     max_analysis_iterations: int | None = None
+    phase_name: str | None = None
 
 
 def _build_analysis_suffix(
+    phase_name: str,
     iteration: int,
     max_iterations: int,
 ) -> str:
     """Build the analysis iteration suffix string."""
-    return f" [analysis {iteration + 1}/{max_iterations}]"
+    suffix = f"[{phase_name} {iteration + 1}/{max_iterations}]"
+    if iteration >= max_iterations - 1:
+        suffix += " (final, skipping next)"
+    return suffix
 
 
 def show_phase_start(  # noqa: PLR0913
@@ -325,7 +337,9 @@ def show_phase_start(  # noqa: PLR0913
             ctx.analysis_iteration is not None
             and ctx.max_analysis_iterations is not None
         ):
+            phase_name = ctx.phase_name or "analysis"
             suffix = _build_analysis_suffix(
+                phase_name,
                 ctx.analysis_iteration,
                 ctx.max_analysis_iterations,
             )
