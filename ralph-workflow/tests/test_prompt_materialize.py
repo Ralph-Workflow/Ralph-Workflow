@@ -118,12 +118,109 @@ def test_materialize_prompt_for_phase_renders_planning_prompt_to_agent_tmp(tmp_p
     assert current_prompt_path.read_text(encoding="utf-8") == "Plan the template migration"
 
 
+def test_materialize_fresh_planning_clears_previous_plan_context(tmp_path: Path) -> None:
+    policy = load_policy(tmp_path / ".agent")
+    workspace = MemoryWorkspace(root=str(tmp_path))
+    workspace.write("PROMPT.md", "Create a brand new plan")
+    workspace.write(
+        ".agent/artifacts/plan.json",
+        json.dumps(
+            {
+                "type": "plan",
+                "content": {
+                    "summary": {
+                        "context": "Old finalized plan.",
+                        "scope_items": [
+                            {"text": "one"},
+                            {"text": "two"},
+                            {"text": "three"},
+                        ],
+                    },
+                    "steps": [{"number": 1, "title": "Old", "content": "old step"}],
+                    "critical_files": {
+                        "primary_files": [{"path": "src/old.py", "action": "modify"}],
+                    },
+                    "risks_mitigations": [{"risk": "drift", "mitigation": "delete it"}],
+                    "verification_strategy": [
+                        {"method": "pytest", "expected_outcome": "passes"}
+                    ],
+                },
+            }
+        ),
+    )
+    workspace.write(
+        ".agent/artifacts/.plan_draft.json",
+        json.dumps(
+            {
+                "schema_version": 1,
+                "started_at": "2026-01-01T00:00:00+00:00",
+                "updated_at": "2026-01-01T00:00:00+00:00",
+                "sections": {
+                    "summary": {
+                        "context": "Old draft plan.",
+                        "scope_items": [
+                            {"text": "one"},
+                            {"text": "two"},
+                            {"text": "three"},
+                        ],
+                    }
+                },
+            }
+        ),
+    )
+    workspace.write(".agent/PLAN.md", "# Implementation Plan\n\nOld plan handoff.\n")
+
+    prompt_path = materialize_prompt_for_phase(
+        phase="planning",
+        workspace=workspace,
+        pipeline_policy=policy.pipeline,
+        artifacts_policy=policy.artifacts,
+        session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.PLANNING),
+        workspace_root=tmp_path,
+    )
+
+    rendered = workspace.read(prompt_path)
+    assert "PLANNING MODE" in rendered
+    assert "PLANNING EDIT MODE" not in rendered
+    assert "Old finalized plan." not in rendered
+    assert str(tmp_path / ".agent" / "PLAN.md") not in rendered
+    assert workspace.exists(".agent/artifacts/plan.json") is False
+    assert workspace.exists(".agent/artifacts/.plan_draft.json") is False
+    assert workspace.exists(".agent/PLAN.md") is False
+
+
 def test_materialize_planning_loopback_uses_edit_prompt_and_analysis_feedback_handoff(
     tmp_path: Path,
 ) -> None:
     policy = load_policy(tmp_path / ".agent")
     workspace = MemoryWorkspace(root=str(tmp_path))
     workspace.write("PROMPT.md", "Revise the pipeline plan")
+    workspace.write(
+        ".agent/artifacts/plan.json",
+        json.dumps(
+            {
+                "type": "plan",
+                "content": {
+                    "summary": {
+                        "context": "Existing plan to revise.",
+                        "scope_items": [
+                            {"text": "one"},
+                            {"text": "two"},
+                            {"text": "three"},
+                        ],
+                    },
+                    "steps": [{"number": 1, "title": "Revise", "content": "keep context"}],
+                    "critical_files": {
+                        "primary_files": [{"path": "src/plan.py", "action": "modify"}],
+                    },
+                    "risks_mitigations": [{"risk": "drift", "mitigation": "revise carefully"}],
+                    "verification_strategy": [
+                        {"method": "pytest", "expected_outcome": "passes"}
+                    ],
+                },
+            }
+        ),
+    )
     workspace.write(
         ".agent/artifacts/planning_analysis_decision.json",
         json.dumps(
@@ -150,6 +247,7 @@ def test_materialize_planning_loopback_uses_edit_prompt_and_analysis_feedback_ha
 
     rendered = workspace.read(prompt_path)
     assert "PLANNING EDIT MODE" in rendered
+    assert str(tmp_path / ".agent" / "PLAN.md") in rendered
     assert str(tmp_path / ".agent" / "PLANNING_ANALYSIS_DECISION.md") in rendered
     assert "Read the complete analysis feedback from file at" in rendered
     assert "This file is the authoritative source for analysis feedback in this prompt." in rendered
@@ -176,6 +274,7 @@ def test_materialize_planning_loopback_uses_edit_prompt_and_analysis_feedback_ha
     assert PLANNING_EDIT_SELF_ANALYSIS_TEXT in rendered
     assert PLANNING_EDIT_ISSUE_MAPPING_TEXT in rendered
     assert "The plan needs revisions." not in rendered
+    assert workspace.exists(".agent/artifacts/plan.json") is True
 
 
 def test_prompt_file_for_phase_uses_agent_tmp_file_name() -> None:

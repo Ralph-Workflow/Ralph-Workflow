@@ -13,7 +13,7 @@ from ralph.mcp.artifacts.handoffs import (
     ensure_markdown_handoff_from_artifact,
     handoff_path_for_artifact,
 )
-from ralph.mcp.artifacts.plan import PLAN_ARTIFACT_PATH
+from ralph.mcp.artifacts.plan import PLAN_ARTIFACT_PATH, PLAN_DRAFT_PATH
 from ralph.mcp.tools.names import SUBMIT_ARTIFACT_TOOL, claude_tool_name_prefix
 from ralph.phases.required_artifacts import resolve_required_artifact, retry_hint_path
 from ralph.pipeline.cycle_baseline import read_cycle_baseline
@@ -40,7 +40,7 @@ if TYPE_CHECKING:
 
     from ralph.phases.required_artifacts import RequiredArtifact
     from ralph.pipeline.work_units import WorkUnit
-    from ralph.policy.models import ArtifactsPolicy, PipelinePolicy
+    from ralph.policy.models import ArtifactsPolicy, PhaseDefinition, PipelinePolicy
     from ralph.workspace.protocol import Workspace
 
 
@@ -104,7 +104,6 @@ def _render_prompt_for_phase(  # noqa: PLR0913
     template_name = _template_name_for_phase(phase, pipeline_policy)
     prompt_content = _read_optional(workspace, "PROMPT.md")
     current_prompt_path = _persist_current_prompt(workspace_root, prompt_content)
-    plan_content, plan_path = _resolve_plan_handoff(workspace)
 
     phase_def = pipeline_policy.phases.get(phase)
     phase_role = phase_def.role if phase_def is not None else None
@@ -115,11 +114,19 @@ def _render_prompt_for_phase(  # noqa: PLR0913
 
     # Planning-style prompt: execution role producing a plan artifact
     if phase_role == "execution" and drain_artifact_type == "plan":
-        analysis_feedback_content, analysis_feedback_path = _resolve_loopback_analysis_feedback(
-            workspace, phase, pipeline_policy, artifacts_policy
+        (
+            plan_content,
+            plan_path,
+            analysis_feedback_content,
+            analysis_feedback_path,
+            template_name,
+        ) = _prepare_planning_prompt_context(
+            phase=phase,
+            workspace=workspace,
+            pipeline_policy=pipeline_policy,
+            artifacts_policy=artifacts_policy,
+            phase_def=phase_def,
         )
-        if analysis_feedback_path and phase_def is not None and phase_def.loopback_prompt_template:
-            template_name = phase_def.loopback_prompt_template
         last_retry_error = _read_and_clear_retry_hint(workspace, phase)
         return prompt_planning_xml_with_context(
             context=context,
@@ -135,6 +142,8 @@ def _render_prompt_for_phase(  # noqa: PLR0913
             session_caps=session_caps,
             template_name=template_name,
         )
+
+    plan_content, plan_path = _resolve_plan_handoff(workspace)
 
     # Developer-style prompt: execution role producing a development_result artifact
     if phase_role == "execution" and drain_artifact_type == "development_result":
@@ -354,6 +363,42 @@ def _resolve_plan_handoff(workspace: Workspace) -> tuple[str | None, str]:
         artifact_path=PLAN_ARTIFACT_PATH,
         fallback_formatter=_format_plan_for_execution,
     )
+
+
+def _prepare_planning_prompt_context(
+    *,
+    phase: str,
+    workspace: Workspace,
+    pipeline_policy: PipelinePolicy,
+    artifacts_policy: ArtifactsPolicy | None,
+    phase_def: PhaseDefinition | None,
+) -> tuple[str | None, str, str, str, str]:
+    analysis_feedback_content, analysis_feedback_path = _resolve_loopback_analysis_feedback(
+        workspace, phase, pipeline_policy, artifacts_policy
+    )
+    template_name = _template_name_for_phase(phase, pipeline_policy)
+    if analysis_feedback_path and phase_def is not None and phase_def.loopback_prompt_template:
+        template_name = phase_def.loopback_prompt_template
+    else:
+        _clear_fresh_planning_context(workspace)
+    plan_content, plan_path = _resolve_plan_handoff(workspace)
+    return (
+        plan_content,
+        plan_path,
+        analysis_feedback_content,
+        analysis_feedback_path,
+        template_name,
+    )
+
+
+def _clear_fresh_planning_context(workspace: Workspace) -> None:
+    """Delete prior plan state before rendering a fresh planning-creation prompt."""
+    for path in (PLAN_ARTIFACT_PATH, PLAN_DRAFT_PATH):
+        if workspace.exists(path):
+            workspace.remove(path)
+    handoff_path = handoff_path_for_artifact("plan")
+    if handoff_path and workspace.exists(handoff_path):
+        workspace.remove(handoff_path)
 
 
 def _resolve_agent_handoff(
