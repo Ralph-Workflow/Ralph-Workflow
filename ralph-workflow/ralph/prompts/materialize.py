@@ -150,7 +150,25 @@ def _render_prompt_for_phase(  # noqa: PLR0913
             template_name=template_name,
         )
 
-    plan_content, plan_path = _resolve_plan_handoff(workspace)
+    # Commit-style prompt: commit role
+    if phase_role == "commit":
+        return prompt_commit_message(
+            _commit_phase_diff(workspace_root),
+            template_registry=context.registry,
+            partials=context.partials,
+            submit_artifact_tool_names=SUBMIT_ARTIFACT_TOOL.prompt_aliases(
+                tool_name_prefix=session_caps.tool_name_prefix,
+            ),
+            payload_config=CommitPromptPayloadConfig(
+                output_dir=workspace_root / ".agent" / "tmp" / "prompt_payloads",
+                name_prefix=phase,
+            ),
+        )
+
+    plan_content, plan_path = _resolve_required_plan_handoff(
+        workspace,
+        template_name=template_name,
+    )
 
     # Developer-style prompt: execution role producing a development_result artifact
     if phase_role == "execution" and drain_artifact_type == "development_result":
@@ -172,21 +190,6 @@ def _render_prompt_for_phase(  # noqa: PLR0913
             workspace=workspace,
             session_caps=session_caps,
             template_name=template_name,
-        )
-
-    # Commit-style prompt: commit role
-    if phase_role == "commit":
-        return prompt_commit_message(
-            _commit_phase_diff(workspace_root),
-            template_registry=context.registry,
-            partials=context.partials,
-            submit_artifact_tool_names=SUBMIT_ARTIFACT_TOOL.prompt_aliases(
-                tool_name_prefix=session_caps.tool_name_prefix,
-            ),
-            payload_config=CommitPromptPayloadConfig(
-                output_dir=workspace_root / ".agent" / "tmp" / "prompt_payloads",
-                name_prefix=phase,
-            ),
         )
 
     # Template-based prompt: review, analysis, or other execution-role phases
@@ -229,18 +232,6 @@ def _render_prompt_for_phase(  # noqa: PLR0913
         if phase_def is not None and phase_def.skip_invocation:
             variables["HIDE_ARTIFACT_SUBMISSION_GUIDANCE"] = "true"
         variables.update(_current_prompt_variables(prompt_content, current_prompt_path))
-        # For analysis roles, PROMPT and PLAN are SECONDARY context: force path
-        # references regardless of content size so they are never inlined.
-        if phase_role == "analysis":
-            variables.update(
-                _force_plan_path_for_analysis(
-                    workspace_root=workspace_root,
-                    worker_namespace=worker_namespace,
-                    phase=phase,
-                    plan_content=plan_content,
-                    plan_path=variables.get("PLAN_PATH", ""),
-                )
-            )
         variables["LAST_RETRY_ERROR"] = last_retry_error
         return render_template(
             template,
@@ -250,35 +241,6 @@ def _render_prompt_for_phase(  # noqa: PLR0913
 
     msg = f"Unsupported phase '{phase}' (role={phase_role!r}) for prompt materialization"
     raise ValueError(msg)
-
-
-def _force_plan_path_for_analysis(
-    *,
-    workspace_root: Path,
-    phase: str,
-    plan_content: str | None,
-    plan_path: str,
-    worker_namespace: Path | None = None,
-) -> dict[str, str]:
-    """Return PLAN/PLAN_PATH variables that always use a file reference.
-
-    Called only for analysis phases where PLAN is secondary context. If
-    plan_path is already set (handoff file exists), we preserve it. When
-    plan_path is absent, we write the content to a temp file so the template
-    macro always has a non-empty path to reference.
-    """
-    if plan_path:
-        return {"PLAN": "", "PLAN_PATH": plan_path}
-    content = plan_content or "(no plan available)"
-    output_dir = (
-        worker_namespace / "tmp" / "prompt_payloads"
-        if worker_namespace is not None
-        else workspace_root / ".agent" / "tmp" / "prompt_payloads"
-    )
-    written_path = write_payload_to_directory(
-        output_dir, f"{phase}_plan.txt", content
-    )
-    return {"PLAN": "", "PLAN_PATH": written_path}
 
 
 def _merged_variables(base: dict[str, str], session_caps: SessionCapabilities) -> dict[str, str]:
@@ -372,6 +334,26 @@ def _resolve_plan_handoff(workspace: Workspace) -> tuple[str | None, str]:
     )
 
 
+def _template_allows_missing_plan_handoff(template_name: str) -> bool:
+    return template_name in {"planning.jinja", "planning_fallback.jinja"}
+
+
+def _resolve_required_plan_handoff(
+    workspace: Workspace,
+    *,
+    template_name: str,
+) -> tuple[str | None, str]:
+    plan_content, plan_path = _resolve_plan_handoff(workspace)
+    if plan_path:
+        return plan_content, plan_path
+    plan_handoff_path = handoff_path_for_artifact("plan") or ".agent/PLAN.md"
+    msg = (
+        f"Template '{template_name}' requires an existing plan handoff at "
+        f"{plan_handoff_path}"
+    )
+    raise ValueError(msg)
+
+
 def _prepare_planning_prompt_context(
     *,
     phase: str,
@@ -399,7 +381,13 @@ def _prepare_planning_prompt_context(
     )
     if analysis_feedback_path and phase_def is not None and phase_def.loopback_prompt_template:
         template_name = phase_def.loopback_prompt_template
-    plan_content, plan_path = _resolve_plan_handoff(workspace)
+    if _template_allows_missing_plan_handoff(template_name):
+        plan_content, plan_path = _resolve_plan_handoff(workspace)
+    else:
+        plan_content, plan_path = _resolve_required_plan_handoff(
+            workspace,
+            template_name=template_name,
+        )
     return (
         plan_content,
         plan_path,

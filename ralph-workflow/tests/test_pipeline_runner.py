@@ -665,9 +665,18 @@ class TestDetermineEffect:
         assert effect.agent_name == "ccs/mm"
         assert effect.drain == "development_commit"
 
-    def test_handle_inline_prepare_prompt_updates_current_drain_from_policy(self) -> None:
+    def test_handle_inline_prepare_prompt_updates_current_drain_from_policy(
+        self,
+        monkeypatch,
+    ) -> None:
         bundle = _load_default_policy_bundle()
         state = PipelineState(phase="planning", current_drain="planning")
+
+        monkeypatch.setattr(
+            runner_module,
+            "_materialize_prepared_prompt",
+            lambda *_args, **_kwargs: None,
+        )
 
         updated = runner_module._handle_inline_effect(
             effect=PreparePromptEffect(phase="development", iteration=0, drain="development"),
@@ -1135,6 +1144,11 @@ class TestPipelineRunnerLoop:
         monkeypatch.setattr(runner_module, "_determine_effect_from_policy", stub_determine_effect)
         monkeypatch.setattr(runner_module, "_execute_effect", execute_effect)
         monkeypatch.setattr(runner_module, "reducer_reduce", reducer)
+        monkeypatch.setattr(
+            runner_module,
+            "_materialize_prepared_prompt",
+            lambda *_args, **_kwargs: None,
+        )
         monkeypatch.setattr(runner_module.ckpt, "save", ckpt_save)
 
         result = runner_module.run(MagicMock(), initial_state=state, verbosity=Verbosity.QUIET)
