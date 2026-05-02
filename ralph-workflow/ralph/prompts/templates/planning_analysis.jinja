@@ -111,6 +111,16 @@ contents, or commands you can run in this session. For each scored judgment, cit
 from the plan or repository (file paths, section names, commands, observed output). If a dimension
 is not evaluatable from observable evidence, skip it rather than scoring it.
 
+For every non-completed decision, first classify the overall defect scope as one of:
+- `local_section`
+- `cross_section`
+- `repo_wide`
+
+Before issuing `request_changes`, enumerate all currently visible repo-grounded gaps, not just the first blocking gap.
+Judge the plan against the ORIGINAL PROMPT scope, not only against the most recent review comments.
+If the task is repository-wide, check that inventories, remediation scope, critical files, risks, and verification are repository-wide rather than example-scoped or subset-scoped.
+If defect scope is `repo_wide`, say explicitly that the next planning pass must re-derive the plan globally rather than patching only the cited sections.
+
 ### 1. PROMPT COMPLIANCE
 
 For every task, requirement, and acceptance criterion in the PROMPT that can be checked from the

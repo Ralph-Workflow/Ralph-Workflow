@@ -18,13 +18,28 @@ PLANNING_EDIT_GET_DRAFT_TEXT = (
     "Use `ralph_get_plan_draft` to inspect the current finalized plan "
     "or staged draft before editing."
 )
-PLANNING_EDIT_SECTION_REPLACE_TEXT = (
-    "Use `ralph_submit_plan_section` to replace only the sections "
-    "that need revision."
+PLANNING_EDIT_DEFECT_SCOPE_TEXT = (
+    "Before revising any section, classify the feedback scope as one of:"
+)
+PLANNING_EDIT_GLOBAL_REDERIVATION_TEXT = (
+    "If any feedback item reveals repo-wide incompleteness, invalid inventory, incorrect paths, "
+    "narrow verification, or prompt-to-plan traceability gaps, you MUST re-derive the plan"
 )
 PLANNING_EDIT_FINALIZE_TEXT = (
     "Use `ralph_finalize_plan` after revising the affected sections so "
     "the updated plan replaces the prior finalized plan."
+)
+PLANNING_EDIT_SELF_AUDIT_TEXT = "Before `ralph_finalize_plan`, perform this self-audit:"
+PLANNING_EDIT_RISK_COVERAGE_TEXT = (
+    "- Risk coverage: concrete risks, mitigations, and edge cases are represented"
+)
+PLANNING_EDIT_PARALLELIZATION_TEXT = (
+    "- Parallelization safety: any parallel work remains disjoint, realistic, "
+    "and policy-compliant"
+)
+PLANNING_EDIT_MAINTAINABILITY_TEXT = (
+    "- Maintainability and handoff quality: the plan stays concise, "
+    "non-redundant, and explicit for development handoff"
 )
 
 
@@ -142,8 +157,13 @@ def test_planning_edit_prompt_teaches_mcp_plan_revision_flow(tmp_path):
     assert "PLANNING EDIT MODE" in prompt
     assert "The prior plan was rejected by planning analysis." in prompt
     assert PLANNING_EDIT_GET_DRAFT_TEXT in prompt
-    assert PLANNING_EDIT_SECTION_REPLACE_TEXT in prompt
+    assert PLANNING_EDIT_DEFECT_SCOPE_TEXT in prompt
+    assert PLANNING_EDIT_GLOBAL_REDERIVATION_TEXT in prompt
     assert PLANNING_EDIT_FINALIZE_TEXT in prompt
+    assert PLANNING_EDIT_SELF_AUDIT_TEXT in prompt
+    assert PLANNING_EDIT_RISK_COVERAGE_TEXT in prompt
+    assert PLANNING_EDIT_PARALLELIZATION_TEXT in prompt
+    assert PLANNING_EDIT_MAINTAINABILITY_TEXT in prompt
     assert "Use `ralph_discard_plan_draft` only when the existing plan is unsalvageable" in prompt
     assert "artifact_type=\"plan\"" not in prompt
     assert workspace.absolute_path(".agent/PLANNING_ANALYSIS_DECISION.md") in prompt

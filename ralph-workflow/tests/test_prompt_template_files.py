@@ -180,6 +180,25 @@ PLANNING_EDIT_FINALIZE_GUIDANCE = (
     "Use `{{FINALIZE_PLAN_TOOL_NAME}}` after revising the affected sections so "
     "the updated plan replaces the prior finalized plan."
 )
+PLANNING_EDIT_DEFECT_SCOPE_GUIDANCE = "Before revising any section, classify the feedback scope"
+PLANNING_EDIT_GLOBAL_REDERIVATION_GUIDANCE = (
+    "If any feedback item reveals repo-wide incompleteness, invalid inventory, incorrect paths, "
+    "narrow verification, or prompt-to-plan traceability gaps, you MUST re-derive the plan"
+)
+PLANNING_EDIT_SELF_AUDIT_GUIDANCE = "Before `{{FINALIZE_PLAN_TOOL_NAME}}`, perform this self-audit"
+PLANNING_EDIT_RISK_COVERAGE_GUIDANCE = (
+    "- Risk coverage: concrete risks, mitigations, and edge cases are represented"
+)
+PLANNING_EDIT_PARALLELIZATION_GUIDANCE = (
+    "- Parallelization safety: any parallel work remains disjoint, realistic, "
+    "and policy-compliant"
+)
+PLANNING_EDIT_MAINTAINABILITY_GUIDANCE = (
+    "- Maintainability and handoff quality: the plan stays concise, "
+    "non-redundant, and explicit for development handoff"
+)
+PLANNING_ANALYSIS_DEFECT_SCOPE_GUIDANCE = "first classify the overall defect scope"
+PLANNING_ANALYSIS_VISIBLE_GAPS_GUIDANCE = "enumerate all currently visible repo-grounded gaps"
 
 
 def _assert_shared_analysis_guidance(
@@ -268,14 +287,19 @@ def test_planning_prompt_requires_verified_low_research_executor_handoff() -> No
 
 
 
-def test_planning_edit_prompt_teaches_incremental_mcp_revision_flow() -> None:
+def test_planning_edit_prompt_teaches_repo_wide_recomputation_not_just_local_patching() -> None:
     planning_edit = (TEMPLATES_ROOT / "planning_edit.jinja").read_text(encoding="utf-8")
 
     assert "PLANNING EDIT MODE" in planning_edit
     assert "The prior plan was rejected by planning analysis." in planning_edit
     assert PLANNING_EDIT_GET_DRAFT_GUIDANCE in planning_edit
-    assert PLANNING_EDIT_SECTION_REPLACE_GUIDANCE in planning_edit
     assert PLANNING_EDIT_FINALIZE_GUIDANCE in planning_edit
+    assert PLANNING_EDIT_DEFECT_SCOPE_GUIDANCE in planning_edit
+    assert PLANNING_EDIT_GLOBAL_REDERIVATION_GUIDANCE in planning_edit
+    assert PLANNING_EDIT_SELF_AUDIT_GUIDANCE in planning_edit
+    assert PLANNING_EDIT_RISK_COVERAGE_GUIDANCE in planning_edit
+    assert PLANNING_EDIT_PARALLELIZATION_GUIDANCE in planning_edit
+    assert PLANNING_EDIT_MAINTAINABILITY_GUIDANCE in planning_edit
     assert "artifact_type=\"plan\"" not in planning_edit
     assert "Not submitting the revised plan is a FAILURE." in planning_edit
 
@@ -287,6 +311,8 @@ def test_planning_analysis_prompt_demands_gap_and_consistency_critique() -> None
     assert PLANNING_ANALYSIS_MISSING_WORK_GUIDANCE in planning_analysis
     assert PLANNING_ANALYSIS_CONTRADICTIONS_GUIDANCE in planning_analysis
     assert PLANNING_ANALYSIS_RESEARCH_BURDEN_GUIDANCE in planning_analysis
+    assert PLANNING_ANALYSIS_DEFECT_SCOPE_GUIDANCE in planning_analysis
+    assert PLANNING_ANALYSIS_VISIBLE_GAPS_GUIDANCE in planning_analysis
 
 
 def test_fix_and_developer_iteration_templates_use_analysis_context_partial() -> None:

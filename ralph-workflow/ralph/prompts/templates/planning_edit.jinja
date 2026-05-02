@@ -28,31 +28,44 @@ ANALYSIS FEEDBACK:
 Not submitting the revised plan is a FAILURE.
 
 Your job is to revise the existing plan, not start from a blank slate unless the feedback proves the plan is unsalvageable.
-Preserve sections that still hold up. Replace only the sections that need correction, missing detail, tighter verification, or safer sequencing.
+Preserve still-valid sections only after you have re-validated them against the ORIGINAL REQUEST, repository reality, and the full analysis feedback set.
+Before revising any section, classify the feedback scope as one of:
+- local_section
+- cross_section
+- repo_wide
+
+If any feedback item reveals repo-wide incompleteness, invalid inventory, incorrect paths, narrow verification, or prompt-to-plan traceability gaps, you MUST re-derive the plan against the ORIGINAL REQUEST and current repository reality before editing sections.
+Do not treat the latest analysis feedback as the full task. Treat it as evidence about what the current plan missed.
+For repo-wide defects:
+- recompute the full inventory
+- recompute critical files
+- recompute verification breadth
+- recompute risks
+- then replace every affected section so the finalized plan is globally coherent
 
 ## MCP PLAN EDIT WORKFLOW
 
 Use `{{GET_PLAN_DRAFT_TOOL_NAME}}` to inspect the current finalized plan or staged draft before editing.
-Use `{{SUBMIT_PLAN_SECTION_TOOL_NAME}}` to replace only the sections that need revision.
+Use `{{SUBMIT_PLAN_SECTION_TOOL_NAME}}` to replace the sections whose correctness depends on the revised scope, inventory, or verification model.
 Use `{{FINALIZE_PLAN_TOOL_NAME}}` after revising the affected sections so the updated plan replaces the prior finalized plan.
 Use `{{DISCARD_PLAN_DRAFT_TOOL_NAME}}` only when the existing plan is unsalvageable and you must restart from section 1.
 
 Recommended edit flow:
 1. Read the current finalized plan or staged draft with {{GET_PLAN_DRAFT_TOOL_REFERENCE}}.
-2. Compare it against the planning-analysis feedback and decide which sections must change.
-3. Resubmit only the changed sections with {{SUBMIT_PLAN_SECTION_TOOL_REFERENCE}} using `mode="replace"`.
-4. Use `mode="append"` only when intentionally extending list sections such as `steps`.
-5. Call {{FINALIZE_PLAN_TOOL_REFERENCE}} once the revised draft is coherent and complete.
+2. Re-check the ORIGINAL REQUEST, the full current plan, and the planning-analysis feedback together before deciding what must change.
+3. If the defect scope is `repo_wide` or `cross_section`, re-derive the full plan first, then replace every affected section with {{SUBMIT_PLAN_SECTION_TOOL_REFERENCE}} using `mode="replace"`.
+4. Use `mode="append"` only when intentionally extending list sections such as `steps` after you have confirmed append is still globally coherent.
+5. Call {{FINALIZE_PLAN_TOOL_REFERENCE}} only after the revised draft passes the self-audit below.
 
 Do not edit `.agent/artifacts/plan.json` directly.
-Do not resubmit the entire plan through `{{SUBMIT_ARTIFACT_TOOL_NAME}}` unless the plan is genuinely short and a full atomic replacement is clearly the simplest safe option.
-Do not throw away valid sections just because one part of the plan was rejected.
+If the defect scope is `repo_wide`, prefer a full atomic plan replacement over piecemeal section repair when that is the simplest way to restore global coherence.
+Do not throw away valid sections just because one part of the plan was rejected, but do replace every section whose correctness depends on changed scope, inventory, paths, or verification.
 
 ## REVISION REQUIREMENTS
 
 Your revised plan must remain executor-ready for unattended development. The updated artifact must:
 - address every actionable issue raised in the planning-analysis feedback
-- preserve still-valid sections unless the feedback requires replacing them
+- satisfy the ORIGINAL REQUEST, not only the latest feedback summary
 - keep concrete ordered steps, critical files, risks, and exact verification commands
 - eliminate vague or unverifiable instructions
 - make the planning-to-development handoff explicit again after revision
@@ -60,6 +73,16 @@ Your revised plan must remain executor-ready for unattended development. The upd
 If the feedback says the plan is missing detail, add that detail.
 If the feedback says verification is weak, replace vague checks with exact commands and expected outcomes.
 If the feedback says the structure is unsound, revise the affected sections systematically rather than patching around the problem.
+
+Before `{{FINALIZE_PLAN_TOOL_NAME}}`, perform this self-audit:
+- Prompt coverage: every repository-wide requirement from the ORIGINAL REQUEST is represented
+- Executor readiness: a weaker unattended agent can execute immediately without mid-flight replanning
+- Gap analysis and consistency: summary, scope, steps, critical files, risks, and verification agree with no downstream replanning gaps
+- Repository accuracy: referenced files, paths, tools, commands, and named patterns are real
+- Risk coverage: concrete risks, mitigations, and edge cases are represented
+- Verification breadth: the checks prove the plan's biggest claims, not just a safe subset
+- Parallelization safety: any parallel work remains disjoint, realistic, and policy-compliant
+- Maintainability and handoff quality: the plan stays concise, non-redundant, and explicit for development handoff
 
 When a section does not need changes, leave it alone.
 When a section does need changes, rewrite it completely enough that the finalized plan stands on its own without the rejected version.
