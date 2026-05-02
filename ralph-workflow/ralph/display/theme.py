@@ -21,15 +21,26 @@ BLACK: Final[str] = "#000000"
 
 # Glyph tables for Unicode and ASCII modes
 UNICODE_GLYPHS: Final[dict[str, str]] = {
-    "success": "\u2713",  # ✓
-    "error": "\u2717",  # ✗
-    "warning": "\u26a0",  # ⚠
-    "running": "\u25d0",  # ◐
-    "pending": "\u25cb",  # ○
-    "info": "\u2139",  # U+2139 INFORMATION SOURCE
-    "milestone": "\u25c6",  # ◆
-    "arrow": "\u2192",  # →
-    "start": "\u25b6",  # ▶
+    "success": "✓",  # ✓
+    "error": "✗",  # ✗
+    "warning": "⚠",  # ⚠
+    "running": "◐",  # ◐
+    "pending": "○",  # ○
+    "info": "ℹ",  # noqa: RUF001
+    "milestone": "◆",  # ◆
+    "arrow": "→",  # →
+    "start": "▶",  # ▶
+    # New artistic glyphs
+    "phase_marker": "■",  # ■ - phase start marker
+    "iteration": "↻",  # ↻ - iteration indicator
+    "budget": "▲",  # ▲ - budget indicator
+    "review_pass": "✔",  # ✔ - review pass
+    "review_fail": "✘",  # ✘ - review fail
+    "fixer": "⚙",  # ⚙ - fixer/gear indicator
+    "outer_dev": "⊞",  # ⊞ - outer dev indicator
+    "inner_analysis": "≴",  # ≴ - inner analysis indicator
+    "proceed": "↑",  # ↑ - proceed arrow
+    "revise": "↓",  # ↓ - revise arrow
 }
 
 ASCII_GLYPHS: Final[dict[str, str]] = {
@@ -42,6 +53,17 @@ ASCII_GLYPHS: Final[dict[str, str]] = {
     "milestone": "*",
     "arrow": "->",
     "start": ">",
+    # New ASCII glyphs
+    "phase_marker": "[]",
+    "iteration": "~",
+    "budget": "^",
+    "review_pass": "[+]",
+    "review_fail": "[-]",
+    "fixer": "[G]",
+    "outer_dev": "[OD]",
+    "inner_analysis": "[IA]",
+    "proceed": "^",
+    "revise": "v",
 }
 
 _RALPH_FORCE_ASCII_TRUTHY: frozenset[str] = frozenset({"1", "true", "yes", "on"})
@@ -73,13 +95,13 @@ def detect_glyph_capability(stream: object, env: Mapping[str, str]) -> bool:
     return term != "dumb"
 
 STATUS_STYLES: Final[dict[str, tuple[str, str, str]]] = {
-    "success": (f"bold {BLUISH_GREEN}", "\u2713", "PASS"),
-    "running": (SKY_BLUE, "\u25d0", "RUN"),
-    "warning": (f"bold {ORANGE}", "\u26a0", "WARN"),
-    "error": (f"bold {VERMILLION}", "\u2717", "FAIL"),
-    "skipped": (YELLOW, "\u25cb", "SKIP"),
-    "pending": ("dim", "\u25cb", "WAIT"),
-    "info": (BLUE, "\u2139", "INFO"),
+    "success": (f"bold {BLUISH_GREEN}", "✓", "PASS"),
+    "running": (SKY_BLUE, "◐", "RUN"),
+    "warning": (f"bold {ORANGE}", "⚠", "WARN"),
+    "error": (f"bold {VERMILLION}", "✗", "FAIL"),
+    "skipped": (YELLOW, "○", "SKIP"),
+    "pending": ("dim", "○", "WAIT"),
+    "info": (BLUE, "ℹ", "INFO"),  # noqa: RUF001
 }
 
 _THEME_STYLES: Final[dict[str, str]] = {
@@ -125,6 +147,14 @@ _THEME_STYLES: Final[dict[str, str]] = {
     "theme.banner.title": f"bold {SKY_BLUE}",
     "theme.banner.version": f"bold {BLUISH_GREEN}",
     "theme.banner.welcome": "bold",
+    # New theme keys for iteration indicators
+    "theme.fixer_iteration": VERMILLION,
+    "theme.outer_dev": f"bold {SKY_BLUE}",
+    "theme.inner_analysis": REDDISH_PURPLE,
+    "theme.review_pass": f"bold {BLUISH_GREEN}",
+    "theme.review_fail": f"bold {VERMILLION}",
+    "theme.proceed": f"bold {BLUISH_GREEN}",
+    "theme.revise": f"bold {ORANGE}",
 }
 
 RALPH_THEME: Final[Theme] = Theme(_THEME_STYLES)

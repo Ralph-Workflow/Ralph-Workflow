@@ -50,6 +50,7 @@ class BudgetProgress:
     cap: int
     description: str
     tracks_budget: bool
+    iteration_type: str | None = None  # e.g. 'outer_dev', 'inner_analysis', 'fixer'
 
 
 @dataclass(frozen=True, slots=True)
@@ -104,9 +105,14 @@ class PipelineSnapshot:
     terminal_failure_route: str | None = None
     # Generic budget progress keyed by policy-declared counter name
     budget_progress: dict[str, BudgetProgress] = field(default_factory=dict)
+    # Fixer-to-analysis interaction state
+    fixer_iteration: int | None = None  # Current fixer iteration number
+    analysis_within_fixer: int | None = None  # Inner analysis count within fixer context
+    fixer_phase: str | None = None  # Current fixer phase name if in fixer context
+    outer_dev_iteration: int | None = None  # Outer dev iteration (distinct from inner analysis)
 
 
-def snapshot_from_state(  # noqa: PLR0913
+def snapshot_from_state(  # noqa: PLR0913, PLR0912
     state: PipelineState,
     *,
     prompt_path: str | None,
@@ -131,6 +137,10 @@ def snapshot_from_state(  # noqa: PLR0913
     analysis_decision: str | None = None,
     analysis_reason: str | None = None,
     decision_log: tuple[tuple[str, str, str, str], ...] = (),
+    fixer_iteration: int | None = None,
+    analysis_within_fixer: int | None = None,
+    fixer_phase: str | None = None,
+    outer_dev_iteration: int | None = None,
 ) -> PipelineSnapshot:
     """Project PipelineState into an immutable pipeline snapshot."""
     from ralph.pipeline.progress import review_issues_found as _review_issues_found  # noqa: PLC0415
@@ -175,6 +185,17 @@ def snapshot_from_state(  # noqa: PLR0913
         if terminal_failure_route is None:
             terminal_failure_route = pipeline_policy.recovery.failed_route
 
+    # Determine iteration_type based on fixer context
+    # Priority: fixer > outer_dev > inner_analysis
+    if fixer_iteration is not None:
+        iteration_type = "fixer"
+    elif outer_dev_iteration is not None:
+        iteration_type = "outer_dev"
+    elif analysis_within_fixer is not None:
+        iteration_type = "inner_analysis"
+    else:
+        iteration_type = None
+
     budget_progress: dict[str, BudgetProgress] = {}
     if pipeline_policy is not None:
         for bp_name, bp_cfg in pipeline_policy.budget_counters.items():
@@ -183,6 +204,7 @@ def snapshot_from_state(  # noqa: PLR0913
                 cap=state.get_budget_cap(bp_name),
                 description=bp_cfg.description or bp_name,
                 tracks_budget=bp_cfg.tracks_budget,
+                iteration_type=iteration_type,
             )
     else:
         for bp_name, cap in state.budget_caps.items():
@@ -191,6 +213,7 @@ def snapshot_from_state(  # noqa: PLR0913
                 cap=cap,
                 description=bp_name,
                 tracks_budget=False,
+                iteration_type=iteration_type,
             )
 
     return PipelineSnapshot(
@@ -239,6 +262,10 @@ def snapshot_from_state(  # noqa: PLR0913
         previous_phase_role=previous_phase_role,
         terminal_failure_route=terminal_failure_route,
         budget_progress=budget_progress,
+        fixer_iteration=fixer_iteration,
+        analysis_within_fixer=analysis_within_fixer,
+        fixer_phase=fixer_phase,
+        outer_dev_iteration=outer_dev_iteration,
     )
 
 

@@ -408,6 +408,21 @@ def test_show_phase_start_combines_iteration_and_analysis_counters() -> None:
     assert "[analysis 2/3]" in output
 
 
+def test_show_phase_start_uses_phase_specific_analysis_label() -> None:
+    """Analysis suffix should use the human-readable phase label, not a generic name."""
+    console = Console(record=True)
+    ctx = PhaseStartContext(
+        analysis_iteration=2,
+        max_analysis_iterations=3,
+        phase_name="Planning Analysis",
+    )
+    show_phase_start("planning_analysis", ctx=ctx, display_context=_ctx_from_console(console))
+    output = console.export_text()
+    assert "Planning Analysis" in output
+    assert "[Planning Analysis 3/3]" in output
+    assert "final, skipping next" in output
+
+
 # --- Tests for show_phase_start_from_state (Step 13) ---
 
 
