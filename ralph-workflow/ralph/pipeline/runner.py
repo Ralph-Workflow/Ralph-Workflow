@@ -2026,6 +2026,8 @@ def _materialize_agent_prompt_if_needed(
 ) -> None:
     if not isinstance(effect, InvokeAgentEffect):
         return
+    if hasattr(workspace, "exists") and workspace.exists(prompt_file_for_phase(effect.phase)):
+        return
 
     agent = registry.get(effect.agent_name)
     tool_name_prefix = ""

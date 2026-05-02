@@ -395,6 +395,42 @@ class TestDetermineEffect:
         assert isinstance(effect, InvokeAgentEffect)
         assert effect.agent_name == "claude"
 
+    def test_agent_prompt_materialization_reuses_prepared_planning_prompt(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        bundle = _load_default_policy_bundle()
+        workspace = FsWorkspace(tmp_path)
+        (tmp_path / ".agent" / "artifacts").mkdir(parents=True, exist_ok=True)
+        (tmp_path / ".agent" / "tmp").mkdir(parents=True, exist_ok=True)
+        (tmp_path / "PROMPT.md").write_text("Revise the plan", encoding="utf-8")
+        (tmp_path / ".agent" / "artifacts" / "plan.json").write_text("{}", encoding="utf-8")
+        (tmp_path / ".agent" / "PLAN.md").write_text("existing plan", encoding="utf-8")
+        (tmp_path / ".agent" / "tmp" / "planning_prompt.md").write_text(
+            "prepared edit prompt",
+            encoding="utf-8",
+        )
+        registry = MagicMock()
+        registry.get.return_value = None
+
+        runner_module._materialize_agent_prompt_if_needed(
+            InvokeAgentEffect(
+                agent_name="planner",
+                phase="planning",
+                prompt_file=".agent/tmp/planning_prompt.md",
+                drain="planning",
+            ),
+            workspace,
+            bundle,
+            registry,
+        )
+
+        assert (tmp_path / ".agent" / "tmp" / "planning_prompt.md").read_text(
+            encoding="utf-8"
+        ) == "prepared edit prompt"
+        assert (tmp_path / ".agent" / "artifacts" / "plan.json").exists() is True
+        assert (tmp_path / ".agent" / "PLAN.md").read_text(encoding="utf-8") == "existing plan"
+
     def test_development_phase_with_work_units_uses_fan_out_effect(self) -> None:
         bundle = _load_default_policy_bundle()
         state = PipelineState(
