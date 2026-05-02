@@ -783,23 +783,38 @@ def _phase_context(
     current_role = current_phase_def.role if current_phase_def is not None else None
     previous_role = previous_phase_def.role if previous_phase_def is not None else None
 
-    if current_role == "execution":
+    # When transitioning FROM an analysis phase, show the analysis counter
+    # instead of the outer iteration counter. This ensures the analysis cap
+    # status is visible in the banner.
+    if previous_role == "analysis" and previous_phase_def is not None:
+        loop_policy = previous_phase_def.loop_policy
+        if loop_policy is not None:
+            iteration_field = loop_policy.iteration_state_field
+            analysis_cur = state.get_loop_iteration(iteration_field)
+            cap_value = state.loop_caps.get(iteration_field)
+            max_iter = cap_value if cap_value is not None else loop_policy.max_iterations
+            # Use human-readable phase name for the counter key
+            analysis_name = previous_phase.replace("_", " ").title()
+            context[analysis_name] = f"{analysis_cur + 1}/{max_iter}"
+            # Indicate when this is the final analysis (counter at max)
+            if analysis_cur >= max_iter - 1:
+                context["analysis_status"] = "final, skipping next"
+        if current_role == "commit":
+            context["decision"] = "approved"
+        elif current_role == "execution":
+            context["decision"] = "needs changes"
+    elif current_role == "execution":
         exec_counter = _find_commit_counter_from_phase(state.phase, pipeline_policy)
         if exec_counter:
             iter_cur = state.get_outer_progress(exec_counter) + 1
             iter_cap = state.get_budget_cap(exec_counter)
             context[exec_counter] = f"{iter_cur}/{iter_cap}"
-    if current_role == "review":
+    elif current_role == "review":
         review_counter = _find_commit_counter_from_phase(state.phase, pipeline_policy)
         if review_counter:
             pass_cur = state.get_outer_progress(review_counter) + 1
             pass_cap = state.get_budget_cap(review_counter)
             context[review_counter] = f"{pass_cur}/{pass_cap}"
-    if previous_role == "analysis":
-        if current_role == "commit":
-            context["decision"] = "approved"
-        elif current_role == "execution":
-            context["decision"] = "needs changes"
     if previous_role == "commit" and previous_phase_def is not None:
         commit_policy = previous_phase_def.commit_policy
         if commit_policy is not None and commit_policy.increments_counter:
@@ -863,6 +878,53 @@ def _show_phase_start_with_context(
     )
 
 
+def _skipped_exhausted_analysis_info(
+    previous_phase: str,
+    current_phase: str,
+    state: PipelineState,
+    pipeline_policy: PipelinePolicy,
+) -> tuple[str, str] | None:
+    """Detect when an exhausted analysis phase was skipped due to cap exhaustion.
+
+    Returns a tuple of (skipped_phase, info_message) if an exhausted analysis
+    phase was skipped, None otherwise.
+
+    This happens when:
+    1. previous_phase is an execution phase transitioning to another non-analysis phase
+    2. previous_phase's on_success target is an analysis phase
+    3. That analysis phase's loop counter is at or above its cap (exhausted)
+    """
+    previous_phase_def = pipeline_policy.phases.get(previous_phase)
+    if (
+        previous_phase_def is None
+        or previous_phase_def.role not in ("execution", "review")
+    ):
+        return None
+
+    on_success_target = previous_phase_def.transitions.on_success
+    if not on_success_target or on_success_target not in pipeline_policy.phases:
+        return None
+
+    target_def = pipeline_policy.phases.get(on_success_target)
+    if target_def is None or target_def.role != "analysis":
+        return None
+
+    if target_def.loop_policy is None:
+        return None
+
+    iteration_field = target_def.loop_policy.iteration_state_field
+    current_iteration = state.get_loop_iteration(iteration_field)
+    cap_value = state.loop_caps.get(iteration_field)
+    max_iter = cap_value if cap_value is not None else target_def.loop_policy.max_iterations
+
+    if current_iteration < max_iter:
+        return None
+
+    skipped_phase_label = on_success_target.replace("_", " ").title()
+    info_message = f"{skipped_phase_label} cap reached, skipping"
+    return (on_success_target, info_message)
+
+
 def _emit_phase_transition_if_changed(
     display: ParallelDisplay | _LegacyConsoleDisplay,
     previous_phase: str,
@@ -893,13 +955,24 @@ def _emit_phase_transition_if_changed(
     except Exception:  # pragma: no cover - defensive
         logger.debug("show_phase_complete failed", exc_info=True)
 
-    # Emit transition to the new phase
+    # Build context and add skipped analysis info if applicable
     context = _phase_context(state, previous_phase, pipeline_policy) or None
+    if context is None:
+        context = {}
+
+    # Check if we're skipping an exhausted analysis phase
+    skipped_info = _skipped_exhausted_analysis_info(
+        previous_phase, state.phase, state, pipeline_policy
+    )
+    if skipped_info is not None:
+        _, info_message = skipped_info
+        context["skipped_analysis"] = info_message
+
     try:
         show_phase_transition(
             previous_phase,
             state.phase,
-            context=context,
+            context=context if context else None,
             display_context=ctx,
             pipeline_policy=pipeline_policy,
         )
