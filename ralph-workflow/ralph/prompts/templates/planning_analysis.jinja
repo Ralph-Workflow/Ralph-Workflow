@@ -120,6 +120,7 @@ Before issuing `request_changes`, enumerate all currently visible repo-grounded 
 Judge the plan against the ORIGINAL PROMPT scope, not only against the most recent review comments.
 If the task is repository-wide, check that inventories, remediation scope, critical files, risks, and verification are repository-wide rather than example-scoped or subset-scoped.
 If defect scope is `repo_wide`, say explicitly that the next planning pass must re-derive the plan globally rather than patching only the cited sections.
+When describing remediation, target the planner's MCP revision workflow: tell it which plan sections to resubmit and what repository evidence those revised sections must incorporate. Do not tell the planner to edit `PLAN.md` or `.agent/artifacts/plan.json` directly.
 
 ### 1. PROMPT COMPLIANCE
 
@@ -241,9 +242,9 @@ Return a JSON object.
 
 For every item in `what_came_up_short`, provide a corresponding fix entry:
 
-1. **Exact plan sections or files to revise.**
-2. **Exact behaviors or details to add/change.**
-3. **Step-by-step remediation.**
+1. **Exact plan sections to resubmit via the MCP plan-edit tools.** If repository files matter, cite them as evidence the revised sections must incorporate, not as files the planner should edit.
+2. **Exact behaviors or details to add/change inside those plan sections.**
+3. **Step-by-step remediation using the planner's MCP flow** (`get_plan_draft` / `submit_plan_section` / `finalize_plan`, or restart only when truly unsalvageable).
 4. **Commands or checks to validate the revised plan.**
 5. **What passing evidence looks like.**
 
@@ -263,9 +264,9 @@ One gap, one fix entry. No grouping multiple gaps under one fix.
     "[Verification Quality] `verification_strategy[0]` says 'run tests' without naming the exact pytest target or expected passing result."
   ],
   "how_to_fix": [
-    "Revise `steps[2]` to name the exact policy, prompt, and artifact files that must change and the concrete routing behavior to implement.",
-    "Replace the nonexistent `tests/test_planning_analysis.py` reference with real target files and name an existing test file whose pattern should be mirrored.",
-    "Rewrite the verification strategy to include exact commands such as `uv run pytest -q tests/test_policy_loader.py tests/test_tool_artifact.py` and state that the planning-analysis regressions must pass."
+    "Resubmit `steps` via `ralph_submit_plan_section` so `steps[2]` names the exact policy, prompt, and artifact files the executor must change and the concrete routing behavior to implement.",
+    "Resubmit the affected `steps` or `critical_files` sections so the nonexistent `tests/test_planning_analysis.py` reference is replaced with real target files and an existing test file whose pattern should be mirrored.",
+    "Resubmit `verification_strategy` with exact commands such as `uv run pytest -q tests/test_policy_loader.py tests/test_tool_artifact.py`, then finalize the revised draft only after those planning-analysis regressions are named as required passing evidence."
   ]
 }
 ```

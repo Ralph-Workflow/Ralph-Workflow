@@ -197,8 +197,59 @@ PLANNING_EDIT_MAINTAINABILITY_GUIDANCE = (
     "- Maintainability and handoff quality: the plan stays concise, "
     "non-redundant, and explicit for development handoff"
 )
+PLANNING_EDIT_SCOPE_INVALIDATION_GUIDANCE = (
+    "If the ORIGINAL REQUEST has repository-wide acceptance criteria and the current plan "
+    "narrowed scope before running repository-wide discovery"
+)
+PLANNING_EDIT_DISCOVERY_FIRST_GUIDANCE = (
+    "replace the summary, scope, and early steps so Step 1 becomes repo-wide discovery"
+)
+PLANNING_EDIT_SCOPE_DERIVATION_GUIDANCE = (
+    "- Scope derivation: when the task is repo-wide, implementation scope comes from an "
+    "explicit repo-wide discovery step rather than a guessed subsystem"
+)
+PLANNING_EDIT_PASS_TARGET_GUIDANCE = (
+    "Your target is to submit the strongest revised plan you can so the next planning-analysis pass"
+)
+PLANNING_EDIT_NO_KNOWN_GAPS_GUIDANCE = (
+    "Do not finalize a draft that still has any known unresolved analyzer finding"
+)
+PLANNING_EDIT_DEPENDENT_SECTION_REWRITE_GUIDANCE = (
+    "If fixing one section changes the truth of another section, replace every dependent section"
+)
+PLANNING_EDIT_NEXT_ANALYZER_GUIDANCE = (
+    "Before finalizing, proactively search for any additional repo-grounded failure"
+)
+PLANNING_EDIT_SURFACED_BLOCKER_GUIDANCE = (
+    "If a canonical verification command or repo-wide audit already surfaces a blocker "
+    "during replanning"
+)
+PLANNING_EDIT_RULE_CATEGORY_GUIDANCE = (
+    "When the ORIGINAL REQUEST imposes repo-wide structural rules, build a repo-wide inventory"
+)
+PLANNING_EDIT_NO_EXCEPTION_GUIDANCE = (
+    "Do not preserve prompt-violating tests, files, or workflows as justified exceptions"
+)
+PLANNING_EDIT_STARTING_POINT_GUIDANCE = (
+    "Treat the planning-analysis feedback as a starting point, not as the full list of issues"
+)
+PLANNING_EDIT_NOT_LOCAL_PATCH_GUIDANCE = (
+    "Do not localize your revision pass to only the sections explicitly cited by the analyzer"
+)
+PLANNING_EDIT_SELF_ANALYSIS_GUIDANCE = (
+    "You must perform your own repo-grounded analysis before finalizing"
+)
+PLANNING_EDIT_ISSUE_MAPPING_GUIDANCE = (
+    "Every analyzer issue must map to concrete revised sections or an explicit verified reason"
+)
 PLANNING_ANALYSIS_DEFECT_SCOPE_GUIDANCE = "first classify the overall defect scope"
 PLANNING_ANALYSIS_VISIBLE_GAPS_GUIDANCE = "enumerate all currently visible repo-grounded gaps"
+PLANNING_ANALYSIS_MCP_REMEDIATION_GUIDANCE = (
+    "When describing remediation, target the planner's MCP revision workflow"
+)
+PLANNING_ANALYSIS_SECTION_RESUBMIT_GUIDANCE = (
+    "Exact plan sections to resubmit via the MCP plan-edit tools."
+)
 
 
 def _assert_shared_analysis_guidance(
@@ -300,6 +351,20 @@ def test_planning_edit_prompt_teaches_repo_wide_recomputation_not_just_local_pat
     assert PLANNING_EDIT_RISK_COVERAGE_GUIDANCE in planning_edit
     assert PLANNING_EDIT_PARALLELIZATION_GUIDANCE in planning_edit
     assert PLANNING_EDIT_MAINTAINABILITY_GUIDANCE in planning_edit
+    assert PLANNING_EDIT_SCOPE_INVALIDATION_GUIDANCE in planning_edit
+    assert PLANNING_EDIT_DISCOVERY_FIRST_GUIDANCE in planning_edit
+    assert PLANNING_EDIT_SCOPE_DERIVATION_GUIDANCE in planning_edit
+    assert PLANNING_EDIT_PASS_TARGET_GUIDANCE in planning_edit
+    assert PLANNING_EDIT_NO_KNOWN_GAPS_GUIDANCE in planning_edit
+    assert PLANNING_EDIT_DEPENDENT_SECTION_REWRITE_GUIDANCE in planning_edit
+    assert PLANNING_EDIT_NEXT_ANALYZER_GUIDANCE in planning_edit
+    assert PLANNING_EDIT_SURFACED_BLOCKER_GUIDANCE in planning_edit
+    assert PLANNING_EDIT_RULE_CATEGORY_GUIDANCE in planning_edit
+    assert PLANNING_EDIT_NO_EXCEPTION_GUIDANCE in planning_edit
+    assert PLANNING_EDIT_STARTING_POINT_GUIDANCE in planning_edit
+    assert PLANNING_EDIT_NOT_LOCAL_PATCH_GUIDANCE in planning_edit
+    assert PLANNING_EDIT_SELF_ANALYSIS_GUIDANCE in planning_edit
+    assert PLANNING_EDIT_ISSUE_MAPPING_GUIDANCE in planning_edit
     assert "artifact_type=\"plan\"" not in planning_edit
     assert "Not submitting the revised plan is a FAILURE." in planning_edit
 
@@ -313,6 +378,8 @@ def test_planning_analysis_prompt_demands_gap_and_consistency_critique() -> None
     assert PLANNING_ANALYSIS_RESEARCH_BURDEN_GUIDANCE in planning_analysis
     assert PLANNING_ANALYSIS_DEFECT_SCOPE_GUIDANCE in planning_analysis
     assert PLANNING_ANALYSIS_VISIBLE_GAPS_GUIDANCE in planning_analysis
+    assert PLANNING_ANALYSIS_MCP_REMEDIATION_GUIDANCE in planning_analysis
+    assert PLANNING_ANALYSIS_SECTION_RESUBMIT_GUIDANCE in planning_analysis
 
 
 def test_fix_and_developer_iteration_templates_use_analysis_context_partial() -> None:

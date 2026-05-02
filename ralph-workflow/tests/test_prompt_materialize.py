@@ -39,6 +39,57 @@ PLANNING_EDIT_MAINTAINABILITY_TEXT = (
     "- Maintainability and handoff quality: the plan stays concise, "
     "non-redundant, and explicit for development handoff"
 )
+PLANNING_EDIT_SCOPE_INVALIDATION_TEXT = (
+    "If the ORIGINAL REQUEST has repository-wide acceptance criteria and the current plan "
+    "narrowed scope before running repository-wide discovery"
+)
+PLANNING_EDIT_DISCOVERY_FIRST_TEXT = (
+    "replace the summary, scope, and early steps so Step 1 becomes repo-wide discovery"
+)
+PLANNING_EDIT_SCOPE_DERIVATION_TEXT = (
+    "- Scope derivation: when the task is repo-wide, implementation scope comes from an "
+    "explicit repo-wide discovery step rather than a guessed subsystem"
+)
+PLANNING_EDIT_PASS_TARGET_TEXT = (
+    "Your target is to submit the strongest revised plan you can so the next planning-analysis pass"
+)
+PLANNING_EDIT_NO_KNOWN_GAPS_TEXT = (
+    "Do not finalize a draft that still has any known unresolved analyzer finding"
+)
+PLANNING_EDIT_DEPENDENT_SECTION_REWRITE_TEXT = (
+    "If fixing one section changes the truth of another section, replace every dependent section"
+)
+PLANNING_EDIT_NEXT_ANALYZER_TEXT = (
+    "Before finalizing, proactively search for any additional repo-grounded failure"
+)
+PLANNING_EDIT_SURFACED_BLOCKER_TEXT = (
+    "If a canonical verification command or repo-wide audit already surfaces a blocker "
+    "during replanning"
+)
+PLANNING_EDIT_RULE_CATEGORY_TEXT = (
+    "When the ORIGINAL REQUEST imposes repo-wide structural rules, build a repo-wide inventory"
+)
+PLANNING_EDIT_NO_EXCEPTION_TEXT = (
+    "Do not preserve prompt-violating tests, files, or workflows as justified exceptions"
+)
+PLANNING_EDIT_STARTING_POINT_TEXT = (
+    "Treat the planning-analysis feedback as a starting point, not as the full list of issues"
+)
+PLANNING_EDIT_NOT_LOCAL_PATCH_TEXT = (
+    "Do not localize your revision pass to only the sections explicitly cited by the analyzer"
+)
+PLANNING_EDIT_SELF_ANALYSIS_TEXT = (
+    "You must perform your own repo-grounded analysis before finalizing"
+)
+PLANNING_EDIT_ISSUE_MAPPING_TEXT = (
+    "Every analyzer issue must map to concrete revised sections or an explicit verified reason"
+)
+PLANNING_ANALYSIS_MCP_REMEDIATION_TEXT = (
+    "When describing remediation, target the planner's MCP revision workflow"
+)
+PLANNING_ANALYSIS_SECTION_RESUBMIT_TEXT = (
+    "Exact plan sections to resubmit via the MCP plan-edit tools."
+)
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -110,6 +161,20 @@ def test_materialize_planning_loopback_uses_edit_prompt_and_analysis_feedback_ha
     assert PLANNING_EDIT_RISK_COVERAGE_TEXT in rendered
     assert PLANNING_EDIT_PARALLELIZATION_TEXT in rendered
     assert PLANNING_EDIT_MAINTAINABILITY_TEXT in rendered
+    assert PLANNING_EDIT_SCOPE_INVALIDATION_TEXT in rendered
+    assert PLANNING_EDIT_DISCOVERY_FIRST_TEXT in rendered
+    assert PLANNING_EDIT_SCOPE_DERIVATION_TEXT in rendered
+    assert PLANNING_EDIT_PASS_TARGET_TEXT in rendered
+    assert PLANNING_EDIT_NO_KNOWN_GAPS_TEXT in rendered
+    assert PLANNING_EDIT_DEPENDENT_SECTION_REWRITE_TEXT in rendered
+    assert PLANNING_EDIT_NEXT_ANALYZER_TEXT in rendered
+    assert PLANNING_EDIT_SURFACED_BLOCKER_TEXT in rendered
+    assert PLANNING_EDIT_RULE_CATEGORY_TEXT in rendered
+    assert PLANNING_EDIT_NO_EXCEPTION_TEXT in rendered
+    assert PLANNING_EDIT_STARTING_POINT_TEXT in rendered
+    assert PLANNING_EDIT_NOT_LOCAL_PATCH_TEXT in rendered
+    assert PLANNING_EDIT_SELF_ANALYSIS_TEXT in rendered
+    assert PLANNING_EDIT_ISSUE_MAPPING_TEXT in rendered
     assert "The plan needs revisions." not in rendered
 
 
