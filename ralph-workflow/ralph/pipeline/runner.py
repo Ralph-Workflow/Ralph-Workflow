@@ -52,6 +52,7 @@ from ralph.mcp.artifacts.commit_message import (
     delete_commit_message_artifacts,
     read_commit_message_from_path,
 )
+from ralph.mcp.protocol.capability_mapping import DrainClass
 from ralph.mcp.protocol.env import AGENT_LABEL_SCOPE_ENV
 from ralph.mcp.protocol.session import MCP_ENDPOINT_ENV, MCP_RUN_ID_ENV, AgentSession
 from ralph.mcp.server.lifecycle import shutdown_mcp_server, start_mcp_server
@@ -637,6 +638,7 @@ def _run_pipeline_step(  # noqa: PLR0913
             state=state,
             pipeline_policy=policy_bundle.pipeline,
             artifacts_policy=policy_bundle.artifacts,
+            agents_policy=policy_bundle.agents,
             workspace_scope=workspace_scope,
             display=display,
             pipeline_subscriber=pipeline_subscriber,
@@ -663,8 +665,7 @@ def _run_pipeline_step(  # noqa: PLR0913
             _materialize_agent_prompt_if_needed(
                 effect,
                 workspace,
-                policy_bundle.pipeline,
-                policy_bundle.artifacts,
+                policy_bundle,
                 registry,
             )
             event = _invoke_execute_effect_with_optional_display(
@@ -1740,6 +1741,7 @@ def _handle_inline_effect(  # noqa: PLR0913
     pipeline_policy: PipelinePolicy,
     artifacts_policy: ArtifactsPolicy,
     workspace_scope: WorkspaceScope,
+    agents_policy: AgentsPolicy | None = None,
     display: ParallelDisplay | _LegacyConsoleDisplay | None = None,
     pipeline_subscriber: _PipelineSubscriber | None = None,
     dashboard_subscriber: _PipelineSubscriber | None = None,
@@ -1753,7 +1755,13 @@ def _handle_inline_effect(  # noqa: PLR0913
         return new_state
 
     if isinstance(effect, PreparePromptEffect):
-        _materialize_prepared_prompt(effect, pipeline_policy, artifacts_policy, workspace_scope)
+        _materialize_prepared_prompt(
+            effect,
+            pipeline_policy,
+            artifacts_policy,
+            workspace_scope,
+            agents_policy,
+        )
         prepared_state = state
         if state.phase == pipeline_policy.recovery.failed_route:
             prepared_state = _reset_phase_chain_for_recovery(state, effect.phase)
@@ -1798,6 +1806,7 @@ def _materialize_prepared_prompt(
     pipeline_policy: PipelinePolicy,
     artifacts_policy: ArtifactsPolicy,
     workspace_scope: WorkspaceScope,
+    agents_policy: AgentsPolicy | None = None,
 ) -> None:
 
     workspace = FsWorkspace(
@@ -1813,7 +1822,8 @@ def _materialize_prepared_prompt(
         artifacts_policy=artifacts_policy,
         session_caps=SessionCapabilities.defaults_for_drain(
             _prompt_session_drain_for_phase(
-                effect.drain or resolve_phase_drain(effect.phase, pipeline_policy) or effect.phase
+                effect.drain or resolve_phase_drain(effect.phase, pipeline_policy) or effect.phase,
+                agents_policy=agents_policy,
             )
         ),
         workspace_root=workspace_scope.root,
@@ -1824,8 +1834,7 @@ def _materialize_prepared_prompt(
 def _materialize_agent_prompt_if_needed(
     effect: Effect,
     workspace: FsWorkspace,
-    pipeline_policy: PipelinePolicy,
-    artifacts_policy: ArtifactsPolicy,
+    policy_bundle: PolicyBundle,
     registry: _RegistryLike,
 ) -> None:
     if not isinstance(effect, InvokeAgentEffect):
@@ -1839,11 +1848,14 @@ def _materialize_agent_prompt_if_needed(
     materialize_prompt_for_phase(
         phase=effect.phase,
         workspace=workspace,
-        pipeline_policy=pipeline_policy,
-        artifacts_policy=artifacts_policy,
+        pipeline_policy=policy_bundle.pipeline,
+        artifacts_policy=policy_bundle.artifacts,
         session_caps=SessionCapabilities.defaults_for_drain(
             _prompt_session_drain_for_phase(
-                effect.drain or resolve_phase_drain(effect.phase, pipeline_policy) or effect.phase
+                effect.drain
+                or resolve_phase_drain(effect.phase, policy_bundle.pipeline)
+                or effect.phase,
+                agents_policy=policy_bundle.agents,
             ),
             tool_name_prefix=tool_name_prefix,
         ),
@@ -3217,8 +3229,28 @@ def _status_text(label: str, value: str, style: str) -> Text:
     return text
 
 
-def _prompt_session_drain_for_phase(drain: str | None) -> SessionDrain:
-    """Return the session drain to use for a phase."""
+def _prompt_session_drain_for_phase(
+    drain: str | None,
+    *,
+    agents_policy: AgentsPolicy | None = None,
+) -> SessionDrain:
+    """Return the prompt capability profile for a policy drain."""
     if drain is not None:
-        return SessionDrain(drain)
+        try:
+            return SessionDrain(drain)
+        except ValueError:
+            if agents_policy is not None:
+                drain_cfg = agents_policy.agent_drains.get(drain)
+                if drain_cfg is not None:
+                    drain_class = drain_cfg.capability_class or drain_cfg.drain_class
+                    if drain_class is not None:
+                        return {
+                            DrainClass.PLANNING: SessionDrain.PLANNING,
+                            DrainClass.DEVELOPMENT: SessionDrain.DEVELOPMENT,
+                            DrainClass.ANALYSIS: SessionDrain.ANALYSIS,
+                            DrainClass.REVIEW: SessionDrain.REVIEW,
+                            DrainClass.FIX: SessionDrain.FIX,
+                            DrainClass.COMMIT: SessionDrain.COMMIT,
+                        }[DrainClass(drain_class)]
+            raise
     return SessionDrain("cli")

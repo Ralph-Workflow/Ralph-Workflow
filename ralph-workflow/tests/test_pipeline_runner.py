@@ -674,6 +674,7 @@ class TestDetermineEffect:
             state=state,
             pipeline_policy=bundle.pipeline,
             artifacts_policy=bundle.artifacts,
+            agents_policy=bundle.agents,
             workspace_scope=WorkspaceScope("/tmp/worktree"),
         )
 
@@ -732,8 +733,7 @@ def test_materialize_agent_prompt_if_needed_prefixes_claude_tools(monkeypatch: M
     runner_module._materialize_agent_prompt_if_needed(
         InvokeAgentEffect(agent_name="planner", phase="planning", prompt_file="planning.txt"),
         MagicMock(spec=["root"]),
-        bundle.pipeline,
-        bundle.artifacts,
+        bundle,
         Registry(),
     )
 
@@ -2566,6 +2566,26 @@ class TestRenderAgentActivityLine:
         assert (
             runner_module._prompt_session_drain_for_phase("review_analysis")
             is SessionDrain.REVIEW_ANALYSIS
+        )
+
+    def test_prompt_session_drain_uses_policy_drain_class_for_custom_analysis_phase(
+        self,
+    ) -> None:
+        agents_policy = AgentsPolicy(
+            agent_chains={"planning_analysis": AgentChainConfig(agents=["claude"])},
+            agent_drains={
+                "planning_analysis": AgentDrainConfig(
+                    chain="planning_analysis",
+                    drain_class="analysis",
+                )
+            },
+        )
+
+        assert (
+            runner_module._prompt_session_drain_for_phase(
+                "planning_analysis", agents_policy=agents_policy
+            )
+            is SessionDrain.ANALYSIS
         )
 
     def test_text_truncation_for_long_content(self) -> None:
