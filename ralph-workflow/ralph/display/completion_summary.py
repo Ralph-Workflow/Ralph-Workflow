@@ -127,6 +127,21 @@ def _dropped_count_line(dropped: int) -> str:
     return f"Snapshots dropped: {dropped}"
 
 
+def _review_summary_line(snapshot: PipelineSnapshot) -> str | None:
+    """Return the review summary line based on review_issues_found and decision_log.
+
+    Returns None when no review phase is in the decision log.
+    """
+    if snapshot.review_issues_found:
+        return "Review: issues found"
+    has_review = snapshot.decision_log and any(
+        "review" in phase.lower() for phase, _, _, _ in snapshot.decision_log
+    )
+    if has_review:
+        return "Review: clean"
+    return None
+
+
 def _style_for_role(
     role: str,
     pipeline_policy: PipelinePolicy | None,
@@ -205,6 +220,10 @@ def render_completion_summary(  # noqa: PLR0913
     else:
         lines.append("Decisions: (none recorded)")
 
+    review_line = _review_summary_line(snapshot)
+    if review_line is not None:
+        lines.append(review_line)
+
     lines.append(_verification_line(workspace_root))
     lines.extend(_commit_message_lines(workspace_root))
 
@@ -276,6 +295,10 @@ def _render_compact_group(  # noqa: PLR0912, PLR0913
             )
     else:
         renderables.append(Text("DECISIONS: (none recorded)"))
+
+    review_line = _review_summary_line(snapshot)
+    if review_line is not None:
+        renderables.append(Text(review_line.upper()))
 
     renderables.append(Text(f"VERIFICATION: {_verification_line(workspace_root)}"))
 
@@ -409,6 +432,13 @@ def render_completion_summary_group(  # noqa: PLR0912, PLR0913, PLR0915
             )
     else:
         renderables.append(Text("  (none recorded)"))
+
+    review_line = _review_summary_line(snapshot)
+    if review_line is not None:
+        review_style = _style_for_role("review", pipeline_policy)
+        renderables.append(Rule("Review", style=review_style))
+        suffix = review_line.replace("Review:", "").strip()
+        renderables.append(Text(f"  {suffix}"))
 
     # Verification section
     renderables.append(Rule("Verification", style=style))

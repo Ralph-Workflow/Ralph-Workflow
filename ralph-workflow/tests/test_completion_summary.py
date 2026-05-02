@@ -42,11 +42,12 @@ def _make_snapshot(  # noqa: PLR0913
     plan_risks: tuple[str, ...] = (),
     is_terminal_success: bool = True,
     is_terminal_failure: bool = False,
+    review_issues_found: bool = False,
 ) -> PipelineSnapshot:
     return PipelineSnapshot(
         phase=phase,
         previous_phase="development_commit",
-        review_issues_found=False,
+        review_issues_found=review_issues_found,
         interrupted_by_user=False,
         last_error=last_error,
         pr_url=pr_url,
@@ -246,6 +247,26 @@ def test_completion_summary_unchanged_for_other_errors() -> None:
     text = _render_plain(snap)
     assert "Some other failure" in text
     assert "Reason: long child wait" not in text
+
+
+def test_render_review_issues_found_surfaced_in_summary() -> None:
+    """When review found issues, the completion summary must surface review_issues_found."""
+    snap = _make_snapshot(review_issues_found=True)
+    text = _render_plain(snap)
+    # The completion summary should explicitly surface the review outcome
+    assert "review_issues_found" in text.lower() or "issues found" in text.lower(), (
+        f"Expected review_issues_found to be surfaced in output, got: {text}"
+    )
+
+
+def test_render_review_clean_when_no_issues() -> None:
+    """When review found no issues, the completion summary should indicate clean review."""
+    snap = _make_snapshot(review_issues_found=False)
+    text = _render_plain(snap)
+    # The completion summary should indicate clean review when issues_found is False
+    assert "review" in text.lower()
+    # When issues_found is False, the summary should not claim issues were found
+    assert "issues found" not in text.lower()
 
 
 def test_emit_completion_summary_uses_subscriber_decision_log(tmp_path: Path) -> None:

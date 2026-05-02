@@ -10,7 +10,7 @@ instead.
 ## What lives here
 
 - [Configuration](configuration.md) — runtime config files, precedence, and policy knobs
-- [Agents](agents.md) — agent resolution, chains, drains, and invocation flow
+- [Concepts](concepts.md) — agents, chains, drains, phases, and execution strategy
 - [MCP Architecture](mcp-architecture.md) — server lifecycle, capability gates, and upstream proxying
 - [Artifacts](artifacts.md) — typed handoffs and artifact storage contracts
 - [Prompts](prompts.md) — prompt template loading, rendering, and payload materialisation
@@ -19,7 +19,7 @@ instead.
 ```{toctree}
 :maxdepth: 1
 
-agents
+concepts
 mcp-architecture
 artifacts
 prompts
