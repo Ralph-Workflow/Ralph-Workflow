@@ -93,6 +93,7 @@ def determine_next_effect(
         return PreparePromptEffect(
             phase=target_phase,
             drain=state.current_drain,
+            previous_phase=state.previous_phase,
         )
 
     # Look up the current phase definition
@@ -136,7 +137,11 @@ def _derive_effect_for_phase(
     # Check if we need to invoke the agent or prepare the prompt first
     if not _is_agent_invoked_for_phase(state, phase_def):
         # First time in this phase — prepare prompt then invoke agent
-        return PreparePromptEffect(phase=phase, drain=phase_def.drain)
+        return PreparePromptEffect(
+            phase=phase,
+            drain=phase_def.drain,
+            previous_phase=state.previous_phase,
+        )
 
     return InvokeAgentEffect(
         agent_name=_current_agent_name(state, chain),
@@ -217,13 +222,13 @@ def _route_transition(
 
     if target is None:
         # No transition defined — re-enter the same phase instead of exiting.
-        return PreparePromptEffect(phase=state.phase)
+        return PreparePromptEffect(phase=state.phase, previous_phase=state.previous_phase)
 
     terminal_phase = pipeline_policy.terminal_phase
     failed_route = pipeline_policy.recovery.failed_route
 
     if target == failed_route:
-        return PreparePromptEffect(phase=state.phase)
+        return PreparePromptEffect(phase=state.phase, previous_phase=state.previous_phase)
 
     if target == terminal_phase:
         return ExitSuccessEffect()
@@ -243,7 +248,7 @@ def _advance_to_phase(state: PipelineState, target_phase: str) -> Effect:
     Returns:
         Effect to prepare the target phase.
     """
-    return PreparePromptEffect(phase=target_phase)
+    return PreparePromptEffect(phase=target_phase, previous_phase=state.phase)
 
 
 def _handle_unknown_phase(state: PipelineState) -> Effect:

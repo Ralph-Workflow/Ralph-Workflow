@@ -78,6 +78,7 @@ class PreparePromptEffect:
     phase: PipelinePhase
     iteration: int | None = None
     drain: str | None = None
+    previous_phase: str | None = None
 
 
 @dataclass(frozen=True)

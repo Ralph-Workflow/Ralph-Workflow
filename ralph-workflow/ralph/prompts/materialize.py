@@ -15,7 +15,11 @@ from ralph.mcp.artifacts.handoffs import (
 )
 from ralph.mcp.artifacts.plan import PLAN_ARTIFACT_PATH, PLAN_DRAFT_PATH
 from ralph.mcp.tools.names import SUBMIT_ARTIFACT_TOOL, claude_tool_name_prefix
-from ralph.phases.required_artifacts import resolve_required_artifact, retry_hint_path
+from ralph.phases.required_artifacts import (
+    build_required_artifacts,
+    resolve_required_artifact,
+    retry_hint_path,
+)
 from ralph.pipeline.cycle_baseline import read_cycle_baseline
 from ralph.policy.models import ROLE_REVIEW
 from ralph.prompts.commit import CommitPromptPayloadConfig, prompt_commit_message
@@ -40,7 +44,7 @@ if TYPE_CHECKING:
 
     from ralph.phases.required_artifacts import RequiredArtifact
     from ralph.pipeline.work_units import WorkUnit
-    from ralph.policy.models import ArtifactsPolicy, PhaseDefinition, PipelinePolicy
+    from ralph.policy.models import ArtifactsPolicy, PipelinePolicy
     from ralph.workspace.protocol import Workspace
 
 
@@ -53,6 +57,7 @@ def materialize_prompt_for_phase(  # noqa: PLR0913
     session_caps: SessionCapabilities,
     workspace_root: Path,
     worker_namespace: Path | None = None,
+    previous_phase: str | None = None,
 ) -> str:
     prompt = _render_prompt_for_phase(
         phase=phase,
@@ -62,6 +67,7 @@ def materialize_prompt_for_phase(  # noqa: PLR0913
         session_caps=session_caps,
         workspace_root=workspace_root,
         worker_namespace=worker_namespace,
+        previous_phase=previous_phase,
     )
     return dump_rendered_prompt(workspace, phase, prompt)
 
@@ -99,6 +105,7 @@ def _render_prompt_for_phase(  # noqa: PLR0913
     session_caps: SessionCapabilities,
     workspace_root: Path,
     worker_namespace: Path | None = None,
+    previous_phase: str | None = None,
 ) -> str:
     context = TemplateContext.default(workspace_root)
     template_name = _template_name_for_phase(phase, pipeline_policy)
@@ -125,7 +132,7 @@ def _render_prompt_for_phase(  # noqa: PLR0913
             workspace=workspace,
             pipeline_policy=pipeline_policy,
             artifacts_policy=artifacts_policy,
-            phase_def=phase_def,
+            previous_phase=previous_phase,
         )
         last_retry_error = _read_and_clear_retry_hint(workspace, phase)
         return prompt_planning_xml_with_context(
@@ -371,16 +378,27 @@ def _prepare_planning_prompt_context(
     workspace: Workspace,
     pipeline_policy: PipelinePolicy,
     artifacts_policy: ArtifactsPolicy | None,
-    phase_def: PhaseDefinition | None,
+    previous_phase: str | None,
 ) -> tuple[str | None, str, str, str, str]:
+    phase_def = pipeline_policy.phases.get(phase)
+    template_name = _template_name_for_phase(phase, pipeline_policy)
+    is_loopback = _is_analysis_loopback_into_phase(
+        phase=phase,
+        previous_phase=previous_phase,
+        pipeline_policy=pipeline_policy,
+    )
+    if not is_loopback:
+        _clear_fresh_planning_context(
+            workspace,
+            phase=phase,
+            pipeline_policy=pipeline_policy,
+            artifacts_policy=artifacts_policy,
+        )
     analysis_feedback_content, analysis_feedback_path = _resolve_loopback_analysis_feedback(
         workspace, phase, pipeline_policy, artifacts_policy
     )
-    template_name = _template_name_for_phase(phase, pipeline_policy)
     if analysis_feedback_path and phase_def is not None and phase_def.loopback_prompt_template:
         template_name = phase_def.loopback_prompt_template
-    else:
-        _clear_fresh_planning_context(workspace)
     plan_content, plan_path = _resolve_plan_handoff(workspace)
     return (
         plan_content,
@@ -391,14 +409,50 @@ def _prepare_planning_prompt_context(
     )
 
 
-def _clear_fresh_planning_context(workspace: Workspace) -> None:
-    """Delete prior plan state before rendering a fresh planning-creation prompt."""
+def _clear_fresh_planning_context(
+    workspace: Workspace,
+    *,
+    phase: str,
+    pipeline_policy: PipelinePolicy,
+    artifacts_policy: ArtifactsPolicy | None,
+) -> None:
+    """Delete prior planning state before rendering a fresh planning-creation prompt."""
     for path in (PLAN_ARTIFACT_PATH, PLAN_DRAFT_PATH):
         if workspace.exists(path):
             workspace.remove(path)
     handoff_path = handoff_path_for_artifact("plan")
     if handoff_path and workspace.exists(handoff_path):
         workspace.remove(handoff_path)
+    if artifacts_policy is None:
+        return
+    required_artifacts = build_required_artifacts(artifacts_policy)
+    for phase_def in pipeline_policy.phases.values():
+        if phase_def.role != "analysis" or phase_def.transitions.on_loopback != phase:
+            continue
+        required_artifact = required_artifacts.get(phase_def.drain)
+        if required_artifact is None:
+            continue
+        if workspace.exists(required_artifact.json_path):
+            workspace.remove(required_artifact.json_path)
+        analysis_handoff = handoff_path_for_artifact(required_artifact.artifact_type)
+        if analysis_handoff and workspace.exists(analysis_handoff):
+            workspace.remove(analysis_handoff)
+
+
+def _is_analysis_loopback_into_phase(
+    *,
+    phase: str,
+    previous_phase: str | None,
+    pipeline_policy: PipelinePolicy,
+) -> bool:
+    if previous_phase is None:
+        return False
+    previous_phase_def = pipeline_policy.phases.get(previous_phase)
+    return bool(
+        previous_phase_def is not None
+        and previous_phase_def.role == "analysis"
+        and previous_phase_def.transitions.on_loopback == phase
+    )
 
 
 def _resolve_agent_handoff(

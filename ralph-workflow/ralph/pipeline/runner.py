@@ -1886,6 +1886,7 @@ def _materialize_prepared_prompt(
         workspace=workspace,
         pipeline_policy=pipeline_policy,
         artifacts_policy=artifacts_policy,
+        previous_phase=effect.previous_phase,
         session_caps=SessionCapabilities.defaults_for_drain(
             _prompt_session_drain_for_phase(
                 effect.drain or resolve_phase_drain(effect.phase, pipeline_policy) or effect.phase,
@@ -2041,6 +2042,7 @@ def _recovery_prepare_effect(
     return PreparePromptEffect(
         phase=target_phase,
         drain=drain,
+        previous_phase=previous_phase,
     )
 
 

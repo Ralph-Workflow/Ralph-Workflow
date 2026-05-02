@@ -109,6 +109,7 @@ def test_materialize_prompt_for_phase_renders_planning_prompt_to_agent_tmp(tmp_p
         artifacts_policy=policy.artifacts,
         session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.PLANNING),
         workspace_root=tmp_path,
+        previous_phase=None,
     )
 
     assert prompt_path == ".agent/tmp/planning_prompt.md"
@@ -171,6 +172,24 @@ def test_materialize_fresh_planning_clears_previous_plan_context(tmp_path: Path)
         ),
     )
     workspace.write(".agent/PLAN.md", "# Implementation Plan\n\nOld plan handoff.\n")
+    workspace.write(
+        ".agent/artifacts/planning_analysis_decision.json",
+        json.dumps(
+            {
+                "type": "planning_analysis_decision",
+                "content": {
+                    "status": "request_changes",
+                    "summary": "Old planning analysis feedback.",
+                    "what_came_up_short": ["Old issue"],
+                    "how_to_fix": ["Old remediation"],
+                },
+            }
+        ),
+    )
+    workspace.write(
+        ".agent/PLANNING_ANALYSIS_DECISION.md",
+        "# Planning Analysis Decision\n\nOld planning analysis handoff.\n",
+    )
     prompt_path = materialize_prompt_for_phase(
         phase="planning",
         workspace=workspace,
@@ -178,16 +197,21 @@ def test_materialize_fresh_planning_clears_previous_plan_context(tmp_path: Path)
         artifacts_policy=policy.artifacts,
         session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.PLANNING),
         workspace_root=tmp_path,
+        previous_phase=None,
     )
 
     rendered = workspace.read(prompt_path)
     assert "PLANNING MODE" in rendered
     assert "PLANNING EDIT MODE" not in rendered
     assert "Old finalized plan." not in rendered
+    assert "Old planning analysis feedback." not in rendered
     assert str(tmp_path / ".agent" / "PLAN.md") not in rendered
+    assert str(tmp_path / ".agent" / "PLANNING_ANALYSIS_DECISION.md") not in rendered
     assert workspace.exists(".agent/artifacts/plan.json") is False
     assert workspace.exists(".agent/artifacts/.plan_draft.json") is False
     assert workspace.exists(".agent/PLAN.md") is False
+    assert workspace.exists(".agent/artifacts/planning_analysis_decision.json") is False
+    assert workspace.exists(".agent/PLANNING_ANALYSIS_DECISION.md") is False
 
 
 def test_clear_fresh_planning_files_removes_stale_plan_and_analysis_artifacts(
@@ -320,6 +344,7 @@ def test_materialize_planning_loopback_uses_edit_prompt_and_analysis_feedback_ha
         artifacts_policy=policy.artifacts,
         session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.PLANNING),
         workspace_root=tmp_path,
+        previous_phase="planning_analysis",
     )
 
     rendered = workspace.read(prompt_path)
@@ -352,6 +377,7 @@ def test_materialize_planning_loopback_uses_edit_prompt_and_analysis_feedback_ha
     assert PLANNING_EDIT_ISSUE_MAPPING_TEXT in rendered
     assert "The plan needs revisions." not in rendered
     assert workspace.exists(".agent/artifacts/plan.json") is True
+    assert workspace.exists(".agent/artifacts/planning_analysis_decision.json") is True
 
 
 def test_prompt_file_for_phase_uses_agent_tmp_file_name() -> None:
