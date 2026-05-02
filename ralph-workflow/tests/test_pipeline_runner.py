@@ -52,8 +52,10 @@ from ralph.policy.models import (
     AgentsPolicy,
     ArtifactsPolicy,
     BudgetCounterConfig,
+    LoopCounterConfig,
     PhaseCommitPolicy,
     PhaseDefinition,
+    PhaseLoopPolicy,
     PhaseTransition,
     PipelinePolicy,
     PolicyBundle,
@@ -3406,3 +3408,244 @@ class TestPhaseContextRoleBasedDispatch:
         state = PipelineState(phase="build")
         ctx = self._call(state, "seal", policy)
         assert not any(k.endswith("_budget") for k in ctx)
+
+    def test_analysis_uses_loop_counters_default_max_not_phase_max_iterations(self) -> None:
+        """When loop_counters is declared, _phase_context should use its default_max as cap.
+
+        This verifies the fix for the regression where runner fell back to
+        phase_def.loop_policy.max_iterations instead of
+        policy.loop_counters[iteration_field].default_max when state.loop_caps is absent.
+        """
+        # Create policy with loop_counters.default_max = 3 but loop_policy.max_iterations = 99
+        # The runner should use 3, not 99
+        policy = PipelinePolicy(
+            phases={
+                "planning_analysis": PhaseDefinition(
+                    drain="planning_analysis",
+                    role="analysis",
+                    loop_policy=PhaseLoopPolicy(
+                        max_iterations=99,  # Intentional mismatch to detect the bug
+                        iteration_state_field="planning_analysis_iteration",
+                    ),
+                    transitions=PhaseTransition(on_success="planning"),
+                    decisions={},
+                ),
+                "planning": PhaseDefinition(
+                    drain="planning",
+                    role="execution",
+                    transitions=PhaseTransition(on_success="done"),
+                ),
+                "done": PhaseDefinition(
+                    drain="planning",
+                    role="terminal",
+                    transitions=PhaseTransition(on_success="done"),
+                    terminal_outcome="success",
+                ),
+            },
+            loop_counters={
+                "planning_analysis_iteration": LoopCounterConfig(default_max=3),
+            },
+        )
+        # State WITHOUT loop_caps set - this is the key test condition
+        # The cap should come from loop_counters, not loop_policy.max_iterations
+        state = PipelineState(
+            phase="planning",
+            loop_iterations={"planning_analysis_iteration": 2},  # 3rd iteration (0-indexed)
+        )
+        ctx = self._call(state, "planning_analysis", policy)
+        # Should show 3/3 (using loop_counters default_max=3), NOT 3/99
+        assert ctx.get("Planning Analysis") == "3/3"
+        # Should indicate final since analysis_cur (2) >= max_iter - 1 (3 - 1 = 2)
+        assert ctx.get("analysis_status") == "final, skipping next"
+
+    def test_analysis_loop_caps_takes_precedence_over_loop_counters(self) -> None:
+        """state.loop_caps should take precedence over policy.loop_counters.default_max."""
+        policy = PipelinePolicy(
+            phases={
+                "planning_analysis": PhaseDefinition(
+                    drain="planning_analysis",
+                    role="analysis",
+                    loop_policy=PhaseLoopPolicy(
+                        max_iterations=99,
+                        iteration_state_field="planning_analysis_iteration",
+                    ),
+                    transitions=PhaseTransition(on_success="planning"),
+                    decisions={},
+                ),
+                "planning": PhaseDefinition(
+                    drain="planning",
+                    role="execution",
+                    transitions=PhaseTransition(on_success="done"),
+                ),
+                "done": PhaseDefinition(
+                    drain="planning",
+                    role="terminal",
+                    transitions=PhaseTransition(on_success="done"),
+                    terminal_outcome="success",
+                ),
+            },
+            loop_counters={
+                "planning_analysis_iteration": LoopCounterConfig(default_max=3),
+            },
+        )
+        # State WITH loop_caps set to 5 - should override loop_counters default_max=3
+        state = PipelineState(
+            phase="planning",
+            loop_iterations={"planning_analysis_iteration": 4},  # 5th iteration
+            loop_caps={"planning_analysis_iteration": 5},
+        )
+        ctx = self._call(state, "planning_analysis", policy)
+        assert ctx.get("Planning Analysis") == "5/5"
+        assert ctx.get("analysis_status") == "final, skipping next"
+
+    def test_analysis_counter_renders_correctly_without_off_by_one(self) -> None:
+        """Analysis counter should render as analysis_cur+1/max_iter without off-by-one errors."""
+        policy = PipelinePolicy(
+            phases={
+                "planning_analysis": PhaseDefinition(
+                    drain="planning_analysis",
+                    role="analysis",
+                    loop_policy=PhaseLoopPolicy(
+                        max_iterations=5,
+                        iteration_state_field="planning_analysis_iteration",
+                    ),
+                    transitions=PhaseTransition(on_success="planning"),
+                    decisions={},
+                ),
+                "planning": PhaseDefinition(
+                    drain="planning",
+                    role="execution",
+                    transitions=PhaseTransition(on_success="done"),
+                ),
+                "done": PhaseDefinition(
+                    drain="planning",
+                    role="terminal",
+                    transitions=PhaseTransition(on_success="done"),
+                    terminal_outcome="success",
+                ),
+            },
+            loop_counters={
+                "planning_analysis_iteration": LoopCounterConfig(default_max=5),
+            },
+        )
+        # First iteration: analysis_cur=0, should show 1/5, not final
+        state = PipelineState(
+            phase="planning",
+            loop_iterations={"planning_analysis_iteration": 0},
+        )
+        ctx = self._call(state, "planning_analysis", policy)
+        assert ctx.get("Planning Analysis") == "1/5"
+        assert ctx.get("analysis_status") is None
+
+        # Last iteration: analysis_cur=4, should show 5/5 and be final
+        state = PipelineState(
+            phase="planning",
+            loop_iterations={"planning_analysis_iteration": 4},
+        )
+        ctx = self._call(state, "planning_analysis", policy)
+        assert ctx.get("Planning Analysis") == "5/5"
+        assert ctx.get("analysis_status") == "final, skipping next"
+
+    def test_analysis_counter_clamps_correctly_at_exact_cap_boundary(self) -> None:
+        """When stored analysis_cur equals the cap, display should clamp to cap/max, not exceed it.
+
+        This reproduces the bug where a post-reducer capped state with
+        loop_iterations['planning_analysis_iteration'] == 3 and cap 3
+        incorrectly rendered as '4/3' instead of '3/3'.
+        """
+        policy = PipelinePolicy(
+            phases={
+                "planning_analysis": PhaseDefinition(
+                    drain="planning_analysis",
+                    role="analysis",
+                    loop_policy=PhaseLoopPolicy(
+                        max_iterations=3,
+                        iteration_state_field="planning_analysis_iteration",
+                    ),
+                    transitions=PhaseTransition(on_success="planning"),
+                    decisions={},
+                ),
+                "planning": PhaseDefinition(
+                    drain="planning",
+                    role="execution",
+                    transitions=PhaseTransition(on_success="done"),
+                ),
+                "done": PhaseDefinition(
+                    drain="planning",
+                    role="terminal",
+                    transitions=PhaseTransition(on_success="done"),
+                    terminal_outcome="success",
+                ),
+            },
+            loop_counters={
+                "planning_analysis_iteration": LoopCounterConfig(default_max=3),
+            },
+        )
+        # Capped state: analysis_iteration=3 equals cap=3 (exhausted after 3 completions)
+        # Should display 3/3 NOT 4/3
+        state = PipelineState(
+            phase="planning",
+            loop_iterations={"planning_analysis_iteration": 3},
+        )
+        ctx = self._call(state, "planning_analysis", policy)
+        assert ctx.get("Planning Analysis") == "3/3"
+        assert ctx.get("analysis_status") == "final, skipping next"
+
+    def test_analysis_to_execution_transition_shows_both_counters(self) -> None:
+        """Analysis -> execution transition must show BOTH outer iteration AND analysis counter.
+
+        This verifies the fix for the regression where _phase_context only emitted
+        the analysis counter when previous_role='analysis', dropping the outer iteration
+        counter that should also be visible in the banner alongside it.
+        """
+        # Policy needs a commit phase in the transition chain so _find_commit_counter_from_phase
+        # can derive the counter name for the execution phase
+        policy = PipelinePolicy(
+            phases={
+                "planning_analysis": PhaseDefinition(
+                    drain="planning_analysis",
+                    role="analysis",
+                    loop_policy=PhaseLoopPolicy(
+                        max_iterations=3,
+                        iteration_state_field="planning_analysis_iteration",
+                    ),
+                    transitions=PhaseTransition(on_success="planning"),
+                    decisions={},
+                ),
+                "planning": PhaseDefinition(
+                    drain="planning",
+                    role="execution",
+                    transitions=PhaseTransition(on_success="planning_commit"),
+                ),
+                "planning_commit": PhaseDefinition(
+                    drain="planning_commit",
+                    role="commit",
+                    commit_policy=PhaseCommitPolicy(increments_counter="iteration"),
+                    transitions=PhaseTransition(on_success="done"),
+                ),
+                "done": PhaseDefinition(
+                    drain="planning",
+                    role="terminal",
+                    transitions=PhaseTransition(on_success="done"),
+                    terminal_outcome="success",
+                ),
+            },
+            loop_counters={
+                "planning_analysis_iteration": LoopCounterConfig(default_max=3),
+            },
+        )
+        # State has both outer iteration progress (for 'planning' execution phase)
+        # and loop iteration (for 'planning_analysis' analysis phase)
+        state = PipelineState(
+            phase="planning",
+            outer_progress={"iteration": 0},  # 1st iteration (0-indexed)
+            budget_caps={"iteration": 5},
+            loop_iterations={"planning_analysis_iteration": 2},  # 3rd analysis (final)
+        )
+        ctx = self._call(state, "planning_analysis", policy)
+        # Must show analysis counter
+        assert ctx.get("Planning Analysis") == "3/3"
+        assert ctx.get("analysis_status") == "final, skipping next"
+        # Must ALSO show outer iteration counter (this was the bug - only analysis was shown)
+        assert ctx.get("iteration") == "1/5"
+        assert ctx.get("decision") == "needs changes"

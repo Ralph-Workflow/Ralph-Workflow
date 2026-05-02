@@ -771,6 +771,52 @@ def _find_commit_counter_from_phase(
     return None
 
 
+def _resolve_analysis_cap(
+    iteration_field: str,
+    state: PipelineState,
+    pipeline_policy: PipelinePolicy,
+    phase_def_loop_policy_max_iterations: int,
+) -> int:
+    """Resolve the analysis loop iteration cap using the correct fallback order.
+
+    Resolution order:
+    1. state.loop_caps[field] when present
+    2. pipeline_policy.loop_counters[field].default_max when declared
+    3. phase_def_loop_policy_max_iterations as last fallback
+
+    This matches the reducer's cap resolution so runner display is consistent.
+    """
+    cap_value = state.loop_caps.get(iteration_field)
+    if cap_value is not None:
+        return cap_value
+    if iteration_field in pipeline_policy.loop_counters:
+        return pipeline_policy.loop_counters[iteration_field].default_max
+    return phase_def_loop_policy_max_iterations
+
+
+def _is_analysis_loopback(previous_phase_def: PhaseDefinition, current_phase: str) -> bool:
+    """Check if transition is an analysis loopback within the same outer phase."""
+    return (
+        previous_phase_def.transitions is not None
+        and previous_phase_def.transitions.on_loopback is not None
+        and previous_phase_def.transitions.on_loopback == current_phase
+    )
+
+
+def _add_outer_counter_context(
+    context: dict[str, object],
+    phase: str,
+    pipeline_policy: PipelinePolicy,
+    state: PipelineState,
+) -> None:
+    """Add outer counter context for execution/review phases."""
+    counter = _find_commit_counter_from_phase(phase, pipeline_policy)
+    if counter:
+        cur = state.get_outer_progress(counter) + 1
+        cap = state.get_budget_cap(counter)
+        context[counter] = f"{cur}/{cap}"
+
+
 def _phase_context(
     state: PipelineState,
     previous_phase: str,
@@ -785,37 +831,30 @@ def _phase_context(
     previous_role = previous_phase_def.role if previous_phase_def is not None else None
 
     # When transitioning FROM an analysis phase, show the analysis counter
-    # instead of the outer iteration counter. This ensures the analysis cap
-    # status is visible in the banner.
     if previous_role == "analysis" and previous_phase_def is not None:
         loop_policy = previous_phase_def.loop_policy
         if loop_policy is not None:
             iteration_field = loop_policy.iteration_state_field
             analysis_cur = state.get_loop_iteration(iteration_field)
-            cap_value = state.loop_caps.get(iteration_field)
-            max_iter = cap_value if cap_value is not None else loop_policy.max_iterations
-            # Use human-readable phase name for the counter key
+            max_iter = _resolve_analysis_cap(
+                iteration_field, state, pipeline_policy, loop_policy.max_iterations
+            )
             analysis_name = previous_phase.replace("_", " ").title()
-            context[analysis_name] = f"{analysis_cur + 1}/{max_iter}"
-            # Indicate when this is the final analysis (counter at max)
+            display_iter = min(analysis_cur + 1, max_iter)
+            context[analysis_name] = f"{display_iter}/{max_iter}"
             if analysis_cur >= max_iter - 1:
                 context["analysis_status"] = "final, skipping next"
         if current_role == "commit":
             context["decision"] = "approved"
         elif current_role == "execution":
             context["decision"] = "needs changes"
-    elif current_role == "execution":
-        exec_counter = _find_commit_counter_from_phase(state.phase, pipeline_policy)
-        if exec_counter:
-            iter_cur = state.get_outer_progress(exec_counter) + 1
-            iter_cap = state.get_budget_cap(exec_counter)
-            context[exec_counter] = f"{iter_cur}/{iter_cap}"
-    elif current_role == "review":
-        review_counter = _find_commit_counter_from_phase(state.phase, pipeline_policy)
-        if review_counter:
-            pass_cur = state.get_outer_progress(review_counter) + 1
-            pass_cap = state.get_budget_cap(review_counter)
-            context[review_counter] = f"{pass_cur}/{pass_cap}"
+            if not _is_analysis_loopback(previous_phase_def, state.phase):
+                _add_outer_counter_context(context, state.phase, pipeline_policy, state)
+        elif current_role == "review":
+            _add_outer_counter_context(context, state.phase, pipeline_policy, state)
+    elif current_role in ("execution", "review"):
+        _add_outer_counter_context(context, state.phase, pipeline_policy, state)
+
     if previous_role == "commit" and previous_phase_def is not None:
         commit_policy = previous_phase_def.commit_policy
         if commit_policy is not None and commit_policy.increments_counter:
@@ -849,8 +888,10 @@ def _show_phase_start_with_context(
         phase_def = pipeline_policy.phases.get(phase)
         if phase_def is not None and phase_def.loop_policy is not None:
             field = phase_def.loop_policy.iteration_state_field
-            analysis_iteration = state.loop_iterations.get(field)
-            max_analysis_iterations = state.loop_caps.get(field)
+            analysis_iteration = state.get_loop_iteration(field)
+            max_analysis_iterations = _resolve_analysis_cap(
+                field, state, pipeline_policy, phase_def.loop_policy.max_iterations
+            )
 
     # Extract iteration context values from state
     outer_iteration: int | None = None
@@ -919,8 +960,9 @@ def _skipped_exhausted_analysis_info(
 
     iteration_field = target_def.loop_policy.iteration_state_field
     current_iteration = state.get_loop_iteration(iteration_field)
-    cap_value = state.loop_caps.get(iteration_field)
-    max_iter = cap_value if cap_value is not None else target_def.loop_policy.max_iterations
+    max_iter = _resolve_analysis_cap(
+        iteration_field, state, pipeline_policy, target_def.loop_policy.max_iterations
+    )
 
     if current_iteration < max_iter:
         return None
