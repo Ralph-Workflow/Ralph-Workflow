@@ -65,23 +65,30 @@ transport = "http"
 url = "https://mcp.example.com/docs"
 ```
 
-## Multimodal MCP Support (opt-in)
+## Multimodal MCP Support (default-on)
 
-Ralph Workflow supports multimodal MCP tools (image reading) as an opt-in feature. This support is **disabled by default** to ensure backward compatibility with text-only clients.
+Ralph Workflow supports multimodal MCP tools (image reading). This support is **enabled by default** to ensure seamless multimodal support without configuration.
 
-### Enabling multimodal support
+### Disabling multimodal support
 
-Add a `[media]` section to your `mcp.toml`:
+To disable, add to your `mcp.toml`:
 
 ```toml
 [media]
-enabled = true
-max_inline_bytes = 5242880  # 5 MiB, default limit
+enabled = false
+```
+
+To customize without disabling:
+
+```toml
+[media]
+enabled = true  # default, can be omitted
+max_inline_bytes = 10485760  # 10 MiB to allow larger images
 ```
 
 ### How read_image works
 
-When `media.enabled = true`, Ralph Workflow registers a `read_image` tool that:
+When `media.enabled = true` (default), Ralph Workflow registers a `read_image` tool that:
 
 - Reads binary image files (PNG, JPEG, GIF, WebP)
 - Returns base64-encoded content in MCP image content blocks

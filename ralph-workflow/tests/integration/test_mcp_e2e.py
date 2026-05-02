@@ -190,6 +190,37 @@ def _initialize_session(endpoint: str) -> str:
     return session_id
 
 
+def _initialize_session_multimodal(endpoint: str) -> str:
+    """Initialize session with multimodal (image/media) client capabilities."""
+    target = startup.parse_http_endpoint(endpoint)
+    multimodal_init = {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "initialize",
+        "params": {
+            "protocolVersion": "2024-11-05",
+            "capabilities": {"image": {}, "media": {}},
+            "clientInfo": {"name": "ralph-preflight-multimodal", "version": "0"},
+        },
+    }
+    response, session_id = startup.post_http_jsonrpc_with_session(
+        endpoint,
+        target,
+        multimodal_init,
+        post_fn=_local_post_json,
+    )
+    assert response["result"]
+    assert session_id
+    startup.post_http_jsonrpc_with_session(
+        endpoint,
+        target,
+        startup.initialized_notification(),
+        session_id=session_id,
+        post_fn=_local_post_json,
+    )
+    return session_id
+
+
 def _tools_list(endpoint: str, session_id: str) -> list[dict[str, Any]]:
     target = startup.parse_http_endpoint(endpoint)
     response, _ = startup.post_http_jsonrpc_with_session(
@@ -432,3 +463,55 @@ def test_secret_never_in_e2e_logs(tmp_path: Path) -> None:
 
     assert BROKEN_CANARY not in stdout
     assert BROKEN_CANARY not in stderr
+
+
+# =============================================================================
+# Multimodal no-config e2e tests (Task 3)
+# =============================================================================
+
+
+def test_multimodal_client_sees_read_image_by_default(tmp_path: Path) -> None:
+    """Multimodal-capable client sees read_image with no .agent/mcp.toml media opt-in.
+
+    This is the canonical no-config acceptance proof: when no [media] section exists,
+    media support is enabled by default and multimodal clients see read_image.
+    """
+    # NOTE: No _write_mcp_toml call - using bare workspace with no .agent/mcp.toml
+    with _run_server(tmp_path) as server:
+        session_id = _initialize_session_multimodal(server.endpoint)
+        tool_names = {tool["name"] for tool in _tools_list(server.endpoint, session_id)}
+
+    assert "read_image" in tool_names
+
+
+def test_text_only_client_does_not_see_read_image_by_default(tmp_path: Path) -> None:
+    """Text-only client does NOT see read_image even with default media config.
+
+    Client capability filtering ensures text-only clients remain unaffected.
+    """
+    # NOTE: No _write_mcp_toml call - using bare workspace with no .agent/mcp.toml
+    with _run_server(tmp_path) as server:
+        session_id = _initialize_session(server.endpoint)
+        tool_names = {tool["name"] for tool in _tools_list(server.endpoint, session_id)}
+
+    assert "read_image" not in tool_names
+
+
+def test_explicit_media_disabled_removes_read_image(tmp_path: Path) -> None:
+    """Explicit [media] enabled = false removes read_image even for multimodal client.
+
+    Opt-out via config still works as expected.
+    """
+    _write_mcp_toml(
+        tmp_path,
+        """
+        [media]
+        enabled = false
+        """,
+    )
+
+    with _run_server(tmp_path) as server:
+        session_id = _initialize_session_multimodal(server.endpoint)
+        tool_names = {tool["name"] for tool in _tools_list(server.endpoint, session_id)}
+
+    assert "read_image" not in tool_names

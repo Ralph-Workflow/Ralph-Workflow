@@ -434,3 +434,87 @@ def test_capability_class_commit_suppresses_web_search_when_enabled(
     # drain_class='planning' wouldn't normally suppress them.
     assert "web.search" not in plan.capabilities
     assert "web.visit" not in plan.capabilities
+
+
+class TestMediaReadGrantedToAllDrainsByDefault:
+    """media.read is granted to ALL drains when media.enabled defaults to true.
+
+    This includes commit-class drains (commit, development_commit, review_commit).
+    Web search/visit remain restricted on commit drains per existing behavior.
+    """
+
+    @pytest.mark.parametrize(
+        "drain",
+        [
+            "planning",
+            "development",
+            "development_analysis",
+            "development_commit",
+            "analysis",
+            "review",
+            "review_analysis",
+            "review_commit",
+            "fix",
+            "commit",
+        ],
+    )
+    def test_media_read_granted_to_all_drains_under_default_config(
+        self,
+        isolated_home: Path,
+        tmp_path: Path,
+        drain: str,
+    ) -> None:
+        """Under default config (no [media] section), media.read is present for all drains."""
+        del isolated_home
+
+        plan = build_session_mcp_plan(
+            transport=AgentTransport.CLAUDE,
+            drain=drain,
+            workspace_path=tmp_path,
+            agents_policy=_DEFAULT_AGENTS_POLICY,
+        )
+
+        assert "media.read" in plan.capabilities
+
+
+class TestMediaReadExplicitOptOut:
+    """Explicit [media] enabled = false removes media.read for all drains."""
+
+    @pytest.mark.parametrize(
+        "drain",
+        [
+            "planning",
+            "development",
+            "development_analysis",
+            "development_commit",
+            "analysis",
+            "review",
+            "review_analysis",
+            "review_commit",
+            "fix",
+            "commit",
+        ],
+    )
+    def test_media_read_absent_when_disabled(
+        self,
+        isolated_home: Path,
+        tmp_path: Path,
+        drain: str,
+    ) -> None:
+        """When [media] enabled = false, media.read is absent for all drains."""
+        del isolated_home
+        agent_dir = tmp_path / ".agent"
+        agent_dir.mkdir()
+        (agent_dir / "mcp.toml").write_text(
+            "[media]\nenabled = false\n",
+            encoding="utf-8",
+        )
+
+        plan = build_session_mcp_plan(
+            transport=AgentTransport.CLAUDE,
+            drain=drain,
+            workspace_path=tmp_path,
+            agents_policy=_DEFAULT_AGENTS_POLICY,
+        )
+
+        assert "media.read" not in plan.capabilities

@@ -113,7 +113,7 @@ Ralph uses an internal capability vocabulary for session access control:
 | `upstream.tool_use` | `upstream.tool_use` | Use upstream MCP tools |
 | `web.search` | `web.search` | Search the web |
 | `web.visit` | `web.visit` | Fetch and extract text from a URL (config opt-in; all drains) |
-| `media.read` | `media.read` | Read image files (opt-in) |
+| `media.read` | `media.read` | Read image files (default-on) |
 
 ### MCP Capability Mapping
 
@@ -147,20 +147,30 @@ MCP capabilities are mapped to Ralph capabilities:
 
 The `MediaRead` capability gates access to the `read_image` tool. It is:
 
-- **Opt-in** via `media.enabled = true` in `mcp.toml`
+- **Default-on** via `media.enabled = true` (or omitted, as it is the default)
+- **Can be disabled** via `media.enabled = false` in `mcp.toml`
 - **Suppressed from clients** that don't declare multimodal support in `initialize`
 - **Enforced at runtime** via session capability check
 
 ## Multimodal MCP Support
 
-Ralph supports image-reading MCP tools as an opt-in, capability-gated feature.
+Ralph supports image-reading MCP tools as a default-on, capability-gated feature.
 
-### Enabling Multimodal Support
+### Disabling Multimodal Support
+
+To disable multimodal support:
+
+```toml
+[media]
+enabled = false
+```
+
+To customize without disabling (or omit `enabled` as it defaults to true):
 
 ```toml
 [media]
 enabled = true
-max_inline_bytes = 5242880  # 5 MiB default
+max_inline_bytes = 10485760  # 10 MiB to allow larger images
 ```
 
 ### Client Capability Filtering
@@ -176,7 +186,7 @@ If none are present, the client is treated as text-only.
 When building `tools/list` responses, Ralph filters out tools marked `is_multimodal=True` for text-only clients. This ensures:
 
 1. **Backward compatibility** — existing text-only clients never see multimodal tools
-2. **Opt-in visibility** — multimodal tools only appear when the client declares support
+2. **Client-gated visibility** — multimodal tools only appear when the client declares support
 3. **Consistent wire format** — text content blocks remain `{"type": "text", "text": ...}`
 
 ### Upstream Multimodal Rejection Policy

@@ -102,6 +102,15 @@
 # extract_links = false
 # @EXAMPLE-END
 
+# Multimodal image reading support (read_image tool).
+# ENABLED BY DEFAULT - no config required for basic use.
+# To disable or customize:
+# @EXAMPLE-START
+# [media]
+# enabled = false  # set to false to opt out
+# max_inline_bytes = 5242880  # 5 MiB default; increase for larger images
+# @EXAMPLE-END
+
 # Crawl4AI upstream MCP server for advanced web crawling (multi-page, JS-rendered).
 # Install and start: pip install crawl4ai && crawl4ai-mcp  (default port 11235)
 # See https://docs.crawl4ai.com/mcp/server/ for full setup and security notes.
