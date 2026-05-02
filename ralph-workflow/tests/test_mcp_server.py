@@ -1063,3 +1063,125 @@ class TestMultimodalToolVisibility:
         # read_image should NOT be in either (both text-only clients)
         assert "read_image" not in names1
         assert "read_image" not in names2
+
+    def test_multimodal_client_sees_read_image_by_default(self, tmp_path: Path) -> None:
+        """When using default McpConfig (media enabled by default) and client declares
+        multimodal support, read_image IS visible without any [media] config section."""
+        session = AgentSession(
+            session_id="session-default-multimodal",
+            run_id="run-default-multimodal",
+            drain="development",
+            capabilities={
+                "WorkspaceRead",
+                "ArtifactSubmit",
+                "RunReportProgress",
+                "media.read",
+            },
+        )
+        workspace = FsWorkspace(tmp_path)
+        config = McpConfig()  # Default: media.enabled = True
+        bridge = server_runtime.build_ralph_tool_registry(session, workspace, mcp_config=config)
+        mcp_server = server_runtime.McpServer(session, workspace, bridge)
+
+        # Initialize WITH multimodal capability declaration
+        _, state = mcp_server.handle_request(
+            server_runtime.JsonRpcRequest(
+                jsonrpc="2.0",
+                method="initialize",
+                msg_id=1,
+                params={"capabilities": {"image": {}, "media": {}}},
+            ),
+            server_runtime.ServerState.UNINITIALIZED,
+        )
+        tools_response, _ = mcp_server.handle_request(
+            server_runtime.JsonRpcRequest(jsonrpc="2.0", method="tools/list", msg_id=2),
+            state,
+        )
+
+        assert tools_response is not None
+        tools_result = cast("dict[str, object]", tools_response.result)
+        tool_names = {
+            cast("str", t["name"]) for t in cast("list[dict[str, object]]", tools_result["tools"])
+        }
+        # Multimodal-capable client SHOULD see read_image with default config
+        assert "read_image" in tool_names
+
+    def test_text_only_client_does_not_see_read_image_by_default(self, tmp_path: Path) -> None:
+        """When using default McpConfig (media enabled by default) but client has no
+        multimodal capability, read_image remains hidden."""
+        session = AgentSession(
+            session_id="session-default-textonly",
+            run_id="run-default-textonly",
+            drain="development",
+            capabilities={"WorkspaceRead", "ArtifactSubmit", "RunReportProgress", "media.read"},
+        )
+        workspace = FsWorkspace(tmp_path)
+        config = McpConfig()  # Default: media.enabled = True
+        bridge = server_runtime.build_ralph_tool_registry(session, workspace, mcp_config=config)
+        mcp_server = server_runtime.McpServer(session, workspace, bridge)
+
+        # Initialize with NO multimodal capability in client declaration
+        _, state = mcp_server.handle_request(
+            server_runtime.JsonRpcRequest(
+                jsonrpc="2.0",
+                method="initialize",
+                msg_id=1,
+                params={"capabilities": {}},
+            ),
+            server_runtime.ServerState.UNINITIALIZED,
+        )
+        tools_response, _ = mcp_server.handle_request(
+            server_runtime.JsonRpcRequest(jsonrpc="2.0", method="tools/list", msg_id=2),
+            state,
+        )
+
+        assert tools_response is not None
+        tools_result = cast("dict[str, object]", tools_response.result)
+        tool_names = {
+            cast("str", t["name"]) for t in cast("list[dict[str, object]]", tools_result["tools"])
+        }
+        # Text-only client should NOT see read_image even with default media config
+        assert "read_image" not in tool_names
+
+    def test_multimodal_client_does_not_see_read_image_when_explicitly_disabled(
+        self, tmp_path: Path
+    ) -> None:
+        """When media.enabled=false explicitly, read_image is absent even for multimodal client."""
+        session = AgentSession(
+            session_id="session-explicit-off",
+            run_id="run-explicit-off",
+            drain="development",
+            capabilities={
+                "WorkspaceRead",
+                "ArtifactSubmit",
+                "RunReportProgress",
+                "media.read",
+            },
+        )
+        workspace = FsWorkspace(tmp_path)
+        config = McpConfig(media=MediaConfig(enabled=False))
+        bridge = server_runtime.build_ralph_tool_registry(session, workspace, mcp_config=config)
+        mcp_server = server_runtime.McpServer(session, workspace, bridge)
+
+        # Initialize WITH multimodal capability declaration
+        _, state = mcp_server.handle_request(
+            server_runtime.JsonRpcRequest(
+                jsonrpc="2.0",
+                method="initialize",
+                msg_id=1,
+                params={"capabilities": {"image": {}, "media": {}}},
+            ),
+            server_runtime.ServerState.UNINITIALIZED,
+        )
+        tools_response, _ = mcp_server.handle_request(
+            server_runtime.JsonRpcRequest(jsonrpc="2.0", method="tools/list", msg_id=2),
+            state,
+        )
+
+        assert tools_response is not None
+        tools_result = cast("dict[str, object]", tools_response.result)
+        tool_names = {
+            cast("str", t["name"]) for t in cast("list[dict[str, object]]", tools_result["tools"])
+        }
+        # Multimodal-capable client should NOT see read_image when media is explicitly disabled
+        assert "read_image" not in tool_names

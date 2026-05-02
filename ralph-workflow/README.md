@@ -343,24 +343,31 @@ See [`docs/mcp/web-visit.md`](docs/mcp/web-visit.md) for the full reference.
 For multi-page or JavaScript-rendered crawling, wire in [Crawl4AI](https://docs.crawl4ai.com/)
 as an upstream MCP server — see [`docs/mcp/mcp-servers.md`](docs/mcp/mcp-servers.md).
 
-## Multimodal MCP support (opt-in)
+## Multimodal MCP support (default-on)
 
-Ralph Workflow supports image-reading MCP tools via `read_image`. This feature is disabled by default.
+Ralph Workflow supports image-reading MCP tools via `read_image`. This feature is **enabled by default**.
 
-Enable it in `.agent/mcp.toml`:
+To disable it, add to `.agent/mcp.toml`:
 
 ```toml
 [media]
-enabled = true
-max_inline_bytes = 5242880  # 5 MiB default
+enabled = false
 ```
 
-When enabled:
+When enabled (default):
 - supported formats are PNG, JPEG, GIF, and WebP
 - `read_image` only appears for clients that declare multimodal/image/media capability
 - text-only clients keep the pre-multimodal tool set unchanged
 - image payloads are returned as MCP image content blocks with base64-encoded data
 - `max_inline_bytes` enforces the inline size guard (5 MiB by default)
+
+To customize, add to `.agent/mcp.toml`:
+
+```toml
+[media]
+enabled = true  # (default, can be omitted)
+max_inline_bytes = 10485760  # 10 MiB to allow larger images
+```
 
 ### Compatibility contract
 

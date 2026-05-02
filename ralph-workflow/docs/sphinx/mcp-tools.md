@@ -53,7 +53,7 @@ Drain class groupings used in this table:
 | `read_env` | `env.read` | write drains | Read an environment variable |
 | `web_search` | `web.search` | non-analysis/commit (config opt-in) | Search the web via configured backends |
 | `visit_url` | `web.visit` | all (config opt-in) | Fetch and extract text from a single URL |
-| `read_image` | `media.read` | opt-in via mcp.toml | Read an image file (multimodal opt-in) |
+| `read_image` | `media.read` | all (default-on; opt-out via mcp.toml) | Read an image file (multimodal default-on) |
 
 Claude exposes every tool as `mcp__ralph__<tool>` (e.g., `mcp__ralph__read_file`).
 See `ralph.mcp.tools.names` for the canonical name constants.
@@ -206,7 +206,7 @@ callable. The capability strings are:
 | `upstream.tool_use` | Upstream proxy tools (granted when upstream servers are configured) |
 | `web.search` | `web_search` (config opt-in; restricted to non-analysis/commit drains) |
 | `web.visit` | `visit_url` (config opt-in; all drains) |
-| `media.read` | `read_image` (opt-in via `mcp.toml`) |
+| `media.read` | `read_image` (default-on; opt-out via `mcp.toml`) |
 
 See `ralph.mcp.protocol.capability_mapping` for the full capability-to-tool mapping and
 `ralph-workflow/ralph/mcp/ARCHITECTURE.md` for the capability system design.

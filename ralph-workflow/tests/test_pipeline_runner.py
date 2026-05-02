@@ -1418,6 +1418,7 @@ class TestExecuteAgentEffect:
             "env.read",
             "web.search",
             "web.visit",
+            "media.read",
         }
 
     def test_custom_phase_uses_bound_drain_capabilities(self, monkeypatch) -> None:
@@ -1473,6 +1474,7 @@ class TestExecuteAgentEffect:
             "env.read",
             "web.search",
             "web.visit",
+            "media.read",
         }
 
     def test_returns_failure_when_agent_missing(self) -> None:

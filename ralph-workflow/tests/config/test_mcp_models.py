@@ -121,9 +121,9 @@ class TestMediaConfig:
     """Tests for MediaConfig model (Task 4)."""
 
     def test_media_config_defaults(self) -> None:
-        """media config defaults to disabled with sane max_inline_bytes."""
+        """media config defaults to enabled with sane max_inline_bytes."""
         config = MediaConfig()
-        assert config.enabled is False
+        assert config.enabled is True
         assert config.max_inline_bytes == DEFAULT_MAX_INLINE_BYTES
 
     def test_media_config_enabled_true(self) -> None:
@@ -156,11 +156,11 @@ class TestMcpConfigMediaIntegration:
     """Tests for media config integration in McpConfig (Task 4)."""
 
     def test_mcp_config_has_media_field_with_default(self) -> None:
-        """McpConfig has media field that defaults to disabled MediaConfig."""
+        """McpConfig has media field that defaults to enabled MediaConfig."""
         config = McpConfig()
         assert hasattr(config, "media")
         assert isinstance(config.media, MediaConfig)
-        assert config.media.enabled is False
+        assert config.media.enabled is True
         assert config.media.max_inline_bytes == DEFAULT_MAX_INLINE_BYTES
 
     def test_mcp_config_media_enabled_roundtrip(self) -> None:
@@ -171,7 +171,7 @@ class TestMcpConfigMediaIntegration:
         assert roundtrip.media.max_inline_bytes == _TEN_MIB
 
     def test_mcp_config_without_media_section_yields_default(self) -> None:
-        """Parsing mcp.toml without [media] section yields disabled media config."""
+        """Parsing mcp.toml without [media] section yields enabled media config."""
         config = McpConfig()
-        assert config.media.enabled is False
+        assert config.media.enabled is True
         assert config.media.max_inline_bytes == DEFAULT_MAX_INLINE_BYTES

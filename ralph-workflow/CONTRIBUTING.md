@@ -192,12 +192,12 @@ When modifying the MCP tool surface, maintain these invariants:
 
 All existing MCP tools (`read_file`, `write_file`, `list_directory`, etc.) must continue returning text content blocks with the same JSON shape. Any change that alters the wire format of existing text tools is a breaking change.
 
-### Multimodal support is opt-in
+### Multimodal support is default-on with explicit opt-out
 
 The `read_image` tool and associated `MediaRead` capability:
 
-- Default to disabled (`media.enabled = false`)
-- Require explicit opt-in via `[media]` section in `mcp.toml`
+- Default to enabled (`media.enabled = true`)
+- Can be disabled via `[media]` section in `mcp.toml` with `enabled = false`
 - Are gated at registration time (tool only registered when `media.enabled = true`)
 
 ### Client capability filtering

@@ -360,16 +360,34 @@ def test_load_mcp_config_media_with_custom_max_inline_bytes(
     assert config.media.max_inline_bytes == DEFAULT_MAX_INLINE_BYTES * 2
 
 
-def test_load_mcp_config_media_disabled_by_default(
+def test_load_mcp_config_media_enabled_by_default(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """When no [media] section is present, media is disabled by default."""
+    """When no [media] section is present, media is enabled by default."""
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
     cfg = tmp_path / "mcp.toml"
     cfg.write_text(
         textwrap.dedent("""\
             [web_search]
             enabled = true
+        """),
+        encoding="utf-8",
+    )
+    config = load_mcp_config(config_path=cfg)
+    assert config.media.enabled is True
+    assert config.media.max_inline_bytes == DEFAULT_MAX_INLINE_BYTES
+
+
+def test_load_mcp_config_media_explicit_false_override(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Explicit [media] enabled = false disables media despite default being true."""
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+    cfg = tmp_path / "mcp.toml"
+    cfg.write_text(
+        textwrap.dedent("""\
+            [media]
+            enabled = false
         """),
         encoding="utf-8",
     )
