@@ -7,9 +7,11 @@ from git import Repo as GitRepo
 
 import ralph.prompts.materialize as materialize_module
 from ralph.pipeline.cycle_baseline import write_cycle_baseline
+from ralph.pipeline.runner import _clear_fresh_planning_files_if_needed
 from ralph.policy.loader import load_policy
 from ralph.prompts.materialize import materialize_prompt_for_phase, prompt_file_for_phase
 from ralph.prompts.types import SessionCapabilities, SessionDrain
+from ralph.workspace.fs import FsWorkspace
 from ralph.workspace.memory import MemoryWorkspace
 
 PLANNING_EDIT_GET_DRAFT_TEXT = (
@@ -187,6 +189,43 @@ def test_materialize_fresh_planning_clears_previous_plan_context(tmp_path: Path)
     assert workspace.exists(".agent/artifacts/plan.json") is False
     assert workspace.exists(".agent/artifacts/.plan_draft.json") is False
     assert workspace.exists(".agent/PLAN.md") is False
+
+
+def test_clear_fresh_planning_files_removes_stale_plan_and_analysis_artifacts(
+    tmp_path: Path,
+) -> None:
+    policy = load_policy(tmp_path / ".agent")
+    workspace = FsWorkspace(tmp_path)
+    (tmp_path / ".agent" / "artifacts").mkdir(parents=True, exist_ok=True)
+    (tmp_path / ".agent" / "artifacts" / "plan.json").write_text("{}", encoding="utf-8")
+    (tmp_path / ".agent" / "artifacts" / ".plan_draft.json").write_text(
+        "{}",
+        encoding="utf-8",
+    )
+    (tmp_path / ".agent" / "PLAN.md").write_text("old plan", encoding="utf-8")
+    (
+        tmp_path / ".agent" / "artifacts" / "planning_analysis_decision.json"
+    ).write_text("{}", encoding="utf-8")
+    (tmp_path / ".agent" / "PLANNING_ANALYSIS_DECISION.md").write_text(
+        "old feedback",
+        encoding="utf-8",
+    )
+
+    _clear_fresh_planning_files_if_needed(
+        workspace,
+        "planning",
+        state=None,
+        policy_bundle=policy,
+    )
+
+    assert (tmp_path / ".agent" / "artifacts" / "plan.json").exists() is False
+    assert (tmp_path / ".agent" / "artifacts" / ".plan_draft.json").exists() is False
+    assert (tmp_path / ".agent" / "PLAN.md").exists() is False
+    assert (
+        tmp_path / ".agent" / "artifacts" / "planning_analysis_decision.json"
+    ).exists() is False
+    assert (tmp_path / ".agent" / "PLANNING_ANALYSIS_DECISION.md").exists() is False
+
 
 
 def test_materialize_planning_loopback_uses_edit_prompt_and_analysis_feedback_handoff(

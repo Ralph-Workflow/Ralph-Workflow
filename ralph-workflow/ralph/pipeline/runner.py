@@ -52,6 +52,8 @@ from ralph.mcp.artifacts.commit_message import (
     delete_commit_message_artifacts,
     read_commit_message_from_path,
 )
+from ralph.mcp.artifacts.handoffs import handoff_path_for_artifact
+from ralph.mcp.artifacts.plan import PLAN_ARTIFACT_PATH, PLAN_DRAFT_PATH
 from ralph.mcp.protocol.capability_mapping import DrainClass
 from ralph.mcp.protocol.env import AGENT_LABEL_SCOPE_ENV
 from ralph.mcp.protocol.session import MCP_ENDPOINT_ENV, MCP_RUN_ID_ENV, AgentSession
@@ -1801,6 +1803,63 @@ def _handle_inline_effect(  # noqa: PLR0913
     return None
 
 
+def _is_analysis_loopback_into_phase(
+    *,
+    phase: str,
+    previous_phase: str | None,
+    policy_bundle: PolicyBundle | None,
+) -> bool:
+    if previous_phase is None or policy_bundle is None:
+        return False
+    previous_phase_def = policy_bundle.pipeline.phases.get(previous_phase)
+    return bool(
+        previous_phase_def is not None
+        and previous_phase_def.role == "analysis"
+        and previous_phase_def.transitions.on_loopback == phase
+    )
+
+
+
+def _clear_fresh_planning_files_if_needed(
+    workspace: FsWorkspace,
+    phase: str,
+    *,
+    state: PipelineState | None,
+    policy_bundle: PolicyBundle | None,
+) -> None:
+    if phase != "planning":
+        return
+    previous_phase = state.previous_phase if state is not None else None
+    if _is_analysis_loopback_into_phase(
+        phase=phase,
+        previous_phase=previous_phase,
+        policy_bundle=policy_bundle,
+    ):
+        return
+    for path in (PLAN_ARTIFACT_PATH, PLAN_DRAFT_PATH):
+        if workspace.exists(path):
+            workspace.remove(path)
+    handoff_path = handoff_path_for_artifact("plan")
+    if handoff_path and workspace.exists(handoff_path):
+        workspace.remove(handoff_path)
+    if policy_bundle is None:
+        return
+    required_artifacts = build_required_artifacts(policy_bundle.artifacts)
+    for phase_def in policy_bundle.pipeline.phases.values():
+        if phase_def.role != "analysis" or phase_def.transitions.on_loopback != phase:
+            continue
+        drain = phase_def.drain
+        required_artifact = required_artifacts.get(drain)
+        if required_artifact is None:
+            continue
+        if workspace.exists(required_artifact.json_path):
+            workspace.remove(required_artifact.json_path)
+        analysis_handoff = handoff_path_for_artifact(required_artifact.artifact_type)
+        if analysis_handoff and workspace.exists(analysis_handoff):
+            workspace.remove(analysis_handoff)
+
+
+
 def _materialize_prepared_prompt(
     effect: PreparePromptEffect,
     pipeline_policy: PipelinePolicy,
@@ -2620,6 +2679,12 @@ def _execute_agent_effect(  # noqa: PLR0913, PLR0915
             workspace = FsWorkspace(
                 workspace_scope.root,
                 allowed_roots=workspace_scope.allowed_roots,
+            )
+            _clear_fresh_planning_files_if_needed(
+                workspace,
+                effect.phase,
+                state=state,
+                policy_bundle=policy_bundle,
             )
             _clear_phase_output_artifacts(
                 workspace,
