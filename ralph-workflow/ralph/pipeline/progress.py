@@ -56,6 +56,22 @@ def review_issues_found(state: PipelineState, policy: PipelinePolicy | None = No
     return True
 
 
+def resolve_analysis_cap(
+    state: PipelineState,
+    iteration_field: str,
+    policy: PipelinePolicy,
+    *,
+    fallback_max: int,
+) -> int:
+    """Resolve the effective analysis cap from canonical state/policy sources."""
+    cap_value = state.loop_caps.get(iteration_field)
+    if cap_value is not None:
+        return cap_value
+    if iteration_field in policy.loop_counters:
+        return policy.loop_counters[iteration_field].default_max
+    return fallback_max
+
+
 def advance_phase(
     state: PipelineState,
     target_phase: PipelinePhase,
@@ -111,9 +127,16 @@ def apply_analysis_loopback(
     state: PipelineState,
     advanced_state: PipelineState,
     iteration_field: str,
+    *,
+    max_iterations: int,
+    review_outcome: str | None = None,
 ) -> PipelineState:
-    """Return advanced_state unchanged; the caller applies the clamped iteration value."""
-    return advanced_state
+    """Apply canonical loopback bookkeeping for an analysis phase."""
+    clamped = max(0, min(state.get_loop_iteration(iteration_field) + 1, max_iterations))
+    result = advanced_state.with_loop_iteration(iteration_field, clamped)
+    if review_outcome is not None:
+        result = result.copy_with(review_outcome=review_outcome)
+    return result
 
 
 def apply_commit_outcome(

@@ -504,22 +504,20 @@ def _handle_capped_analysis_loopback_policy_driven(
         return _resolve_or_terminal(state, "loopback", policy, "analysis loopback")
 
     iteration_field: str = loop_policy.iteration_state_field
-    current_iteration = state.get_loop_iteration(iteration_field)
-    _cap_value: int | None = state.loop_caps.get(iteration_field)
-    _cap: int = _cap_value if _cap_value is not None else (
-        policy.loop_counters[iteration_field].default_max
-        if iteration_field in policy.loop_counters
-        else loop_policy.max_iterations
+    max_iterations = progress.resolve_analysis_cap(
+        state,
+        iteration_field,
+        policy,
+        fallback_max=loop_policy.max_iterations,
     )
-    max_iterations: int = _cap
     # Apply progress tracking up front so it is preserved even if routing fails.
-    clamped = max(0, min(current_iteration + 1, max_iterations))
-    progress_state = progress.apply_analysis_loopback(state, state, iteration_field)
-    progress_state = progress_state.with_loop_iteration(iteration_field, clamped)
-    if loop_policy.loopback_review_outcome is not None:
-        progress_state = progress_state.copy_with(
-            review_outcome=loop_policy.loopback_review_outcome
-        )
+    progress_state = progress.apply_analysis_loopback(
+        state,
+        state,
+        iteration_field,
+        max_iterations=max_iterations,
+        review_outcome=loop_policy.loopback_review_outcome,
+    )
 
     # Routing target comes from transitions.on_loopback only — no decision-key lookup.
     try:
@@ -585,21 +583,21 @@ def _handle_analysis_decision(
             progress_state = progress_state.with_loop_iteration(iteration_field, 0)
         else:
             # Increment counter on loopback (e.g., 'request_changes' decision).
-            current = state.get_loop_iteration(iteration_field)
-            _cap_value: int | None = state.loop_caps.get(iteration_field)
-            max_iter: int = _cap_value if _cap_value is not None else (
-                policy.loop_counters[iteration_field].default_max
-                if iteration_field in policy.loop_counters
-                else phase_def.loop_policy.max_iterations
+            max_iter = progress.resolve_analysis_cap(
+                state,
+                iteration_field,
+                policy,
+                fallback_max=phase_def.loop_policy.max_iterations,
             )
-            clamped = max(0, min(current + 1, max_iter))
-            progress_state = progress_state.with_loop_iteration(iteration_field, clamped)
             # Apply loopback_review_outcome when configured and this is a loopback route.
             lp = phase_def.loop_policy
-            if lp.loopback_review_outcome is not None:
-                progress_state = progress_state.copy_with(
-                    review_outcome=lp.loopback_review_outcome
-                )
+            progress_state = progress.apply_analysis_loopback(
+                state,
+                progress_state,
+                iteration_field,
+                max_iterations=max_iter,
+                review_outcome=lp.loopback_review_outcome,
+            )
 
     # Resolve target: route to terminal failure when target is the failed route,
     # otherwise advance to the declared target.
@@ -612,13 +610,14 @@ def _handle_analysis_decision(
         )
         return _enter_failed_recovery(progress_state, failure_reason, policy)
 
+    advanced_state, advanced_target = _prepare_phase_advance(progress_state, route.target, policy)
     logger.bind(component="policy.routing").info(
         explain_routing_decision(
-            event.phase, route.target, "decision", event.decision
+            event.phase, advanced_target, "decision", event.decision
         )
     )
-    new_state, effects = _advance_phase(progress_state, route.target, policy)
-    return _restore_work_units(state, new_state), effects
+    new_state = progress.advance_phase(advanced_state, advanced_target, policy=policy)
+    return _restore_work_units(state, new_state), []
 
 
 def _handle_review_clean(
@@ -846,11 +845,11 @@ def _resolve_exhausted_analysis_target(
 
         iteration_field = phase_def.loop_policy.iteration_state_field
         current_iteration = current_state.get_loop_iteration(iteration_field)
-        cap_value = current_state.loop_caps.get(iteration_field)
-        max_iterations = cap_value if cap_value is not None else (
-            policy.loop_counters[iteration_field].default_max
-            if iteration_field in policy.loop_counters
-            else phase_def.loop_policy.max_iterations
+        max_iterations = progress.resolve_analysis_cap(
+            current_state,
+            iteration_field,
+            policy,
+            fallback_max=phase_def.loop_policy.max_iterations,
         )
         if current_iteration < max_iterations:
             return current_state, current_target
@@ -861,6 +860,17 @@ def _resolve_exhausted_analysis_target(
         current_target = resolve_next_phase(current_target, "success", policy)
 
     return current_state, current_target
+
+
+def _prepare_phase_advance(
+    state: PipelineState,
+    target_phase: PipelinePhase,
+    policy: PipelinePolicy | None = None,
+) -> tuple[PipelineState, PipelinePhase]:
+    """Resolve the effective phase target before applying the transition."""
+    if policy is None:
+        return state, target_phase
+    return _resolve_exhausted_analysis_target(state, target_phase, policy)
 
 
 def _advance_phase(
@@ -878,12 +888,7 @@ def _advance_phase(
     Returns:
         Tuple of (new_state, effects).
     """
-    advanced_state = state
-    advanced_target = target_phase
-    if policy is not None:
-        advanced_state, advanced_target = _resolve_exhausted_analysis_target(
-            state, target_phase, policy
-        )
+    advanced_state, advanced_target = _prepare_phase_advance(state, target_phase, policy)
     new_state = progress.advance_phase(advanced_state, advanced_target, policy=policy)
     return new_state, []
 
@@ -911,10 +916,12 @@ def _resolve_or_terminal(
             f"Routing error after {label} in '{state.phase}': {exc}",
             policy,
         )
+    advanced_state, advanced_target = _prepare_phase_advance(state, next_phase, policy)
     logger.bind(component="policy.routing").info(
-        explain_routing_decision(state.phase, next_phase, "signal", signal)
+        explain_routing_decision(state.phase, advanced_target, "signal", signal)
     )
-    return _advance_phase(state, next_phase, policy)
+    new_state = progress.advance_phase(advanced_state, advanced_target, policy=policy)
+    return new_state, []
 
 
 def _handle_fan_out_started(state: PipelineState) -> tuple[PipelineState, list[Effect]]:

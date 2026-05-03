@@ -61,6 +61,7 @@ from ralph.mcp.session_plan import build_session_mcp_plan
 from ralph.phases import PhaseContext, handle_phase, register_role_handlers
 from ralph.phases.required_artifacts import build_required_artifacts
 from ralph.pipeline import checkpoint as ckpt
+from ralph.pipeline import progress
 from ralph.pipeline.cycle_baseline import (
     clear_cycle_baseline,
     read_cycle_baseline,
@@ -783,21 +784,13 @@ def _resolve_analysis_cap(
     pipeline_policy: PipelinePolicy,
     phase_def_loop_policy_max_iterations: int,
 ) -> int:
-    """Resolve the analysis loop iteration cap using the correct fallback order.
-
-    Resolution order:
-    1. state.loop_caps[field] when present
-    2. pipeline_policy.loop_counters[field].default_max when declared
-    3. phase_def_loop_policy_max_iterations as last fallback
-
-    This matches the reducer's cap resolution so runner display is consistent.
-    """
-    cap_value = state.loop_caps.get(iteration_field)
-    if cap_value is not None:
-        return cap_value
-    if iteration_field in pipeline_policy.loop_counters:
-        return pipeline_policy.loop_counters[iteration_field].default_max
-    return phase_def_loop_policy_max_iterations
+    """Resolve the analysis loop iteration cap from canonical progress state."""
+    return progress.resolve_analysis_cap(
+        state,
+        iteration_field,
+        pipeline_policy,
+        fallback_max=phase_def_loop_policy_max_iterations,
+    )
 
 
 def _is_analysis_loopback(previous_phase_def: PhaseDefinition, current_phase: str) -> bool:

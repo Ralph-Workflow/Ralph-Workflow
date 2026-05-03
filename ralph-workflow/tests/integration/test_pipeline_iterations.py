@@ -7,6 +7,7 @@ real subprocesses.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -18,8 +19,8 @@ from ralph.display.context import make_display_context
 from ralph.pipeline import runner
 from ralph.pipeline.checkpoint import load as ckpt_load
 from ralph.pipeline.checkpoint import save as ckpt_save
-from ralph.pipeline.effects import CommitEffect, InvokeAgentEffect
-from ralph.pipeline.events import PipelineEvent
+from ralph.pipeline.effects import CommitEffect, ExitSuccessEffect, InvokeAgentEffect
+from ralph.pipeline.events import AnalysisDecisionEvent, PipelineEvent
 from ralph.pipeline.state import PipelineState
 from ralph.policy.loader import load_policy
 from ralph.workspace.scope import WorkspaceScope
@@ -35,6 +36,7 @@ DEVELOPMENT_CYCLES_TWO = 2
 DEVELOPMENT_CYCLES_THREE = 3
 REVIEW_CYCLES_TWO = 2
 MAX_REVIEW_ANALYSIS_ITERATIONS = 2
+MAX_PLANNING_ANALYSIS_ITERATIONS = 3
 
 
 def _install_runner_display_context(monkeypatch: MonkeyPatch) -> None:
@@ -120,6 +122,29 @@ class ReviewCommitSkippedInvoker(MockAgentInvoker):
         return PipelineEvent.COMMIT_SUCCESS
 
 
+class PlanningAnalysisRequestChangesOnceInvoker(MockAgentInvoker):
+    """Request planning changes once, then approve if planning_analysis is re-entered."""
+
+    def __init__(self, workspace: MemoryWorkspace) -> None:
+        super().__init__(workspace)
+        self.last_phase: str | None = None
+        self._planning_analysis_calls = 0
+
+    def invoke(self, agent_name: str, phase: str) -> PipelineEvent:
+        self.last_phase = phase
+        return super().invoke(agent_name, phase)
+
+    def analysis_event_for(self, phase: str) -> AnalysisDecisionEvent | PipelineEvent:
+        if phase == "planning_analysis":
+            self._planning_analysis_calls += 1
+            if self._planning_analysis_calls == 1:
+                return AnalysisDecisionEvent(
+                    phase="planning_analysis", decision="request_changes"
+                )
+            return AnalysisDecisionEvent(phase="planning_analysis", decision="completed")
+        return PipelineEvent.ANALYSIS_SUCCESS
+
+
 def _config() -> UnifiedConfig:
     return UnifiedConfig()
 
@@ -149,7 +174,7 @@ def _run_pipeline(  # noqa: PLR0913
 
     def fake_phase_event_after_agent_run(*, effect, **_kwargs):
         analysis_event_for = getattr(mock_agent_invoker, "analysis_event_for", None)
-        analysis_phases = {"development_analysis", "review_analysis"}
+        analysis_phases = {"planning_analysis", "development_analysis", "review_analysis"}
         if callable(analysis_event_for) and effect.phase in analysis_phases:
             return analysis_event_for(effect.phase)
         return PipelineEvent.AGENT_SUCCESS
@@ -390,6 +415,317 @@ def test_skipped_review_commit_preserves_outer_progress_in_persisted_state(
     assert final_state.phase == "complete"
     assert final_state.get_outer_progress("reviewer_pass") == 0
     assert final_state.get_loop_iteration("review_analysis_iteration") == 0
+
+
+def test_planning_analysis_cap_skips_reentry_and_enters_development(
+    monkeypatch: MonkeyPatch,
+    tmp_path: Path,
+    memory_workspace: MemoryWorkspace,
+) -> None:
+    invoker = PlanningAnalysisRequestChangesOnceInvoker(memory_workspace)
+    policy_bundle = load_policy(DEFAULT_POLICY_DIR)
+    initial_state = PipelineState.from_policy(
+        policy_bundle.pipeline,
+        budget_caps={"iteration": 1, "reviewer_pass": 0},
+        budget_remaining={"iteration": 1, "reviewer_pass": 0},
+        loop_caps={
+            "planning_analysis_iteration": 1,
+            "development_analysis_iteration": DEVELOPMENT_CYCLES_THREE,
+            "review_analysis_iteration": MAX_REVIEW_ANALYSIS_ITERATIONS,
+        },
+    )
+
+    result, saved_states = _run_pipeline(
+        monkeypatch,
+        tmp_path,
+        invoker,
+        _config(),
+        initial_state=initial_state,
+        counter_overrides={"iteration": 1, "reviewer_pass": 0},
+    )
+
+    assert result == 0
+    assert invoker.count_for("planning_analysis") == 1
+    planning_analysis_states = [
+        state for state in saved_states if state.phase == "planning_analysis"
+    ]
+    assert len(planning_analysis_states) == 1
+    loopback_planning_state = next(
+        state
+        for state in saved_states
+        if state.phase == "planning" and state.previous_phase == "planning_analysis"
+    )
+    assert loopback_planning_state.get_loop_iteration("planning_analysis_iteration") == 1
+    development_state = _state_with_phase(saved_states, "development")
+    assert development_state.previous_phase == "planning"
+    assert development_state.get_loop_iteration("planning_analysis_iteration") == 0
+
+
+def test_runner_uses_real_planning_analysis_decision_and_skips_reentry_at_cap(
+    monkeypatch: MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    saved_states: list[PipelineState] = []
+    policy_bundle = load_policy(DEFAULT_POLICY_DIR)
+    initial_loop_caps = {
+        name: cfg.default_max for name, cfg in policy_bundle.pipeline.loop_counters.items()
+    }
+    initial_loop_caps["planning_analysis_iteration"] = 3
+    initial_state = PipelineState.from_policy(
+        policy_bundle.pipeline,
+        budget_caps={"iteration": 1, "reviewer_pass": 0},
+        budget_remaining={"iteration": 1, "reviewer_pass": 0},
+        loop_caps=initial_loop_caps,
+    )
+    (tmp_path / "PROMPT.md").write_text("# Prompt\n\nReproduce exhausted planning analysis.")
+
+    planning_analysis_calls = 0
+    original_determine = runner._call_determine_effect_from_policy
+
+    def stop_at_development(state, bundle, workspace_scope, config):
+        if state.phase == "development":
+            return ExitSuccessEffect()
+        return original_determine(state, bundle, workspace_scope, config)
+
+    def write_artifact(relative_path: str, payload: dict[str, object]) -> None:
+        path = tmp_path / relative_path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(payload))
+
+    def fake_execute_effect(effect, _config, _workspace_scope, **_kwargs):
+        nonlocal planning_analysis_calls
+        if isinstance(effect, InvokeAgentEffect):
+            if effect.phase == "planning":
+                write_artifact(
+                    ".agent/artifacts/plan.json",
+                    {
+                        "type": "plan",
+                        "content": {
+                            "summary": {
+                                "context": "Minimal planning artifact for integration coverage.",
+                                "scope_items": [
+                                    {"text": "one"},
+                                    {"text": "two"},
+                                    {"text": "three"},
+                                ],
+                            },
+                            "steps": [
+                                {
+                                    "number": 1,
+                                    "title": "Touch file",
+                                    "content": "Modify a tracked file.",
+                                    "step_type": "file_change",
+                                    "targets": [{"path": "foo.py", "action": "modify"}],
+                                }
+                            ],
+                            "critical_files": {
+                                "primary_files": [{"path": "foo.py", "action": "modify"}]
+                            },
+                            "risks_mitigations": [
+                                {"risk": "minimal risk", "mitigation": "covered by test"}
+                            ],
+                            "verification_strategy": [
+                                {"method": "pytest", "expected_outcome": "passes"}
+                            ],
+                            "work_units": [],
+                        },
+                    },
+                )
+                return PipelineEvent.AGENT_SUCCESS
+            if effect.phase == "planning_analysis":
+                planning_analysis_calls += 1
+                decision = (
+                    "request_changes"
+                    if planning_analysis_calls <= MAX_PLANNING_ANALYSIS_ITERATIONS
+                    else "completed"
+                )
+                write_artifact(
+                    ".agent/artifacts/planning_analysis_decision.json",
+                    {"type": "planning_analysis_decision", "content": {"status": decision}},
+                )
+                return PipelineEvent.AGENT_SUCCESS
+            raise AssertionError(f"Unexpected invoke phase before development exit: {effect.phase}")
+        if isinstance(effect, CommitEffect):
+            raise AssertionError("Should not reach commit before stopping at development")
+        raise AssertionError(f"Unexpected effect type: {type(effect)!r}")
+
+    def capture_saved_state(state: PipelineState) -> None:
+        saved_states.append(state)
+
+    monkeypatch.setattr(runner, "resolve_workspace_scope", lambda: WorkspaceScope(tmp_path))
+    monkeypatch.setattr(runner, "load_policy_or_die", lambda _path: policy_bundle)
+    monkeypatch.setattr(runner, "_materialize_prepared_prompt", lambda *args, **kwargs: None)
+    monkeypatch.setattr(runner, "_materialize_agent_prompt_if_needed", lambda *args, **kwargs: None)
+    monkeypatch.setattr(runner, "_execute_effect", fake_execute_effect)
+    monkeypatch.setattr(runner, "_call_determine_effect_from_policy", stop_at_development)
+    monkeypatch.setattr(runner.ckpt, "save", capture_saved_state)
+    _install_runner_display_context(monkeypatch)
+
+    result = runner.run(
+        _config(),
+        initial_state=initial_state,
+        verbosity=Verbosity.QUIET,
+        counter_overrides={"iteration": 1, "reviewer_pass": 0},
+    )
+
+    assert result == 0
+    assert planning_analysis_calls == MAX_PLANNING_ANALYSIS_ITERATIONS
+    loopback_planning_state = next(
+        state
+        for state in saved_states
+        if state.phase == "planning" and state.previous_phase == "planning_analysis"
+    )
+    assert loopback_planning_state.get_loop_iteration("planning_analysis_iteration") == 1
+    development_state = next(state for state in saved_states if state.phase == "development")
+    assert development_state.previous_phase == "planning"
+    assert development_state.get_loop_iteration("planning_analysis_iteration") == 0
+
+
+def test_runner_uses_real_development_analysis_decision_and_skips_reentry_at_cap(
+    monkeypatch: MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    saved_states: list[PipelineState] = []
+    policy_bundle = load_policy(DEFAULT_POLICY_DIR)
+    initial_loop_caps = {
+        name: cfg.default_max for name, cfg in policy_bundle.pipeline.loop_counters.items()
+    }
+    initial_loop_caps["development_analysis_iteration"] = 3
+    initial_state = PipelineState(
+        phase="development",
+        policy_entry_phase=policy_bundle.pipeline.entry_phase,
+        current_drain="development",
+        budget_caps={"iteration": 1, "reviewer_pass": 0},
+        budget_remaining={"iteration": 1, "reviewer_pass": 0},
+        loop_caps=initial_loop_caps,
+    )
+    (tmp_path / "PROMPT.md").write_text("# Prompt\n\nReproduce exhausted development analysis.")
+    (tmp_path / ".agent" / "artifacts").mkdir(parents=True, exist_ok=True)
+    (tmp_path / ".agent" / "artifacts" / "plan.json").write_text(
+        json.dumps(
+            {
+                "type": "plan",
+                "content": {
+                    "summary": {
+                        "context": "Minimal planning artifact for development analysis coverage.",
+                        "scope_items": [
+                            {"text": "one"},
+                            {"text": "two"},
+                            {"text": "three"},
+                        ],
+                    },
+                    "steps": [
+                        {
+                            "number": 1,
+                            "title": "Touch file",
+                            "content": "Modify a tracked file.",
+                            "step_type": "file_change",
+                            "targets": [{"path": "foo.py", "action": "modify"}],
+                        }
+                    ],
+                    "critical_files": {
+                        "primary_files": [{"path": "foo.py", "action": "modify"}]
+                    },
+                    "risks_mitigations": [
+                        {"risk": "minimal risk", "mitigation": "covered by test"}
+                    ],
+                    "verification_strategy": [
+                        {"method": "pytest", "expected_outcome": "passes"}
+                    ],
+                    "work_units": [],
+                },
+            }
+        )
+    )
+
+    development_analysis_calls = 0
+    original_determine = runner._call_determine_effect_from_policy
+
+    def stop_at_development_commit(state, bundle, workspace_scope, config):
+        if state.phase == "development_commit":
+            return ExitSuccessEffect()
+        return original_determine(state, bundle, workspace_scope, config)
+
+    def write_artifact(relative_path: str, payload: dict[str, object]) -> None:
+        path = tmp_path / relative_path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(payload))
+
+    def fake_execute_effect(effect, _config, _workspace_scope, **_kwargs):
+        nonlocal development_analysis_calls
+        if isinstance(effect, InvokeAgentEffect):
+            if effect.phase == "development":
+                write_artifact(
+                    ".agent/artifacts/development_result.json",
+                    {
+                        "type": "development_result",
+                        "content": {
+                            "status": "completed",
+                            "summary": "Development artifact present.",
+                            "files_changed": "foo.py",
+                        },
+                    },
+                )
+                return PipelineEvent.AGENT_SUCCESS
+            if effect.phase == "development_analysis":
+                development_analysis_calls += 1
+                decision = (
+                    "request_changes"
+                    if development_analysis_calls <= DEVELOPMENT_CYCLES_THREE
+                    else "completed"
+                )
+                write_artifact(
+                    ".agent/artifacts/development_analysis_decision.json",
+                    {"type": "development_analysis_decision", "content": {"status": decision}},
+                )
+                return PipelineEvent.AGENT_SUCCESS
+            raise AssertionError(
+                "Unexpected invoke phase before development_commit exit: "
+                f"{effect.phase}"
+            )
+        if isinstance(effect, CommitEffect):
+            raise AssertionError("Should not reach commit before stopping at development_commit")
+        raise AssertionError(f"Unexpected effect type: {type(effect)!r}")
+
+    def capture_saved_state(state: PipelineState) -> None:
+        saved_states.append(state)
+
+    monkeypatch.setattr(runner, "resolve_workspace_scope", lambda: WorkspaceScope(tmp_path))
+    monkeypatch.setattr(runner, "load_policy_or_die", lambda _path: policy_bundle)
+    monkeypatch.setattr(runner, "_materialize_prepared_prompt", lambda *args, **kwargs: None)
+    monkeypatch.setattr(runner, "_materialize_agent_prompt_if_needed", lambda *args, **kwargs: None)
+    monkeypatch.setattr(runner, "_execute_effect", fake_execute_effect)
+    monkeypatch.setattr(runner, "_call_determine_effect_from_policy", stop_at_development_commit)
+    monkeypatch.setattr(runner.ckpt, "save", capture_saved_state)
+    _install_runner_display_context(monkeypatch)
+
+    result = runner.run(
+        _config(),
+        initial_state=initial_state,
+        verbosity=Verbosity.QUIET,
+        counter_overrides={"iteration": 1, "reviewer_pass": 0},
+    )
+
+    assert result == 0
+    assert development_analysis_calls == DEVELOPMENT_CYCLES_THREE
+    development_analysis_states = [
+        state for state in saved_states if state.phase == "development_analysis"
+    ]
+    assert len(development_analysis_states) == DEVELOPMENT_CYCLES_THREE
+    loopback_development_state = next(
+        state
+        for state in saved_states
+        if state.phase == "development"
+        and state.previous_phase == "development_analysis"
+        and state.get_loop_iteration("development_analysis_iteration")
+        == DEVELOPMENT_CYCLES_THREE
+    )
+    assert loopback_development_state.get_budget_remaining("iteration") == 1
+    development_commit_state = next(
+        state for state in saved_states if state.phase == "development_commit"
+    )
+    assert development_commit_state.previous_phase == "development"
+    assert development_commit_state.get_loop_iteration("development_analysis_iteration") == 0
 
 
 def test_checkpoint_resume_preserves_budget(

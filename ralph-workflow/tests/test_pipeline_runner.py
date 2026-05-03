@@ -3688,6 +3688,163 @@ class TestPhaseContextRoleBasedDispatch:
         assert ctx.get("decision") == "needs changes"
 
 
+class TestSkippedExhaustedAnalysisInfo:
+    def test_detects_planning_analysis_skip(self) -> None:
+        policy = PipelinePolicy(
+            phases={
+                "planning": PhaseDefinition(
+                    drain="planning",
+                    role="execution",
+                    transitions=PhaseTransition(on_success="planning_analysis"),
+                ),
+                "planning_analysis": PhaseDefinition(
+                    drain="planning_analysis",
+                    role="analysis",
+                    transitions=PhaseTransition(on_success="development", on_loopback="planning"),
+                    decisions={},
+                    loop_policy=PhaseLoopPolicy(
+                        max_iterations=3,
+                        iteration_state_field="planning_analysis_iteration",
+                    ),
+                ),
+                "development": PhaseDefinition(
+                    drain="development",
+                    role="execution",
+                    transitions=PhaseTransition(on_success="done"),
+                ),
+                "done": PhaseDefinition(
+                    drain="development",
+                    role="terminal",
+                    transitions=PhaseTransition(on_success="done"),
+                    terminal_outcome="success",
+                ),
+            },
+            loop_counters={
+                "planning_analysis_iteration": LoopCounterConfig(default_max=3),
+            },
+            entry_phase="planning",
+            terminal_phase="done",
+        )
+        state = PipelineState(
+            phase="development",
+            loop_iterations={"planning_analysis_iteration": 3},
+            loop_caps={"planning_analysis_iteration": 3},
+        )
+
+        skipped = runner_module._skipped_exhausted_analysis_info(
+            "planning", "development", state, policy
+        )
+
+        assert skipped == (
+            "planning_analysis",
+            "Planning Analysis cap reached, skipping",
+        )
+
+    def test_detects_development_analysis_skip(self) -> None:
+        policy = PipelinePolicy(
+            phases={
+                "development": PhaseDefinition(
+                    drain="development",
+                    role="execution",
+                    transitions=PhaseTransition(on_success="development_analysis"),
+                ),
+                "development_analysis": PhaseDefinition(
+                    drain="development_analysis",
+                    role="analysis",
+                    transitions=PhaseTransition(
+                        on_success="development_commit", on_loopback="development"
+                    ),
+                    decisions={},
+                    loop_policy=PhaseLoopPolicy(
+                        max_iterations=3,
+                        iteration_state_field="development_analysis_iteration",
+                    ),
+                ),
+                "development_commit": PhaseDefinition(
+                    drain="development_commit",
+                    role="commit",
+                    transitions=PhaseTransition(on_success="done"),
+                ),
+                "done": PhaseDefinition(
+                    drain="development",
+                    role="terminal",
+                    transitions=PhaseTransition(on_success="done"),
+                    terminal_outcome="success",
+                ),
+            },
+            loop_counters={
+                "development_analysis_iteration": LoopCounterConfig(default_max=3),
+            },
+            entry_phase="development",
+            terminal_phase="done",
+        )
+        state = PipelineState(
+            phase="development_commit",
+            loop_iterations={"development_analysis_iteration": 3},
+            loop_caps={"development_analysis_iteration": 3},
+        )
+
+        skipped = runner_module._skipped_exhausted_analysis_info(
+            "development", "development_commit", state, policy
+        )
+
+        assert skipped == (
+            "development_analysis",
+            "Development Analysis cap reached, skipping",
+        )
+
+    def test_detects_review_analysis_skip(self) -> None:
+        policy = PipelinePolicy(
+            phases={
+                "fix": PhaseDefinition(
+                    drain="fix",
+                    role="execution",
+                    transitions=PhaseTransition(on_success="review_analysis"),
+                ),
+                "review_analysis": PhaseDefinition(
+                    drain="review_analysis",
+                    role="analysis",
+                    transitions=PhaseTransition(on_success="review_commit", on_loopback="fix"),
+                    decisions={},
+                    loop_policy=PhaseLoopPolicy(
+                        max_iterations=2,
+                        iteration_state_field="review_analysis_iteration",
+                    ),
+                ),
+                "review_commit": PhaseDefinition(
+                    drain="review_commit",
+                    role="commit",
+                    transitions=PhaseTransition(on_success="done"),
+                ),
+                "done": PhaseDefinition(
+                    drain="review",
+                    role="terminal",
+                    transitions=PhaseTransition(on_success="done"),
+                    terminal_outcome="success",
+                ),
+            },
+            loop_counters={
+                "review_analysis_iteration": LoopCounterConfig(default_max=2),
+            },
+            entry_phase="fix",
+            terminal_phase="done",
+        )
+        state = PipelineState(
+            phase="review_commit",
+            loop_iterations={"review_analysis_iteration": 2},
+            loop_caps={"review_analysis_iteration": 2},
+        )
+
+        skipped = runner_module._skipped_exhausted_analysis_info(
+            "fix", "review_commit", state, policy
+        )
+
+        assert skipped == (
+            "review_analysis",
+            "Review Analysis cap reached, skipping",
+        )
+
+
 def test_handle_inline_effect_routes_to_planning_when_plan_handoff_absent(
     monkeypatch: MonkeyPatch,
     tmp_path: Path,

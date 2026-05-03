@@ -171,7 +171,7 @@ def handle_generic_analysis_phase(effect: Effect, ctx: PhaseContext) -> list[Eve
         # decision artifact will have been produced for a noop plan.
         if _has_noop_plan(ctx):
             logger.info("Analysis phase '{}': plan is a no-op — skipping analysis", phase_name)
-            return [PipelineEvent.ANALYSIS_SUCCESS]
+            return [AnalysisDecisionEvent(phase=phase_name, decision="completed")]
 
         ra = resolve_required_artifact(ctx.artifacts_policy, drain=drain_name)
         artifact_path = (

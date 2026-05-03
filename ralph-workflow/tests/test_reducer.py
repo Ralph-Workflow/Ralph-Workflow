@@ -870,6 +870,24 @@ class TestAnalysisBudgetBypass:
         assert new_state.previous_phase == "planning"
         assert new_state.get_loop_iteration("planning_analysis_iteration") == 0
 
+    def test_planning_success_logs_effective_target_after_exhausted_analysis_bypass(self) -> None:
+        policy = _policy_with_planning_analysis()
+        state = PipelineState(
+            phase="planning",
+            loop_iterations={"planning_analysis_iteration": 10},
+            loop_caps={"planning_analysis_iteration": 10},
+        )
+
+        with patch(
+            "ralph.pipeline.reducer.explain_routing_decision",
+            return_value="routing",
+        ) as explain:
+            new_state, _ = _reduce(state, PipelineEvent.AGENT_SUCCESS, policy)
+
+        assert new_state.phase == "development"
+        assert explain.call_args is not None
+        assert explain.call_args.args[1] == "development"
+
     def test_development_success_skips_exhausted_development_analysis(self) -> None:
         policy = _policy_with_planning_analysis()
         state = PipelineState(
@@ -883,6 +901,26 @@ class TestAnalysisBudgetBypass:
         assert new_state.phase == "development_commit"
         assert new_state.previous_phase == "development"
         assert new_state.get_loop_iteration("development_analysis_iteration") == 0
+
+    def test_development_success_logs_effective_target_after_exhausted_analysis_bypass(
+        self,
+    ) -> None:
+        policy = _policy_with_planning_analysis()
+        state = PipelineState(
+            phase="development",
+            loop_iterations={"development_analysis_iteration": 3},
+            loop_caps={"development_analysis_iteration": 3},
+        )
+
+        with patch(
+            "ralph.pipeline.reducer.explain_routing_decision",
+            return_value="routing",
+        ) as explain:
+            new_state, _ = _reduce(state, PipelineEvent.AGENT_SUCCESS, policy)
+
+        assert new_state.phase == "development_commit"
+        assert explain.call_args is not None
+        assert explain.call_args.args[1] == "development_commit"
 
     def test_fix_success_skips_exhausted_review_analysis(self) -> None:
         policy = _policy_with_planning_analysis()

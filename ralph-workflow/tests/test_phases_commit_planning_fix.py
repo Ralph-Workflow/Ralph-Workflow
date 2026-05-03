@@ -23,7 +23,7 @@ from ralph.pipeline.effects import (
     InvokeAgentEffect,
     PreparePromptEffect,
 )
-from ralph.pipeline.events import Event, PhaseFailureEvent, PipelineEvent
+from ralph.pipeline.events import AnalysisDecisionEvent, Event, PhaseFailureEvent, PipelineEvent
 from ralph.policy.loader import load_policy
 from ralph.workspace.fs import FsWorkspace
 
@@ -567,7 +567,7 @@ def test_handle_phase_raises_when_handler_missing() -> None:
 
 
 def test_handle_development_analysis_skips_when_plan_is_noop() -> None:
-    """handle_generic_analysis_phase short-circuits with ANALYSIS_SUCCESS when plan is a no-op."""
+    """handle_generic_analysis_phase emits a completed decision when plan is a no-op."""
     ctx = _stub_context_no_exists()
     workspace = cast("MagicMock", ctx.workspace)
     workspace.exists.side_effect = lambda path: path == ".agent/artifacts/plan.json"
@@ -579,11 +579,13 @@ def test_handle_development_analysis_skips_when_plan_is_noop() -> None:
         prompt_file="development_analysis.txt",
     )
 
-    assert handle_generic_analysis_phase(effect, ctx) == [PipelineEvent.ANALYSIS_SUCCESS]
+    assert handle_generic_analysis_phase(effect, ctx) == [
+        AnalysisDecisionEvent(phase="development_analysis", decision="completed")
+    ]
 
 
 def test_handle_development_analysis_skips_empty_steps_plan() -> None:
-    """handle_generic_analysis_phase short-circuits for empty steps and empty work_units."""
+    """handle_generic_analysis_phase emits a completed decision for noop fallback plans."""
     ctx = _stub_context_no_exists()
     workspace = cast("MagicMock", ctx.workspace)
     workspace.exists.side_effect = lambda path: path == ".agent/artifacts/plan.json"
@@ -596,7 +598,9 @@ def test_handle_development_analysis_skips_empty_steps_plan() -> None:
         prompt_file="development_analysis.txt",
     )
 
-    assert handle_generic_analysis_phase(effect, ctx) == [PipelineEvent.ANALYSIS_SUCCESS]
+    assert handle_generic_analysis_phase(effect, ctx) == [
+        AnalysisDecisionEvent(phase="development_analysis", decision="completed")
+    ]
 
 
 def test_handle_dev_analysis_non_noop_missing_decision_is_recoverable() -> None:
