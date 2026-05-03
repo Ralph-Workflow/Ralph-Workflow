@@ -35,6 +35,11 @@ def format_budget_remaining(n: int) -> str:
     return f"Budget: {n} left"
 
 
+def format_elapsed_seconds(s: float) -> str:
+    """Return canonical elapsed-time label."""
+    return f"{round(s, 1)}s"
+
+
 @dataclass(frozen=True)
 class PhaseIterationContext:
     """Canonical iteration context for phase start/close rendering.
@@ -83,5 +88,6 @@ __all__ = [
     "format_analysis_cycle",
     "format_budget_remaining",
     "format_dev_cycle",
+    "format_elapsed_seconds",
     "format_fixer_cycle",
 ]

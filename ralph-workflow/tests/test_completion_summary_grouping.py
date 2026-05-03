@@ -354,3 +354,91 @@ def test_compact_contains_key_data() -> None:
     out = _render_compact(_make_snapshot())
     assert "agent_calls=4" in out
     assert "Verification" in out
+
+
+# --- Elapsed and Iteration Context placement tests ---
+
+
+def _make_snapshot_with_outer_dev(outer_dev_iteration: int = 3) -> PipelineSnapshot:
+    return PipelineSnapshot(
+        phase="complete",
+        previous_phase=None,
+        review_issues_found=False,
+        interrupted_by_user=False,
+        last_error=None,
+        pr_url=None,
+        push_count=1,
+        total_agent_calls=4,
+        total_continuations=1,
+        total_fallbacks=0,
+        total_retries=0,
+        workers=(),
+        prompt_path="PROMPT.md",
+        prompt_preview=(),
+        run_id="r1",
+        created_at=datetime(2026, 4, 21, tzinfo=UTC),
+        plan_summary="Build the feature",
+        plan_scope_items=("item A",),
+        plan_total_steps=2,
+        plan_current_step=2,
+        plan_risks=(),
+        decision_log=(),
+        is_terminal_success=True,
+        is_terminal_failure=False,
+        outer_dev_iteration=outer_dev_iteration,
+    )
+
+
+def _render_compact_full(
+    snapshot: PipelineSnapshot,
+    *,
+    elapsed_seconds: float | None = None,
+) -> str:
+    buf = StringIO()
+    console = Console(file=buf, force_terminal=False, width=50, color_system=None)
+    ctx = make_display_context(console=console, env={"COLUMNS": "50"})
+    group = render_completion_summary_group(
+        snapshot,
+        elapsed_seconds=elapsed_seconds,
+        display_context=ctx,
+    )
+    console.print(group, markup=False, highlight=False)
+    return buf.getvalue()
+
+
+def test_elapsed_appears_before_metrics_in_wide_mode() -> None:
+    """elapsed= line appears before the Metrics section in wide mode output."""
+    out = _render_group_full(_make_snapshot(), elapsed_seconds=12.4)
+    assert "elapsed=12.4s" in out
+    assert out.index("elapsed=12.4s") < out.index("Metrics")
+
+
+def test_iteration_context_section_appears_with_outer_dev() -> None:
+    """Wide mode shows an 'Iteration Context' section when outer_dev_iteration is set."""
+    out = _render_group_full(_make_snapshot_with_outer_dev(outer_dev_iteration=3))
+    assert "Iteration Context" in out
+    assert "Dev #3" in out
+
+
+def test_iteration_context_section_absent_without_context() -> None:
+    """Wide mode omits 'Iteration Context' section when no iteration fields are set."""
+    out = _render_group_full(_make_snapshot())
+    assert "Iteration Context" not in out
+
+
+def test_compact_elapsed_in_title_line() -> None:
+    """Compact mode includes elapsed in the pipeline title line."""
+    out = _render_compact_full(_make_snapshot(), elapsed_seconds=45.2)
+    lines = out.splitlines()
+    title_line = next((ln for ln in lines if "Pipeline Complete" in ln), None)
+    assert title_line is not None
+    assert "elapsed=45.2s" in title_line, (
+        f"Expected elapsed=45.2s on title line, got: {title_line!r}"
+    )
+
+
+def test_compact_context_prefix_with_outer_dev() -> None:
+    """Compact mode shows CONTEXT: prefix when outer_dev_iteration is set."""
+    out = _render_compact_full(_make_snapshot_with_outer_dev(outer_dev_iteration=2))
+    assert "CONTEXT:" in out
+    assert "Dev #2" in out

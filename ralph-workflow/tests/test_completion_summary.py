@@ -356,3 +356,55 @@ def test_completion_summary_fixer_phase_uses_phase_key() -> None:
     text = _render_plain(snap)
     assert "phase=fix_analysis" in text
     assert "fixer-phase=" not in text
+
+
+def test_completion_summary_elapsed_appears_before_metrics() -> None:
+    """Elapsed line appears before the Metrics line in text mode output."""
+    snap = _make_snapshot()
+    console = Console(record=True, width=120, force_terminal=False, color_system=None)
+    rendered = render_completion_summary(snap, elapsed_seconds=30.0)
+    console.print(rendered)
+    text = console.export_text()
+    assert "Elapsed: 30.0s" in text
+    assert text.index("Elapsed:") < text.index("Metrics:")
+
+
+def test_completion_summary_iteration_context_label_shown_for_outer_dev() -> None:
+    """Text mode shows 'Iteration Context:' section heading when outer_dev_iteration is set."""
+    snap = PipelineSnapshot(
+        phase="complete",
+        previous_phase=None,
+        review_issues_found=False,
+        interrupted_by_user=False,
+        last_error=None,
+        pr_url=None,
+        push_count=0,
+        total_agent_calls=1,
+        total_continuations=0,
+        total_fallbacks=0,
+        total_retries=0,
+        workers=(),
+        prompt_path="PROMPT.md",
+        prompt_preview=(),
+        run_id="run-x",
+        created_at=datetime(2026, 4, 18, 12, 0, tzinfo=UTC),
+        outer_dev_iteration=3,
+    )
+    text = _render_plain(snap)
+    assert "Iteration Context:" in text
+    assert "Dev #3" in text
+
+
+def test_completion_summary_iteration_context_label_shown_for_fixer() -> None:
+    """Text mode shows 'Iteration Context:' section heading when fixer_iteration is set."""
+    snap = _make_snapshot_with_fixer(fixer_iteration=2)
+    text = _render_plain(snap)
+    assert "Iteration Context:" in text
+    assert "Fixer #2" in text
+
+
+def test_completion_summary_no_iteration_context_label_when_absent() -> None:
+    """Text mode omits 'Iteration Context:' section when no iteration fields are set."""
+    snap = _make_snapshot()
+    text = _render_plain(snap)
+    assert "Iteration Context:" not in text

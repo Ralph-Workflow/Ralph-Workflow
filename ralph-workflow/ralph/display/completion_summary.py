@@ -11,7 +11,12 @@ from rich.rule import Rule
 from rich.text import Text
 
 from ralph.display.phase_banner import _phase_style
-from ralph.display.phase_status import format_analysis_cycle, format_dev_cycle, format_fixer_cycle
+from ralph.display.phase_status import (
+    format_analysis_cycle,
+    format_dev_cycle,
+    format_elapsed_seconds,
+    format_fixer_cycle,
+)
 from ralph.mcp.artifacts.commit_message import read_commit_message_artifact
 
 if TYPE_CHECKING:
@@ -196,6 +201,26 @@ def _fixer_iteration_summary(snapshot: PipelineSnapshot) -> str | None:
     return " | ".join(parts)
 
 
+def _has_iteration_context(snapshot: PipelineSnapshot) -> bool:
+    """Return True when any iteration context field is populated."""
+    return snapshot.outer_dev_iteration is not None or snapshot.fixer_iteration is not None
+
+
+def _iteration_context_lines(snapshot: PipelineSnapshot) -> list[str]:
+    """Return display lines for the iteration context section.
+
+    Shows outer dev cycle and fixer-analysis context when set.
+    Returns an empty list when no context is available.
+    """
+    parts: list[str] = []
+    if snapshot.outer_dev_iteration is not None:
+        parts.append(format_dev_cycle(snapshot.outer_dev_iteration))
+    fixer_summary = _fixer_iteration_summary(snapshot)
+    if fixer_summary is not None:
+        parts.append(fixer_summary)
+    return parts
+
+
 def _style_for_role(
     role: str,
     pipeline_policy: PipelinePolicy | None,
@@ -242,6 +267,9 @@ def render_completion_summary(  # noqa: PLR0913, PLR0912, PLR0915
     failed = snapshot.is_terminal_failure
     lines: list[str] = ["Pipeline Failed" if failed else "Pipeline Complete"]
 
+    if elapsed_seconds is not None:
+        lines.append(f"Elapsed: {format_elapsed_seconds(elapsed_seconds)}")
+
     if snapshot.plan_summary:
         lines.append(f"Plan: {snapshot.plan_summary}")
     if snapshot.plan_scope_items:
@@ -287,14 +315,11 @@ def render_completion_summary(  # noqa: PLR0913, PLR0912, PLR0915
             reason_part = f" — {reason}" if reason else ""
             lines.append(f"- {phase.replace('_', ' ').title()}: {decision}{reason_part}")
 
-    # Fixer iteration summary
-    fixer_summary = _fixer_iteration_summary(snapshot)
-    if fixer_summary is not None:
-        lines.append(f"Fixer: {fixer_summary}")
-
-    # Outer dev iteration if present
-    if snapshot.outer_dev_iteration is not None:
-        lines.append(format_dev_cycle(snapshot.outer_dev_iteration))
+    # Iteration context (outer dev + fixer)
+    iter_lines = _iteration_context_lines(snapshot)
+    if iter_lines:
+        lines.append("Iteration Context:")
+        lines.extend(f"  {ln}" for ln in iter_lines)
 
     lines.append(_verification_line(workspace_root))
     lines.extend(_commit_message_lines(workspace_root))
@@ -338,8 +363,13 @@ def _render_compact_group(  # noqa: PLR0912, PLR0913, PLR0915
     else:
         style = _style_for_role("terminal", pipeline_policy)
     title = "Pipeline Failed" if failed else "Pipeline Complete"
+    title_with_elapsed = (
+        f"{title}  elapsed={format_elapsed_seconds(elapsed_seconds)}"
+        if elapsed_seconds is not None
+        else title
+    )
 
-    renderables: list[Text] = [Text(title, style=style)]
+    renderables: list[Text] = [Text(title_with_elapsed, style=style)]
 
     if include_context_sections and (snapshot.plan_summary or snapshot.plan_scope_items):
         if snapshot.plan_summary:
@@ -381,23 +411,20 @@ def _render_compact_group(  # noqa: PLR0912, PLR0913, PLR0915
             analysis_line = f"ANALYSIS: {phase.replace('_', ' ').title()}: {decision}{reason_part}"
             renderables.append(Text(analysis_line.upper()))
 
-    # Fixer iteration summary in compact mode
-    fixer_summary = _fixer_iteration_summary(snapshot)
-    if fixer_summary is not None:
-        renderables.append(Text(f"FIXER: {fixer_summary}".upper()))
+    # Iteration context (outer dev + fixer) in compact mode
+    iter_lines = _iteration_context_lines(snapshot)
+    if iter_lines:
+        renderables.append(Text(f"CONTEXT: {' | '.join(iter_lines)}"))
 
     renderables.append(Text(f"VERIFICATION: {_verification_line(workspace_root)}"))
 
-    activity_parts: list[str] = []
-    if elapsed_seconds is not None:
-        activity_parts.append(f"elapsed={round(elapsed_seconds, 1)}s")
-    activity_parts.extend([
+    activity_parts: list[str] = [
         f"agent_calls={snapshot.total_agent_calls}",
         f"content_blocks={content_block_count}",
         f"thinking_blocks={thinking_block_count}",
         f"tool_calls={tool_call_count}",
         f"errors={error_count}",
-    ])
+    ]
     if overflow_path is not None:
         activity_parts.append(f"raw_overflow={overflow_path}")
     renderables.append(Text("ACTIVITY: " + " ".join(activity_parts)))
@@ -483,6 +510,10 @@ def render_completion_summary_group(  # noqa: PLR0912, PLR0913, PLR0915
     # Header rule
     renderables.append(Rule(title, style=style))
 
+    # Elapsed time — shown immediately after header for quick orientation
+    if elapsed_seconds is not None:
+        renderables.append(Text(f"  elapsed={format_elapsed_seconds(elapsed_seconds)}"))
+
     # Plan section
     if include_context_sections and (snapshot.plan_summary or snapshot.plan_scope_items):
         plan_style = _style_for_role("execution", pipeline_policy)
@@ -547,18 +578,14 @@ def render_completion_summary_group(  # noqa: PLR0912, PLR0913, PLR0915
                 _make_badge_text(decision_badge, f" {phase_title}{reason_part}")
             )
 
-    # Fixer iteration summary section
-    fixer_summary = _fixer_iteration_summary(snapshot)
-    if fixer_summary is not None:
-        fixer_style = "theme.phase.fix"
-        renderables.append(Rule("Fixer", style=fixer_style))
-        renderables.append(Text(f"  {fixer_summary}"))
-
-    # Outer dev iteration if present
-    if snapshot.outer_dev_iteration is not None:
-        renderables.append(
-            Text(f"  {format_dev_cycle(snapshot.outer_dev_iteration)}", style="theme.outer_dev")
-        )
+    # Iteration Context section (outer dev + fixer-analysis interaction)
+    if _has_iteration_context(snapshot):
+        if snapshot.fixer_iteration is not None:
+            iter_style = _style_for_role("fix", pipeline_policy)
+        else:
+            iter_style = style
+        renderables.append(Rule("Iteration Context", style=iter_style))
+        renderables.extend(Text(f"  {ln}") for ln in _iteration_context_lines(snapshot))
 
     # Verification section
     renderables.append(Rule("Verification", style=style))
