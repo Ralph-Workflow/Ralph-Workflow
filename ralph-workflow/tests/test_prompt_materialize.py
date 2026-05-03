@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from typing import TYPE_CHECKING
+from unittest.mock import patch
 
 from git import Repo as GitRepo
 
@@ -9,6 +10,7 @@ import ralph.prompts.materialize as materialize_module
 from ralph.pipeline.cycle_baseline import write_cycle_baseline
 from ralph.policy.loader import load_policy
 from ralph.prompts.materialize import materialize_prompt_for_phase, prompt_file_for_phase
+from ralph.prompts.template_engine import TemplateRenderingError
 from ralph.prompts.types import SessionCapabilities, SessionDrain
 from ralph.workspace.memory import MemoryWorkspace
 
@@ -218,6 +220,88 @@ def test_materialize_fresh_planning_clears_previous_plan_context(tmp_path: Path)
     assert str(tmp_path / ".agent" / "PLANNING_ANALYSIS_DECISION.md") not in rendered
     assert workspace.exists(".agent/artifacts/plan.json") is False
     assert workspace.exists(".agent/artifacts/.plan_draft.json") is False
+    assert workspace.exists(".agent/PLAN.md") is False
+    assert workspace.exists(".agent/artifacts/planning_analysis_decision.json") is False
+    assert workspace.exists(".agent/PLANNING_ANALYSIS_DECISION.md") is False
+
+
+def test_materialize_planning_fallback_tolerates_missing_plan_and_clears_stale_artifacts(
+    tmp_path: Path,
+) -> None:
+    """Regression: planning_fallback.jinja must tolerate missing plan handoff and clear stale state.
+
+    When render_template raises TemplateRenderingError for planning.jinja during fresh
+    planning, prompt_planning_xml_with_context falls back to planning_fallback.jinja.
+    This fallback is a fresh-planning path that must tolerate missing plan handoff
+    (like planning.jinja) and must clear stale plan/analysis artifacts.
+    """
+    policy = load_policy(tmp_path / ".agent")
+    workspace = MemoryWorkspace(root=str(tmp_path))
+    workspace.write("PROMPT.md", "Plan the MCP hardening")
+
+    workspace.write(
+        ".agent/artifacts/plan.json",
+        json.dumps(
+            {
+                "type": "plan",
+                "content": {
+                    "summary": {
+                        "context": "Stale plan that should be cleared.",
+                        "scope_items": [{"text": "old item"}],
+                    },
+                    "steps": [{"number": 1, "title": "Old", "content": "old step"}],
+                    "critical_files": {
+                        "primary_files": [{"path": "src/old.py", "action": "delete"}],
+                    },
+                    "risks_mitigations": [{"risk": "stale", "mitigation": "remove"}],
+                    "verification_strategy": [{"method": "pytest", "expected_outcome": "fail"}],
+                },
+            }
+        ),
+    )
+    workspace.write(".agent/PLAN.md", "# Implementation Plan\n\nStale handoff.\n")
+    workspace.write(
+        ".agent/artifacts/planning_analysis_decision.json",
+        json.dumps(
+            {
+                "type": "planning_analysis_decision",
+                "content": {
+                    "status": "request_changes",
+                    "summary": "Stale analysis feedback.",
+                    "what_came_up_short": ["stale"],
+                    "how_to_fix": ["clear"],
+                },
+            }
+        ),
+    )
+    workspace.write(
+        ".agent/PLANNING_ANALYSIS_DECISION.md",
+        "# Planning Analysis Decision\n\nStale analysis handoff.\n",
+    )
+
+    with patch(
+        "ralph.prompts.developer.render_template",
+        side_effect=TemplateRenderingError("primary template unavailable"),
+    ):
+        prompt_path = materialize_prompt_for_phase(
+            phase="planning",
+            workspace=workspace,
+            pipeline_policy=policy.pipeline,
+            artifacts_policy=policy.artifacts,
+            session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.PLANNING),
+            workspace_root=tmp_path,
+            previous_phase=None,
+        )
+
+    rendered = workspace.read(prompt_path)
+    assert "PLANNING MODE" in rendered
+    assert "PLANNING EDIT MODE" not in rendered
+    assert "Stale plan that should be cleared" not in rendered
+    assert "Stale analysis feedback" not in rendered
+    assert "src/old.py" not in rendered
+    assert str(tmp_path / ".agent" / "PLAN.md") not in rendered
+    assert str(tmp_path / ".agent" / "PLANNING_ANALYSIS_DECISION.md") not in rendered
+    assert workspace.exists(".agent/artifacts/plan.json") is False
     assert workspace.exists(".agent/PLAN.md") is False
     assert workspace.exists(".agent/artifacts/planning_analysis_decision.json") is False
     assert workspace.exists(".agent/PLANNING_ANALYSIS_DECISION.md") is False

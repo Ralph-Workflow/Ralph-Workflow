@@ -3733,6 +3733,6 @@ def test_handle_inline_effect_routes_to_planning_when_plan_handoff_absent(
     )
 
     assert isinstance(result, PipelineState)
-    assert result.phase == bundle.pipeline.recovery.failed_route
-    assert result.previous_phase == bundle.pipeline.entry_phase
+    assert result.phase == bundle.pipeline.entry_phase
+    assert result.previous_phase == state.phase
     assert result.recovery_epoch == state.recovery_epoch + 1

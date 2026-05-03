@@ -1892,8 +1892,8 @@ def _handle_inline_effect(  # noqa: PLR0913
             )
             current_epoch = state.recovery_epoch if isinstance(state.recovery_epoch, int) else 0
             recovered_state = state.copy_with(
-                phase=pipeline_policy.recovery.failed_route,
-                previous_phase=pipeline_policy.entry_phase,
+                phase=pipeline_policy.entry_phase,
+                previous_phase=state.phase,
                 last_error=str(exc),
                 recovery_epoch=current_epoch + 1,
             )
