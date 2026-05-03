@@ -2,16 +2,16 @@ from __future__ import annotations
 
 import json
 from typing import TYPE_CHECKING
+from unittest.mock import patch
 
 from git import Repo as GitRepo
 
 import ralph.prompts.materialize as materialize_module
 from ralph.pipeline.cycle_baseline import write_cycle_baseline
-from ralph.pipeline.runner import _clear_fresh_planning_files_if_needed
 from ralph.policy.loader import load_policy
 from ralph.prompts.materialize import materialize_prompt_for_phase, prompt_file_for_phase
+from ralph.prompts.template_engine import TemplateRenderingError
 from ralph.prompts.types import SessionCapabilities, SessionDrain
-from ralph.workspace.fs import FsWorkspace
 from ralph.workspace.memory import MemoryWorkspace
 
 PLANNING_EDIT_GET_DRAFT_TEXT = (
@@ -225,80 +225,148 @@ def test_materialize_fresh_planning_clears_previous_plan_context(tmp_path: Path)
     assert workspace.exists(".agent/PLANNING_ANALYSIS_DECISION.md") is False
 
 
-def test_clear_fresh_planning_files_removes_stale_plan_and_analysis_artifacts(
+def test_materialize_planning_fallback_tolerates_missing_plan_and_clears_stale_artifacts(
     tmp_path: Path,
 ) -> None:
+    """Regression: planning_fallback.jinja must tolerate missing plan handoff and clear stale state.
+
+    When render_template raises TemplateRenderingError for planning.jinja during fresh
+    planning, prompt_planning_xml_with_context falls back to planning_fallback.jinja.
+    This fallback is a fresh-planning path that must tolerate missing plan handoff
+    (like planning.jinja) and must clear stale plan/analysis artifacts.
+    """
     policy = load_policy(tmp_path / ".agent")
-    workspace = FsWorkspace(tmp_path)
-    (tmp_path / ".agent" / "artifacts").mkdir(parents=True, exist_ok=True)
-    (tmp_path / ".agent" / "artifacts" / "plan.json").write_text("{}", encoding="utf-8")
-    (tmp_path / ".agent" / "artifacts" / ".plan_draft.json").write_text(
-        "{}",
-        encoding="utf-8",
+    workspace = MemoryWorkspace(root=str(tmp_path))
+    workspace.write("PROMPT.md", "Plan the MCP hardening")
+
+    workspace.write(
+        ".agent/artifacts/plan.json",
+        json.dumps(
+            {
+                "type": "plan",
+                "content": {
+                    "summary": {
+                        "context": "Stale plan that should be cleared.",
+                        "scope_items": [{"text": "old item"}],
+                    },
+                    "steps": [{"number": 1, "title": "Old", "content": "old step"}],
+                    "critical_files": {
+                        "primary_files": [{"path": "src/old.py", "action": "delete"}],
+                    },
+                    "risks_mitigations": [{"risk": "stale", "mitigation": "remove"}],
+                    "verification_strategy": [{"method": "pytest", "expected_outcome": "fail"}],
+                },
+            }
+        ),
     )
-    (tmp_path / ".agent" / "PLAN.md").write_text("old plan", encoding="utf-8")
-    (
-        tmp_path / ".agent" / "artifacts" / "planning_analysis_decision.json"
-    ).write_text("{}", encoding="utf-8")
-    (tmp_path / ".agent" / "PLANNING_ANALYSIS_DECISION.md").write_text(
-        "old feedback",
-        encoding="utf-8",
+    workspace.write(".agent/PLAN.md", "# Implementation Plan\n\nStale handoff.\n")
+    workspace.write(
+        ".agent/artifacts/planning_analysis_decision.json",
+        json.dumps(
+            {
+                "type": "planning_analysis_decision",
+                "content": {
+                    "status": "request_changes",
+                    "summary": "Stale analysis feedback.",
+                    "what_came_up_short": ["stale"],
+                    "how_to_fix": ["clear"],
+                },
+            }
+        ),
+    )
+    workspace.write(
+        ".agent/PLANNING_ANALYSIS_DECISION.md",
+        "# Planning Analysis Decision\n\nStale analysis handoff.\n",
     )
 
-    _clear_fresh_planning_files_if_needed(
-        workspace,
-        "planning",
-        None,
-        policy.pipeline,
-        policy.artifacts,
-    )
+    with patch(
+        "ralph.prompts.developer.render_template",
+        side_effect=TemplateRenderingError("primary template unavailable"),
+    ):
+        prompt_path = materialize_prompt_for_phase(
+            phase="planning",
+            workspace=workspace,
+            pipeline_policy=policy.pipeline,
+            artifacts_policy=policy.artifacts,
+            session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.PLANNING),
+            workspace_root=tmp_path,
+            previous_phase=None,
+        )
 
-    assert (tmp_path / ".agent" / "artifacts" / "plan.json").exists() is False
-    assert (tmp_path / ".agent" / "artifacts" / ".plan_draft.json").exists() is False
-    assert (tmp_path / ".agent" / "PLAN.md").exists() is False
-    assert (
-        tmp_path / ".agent" / "artifacts" / "planning_analysis_decision.json"
-    ).exists() is False
-    assert (tmp_path / ".agent" / "PLANNING_ANALYSIS_DECISION.md").exists() is False
+    rendered = workspace.read(prompt_path)
+    assert "PLANNING MODE" in rendered
+    assert "PLANNING EDIT MODE" not in rendered
+    assert "Stale plan that should be cleared" not in rendered
+    assert "Stale analysis feedback" not in rendered
+    assert "src/old.py" not in rendered
+    assert str(tmp_path / ".agent" / "PLAN.md") not in rendered
+    assert str(tmp_path / ".agent" / "PLANNING_ANALYSIS_DECISION.md") not in rendered
+    assert workspace.exists(".agent/artifacts/plan.json") is False
+    assert workspace.exists(".agent/PLAN.md") is False
+    assert workspace.exists(".agent/artifacts/planning_analysis_decision.json") is False
+    assert workspace.exists(".agent/PLANNING_ANALYSIS_DECISION.md") is False
 
 
-
-def test_clear_fresh_planning_files_preserves_loopback_plan_and_feedback(
+def test_planning_loopback_entry_preserves_plan_and_analysis_artifacts(
     tmp_path: Path,
 ) -> None:
+    """Planning loopback (from analysis) must not delete existing plan state."""
     policy = load_policy(tmp_path / ".agent")
-    workspace = FsWorkspace(tmp_path)
-    (tmp_path / ".agent" / "artifacts").mkdir(parents=True, exist_ok=True)
-    (tmp_path / ".agent" / "artifacts" / "plan.json").write_text("{}", encoding="utf-8")
-    (tmp_path / ".agent" / "artifacts" / ".plan_draft.json").write_text(
-        "{}",
-        encoding="utf-8",
+    workspace = MemoryWorkspace(root=str(tmp_path))
+    workspace.write("PROMPT.md", "Refine the plan based on analysis feedback")
+    workspace.write(
+        ".agent/artifacts/plan.json",
+        json.dumps(
+            {
+                "type": "plan",
+                "content": {
+                    "summary": {
+                        "context": "Existing plan to preserve.",
+                        "scope_items": [
+                            {"text": "one"},
+                            {"text": "two"},
+                            {"text": "three"},
+                        ],
+                    },
+                    "steps": [{"number": 1, "title": "Keep", "content": "keep existing"}],
+                    "critical_files": {
+                        "primary_files": [{"path": "src/keep.py", "action": "modify"}],
+                    },
+                    "risks_mitigations": [{"risk": "drift", "mitigation": "preserve"}],
+                    "verification_strategy": [
+                        {"method": "pytest", "expected_outcome": "passes"}
+                    ],
+                },
+            }
+        ),
     )
-    (tmp_path / ".agent" / "PLAN.md").write_text("old plan", encoding="utf-8")
-    (
-        tmp_path / ".agent" / "artifacts" / "planning_analysis_decision.json"
-    ).write_text("{}", encoding="utf-8")
-    (tmp_path / ".agent" / "PLANNING_ANALYSIS_DECISION.md").write_text(
-        "old feedback",
-        encoding="utf-8",
+    workspace.write(
+        ".agent/artifacts/planning_analysis_decision.json",
+        json.dumps(
+            {
+                "type": "planning_analysis_decision",
+                "content": {
+                    "status": "request_changes",
+                    "summary": "Please tighten the verification strategy.",
+                    "what_came_up_short": ["Verification is too vague."],
+                    "how_to_fix": ["Add specific pytest commands."],
+                },
+            }
+        ),
     )
 
-    _clear_fresh_planning_files_if_needed(
-        workspace,
-        "planning",
-        "planning_analysis",
-        policy.pipeline,
-        policy.artifacts,
+    materialize_prompt_for_phase(
+        phase="planning",
+        workspace=workspace,
+        pipeline_policy=policy.pipeline,
+        artifacts_policy=policy.artifacts,
+        session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.PLANNING),
+        workspace_root=tmp_path,
+        previous_phase="planning_analysis",
     )
 
-    assert (tmp_path / ".agent" / "artifacts" / "plan.json").exists() is True
-    assert (tmp_path / ".agent" / "artifacts" / ".plan_draft.json").exists() is True
-    assert (tmp_path / ".agent" / "PLAN.md").exists() is True
-    assert (
-        tmp_path / ".agent" / "artifacts" / "planning_analysis_decision.json"
-    ).exists() is True
-    assert (tmp_path / ".agent" / "PLANNING_ANALYSIS_DECISION.md").exists() is True
-
+    assert workspace.exists(".agent/artifacts/plan.json") is True
+    assert workspace.exists(".agent/artifacts/planning_analysis_decision.json") is True
 
 
 def test_materialize_planning_loopback_uses_edit_prompt_and_analysis_feedback_handoff(

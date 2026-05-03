@@ -53,8 +53,6 @@ from ralph.mcp.artifacts.commit_message import (
     delete_commit_message_artifacts,
     read_commit_message_from_path,
 )
-from ralph.mcp.artifacts.handoffs import handoff_path_for_artifact
-from ralph.mcp.artifacts.plan import PLAN_ARTIFACT_PATH, PLAN_DRAFT_PATH
 from ralph.mcp.protocol.capability_mapping import DrainClass
 from ralph.mcp.protocol.env import AGENT_LABEL_SCOPE_ENV
 from ralph.mcp.protocol.session import MCP_ENDPOINT_ENV, MCP_RUN_ID_ENV, AgentSession
@@ -86,6 +84,7 @@ from ralph.pipeline.worker_state import WorkerStatus
 from ralph.policy.loader import load_agents_policy, load_policy_or_die
 from ralph.process.manager import get_process_manager, process_phase_scope
 from ralph.prompts.materialize import (
+    MissingPlanHandoffError,
     materialize_prompt_for_phase,
     prompt_file_for_phase,
     tool_name_prefix_for_transport,
@@ -1877,25 +1876,32 @@ def _handle_inline_effect(  # noqa: PLR0913
         return new_state
 
     if isinstance(effect, PreparePromptEffect):
-        if effect.phase == "planning":
-            workspace = FsWorkspace(
-                workspace_scope.root,
-                allowed_roots=workspace_scope.allowed_roots,
-            )
-            _clear_fresh_planning_files_if_needed(
-                workspace,
-                effect.phase,
-                state.previous_phase,
+        try:
+            _materialize_prepared_prompt(
+                effect,
                 pipeline_policy,
                 artifacts_policy,
+                workspace_scope,
+                agents_policy,
             )
-        _materialize_prepared_prompt(
-            effect,
-            pipeline_policy,
-            artifacts_policy,
-            workspace_scope,
-            agents_policy,
-        )
+        except MissingPlanHandoffError as exc:
+            if state.phase != pipeline_policy.recovery.failed_route:
+                raise
+            logger.warning(
+                "Missing plan handoff for phase={phase}: {err}; re-routing to entry phase",
+                phase=effect.phase,
+                err=exc,
+            )
+            current_epoch = state.recovery_epoch if isinstance(state.recovery_epoch, int) else 0
+            recovered_state = state.copy_with(
+                phase=pipeline_policy.entry_phase,
+                previous_phase=state.phase,
+                last_error=str(exc),
+                recovery_epoch=current_epoch + 1,
+            )
+            ckpt.save(recovered_state)
+            _notify_pipeline_subscriber(effective_pipeline_subscriber, recovered_state)
+            return recovered_state
         prepared_state = state
         if state.phase == pipeline_policy.recovery.failed_route:
             prepared_state = _reset_phase_chain_for_recovery(state, effect.phase)
@@ -1933,58 +1939,6 @@ def _handle_inline_effect(  # noqa: PLR0913
         return recovered_state
 
     return None
-
-
-def _is_analysis_loopback_into_phase(
-    *,
-    phase: str,
-    previous_phase: str | None,
-    pipeline_policy: PipelinePolicy,
-) -> bool:
-    if previous_phase is None:
-        return False
-    previous_phase_def = pipeline_policy.phases.get(previous_phase)
-    return bool(
-        previous_phase_def is not None
-        and previous_phase_def.role == "analysis"
-        and previous_phase_def.transitions.on_loopback == phase
-    )
-
-
-
-def _clear_fresh_planning_files_if_needed(
-    workspace: FsWorkspace,
-    phase: str,
-    previous_phase: str | None,
-    pipeline_policy: PipelinePolicy,
-    artifacts_policy: ArtifactsPolicy,
-) -> None:
-    if phase != "planning":
-        return
-    if _is_analysis_loopback_into_phase(
-        phase=phase,
-        previous_phase=previous_phase,
-        pipeline_policy=pipeline_policy,
-    ):
-        return
-    for path in (PLAN_ARTIFACT_PATH, PLAN_DRAFT_PATH):
-        workspace.remove(path)
-    handoff_path = handoff_path_for_artifact("plan")
-    if handoff_path:
-        workspace.remove(handoff_path)
-    required_artifacts = build_required_artifacts(artifacts_policy)
-    for phase_def in pipeline_policy.phases.values():
-        if phase_def.role != "analysis" or phase_def.transitions.on_loopback != phase:
-            continue
-        drain = phase_def.drain
-        required_artifact = required_artifacts.get(drain)
-        if required_artifact is None:
-            continue
-        workspace.remove(required_artifact.json_path)
-        analysis_handoff = handoff_path_for_artifact(required_artifact.artifact_type)
-        if analysis_handoff:
-            workspace.remove(analysis_handoff)
-
 
 
 def _materialize_prepared_prompt(
@@ -2025,6 +1979,8 @@ def _materialize_agent_prompt_if_needed(
     registry: _RegistryLike,
 ) -> None:
     if not isinstance(effect, InvokeAgentEffect):
+        return
+    if hasattr(workspace, "exists") and workspace.exists(prompt_file_for_phase(effect.phase)):
         return
 
     agent = registry.get(effect.agent_name)

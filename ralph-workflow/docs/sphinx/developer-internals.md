@@ -13,7 +13,6 @@ instead.
 - [Concepts](concepts.md) — agents, chains, drains, phases, and execution strategy
 - [MCP Architecture](mcp-architecture.md) — server lifecycle, capability gates, and upstream proxying
 - [Artifacts](artifacts.md) — typed handoffs and artifact storage contracts
-- [Agents](agents.md) — agent registry, chains, drains, and waiting-state lifecycle
 - [Prompts](prompts.md) — prompt template loading, rendering, and payload materialisation
 - [Transcript and Display Reference](transcript.md) — output event structure and rendering behavior
 
@@ -23,7 +22,6 @@ instead.
 concepts
 mcp-architecture
 artifacts
-agents
 prompts
 transcript
 ```
