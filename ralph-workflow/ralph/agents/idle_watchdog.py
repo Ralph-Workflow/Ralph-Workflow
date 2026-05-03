@@ -681,13 +681,14 @@ class IdleWatchdog:
         current_run_elapsed = now - self._waiting_on_child_started_at
         candidate_total = self._cumulative_waiting_on_child_seconds + current_run_elapsed
 
-        # Determine effective ceiling: use no-progress ceiling when corroboration
-        # shows the child is alive but not making forward progress.
+        # Capture ONE corroboration snapshot per tick and reuse it for the ceiling
+        # decision and all same-tick diagnostics to prevent divergence.
         current_corr = self._safe_corroborate()
         effective_ceiling = self._effective_waiting_ceiling(current_corr)
 
         if candidate_total >= effective_ceiling:
             self._last_fire_reason = WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG
+            # Reuse current_corr for diagnostic - do NOT call corroborate again
             corr_diag_hs = self._build_corroboration_diag(current_corr)
             corr_diag_hs["evidence"] = self._build_evidence_string(corr_diag_hs)
             diag: dict[str, str | int | float | bool] = {
@@ -727,8 +728,8 @@ class IdleWatchdog:
             and candidate_total >= self._config.suspect_waiting_on_child_seconds
         ):
             self._suspicion_announced_for_run = True
-            current_corr_sf = self._safe_corroborate()
-            corr_diag_sf = self._build_corroboration_diag(current_corr_sf)
+            # Reuse current_corr snapshot - do NOT call corroborate again
+            corr_diag_sf = self._build_corroboration_diag(current_corr)
             corr_diag_sf["evidence"] = self._build_evidence_string(corr_diag_sf)
             self._log.warning(
                 "idle watchdog: SUSPECTED_FROZEN candidate_total={}s suspect={}s ceiling={}s",
@@ -747,8 +748,8 @@ class IdleWatchdog:
         assert self._last_waiting_status_at is not None
         if now - self._last_waiting_status_at >= self._config.waiting_status_interval_seconds:
             self._last_waiting_status_at = now
-            current_corr_pr = self._safe_corroborate()
-            corr_diag_pr = self._build_corroboration_diag(current_corr_pr)
+            # Reuse current_corr snapshot - do NOT call corroborate again
+            corr_diag_pr = self._build_corroboration_diag(current_corr)
             # Include effective ceiling classification in diagnostic for visibility.
             if effective_ceiling < self._config.max_waiting_on_child_seconds:
                 corr_diag_pr["effective_ceiling"] = "no_progress"
