@@ -2842,6 +2842,7 @@ def _execute_agent_effect(  # noqa: PLR0913, PLR0915
                 max_session_seconds=config.general.agent_max_session_seconds,
                 waiting_status_interval_seconds=config.general.agent_waiting_status_interval_seconds,
                 suspect_waiting_on_child_seconds=config.general.agent_suspect_waiting_on_child_seconds,
+                max_waiting_on_child_no_progress_seconds=config.general.agent_idle_no_progress_waiting_on_child_seconds,
                 child_progress_ttl_seconds=config.general.agent_child_progress_ttl_seconds,
                 child_heartbeat_ttl_seconds=config.general.agent_child_heartbeat_ttl_seconds,
                 child_stale_label_ttl_seconds=config.general.agent_child_stale_label_ttl_seconds,

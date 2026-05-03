@@ -292,6 +292,16 @@ class GeneralConfig(_FrozenConfigModel):  # type: ignore[explicit-any]  # reason
             " agent_idle_max_waiting_on_child_seconds when set."
         ),
     )
+    agent_idle_no_progress_waiting_on_child_seconds: float | None = Field(
+        default=600.0,
+        gt=0.0,
+        description=(
+            "Hard ceiling on cumulative WAITING_ON_CHILD time when corroboration shows"
+            " the child is alive but not making progress (heartbeat-only, stale-label,"
+            " or OS-descendant-only evidence). Must be <= agent_idle_max_waiting_on_child_seconds."
+            " When None, the no-progress ceiling is disabled."
+        ),
+    )
     agent_child_progress_ttl_seconds: float = Field(
         default=45.0,
         gt=0.0,
@@ -357,6 +367,18 @@ class GeneralConfig(_FrozenConfigModel):  # type: ignore[explicit-any]  # reason
                 "agent_child_stale_label_ttl_seconds must be <= agent_child_progress_ttl_seconds"
                 f" (got {self.agent_child_stale_label_ttl_seconds}"
                 f" > {self.agent_child_progress_ttl_seconds})"
+            )
+            raise ValueError(msg)
+        if (
+            self.agent_idle_no_progress_waiting_on_child_seconds is not None
+            and self.agent_idle_no_progress_waiting_on_child_seconds
+            > self.agent_idle_max_waiting_on_child_seconds
+        ):
+            msg = (
+                "agent_idle_no_progress_waiting_on_child_seconds must be <="
+                " agent_idle_max_waiting_on_child_seconds"
+                f" (got {self.agent_idle_no_progress_waiting_on_child_seconds}"
+                f" > {self.agent_idle_max_waiting_on_child_seconds})"
             )
             raise ValueError(msg)
         return self

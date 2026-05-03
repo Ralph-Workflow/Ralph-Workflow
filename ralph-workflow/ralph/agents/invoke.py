@@ -140,6 +140,7 @@ class InvokeOptions:
     child_heartbeat_ttl_seconds: float | None = None
     child_stale_label_ttl_seconds: float | None = None
     child_exit_reconcile_seconds: float | None = None
+    max_waiting_on_child_no_progress_seconds: float | None = None
     pure: bool = False
     system_prompt_file: str | None = None
     waiting_listener: WaitingStatusListener | None = None
@@ -852,6 +853,11 @@ def _policy_from_options(opts: InvokeOptions) -> TimeoutPolicy:
             else _base.waiting_status_interval_seconds
         ),
         suspect_waiting_on_child_seconds=_suspect,
+        max_waiting_on_child_no_progress_seconds=(
+            opts.max_waiting_on_child_no_progress_seconds
+            if opts.max_waiting_on_child_no_progress_seconds is not None
+            else _base.max_waiting_on_child_no_progress_seconds
+        ),
     )
 
 

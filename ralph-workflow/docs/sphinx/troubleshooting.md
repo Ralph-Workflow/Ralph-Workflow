@@ -140,15 +140,27 @@ clears, escalates to a resumable-retry path.
 The waiting status log line includes `alive_by=` to explain the active evidence:
 
 ```
-Background child work still active (run=120s, cumulative=240s, ceiling=1800s, alive_by=fresh_progress)
+Background child work still active (run=120s, cumulative=240s, ceiling=600s, alive_by=fresh_heartbeat_only)
 ```
 
-If you see `alive_by=stale_label_only`, the child has gone quiet and the watchdog will
-escalate once the suspect threshold is crossed.
+If you see `alive_by=stale_label_only` or `alive_by=os_descendant_only_stale_progress`,
+the child has gone quiet and the watchdog will apply the shorter **no-progress ceiling**
+(default: 600 s) instead of the full ceiling (1800 s). This means a stuck child
+that is not making progress will be detected and escalated faster.
+
+The effective ceiling used is also visible in the HARD_STOP diagnostic as `effective_ceiling`:
+- `effective_ceiling=no_progress` — shorter no-progress ceiling fired (child was not making progress)
+- `effective_ceiling=standard` — full ceiling fired (child was making progress until the end)
 
 **Fix if child genuinely hangs:** Check the child agent log for errors. The parent
-will eventually fire `CHILDREN_PERSIST_TOO_LONG` when `max_waiting_on_child_seconds`
-(default 1800 s) is reached.
+will fire `CHILDREN_PERSIST_TOO_LONG` when the applicable ceiling is reached:
+- No-progress ceiling (default 600 s) if child is alive but not making progress
+- Full ceiling (default 1800 s) if child is making genuine progress
+
+**Tuning the no-progress ceiling:** To disable the no-progress ceiling entirely and always
+use the full 1800 s ceiling, set `agent_idle_no_progress_waiting_on_child_seconds = null` in
+your TOML config. This is not recommended unless you have workloads with legitimately long
+quiet periods between progress signals.
 
 ## Related pages
 

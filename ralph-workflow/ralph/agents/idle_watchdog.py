@@ -191,6 +191,12 @@ class TimeoutPolicy:
             shorten the hard-stop ceiling or change the watchdog verdict.
             Must be strictly less than max_waiting_on_child_seconds when set.
             None disables suspicion events.
+        max_waiting_on_child_no_progress_seconds: Hard ceiling on cumulative
+            WAITING_ON_CHILD time when corroboration shows the child is alive but
+            not making progress (e.g., heartbeat-only, stale-label, or OS-descendant-only
+            evidence). When set, must be <= max_waiting_on_child_seconds. When None,
+            the no-progress ceiling is disabled and max_waiting_on_child_seconds is
+            used for all WAITING_ON_CHILD states.
     """
 
     idle_timeout_seconds: float | None
@@ -204,6 +210,7 @@ class TimeoutPolicy:
     process_exit_wait_seconds: float = 30.0
     waiting_status_interval_seconds: float = 30.0
     suspect_waiting_on_child_seconds: float | None = 600.0
+    max_waiting_on_child_no_progress_seconds: float | None = None
 
     def __post_init__(self) -> None:
         self._validate_idle_fields()
@@ -262,6 +269,16 @@ class TimeoutPolicy:
             if self.suspect_waiting_on_child_seconds >= self.max_waiting_on_child_seconds:
                 msg = (
                     "suspect_waiting_on_child_seconds must be strictly less than"
+                    " max_waiting_on_child_seconds"
+                )
+                raise ValueError(msg)
+        if self.max_waiting_on_child_no_progress_seconds is not None:
+            if self.max_waiting_on_child_no_progress_seconds <= 0:
+                msg = "max_waiting_on_child_no_progress_seconds must be positive"
+                raise ValueError(msg)
+            if self.max_waiting_on_child_no_progress_seconds > self.max_waiting_on_child_seconds:
+                msg = (
+                    "max_waiting_on_child_no_progress_seconds must be <="
                     " max_waiting_on_child_seconds"
                 )
                 raise ValueError(msg)
@@ -591,6 +608,43 @@ class IdleWatchdog:
         )
         return WatchdogVerdict.FIRE
 
+    # Non-progress alive_by values — child is alive but not making forward progress.
+    _NON_PROGRESS_ALIVE_BY_VALUES = frozenset([
+        "fresh_heartbeat_only",
+        "stale_label_only",
+        "os_descendant_only_stale_progress",
+    ])
+
+    def _effective_waiting_ceiling(
+        self,
+        corroboration: CorroborationSnapshot,
+    ) -> float:
+        """Compute the effective waiting ceiling based on corroboration.
+
+        Returns the shorter no-progress ceiling when the child is alive but not
+        making forward progress (heartbeat-only, stale-label, or OS-descendant-only).
+        Returns the standard full ceiling when the child is making progress or when
+        the no-progress ceiling is disabled (None).
+        """
+        if self._config.max_waiting_on_child_no_progress_seconds is None:
+            return self._config.max_waiting_on_child_seconds
+
+        alive_by = corroboration.alive_by
+        if alive_by is None:
+            # No alive_by means we can't determine progress — use full ceiling (safe default).
+            return self._config.max_waiting_on_child_seconds
+
+        if alive_by == "fresh_progress":
+            # Real progress — use full ceiling.
+            return self._config.max_waiting_on_child_seconds
+
+        if alive_by in self._NON_PROGRESS_ALIVE_BY_VALUES:
+            # Non-progress evidence — use shorter no-progress ceiling.
+            return self._config.max_waiting_on_child_no_progress_seconds
+
+        # Unknown alive_by value — fall back to full ceiling.
+        return self._config.max_waiting_on_child_seconds
+
     def _handle_waiting_branch(self, now: float) -> WatchdogVerdict:
         """Handle the WAITING_ON_CHILD deferral branch.
 
@@ -601,6 +655,10 @@ class IdleWatchdog:
         Emits structured status events (ENTERED, PROGRESS, SUSPECTED_FROZEN,
         HARD_STOP) rather than per-tick debug spam. Status emission cadence is
         governed by waiting_status_interval_seconds and does NOT affect ceiling math.
+
+        When max_waiting_on_child_no_progress_seconds is set and corroboration shows
+        non-progress evidence (heartbeat-only, stale-label, or OS-descendant-only),
+        the shorter no-progress ceiling is used instead of the full ceiling.
         """
         idle_elapsed = now - self._last_activity
         if self._waiting_on_child_started_at is None:
@@ -623,16 +681,25 @@ class IdleWatchdog:
         current_run_elapsed = now - self._waiting_on_child_started_at
         candidate_total = self._cumulative_waiting_on_child_seconds + current_run_elapsed
 
-        if candidate_total >= self._config.max_waiting_on_child_seconds:
+        # Determine effective ceiling: use no-progress ceiling when corroboration
+        # shows the child is alive but not making forward progress.
+        current_corr = self._safe_corroborate()
+        effective_ceiling = self._effective_waiting_ceiling(current_corr)
+
+        if candidate_total >= effective_ceiling:
             self._last_fire_reason = WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG
-            current_corr_hs = self._safe_corroborate()
-            corr_diag_hs = self._build_corroboration_diag(current_corr_hs)
+            corr_diag_hs = self._build_corroboration_diag(current_corr)
             corr_diag_hs["evidence"] = self._build_evidence_string(corr_diag_hs)
             diag: dict[str, str | int | float | bool] = {
                 "cumulative": round(candidate_total, 1),
                 "run_elapsed": round(current_run_elapsed, 1),
                 "idle_elapsed": round(idle_elapsed, 1),
-                "ceiling": self._config.max_waiting_on_child_seconds,
+                "ceiling": effective_ceiling,
+                "effective_ceiling": (
+                    "no_progress"
+                    if effective_ceiling < self._config.max_waiting_on_child_seconds
+                    else "standard"
+                ),
             }
             if self._config.suspect_waiting_on_child_seconds is not None:
                 diag["suspect_threshold"] = self._config.suspect_waiting_on_child_seconds
@@ -682,10 +749,13 @@ class IdleWatchdog:
             self._last_waiting_status_at = now
             current_corr_pr = self._safe_corroborate()
             corr_diag_pr = self._build_corroboration_diag(current_corr_pr)
+            # Include effective ceiling classification in diagnostic for visibility.
+            if effective_ceiling < self._config.max_waiting_on_child_seconds:
+                corr_diag_pr["effective_ceiling"] = "no_progress"
             self._log.info(
                 "idle watchdog: WAITING_ON_CHILD progress cumulative={}s ceiling={}s",
                 round(candidate_total, 1),
-                self._config.max_waiting_on_child_seconds,
+                round(effective_ceiling, 1),
             )
             self._emit(
                 WaitingStatusKind.PROGRESS,

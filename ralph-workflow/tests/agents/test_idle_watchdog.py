@@ -1050,3 +1050,280 @@ def test_build_corroboration_diag_omits_alive_by_when_none() -> None:
     assert progress_events
     diag = progress_events[0].diagnostic
     assert "alive_by" not in diag
+
+
+# ---------------------------------------------------------------------------
+# No-progress ceiling tests (wt-97-timeout regression)
+# ---------------------------------------------------------------------------
+
+_NO_PROGRESS_CEILING = 10.0
+_FULL_CEILING = 1800.0
+
+
+def _make_watchdog_with_no_progress_ceiling(
+    no_progress_ceiling: float | None,
+    full_ceiling: float = _FULL_CEILING,
+    start: float = 0.0,
+) -> tuple[IdleWatchdog, FakeClock]:
+    """Helper that creates a watchdog with the no-progress ceiling configured."""
+    config = TimeoutPolicy(
+        idle_timeout_seconds=1.0,
+        drain_window_seconds=0.0,
+        max_waiting_on_child_seconds=full_ceiling,
+        suspect_waiting_on_child_seconds=None,
+        waiting_status_interval_seconds=100.0,
+        max_waiting_on_child_no_progress_seconds=no_progress_ceiling,
+    )
+    clock = FakeClock(start=start)
+    return IdleWatchdog(config, clock), clock
+
+
+def test_no_progress_ceiling_fires_on_fresh_heartbeat_only() -> None:
+    """WAITING_ON_CHILD with alive_by=fresh_heartbeat_only fires on no-progress ceiling.
+
+    Regression test for wt-97-timeout: when a child is alive but only sending
+    heartbeats (no progress), the shorter no-progress ceiling should fire instead
+    of waiting for the full 1800s ceiling.
+    """
+    watchdog, clock = _make_watchdog_with_no_progress_ceiling(
+        no_progress_ceiling=_NO_PROGRESS_CEILING
+    )
+
+    def _corroborator() -> CorroborationSnapshot:
+        return CorroborationSnapshot(alive_by="fresh_heartbeat_only", scoped_child_active=True)
+
+    watchdog = IdleWatchdog(
+        watchdog._config, clock, corroborator=_corroborator
+    )
+
+    # Advance past idle deadline to enter WAITING_ON_CHILD.
+    clock.advance(1.5)
+    result = watchdog.evaluate(classify_quiet=_waiting)
+    assert result == WatchdogVerdict.WAITING_ON_CHILD
+
+    # Advance to just under the no-progress ceiling — still waiting.
+    clock.advance(_NO_PROGRESS_CEILING - 0.1)
+    result = watchdog.evaluate(classify_quiet=_waiting)
+    assert result == WatchdogVerdict.WAITING_ON_CHILD
+
+    # Advance past the no-progress ceiling — must FIRE.
+    clock.advance(1.0)
+    result = watchdog.evaluate(classify_quiet=_waiting)
+    assert result == WatchdogVerdict.FIRE
+    assert watchdog.last_fire_reason == WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG
+
+
+def test_no_progress_ceiling_fires_on_stale_label_only() -> None:
+    """WAITING_ON_CHILD with alive_by=stale_label_only fires on no-progress ceiling."""
+    watchdog, clock = _make_watchdog_with_no_progress_ceiling(
+        no_progress_ceiling=_NO_PROGRESS_CEILING
+    )
+
+    def _corroborator() -> CorroborationSnapshot:
+        return CorroborationSnapshot(alive_by="stale_label_only", scoped_child_active=True)
+
+    watchdog = IdleWatchdog(
+        watchdog._config, clock, corroborator=_corroborator
+    )
+
+    clock.advance(1.5)
+    result = watchdog.evaluate(classify_quiet=_waiting)
+    assert result == WatchdogVerdict.WAITING_ON_CHILD
+
+    clock.advance(_NO_PROGRESS_CEILING - 0.1)
+    result = watchdog.evaluate(classify_quiet=_waiting)
+    assert result == WatchdogVerdict.WAITING_ON_CHILD
+
+    clock.advance(1.0)
+    result = watchdog.evaluate(classify_quiet=_waiting)
+    assert result == WatchdogVerdict.FIRE
+    assert watchdog.last_fire_reason == WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG
+
+
+def test_no_progress_ceiling_fires_on_os_descendant_only() -> None:
+    """WAITING_ON_CHILD with alive_by=os_descendant_only fires on no-progress ceiling."""
+    watchdog, clock = _make_watchdog_with_no_progress_ceiling(
+        no_progress_ceiling=_NO_PROGRESS_CEILING
+    )
+
+    def _corroborator() -> CorroborationSnapshot:
+        snap = CorroborationSnapshot(
+            alive_by="os_descendant_only_stale_progress", scoped_child_active=True
+        )
+        return snap
+
+    watchdog = IdleWatchdog(
+        watchdog._config, clock, corroborator=_corroborator
+    )
+
+    clock.advance(1.5)
+    result = watchdog.evaluate(classify_quiet=_waiting)
+    assert result == WatchdogVerdict.WAITING_ON_CHILD
+
+    clock.advance(_NO_PROGRESS_CEILING - 0.1)
+    result = watchdog.evaluate(classify_quiet=_waiting)
+    assert result == WatchdogVerdict.WAITING_ON_CHILD
+
+    clock.advance(1.0)
+    result = watchdog.evaluate(classify_quiet=_waiting)
+    assert result == WatchdogVerdict.FIRE
+    assert watchdog.last_fire_reason == WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG
+
+
+def test_full_ceiling_preserved_with_fresh_progress() -> None:
+    """WAITING_ON_CHILD with alive_by=fresh_progress uses full ceiling (no false positive).
+
+    When a child is actually making progress, the full ceiling must be used to avoid
+    false-positive timeouts on legitimate long-running child work.
+    """
+    watchdog, clock = _make_watchdog_with_no_progress_ceiling(
+        no_progress_ceiling=_NO_PROGRESS_CEILING,
+        full_ceiling=100.0,
+    )
+
+    def _corroborator() -> CorroborationSnapshot:
+        return CorroborationSnapshot(alive_by="fresh_progress", scoped_child_active=True)
+
+    watchdog = IdleWatchdog(
+        watchdog._config, clock, corroborator=_corroborator
+    )
+
+    clock.advance(1.5)
+    result = watchdog.evaluate(classify_quiet=_waiting)
+    assert result == WatchdogVerdict.WAITING_ON_CHILD
+
+    # Advance to just under the no-progress ceiling — should still be WAITING.
+    clock.advance(_NO_PROGRESS_CEILING - 0.1)
+    result = watchdog.evaluate(classify_quiet=_waiting)
+    assert result == WatchdogVerdict.WAITING_ON_CHILD
+
+    # Advance to just under the full ceiling (100s) - we've used ~10s so far, need 89.9s more.
+    clock.advance(89.9)
+    result = watchdog.evaluate(classify_quiet=_waiting)
+    assert result == WatchdogVerdict.WAITING_ON_CHILD
+
+    # Advance past the full ceiling — FIRE.
+    clock.advance(1.0)
+    result = watchdog.evaluate(classify_quiet=_waiting)
+    assert result == WatchdogVerdict.FIRE
+    assert watchdog.last_fire_reason == WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG
+
+
+def test_full_ceiling_preserved_when_no_progress_ceiling_disabled() -> None:
+    """When no_progress_ceiling=None, full ceiling is used even with non-progress alive_by."""
+    watchdog, clock = _make_watchdog_with_no_progress_ceiling(
+        no_progress_ceiling=None,
+        full_ceiling=100.0,
+    )
+
+    def _corroborator() -> CorroborationSnapshot:
+        return CorroborationSnapshot(alive_by="fresh_heartbeat_only", scoped_child_active=True)
+
+    watchdog = IdleWatchdog(
+        watchdog._config, clock, corroborator=_corroborator
+    )
+
+    clock.advance(1.5)
+    result = watchdog.evaluate(classify_quiet=_waiting)
+    assert result == WatchdogVerdict.WAITING_ON_CHILD
+
+    # Advance to just under the no-progress ceiling — still WAITING (ceiling disabled).
+    clock.advance(_NO_PROGRESS_CEILING - 0.1)
+    result = watchdog.evaluate(classify_quiet=_waiting)
+    assert result == WatchdogVerdict.WAITING_ON_CHILD
+
+    # Advance past the full ceiling — FIRE.
+    clock.advance(100.0 - _NO_PROGRESS_CEILING + 1.0)
+    result = watchdog.evaluate(classify_quiet=_waiting)
+    assert result == WatchdogVerdict.FIRE
+    assert watchdog.last_fire_reason == WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG
+
+
+def test_full_ceiling_preserved_when_alive_by_is_none() -> None:
+    """When alive_by=None (unknown), full ceiling is used as safe default."""
+    watchdog, clock = _make_watchdog_with_no_progress_ceiling(
+        no_progress_ceiling=_NO_PROGRESS_CEILING,
+        full_ceiling=100.0,
+    )
+
+    def _corroborator() -> CorroborationSnapshot:
+        # alive_by=None means we can't determine progress — use full ceiling.
+        return CorroborationSnapshot(scoped_child_active=True)
+
+    watchdog = IdleWatchdog(
+        watchdog._config, clock, corroborator=_corroborator
+    )
+
+    clock.advance(1.5)
+    result = watchdog.evaluate(classify_quiet=_waiting)
+    assert result == WatchdogVerdict.WAITING_ON_CHILD
+
+    # Advance past the no-progress ceiling — still WAITING (alive_by=None uses full ceiling).
+    clock.advance(_NO_PROGRESS_CEILING + 10.0)
+    result = watchdog.evaluate(classify_quiet=_waiting)
+    assert result == WatchdogVerdict.WAITING_ON_CHILD
+
+    # Advance to just under the full ceiling (100s) - we've used ~20s so far, need ~79.9s more.
+    clock.advance(79.9)
+    result = watchdog.evaluate(classify_quiet=_waiting)
+    assert result == WatchdogVerdict.WAITING_ON_CHILD
+
+    # Advance past the full ceiling — FIRE.
+    clock.advance(1.0)
+    result = watchdog.evaluate(classify_quiet=_waiting)
+    assert result == WatchdogVerdict.FIRE
+    assert watchdog.last_fire_reason == WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG
+
+
+def test_hard_stop_diagnostic_includes_effective_ceiling_classification() -> None:
+    """HARD_STOP diagnostic includes effective_ceiling classification."""
+    watchdog, clock = _make_watchdog_with_no_progress_ceiling(
+        no_progress_ceiling=_NO_PROGRESS_CEILING,
+    )
+    events: list[WaitingStatusEvent] = []
+
+    def _corroborator() -> CorroborationSnapshot:
+        return CorroborationSnapshot(alive_by="fresh_heartbeat_only", scoped_child_active=True)
+
+    watchdog = IdleWatchdog(
+        watchdog._config, clock, listener=events.append, corroborator=_corroborator
+    )
+
+    clock.advance(1.5)
+    watchdog.evaluate(classify_quiet=_waiting)
+    clock.advance(_NO_PROGRESS_CEILING + 1.0)
+    result = watchdog.evaluate(classify_quiet=_waiting)
+    assert result == WatchdogVerdict.FIRE
+
+    hard_stops = [e for e in events if e.kind == WaitingStatusKind.HARD_STOP]
+    assert len(hard_stops) == 1
+    diag = hard_stops[0].diagnostic
+    assert diag.get("effective_ceiling") == "no_progress"
+
+
+def test_validation_rejects_no_progress_ceiling_above_max_waiting() -> None:
+    """TimeoutPolicy rejects no_progress_ceiling > max_waiting_on_child_seconds."""
+    with pytest.raises(ValueError, match="max_waiting_on_child_no_progress_seconds must be <="):
+        TimeoutPolicy(
+            idle_timeout_seconds=10.0,
+            max_waiting_on_child_seconds=100.0,
+            max_waiting_on_child_no_progress_seconds=200.0,
+            suspect_waiting_on_child_seconds=None,  # Disable to avoid conflict
+        )
+
+
+def test_validation_rejects_no_progress_ceiling_equal_to_max() -> None:
+    """TimeoutPolicy allows no_progress_ceiling equal to max_waiting_on_child_seconds.
+
+    When equal, the no-progress ceiling provides no earlier protection (same as full ceiling),
+    but it is still a valid configuration.
+    """
+    # This should NOT raise - equality is allowed (validation uses > not >=)
+    equal_ceiling = 100.0
+    policy = TimeoutPolicy(
+        idle_timeout_seconds=10.0,
+        max_waiting_on_child_seconds=equal_ceiling,
+        max_waiting_on_child_no_progress_seconds=equal_ceiling,
+        suspect_waiting_on_child_seconds=None,
+    )
+    assert policy.max_waiting_on_child_no_progress_seconds == equal_ceiling
