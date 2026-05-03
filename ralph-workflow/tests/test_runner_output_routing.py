@@ -71,7 +71,11 @@ def _make_effect_sequence() -> list[object]:
             phase="development",
             prompt_file="development.md",
         ),
-        InvokeAgentEffect(agent_name="review", phase="review", prompt_file="review.md"),
+        InvokeAgentEffect(
+            agent_name="development_analysis",
+            phase="development_analysis",
+            prompt_file="development_analysis.md",
+        ),
         ExitSuccessEffect(),
     ]
 
@@ -177,7 +181,7 @@ def test_single_agent_visual_parity(monkeypatch: pytest.MonkeyPatch) -> None:
     next_states = iter(
         [
             state.copy_with(phase="development"),
-            state.copy_with(phase="review"),
+            state.copy_with(phase="development_analysis"),
             state.copy_with(phase="complete"),
         ]
     )
@@ -227,7 +231,7 @@ def test_single_agent_visual_parity(monkeypatch: pytest.MonkeyPatch) -> None:
     assert result == 0
     assert "[phase] \u25c6 planning" in output
     assert "[phase] \u25c6 development" in output
-    assert "[phase] \u25c6 review" in output
+    assert "[phase] development_analysis" in output
     assert "[phase] complete" in output
     assert "Pipeline completed successfully." in output
 

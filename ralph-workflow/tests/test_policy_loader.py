@@ -413,17 +413,13 @@ def test_default_policy_failed_analysis_decisions_route_to_same_rework_target() 
 
     bundle = load_policy(defaults_dir)
     development_decisions = bundle.pipeline.phases["development_analysis"].decisions
-    review_decisions = bundle.pipeline.phases["review_analysis"].decisions
     planning_decisions = bundle.pipeline.phases["planning_analysis"].decisions
 
     assert development_decisions is not None
-    assert review_decisions is not None
     assert planning_decisions is not None
     assert development_decisions["failed"].target == development_decisions["request_changes"].target
-    assert review_decisions["failed"].target == review_decisions["request_changes"].target
     assert planning_decisions["failed"].target == planning_decisions["request_changes"].target
     assert development_decisions["failed"].target == "development"
-    assert review_decisions["failed"].target == "fix"
     assert planning_decisions["failed"].target == "planning"
 
 

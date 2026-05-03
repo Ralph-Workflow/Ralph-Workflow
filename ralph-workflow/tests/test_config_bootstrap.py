@@ -175,10 +175,6 @@ def test_local_template_defines_active_runtime_drain_bindings() -> None:
         ("development", "development"),
         ("development_analysis", "analysis"),
         ("development_commit", "commit"),
-        ("review", "review"),
-        ("review_analysis", "analysis"),
-        ("review_commit", "commit"),
-        ("fix", "fix"),
     ):
         assert drains.get(drain_name) == chain_name, (
             f"Expected active local template drain binding {drain_name!r} -> {chain_name!r}"
@@ -197,8 +193,6 @@ def test_local_template_defines_active_agent_chain_defaults() -> None:
         "claude/sonnet",
     ]
     assert chains["analysis"] == ["opencode/openai/gpt-5.4"]
-    assert chains["review"] == ["opencode/openai/gpt-5.4"]
-    assert chains["fix"] == ["opencode/zai-coding-plan/glm-5", "claude/sonnet"]
     assert chains["commit"] == ["claude/haiku"]
 
 
@@ -246,7 +240,7 @@ def test_generated_local_template_missing_required_drain_fails_policy_validation
     agent_dir = tmp_path / ".agent"
     agent_dir.mkdir()
     broken = (defaults_dir / "ralph-workflow-local.toml").read_text(encoding="utf-8").replace(
-        'review_commit = "commit"\n', ''
+        'development_commit = "commit"\n', ''
     )
     (agent_dir / "ralph-workflow.toml").write_text(broken, encoding="utf-8")
     (agent_dir / "pipeline.toml").write_text(

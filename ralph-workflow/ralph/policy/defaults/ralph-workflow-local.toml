@@ -128,17 +128,15 @@
 planning = ["claude/opus"]
 development = ["opencode/minimax/MiniMax-M2.7-highspeed", "codex", "claude/sonnet"]
 analysis = ["opencode/openai/gpt-5.4"]
-review = ["opencode/openai/gpt-5.4"]
-fix = ["opencode/zai-coding-plan/glm-5", "claude/sonnet"]
 commit = ["claude/haiku"]
 
 # CCS alternative example: planning = ["ccs/work"]
 # See docs/sphinx/configuration.md#ccs_aliases for CCS details.
 
 # ---------------------------------------------------------------------------
-# [agent_drains.*] — Drain-to-chain bindings for built-in drains
+# [agent_drains.*] — Drain-to-chain bindings for pipeline drains
 # Maps each pipeline drain name to a chain name defined in [agent_chains].
-# IMPORTANT: the bundled pipeline uses the full runtime drain set below.
+# IMPORTANT: the bundled pipeline uses the drain set below.
 # ---------------------------------------------------------------------------
 
 [agent_drains]
@@ -147,8 +145,6 @@ planning_analysis = "analysis"
 development = "development"
 development_analysis = "analysis"
 development_commit = "commit"
-review = "review"
-review_analysis = "analysis"
-review_commit = "commit"
-fix = "fix"
+analysis = "analysis"
+commit = "commit"
 

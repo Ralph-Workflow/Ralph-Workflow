@@ -945,18 +945,25 @@ def validate_checkpoint_against_policy(
         )
 
 
-def validate_required_inputs(workspace_scope: WorkspaceScope) -> None:
+def validate_required_inputs(
+    workspace_scope: WorkspaceScope,
+    inline_prompt: str | None = None,
+) -> None:
     """Validate that required input files exist and are readable.
 
     Checks that PROMPT.md exists in the workspace root, as it is required
-    for the pipeline to run.
+    for the pipeline to run. When inline_prompt is provided, the PROMPT.md
+    check is skipped.
 
     Args:
         workspace_scope: The workspace scope containing the root path.
+        inline_prompt: Optional inline prompt supplied via CLI; bypasses PROMPT.md check.
 
     Raises:
         PolicyValidationError: If required inputs are missing or unreadable.
     """
+    if inline_prompt is not None:
+        return
     prompt_path = workspace_scope.root / "PROMPT.md"
     if not prompt_path.exists():
         raise PolicyValidationError(

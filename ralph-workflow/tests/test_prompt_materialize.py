@@ -756,87 +756,6 @@ def test_materialize_planning_analysis_uses_markdown_plan_handoff(
     assert "Fresh plan context." not in rendered
 
 
-def test_materialize_fix_prompt_uses_markdown_issues_handoff(
-    tmp_path: Path,
-) -> None:
-    policy = load_policy(tmp_path / ".agent")
-    workspace = MemoryWorkspace(root=str(tmp_path))
-    workspace.write("PROMPT.md", "Apply the fixes")
-    _write_plan_handoff(workspace)
-    workspace.write(
-        ".agent/artifacts/issues.json",
-        json.dumps(
-            {
-                "type": "issues",
-                "content": {
-                    "status": "issues_found",
-                    "summary": "Review found gaps.",
-                    "issues": [
-                        {
-                            "path": "ralph/pipeline/runner.py",
-                            "severity": "high",
-                            "summary": "Need better visibility.",
-                        }
-                    ],
-                    "what_came_up_short": ["User cannot see the review handoff."],
-                    "how_to_fix": ["Mirror issues.json to ISSUES.md."],
-                },
-            }
-        ),
-    )
-
-    prompt_path = materialize_prompt_for_phase(
-        phase="fix",
-        workspace=workspace,
-        pipeline_policy=policy.pipeline,
-        artifacts_policy=policy.artifacts,
-        session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.FIX),
-        workspace_root=tmp_path,
-    )
-
-    rendered = workspace.read(prompt_path)
-    assert str(tmp_path / ".agent" / "ISSUES.md") in rendered
-    assert "Read the complete issues from file at" in rendered
-    assert "Need better visibility." not in rendered
-
-
-def test_materialize_fix_prompt_uses_review_analysis_feedback_handoff(
-    tmp_path: Path,
-) -> None:
-    policy = load_policy(tmp_path / ".agent")
-    workspace = MemoryWorkspace(root=str(tmp_path))
-    workspace.write("PROMPT.md", "Apply the fixes")
-    _write_plan_handoff(workspace)
-    workspace.write(
-        ".agent/artifacts/review_analysis_decision.json",
-        json.dumps(
-            {
-                "type": "review_analysis_decision",
-                "content": {
-                    "status": "request_changes",
-                    "summary": "Fixes are required.",
-                    "what_came_up_short": ["The fixer cannot see review-analysis feedback."],
-                    "how_to_fix": ["Read the review analysis handoff first."],
-                },
-            }
-        ),
-    )
-
-    prompt_path = materialize_prompt_for_phase(
-        phase="fix",
-        workspace=workspace,
-        pipeline_policy=policy.pipeline,
-        artifacts_policy=policy.artifacts,
-        session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.FIX),
-        workspace_root=tmp_path,
-    )
-
-    rendered = workspace.read(prompt_path)
-    assert str(tmp_path / ".agent" / "REVIEW_ANALYSIS_DECISION.md") in rendered
-    assert "Read the complete analysis feedback from file at" in rendered
-    assert "Fixes are required." not in rendered
-
-
 def test_materialize_development_prefers_structured_plan_artifact_over_plan_md(
     tmp_path: Path,
 ) -> None:
@@ -909,36 +828,6 @@ def test_materialize_planning_prompt_uses_file_reference_for_large_prompt(tmp_pa
     assert large_prompt not in rendered
     assert (tmp_path / ".agent" / "CURRENT_PROMPT.md").read_text(encoding="utf-8") == large_prompt
     assert not payload_path.exists()
-
-
-def test_materialize_review_prompt_uses_file_reference_for_large_diff(
-    tmp_path: Path,
-    monkeypatch,
-) -> None:
-    policy = load_policy(tmp_path / ".agent")
-    workspace = MemoryWorkspace(root=str(tmp_path))
-    workspace.write("PROMPT.md", "Review the changes")
-    _write_plan_handoff(workspace)
-    large_diff = "D" * (100 * 1024 + 1)
-
-    monkeypatch.setattr(materialize_module, "_git_diff", lambda _workspace_root: large_diff)
-
-    prompt_path = materialize_prompt_for_phase(
-        phase="review",
-        workspace=workspace,
-        pipeline_policy=policy.pipeline,
-        session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.REVIEW),
-        workspace_root=tmp_path,
-    )
-
-    rendered = workspace.read(prompt_path)
-    payload_path = tmp_path / ".agent" / "tmp" / "prompt_payloads" / "review_diff.txt"
-    assert "read the complete changes from file at" in rendered.lower()
-    assert (tmp_path / ".agent" / "CURRENT_PROMPT.md").read_text(encoding="utf-8") == (
-        "Review the changes"
-    )
-    assert large_diff not in rendered
-    assert payload_path.read_text(encoding="utf-8") == large_diff
 
 
 def test_git_diff_uses_start_commit_sha_when_present(tmp_git_repo: Path) -> None:

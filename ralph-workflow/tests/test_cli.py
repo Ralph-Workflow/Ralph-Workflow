@@ -29,7 +29,7 @@ from ralph.cli.main import (
     _run_pipeline,
     app,
 )
-from ralph.config.enums import ReviewDepth, Verbosity
+from ralph.config.enums import Verbosity
 from ralph.display.context import DisplayContext, make_display_context
 from ralph.display.theme import RALPH_THEME
 from ralph.workspace.scope import WorkspaceScope
@@ -442,6 +442,7 @@ def test_run_pipeline_success(monkeypatch: pytest.MonkeyPatch) -> None:
         verbosity=None,
         display_context=None,
         counter_overrides=None,
+        inline_prompt=None,
     ):  # type: ignore[override]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
         recorded["config_path"] = config_path
         recorded["cli_overrides"] = cli_overrides
@@ -517,29 +518,21 @@ def test_build_cli_overrides_sets_values() -> None:
 
     cli_input = CLIOverrideInput(
         developer_agent="dev",
-        reviewer_agent="rev",
         developer_model="dev-model",
-        reviewer_model="rev-model",
-        review_depth=ReviewDepth.SECURITY,
         git_user_name="Jane",
         git_user_email="jane@example.com",
         developer_iters=7,
-        reviewer_reviews=3,
     )
 
     overrides = cast("dict[str, object]", _build_cli_overrides(cli_input))
     general = cast("dict[str, object]", overrides["general"])
     execution = cast("dict[str, object]", general["execution"])
-    assert general["review_depth"] == ReviewDepth.SECURITY.value
     assert general["git_user_name"] == "Jane"
     assert general["git_user_email"] == "jane@example.com"
     assert general["developer_iters"] == 7  # noqa: PLR2004
-    assert general["reviewer_reviews"] == 3  # noqa: PLR2004
     assert execution == {}
     assert overrides["developer_agent"] == "dev"
-    assert overrides["reviewer_agent"] == "rev"
     assert overrides["developer_model"] == "dev-model"
-    assert overrides["reviewer_model"] == "rev-model"
 
 
 def test_cli_override_input_rejects_removed_isolation_mode_field() -> None:
@@ -627,8 +620,8 @@ def test_explain_policy_prints_workflow_diagram(cli_runner: CliRunner) -> None:
     # Should also contain the structural breakdown section
     assert "RALPH WORKFLOW — ACTIVE POLICY EXPLANATION" in result.stdout
 
-    # Should contain bypass_routes explanation sentence for the review phase
-    assert "Explanation: phase 'review' bypasses to 'review_commit'" in result.stdout
+    # Should contain post-commit routing explanation for development_commit
+    assert "after commit phase 'development_commit'" in result.stdout
 
 
 class TestParseCounterOverrides:
@@ -684,14 +677,6 @@ class TestIterationCounterFlags:
         )
         general = cast("dict[str, object]", overrides["general"])
         assert general["developer_iters"] == 3  # noqa: PLR2004
-
-    def test_reviewer_reviews_flag_sets_config_override(self) -> None:
-        overrides = cast(
-            "dict[str, object]",
-            _build_cli_overrides(CLIOverrideInput(reviewer_reviews=1)),
-        )
-        general = cast("dict[str, object]", overrides["general"])
-        assert general["reviewer_reviews"] == 1
 
     def test_counter_flag_passes_overrides_to_run_pipeline(
         self, monkeypatch: pytest.MonkeyPatch

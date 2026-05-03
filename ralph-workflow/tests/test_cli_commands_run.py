@@ -143,10 +143,6 @@ _DEFAULT_DRAINS = [
     "development",
     "development_analysis",
     "development_commit",
-    "review",
-    "review_analysis",
-    "review_commit",
-    "fix",
 ]
 
 
@@ -203,7 +199,7 @@ def test_run_pipeline_dry_run_reports_summary(
 ) -> None:
     _configure_workspace(monkeypatch, tmp_path)
     config = _fake_config()
-    state = PipelineState(phase="review")
+    state = PipelineState(phase="development")
 
     monkeypatch.setattr(run_module, "load_config", lambda *args, **kwargs: config)
     monkeypatch.setattr(run_module.ckpt, "load", lambda: state)
@@ -214,7 +210,7 @@ def test_run_pipeline_dry_run_reports_summary(
 
     assert run_module.run_pipeline(dry_run=True, resume=True) == 0
     assert "Dry run mode" in console.lines[0]
-    assert "Phase: review" in console.lines[1]
+    assert "Phase: development" in console.lines[1]
 
 
 class _RegistryWithFromConfigOnly:

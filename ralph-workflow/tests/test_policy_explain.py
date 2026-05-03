@@ -231,8 +231,6 @@ class TestExplainPolicy:
         phase_names = {p.name for p in result.phases}
         assert "planning" in phase_names
         assert "development" in phase_names
-        assert "review" in phase_names
-        assert "fix" in phase_names
 
 
 class TestRenderExplanationText:
@@ -261,7 +259,7 @@ class TestRenderExplanationText:
         bundle = load_policy(_DEFAULT_POLICY_DIR)
         exp = explain_policy(bundle)
         text = render_explanation_text(exp)
-        for name in ["planning", "development", "review", "fix"]:
+        for name in ["planning", "development"]:
             assert name in text, f"Phase '{name}' not found in rendered output"
 
     def test_answers_what_happens_after_success(self) -> None:

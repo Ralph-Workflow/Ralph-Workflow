@@ -63,7 +63,7 @@ class MockAgentInvoker:
         self.call_history.append({"agent": agent_name, "phase": phase})
 
         # For planning and development: return AGENT_SUCCESS
-        if phase in ("planning", "development", "review", "fix"):
+        if phase in ("planning", "development"):
             return cast("PipelineEvent", PipelineEvent.AGENT_SUCCESS)
 
         # For analysis phases: return ANALYSIS_SUCCESS
@@ -120,11 +120,10 @@ def initial_state() -> PipelineState:
     """
     return PipelineState(
         phase="planning",
-        budget_caps={"iteration": 1, "reviewer_pass": 1},
-        budget_remaining={"iteration": 1, "reviewer_pass": 1},
+        budget_caps={"iteration": 1},
+        budget_remaining={"iteration": 1},
         phase_chains={
             "development": AgentChainState(agents=["claude"]),
-            "review": AgentChainState(agents=["claude"]),
         },
         rebase=RebaseState(),
         commit=CommitState(),
@@ -174,25 +173,6 @@ class TestPipelineHappyPath:
         assert isinstance(effect, (PreparePromptEffect, InvokeAgentEffect))
         assert effect.phase == "development_commit"
 
-    def test_review_commit_to_complete(
-        self,
-        default_policy: tuple[Any, Any, Any],
-        initial_state: PipelineState,
-    ) -> None:
-        """review_commit should run commit checkpoint before terminal routing."""
-        agents_policy, pipeline_policy, _ = default_policy
-
-        # Set state to review_commit phase
-        state = (
-            initial_state.copy_with(phase="review_commit")
-            .with_budget_remaining("reviewer_pass", 0)
-        )
-
-        effect = determine_next_effect(state, pipeline_policy, agents_policy)
-
-        assert isinstance(effect, (PreparePromptEffect, InvokeAgentEffect))
-        assert effect.phase == "review_commit"
-
     def test_memory_workspace_persistence(
         self,
         memory_workspace: MemoryWorkspace,
@@ -225,10 +205,6 @@ class TestPipelineHappyPath:
             "development",
             "development_analysis",
             "development_commit",
-            "review",
-            "review_analysis",
-            "fix",
-            "review_commit",
         }
         actual_drains = set(agents_policy.agent_drains.keys())
         assert expected_drains.issubset(actual_drains)
@@ -266,17 +242,11 @@ class TestMockAgentInvoker:
         event = invoker.invoke("claude", "development_analysis")
         assert event == PipelineEvent.ANALYSIS_SUCCESS
 
-        event = invoker.invoke("claude", "review_analysis")
-        assert event == PipelineEvent.ANALYSIS_SUCCESS
-
     def test_commit_returns_commit_success(self) -> None:
         """Test that commit phases return COMMIT_SUCCESS."""
         invoker = MockAgentInvoker(MemoryWorkspace())
 
         event = invoker.invoke("claude", "development_commit")
-        assert event == PipelineEvent.COMMIT_SUCCESS
-
-        event = invoker.invoke("claude", "review_commit")
         assert event == PipelineEvent.COMMIT_SUCCESS
 
     def test_invoker_records_call_history(self) -> None:
@@ -311,40 +281,17 @@ class TestPipelinePhaseTransitions:
         assert isinstance(effect, (PreparePromptEffect, InvokeAgentEffect))
         assert effect.phase == "development"
 
-    def test_review_with_issues_routes_to_fix(
+    def test_planning_analysis_routes_to_development(
         self,
         default_policy: tuple[Any, Any, Any],
         initial_state: PipelineState,
     ) -> None:
-        """Test that review with issues routes to fix."""
+        """Test that planning_analysis routes to development on success."""
         agents_policy, pipeline_policy, _ = default_policy
 
-        # Set state to review
-        state = initial_state.copy_with(phase="review").with_budget_remaining("reviewer_pass", 1)
+        state = initial_state.copy_with(phase="planning_analysis")
 
         effect = determine_next_effect(state, pipeline_policy, agents_policy)
 
-        # Review should route to review_commit or stay in review
         assert isinstance(effect, (PreparePromptEffect, InvokeAgentEffect))
-        assert effect.phase == "review"
-
-    def test_fix_routes_to_review_analysis(
-        self,
-        default_policy: tuple[Any, Any, Any],
-        initial_state: PipelineState,
-    ) -> None:
-        """Test that fix phase routes through review analysis before another review."""
-        agents_policy, pipeline_policy, _ = default_policy
-
-        # Set state to fix
-        state = initial_state.model_copy(
-            update={
-                "phase": "fix",
-            }
-        )
-
-        effect = determine_next_effect(state, pipeline_policy, agents_policy)
-
-        # Fix should route through review_analysis so fixes are checked before another review pass.
-        assert isinstance(effect, (PreparePromptEffect, InvokeAgentEffect))
-        assert effect.phase == "review_analysis"
+        assert effect.phase == "planning_analysis"

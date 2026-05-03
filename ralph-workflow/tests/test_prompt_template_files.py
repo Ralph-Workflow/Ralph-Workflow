@@ -83,9 +83,7 @@ def test_default_artifacts_policy_references_file_backed_templates() -> None:
     assert 'prompt_template = "planning.jinja"' in artifacts_toml
     assert 'prompt_template = "planning_analysis.jinja"' in artifacts_toml
     assert 'prompt_template = "development_analysis.jinja"' in artifacts_toml
-    assert 'prompt_template = "review_analysis.jinja"' in artifacts_toml
     assert 'prompt_template = "development_commit_message.jinja"' in artifacts_toml
-    assert 'prompt_template = "commit_message.jinja"' in artifacts_toml
     assert 'prompt_template = ""' not in artifacts_toml
 
 

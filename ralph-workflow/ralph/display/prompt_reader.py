@@ -15,7 +15,10 @@ PREVIEW_LINES = 10
 
 def find_prompt_path(workspace_root: Path) -> Path | None:
     path = workspace_root / "PROMPT.md"
-    return path if path.exists() else None
+    if path.exists():
+        return path
+    current_prompt = workspace_root / ".agent" / "CURRENT_PROMPT.md"
+    return current_prompt if current_prompt.exists() else None
 
 
 def read_prompt_preview(prompt_path: Path) -> tuple[str, ...]:
