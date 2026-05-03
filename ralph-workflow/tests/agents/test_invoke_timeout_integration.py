@@ -96,7 +96,7 @@ def test_session_ceiling_fires_under_continuous_output() -> None:
     policy = TimeoutPolicy(
         idle_timeout_seconds=_MAX_SESSION_SECONDS,
         max_session_seconds=_MAX_SESSION_SECONDS,
-        idle_poll_interval_seconds=0.05,
+        idle_poll_interval_seconds=0.01,
         drain_window_seconds=0.0,
     )
     clock = FakeClock(start=0.0)
@@ -128,13 +128,13 @@ def test_watchdog_fires_even_when_classify_quiet_raises() -> None:
     path (where _safe_classify_quiet is invoked).  The _reader_release event is
     set in a finally block so the reader daemon thread exits cleanly.
     """
-    idle_timeout = 2.0
-    max_waiting = 4.0
+    idle_timeout = 0.2
+    max_waiting = 0.4
     policy = TimeoutPolicy(
         idle_timeout_seconds=idle_timeout,
         max_waiting_on_child_seconds=max_waiting,
         drain_window_seconds=0.0,
-        idle_poll_interval_seconds=0.05,
+        idle_poll_interval_seconds=0.01,
         suspect_waiting_on_child_seconds=None,
     )
     clock = FakeClock(start=0.0)
@@ -172,13 +172,13 @@ def test_classify_quiet_exception_defers_not_fires() -> None:
     NO_OUTPUT_DEADLINE is never raised when classify_quiet always raises. Instead
     the watchdog defers until the cumulative WAITING ceiling fires.
     """
-    idle_timeout = 2.0
-    max_waiting = 4.0
+    idle_timeout = 0.2
+    max_waiting = 0.4
     policy = TimeoutPolicy(
         idle_timeout_seconds=idle_timeout,
         max_waiting_on_child_seconds=max_waiting,
-        drain_window_seconds=0.5,
-        idle_poll_interval_seconds=0.05,
+        drain_window_seconds=0.05,
+        idle_poll_interval_seconds=0.01,
         suspect_waiting_on_child_seconds=None,
     )
     clock = FakeClock(start=0.0)
@@ -219,7 +219,7 @@ def test_post_yield_evaluate_uses_real_classify_quiet() -> None:
     policy = TimeoutPolicy(
         idle_timeout_seconds=idle_timeout,
         drain_window_seconds=0.5,
-        idle_poll_interval_seconds=0.05,
+        idle_poll_interval_seconds=0.01,
     )
     clock = FakeClock(start=0.0)
 
@@ -261,10 +261,10 @@ def test_cumulative_ceiling_fires_with_oscillating_heartbeat() -> None:
     ~1s per cycle; it eventually exceeds max_waiting_on_child_seconds and
     CHILDREN_PERSIST_TOO_LONG fires.
     """
-    idle_timeout = 10.0
-    max_waiting = 20.0
-    drain_window = 0.5
-    poll_interval = 0.05
+    idle_timeout = 1.0
+    max_waiting = 2.0
+    drain_window = 0.05
+    poll_interval = 0.01
 
     policy = TimeoutPolicy(
         idle_timeout_seconds=idle_timeout,
@@ -283,7 +283,7 @@ def test_cumulative_ceiling_fires_with_oscillating_heartbeat() -> None:
         # seconds.  Between yields, busy-wait with time.sleep(0) to release the
         # GIL so the main read-loop thread can advance the FakeClock.
         for heartbeat_num in range(_max_heartbeats):
-            target_t = (heartbeat_num + 1) * (idle_timeout + 1.0)
+            target_t = (heartbeat_num + 1) * (idle_timeout + 0.1)
             while clock.monotonic() < target_t:
                 time.sleep(0)  # release GIL; main thread advances clock
             yield f"heartbeat {heartbeat_num}\n"
@@ -326,9 +326,9 @@ def test_invoke_emits_waiting_listener_events_not_per_tick_log() -> None:
     - Exactly 1 HARD_STOP event.
     - Total events <= 6.
     """
-    idle_timeout = 0.5
-    max_waiting = 2.0
-    status_interval = 1.0
+    idle_timeout = 0.2
+    max_waiting = 0.6
+    status_interval = 0.2
 
     policy = TimeoutPolicy(
         idle_timeout_seconds=idle_timeout,
@@ -395,8 +395,8 @@ def test_children_persist_hard_stop_includes_corroboration_diagnostic() -> None:
     - _IdleStreamTimeoutError message contains 'cumulative=' and 'scoped_child_active='.
     - Captured HARD_STOP WaitingStatusEvent.diagnostic includes 'evidence' and 'cumulative'.
     """
-    idle_timeout = 0.5
-    max_waiting = 2.0
+    idle_timeout = 0.2
+    max_waiting = 0.6
     status_interval = 100.0  # suppress PROGRESS noise
 
     policy = TimeoutPolicy(

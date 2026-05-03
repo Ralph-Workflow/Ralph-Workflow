@@ -183,7 +183,7 @@ class OpenCodeExecutionStrategy:
         # Use child_snapshot if the probe supports it (DefaultLivenessProbe/FakeLivenessProbe)
         try:
             snap = liveness_probe.child_snapshot(probe_prefix)
-            if snap.has_fresh_progress or snap.has_process:
+            if snap.has_fresh_progress or snap.has_fresh_label:
                 return AgentExecutionState.WAITING_ON_CHILD
         except Exception:
             # Fall back to any_agent_active for probes that only implement old interface

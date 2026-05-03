@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import ast
 import re
+from functools import cache
 from pathlib import Path
 
 # Documented exceptions: style strings that are allowed as plain literals.
@@ -38,29 +39,44 @@ _MIN_ARGS_FOR_POSITIONAL_STYLE = 2
 _REPO_ROOT = Path(__file__).parent.parent.parent
 
 
-def _target_files() -> list[Path]:
+@cache
+def _target_files() -> tuple[Path, ...]:
     display_dir = _REPO_ROOT / "ralph-workflow" / "ralph" / "display"
     cli_dir = _REPO_ROOT / "ralph-workflow" / "ralph" / "cli"
     cli_commands_dir = cli_dir / "commands"
-    extras = [
+    extras = (
         _REPO_ROOT / "ralph-workflow" / "ralph" / "banner.py",
         _REPO_ROOT / "ralph-workflow" / "ralph" / "config" / "welcome.py",
-    ]
+    )
     files = (
         list(display_dir.glob("*.py"))
         + list(cli_dir.glob("*.py"))
         + list(cli_commands_dir.glob("*.py"))
-        + extras
+        + list(extras)
     )
-    return [f for f in files if f.is_file()]
+    return tuple(f for f in files if f.is_file())
+
+
+@cache
+def _file_source(source_path: Path) -> str:
+    return source_path.read_text(encoding="utf-8")
+
+
+@cache
+def _parsed_tree(source_path: Path) -> ast.AST | None:
+    source = _file_source(source_path)
+    try:
+        return ast.parse(source, filename=str(source_path))
+    except SyntaxError:
+        return None
 
 
 def _literal_style_violations(source_path: Path) -> list[tuple[int, str]]:
     """Return (line_number, literal_value) for each forbidden bare literal style= arg."""
-    source = source_path.read_text(encoding="utf-8")
-    try:
-        tree = ast.parse(source, filename=str(source_path))
-    except SyntaxError:
+    if "style=" not in _file_source(source_path):
+        return []
+    tree = _parsed_tree(source_path)
+    if tree is None:
         return []
 
     violations: list[tuple[int, str]] = []
@@ -89,10 +105,10 @@ def _positional_append_style_violations(source_path: Path) -> list[tuple[int, st
     Catches Text.append("text", "bare_style") where the second positional arg is a string
     constant that is not a theme key.
     """
-    source = source_path.read_text(encoding="utf-8")
-    try:
-        tree = ast.parse(source, filename=str(source_path))
-    except SyntaxError:
+    if ".append(" not in _file_source(source_path):
+        return []
+    tree = _parsed_tree(source_path)
+    if tree is None:
         return []
 
     violations: list[tuple[int, str]] = []
@@ -118,10 +134,11 @@ def _markup_string_violations(source_path: Path) -> list[tuple[int, str]]:
     Catches console.print("[red]text[/red]") style calls where a bare colour string is
     embedded as Rich markup in the first positional argument.
     """
-    source = source_path.read_text(encoding="utf-8")
-    try:
-        tree = ast.parse(source, filename=str(source_path))
-    except SyntaxError:
+    source = _file_source(source_path)
+    if "print(" not in source or "[" not in source:
+        return []
+    tree = _parsed_tree(source_path)
+    if tree is None:
         return []
 
     violations: list[tuple[int, str]] = []
@@ -143,52 +160,33 @@ def _markup_string_violations(source_path: Path) -> list[tuple[int, str]]:
     return violations
 
 
-def test_no_literal_style_strings_in_display_code() -> None:
-    """No production display file may contain a bare literal Rich style= string."""
-    all_violations: list[str] = []
+def test_display_style_contracts() -> None:
+    """Display code must avoid bare style literals and bare markup colors."""
+    style_violations: list[str] = []
+    append_violations: list[str] = []
+    markup_violations: list[str] = []
 
     for path in _target_files():
+        rel = path.relative_to(_REPO_ROOT / "ralph-workflow")
         for lineno, literal in _literal_style_violations(path):
-            rel = path.relative_to(_REPO_ROOT / "ralph-workflow")
-            all_violations.append(f"  {rel}:{lineno}: style={literal!r}")
+            style_violations.append(f"  {rel}:{lineno}: style={literal!r}")
+        for lineno, literal in _positional_append_style_violations(path):
+            append_violations.append(f"  {rel}:{lineno}: .append(..., {literal!r})")
+        for lineno, literal in _markup_string_violations(path):
+            markup_violations.append(f"  {rel}:{lineno}: print({literal!r})")
 
-    msg = (
+    assert not style_violations, (
         "Bare literal Rich style= strings found"
         " — replace with 'theme.*' keys or add to allowlist:\n"
-        + "\n".join(all_violations)
+        + "\n".join(style_violations)
     )
-    assert not all_violations, msg
-
-
-def test_no_positional_style_literals_in_append_calls() -> None:
-    """No .append(text, style_literal) call may use a bare style string as second positional arg."""
-    all_violations: list[str] = []
-
-    for path in _target_files():
-        for lineno, literal in _positional_append_style_violations(path):
-            rel = path.relative_to(_REPO_ROOT / "ralph-workflow")
-            all_violations.append(f"  {rel}:{lineno}: .append(..., {literal!r})")
-
-    msg = (
+    assert not append_violations, (
         "Bare literal style as second positional arg to .append() found"
         " — use style= keyword with a 'theme.*' key or add to allowlist:\n"
-        + "\n".join(all_violations)
+        + "\n".join(append_violations)
     )
-    assert not all_violations, msg
-
-
-def test_no_bare_markup_colors_in_print_calls() -> None:
-    """No console.print() call may use bare markup color tags like [red] or [green]."""
-    all_violations: list[str] = []
-
-    for path in _target_files():
-        for lineno, literal in _markup_string_violations(path):
-            rel = path.relative_to(_REPO_ROOT / "ralph-workflow")
-            all_violations.append(f"  {rel}:{lineno}: print({literal!r})")
-
-    msg = (
+    assert not markup_violations, (
         "Bare markup color tags in console.print() strings found"
         " — use Text objects with 'theme.*' keys instead:\n"
-        + "\n".join(all_violations)
+        + "\n".join(markup_violations)
     )
-    assert not all_violations, msg

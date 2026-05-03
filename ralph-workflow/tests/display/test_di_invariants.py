@@ -39,29 +39,36 @@ def _code_only_lines(path: Path) -> frozenset[int]:
     """
     source = path.read_text(encoding="utf-8")
     lines = source.splitlines()
-    # Start with all non-empty line numbers
+    # Start with all non-empty line numbers.
     code_lines: set[int] = {i + 1 for i, ln in enumerate(lines) if ln.strip()}
-    string_or_comment_lines: set[int] = set()
+    row_has_non_comment_or_string_token: dict[int, bool] = {}
     try:
-        tokens = list(tokenize.generate_tokens(io.StringIO(source).readline))
+        tokens = tokenize.generate_tokens(io.StringIO(source).readline)
     except tokenize.TokenError:
-        return code_lines
+        return frozenset(code_lines)
+
+    ignored_types = {
+        tokenize.NL,
+        tokenize.NEWLINE,
+        tokenize.INDENT,
+        tokenize.DEDENT,
+        tokenize.ENCODING,
+        tokenize.ENDMARKER,
+    }
+    string_or_comment_types = {tokenize.STRING, tokenize.COMMENT}
+
     for tok_type, _, (start_row, _), (end_row, _), _ in tokens:
-        if tok_type in (tokenize.STRING, tokenize.COMMENT):
-            for row in range(start_row, end_row + 1):
-                string_or_comment_lines.add(row)
-    # A line is "code only" if it has at least one non-string/comment token
-    # We compute it as: lines that are NOT exclusively string/comment
-    non_code_lines: set[int] = set()
-    for row in string_or_comment_lines:
-        # If every token on this row is string or comment, exclude it
-        row_tokens = [
-            t for t in tokens if t.start[0] <= row <= t.end[0]
-            and t.type not in (tokenize.NL, tokenize.NEWLINE, tokenize.INDENT,
-                               tokenize.DEDENT, tokenize.ENCODING, tokenize.ENDMARKER)
-        ]
-        if all(t.type in (tokenize.STRING, tokenize.COMMENT) for t in row_tokens):
-            non_code_lines.add(row)
+        if tok_type in ignored_types:
+            continue
+        has_code = tok_type not in string_or_comment_types
+        for row in range(start_row, end_row + 1):
+            row_has_non_comment_or_string_token[row] = (
+                row_has_non_comment_or_string_token.get(row, False) or has_code
+            )
+
+    non_code_lines = {
+        row for row, has_code in row_has_non_comment_or_string_token.items() if not has_code
+    }
     return frozenset(code_lines - non_code_lines)
 
 

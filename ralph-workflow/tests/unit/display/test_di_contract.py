@@ -11,10 +11,8 @@ These tests verify that:
 
 from __future__ import annotations
 
-import ast
 import inspect
-import pathlib
-from typing import Any, NamedTuple, cast
+from typing import TYPE_CHECKING, Any, NamedTuple, cast
 from unittest.mock import PropertyMock, patch
 
 import pytest
@@ -40,6 +38,9 @@ from ralph.display.phase_banner import (
 )
 from ralph.display.plain_renderer import PlainLogRenderer
 from ralph.display.tables import show_agents, show_providers
+
+if TYPE_CHECKING:
+    import pathlib
 
 
 class DIResult(NamedTuple):
@@ -281,69 +282,3 @@ class TestRefreshedPicksUpNewWidth:
         assert refreshed.color_enabled == original_color
 
 
-_REPO_ROOT = pathlib.Path(__file__).parent.parent.parent.parent
-_RALPH_ROOT = _REPO_ROOT / "ralph"
-_TARGET_PATHS = [
-    _RALPH_ROOT / "display",
-    _RALPH_ROOT / "banner.py",
-    _RALPH_ROOT / "cli" / "main.py",
-]
-_PURE_MODIFIERS = frozenset(
-    {"bold", "dim", "italic", "underline", "blink", "strike", "reverse", "hidden", "not", "link"}
-)
-
-
-class _StyleLiteralVisitor(ast.NodeVisitor):
-    def __init__(self, filepath: str) -> None:
-        self.filepath = filepath
-        self.violations: list[tuple[str, int, str]] = []
-
-    def visit_Call(self, node: ast.Call) -> None:
-        for keyword in node.keywords:
-            if keyword.arg == "style" and isinstance(keyword.value, ast.Constant):
-                value = keyword.value.value
-                if isinstance(value, str) and not _is_allowed_style(value):
-                    self.violations.append((self.filepath, keyword.value.lineno, value))
-        self.generic_visit(node)
-
-
-def _is_allowed_style(value: str) -> bool:
-    """Return True if the style literal is allowed."""
-    if value.startswith("theme."):
-        return True
-    words = set(value.lower().split())
-    return words.issubset(_PURE_MODIFIERS)
-
-
-def _collect_py_files(path: pathlib.Path) -> list[pathlib.Path]:
-    if path.is_file():
-        return [path] if path.suffix == ".py" else []
-    return list(path.rglob("*.py"))
-
-
-class TestNoLiteralStyles:
-    """Test that no hardcoded color/style literals exist outside theme.py."""
-
-    def test_no_literal_color_styles_in_display_modules(self) -> None:
-        """All style= keyword args in display modules must use theme keys or pure modifiers."""
-        all_violations: list[tuple[str, int, str]] = []
-
-        for target in _TARGET_PATHS:
-            for py_file in _collect_py_files(target):
-                source = py_file.read_text(encoding="utf-8")
-                try:
-                    tree = ast.parse(source, filename=str(py_file))
-                except SyntaxError:
-                    continue
-                visitor = _StyleLiteralVisitor(str(py_file.relative_to(_REPO_ROOT)))
-                visitor.visit(tree)
-                all_violations.extend(visitor.violations)
-
-        if all_violations:
-            lines = [
-                f"  {path}:{line}: style={value!r} (use a 'theme.*' key instead)"
-                for path, line, value in all_violations
-            ]
-            raise AssertionError(
-                "Hardcoded color style literals found:\n" + "\n".join(lines)
-            )

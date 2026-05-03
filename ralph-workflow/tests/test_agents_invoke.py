@@ -3199,7 +3199,11 @@ def test_idle_timeout_fires_when_children_persist_past_hard_ceiling(
             invoke_agent(
                 config,
                 str(prompt_file),
-                options=InvokeOptions(show_progress=False, idle_timeout_seconds=10),
+                options=InvokeOptions(
+                    show_progress=False,
+                    idle_timeout_seconds=0.2,
+                    max_waiting_on_child_seconds=0.4,
+                ),
                 _clock=clock,
             )
         )
