@@ -35,6 +35,7 @@ from ralph.agents.execution_state import (
     strategy_for_transport,
 )
 from ralph.agents.idle_watchdog import (
+    AliveBy,
     CorroborationSnapshot,
     IdleWatchdog,
     TimeoutPolicy,
@@ -140,6 +141,7 @@ class InvokeOptions:
     child_heartbeat_ttl_seconds: float | None = None
     child_stale_label_ttl_seconds: float | None = None
     child_exit_reconcile_seconds: float | None = None
+    max_waiting_on_child_no_progress_seconds: float | None = None
     pure: bool = False
     system_prompt_file: str | None = None
     waiting_listener: WaitingStatusListener | None = None
@@ -852,6 +854,11 @@ def _policy_from_options(opts: InvokeOptions) -> TimeoutPolicy:
             else _base.waiting_status_interval_seconds
         ),
         suspect_waiting_on_child_seconds=_suspect,
+        max_waiting_on_child_no_progress_seconds=(
+            opts.max_waiting_on_child_no_progress_seconds
+            if opts.max_waiting_on_child_no_progress_seconds is not None
+            else _base.max_waiting_on_child_no_progress_seconds
+        ),
     )
 
 
@@ -913,7 +920,7 @@ def _read_lines_from_process(  # noqa: PLR0913,PLR0915
             oldest_secs = desc_oldest
         except Exception:
             logger.debug("corroborator: process scan failed (suppressed)")
-        alive_by: str | None = None
+        alive_by: AliveBy | None = None
         reg = cast("ChildLivenessRegistry | None", getattr(strategy, "_registry", None))
         if reg is not None:
             try:
@@ -923,17 +930,17 @@ def _read_lines_from_process(  # noqa: PLR0913,PLR0915
                 )
                 reg_snap = reg.snapshot(label_prefix or "")
                 if reg_snap.has_fresh_progress:
-                    alive_by = "fresh_progress"
+                    alive_by = AliveBy.FRESH_PROGRESS
                 elif reg_snap.has_fresh_label and reg_snap.has_process:
-                    alive_by = "fresh_heartbeat_only"
+                    alive_by = AliveBy.FRESH_HEARTBEAT_ONLY
                 elif reg_snap.has_process and not reg_snap.has_fresh_label:
-                    alive_by = "stale_label_only"
+                    alive_by = AliveBy.STALE_LABEL_ONLY
                 elif scoped_active:
-                    alive_by = "os_descendant_only_stale_progress"
+                    alive_by = AliveBy.OS_DESCENDANT_ONLY_STALE_PROGRESS
             except Exception:
                 logger.debug("corroborator: registry snapshot failed (suppressed)")
         elif scoped_active and alive_by is None:
-            alive_by = "os_descendant_only_stale_progress"
+            alive_by = AliveBy.OS_DESCENDANT_ONLY_STALE_PROGRESS
         return CorroborationSnapshot(
             workspace_event_count=ws_count,
             oldest_child_seconds=oldest_secs,
@@ -1047,8 +1054,7 @@ def _read_lines_from_process(  # noqa: PLR0913,PLR0915
                         activity_signal.kind not in _NON_MEANINGFUL_ACTIVITY_KINDS
                     )
                     watchdog.record_activity()
-                if hasattr(strategy, "observe_line"):
-                    strategy.observe_line(queued_line)
+                strategy.observe_line(queued_line)
                 yield queued_line
                 # Evaluate after every yield: SESSION_CEILING_EXCEEDED can fire even
                 # under continuous output; classify_quiet still consults the strategy
@@ -1244,7 +1250,6 @@ def _check_process_result(
         and opts.execution_strategy is not None
         and opts.execution_strategy.supports_session_continuation()
         and opts.workspace_path is not None
-        and opts.required_artifact is not None
     ):
         signals = evaluate_completion(
             opts.workspace_path,

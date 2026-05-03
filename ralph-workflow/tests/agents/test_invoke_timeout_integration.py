@@ -10,6 +10,7 @@ No real subprocesses are spawned; all timing is driven by FakeClock.
 
 from __future__ import annotations
 
+import re
 import threading
 import time
 from typing import TYPE_CHECKING
@@ -33,11 +34,19 @@ from ralph.agents.timeout_clock import FakeClock
 class _FakeManagedHandle:
     """Minimal test double for ManagedProcess used by _read_lines_from_process."""
 
-    def __init__(self, stdout_lines: object) -> None:
+    def __init__(
+        self,
+        stdout_lines: object,
+        *,
+        descendant_count: int = 0,
+        descendant_oldest_seconds: float = 0.0,
+    ) -> None:
         self.stdout = stdout_lines
         self.stderr = None
         self.returncode: int | None = 0
         self._terminated = False
+        self._descendant_count = descendant_count
+        self._descendant_oldest_seconds = descendant_oldest_seconds
 
     def poll(self) -> int | None:
         return 0
@@ -46,7 +55,11 @@ class _FakeManagedHandle:
         self._terminated = True
 
     def has_live_descendants(self) -> bool:
-        return False
+        return self._descendant_count > 0
+
+    def descendant_snapshot(self) -> tuple[int, float]:
+        """Return (count, oldest_seconds) for corroborator to determine alive_by."""
+        return (self._descendant_count, self._descendant_oldest_seconds)
 
     def __enter__(self) -> _FakeManagedHandle:
         return self
@@ -96,7 +109,7 @@ def test_session_ceiling_fires_under_continuous_output() -> None:
     policy = TimeoutPolicy(
         idle_timeout_seconds=_MAX_SESSION_SECONDS,
         max_session_seconds=_MAX_SESSION_SECONDS,
-        idle_poll_interval_seconds=0.05,
+        idle_poll_interval_seconds=0.01,
         drain_window_seconds=0.0,
     )
     clock = FakeClock(start=0.0)
@@ -128,13 +141,13 @@ def test_watchdog_fires_even_when_classify_quiet_raises() -> None:
     path (where _safe_classify_quiet is invoked).  The _reader_release event is
     set in a finally block so the reader daemon thread exits cleanly.
     """
-    idle_timeout = 2.0
-    max_waiting = 4.0
+    idle_timeout = 0.2
+    max_waiting = 0.4
     policy = TimeoutPolicy(
         idle_timeout_seconds=idle_timeout,
         max_waiting_on_child_seconds=max_waiting,
         drain_window_seconds=0.0,
-        idle_poll_interval_seconds=0.05,
+        idle_poll_interval_seconds=0.01,
         suspect_waiting_on_child_seconds=None,
     )
     clock = FakeClock(start=0.0)
@@ -172,13 +185,13 @@ def test_classify_quiet_exception_defers_not_fires() -> None:
     NO_OUTPUT_DEADLINE is never raised when classify_quiet always raises. Instead
     the watchdog defers until the cumulative WAITING ceiling fires.
     """
-    idle_timeout = 2.0
-    max_waiting = 4.0
+    idle_timeout = 0.2
+    max_waiting = 0.4
     policy = TimeoutPolicy(
         idle_timeout_seconds=idle_timeout,
         max_waiting_on_child_seconds=max_waiting,
-        drain_window_seconds=0.5,
-        idle_poll_interval_seconds=0.05,
+        drain_window_seconds=0.05,
+        idle_poll_interval_seconds=0.01,
         suspect_waiting_on_child_seconds=None,
     )
     clock = FakeClock(start=0.0)
@@ -219,7 +232,7 @@ def test_post_yield_evaluate_uses_real_classify_quiet() -> None:
     policy = TimeoutPolicy(
         idle_timeout_seconds=idle_timeout,
         drain_window_seconds=0.5,
-        idle_poll_interval_seconds=0.05,
+        idle_poll_interval_seconds=0.01,
     )
     clock = FakeClock(start=0.0)
 
@@ -261,10 +274,10 @@ def test_cumulative_ceiling_fires_with_oscillating_heartbeat() -> None:
     ~1s per cycle; it eventually exceeds max_waiting_on_child_seconds and
     CHILDREN_PERSIST_TOO_LONG fires.
     """
-    idle_timeout = 10.0
-    max_waiting = 20.0
-    drain_window = 0.5
-    poll_interval = 0.05
+    idle_timeout = 1.0
+    max_waiting = 2.0
+    drain_window = 0.05
+    poll_interval = 0.01
 
     policy = TimeoutPolicy(
         idle_timeout_seconds=idle_timeout,
@@ -283,7 +296,7 @@ def test_cumulative_ceiling_fires_with_oscillating_heartbeat() -> None:
         # seconds.  Between yields, busy-wait with time.sleep(0) to release the
         # GIL so the main read-loop thread can advance the FakeClock.
         for heartbeat_num in range(_max_heartbeats):
-            target_t = (heartbeat_num + 1) * (idle_timeout + 1.0)
+            target_t = (heartbeat_num + 1) * (idle_timeout + 0.1)
             while clock.monotonic() < target_t:
                 time.sleep(0)  # release GIL; main thread advances clock
             yield f"heartbeat {heartbeat_num}\n"
@@ -326,9 +339,9 @@ def test_invoke_emits_waiting_listener_events_not_per_tick_log() -> None:
     - Exactly 1 HARD_STOP event.
     - Total events <= 6.
     """
-    idle_timeout = 0.5
-    max_waiting = 2.0
-    status_interval = 1.0
+    idle_timeout = 0.2
+    max_waiting = 0.6
+    status_interval = 0.2
 
     policy = TimeoutPolicy(
         idle_timeout_seconds=idle_timeout,
@@ -395,8 +408,8 @@ def test_children_persist_hard_stop_includes_corroboration_diagnostic() -> None:
     - _IdleStreamTimeoutError message contains 'cumulative=' and 'scoped_child_active='.
     - Captured HARD_STOP WaitingStatusEvent.diagnostic includes 'evidence' and 'cumulative'.
     """
-    idle_timeout = 0.5
-    max_waiting = 2.0
+    idle_timeout = 0.2
+    max_waiting = 0.6
     status_interval = 100.0  # suppress PROGRESS noise
 
     policy = TimeoutPolicy(
@@ -447,3 +460,104 @@ def test_children_persist_hard_stop_includes_corroboration_diagnostic() -> None:
     diag = hard_stops[0].diagnostic
     assert "cumulative" in diag, f"Expected 'cumulative' key in diagnostic: {diag}"
     assert "evidence" in diag, f"Expected 'evidence' key in HARD_STOP diagnostic: {diag}"
+
+
+# ---------------------------------------------------------------------------
+# No-progress ceiling integration test (wt-97-timeout regression)
+# ---------------------------------------------------------------------------
+
+
+def test_no_progress_ceiling_fires_on_stale_child_liveness() -> None:
+    """CHILDREN_PERSIST_TOO_LONG fires at no-progress ceiling when child is alive but stale.
+
+    Regression test for wt-97-timeout: an agent in WAITING_ON_CHILD with
+    os_descendant_only_stale_progress evidence (alive child with stale/no fresh progress)
+    must fire at the shorter no-progress ceiling instead of the full ceiling.
+
+    Design:
+    - max_waiting_on_child_seconds=100.0 (full ceiling)
+    - max_waiting_on_child_no_progress_seconds=10.0 (no-progress ceiling)
+    - Handle reports active descendants but no fresh registry progress.
+    - Corroborator will set alive_by='os_descendant_only_stale_progress'.
+    - Watchdog must fire at ~10s (no-progress ceiling), not 100s (full ceiling).
+    """
+    idle_timeout = 0.5
+    max_waiting = 100.0
+    no_progress_ceiling = 10.0
+    status_interval = 100.0  # suppress PROGRESS noise
+
+    policy = TimeoutPolicy(
+        idle_timeout_seconds=idle_timeout,
+        max_waiting_on_child_seconds=max_waiting,
+        max_waiting_on_child_no_progress_seconds=no_progress_ceiling,
+        drain_window_seconds=0.0,
+        idle_poll_interval_seconds=0.05,
+        waiting_status_interval_seconds=status_interval,
+        suspect_waiting_on_child_seconds=None,
+    )
+    clock = FakeClock(start=0.0)
+
+    _reader_release = threading.Event()
+
+    def _blocking_stdout() -> Iterator[str]:
+        _reader_release.wait()
+        yield from ()
+
+    # Fake handle with active descendants but no fresh progress.
+    # This triggers alive_by='os_descendant_only_stale_progress' in the corroborator.
+    handle = _FakeManagedHandle(
+        _blocking_stdout(),
+        descendant_count=1,
+        descendant_oldest_seconds=5.0,
+    )
+    captured_events: list[WaitingStatusEvent] = []
+
+    def _listener(event: WaitingStatusEvent) -> None:
+        captured_events.append(event)
+
+    try:
+        with pytest.raises(_IdleStreamTimeoutError) as exc_info:
+            for _ in _read_lines_from_process(
+                handle,
+                policy=policy,
+                execution_strategy=_WaitingStrategy(),
+                waiting_listener=_listener,
+                _clock=clock,
+            ):
+                pass
+    finally:
+        _reader_release.set()
+
+    assert exc_info.value.reason == WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG
+
+    # Must have fired at the no-progress ceiling (~10s), NOT the full ceiling (~100s).
+    # The error message should indicate the no-progress ceiling was used.
+    err_msg = str(exc_info.value)
+    assert "cumulative=" in err_msg, f"Expected 'cumulative=' in: {err_msg}"
+    # Extract cumulative value to verify it fired before the full ceiling
+    match = re.search(r"cumulative=([\d.]+)s", err_msg)
+    assert match is not None, f"Could not find cumulative value in: {err_msg}"
+    cumulative = float(match.group(1))
+    assert cumulative < max_waiting, (
+        f"Expected to fire before full ceiling ({max_waiting}s), "
+        f"but cumulative={cumulative}s"
+    )
+    assert cumulative >= no_progress_ceiling, (
+        f"Expected to fire at or after no-progress ceiling ({no_progress_ceiling}s), "
+        f"but cumulative={cumulative}s"
+    )
+
+    # HARD_STOP diagnostic must include effective_ceiling classification.
+    hard_stops = [e for e in captured_events if e.kind == WaitingStatusKind.HARD_STOP]
+    assert len(hard_stops) == 1, f"Expected 1 HARD_STOP, got {len(hard_stops)}"
+    diag = hard_stops[0].diagnostic
+    assert "effective_ceiling" in diag, (
+        f"Expected 'effective_ceiling' key in HARD_STOP diagnostic: {diag}"
+    )
+    assert diag["effective_ceiling"] == "no_progress", (
+        f"Expected effective_ceiling='no_progress', got {diag.get('effective_ceiling')}"
+    )
+    assert "alive_by" in diag, f"Expected 'alive_by' key in diagnostic: {diag}"
+    assert diag["alive_by"] == "os_descendant_only_stale_progress", (
+        f"Expected alive_by='os_descendant_only_stale_progress', got {diag.get('alive_by')}"
+    )

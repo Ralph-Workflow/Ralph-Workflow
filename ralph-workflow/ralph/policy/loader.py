@@ -37,6 +37,7 @@ from ralph.policy.validation import (
 
 if TYPE_CHECKING:
     from ralph.config.models import UnifiedConfig
+    from ralph.workspace.scope import WorkspaceScope
 
 
 class PolicyValidationError(Exception):
@@ -276,14 +277,10 @@ def _cached_default_agents_policy() -> AgentsPolicy:
 
 
 
-def load_agents_policy(config_dir: Path, config: UnifiedConfig | None = None) -> AgentsPolicy:
-    """Load only the agents policy, using config synthesis when available.
-
-    This is for call sites that need drain/chain declarations without requiring a
-    full pipeline/artifact bundle.
-    """
-    agents_path = config_dir / "agents.toml"
-
+def _load_agents_policy_from_path(
+    agents_path: Path,
+    config: UnifiedConfig | None = None,
+) -> AgentsPolicy:
     agents_policy = (
         build_agents_policy_from_config(config)
         if config is not None and _config_defines_agent_policy(config)
@@ -302,41 +299,49 @@ def load_agents_policy(config_dir: Path, config: UnifiedConfig | None = None) ->
 
 
 
-def load_policy(config_dir: Path, config: UnifiedConfig | None = None) -> PolicyBundle:
-    """Load all three policy TOML files and return a validated PolicyBundle.
+def load_agents_policy(config_dir: Path, config: UnifiedConfig | None = None) -> AgentsPolicy:
+    """Load only the agents policy, using config synthesis when available.
 
-    Files are loaded from ``config_dir`` (the .agent/ directory). Any absent
-    file is silently replaced with the bundled default.
-
-    Args:
-        config_dir: Path to the .agent/ configuration directory.
-
-    Returns:
-        Validated PolicyBundle with all three policy documents.
-
-    Raises:
-        PolicyValidationError: If any TOML file fails validation or the bundle
-            is semantically incomplete for policy-driven orchestration.
+    This is for call sites that need drain/chain declarations without requiring a
+    full pipeline/artifact bundle.
     """
-    pipeline_path = config_dir / "pipeline.toml"
-    artifacts_path = config_dir / "artifacts.toml"
+    return _load_agents_policy_from_path(config_dir / "agents.toml", config=config)
 
+
+
+def load_agents_policy_for_workspace_scope(
+    workspace_scope: WorkspaceScope,
+    config: UnifiedConfig | None = None,
+) -> AgentsPolicy:
+    """Load agents policy for a workspace with worktree-aware inheritance."""
+    return _load_agents_policy_from_path(
+        workspace_scope.resolve_agent_file("agents.toml"),
+        config=config,
+    )
+
+
+
+def _load_policy_from_paths(
+    *,
+    agents_path: Path,
+    pipeline_path: Path,
+    artifacts_path: Path,
+    config: UnifiedConfig | None = None,
+) -> PolicyBundle:
+    """Load a policy bundle from explicit file paths."""
     pipeline_data = _load_toml(pipeline_path)
     artifacts_data = _load_toml(artifacts_path)
 
-    # If pipeline.toml is absent, use defaults
     if not pipeline_data:
         pipeline_data = _load_toml(_default_dir() / "pipeline.toml")
 
-    # If artifacts.toml is absent, use defaults
     if not artifacts_data:
         artifacts_data = _load_toml(_default_dir() / "artifacts.toml")
 
-    agents_policy = load_agents_policy(config_dir, config=config)
+    agents_policy = _load_agents_policy_from_path(agents_path, config=config)
     pipeline_policy = _validate_pipeline(pipeline_data)
     artifacts_policy = _validate_artifacts(artifacts_data)
 
-    # Cross-policy validation
     try:
         bundle = PolicyBundle(
             agents=agents_policy,
@@ -359,7 +364,6 @@ def load_policy(config_dir: Path, config: UnifiedConfig | None = None) -> Policy
             source="agents",
         ) from exc
 
-    # Semantic completeness validation — ensures policy fully defines workflow behavior
     try:
         validate_policy_completeness(bundle)
     except PolicyContractValidationError as exc:
@@ -368,13 +372,36 @@ def load_policy(config_dir: Path, config: UnifiedConfig | None = None) -> Policy
             source=exc.source or "completeness",
         ) from exc
 
-    # Register handlers for policy-renamed phases (role-based registration).
-    # This allows phases with role='commit' or role='analysis' to work with
-    # custom names beyond the canonical handler names registered at import time.
-    # The call is idempotent — phases with existing handlers are skipped.
     register_role_handlers(pipeline_policy)
-
     return bundle
+
+
+def load_policy(config_dir: Path, config: UnifiedConfig | None = None) -> PolicyBundle:
+    """Load all three policy TOML files and return a validated PolicyBundle.
+
+    Files are loaded from ``config_dir`` (the .agent/ directory). Any absent
+    file is silently replaced with the bundled default.
+    """
+    return _load_policy_from_paths(
+        agents_path=config_dir / "agents.toml",
+        pipeline_path=config_dir / "pipeline.toml",
+        artifacts_path=config_dir / "artifacts.toml",
+        config=config,
+    )
+
+
+
+def load_policy_for_workspace_scope(
+    workspace_scope: WorkspaceScope,
+    config: UnifiedConfig | None = None,
+) -> PolicyBundle:
+    """Load policy for a workspace with worktree-aware per-file inheritance."""
+    return _load_policy_from_paths(
+        agents_path=workspace_scope.resolve_agent_file("agents.toml"),
+        pipeline_path=workspace_scope.resolve_agent_file("pipeline.toml"),
+        artifacts_path=workspace_scope.resolve_agent_file("artifacts.toml"),
+        config=config,
+    )
 
 
 def _default_dir() -> Path:

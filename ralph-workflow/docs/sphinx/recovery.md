@@ -93,6 +93,30 @@ is held open:
 - `alive_by=os_descendant_only_stale_progress` — OS-level descendant only; registry is stale
 - `alive_by=stale_label_only` — label present but stale (warn-worthy; may escalate)
 
+## No-progress child wait ceiling
+
+When a child agent is alive but not making forward progress (heartbeat-only, stale-label, or
+OS-descendant-only evidence), Ralph Workflow applies a shorter **no-progress ceiling** instead
+of the full `agent_idle_max_waiting_on_child_seconds` ceiling. This prevents a stuck child
+from holding `WAITING_ON_CHILD` open for the full 1800 s when it is clearly not doing work.
+
+The no-progress ceiling is configured via `agent_idle_no_progress_waiting_on_child_seconds`
+(default: 600 s). It must be less than or equal to `agent_idle_max_waiting_on_child_seconds`.
+Set it to `null` to disable the no-progress ceiling entirely and always use the full ceiling.
+
+The effective ceiling in use is visible in the HARD_STOP diagnostic as `effective_ceiling`:
+- `effective_ceiling=no_progress` — shorter no-progress ceiling fired
+- `effective_ceiling=standard` — full ceiling fired
+
+Example TOML configuration:
+
+```toml
+[general]
+agent_idle_max_waiting_on_child_seconds = 1800.0  # full ceiling
+agent_idle_no_progress_waiting_on_child_seconds = 600.0  # no-progress ceiling (default)
+# agent_idle_no_progress_waiting_on_child_seconds = null  # disable no-progress ceiling
+```
+
 ## Idle activity and session safety
 
 Idle timeout is based on transport activity signals, not only visible transcript text.

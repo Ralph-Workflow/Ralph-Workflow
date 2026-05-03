@@ -60,6 +60,7 @@ from ralph.policy.models import (
     PipelinePolicy,
     PolicyBundle,
 )
+from ralph.prompts.materialize import MissingPlanHandoffError
 from ralph.workspace.fs import FsWorkspace
 from ralph.workspace.scope import WorkspaceScope
 
@@ -394,6 +395,42 @@ class TestDetermineEffect:
 
         assert isinstance(effect, InvokeAgentEffect)
         assert effect.agent_name == "claude"
+
+    def test_agent_prompt_materialization_reuses_prepared_planning_prompt(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        bundle = _load_default_policy_bundle()
+        workspace = FsWorkspace(tmp_path)
+        (tmp_path / ".agent" / "artifacts").mkdir(parents=True, exist_ok=True)
+        (tmp_path / ".agent" / "tmp").mkdir(parents=True, exist_ok=True)
+        (tmp_path / "PROMPT.md").write_text("Revise the plan", encoding="utf-8")
+        (tmp_path / ".agent" / "artifacts" / "plan.json").write_text("{}", encoding="utf-8")
+        (tmp_path / ".agent" / "PLAN.md").write_text("existing plan", encoding="utf-8")
+        (tmp_path / ".agent" / "tmp" / "planning_prompt.md").write_text(
+            "prepared edit prompt",
+            encoding="utf-8",
+        )
+        registry = MagicMock()
+        registry.get.return_value = None
+
+        runner_module._materialize_agent_prompt_if_needed(
+            InvokeAgentEffect(
+                agent_name="planner",
+                phase="planning",
+                prompt_file=".agent/tmp/planning_prompt.md",
+                drain="planning",
+            ),
+            workspace,
+            bundle,
+            registry,
+        )
+
+        assert (tmp_path / ".agent" / "tmp" / "planning_prompt.md").read_text(
+            encoding="utf-8"
+        ) == "prepared edit prompt"
+        assert (tmp_path / ".agent" / "artifacts" / "plan.json").exists() is True
+        assert (tmp_path / ".agent" / "PLAN.md").read_text(encoding="utf-8") == "existing plan"
 
     def test_development_phase_with_work_units_uses_fan_out_effect(self) -> None:
         bundle = _load_default_policy_bundle()
@@ -3649,3 +3686,97 @@ class TestPhaseContextRoleBasedDispatch:
         # Must ALSO show outer iteration counter (this was the bug - only analysis was shown)
         assert ctx.get("iteration") == "1/5"
         assert ctx.get("decision") == "needs changes"
+
+
+def test_handle_inline_effect_routes_to_planning_when_plan_handoff_absent(
+    monkeypatch: MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Regression: missing plan handoff during recovery must route to planning, not crash.
+
+    Mirrors the reported failure where developer_iteration.jinja raised
+    'requires an existing plan handoff' during failed_terminal recovery,
+    classified as ambiguous and retried indefinitely. After the fix, the runner
+    catches MissingPlanHandoffError and routes the state back to the entry phase
+    (planning) instead of crashing as an ambiguous 'Pipeline step crashed'.
+    """
+    bundle = _load_default_policy_bundle()
+    state = PipelineState(
+        phase=bundle.pipeline.recovery.failed_route,
+        previous_phase="development",
+        recovery_epoch=1,
+    )
+
+    monkeypatch.setattr(
+        runner_module,
+        "_materialize_prepared_prompt",
+        MagicMock(
+            side_effect=MissingPlanHandoffError(
+                "Template 'developer_iteration.jinja' requires an existing plan handoff"
+                " at .agent/PLAN.md"
+            )
+        ),
+    )
+    monkeypatch.setattr(runner_module, "ckpt", MagicMock())
+
+    result = runner_module._handle_inline_effect(
+        effect=PreparePromptEffect(
+            phase="development",
+            previous_phase="development",
+            drain="development",
+        ),
+        state=state,
+        pipeline_policy=bundle.pipeline,
+        artifacts_policy=bundle.artifacts,
+        agents_policy=bundle.agents,
+        workspace_scope=WorkspaceScope(str(tmp_path)),
+    )
+
+    assert isinstance(result, PipelineState)
+    assert result.phase == bundle.pipeline.entry_phase
+    assert result.previous_phase == state.phase
+    assert result.recovery_epoch == state.recovery_epoch + 1
+
+
+def test_handle_inline_effect_propagates_plan_handoff_error_outside_recovery(
+    monkeypatch: MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Non-recovery phases must not silently reroute on missing plan handoff.
+
+    When prompt preparation raises MissingPlanHandoffError during an ordinary
+    execution phase (not the failed_route recovery path), the exception must
+    propagate rather than being converted into an automatic reroute to planning.
+    """
+    bundle = _load_default_policy_bundle()
+    state = PipelineState(
+        phase="development",
+        previous_phase="planning",
+        recovery_epoch=0,
+    )
+
+    monkeypatch.setattr(
+        runner_module,
+        "_materialize_prepared_prompt",
+        MagicMock(
+            side_effect=MissingPlanHandoffError(
+                "Template 'developer_iteration.jinja' requires an existing plan handoff"
+                " at .agent/PLAN.md"
+            )
+        ),
+    )
+    monkeypatch.setattr(runner_module, "ckpt", MagicMock())
+
+    with pytest.raises(MissingPlanHandoffError):
+        runner_module._handle_inline_effect(
+            effect=PreparePromptEffect(
+                phase="development",
+                previous_phase="planning",
+                drain="development",
+            ),
+            state=state,
+            pipeline_policy=bundle.pipeline,
+            artifacts_policy=bundle.artifacts,
+            agents_policy=bundle.agents,
+            workspace_scope=WorkspaceScope(str(tmp_path)),
+        )

@@ -9,22 +9,18 @@ _BUNDLED_DEFAULTS_DIR: Path = Path(__file__).parent.parent.parent / "policy" / "
 
 
 def _resolve_policy_dir() -> tuple[Path, bool]:
-    """Resolve the policy directory to use when none is explicitly provided.
+    """Resolve the default policy directory to describe to the user.
 
-    Prefers the project-local .agent directory if it contains TOML files,
-    then falls back to the bundled defaults.
-
-    Returns:
-        Tuple of (policy_dir, is_bundled_default). is_bundled_default is True
-        when no project-local policy was found and the bundled defaults are used.
+    Linked worktrees inherit from the main checkout unless the current worktree
+    has an explicit local override file.
     """
     try:
         from ralph.workspace.scope import resolve_workspace_scope  # noqa: PLC0415
 
         scope = resolve_workspace_scope()
-        agent_dir = scope.root / ".agent"
-        if agent_dir.is_dir() and any(agent_dir.glob("*.toml")):
-            return agent_dir, False
+        policy_dir = scope.resolve_agent_file("pipeline.toml").parent
+        if policy_dir.is_dir() and any(policy_dir.glob("*.toml")):
+            return policy_dir, False
     except Exception:
         pass
     return _BUNDLED_DEFAULTS_DIR, True
@@ -46,7 +42,7 @@ def explain_command(policy_dir: Path | None = None) -> int:
         Exit code: 0 on success, 1 on general error, 2 on policy validation error.
     """
     from ralph.policy.explain import explain_policy  # noqa: PLC0415
-    from ralph.policy.loader import load_policy  # noqa: PLC0415
+    from ralph.policy.loader import load_policy, load_policy_for_workspace_scope  # noqa: PLC0415
     from ralph.policy.render import (  # noqa: PLC0415
         render_explanation_ascii,
         render_explanation_text,
@@ -57,18 +53,22 @@ def explain_command(policy_dir: Path | None = None) -> int:
         if policy_dir is not None:
             resolved_dir = policy_dir
             is_bundled = False
+            if not resolved_dir.is_dir():
+                print(f"Policy directory not found: {resolved_dir}", file=sys.stderr)
+                return 1
+            bundle = load_policy(resolved_dir)
         else:
+            from ralph.workspace.scope import resolve_workspace_scope  # noqa: PLC0415
+
+            scope = resolve_workspace_scope()
             resolved_dir, is_bundled = _resolve_policy_dir()
-        if not resolved_dir.is_dir():
-            print(f"Policy directory not found: {resolved_dir}", file=sys.stderr)
-            return 1
+            bundle = load_policy_for_workspace_scope(scope)
         if is_bundled:
             print(
                 "INFO: Using bundled default policy — "
                 "no project-local .agent/*.toml files found"
             )
         print(f"Policy source: {resolved_dir}")
-        bundle = load_policy(resolved_dir)
         explanation = explain_policy(bundle)
 
         print("\n\nWORKFLOW DIAGRAM")

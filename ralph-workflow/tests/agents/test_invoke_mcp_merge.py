@@ -39,7 +39,7 @@ class _FakeProcess:
     pid: int = 12345
 
     def __init__(self) -> None:
-        self.stdout = iter(["ok\n"])
+        self.stdout = iter(["Task declared complete: session_id=test, summary=done, timestamp=1\n"])
         self.stderr = SimpleNamespace(read=lambda: "")
         self.returncode = 0
 

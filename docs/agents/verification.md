@@ -14,8 +14,10 @@ Verification passes only when all checks complete successfully with **no ERROR/W
 2. `make typecheck` (`mypy --strict`)
 3. `make docs` (`sphinx-build -W --keep-going` into `docs/sphinx/_build/html`)
 4. `make test-cov` (`pytest` with coverage gate)
+5. `make test-subprocess-e2e` (real subprocess / socket-marked tests)
 
 If any step fails, fix the issue immediately and rerun verification.
+`make verify` now emits a high-visibility failure banner that explicitly cross-references `AGENTS.md` and `CLAUDE.md` so AI agents cannot plausibly treat a failed verification run as optional.
 
 ---
 

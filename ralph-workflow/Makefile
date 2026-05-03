@@ -142,12 +142,7 @@ dist-homebrew: build-wheel
 
 # Distribution targets
 verify:
-	@echo "Running full verification..."
-	@$(MAKE) lint
-	@$(MAKE) typecheck
-	@$(MAKE) docs
-	@$(MAKE) test-cov
-	@$(MAKE) test-subprocess-e2e
+	@uv run python -m ralph.verify
 
 dist-binary:
 	@echo "Building PyInstaller binary..."

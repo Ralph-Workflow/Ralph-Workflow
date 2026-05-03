@@ -212,7 +212,11 @@ make verify
 This executes:
 1. `make lint` — ruff check (zero violations required)
 2. `make typecheck` — mypy strict (zero type errors required)
-3. `make test-cov` — pytest with coverage (80% minimum branch coverage)
+3. `make docs` — Sphinx build with warnings treated as errors
+4. `make test-cov` — pytest with coverage (80% minimum branch coverage)
+5. `make test-subprocess-e2e` — subprocess/network-marked end-to-end checks
+
+If any step fails, `make verify` emits a high-visibility failure banner that cites `AGENTS.md` and `CLAUDE.md` and instructs the active AI agent to fix the failure immediately.
 
 ## Distribution Strategy
 

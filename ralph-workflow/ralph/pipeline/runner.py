@@ -53,8 +53,6 @@ from ralph.mcp.artifacts.commit_message import (
     delete_commit_message_artifacts,
     read_commit_message_from_path,
 )
-from ralph.mcp.artifacts.handoffs import handoff_path_for_artifact
-from ralph.mcp.artifacts.plan import PLAN_ARTIFACT_PATH, PLAN_DRAFT_PATH
 from ralph.mcp.protocol.capability_mapping import DrainClass
 from ralph.mcp.protocol.env import AGENT_LABEL_SCOPE_ENV
 from ralph.mcp.protocol.session import MCP_ENDPOINT_ENV, MCP_RUN_ID_ENV, AgentSession
@@ -83,9 +81,16 @@ from ralph.pipeline.handoffs import resolve_phase_drain
 from ralph.pipeline.reducer import reduce as reducer_reduce
 from ralph.pipeline.state import AgentChainState, CommitState, PipelineState, RebaseState
 from ralph.pipeline.worker_state import WorkerStatus
-from ralph.policy.loader import load_agents_policy, load_policy_or_die
+from ralph.policy.loader import (
+    load_agents_policy_for_workspace_scope,
+    load_policy_for_workspace_scope,
+)
+from ralph.policy.loader import (
+    load_policy_or_die as _dir_load_policy_or_die,
+)
 from ralph.process.manager import get_process_manager, process_phase_scope
 from ralph.prompts.materialize import (
+    MissingPlanHandoffError,
     materialize_prompt_for_phase,
     prompt_file_for_phase,
     tool_name_prefix_for_transport,
@@ -194,6 +199,7 @@ _TOOL_RESULT_BRIEF_THRESHOLD = 500
 _MAX_METADATA_SUMMARY_LENGTH = 120
 _LEGACY_EXECUTE_EFFECT_ARITY = 3
 _POLICY_LOADER_CONFIG_ARITY = 2
+load_policy_or_die = _dir_load_policy_or_die
 _RECOVERY_CONTEXT_LINES = 12
 _MIN_WORK_UNITS_FOR_PARALLEL_PREFLIGHT = 2
 _TRANSIENT_CONNECTIVITY_MARKERS = (
@@ -1086,25 +1092,29 @@ def _emit_final_summary(
 
 
 def _load_policy_bundle_for_run(
-    workspace_root: Path,
+    workspace_scope: WorkspaceScope,
     config: UnifiedConfig,
 ) -> PolicyBundle:
-    loader = load_policy_or_die
-    params = signature(loader).parameters
-    if "config" in params:
-        return loader(workspace_root / ".agent", config=config)
+    if load_policy_or_die is not _dir_load_policy_or_die:
+        effective_policy_dir = workspace_scope.resolve_agent_file("pipeline.toml").parent
+        loader = load_policy_or_die
+        params = signature(loader).parameters
+        if "config" in params:
+            return loader(effective_policy_dir, config=config)
 
-    positional = [
-        param
-        for param in params.values()
-        if param.kind in (param.POSITIONAL_ONLY, param.POSITIONAL_OR_KEYWORD)
-    ]
-    if (
-        any(param.kind == param.VAR_KEYWORD for param in params.values())
-        or len(positional) >= _POLICY_LOADER_CONFIG_ARITY
-    ):
-        return loader(workspace_root / ".agent", config=config)
-    return loader(workspace_root / ".agent")
+        positional = [
+            param
+            for param in params.values()
+            if param.kind in (param.POSITIONAL_ONLY, param.POSITIONAL_OR_KEYWORD)
+        ]
+        if (
+            any(param.kind == param.VAR_KEYWORD for param in params.values())
+            or len(positional) >= _POLICY_LOADER_CONFIG_ARITY
+        ):
+            return loader(effective_policy_dir, config=config)
+        return loader(effective_policy_dir)
+
+    return load_policy_for_workspace_scope(workspace_scope, config=config)
 
 
 def run(  # noqa: PLR0912, PLR0913, PLR0915
@@ -1140,7 +1150,7 @@ def run(  # noqa: PLR0912, PLR0913, PLR0915
     _write_start_commit_if_absent(workspace_scope.root)
     if _validate_custom_mcp_servers(workspace_scope.root) != 0:
         return 1
-    policy_bundle = _load_policy_bundle_for_run(workspace_scope.root, config)
+    policy_bundle = _load_policy_bundle_for_run(workspace_scope, config)
     register_role_handlers(policy_bundle.pipeline)
     registry = AgentRegistry.from_config(config)
     state = initial_state or _create_initial_state(
@@ -1877,25 +1887,32 @@ def _handle_inline_effect(  # noqa: PLR0913
         return new_state
 
     if isinstance(effect, PreparePromptEffect):
-        if effect.phase == "planning":
-            workspace = FsWorkspace(
-                workspace_scope.root,
-                allowed_roots=workspace_scope.allowed_roots,
-            )
-            _clear_fresh_planning_files_if_needed(
-                workspace,
-                effect.phase,
-                state.previous_phase,
+        try:
+            _materialize_prepared_prompt(
+                effect,
                 pipeline_policy,
                 artifacts_policy,
+                workspace_scope,
+                agents_policy,
             )
-        _materialize_prepared_prompt(
-            effect,
-            pipeline_policy,
-            artifacts_policy,
-            workspace_scope,
-            agents_policy,
-        )
+        except MissingPlanHandoffError as exc:
+            if state.phase != pipeline_policy.recovery.failed_route:
+                raise
+            logger.warning(
+                "Missing plan handoff for phase={phase}: {err}; re-routing to entry phase",
+                phase=effect.phase,
+                err=exc,
+            )
+            current_epoch = state.recovery_epoch if isinstance(state.recovery_epoch, int) else 0
+            recovered_state = state.copy_with(
+                phase=pipeline_policy.entry_phase,
+                previous_phase=state.phase,
+                last_error=str(exc),
+                recovery_epoch=current_epoch + 1,
+            )
+            ckpt.save(recovered_state)
+            _notify_pipeline_subscriber(effective_pipeline_subscriber, recovered_state)
+            return recovered_state
         prepared_state = state
         if state.phase == pipeline_policy.recovery.failed_route:
             prepared_state = _reset_phase_chain_for_recovery(state, effect.phase)
@@ -1933,58 +1950,6 @@ def _handle_inline_effect(  # noqa: PLR0913
         return recovered_state
 
     return None
-
-
-def _is_analysis_loopback_into_phase(
-    *,
-    phase: str,
-    previous_phase: str | None,
-    pipeline_policy: PipelinePolicy,
-) -> bool:
-    if previous_phase is None:
-        return False
-    previous_phase_def = pipeline_policy.phases.get(previous_phase)
-    return bool(
-        previous_phase_def is not None
-        and previous_phase_def.role == "analysis"
-        and previous_phase_def.transitions.on_loopback == phase
-    )
-
-
-
-def _clear_fresh_planning_files_if_needed(
-    workspace: FsWorkspace,
-    phase: str,
-    previous_phase: str | None,
-    pipeline_policy: PipelinePolicy,
-    artifacts_policy: ArtifactsPolicy,
-) -> None:
-    if phase != "planning":
-        return
-    if _is_analysis_loopback_into_phase(
-        phase=phase,
-        previous_phase=previous_phase,
-        pipeline_policy=pipeline_policy,
-    ):
-        return
-    for path in (PLAN_ARTIFACT_PATH, PLAN_DRAFT_PATH):
-        workspace.remove(path)
-    handoff_path = handoff_path_for_artifact("plan")
-    if handoff_path:
-        workspace.remove(handoff_path)
-    required_artifacts = build_required_artifacts(artifacts_policy)
-    for phase_def in pipeline_policy.phases.values():
-        if phase_def.role != "analysis" or phase_def.transitions.on_loopback != phase:
-            continue
-        drain = phase_def.drain
-        required_artifact = required_artifacts.get(drain)
-        if required_artifact is None:
-            continue
-        workspace.remove(required_artifact.json_path)
-        analysis_handoff = handoff_path_for_artifact(required_artifact.artifact_type)
-        if analysis_handoff:
-            workspace.remove(analysis_handoff)
-
 
 
 def _materialize_prepared_prompt(
@@ -2025,6 +1990,8 @@ def _materialize_agent_prompt_if_needed(
     registry: _RegistryLike,
 ) -> None:
     if not isinstance(effect, InvokeAgentEffect):
+        return
+    if hasattr(workspace, "exists") and workspace.exists(prompt_file_for_phase(effect.phase)):
         return
 
     agent = registry.get(effect.agent_name)
@@ -2694,7 +2661,7 @@ def _execute_agent_effect(  # noqa: PLR0913, PLR0915
     effective_agents_policy = (
         policy_bundle.agents
         if policy_bundle is not None
-        else load_agents_policy(workspace_scope.root / ".agent", config=config)
+        else load_agents_policy_for_workspace_scope(workspace_scope, config=config)
     )
 
     _show_phase_start_with_context(
@@ -2842,6 +2809,7 @@ def _execute_agent_effect(  # noqa: PLR0913, PLR0915
                 max_session_seconds=config.general.agent_max_session_seconds,
                 waiting_status_interval_seconds=config.general.agent_waiting_status_interval_seconds,
                 suspect_waiting_on_child_seconds=config.general.agent_suspect_waiting_on_child_seconds,
+                max_waiting_on_child_no_progress_seconds=config.general.agent_idle_no_progress_waiting_on_child_seconds,
                 child_progress_ttl_seconds=config.general.agent_child_progress_ttl_seconds,
                 child_heartbeat_ttl_seconds=config.general.agent_child_heartbeat_ttl_seconds,
                 child_stale_label_ttl_seconds=config.general.agent_child_stale_label_ttl_seconds,

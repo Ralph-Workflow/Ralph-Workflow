@@ -42,6 +42,8 @@ def _global_mcp_config_path() -> Path:
 
 
 def _local_mcp_config_path(workspace_scope: WorkspaceScope) -> Path:
+    if hasattr(workspace_scope, "resolve_agent_file"):
+        return workspace_scope.resolve_agent_file(_LOCAL_MCP_FILENAME)
     return workspace_scope.local_config_path.parent / _LOCAL_MCP_FILENAME
 
 

@@ -48,6 +48,10 @@ if TYPE_CHECKING:
     from ralph.workspace.protocol import Workspace
 
 
+class MissingPlanHandoffError(ValueError):
+    """Raised when a template requires an existing plan handoff that is absent."""
+
+
 def materialize_prompt_for_phase(  # noqa: PLR0913
     *,
     phase: str,
@@ -351,7 +355,7 @@ def _resolve_required_plan_handoff(
         f"Template '{template_name}' requires an existing plan handoff at "
         f"{plan_handoff_path}"
     )
-    raise ValueError(msg)
+    raise MissingPlanHandoffError(msg)
 
 
 def _prepare_planning_prompt_context(
@@ -369,6 +373,9 @@ def _prepare_planning_prompt_context(
         previous_phase=previous_phase,
         pipeline_policy=pipeline_policy,
     )
+    # Clear fresh planning context when NOT a loopback (fresh planning entry).
+    # This clearing is independent of the selected template - we clear first,
+    # then potentially switch to a loopback template based on existing feedback.
     if not is_loopback:
         _clear_fresh_planning_context(
             workspace,
