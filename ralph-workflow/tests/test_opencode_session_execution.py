@@ -576,7 +576,6 @@ class TestCheckProcessResultCompletionSeam:
 
     def test_explicit_completion_without_artifact_does_not_raise(self, tmp_path: Path) -> None:
         """declare_complete marker prevents OpenCodeResumableExitError without artifact."""
-        # development phase requires .agent/artifacts/development_result.json; not created here.
         strategy = OpenCodeExecutionStrategy()
         handle = _FakeHandle(returncode=0)
         raw_output = ["Task declared complete: session_id=abc, summary=done, timestamp=1"]
@@ -591,6 +590,25 @@ class TestCheckProcessResultCompletionSeam:
             ),
         )
         # No exception raised means explicit_complete=True → TERMINAL_COMPLETE
+
+    def test_no_artifact_requirement_still_requires_explicit_completion(
+        self, tmp_path: Path
+    ) -> None:
+        """OpenCode without a required artifact must still raise unless it declares complete."""
+        strategy = OpenCodeExecutionStrategy()
+        handle = _FakeHandle(returncode=0)
+
+        with pytest.raises(OpenCodeResumableExitError):
+            _check_process_result(
+                cast("ManagedProcess", handle),
+                "opencode",
+                [],
+                _CompletionCheckOptions(
+                    execution_strategy=strategy,
+                    workspace_path=tmp_path,
+                    policy=TimeoutPolicy(idle_timeout_seconds=None, parent_exit_grace_seconds=0.0),
+                ),
+            )
 
     def test_artifact_present_without_explicit_completion_does_not_raise(
         self, tmp_path: Path

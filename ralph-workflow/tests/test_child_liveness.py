@@ -6,6 +6,8 @@ import pytest
 
 from ralph.process.child_liveness import ChildLivenessRegistry
 
+_EXPECTED_ACTIVE_CHILDREN = 2
+
 
 def _registry(now_val: list[float] | None = None) -> tuple[ChildLivenessRegistry, list[float]]:
     """Build a registry with an injectable now-source."""
@@ -134,3 +136,24 @@ def test_snapshot_reports_oldest_live_child_seconds() -> None:
     snap = reg.snapshot("scope/a")
     # c1 started at 0, now is 10 -> age 10; c2 started at 5, age 5
     assert snap.oldest_live_child_seconds == pytest.approx(10.0)
+
+
+def test_snapshot_aggregates_fresh_label_across_all_matching_children() -> None:
+    """Any fresh child label should keep the aggregate snapshot fresh.
+
+    Regression test for timeout source-of-truth drift: the aggregate snapshot
+    must answer "does any matching child still have fresh label evidence?"
+    independent of record iteration order.
+    """
+    reg, t = _registry()
+    t[0] = 3.0
+    reg.register_child("fresh", "scope/a")
+    t[0] = 0.0
+    reg.register_child("stale", "scope/a")
+    t[0] = 12.0
+
+    snap = reg.snapshot("scope/a")
+
+    assert snap.active_count == _EXPECTED_ACTIVE_CHILDREN
+    assert snap.has_process is True
+    assert snap.has_fresh_label is True

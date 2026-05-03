@@ -13,6 +13,7 @@ from ralph.agents.idle_watchdog import (
     WaitingCorroborator,
     WaitingStatusEvent,
     WaitingStatusKind,
+    WaitingStatusListener,
     WatchdogFireReason,
     WatchdogVerdict,
 )
@@ -25,7 +26,7 @@ def _make_watchdog(  # noqa: PLR0913
     max_waiting: float | None = None,
     start: float = 0.0,
     max_session: float | None = None,
-    listener: object = None,
+    listener: WaitingStatusListener | None = None,
     suspect: float | None = None,
     status_interval: float | None = None,
 ) -> tuple[IdleWatchdog, FakeClock]:
@@ -1301,6 +1302,54 @@ def test_hard_stop_diagnostic_includes_effective_ceiling_classification() -> Non
     assert diag.get("effective_ceiling") == "no_progress"
 
 
+def test_waiting_events_surface_effective_ceiling_when_no_progress_limit_applies() -> None:
+    """Waiting events must report the active no-progress ceiling, not the full ceiling.
+
+    Regression test for the current mismatch where the watchdog enforces the
+    shorter no-progress ceiling internally but the emitted WaitingStatusEvent
+    still advertises the full max_waiting_on_child_seconds value.
+    """
+    config = TimeoutPolicy(
+        idle_timeout_seconds=1.0,
+        drain_window_seconds=0.0,
+        max_waiting_on_child_seconds=_FULL_CEILING,
+        suspect_waiting_on_child_seconds=None,
+        waiting_status_interval_seconds=1.0,
+        max_waiting_on_child_no_progress_seconds=_NO_PROGRESS_CEILING,
+    )
+    clock = FakeClock(start=0.0)
+    events: list[WaitingStatusEvent] = []
+
+    def _listener(event: WaitingStatusEvent) -> None:
+        events.append(event)
+
+    def _corroborator() -> CorroborationSnapshot:
+        return CorroborationSnapshot(alive_by="fresh_heartbeat_only", scoped_child_active=True)
+
+    watchdog = IdleWatchdog(
+        config,
+        clock,
+        listener=_listener,
+        corroborator=_corroborator,
+    )
+
+    clock.advance(1.5)
+    result = watchdog.evaluate(classify_quiet=_waiting)
+    assert result == WatchdogVerdict.WAITING_ON_CHILD
+
+    entered = [e for e in events if e.kind == WaitingStatusKind.ENTERED]
+    assert len(entered) == 1
+    assert entered[0].ceiling_seconds == _NO_PROGRESS_CEILING
+
+    clock.advance(1.0)
+    result = watchdog.evaluate(classify_quiet=_waiting)
+    assert result == WatchdogVerdict.WAITING_ON_CHILD
+
+    progress = [e for e in events if e.kind == WaitingStatusKind.PROGRESS]
+    assert len(progress) == 1
+    assert progress[0].ceiling_seconds == _NO_PROGRESS_CEILING
+
+
 def test_validation_rejects_no_progress_ceiling_above_max_waiting() -> None:
     """TimeoutPolicy rejects no_progress_ceiling > max_waiting_on_child_seconds."""
     with pytest.raises(ValueError, match="max_waiting_on_child_no_progress_seconds must be <="):
@@ -1310,6 +1359,111 @@ def test_validation_rejects_no_progress_ceiling_above_max_waiting() -> None:
             max_waiting_on_child_no_progress_seconds=200.0,
             suspect_waiting_on_child_seconds=None,  # Disable to avoid conflict
         )
+
+
+def test_single_tick_corroboration_snapshot_reused_for_all_decisions_and_diagnostics() -> None:
+    """A single WAITING tick must reuse one corroboration snapshot for all decisions.
+
+    Regression test for wt-97-timeout: the flaky corroborator rotates through
+    alive_by values on each call. If the code reverted to calling
+    _safe_corroborate() separately for the ceiling decision vs. each diagnostic
+    (HARD_STOP, SUSPECTED_FROZEN, PROGRESS), the call_count assertion would catch
+    it (would be > 1 on the fire tick).
+
+    The test exercises three ticks:
+    - T1 (t=1.5): ENTER WAITING (entry corroboration + effective_ceiling computed).
+    - T2 (t=6.5): SUSPECTED_FROZEN + PROGRESS fire on same tick — proves both
+      diagnostics reuse the same snapshot (alive_by must agree).
+    - T3 (t=11.5): HARD_STOP fires — proves corroborator was called exactly once
+      on the fire tick and effective_ceiling is correct.
+    """
+    call_count = 0
+    # Flaky corroborator: each call returns a different alive_by value.
+    _alive_by_values = (
+        "fresh_progress",
+        "stale_label_only",
+        "os_descendant_only_stale_progress",
+    )
+
+    def _flaky_corroborator() -> CorroborationSnapshot:
+        nonlocal call_count
+        call_count += 1
+        return CorroborationSnapshot(
+            alive_by=_alive_by_values[call_count % len(_alive_by_values)],
+            scoped_child_active=True,
+        )
+
+    config = TimeoutPolicy(
+        idle_timeout_seconds=1.0,
+        drain_window_seconds=0.0,
+        max_waiting_on_child_seconds=1800.0,
+        max_waiting_on_child_no_progress_seconds=_NO_PROGRESS_CEILING,
+        # suspect_waiting_on_child_seconds=3.0 < no_progress_ceiling=10.0 so
+        # SUSPECTED_FROZEN fires on T2 before HARD_STOP fires on T3.
+        suspect_waiting_on_child_seconds=3.0,
+        # status_interval=0.001 ensures PROGRESS also fires on T2.
+        waiting_status_interval_seconds=0.001,
+    )
+    clock = FakeClock(start=0.0)
+    events: list[WaitingStatusEvent] = []
+    watchdog = IdleWatchdog(
+        config, clock, listener=events.append, corroborator=_flaky_corroborator
+    )
+
+    # T1: ENTER WAITING at t=1.5
+    clock.advance(1.5)
+    result = watchdog.evaluate(classify_quiet=_waiting)
+    assert result == WatchdogVerdict.WAITING_ON_CHILD
+    # T1 makes 2 calls: _entry_corroboration + effective_ceiling
+
+    # T2: SUSPECTED_FROZEN + PROGRESS at t=6.5 (candidate_total=5.0, suspect=3.0)
+    clock.advance(5.0)
+    call_count = 0  # reset to isolate T2 calls
+    result = watchdog.evaluate(classify_quiet=_waiting)
+    assert result == WatchdogVerdict.WAITING_ON_CHILD
+    # T2 makes 1 call: only effective_ceiling (not entering WAITING)
+    assert call_count == 1
+
+    # T3: HARD_STOP at t=11.5 (candidate_total=10.0 >= no_progress_ceiling=10.0)
+    call_count = 0  # reset to isolate T3 calls
+    clock.advance(5.0)
+    result = watchdog.evaluate(classify_quiet=_waiting)
+    assert result == WatchdogVerdict.FIRE
+    assert watchdog.last_fire_reason == WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG
+
+    # HARD_STOP fires and returns early, so no other diagnostics on this tick.
+    assert call_count == 1, (
+        f"Expected corroborator called exactly once on fire tick, got {call_count}. "
+        "If > 1, the code is calling _safe_corroborate() multiple times per tick."
+    )
+
+    fire_diag_by_kind = {e.kind: e.diagnostic for e in events}
+    assert WaitingStatusKind.HARD_STOP in fire_diag_by_kind
+    hs_diag = fire_diag_by_kind[WaitingStatusKind.HARD_STOP]
+    assert hs_diag.get("effective_ceiling") == "no_progress", (
+        f"Expected effective_ceiling='no_progress', got {hs_diag.get('effective_ceiling')}."
+    )
+
+    # T2 diagnostics: SUSPECTED_FROZEN and PROGRESS must agree on alive_by
+    # since they fire on the same tick (proves single snapshot reuse).
+    t2_diag_by_kind = {
+        e.kind: e.diagnostic
+        for e in events
+        if e.kind in (WaitingStatusKind.SUSPECTED_FROZEN, WaitingStatusKind.PROGRESS)
+    }
+    sf_diag_t2 = t2_diag_by_kind.get(WaitingStatusKind.SUSPECTED_FROZEN)
+    pr_diag_t2 = t2_diag_by_kind.get(WaitingStatusKind.PROGRESS)
+
+    assert sf_diag_t2 is not None, (
+        f"Expected SUSPECTED_FROZEN on T2, got: {[e.kind for e in events]}"
+    )
+    assert pr_diag_t2 is not None, f"Expected PROGRESS on T2, got: {[e.kind for e in events]}"
+
+    # Same tick -> same snapshot -> alive_by must be identical.
+    assert sf_diag_t2.get("alive_by") == pr_diag_t2.get("alive_by"), (
+        f"T2: SUSPECTED_FROZEN alive_by={sf_diag_t2.get('alive_by')} != "
+        f"PROGRESS alive_by={pr_diag_t2.get('alive_by')}. Same tick must use same snapshot."
+    )
 
 
 def test_validation_rejects_no_progress_ceiling_equal_to_max() -> None:

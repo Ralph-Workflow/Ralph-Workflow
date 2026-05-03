@@ -757,7 +757,9 @@ def test_invoke_agent_passes_extra_env_to_subprocess(
             return self.returncode
 
         def __init__(self) -> None:
-            self.stdout = iter(["ok\n"])
+            self.stdout = iter([
+                "Task declared complete: session_id=test, summary=done, timestamp=1\n"
+            ])
             self.stderr = SimpleNamespace(read=lambda: "")
             self.returncode = 0
 
@@ -969,7 +971,9 @@ def test_invoke_agent_runs_subprocess_in_workspace_path(
             return self.returncode
 
         def __init__(self) -> None:
-            self.stdout = iter(["ok\n"])
+            self.stdout = iter([
+                "Task declared complete: session_id=test, summary=done, timestamp=1\n"
+            ])
             self.stderr = SimpleNamespace(read=lambda: "")
             self.returncode = 0
 
@@ -1037,7 +1041,9 @@ def test_invoke_agent_passes_claude_mcp_separator_in_subprocess_argv(
             return self.returncode
 
         def __init__(self) -> None:
-            self.stdout = iter(["ok\n"])
+            self.stdout = iter([
+                "Task declared complete: session_id=test, summary=done, timestamp=1\n"
+            ])
             self.stderr = SimpleNamespace(read=lambda: "")
             self.returncode = 0
 
@@ -1296,7 +1302,9 @@ def test_invoke_agent_claude_extracts_existing_workspace_mcp_servers(
             return self.returncode
 
         def __init__(self) -> None:
-            self.stdout = iter(["ok\n"])
+            self.stdout = iter([
+                "Task declared complete: session_id=test, summary=done, timestamp=1\n"
+            ])
             self.stderr = SimpleNamespace(read=lambda: "")
             self.returncode = 0
 
@@ -1394,7 +1402,9 @@ def test_claude_mode_extracts_upstream_servers_without_passing_them_through(
             return self.returncode
 
         def __init__(self) -> None:
-            self.stdout = iter(["ok\n"])
+            self.stdout = iter([
+                "Task declared complete: session_id=test, summary=done, timestamp=1\n"
+            ])
             self.stderr = SimpleNamespace(read=lambda: "")
             self.returncode = 0
 
@@ -1495,7 +1505,9 @@ def test_claude_mode_prefers_workspace_upstream_server_over_home_definition(
             return self.returncode
 
         def __init__(self) -> None:
-            self.stdout = iter(["ok\n"])
+            self.stdout = iter([
+                "Task declared complete: session_id=test, summary=done, timestamp=1\n"
+            ])
             self.stderr = SimpleNamespace(read=lambda: "")
             self.returncode = 0
 
@@ -1689,7 +1701,9 @@ def test_invoke_agent_injects_opencode_mcp_config_for_remote_endpoint(
             return self.returncode
 
         def __init__(self) -> None:
-            self.stdout = iter(["ok\n"])
+            self.stdout = iter([
+                "Task declared complete: session_id=test, summary=done, timestamp=1\n"
+            ])
             self.stderr = SimpleNamespace(read=lambda: "")
             self.returncode = 0
 
@@ -1755,7 +1769,9 @@ def test_invoke_agent_merges_existing_opencode_config_content(
             return self.returncode
 
         def __init__(self) -> None:
-            self.stdout = iter(["ok\n"])
+            self.stdout = iter([
+                "Task declared complete: session_id=test, summary=done, timestamp=1\n"
+            ])
             self.stderr = SimpleNamespace(read=lambda: "")
             self.returncode = 0
 
@@ -1817,7 +1833,9 @@ def test_invoke_agent_does_not_inject_opencode_mcp_config_without_explicit_endpo
             return self.returncode
 
         def __init__(self) -> None:
-            self.stdout = iter(["ok\n"])
+            self.stdout = iter([
+                "Task declared complete: session_id=test, summary=done, timestamp=1\n"
+            ])
             self.stderr = SimpleNamespace(read=lambda: "")
             self.returncode = 0
 
@@ -1894,7 +1912,9 @@ def test_opencode_mode_extracts_upstream_servers_without_passing_them_through(
             return self.returncode
 
         def __init__(self) -> None:
-            self.stdout = iter(["ok\n"])
+            self.stdout = iter([
+                "Task declared complete: session_id=test, summary=done, timestamp=1\n"
+            ])
             self.stderr = SimpleNamespace(read=lambda: "")
             self.returncode = 0
 
@@ -2651,7 +2671,9 @@ def test_opencode_strict_mode_only_exposes_ralph_server(
             return self.returncode
 
         def __init__(self) -> None:
-            self.stdout = iter(["ok\n"])
+            self.stdout = iter([
+                "Task declared complete: session_id=test, summary=done, timestamp=1\n"
+            ])
             self.stderr = SimpleNamespace(read=lambda: "")
             self.returncode = 0
 
@@ -2809,7 +2831,9 @@ def test_provider_strict_mode_passes_upstream_proxy_payload_to_ralph(
             return self.returncode
 
         def __init__(self) -> None:
-            self.stdout = iter(["ok\n"])
+            self.stdout = iter([
+                "Task declared complete: session_id=test, summary=done, timestamp=1\n"
+            ])
             self.stderr = SimpleNamespace(read=lambda: "")
             self.returncode = 0
 

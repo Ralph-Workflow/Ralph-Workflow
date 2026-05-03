@@ -40,6 +40,10 @@ class GenericExecutionStrategy:
     introduced so that Claude/Codex paths are unaffected.
     """
 
+    def observe_line(self, line: str) -> None:
+        """Observe a raw provider line for optional strategy-specific state updates."""
+        del line
+
     def classify_activity_line(self, line: str) -> AgentActivitySignal | None:
         """Classify a raw output line for idle-watchdog activity.
 
