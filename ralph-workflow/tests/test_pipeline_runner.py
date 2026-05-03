@@ -60,6 +60,7 @@ from ralph.policy.models import (
     PipelinePolicy,
     PolicyBundle,
 )
+from ralph.prompts.materialize import MissingPlanHandoffError
 from ralph.workspace.fs import FsWorkspace
 from ralph.workspace.scope import WorkspaceScope
 
@@ -3685,3 +3686,53 @@ class TestPhaseContextRoleBasedDispatch:
         # Must ALSO show outer iteration counter (this was the bug - only analysis was shown)
         assert ctx.get("iteration") == "1/5"
         assert ctx.get("decision") == "needs changes"
+
+
+def test_handle_inline_effect_routes_to_planning_when_plan_handoff_absent(
+    monkeypatch: MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Regression: missing plan handoff during recovery must route to planning, not crash.
+
+    Mirrors the reported failure where developer_iteration.jinja raised
+    'requires an existing plan handoff' during failed_terminal recovery,
+    classified as ambiguous and retried indefinitely. After the fix, the runner
+    catches MissingPlanHandoffError and routes the state back to the entry phase
+    (planning) instead of crashing as an ambiguous 'Pipeline step crashed'.
+    """
+    bundle = _load_default_policy_bundle()
+    state = PipelineState(
+        phase=bundle.pipeline.recovery.failed_route,
+        previous_phase="development",
+        recovery_epoch=1,
+    )
+
+    monkeypatch.setattr(
+        runner_module,
+        "_materialize_prepared_prompt",
+        MagicMock(
+            side_effect=MissingPlanHandoffError(
+                "Template 'developer_iteration.jinja' requires an existing plan handoff"
+                " at .agent/PLAN.md"
+            )
+        ),
+    )
+    monkeypatch.setattr(runner_module, "ckpt", MagicMock())
+
+    result = runner_module._handle_inline_effect(
+        effect=PreparePromptEffect(
+            phase="development",
+            previous_phase="development",
+            drain="development",
+        ),
+        state=state,
+        pipeline_policy=bundle.pipeline,
+        artifacts_policy=bundle.artifacts,
+        agents_policy=bundle.agents,
+        workspace_scope=WorkspaceScope(str(tmp_path)),
+    )
+
+    assert isinstance(result, PipelineState)
+    assert result.phase == bundle.pipeline.recovery.failed_route
+    assert result.previous_phase == bundle.pipeline.entry_phase
+    assert result.recovery_epoch == state.recovery_epoch + 1

@@ -67,6 +67,7 @@ _MINIMAL_PLANNING_ANALYSIS_DECISION = json.dumps(
         ("development_analysis", None),
         ("review", None),
         ("review_analysis", None),
+        ("fix", None),
     ],
 )
 def test_non_new_plan_prompts_require_existing_plan_handoff(
@@ -98,6 +99,7 @@ def test_non_new_plan_prompts_require_existing_plan_handoff(
         "development_analysis": SessionDrain.DEVELOPMENT,
         "review": SessionDrain.REVIEW,
         "review_analysis": SessionDrain.REVIEW,
+        "fix": SessionDrain.FIX,
     }[phase]
 
     with (
