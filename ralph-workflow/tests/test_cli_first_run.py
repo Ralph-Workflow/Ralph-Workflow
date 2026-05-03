@@ -532,8 +532,10 @@ def test_cli_run_with_only_prompt_shows_init_hint(
     assert result.exit_code == 2, (  # noqa: PLR2004
         f"Expected exit code 2 (preflight), got {result.exit_code}: {result.output}"
     )
-    # Validation error message from validate_required_inputs references ralph --init
-    assert "ralph --init" in result.output, (
+    # Validation error message from validate_required_inputs references ralph --init.
+    # Normalize whitespace to handle word-wrap at narrow terminal widths.
+    normalized_output = " ".join(result.output.split())
+    assert "ralph --init" in normalized_output, (
         f"Expected 'ralph --init' guidance in output, got: {result.output}"
     )
     # Must mention PROMPT.md to explain what is wrong
