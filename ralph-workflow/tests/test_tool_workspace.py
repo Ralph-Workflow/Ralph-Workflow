@@ -470,11 +470,11 @@ class TestHandleReadFilePartial:
         payload = json.loads(cast("ToolContent", result.content[0]).text)
         assert payload["content"] == "line2\nline3\n"
 
-    def test_offset_and_limit_translates_to_line_range(self) -> None:
+    def test_offset_and_limit_uses_byte_window_read(self) -> None:
         ws = MagicMock()
-        ws.read_lines.return_value = (
+        ws.read_bytes.return_value = (
             "some content",
-            {"total_lines": 1, "returned_lines": 1, "truncated": False},
+            {"total_bytes": 200, "returned_bytes": 100, "truncated": True},
         )
 
         result = handle_read_file(
@@ -483,6 +483,32 @@ class TestHandleReadFilePartial:
             {"path": "file.txt", "offset": 0, "limit": 100},
         )
         assert result.is_error is False
+        payload = json.loads(cast("ToolContent", result.content[0]).text)
+        assert payload["content"] == "some content"
+        assert payload["total_bytes"] == 200  # noqa: PLR2004
+        assert payload["returned_bytes"] == 100  # noqa: PLR2004
+        assert payload["truncated"] is True
+
+    def test_offset_only_reads_from_byte_position(self) -> None:
+        ws = MagicMock()
+        ws.read_bytes.return_value = (
+            "remainder content",
+            {"total_bytes": 100, "returned_bytes": 83, "truncated": False},
+        )
+
+        result = handle_read_file(
+            MockSession(WORKSPACE_READ_CAPABILITY),
+            ws,
+            {"path": "file.txt", "offset": 17},
+        )
+        assert result.is_error is False
+        payload = json.loads(cast("ToolContent", result.content[0]).text)
+        assert payload["content"] == "remainder content"
+        assert payload["total_bytes"] == 100  # noqa: PLR2004
+        ws.read_bytes.assert_called_once()
+        _, kwargs = ws.read_bytes.call_args
+        assert kwargs["offset"] == 17  # noqa: PLR2004
+        assert kwargs["limit"] is None
 
     def test_conflicting_params_raise_invalid_params(self) -> None:
         ws = MagicMock()

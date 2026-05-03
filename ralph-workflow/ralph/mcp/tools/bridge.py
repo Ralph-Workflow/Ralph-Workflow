@@ -333,7 +333,7 @@ def _tool_specs(mcp_config: McpConfig) -> tuple[ToolSpec, ...]:
             metadata=_metadata(
                 name=READ_FILE_TOOL,
                 description=(
-                    "Read a UTF-8 text file from the workspace. "
+                    "Read the complete contents of a file as text. "
                     "Required param: path (string, relative or absolute path inside workspace). "
                     "Optional params for partial reads: line_start (1-based), line_end (1-based), "
                     "offset (0-based byte offset), limit (byte limit), head (first N lines), "
@@ -355,27 +355,53 @@ def _tool_specs(mcp_config: McpConfig) -> tuple[ToolSpec, ...]:
                         },
                         "line_start": {
                             "type": "integer",
-                            "description": "1-based line number to start from (inclusive).",
+                            "description": (
+                                "1-based line number to start from (inclusive). "
+                                "Use with line_end for a line range. "
+                                "MUTUALLY EXCLUSIVE with offset/limit and head/tail."
+                            ),
                         },
                         "line_end": {
                             "type": "integer",
-                            "description": "1-based line number to end at (inclusive).",
+                            "description": (
+                                "1-based line number to end at (inclusive). "
+                                "MUTUALLY EXCLUSIVE with offset/limit and head/tail."
+                            ),
                         },
                         "offset": {
                             "type": "integer",
-                            "description": "0-based byte offset to start reading from.",
+                            "description": (
+                                "0-based byte offset to start reading from. "
+                                "MUTUALLY EXCLUSIVE with line_start/line_end and head/tail."
+                            ),
                         },
                         "limit": {
                             "type": "integer",
-                            "description": "Maximum number of bytes to read from offset.",
+                            "description": (
+                                "Maximum number of bytes to read from offset. "
+                                "MUTUALLY EXCLUSIVE with line_start/line_end and head/tail."
+                            ),
                         },
                         "head": {
                             "type": "integer",
-                            "description": "Return only the first N lines.",
+                            "description": (
+                                "Return only the first N lines. "
+                                "MUTUALLY EXCLUSIVE with line_start/line_end and offset/limit."
+                            ),
                         },
                         "tail": {
                             "type": "integer",
-                            "description": "Return only the last N lines.",
+                            "description": (
+                                "Return only the last N lines. "
+                                "MUTUALLY EXCLUSIVE with line_start/line_end and offset/limit."
+                            ),
+                        },
+                        "max_bytes": {
+                            "type": "integer",
+                            "description": (
+                                "Maximum bytes for a full-file read before truncating "
+                                "(default: 5_000_000). Ignored when partial-read params are used."
+                            ),
                         },
                     },
                     "required": ["path"],

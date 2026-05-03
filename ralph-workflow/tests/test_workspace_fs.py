@@ -485,3 +485,70 @@ class TestFsWorkspaceIterFiles:
             files = ws.iter_files("nonexistent")
 
             assert files == ()
+
+
+class TestFsWorkspaceReadBytes:
+    def test_full_file_read_no_offset(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ws = FsWorkspace(tmpdir)
+            content = "Hello, World!"
+            (Path(tmpdir) / "file.txt").write_text(content, encoding="utf-8")
+
+            text, meta = ws.read_bytes("file.txt")
+
+            assert text == content
+            assert meta["total_bytes"] == len(content.encode("utf-8"))
+            assert meta["returned_bytes"] == len(content.encode("utf-8"))
+            assert meta["truncated"] is False
+
+    def test_byte_offset_read(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ws = FsWorkspace(tmpdir)
+            (Path(tmpdir) / "file.txt").write_text("Hello, World!", encoding="utf-8")
+
+            text, meta = ws.read_bytes("file.txt", offset=7)
+
+            assert text == "World!"
+            assert meta["returned_bytes"] == len(b"World!")
+            assert meta["truncated"] is False
+
+    def test_byte_limit_read(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ws = FsWorkspace(tmpdir)
+            (Path(tmpdir) / "file.txt").write_text("Hello, World!", encoding="utf-8")
+
+            text, meta = ws.read_bytes("file.txt", limit=5)
+
+            assert text == "Hello"
+            assert meta["returned_bytes"] == 5  # noqa: PLR2004
+            assert meta["truncated"] is True
+
+    def test_offset_and_limit_read(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ws = FsWorkspace(tmpdir)
+            (Path(tmpdir) / "file.txt").write_text("Hello, World!", encoding="utf-8")
+
+            text, meta = ws.read_bytes("file.txt", offset=7, limit=5)
+
+            assert text == "World"
+            assert meta["returned_bytes"] == 5  # noqa: PLR2004
+            assert meta["truncated"] is True
+
+    def test_missing_file_raises_file_not_found(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ws = FsWorkspace(tmpdir)
+
+            with pytest.raises(FileNotFoundError):
+                ws.read_bytes("nonexistent.txt")
+
+    def test_total_bytes_reflects_file_size(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ws = FsWorkspace(tmpdir)
+            content = "A" * 1000
+            (Path(tmpdir) / "large.txt").write_text(content, encoding="utf-8")
+
+            _, meta = ws.read_bytes("large.txt", limit=100)
+
+            assert meta["total_bytes"] == 1000  # noqa: PLR2004
+            assert meta["returned_bytes"] == 100  # noqa: PLR2004
+            assert meta["truncated"] is True

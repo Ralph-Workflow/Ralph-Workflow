@@ -238,6 +238,31 @@ class FsWorkspace:
             "truncated": truncated,
         }
 
+    def read_bytes(
+        self,
+        path: str,
+        *,
+        offset: int = 0,
+        limit: int | None = None,
+    ) -> tuple[str, dict[str, object]]:
+        """Read a byte window from a file, decoded as UTF-8."""
+        abs_path = self._abs(path)
+        if not abs_path.exists():
+            raise FileNotFoundError(f"File not found: {path}")
+        total_bytes = abs_path.stat().st_size
+        with abs_path.open("rb") as fh:
+            if offset:
+                fh.seek(offset)
+            raw = fh.read(limit) if limit is not None else fh.read()
+        returned_bytes = len(raw)
+        truncated = (offset + returned_bytes) < total_bytes
+        text = raw.decode("utf-8")
+        return text, {
+            "total_bytes": total_bytes,
+            "returned_bytes": returned_bytes,
+            "truncated": truncated,
+        }
+
     def stat(self, path: str) -> dict[str, object]:
         """Get file metadata/stat data.
 

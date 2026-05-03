@@ -610,7 +610,11 @@ def test_regenerate_config_flag_creates_bak(
 
 def test_explain_policy_prints_workflow_diagram(cli_runner: CliRunner) -> None:
     """--explain-policy prints the workflow diagram and structural breakdown."""
-    result = cli_runner.invoke(app, ["--explain-policy"])
+    # Explicitly point at the bundled defaults so the test is not environment-dependent.
+    defaults_dir = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
+    result = cli_runner.invoke(
+        app, ["--explain-policy", "--explain-policy-dir", str(defaults_dir)]
+    )
 
     # Should exit successfully
     assert result.exit_code == 0
@@ -627,7 +631,7 @@ def test_explain_policy_prints_workflow_diagram(cli_runner: CliRunner) -> None:
     # Should also contain the structural breakdown section
     assert "RALPH WORKFLOW — ACTIVE POLICY EXPLANATION" in result.stdout
 
-    # Should contain bypass_routes explanation sentence for the review phase
+    # Should contain bypass_routes explanation sentence for the review phase (from bundled defaults)
     assert "Explanation: phase 'review' bypasses to 'review_commit'" in result.stdout
 
 

@@ -340,21 +340,26 @@ def handle_read_file(
             )
 
         if off is not None or lim is not None:
-            start_off = off if off is not None else 1
-            end_line = (start_off + lim - 1) if lim is not None else None
-            content, meta = workspace.read_lines(normalized, start=off, end=end_line)
+            byte_offset = off if off is not None else 0
+            content, meta = workspace.read_bytes(normalized, offset=byte_offset, limit=lim)
+            payload = {
+                "path": path,
+                "content": content,
+                "total_bytes": meta.get("total_bytes"),
+                "returned_bytes": meta.get("returned_bytes"),
+                "truncated": meta.get("truncated"),
+            }
         else:
             content, meta = workspace.read_lines(
                 normalized, start=start, end=end, head=h, tail=t
             )
-
-        payload = {
-            "path": path,
-            "content": content,
-            "total_lines": meta.get("total_lines"),
-            "returned_lines": meta.get("returned_lines"),
-            "truncated": meta.get("truncated"),
-        }
+            payload = {
+                "path": path,
+                "content": content,
+                "total_lines": meta.get("total_lines"),
+                "returned_lines": meta.get("returned_lines"),
+                "truncated": meta.get("truncated"),
+            }
         return ToolResult(
             content=[ToolContent.text_content(_tool_json(payload))], is_error=False
         )

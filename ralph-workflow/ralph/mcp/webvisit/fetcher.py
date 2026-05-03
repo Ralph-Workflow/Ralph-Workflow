@@ -53,28 +53,44 @@ class FetchOutcome:
     error: str | None = None
 
 
+_DNS_SSRF_CHECK_TIMEOUT = 5.0  # seconds; prevents unbounded blocking on slow DNS
+
+
+def _is_private_ip(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
+    return (
+        ip.is_loopback
+        or ip.is_private
+        or ip.is_link_local
+        or ip.is_multicast
+        or ip.is_reserved
+        or ip.is_unspecified
+    )
+
+
 def _is_private_address(host: str) -> bool:
     if host.lower() in _PRIVATE_HOSTNAMES:
         return True
+    # Parse as a literal IP address first — no DNS needed and no blocking
     try:
+        return _is_private_ip(ipaddress.ip_address(host))
+    except ValueError:
+        pass
+    # Hostname: resolve with a bounded timeout so slow DNS cannot block the server
+    old_timeout = socket.getdefaulttimeout()
+    try:
+        socket.setdefaulttimeout(_DNS_SSRF_CHECK_TIMEOUT)
         results = socket.getaddrinfo(host, None, proto=socket.IPPROTO_TCP)
     except OSError:
         return False
+    finally:
+        socket.setdefaulttimeout(old_timeout)
     for _family, _type, _proto, _canonname, sockaddr in results:
         addr = sockaddr[0]
         try:
-            ip = ipaddress.ip_address(addr)
+            if _is_private_ip(ipaddress.ip_address(addr)):
+                return True
         except ValueError:
             continue
-        if (
-            ip.is_loopback
-            or ip.is_private
-            or ip.is_link_local
-            or ip.is_multicast
-            or ip.is_reserved
-            or ip.is_unspecified
-        ):
-            return True
     return False
 
 

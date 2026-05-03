@@ -82,7 +82,10 @@ and how large the file is.
 returned as a single text content block with no JSON envelope.
 
 **2. Partial-read JSON envelope** — when any of `line_start`/`line_end`, `offset`/`limit`,
-`head`, or `tail` is supplied:
+`head`, or `tail` is supplied. **These groups are mutually exclusive; use exactly one.**
+Combining two groups (e.g. `line_start` with `offset`) raises `InvalidParams`.
+
+Line-range / head / tail mode returns `total_lines` and `returned_lines`:
 
 ```json
 {
@@ -94,8 +97,17 @@ returned as a single text content block with no JSON envelope.
 }
 ```
 
-The partial-read parameter groups are mutually exclusive; combining any two
-(`line_start`/`line_end` with `offset`/`limit`, etc.) raises `InvalidParams`.
+Byte-window mode (`offset`/`limit`) returns `total_bytes` and `returned_bytes`:
+
+```json
+{
+  "path": "/workspace/src/example.py",
+  "content": "partial file content here",
+  "total_bytes": 50000,
+  "returned_bytes": 1000,
+  "truncated": true
+}
+```
 
 **3. Oversize/error JSON envelope** — when the file exceeds `max_bytes` (default
 `5_000_000`) or fails UTF-8 decoding. The JSON envelope only appears in these
