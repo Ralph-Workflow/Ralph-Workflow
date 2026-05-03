@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import re
-import time
 from io import StringIO
 
 from rich.console import Console
@@ -234,10 +233,16 @@ def test_run_elapsed_seconds_is_none_before_run_start() -> None:
 
 def test_run_elapsed_seconds_reflects_elapsed_time() -> None:
     """run_elapsed_seconds returns elapsed time since run start."""
-    renderer, _buf = _make_renderer()
-    renderer.begin_phase("development")
-    # Small delay to ensure elapsed time > 0
-    time.sleep(0.01)
+    fake_elapsed = 5.0
+    fake_time = [0.0]
+    buf = StringIO()
+    console = Console(file=buf, force_terminal=False, highlight=False, color_system=None, width=200)
+    renderer = PlainLogRenderer(
+        make_display_context(console=console, env={}),
+        monotonic=lambda: fake_time[0],
+    )
+    renderer.begin_phase("development")  # sets _run_start_time = fake_time[0] = 0.0
+    fake_time[0] = fake_elapsed  # advance injected clock
     elapsed = renderer.run_elapsed_seconds
     assert elapsed is not None
-    assert elapsed >= 0.01, f"Expected elapsed >= 0.01s, got {elapsed}"  # noqa: PLR2004
+    assert elapsed == fake_elapsed, f"Expected elapsed == {fake_elapsed}s, got {elapsed}"

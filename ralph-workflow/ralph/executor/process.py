@@ -8,7 +8,7 @@ import subprocess
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from ralph.process.manager import get_process_manager
+from ralph.process.manager import ProcessManager, get_process_manager
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
@@ -99,12 +99,14 @@ async def run_process_async(
     cwd: str | Path | None = None,
     env: Mapping[str, str] | None = None,
     timeout: float | None = None,
+    _pm: ProcessManager | None = None,
 ) -> ProcessResult:
     """Run a process asynchronously and capture its output."""
     cmd = _normalize_command(command, args)
+    pm = _pm if _pm is not None else get_process_manager()
 
     try:
-        handle = await get_process_manager().spawn_async(
+        handle = await pm.spawn_async(
             cmd,
             cwd=_normalize_cwd(cwd),
             env=_build_env(env),
@@ -146,12 +148,14 @@ def run_process(
     cwd: str | Path | None = None,
     env: Mapping[str, str] | None = None,
     timeout: float | None = None,
+    _pm: ProcessManager | None = None,
 ) -> ProcessResult:
     """Run a process synchronously and capture its output."""
     cmd = _normalize_command(command, args)
+    pm = _pm if _pm is not None else get_process_manager()
 
     try:
-        handle = get_process_manager().spawn(
+        handle = pm.spawn(
             cmd,
             cwd=_normalize_cwd(cwd),
             env=_build_env(env),

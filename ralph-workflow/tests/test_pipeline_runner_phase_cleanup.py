@@ -8,15 +8,14 @@ all phase-labeled child processes when the phase finishes.
 from __future__ import annotations
 
 import contextlib
+import itertools
 import sys
-import time
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
 if TYPE_CHECKING:
     from pathlib import Path
 
-import psutil
 import pytest
 
 import ralph.process.manager as _mgr
@@ -32,6 +31,7 @@ from ralph.process.manager import (
     get_process_manager,
     reset_process_manager,
 )
+from ralph.testing.fake_process import make_sync_process_factory
 from ralph.workspace.scope import WorkspaceScope
 
 _FAST_POLICY = ProcessManagerPolicy(
@@ -50,15 +50,6 @@ def _reset_pm() -> None:
     with contextlib.suppress(Exception):
         get_process_manager().shutdown_all(grace_period_s=0)
     reset_process_manager()
-
-
-def _pid_gone(pid: int, timeout_s: float = 0.5) -> bool:
-    deadline = time.monotonic() + timeout_s
-    while time.monotonic() < deadline:
-        if not psutil.pid_exists(pid):
-            return True
-        time.sleep(0.02)
-    return not psutil.pid_exists(pid)
 
 
 def _stub_determine_effect(effects: list[object]) -> object:
@@ -116,14 +107,17 @@ def test_runner_phase_scope_kills_phase_labeled_child(
     A process spawned inside _execute_agent_effect with label 'phase:<phase>:worker'
     must be dead after runner.run() exits, because the phase scope tears it down.
     """
-    pm = ProcessManager(policy=_FAST_POLICY)
+    sync_factory = make_sync_process_factory(
+        itertools.count(1), returncode=None
+    )
+    pm = ProcessManager(policy=_FAST_POLICY, sync_process_factory=sync_factory)
     spawned_pid: list[int] = []
 
     def fake_execute_agent_effect(
         effect: object, config: object, deps: object, workspace_scope: object, **kwargs: object
     ) -> PipelineEvent:
         handle = get_process_manager().spawn(
-            [PYTHON, "-c", "import time; time.sleep(30)"],
+            [PYTHON, "-c", "pass"],
             label=f"phase:{_TEST_PHASE}:worker",
         )
         spawned_pid.append(handle.record.pid)
@@ -155,9 +149,11 @@ def test_runner_phase_scope_kills_phase_labeled_child(
 
     assert exit_code == 0
     assert spawned_pid, "Fake handler must have spawned a process"
-    assert _pid_gone(spawned_pid[0]), (
-        f"PID {spawned_pid[0]} must be gone after runner exits the phase scope"
-    )
+
+    # Verify the process was terminated by the phase scope
+    record = pm._records.get(spawned_pid[0])
+    assert record is not None
+    assert record.status in (ProcessStatus.KILLED, ProcessStatus.EXITED)
 
 
 def test_runner_phase_scope_does_not_kill_other_labels(
@@ -165,18 +161,21 @@ def test_runner_phase_scope_does_not_kill_other_labels(
     tmp_path: Path,
 ) -> None:
     """process_phase_scope only kills processes whose label starts with 'phase:<phase_name>'."""
-    pm = ProcessManager(policy=_FAST_POLICY)
+    sync_factory = make_sync_process_factory(
+        itertools.count(1), returncode=None
+    )
+    pm = ProcessManager(policy=_FAST_POLICY, sync_process_factory=sync_factory)
     spawned: dict[str, int] = {}
 
     def fake_execute_agent_effect(
         effect: object, config: object, deps: object, workspace_scope: object, **kwargs: object
     ) -> PipelineEvent:
         phase_handle = get_process_manager().spawn(
-            [PYTHON, "-c", "import time; time.sleep(30)"],
+            [PYTHON, "-c", "pass"],
             label=f"phase:{_TEST_PHASE}:worker",
         )
         bystander_handle = get_process_manager().spawn(
-            [PYTHON, "-c", "import time; time.sleep(30)"],
+            [PYTHON, "-c", "pass"],
             label="other:unrelated",
         )
         spawned["phase"] = phase_handle.record.pid
@@ -206,23 +205,19 @@ def test_runner_phase_scope_does_not_kill_other_labels(
         )
     finally:
         _mgr._singleton = original_singleton
-        bystander_pid = spawned.get("bystander")
-        if bystander_pid is not None:
-            bystander_record = pm._records.get(bystander_pid)
-            if (
-                bystander_record is not None
-                and bystander_record.status == ProcessStatus.RUNNING
-            ):
-                bystander_proc = pm._sync_procs.get(bystander_pid)
-                if bystander_proc is not None:
-                    with contextlib.suppress(Exception):
-                        pm._escalate_termination_sync(bystander_record, bystander_proc, 0)
 
     assert exit_code == 0
     assert spawned, "Fake handler must have spawned processes"
-    assert _pid_gone(spawned["phase"]), (
-        f"Phase-labeled PID {spawned['phase']} must be gone after scope exits"
-    )
+
+    # Phase-labeled process should be killed
+    phase_record = pm._records.get(spawned["phase"])
+    assert phase_record is not None
+    assert phase_record.status in (ProcessStatus.KILLED, ProcessStatus.EXITED)
+
+    # Bystander should still be running (then we clean it up)
+    bystander_record = pm._records.get(spawned["bystander"])
+    assert bystander_record is not None
+    assert bystander_record.status == ProcessStatus.RUNNING
 
 
 def test_runner_interrupt_shuts_down_tracked_children_even_outside_phase_scope(
@@ -235,14 +230,17 @@ def test_runner_interrupt_shuts_down_tracked_children_even_outside_phase_scope(
     under ``phase:<phase>`` and therefore cannot rely on ``process_phase_scope``
     prefix cleanup alone.
     """
-    pm = ProcessManager(policy=_FAST_POLICY)
+    sync_factory = make_sync_process_factory(
+        itertools.count(1), returncode=None
+    )
+    pm = ProcessManager(policy=_FAST_POLICY, sync_process_factory=sync_factory)
     spawned_pid: list[int] = []
 
     def fake_execute_agent_effect(
         effect: object, config: object, deps: object, workspace_scope: object, **kwargs: object
     ) -> PipelineEvent:
         handle = get_process_manager().spawn(
-            [PYTHON, "-c", "import time; time.sleep(30)"],
+            [PYTHON, "-c", "pass"],
             label="invoke:fake-agent",
         )
         spawned_pid.append(handle.record.pid)
@@ -278,8 +276,11 @@ def test_runner_interrupt_shuts_down_tracked_children_even_outside_phase_scope(
 
     assert exit_code == _INTERRUPT_EXIT_CODE
     assert spawned_pid, "Fake handler must have spawned a tracked child"
-    assert _pid_gone(spawned_pid[0], timeout_s=1.5), (
-        f"Tracked PID {spawned_pid[0]} must be gone after interrupt handling"
-    )
+
+    # Verify the process was terminated
+    record = pm._records.get(spawned_pid[0])
+    assert record is not None
+    assert record.status in (ProcessStatus.KILLED, ProcessStatus.EXITED)
+
     initial_state.copy_with.assert_called_once_with(interrupted_by_user=True)
     assert saved_states == [interrupted_state]

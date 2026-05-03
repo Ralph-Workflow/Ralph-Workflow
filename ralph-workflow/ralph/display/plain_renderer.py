@@ -214,11 +214,13 @@ class PlainLogRenderer:
         display_context: DisplayContext,
         *,
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
+        monotonic: Callable[[], float] = time.monotonic,
     ) -> None:
         if not isinstance(display_context, DisplayContext):
             raise TypeError("display_context is required")
         self._ctx = display_context
         self._clock = clock
+        self._monotonic = monotonic
         self._last_phase: str | None = None
         self._last_budget_progress: dict[str, int] = {}
         self._last_worker_states: dict[str, str] = {}
@@ -718,9 +720,9 @@ class PlainLogRenderer:
 
     def begin_phase(self, phase: str) -> None:
         """Start timing a new phase and reset its counters to zero."""
-        self._phase_counters = _PhaseCounters(start_time=time.monotonic())
+        self._phase_counters = _PhaseCounters(start_time=self._monotonic())
         if self._run_start_time is None:
-            self._run_start_time = time.monotonic()
+            self._run_start_time = self._monotonic()
 
     def emit_phase_close(self, phase: str, produced: str, *, phase_role: str | None = None) -> None:
         """Emit a single-line recap after a phase's artifact blocks are rendered."""
@@ -729,7 +731,7 @@ class PlainLogRenderer:
         clean_produced = _sanitize(produced).strip()
         counters = self._phase_counters
         if counters is not None:
-            elapsed_s = round(max(0.0, time.monotonic() - counters.start_time), 1)
+            elapsed_s = round(max(0.0, self._monotonic() - counters.start_time), 1)
         else:
             elapsed_s = 0.0
             counters = _PhaseCounters()
@@ -794,7 +796,7 @@ class PlainLogRenderer:
         timestamp = self._format_timestamp(self._clock())
         total_elapsed_s = 0.0
         if self._run_start_time is not None:
-            total_elapsed_s = round(max(0.0, time.monotonic() - self._run_start_time), 1)
+            total_elapsed_s = round(max(0.0, self._monotonic() - self._run_start_time), 1)
 
         is_compact = self._ctx.mode == "compact"
 
@@ -903,7 +905,7 @@ class PlainLogRenderer:
     def run_elapsed_seconds(self) -> float | None:
         if self._run_start_time is None:
             return None
-        return max(0.0, time.monotonic() - self._run_start_time)
+        return max(0.0, self._monotonic() - self._run_start_time)
 
     def _close_block(self, unit_id: str, timestamp: str) -> None:
         """Close an active streaming block, emitting the end-line and optional AI summary."""

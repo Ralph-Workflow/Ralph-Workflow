@@ -25,17 +25,18 @@ import atexit
 import contextlib
 import os
 import subprocess
+import time as _time
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import Enum, auto
-from typing import TYPE_CHECKING, cast
+from typing import IO, TYPE_CHECKING, cast
 
 from loguru import logger
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Generator, Sequence
-    from typing import IO, Protocol
+    from typing import Protocol
 
     class _PsutilProcessLike(Protocol):
         def children(self, recursive: bool = False) -> list[_PsutilProcessLike]: ...
@@ -56,13 +57,85 @@ if TYPE_CHECKING:
             timeout: float | None = None,
         ) -> tuple[list[_PsutilProcessLike], list[_PsutilProcessLike]]: ...
 
-psutil: _PsutilModuleLike | None
+    class _SyncProcessFactory(Protocol):
+        def __call__(  # noqa: PLR0913
+            self,
+            command: Sequence[str],
+            *,
+            cwd: str | None,
+            env: dict[str, str] | None,
+            stdin: int | None,
+            stdout: int | None,
+            stderr: int | None,
+            start_new_session: bool,
+            text: bool,
+        ) -> subprocess.Popen[bytes]: ...
+
+    class _AsyncProcessFactory(Protocol):
+        async def __call__(  # noqa: PLR0913
+            self,
+            command: Sequence[str],
+            *,
+            cwd: str | None,
+            env: dict[str, str] | None,
+            stdin: int | None,
+            stdout: int | None,
+            stderr: int | None,
+            start_new_session: bool,
+        ) -> asyncio.subprocess.Process: ...
+
+
+psutil: _PsutilModuleLike | None = None
 try:
     import psutil as _psutil
 except ModuleNotFoundError:
     psutil = None
 else:
     psutil = cast("_PsutilModuleLike", _psutil)
+
+
+def _default_sync_process_factory(  # noqa: PLR0913
+    command: Sequence[str],
+    *,
+    cwd: str | None,
+    env: dict[str, str] | None,
+    stdin: int | None,
+    stdout: int | None,
+    stderr: int | None,
+    start_new_session: bool,
+    text: bool,
+) -> subprocess.Popen[bytes]:
+    return cast("subprocess.Popen[bytes]", subprocess.Popen(
+        command,
+        cwd=cwd,
+        env=env,
+        stdin=stdin,
+        stdout=stdout,
+        stderr=stderr,
+        start_new_session=start_new_session,
+        text=text,
+    ))
+
+
+async def _default_async_process_factory(  # noqa: PLR0913
+    command: Sequence[str],
+    *,
+    cwd: str | None,
+    env: dict[str, str] | None,
+    stdin: int | None,
+    stdout: int | None,
+    stderr: int | None,
+    start_new_session: bool,
+) -> asyncio.subprocess.Process:
+    return await asyncio.create_subprocess_exec(
+        *command,
+        cwd=cwd,
+        env=env,
+        stdin=stdin,
+        stdout=stdout,
+        stderr=stderr,
+        start_new_session=start_new_session,
+    )
 
 
 class ProcessStatus(Enum):
@@ -114,7 +187,7 @@ class ProcessTerminationError(RuntimeError):
 
 
 class ManagedProcess:
-    """Wraps subprocess.Popen and integrates with ProcessManager lifecycle tracking."""
+    """Wraps a synchronous process handle and integrates with ProcessManager lifecycle tracking."""
 
     def __init__(
         self,
@@ -191,43 +264,35 @@ class ManagedProcess:
         self._manager._escalate_termination_sync(self._record, self._proc, 0.0)
 
     def has_live_descendants(self) -> bool:
-        """Return True when this process currently has live descendants.
-
-        This is used by higher-level liveness checks so a quiet parent process is
-        not mistaken for an idle one while spawned child work is still running.
-        """
-        if psutil is None:
+        """Return True when this process currently has live descendants."""
+        psutil_mod = self._manager._psutil
+        if psutil_mod is None:
             return False
         try:
-            root = psutil.Process(self.pid)
+            root = psutil_mod.Process(self.pid)
             descendants = root.children(recursive=True)
-        except (psutil.NoSuchProcess, psutil.AccessDenied):
+        except (psutil_mod.NoSuchProcess, psutil_mod.AccessDenied):
             return False
 
         for child in descendants:
             try:
                 if child.is_running() and child.status() != "zombie":
                     return True
-            except (psutil.NoSuchProcess, psutil.AccessDenied):
+            except (psutil_mod.NoSuchProcess, psutil_mod.AccessDenied):
                 continue
         return False
 
     def descendant_snapshot(self) -> tuple[int, float | None]:
-        """Return (live_descendant_count, oldest_age_seconds) excluding zombies.
-
-        Returns:
-            Tuple of (count of live non-zombie descendants,
-                      age in seconds of the oldest live descendant, or None if none).
-        """
-        if psutil is None:
+        """Return (live_descendant_count, oldest_age_seconds) excluding zombies."""
+        psutil_mod = self._manager._psutil
+        if psutil_mod is None:
             return (0, None)
         try:
-            root = psutil.Process(self.pid)
+            root = psutil_mod.Process(self.pid)
             descendants = root.children(recursive=True)
-        except (psutil.NoSuchProcess, psutil.AccessDenied):
+        except (psutil_mod.NoSuchProcess, psutil_mod.AccessDenied):
             return (0, None)
 
-        import time as _time  # noqa: PLC0415
         now = _time.monotonic()
         count = 0
         oldest_age: float | None = None
@@ -241,9 +306,9 @@ class ManagedProcess:
                     age = now - create_time
                     if oldest_age is None or age > oldest_age:
                         oldest_age = age
-                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                except (psutil_mod.NoSuchProcess, psutil_mod.AccessDenied):
                     pass
-            except (psutil.NoSuchProcess, psutil.AccessDenied):
+            except (psutil_mod.NoSuchProcess, psutil_mod.AccessDenied):
                 continue
         return (count, oldest_age)
 
@@ -332,14 +397,39 @@ class ProcessManager:
     Use :func:`get_process_manager` to obtain the module-level singleton.
     Inject a custom instance (with a test-friendly :class:`ProcessManagerPolicy`)
     to keep tests fast and isolated.
+
+    For testing, inject custom process factories and psutil module via the
+    constructor to avoid spawning real processes::
+
+        from ralph.testing.fake_process import (
+            FakePopen, FakeAsyncProcess, FakePsutil,
+            make_sync_process_factory, make_async_process_factory,
+        )
+        import itertools
+
+        pm = ProcessManager(
+            policy=_FAST_POLICY,
+            sync_process_factory=make_sync_process_factory(itertools.count(1)),
+            async_process_factory=make_async_process_factory(itertools.count(1)),
+            psutil=FakePsutil(),
+        )
     """
 
-    def __init__(self, policy: ProcessManagerPolicy | None = None) -> None:
+    def __init__(
+        self,
+        policy: ProcessManagerPolicy | None = None,
+        sync_process_factory: _SyncProcessFactory | None = None,
+        async_process_factory: _AsyncProcessFactory | None = None,
+        psutil: _PsutilModuleLike | None = None,
+    ) -> None:
         self.policy = policy or ProcessManagerPolicy()
         self._records: dict[int, ProcessRecord] = {}
         self._sync_procs: dict[int, subprocess.Popen[bytes]] = {}
         self._listeners: dict[int, Callable[[ProcessEvent], None]] = {}
         self._listener_counter = 0
+        self._sync_process_factory = sync_process_factory or _default_sync_process_factory
+        self._async_process_factory = async_process_factory or _default_async_process_factory
+        self._psutil = psutil
         if self.policy.log_events:
             self.register_listener(_loguru_event_listener)
 
@@ -371,7 +461,7 @@ class ProcessManager:
         cmd = tuple(command)
         now = datetime.now(tz=UTC)
         try:
-            proc: subprocess.Popen[bytes] = subprocess.Popen(
+            proc: subprocess.Popen[bytes] = self._sync_process_factory(
                 cmd,
                 cwd=cwd,
                 env=env,
@@ -433,8 +523,8 @@ class ProcessManager:
         cmd = tuple(command)
         now = datetime.now(tz=UTC)
         try:
-            proc = await asyncio.create_subprocess_exec(
-                *cmd,
+            proc = await self._async_process_factory(
+                cmd,
                 cwd=cwd,
                 env=env,
                 stdin=stdin,
@@ -491,7 +581,7 @@ class ProcessManager:
         *,
         grace_period_s: float | None = None,
     ) -> None:
-        """Terminate a tracked process with escalation (sync version for ManagedProcess)."""
+        """Terminate a tracked process with escalation."""
         gp = grace_period_s if grace_period_s is not None else self.policy.default_grace_period_s
         if isinstance(handle, ManagedProcess):
             self._escalate_termination_sync(handle.record, handle._proc, gp)
@@ -569,33 +659,30 @@ class ProcessManager:
         self._mark_killed(record, rc)
 
     def _terminate_by_pid(self, record: ProcessRecord, grace_period_s: float) -> None:
-        """Kill a process tree given only its PID (no Popen handle available).
-
-        Raises ProcessTerminationError if the process tree is still alive after
-        escalating through graceful terminate → forceful kill.
-        """
-        if psutil is None:
+        """Kill a process tree given only its PID (no Popen handle available)."""
+        psutil_mod = self._psutil
+        if psutil_mod is None:
             self._mark_killed(record)
             return
 
         try:
-            root = psutil.Process(record.pid)
+            root = psutil_mod.Process(record.pid)
             children = root.children(recursive=True)
-        except (psutil.NoSuchProcess, psutil.AccessDenied):
+        except (psutil_mod.NoSuchProcess, psutil_mod.AccessDenied):
             self._mark_killed(record)
             return
 
         all_procs = [root, *children]
         for proc in all_procs:
-            with contextlib.suppress(psutil.NoSuchProcess, psutil.AccessDenied):
+            with contextlib.suppress(psutil_mod.NoSuchProcess, psutil_mod.AccessDenied):
                 proc.terminate()
 
-        _, alive = psutil.wait_procs(all_procs, timeout=grace_period_s)
+        _, alive = psutil_mod.wait_procs(all_procs, timeout=grace_period_s)
         for proc in alive:
-            with contextlib.suppress(psutil.NoSuchProcess, psutil.AccessDenied):
+            with contextlib.suppress(psutil_mod.NoSuchProcess, psutil_mod.AccessDenied):
                 proc.kill()
 
-        _, still_alive = psutil.wait_procs(alive, timeout=self.policy.kill_followup_timeout_s)
+        _, still_alive = psutil_mod.wait_procs(alive, timeout=self.policy.kill_followup_timeout_s)
         self._mark_killed(record)
         if still_alive:
             logger.error("Process {} still alive after kill", record.pid)
@@ -611,28 +698,29 @@ class ProcessManager:
         if record.status in _TERMINAL_STATUSES:
             return
 
-        if psutil is None:
+        psutil_mod = self._psutil
+        if psutil_mod is None:
             self._terminate_root_only_sync(record, proc, grace_period_s)
             return
 
         try:
-            root = psutil.Process(record.pid)
+            root = psutil_mod.Process(record.pid)
             children = root.children(recursive=True)
-        except (psutil.NoSuchProcess, psutil.AccessDenied):
+        except (psutil_mod.NoSuchProcess, psutil_mod.AccessDenied):
             self._mark_killed(record, proc.poll())
             return
 
         all_procs = [root, *children]
         for p in all_procs:
-            with contextlib.suppress(psutil.NoSuchProcess, psutil.AccessDenied):
+            with contextlib.suppress(psutil_mod.NoSuchProcess, psutil_mod.AccessDenied):
                 p.terminate()
 
-        _, alive = psutil.wait_procs(all_procs, timeout=grace_period_s)
+        _, alive = psutil_mod.wait_procs(all_procs, timeout=grace_period_s)
         for p in alive:
-            with contextlib.suppress(psutil.NoSuchProcess, psutil.AccessDenied):
+            with contextlib.suppress(psutil_mod.NoSuchProcess, psutil_mod.AccessDenied):
                 p.kill()
 
-        _, still_alive = psutil.wait_procs(alive, timeout=self.policy.kill_followup_timeout_s)
+        _, still_alive = psutil_mod.wait_procs(alive, timeout=self.policy.kill_followup_timeout_s)
         rc = proc.poll()
         self._mark_killed(record, rc)
         if still_alive:
@@ -649,30 +737,29 @@ class ProcessManager:
         if record.status in _TERMINAL_STATUSES:
             return
 
-        if psutil is None:
+        psutil_mod = self._psutil
+        if psutil_mod is None:
             await self._terminate_root_only_async(record, proc, grace_period_s)
             return
 
         pid = record.pid
         policy_kill = self.policy.kill_followup_timeout_s
-        psutil_module = psutil
-        assert psutil_module is not None
 
         def _do_terminate() -> bool:
             try:
-                root = psutil_module.Process(pid)
+                root = psutil_mod.Process(pid)
                 children = root.children(recursive=True)
-            except (psutil_module.NoSuchProcess, psutil_module.AccessDenied):
+            except (psutil_mod.NoSuchProcess, psutil_mod.AccessDenied):
                 return False
             all_procs = [root, *children]
             for p in all_procs:
-                with contextlib.suppress(psutil_module.NoSuchProcess, psutil_module.AccessDenied):
+                with contextlib.suppress(psutil_mod.NoSuchProcess, psutil_mod.AccessDenied):
                     p.terminate()
-            _, alive = psutil_module.wait_procs(all_procs, timeout=grace_period_s)
+            _, alive = psutil_mod.wait_procs(all_procs, timeout=grace_period_s)
             for p in alive:
-                with contextlib.suppress(psutil_module.NoSuchProcess, psutil_module.AccessDenied):
+                with contextlib.suppress(psutil_mod.NoSuchProcess, psutil_mod.AccessDenied):
                     p.kill()
-            _, still_alive = psutil_module.wait_procs(alive, timeout=policy_kill)
+            _, still_alive = psutil_mod.wait_procs(alive, timeout=policy_kill)
             return bool(still_alive)
 
         loop = asyncio.get_running_loop()
@@ -781,10 +868,7 @@ def reset_process_manager() -> None:
 
 @contextmanager
 def process_phase_scope(phase_name: str) -> Generator[None, None, None]:
-    """Context manager that tears down all processes labeled 'phase:<phase_name>' on exit.
-
-    Logs a warning on ProcessTerminationError — cleanup always completes regardless.
-    """
+    """Context manager that tears down all processes labeled 'phase:<phase_name>' on exit."""
     try:
         yield
     finally:

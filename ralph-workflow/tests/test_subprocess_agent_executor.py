@@ -8,6 +8,7 @@ from contextlib import suppress
 
 import pytest
 
+import ralph.process.manager as _mgr
 from ralph.agents.executor import AgentExecutor
 from ralph.agents.subprocess_executor import SubprocessAgentExecutor
 from ralph.display.activity_router import ActivityRouter
@@ -15,6 +16,8 @@ from ralph.mcp.protocol.env import AGENT_LABEL_SCOPE_ENV
 from ralph.pipeline.work_units import WorkUnit
 from ralph.process import get_process_manager, reset_process_manager
 from ralph.process.liveness import DefaultLivenessProbe
+from ralph.process.manager import ProcessManager, ProcessManagerPolicy
+from ralph.testing.fake_process import FakeControllableAsyncProcess
 
 EXIT_CODE_FAILURE = 42
 EXPECTED_ACTIVITY_ENTRIES = 2
@@ -85,6 +88,8 @@ async def test_exit_code_propagates() -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.subprocess_e2e
+@pytest.mark.timeout_seconds(30)
 async def test_cancel_kills_process_group() -> None:
     """Cancellation kills the entire process group."""
     unit = make_unit("test-C")
@@ -95,9 +100,11 @@ async def test_cancel_kills_process_group() -> None:
             sys.executable,
             "-c",
             (
-                "import os, sys, threading; "
+                "import os, sys, time, signal; "
                 "pid = os.fork() if hasattr(os, 'fork') else -1; "
-                "print('ready'); sys.stdout.flush(); threading.Event().wait()"
+                "print('ready'); sys.stdout.flush(); "
+                "if pid == 0: signal.pause() "
+                "else: time.sleep(60)"
             ),
         ]
     )
@@ -144,31 +151,65 @@ async def test_final_message_from_last_line() -> None:
 
 @pytest.mark.asyncio
 async def test_subprocess_executor_registers_scoped_agent_label_for_liveness() -> None:
-    started = asyncio.Event()
-    finished = asyncio.Event()
+    """Executor labels are visible to DefaultLivenessProbe while the process is running.
+
+    Uses FakeControllableAsyncProcess to drive the lifecycle without spawning
+    any real subprocesses or waiting on real wall-clock time.
+    """
+    output_ready = asyncio.Event()
+    completion = asyncio.Event()  # not set → process stays alive until we release it
+
+    proc = FakeControllableAsyncProcess(
+        pid=42,
+        stdout_data=b"ready\n",
+        completion_event=completion,
+    )
+
+    async def fake_factory(command, *, cwd, env, stdin, stdout, stderr, start_new_session):  # noqa: PLR0913
+        return proc
+
+    pm = ProcessManager(
+        policy=ProcessManagerPolicy(
+            default_grace_period_s=0.0, kill_followup_timeout_s=0.0, log_events=False
+        ),
+        async_process_factory=fake_factory,
+    )
+    original_singleton = _mgr._singleton
+    _mgr._singleton = pm
+
     executor = SubprocessAgentExecutor(
-        [sys.executable, "-c", "import time; print('ready'); time.sleep(0.2)"],
+        ["fake-cmd"],
         extra_env={str(AGENT_LABEL_SCOPE_ENV): "run-scope-456"},
+        _pm=pm,
     )
     unit = make_unit("worker-a")
 
     def on_output(line: str) -> None:
         if "ready" in line:
-            started.set()
+            output_ready.set()
+
+    finished = asyncio.Event()
 
     async def _run() -> None:
         await executor.run(unit, on_output=on_output, on_status=ignore_status)
         finished.set()
 
-    task = asyncio.create_task(_run())
-    await asyncio.wait_for(started.wait(), timeout=1.0)
+    try:
+        task = asyncio.create_task(_run())
+        # drain_output() reads stdout (pre-fed b"ready\n"), which sets output_ready;
+        # handle.wait() blocks on completion event, so the process stays RUNNING.
+        await asyncio.wait_for(output_ready.wait(), timeout=1.0)
 
-    probe = DefaultLivenessProbe()
-    assert probe.any_agent_active("agent:run-scope-456:") is True
-    assert probe.any_agent_active("agent:other-scope:") is False
+        probe = DefaultLivenessProbe()
+        assert probe.any_agent_active("agent:run-scope-456:") is True
+        assert probe.any_agent_active("agent:other-scope:") is False
 
-    await asyncio.wait_for(task, timeout=1.0)
-    assert finished.is_set() is True
+        # release the process
+        completion.set()
+        await asyncio.wait_for(task, timeout=1.0)
+        assert finished.is_set() is True
+    finally:
+        _mgr._singleton = original_singleton
 
 
 @pytest.mark.asyncio

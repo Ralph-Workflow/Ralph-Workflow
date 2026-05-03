@@ -10,7 +10,9 @@ _MODULES_RST = Path(__file__).parent.parent / "docs" / "sphinx" / "modules.rst"
 
 # Modules and packages intentionally excluded from autodoc coverage, with reasons.
 # These are internal/helper modules that should not appear in the public API reference.
-_EXCLUDED: dict[str, str] = {}
+_EXCLUDED: dict[str, str] = {
+    "testing.fake_process": "test infrastructure, not public API",
+}
 
 _TOP_LEVEL_SECTION_HEADERS = frozenset({
     "Top-Level",

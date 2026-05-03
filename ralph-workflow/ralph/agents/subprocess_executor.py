@@ -16,7 +16,7 @@ from ralph.display.line_sanitizer import sanitize_display_line
 from ralph.display.raw_overflow import RawOverflowLog
 from ralph.mcp.protocol.env import AGENT_LABEL_SCOPE_ENV
 from ralph.pipeline.worker_state import WorkerStatus
-from ralph.process.manager import get_process_manager
+from ralph.process.manager import ProcessManager, get_process_manager
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping, Sequence
@@ -60,6 +60,7 @@ class SubprocessAgentExecutor:
         extra_env: Mapping[str, str] | None = None,
         activity_router: ActivityRouter | None = None,
         raw_overflow_root: Path | None = None,
+        _pm: ProcessManager | None = None,
     ) -> None:
         self._command = tuple(command)
         self._signal_bridge = signal_bridge
@@ -68,6 +69,7 @@ class SubprocessAgentExecutor:
         self.activity_router = activity_router
         self._raw_overflow_root = raw_overflow_root
         self._raw_logs: dict[str, RawOverflowLog] = {}
+        self._pm = _pm
 
     def _get_raw_log(self, unit_id: str) -> RawOverflowLog:
         if unit_id not in self._raw_logs:
@@ -90,8 +92,9 @@ class SubprocessAgentExecutor:
         activity_provider: ActivityProvider = detect_provider_from_command(list(self._command))
 
         env = {**os.environ, **self._extra_env} if self._extra_env else None
+        pm = self._pm if self._pm is not None else get_process_manager()
         try:
-            handle = await get_process_manager().spawn_async(
+            handle = await pm.spawn_async(
                 self._command,
                 cwd=str(self._cwd) if self._cwd is not None else None,
                 env=env,

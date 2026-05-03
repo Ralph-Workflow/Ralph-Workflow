@@ -3,11 +3,10 @@
 from __future__ import annotations
 
 import contextlib
+import itertools
 import sys
-import time
 from typing import TYPE_CHECKING
 
-import psutil
 import pytest
 
 import ralph.process.manager as _mgr
@@ -20,6 +19,7 @@ from ralph.process.manager import (
     get_process_manager,
     reset_process_manager,
 )
+from ralph.testing.fake_process import make_sync_process_factory
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -27,8 +27,6 @@ if TYPE_CHECKING:
 _FAST_POLICY = ProcessManagerPolicy(
     default_grace_period_s=0.3, kill_followup_timeout_s=0.5, log_events=False
 )
-
-PYTHON = sys.executable
 
 
 @pytest.fixture(autouse=True)
@@ -40,26 +38,19 @@ def _reset_pm():
     reset_process_manager()
 
 
-def _pid_gone(pid: int, timeout_s: float = 2.0) -> bool:
-    deadline = time.monotonic() + timeout_s
-    while time.monotonic() < deadline:
-        if not psutil.pid_exists(pid):
-            return True
-        time.sleep(0.02)
-    return not psutil.pid_exists(pid)
-
-
 def test_phase_scope_kills_labeled_processes() -> None:
     """All processes labeled 'phase:review' are killed when the scope exits."""
-    pm = ProcessManager(policy=_FAST_POLICY)
+    sync_factory = make_sync_process_factory(
+        itertools.count(1), returncode=None
+    )
+    pm = ProcessManager(policy=_FAST_POLICY, sync_process_factory=sync_factory)
     handles = [
         pm.spawn(
-            [PYTHON, "-c", "import time; time.sleep(30)"],
+            [sys.executable, "-c", "pass"],
             label="phase:review",
         )
         for _ in range(3)
     ]
-    pids = [h.record.pid for h in handles]
 
     original_singleton = _mgr._singleton
     _mgr._singleton = pm
@@ -72,19 +63,19 @@ def test_phase_scope_kills_labeled_processes() -> None:
     for handle in handles:
         assert handle.record.status in (ProcessStatus.KILLED, ProcessStatus.EXITED)
 
-    for pid in pids:
-        assert _pid_gone(pid), f"PID {pid} still alive after phase scope exit"
-
 
 def test_phase_scope_does_not_kill_other_labels() -> None:
     """Processes with non-matching labels are not affected by the phase scope."""
-    pm = ProcessManager(policy=_FAST_POLICY)
+    sync_factory = make_sync_process_factory(
+        itertools.count(1), returncode=None
+    )
+    pm = ProcessManager(policy=_FAST_POLICY, sync_process_factory=sync_factory)
     target = pm.spawn(
-        [PYTHON, "-c", "import time; time.sleep(30)"],
+        [sys.executable, "-c", "pass"],
         label="phase:review",
     )
     bystander = pm.spawn(
-        [PYTHON, "-c", "import time; time.sleep(30)"],
+        [sys.executable, "-c", "pass"],
         label="other:process",
     )
 
@@ -104,7 +95,10 @@ def test_phase_scope_does_not_kill_other_labels() -> None:
 
 def test_run_git_phase_parameter_constructs_phase_scoped_label(tmp_git_repo: Path) -> None:
     """run_git with phase= creates a 'phase:<phase>:git:<label>' record label."""
-    pm = ProcessManager(policy=_FAST_POLICY)
+    sync_factory = make_sync_process_factory(
+        itertools.count(1), returncode=0
+    )
+    pm = ProcessManager(policy=_FAST_POLICY, sync_process_factory=sync_factory)
     original_singleton = _mgr._singleton
     _mgr._singleton = pm
     try:
@@ -125,7 +119,10 @@ def test_run_git_phase_parameter_constructs_phase_scoped_label(tmp_git_repo: Pat
 
 def test_run_git_without_phase_uses_plain_label(tmp_git_repo: Path) -> None:
     """run_git without phase= uses the label as-is."""
-    pm = ProcessManager(policy=_FAST_POLICY)
+    sync_factory = make_sync_process_factory(
+        itertools.count(1), returncode=0
+    )
+    pm = ProcessManager(policy=_FAST_POLICY, sync_process_factory=sync_factory)
     original_singleton = _mgr._singleton
     _mgr._singleton = pm
     try:

@@ -11,7 +11,7 @@ Read before writing or modifying any test.
 
 ### The Rule
 
-**YOU MUST ensure every test finishes within 10 seconds.** The default enforcement is automatic: `conftest.py` installs a `SIGALRM`-based watchdog on every test. If a test exceeds the limit it is killed with `TestExecutionTimeoutError`. Do not work around this; fix the design.
+**YOU MUST ensure every test finishes within 1 second.** The default enforcement is automatic: `conftest.py` installs a `SIGALRM`-based watchdog on every test. If a test exceeds the limit it is killed with `TestExecutionTimeoutError`. Do not work around this; fix the design.
 
 Override the timeout for a specific test only when the case genuinely requires it:
 
@@ -40,7 +40,7 @@ If changing the implementation (without changing behavior) would break a test, *
 
 ### Agent checklist (complete before marking any test work done)
 
-- [ ] All tests in the affected tier pass in < 10 s total wall-clock
+- [ ] All tests in the affected tier pass in < 1 s total wall-clock
 - [ ] No test calls `time.sleep(N)` with `N > 0` or polls real wall-clock time
 - [ ] No test reaches through a boundary into real I/O (filesystem, subprocess, network)
 - [ ] Every test asserts on observable behavior, not internal state
@@ -166,6 +166,89 @@ Use the right double. Never mock domain logic — only mock at architectural bou
 | File I/O | `MemoryWorkspace` | `tmp_path`, `open()`, `Path.read_text()` |
 | Subprocess execution | `FakeAgentExecutor` + `FakeRun` | `subprocess.run`, `asyncio.create_subprocess_exec` |
 | Agent pipeline invocations | `MockAgentInvoker` | Real agent processes |
+| Process manager (sync timeout test) | `FakeTimeoutPopen` via injected `_pm` | Real subprocess with `time.sleep` |
+| Process manager (async liveness test) | `FakeControllableAsyncProcess` via injected `_pm` | Real subprocess with `asyncio.sleep` |
+
+### FakeTimeoutPopen — synchronous timeout simulation
+
+Use when testing code that calls `pm.spawn(...)` and handles `subprocess.TimeoutExpired`.
+Inject a `ProcessManager` whose sync factory returns `FakeTimeoutPopen`.
+
+```python
+from ralph.testing.fake_process import FakeTimeoutPopen
+from ralph.process.manager import ProcessManager, ProcessManagerPolicy
+
+def _make_timeout_pm(partial_stdout: bytes = b"") -> ProcessManager:
+    pid_iter = itertools.count(1)
+    def factory(command, *, cwd, env, stdin, stdout, stderr, start_new_session, text):
+        return FakeTimeoutPopen(next(pid_iter), partial_stdout=partial_stdout)
+    return ProcessManager(
+        policy=ProcessManagerPolicy(
+            default_grace_period_s=0.0, kill_followup_timeout_s=0.0, log_events=False
+        ),
+        sync_process_factory=factory,
+    )
+
+def test_run_process_timeout_includes_context(tmp_path: Path) -> None:
+    pm = _make_timeout_pm(partial_stdout=b"before-timeout")
+    with pytest.raises(ProcessExecutionError) as excinfo:
+        run_process("cmd", cwd=tmp_path, timeout=0.5, _pm=pm)
+    assert excinfo.value.timed_out is True
+    assert excinfo.value.stdout.strip() == "before-timeout"
+```
+
+`FakeTimeoutPopen` raises `TimeoutExpired` on the first `communicate(timeout=T)` call
+and returns partial stdout on the second (the retry after catching the timeout). No real
+clock is involved — the exception is raised immediately.
+
+### FakeControllableAsyncProcess — async liveness and completion simulation
+
+Use when testing async code that spawns a subprocess via `pm.spawn_async(...)` and must
+control when the process finishes (e.g., testing liveness probes or graceful termination).
+
+```python
+from ralph.testing.fake_process import FakeControllableAsyncProcess
+import asyncio
+
+async def test_async_process_stays_alive_until_event() -> None:
+    completion = asyncio.Event()  # not set → process stays running
+    proc = FakeControllableAsyncProcess(
+        pid=42,
+        stdout_data=b"ready\n",
+        completion_event=completion,
+    )
+    # proc.wait() and proc.communicate() block until completion.set()
+    # proc.terminate() / proc.kill() both set the event and unblock waiters
+    completion.set()
+    rc = await proc.wait()
+    assert rc == 0
+```
+
+Key behaviors:
+- `wait()` and `communicate()` both block on `completion_event` — no real sleeps.
+- `terminate()` and `kill()` both set the event and mark the fake as exited.
+- `stdout` is an `asyncio.StreamReader` pre-loaded with `stdout_data`.
+- `returncode` is `None` until the event fires, then becomes the configured `returncode`.
+
+To inject into `SubprocessAgentExecutor` or `run_process_async()`, build a
+`ProcessManager` with a custom `async_process_factory` and pass it as `_pm`:
+
+```python
+async def fake_factory(command, *, cwd, env, stdin, stdout, stderr, start_new_session):
+    return proc
+
+pm = ProcessManager(
+    policy=ProcessManagerPolicy(
+        default_grace_period_s=0.0, kill_followup_timeout_s=0.1, log_events=False
+    ),
+    async_process_factory=fake_factory,
+)
+executor = SubprocessAgentExecutor(["cmd"], _pm=pm)
+```
+
+> **Note:** Use `kill_followup_timeout_s > 0` (e.g., `0.1`) when testing async termination.
+> A value of `0.0` causes `asyncio.wait_for(timeout=0)` to always raise `TimeoutError`
+> even if the future is already done, because tasks need at least one event-loop turn.
 
 ### FakeAgentExecutor usage
 

@@ -1,3 +1,14 @@
+from ralph.testing.fake_process import (
+    FakeAsyncProcess,
+    FakeControllableAsyncProcess,
+    FakePopen,
+    FakePsutil,
+    FakePsutilProcess,
+    FakeTimeoutPopen,
+    make_async_process_factory,
+    make_psutil_factory,
+    make_sync_process_factory,
+)
 from ralph.verify_timeout import (
     DEFAULT_SUITE_TIMEOUT_SECONDS,
     DEFAULT_TEST_TIMEOUT_SECONDS,
@@ -14,8 +25,17 @@ __all__ = [
     "DEFAULT_TEST_TIMEOUT_SECONDS",
     "SUITE_TIMEOUT_ENV",
     "TEST_TIMEOUT_ENV",
+    "FakeAsyncProcess",
+    "FakeControllableAsyncProcess",
+    "FakePopen",
+    "FakePsutil",
+    "FakePsutilProcess",
+    "FakeTimeoutPopen",
     "SuiteTimeoutError",
     "build_timeout_env",
+    "make_async_process_factory",
+    "make_psutil_factory",
+    "make_sync_process_factory",
     "run_command_with_timeout",
     "timeout_seconds_from_env",
 ]
