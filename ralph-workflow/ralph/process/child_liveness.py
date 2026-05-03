@@ -175,11 +175,13 @@ class ChildLivenessRegistry:
                 oldest_live_child_seconds = child_age
 
             # Freshness checks
-            # has_fresh_label: child was registered within stale_label_ttl
+            # has_fresh_label: child was registered within stale_label_ttl,
+            # OR had a heartbeat within heartbeat_ttl (heartbeat freshness
+            # overrides stale label to suppress false-positive timeouts during
+            # transient network/lifecycle events).
             label_age = now - rec.started_at
-            if label_age <= self._stale_label_ttl:
-                has_fresh_label = True
-            elif rec.last_heartbeat_at is not None:
+            has_fresh_label = label_age <= self._stale_label_ttl
+            if not has_fresh_label and rec.last_heartbeat_at is not None:
                 heartbeat_age = now - rec.last_heartbeat_at
                 if heartbeat_age <= self._heartbeat_ttl:
                     has_fresh_label = True
