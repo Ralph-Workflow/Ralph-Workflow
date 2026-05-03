@@ -138,8 +138,13 @@ class TestChildHung:
             f"Stale child without fresh evidence must yield RESUMABLE_CONTINUE; got {result!r}"
         )
 
-    def test_stale_process_with_os_descendants_still_waits(self) -> None:
-        """Stale registry + live OS descendants → WAITING_ON_CHILD (OS is fallback)."""
+    def test_stale_process_with_os_descendants_resumable(self) -> None:
+        """Stale registry + live OS descendants → RESUMABLE_CONTINUE (stale scoped wins).
+
+        This is the wt-97 fix: when scoped Ralph child evidence is stale (child
+        registered but no fresh progress/label), raw OS descendant presence alone
+        must NOT override staleness. The timeout must fire via RESUMABLE_CONTINUE.
+        """
         t = [0.0]
         reg = _make_registry(t=t)
         strategy = OpenCodeExecutionStrategy(label_scope="scope/hung", registry=reg)
@@ -151,8 +156,8 @@ class TestChildHung:
         handle = _FakeHandle(has_descendants=True)
         result = strategy.classify_exit(handle, _no_signals(), liveness_probe=probe)
 
-        assert result == AgentExecutionState.WAITING_ON_CHILD, (
-            f"OS descendants are fallback evidence even for stale registry; got {result!r}"
+        assert result == AgentExecutionState.RESUMABLE_CONTINUE, (
+            f"Stale scoped evidence + OS descendants must yield RESUMABLE_CONTINUE; got {result!r}"
         )
 
 
@@ -504,8 +509,13 @@ class TestClassifyQuietStaleChild:
             f"Fresh heartbeat-only must still hold WAITING_ON_CHILD; got {result!r}"
         )
 
-    def test_stale_child_with_os_descendants_still_waits_via_handle(self) -> None:
-        """Stale tracked child but live OS descendants should still wait via handle fallback."""
+    def test_stale_child_with_os_descendants_returns_active(self) -> None:
+        """Stale tracked child with live OS descendants → ACTIVE (stale scoped evidence wins).
+
+        This is the wt-97 fix: when scoped Ralph child evidence is stale (has_process=True
+        but no fresh progress/label), raw OS descendant presence alone must NOT keep the
+        run in WAITING_ON_CHILD. The timeout must fire via ACTIVE.
+        """
         t = [0.0]
         reg = _make_registry(t=t)
         strategy = OpenCodeExecutionStrategy(label_scope="scope/os", registry=reg)
@@ -524,11 +534,9 @@ class TestClassifyQuietStaleChild:
         )
         probe = FakeLivenessProbe(snapshot=stale_snapshot)
 
-        # But handle reports live OS descendants (psutil fallback)
         handle = _FakeHandle(has_descendants=True)
         result = strategy.classify_quiet(handle, probe)
 
-        assert result == AgentExecutionState.WAITING_ON_CHILD, (
-            f"Stale tracked child but live OS descendants must still hold WAITING_ON_CHILD; "
-            f"got {result!r}"
+        assert result == AgentExecutionState.ACTIVE, (
+            f"Stale scoped evidence + OS descendants must yield ACTIVE; got {result!r}"
         )
