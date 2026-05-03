@@ -851,7 +851,7 @@ def _resolve_exhausted_analysis_target(
             policy,
             fallback_max=phase_def.loop_policy.max_iterations,
         )
-        if current_iteration < max_iterations:
+        if not progress.should_skip_analysis_reentry(current_iteration, max_iterations):
             return current_state, current_target
 
         current_state = current_state.with_loop_iteration(iteration_field, 0).copy_with(

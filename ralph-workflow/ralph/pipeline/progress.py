@@ -72,6 +72,22 @@ def resolve_analysis_cap(
     return fallback_max
 
 
+def is_final_analysis_iteration(current_iteration: int, max_iterations: int) -> bool:
+    """Return True when the current analysis state should be treated as final.
+
+    This intentionally matches the user-facing label semantics.
+    """
+    return current_iteration >= max_iterations - 1
+
+
+def should_skip_analysis_reentry(current_iteration: int, max_iterations: int) -> bool:
+    """Return True when a later attempt to enter analysis must be skipped.
+
+    This intentionally uses the same predicate as the user-facing FINAL label.
+    """
+    return is_final_analysis_iteration(current_iteration, max_iterations)
+
+
 def advance_phase(
     state: PipelineState,
     target_phase: PipelinePhase,

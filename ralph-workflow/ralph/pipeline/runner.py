@@ -841,7 +841,7 @@ def _phase_context(
             analysis_name = previous_phase.replace("_", " ").title()
             display_iter = min(analysis_cur + 1, max_iter)
             context[analysis_name] = f"{display_iter}/{max_iter}"
-            if analysis_cur >= max_iter - 1:
+            if progress.is_final_analysis_iteration(analysis_cur, max_iter):
                 context["analysis_status"] = "final, skipping next"
         if current_role == "commit":
             context["decision"] = "approved"
@@ -963,7 +963,7 @@ def _skipped_exhausted_analysis_info(
         iteration_field, state, pipeline_policy, target_def.loop_policy.max_iterations
     )
 
-    if current_iteration < max_iter:
+    if not progress.should_skip_analysis_reentry(current_iteration, max_iter):
         return None
 
     skipped_phase_label = on_success_target.replace("_", " ").title()

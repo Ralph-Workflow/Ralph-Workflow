@@ -37,6 +37,9 @@ DEVELOPMENT_CYCLES_THREE = 3
 REVIEW_CYCLES_TWO = 2
 MAX_REVIEW_ANALYSIS_ITERATIONS = 2
 MAX_PLANNING_ANALYSIS_ITERATIONS = 3
+FINAL_PLANNING_REENTRY_THRESHOLD = MAX_PLANNING_ANALYSIS_ITERATIONS - 1
+FINAL_DEVELOPMENT_REENTRY_THRESHOLD = DEVELOPMENT_CYCLES_THREE - 1
+FINAL_REVIEW_REENTRY_THRESHOLD = MAX_REVIEW_ANALYSIS_ITERATIONS - 1
 
 
 def _install_runner_display_context(monkeypatch: MonkeyPatch) -> None:
@@ -384,11 +387,12 @@ def test_review_analysis_cap_routes_through_final_fix_with_persisted_max_counter
         for state in saved_states
         if state.phase == "fix"
         and state.previous_phase == "review_analysis"
-        and state.get_loop_iteration("review_analysis_iteration") == MAX_REVIEW_ANALYSIS_ITERATIONS
+        and state.get_loop_iteration("review_analysis_iteration")
+        == FINAL_REVIEW_REENTRY_THRESHOLD
     )
     assert capped_fix_state.get_outer_progress("reviewer_pass") == 0
     assert capped_fix_state.review_outcome is not None
-    assert invoker.count_for("fix") == MAX_REVIEW_ANALYSIS_ITERATIONS
+    assert invoker.count_for("fix") == FINAL_REVIEW_REENTRY_THRESHOLD
     final_state = saved_states[-1]
     assert final_state.phase == "complete"
     assert final_state.get_outer_progress("reviewer_pass") == 1
@@ -445,17 +449,11 @@ def test_planning_analysis_cap_skips_reentry_and_enters_development(
     )
 
     assert result == 0
-    assert invoker.count_for("planning_analysis") == 1
+    assert invoker.count_for("planning_analysis") == 0
     planning_analysis_states = [
         state for state in saved_states if state.phase == "planning_analysis"
     ]
-    assert len(planning_analysis_states) == 1
-    loopback_planning_state = next(
-        state
-        for state in saved_states
-        if state.phase == "planning" and state.previous_phase == "planning_analysis"
-    )
-    assert loopback_planning_state.get_loop_iteration("planning_analysis_iteration") == 1
+    assert planning_analysis_states == []
     development_state = _state_with_phase(saved_states, "development")
     assert development_state.previous_phase == "planning"
     assert development_state.get_loop_iteration("planning_analysis_iteration") == 0
@@ -536,7 +534,7 @@ def test_runner_uses_real_planning_analysis_decision_and_skips_reentry_at_cap(
                 planning_analysis_calls += 1
                 decision = (
                     "request_changes"
-                    if planning_analysis_calls <= MAX_PLANNING_ANALYSIS_ITERATIONS
+                    if planning_analysis_calls <= FINAL_PLANNING_REENTRY_THRESHOLD
                     else "completed"
                 )
                 write_artifact(
@@ -569,7 +567,7 @@ def test_runner_uses_real_planning_analysis_decision_and_skips_reentry_at_cap(
     )
 
     assert result == 0
-    assert planning_analysis_calls == MAX_PLANNING_ANALYSIS_ITERATIONS
+    assert planning_analysis_calls == FINAL_PLANNING_REENTRY_THRESHOLD
     loopback_planning_state = next(
         state
         for state in saved_states
@@ -671,7 +669,7 @@ def test_runner_uses_real_development_analysis_decision_and_skips_reentry_at_cap
                 development_analysis_calls += 1
                 decision = (
                     "request_changes"
-                    if development_analysis_calls <= DEVELOPMENT_CYCLES_THREE
+                    if development_analysis_calls <= FINAL_DEVELOPMENT_REENTRY_THRESHOLD
                     else "completed"
                 )
                 write_artifact(
@@ -707,18 +705,18 @@ def test_runner_uses_real_development_analysis_decision_and_skips_reentry_at_cap
     )
 
     assert result == 0
-    assert development_analysis_calls == DEVELOPMENT_CYCLES_THREE
+    assert development_analysis_calls == FINAL_DEVELOPMENT_REENTRY_THRESHOLD
     development_analysis_states = [
         state for state in saved_states if state.phase == "development_analysis"
     ]
-    assert len(development_analysis_states) == DEVELOPMENT_CYCLES_THREE
+    assert len(development_analysis_states) == FINAL_DEVELOPMENT_REENTRY_THRESHOLD
     loopback_development_state = next(
         state
         for state in saved_states
         if state.phase == "development"
         and state.previous_phase == "development_analysis"
         and state.get_loop_iteration("development_analysis_iteration")
-        == DEVELOPMENT_CYCLES_THREE
+        == FINAL_DEVELOPMENT_REENTRY_THRESHOLD
     )
     assert loopback_development_state.get_budget_remaining("iteration") == 1
     development_commit_state = next(

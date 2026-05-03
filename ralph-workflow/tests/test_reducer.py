@@ -902,6 +902,20 @@ class TestAnalysisBudgetBypass:
         assert new_state.previous_phase == "development"
         assert new_state.get_loop_iteration("development_analysis_iteration") == 0
 
+    def test_planning_success_skips_analysis_immediately_when_cap_is_zero(self) -> None:
+        policy = _policy_with_planning_analysis()
+        state = PipelineState(
+            phase="planning",
+            loop_iterations={"planning_analysis_iteration": 0},
+            loop_caps={"planning_analysis_iteration": 0},
+        )
+
+        new_state, _ = _reduce(state, PipelineEvent.AGENT_SUCCESS, policy)
+
+        assert new_state.phase == "development"
+        assert new_state.previous_phase == "planning"
+        assert new_state.get_loop_iteration("planning_analysis_iteration") == 0
+
     def test_development_success_logs_effective_target_after_exhausted_analysis_bypass(
         self,
     ) -> None:

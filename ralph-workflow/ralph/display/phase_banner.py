@@ -13,6 +13,7 @@ from rich.rule import Rule
 from rich.text import Text
 
 from ralph.display.context import DisplayContext, make_display_context
+from ralph.pipeline import progress
 
 if TYPE_CHECKING:
     from rich.console import Console
@@ -317,7 +318,7 @@ def _build_analysis_suffix(
 ) -> str:
     """Build the analysis iteration suffix string."""
     suffix = f"[{phase_name} {iteration + 1}/{max_iterations}]"
-    if iteration >= max_iterations - 1:
+    if progress.is_final_analysis_iteration(iteration, max_iterations):
         suffix += " (final, skipping next)"
     return suffix
 
