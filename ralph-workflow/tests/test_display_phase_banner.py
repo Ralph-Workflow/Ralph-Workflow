@@ -345,10 +345,11 @@ def test_show_phase_start_review_analysis_shows_analysis_counter() -> None:
     output = console.export_text()
     assert "Review Analysis" in output
     assert "[analysis 1/2]" in output
+    assert "final, skipping next" not in output
 
 
 def test_show_phase_start_review_analysis_at_max_shows_max() -> None:
-    """analysis_iteration=1 with max=2 shows [analysis 2/2]."""
+    """analysis_iteration=1 with max=2 shows [analysis 2/2] and marks final."""
     console = Console(record=True)
     ctx = PhaseStartContext(
         analysis_iteration=1,
@@ -357,6 +358,7 @@ def test_show_phase_start_review_analysis_at_max_shows_max() -> None:
     show_phase_start("review_analysis", ctx=ctx, display_context=_ctx_from_console(console))
     output = console.export_text()
     assert "[analysis 2/2]" in output
+    assert "final, skipping next" in output
 
 
 def test_show_phase_start_dev_analysis_no_suffix_without_context() -> None:
@@ -423,6 +425,20 @@ def test_show_phase_start_uses_phase_specific_analysis_label() -> None:
     output = console.export_text()
     assert "Planning Analysis" in output
     assert "[Planning Analysis 3/3]" in output
+    assert "final, skipping next" in output
+
+
+def test_show_phase_start_single_analysis_iteration_is_final() -> None:
+    """A cap of 1 should render the only analysis run as 1/1 final."""
+    console = Console(record=True)
+    ctx = PhaseStartContext(
+        analysis_iteration=0,
+        max_analysis_iterations=1,
+        phase_name="Planning Analysis",
+    )
+    show_phase_start("planning_analysis", ctx=ctx, display_context=_ctx_from_console(console))
+    output = console.export_text()
+    assert "[Planning Analysis 1/1]" in output
     assert "final, skipping next" in output
 
 

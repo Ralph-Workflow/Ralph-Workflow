@@ -81,11 +81,13 @@ def is_final_analysis_iteration(current_iteration: int, max_iterations: int) -> 
 
 
 def should_skip_analysis_reentry(current_iteration: int, max_iterations: int) -> bool:
-    """Return True when a later attempt to enter analysis must be skipped.
+    """Return True when the *next* attempt to enter analysis must be skipped.
 
-    This intentionally uses the same predicate as the user-facing FINAL label.
+    ``current_iteration`` stores completed loopbacks, while the visible FINAL label is
+    rendered for the current run. That means re-entry should skip only *after* the
+    final labeled run has already happened.
     """
-    return is_final_analysis_iteration(current_iteration, max_iterations)
+    return is_final_analysis_iteration(current_iteration - 1, max_iterations)
 
 
 def advance_phase(

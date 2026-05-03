@@ -31,6 +31,8 @@ from ralph.policy.models import (
     RecoveryPolicy,
 )
 
+DEVELOPMENT_ANALYSIS_TWO_RUN_CAP = 2
+
 if TYPE_CHECKING:
     from ralph.config.enums import PipelinePhase
     from ralph.pipeline.effects import Effect
@@ -1184,6 +1186,35 @@ class TestAnalysisDecisionDispatch:
         assert new_state.phase == "development"
         assert new_state.previous_phase == "development_analysis"
         assert new_state.get_loop_iteration("development_analysis_iteration") == 0
+
+    def test_dev_analysis_loopback_with_single_iteration_cap_clamps_to_one(self) -> None:
+        """A cap of 1 should allow the first analysis run and clamp the loopback to 1."""
+        policy = _policy_with_post_commit_routes()
+        state = PipelineState(
+            phase="development_analysis",
+            loop_iterations={"development_analysis_iteration": 0},
+            loop_caps={"development_analysis_iteration": 1},
+        )
+        new_state, _ = _reduce(state, PipelineEvent.ANALYSIS_LOOPBACK, policy)
+        assert new_state.phase == "development"
+        assert new_state.previous_phase == "development_analysis"
+        assert new_state.get_loop_iteration("development_analysis_iteration") == 1
+
+    def test_dev_analysis_loopback_with_two_iteration_cap_reaches_final_counter(self) -> None:
+        """The second allowed analysis run should clamp to 2 so only the next re-entry skips."""
+        policy = _policy_with_post_commit_routes()
+        state = PipelineState(
+            phase="development_analysis",
+            loop_iterations={"development_analysis_iteration": 1},
+            loop_caps={"development_analysis_iteration": DEVELOPMENT_ANALYSIS_TWO_RUN_CAP},
+        )
+        new_state, _ = _reduce(state, PipelineEvent.ANALYSIS_LOOPBACK, policy)
+        assert new_state.phase == "development"
+        assert new_state.previous_phase == "development_analysis"
+        assert (
+            new_state.get_loop_iteration("development_analysis_iteration")
+            == DEVELOPMENT_ANALYSIS_TWO_RUN_CAP
+        )
 
     def test_dev_analysis_success_resets_dev_analysis_iteration(self) -> None:
         """ANALYSIS_SUCCESS in development_analysis resets the iteration counter."""

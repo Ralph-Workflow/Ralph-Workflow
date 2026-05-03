@@ -3583,6 +3583,88 @@ class TestPhaseContextRoleBasedDispatch:
         assert ctx.get("Planning Analysis") == "5/5"
         assert ctx.get("analysis_status") == "final, skipping next"
 
+    def test_analysis_counter_marks_single_allowed_run_as_final(self) -> None:
+        policy = PipelinePolicy(
+            phases={
+                "planning_analysis": PhaseDefinition(
+                    drain="planning_analysis",
+                    role="analysis",
+                    loop_policy=PhaseLoopPolicy(
+                        max_iterations=1,
+                        iteration_state_field="planning_analysis_iteration",
+                    ),
+                    transitions=PhaseTransition(on_success="planning"),
+                    decisions={},
+                ),
+                "planning": PhaseDefinition(
+                    drain="planning",
+                    role="execution",
+                    transitions=PhaseTransition(on_success="done"),
+                ),
+                "done": PhaseDefinition(
+                    drain="planning",
+                    role="terminal",
+                    transitions=PhaseTransition(on_success="done"),
+                    terminal_outcome="success",
+                ),
+            },
+            loop_counters={
+                "planning_analysis_iteration": LoopCounterConfig(default_max=1),
+            },
+        )
+        state = PipelineState(
+            phase="planning",
+            loop_iterations={"planning_analysis_iteration": 0},
+        )
+        ctx = self._call(state, "planning_analysis", policy)
+        assert ctx.get("Planning Analysis") == "1/1"
+        assert ctx.get("analysis_status") == "final, skipping next"
+
+    def test_analysis_counter_marks_only_second_of_two_runs_as_final(self) -> None:
+        policy = PipelinePolicy(
+            phases={
+                "planning_analysis": PhaseDefinition(
+                    drain="planning_analysis",
+                    role="analysis",
+                    loop_policy=PhaseLoopPolicy(
+                        max_iterations=2,
+                        iteration_state_field="planning_analysis_iteration",
+                    ),
+                    transitions=PhaseTransition(on_success="planning"),
+                    decisions={},
+                ),
+                "planning": PhaseDefinition(
+                    drain="planning",
+                    role="execution",
+                    transitions=PhaseTransition(on_success="done"),
+                ),
+                "done": PhaseDefinition(
+                    drain="planning",
+                    role="terminal",
+                    transitions=PhaseTransition(on_success="done"),
+                    terminal_outcome="success",
+                ),
+            },
+            loop_counters={
+                "planning_analysis_iteration": LoopCounterConfig(default_max=2),
+            },
+        )
+        first_run = PipelineState(
+            phase="planning",
+            loop_iterations={"planning_analysis_iteration": 0},
+        )
+        first_ctx = self._call(first_run, "planning_analysis", policy)
+        assert first_ctx.get("Planning Analysis") == "1/2"
+        assert first_ctx.get("analysis_status") is None
+
+        second_run = PipelineState(
+            phase="planning",
+            loop_iterations={"planning_analysis_iteration": 1},
+        )
+        second_ctx = self._call(second_run, "planning_analysis", policy)
+        assert second_ctx.get("Planning Analysis") == "2/2"
+        assert second_ctx.get("analysis_status") == "final, skipping next"
+
     def test_analysis_counter_clamps_correctly_at_exact_cap_boundary(self) -> None:
         """When stored analysis_cur equals the cap, display should clamp to cap/max, not exceed it.
 
