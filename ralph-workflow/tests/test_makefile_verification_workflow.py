@@ -28,15 +28,10 @@ def _target_body(name: str) -> list[str]:
     return body
 
 
-def test_verify_runs_docs_and_single_covered_suite() -> None:
+def test_verify_target_delegates_to_wrapper_module() -> None:
     verify_body = _target_body("verify")
 
-    assert "@$(MAKE) lint" in verify_body
-    assert "@$(MAKE) typecheck" in verify_body
-    assert "@$(MAKE) docs" in verify_body
-    assert "@$(MAKE) test-cov" in verify_body
-    assert "@$(MAKE) test" not in verify_body
-    assert "@$(MAKE) coverage" not in verify_body
+    assert verify_body == ["@uv run python -m ralph.verify"]
 
 
 def test_docs_target_builds_html_into_single_canonical_output_tree() -> None:

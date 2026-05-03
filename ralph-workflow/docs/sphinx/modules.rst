@@ -63,6 +63,13 @@ ralph.platform.models
    :members:
    :show-inheritance:
 
+ralph.verify
+~~~~~~~~~~~~
+
+.. automodule:: ralph.verify
+   :members:
+   :show-inheritance:
+
 ralph.verify_timeout
 ~~~~~~~~~~~~~~~~~~~~
 
