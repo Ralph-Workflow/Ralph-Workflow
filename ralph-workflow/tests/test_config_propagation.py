@@ -16,6 +16,7 @@ _CHILD_WAITING_INTERVAL = 90.0
 _CUSTOM_WAITING_INTERVAL = 60.0
 _CUSTOM_SUSPECT_THRESHOLD = 120.0
 _IDLE_TIMEOUT = 300.0
+_CUSTOM_NO_PROGRESS_CEILING = 300.0
 
 
 def test_load_config_uses_main_worktree_as_propagation_layer(
@@ -105,3 +106,35 @@ def test_suspect_threshold_propagates_to_timeout_policy() -> None:
     policy = _policy_from_options(opts)
 
     assert policy.suspect_waiting_on_child_seconds == _CUSTOM_SUSPECT_THRESHOLD
+
+
+_NO_PROGRESS_CEILING = 600.0
+
+
+def test_no_progress_ceiling_uses_default_when_not_set() -> None:
+    """When max_waiting_on_child_no_progress_seconds is not set, TimeoutPolicy uses the default.
+
+    Regression test for wt-97-timeout: the no-progress ceiling (600s) should be used
+    when not explicitly set, so that stale child evidence triggers the shorter
+    no-progress ceiling instead of the full waiting ceiling.
+    """
+    opts = InvokeOptions(
+        idle_timeout_seconds=_IDLE_TIMEOUT,
+        # max_waiting_on_child_no_progress_seconds not set -> defaults to None in InvokeOptions
+    )
+    policy = _policy_from_options(opts)
+
+    # With idle_timeout_seconds=300, max_waiting_on_child_seconds defaults to 1800.
+    # max_waiting_on_child_no_progress_seconds should default to 600 (600 <= 1800).
+    assert policy.max_waiting_on_child_no_progress_seconds == _NO_PROGRESS_CEILING
+
+
+def test_no_progress_ceiling_propagates_explicit_value() -> None:
+    """Explicit max_waiting_on_child_no_progress_seconds reaches TimeoutPolicy via InvokeOptions."""
+    opts = InvokeOptions(
+        idle_timeout_seconds=_IDLE_TIMEOUT,
+        max_waiting_on_child_no_progress_seconds=_CUSTOM_NO_PROGRESS_CEILING,
+    )
+    policy = _policy_from_options(opts)
+
+    assert policy.max_waiting_on_child_no_progress_seconds == _CUSTOM_NO_PROGRESS_CEILING

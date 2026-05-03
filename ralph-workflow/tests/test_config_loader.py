@@ -10,6 +10,7 @@ import pytest
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+from ralph.agents.idle_watchdog import TimeoutPolicy
 from ralph.config.enums import AgentTransport, JsonParserType, ReviewDepth, Verbosity
 from ralph.config.loader import (
     GLOBAL_CONFIG_PATH,
@@ -18,6 +19,23 @@ from ralph.config.loader import (
     load_config,
 )
 from ralph.config.models import AgentConfig, GeneralConfig
+from ralph.timeout_defaults import (
+    CHILD_EXIT_RECONCILE_SECONDS,
+    CHILD_HEARTBEAT_TTL_SECONDS,
+    CHILD_PROGRESS_TTL_SECONDS,
+    CHILD_STALE_LABEL_TTL_SECONDS,
+    DESCENDANT_WAIT_POLL_SECONDS,
+    DESCENDANT_WAIT_TIMEOUT_SECONDS,
+    DRAIN_WINDOW_SECONDS,
+    IDLE_POLL_INTERVAL_SECONDS,
+    IDLE_TIMEOUT_SECONDS,
+    MAX_WAITING_ON_CHILD_NO_PROGRESS_SECONDS,
+    MAX_WAITING_ON_CHILD_SECONDS,
+    PARENT_EXIT_GRACE_SECONDS,
+    PROCESS_EXIT_WAIT_SECONDS,
+    SUSPECT_WAITING_ON_CHILD_SECONDS,
+    WAITING_STATUS_INTERVAL_SECONDS,
+)
 from ralph.workspace.scope import WorkspaceScope
 
 DEFAULT_VERBOSITY = 2
@@ -375,3 +393,59 @@ def test_load_config_child_progress_ttl_roundtrips(
     config = load_config(workspace_scope=_scope_for(tmp_path))
 
     assert config.general.agent_child_progress_ttl_seconds == 90.0  # noqa: PLR2004
+
+
+# ---------------------------------------------------------------------------
+# Shared-constant round-trip assertions (timeout_defaults.py source of truth)
+# ---------------------------------------------------------------------------
+
+
+def test_config_defaults_match_timeout_defaults_constants() -> None:
+    """GeneralConfig defaults match the shared constants in ralph.timeout_defaults.
+
+    This test is the sentinel that prevents the three timeout-default layers
+    (idle_watchdog.TimeoutPolicy, invoke._CHILD_* constants, and config field
+    defaults) from drifting away from each other independently.
+    """
+    cfg = GeneralConfig()
+
+    assert cfg.agent_idle_timeout_seconds == IDLE_TIMEOUT_SECONDS
+    assert cfg.agent_idle_drain_window_seconds == DRAIN_WINDOW_SECONDS
+    assert cfg.agent_idle_max_waiting_on_child_seconds == MAX_WAITING_ON_CHILD_SECONDS
+    assert cfg.agent_idle_poll_interval_seconds == IDLE_POLL_INTERVAL_SECONDS
+    assert cfg.agent_parent_exit_grace_seconds == PARENT_EXIT_GRACE_SECONDS
+    assert cfg.agent_descendant_wait_timeout_seconds == DESCENDANT_WAIT_TIMEOUT_SECONDS
+    assert cfg.agent_descendant_wait_poll_seconds == DESCENDANT_WAIT_POLL_SECONDS
+    assert cfg.agent_process_exit_wait_seconds == PROCESS_EXIT_WAIT_SECONDS
+    assert cfg.agent_waiting_status_interval_seconds == WAITING_STATUS_INTERVAL_SECONDS
+    assert cfg.agent_suspect_waiting_on_child_seconds == SUSPECT_WAITING_ON_CHILD_SECONDS
+    assert (
+        cfg.agent_idle_no_progress_waiting_on_child_seconds
+        == MAX_WAITING_ON_CHILD_NO_PROGRESS_SECONDS
+    )
+    assert cfg.agent_child_progress_ttl_seconds == CHILD_PROGRESS_TTL_SECONDS
+    assert cfg.agent_child_heartbeat_ttl_seconds == CHILD_HEARTBEAT_TTL_SECONDS
+    assert cfg.agent_child_stale_label_ttl_seconds == CHILD_STALE_LABEL_TTL_SECONDS
+    assert cfg.agent_child_exit_reconcile_seconds == CHILD_EXIT_RECONCILE_SECONDS
+
+
+def test_timeout_policy_defaults_match_timeout_defaults_constants() -> None:
+    """TimeoutPolicy field defaults match the shared constants in ralph.timeout_defaults.
+
+    Ensures idle_watchdog.TimeoutPolicy cannot drift from config defaults.
+    """
+    policy = TimeoutPolicy(idle_timeout_seconds=None)
+
+    assert policy.drain_window_seconds == DRAIN_WINDOW_SECONDS
+    assert policy.max_waiting_on_child_seconds == MAX_WAITING_ON_CHILD_SECONDS
+    assert policy.idle_poll_interval_seconds == IDLE_POLL_INTERVAL_SECONDS
+    assert policy.parent_exit_grace_seconds == PARENT_EXIT_GRACE_SECONDS
+    assert policy.descendant_wait_timeout_seconds == DESCENDANT_WAIT_TIMEOUT_SECONDS
+    assert policy.descendant_wait_poll_seconds == DESCENDANT_WAIT_POLL_SECONDS
+    assert policy.process_exit_wait_seconds == PROCESS_EXIT_WAIT_SECONDS
+    assert policy.waiting_status_interval_seconds == WAITING_STATUS_INTERVAL_SECONDS
+    assert policy.suspect_waiting_on_child_seconds == SUSPECT_WAITING_ON_CHILD_SECONDS
+    assert (
+        policy.max_waiting_on_child_no_progress_seconds
+        == MAX_WAITING_ON_CHILD_NO_PROGRESS_SECONDS
+    )

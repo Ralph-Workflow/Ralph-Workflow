@@ -70,6 +70,13 @@ ralph.verify
    :members:
    :show-inheritance:
 
+ralph.timeout_defaults
+~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.timeout_defaults
+   :members:
+   :show-inheritance:
+
 ralph.verify_timeout
 ~~~~~~~~~~~~~~~~~~~~
 

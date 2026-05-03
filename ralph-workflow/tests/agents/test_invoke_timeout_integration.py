@@ -149,6 +149,8 @@ def test_watchdog_fires_even_when_classify_quiet_raises() -> None:
         drain_window_seconds=0.0,
         idle_poll_interval_seconds=0.01,
         suspect_waiting_on_child_seconds=None,
+        # Disable no-progress ceiling to avoid validation issues with small max_waiting
+        max_waiting_on_child_no_progress_seconds=None,
     )
     clock = FakeClock(start=0.0)
 
@@ -193,6 +195,8 @@ def test_classify_quiet_exception_defers_not_fires() -> None:
         drain_window_seconds=0.05,
         idle_poll_interval_seconds=0.01,
         suspect_waiting_on_child_seconds=None,
+        # Disable no-progress ceiling to avoid validation issues with small max_waiting
+        max_waiting_on_child_no_progress_seconds=None,
     )
     clock = FakeClock(start=0.0)
     _reader_release = threading.Event()
@@ -285,6 +289,8 @@ def test_cumulative_ceiling_fires_with_oscillating_heartbeat() -> None:
         drain_window_seconds=drain_window,
         idle_poll_interval_seconds=poll_interval,
         suspect_waiting_on_child_seconds=None,
+        # Disable no-progress ceiling to avoid validation issues with small max_waiting
+        max_waiting_on_child_no_progress_seconds=None,
     )
     clock = FakeClock(start=0.0)
 
@@ -350,6 +356,8 @@ def test_invoke_emits_waiting_listener_events_not_per_tick_log() -> None:
         idle_poll_interval_seconds=0.05,
         waiting_status_interval_seconds=status_interval,
         suspect_waiting_on_child_seconds=None,
+        # Disable no-progress ceiling to avoid validation issues with small max_waiting
+        max_waiting_on_child_no_progress_seconds=None,
     )
     clock = FakeClock(start=0.0)
 
@@ -419,6 +427,8 @@ def test_children_persist_hard_stop_includes_corroboration_diagnostic() -> None:
         idle_poll_interval_seconds=0.05,
         waiting_status_interval_seconds=status_interval,
         suspect_waiting_on_child_seconds=None,
+        # Disable no-progress ceiling to avoid validation issues with small max_waiting
+        max_waiting_on_child_no_progress_seconds=None,
     )
     clock = FakeClock(start=0.0)
 

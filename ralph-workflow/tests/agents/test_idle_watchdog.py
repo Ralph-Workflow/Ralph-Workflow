@@ -29,6 +29,7 @@ def _make_watchdog(  # noqa: PLR0913
     listener: WaitingStatusListener | None = None,
     suspect: float | None = None,
     status_interval: float | None = None,
+    no_progress_ceiling: float | None = None,  # None disables the no-progress ceiling
 ) -> tuple[IdleWatchdog, FakeClock]:
     if max_waiting is None:
         max_waiting = max(1800.0, idle_timeout) if idle_timeout is not None else 1800.0
@@ -41,6 +42,10 @@ def _make_watchdog(  # noqa: PLR0913
         # (e.g. 20.0) don't conflict with the 600.0 default suspect threshold.
         suspect_waiting_on_child_seconds=suspect,
         waiting_status_interval_seconds=status_interval if status_interval is not None else 30.0,
+        # Explicitly disable no-progress ceiling by default to avoid validation errors
+        # when max_waiting is small (e.g. 20.0). Tests that specifically test the
+        # no-progress ceiling should pass no_progress_ceiling explicitly.
+        max_waiting_on_child_no_progress_seconds=no_progress_ceiling,
     )
     clock = FakeClock(start=start)
     return IdleWatchdog(config, clock, listener), clock
@@ -169,7 +174,12 @@ def test_validation_rejects_negative_drain_window() -> None:
 
 def test_validation_rejects_max_waiting_less_than_idle() -> None:
     with pytest.raises(ValueError, match="max_waiting_on_child_seconds"):
-        TimeoutPolicy(idle_timeout_seconds=100, max_waiting_on_child_seconds=50)
+        TimeoutPolicy(
+            idle_timeout_seconds=100,
+            max_waiting_on_child_seconds=50,
+            # Disable no-progress ceiling to avoid conflict with 600.0 default
+            max_waiting_on_child_no_progress_seconds=None,
+        )
 
 
 def test_session_ceiling_validation_rejects_value_lower_than_idle_timeout() -> None:
@@ -648,6 +658,8 @@ def _make_watchdog_with_listener(  # noqa: PLR0913
         max_waiting_on_child_seconds=max_waiting,
         waiting_status_interval_seconds=status_interval,
         suspect_waiting_on_child_seconds=suspect,
+        # Disable no-progress ceiling by default to avoid validation issues
+        max_waiting_on_child_no_progress_seconds=None,
     )
     clock = FakeClock(start=start)
     watchdog = IdleWatchdog(config, clock, listener=captured.append, corroborator=corroborator)
@@ -804,6 +816,8 @@ def test_validation_rejects_suspect_above_ceiling() -> None:
             idle_timeout_seconds=10,
             max_waiting_on_child_seconds=100,
             suspect_waiting_on_child_seconds=200,
+            # Disable no-progress ceiling to avoid conflict with 600.0 default
+            max_waiting_on_child_no_progress_seconds=None,
         )
 
 
@@ -814,6 +828,8 @@ def test_validation_rejects_suspect_equal_to_ceiling() -> None:
             idle_timeout_seconds=10,
             max_waiting_on_child_seconds=100,
             suspect_waiting_on_child_seconds=100,
+            # Disable no-progress ceiling to avoid conflict with 600.0 default
+            max_waiting_on_child_no_progress_seconds=None,
         )
 
 

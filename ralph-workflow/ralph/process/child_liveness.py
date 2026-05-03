@@ -50,6 +50,7 @@ class ChildActivitySnapshot:
     oldest_live_child_seconds: float | None
     active_count: int
     terminal_count: int
+    has_fresh_heartbeat: bool = False  # Default False for backward compatibility
 
 
 @dataclass
@@ -150,6 +151,7 @@ class ChildLivenessRegistry:
         terminal_count = 0
         has_process = False
         has_fresh_label = False
+        has_fresh_heartbeat = False
         has_fresh_progress = False
         oldest_live_child_seconds: float | None = None
 
@@ -187,6 +189,14 @@ class ChildLivenessRegistry:
                     child_has_fresh_label = True
             has_fresh_label = has_fresh_label or child_has_fresh_label
 
+            # has_fresh_heartbeat: child had a heartbeat within heartbeat_ttl but NOT
+            # counted as progress. Distinct from has_fresh_label because has_fresh_label
+            # can also be True due to recent registration (within stale_label_ttl).
+            if rec.last_heartbeat_at is not None:
+                heartbeat_age = now - rec.last_heartbeat_at
+                if heartbeat_age <= self._heartbeat_ttl:
+                    has_fresh_heartbeat = True
+
             # has_fresh_progress: child produced a progress signal within progress_ttl
             if rec.last_progress_at is not None:
                 progress_age = now - rec.last_progress_at
@@ -197,6 +207,7 @@ class ChildLivenessRegistry:
             scope_prefix=scope_prefix,
             has_process=has_process,
             has_fresh_label=has_fresh_label,
+            has_fresh_heartbeat=has_fresh_heartbeat,
             has_fresh_progress=has_fresh_progress,
             oldest_live_child_seconds=oldest_live_child_seconds,
             active_count=active_count,

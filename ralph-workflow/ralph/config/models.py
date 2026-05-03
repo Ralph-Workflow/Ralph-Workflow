@@ -11,6 +11,23 @@ import pathlib
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl, model_validator
 
 from ralph.config.enums import AgentTransport, JsonParserType, ReviewDepth
+from ralph.timeout_defaults import (
+    CHILD_EXIT_RECONCILE_SECONDS,
+    CHILD_HEARTBEAT_TTL_SECONDS,
+    CHILD_PROGRESS_TTL_SECONDS,
+    CHILD_STALE_LABEL_TTL_SECONDS,
+    DESCENDANT_WAIT_POLL_SECONDS,
+    DESCENDANT_WAIT_TIMEOUT_SECONDS,
+    DRAIN_WINDOW_SECONDS,
+    IDLE_POLL_INTERVAL_SECONDS,
+    IDLE_TIMEOUT_SECONDS,
+    MAX_WAITING_ON_CHILD_NO_PROGRESS_SECONDS,
+    MAX_WAITING_ON_CHILD_SECONDS,
+    PARENT_EXIT_GRACE_SECONDS,
+    PROCESS_EXIT_WAIT_SECONDS,
+    SUSPECT_WAITING_ON_CHILD_SECONDS,
+    WAITING_STATUS_INTERVAL_SECONDS,
+)
 
 PATH_RUNTIME_CLASS = pathlib.Path
 
@@ -203,7 +220,7 @@ class GeneralConfig(_FrozenConfigModel):  # type: ignore[explicit-any]  # reason
     max_cycles: int = Field(default=3, ge=1)
     execution_history_limit: int = Field(default=1000, ge=1)
     agent_idle_timeout_seconds: float = Field(
-        default=300.0,
+        default=IDLE_TIMEOUT_SECONDS,
         gt=0.0,
         description=(
             "Maximum seconds of no-output idle time allowed during an agent"
@@ -211,7 +228,7 @@ class GeneralConfig(_FrozenConfigModel):  # type: ignore[explicit-any]  # reason
         ),
     )
     agent_idle_drain_window_seconds: float = Field(
-        default=0.5,
+        default=DRAIN_WINDOW_SECONDS,
         ge=0.0,
         description=(
             "Drain window duration in seconds after idle deadline before firing."
@@ -219,7 +236,7 @@ class GeneralConfig(_FrozenConfigModel):  # type: ignore[explicit-any]  # reason
         ),
     )
     agent_idle_max_waiting_on_child_seconds: float = Field(
-        default=1800.0,
+        default=MAX_WAITING_ON_CHILD_SECONDS,
         gt=0.0,
         description=(
             "Hard ceiling on cumulative WAITING_ON_CHILD deferral time in seconds."
@@ -227,12 +244,12 @@ class GeneralConfig(_FrozenConfigModel):  # type: ignore[explicit-any]  # reason
         ),
     )
     agent_idle_poll_interval_seconds: float = Field(
-        default=0.05,
+        default=IDLE_POLL_INTERVAL_SECONDS,
         gt=0.0,
         description="How often the read loop polls for new output lines in seconds.",
     )
     agent_parent_exit_grace_seconds: float = Field(
-        default=5.0,
+        default=PARENT_EXIT_GRACE_SECONDS,
         ge=0.0,
         description=(
             "Grace window in seconds after parent process exits normally,"
@@ -240,7 +257,7 @@ class GeneralConfig(_FrozenConfigModel):  # type: ignore[explicit-any]  # reason
         ),
     )
     agent_descendant_wait_timeout_seconds: float = Field(
-        default=30.0,
+        default=DESCENDANT_WAIT_TIMEOUT_SECONDS,
         ge=0.0,
         description=(
             "Maximum time in seconds to wait for descendant processes to finish"
@@ -248,7 +265,7 @@ class GeneralConfig(_FrozenConfigModel):  # type: ignore[explicit-any]  # reason
         ),
     )
     agent_descendant_wait_poll_seconds: float = Field(
-        default=0.5,
+        default=DESCENDANT_WAIT_POLL_SECONDS,
         gt=0.0,
         description=(
             "Poll interval in seconds for descendant-wait and process-exit-wait loops."
@@ -256,7 +273,7 @@ class GeneralConfig(_FrozenConfigModel):  # type: ignore[explicit-any]  # reason
         ),
     )
     agent_process_exit_wait_seconds: float = Field(
-        default=30.0,
+        default=PROCESS_EXIT_WAIT_SECONDS,
         ge=0.0,
         description=(
             "Maximum time in seconds to wait for the subprocess to exit after its"
@@ -274,7 +291,7 @@ class GeneralConfig(_FrozenConfigModel):  # type: ignore[explicit-any]  # reason
         ),
     )
     agent_waiting_status_interval_seconds: float = Field(
-        default=30.0,
+        default=WAITING_STATUS_INTERVAL_SECONDS,
         gt=0.0,
         description=(
             "How often in seconds a periodic PROGRESS status update is emitted while"
@@ -283,7 +300,7 @@ class GeneralConfig(_FrozenConfigModel):  # type: ignore[explicit-any]  # reason
         ),
     )
     agent_suspect_waiting_on_child_seconds: float | None = Field(
-        default=600.0,
+        default=SUSPECT_WAITING_ON_CHILD_SECONDS,
         gt=0.0,
         description=(
             "Cumulative WAITING_ON_CHILD time in seconds after which a 'suspected"
@@ -293,7 +310,7 @@ class GeneralConfig(_FrozenConfigModel):  # type: ignore[explicit-any]  # reason
         ),
     )
     agent_idle_no_progress_waiting_on_child_seconds: float | None = Field(
-        default=600.0,
+        default=MAX_WAITING_ON_CHILD_NO_PROGRESS_SECONDS,
         gt=0.0,
         description=(
             "Hard ceiling on cumulative WAITING_ON_CHILD time when corroboration shows"
@@ -303,7 +320,7 @@ class GeneralConfig(_FrozenConfigModel):  # type: ignore[explicit-any]  # reason
         ),
     )
     agent_child_progress_ttl_seconds: float = Field(
-        default=45.0,
+        default=CHILD_PROGRESS_TTL_SECONDS,
         gt=0.0,
         description=(
             "Maximum seconds since last child progress signal"
@@ -311,12 +328,12 @@ class GeneralConfig(_FrozenConfigModel):  # type: ignore[explicit-any]  # reason
         ),
     )
     agent_child_heartbeat_ttl_seconds: float = Field(
-        default=15.0,
+        default=CHILD_HEARTBEAT_TTL_SECONDS,
         gt=0.0,
         description="Maximum seconds since last child heartbeat before heartbeat is stale.",
     )
     agent_child_stale_label_ttl_seconds: float = Field(
-        default=10.0,
+        default=CHILD_STALE_LABEL_TTL_SECONDS,
         gt=0.0,
         description=(
             "Grace period during which a child label may persist"
@@ -324,7 +341,7 @@ class GeneralConfig(_FrozenConfigModel):  # type: ignore[explicit-any]  # reason
         ),
     )
     agent_child_exit_reconcile_seconds: float = Field(
-        default=5.0,
+        default=CHILD_EXIT_RECONCILE_SECONDS,
         ge=0.0,
         description=(
             "Reconciliation window after stdout EOF during which"

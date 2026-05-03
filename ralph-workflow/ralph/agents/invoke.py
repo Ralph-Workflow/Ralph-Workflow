@@ -76,6 +76,12 @@ from ralph.process.manager import (
     ProcessStatus,
     get_process_manager,
 )
+from ralph.timeout_defaults import (
+    CHILD_EXIT_RECONCILE_SECONDS,
+    CHILD_HEARTBEAT_TTL_SECONDS,
+    CHILD_PROGRESS_TTL_SECONDS,
+    CHILD_STALE_LABEL_TTL_SECONDS,
+)
 
 _MODELED_FLAG_PARTS = 2
 
@@ -539,27 +545,21 @@ def invoke_agent(
         _stop_workspace_monitor(monitor)
 
 
-_CHILD_PROGRESS_TTL_DEFAULT = 45.0
-_CHILD_HEARTBEAT_TTL_DEFAULT = 15.0
-_CHILD_STALE_LABEL_TTL_DEFAULT = 10.0
-_CHILD_EXIT_RECONCILE_DEFAULT = 5.0
-
-
 def _make_child_registry(opts: InvokeOptions) -> ChildLivenessRegistry:
     """Create a new per-invoke ChildLivenessRegistry using config-driven TTL values."""
     return ChildLivenessRegistry(
         progress_ttl=opts.child_progress_ttl_seconds
         if opts.child_progress_ttl_seconds is not None
-        else _CHILD_PROGRESS_TTL_DEFAULT,
+        else CHILD_PROGRESS_TTL_SECONDS,
         heartbeat_ttl=opts.child_heartbeat_ttl_seconds
         if opts.child_heartbeat_ttl_seconds is not None
-        else _CHILD_HEARTBEAT_TTL_DEFAULT,
+        else CHILD_HEARTBEAT_TTL_SECONDS,
         stale_label_ttl=opts.child_stale_label_ttl_seconds
         if opts.child_stale_label_ttl_seconds is not None
-        else _CHILD_STALE_LABEL_TTL_DEFAULT,
+        else CHILD_STALE_LABEL_TTL_SECONDS,
         exit_reconcile=opts.child_exit_reconcile_seconds
         if opts.child_exit_reconcile_seconds is not None
-        else _CHILD_EXIT_RECONCILE_DEFAULT,
+        else CHILD_EXIT_RECONCILE_SECONDS,
     )
 
 
@@ -858,6 +858,13 @@ def _policy_from_options(opts: InvokeOptions) -> TimeoutPolicy:
             opts.max_waiting_on_child_no_progress_seconds
             if opts.max_waiting_on_child_no_progress_seconds is not None
             else _base.max_waiting_on_child_no_progress_seconds
+            if (
+                _effective_max is not None
+                and _base.max_waiting_on_child_no_progress_seconds is not None
+                and _base.max_waiting_on_child_no_progress_seconds
+                <= _effective_max
+            )
+            else None  # No max set or constraint would be violated; disable
         ),
     )
 
@@ -931,11 +938,17 @@ def _read_lines_from_process(  # noqa: PLR0913,PLR0915
                 reg_snap = reg.snapshot(label_prefix or "")
                 if reg_snap.has_fresh_progress:
                     alive_by = AliveBy.FRESH_PROGRESS
-                elif reg_snap.has_fresh_label and reg_snap.has_process:
+                elif reg_snap.has_fresh_heartbeat and reg_snap.has_process:
+                    # Child has a recent heartbeat (within heartbeat_ttl) but no fresh progress.
+                    # This is the "heartbeat-only" case - child is alive but not making
+                    # forward progress.
                     alive_by = AliveBy.FRESH_HEARTBEAT_ONLY
-                elif reg_snap.has_process and not reg_snap.has_fresh_label:
+                elif reg_snap.has_process and not reg_snap.has_fresh_heartbeat:
+                    # Child exists but has no recent heartbeat (heartbeat stale or never sent).
+                    # The child is "stale" - alive but not sending heartbeats.
                     alive_by = AliveBy.STALE_LABEL_ONLY
                 elif scoped_active:
+                    # No Ralph child evidence but OS descendant scan shows active processes.
                     alive_by = AliveBy.OS_DESCENDANT_ONLY_STALE_PROGRESS
             except Exception:
                 logger.debug("corroborator: registry snapshot failed (suppressed)")
@@ -1054,6 +1067,10 @@ def _read_lines_from_process(  # noqa: PLR0913,PLR0915
                         activity_signal.kind not in _NON_MEANINGFUL_ACTIVITY_KINDS
                     )
                     watchdog.record_activity()
+                else:
+                    # Unrecognized output is not meaningful activity — reset to False
+                    # to avoid stale True values from previous meaningful output.
+                    last_activity_meaningful[0] = False
                 strategy.observe_line(queued_line)
                 yield queued_line
                 # Evaluate after every yield: SESSION_CEILING_EXCEEDED can fire even

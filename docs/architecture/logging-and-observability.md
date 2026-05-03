@@ -244,62 +244,63 @@ The following files remain in their original locations (not under the run log di
 
 ## Idle Timeout Activity Detection
 
-Idle-timeout decisions use a **dual-signal** model to avoid false timeout classification for active runs:
+Idle-timeout decisions use a **two-layer** model to avoid false positive timeouts for active runs while still terminating stuck agents promptly.
 
-1. **Output activity**: recent stdout/stderr updates from the agent process
-2. **AI file activity**: recent updates to meaningful AI artifacts under `.agent/`
+### Layer 1: Output Idle Deadline
 
-A run is only treated as idle when **both** signals are stale for the timeout window.
+The first layer tracks time since the last meaningful output line from the agent.
+If no output arrives within `agent_idle_timeout_seconds` (default **300 seconds**), the watchdog calls `classify_quiet()` to determine child process state:
 
-### Recency Window and Cadence
+- **`WAITING_ON_CHILD`**: live child processes are active — enter the waiting branch (Layer 2).
+- **`ACTIVE`** (no children): enter a short drain window (`agent_idle_drain_window_seconds`, default **0.5s**), then fire `NO_OUTPUT_DEADLINE`.
 
-- Idle timeout window: **300 seconds**
-- Default monitor cadence: **30 seconds**
-- Cadence is configurable via monitor config for test and runtime tuning. Lower-frequency checks can be used during low-activity periods as long as the 300-second idle semantics remain correct.
+If `classify_quiet()` raises, the watchdog defaults conservatively to `WAITING_ON_CHILD` to avoid false-positive termination during transient probe failures.
 
-### Qualifying File Activity
+### Layer 2: Child-Liveness Evidence and Waiting Ceilings
 
-The timeout monitor treats recent updates to these AI-generated artifacts as progress:
+When children are present, the watchdog evaluates child-liveness *evidence quality* to distinguish genuine forward progress from lifecycle noise:
 
-- `.agent/PLAN.md`
-- `.agent/ISSUES.md`
-- `.agent/STATUS.md`
-- `.agent/NOTES.md`
-- `.agent/commit-message.txt`
-- `.agent/tmp/*.xml`
+| `alive_by` value | Meaning | Effective ceiling |
+|---|---|---|
+| `fresh_progress` | Child produced a progress signal within `child_progress_ttl` | Full ceiling (1800s) |
+| `fresh_heartbeat_only` | Heartbeat present but no progress renewal | No-progress ceiling (600s) |
+| `stale_label_only` | Label persists after freshness expires | No-progress ceiling (600s) |
+| `os_descendant_only_stale_progress` | OS process exists but no fresh registry evidence | No-progress ceiling (600s) |
 
-### Non-Qualifying File Activity
+**The no-progress ceiling** (`agent_idle_no_progress_waiting_on_child_seconds`, default **600 seconds**) fires `CHILDREN_PERSIST_TOO_LONG` when cumulative WAITING_ON_CHILD time exceeds it and the child is alive but not making forward progress. This catches stuck agents that keep OS descendants alive via heartbeat noise alone without producing real work.
 
-The monitor explicitly excludes operational noise so timeout signals stay trustworthy:
+**The full waiting ceiling** (`agent_idle_max_waiting_on_child_seconds`, default **1800 seconds**) applies only when the child has verifiably fresh progress. This prevents false positives for genuinely long-running child work.
 
-- Log churn (for example `*.log`)
-- `.agent/checkpoint.json`
-- `.agent/start_commit`
-- `.agent/review_baseline.txt`
-- Temporary/editor artifacts (`*.tmp`, `*.swp`, `*~`, `*.bak`)
+Both ceilings are **absolute** (cumulative across the session) and cannot be reset by oscillating between active and waiting states.
 
-This ensures that log-only writes and routine system touches do not keep stalled runs marked as active.
+### Corroboration Snapshot
 
-### Edge Cases and Performance
+On each watchdog tick, one corroboration snapshot is captured and reused for:
+1. Selecting the effective ceiling (no-progress vs. full).
+2. Emitting suspicion diagnostics (`SUSPECTED_FROZEN` event).
+3. Emitting hard-stop diagnostics (`HARD_STOP` event) on fire.
 
-#### Sparse File Updates
+Reusing a single snapshot per tick prevents divergence between the ceiling decision and the diagnostic fields logged with it.
 
-If an agent updates files very infrequently (for example, once every 4 minutes), the timeout detection will correctly recognize this as ongoing activity. The 300-second recency window ensures that any modification within the last 5 minutes counts as "active".
+### Session Ceiling
 
-#### Monitoring Overhead
+The absolute session wall-clock ceiling (`agent_max_session_seconds`, default disabled) fires `SESSION_CEILING_EXCEEDED` regardless of activity. It is checked first on every watchdog tick and cannot be defeated by child deferral.
 
-File activity checking uses selective directory scanning with minimal overhead:
+### Single Source of Truth for Defaults
 
-- Only `.agent/` and `.agent/tmp/` directories are scanned
-- Excluded files (logs, system artifacts) are filtered early
-- Modification times are cached to avoid redundant disk I/O
-- Typical overhead: <1ms per check on modern systems
+All numeric timeout and child-liveness defaults are defined once in `ralph/timeout_defaults.py` and imported by:
+- `ralph.agents.idle_watchdog.TimeoutPolicy` (runtime policy)
+- `ralph.agents.invoke` (child-liveness TTL fallbacks)
+- `ralph.config.models.GeneralConfig` (config field defaults)
 
-The 30-second check interval provides a good balance between timely timeout detection and resource efficiency. During each check, the monitor samples file modification times to detect recent AI progress.
+Changing a constant in `timeout_defaults.py` propagates to all three layers automatically.
 
-#### Timeout Decision Logging
+### Timeout Decision Logging
 
-When a timeout occurs, the monitor logs diagnostic information indicating whether it was due to lack of output activity, file activity, or both. This helps users understand whether the agent was truly stuck or if the timeout threshold needs adjustment.
+When a timeout fires, the watchdog logs:
+- Fire reason: `NO_OUTPUT_DEADLINE`, `CHILDREN_PERSIST_TOO_LONG`, or `SESSION_CEILING_EXCEEDED`.
+- `cumulative_waiting` seconds and `idle_elapsed` seconds.
+- For `CHILDREN_PERSIST_TOO_LONG`: `alive_by` evidence, `effective_ceiling` classification (`standard` vs. `no_progress`), `scoped_child_active`, and `workspace_event_delta`.
 
 ## Architecture Integration
 
@@ -447,6 +448,97 @@ grep -oP 'phase=\K\w+' .agent/logs-<run_id>/event_loop.log | uniq
 - `ralph-workflow/src/logging/run_log_context.rs`: RunLogContext path resolution
 - `ralph-workflow/src/logging/run_id.rs`: RunId format and collision counter
 - `ralph-workflow/src/logging/event_loop_logger.rs`: EventLoopLogger formatting
+
+## Agent Timeout Architecture
+
+### Single Source of Truth
+
+All timeout and child-liveness numeric defaults live in `ralph/timeout_defaults.py`.
+This module is the single source of truth imported by:
+
+- `ralph.agents.idle_watchdog.TimeoutPolicy` (dataclass field defaults)
+- `ralph.agents.invoke` (child-liveness TTL constants)
+- `ralph.config.models.GeneralConfig` (config field defaults)
+
+Changing a constant in `timeout_defaults.py` automatically propagates to all three
+layers so config, invoke, and watchdog cannot drift independently.
+
+### Timeout Policy and Fire Reasons
+
+`TimeoutPolicy` is the single runtime authority for all timeout dimensions. It is
+constructed once per invocation from operator-supplied config and passed to
+`IdleWatchdog` and `PostExitWatchdog`.
+
+Fire conditions are evaluated in this order:
+
+1. **SESSION_CEILING_EXCEEDED** — absolute wall-clock cap; activity cannot reset it.
+2. **NO_OUTPUT_DEADLINE** — idle timeout since last agent output (+ drain window).
+3. **CHILDREN_PERSIST_TOO_LONG** — cumulative `WAITING_ON_CHILD` ceiling; never decays.
+4. **PROCESS_EXIT_HANG** — subprocess closed stdout but did not exit within budget.
+5. **DESCENDANT_HANG** — descendant-wait deadline elapsed post-exit.
+
+### Child Liveness Evidence (AliveBy)
+
+When the idle deadline elapses and children appear active, the watchdog
+consults a corroborator that classifies the child's liveness as one of:
+
+| `AliveBy` value | Meaning |
+|---|---|
+| `fresh_progress` | Child sent a progress signal within `child_progress_ttl_seconds`. |
+| `fresh_heartbeat_only` | Child sent a heartbeat within `child_heartbeat_ttl_seconds` but no recent progress. |
+| `stale_label_only` | Child was registered but its evidence is stale (no fresh heartbeat or progress). |
+| `os_descendant_only_stale_progress` | OS descendant scan shows active processes but Ralph has no fresh registry evidence. |
+
+### Dual-Ceiling Design
+
+The watchdog uses one of two ceilings for `WAITING_ON_CHILD` deferral:
+
+- **Full ceiling** (`max_waiting_on_child_seconds`, default 1800s): applied when
+  the corroborator reports `fresh_progress`, or when `max_waiting_on_child_no_progress_seconds`
+  is disabled (`None`).
+- **No-progress ceiling** (`max_waiting_on_child_no_progress_seconds`, default 600s):
+  applied when corroboration shows `fresh_heartbeat_only`, `stale_label_only`, or
+  `os_descendant_only_stale_progress` — child is alive but not making forward progress.
+
+This prevents a stuck agent (alive OS descendants, stale progress) from waiting
+the full 30 minutes before timing out, while still granting genuine progress the
+full ceiling to avoid false positives.
+
+### One Snapshot Per Tick
+
+For each `WAITING_ON_CHILD` tick, the watchdog captures exactly one corroboration
+snapshot and reuses it for: (a) effective ceiling selection, (b) suspicion
+diagnostics, and (c) hard-stop diagnostics. Multiple calls to the corroborator
+within a single tick are explicitly prevented to avoid snapshot divergence.
+
+### Structured Waiting Events
+
+While in `WAITING_ON_CHILD` deferral, structured `WaitingStatusEvent` objects are
+emitted to an optional listener. Event kinds:
+
+- `ENTERED` — transition into `WAITING_ON_CHILD` state.
+- `PROGRESS` — periodic status (rate-limited to `waiting_status_interval_seconds`).
+- `SUSPECTED_FROZEN` — cumulative time crossed `suspect_waiting_on_child_seconds`.
+- `EXITED` — transition out of `WAITING_ON_CHILD` state.
+- `HARD_STOP` — immediately before firing `CHILDREN_PERSIST_TOO_LONG`.
+
+`HARD_STOP` events include a `diagnostic` dict with `cumulative`, `run_elapsed`,
+`ceiling`, `effective_ceiling` (`standard` or `no_progress`), `evidence` string,
+`alive_by`, and corroborating signal counts.
+
+### Distinguishing Evidence Classes in Logs
+
+From logs alone, operators can distinguish:
+
+- `alive_by=fresh_progress` → genuine child work; full ceiling applies.
+- `alive_by=fresh_heartbeat_only` → child alive but idle; no-progress ceiling applies.
+- `alive_by=stale_label_only` → child registered but evidence gone stale; no-progress ceiling.
+- `alive_by=os_descendant_only_stale_progress` → descendant exists but Ralph has no fresh
+  registry evidence; no-progress ceiling applies. Common during network instability.
+
+Network instability can cause `os_descendant_only_stale_progress` evidence even when the
+child is doing real work (heartbeats lost). The no-progress ceiling (600s default) provides
+a grace window before timing out so brief connectivity issues do not cause false positives.
 
 ## Related Documentation
 

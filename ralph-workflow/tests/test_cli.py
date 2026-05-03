@@ -38,6 +38,7 @@ RUN_PIPELINE_SUCCESS = 42
 KEYBOARD_INTERRUPT_EXIT_CODE = 130
 USAGE_ERROR_EXIT_CODE = 2
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+_BUNDLED_POLICY_DIR = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
 
 
 def _make_display_context_for_console(console: Console) -> DisplayContext:
@@ -610,7 +611,9 @@ def test_regenerate_config_flag_creates_bak(
 
 def test_explain_policy_prints_workflow_diagram(cli_runner: CliRunner) -> None:
     """--explain-policy prints the workflow diagram and structural breakdown."""
-    result = cli_runner.invoke(app, ["--explain-policy"])
+    result = cli_runner.invoke(
+        app, ["--explain-policy", "--explain-policy-dir", str(_BUNDLED_POLICY_DIR)]
+    )
 
     # Should exit successfully
     assert result.exit_code == 0
