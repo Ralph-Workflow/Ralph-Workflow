@@ -13,6 +13,13 @@ from ralph.git.operations import GitOperationError, find_main_worktree_root, fin
 
 CONFIG_DIR_NAME = ".agent"
 WORKSPACE_CONFIG_NAME = "ralph-workflow.toml"
+_WORKSPACE_AGENT_FILENAMES = (
+    "ralph-workflow.toml",
+    "agents.toml",
+    "pipeline.toml",
+    "artifacts.toml",
+    "mcp.toml",
+)
 
 
 def _canonicalize(path: Path | str) -> Path:
@@ -21,7 +28,7 @@ def _canonicalize(path: Path | str) -> Path:
 
 @dataclass(frozen=True, init=False)
 class WorkspaceScope:
-    """Single source of truth for workspace root and future allowed roots."""
+    """Single source of truth for workspace root and config inheritance."""
 
     root: Path
     allowed_roots: tuple[Path, ...]
@@ -53,6 +60,33 @@ class WorkspaceScope:
         object.__setattr__(self, "allowed_roots", canonical_allowed)
         object.__setattr__(self, "local_config_path", canonical_local_config)
         object.__setattr__(self, "propagated_config_paths", canonical_propagated_configs)
+
+    def resolve_agent_file(self, filename: str) -> Path:
+        """Resolve the effective .agent file for this workspace.
+
+        Linked worktrees inherit defaults from the main worktree unless the
+        current workspace has an explicit local override for that filename.
+        """
+        local_agent_dir = self.root / CONFIG_DIR_NAME
+        local_candidate = local_agent_dir / filename
+        if local_candidate.exists():
+            return local_candidate
+
+        inherited_candidate = self.local_config_path.parent / filename
+        if inherited_candidate != local_candidate:
+            return inherited_candidate
+
+        if self.propagated_config_paths:
+            propagated_candidate = self.propagated_config_paths[0].parent / filename
+            if propagated_candidate != local_candidate:
+                return propagated_candidate
+
+        return local_candidate
+
+    def has_any_local_agent_override(self) -> bool:
+        """Return True when the current workspace has any explicit .agent override."""
+        local_agent_dir = self.root / CONFIG_DIR_NAME
+        return any((local_agent_dir / filename).exists() for filename in _WORKSPACE_AGENT_FILENAMES)
 
     @classmethod
     def for_same_workspace_worker(
@@ -136,8 +170,9 @@ def _find_nearest_workspace_root(candidate: Path, repo_root: Path) -> Path:
 def resolve_workspace_scope(start: Path | str | None = None) -> WorkspaceScope:
     """Resolve the active workspace scope.
 
-    Prefer the current git worktree root and fall back to the provided path/cwd
-    when Ralph is run outside a git repository.
+    The workspace root remains the active checkout, but linked worktrees inherit
+    default .agent config from the main checkout unless the linked worktree has
+    an explicit local override file.
     """
 
     candidate = Path.cwd() if start is None else Path(start)
@@ -145,12 +180,17 @@ def resolve_workspace_scope(start: Path | str | None = None) -> WorkspaceScope:
         repo_root = find_repo_root(candidate)
         main_root = find_main_worktree_root(candidate)
         root = _find_nearest_workspace_root(candidate, repo_root)
+        local_config_path = _default_local_config_path(root)
         propagated_configs: tuple[Path, ...] = ()
         if main_root != repo_root:
-            propagated_configs = (_default_local_config_path(main_root),)
+            inherited_config_path = _default_local_config_path(main_root)
+            if not local_config_path.exists():
+                local_config_path = inherited_config_path
+            else:
+                propagated_configs = (inherited_config_path,)
         return WorkspaceScope(
             root,
-            local_config_path=_default_local_config_path(root),
+            local_config_path=local_config_path,
             propagated_config_paths=propagated_configs,
         )
     except GitOperationError:

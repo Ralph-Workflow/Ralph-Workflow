@@ -43,7 +43,7 @@ from ralph.mcp.protocol.session import MCP_ENDPOINT_ENV, MCP_RUN_ID_ENV, AgentSe
 from ralph.mcp.server.lifecycle import SessionBridgeLike, start_mcp_server
 from ralph.mcp.session_plan import build_session_mcp_plan
 from ralph.mcp.tools.names import SUBMIT_ARTIFACT_TOOL, claude_tool_name, claude_tool_name_prefix
-from ralph.policy.loader import load_agents_policy
+from ralph.policy.loader import load_agents_policy_for_workspace_scope
 from ralph.prompts.commit import (
     CommitPromptPayloadConfig,
     prompt_commit_message,
@@ -210,13 +210,14 @@ def _handle_agent_commit_generation(
         )
         return
 
+    workspace_scope = resolve_workspace_scope(repo_root)
     result = _generate_commit_message_with_chain(
         diff=diff,
         repo_root=repo_root,
         registry=registry,
         agents=agents,
         verbose=config.general.verbosity >= _VERBOSE_THRESHOLD,
-        agents_policy=load_agents_policy(repo_root / ".agent", config=config),
+        agents_policy=load_agents_policy_for_workspace_scope(workspace_scope, config=config),
         agent_idle_timeout_seconds=config.general.agent_idle_timeout_seconds,
         display_context=ctx,
     )

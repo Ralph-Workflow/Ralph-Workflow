@@ -266,6 +266,68 @@ def test_cli_generate_local_config_creates_local_main_override(
 
 
 
+def test_cli_init_in_linked_worktree_reuses_main_worktree_config_root(
+    clean_env: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """`ralph --init` in a linked worktree should seed defaults in the main checkout only."""
+    runner = CliRunner()
+    main_repo = tmp_path / "main"
+    linked_worktree = tmp_path / "feature-worktree"
+    main_repo.mkdir()
+    linked_worktree.mkdir()
+    monkeypatch.chdir(linked_worktree)
+    monkeypatch.setattr(
+        "ralph.workspace.scope.find_repo_root",
+        lambda _start=None: linked_worktree,
+    )
+    monkeypatch.setattr(
+        "ralph.workspace.scope.find_main_worktree_root",
+        lambda _start=None: main_repo,
+    )
+
+    result = runner.invoke(app, ["--init"], catch_exceptions=False)
+
+    assert result.exit_code == 0, f"Expected exit 0, got {result.exit_code}: {result.output}"
+    assert (linked_worktree / "PROMPT.md").exists()
+    assert (main_repo / ".agent" / "pipeline.toml").exists()
+    assert (main_repo / ".agent" / "artifacts.toml").exists()
+    assert (main_repo / ".agent" / "mcp.toml").exists()
+    assert not (linked_worktree / ".agent" / "pipeline.toml").exists()
+    assert not (linked_worktree / ".agent" / "artifacts.toml").exists()
+    assert not (linked_worktree / ".agent" / "mcp.toml").exists()
+
+
+
+def test_cli_generate_local_config_in_linked_worktree_targets_main_checkout(
+    clean_env: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """`ralph --generate-local-config` in a linked worktree should write to the main checkout."""
+    runner = CliRunner()
+    main_repo = tmp_path / "main"
+    linked_worktree = tmp_path / "feature-worktree"
+    main_repo.mkdir()
+    linked_worktree.mkdir()
+    monkeypatch.chdir(linked_worktree)
+    monkeypatch.setattr(
+        "ralph.workspace.scope.find_repo_root",
+        lambda _start=None: linked_worktree,
+    )
+    monkeypatch.setattr(
+        "ralph.workspace.scope.find_main_worktree_root",
+        lambda _start=None: main_repo,
+    )
+
+    result = runner.invoke(app, ["--generate-local-config"], catch_exceptions=False)
+
+    assert result.exit_code == 0, f"Expected exit 0, got {result.exit_code}: {result.output}"
+    assert (main_repo / ".agent" / "ralph-workflow.toml").exists()
+    assert not (linked_worktree / ".agent" / "ralph-workflow.toml").exists()
+
+
 def test_cli_init_creates_self_teaching_prompt_md(
     clean_env: dict[str, str],
     monkeypatch: pytest.MonkeyPatch,
