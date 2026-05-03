@@ -1885,6 +1885,8 @@ def _handle_inline_effect(  # noqa: PLR0913
                 agents_policy,
             )
         except MissingPlanHandoffError as exc:
+            if state.phase != pipeline_policy.recovery.failed_route:
+                raise
             logger.warning(
                 "Missing plan handoff for phase={phase}: {err}; re-routing to entry phase",
                 phase=effect.phase,

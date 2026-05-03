@@ -3736,3 +3736,47 @@ def test_handle_inline_effect_routes_to_planning_when_plan_handoff_absent(
     assert result.phase == bundle.pipeline.entry_phase
     assert result.previous_phase == state.phase
     assert result.recovery_epoch == state.recovery_epoch + 1
+
+
+def test_handle_inline_effect_propagates_plan_handoff_error_outside_recovery(
+    monkeypatch: MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Non-recovery phases must not silently reroute on missing plan handoff.
+
+    When prompt preparation raises MissingPlanHandoffError during an ordinary
+    execution phase (not the failed_route recovery path), the exception must
+    propagate rather than being converted into an automatic reroute to planning.
+    """
+    bundle = _load_default_policy_bundle()
+    state = PipelineState(
+        phase="development",
+        previous_phase="planning",
+        recovery_epoch=0,
+    )
+
+    monkeypatch.setattr(
+        runner_module,
+        "_materialize_prepared_prompt",
+        MagicMock(
+            side_effect=MissingPlanHandoffError(
+                "Template 'developer_iteration.jinja' requires an existing plan handoff"
+                " at .agent/PLAN.md"
+            )
+        ),
+    )
+    monkeypatch.setattr(runner_module, "ckpt", MagicMock())
+
+    with pytest.raises(MissingPlanHandoffError):
+        runner_module._handle_inline_effect(
+            effect=PreparePromptEffect(
+                phase="development",
+                previous_phase="planning",
+                drain="development",
+            ),
+            state=state,
+            pipeline_policy=bundle.pipeline,
+            artifacts_policy=bundle.artifacts,
+            agents_policy=bundle.agents,
+            workspace_scope=WorkspaceScope(str(tmp_path)),
+        )
