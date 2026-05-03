@@ -1,0 +1,202 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+/* Tighter Inter rendering */
+:root,
+body {
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+    --rw-card-radius: 12px;
+    --rw-card-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
+    --rw-mono-stack: 'JetBrains Mono', 'Fira Code', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+/* Sidebar chrome matching website */
+aside.sidebar-drawer {
+    box-shadow: inset -1px 0 0 var(--color-sidebar-background-border);
+}
+
+/* Sidebar caption typography: uppercase muted label */
+.sidebar-tree .caption-text,
+.toctree-l1 > .caption-text {
+    text-transform: uppercase;
+    font-size: 0.7rem;
+    letter-spacing: 0.08em;
+    color: var(--color-foreground-muted);
+    font-weight: 600;
+}
+
+/* Suppress double caption headings in toctree wrappers */
+.toctree-wrapper > .caption {
+    display: none;
+}
+
+/* Global monospace stack for all pre/code elements */
+pre,
+code {
+    font-family: var(--rw-mono-stack);
+}
+
+/* Code blocks */
+div[class*="highlight"] {
+    border-radius: 10px;
+    border: 1px solid var(--color-background-border, var(--color-sidebar-background-border));
+    padding: 1rem 1.25rem;
+    font-family: var(--rw-mono-stack);
+}
+
+/* Light-mode code block contrast */
+[data-theme="light"] div[class*="highlight"] {
+    background: #f3f4f6;
+}
+
+@media (prefers-color-scheme: light) {
+    body:not([data-theme]) div[class*="highlight"] {
+        background: #f3f4f6;
+    }
+}
+
+/* Inline code */
+code.literal {
+    background: var(--color-background-secondary);
+    padding: 0.1em 0.4em;
+    border-radius: 4px;
+    font-size: 0.9em;
+    font-family: var(--rw-mono-stack);
+}
+
+/* Admonition accent bars */
+.admonition.note,
+.admonition.warning,
+.admonition.tip,
+div.note,
+div.warning,
+div.tip {
+    border-left: 3px solid var(--color-brand-primary);
+}
+
+/* Hero section container */
+.hero {
+    margin-bottom: 2rem;
+}
+
+/* Hero large headline */
+.hero-headline {
+    font-size: 2.75rem;
+    font-weight: 700;
+    line-height: 1.15;
+    letter-spacing: -0.02em;
+    margin-bottom: 0.5rem;
+    border-top: none !important;
+    padding-top: 0 !important;
+}
+
+/* Hero subtitle paragraph */
+.hero-subtitle {
+    font-size: 1.125rem;
+    color: var(--color-foreground-secondary);
+    font-weight: 400;
+    line-height: 1.6;
+    margin-top: 0;
+}
+
+/* Hero CTA pill button */
+.hero-cta {
+    display: inline-block;
+    margin-top: 1.5rem;
+    padding: 0.625rem 1.5rem;
+    background: var(--color-brand-primary);
+    color: #fff !important;
+    border-radius: 999px;
+    font-weight: 600;
+    font-size: 0.9rem;
+    text-decoration: none !important;
+    transition: background 150ms, box-shadow 150ms;
+}
+
+.hero-cta:hover {
+    background: var(--color-brand-content);
+    box-shadow: 0 4px 12px rgba(8, 145, 178, 0.35);
+}
+
+/* Headings */
+h1 {
+    font-weight: 700;
+    letter-spacing: -0.02em;
+}
+
+h2 {
+    font-weight: 600;
+    border-top: 1px solid var(--color-background-border);
+    padding-top: 1.5rem;
+}
+
+/* Links */
+a {
+    transition: color 120ms;
+}
+
+a:hover {
+    text-decoration: underline;
+}
+
+/* sphinx-design cards matching homepage card style */
+.sd-card {
+    background: var(--color-background-secondary) !important;
+    border: 1px solid var(--color-background-border, var(--color-sidebar-background-border)) !important;
+    border-radius: var(--rw-card-radius) !important;
+    padding: 1.5rem !important;
+    transition: transform 200ms, box-shadow 200ms;
+}
+
+/* Light mode card hover */
+[data-theme="light"] .sd-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 0 0 1px var(--color-brand-primary), 0 4px 20px rgba(8, 145, 178, 0.12);
+}
+
+@media (prefers-color-scheme: light) {
+    body:not([data-theme]) .sd-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 0 0 1px var(--color-brand-primary), 0 4px 20px rgba(8, 145, 178, 0.12);
+    }
+}
+
+/* Dark mode card hover */
+[data-theme="dark"] .sd-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 0 0 1px var(--color-brand-primary), 0 4px 20px rgba(8, 145, 178, 0.15);
+}
+
+/* Sidebar: emphasise active link, hover underline only */
+.sidebar-tree .reference.current,
+.sidebar-tree .current > .reference {
+    color: var(--color-brand-primary);
+    font-weight: 600;
+}
+
+.sidebar-tree .reference:hover {
+    text-decoration: underline;
+}
+
+/* Sidebar toctree items */
+.toctree-wrapper li {
+    font-size: 0.9em;
+    line-height: 1.4;
+}
+
+/* Mobile: prevent horizontal scroll */
+@media (max-width: 48em) {
+    .hero-headline {
+        font-size: 2rem;
+    }
+}
+
+@media (max-width: 67em) {
+    table {
+        display: block;
+        overflow-x: auto;
+    }
+
+    pre {
+        overflow-x: auto;
+    }
+}

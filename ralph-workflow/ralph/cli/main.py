@@ -99,8 +99,17 @@ def _get_cli_context() -> DisplayContext:
     return _make_display_context()
 
 
+_KNOWN_SUBCOMMANDS: frozenset[str] = frozenset({"cleanup"})
+_QUICK_FLAGS: frozenset[str] = frozenset({"-Q", "--quick"})
+
+
 def _prepare_init_args(args: Sequence[str] | None) -> list[str] | None:
-    """Allow bare `--init` by inserting an empty placeholder value."""
+    """Normalize args before Click parsing.
+
+    - Allows bare ``--init`` by inserting an empty placeholder value.
+    - Converts ``ralph -Q <text>`` to ``ralph -Q --prompt <text>`` so a positional
+      inline prompt can be passed without conflicting with subcommand dispatch.
+    """
     if args is None:
         return None
 
@@ -113,7 +122,51 @@ def _prepare_init_args(args: Sequence[str] | None) -> list[str] | None:
                 normalized_args.insert(index + 1, "")
             break
 
+    normalized_args = _inject_quick_prompt(normalized_args)
     return normalized_args
+
+
+def _inject_quick_prompt(args: list[str]) -> list[str]:
+    """If -Q/--quick is present and a bare positional text follows, inject --prompt.
+
+    Transforms ['-Q', 'do a task'] -> ['-Q', '--prompt', 'do a task'] so Typer
+    sees the text as the --prompt option value instead of an unknown subcommand.
+    Skips injection when --prompt/-P is already present.
+    """
+    if not any(a in _QUICK_FLAGS for a in args):
+        return args
+    if "--prompt" in args or "-P" in args:
+        return args
+    result: list[str] = []
+    skip_next = False
+    for i, arg in enumerate(args):
+        if skip_next:
+            skip_next = False
+            result.append(arg)
+            continue
+        # Options with values consume the next arg; skip it to avoid treating it as a prompt.
+        if arg in {
+            "--config", "-c",
+            "--developer-iters", "-D",
+            "--counter",
+            "--developer-agent", "-a",
+            "--developer-model",
+            "--verbosity", "-v",
+            "--init",
+            "--git-user-name",
+            "--git-user-email",
+            "--explain-policy-dir",
+        }:
+            result.append(arg)
+            skip_next = True
+            continue
+        if not arg.startswith("-") and arg not in _KNOWN_SUBCOMMANDS:
+            # Bare positional text: inject --prompt before it
+            result.append("--prompt")
+            result.append(arg)
+            return result + list(args[i + 1 :])
+        result.append(arg)
+    return result
 
 
 class _CommandMain(Protocol):

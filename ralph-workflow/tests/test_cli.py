@@ -699,3 +699,130 @@ class TestIterationCounterFlags:
         )
 
         assert captured.get("counter_overrides") == {"iteration": 2, "reviewer_pass": 1}
+
+
+class TestInjectQuickPrompt:
+    """Tests for _inject_quick_prompt preprocessing helper."""
+
+    def test_injects_prompt_flag_before_positional_text(self) -> None:
+        from ralph.cli.main import _inject_quick_prompt  # noqa: PLC0415
+
+        result = _inject_quick_prompt(["-Q", "do a quick change"])
+        assert result == ["-Q", "--prompt", "do a quick change"]
+
+    def test_long_quick_flag_also_triggers_injection(self) -> None:
+        from ralph.cli.main import _inject_quick_prompt  # noqa: PLC0415
+
+        result = _inject_quick_prompt(["--quick", "do a task"])
+        assert result == ["--quick", "--prompt", "do a task"]
+
+    def test_options_after_text_are_preserved(self) -> None:
+        from ralph.cli.main import _inject_quick_prompt  # noqa: PLC0415
+
+        result = _inject_quick_prompt(["-Q", "do a task", "--dry-run"])
+        assert result == ["-Q", "--prompt", "do a task", "--dry-run"]
+
+    def test_skips_injection_when_prompt_already_present(self) -> None:
+        from ralph.cli.main import _inject_quick_prompt  # noqa: PLC0415
+
+        result = _inject_quick_prompt(["-Q", "--prompt", "text"])
+        assert result == ["-Q", "--prompt", "text"]
+
+    def test_skips_injection_when_short_prompt_already_present(self) -> None:
+        from ralph.cli.main import _inject_quick_prompt  # noqa: PLC0415
+
+        result = _inject_quick_prompt(["-Q", "-P", "text"])
+        assert result == ["-Q", "-P", "text"]
+
+    def test_no_injection_when_no_quick_flag(self) -> None:
+        from ralph.cli.main import _inject_quick_prompt  # noqa: PLC0415
+
+        result = _inject_quick_prompt(["does-not-exist"])
+        assert result == ["does-not-exist"]
+
+    def test_known_subcommand_is_not_treated_as_prompt(self) -> None:
+        from ralph.cli.main import _inject_quick_prompt  # noqa: PLC0415
+
+        result = _inject_quick_prompt(["-Q", "cleanup"])
+        assert result == ["-Q", "cleanup"]
+
+    def test_no_positional_text_leaves_args_unchanged(self) -> None:
+        from ralph.cli.main import _inject_quick_prompt  # noqa: PLC0415
+
+        result = _inject_quick_prompt(["-Q", "--dry-run"])
+        assert result == ["-Q", "--dry-run"]
+
+
+class TestQuickModeSemantics:
+    """Tests for --quick/-Q flag behavior."""
+
+    def test_quick_mode_forces_developer_iters_1(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        captured: dict[str, object] = {}
+        monkeypatch.setattr(
+            "ralph.cli.main.run_pipeline",
+            lambda **kw: captured.update(kw) or 0,
+        )
+        monkeypatch.setattr(
+            "ralph.cli.main._bootstrap_global_configs", lambda *, display_context: None
+        )
+        monkeypatch.setattr("ralph.cli.main._configure_logging", lambda v: None)
+
+        runner = TyperCliRunner()
+        runner.invoke(app, ["-Q", "--prompt", "do a task", "--dry-run"], catch_exceptions=False)
+
+        cli_overrides = cast("dict[str, object]", captured.get("cli_overrides"))
+        general = cast("dict[str, object]", cli_overrides["general"])
+        assert general["developer_iters"] == 1
+
+    def test_quick_overrides_developer_iters_when_both_supplied(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        captured: dict[str, object] = {}
+        monkeypatch.setattr(
+            "ralph.cli.main.run_pipeline",
+            lambda **kw: captured.update(kw) or 0,
+        )
+        monkeypatch.setattr(
+            "ralph.cli.main._bootstrap_global_configs", lambda *, display_context: None
+        )
+        monkeypatch.setattr("ralph.cli.main._configure_logging", lambda v: None)
+
+        runner = TyperCliRunner()
+        runner.invoke(
+            app,
+            ["-Q", "-D", "5", "--prompt", "do a task", "--dry-run"],
+            catch_exceptions=False,
+        )
+
+        cli_overrides = cast("dict[str, object]", captured.get("cli_overrides"))
+        general = cast("dict[str, object]", cli_overrides["general"])
+        assert general["developer_iters"] == 1
+
+    def test_quick_mode_positional_text_is_passed_as_inline_prompt(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        captured: dict[str, object] = {}
+        monkeypatch.setattr(
+            "ralph.cli.main.run_pipeline",
+            lambda **kw: captured.update(kw) or 0,
+        )
+        monkeypatch.setattr(
+            "ralph.cli.main._bootstrap_global_configs", lambda *, display_context: None
+        )
+        monkeypatch.setattr("ralph.cli.main._configure_logging", lambda v: None)
+
+        runner = TyperCliRunner()
+        runner.invoke(
+            app,
+            ["-Q", "do a quick change", "--dry-run"],
+            catch_exceptions=False,
+        )
+
+        assert captured.get("inline_prompt") == "do a quick change"
+
+    def test_prompt_without_quick_raises_usage_error(self, cli_runner: CliRunner) -> None:
+        result = cli_runner.invoke(app, ["--prompt", "some text"])
+        assert result.exit_code == 2  # noqa: PLR2004
+        assert "--prompt requires --quick/-Q" in result.stderr or "--prompt requires" in result.output  # noqa: E501
