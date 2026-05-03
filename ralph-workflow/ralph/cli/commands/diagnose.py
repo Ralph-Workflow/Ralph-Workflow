@@ -17,7 +17,11 @@ from ralph.agents.availability import check_agent_availability
 from ralph.agents.registry import AgentRegistry
 from ralph.config.loader import load_config
 from ralph.git.operations import find_repo_root, is_repo_clean
-from ralph.policy.loader import PolicyValidationError, load_policy
+from ralph.policy.loader import (
+    PolicyValidationError,
+    load_policy,
+    load_policy_for_workspace_scope,
+)
 from ralph.policy.validation import (
     validate_agent_chains_satisfiable,
     validate_recovery_config,
@@ -195,20 +199,27 @@ def _run_preflight_validation(
         # Determine policy directory
         if config_path is not None:
             policy_dir = config_path.parent
-        else:
-            policy_dir = workspace_scope.root / ".agent"
-
-        local_policy_dir = workspace_scope.root / ".agent"
-        has_local_policy_files = any(
-            (local_policy_dir / name).exists()
-            for name in (
-                "ralph-workflow.toml",
-                "agents.toml",
-                "pipeline.toml",
-                "artifacts.toml",
+            has_effective_policy_files = any(
+                (policy_dir / name).exists()
+                for name in (
+                    "ralph-workflow.toml",
+                    "agents.toml",
+                    "pipeline.toml",
+                    "artifacts.toml",
+                )
             )
-        )
-        if not has_local_policy_files:
+        else:
+            policy_dir = workspace_scope.resolve_agent_file("pipeline.toml").parent
+            has_effective_policy_files = any(
+                workspace_scope.resolve_agent_file(name).exists()
+                for name in (
+                    "ralph-workflow.toml",
+                    "agents.toml",
+                    "pipeline.toml",
+                    "artifacts.toml",
+                )
+            )
+        if not has_effective_policy_files:
             table.add_row(
                 "Pre-flight",
                 Text(
@@ -220,7 +231,11 @@ def _run_preflight_validation(
             return True
 
         # Load PolicyBundle for validation
-        bundle = load_policy(policy_dir, config=config)
+        bundle = (
+            load_policy(policy_dir, config=config)
+            if config_path is not None
+            else load_policy_for_workspace_scope(workspace_scope, config=config)
+        )
 
         # Run validators
         validate_agent_chains_satisfiable(bundle, registry)

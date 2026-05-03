@@ -26,6 +26,7 @@ if TYPE_CHECKING:
     from ralph.display.context import DisplayContext
 
 from ralph.display.context import make_display_context
+from ralph.workspace.scope import resolve_workspace_scope
 
 STARTER_PROMPT_SENTINEL = (
     "<!-- ralph:starter-prompt: edit this file before running `ralph` -->"
@@ -59,8 +60,8 @@ def init_command(
         )
 
     target = Path.cwd()
-    agent_dir = target / ".agent"
-    agent_dir.mkdir(exist_ok=True)
+    scope = resolve_workspace_scope(target)
+    agent_dir = scope.local_config_path.parent
 
     prompt_path = target / "PROMPT.md"
     if not prompt_path.exists():

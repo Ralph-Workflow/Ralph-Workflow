@@ -81,7 +81,13 @@ from ralph.pipeline.handoffs import resolve_phase_drain
 from ralph.pipeline.reducer import reduce as reducer_reduce
 from ralph.pipeline.state import AgentChainState, CommitState, PipelineState, RebaseState
 from ralph.pipeline.worker_state import WorkerStatus
-from ralph.policy.loader import load_agents_policy, load_policy_or_die
+from ralph.policy.loader import (
+    load_agents_policy_for_workspace_scope,
+    load_policy_for_workspace_scope,
+)
+from ralph.policy.loader import (
+    load_policy_or_die as _dir_load_policy_or_die,
+)
 from ralph.process.manager import get_process_manager, process_phase_scope
 from ralph.prompts.materialize import (
     MissingPlanHandoffError,
@@ -193,6 +199,7 @@ _TOOL_RESULT_BRIEF_THRESHOLD = 500
 _MAX_METADATA_SUMMARY_LENGTH = 120
 _LEGACY_EXECUTE_EFFECT_ARITY = 3
 _POLICY_LOADER_CONFIG_ARITY = 2
+load_policy_or_die = _dir_load_policy_or_die
 _RECOVERY_CONTEXT_LINES = 12
 _MIN_WORK_UNITS_FOR_PARALLEL_PREFLIGHT = 2
 _TRANSIENT_CONNECTIVITY_MARKERS = (
@@ -1085,25 +1092,29 @@ def _emit_final_summary(
 
 
 def _load_policy_bundle_for_run(
-    workspace_root: Path,
+    workspace_scope: WorkspaceScope,
     config: UnifiedConfig,
 ) -> PolicyBundle:
-    loader = load_policy_or_die
-    params = signature(loader).parameters
-    if "config" in params:
-        return loader(workspace_root / ".agent", config=config)
+    if load_policy_or_die is not _dir_load_policy_or_die:
+        effective_policy_dir = workspace_scope.resolve_agent_file("pipeline.toml").parent
+        loader = load_policy_or_die
+        params = signature(loader).parameters
+        if "config" in params:
+            return loader(effective_policy_dir, config=config)
 
-    positional = [
-        param
-        for param in params.values()
-        if param.kind in (param.POSITIONAL_ONLY, param.POSITIONAL_OR_KEYWORD)
-    ]
-    if (
-        any(param.kind == param.VAR_KEYWORD for param in params.values())
-        or len(positional) >= _POLICY_LOADER_CONFIG_ARITY
-    ):
-        return loader(workspace_root / ".agent", config=config)
-    return loader(workspace_root / ".agent")
+        positional = [
+            param
+            for param in params.values()
+            if param.kind in (param.POSITIONAL_ONLY, param.POSITIONAL_OR_KEYWORD)
+        ]
+        if (
+            any(param.kind == param.VAR_KEYWORD for param in params.values())
+            or len(positional) >= _POLICY_LOADER_CONFIG_ARITY
+        ):
+            return loader(effective_policy_dir, config=config)
+        return loader(effective_policy_dir)
+
+    return load_policy_for_workspace_scope(workspace_scope, config=config)
 
 
 def run(  # noqa: PLR0912, PLR0913, PLR0915
@@ -1139,7 +1150,7 @@ def run(  # noqa: PLR0912, PLR0913, PLR0915
     _write_start_commit_if_absent(workspace_scope.root)
     if _validate_custom_mcp_servers(workspace_scope.root) != 0:
         return 1
-    policy_bundle = _load_policy_bundle_for_run(workspace_scope.root, config)
+    policy_bundle = _load_policy_bundle_for_run(workspace_scope, config)
     register_role_handlers(policy_bundle.pipeline)
     registry = AgentRegistry.from_config(config)
     state = initial_state or _create_initial_state(
@@ -2650,7 +2661,7 @@ def _execute_agent_effect(  # noqa: PLR0913, PLR0915
     effective_agents_policy = (
         policy_bundle.agents
         if policy_bundle is not None
-        else load_agents_policy(workspace_scope.root / ".agent", config=config)
+        else load_agents_policy_for_workspace_scope(workspace_scope, config=config)
     )
 
     _show_phase_start_with_context(

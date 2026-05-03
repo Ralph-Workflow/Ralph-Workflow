@@ -32,7 +32,7 @@ def check_policy_command(
     """
     from ralph.cli.commands.explain import _resolve_policy_dir  # noqa: PLC0415
     from ralph.policy.loader import PolicyValidationError as LoaderValidationError  # noqa: PLC0415
-    from ralph.policy.loader import load_policy  # noqa: PLC0415
+    from ralph.policy.loader import load_policy, load_policy_for_workspace_scope  # noqa: PLC0415
     from ralph.policy.validation import (  # noqa: PLC0415
         PolicyValidationError,
         validate_policy_completeness,
@@ -41,14 +41,15 @@ def check_policy_command(
     try:
         if policy_dir is not None:
             resolved_dir = policy_dir
+            if not resolved_dir.is_dir():
+                print(f"Policy directory not found: {resolved_dir}", file=sys.stderr)
+                return 1
+            bundle = load_policy(resolved_dir)
         else:
+            from ralph.workspace.scope import resolve_workspace_scope  # noqa: PLC0415
+
             resolved_dir, _ = _resolve_policy_dir()
-
-        if not resolved_dir.is_dir():
-            print(f"Policy directory not found: {resolved_dir}", file=sys.stderr)
-            return 1
-
-        bundle = load_policy(resolved_dir)
+            bundle = load_policy_for_workspace_scope(resolve_workspace_scope())
 
         if counter_overrides:
             validate_policy_completeness(bundle, cli_counter_overrides=counter_overrides)

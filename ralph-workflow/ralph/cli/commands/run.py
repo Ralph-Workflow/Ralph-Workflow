@@ -18,7 +18,12 @@ from ralph.config.enums import Verbosity  # noqa: TC001
 from ralph.config.loader import load_config
 from ralph.pipeline import checkpoint as ckpt
 from ralph.pipeline.state import PipelineState  # noqa: TC001
-from ralph.policy.loader import load_policy
+from ralph.policy.loader import (
+    load_policy as _dir_load_policy,
+)
+from ralph.policy.loader import (
+    load_policy_for_workspace_scope,
+)
 from ralph.policy.validation import (
     CheckpointPolicyMismatchError,
     PolicyValidationError,
@@ -62,6 +67,7 @@ _EXIT_SUCCESS = 0
 _EXIT_CONFIG_ERROR = 1
 _EXIT_INTERRUPT = 130
 _EXIT_PREFLIGHT = 2
+load_policy = _dir_load_policy
 
 
 class _LoadResult(NamedTuple):
@@ -96,7 +102,11 @@ def _load_configuration(
 
     if workspace_scope is not None:
         try:
-            policy_bundle = load_policy(workspace_scope.root / ".agent", config=config)
+            if load_policy is not _dir_load_policy:
+                policy_dir = workspace_scope.resolve_agent_file("pipeline.toml").parent
+                policy_bundle = load_policy(policy_dir, config=config)
+            else:
+                policy_bundle = load_policy_for_workspace_scope(workspace_scope, config=config)
         except Exception as e:
             logger.warning("Failed to load policy bundle: {}", e)
             err_text = Text()

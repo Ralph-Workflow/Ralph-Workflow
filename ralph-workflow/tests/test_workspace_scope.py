@@ -151,6 +151,61 @@ def test_resolve_workspace_scope_prefers_nearest_ralph_workspace(
     assert scope.allowed_roots == (package_root.resolve(),)
 
 
+
+def test_resolve_workspace_scope_inherits_main_worktree_config_by_default(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    main_repo = tmp_path / "main"
+    child_worktree = tmp_path / "feature-worktree"
+    (main_repo / ".agent").mkdir(parents=True)
+    (main_repo / ".agent" / "ralph-workflow.toml").write_text("[general]\n", encoding="utf-8")
+    child_worktree.mkdir()
+
+    monkeypatch.setattr("ralph.workspace.scope.find_repo_root", lambda _start: child_worktree)
+    monkeypatch.setattr("ralph.workspace.scope.find_main_worktree_root", lambda _start: main_repo)
+
+    scope = resolve_workspace_scope(child_worktree)
+
+    assert scope.root == child_worktree.resolve()
+    assert scope.local_config_path == (main_repo / ".agent" / "ralph-workflow.toml").resolve()
+    assert scope.resolve_agent_file("pipeline.toml") == (
+        main_repo / ".agent" / "pipeline.toml"
+    ).resolve()
+
+
+
+def test_resolve_workspace_scope_prefers_worktree_local_policy_override_per_file(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    main_repo = tmp_path / "main"
+    child_worktree = tmp_path / "feature-worktree"
+    (main_repo / ".agent").mkdir(parents=True)
+    (main_repo / ".agent" / "ralph-workflow.toml").write_text(
+        "[general]\n",
+        encoding="utf-8",
+    )
+    (main_repo / ".agent" / "pipeline.toml").write_text(
+        'entry_phase = "planning"\n',
+        encoding="utf-8",
+    )
+    (child_worktree / ".agent").mkdir(parents=True)
+    (child_worktree / ".agent" / "pipeline.toml").write_text(
+        "entry_phase = \"development\"\n", encoding="utf-8"
+    )
+
+    monkeypatch.setattr("ralph.workspace.scope.find_repo_root", lambda _start: child_worktree)
+    monkeypatch.setattr("ralph.workspace.scope.find_main_worktree_root", lambda _start: main_repo)
+
+    scope = resolve_workspace_scope(child_worktree)
+
+    assert scope.local_config_path == (main_repo / ".agent" / "ralph-workflow.toml").resolve()
+    assert scope.resolve_agent_file("pipeline.toml") == (
+        child_worktree / ".agent" / "pipeline.toml"
+    ).resolve()
+
+
 class TestSameWorkspaceWorkerScopeFencing:
     def test_write_to_declared_dir_succeeds(self, tmp_path: Path) -> None:
         """Worker scoped to src/foo can write inside src/foo."""
