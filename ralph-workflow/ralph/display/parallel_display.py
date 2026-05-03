@@ -27,6 +27,7 @@ if TYPE_CHECKING:
     from rich.console import Console
 
     from ralph.display.activity_model import ActivityEventKind
+    from ralph.display.phase_status import PhaseIterationContext
     from ralph.display.plain_renderer import RunStartOrientation
     from ralph.display.snapshot import PipelineSnapshot
     from ralph.pipeline.worker_state import WorkerStatus
@@ -300,10 +301,19 @@ class ParallelDisplay:
         with contextlib.suppress(Exception):
             self._plain_renderer.begin_phase(phase)
 
-    def emit_phase_close(self, phase: str, produced: str, *, phase_role: str | None = None) -> None:
+    def emit_phase_close(
+        self,
+        phase: str,
+        produced: str,
+        *,
+        phase_role: str | None = None,
+        iteration_context: PhaseIterationContext | None = None,
+    ) -> None:
         """Emit a single-line recap at the end of a phase."""
         with contextlib.suppress(Exception):
-            self._plain_renderer.emit_phase_close(phase, produced, phase_role=phase_role)
+            self._plain_renderer.emit_phase_close(
+                phase, produced, phase_role=phase_role, iteration_context=iteration_context
+            )
 
     def emit_run_end(
         self,

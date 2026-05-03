@@ -19,6 +19,7 @@ if TYPE_CHECKING:
 
     from rich.console import Console
 
+    from ralph.display.phase_status import PhaseIterationContext
     from ralph.pipeline.state import PipelineState
 
 LEVELS: Final[dict[str, str]] = {
@@ -724,7 +725,14 @@ class PlainLogRenderer:
         if self._run_start_time is None:
             self._run_start_time = self._monotonic()
 
-    def emit_phase_close(self, phase: str, produced: str, *, phase_role: str | None = None) -> None:
+    def emit_phase_close(
+        self,
+        phase: str,
+        produced: str,
+        *,
+        phase_role: str | None = None,
+        iteration_context: PhaseIterationContext | None = None,
+    ) -> None:
         """Emit a single-line recap after a phase's artifact blocks are rendered."""
         self.flush_blocks()
         timestamp = self._format_timestamp(self._clock())
@@ -745,10 +753,18 @@ class PlainLogRenderer:
             if phase_role is not None and LEVELS.get(phase_role) == "MILESTONE"
             else ""
         )
+        iter_labels = ""
+        if iteration_context is not None and iteration_context.has_context():
+            iter_labels = " " + " ".join(
+                f"[{label}]" for label, _ in iteration_context.context_labels()
+            )
         if clean_produced:
-            line_suffix = f"[phase-close] {glyph_prefix}phase={phase} {clean_produced}{suffix}"
+            line_suffix = (
+                f"[phase-close] {glyph_prefix}phase={phase}{iter_labels}"
+                f" {clean_produced}{suffix}"
+            )
         else:
-            line_suffix = f"[phase-close] {glyph_prefix}phase={phase}{suffix}"
+            line_suffix = f"[phase-close] {glyph_prefix}phase={phase}{iter_labels}{suffix}"
         self._console.print(
             self._build_line(timestamp, "INFO", "META", line_suffix),
             markup=False,

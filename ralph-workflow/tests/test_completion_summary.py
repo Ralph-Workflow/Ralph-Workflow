@@ -294,3 +294,65 @@ def test_emit_completion_summary_uses_subscriber_decision_log(tmp_path: Path) ->
     assert "all green" in out
     # phase transition row from record_phase_transition
     assert "\u2192 development" in out
+
+
+def _make_snapshot_with_fixer(
+    fixer_iteration: int = 1,
+    analysis_within_fixer: int | None = None,
+    fixer_phase: str | None = None,
+    outer_dev_iteration: int | None = None,
+) -> PipelineSnapshot:
+    return PipelineSnapshot(
+        phase="fix",
+        previous_phase="development",
+        review_issues_found=False,
+        interrupted_by_user=False,
+        last_error=None,
+        pr_url=None,
+        push_count=0,
+        total_agent_calls=3,
+        total_continuations=0,
+        total_fallbacks=0,
+        total_retries=0,
+        workers=(),
+        prompt_path="PROMPT.md",
+        prompt_preview=(),
+        run_id="run-2",
+        created_at=datetime(2026, 4, 18, 12, 0, tzinfo=UTC),
+        fixer_iteration=fixer_iteration,
+        analysis_within_fixer=analysis_within_fixer,
+        fixer_phase=fixer_phase,
+        outer_dev_iteration=outer_dev_iteration,
+    )
+
+
+def test_completion_summary_fixer_uses_canonical_label() -> None:
+    """Fixer context in completion summary uses 'Fixer #N' canonical label."""
+    snap = _make_snapshot_with_fixer(fixer_iteration=2)
+    text = _render_plain(snap)
+    assert "Fixer #2" in text
+    assert "fixer-iteration=" not in text
+
+
+def test_completion_summary_fixer_with_analysis_within_uses_canonical_label() -> None:
+    """analysis_within_fixer uses 'Analysis #N' canonical label."""
+    snap = _make_snapshot_with_fixer(fixer_iteration=1, analysis_within_fixer=3)
+    text = _render_plain(snap)
+    assert "Analysis #3" in text
+    assert "analysis-within-fixer=" not in text
+
+
+def test_completion_summary_outer_dev_uses_canonical_label() -> None:
+    """outer_dev_iteration in completion summary uses 'Dev #N' canonical label."""
+    snap = _make_snapshot_with_fixer(fixer_iteration=1, outer_dev_iteration=4)
+    text = _render_plain(snap)
+    assert "Dev #4" in text
+    assert "Outer Dev Iteration:" not in text
+
+
+def test_completion_summary_fixer_phase_uses_phase_key() -> None:
+    """fixer_phase shows as phase=<name> in the fixer summary."""
+    snap = _make_snapshot_with_fixer(fixer_iteration=1, fixer_phase="fix_analysis")
+    text = _render_plain(snap)
+    assert "phase=fix_analysis" in text
+    assert "fixer-phase=" not in text

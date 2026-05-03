@@ -11,6 +11,7 @@ from rich.rule import Rule
 from rich.text import Text
 
 from ralph.display.phase_banner import _phase_style
+from ralph.display.phase_status import format_analysis_cycle, format_dev_cycle, format_fixer_cycle
 from ralph.mcp.artifacts.commit_message import read_commit_message_artifact
 
 if TYPE_CHECKING:
@@ -187,11 +188,11 @@ def _fixer_iteration_summary(snapshot: PipelineSnapshot) -> str | None:
     """Return a summary string for fixer iteration context if active."""
     if snapshot.fixer_iteration is None:
         return None
-    parts = [f"fixer-iteration={snapshot.fixer_iteration}"]
+    parts = [format_fixer_cycle(snapshot.fixer_iteration)]
     if snapshot.analysis_within_fixer is not None:
-        parts.append(f"analysis-within-fixer={snapshot.analysis_within_fixer}")
+        parts.append(format_analysis_cycle(snapshot.analysis_within_fixer))
     if snapshot.fixer_phase is not None:
-        parts.append(f"fixer-phase={snapshot.fixer_phase}")
+        parts.append(f"phase={snapshot.fixer_phase}")
     return " | ".join(parts)
 
 
@@ -293,7 +294,7 @@ def render_completion_summary(  # noqa: PLR0913, PLR0912, PLR0915
 
     # Outer dev iteration if present
     if snapshot.outer_dev_iteration is not None:
-        lines.append(f"Outer Dev Iteration: {snapshot.outer_dev_iteration}")
+        lines.append(format_dev_cycle(snapshot.outer_dev_iteration))
 
     lines.append(_verification_line(workspace_root))
     lines.extend(_commit_message_lines(workspace_root))
@@ -555,8 +556,9 @@ def render_completion_summary_group(  # noqa: PLR0912, PLR0913, PLR0915
 
     # Outer dev iteration if present
     if snapshot.outer_dev_iteration is not None:
-        outer_dev_text = f"  Outer Dev Iteration: {snapshot.outer_dev_iteration}"
-        renderables.append(Text(outer_dev_text, style="theme.text.emphasis"))
+        renderables.append(
+            Text(f"  {format_dev_cycle(snapshot.outer_dev_iteration)}", style="theme.outer_dev")
+        )
 
     # Verification section
     renderables.append(Rule("Verification", style=style))
