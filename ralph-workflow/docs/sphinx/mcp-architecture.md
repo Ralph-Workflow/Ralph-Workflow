@@ -46,7 +46,7 @@ Key capability classes in the extended vocabulary:
 | `workspace.write_tracked` | Write to git-tracked files |
 | `workspace.edit` | Edit, append, create, move, and copy files |
 | `workspace.delete` | Delete files and directories (distinct destructive capability) |
-| `web.visit` | Fetch and extract text from a URL (opt-in; all drains) |
+| `web.visit` | Fetch and extract text from a URL (opt-in; non-commit drains) |
 | `git.write` | Perform git write operations — **orchestrator-only; never granted to agents** |
 
 Commit drains are strictly read-only: they receive only base read capabilities plus `run.report_progress`. They do not receive `git.write`, `workspace.write_ephemeral`, `workspace.write_tracked`, `workspace.edit`, or `process.exec_bounded`. The orchestrator is solely responsible for performing the actual git write operation after a commit agent proposes a commit message via `artifact.submit`.

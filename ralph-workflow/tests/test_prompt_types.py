@@ -79,14 +79,10 @@ def test_capability_set_defaults_cover_each_drain() -> None:
     assert set(commit) == {
         Capability.WORKSPACE_READ,
         Capability.WORKSPACE_METADATA_READ,
-        Capability.WORKSPACE_WRITE_EPHEMERAL,
         Capability.GIT_STATUS_READ,
         Capability.GIT_DIFF_READ,
-        Capability.GIT_WRITE,
         Capability.ARTIFACT_SUBMIT,
         Capability.RUN_REPORT_PROGRESS,
-        Capability.WEB_VISIT,
-        Capability.UPSTREAM_TOOL_USE,
     }
 
 

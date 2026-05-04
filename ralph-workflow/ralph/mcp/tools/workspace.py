@@ -13,7 +13,7 @@ import fnmatch
 import json
 import re
 from pathlib import Path, PurePosixPath
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, NamedTuple, cast
 
 from ralph.mcp.artifacts.policy_outcomes import is_policy_approved
 from ralph.mcp.tools.coordination import (
@@ -289,6 +289,86 @@ def _collect_matching_files(
     return sorted(matches)
 
 
+class _ReadSelector(NamedTuple):
+    """Normalized partial-read selectors for read_file."""
+
+    start: int | None  # line_start (1-based)
+    end: int | None  # line_end (1-based)
+    off: int | None  # byte offset
+    lim: int | None  # byte limit
+    head: int | None  # first N lines
+    tail: int | None  # last N lines
+
+    @classmethod
+    def from_params(cls, params: dict[str, object]) -> _ReadSelector:
+        """Extract and normalize selectors from raw MCP params.
+
+        Treats 0 as absent for all params except offset (offset=0 is a valid
+        start-of-file position). Inert zero defaults sent by brokers are
+        normalized to None so they do not trigger mode selection.
+        """
+        def _n(v: int | None) -> int | None:
+            return None if v == 0 else v
+
+        return cls(
+            start=_n(_int_opt_param(params, "line_start")),
+            end=_n(_int_opt_param(params, "line_end")),
+            off=_int_opt_param(params, "offset"),
+            lim=_n(_int_opt_param(params, "limit")),
+            head=_n(_int_opt_param(params, "head")),
+            tail=_n(_int_opt_param(params, "tail")),
+        )
+
+    def is_active(self) -> bool:
+        """Return True when at least one partial-read mode is requested."""
+        line_range = (self.start is not None) or (self.end is not None)
+        byte_window = (self.off is not None and self.off > 0) or (self.lim is not None)
+        return line_range or byte_window or (self.head is not None) or (self.tail is not None)
+
+
+def _dispatch_partial_read(
+    workspace: Workspace,
+    normalized: str,
+    path: str,
+    sel: _ReadSelector,
+) -> ToolResult:
+    """Validate selectors and dispatch to byte-window or line-based partial read."""
+    line_range = (sel.start is not None) or (sel.end is not None)
+    byte_window = (sel.off is not None and sel.off > 0) or (sel.lim is not None)
+    head_mode = sel.head is not None
+    tail_mode = sel.tail is not None
+
+    if line_range and byte_window:
+        raise InvalidParamsError("Cannot combine line_start/line_end with offset/limit")
+    if byte_window and (head_mode or tail_mode):
+        raise InvalidParamsError("Cannot combine offset/limit with head/tail")
+    if line_range and (head_mode or tail_mode):
+        raise InvalidParamsError("Cannot combine line_start/line_end with head/tail")
+
+    if byte_window:
+        byte_offset = sel.off if sel.off is not None else 0
+        content, meta = workspace.read_bytes(normalized, offset=byte_offset, limit=sel.lim)
+        payload: dict[str, object] = {
+            "path": path,
+            "content": content,
+            "total_bytes": meta.get("total_bytes"),
+            "returned_bytes": meta.get("returned_bytes"),
+            "truncated": meta.get("truncated"),
+        }
+    else:
+        content, meta = workspace.read_lines(
+            normalized, start=sel.start, end=sel.end, head=sel.head, tail=sel.tail
+        )
+        payload = {
+            "path": path,
+            "content": content,
+            "total_lines": meta.get("total_lines"),
+            "returned_lines": meta.get("returned_lines"),
+            "truncated": meta.get("truncated"),
+        }
+    return ToolResult(content=[ToolContent.text_content(_tool_json(payload))], is_error=False)
+
+
 def handle_read_file(
     session: CoordinationSessionLike,
     workspace: Workspace,
@@ -309,60 +389,9 @@ def handle_read_file(
     path = required_string_param(params, "path")
     normalized = _normalize_relative_path(path)
 
-    line_start = params.get("line_start")
-    line_end = params.get("line_end")
-    offset = params.get("offset")
-    limit = params.get("limit")
-    head = params.get("head")
-    tail = params.get("tail")
-
-    if any(p is not None for p in (line_start, line_end, offset, limit, head, tail)):
-        start = _int_opt_param(params, "line_start")
-        end = _int_opt_param(params, "line_end")
-        off = _int_opt_param(params, "offset")
-        lim = _int_opt_param(params, "limit")
-        h = _int_opt_param(params, "head")
-        t = _int_opt_param(params, "tail")
-
-        if (start is not None or end is not None) and (
-            off is not None or lim is not None
-        ):
-            raise InvalidParamsError(
-                "Cannot combine line_start/line_end with offset/limit"
-            )
-        if (off is not None or lim is not None) and (h is not None or t is not None):
-            raise InvalidParamsError("Cannot combine offset/limit with head/tail")
-        if (start is not None or end is not None) and (
-            h is not None or t is not None
-        ):
-            raise InvalidParamsError(
-                "Cannot combine line_start/line_end with head/tail"
-            )
-
-        if off is not None or lim is not None:
-            byte_offset = off if off is not None else 0
-            content, meta = workspace.read_bytes(normalized, offset=byte_offset, limit=lim)
-            payload = {
-                "path": path,
-                "content": content,
-                "total_bytes": meta.get("total_bytes"),
-                "returned_bytes": meta.get("returned_bytes"),
-                "truncated": meta.get("truncated"),
-            }
-        else:
-            content, meta = workspace.read_lines(
-                normalized, start=start, end=end, head=h, tail=t
-            )
-            payload = {
-                "path": path,
-                "content": content,
-                "total_lines": meta.get("total_lines"),
-                "returned_lines": meta.get("returned_lines"),
-                "truncated": meta.get("truncated"),
-            }
-        return ToolResult(
-            content=[ToolContent.text_content(_tool_json(payload))], is_error=False
-        )
+    sel = _ReadSelector.from_params(params)
+    if sel.is_active():
+        return _dispatch_partial_read(workspace, normalized, path, sel)
 
     # Full-file read: check size before reading to enforce max_bytes ceiling.
     max_bytes = _int_param(params, "max_bytes", _FULL_READ_DEFAULT_MAX_BYTES)

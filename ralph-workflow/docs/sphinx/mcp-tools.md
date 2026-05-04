@@ -52,7 +52,7 @@ Drain class groupings used in this table:
 | `coordinate` | `artifact.submit` | all | Parallel worker coordination |
 | `read_env` | `env.read` | write drains | Read an environment variable |
 | `web_search` | `web.search` | non-analysis/commit (config opt-in) | Search the web via configured backends |
-| `visit_url` | `web.visit` | all (config opt-in) | Fetch and extract text from a single URL |
+| `visit_url` | `web.visit` | non-commit drains (config opt-in) | Fetch and extract text from a single URL |
 | `read_image` | `media.read` | all (default-on; opt-out via mcp.toml) | Read an image file (multimodal default-on) |
 
 Claude exposes every tool as `mcp__ralph__<tool>` (e.g., `mcp__ralph__read_file`).
@@ -83,7 +83,9 @@ returned as a single text content block with no JSON envelope.
 
 **2. Partial-read JSON envelope** — when any of `line_start`/`line_end`, `offset`/`limit`,
 `head`, or `tail` is supplied. **These groups are mutually exclusive; use exactly one.**
-Combining two groups (e.g. `line_start` with `offset`) raises `InvalidParams`.
+Combining two active groups (e.g. `line_start` with a non-zero `offset`) raises `InvalidParams`.
+Broker-supplied zero defaults (`offset=0`, `limit=0`, `head=0`, `tail=0`, `line_start=0`,
+`line_end=0`) are treated as absent and do not count as choosing a mode.
 
 Line-range / head / tail mode returns `total_lines` and `returned_lines`:
 
@@ -147,8 +149,8 @@ Capability grants follow these rules (implemented in `ralph.mcp.session_plan`):
 - **Write drains** (development, fix) additionally receive: `workspace.write_ephemeral`, `workspace.write_tracked`, `workspace.edit`, `workspace.delete`, `process.exec_bounded`, `run.report_progress`, `env.read`
 - **Commit drains** (development\_commit, review\_commit, commit) are strictly read-only; they additionally receive only `run.report_progress`. `git.write` is reserved to the orchestrator and is never granted to agents.
 - **`web.search`** is granted when enabled in MCP config AND the drain class is not `analysis` (development\_analysis, review\_analysis) or `commit`
-- **`web.visit`** is granted to all drains when enabled in MCP config
-- **`upstream.tool_use`** is granted whenever upstream MCP servers are configured
+- **`web.visit`** is granted to non-commit drains when enabled in MCP config; commit-class drains (development\_commit, review\_commit, commit) do not receive `web.visit`
+- **`upstream.tool_use`** is granted whenever upstream MCP servers are configured, except for commit-class drains
 
 ## Artifact Submission
 
@@ -217,7 +219,7 @@ callable. The capability strings are:
 | `env.read` | `read_env` |
 | `upstream.tool_use` | Upstream proxy tools (granted when upstream servers are configured) |
 | `web.search` | `web_search` (config opt-in; restricted to non-analysis/commit drains) |
-| `web.visit` | `visit_url` (config opt-in; all drains) |
+| `web.visit` | `visit_url` (config opt-in; non-commit drains) |
 | `media.read` | `read_image` (default-on; opt-out via `mcp.toml`) |
 
 See `ralph.mcp.protocol.capability_mapping` for the full capability-to-tool mapping and

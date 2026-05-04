@@ -71,10 +71,12 @@ DEFAULT_CAPABILITIES: dict[SessionDrain, tuple[RalphCapability, ...]] = {
         RalphCapability.UPSTREAM_TOOL_USE,
     ),
     SessionDrain.DEVELOPMENT_COMMIT: (
+        RalphCapability.WORKSPACE_READ,
         RalphCapability.WORKSPACE_METADATA_READ,
-        RalphCapability.WEB_SEARCH,
-        RalphCapability.WEB_VISIT,
-        RalphCapability.UPSTREAM_TOOL_USE,
+        RalphCapability.GIT_STATUS_READ,
+        RalphCapability.GIT_DIFF_READ,
+        RalphCapability.ARTIFACT_SUBMIT,
+        RalphCapability.RUN_REPORT_PROGRESS,
     ),
     SessionDrain.ANALYSIS: (
         RalphCapability.WORKSPACE_READ,
@@ -144,22 +146,20 @@ DEFAULT_CAPABILITIES: dict[SessionDrain, tuple[RalphCapability, ...]] = {
         RalphCapability.UPSTREAM_TOOL_USE,
     ),
     SessionDrain.REVIEW_COMMIT: (
+        RalphCapability.WORKSPACE_READ,
         RalphCapability.WORKSPACE_METADATA_READ,
-        RalphCapability.WEB_SEARCH,
-        RalphCapability.WEB_VISIT,
-        RalphCapability.UPSTREAM_TOOL_USE,
+        RalphCapability.GIT_STATUS_READ,
+        RalphCapability.GIT_DIFF_READ,
+        RalphCapability.ARTIFACT_SUBMIT,
+        RalphCapability.RUN_REPORT_PROGRESS,
     ),
     SessionDrain.COMMIT: (
         RalphCapability.WORKSPACE_READ,
         RalphCapability.WORKSPACE_METADATA_READ,
-        RalphCapability.WORKSPACE_WRITE_EPHEMERAL,
         RalphCapability.GIT_STATUS_READ,
         RalphCapability.GIT_DIFF_READ,
-        RalphCapability.GIT_WRITE,
         RalphCapability.ARTIFACT_SUBMIT,
         RalphCapability.RUN_REPORT_PROGRESS,
-        RalphCapability.WEB_VISIT,
-        RalphCapability.UPSTREAM_TOOL_USE,
     ),
 }
 
