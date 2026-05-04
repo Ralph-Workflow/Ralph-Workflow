@@ -57,19 +57,9 @@
 # Example: { claude = ["claude-sonnet-4-20250514", "claude-3-5-sonnet-20241022"] }
 # provider_fallback = {}
 
-# [general.behavior] — Behavioral flags
-[general.behavior]
-# interactive = false           # keep agent in foreground (interactive mode)
-# auto_detect_stack = true      # auto-detect project stack for review guidelines
-# strict_validation = false     # strict PROMPT.md validation
-
 # [general.workflow] — Workflow automation flags
 [general.workflow]
 # checkpoint_enabled = true     # enable checkpoint/resume functionality
-
-# [general.execution] — Execution behavior flags
-[general.execution]
-# force_universal_prompt = false  # force universal review prompt for all agents
 
 # ---------------------------------------------------------------------------
 # [ccs] — Claude Code Switch (CCS) defaults

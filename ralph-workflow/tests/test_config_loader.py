@@ -195,13 +195,29 @@ def test_general_config_defaults() -> None:
     config = GeneralConfig()
     assert config.verbosity == DEFAULT_VERBOSITY
     assert config.workflow.checkpoint_enabled is True
-    assert config.execution.force_universal_prompt is False
 
 
 def test_general_config_does_not_expose_removed_field() -> None:
     """Test that the dead field is removed."""
     field_name = "max_dev" + "_continuations"
     assert field_name not in GeneralConfig.model_fields
+
+
+def test_general_config_does_not_expose_removed_execution_flags() -> None:
+    """Removed review-era execution flags must not remain in GeneralConfig."""
+    assert "execution" not in GeneralConfig.model_fields
+    assert "behavior" not in GeneralConfig.model_fields
+
+
+def test_general_config_does_not_expose_removed_force_universal_prompt() -> None:
+    """force_universal_prompt and related review-era fields were removed as dead code."""
+    for field_name in (
+        "force_universal_prompt",
+        "auto_detect_stack",
+        "interactive",
+        "strict_validation",
+    ):
+        assert field_name not in GeneralConfig.model_fields
 
 
 def test_verbosity_enum() -> None:

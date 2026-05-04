@@ -69,16 +69,6 @@ Core workflow settings: verbosity, git identity, and retry behavior.
 | `max_cycles` | `3` | Max full fallback cycles through a drain before giving up |
 | `agent_idle_timeout_seconds` | `300.0` | Max idle seconds before killing a stalled agent |
 
-### `[general.behavior]`
-
-Behavioral flags that control optional runtime features.
-
-| Key | Default | Description |
-|-----|---------|-------------|
-| `interactive` | `false` | Keep agent in foreground (interactive mode) |
-| `auto_detect_stack` | `true` | Auto-detect project stack for review guidelines |
-| `strict_validation` | `false` | Strict PROMPT.md validation |
-
 ### `[general.workflow]`
 
 Workflow automation flags.
@@ -86,14 +76,6 @@ Workflow automation flags.
 | Key | Default | Description |
 |-----|---------|-------------|
 | `checkpoint_enabled` | `true` | Enable checkpoint/resume functionality |
-
-### `[general.execution]`
-
-Execution behavior flags.
-
-| Key | Default | Description |
-|-----|---------|-------------|
-| `force_universal_prompt` | `false` | Force universal review prompt for all agents |
 
 ### `[ccs]`
 

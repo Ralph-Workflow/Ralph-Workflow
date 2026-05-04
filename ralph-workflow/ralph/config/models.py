@@ -95,20 +95,6 @@ class CloudConfig(_FrozenConfigModel):  # type: ignore[explicit-any]  # reason: 
     timeout_secs: int = 30
 
 
-class GeneralBehaviorFlags(_FrozenConfigModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
-    """General configuration behavioral flags.
-
-    Attributes:
-        interactive: Interactive mode (keep agent in foreground).
-        auto_detect_stack: Auto-detect project stack for review guidelines.
-        strict_validation: Strict PROMPT.md validation.
-    """
-
-    interactive: bool = False
-    auto_detect_stack: bool = True
-    strict_validation: bool = False
-
-
 class GeneralWorkflowFlags(_FrozenConfigModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     """General configuration workflow automation flags.
 
@@ -119,24 +105,12 @@ class GeneralWorkflowFlags(_FrozenConfigModel):  # type: ignore[explicit-any]  #
     checkpoint_enabled: bool = True
 
 
-class GeneralExecutionFlags(_FrozenConfigModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
-    """General configuration execution behavior flags.
-
-    Attributes:
-        force_universal_prompt: Force universal review prompt for all agents.
-    """
-
-    force_universal_prompt: bool = False
-
-
 class GeneralConfig(_FrozenConfigModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     """[general] section of ralph-workflow.toml.
 
     Attributes:
         verbosity: Verbosity level (0-4).
-        behavior: Behavioral flags (interactive, auto-detect, strict validation).
-        workflow: Workflow automation flags (checkpoint, auto-rebase).
-        execution: Execution behavior flags (universal prompt).
+        workflow: Workflow automation flags (checkpoint).
         developer_iters: Number of developer iterations.
         developer_context: Developer context level.
         prompt_path: Path to save last prompt.
@@ -178,9 +152,7 @@ class GeneralConfig(_FrozenConfigModel):  # type: ignore[explicit-any]  # reason
     """
 
     verbosity: int = 2
-    behavior: GeneralBehaviorFlags = Field(default_factory=GeneralBehaviorFlags)
     workflow: GeneralWorkflowFlags = Field(default_factory=GeneralWorkflowFlags)
-    execution: GeneralExecutionFlags = Field(default_factory=GeneralExecutionFlags)
     developer_iters: int = Field(default=5, ge=1)
     developer_context: int = Field(default=1, ge=1)
     prompt_path: pathlib.Path | None = None
