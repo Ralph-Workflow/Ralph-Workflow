@@ -7,7 +7,7 @@ so the user can easily follow the flow of planning → development → review �
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING
 
 from rich.rule import Rule
 from rich.text import Text
@@ -100,71 +100,6 @@ def _phase_label(phase: str) -> str:
     """
     return phase.replace("_", " ").title()
 
-
-@dataclass(frozen=True)
-class _TransitionLayout:
-    """Layout knobs for phase transition banner rendering."""
-
-    leading_blank: bool
-    separator_rule: bool
-    trailing_rule: bool
-
-
-@dataclass(frozen=True)
-class _BannerOptions:
-    """Options for rendering a transition banner."""
-
-    from_label: str
-    to_label: str
-    description: str | None = None
-    context: dict[str, object] | None = None
-    style: str = "theme.text.muted"
-
-
-_MODE_LAYOUTS: dict[Literal["compact", "medium", "wide"], _TransitionLayout] = {
-    "compact": _TransitionLayout(leading_blank=False, separator_rule=False, trailing_rule=True),
-    "medium": _TransitionLayout(leading_blank=True, separator_rule=True, trailing_rule=True),
-    "wide": _TransitionLayout(leading_blank=True, separator_rule=True, trailing_rule=True),
-}
-
-
-def _render_transition_banner(
-    display_context: DisplayContext,
-    options: _BannerOptions,
-    is_major: bool,
-) -> None:
-    """Render a phase transition banner using mode-driven layout.
-
-    Args:
-        display_context: DisplayContext providing console and mode.
-        options: Banner options including labels, description, context, and style.
-        is_major: True for major transitions, False for minor.
-    """
-    c = display_context.console
-    mode = display_context.mode
-    layout = _MODE_LAYOUTS[mode]
-
-    if layout.leading_blank:
-        c.print()
-
-    if layout.separator_rule:
-        c.print(Rule(style=options.style))
-
-    banner = Text()
-    arrow = display_context.glyph_for("arrow")
-    banner.append(f"  {options.from_label}", style="theme.text.muted")
-    banner.append(f" {arrow} ", style="theme.text.emphasis")
-    banner.append(options.to_label, style=options.style)
-    if options.context:
-        detail = "  ".join(f"{k}={v}" for k, v in options.context.items())
-        banner.append(f"  ({detail})", style="theme.text.muted")
-    c.print(banner)
-
-    if options.description and is_major:
-        c.print(Text(f"  {options.description}", style="theme.text.dim_italic"))
-
-    if layout.trailing_rule:
-        c.print(Rule(style=options.style))
 
 
 def _resolve_transition_meta(

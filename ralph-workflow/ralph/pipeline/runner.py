@@ -1072,6 +1072,7 @@ def _emit_final_summary(
                 prompt_preview=(),
                 run_id=None,
             )
+        pipeline_policy = subscriber.pipeline_policy if subscriber is not None else None
         ctx = _get_display_context(display, display_context)
         emit_completion_summary(
             snapshot,
@@ -1081,6 +1082,7 @@ def _emit_final_summary(
                 isinstance(display, _LegacyConsoleDisplay) or state.interrupted_by_user
             ),
             display_context=ctx,
+            pipeline_policy=pipeline_policy,
         )
     except Exception:
         logger.debug("Failed to emit completion summary", exc_info=True)

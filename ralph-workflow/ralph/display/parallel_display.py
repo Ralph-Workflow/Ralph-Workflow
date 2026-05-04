@@ -348,6 +348,7 @@ class ParallelDisplay:
                         error_count=self._plain_renderer.errors_count,
                         elapsed_seconds=self._plain_renderer.run_elapsed_seconds,
                         display_context=self._ctx,
+                        pipeline_policy=self._subscriber.pipeline_policy,
                     )
             except Exception as exc:
                 self._plain_renderer.emit_warn_line(

@@ -648,6 +648,7 @@ def emit_completion_summary(  # noqa: PLR0913
     elapsed_seconds: float | None = None,
     include_context_sections: bool = True,
     display_context: DisplayContext,
+    pipeline_policy: PipelinePolicy | None = None,
 ) -> None:
     """Emit the completion summary to the console.
 
@@ -662,6 +663,7 @@ def emit_completion_summary(  # noqa: PLR0913
         error_count: Number of errors.
         elapsed_seconds: Total elapsed time.
         display_context: DisplayContext providing the console and mode.
+        pipeline_policy: Optional policy for role-based section styling.
     """
     console = display_context.console
     console.print(
@@ -677,6 +679,7 @@ def emit_completion_summary(  # noqa: PLR0913
             elapsed_seconds=elapsed_seconds,
             include_context_sections=include_context_sections,
             display_context=display_context,
+            pipeline_policy=pipeline_policy,
         ),
         markup=False,
         highlight=False,

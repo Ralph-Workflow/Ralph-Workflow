@@ -128,6 +128,57 @@ Mode thresholds
 In ``compact`` mode, renderers suppress secondary table columns, extra blank
 lines, and descriptive Rules to fit narrow terminals.
 
+Iteration context labels
+------------------------
+
+When the pipeline renders phase-start banners, ``[phase-close]`` lines, and the
+final completion panel, it uses a set of **canonical iteration labels** that appear
+consistently across all three display surfaces.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 30 40
+
+   * - Label format
+     - Style
+     - Meaning
+   * - ``Dev #N``
+     - Bold sky-blue (``theme.outer_dev``)
+     - Outer development cycle number (1-indexed).  Increments each time the
+       pipeline completes a full development loop.
+   * - ``Analysis N/cap``
+     - Purple (``theme.inner_analysis``)
+     - Inner analysis count within a fixer context, or the current repeat of
+       an analysis phase that has a ``loop_policy``.
+   * - ``Fixer #N``
+     - Vermillion (``theme.fixer_iteration``)
+     - Fixer iteration number (1-indexed) when the pipeline entered a fix
+       loop after analysis issued a *revise* decision.
+   * - ``Budget: N left``
+     - Bold orange (``theme.level.warn``)
+     - Remaining invocations allowed by the active budget counter.
+
+These labels are produced by helpers in ``ralph.display.phase_status``
+(``format_dev_cycle``, ``format_analysis_cycle``, ``format_fixer_cycle``,
+``format_budget_remaining``) and consumed via :class:`PhaseIterationContext`
+when rendering ``[phase-close]`` lines.
+
+Phase-close line format
+-----------------------
+
+After each phase ends, a structured ``[phase-close]`` line is written to the
+transcript::
+
+    <ISO-TS> INFO META [phase-close] <glyph> phase=<name> [Dev #N] [Analysis N/cap] <produced> (elapsed=Ns, content_blocks=N, thinking_blocks=N, tool_calls=N, errors=N)
+
+- The ``<glyph>`` prefix (``◆`` Unicode, ``*`` ASCII) appears only for
+  milestone-role phases (execution, review, fix).
+- Canonical iteration labels (``[Dev #N]``, ``[Analysis N/cap]``, etc.) appear
+  between the phase name and the produced-artifact summary when an
+  :class:`~ralph.display.phase_status.PhaseIterationContext` is provided.
+- The trailing counter tuple always appears so every ``[phase-close]`` line
+  carries phase-level activity metrics.
+
 See also
 --------
 

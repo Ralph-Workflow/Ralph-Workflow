@@ -144,6 +144,34 @@ When a block ends, Ralph Workflow may append summary lines depending on configur
 - `⇳ preview:` — first *N* characters of the block content
 - `⇳ ai-summary:` — LLM-generated one-line summary (requires `RALPH_LONG_CONTENT_AI_SUMMARY`)
 
+## `[phase-close]` Line
+
+After each phase completes, a single `[phase-close]` line is appended to the transcript:
+
+```
+<ISO-TS> INFO META [phase-close] <glyph?> phase=<name> [Dev #N]? [Analysis N/cap]? <produced> (elapsed=Ns, content_blocks=N, thinking_blocks=N, tool_calls=N, errors=N)
+```
+
+| Field | Notes |
+|-------|-------|
+| `<glyph?>` | Milestone glyph (`◆` Unicode, `*` ASCII) for execution/review/fix phases only |
+| `phase=<name>` | Name of the phase that just ended |
+| `[Dev #N]`, `[Analysis N/cap]`, `[Fixer #N]`, `[Budget: N left]` | Canonical iteration labels — only present when in a context that tracks them |
+| `<produced>` | Human-readable artifact summary (e.g. `plan: 5 step(s), 2 risk(s)`) |
+| Counter tuple | Phase-level activity metrics always present |
+
+### Canonical iteration labels
+
+All display surfaces (phase-start banners, `[phase-close]` lines, completion panel) use
+the same vocabulary for iteration context:
+
+| Label | Meaning | Color |
+|-------|---------|-------|
+| `Dev #N` | Outer development cycle (1-indexed) | Bold sky-blue |
+| `Analysis N/cap` | Inner analysis cycle with cap, or `Analysis #N` without cap | Purple |
+| `Fixer #N` | Fixer iteration within an analysis→fix loop | Vermillion |
+| `Budget: N left` | Remaining budget from an active policy counter | Bold orange |
+
 ## `[run-end]` Panel
 
 At the end of every pipeline run, a `[run-end]` block reports the run summary.
