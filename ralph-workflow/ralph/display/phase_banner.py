@@ -6,7 +6,6 @@ so the user can easily follow the flow of planning → development → review �
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from rich.rule import Rule
@@ -19,7 +18,6 @@ from ralph.display.phase_status import (
     format_dev_cycle,
     format_transition_context_items,
 )
-from ralph.pipeline import progress
 
 if TYPE_CHECKING:
     from rich.console import Console
@@ -217,50 +215,6 @@ def show_phase_transition(  # noqa: PLR0913
     c.print(Rule(title=title, style=style))
 
 
-@dataclass(frozen=True)
-class PhaseStartContext:
-    """Optional counters and metadata for phase start display."""
-
-    budget_progress: dict[str, tuple[int, int]] = field(default_factory=dict)
-    agent_name: str | None = None
-    analysis_iteration: int | None = None
-    max_analysis_iterations: int | None = None
-    phase_name: str | None = None
-    outer_iteration: int | None = None  # Outer dev cycle shown as [Dev #N]
-    outer_iteration_total: int | None = None  # Total cap for outer dev; shows Dev N/total
-    inner_analysis: int | None = None  # Inner analysis cycle shown as [Analysis N/cap]
-    inner_analysis_cap: int | None = None  # Cap for inner_analysis display
-    budget_remaining: int | None = None  # Remaining budget shown as [Budget: N left]
-
-
-@dataclass(frozen=True)
-class PhaseStartIterationContext:
-    """Bundled iteration context for show_phase_start_from_state.
-
-    Use this to pass iteration context (outer_dev, inner_analysis) that
-    cannot be extracted from the raw PipelineState object.
-    """
-
-    outer_iteration: int | None = None
-    outer_iteration_total: int | None = None
-    inner_analysis: int | None = None
-    budget_remaining: int | None = None
-
-
-def _build_analysis_suffix(
-    phase_name: str,
-    iteration: int,
-    max_iterations: int,
-    *,
-    ia_glyph: str = "≴",
-) -> str:
-    """Build the analysis iteration suffix string."""
-    suffix = f"  {ia_glyph} {phase_name} {iteration + 1}/{max_iterations}"
-    if progress.is_final_analysis_iteration(iteration, max_iterations):
-        suffix += " (final, skipping next)"
-    return suffix
-
-
 def _build_outer_iteration_suffix(
     iteration: int | None,
     cap: int | None = None,
@@ -296,16 +250,18 @@ def _build_budget_remaining_suffix(
     return f"  {budget_glyph} {format_budget_remaining(remaining)}"
 
 
-def show_phase_start(  # noqa: PLR0913
+def show_phase_start(
     phase: str,
     *,
-    ctx: PhaseStartContext | None = None,
     agent_name: str | None = None,
     console: Console | None = None,
     display_context: DisplayContext | None = None,
     pipeline_policy: PipelinePolicy | None = None,
 ) -> None:
-    """Display the start of a pipeline phase."""
+    """Display the start of a pipeline phase (no iteration context).
+
+    For banners that carry iteration context, use :func:`show_phase_start_from_entry`.
+    """
     c = _resolve_console(console, display_context)
     effective_ctx = (
         display_context if display_context is not None else make_display_context(console=c)
@@ -315,123 +271,13 @@ def show_phase_start(  # noqa: PLR0913
 
     line = Text()
     start_glyph = effective_ctx.glyph_for("start")
-    od_glyph = effective_ctx.glyph_for("outer_dev")
-    ia_glyph = effective_ctx.glyph_for("inner_analysis")
-    budget_glyph = effective_ctx.glyph_for("budget")
     line.append(f"{start_glyph} ", style=style)
     line.append(label, style=style)
 
-    if ctx is not None:
-        # Render outer dev cycle FIRST — highest hierarchy level
-        if ctx.outer_iteration is not None:
-            suffix = _build_outer_iteration_suffix(
-                ctx.outer_iteration, ctx.outer_iteration_total, od_glyph=od_glyph
-            )
-            line.append(suffix, style="theme.outer_dev")
-        # Render analysis iteration (loop counter) with prominent inner_analysis style
-        if (
-            ctx.analysis_iteration is not None
-            and ctx.max_analysis_iterations is not None
-        ):
-            phase_name = ctx.phase_name or "analysis"
-            suffix = _build_analysis_suffix(
-                phase_name,
-                ctx.analysis_iteration,
-                ctx.max_analysis_iterations,
-                ia_glyph=ia_glyph,
-            )
-            line.append(suffix, style="theme.inner_analysis")
-        # Render inner analysis count (fixer-context analysis)
-        if ctx.inner_analysis is not None:
-            suffix = _build_inner_analysis_suffix(
-                ctx.inner_analysis, ctx.inner_analysis_cap, ia_glyph=ia_glyph
-            )
-            line.append(suffix, style="theme.inner_analysis")
-        # Render budget remaining
-        if ctx.budget_remaining is not None:
-            suffix = _build_budget_remaining_suffix(ctx.budget_remaining, budget_glyph=budget_glyph)
-            line.append(suffix, style="theme.level.warn")
-        # Render legacy budget_progress counters last
-        for counter_name, (completed, cap) in ctx.budget_progress.items():
-            if cap > 0:
-                line.append(
-                    f" [{counter_name} {completed + 1}/{cap}]",
-                    style="theme.text.muted",
-                )
-        effective_agent = ctx.agent_name or agent_name
-    else:
-        effective_agent = agent_name
-
-    if effective_agent is not None:
-        line.append(f"  agent={effective_agent}", style="theme.text.muted")
+    if agent_name is not None:
+        line.append(f"  agent={agent_name}", style="theme.text.muted")
 
     c.print(line)
-
-
-def show_phase_start_from_state(
-    state: object,
-    phase: str,
-    *,
-    display_context: DisplayContext,
-    iteration_context: PhaseStartIterationContext | None = None,
-    analysis_iteration: tuple[int, int] | None = None,
-) -> None:
-    """Display phase start using counters extracted from a pipeline state object.
-
-    Args:
-        state: PipelineState or similar object with budget_caps, outer_progress, agent_name.
-        phase: Phase name to display.
-        display_context: DisplayContext for rendering.
-        iteration_context: Optional iteration context for outer_dev, inner_analysis,
-            budget_remaining, and fixer_iteration values that cannot be extracted
-            from the raw state object.
-        analysis_iteration: Tuple of (current, max) analysis iterations for the phase's loop.
-    """
-    caps_raw: object = getattr(state, "budget_caps", None)
-    progress_raw: object = getattr(state, "outer_progress", None)
-    agent_raw: object = getattr(state, "agent_name", None)
-    caps: dict[str, int] = (
-        {str(k): int(v) for k, v in caps_raw.items() if isinstance(v, int)}
-        if isinstance(caps_raw, dict)
-        else {}
-    )
-    progress: dict[str, int] = (
-        {str(k): int(v) for k, v in progress_raw.items() if isinstance(v, int)}
-        if isinstance(progress_raw, dict)
-        else {}
-    )
-    budget_progress: dict[str, tuple[int, int]] = {
-        name: (progress.get(name, 0), cap)
-        for name, cap in caps.items()
-        if cap > 0
-    }
-    agent_name: str | None = agent_raw if isinstance(agent_raw, str) else None
-
-    outer_iteration: int | None = None
-    outer_iteration_total: int | None = None
-    inner_analysis: int | None = None
-    budget_remaining: int | None = None
-
-    if iteration_context is not None:
-        outer_iteration = iteration_context.outer_iteration
-        outer_iteration_total = iteration_context.outer_iteration_total
-        inner_analysis = iteration_context.inner_analysis
-        budget_remaining = iteration_context.budget_remaining
-
-    ctx = PhaseStartContext(
-        budget_progress=budget_progress,
-        agent_name=agent_name,
-        analysis_iteration=analysis_iteration[0] if analysis_iteration else None,
-        max_analysis_iterations=analysis_iteration[1] if analysis_iteration else None,
-        phase_name=phase.replace("_", " ").title(),
-        outer_iteration=outer_iteration,
-        outer_iteration_total=outer_iteration_total,
-        inner_analysis=inner_analysis,
-        budget_remaining=budget_remaining,
-    )
-    show_phase_start(phase, ctx=ctx, display_context=display_context)
-
-
 
 
 def show_phase_start_from_entry(

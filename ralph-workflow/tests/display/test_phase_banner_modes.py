@@ -13,11 +13,12 @@ from rich.console import Console
 
 from ralph.display.context import DisplayContext, make_display_context
 from ralph.display.phase_banner import (
-    PhaseStartContext,
     show_phase_complete,
     show_phase_start,
+    show_phase_start_from_entry,
     show_phase_transition,
 )
+from ralph.display.phase_lifecycle import PhaseEntryModel
 from ralph.display.theme import ASCII_GLYPHS, UNICODE_GLYPHS
 from ralph.policy.models import PhaseDefinition, PhaseTransition, PipelinePolicy, RecoveryPolicy
 
@@ -169,36 +170,36 @@ def test_phase_complete_uses_ok_badge_in_ascii_mode() -> None:
 
 # --- Phase-start ordering tests ---
 
-def test_phase_start_outer_dev_appears_before_analysis_iteration() -> None:
-    """outer_dev ([Dev #N]) must appear before analysis_iteration in phase-start output."""
+def test_phase_start_outer_dev_appears_before_inner_analysis() -> None:
+    """Dev label must appear before Analysis label in phase-start output."""
     ctx = _make_ctx("wide")
-    start_ctx = PhaseStartContext(
-        outer_iteration=3,
-        analysis_iteration=1,
-        max_analysis_iterations=5,
+    entry = PhaseEntryModel(
         phase_name="analysis",
+        outer_dev_iteration=3,
+        inner_analysis=2,
+        inner_analysis_cap=5,
     )
-    show_phase_start("analysis", display_context=ctx, ctx=start_ctx)
+    show_phase_start_from_entry(entry, display_context=ctx)
     output = _export(ctx)
     dev_pos = output.find("Dev #3")
-    analysis_pos = output.find("analysis 2/5")
+    analysis_pos = output.find("Analysis 2/5")
     assert dev_pos != -1, f"Expected 'Dev #3' in output, got: {output!r}"
-    assert analysis_pos != -1, f"Expected 'analysis 2/5' in output, got: {output!r}"
+    assert analysis_pos != -1, f"Expected 'Analysis 2/5' in output, got: {output!r}"
     assert dev_pos < analysis_pos, (
-        f"[Dev #3] must appear before analysis 2/5, "
+        f"Dev #3 must appear before Analysis 2/5, "
         f"but dev_pos={dev_pos} analysis_pos={analysis_pos}"
     )
 
 
-def test_phase_start_no_outer_dev_only_analysis_iteration() -> None:
-    """Without outer_dev, analysis_iteration still renders with inner_analysis style."""
+def test_phase_start_no_outer_dev_only_inner_analysis() -> None:
+    """Without outer_dev, inner_analysis still renders in output."""
     ctx = _make_ctx("wide")
-    start_ctx = PhaseStartContext(
-        analysis_iteration=0,
-        max_analysis_iterations=3,
+    entry = PhaseEntryModel(
         phase_name="analysis",
+        inner_analysis=1,
+        inner_analysis_cap=3,
     )
-    show_phase_start("analysis", display_context=ctx, ctx=start_ctx)
+    show_phase_start_from_entry(entry, display_context=ctx)
     output = _export(ctx)
-    assert "analysis 1/3" in output
-    assert "[Dev #" not in output
+    assert "Analysis 1/3" in output
+    assert "Dev #" not in output

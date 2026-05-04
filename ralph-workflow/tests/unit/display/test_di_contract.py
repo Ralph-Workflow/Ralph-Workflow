@@ -33,7 +33,6 @@ from ralph.display.context import make_display_context
 from ralph.display.parallel_display import ParallelDisplay
 from ralph.display.phase_banner import (
     show_phase_start,
-    show_phase_start_from_state,
     show_phase_transition,
 )
 from ralph.display.plain_renderer import PlainLogRenderer
@@ -105,7 +104,7 @@ class TestRenderersRequireDisplayContext:
             (tables_module, "show_providers"),
             (phase_banner_module, "show_phase_transition"),
             (phase_banner_module, "show_phase_start"),
-            (phase_banner_module, "show_phase_start_from_state"),
+            (phase_banner_module, "show_phase_start_from_entry"),
             (phase_banner_module, "show_phase_complete"),
             (artifact_renderer_module, "render_plan_artifact"),
             (artifact_renderer_module, "render_analysis_decision"),
@@ -146,14 +145,6 @@ class TestRenderersRequireDisplayContext:
         console = Console(record=True, width=120, force_terminal=True)
         with pytest.raises(TypeError, match="display_context"):
             cast("Any", ParallelDisplay)(console)
-
-    def test_show_phase_start_from_state_rejects_missing_context(self) -> None:
-        """show_phase_start_from_state() must fail when called without display_context."""
-        with pytest.raises(TypeError, match="display_context"):
-            show_phase_start_from_state(
-                state=object(),
-                phase="planning",
-            )  # type: ignore[call-arg]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
 
     def test_show_providers_rejects_missing_context(self) -> None:
         """show_providers() must fail when called without display_context."""

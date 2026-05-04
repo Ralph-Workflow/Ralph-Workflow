@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import types
 from io import StringIO
 
 from rich.console import Console
@@ -11,15 +10,14 @@ from ralph.display.context import DisplayContext, make_display_context
 from ralph.display.phase_banner import (
     _MAJOR_ROLE_PAIRS,
     _ROLE_PAIR_DESCRIPTIONS,
-    PhaseStartContext,
-    PhaseStartIterationContext,
     _phase_label,
     _phase_style,
     show_phase_complete,
     show_phase_start,
-    show_phase_start_from_state,
+    show_phase_start_from_entry,
     show_phase_transition,
 )
+from ralph.display.phase_lifecycle import PhaseEntryModel
 from ralph.policy.models import (
     LoopCounterConfig,
     PhaseCommitPolicy,
@@ -52,24 +50,6 @@ def test_show_phase_transition_minor_renders_rule() -> None:
     output = console.export_text()
     assert "Development" in output
     assert "Development Analysis" in output
-
-
-def test_show_phase_start_with_iteration() -> None:
-    console = Console(record=True)
-    ctx = PhaseStartContext(budget_progress={"iteration": (1, 5)})
-    show_phase_start("development", ctx=ctx, display_context=_ctx_from_console(console))
-    output = console.export_text()
-    assert "Development" in output
-    assert "2/5" in output
-
-
-def test_show_phase_start_with_reviewer_pass() -> None:
-    console = Console(record=True)
-    ctx = PhaseStartContext(budget_progress={"reviewer_pass": (0, 3)})
-    show_phase_start("review", ctx=ctx, display_context=_ctx_from_console(console))
-    output = console.export_text()
-    assert "Review" in output
-    assert "1/3" in output
 
 
 def test_show_phase_complete_with_decision() -> None:
@@ -116,24 +96,6 @@ def test_show_phase_start_with_agent_name() -> None:
     output = console.export_text()
     assert "Development" in output
     assert "claude" in output
-
-
-def test_show_phase_start_zero_indexed_boundary() -> None:
-    """Iteration 0 should display as 1 (1-indexed for users)."""
-    console = Console(record=True)
-    ctx = PhaseStartContext(budget_progress={"iteration": (0, 5)})
-    show_phase_start("development", ctx=ctx, display_context=_ctx_from_console(console))
-    output = console.export_text()
-    assert "1/5" in output
-
-
-def test_show_phase_start_last_iteration_boundary() -> None:
-    """Last iteration (N-1) should display as N/N."""
-    console = Console(record=True)
-    ctx = PhaseStartContext(budget_progress={"iteration": (4, 5)})
-    show_phase_start("development", ctx=ctx, display_context=_ctx_from_console(console))
-    output = console.export_text()
-    assert "5/5" in output
 
 
 def test_show_phase_complete_without_decision() -> None:
@@ -277,216 +239,61 @@ def test_transition_without_policy_renders_as_minor_no_description() -> None:
     assert "Development Analysis" in output
 
 
-def test_show_phase_start_reviewer_pass_zero_boundary() -> None:
-    """Reviewer pass 0 should display as 1/N (1-indexed)."""
-    console = Console(record=True)
-    ctx = PhaseStartContext(budget_progress={"reviewer_pass": (0, 3)})
-    show_phase_start("review", ctx=ctx, display_context=_ctx_from_console(console))
-    output = console.export_text()
-    assert "1/3" in output
+# --- Tests for show_phase_start_from_entry (canonical API) ---
 
 
-def test_show_phase_start_reviewer_pass_last_boundary() -> None:
-    """Last reviewer pass (N-1) should display as N/N."""
-    console = Console(record=True)
-    ctx = PhaseStartContext(budget_progress={"reviewer_pass": (2, 3)})
-    show_phase_start("review", ctx=ctx, display_context=_ctx_from_console(console))
-    output = console.export_text()
-    assert "3/3" in output
-
-
-# --- New tests for analysis iteration counters (Step 5) ---
-
-
-def test_show_phase_start_dev_analysis_shows_analysis_counter() -> None:
-    """When phase is development_analysis with counter context, suffix [analysis N/M] appears."""
-    console = Console(record=True)
-    ctx = PhaseStartContext(
-        analysis_iteration=1,
-        max_analysis_iterations=3,
-    )
-    show_phase_start("development_analysis", ctx=ctx, display_context=_ctx_from_console(console))
-    output = console.export_text()
-    assert "Development Analysis" in output
-    assert "analysis 2/3" in output
-
-
-def test_show_phase_start_dev_analysis_zero_index_shows_one() -> None:
-    """analysis_iteration=0 shows as [analysis 1/M]."""
-    console = Console(record=True)
-    ctx = PhaseStartContext(
-        analysis_iteration=0,
-        max_analysis_iterations=3,
-    )
-    show_phase_start("development_analysis", ctx=ctx, display_context=_ctx_from_console(console))
-    output = console.export_text()
-    assert "analysis 1/3" in output
-
-
-def test_show_phase_start_dev_analysis_at_max_shows_max() -> None:
-    """analysis_iteration=2 with max=3 shows [analysis 3/3]."""
-    console = Console(record=True)
-    ctx = PhaseStartContext(
-        analysis_iteration=2,
-        max_analysis_iterations=3,
-    )
-    show_phase_start("development_analysis", ctx=ctx, display_context=_ctx_from_console(console))
-    output = console.export_text()
-    assert "analysis 3/3" in output
-
-
-def test_show_phase_start_review_analysis_shows_analysis_counter() -> None:
-    """When phase is review_analysis with counter context, suffix [analysis N/M] appears."""
-    console = Console(record=True)
-    ctx = PhaseStartContext(
-        analysis_iteration=0,
-        max_analysis_iterations=2,
-    )
-    show_phase_start("review_analysis", ctx=ctx, display_context=_ctx_from_console(console))
-    output = console.export_text()
-    assert "Review Analysis" in output
-    assert "analysis 1/2" in output
-    assert "final, skipping next" not in output
-
-
-def test_show_phase_start_review_analysis_at_max_shows_max() -> None:
-    """analysis_iteration=1 with max=2 shows [analysis 2/2] and marks final."""
-    console = Console(record=True)
-    ctx = PhaseStartContext(
-        analysis_iteration=1,
-        max_analysis_iterations=2,
-    )
-    show_phase_start("review_analysis", ctx=ctx, display_context=_ctx_from_console(console))
-    output = console.export_text()
-    assert "analysis 2/2" in output
-    assert "final, skipping next" in output
-
-
-def test_show_phase_start_dev_analysis_no_suffix_without_context() -> None:
-    """When phase is development_analysis but no counter context, no [analysis] suffix."""
-    console = Console(record=True)
-    ctx = PhaseStartContext(
-        budget_progress={"iteration": (0, 5)},
-        # No analysis_iteration or max_analysis_iterations set
-    )
-    show_phase_start("development_analysis", ctx=ctx, display_context=_ctx_from_console(console))
-    output = console.export_text()
-    assert "Development Analysis" in output
-    assert "[analysis" not in output
-
-
-def test_show_phase_start_development_no_analysis_suffix() -> None:
-    """When phase is development without analysis_iteration, no [analysis] suffix."""
-    console = Console(record=True)
-    ctx = PhaseStartContext(
-        budget_progress={"iteration": (1, 5)},
-    )
-    show_phase_start("development", ctx=ctx, display_context=_ctx_from_console(console))
-    output = console.export_text()
+def test_show_phase_start_from_entry_outer_dev_label() -> None:
+    """show_phase_start_from_entry renders canonical Dev N/cap label."""
+    buf = StringIO()
+    console = Console(file=buf, force_terminal=False, color_system=None, width=200)
+    entry = PhaseEntryModel(phase_name="development", outer_dev_iteration=3, outer_dev_cap=7)
+    show_phase_start_from_entry(entry, display_context=_ctx_from_console(console))
+    output = buf.getvalue()
     assert "Development" in output
-    assert "[analysis" not in output
+    assert "Dev 3/7" in output
+    assert "Dev #3" not in output
 
 
-def test_show_phase_start_review_no_analysis_suffix() -> None:
-    """When phase is review without analysis_iteration, no [analysis] suffix."""
-    console = Console(record=True)
-    ctx = PhaseStartContext(
-        budget_progress={"reviewer_pass": (0, 2)},
+def test_show_phase_start_from_entry_inner_analysis_label() -> None:
+    """show_phase_start_from_entry renders canonical Analysis N/cap label."""
+    buf = StringIO()
+    console = Console(file=buf, force_terminal=False, color_system=None, width=200)
+    entry = PhaseEntryModel(
+        phase_name="development_analysis", inner_analysis=2, inner_analysis_cap=3
     )
-    show_phase_start("review", ctx=ctx, display_context=_ctx_from_console(console))
-    output = console.export_text()
-    assert "Review" in output
-    assert "[analysis" not in output
-
-
-def test_show_phase_start_combines_iteration_and_analysis_counters() -> None:
-    """Both iteration and analysis counters can appear together."""
-    console = Console(record=True)
-    ctx = PhaseStartContext(
-        budget_progress={"iteration": (2, 5)},
-        analysis_iteration=1,
-        max_analysis_iterations=3,
-    )
-    show_phase_start("development_analysis", ctx=ctx, display_context=_ctx_from_console(console))
-    output = console.export_text()
+    show_phase_start_from_entry(entry, display_context=_ctx_from_console(console))
+    output = buf.getvalue()
     assert "Development Analysis" in output
-    assert "[iteration 3/5]" in output
-    assert "analysis 2/3" in output
+    assert "Analysis 2/3" in output
 
 
-def test_show_phase_start_uses_phase_specific_analysis_label() -> None:
-    """Analysis suffix should use the human-readable phase label, not a generic name."""
-    console = Console(record=True)
-    ctx = PhaseStartContext(
-        analysis_iteration=2,
-        max_analysis_iterations=3,
-        phase_name="Planning Analysis",
-    )
-    show_phase_start("planning_analysis", ctx=ctx, display_context=_ctx_from_console(console))
-    output = console.export_text()
-    assert "Planning Analysis" in output
-    assert "Planning Analysis 3/3" in output
-    assert "final, skipping next" in output
-
-
-def test_show_phase_start_single_analysis_iteration_is_final() -> None:
-    """A cap of 1 should render the only analysis run as 1/1 final."""
-    console = Console(record=True)
-    ctx = PhaseStartContext(
-        analysis_iteration=0,
-        max_analysis_iterations=1,
-        phase_name="Planning Analysis",
-    )
-    show_phase_start("planning_analysis", ctx=ctx, display_context=_ctx_from_console(console))
-    output = console.export_text()
-    assert "Planning Analysis 1/1" in output
-    assert "final, skipping next" in output
-
-
-# --- Tests for show_phase_start_from_state (Step 13) ---
-
-
-def test_show_phase_start_from_state_forwards_counters() -> None:
-    stub = types.SimpleNamespace(
-        outer_progress={"iteration": 0, "reviewer_pass": 1},
-        budget_caps={"iteration": 3, "reviewer_pass": 2},
-        agent_name="coder",
-    )
+def test_show_phase_start_from_entry_budget_remaining_label() -> None:
+    """show_phase_start_from_entry renders canonical Budget: N left label."""
     buf = StringIO()
     console = Console(file=buf, force_terminal=False, color_system=None, width=200)
-    show_phase_start_from_state(stub, "development", display_context=_ctx_from_console(console))
+    entry = PhaseEntryModel(phase_name="development", budget_remaining=5)
+    show_phase_start_from_entry(entry, display_context=_ctx_from_console(console))
     output = buf.getvalue()
-    assert "iteration 1/3" in output
-    assert "pass 2/2" in output
-    assert "Development" in output
+    assert "Budget: 5 left" in output
 
 
-def test_show_phase_start_from_state_tolerates_missing_attrs() -> None:
-    stub = types.SimpleNamespace(outer_progress={"iteration": 0}, budget_caps={"iteration": 3})
+def test_show_phase_start_from_entry_no_raw_counter_format() -> None:
+    """show_phase_start_from_entry never emits legacy [counter_name N/cap] format."""
     buf = StringIO()
     console = Console(file=buf, force_terminal=False, color_system=None, width=200)
-    show_phase_start_from_state(stub, "planning", display_context=_ctx_from_console(console))
-    output = buf.getvalue()
-    assert "iteration 1/3" in output
-    assert "Planning" in output
-    assert "pass" not in output
-
-
-def test_show_phase_start_from_state_outer_iteration_total_shows_dev_n_of_total() -> None:
-    """outer_iteration_total in PhaseStartIterationContext renders Dev N/total format."""
-    stub = types.SimpleNamespace(outer_progress={}, budget_caps={}, agent_name=None)
-    buf = StringIO()
-    console = Console(file=buf, force_terminal=False, color_system=None, width=200)
-    iteration_context = PhaseStartIterationContext(outer_iteration=3, outer_iteration_total=7)
-    show_phase_start_from_state(
-        stub,
-        "development",
-        display_context=_ctx_from_console(console),
-        iteration_context=iteration_context,
+    entry = PhaseEntryModel(
+        phase_name="development",
+        outer_dev_iteration=2,
+        outer_dev_cap=5,
+        inner_analysis=1,
+        inner_analysis_cap=3,
     )
+    show_phase_start_from_entry(entry, display_context=_ctx_from_console(console))
     output = buf.getvalue()
-    assert "Dev 3/7" in output, f"Expected Dev 3/7 in: {output}"
-    assert "Dev #3" not in output, f"Hash format should not appear: {output}"
+    assert "[iteration" not in output
+    assert "[reviewer_pass" not in output
+    assert "Dev 2/5" in output
+    assert "Analysis 1/3" in output
 
 
 # --- Tests for compact/medium/wide mode banners ---

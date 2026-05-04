@@ -40,13 +40,12 @@ from ralph.display.artifact_renderer import (
 )
 from ralph.display.context import DisplayContext, make_display_context
 from ralph.display.phase_banner import (
-    PhaseStartIterationContext,
     show_phase_complete,
     show_phase_start,
-    show_phase_start_from_state,
+    show_phase_start_from_entry,
     show_phase_transition,
 )
-from ralph.display.phase_status import PhaseIterationContext
+from ralph.display.phase_lifecycle import PhaseEntryModel, PhaseExitModel
 from ralph.interrupt import controller_from_process_manager
 from ralph.interrupt.controller import install_force_kill_handler
 from ralph.mcp.artifacts.commit_message import (
@@ -876,7 +875,7 @@ def _show_phase_start_with_context(
     *,
     pipeline_policy: PipelinePolicy | None = None,
 ) -> None:
-    """Helper to call show_phase_start_from_state with iteration context when state is available."""
+    """Display a phase-start banner using the canonical PhaseEntryModel path."""
     if state is None:
         show_phase_start(
             phase,
@@ -886,52 +885,41 @@ def _show_phase_start_with_context(
         )
         return
 
-    analysis_iteration: int | None = None
-    max_analysis_iterations: int | None = None
+    phase_role: str | None = None
+    inner_analysis: int | None = None
+    inner_analysis_cap: int | None = None
     if pipeline_policy is not None:
         phase_def = pipeline_policy.phases.get(phase)
-        if phase_def is not None and phase_def.loop_policy is not None:
-            field = phase_def.loop_policy.iteration_state_field
-            analysis_iteration = state.get_loop_iteration(field)
-            max_analysis_iterations = _resolve_analysis_cap(
-                field, state, pipeline_policy
-            )
+        if phase_def is not None:
+            phase_role = phase_def.role
+            if phase_def.loop_policy is not None:
+                field = phase_def.loop_policy.iteration_state_field
+                inner_analysis = state.get_loop_iteration(field) + 1
+                inner_analysis_cap = _resolve_analysis_cap(field, state, pipeline_policy)
 
-    # Extract iteration context values from state
     outer_iteration: int | None = None
+    outer_dev_cap: int | None = None
     budget_remaining: int | None = None
     if pipeline_policy is not None:
         counter = _find_commit_counter_from_phase(phase, pipeline_policy)
         if counter is not None:
             outer_iteration = state.get_outer_progress(counter)
             budget_remaining = state.get_budget_remaining(counter)
+            if outer_iteration is not None and budget_remaining is not None:
+                outer_dev_cap = outer_iteration + budget_remaining
 
-    outer_iteration_total: int | None = (
-        outer_iteration + budget_remaining
-        if outer_iteration is not None and budget_remaining is not None
-        else None
-    )
-
-    # Build iteration context for display.
-    # Note: inner_analysis is intentionally not set here - it tracks
-    # analysis-within-fixer context that is supplied separately by richer
-    # state projections, while analysis_iteration is passed through the
-    # dedicated analysis_iteration parameter below.
-    iteration_context = PhaseStartIterationContext(
-        outer_iteration=outer_iteration,
-        outer_iteration_total=outer_iteration_total,
+    entry = PhaseEntryModel(
+        phase_name=phase,
+        phase_role=phase_role,
+        agent_name=agent_name,
+        outer_dev_iteration=outer_iteration,
+        outer_dev_cap=outer_dev_cap,
+        inner_analysis=inner_analysis,
+        inner_analysis_cap=inner_analysis_cap,
         budget_remaining=budget_remaining,
     )
-
-    # Use show_phase_start_from_state which properly handles iteration context
-    show_phase_start_from_state(
-        state,
-        phase,
-        display_context=display_context,
-        iteration_context=iteration_context,
-        analysis_iteration=(analysis_iteration, max_analysis_iterations)
-        if analysis_iteration is not None and max_analysis_iterations is not None
-        else None,
+    show_phase_start_from_entry(
+        entry, display_context=display_context, pipeline_policy=pipeline_policy
     )
 
 
@@ -2475,41 +2463,32 @@ def _render_phase_artifact_handoff(  # noqa: PLR0913
     if event == PipelineEvent.AGENT_SUCCESS:
         phase_def = policy_bundle.pipeline.phases.get(phase) if policy_bundle is not None else None
         phase_role = phase_def.role if phase_def is not None else None
-        iteration_context: PhaseIterationContext | None = None
+        entry: PhaseEntryModel | None = None
         if state is not None and policy_bundle is not None:
-            counter = _find_commit_counter_from_phase(phase, policy_bundle.pipeline)
-            outer_dev = state.get_outer_progress(counter) if counter is not None else None
-            budget = state.get_budget_remaining(counter) if counter is not None else None
-            loop_field = (
-                phase_def.loop_policy.iteration_state_field
-                if phase_def is not None and phase_def.loop_policy is not None
-                else None
-            )
-            inner_analysis = (
-                state.get_loop_iteration(loop_field) if loop_field is not None else None
-            )
-            inner_analysis_cap = (
-                _resolve_analysis_cap(
-                    loop_field,
-                    state,
-                    policy_bundle.pipeline,
+            inner_analysis: int | None = None
+            inner_analysis_cap: int | None = None
+            if phase_def is not None and phase_def.loop_policy is not None:
+                loop_field = phase_def.loop_policy.iteration_state_field
+                inner_analysis = state.get_loop_iteration(loop_field) + 1
+                inner_analysis_cap = _resolve_analysis_cap(
+                    loop_field, state, policy_bundle.pipeline
                 )
-                if loop_field is not None
-                and phase_def is not None
-                and phase_def.loop_policy is not None
-                else None
-            )
+            counter = _find_commit_counter_from_phase(phase, policy_bundle.pipeline)
+            outer_iteration = state.get_outer_progress(counter) if counter is not None else None
+            budget_remaining = state.get_budget_remaining(counter) if counter is not None else None
             outer_dev_cap: int | None = (
-                outer_dev + budget
-                if outer_dev is not None and budget is not None
+                outer_iteration + budget_remaining
+                if outer_iteration is not None and budget_remaining is not None
                 else None
             )
-            iteration_context = PhaseIterationContext(
-                outer_dev=outer_dev,
+            entry = PhaseEntryModel(
+                phase_name=phase,
+                phase_role=phase_role,
+                outer_dev_iteration=outer_iteration,
                 outer_dev_cap=outer_dev_cap,
-                budget_remaining=budget,
                 inner_analysis=inner_analysis,
                 inner_analysis_cap=inner_analysis_cap,
+                budget_remaining=budget_remaining,
             )
         _render_success_artifact(
             artifact_type,
@@ -2520,7 +2499,7 @@ def _render_phase_artifact_handoff(  # noqa: PLR0913
             verbosity,
             required_artifact,
             phase_role=phase_role,
-            iteration_context=iteration_context,
+            entry_model=entry,
         )
 
 
@@ -2534,92 +2513,71 @@ def _render_success_artifact(  # noqa: PLR0913
     ra: RequiredArtifact,
     *,
     phase_role: str | None = None,
-    iteration_context: PhaseIterationContext | None = None,
+    entry_model: PhaseEntryModel | None = None,
 ) -> None:
+    def _emit_close(produced: str) -> None:
+        if verbosity != Verbosity.QUIET and hasattr(display, "emit_phase_close_from_exit"):
+            with suppress(Exception):
+                base = entry_model or PhaseEntryModel(phase_name=phase, phase_role=phase_role)
+                exit_model = PhaseExitModel.from_entry_model(
+                    base, artifact_outcome=produced, exit_trigger="produced"
+                )
+                cast("ParallelDisplay", display).emit_phase_close_from_exit(exit_model)
+
     if artifact_type == "plan":
         render_plan_artifact(workspace_root, display_context)
-        if verbosity != Verbosity.QUIET and hasattr(display, "emit_phase_close"):
-            with suppress(Exception):
-                from ralph.display.artifact_reader import read_plan_artifact  # noqa: PLC0415
+        with suppress(Exception):
+            from ralph.display.artifact_reader import read_plan_artifact  # noqa: PLC0415
 
-                plan = read_plan_artifact(workspace_root)
-                produced = (
-                    f"{plan.total_steps} step(s), {len(plan.risks_mitigations)} risk(s)"
-                    if plan is not None
-                    else "(no plan artifact on disk)"
-                )
-                cast("ParallelDisplay", display).emit_phase_close(
-                    phase,
-                    produced,
-                    phase_role=phase_role,
-                    iteration_context=iteration_context,
-                    exit_trigger="produced",
-                )
+            plan = read_plan_artifact(workspace_root)
+            produced = (
+                f"{plan.total_steps} step(s), {len(plan.risks_mitigations)} risk(s)"
+                if plan is not None
+                else "(no plan artifact on disk)"
+            )
+            _emit_close(produced)
         return
 
     if artifact_type == "development_result":
         render_development_artifact(workspace_root, display_context)
-        if verbosity != Verbosity.QUIET and hasattr(display, "emit_phase_close"):
-            with suppress(Exception):
-                produced = (
-                    "result produced"
-                    if (workspace_root / ra.json_path).exists()
-                    else "no result artifact"
-                )
-                cast("ParallelDisplay", display).emit_phase_close(
-                    phase,
-                    produced,
-                    phase_role=phase_role,
-                    iteration_context=iteration_context,
-                    exit_trigger="produced",
-                )
+        produced = (
+            "result produced"
+            if (workspace_root / ra.json_path).exists()
+            else "no result artifact"
+        )
+        _emit_close(produced)
         return
 
     if artifact_type == "issues":
         render_review_artifact(workspace_root, display_context)
-        if verbosity != Verbosity.QUIET and hasattr(display, "emit_phase_close"):
-            with suppress(Exception):
-                import json  # noqa: PLC0415
+        with suppress(Exception):
+            import json  # noqa: PLC0415
 
-                issue_count = 0
-                issues_path = workspace_root / ra.json_path
-                if issues_path.exists():
-                    try:
-                        issues_data = json.loads(issues_path.read_text(encoding="utf-8"))  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
-                        content_obj = (
-                            issues_data.get("content")
-                            if isinstance(issues_data, dict)  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
-                            else issues_data  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
-                        )
-                        issues_list = (
-                            content_obj.get("issues")
-                            if isinstance(content_obj, dict)
-                            else content_obj
-                        )
-                        if isinstance(issues_list, list):
-                            issue_count = len(issues_list)
-                    except Exception:
-                        pass
-                cast("ParallelDisplay", display).emit_phase_close(
-                    phase,
-                    f"{issue_count} issue(s)",
-                    phase_role=phase_role,
-                    iteration_context=iteration_context,
-                    exit_trigger="produced",
-                )
+            issue_count = 0
+            issues_path = workspace_root / ra.json_path
+            if issues_path.exists():
+                try:
+                    issues_data = json.loads(issues_path.read_text(encoding="utf-8"))  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+                    content_obj = (
+                        issues_data.get("content")
+                        if isinstance(issues_data, dict)  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+                        else issues_data  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+                    )
+                    issues_list = (
+                        content_obj.get("issues")
+                        if isinstance(content_obj, dict)
+                        else content_obj
+                    )
+                    if isinstance(issues_list, list):
+                        issue_count = len(issues_list)
+                except Exception:
+                    pass
+            _emit_close(f"{issue_count} issue(s)")
         return
 
     if artifact_type == "fix_result":
         render_fix_artifact(workspace_root, display_context)
-        if verbosity != Verbosity.QUIET and hasattr(display, "emit_phase_close"):
-            with suppress(Exception):
-                cast("ParallelDisplay", display).emit_phase_close(
-                    phase,
-                    "applied",
-                    phase_role=phase_role,
-                    iteration_context=iteration_context,
-                    exit_trigger="produced",
-                )
+        _emit_close("applied")
 
 
 def _commit_effect(workspace_root: Path) -> CommitEffect:
@@ -3176,10 +3134,14 @@ def _execute_commit_effect(  # noqa: PLR0913
         logger.info("Created commit: {}", sha[:8])
         with suppress(Exception):
             render_commit_message(repo_root, _get_display_context(display))
-        if verbosity != Verbosity.QUIET and hasattr(display, "emit_phase_close"):
+        if verbosity != Verbosity.QUIET and hasattr(display, "emit_phase_close_from_exit"):
             with suppress(Exception):
-                cast("ParallelDisplay", display).emit_phase_close(
-                    "commit", f"sha={sha[:8]}", exit_trigger="produced"
+                cast("ParallelDisplay", display).emit_phase_close_from_exit(
+                    PhaseExitModel(
+                        phase_name="commit",
+                        artifact_outcome=f"sha={sha[:8]}",
+                        exit_trigger="produced",
+                    )
                 )
         _cleanup_commit_message_artifacts(repo_root)
     except Exception as exc:

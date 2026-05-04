@@ -3004,7 +3004,6 @@ def test_phase_start_banner_emitted_to_parallel_display_console(
 
     out = buf.getvalue()
     assert "Development" in out
-    assert "iteration 1/3" in out
 
 
 class TestCycleBaselineLifecycle:

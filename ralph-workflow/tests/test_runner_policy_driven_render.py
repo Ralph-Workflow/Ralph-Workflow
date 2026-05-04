@@ -12,7 +12,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from ralph.display.phase_status import PhaseIterationContext
+from ralph.display.phase_lifecycle import PhaseEntryModel
 from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.runner import _render_phase_artifact_handoff
 from ralph.pipeline.state import PipelineState
@@ -286,14 +286,14 @@ def _make_bundle_with_dev_result_contract() -> PolicyBundle:
     return PolicyBundle(agents=agents, pipeline=pipeline, artifacts=artifacts)
 
 
-class TestIterationContextFlowsToEmitPhaseClose:
-    """iteration_context from state flows through to emit_phase_close."""
+class TestEntryModelFlowsToRenderSuccessArtifact:
+    """entry_model from state flows through to _render_success_artifact."""
 
-    def test_iteration_context_passed_to_emit_phase_close_when_state_has_outer_dev(
+    def test_entry_model_passed_with_outer_dev_when_state_has_progress(
         self,
         tmp_workspace: Path,
     ) -> None:
-        """When state carries outer_dev progress, emit_phase_close receives it."""
+        """When state carries outer_dev progress, entry_model has outer_dev_iteration set."""
         expected_outer_dev = 2
         bundle = _make_bundle_with_dev_result_contract()
         state = (
@@ -302,23 +302,21 @@ class TestIterationContextFlowsToEmitPhaseClose:
         )
 
         display = MagicMock()
-        display.emit_phase_close = MagicMock()
 
         (tmp_workspace / "build.json").write_text("{}")
 
+        captured_entries: list[object] = []
+
+        def capture_entry_model(*args: object, **kwargs: object) -> None:
+            captured_entries.append(kwargs.get("entry_model"))
+
         with (
             patch("ralph.pipeline.runner.render_development_artifact"),
-            patch("ralph.pipeline.runner._render_success_artifact", wraps=None) as mock_rsa,
+            patch(
+                "ralph.pipeline.runner._render_success_artifact",
+                side_effect=capture_entry_model,
+            ),
         ):
-            mock_rsa.side_effect = None
-
-            captured_contexts: list[object] = []
-
-            def capture_iteration_context(*args: object, **kwargs: object) -> None:
-                captured_contexts.append(kwargs.get("iteration_context"))
-
-            mock_rsa.side_effect = capture_iteration_context
-
             _render_phase_artifact_handoff(
                 "build",
                 PipelineEvent.AGENT_SUCCESS,
@@ -328,29 +326,29 @@ class TestIterationContextFlowsToEmitPhaseClose:
                 state=state,
             )
 
-        assert len(captured_contexts) == 1
-        ctx = captured_contexts[0]
-        assert isinstance(ctx, PhaseIterationContext)
-        assert ctx.outer_dev == expected_outer_dev
+        assert len(captured_entries) == 1
+        entry = captured_entries[0]
+        assert isinstance(entry, PhaseEntryModel)
+        assert entry.outer_dev_iteration == expected_outer_dev
 
-    def test_no_iteration_context_when_state_is_none(
+    def test_no_entry_model_when_state_is_none(
         self,
         tmp_workspace: Path,
     ) -> None:
-        """When state=None, iteration_context passed to _render_success_artifact is None."""
+        """When state=None, entry_model passed to _render_success_artifact is None."""
         bundle = _make_bundle_with_dev_result_contract()
         display = MagicMock()
 
-        captured_contexts: list[object] = []
+        captured_entries: list[object] = []
 
-        def capture_iteration_context(*args: object, **kwargs: object) -> None:
-            captured_contexts.append(kwargs.get("iteration_context"))
+        def capture_entry_model(*args: object, **kwargs: object) -> None:
+            captured_entries.append(kwargs.get("entry_model"))
 
         with (
             patch("ralph.pipeline.runner.render_development_artifact"),
             patch(
                 "ralph.pipeline.runner._render_success_artifact",
-                side_effect=capture_iteration_context,
+                side_effect=capture_entry_model,
             ),
         ):
             _render_phase_artifact_handoff(
@@ -362,5 +360,5 @@ class TestIterationContextFlowsToEmitPhaseClose:
                 state=None,
             )
 
-        assert len(captured_contexts) == 1
-        assert captured_contexts[0] is None
+        assert len(captured_entries) == 1
+        assert captured_entries[0] is None

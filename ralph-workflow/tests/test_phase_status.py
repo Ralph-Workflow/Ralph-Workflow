@@ -2,12 +2,6 @@
 
 from __future__ import annotations
 
-from io import StringIO
-
-from rich.console import Console
-
-from ralph.display.context import make_display_context
-from ralph.display.phase_banner import PhaseStartContext, show_phase_start
 from ralph.display.phase_status import (
     PhaseIterationContext,
     format_analysis_cycle,
@@ -99,85 +93,6 @@ def test_phase_iteration_context_labels_budget_style() -> None:
     assert len(labels) == 1
     _, style = labels[0]
     assert style == "theme.level.warn"
-
-
-# --- Integration tests: new labels appear in phase start banners ---
-
-
-def _make_ctx(mode: str = "wide"):
-    buf = StringIO()
-    console = Console(file=buf, force_terminal=False, color_system=None, width=200)
-    ctx = make_display_context(console=console, force_mode=mode)
-    return ctx, buf
-
-
-def test_phase_start_outer_dev_shows_dev_cycle_label() -> None:
-    """show_phase_start with outer_iteration renders [Dev #N] label."""
-    ctx, buf = _make_ctx()
-    phase_ctx = PhaseStartContext(outer_iteration=3)
-    show_phase_start("development", ctx=phase_ctx, display_context=ctx)
-    output = buf.getvalue()
-    assert "Dev #3" in output, f"Expected Dev #3 in: {output}"
-
-
-def test_phase_start_outer_dev_with_total_shows_dev_n_of_total() -> None:
-    """show_phase_start with outer_iteration + outer_iteration_total renders [Dev N/total]."""
-    ctx, buf = _make_ctx()
-    phase_ctx = PhaseStartContext(outer_iteration=2, outer_iteration_total=5)
-    show_phase_start("development", ctx=phase_ctx, display_context=ctx)
-    output = buf.getvalue()
-    assert "Dev 2/5" in output, f"Expected Dev 2/5 in: {output}"
-    assert "Dev #2" not in output, f"Hash format should not appear when total is set: {output}"
-
-
-def test_phase_start_budget_remaining_shows_budget_left_label() -> None:
-    """show_phase_start with budget_remaining renders [Budget: N left] label."""
-    ctx, buf = _make_ctx()
-    phase_ctx = PhaseStartContext(budget_remaining=5)
-    show_phase_start("development", ctx=phase_ctx, display_context=ctx)
-    output = buf.getvalue()
-    assert "Budget: 5 left" in output, f"Expected Budget: 5 left in: {output}"
-
-
-def test_phase_start_inner_analysis_shows_analysis_label_with_cap() -> None:
-    """show_phase_start with inner_analysis + cap renders [Analysis X/Y] label."""
-    ctx, buf = _make_ctx()
-    phase_ctx = PhaseStartContext(inner_analysis=2, inner_analysis_cap=4)
-    show_phase_start("development_analysis", ctx=phase_ctx, display_context=ctx)
-    output = buf.getvalue()
-    assert "Analysis 2/4" in output, f"Expected Analysis 2/4 in: {output}"
-
-
-def test_phase_start_inner_analysis_without_cap_shows_analysis_label() -> None:
-    """show_phase_start with inner_analysis but no cap renders [Analysis #N] label."""
-    ctx, buf = _make_ctx()
-    phase_ctx = PhaseStartContext(inner_analysis=1)
-    show_phase_start("development_analysis", ctx=phase_ctx, display_context=ctx)
-    output = buf.getvalue()
-    assert "Analysis #1" in output, f"Expected Analysis #1 in: {output}"
-
-
-def test_phase_start_all_new_context_labels_together() -> None:
-    """All new context labels appear together when set."""
-    ctx, buf = _make_ctx()
-    phase_ctx = PhaseStartContext(
-        outer_iteration=2,
-        budget_remaining=3,
-    )
-    show_phase_start("fix", ctx=phase_ctx, display_context=ctx)
-    output = buf.getvalue()
-    assert "Dev #2" in output, f"Expected Dev #2 in: {output}"
-    assert "Budget: 3 left" in output, f"Expected Budget: 3 left in: {output}"
-
-
-def test_phase_start_new_labels_not_using_old_format() -> None:
-    """New canonical labels do not use old key=value format for outer_iteration."""
-    ctx, buf = _make_ctx()
-    phase_ctx = PhaseStartContext(outer_iteration=1)
-    show_phase_start("development", ctx=phase_ctx, display_context=ctx)
-    output = buf.getvalue()
-    assert "dev-iteration=" not in output, "Old format should not appear"
-    assert "budget=" not in output, "Old format should not appear"
 
 
 # --- Tests for format_transition_context_items ---
