@@ -307,11 +307,16 @@ class ParallelDisplay:
         *,
         phase_role: str | None = None,
         iteration_context: PhaseIterationContext | None = None,
+        exit_trigger: str | None = None,
     ) -> None:
         """Emit a single-line recap at the end of a phase."""
         with contextlib.suppress(Exception):
             self._plain_renderer.emit_phase_close(
-                phase, produced, phase_role=phase_role, iteration_context=iteration_context
+                phase,
+                produced,
+                phase_role=phase_role,
+                iteration_context=iteration_context,
+                exit_trigger=exit_trigger,
             )
 
     def emit_run_end(

@@ -717,8 +717,18 @@ class PlainLogRenderer:
         *,
         phase_role: str | None = None,
         iteration_context: PhaseIterationContext | None = None,
+        exit_trigger: str | None = None,
     ) -> None:
-        """Emit a single-line recap after a phase's artifact blocks are rendered."""
+        """Emit a single-line recap after a phase's artifact blocks are rendered.
+
+        Args:
+            phase: Phase name.
+            produced: Human-readable artifact-outcome string.
+            phase_role: Role for milestone glyph selection.
+            iteration_context: Canonical iteration labels to include.
+            exit_trigger: Why the phase ended (e.g. ``"produced"``, ``"timeout"``).
+                Included as ``exit=<trigger>`` in the output when provided.
+        """
         self.flush_blocks()
         timestamp = self._format_timestamp(self._clock())
         clean_produced = _sanitize(produced).strip()
@@ -728,8 +738,9 @@ class PlainLogRenderer:
         else:
             elapsed_s = 0.0
             counters = _PhaseCounters()
+        exit_part = f" exit={exit_trigger}" if exit_trigger is not None else ""
         suffix = (
-            f" (elapsed={elapsed_s}s, content_blocks={counters.content_blocks},"
+            f"{exit_part} (elapsed={elapsed_s}s, content_blocks={counters.content_blocks},"
             f" thinking_blocks={counters.thinking_blocks}, tool_calls={counters.tool_calls},"
             f" errors={counters.errors})"
         )

@@ -2539,7 +2539,11 @@ def _render_success_artifact(  # noqa: PLR0913
                     else "plan: (no plan artifact on disk)"
                 )
                 cast("ParallelDisplay", display).emit_phase_close(
-                    phase, produced, phase_role=phase_role, iteration_context=iteration_context
+                    phase,
+                    produced,
+                    phase_role=phase_role,
+                    iteration_context=iteration_context,
+                    exit_trigger="produced",
                 )
         return
 
@@ -2553,7 +2557,11 @@ def _render_success_artifact(  # noqa: PLR0913
                     else f"{phase}: no result artifact"
                 )
                 cast("ParallelDisplay", display).emit_phase_close(
-                    phase, produced, phase_role=phase_role, iteration_context=iteration_context
+                    phase,
+                    produced,
+                    phase_role=phase_role,
+                    iteration_context=iteration_context,
+                    exit_trigger="produced",
                 )
         return
 
@@ -2587,6 +2595,7 @@ def _render_success_artifact(  # noqa: PLR0913
                     f"{phase}: {issue_count} issue(s)",
                     phase_role=phase_role,
                     iteration_context=iteration_context,
+                    exit_trigger="produced",
                 )
         return
 
@@ -2599,6 +2608,7 @@ def _render_success_artifact(  # noqa: PLR0913
                     f"{phase}: applied",
                     phase_role=phase_role,
                     iteration_context=iteration_context,
+                    exit_trigger="produced",
                 )
 
 
@@ -3158,7 +3168,9 @@ def _execute_commit_effect(  # noqa: PLR0913
             render_commit_message(repo_root, _get_display_context(display))
         if verbosity != Verbosity.QUIET and hasattr(display, "emit_phase_close"):
             with suppress(Exception):
-                cast("ParallelDisplay", display).emit_phase_close("commit", "commit: prepared")
+                cast("ParallelDisplay", display).emit_phase_close(
+                    "commit", "commit: prepared", exit_trigger="produced"
+                )
         _cleanup_commit_message_artifacts(repo_root)
     except Exception as exc:
         logger.error("Commit failed: {}", exc)

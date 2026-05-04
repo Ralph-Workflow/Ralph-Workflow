@@ -149,7 +149,7 @@ When a block ends, Ralph Workflow may append summary lines depending on configur
 After each phase completes, a single `[phase-close]` line is appended to the transcript:
 
 ```
-<ISO-TS> INFO META [phase-close] <glyph?> phase=<name> [Dev #N]? [Analysis N/cap]? <produced> (elapsed=Ns, content_blocks=N, thinking_blocks=N, tool_calls=N, errors=N)
+<ISO-TS> INFO META [phase-close] <glyph?> phase=<name> [Dev #N]? [Analysis N/cap]? <produced> exit=<trigger> (elapsed=Ns, content_blocks=N, thinking_blocks=N, tool_calls=N, errors=N)
 ```
 
 | Field | Notes |
@@ -158,7 +158,14 @@ After each phase completes, a single `[phase-close]` line is appended to the tra
 | `phase=<name>` | Name of the phase that just ended |
 | `[Dev #N]`, `[Analysis N/cap]`, `[Fixer #N]`, `[Budget: N left]` | Canonical iteration labels — only present when in a context that tracks them |
 | `<produced>` | Human-readable artifact summary (e.g. `plan: 5 step(s), 2 risk(s)`) |
+| `exit=<trigger>` | Why the phase ended — omitted when the exit trigger is unknown |
 | Counter tuple | Phase-level activity metrics always present |
+
+The `exit=<trigger>` values for phase-close lines:
+
+| Value | Meaning |
+|-------|---------|
+| `produced` | Phase completed by producing its expected artifact |
 
 ### Canonical iteration labels
 

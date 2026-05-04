@@ -1539,6 +1539,13 @@ ralph.display.phase_banner
    :members:
    :show-inheritance:
 
+ralph.display.phase_lifecycle
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.display.phase_lifecycle
+   :members:
+   :show-inheritance:
+
 ralph.display.phase_status
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 

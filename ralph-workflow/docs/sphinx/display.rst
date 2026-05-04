@@ -163,19 +163,48 @@ These labels are produced by helpers in ``ralph.display.phase_status``
 ``format_budget_remaining``) and consumed via :class:`PhaseIterationContext`
 when rendering ``[phase-close]`` lines.
 
+Lifecycle view-model
+--------------------
+
+The :mod:`ralph.display.phase_lifecycle` module defines the single source of
+truth for data flowing through phase-start banners, phase-close after-banners,
+and the final run summary.  Three frozen dataclasses capture the lifecycle:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 70
+
+   * - Class
+     - Used by
+   * - :class:`~ralph.display.phase_lifecycle.PhaseEntryModel`
+     - Phase-start banners (``show_phase_start`` family).
+   * - :class:`~ralph.display.phase_lifecycle.PhaseExitModel`
+     - Phase-close after-banners (``emit_phase_close``).
+   * - :class:`~ralph.display.phase_lifecycle.RunCompletionModel`
+     - Final run-completion panel and ``[run-end]`` transcript block.
+
+All three share the same canonical iteration fields
+(``outer_dev_iteration``, ``inner_analysis``, ``inner_analysis_cap``,
+``fixer_iteration``, ``budget_remaining``) so every surface expresses
+iteration context in the same vocabulary derived from
+:mod:`ralph.display.phase_status`.
+
 Phase-close line format
 -----------------------
 
 After each phase ends, a structured ``[phase-close]`` line is written to the
 transcript::
 
-    <ISO-TS> INFO META [phase-close] <glyph> phase=<name> [Dev #N] [Analysis N/cap] <produced> (elapsed=Ns, content_blocks=N, thinking_blocks=N, tool_calls=N, errors=N)
+    <ISO-TS> INFO META [phase-close] <glyph> phase=<name> [Dev #N] [Analysis N/cap] <produced> exit=<trigger> (elapsed=Ns, content_blocks=N, thinking_blocks=N, tool_calls=N, errors=N)
 
 - The ``<glyph>`` prefix (``◆`` Unicode, ``*`` ASCII) appears only for
   milestone-role phases (execution, review, fix).
 - Canonical iteration labels (``[Dev #N]``, ``[Analysis N/cap]``, etc.) appear
   between the phase name and the produced-artifact summary when an
   :class:`~ralph.display.phase_status.PhaseIterationContext` is provided.
+- ``exit=<trigger>`` (e.g. ``exit=produced``) appears after the artifact
+  summary when an ``exit_trigger`` string is supplied to ``emit_phase_close``.
+  Runner code passes ``exit_trigger="produced"`` for all artifact-success paths.
 - The trailing counter tuple always appears so every ``[phase-close]`` line
   carries phase-level activity metrics.
 

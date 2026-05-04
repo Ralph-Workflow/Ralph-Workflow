@@ -89,17 +89,20 @@ Do not lower coverage thresholds or suppress warnings — fix the underlying iss
 
 ## How to read a `[run-end]` block
 
-The `[run-end]` block is emitted at the end of every pipeline run:
+The `[run-end]` block is emitted at the end of every pipeline run. Wide mode
+(`>= 100` columns) groups counters on a single line:
 
 ```
 MILESTONE META [run-end] ◆ Ralph Workflow run end
-INFO META [run-end] phase=complete
-INFO META [run-end] elapsed=42.3s
-INFO META [run-end] content_blocks=12
-INFO META [run-end] thinking_blocks=4
-INFO META [run-end] tool_calls=28
-INFO META [run-end] errors=0
-INFO META [run-end] agent_calls=7
+INFO     META [run-end] phase=complete elapsed=42.3s exit=completed
+INFO     META [run-end] agent_calls=7 content_blocks=12 thinking_blocks=4 tool_calls=28 errors=0
+```
+
+Compact mode (`< 60` columns) uses a condensed 2-line format:
+
+```
+MILESTONE META [run-end] complete | 42.3s | completed
+INFO     META [run-end] agent=7 content=12 thinking=4 tools=28 errors=0
 ```
 
 Key fields:
@@ -108,6 +111,7 @@ Key fields:
 |-------|---------|
 | `phase` | Final phase reached (`complete` = success, `failed` = error) |
 | `elapsed` | Total wall-clock time for the run |
+| `exit` | Why the run ended: `completed`, `failed`, `interrupted`, or `exited` |
 | `content_blocks` | Number of agent text output blocks |
 | `tool_calls` | Total MCP tool calls made by all agents |
 | `errors` | Number of agent error events |
