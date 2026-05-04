@@ -17,7 +17,7 @@ from ralph.cli.commands import commit as commit_module
 from ralph.cli.commands import diagnose as diagnose_module
 from ralph.cli.commands import init as init_module
 from ralph.cli.commands.check_policy import check_policy_command
-from ralph.config.enums import AgentTransport, JsonParserType, ReviewDepth
+from ralph.config.enums import AgentTransport, JsonParserType
 from ralph.config.models import AgentConfig, UnifiedConfig
 from ralph.display.context import DisplayContext, make_display_context
 from ralph.display.theme import RALPH_THEME
@@ -1345,8 +1345,6 @@ def test_check_configuration_success(monkeypatch: pytest.MonkeyPatch) -> None:
     config = SimpleNamespace(
         general=SimpleNamespace(
             developer_iters=5,
-            reviewer_reviews=2,
-            review_depth=ReviewDepth.SECURITY,
             workflow=SimpleNamespace(checkpoint_enabled=False),
         )
     )
@@ -1354,7 +1352,8 @@ def test_check_configuration_success(monkeypatch: pytest.MonkeyPatch) -> None:
     diagnose_module._check_configuration(None, {}, display_context=ctx)
     output = stream.getvalue()
     assert "Config loaded" in output
-    assert "Review depth" in output
+    assert "Developer iters" in output
+    assert "Checkpoint enabled" in output
 
 
 def test_check_configuration_failure(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1466,7 +1465,7 @@ def test_diagnose_uses_display_context_console(
         "load_config",
         lambda *a, **kw: SimpleNamespace(
             general=SimpleNamespace(
-                review_depth=ReviewDepth.STANDARD,
+                developer_iters=5,
                 workflow=SimpleNamespace(checkpoint_enabled=True),
             )
         ),

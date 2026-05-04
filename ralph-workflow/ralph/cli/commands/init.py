@@ -93,7 +93,7 @@ def init_command(
             "**Next steps**\n\n"
             "1. Edit the sections above to describe YOUR task and remove the sentinel comment.\n"
             "2. Run `ralph --diagnose` to verify agents, MCP servers, and config.\n"
-            "3. Run `ralph` to start the planning → development → review → fix pipeline.\n",
+            "3. Run `ralph` to start the planning → development pipeline.\n",
             encoding="utf-8",
         )
         console.print(_status_text("Created", str(prompt_path), "theme.status.success"))
@@ -146,7 +146,7 @@ def _print_fallback_next_steps(target: Path, *, display_context: DisplayContext)
     console.print(_status_text("Ralph Workflow initialized in", str(target), "theme.cat.meta"))
     console.print(
         "\nRalph Workflow orchestrates AI coding agents through a"
-        " [theme.phase.planning]planning → development → review → fix[/theme.phase.planning]"
+        " [theme.phase.planning]planning → development loop[/theme.phase.planning]"
         " loop driven by PROMPT.md."
     )
     console.print(

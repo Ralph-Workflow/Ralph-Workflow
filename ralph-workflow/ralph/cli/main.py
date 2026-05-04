@@ -33,7 +33,7 @@ from ralph.config.bootstrap import (
     ensure_local_main_config,
     regenerate_all,
 )
-from ralph.config.enums import ReviewDepth, Verbosity
+from ralph.config.enums import Verbosity
 from ralph.config.loader import load_config
 from ralph.config.welcome import emit_first_run_welcome
 from ralph.display.context import DisplayContext
@@ -56,23 +56,17 @@ class CLIOverrideInput:
     """Input for building CLI overrides."""
 
     developer_agent: str | None = None
-    reviewer_agent: str | None = None
     developer_model: str | None = None
-    reviewer_model: str | None = None
-    review_depth: ReviewDepth | None = None
     git_user_name: str | None = None
     git_user_email: str | None = None
     developer_iters: int | None = None
-    reviewer_reviews: int | None = None
 
 
 class GeneralOverrides(TypedDict, total=False):
-    review_depth: str | None
     git_user_name: str | None
     git_user_email: str | None
     execution: dict[str, bool]
     developer_iters: int
-    reviewer_reviews: int
 
 
 class CLIOverrides(TypedDict):
@@ -80,9 +74,7 @@ class CLIOverrides(TypedDict):
 
     general: GeneralOverrides
     developer_agent: str | None
-    reviewer_agent: str | None
     developer_model: str | None
-    reviewer_model: str | None
 
 
 click.rich_click.USE_RICH_MARKUP = True
@@ -92,8 +84,8 @@ app = typer.Typer(
     name="ralph",
     help="[bold]Ralph Workflow[/bold] - Multi-agent AI orchestration pipeline.\n\n"
     "Ralph Workflow orchestrates AI coding agents to implement changes based on PROMPT.md.\n"
-    "It runs a developer agent for code implementation, then a reviewer agent for\n"
-    "review and fixes, automatically staging and committing the final result.",
+    "It runs a developer agent for code implementation across multiple planning and\n"
+    "development iterations, automatically staging and committing the final result.",
     add_completion=True,
     rich_markup_mode="rich",
     suggest_commands=True,
@@ -107,10 +99,20 @@ def _get_cli_context() -> DisplayContext:
     return _make_display_context()
 
 
+_KNOWN_SUBCOMMANDS: frozenset[str] = frozenset({"cleanup"})
+_QUICK_FLAGS: frozenset[str] = frozenset({"-Q", "--quick"})
+
+
 def _prepare_init_args(args: Sequence[str] | None) -> list[str] | None:
-    """Allow bare `--init` by inserting an empty placeholder value."""
+    """Normalize args before Click parsing.
+
+    - Allows bare ``--init`` by inserting an empty placeholder value.
+    - Converts ``ralph -Q <text>`` to ``ralph -Q --prompt <text>`` so a positional
+      inline prompt can be passed without conflicting with subcommand dispatch.
+    """
     if args is None:
-        return None
+        import sys  # noqa: PLC0415
+        args = sys.argv[1:]
 
     normalized_args: list[str] = list(args)
 
@@ -121,7 +123,51 @@ def _prepare_init_args(args: Sequence[str] | None) -> list[str] | None:
                 normalized_args.insert(index + 1, "")
             break
 
+    normalized_args = _inject_quick_prompt(normalized_args)
     return normalized_args
+
+
+def _inject_quick_prompt(args: list[str]) -> list[str]:
+    """If -Q/--quick is present and a bare positional text follows, inject --prompt.
+
+    Transforms ['-Q', 'do a task'] -> ['-Q', '--prompt', 'do a task'] so Typer
+    sees the text as the --prompt option value instead of an unknown subcommand.
+    Skips injection when --prompt/-P is already present.
+    """
+    if not any(a in _QUICK_FLAGS for a in args):
+        return args
+    if "--prompt" in args or "-P" in args:
+        return args
+    result: list[str] = []
+    skip_next = False
+    for i, arg in enumerate(args):
+        if skip_next:
+            skip_next = False
+            result.append(arg)
+            continue
+        # Options with values consume the next arg; skip it to avoid treating it as a prompt.
+        if arg in {
+            "--config", "-c",
+            "--developer-iters", "-D",
+            "--counter",
+            "--developer-agent", "-a",
+            "--developer-model",
+            "--verbosity", "-v",
+            "--init",
+            "--git-user-name",
+            "--git-user-email",
+            "--explain-policy-dir",
+        }:
+            result.append(arg)
+            skip_next = True
+            continue
+        if not arg.startswith("-") and arg not in _KNOWN_SUBCOMMANDS:
+            # Bare positional text: inject --prompt before it
+            result.append("--prompt")
+            result.append(arg)
+            return result + list(args[i + 1 :])
+        result.append(arg)
+    return result
 
 
 class _CommandMain(Protocol):
@@ -302,6 +348,14 @@ def _handle_early_exit_flags(
 
 def main(  # noqa: PLR0913
     ctx: typer.Context,
+    prompt: Annotated[
+        str | None,
+        typer.Option(
+            "--prompt",
+            "-P",
+            help="Inline prompt text for quick runs (use with --quick/-Q)",
+        ),
+    ] = None,
     config: Annotated[
         str | None,
         typer.Option(
@@ -319,15 +373,14 @@ def main(  # noqa: PLR0913
             help="Maximum developer agent iterations per run.",
         ),
     ] = None,
-    reviewer_reviews: Annotated[
-        int | None,
+    quick: Annotated[
+        bool,
         typer.Option(
-            "--reviewer-reviews",
-            "-R",
-            min=0,
-            help="Maximum reviewer re-review passes.",
+            "--quick",
+            "-Q",
+            help="Quick mode: run a single developer iteration (equivalent to -D 1).",
         ),
-    ] = None,
+    ] = False,
     counter: Annotated[
         list[str] | None,
         typer.Option(
@@ -343,26 +396,11 @@ def main(  # noqa: PLR0913
             help="Developer agent name",
         ),
     ] = None,
-    reviewer_agent: Annotated[
-        str | None,
-        typer.Option(
-            "--reviewer-agent",
-            "-r",
-            help="Reviewer agent name",
-        ),
-    ] = None,
     developer_model: Annotated[
         str | None,
         typer.Option(
             "--developer-model",
             help="Model flag for developer agent",
-        ),
-    ] = None,
-    reviewer_model: Annotated[
-        str | None,
-        typer.Option(
-            "--reviewer-model",
-            help="Model flag for reviewer agent",
         ),
     ] = None,
     verbosity: Annotated[
@@ -384,13 +422,6 @@ def main(  # noqa: PLR0913
         bool,
         typer.Option("--debug", help="Enable debug output"),
     ] = False,
-    review_depth: Annotated[
-        ReviewDepth,
-        typer.Option(
-            "--review-depth",
-            help="Review depth: standard, comprehensive, security, incremental",
-        ),
-    ] = ReviewDepth.STANDARD,
     resume: Annotated[
         bool,
         typer.Option("--resume", help="Resume from checkpoint"),
@@ -540,18 +571,19 @@ def main(  # noqa: PLR0913
     # Set up logging based on verbosity
     _configure_logging(verbosity)
 
+    _validate_prompt_flags(prompt, quick)
+
+    # quick mode implies developer_iters=1 (overrides -D when both supplied)
+    effective_developer_iters = 1 if quick else developer_iters
+
     # Load configuration
     cli_overrides = _build_cli_overrides(
         CLIOverrideInput(
             developer_agent=developer_agent,
-            reviewer_agent=reviewer_agent,
             developer_model=developer_model,
-            reviewer_model=reviewer_model,
-            review_depth=review_depth,
             git_user_name=git_user_name,
             git_user_email=git_user_email,
-            developer_iters=developer_iters,
-            reviewer_reviews=reviewer_reviews,
+            developer_iters=effective_developer_iters,
         ),
     )
 
@@ -620,12 +652,21 @@ def main(  # noqa: PLR0913
         verbosity,
         counter_overrides=counter_overrides,
         display_context=_cli_ctx,
+        inline_prompt=prompt,
     )
     raise typer.Exit(code=exit_code)
 
 
 app.callback(invoke_without_command=True)(main)
 app.command()(cleanup)
+
+
+def _validate_prompt_flags(prompt: str | None, quick: bool) -> None:
+    if prompt is not None and not quick:
+        raise click.UsageError(
+            "--prompt requires --quick/-Q. "
+            "Usage: ralph -Q --prompt 'your prompt here'"
+        )
 
 
 def _handle_list_agents(
@@ -778,6 +819,7 @@ def _run_pipeline(  # noqa: PLR0913
     *,
     counter_overrides: dict[str, int] | None = None,
     display_context: DisplayContext,
+    inline_prompt: str | None = None,
 ) -> int:
     """Run the main pipeline.
 
@@ -804,6 +846,7 @@ def _run_pipeline(  # noqa: PLR0913
             verbosity=verbosity,
             display_context=display_context,
             counter_overrides=counter_overrides or {},
+            inline_prompt=inline_prompt,
         )
         return exit_code
     except KeyboardInterrupt:
@@ -891,31 +934,19 @@ def _build_cli_overrides(
     """
     overrides: CLIOverrides = {
         "general": {
-            "review_depth": None,
             "git_user_name": None,
             "git_user_email": None,
             "execution": {},
         },
         "developer_agent": None,
-        "reviewer_agent": None,
         "developer_model": None,
-        "reviewer_model": None,
     }
 
     if input.developer_agent is not None:
         overrides["developer_agent"] = input.developer_agent
 
-    if input.reviewer_agent is not None:
-        overrides["reviewer_agent"] = input.reviewer_agent
-
     if input.developer_model is not None:
         overrides["developer_model"] = input.developer_model
-
-    if input.reviewer_model is not None:
-        overrides["reviewer_model"] = input.reviewer_model
-
-    if input.review_depth is not None:
-        overrides["general"]["review_depth"] = input.review_depth.value
 
     if input.git_user_name is not None:
         overrides["general"]["git_user_name"] = input.git_user_name
@@ -925,9 +956,6 @@ def _build_cli_overrides(
 
     if input.developer_iters is not None:
         overrides["general"]["developer_iters"] = input.developer_iters
-
-    if input.reviewer_reviews is not None:
-        overrides["general"]["reviewer_reviews"] = input.reviewer_reviews
 
     return dict(overrides)
 

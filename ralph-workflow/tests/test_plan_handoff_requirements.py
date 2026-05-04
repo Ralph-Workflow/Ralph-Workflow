@@ -26,24 +26,6 @@ _MINIMAL_DEVELOPMENT_RESULT = json.dumps(
     }
 )
 
-_MINIMAL_ISSUES = json.dumps(
-    {
-        "type": "issues",
-        "content": {
-            "status": "issues_found",
-            "summary": "A follow-up fix is required.",
-            "issues": [
-                {
-                    "path": "ralph/prompts/materialize.py",
-                    "severity": "medium",
-                    "summary": "Need a stricter precondition.",
-                }
-            ],
-            "what_came_up_short": ["Plan handoff handling is too loose."],
-            "how_to_fix": ["Require an existing plan handoff before non-planning renders."],
-        },
-    }
-)
 
 _MINIMAL_PLANNING_ANALYSIS_DECISION = json.dumps(
     {
@@ -65,9 +47,6 @@ _MINIMAL_PLANNING_ANALYSIS_DECISION = json.dumps(
         ("planning_analysis", None),
         ("development", None),
         ("development_analysis", None),
-        ("review", None),
-        ("review_analysis", None),
-        ("fix", None),
     ],
 )
 def test_non_new_plan_prompts_require_existing_plan_handoff(
@@ -79,13 +58,11 @@ def test_non_new_plan_prompts_require_existing_plan_handoff(
     workspace = MemoryWorkspace(root=str(tmp_path))
     workspace.write("PROMPT.md", "Tighten the plan handoff rules.")
 
-    if phase in {"review", "development_analysis"}:
+    if phase in {"development_analysis"}:
         workspace.write(
             ".agent/artifacts/development_result.json",
             _MINIMAL_DEVELOPMENT_RESULT,
         )
-    if phase in {"review_analysis"}:
-        workspace.write(".agent/artifacts/issues.json", _MINIMAL_ISSUES)
     if previous_phase == "planning_analysis":
         workspace.write(
             ".agent/artifacts/planning_analysis_decision.json",
@@ -97,9 +74,6 @@ def test_non_new_plan_prompts_require_existing_plan_handoff(
         "planning_analysis": SessionDrain.PLANNING,
         "development": SessionDrain.DEVELOPMENT,
         "development_analysis": SessionDrain.DEVELOPMENT,
-        "review": SessionDrain.REVIEW,
-        "review_analysis": SessionDrain.REVIEW,
-        "fix": SessionDrain.FIX,
     }[phase]
 
     with (

@@ -84,8 +84,6 @@ def test_emit_run_start_no_ansi() -> None:
             prompt_path="PROMPT.md",
             developer_agent="claude",
             developer_model="claude-3-5-sonnet",
-            reviewer_agent="claude",
-            reviewer_model="claude-3-5-haiku",
             parallel_max_workers=2,
             plan_present=True,
             verbosity="verbose",
@@ -151,22 +149,7 @@ def _filter_run_start_content(lines: list[str]) -> list[str]:
     ]
 
 
-def test_emit_run_start_agents_grouped_on_one_line() -> None:
-    """Wide mode: developer and reviewer agent+model fields share one [run-start] line."""
-    renderer, buf = _make_renderer()
-    renderer.emit_run_start(
-        _orientation(
-            developer_agent="claude",
-            developer_model="claude-3-5-sonnet",
-            reviewer_agent="claude",
-            reviewer_model="claude-3-5-haiku",
-        )
-    )
-    out = buf.getvalue()
-    run_start_lines = _filter_run_start_content(out.splitlines())
-    agents_line = next((ln for ln in run_start_lines if "developer=" in ln), None)
-    assert agents_line is not None, "expected a line with developer= in wide mode"
-    assert "reviewer=" in agents_line, "reviewer= must be on the same line as developer="
+
 
 
 def test_emit_run_start_plan_verbosity_grouped_on_one_line() -> None:
@@ -199,8 +182,6 @@ def test_emit_run_start_compact_mode_max_four_lines() -> None:
             prompt_path="PROMPT.md",
             developer_agent="claude",
             developer_model="claude-3-5-sonnet",
-            reviewer_agent="claude",
-            reviewer_model="claude-3-5-haiku",
             parallel_max_workers=2,
             plan_present=True,
             verbosity="verbose",

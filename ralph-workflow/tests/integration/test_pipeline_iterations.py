@@ -35,8 +35,6 @@ if TYPE_CHECKING:
 DEFAULT_POLICY_DIR = Path(__file__).parent.parent.parent / "ralph" / "policy" / "defaults"
 DEVELOPMENT_CYCLES_TWO = 2
 DEVELOPMENT_CYCLES_THREE = 3
-REVIEW_CYCLES_TWO = 2
-MAX_REVIEW_ANALYSIS_ITERATIONS = 2
 MAX_PLANNING_ANALYSIS_ITERATIONS = 3
 
 
@@ -64,63 +62,6 @@ class LoopbackOnceInvoker(MockAgentInvoker):
             if self._development_analysis_calls == 1:
                 return PipelineEvent.ANALYSIS_LOOPBACK
         return PipelineEvent.ANALYSIS_SUCCESS
-
-
-class ReviewLoopbackOnceInvoker(MockAgentInvoker):
-    """Return a single review-analysis loopback before approval."""
-
-    def __init__(self, workspace: MemoryWorkspace) -> None:
-        super().__init__(workspace)
-        self._review_analysis_calls = 0
-        self.last_phase: str | None = None
-
-    def invoke(self, agent_name: str, phase: str) -> PipelineEvent:
-        self.last_phase = phase
-        return super().invoke(agent_name, phase)
-
-    def analysis_event_for(self, phase: str) -> PipelineEvent:
-        if phase == "review_analysis":
-            self._review_analysis_calls += 1
-            if self._review_analysis_calls == 1:
-                return PipelineEvent.ANALYSIS_LOOPBACK
-        return PipelineEvent.ANALYSIS_SUCCESS
-
-
-class ReviewLoopbackToCapThenApproveInvoker(MockAgentInvoker):
-    """Request review loopback through the cap, then approve after the final fix pass."""
-
-    def __init__(self, workspace: MemoryWorkspace) -> None:
-        super().__init__(workspace)
-        self.last_phase: str | None = None
-        self._review_analysis_calls = 0
-
-    def invoke(self, agent_name: str, phase: str) -> PipelineEvent:
-        self.last_phase = phase
-        return super().invoke(agent_name, phase)
-
-    def analysis_event_for(self, phase: str) -> PipelineEvent:
-        if phase == "review_analysis":
-            self._review_analysis_calls += 1
-            if self._review_analysis_calls <= MAX_REVIEW_ANALYSIS_ITERATIONS:
-                return PipelineEvent.ANALYSIS_LOOPBACK
-        return PipelineEvent.ANALYSIS_SUCCESS
-
-
-class ReviewCommitSkippedInvoker(MockAgentInvoker):
-    """Skip the review commit while succeeding everywhere else."""
-
-    def __init__(self, workspace: MemoryWorkspace) -> None:
-        super().__init__(workspace)
-        self.last_phase: str | None = None
-
-    def invoke(self, agent_name: str, phase: str) -> PipelineEvent:
-        self.last_phase = phase
-        return super().invoke(agent_name, phase)
-
-    def commit_event_for(self, phase: str | None) -> PipelineEvent:
-        if phase == "review_commit":
-            return PipelineEvent.COMMIT_SKIPPED
-        return PipelineEvent.COMMIT_SUCCESS
 
 
 class PlanningAnalysisRequestChangesOnceInvoker(MockAgentInvoker):
@@ -192,7 +133,7 @@ def _run_pipeline(  # noqa: PLR0913
 
     def fake_phase_event_after_agent_run(*, effect, **_kwargs):
         analysis_event_for = getattr(mock_agent_invoker, "analysis_event_for", None)
-        analysis_phases = {"planning_analysis", "development_analysis", "review_analysis"}
+        analysis_phases = {"planning_analysis", "development_analysis"}
         if callable(analysis_event_for) and effect.phase in analysis_phases:
             return analysis_event_for(effect.phase)
         return PipelineEvent.AGENT_SUCCESS
@@ -232,7 +173,7 @@ def test_dev_runs_exactly_2_cycles_with_d2(
         tmp_path,
         mock_agent_invoker,
         _config(),
-        counter_overrides={"iteration": DEVELOPMENT_CYCLES_TWO, "reviewer_pass": 0},
+        counter_overrides={"iteration": DEVELOPMENT_CYCLES_TWO},
     )
 
     assert result == 0
@@ -242,11 +183,8 @@ def test_dev_runs_exactly_2_cycles_with_d2(
     final_state = saved_states[-1]
     assert final_state.phase == "complete"
     assert final_state.get_outer_progress("iteration") == DEVELOPMENT_CYCLES_TWO
-    assert final_state.get_outer_progress("reviewer_pass") == 0
     assert final_state.get_loop_iteration("development_analysis_iteration") == 0
-    assert final_state.get_loop_iteration("review_analysis_iteration") == 0
     assert final_state.get_budget_remaining("iteration") == 0
-    assert final_state.get_budget_remaining("reviewer_pass") == 0
 
 
 def test_dev_runs_exactly_3_cycles_with_d3(
@@ -259,7 +197,7 @@ def test_dev_runs_exactly_3_cycles_with_d3(
         tmp_path,
         mock_agent_invoker,
         _config(),
-        counter_overrides={"iteration": DEVELOPMENT_CYCLES_THREE, "reviewer_pass": 0},
+        counter_overrides={"iteration": DEVELOPMENT_CYCLES_THREE},
     )
 
     assert result == 0
@@ -271,56 +209,6 @@ def test_dev_runs_exactly_3_cycles_with_d3(
     assert final_state.get_outer_progress("iteration") == DEVELOPMENT_CYCLES_THREE
     assert final_state.get_loop_iteration("development_analysis_iteration") == 0
     assert final_state.get_budget_remaining("iteration") == 0
-
-
-def test_review_runs_exactly_2_cycles_with_r2(
-    monkeypatch: MonkeyPatch,
-    tmp_path: Path,
-    mock_agent_invoker: MockAgentInvoker,
-) -> None:
-    result, saved_states = _run_pipeline(
-        monkeypatch,
-        tmp_path,
-        mock_agent_invoker,
-        _config(),
-        counter_overrides={"iteration": 1, "reviewer_pass": REVIEW_CYCLES_TWO},
-    )
-
-    assert result == 0
-    assert mock_agent_invoker.count_for("development") == 1
-    assert mock_agent_invoker.count_for("review") == REVIEW_CYCLES_TWO
-    final_state = saved_states[-1]
-    assert final_state.phase == "complete"
-    assert final_state.get_outer_progress("iteration") == 1
-    assert final_state.get_outer_progress("reviewer_pass") == REVIEW_CYCLES_TWO
-    assert final_state.get_loop_iteration("development_analysis_iteration") == 0
-    assert final_state.get_loop_iteration("review_analysis_iteration") == 0
-    assert final_state.get_budget_remaining("reviewer_pass") == 0
-
-
-def test_no_review_when_reviewer_pass_cap_zero(
-    monkeypatch: MonkeyPatch,
-    tmp_path: Path,
-    mock_agent_invoker: MockAgentInvoker,
-) -> None:
-    result, saved_states = _run_pipeline(
-        monkeypatch,
-        tmp_path,
-        mock_agent_invoker,
-        _config(),
-        counter_overrides={"iteration": DEVELOPMENT_CYCLES_TWO, "reviewer_pass": 0},
-    )
-
-    assert result == 0
-    assert mock_agent_invoker.count_for("review") == 0
-    assert mock_agent_invoker.count_for("review_analysis") == 0
-    assert mock_agent_invoker.count_for("review_commit") == 0
-    assert mock_agent_invoker.count_for("development") == DEVELOPMENT_CYCLES_TWO
-    final_state = saved_states[-1]
-    assert final_state.phase == "complete"
-    assert final_state.get_outer_progress("iteration") == DEVELOPMENT_CYCLES_TWO
-    assert final_state.get_outer_progress("reviewer_pass") == 0
-    assert final_state.get_budget_remaining("reviewer_pass") == 0
 
 
 def test_analysis_loopback_preserves_budget(
@@ -335,7 +223,7 @@ def test_analysis_loopback_preserves_budget(
         tmp_path,
         invoker,
         _config(),
-        counter_overrides={"iteration": DEVELOPMENT_CYCLES_TWO, "reviewer_pass": 0},
+        counter_overrides={"iteration": DEVELOPMENT_CYCLES_TWO},
     )
 
     assert result == 0
@@ -355,87 +243,6 @@ def test_analysis_loopback_preserves_budget(
     assert final_state.get_loop_iteration("development_analysis_iteration") == 0
 
 
-def test_review_analysis_loopback_is_persisted_as_inner_progress_only(
-    monkeypatch: MonkeyPatch,
-    tmp_path: Path,
-    memory_workspace: MemoryWorkspace,
-) -> None:
-    invoker = ReviewLoopbackOnceInvoker(memory_workspace)
-
-    result, saved_states = _run_pipeline(
-        monkeypatch,
-        tmp_path,
-        invoker,
-        _config(),
-        counter_overrides={"iteration": 1, "reviewer_pass": 1},
-    )
-
-    assert result == 0
-    fix_state = _state_with_phase(saved_states, "fix")
-    assert fix_state.get_outer_progress("reviewer_pass") == 0
-    assert fix_state.get_loop_iteration("review_analysis_iteration") == 1
-    assert fix_state.review_outcome is not None
-    final_state = saved_states[-1]
-    assert final_state.phase == "complete"
-    assert final_state.get_outer_progress("reviewer_pass") == 1
-    assert final_state.get_loop_iteration("review_analysis_iteration") == 0
-
-
-def test_review_analysis_cap_routes_through_final_fix_with_persisted_max_counter(
-    monkeypatch: MonkeyPatch,
-    tmp_path: Path,
-    memory_workspace: MemoryWorkspace,
-) -> None:
-    invoker = ReviewLoopbackToCapThenApproveInvoker(memory_workspace)
-
-    result, saved_states = _run_pipeline(
-        monkeypatch,
-        tmp_path,
-        invoker,
-        _config(),
-        counter_overrides={"iteration": 1, "reviewer_pass": 1},
-    )
-
-    assert result == 0
-    capped_fix_state = next(
-        state
-        for state in saved_states
-        if state.phase == "fix"
-        and state.previous_phase == "review_analysis"
-        and state.get_loop_iteration("review_analysis_iteration")
-        == MAX_REVIEW_ANALYSIS_ITERATIONS
-    )
-    assert capped_fix_state.get_outer_progress("reviewer_pass") == 0
-    assert capped_fix_state.review_outcome is not None
-    assert invoker.count_for("fix") == MAX_REVIEW_ANALYSIS_ITERATIONS
-    final_state = saved_states[-1]
-    assert final_state.phase == "complete"
-    assert final_state.get_outer_progress("reviewer_pass") == 1
-    assert final_state.get_loop_iteration("review_analysis_iteration") == 0
-
-
-def test_skipped_review_commit_preserves_outer_progress_in_persisted_state(
-    monkeypatch: MonkeyPatch,
-    tmp_path: Path,
-    memory_workspace: MemoryWorkspace,
-) -> None:
-    invoker = ReviewCommitSkippedInvoker(memory_workspace)
-
-    result, saved_states = _run_pipeline(
-        monkeypatch,
-        tmp_path,
-        invoker,
-        _config(),
-        counter_overrides={"iteration": 1, "reviewer_pass": 1},
-    )
-
-    assert result == 0
-    final_state = saved_states[-1]
-    assert final_state.phase == "complete"
-    assert final_state.get_outer_progress("reviewer_pass") == 0
-    assert final_state.get_loop_iteration("review_analysis_iteration") == 0
-
-
 def test_planning_analysis_cap_skips_reentry_and_enters_development(
     monkeypatch: MonkeyPatch,
     tmp_path: Path,
@@ -445,13 +252,12 @@ def test_planning_analysis_cap_skips_reentry_and_enters_development(
     policy_bundle = load_policy(DEFAULT_POLICY_DIR)
     initial_state = PipelineState.from_policy(
         policy_bundle.pipeline,
-        budget_caps={"iteration": 1, "reviewer_pass": 0},
-        budget_remaining={"iteration": 1, "reviewer_pass": 0},
+        budget_caps={"iteration": 1},
+        budget_remaining={"iteration": 1},
         loop_iterations={"planning_analysis_iteration": 1},
         loop_caps={
             "planning_analysis_iteration": 1,
             "development_analysis_iteration": DEVELOPMENT_CYCLES_THREE,
-            "review_analysis_iteration": MAX_REVIEW_ANALYSIS_ITERATIONS,
         },
     )
 
@@ -461,7 +267,7 @@ def test_planning_analysis_cap_skips_reentry_and_enters_development(
         invoker,
         _config(),
         initial_state=initial_state,
-        counter_overrides={"iteration": 1, "reviewer_pass": 0},
+        counter_overrides={"iteration": 1},
     )
 
     assert result == 0
@@ -487,8 +293,8 @@ def test_runner_uses_real_planning_analysis_decision_and_skips_reentry_at_cap(
     initial_loop_caps["planning_analysis_iteration"] = 3
     initial_state = PipelineState.from_policy(
         policy_bundle.pipeline,
-        budget_caps={"iteration": 1, "reviewer_pass": 0},
-        budget_remaining={"iteration": 1, "reviewer_pass": 0},
+        budget_caps={"iteration": 1},
+        budget_remaining={"iteration": 1},
         loop_caps=initial_loop_caps,
     )
     (tmp_path / "PROMPT.md").write_text("# Prompt\n\nReproduce exhausted planning analysis.")
@@ -579,7 +385,7 @@ def test_runner_uses_real_planning_analysis_decision_and_skips_reentry_at_cap(
         _config(),
         initial_state=initial_state,
         verbosity=Verbosity.QUIET,
-        counter_overrides={"iteration": 1, "reviewer_pass": 0},
+        counter_overrides={"iteration": 1},
     )
 
     assert result == 0
@@ -677,8 +483,8 @@ def test_runner_uses_real_development_analysis_decision_and_skips_reentry_at_cap
         phase="development",
         policy_entry_phase=policy_bundle.pipeline.entry_phase,
         current_drain="development",
-        budget_caps={"iteration": 1, "reviewer_pass": 0},
-        budget_remaining={"iteration": 1, "reviewer_pass": 0},
+        budget_caps={"iteration": 1},
+        budget_remaining={"iteration": 1},
         loop_caps=initial_loop_caps,
     )
     (tmp_path / "PROMPT.md").write_text("# Prompt\n\nReproduce exhausted development analysis.")
@@ -785,7 +591,7 @@ def test_runner_uses_real_development_analysis_decision_and_skips_reentry_at_cap
         _config(),
         initial_state=initial_state,
         verbosity=Verbosity.QUIET,
-        counter_overrides={"iteration": 1, "reviewer_pass": 0},
+        counter_overrides={"iteration": 1},
     )
 
     assert result == 0
@@ -818,8 +624,8 @@ def test_checkpoint_resume_preserves_budget(
     checkpoint_path = tmp_path / "checkpoint.json"
     state = PipelineState(
         phase="planning",
-        budget_caps={"iteration": 1, "reviewer_pass": 0},
-        budget_remaining={"iteration": 1, "reviewer_pass": 0},
+        budget_caps={"iteration": 1},
+        budget_remaining={"iteration": 1},
     )
     ckpt_save(state, checkpoint_path)
 
@@ -834,7 +640,7 @@ def test_checkpoint_resume_preserves_budget(
         mock_agent_invoker,
         _config(),
         initial_state=loaded,
-        counter_overrides={"iteration": 1, "reviewer_pass": 0},
+        counter_overrides={"iteration": 1},
     )
 
     assert result == 0

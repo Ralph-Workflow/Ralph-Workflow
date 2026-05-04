@@ -6,7 +6,7 @@ Ralph Workflow
    <section class="hero">
      <h1 class="hero-headline">Unattended, vendor-neutral AI coding workflows</h1>
      <p class="hero-subtitle">Ralph Workflow routes AI coding agents through a structured
-     planning → development → review → fix loop. Describe what you want built in
+     planning → development loop. Describe what you want built in
      <code>PROMPT.md</code>, keep the workflow configuration in your repo, and let Ralph Workflow handle the rest —
      unattended, with checkpoint, recovery, and verification built in.</p>
      <a class="hero-cta" href="getting-started.html">Get started →</a>

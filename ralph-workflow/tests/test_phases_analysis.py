@@ -68,11 +68,11 @@ class TestParseAnalysisDecision:
         workspace = MagicMock()
         workspace.exists.return_value = True
         workspace.read.return_value = (
-            '{"type":"review_analysis_decision","content":{"status":"loopback"}}'
+            '{"type":"development_analysis_decision","content":{"status":"loopback"}}'
         )
         ctx = self._make_context(workspace)
 
-        result = parse_analysis_decision_status(ctx, "review_analysis")
+        result = parse_analysis_decision_status(ctx, "development_analysis")
         assert result is None
 
     def test_unknown_status_returns_none(self) -> None:
@@ -172,32 +172,6 @@ class TestDecisionVocabularyFullCoverage:
             result = parse_analysis_decision_status(ctx, "development_analysis")
             assert result is not None, (
                 f"Vocabulary entry '{status}' for development_analysis "
-                "must parse to a non-None status"
-            )
-
-    def test_every_review_analysis_vocabulary_entry_is_parseable(self) -> None:
-        from ralph.phases.artifacts import decision_vocabulary_for_drain  # noqa: PLC0415
-
-        policy = self._load_default_policy()
-        vocab = decision_vocabulary_for_drain(
-            policy, "review_analysis", "review_analysis_decision"
-        )
-        assert vocab, "review_analysis must have a non-empty decision_vocabulary"
-        for status in vocab:
-            workspace = MagicMock()
-            workspace.exists.return_value = True
-            workspace.read.return_value = (
-                f'{{"type":"review_analysis_decision",'
-                f'"content":{{"status":"{status}","summary":"test"}}}}'
-            )
-            ctx = MagicMock()
-            ctx.workspace = workspace
-            ctx.artifacts_policy = MagicMock()
-            ctx.artifacts_policy.artifacts = {}
-            ctx.pipeline_policy = _load_default_pipeline_policy()
-            result = parse_analysis_decision_status(ctx, "review_analysis")
-            assert result is not None, (
-                f"Vocabulary entry '{status}' for review_analysis "
                 "must parse to a non-None status"
             )
 

@@ -10,7 +10,7 @@ import pytest
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-from ralph.config.enums import AgentTransport, JsonParserType, ReviewDepth, Verbosity
+from ralph.config.enums import AgentTransport, JsonParserType, Verbosity
 from ralph.config.loader import (
     GLOBAL_CONFIG_PATH,
     LOCAL_CONFIG_PATH,
@@ -195,7 +195,6 @@ def test_general_config_defaults() -> None:
     config = GeneralConfig()
     assert config.verbosity == DEFAULT_VERBOSITY
     assert config.workflow.checkpoint_enabled is True
-    assert config.execution.force_universal_prompt is False
 
 
 def test_general_config_does_not_expose_removed_field() -> None:
@@ -204,12 +203,21 @@ def test_general_config_does_not_expose_removed_field() -> None:
     assert field_name not in GeneralConfig.model_fields
 
 
-def test_review_depth_enum() -> None:
-    """Test ReviewDepth enum values."""
-    assert str(ReviewDepth.STANDARD) == "standard"
-    assert str(ReviewDepth.COMPREHENSIVE) == "comprehensive"
-    assert str(ReviewDepth.SECURITY) == "security"
-    assert str(ReviewDepth.INCREMENTAL) == "incremental"
+def test_general_config_does_not_expose_removed_execution_flags() -> None:
+    """Removed review-era execution flags must not remain in GeneralConfig."""
+    assert "execution" not in GeneralConfig.model_fields
+    assert "behavior" not in GeneralConfig.model_fields
+
+
+def test_general_config_does_not_expose_removed_force_universal_prompt() -> None:
+    """force_universal_prompt and related review-era fields were removed as dead code."""
+    for field_name in (
+        "force_universal_prompt",
+        "auto_detect_stack",
+        "interactive",
+        "strict_validation",
+    ):
+        assert field_name not in GeneralConfig.model_fields
 
 
 def test_verbosity_enum() -> None:

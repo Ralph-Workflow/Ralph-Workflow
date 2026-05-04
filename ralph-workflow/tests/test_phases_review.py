@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
-import tempfile
-from pathlib import Path
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 import pytest
 from git import Repo
@@ -18,7 +20,6 @@ from ralph.phases.review import (
 )
 from ralph.pipeline.effects import Effect, InvokeAgentEffect, PreparePromptEffect
 from ralph.pipeline.events import AnalysisDecisionEvent, PhaseFailureEvent, PipelineEvent
-from ralph.policy.loader import load_policy
 from ralph.workspace.fs import FsWorkspace
 
 
@@ -144,13 +145,13 @@ class TestHandleReview:
 
 
 class TestHandleReviewAnalysis:
-    def _default_pipeline_policy(self) -> object:
-        with tempfile.TemporaryDirectory() as tmp:
-            return load_policy(Path(tmp) / ".agent").pipeline
-
     def _make_context(self) -> MagicMock:
         ctx = MagicMock()
-        ctx.pipeline_policy = self._default_pipeline_policy()
+        phase_def = MagicMock()
+        phase_def.decisions = {"completed": MagicMock(), "failed": MagicMock()}
+        pipeline = MagicMock()
+        pipeline.phases = {"review_analysis": phase_def}
+        ctx.pipeline_policy = pipeline
         return ctx
 
     def _mock_invoke_effect(self) -> MagicMock:

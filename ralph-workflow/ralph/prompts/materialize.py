@@ -317,6 +317,8 @@ def _phase_payload_variables(
 def _persist_current_prompt(workspace_root: Path, prompt_content: str | None) -> str:
     current_prompt_path = workspace_root / ".agent" / "CURRENT_PROMPT.md"
     current_prompt_path.parent.mkdir(parents=True, exist_ok=True)
+    if prompt_content is None and current_prompt_path.exists():
+        return str(current_prompt_path)
     current_prompt_path.write_text(prompt_content or "No requirements provided", encoding="utf-8")
     return str(current_prompt_path)
 

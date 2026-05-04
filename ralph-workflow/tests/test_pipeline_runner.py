@@ -517,34 +517,6 @@ class TestDetermineEffect:
         )
         assert isinstance(effect, CommitEffect)
 
-    def test_review_phase_uses_config_review_agent(self) -> None:
-        bundle = _load_default_policy_bundle()
-        state = PipelineState(phase="review")
-        config = _config_with_agents(
-            agent_chains={"review_chain": ["claude"]},
-            agent_drains={"review": "review_chain"},
-        )
-
-        effect = runner_module._determine_effect_from_policy(
-            state, bundle, WorkspaceScope("/tmp/worktree"), config=config
-        )
-        assert isinstance(effect, InvokeAgentEffect)
-        assert effect.agent_name == "claude"
-
-    def test_review_analysis_phase_uses_config_drain_by_full_name(self) -> None:
-        bundle = _load_default_policy_bundle()
-        state = PipelineState(phase="review_analysis")
-        config = _config_with_agents(
-            agent_chains={"analysis_chain": ["analysis-agent"]},
-            agent_drains={"review_analysis": "analysis_chain"},
-        )
-
-        effect = runner_module._determine_effect_from_policy(
-            state, bundle, WorkspaceScope("/tmp/worktree"), config=config
-        )
-        assert isinstance(effect, InvokeAgentEffect)
-        assert effect.agent_name == "analysis-agent"
-
     def test_review_analysis_prefers_its_own_bound_chain_over_review_chain(self) -> None:
         state = PipelineState(
             phase="review_analysis",
@@ -593,19 +565,6 @@ class TestDetermineEffect:
         assert effect.agent_name == "analysis-agent"
         assert effect.drain == "review_analysis"
 
-    def test_fix_phase_uses_config_binding(self) -> None:
-        bundle = _load_default_policy_bundle()
-        state = PipelineState(phase="fix")
-        config = _config_with_agents(
-            agent_chains={"fix_chain": ["claude"]},
-            agent_drains={"fix": "fix_chain"},
-        )
-
-        effect = runner_module._determine_effect_from_policy(
-            state, bundle, WorkspaceScope("/tmp/worktree"), config=config
-        )
-        assert isinstance(effect, InvokeAgentEffect)
-
     def test_missing_bound_agent_returns_exit_failure(self) -> None:
         bundle = _load_default_policy_bundle()
         broken_bundle = bundle.model_copy(
@@ -614,13 +573,13 @@ class TestDetermineEffect:
                     update={
                         "agent_chains": {
                             **bundle.agents.agent_chains,
-                            bundle.agents.agent_drains["review"].chain: MagicMock(agents=[]),
+                            bundle.agents.agent_drains["development"].chain: MagicMock(agents=[]),
                         }
                     }
                 )
             }
         )
-        state = PipelineState(phase="review")
+        state = PipelineState(phase="development")
 
         effect = runner_module._determine_effect_from_policy(
             state, broken_bundle, WorkspaceScope("/tmp/worktree")
@@ -1565,15 +1524,6 @@ class TestExecuteAgentEffect:
                     ".agent/DEVELOPMENT_ANALYSIS_DECISION.md",
                 ),
             ),
-            ("review", (".agent/artifacts/issues.json", ".agent/ISSUES.md")),
-            (
-                "review_analysis",
-                (
-                    ".agent/artifacts/review_analysis_decision.json",
-                    ".agent/REVIEW_ANALYSIS_DECISION.md",
-                ),
-            ),
-            ("fix", (".agent/artifacts/fix_result.json", ".agent/FIX_RESULT.md")),
         ],
     )
     def test_execute_agent_effect_removes_stale_phase_artifact_before_invocation(
@@ -2182,31 +2132,6 @@ class TestPhaseEventAfterAgentRun:
                 },
                 "DEVELOPMENT RESULT",
                 "Development result rendered from runner.",
-            ),
-            (
-                "review",
-                PipelineEvent.AGENT_SUCCESS,
-                ".agent/artifacts/issues.json",
-                {
-                    "type": "issues",
-                    "content": {
-                        "status": "issues_found",
-                        "summary": "Review findings rendered from runner.",
-                    },
-                },
-                "REVIEW ISSUES",
-                "Review findings rendered from runner.",
-            ),
-            (
-                "fix",
-                PipelineEvent.AGENT_SUCCESS,
-                ".agent/artifacts/fix_result.json",
-                {
-                    "type": "fix_result",
-                    "content": {"summary": "Fix result rendered from runner."},
-                },
-                "FIX",
-                "Fix result rendered from runner.",
             ),
             (
                 "development_analysis",

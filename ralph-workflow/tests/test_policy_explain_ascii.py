@@ -278,9 +278,8 @@ class TestRenderExplanationAscii:
         output = render_explanation_ascii(explanation)
 
         lines = output.split("\n")
-        # Check that failed routes to development/fix (padding-agnostic)
+        # Check that failed routes to development or planning (padding-agnostic)
         assert any("[failed]" in line and "-->" in line and "development" in line for line in lines)
-        assert any("[failed]" in line and "-->" in line and "fix" in line for line in lines)
         # failed should not route to 'failed' (terminal) — it should route to a rework phase
         assert not any(
             "[failed]" in line and line.rstrip().endswith("--> failed")

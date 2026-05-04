@@ -31,7 +31,6 @@ from ralph.phases.required_artifacts import (
     build_retry_hint,
     retry_hint_path,
 )
-from ralph.phases.review import handle_review
 from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.events import AnalysisDecisionEvent, PhaseFailureEvent, PipelineEvent
 from ralph.policy.loader import load_policy
@@ -64,20 +63,10 @@ def _execution_handler_for(phase_name: str):
     return _handler
 
 
-def _review_handler_for(phase_name: str):
-    """Return a wrapper around handle_review with the correct phase set."""
-    def _handler(effect, ctx):
-        real_effect = InvokeAgentEffect(agent_name="test", phase=phase_name, prompt_file="test.txt")
-        return handle_review(real_effect, ctx)
-    return _handler
-
-
 _PHASE_TO_HANDLER = {
     "planning": _execution_handler_for("planning"),
     "development": _execution_handler_for("development"),
     "development_analysis": _analysis_handler_for("development_analysis"),
-    "review": _review_handler_for("review"),
-    "review_analysis": _analysis_handler_for("review_analysis"),
 }
 
 # Legacy plan format: no "summary" key → _is_legacy_work_units_payload returns True,
@@ -128,33 +117,8 @@ _VALID_DEV_RESULT_JSON = json.dumps({
     },
 })
 
-_VALID_ISSUES_JSON = json.dumps({
-    "type": "issues",
-    "content": {
-        "status": "no_issues",
-        "summary": "Everything looks good.",
-        "issues": [],
-        "what_came_up_short": [],
-        "how_to_fix": [],
-    },
-})
-
-_VALID_FIX_RESULT_JSON = json.dumps({
-    "type": "fix_result",
-    "content": {
-        "status": "completed",
-        "summary": "Fixed.",
-        "files_changed": "- src/a.py",
-    },
-})
-
 _VALID_DEV_ANALYSIS_JSON = json.dumps({
     "type": "development_analysis_decision",
-    "content": {"status": "completed"},
-})
-
-_VALID_REVIEW_ANALYSIS_JSON = json.dumps({
-    "type": "review_analysis_decision",
     "content": {"status": "completed"},
 })
 
@@ -162,9 +126,6 @@ _PHASE_VALID_ARTIFACT: dict[str, str] = {
     "planning": json.dumps({"type": "plan", "content": {"summary": "x"}}),
     "development": _VALID_DEV_RESULT_JSON,
     "development_analysis": _VALID_DEV_ANALYSIS_JSON,
-    "review": _VALID_ISSUES_JSON,
-    "review_analysis": _VALID_REVIEW_ANALYSIS_JSON,
-    "fix": _VALID_FIX_RESULT_JSON,
 }
 
 
@@ -191,12 +152,10 @@ def _setup_phase_prerequisites(
 ) -> None:
     """Write required input artifacts for a phase so we test the *output* contract."""
     plan_json = _VALID_PLAN_JSON_FULL if full_plan else _VALID_PLAN_JSON_LEGACY
-    if phase in {"development", "development_analysis", "review", "review_analysis", "fix"}:
+    if phase in {"development", "development_analysis"}:
         workspace.write(".agent/artifacts/plan.json", plan_json)
     if phase == "development_analysis":
         workspace.write(".agent/artifacts/development_result.json", _VALID_DEV_RESULT_JSON)
-    elif phase in {"review_analysis", "fix"}:
-        workspace.write(".agent/artifacts/issues.json", _VALID_ISSUES_JSON)
 
 
 @pytest.mark.parametrize(
@@ -320,31 +279,6 @@ def test_retry_hint_content_includes_artifact_info(phase: str) -> None:
     assert ra.json_path in hint, f"Hint for {phase} must mention artifact path"
 
 
-def test_materialize_review_prompt_includes_last_retry_error(tmp_path: Path) -> None:
-    policy = load_policy(tmp_path / ".agent")
-    workspace = MemoryWorkspace(root=str(tmp_path))
-    workspace.write("PROMPT.md", "fix the bug")
-    _setup_phase_prerequisites(workspace, "review", full_plan=True)
-    workspace.write(retry_hint_path("review"), "PREVIOUS ATTEMPT FAILED: missing issues.json")
-
-    with patch.object(materialize_module, "_git_diff", return_value="diff --git a/x.py"):
-        prompt_path = materialize_module.materialize_prompt_for_phase(
-            phase="review",
-            workspace=workspace,
-            pipeline_policy=policy.pipeline,
-            session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.REVIEW),
-            workspace_root=tmp_path,
-        )
-
-    rendered = workspace.read(prompt_path)
-    assert "PREVIOUS ATTEMPT FAILED" in rendered, (
-        "Rendered review prompt must include LAST_RETRY_ERROR content when hint file exists"
-    )
-    assert not workspace.exists(retry_hint_path("review")), (
-        "Hint file must be deleted after being read by materialize"
-    )
-
-
 def test_materialize_development_analysis_prompt_includes_last_retry_error(
     tmp_path: Path,
 ) -> None:
@@ -375,9 +309,7 @@ def test_materialize_development_analysis_prompt_includes_last_retry_error(
     "phase,drain",
     [
         ("development", SessionDrain.DEVELOPMENT),
-        ("review", SessionDrain.REVIEW),
         ("development_analysis", SessionDrain.DEVELOPMENT),
-        ("review_analysis", SessionDrain.REVIEW),
     ],
 )
 def test_end_to_end_retry_flow(tmp_path: Path, phase: str, drain: SessionDrain) -> None:

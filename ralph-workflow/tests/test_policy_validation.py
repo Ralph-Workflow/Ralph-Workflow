@@ -118,8 +118,8 @@ class TestDefaultPolicyLoading:
         assert bundle.pipeline is not None
         assert bundle.artifacts is not None
 
-    def test_all_six_builtin_drains_bound(self) -> None:
-        """Test that all six built-in drains are bound in default agents.toml."""
+    def test_all_builtin_drains_bound(self) -> None:
+        """Test that all built-in drains are bound in default agents.toml."""
         default_dir = Path(__file__).parent.parent / "ralph" / "policy" / "defaults"
         bundle = load_policy(default_dir)
 
@@ -128,10 +128,6 @@ class TestDefaultPolicyLoading:
             "development",
             "development_analysis",
             "development_commit",
-            "review",
-            "review_analysis",
-            "fix",
-            "review_commit",
         }
 
         actual_drains = set(bundle.agents.agent_drains.keys())

@@ -103,8 +103,6 @@ def sample_config_dict() -> dict[str, object]:
         "general": {
             "verbosity": 2,
             "developer_context": 1,
-            "reviewer_context": 0,
-            "review_depth": "standard",
             "checkpoint_enabled": True,
         },
         "agents": {

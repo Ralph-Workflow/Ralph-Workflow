@@ -299,7 +299,7 @@ class TestCommitBudgetRouting:
         assert next_phase == "complete"
 
     def test_dev_commit_exhausted_no_review_routes_to_complete(self) -> None:
-        """Post-commit route skips review entirely when reviewer_reviews=0."""
+        """Post-commit route sends development_commit with exhausted budgets to complete."""
         state = PipelineState(
             phase="development_commit",
             budget_remaining={"iteration": 0, "reviewer_pass": 0},

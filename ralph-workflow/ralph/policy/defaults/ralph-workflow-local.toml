@@ -20,8 +20,6 @@
 # Loop iteration caps live in pipeline.toml [loop_counters.*] (see ralph --explain-policy).
 # Override budget caps with: ralph --counter <name>=<value> (e.g. --counter iteration=8).
 # developer_context = 1                 # developer context level (>=1)
-# reviewer_context = 0                  # reviewer context level (>=0)
-# review_depth = "standard"             # standard | comprehensive | security | incremental
 # prompt_path = "/path/to/PROMPT.md"    # override default PROMPT.md path (comment out to use default)
 # templates_dir = "/path/to/templates"  # user templates directory (comment out to use bundled)
 # git_user_name = "Your Name"           # git author name for commits (comment out to use git config)
@@ -40,19 +38,9 @@
 # Example: { claude = ["claude-sonnet-4-20250514", "claude-3-5-sonnet-20241022"] }
 # provider_fallback = {}
 
-# [general.behavior] — Behavioral flags
-[general.behavior]
-# interactive = false           # keep agent in foreground (interactive mode)
-# auto_detect_stack = true      # auto-detect project stack for review guidelines
-# strict_validation = false     # strict PROMPT.md validation
-
 # [general.workflow] — Workflow automation flags
 [general.workflow]
 # checkpoint_enabled = true     # enable checkpoint/resume functionality
-
-# [general.execution] — Execution behavior flags
-[general.execution]
-# force_universal_prompt = false  # force universal review prompt for all agents
 
 # ---------------------------------------------------------------------------
 # [ccs] — Claude Code Switch (CCS) defaults
@@ -128,17 +116,15 @@
 planning = ["claude/opus"]
 development = ["opencode/minimax/MiniMax-M2.7-highspeed", "codex", "claude/sonnet"]
 analysis = ["opencode/openai/gpt-5.4"]
-review = ["opencode/openai/gpt-5.4"]
-fix = ["opencode/zai-coding-plan/glm-5", "claude/sonnet"]
 commit = ["claude/haiku"]
 
 # CCS alternative example: planning = ["ccs/work"]
 # See docs/sphinx/configuration.md#ccs_aliases for CCS details.
 
 # ---------------------------------------------------------------------------
-# [agent_drains.*] — Drain-to-chain bindings for built-in drains
+# [agent_drains.*] — Drain-to-chain bindings for pipeline drains
 # Maps each pipeline drain name to a chain name defined in [agent_chains].
-# IMPORTANT: the bundled pipeline uses the full runtime drain set below.
+# IMPORTANT: the bundled pipeline uses the drain set below.
 # ---------------------------------------------------------------------------
 
 [agent_drains]
@@ -147,8 +133,6 @@ planning_analysis = "analysis"
 development = "development"
 development_analysis = "analysis"
 development_commit = "commit"
-review = "review"
-review_analysis = "analysis"
-review_commit = "commit"
-fix = "fix"
+analysis = "analysis"
+commit = "commit"
 
