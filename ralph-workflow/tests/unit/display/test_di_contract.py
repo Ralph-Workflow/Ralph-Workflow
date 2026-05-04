@@ -106,6 +106,7 @@ class TestRenderersRequireDisplayContext:
             (phase_banner_module, "show_phase_start"),
             (phase_banner_module, "show_phase_start_from_entry"),
             (phase_banner_module, "show_phase_complete"),
+            (phase_banner_module, "show_phase_close_banner"),
             (artifact_renderer_module, "render_plan_artifact"),
             (artifact_renderer_module, "render_analysis_decision"),
             (artifact_renderer_module, "render_commit_message"),

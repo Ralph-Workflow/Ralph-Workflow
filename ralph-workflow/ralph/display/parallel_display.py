@@ -301,6 +301,11 @@ class ParallelDisplay:
         with contextlib.suppress(Exception):
             self._plain_renderer.begin_phase(phase)
 
+    @property
+    def last_phase_elapsed_seconds(self) -> float:
+        """Return elapsed time of the most recently closed phase in seconds."""
+        return self._plain_renderer.last_phase_elapsed_seconds
+
     def emit_phase_close(
         self,
         phase: str,

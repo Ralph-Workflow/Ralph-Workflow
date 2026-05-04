@@ -13,12 +13,13 @@ from rich.console import Console
 
 from ralph.display.context import DisplayContext, make_display_context
 from ralph.display.phase_banner import (
+    show_phase_close_banner,
     show_phase_complete,
     show_phase_start,
     show_phase_start_from_entry,
     show_phase_transition,
 )
-from ralph.display.phase_lifecycle import PhaseEntryModel
+from ralph.display.phase_lifecycle import PhaseEntryModel, PhaseExitModel
 from ralph.display.theme import ASCII_GLYPHS, UNICODE_GLYPHS
 from ralph.policy.models import PhaseDefinition, PhaseTransition, PipelinePolicy, RecoveryPolicy
 
@@ -203,3 +204,75 @@ def test_phase_start_no_outer_dev_only_inner_analysis() -> None:
     output = _export(ctx)
     assert "Analysis 1/3" in output
     assert "Dev #" not in output
+
+
+# --- Phase-close banner tests ---
+
+
+def test_phase_close_banner_uses_unicode_checkmark_by_default() -> None:
+    """show_phase_close_banner uses Unicode success glyph by default."""
+    ctx = _make_ctx("wide", ascii_mode=False)
+    exit_model = PhaseExitModel(phase_name="development")
+    show_phase_close_banner(exit_model, display_context=ctx)
+    output = _export(ctx)
+    assert UNICODE_GLYPHS["success"] in output
+
+
+def test_phase_close_banner_uses_ok_badge_in_ascii_mode() -> None:
+    """With RALPH_FORCE_ASCII=1, show_phase_close_banner uses '[OK]'."""
+    ctx = _make_ctx("wide", ascii_mode=True)
+    exit_model = PhaseExitModel(phase_name="development")
+    show_phase_close_banner(exit_model, display_context=ctx)
+    output = _export(ctx)
+    assert ASCII_GLYPHS["success"] in output
+    assert UNICODE_GLYPHS["success"] not in output
+
+
+def test_phase_close_banner_dev_appears_before_analysis() -> None:
+    """Dev label must appear before Analysis label in phase-close banner."""
+    ctx = _make_ctx("wide")
+    exit_model = PhaseExitModel(
+        phase_name="development_analysis",
+        outer_dev_iteration=2,
+        outer_dev_cap=3,
+        inner_analysis=1,
+        inner_analysis_cap=5,
+    )
+    show_phase_close_banner(exit_model, display_context=ctx)
+    output = _export(ctx)
+    dev_pos = output.find("Dev 2/3")
+    analysis_pos = output.find("Analysis 1/5")
+    assert dev_pos != -1, f"Expected 'Dev 2/3' in output, got: {output!r}"
+    assert analysis_pos != -1, f"Expected 'Analysis 1/5' in output, got: {output!r}"
+    assert dev_pos < analysis_pos, (
+        f"Dev must appear before Analysis, but dev_pos={dev_pos} analysis_pos={analysis_pos}"
+    )
+
+
+def test_phase_close_banner_elapsed_appears_after_budget() -> None:
+    """Elapsed time appears after budget remaining in phase-close banner."""
+    ctx = _make_ctx("wide")
+    exit_model = PhaseExitModel(
+        phase_name="development",
+        budget_remaining=1,
+        elapsed_seconds=5.0,
+    )
+    show_phase_close_banner(exit_model, display_context=ctx)
+    output = _export(ctx)
+    budget_pos = output.find("Budget: 1 left")
+    elapsed_pos = output.find("5.0s")
+    assert budget_pos != -1, f"Expected 'Budget: 1 left' in output, got: {output!r}"
+    assert elapsed_pos != -1, f"Expected '5.0s' in output, got: {output!r}"
+    assert budget_pos < elapsed_pos, (
+        f"Budget must appear before elapsed, but budget_pos={budget_pos} elapsed_pos={elapsed_pos}"
+    )
+
+
+def test_phase_close_banner_ascii_arrow_for_exit_trigger() -> None:
+    """With RALPH_FORCE_ASCII=1, exit trigger arrow uses '->'."""
+    ctx = _make_ctx("wide", ascii_mode=True)
+    exit_model = PhaseExitModel(phase_name="development", exit_trigger="produced")
+    show_phase_close_banner(exit_model, display_context=ctx)
+    output = _export(ctx)
+    assert ASCII_GLYPHS["arrow"] in output
+    assert "produced" in output

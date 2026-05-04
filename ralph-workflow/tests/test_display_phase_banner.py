@@ -12,12 +12,13 @@ from ralph.display.phase_banner import (
     _ROLE_PAIR_DESCRIPTIONS,
     _phase_label,
     _phase_style,
+    show_phase_close_banner,
     show_phase_complete,
     show_phase_start,
     show_phase_start_from_entry,
     show_phase_transition,
 )
-from ralph.display.phase_lifecycle import PhaseEntryModel
+from ralph.display.phase_lifecycle import PhaseEntryModel, PhaseExitModel
 from ralph.policy.models import (
     LoopCounterConfig,
     PhaseCommitPolicy,
@@ -691,3 +692,124 @@ class TestAnalysisExecutionTransitionBannerCounters:
         )
         # Must show final-skip indicator
         assert "final, skipping next" in output
+
+
+# --- Tests for show_phase_close_banner ---
+
+
+def test_show_phase_close_banner_basic() -> None:
+    """Close banner shows success glyph and phase label."""
+    console = Console(record=True, no_color=True)
+    exit_model = PhaseExitModel(phase_name="development")
+    show_phase_close_banner(exit_model, display_context=_ctx_from_console(console))
+    output = console.export_text()
+    assert "Development" in output
+
+
+def test_show_phase_close_banner_shows_dev_cycle() -> None:
+    """Close banner shows outer dev cycle label."""
+    console = Console(record=True, no_color=True)
+    exit_model = PhaseExitModel(
+        phase_name="development",
+        outer_dev_iteration=2,
+        outer_dev_cap=3,
+    )
+    show_phase_close_banner(exit_model, display_context=_ctx_from_console(console))
+    output = console.export_text()
+    assert "Dev 2/3" in output
+
+
+def test_show_phase_close_banner_shows_analysis_cycle() -> None:
+    """Close banner shows inner analysis cycle label."""
+    console = Console(record=True, no_color=True)
+    exit_model = PhaseExitModel(
+        phase_name="development_analysis",
+        inner_analysis=1,
+        inner_analysis_cap=3,
+    )
+    show_phase_close_banner(exit_model, display_context=_ctx_from_console(console))
+    output = console.export_text()
+    assert "Analysis 1/3" in output
+
+
+def test_show_phase_close_banner_shows_budget_remaining() -> None:
+    """Close banner shows budget remaining label."""
+    console = Console(record=True, no_color=True)
+    exit_model = PhaseExitModel(
+        phase_name="development",
+        budget_remaining=2,
+    )
+    show_phase_close_banner(exit_model, display_context=_ctx_from_console(console))
+    output = console.export_text()
+    assert "Budget: 2 left" in output
+
+
+def test_show_phase_close_banner_shows_elapsed_when_nonzero() -> None:
+    """Close banner shows elapsed time when elapsed_seconds > 0."""
+    console = Console(record=True, no_color=True)
+    exit_model = PhaseExitModel(
+        phase_name="development",
+        elapsed_seconds=7.5,
+    )
+    show_phase_close_banner(exit_model, display_context=_ctx_from_console(console))
+    output = console.export_text()
+    assert "7.5s" in output
+
+
+def test_show_phase_close_banner_omits_elapsed_when_zero() -> None:
+    """Close banner omits elapsed time when elapsed_seconds is 0."""
+    console = Console(record=True, no_color=True)
+    exit_model = PhaseExitModel(
+        phase_name="development",
+        elapsed_seconds=0.0,
+    )
+    show_phase_close_banner(exit_model, display_context=_ctx_from_console(console))
+    output = console.export_text()
+    assert "0.0s" not in output
+
+
+def test_show_phase_close_banner_shows_exit_trigger() -> None:
+    """Close banner shows exit trigger when set."""
+    console = Console(record=True, no_color=True)
+    exit_model = PhaseExitModel(
+        phase_name="development",
+        exit_trigger="produced",
+    )
+    show_phase_close_banner(exit_model, display_context=_ctx_from_console(console))
+    output = console.export_text()
+    assert "produced" in output
+
+
+def test_show_phase_close_banner_full_context() -> None:
+    """Close banner shows all context fields together."""
+    console = Console(record=True, no_color=True)
+    exit_model = PhaseExitModel(
+        phase_name="development_analysis",
+        outer_dev_iteration=2,
+        outer_dev_cap=3,
+        inner_analysis=1,
+        inner_analysis_cap=5,
+        budget_remaining=1,
+        elapsed_seconds=12.3,
+        exit_trigger="produced",
+    )
+    show_phase_close_banner(exit_model, display_context=_ctx_from_console(console))
+    output = console.export_text()
+    assert "Development Analysis" in output
+    assert "Dev 2/3" in output
+    assert "Analysis 1/5" in output
+    assert "Budget: 1 left" in output
+    assert "12.3s" in output
+    assert "produced" in output
+
+
+def test_show_phase_close_banner_uses_policy_for_style() -> None:
+    """Close banner passes pipeline_policy through to _phase_style."""
+    policy = _make_two_phase_policy("execution", "analysis", "my_work", "my_analysis")
+    console = Console(record=True, no_color=True)
+    exit_model = PhaseExitModel(phase_name="my_work", phase_role="execution")
+    show_phase_close_banner(
+        exit_model, display_context=_ctx_from_console(console), pipeline_policy=policy
+    )
+    output = console.export_text()
+    assert "My Work" in output

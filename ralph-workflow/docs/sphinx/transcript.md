@@ -164,9 +164,32 @@ All iteration fields are optional and appear only when the pipeline has that con
 `Dev N/cap` counts from 1: `Dev 1/5` means the pipeline is entering its first development
 cycle out of a total budget of 5. `Dev 0/cap` is never shown.
 
+## Phase-Close Banner
+
+When a phase ends and the pipeline transitions to the next phase, a rich visual
+phase-close banner is printed to the console:
+
+```
+<success_glyph> <Phase Label>  <od_glyph> Dev N/cap  <ia_glyph> Analysis N/cap  <budget_glyph> Budget: N left  Ns  <arrow> <exit_trigger>
+```
+
+| Field | Notes |
+|-------|-------|
+| `<success_glyph>` | `✓` (Unicode) or `[OK]` (ASCII) |
+| `<Phase Label>` | Human-readable phase name (e.g. `Development Analysis`) |
+| `Dev N/cap` or `Dev #N` | Outer development cycle — 1-indexed; same label as phase-start |
+| `Analysis N/cap` or `Analysis #N` | Inner analysis loop iteration — same label as phase-start |
+| `Budget: N left` | Remaining budget from the active budget counter |
+| `Ns` | Wall-clock elapsed time for the phase, in seconds (omitted when 0) |
+| `<arrow> <exit_trigger>` | Why the phase ended — present when an exit trigger is known |
+
+All iteration fields are optional and appear only when the pipeline has that context.
+This banner is symmetric with the phase-start banner: same field ordering, same glyphs,
+same style keys — making before/after pairs easy to read in the terminal.
+
 ## `[phase-close]` Line
 
-After each phase completes, a single `[phase-close]` line is appended to the transcript:
+After each phase produces its artifact, a single `[phase-close]` line is appended to the transcript:
 
 ```
 <ISO-TS> INFO META [phase-close] <glyph?> phase=<name> [Dev N/cap]? [Analysis N/cap]? <produced> exit=<trigger> (elapsed=Ns, content_blocks=N, thinking_blocks=N, tool_calls=N, errors=N)

@@ -250,6 +250,7 @@ class PlainLogRenderer:
         self._emitted_empty_decision_log: bool = False
         # Per-phase activity counters
         self._phase_counters: _PhaseCounters | None = None
+        self._last_phase_elapsed_seconds: float = 0.0
         self._run_start_time: float | None = None
         self._run_counters: _PhaseCounters = _PhaseCounters()
         # Step 4: Track last emitted tool signature per unit to deduplicate META [activity] line
@@ -768,7 +769,13 @@ class PlainLogRenderer:
             highlight=False,
             no_wrap=True,
         )
+        self._last_phase_elapsed_seconds = elapsed_s
         self._phase_counters = None
+
+    @property
+    def last_phase_elapsed_seconds(self) -> float:
+        """Return elapsed time of the most recently closed phase in seconds."""
+        return self._last_phase_elapsed_seconds
 
     def emit_phase_close_from_exit(self, exit_model: PhaseExitModel) -> None:
         """Emit a phase-close recap from a PhaseExitModel.

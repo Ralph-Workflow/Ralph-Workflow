@@ -16,13 +16,14 @@ from ralph.display.phase_status import (
     format_analysis_cycle,
     format_budget_remaining,
     format_dev_cycle,
+    format_elapsed_seconds,
     format_transition_context_items,
 )
 
 if TYPE_CHECKING:
     from rich.console import Console
 
-    from ralph.display.phase_lifecycle import PhaseEntryModel
+    from ralph.display.phase_lifecycle import PhaseEntryModel, PhaseExitModel
     from ralph.policy.models import PipelinePolicy
 
 _PHASE_STYLES: dict[str, str] = {
@@ -348,5 +349,58 @@ def show_phase_complete(
     line.append(f"{label} complete", style=style)
     if decision is not None:
         line.append(f" — {decision}", style="theme.text.emphasis")
+
+    c.print(line)
+
+
+def show_phase_close_banner(
+    exit_model: PhaseExitModel,
+    *,
+    display_context: DisplayContext,
+    pipeline_policy: PipelinePolicy | None = None,
+) -> None:
+    """Display the close of a pipeline phase from a lifecycle exit model.
+
+    Canonical model-based path for phase-close rich banners. Symmetric with
+    :func:`show_phase_start_from_entry`: same field ordering, same glyphs, same
+    style keys. Appends elapsed time and exit trigger after the iteration context.
+    """
+    c = display_context.console
+    style = _phase_style(exit_model.phase_name, pipeline_policy)
+    label = _phase_label(exit_model.phase_name)
+
+    line = Text()
+    success_glyph = display_context.glyph_for("success")
+    od_glyph = display_context.glyph_for("outer_dev")
+    ia_glyph = display_context.glyph_for("inner_analysis")
+    budget_glyph = display_context.glyph_for("budget")
+    arrow = display_context.glyph_for("arrow")
+    line.append(f"{success_glyph} ", style=style)
+    line.append(label, style=style)
+
+    if exit_model.outer_dev_iteration is not None:
+        suffix = _build_outer_iteration_suffix(
+            exit_model.outer_dev_iteration, exit_model.outer_dev_cap, od_glyph=od_glyph
+        )
+        line.append(suffix, style="theme.outer_dev")
+
+    if exit_model.inner_analysis is not None:
+        suffix = _build_inner_analysis_suffix(
+            exit_model.inner_analysis, exit_model.inner_analysis_cap, ia_glyph=ia_glyph
+        )
+        line.append(suffix, style="theme.inner_analysis")
+
+    if exit_model.budget_remaining is not None:
+        suffix = _build_budget_remaining_suffix(
+            exit_model.budget_remaining, budget_glyph=budget_glyph
+        )
+        line.append(suffix, style="theme.level.warn")
+
+    if exit_model.elapsed_seconds > 0:
+        elapsed_label = format_elapsed_seconds(exit_model.elapsed_seconds)
+        line.append(f"  {elapsed_label}", style="theme.text.muted")
+
+    if exit_model.exit_trigger is not None:
+        line.append(f"  {arrow} {exit_model.exit_trigger}", style="theme.text.muted")
 
     c.print(line)

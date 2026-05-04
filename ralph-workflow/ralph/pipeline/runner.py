@@ -40,7 +40,7 @@ from ralph.display.artifact_renderer import (
 )
 from ralph.display.context import DisplayContext, make_display_context
 from ralph.display.phase_banner import (
-    show_phase_complete,
+    show_phase_close_banner,
     show_phase_start,
     show_phase_start_from_entry,
     show_phase_transition,
@@ -973,6 +973,48 @@ def _skipped_exhausted_analysis_info(
     return (on_success_target, info_message)
 
 
+def _build_phase_exit_model_from_state(
+    previous_phase: str,
+    state: PipelineState,
+    pipeline_policy: PipelinePolicy,
+    *,
+    elapsed_seconds: float = 0.0,
+) -> PhaseExitModel:
+    """Build a PhaseExitModel for the phase we're leaving, from pipeline state."""
+    phase_role: str | None = None
+    inner_analysis: int | None = None
+    inner_analysis_cap: int | None = None
+    phase_def = pipeline_policy.phases.get(previous_phase)
+    if phase_def is not None:
+        phase_role = phase_def.role
+        if phase_def.loop_policy is not None:
+            field = phase_def.loop_policy.iteration_state_field
+            inner_analysis = state.get_loop_iteration(field) + 1
+            inner_analysis_cap = _resolve_analysis_cap(field, state, pipeline_policy)
+
+    outer_iteration: int | None = None
+    outer_dev_cap: int | None = None
+    budget_remaining: int | None = None
+    counter = _find_commit_counter_from_phase(previous_phase, pipeline_policy)
+    if counter is not None:
+        outer_iteration = state.get_outer_progress(counter)
+        budget_remaining = state.get_budget_remaining(counter)
+        if outer_iteration is not None and budget_remaining is not None:
+            outer_dev_cap = outer_iteration + budget_remaining
+
+    current_dev_cycle = outer_iteration + 1 if outer_iteration is not None else None
+    return PhaseExitModel(
+        phase_name=previous_phase,
+        phase_role=phase_role,
+        outer_dev_iteration=current_dev_cycle,
+        outer_dev_cap=outer_dev_cap,
+        inner_analysis=inner_analysis,
+        inner_analysis_cap=inner_analysis_cap,
+        budget_remaining=budget_remaining,
+        elapsed_seconds=elapsed_seconds,
+    )
+
+
 def _emit_phase_transition_if_changed(
     display: ParallelDisplay | _LegacyConsoleDisplay,
     previous_phase: str,
@@ -995,13 +1037,21 @@ def _emit_phase_transition_if_changed(
 
     # Emit phase completion for the phase we're leaving
     try:
-        show_phase_complete(
-            previous_phase,
+        elapsed = (
+            0.0
+            if isinstance(display, _LegacyConsoleDisplay)
+            else display.last_phase_elapsed_seconds
+        )
+        exit_model = _build_phase_exit_model_from_state(
+            previous_phase, state, pipeline_policy, elapsed_seconds=elapsed
+        )
+        show_phase_close_banner(
+            exit_model,
             display_context=ctx,
             pipeline_policy=pipeline_policy,
         )
     except Exception:  # pragma: no cover - defensive
-        logger.debug("show_phase_complete failed", exc_info=True)
+        logger.debug("show_phase_close_banner failed", exc_info=True)
 
     # Build context and add skipped analysis info if applicable
     context = _phase_context(state, previous_phase, pipeline_policy) or None
