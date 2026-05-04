@@ -136,7 +136,7 @@ def _print_not_initialized_panel(*, display_context: DisplayContext) -> None:
     content = Text()
     content.append(
         "Ralph Workflow orchestrates AI coding agents through a "
-        "planning → development → review → fix loop "
+        "planning → development loop "
         "driven by your PROMPT.md.\n\n"
     )
     content.append("Next steps:\n", style="theme.banner.title")
@@ -219,6 +219,7 @@ def _run_preflight_checks(  # noqa: PLR0913
     counter_overrides: dict[str, int],
     *,
     display_context: DisplayContext,
+    inline_prompt: str | None = None,
 ) -> int:
     """Run all preflight validation checks.
 
@@ -229,7 +230,7 @@ def _run_preflight_checks(  # noqa: PLR0913
 
     console = display_context.console
     # validate_required_inputs requires workspace_scope
-    if workspace_scope is not None:
+    if workspace_scope is not None and inline_prompt is None:
         # Fresh-state detection: workspace has neither PROMPT.md nor .agent
         prompt_path = workspace_scope.root / "PROMPT.md"
         agent_dir = workspace_scope.root / ".agent"
@@ -278,7 +279,6 @@ def _print_dry_run(
     phase = initial_state.phase if initial_state else fallback_phase
     console.print(_detail_text("Phase", phase))
     console.print(_detail_text("Iterations", str(config.general.developer_iters)))
-    console.print(_detail_text("Review passes", str(config.general.reviewer_reviews)))
 
 
 def _execute_pipeline(  # noqa: PLR0913
@@ -386,6 +386,7 @@ def run_pipeline(  # noqa: PLR0913
     *,
     display_context: DisplayContext | None = None,
     counter_overrides: dict[str, int] | None = None,
+    inline_prompt: str | None = None,
 ) -> int:
     """Run the Ralph Workflow pipeline (backward compatibility wrapper).
 
@@ -398,12 +399,20 @@ def run_pipeline(  # noqa: PLR0913
         display_context: Display context for consistent rendering. If None, a default
             context is created using make_display_context().
         counter_overrides: Optional budget counter overrides from --counter flags.
+        inline_prompt: Optional inline prompt text supplied via CLI argument.
 
     Returns:
         Exit code (0 for success, non-zero for failure).
     """
     ctx = display_context if display_context is not None else make_display_context()
     effective_counter_overrides = counter_overrides or {}
+
+    if inline_prompt is not None:
+        workspace_scope = resolve_workspace_scope()
+        current_prompt_path = workspace_scope.root / ".agent" / "CURRENT_PROMPT.md"
+        current_prompt_path.parent.mkdir(parents=True, exist_ok=True)
+        current_prompt_path.write_text(inline_prompt, encoding="utf-8")
+
     # Phase 1: Load configuration
     load_result = _load_configuration(
         config_path, cli_overrides or {}, resume, display_context=ctx
@@ -419,6 +428,7 @@ def run_pipeline(  # noqa: PLR0913
         load_result.initial_state,
         effective_counter_overrides,
         display_context=ctx,
+        inline_prompt=inline_prompt,
     )
     if preflight_result != _EXIT_SUCCESS:
         return preflight_result

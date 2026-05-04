@@ -443,8 +443,8 @@ def test_emit_first_run_welcome_includes_pitch_sentence() -> None:
     assert "planning" in output, (
         f"Expected 'planning' (part of pipeline loop pitch) in output, got: {output!r}"
     )
-    assert "review" in output, (
-        f"Expected 'review' (part of pipeline loop pitch) in output, got: {output!r}"
+    assert "development" in output, (
+        f"Expected 'development' (part of pipeline loop pitch) in output, got: {output!r}"
     )
     assert "PROMPT.md" in output, (
         f"Expected 'PROMPT.md' in pitch output, got: {output!r}"

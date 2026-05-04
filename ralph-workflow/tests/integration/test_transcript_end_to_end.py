@@ -1,9 +1,9 @@
 """Integration test: full transcript ordering from run-start through completion.
 
 Drives a stubbed runner through planning → development → development_analysis →
-development_commit → review → review_analysis → review_commit → complete and asserts
-the captured transcript contains the expected ordered sequence:
-run-start → phase transitions → streaming content → phase-close → completion.
+development_commit → complete and asserts the captured transcript contains the
+expected ordered sequence: run-start → phase transitions → streaming content →
+phase-close → completion.
 """
 
 from __future__ import annotations
@@ -90,7 +90,7 @@ def _install_runner_stubs(
         raise AssertionError(msg)
 
     def fake_phase_event_after_agent_run(*, effect, display=None, **_kwargs):
-        if effect.phase in {"development_analysis", "review_analysis"}:
+        if effect.phase == "development_analysis":
             return PipelineEvent.ANALYSIS_SUCCESS
         if display is not None and hasattr(display, "emit_phase_close"):
             with contextlib.suppress(Exception):
@@ -168,8 +168,8 @@ def test_transcript_ordering_run_start_phase_transitions_streaming_phase_close_c
 
     state = PipelineState(
         phase="planning",
-        budget_caps={"iteration": 1, "reviewer_pass": 1},
-        budget_remaining={"iteration": 1, "reviewer_pass": 1},
+        budget_caps={"iteration": 1},
+        budget_remaining={"iteration": 1},
     )
 
     exit_code = runner_module.run(_config(), initial_state=state)
@@ -180,14 +180,12 @@ def test_transcript_ordering_run_start_phase_transitions_streaming_phase_close_c
     # --- Assert phase ordering ---
     assert "[phase] ◆ planning" in out
     assert "[phase] ◆ development" in out
-    assert "[phase] ◆ review" in out
 
     planning_idx = out.index("[phase] ◆ planning")
     development_idx = out.index("[phase] ◆ development")
-    review_idx = out.index("[phase] ◆ review")
 
-    assert planning_idx < development_idx < review_idx, (
-        "Phase transitions should appear in order: planning → development → review"
+    assert planning_idx < development_idx, (
+        "Phase transitions should appear in order: planning → development"
     )
 
     # --- Assert run-start comes before first phase ---
@@ -245,8 +243,8 @@ def test_quiet_mode_suppresses_run_start_and_phase_close(
 
     state = PipelineState(
         phase="planning",
-        budget_caps={"iteration": 1, "reviewer_pass": 0},
-        budget_remaining={"iteration": 1, "reviewer_pass": 0},
+        budget_caps={"iteration": 1},
+        budget_remaining={"iteration": 1},
     )
 
     # Run with Verbosity.QUIET

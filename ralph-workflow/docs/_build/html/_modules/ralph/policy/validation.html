@@ -1,0 +1,1389 @@
+<!doctype html>
+<html class="no-js" lang="en" data-content_root="../../../">
+  <head><meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <meta name="color-scheme" content="light dark"><link rel="index" title="Index" href="../../../genindex.html"><link rel="search" title="Search" href="../../../search.html">
+        <link rel="canonical" href="https://ralphworkflow.com/docs/_modules/ralph/policy/validation.html">
+
+    <!-- Generated with Sphinx 9.1.0 and Furo 2025.12.19 -->
+        <title>ralph.policy.validation - Ralph Workflow</title>
+      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=d75fae25" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/styles/furo.css?v=7bdb33bb" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/copybutton.css?v=76b2166b" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/sphinx-design.min.css?v=95c83b7e" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/styles/furo-extensions.css?v=8dab3a3b" />
+    <link rel="stylesheet" type="text/css" href="../../../_static/custom.css?v=afe409dd" />
+    
+    
+
+
+<style>
+  body {
+    --color-code-background: #f0f0f0;
+  --color-code-foreground: black;
+  --color-brand-primary: #0891b2;
+  --color-brand-content: #0891b2;
+  --font-stack: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-stack--monospace: 'JetBrains Mono', 'Fira Code', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --color-background-primary: #ffffff;
+  --color-background-secondary: #f6f8fa;
+  --color-foreground-primary: #0b1320;
+  --color-foreground-secondary: #4b5563;
+  --color-foreground-muted: #6b7280;
+  --color-sidebar-background: #f6f8fa;
+  --color-sidebar-background-border: #e5e7eb;
+  --color-highlight-on-target: #ecfeff;
+  --color-api-name: #0891b2;
+  --color-api-pre-name: #0891b2;
+  
+  }
+  @media not print {
+    body[data-theme="dark"] {
+      --color-code-background: #0d1117;
+  --color-code-foreground: #e6edf3;
+  --color-brand-primary: #22d3ee;
+  --color-brand-content: #22d3ee;
+  --color-background-primary: #0b0d10;
+  --color-background-secondary: #11151a;
+  --color-foreground-primary: #e6edf3;
+  --color-foreground-secondary: #9aa4b2;
+  --color-foreground-muted: #6c7682;
+  --color-sidebar-background: #0b0d10;
+  --color-sidebar-background-border: #1a1f25;
+  --color-sidebar-link-text--top-level: #e6edf3;
+  --color-highlight-on-target: #0c2a2e;
+  --color-api-name: #22d3ee;
+  --color-api-pre-name: #22d3ee;
+  
+    }
+    @media (prefers-color-scheme: dark) {
+      body:not([data-theme="light"]) {
+        --color-code-background: #0d1117;
+  --color-code-foreground: #e6edf3;
+  --color-brand-primary: #22d3ee;
+  --color-brand-content: #22d3ee;
+  --color-background-primary: #0b0d10;
+  --color-background-secondary: #11151a;
+  --color-foreground-primary: #e6edf3;
+  --color-foreground-secondary: #9aa4b2;
+  --color-foreground-muted: #6c7682;
+  --color-sidebar-background: #0b0d10;
+  --color-sidebar-background-border: #1a1f25;
+  --color-sidebar-link-text--top-level: #e6edf3;
+  --color-highlight-on-target: #0c2a2e;
+  --color-api-name: #22d3ee;
+  --color-api-pre-name: #22d3ee;
+  
+      }
+    }
+  }
+</style></head>
+  <body>
+    
+    <script>
+      document.body.dataset.theme = localStorage.getItem("theme") || "auto";
+    </script>
+    
+
+<svg xmlns="http://www.w3.org/2000/svg" style="display: none;">
+  <symbol id="svg-toc" viewBox="0 0 24 24">
+    <title>Contents</title>
+    <svg stroke="currentColor" fill="currentColor" stroke-width="0" viewBox="0 0 1024 1024">
+      <path d="M408 442h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8zm-8 204c0 4.4 3.6 8 8 8h480c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8H408c-4.4 0-8 3.6-8 8v56zm504-486H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zm0 632H120c-4.4 0-8 3.6-8 8v56c0 4.4 3.6 8 8 8h784c4.4 0 8-3.6 8-8v-56c0-4.4-3.6-8-8-8zM115.4 518.9L271.7 642c5.8 4.6 14.4.5 14.4-6.9V388.9c0-7.4-8.5-11.5-14.4-6.9L115.4 505.1a8.74 8.74 0 0 0 0 13.8z"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-menu" viewBox="0 0 24 24">
+    <title>Menu</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-menu">
+      <line x1="3" y1="12" x2="21" y2="12"></line>
+      <line x1="3" y1="6" x2="21" y2="6"></line>
+      <line x1="3" y1="18" x2="21" y2="18"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-arrow-right" viewBox="0 0 24 24">
+    <title>Expand</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather-chevron-right">
+      <polyline points="9 18 15 12 9 6"></polyline>
+    </svg>
+  </symbol>
+  <symbol id="svg-sun" viewBox="0 0 24 24">
+    <title>Light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="feather-sun">
+      <circle cx="12" cy="12" r="5"></circle>
+      <line x1="12" y1="1" x2="12" y2="3"></line>
+      <line x1="12" y1="21" x2="12" y2="23"></line>
+      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+      <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+      <line x1="1" y1="12" x2="3" y2="12"></line>
+      <line x1="21" y1="12" x2="23" y2="12"></line>
+      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+      <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon" viewBox="0 0 24 24">
+    <title>Dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-moon">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1 -8.313 -12.454z" />
+    </svg>
+  </symbol>
+  <symbol id="svg-sun-with-moon" viewBox="0 0 24 24">
+    <title>Auto light/dark, in light mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+      class="icon-custom-derived-from-feather-sun-and-tabler-moon">
+      <path style="opacity: 50%" d="M 5.411 14.504 C 5.471 14.504 5.532 14.504 5.591 14.504 C 3.639 16.319 4.383 19.569 6.931 20.352 C 7.693 20.586 8.512 20.551 9.25 20.252 C 8.023 23.207 4.056 23.725 2.11 21.184 C 0.166 18.642 1.702 14.949 4.874 14.536 C 5.051 14.512 5.231 14.5 5.411 14.5 L 5.411 14.504 Z"/>
+      <line x1="14.5" y1="3.25" x2="14.5" y2="1.25"/>
+      <line x1="14.5" y1="15.85" x2="14.5" y2="17.85"/>
+      <line x1="10.044" y1="5.094" x2="8.63" y2="3.68"/>
+      <line x1="19" y1="14.05" x2="20.414" y2="15.464"/>
+      <line x1="8.2" y1="9.55" x2="6.2" y2="9.55"/>
+      <line x1="20.8" y1="9.55" x2="22.8" y2="9.55"/>
+      <line x1="10.044" y1="14.006" x2="8.63" y2="15.42"/>
+      <line x1="19" y1="5.05" x2="20.414" y2="3.636"/>
+      <circle cx="14.5" cy="9.55" r="3.6"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-moon-with-sun" viewBox="0 0 24 24">
+    <title>Auto light/dark, in dark mode</title>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+      class="icon-custom-derived-from-feather-sun-and-tabler-moon">
+      <path d="M 8.282 7.007 C 8.385 7.007 8.494 7.007 8.595 7.007 C 5.18 10.184 6.481 15.869 10.942 17.24 C 12.275 17.648 13.706 17.589 15 17.066 C 12.851 22.236 5.91 23.143 2.505 18.696 C -0.897 14.249 1.791 7.786 7.342 7.063 C 7.652 7.021 7.965 7 8.282 7 L 8.282 7.007 Z"/>
+      <line style="opacity: 50%" x1="18" y1="3.705" x2="18" y2="2.5"/>
+      <line style="opacity: 50%" x1="18" y1="11.295" x2="18" y2="12.5"/>
+      <line style="opacity: 50%" x1="15.316" y1="4.816" x2="14.464" y2="3.964"/>
+      <line style="opacity: 50%" x1="20.711" y1="10.212" x2="21.563" y2="11.063"/>
+      <line style="opacity: 50%" x1="14.205" y1="7.5" x2="13.001" y2="7.5"/>
+      <line style="opacity: 50%" x1="21.795" y1="7.5" x2="23" y2="7.5"/>
+      <line style="opacity: 50%" x1="15.316" y1="10.184" x2="14.464" y2="11.036"/>
+      <line style="opacity: 50%" x1="20.711" y1="4.789" x2="21.563" y2="3.937"/>
+      <circle style="opacity: 50%" cx="18" cy="7.5" r="2.169"/>
+    </svg>
+  </symbol>
+  <symbol id="svg-pencil" viewBox="0 0 24 24">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-pencil-code">
+      <path d="M4 20h4l10.5 -10.5a2.828 2.828 0 1 0 -4 -4l-10.5 10.5v4" />
+      <path d="M13.5 6.5l4 4" />
+      <path d="M20 21l2 -2l-2 -2" />
+      <path d="M17 17l-2 2l2 2" />
+    </svg>
+  </symbol>
+  <symbol id="svg-eye" viewBox="0 0 24 24">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="icon-tabler-eye-code">
+      <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+      <path d="M10 12a2 2 0 1 0 4 0a2 2 0 0 0 -4 0" />
+      <path
+        d="M11.11 17.958c-3.209 -.307 -5.91 -2.293 -8.11 -5.958c2.4 -4 5.4 -6 9 -6c3.6 0 6.6 2 9 6c-.21 .352 -.427 .688 -.647 1.008" />
+      <path d="M20 21l2 -2l-2 -2" />
+      <path d="M17 17l-2 2l2 2" />
+    </svg>
+  </symbol>
+</svg>
+
+<input type="checkbox" class="sidebar-toggle" name="__navigation" id="__navigation" aria-label="Toggle site navigation sidebar">
+<input type="checkbox" class="sidebar-toggle" name="__toc" id="__toc" aria-label="Toggle table of contents sidebar">
+<label class="overlay sidebar-overlay" for="__navigation"></label>
+<label class="overlay toc-overlay" for="__toc"></label>
+
+<a class="skip-to-content muted-link" href="#furo-main-content">Skip to content</a>
+
+
+
+<div class="page">
+  <header class="mobile-header">
+    <div class="header-left">
+      <label class="nav-overlay-icon" for="__navigation">
+        <span class="icon"><svg><use href="#svg-menu"></use></svg></span>
+      </label>
+    </div>
+    <div class="header-center">
+      <a href="../../../index.html"><div class="brand">Ralph Workflow</div></a>
+    </div>
+    <div class="header-right">
+      <div class="theme-toggle-container theme-toggle-header">
+        <button class="theme-toggle" aria-label="Toggle Light / Dark / Auto color theme">
+          <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
+          <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
+          <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+          <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+        </button>
+      </div>
+      <label class="toc-overlay-icon toc-header-icon no-toc" for="__toc">
+        <span class="icon"><svg><use href="#svg-toc"></use></svg></span>
+      </label>
+    </div>
+  </header>
+  <aside class="sidebar-drawer">
+    <div class="sidebar-container">
+      
+      <div class="sidebar-sticky"><a class="sidebar-brand" href="../../../index.html">
+  
+  <span class="sidebar-brand-text">Ralph Workflow</span>
+  
+</a><form class="sidebar-search-container" method="get" action="../../../search.html" role="search">
+  <input class="sidebar-search" placeholder="Search" name="q" aria-label="Search">
+  <input type="hidden" name="check_keywords" value="yes">
+  <input type="hidden" name="area" value="default">
+</form>
+<div id="searchbox"></div><div class="sidebar-scroll"><div class="sidebar-tree">
+  <p class="caption" role="heading"><span class="caption-text">Get Started</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../getting-started.html">Getting Started with Ralph Workflow</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../quickstart.html">Quickstart</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../concepts.html">Concepts</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Operate</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../recovery.html">Recovery</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../parallel-mode.html">Parallel Mode</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../policy-explanation.html">Policy Explanation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../policy-driven-overhaul-migration.html">Policy-Driven Overhaul Migration Guide</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Reference</span></p>
+<ul>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../reference.html">Operator Reference</a><input aria-label="Toggle navigation of Operator Reference" class="toctree-checkbox" id="toctree-checkbox-1" name="toctree-checkbox-1" role="switch" type="checkbox"/><label for="toctree-checkbox-1"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l2"><a class="reference internal" href="../../../cli.html">CLI Reference</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../configuration.html">Configuration Reference</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../mcp-tools.html">MCP Tools Reference</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../local-web-access.html">Local Web Access</a></li>
+</ul>
+</li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Developer Reference</span></p>
+<ul>
+<li class="toctree-l1 has-children"><a class="reference internal" href="../../../developer-reference.html">Developer Reference</a><input aria-label="Toggle navigation of Developer Reference" class="toctree-checkbox" id="toctree-checkbox-2" name="toctree-checkbox-2" role="switch" type="checkbox"/><label for="toctree-checkbox-2"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l2 has-children"><a class="reference internal" href="../../../developer-internals.html">Developer Internals</a><input aria-label="Toggle navigation of Developer Internals" class="toctree-checkbox" id="toctree-checkbox-3" name="toctree-checkbox-3" role="switch" type="checkbox"/><label for="toctree-checkbox-3"><span class="icon"><svg><use href="#svg-arrow-right"></use></svg></span></label><ul>
+<li class="toctree-l3"><a class="reference internal" href="../../../concepts.html">Concepts</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../mcp-architecture.html">MCP Architecture</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../artifacts.html">Artifacts</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../prompts.html">Prompts</a></li>
+<li class="toctree-l3"><a class="reference internal" href="../../../transcript.html">Transcript and Display Reference</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="../../../modules.html">Python API Reference</a></li>
+<li class="toctree-l2"><a class="reference internal" href="../../../versioning.html">Release &amp; Versioning</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../../../display.html">Display Architecture</a></li>
+</ul>
+<p class="caption" role="heading"><span class="caption-text">Troubleshoot</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../troubleshooting.html">Troubleshooting</a></li>
+</ul>
+
+</div>
+</div>
+
+      </div>
+      
+    </div>
+  </aside>
+  <div class="main">
+    <div class="content">
+      <div class="article-container">
+        <a href="#" class="back-to-top muted-link">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+            <path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8v12z"></path>
+          </svg>
+          <span>Back to top</span>
+        </a>
+        <div class="content-icon-container">
+          <div class="theme-toggle-container theme-toggle-content">
+            <button class="theme-toggle" aria-label="Toggle Light / Dark / Auto color theme">
+              <svg class="theme-icon-when-auto-light"><use href="#svg-sun-with-moon"></use></svg>
+              <svg class="theme-icon-when-auto-dark"><use href="#svg-moon-with-sun"></use></svg>
+              <svg class="theme-icon-when-dark"><use href="#svg-moon"></use></svg>
+              <svg class="theme-icon-when-light"><use href="#svg-sun"></use></svg>
+            </button>
+          </div>
+          <label class="toc-overlay-icon toc-content-icon no-toc" for="__toc">
+            <span class="icon"><svg><use href="#svg-toc"></use></svg></span>
+          </label>
+        </div>
+        <article role="main" id="furo-main-content">
+          <h1>Source code for ralph.policy.validation</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;Policy validation utilities beyond what Pydantic provides at the model level.</span>
+
+<span class="sd">These functions perform runtime checks that cross policy boundaries —</span>
+<span class="sd">for example, verifying that a checkpoint&#39;s phase is compatible with</span>
+<span class="sd">the currently loaded pipeline policy, or that the policy is semantically</span>
+<span class="sd">complete for policy-driven orchestration.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">TYPE_CHECKING</span>
+
+<span class="k">if</span> <span class="n">TYPE_CHECKING</span><span class="p">:</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">ralph.agents.registry</span><span class="w"> </span><span class="kn">import</span> <span class="n">AgentRegistry</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">ralph.pipeline.state</span><span class="w"> </span><span class="kn">import</span> <span class="n">PipelineState</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">ralph.pipeline.work_units</span><span class="w"> </span><span class="kn">import</span> <span class="n">WorkUnitsPlan</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">ralph.policy.models</span><span class="w"> </span><span class="kn">import</span> <span class="n">PipelinePolicy</span><span class="p">,</span> <span class="n">PolicyBundle</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">ralph.workspace.scope</span><span class="w"> </span><span class="kn">import</span> <span class="n">WorkspaceScope</span>
+
+
+<div class="viewcode-block" id="CheckpointPolicyMismatchError">
+<a class="viewcode-back" href="../../../modules.html#ralph.policy.validation.CheckpointPolicyMismatchError">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">CheckpointPolicyMismatchError</span><span class="p">(</span><span class="ne">Exception</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Raised when a checkpoint&#39;s phase is not present in the current policy.</span>
+
+<span class="sd">    Attributes:</span>
+<span class="sd">        checkpoint_phase: Phase name stored in the checkpoint.</span>
+<span class="sd">        valid_phases: Set of valid phase names in the current policy.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">checkpoint_phase</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">valid_phases</span><span class="p">:</span> <span class="nb">set</span><span class="p">[</span><span class="nb">str</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">checkpoint_phase</span> <span class="o">=</span> <span class="n">checkpoint_phase</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">valid_phases</span> <span class="o">=</span> <span class="n">valid_phases</span>
+        <span class="n">msg</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;Checkpoint was saved at phase &#39;</span><span class="si">{</span><span class="n">checkpoint_phase</span><span class="si">}</span><span class="s2">&#39; which no longer &quot;</span>
+            <span class="sa">f</span><span class="s2">&quot;exists in pipeline.toml. Valid phases are: </span><span class="si">{</span><span class="nb">sorted</span><span class="p">(</span><span class="n">valid_phases</span><span class="p">)</span><span class="si">}</span><span class="s2">. &quot;</span>
+            <span class="sa">f</span><span class="s2">&quot;Either restore the original pipeline.toml or start fresh with --no-resume.&quot;</span>
+        <span class="p">)</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="validate_phase_exists_in_policy">
+<a class="viewcode-back" href="../../../modules.html#ralph.policy.validation.validate_phase_exists_in_policy">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">validate_phase_exists_in_policy</span><span class="p">(</span>
+    <span class="n">phase</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">policy</span><span class="p">:</span> <span class="n">PipelinePolicy</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Validate that a phase name is present in the current pipeline policy.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        phase: Phase name from checkpoint.</span>
+<span class="sd">        policy: Currently loaded pipeline policy.</span>
+
+<span class="sd">    Raises:</span>
+<span class="sd">        CheckpointPolicyMismatchError: If the phase is unknown.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">phase</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">policy</span><span class="o">.</span><span class="n">phases</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="n">CheckpointPolicyMismatchError</span><span class="p">(</span>
+            <span class="n">checkpoint_phase</span><span class="o">=</span><span class="n">phase</span><span class="p">,</span>
+            <span class="n">valid_phases</span><span class="o">=</span><span class="nb">set</span><span class="p">(</span><span class="n">policy</span><span class="o">.</span><span class="n">phases</span><span class="o">.</span><span class="n">keys</span><span class="p">()),</span>
+        <span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="validate_checkpoint_compatible">
+<a class="viewcode-back" href="../../../modules.html#ralph.policy.validation.validate_checkpoint_compatible">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">validate_checkpoint_compatible</span><span class="p">(</span>
+    <span class="n">checkpoint_phase</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">bundle</span><span class="p">:</span> <span class="n">PolicyBundle</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Validate that a checkpoint phase is compatible with the current policy bundle.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        checkpoint_phase: Phase name stored in checkpoint.</span>
+<span class="sd">        bundle: Currently loaded policy bundle.</span>
+
+<span class="sd">    Raises:</span>
+<span class="sd">        CheckpointPolicyMismatchError: If the checkpoint phase is unknown.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">validate_phase_exists_in_policy</span><span class="p">(</span><span class="n">checkpoint_phase</span><span class="p">,</span> <span class="n">bundle</span><span class="o">.</span><span class="n">pipeline</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="validate_drain_bound">
+<a class="viewcode-back" href="../../../modules.html#ralph.policy.validation.validate_drain_bound">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">validate_drain_bound</span><span class="p">(</span>
+    <span class="n">drain</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">bundle</span><span class="p">:</span> <span class="n">PolicyBundle</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Validate that a drain name has a binding in the current policy.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        drain: Drain name to check.</span>
+<span class="sd">        bundle: Currently loaded policy bundle.</span>
+
+<span class="sd">    Raises:</span>
+<span class="sd">        ValueError: If the drain is not bound.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">drain</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">bundle</span><span class="o">.</span><span class="n">agents</span><span class="o">.</span><span class="n">agent_drains</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;Drain &#39;</span><span class="si">{</span><span class="n">drain</span><span class="si">}</span><span class="s2">&#39; is not bound in agents.toml. &quot;</span>
+            <span class="sa">f</span><span class="s2">&quot;Available drains: </span><span class="si">{</span><span class="nb">sorted</span><span class="p">(</span><span class="n">bundle</span><span class="o">.</span><span class="n">agents</span><span class="o">.</span><span class="n">agent_drains</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span><span class="si">}</span><span class="s2">&quot;</span>
+        <span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="validate_chain_exists">
+<a class="viewcode-back" href="../../../modules.html#ralph.policy.validation.validate_chain_exists">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">validate_chain_exists</span><span class="p">(</span>
+    <span class="n">chain</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">bundle</span><span class="p">:</span> <span class="n">PolicyBundle</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Validate that an agent chain is defined.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        chain: Chain name to check.</span>
+<span class="sd">        bundle: Currently loaded policy bundle.</span>
+
+<span class="sd">    Raises:</span>
+<span class="sd">        ValueError: If the chain is not defined.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">chain</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">bundle</span><span class="o">.</span><span class="n">agents</span><span class="o">.</span><span class="n">agent_chains</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;Chain &#39;</span><span class="si">{</span><span class="n">chain</span><span class="si">}</span><span class="s2">&#39; is not defined in agents.toml. &quot;</span>
+            <span class="sa">f</span><span class="s2">&quot;Available chains: </span><span class="si">{</span><span class="nb">sorted</span><span class="p">(</span><span class="n">bundle</span><span class="o">.</span><span class="n">agents</span><span class="o">.</span><span class="n">agent_chains</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span><span class="si">}</span><span class="s2">&quot;</span>
+        <span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="validate_drain_contracts">
+<a class="viewcode-back" href="../../../modules.html#ralph.policy.validation.validate_drain_contracts">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">validate_drain_contracts</span><span class="p">(</span><span class="n">bundle</span><span class="p">:</span> <span class="n">PolicyBundle</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Validate drain contracts and enforce strict binding rules.</span>
+
+<span class="sd">    When forbid_sibling_drain_inference is True, every drain referenced by a</span>
+<span class="sd">    non-terminal pipeline phase must have an explicit chain binding in agents.toml.</span>
+<span class="sd">    Required drains are derived from the active pipeline policy, not from a</span>
+<span class="sd">    hardcoded built-in set — so custom workflows with a subset of canonical drains</span>
+<span class="sd">    only need to bind the drains they actually use.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        bundle: Currently loaded policy bundle.</span>
+
+<span class="sd">    Raises:</span>
+<span class="sd">        PolicyValidationError: If pipeline-used drains lack explicit bindings.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">bundle</span><span class="o">.</span><span class="n">agents</span><span class="o">.</span><span class="n">forbid_sibling_drain_inference</span><span class="p">:</span>
+        <span class="k">return</span>
+
+    <span class="c1"># Derive required drains from the active pipeline (non-terminal phases only)</span>
+    <span class="n">required_drains</span><span class="p">:</span> <span class="nb">set</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="n">phase_def</span><span class="o">.</span><span class="n">drain</span>
+        <span class="k">for</span> <span class="n">phase_name</span><span class="p">,</span> <span class="n">phase_def</span> <span class="ow">in</span> <span class="n">bundle</span><span class="o">.</span><span class="n">pipeline</span><span class="o">.</span><span class="n">phases</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">phase_name</span> <span class="o">!=</span> <span class="n">bundle</span><span class="o">.</span><span class="n">pipeline</span><span class="o">.</span><span class="n">terminal_phase</span> <span class="ow">and</span> <span class="n">phase_def</span><span class="o">.</span><span class="n">role</span> <span class="o">!=</span> <span class="s2">&quot;terminal&quot;</span>
+    <span class="p">}</span>
+
+    <span class="n">unbound_drains</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span>
+        <span class="n">drain</span> <span class="k">for</span> <span class="n">drain</span> <span class="ow">in</span> <span class="n">required_drains</span> <span class="k">if</span> <span class="n">drain</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">bundle</span><span class="o">.</span><span class="n">agents</span><span class="o">.</span><span class="n">agent_drains</span>
+    <span class="p">]</span>
+
+    <span class="k">if</span> <span class="n">unbound_drains</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="n">PolicyValidationError</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;Implicit sibling-drain inference is forbidden, but the following &quot;</span>
+            <span class="sa">f</span><span class="s2">&quot;pipeline drains lack explicit chain bindings: </span><span class="si">{</span><span class="nb">sorted</span><span class="p">(</span><span class="n">unbound_drains</span><span class="p">)</span><span class="si">}</span><span class="s2">. &quot;</span>
+            <span class="sa">f</span><span class="s2">&quot;Each drain used by a non-terminal pipeline phase must have an explicit &quot;</span>
+            <span class="sa">f</span><span class="s2">&quot;&#39;chain&#39; binding in agents.toml when forbid_sibling_drain_inference=true.&quot;</span>
+        <span class="p">)</span>
+
+    <span class="n">drains_without_class</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span>
+        <span class="n">drain</span>
+        <span class="k">for</span> <span class="n">drain</span> <span class="ow">in</span> <span class="n">required_drains</span>
+        <span class="k">if</span> <span class="n">drain</span> <span class="ow">in</span> <span class="n">bundle</span><span class="o">.</span><span class="n">agents</span><span class="o">.</span><span class="n">agent_drains</span>
+        <span class="ow">and</span> <span class="n">bundle</span><span class="o">.</span><span class="n">agents</span><span class="o">.</span><span class="n">agent_drains</span><span class="p">[</span><span class="n">drain</span><span class="p">]</span><span class="o">.</span><span class="n">drain_class</span> <span class="ow">is</span> <span class="kc">None</span>
+    <span class="p">]</span>
+
+    <span class="k">if</span> <span class="n">drains_without_class</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="n">PolicyValidationError</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;Implicit sibling-drain inference is forbidden, but the following &quot;</span>
+            <span class="sa">f</span><span class="s2">&quot;pipeline drains have no explicit drain_class: </span><span class="si">{</span><span class="nb">sorted</span><span class="p">(</span><span class="n">drains_without_class</span><span class="p">)</span><span class="si">}</span><span class="s2">. &quot;</span>
+            <span class="sa">f</span><span class="s2">&quot;Set drain_class on each drain in agents.toml &quot;</span>
+            <span class="sa">f</span><span class="s2">&quot;(one of: planning, development, analysis, review, fix, commit).&quot;</span>
+        <span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="PolicyValidationError">
+<a class="viewcode-back" href="../../../modules.html#ralph.policy.validation.PolicyValidationError">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">PolicyValidationError</span><span class="p">(</span><span class="ne">Exception</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Raised when a policy validation rule is violated.</span>
+
+<span class="sd">    Attributes:</span>
+<span class="sd">        message: Human-readable error message describing the validation failure.</span>
+<span class="sd">        source: Which policy area failed (optional).</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">message</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">source</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">message</span> <span class="o">=</span> <span class="n">message</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">source</span> <span class="o">=</span> <span class="n">source</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="n">message</span><span class="p">)</span></div>
+
+
+
+<span class="n">PolicyViolation</span> <span class="o">=</span> <span class="n">PolicyValidationError</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_validate_terminal_phase</span><span class="p">(</span><span class="n">phase_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">phase_def</span><span class="p">:</span> <span class="nb">object</span><span class="p">,</span> <span class="n">errors</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Validate constraints on the terminal phase entry.&quot;&quot;&quot;</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">ralph.policy.models</span><span class="w"> </span><span class="kn">import</span> <span class="n">PhaseDefinition</span>  <span class="c1"># noqa: PLC0415</span>
+
+    <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">phase_def</span><span class="p">,</span> <span class="n">PhaseDefinition</span><span class="p">):</span>
+        <span class="k">return</span>
+    <span class="k">if</span> <span class="n">phase_def</span><span class="o">.</span><span class="n">role</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">phase_def</span><span class="o">.</span><span class="n">role</span> <span class="o">!=</span> <span class="s2">&quot;terminal&quot;</span><span class="p">:</span>
+        <span class="n">errors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;phases.</span><span class="si">{</span><span class="n">phase_name</span><span class="si">}</span><span class="s2">: terminal_phase must have role=&#39;terminal&#39; &quot;</span>
+            <span class="sa">f</span><span class="s2">&quot;(got role=&#39;</span><span class="si">{</span><span class="n">phase_def</span><span class="o">.</span><span class="n">role</span><span class="si">}</span><span class="s2">&#39;)&quot;</span>
+        <span class="p">)</span>
+    <span class="k">if</span> <span class="n">phase_def</span><span class="o">.</span><span class="n">role</span> <span class="o">==</span> <span class="s2">&quot;terminal&quot;</span> <span class="ow">and</span> <span class="n">phase_def</span><span class="o">.</span><span class="n">terminal_outcome</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">errors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;phases.</span><span class="si">{</span><span class="n">phase_name</span><span class="si">}</span><span class="s2">: role=&#39;terminal&#39; requires terminal_outcome &quot;</span>
+            <span class="sa">f</span><span class="s2">&quot;to be set (&#39;success&#39; or &#39;failure&#39;)&quot;</span>
+        <span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_validate_analysis_phase</span><span class="p">(</span>
+    <span class="n">phase_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">phase_def</span><span class="p">:</span> <span class="nb">object</span><span class="p">,</span>
+    <span class="n">bundle</span><span class="p">:</span> <span class="nb">object</span><span class="p">,</span>
+    <span class="n">errors</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Validate constraints on analysis-role phases.&quot;&quot;&quot;</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">ralph.policy.models</span><span class="w"> </span><span class="kn">import</span> <span class="n">PhaseDefinition</span><span class="p">,</span> <span class="n">PolicyBundle</span>  <span class="c1"># noqa: PLC0415</span>
+
+    <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">phase_def</span><span class="p">,</span> <span class="n">PhaseDefinition</span><span class="p">)</span> <span class="ow">or</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">bundle</span><span class="p">,</span> <span class="n">PolicyBundle</span><span class="p">):</span>
+        <span class="k">return</span>
+
+    <span class="k">if</span> <span class="n">phase_def</span><span class="o">.</span><span class="n">loop_policy</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">errors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;phases.</span><span class="si">{</span><span class="n">phase_name</span><span class="si">}</span><span class="s2">: role=&#39;analysis&#39; requires loop_policy &quot;</span>
+            <span class="sa">f</span><span class="s2">&quot;(max_iterations and iteration_state_field)&quot;</span>
+        <span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">field</span> <span class="o">=</span> <span class="n">phase_def</span><span class="o">.</span><span class="n">loop_policy</span><span class="o">.</span><span class="n">iteration_state_field</span>
+        <span class="c1"># All loop counters must be declared in pipeline.loop_counters</span>
+        <span class="k">if</span> <span class="n">field</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">bundle</span><span class="o">.</span><span class="n">pipeline</span><span class="o">.</span><span class="n">loop_counters</span><span class="p">:</span>
+            <span class="n">errors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;phases.</span><span class="si">{</span><span class="n">phase_name</span><span class="si">}</span><span class="s2">.loop_policy.iteration_state_field: &quot;</span>
+                <span class="sa">f</span><span class="s2">&quot;&#39;</span><span class="si">{</span><span class="n">field</span><span class="si">}</span><span class="s2">&#39; is not declared in pipeline.loop_counters. &quot;</span>
+                <span class="sa">f</span><span class="s2">&quot;Add [loop_counters.</span><span class="si">{</span><span class="n">field</span><span class="si">}</span><span class="s2">] to pipeline.toml to declare this counter.&quot;</span>
+            <span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">phase_def</span><span class="o">.</span><span class="n">decisions</span><span class="p">:</span>
+        <span class="n">errors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;phases.</span><span class="si">{</span><span class="n">phase_name</span><span class="si">}</span><span class="s2">: role=&#39;analysis&#39; requires at least one entry &quot;</span>
+            <span class="sa">f</span><span class="s2">&quot;in decisions (maps decision vocabulary to routing targets)&quot;</span>
+        <span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">drain_name</span> <span class="o">=</span> <span class="n">phase_def</span><span class="o">.</span><span class="n">drain</span>
+        <span class="n">vocab</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">art</span> <span class="ow">in</span> <span class="n">bundle</span><span class="o">.</span><span class="n">artifacts</span><span class="o">.</span><span class="n">artifacts</span><span class="o">.</span><span class="n">values</span><span class="p">():</span>
+            <span class="k">if</span> <span class="n">art</span><span class="o">.</span><span class="n">drain</span> <span class="o">==</span> <span class="n">drain_name</span> <span class="ow">and</span> <span class="n">art</span><span class="o">.</span><span class="n">decision_vocabulary</span><span class="p">:</span>
+                <span class="n">vocab</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">art</span><span class="o">.</span><span class="n">decision_vocabulary</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">vocab</span><span class="p">:</span>
+            <span class="c1"># Check decisions ⊆ vocab: decision keys must be in the artifact vocabulary</span>
+            <span class="n">errors</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;phases.</span><span class="si">{</span><span class="n">phase_name</span><span class="si">}</span><span class="s2">.decisions.</span><span class="si">{</span><span class="n">dk</span><span class="si">}</span><span class="s2">: &quot;</span>
+                <span class="sa">f</span><span class="s2">&quot;decision key &#39;</span><span class="si">{</span><span class="n">dk</span><span class="si">}</span><span class="s2">&#39; is not in the artifact &quot;</span>
+                <span class="sa">f</span><span class="s2">&quot;decision_vocabulary </span><span class="si">{</span><span class="n">vocab</span><span class="si">}</span><span class="s2"> for drain &#39;</span><span class="si">{</span><span class="n">drain_name</span><span class="si">}</span><span class="s2">&#39;&quot;</span>
+                <span class="k">for</span> <span class="n">dk</span> <span class="ow">in</span> <span class="n">phase_def</span><span class="o">.</span><span class="n">decisions</span>
+                <span class="k">if</span> <span class="n">dk</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">vocab</span>
+            <span class="p">)</span>
+            <span class="c1"># Check vocab ⊆ decisions: every vocab entry must have a route</span>
+            <span class="c1"># No escape hatch — on_failure is for failures, not for unrouted vocab</span>
+            <span class="n">uncovered</span> <span class="o">=</span> <span class="p">[</span><span class="n">v</span> <span class="k">for</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">vocab</span> <span class="k">if</span> <span class="n">v</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">phase_def</span><span class="o">.</span><span class="n">decisions</span><span class="p">]</span>
+            <span class="n">errors</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;phases.</span><span class="si">{</span><span class="n">phase_name</span><span class="si">}</span><span class="s2">.decisions: vocab entry &#39;</span><span class="si">{</span><span class="n">v</span><span class="si">}</span><span class="s2">&#39; has no route &quot;</span>
+                <span class="sa">f</span><span class="s2">&quot;in decisions. Every decision_vocabulary entry must have an &quot;</span>
+                <span class="sa">f</span><span class="s2">&quot;explicit route in the decisions table.&quot;</span>
+                <span class="k">for</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">uncovered</span>
+            <span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_validate_review_phase</span><span class="p">(</span>
+    <span class="n">phase_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">phase_def</span><span class="p">:</span> <span class="nb">object</span><span class="p">,</span>
+    <span class="n">errors</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Validate constraints on review-role phases.</span>
+
+<span class="sd">    review-role phases must declare:</span>
+<span class="sd">    - issues_outcome: the review_outcome label set when issues are found (required)</span>
+<span class="sd">    - clean_outcome: the bypass_routes key that signals a clean review (required</span>
+<span class="sd">      when bypass_routes is non-empty, so the reducer knows which key to look up)</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">ralph.policy.models</span><span class="w"> </span><span class="kn">import</span> <span class="n">PhaseDefinition</span>  <span class="c1"># noqa: PLC0415</span>
+
+    <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">phase_def</span><span class="p">,</span> <span class="n">PhaseDefinition</span><span class="p">):</span>
+        <span class="k">return</span>
+    <span class="k">if</span> <span class="n">phase_def</span><span class="o">.</span><span class="n">issues_outcome</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">errors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;phases.</span><span class="si">{</span><span class="n">phase_name</span><span class="si">}</span><span class="s2">: role=&#39;review&#39; requires issues_outcome &quot;</span>
+            <span class="sa">f</span><span class="s2">&quot;(the review_outcome label set when issues are found, e.g. &#39;has_issues&#39;). &quot;</span>
+            <span class="sa">f</span><span class="s2">&quot;See docs/migration/policy-v2.md.&quot;</span>
+        <span class="p">)</span>
+    <span class="k">if</span> <span class="n">phase_def</span><span class="o">.</span><span class="n">bypass_routes</span> <span class="ow">and</span> <span class="n">phase_def</span><span class="o">.</span><span class="n">clean_outcome</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">errors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;phases.</span><span class="si">{</span><span class="n">phase_name</span><span class="si">}</span><span class="s2">: role=&#39;review&#39; with bypass_routes requires clean_outcome &quot;</span>
+            <span class="sa">f</span><span class="s2">&quot;(the bypass_routes key that signals a clean review, e.g. &#39;clean&#39;). &quot;</span>
+            <span class="sa">f</span><span class="s2">&quot;See docs/migration/policy-v2.md.&quot;</span>
+        <span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_validate_commit_phase_loop_resets</span><span class="p">(</span>
+    <span class="n">phase_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">phase_def</span><span class="p">:</span> <span class="nb">object</span><span class="p">,</span>
+    <span class="n">policy</span><span class="p">:</span> <span class="nb">object</span><span class="p">,</span>
+    <span class="n">errors</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Validate that commit_policy.loop_resets references valid iteration fields.</span>
+
+<span class="sd">    loop_resets entries must reference iteration_state_field values from analysis</span>
+<span class="sd">    phases in the policy, or be empty.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">ralph.policy.models</span><span class="w"> </span><span class="kn">import</span> <span class="n">PhaseDefinition</span><span class="p">,</span> <span class="n">PipelinePolicy</span>  <span class="c1"># noqa: PLC0415</span>
+
+    <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">phase_def</span><span class="p">,</span> <span class="n">PhaseDefinition</span><span class="p">)</span> <span class="ow">or</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">policy</span><span class="p">,</span> <span class="n">PipelinePolicy</span><span class="p">):</span>
+        <span class="k">return</span>
+    <span class="k">if</span> <span class="n">phase_def</span><span class="o">.</span><span class="n">commit_policy</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">return</span>
+
+    <span class="n">loop_resets</span> <span class="o">=</span> <span class="n">phase_def</span><span class="o">.</span><span class="n">commit_policy</span><span class="o">.</span><span class="n">loop_resets</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">loop_resets</span><span class="p">:</span>
+        <span class="k">return</span>
+
+    <span class="c1"># Collect all iteration_state_field values from analysis phases in the policy</span>
+    <span class="n">valid_iteration_fields</span><span class="p">:</span> <span class="nb">set</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
+    <span class="k">for</span> <span class="n">defn</span> <span class="ow">in</span> <span class="n">policy</span><span class="o">.</span><span class="n">phases</span><span class="o">.</span><span class="n">values</span><span class="p">():</span>
+        <span class="n">lp</span> <span class="o">=</span> <span class="n">defn</span><span class="o">.</span><span class="n">loop_policy</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">defn</span><span class="p">,</span> <span class="n">PhaseDefinition</span><span class="p">)</span> <span class="ow">and</span> <span class="n">defn</span><span class="o">.</span><span class="n">role</span> <span class="o">==</span> <span class="s2">&quot;analysis&quot;</span> <span class="ow">and</span> <span class="n">lp</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">valid_iteration_fields</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">lp</span><span class="o">.</span><span class="n">iteration_state_field</span><span class="p">)</span>
+
+    <span class="n">invalid_resets</span> <span class="o">=</span> <span class="p">[</span><span class="n">f</span> <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">loop_resets</span> <span class="k">if</span> <span class="n">f</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">valid_iteration_fields</span><span class="p">]</span>
+    <span class="k">if</span> <span class="n">invalid_resets</span><span class="p">:</span>
+        <span class="n">errors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;phases.</span><span class="si">{</span><span class="n">phase_name</span><span class="si">}</span><span class="s2">.commit_policy.loop_resets: &quot;</span>
+            <span class="sa">f</span><span class="s2">&quot;invalid iteration field(s) </span><span class="si">{</span><span class="n">invalid_resets</span><span class="si">}</span><span class="s2">. &quot;</span>
+            <span class="sa">f</span><span class="s2">&quot;loop_resets must reference iteration_state_field values from analysis phases &quot;</span>
+            <span class="sa">f</span><span class="s2">&quot;or be empty. Valid fields: </span><span class="si">{</span><span class="nb">sorted</span><span class="p">(</span><span class="n">valid_iteration_fields</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span>
+        <span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_validate_commit_phase_post_commit_routes</span><span class="p">(</span>
+    <span class="n">phase_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">phase_def</span><span class="p">:</span> <span class="nb">object</span><span class="p">,</span>
+    <span class="n">policy</span><span class="p">:</span> <span class="nb">object</span><span class="p">,</span>
+    <span class="n">errors</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Validate that commit phases with budget-tracked counters have post_commit_routes.</span>
+
+<span class="sd">    When a commit phase increments a budget-tracking counter, at least one</span>
+<span class="sd">    post_commit_route must apply to that phase so the pipeline can route after commit.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">ralph.policy.models</span><span class="w"> </span><span class="kn">import</span> <span class="n">PhaseDefinition</span><span class="p">,</span> <span class="n">PipelinePolicy</span>  <span class="c1"># noqa: PLC0415</span>
+
+    <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">phase_def</span><span class="p">,</span> <span class="n">PhaseDefinition</span><span class="p">)</span> <span class="ow">or</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">policy</span><span class="p">,</span> <span class="n">PipelinePolicy</span><span class="p">):</span>
+        <span class="k">return</span>
+    <span class="k">if</span> <span class="n">phase_def</span><span class="o">.</span><span class="n">commit_policy</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">return</span>
+
+    <span class="n">counter</span> <span class="o">=</span> <span class="n">phase_def</span><span class="o">.</span><span class="n">commit_policy</span><span class="o">.</span><span class="n">increments_counter</span>
+    <span class="k">if</span> <span class="n">counter</span> <span class="o">==</span> <span class="s2">&quot;none&quot;</span> <span class="ow">or</span> <span class="n">counter</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">policy</span><span class="o">.</span><span class="n">budget_counters</span><span class="p">:</span>
+        <span class="k">return</span>
+
+    <span class="n">counter_config</span> <span class="o">=</span> <span class="n">policy</span><span class="o">.</span><span class="n">budget_counters</span><span class="p">[</span><span class="n">counter</span><span class="p">]</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">counter_config</span><span class="o">.</span><span class="n">tracks_budget</span><span class="p">:</span>
+        <span class="k">return</span>
+
+    <span class="c1"># At least one post_commit_route must apply to this phase</span>
+    <span class="n">applies</span> <span class="o">=</span> <span class="nb">any</span><span class="p">(</span><span class="n">r</span><span class="o">.</span><span class="n">when</span><span class="o">.</span><span class="n">phase</span> <span class="o">==</span> <span class="n">phase_name</span> <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">policy</span><span class="o">.</span><span class="n">post_commit_routes</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">applies</span><span class="p">:</span>
+        <span class="n">errors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;phases.</span><span class="si">{</span><span class="n">phase_name</span><span class="si">}</span><span class="s2">: increments budget-tracking counter &#39;</span><span class="si">{</span><span class="n">counter</span><span class="si">}</span><span class="s2">&#39; &quot;</span>
+            <span class="sa">f</span><span class="s2">&quot;but no post_commit_routes apply to this phase. &quot;</span>
+            <span class="sa">f</span><span class="s2">&quot;Add at least one [[post_commit_routes]] entry with when.phase=&#39;</span><span class="si">{</span><span class="n">phase_name</span><span class="si">}</span><span class="s2">&#39;.&quot;</span>
+        <span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_validate_verification_phase</span><span class="p">(</span>
+    <span class="n">phase_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+    <span class="n">phase_def</span><span class="p">:</span> <span class="nb">object</span><span class="p">,</span>
+    <span class="n">policy</span><span class="p">:</span> <span class="nb">object</span><span class="p">,</span>
+    <span class="n">errors</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Validate constraints on verification-role phases.</span>
+
+<span class="sd">    verification-role phases must declare:</span>
+<span class="sd">    - verification.block: the gating policy (kind, gate_for, on_failure_route)</span>
+<span class="sd">    - verification.kind: one of &#39;artifact&#39;, &#39;none&#39;</span>
+<span class="sd">    - verification.gate_for: one of &#39;advancement&#39;, &#39;completion&#39;, &#39;release&#39;</span>
+<span class="sd">    - verification.on_failure_route: either None or a known phase/terminal pseudo-phase</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">ralph.policy.models</span><span class="w"> </span><span class="kn">import</span> <span class="n">PhaseDefinition</span><span class="p">,</span> <span class="n">PipelinePolicy</span>  <span class="c1"># noqa: PLC0415</span>
+
+    <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">phase_def</span><span class="p">,</span> <span class="n">PhaseDefinition</span><span class="p">)</span> <span class="ow">or</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">policy</span><span class="p">,</span> <span class="n">PipelinePolicy</span><span class="p">):</span>
+        <span class="k">return</span>
+    <span class="k">if</span> <span class="n">phase_def</span><span class="o">.</span><span class="n">verification</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">errors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;phases.</span><span class="si">{</span><span class="n">phase_name</span><span class="si">}</span><span class="s2">: role=&#39;verification&#39; requires a verification block &quot;</span>
+            <span class="sa">f</span><span class="s2">&quot;(kind, gate_for, on_failure_route). Add [phases.</span><span class="si">{</span><span class="n">phase_name</span><span class="si">}</span><span class="s2">.verification] &quot;</span>
+            <span class="sa">f</span><span class="s2">&quot;to pipeline.toml. See docs/sphinx/policy-explanation.md.&quot;</span>
+        <span class="p">)</span>
+        <span class="k">return</span>
+
+    <span class="n">kind</span> <span class="o">=</span> <span class="n">phase_def</span><span class="o">.</span><span class="n">verification</span><span class="o">.</span><span class="n">kind</span>
+    <span class="k">if</span> <span class="n">kind</span> <span class="ow">not</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">&quot;artifact&quot;</span><span class="p">,</span> <span class="s2">&quot;none&quot;</span><span class="p">):</span>
+        <span class="n">errors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;phases.</span><span class="si">{</span><span class="n">phase_name</span><span class="si">}</span><span class="s2">.verification.kind: must be one of &quot;</span>
+            <span class="sa">f</span><span class="s2">&quot;&#39;artifact&#39;, &#39;none&#39; (got &#39;</span><span class="si">{</span><span class="n">kind</span><span class="si">}</span><span class="s2">&#39;). &quot;</span>
+            <span class="sa">f</span><span class="s2">&quot;Note: &#39;make_target&#39; has been removed; use kind=&#39;artifact&#39; with a &quot;</span>
+            <span class="sa">f</span><span class="s2">&quot;verification artifact or kind=&#39;none&#39;. &quot;</span>
+            <span class="sa">f</span><span class="s2">&quot;See docs/sphinx/policy-driven-overhaul-migration.md.&quot;</span>
+        <span class="p">)</span>
+
+    <span class="n">gate_for</span> <span class="o">=</span> <span class="n">phase_def</span><span class="o">.</span><span class="n">verification</span><span class="o">.</span><span class="n">gate_for</span>
+    <span class="k">if</span> <span class="n">gate_for</span> <span class="ow">not</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">&quot;advancement&quot;</span><span class="p">,</span> <span class="s2">&quot;completion&quot;</span><span class="p">,</span> <span class="s2">&quot;release&quot;</span><span class="p">):</span>
+        <span class="n">errors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;phases.</span><span class="si">{</span><span class="n">phase_name</span><span class="si">}</span><span class="s2">.verification.gate_for: must be one of &quot;</span>
+            <span class="sa">f</span><span class="s2">&quot;&#39;advancement&#39;, &#39;completion&#39;, &#39;release&#39; (got &#39;</span><span class="si">{</span><span class="n">gate_for</span><span class="si">}</span><span class="s2">&#39;)&quot;</span>
+        <span class="p">)</span>
+
+    <span class="n">on_failure_route</span> <span class="o">=</span> <span class="n">phase_def</span><span class="o">.</span><span class="n">verification</span><span class="o">.</span><span class="n">on_failure_route</span>
+    <span class="k">if</span> <span class="n">on_failure_route</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">known_phases</span> <span class="o">=</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">policy</span><span class="o">.</span><span class="n">phases</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span>
+        <span class="k">if</span> <span class="n">on_failure_route</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">policy</span><span class="o">.</span><span class="n">phases</span><span class="p">:</span>
+            <span class="n">errors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;phases.</span><span class="si">{</span><span class="n">phase_name</span><span class="si">}</span><span class="s2">.verification.on_failure_route: &quot;</span>
+                <span class="sa">f</span><span class="s2">&quot;&#39;</span><span class="si">{</span><span class="n">on_failure_route</span><span class="si">}</span><span class="s2">&#39; is not a declared phase. &quot;</span>
+                <span class="sa">f</span><span class="s2">&quot;Declare a phase with role=&#39;terminal&#39; and terminal_outcome=&#39;failure&#39; &quot;</span>
+                <span class="sa">f</span><span class="s2">&quot;and reference it here. &quot;</span>
+                <span class="sa">f</span><span class="s2">&quot;Known phases: </span><span class="si">{</span><span class="n">known_phases</span><span class="si">}</span><span class="s2">. &quot;</span>
+                <span class="sa">f</span><span class="s2">&quot;See docs/sphinx/policy-driven-overhaul-migration.md.&quot;</span>
+            <span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_validate_recovery_failed_route</span><span class="p">(</span>
+    <span class="n">policy</span><span class="p">:</span> <span class="n">PipelinePolicy</span><span class="p">,</span>
+    <span class="n">errors</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Validate that recovery.failed_route is consistent with declared terminal phases.</span>
+
+<span class="sd">    failed_route must reference a phase declared in pipeline.phases (preferably one</span>
+<span class="sd">    with role=&#39;terminal&#39; and terminal_outcome=&#39;failure&#39;). The legacy pseudo-phases</span>
+<span class="sd">    &#39;phase_failed&#39;, &#39;exit_failure&#39;, and the deprecated bare &#39;failed&#39; alias are no</span>
+<span class="sd">    longer accepted when &#39;failed&#39; is not an explicitly declared phase.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">failed_route</span> <span class="o">=</span> <span class="n">policy</span><span class="o">.</span><span class="n">recovery</span><span class="o">.</span><span class="n">failed_route</span>
+    <span class="k">if</span> <span class="n">failed_route</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">&quot;phase_failed&quot;</span><span class="p">,</span> <span class="s2">&quot;exit_failure&quot;</span><span class="p">):</span>
+        <span class="n">errors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;recovery.failed_route: &#39;</span><span class="si">{</span><span class="n">failed_route</span><span class="si">}</span><span class="s2">&#39; is no longer supported. &quot;</span>
+            <span class="sa">f</span><span class="s2">&quot;Declare a terminal failure phase with role=&#39;terminal&#39; and &quot;</span>
+            <span class="sa">f</span><span class="s2">&quot;terminal_outcome=&#39;failure&#39; and reference it via recovery.failed_route &quot;</span>
+            <span class="sa">f</span><span class="s2">&quot;(and optionally recovery.terminal_failure_phase). &quot;</span>
+            <span class="sa">f</span><span class="s2">&quot;See docs/sphinx/policy-driven-overhaul-migration.md.&quot;</span>
+        <span class="p">)</span>
+        <span class="k">return</span>
+    <span class="c1"># &#39;failed&#39; is no longer accepted as an undeclared pseudo-phase alias.</span>
+    <span class="c1"># Declare a phase with role=&#39;terminal&#39; and terminal_outcome=&#39;failure&#39; and</span>
+    <span class="c1"># set recovery.failed_route to that phase name.</span>
+    <span class="k">if</span> <span class="n">failed_route</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">policy</span><span class="o">.</span><span class="n">phases</span><span class="p">:</span>
+        <span class="n">errors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;recovery.failed_route: &#39;</span><span class="si">{</span><span class="n">failed_route</span><span class="si">}</span><span class="s2">&#39; &quot;</span>
+            <span class="sa">f</span><span class="s2">&quot;is not a declared phase. Must reference a phase defined in pipeline.phases &quot;</span>
+            <span class="sa">f</span><span class="s2">&quot;(with role=&#39;terminal&#39; and terminal_outcome=&#39;failure&#39;). &quot;</span>
+            <span class="sa">f</span><span class="s2">&quot;Known phases: </span><span class="si">{</span><span class="nb">sorted</span><span class="p">(</span><span class="n">policy</span><span class="o">.</span><span class="n">phases</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span><span class="si">}</span><span class="s2">. &quot;</span>
+            <span class="sa">f</span><span class="s2">&quot;See docs/sphinx/policy-driven-overhaul-migration.md.&quot;</span>
+        <span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_collect_reachable_phases</span><span class="p">(</span><span class="n">policy</span><span class="p">:</span> <span class="n">PipelinePolicy</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">set</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;BFS from entry_phase collecting all reachable phase names.&quot;&quot;&quot;</span>
+    <span class="n">phases</span> <span class="o">=</span> <span class="n">policy</span><span class="o">.</span><span class="n">phases</span>
+    <span class="n">visited</span><span class="p">:</span> <span class="nb">set</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span>
+    <span class="n">queue</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="n">policy</span><span class="o">.</span><span class="n">entry_phase</span><span class="p">]</span>
+    <span class="k">while</span> <span class="n">queue</span><span class="p">:</span>
+        <span class="n">current</span> <span class="o">=</span> <span class="n">queue</span><span class="o">.</span><span class="n">pop</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">current</span> <span class="ow">in</span> <span class="n">visited</span> <span class="ow">or</span> <span class="n">current</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">phases</span><span class="p">:</span>
+            <span class="k">continue</span>
+        <span class="n">visited</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">current</span><span class="p">)</span>
+        <span class="n">phase_def</span> <span class="o">=</span> <span class="n">phases</span><span class="p">[</span><span class="n">current</span><span class="p">]</span>
+        <span class="n">t</span> <span class="o">=</span> <span class="n">phase_def</span><span class="o">.</span><span class="n">transitions</span>
+        <span class="n">candidates</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="n">t</span><span class="o">.</span><span class="n">on_success</span><span class="p">,</span> <span class="n">t</span><span class="o">.</span><span class="n">on_failure</span><span class="p">,</span> <span class="n">t</span><span class="o">.</span><span class="n">on_loopback</span><span class="p">]</span>
+        <span class="n">candidates</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">phase_def</span><span class="o">.</span><span class="n">bypass_routes</span><span class="o">.</span><span class="n">values</span><span class="p">())</span>
+        <span class="n">candidates</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">d</span><span class="o">.</span><span class="n">target</span> <span class="k">for</span> <span class="n">d</span> <span class="ow">in</span> <span class="p">(</span><span class="n">phase_def</span><span class="o">.</span><span class="n">decisions</span> <span class="ow">or</span> <span class="p">{})</span><span class="o">.</span><span class="n">values</span><span class="p">())</span>
+        <span class="n">v</span> <span class="o">=</span> <span class="n">phase_def</span><span class="o">.</span><span class="n">verification</span>
+        <span class="k">if</span> <span class="n">v</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">v</span><span class="o">.</span><span class="n">on_failure_route</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">candidates</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">v</span><span class="o">.</span><span class="n">on_failure_route</span><span class="p">)</span>
+        <span class="n">queue</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">t</span> <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">candidates</span> <span class="k">if</span> <span class="n">t</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">phases</span> <span class="ow">and</span> <span class="n">t</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">visited</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">visited</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_validate_reachability</span><span class="p">(</span><span class="n">policy</span><span class="p">:</span> <span class="n">PipelinePolicy</span><span class="p">,</span> <span class="n">errors</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Validate that every declared phase is reachable from entry_phase.&quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">policy</span><span class="o">.</span><span class="n">entry_phase</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">policy</span><span class="o">.</span><span class="n">phases</span><span class="p">:</span>
+        <span class="k">return</span>
+    <span class="n">reachable</span> <span class="o">=</span> <span class="n">_collect_reachable_phases</span><span class="p">(</span><span class="n">policy</span><span class="p">)</span>
+    <span class="n">unreachable</span> <span class="o">=</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">name</span> <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">policy</span><span class="o">.</span><span class="n">phases</span> <span class="k">if</span> <span class="n">name</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">reachable</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">unreachable</span><span class="p">:</span>
+        <span class="n">errors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;Unreachable phases detected (not reachable from entry_phase &quot;</span>
+            <span class="sa">f</span><span class="s2">&quot;&#39;</span><span class="si">{</span><span class="n">policy</span><span class="o">.</span><span class="n">entry_phase</span><span class="si">}</span><span class="s2">&#39;): </span><span class="si">{</span><span class="n">unreachable</span><span class="si">}</span><span class="s2">. &quot;</span>
+            <span class="sa">f</span><span class="s2">&quot;Remove these phases or add transitions leading to them.&quot;</span>
+        <span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_validate_no_legacy_phase_constants</span><span class="p">(</span>
+    <span class="n">policy</span><span class="p">:</span> <span class="n">PipelinePolicy</span><span class="p">,</span>
+    <span class="n">errors</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Validate that the policy does not rely on removed legacy pseudo-phase constants.</span>
+
+<span class="sd">    Flags phases that are named after deprecated pseudo-phase tokens but are not</span>
+<span class="sd">    properly declared as terminal phases.</span>
+
+<span class="sd">    Each error includes the field path, the offending value, and a migration hint.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">for</span> <span class="n">phase_name</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">&quot;phase_failed&quot;</span><span class="p">,</span> <span class="s2">&quot;exit_failure&quot;</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">phase_name</span> <span class="ow">in</span> <span class="n">policy</span><span class="o">.</span><span class="n">phases</span><span class="p">:</span>
+            <span class="n">phase_def</span> <span class="o">=</span> <span class="n">policy</span><span class="o">.</span><span class="n">phases</span><span class="p">[</span><span class="n">phase_name</span><span class="p">]</span>
+            <span class="k">if</span> <span class="n">phase_def</span><span class="o">.</span><span class="n">role</span> <span class="o">!=</span> <span class="s2">&quot;terminal&quot;</span> <span class="ow">or</span> <span class="n">phase_def</span><span class="o">.</span><span class="n">terminal_outcome</span> <span class="o">!=</span> <span class="s2">&quot;failure&quot;</span><span class="p">:</span>
+                <span class="n">errors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+                    <span class="sa">f</span><span class="s2">&quot;phases.</span><span class="si">{</span><span class="n">phase_name</span><span class="si">}</span><span class="s2">: this name is a legacy pseudo-phase token. &quot;</span>
+                    <span class="sa">f</span><span class="s2">&quot;If you intended a terminal failure phase, set role=&#39;terminal&#39; and &quot;</span>
+                    <span class="sa">f</span><span class="s2">&quot;terminal_outcome=&#39;failure&#39;. &quot;</span>
+                    <span class="sa">f</span><span class="s2">&quot;See docs/sphinx/policy-driven-overhaul-migration.md.&quot;</span>
+                <span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_validate_post_commit_routes_complete</span><span class="p">(</span>
+    <span class="n">policy</span><span class="p">:</span> <span class="n">PipelinePolicy</span><span class="p">,</span>
+    <span class="n">errors</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Validate that budget-tracked commit phases declare all three post_commit_route states.</span>
+
+<span class="sd">    When a commit-role phase increments a budget-tracking counter, it must declare</span>
+<span class="sd">    post_commit_routes for all three budget_states (remaining, exhausted, no_review)</span>
+<span class="sd">    so the runtime always has an unambiguous route after commit regardless of budget.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">required_states</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;remaining&quot;</span><span class="p">,</span> <span class="s2">&quot;exhausted&quot;</span><span class="p">,</span> <span class="s2">&quot;no_review&quot;</span><span class="p">}</span>
+
+    <span class="k">for</span> <span class="n">phase_name</span><span class="p">,</span> <span class="n">phase_def</span> <span class="ow">in</span> <span class="n">policy</span><span class="o">.</span><span class="n">phases</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+        <span class="k">if</span> <span class="n">phase_def</span><span class="o">.</span><span class="n">role</span> <span class="o">!=</span> <span class="s2">&quot;commit&quot;</span> <span class="ow">or</span> <span class="n">phase_def</span><span class="o">.</span><span class="n">commit_policy</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">continue</span>
+        <span class="n">counter</span> <span class="o">=</span> <span class="n">phase_def</span><span class="o">.</span><span class="n">commit_policy</span><span class="o">.</span><span class="n">increments_counter</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">counter</span> <span class="ow">or</span> <span class="n">counter</span> <span class="o">==</span> <span class="s2">&quot;none&quot;</span><span class="p">:</span>
+            <span class="k">continue</span>
+        <span class="n">counter_cfg</span> <span class="o">=</span> <span class="n">policy</span><span class="o">.</span><span class="n">budget_counters</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">counter</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">counter_cfg</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="ow">not</span> <span class="n">counter_cfg</span><span class="o">.</span><span class="n">tracks_budget</span><span class="p">:</span>
+            <span class="k">continue</span>
+
+        <span class="n">declared_states</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="n">r</span><span class="o">.</span><span class="n">when</span><span class="o">.</span><span class="n">budget_state</span>
+            <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">policy</span><span class="o">.</span><span class="n">post_commit_routes</span>
+            <span class="k">if</span> <span class="n">r</span><span class="o">.</span><span class="n">when</span><span class="o">.</span><span class="n">phase</span> <span class="o">==</span> <span class="n">phase_name</span>
+        <span class="p">}</span>
+        <span class="n">missing</span> <span class="o">=</span> <span class="n">required_states</span> <span class="o">-</span> <span class="n">declared_states</span>
+        <span class="k">if</span> <span class="n">missing</span><span class="p">:</span>
+            <span class="n">errors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;phases.</span><span class="si">{</span><span class="n">phase_name</span><span class="si">}</span><span class="s2">: increments budget-tracking counter &#39;</span><span class="si">{</span><span class="n">counter</span><span class="si">}</span><span class="s2">&#39; &quot;</span>
+                <span class="sa">f</span><span class="s2">&quot;but post_commit_routes do not cover all budget states. &quot;</span>
+                <span class="sa">f</span><span class="s2">&quot;Missing: </span><span class="si">{</span><span class="nb">sorted</span><span class="p">(</span><span class="n">missing</span><span class="p">)</span><span class="si">}</span><span class="s2">. &quot;</span>
+                <span class="sa">f</span><span class="s2">&quot;Add [[post_commit_routes]] entries with when.phase=&#39;</span><span class="si">{</span><span class="n">phase_name</span><span class="si">}</span><span class="s2">&#39; &quot;</span>
+                <span class="sa">f</span><span class="s2">&quot;for each missing budget_state. &quot;</span>
+                <span class="sa">f</span><span class="s2">&quot;See docs/sphinx/policy-driven-overhaul-migration.md.&quot;</span>
+            <span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_validate_terminal_failure_phase_declared</span><span class="p">(</span>
+    <span class="n">policy</span><span class="p">:</span> <span class="n">PipelinePolicy</span><span class="p">,</span>
+    <span class="n">errors</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Validate that a terminal-failure phase exists when failures can occur.</span>
+
+<span class="sd">    When any phase declares on_failure routing or verification.on_failure_route,</span>
+<span class="sd">    some phase with role=&#39;terminal&#39; and terminal_outcome=&#39;failure&#39; must exist</span>
+<span class="sd">    so the runtime has a policy-declared destination for failures rather than</span>
+<span class="sd">    falling back to a hidden &#39;failed&#39; alias.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">has_failure_route</span> <span class="o">=</span> <span class="nb">any</span><span class="p">(</span>
+        <span class="n">phase_def</span><span class="o">.</span><span class="n">transitions</span><span class="o">.</span><span class="n">on_failure</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+        <span class="ow">or</span> <span class="p">(</span>
+            <span class="n">phase_def</span><span class="o">.</span><span class="n">verification</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+            <span class="ow">and</span> <span class="n">phase_def</span><span class="o">.</span><span class="n">verification</span><span class="o">.</span><span class="n">on_failure_route</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+        <span class="p">)</span>
+        <span class="k">for</span> <span class="n">phase_def</span> <span class="ow">in</span> <span class="n">policy</span><span class="o">.</span><span class="n">phases</span><span class="o">.</span><span class="n">values</span><span class="p">()</span>
+    <span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">has_failure_route</span><span class="p">:</span>
+        <span class="k">return</span>
+
+    <span class="n">has_terminal_failure</span> <span class="o">=</span> <span class="nb">any</span><span class="p">(</span>
+        <span class="n">phase_def</span><span class="o">.</span><span class="n">role</span> <span class="o">==</span> <span class="s2">&quot;terminal&quot;</span> <span class="ow">and</span> <span class="n">phase_def</span><span class="o">.</span><span class="n">terminal_outcome</span> <span class="o">==</span> <span class="s2">&quot;failure&quot;</span>
+        <span class="k">for</span> <span class="n">phase_def</span> <span class="ow">in</span> <span class="n">policy</span><span class="o">.</span><span class="n">phases</span><span class="o">.</span><span class="n">values</span><span class="p">()</span>
+    <span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">has_terminal_failure</span><span class="p">:</span>
+        <span class="n">errors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+            <span class="s2">&quot;Policy declares on_failure or verification.on_failure_route transitions &quot;</span>
+            <span class="s2">&quot;but no phase has role=&#39;terminal&#39; and terminal_outcome=&#39;failure&#39;. &quot;</span>
+            <span class="s2">&quot;Add a terminal failure phase so the runtime routes failures to a &quot;</span>
+            <span class="s2">&quot;policy-declared destination instead of a hidden built-in fallback. &quot;</span>
+            <span class="s2">&quot;See docs/sphinx/policy-driven-overhaul-migration.md.&quot;</span>
+        <span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_validate_review_phase_outcome_complete</span><span class="p">(</span>
+    <span class="n">policy</span><span class="p">:</span> <span class="n">PipelinePolicy</span><span class="p">,</span>
+    <span class="n">errors</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Validate that review-role phases have bypass_routes covering their clean_outcome.</span>
+
+<span class="sd">    When a review phase declares clean_outcome, that value must be a key in</span>
+<span class="sd">    bypass_routes so the runtime can route on a clean review without falling</span>
+<span class="sd">    back to hidden semantics.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">for</span> <span class="n">phase_name</span><span class="p">,</span> <span class="n">phase_def</span> <span class="ow">in</span> <span class="n">policy</span><span class="o">.</span><span class="n">phases</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+        <span class="k">if</span> <span class="n">phase_def</span><span class="o">.</span><span class="n">role</span> <span class="o">!=</span> <span class="s2">&quot;review&quot;</span><span class="p">:</span>
+            <span class="k">continue</span>
+        <span class="k">if</span> <span class="n">phase_def</span><span class="o">.</span><span class="n">clean_outcome</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">continue</span>
+        <span class="k">if</span> <span class="n">phase_def</span><span class="o">.</span><span class="n">clean_outcome</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">phase_def</span><span class="o">.</span><span class="n">bypass_routes</span><span class="p">:</span>
+            <span class="n">errors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;phases.</span><span class="si">{</span><span class="n">phase_name</span><span class="si">}</span><span class="s2">: clean_outcome=&#39;</span><span class="si">{</span><span class="n">phase_def</span><span class="o">.</span><span class="n">clean_outcome</span><span class="si">}</span><span class="s2">&#39; &quot;</span>
+                <span class="sa">f</span><span class="s2">&quot;is not a key in bypass_routes. &quot;</span>
+                <span class="sa">f</span><span class="s2">&quot;Add bypass_routes.</span><span class="si">{</span><span class="n">phase_def</span><span class="o">.</span><span class="n">clean_outcome</span><span class="si">}</span><span class="s2"> = &#39;&lt;target_phase&gt;&#39; &quot;</span>
+                <span class="sa">f</span><span class="s2">&quot;so the runtime can route on a clean review. &quot;</span>
+                <span class="sa">f</span><span class="s2">&quot;See docs/sphinx/policy-driven-overhaul-migration.md.&quot;</span>
+            <span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_validate_skip_invocation_has_on_success</span><span class="p">(</span>
+    <span class="n">phase_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">phase_def</span><span class="p">:</span> <span class="nb">object</span><span class="p">,</span> <span class="n">errors</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Validate that skip_invocation phases declare an on_success transition.&quot;&quot;&quot;</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">ralph.policy.models</span><span class="w"> </span><span class="kn">import</span> <span class="n">PhaseDefinition</span>  <span class="c1"># noqa: PLC0415</span>
+
+    <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">phase_def</span><span class="p">,</span> <span class="n">PhaseDefinition</span><span class="p">):</span>
+        <span class="k">return</span>
+    <span class="k">if</span> <span class="n">phase_def</span><span class="o">.</span><span class="n">skip_invocation</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">phase_def</span><span class="o">.</span><span class="n">transitions</span><span class="o">.</span><span class="n">on_success</span><span class="p">:</span>
+        <span class="n">errors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;phases.</span><span class="si">{</span><span class="n">phase_name</span><span class="si">}</span><span class="s2">: skip_invocation=true requires transitions.on_success &quot;</span>
+            <span class="sa">f</span><span class="s2">&quot;to be set so routing can proceed without invoking an agent. &quot;</span>
+            <span class="sa">f</span><span class="s2">&quot;Add on_success = &#39;&lt;target_phase&gt;&#39; under [phases.</span><span class="si">{</span><span class="n">phase_name</span><span class="si">}</span><span class="s2">.transitions].&quot;</span>
+        <span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_validate_parallelization_consistency</span><span class="p">(</span>
+    <span class="n">phase_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">phase_def</span><span class="p">:</span> <span class="nb">object</span><span class="p">,</span> <span class="n">errors</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Validate that max_work_units &gt;= max_parallel_workers when parallelization is declared.&quot;&quot;&quot;</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">ralph.policy.models</span><span class="w"> </span><span class="kn">import</span> <span class="n">PhaseDefinition</span>  <span class="c1"># noqa: PLC0415</span>
+
+    <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">phase_def</span><span class="p">,</span> <span class="n">PhaseDefinition</span><span class="p">):</span>
+        <span class="k">return</span>
+    <span class="n">para</span> <span class="o">=</span> <span class="n">phase_def</span><span class="o">.</span><span class="n">parallelization</span>
+    <span class="k">if</span> <span class="n">para</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">return</span>
+    <span class="k">if</span> <span class="n">para</span><span class="o">.</span><span class="n">max_work_units</span> <span class="o">&lt;</span> <span class="n">para</span><span class="o">.</span><span class="n">max_parallel_workers</span><span class="p">:</span>
+        <span class="n">errors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;phases.</span><span class="si">{</span><span class="n">phase_name</span><span class="si">}</span><span class="s2">: parallelization.max_work_units (</span><span class="si">{</span><span class="n">para</span><span class="o">.</span><span class="n">max_work_units</span><span class="si">}</span><span class="s2">) &quot;</span>
+            <span class="sa">f</span><span class="s2">&quot;must be &gt;= parallelization.max_parallel_workers (</span><span class="si">{</span><span class="n">para</span><span class="o">.</span><span class="n">max_parallel_workers</span><span class="si">}</span><span class="s2">). &quot;</span>
+            <span class="sa">f</span><span class="s2">&quot;The runtime caps workers to max_work_units, so declaring more workers than &quot;</span>
+            <span class="sa">f</span><span class="s2">&quot;work units makes the policy misleading. &quot;</span>
+            <span class="sa">f</span><span class="s2">&quot;Increase max_work_units or decrease max_parallel_workers.&quot;</span>
+        <span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_validate_tracked_counters_have_positive_max</span><span class="p">(</span>
+    <span class="n">policy</span><span class="p">:</span> <span class="n">PipelinePolicy</span><span class="p">,</span>
+    <span class="n">errors</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Validate that budget-tracked counters have a positive default_max.&quot;&quot;&quot;</span>
+    <span class="k">for</span> <span class="n">counter_name</span><span class="p">,</span> <span class="n">counter_cfg</span> <span class="ow">in</span> <span class="n">policy</span><span class="o">.</span><span class="n">budget_counters</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+        <span class="k">if</span> <span class="n">counter_cfg</span><span class="o">.</span><span class="n">tracks_budget</span> <span class="ow">and</span> <span class="n">counter_cfg</span><span class="o">.</span><span class="n">default_max</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="n">errors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;budget_counters.</span><span class="si">{</span><span class="n">counter_name</span><span class="si">}</span><span class="s2">: tracks_budget=True with default_max=0 &quot;</span>
+                <span class="sa">f</span><span class="s2">&quot;means the pipeline cannot start (budget exhausted before any cycle &quot;</span>
+                <span class="sa">f</span><span class="s2">&quot;completes). Set default_max &gt; 0 for tracked counters, or set &quot;</span>
+                <span class="sa">f</span><span class="s2">&quot;tracks_budget=False if this counter should not gate advancement. &quot;</span>
+                <span class="sa">f</span><span class="s2">&quot;See [budget_counters.</span><span class="si">{</span><span class="n">counter_name</span><span class="si">}</span><span class="s2">].default_max in pipeline.toml.&quot;</span>
+            <span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_validate_cli_counter_overrides</span><span class="p">(</span>
+    <span class="n">policy</span><span class="p">:</span> <span class="n">PipelinePolicy</span><span class="p">,</span>
+    <span class="n">cli_counter_overrides</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">int</span><span class="p">],</span>
+    <span class="n">errors</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Validate that every CLI counter override names a declared budget counter.&quot;&quot;&quot;</span>
+    <span class="n">declared</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">policy</span><span class="o">.</span><span class="n">budget_counters</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span>
+    <span class="n">unknown</span> <span class="o">=</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">k</span> <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">cli_counter_overrides</span> <span class="k">if</span> <span class="n">k</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">declared</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">unknown</span><span class="p">:</span>
+        <span class="n">declared_list</span> <span class="o">=</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">declared</span><span class="p">)</span> <span class="k">if</span> <span class="n">declared</span> <span class="k">else</span> <span class="p">[</span><span class="s2">&quot;(none declared)&quot;</span><span class="p">]</span>
+        <span class="n">errors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;--counter override(s) </span><span class="si">{</span><span class="n">unknown</span><span class="si">}</span><span class="s2"> are not declared in pipeline.budget_counters. &quot;</span>
+            <span class="sa">f</span><span class="s2">&quot;Declared counters: </span><span class="si">{</span><span class="n">declared_list</span><span class="si">}</span><span class="s2">. &quot;</span>
+            <span class="sa">f</span><span class="s2">&quot;Add [budget_counters.&lt;name&gt;] to pipeline.toml or remove the --counter flag.&quot;</span>
+        <span class="p">)</span>
+
+
+<div class="viewcode-block" id="validate_policy_completeness">
+<a class="viewcode-back" href="../../../modules.html#ralph.policy.validation.validate_policy_completeness">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">validate_policy_completeness</span><span class="p">(</span>
+    <span class="n">bundle</span><span class="p">:</span> <span class="n">PolicyBundle</span><span class="p">,</span>
+    <span class="o">*</span><span class="p">,</span>
+    <span class="n">cli_counter_overrides</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">int</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Validate that the policy bundle is semantically complete for policy-driven orchestration.</span>
+
+<span class="sd">    Enforces that every non-terminal phase has all the fields required for the runtime</span>
+<span class="sd">    to drive routing through policy alone, without hidden built-in fallbacks.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        bundle: Currently loaded policy bundle.</span>
+<span class="sd">        cli_counter_overrides: Optional mapping of counter name to override value from CLI.</span>
+<span class="sd">            When supplied, every key must appear in policy.budget_counters.</span>
+
+<span class="sd">    Raises:</span>
+<span class="sd">        PolicyValidationError: If any phase is missing required policy fields.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">errors</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">policy</span> <span class="o">=</span> <span class="n">bundle</span><span class="o">.</span><span class="n">pipeline</span>
+    <span class="n">terminal_phase</span> <span class="o">=</span> <span class="n">policy</span><span class="o">.</span><span class="n">terminal_phase</span>
+
+    <span class="k">for</span> <span class="n">phase_name</span><span class="p">,</span> <span class="n">phase_def</span> <span class="ow">in</span> <span class="n">policy</span><span class="o">.</span><span class="n">phases</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+        <span class="k">if</span> <span class="n">phase_name</span> <span class="o">==</span> <span class="n">terminal_phase</span> <span class="ow">or</span> <span class="n">phase_def</span><span class="o">.</span><span class="n">role</span> <span class="o">==</span> <span class="s2">&quot;terminal&quot;</span><span class="p">:</span>
+            <span class="n">_validate_terminal_phase</span><span class="p">(</span><span class="n">phase_name</span><span class="p">,</span> <span class="n">phase_def</span><span class="p">,</span> <span class="n">errors</span><span class="p">)</span>
+            <span class="k">continue</span>
+
+        <span class="c1"># Check role is defined - role is required for all non-terminal phases</span>
+        <span class="n">role</span> <span class="o">=</span> <span class="n">phase_def</span><span class="o">.</span><span class="n">role</span>
+        <span class="k">if</span> <span class="n">role</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">errors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;phases.</span><span class="si">{</span><span class="n">phase_name</span><span class="si">}</span><span class="s2">: &#39;role&#39; is required. &quot;</span>
+                <span class="sa">f</span><span class="s2">&quot;Set role=&#39;execution&#39;|&#39;analysis&#39;|&#39;review&#39;|&#39;commit&#39;|&#39;verification&#39;|&#39;terminal&#39;. &quot;</span>
+                <span class="sa">f</span><span class="s2">&quot;Run `ralph --regenerate-config` to get an updated pipeline.toml template.&quot;</span>
+            <span class="p">)</span>
+            <span class="k">continue</span>
+
+        <span class="c1"># Role-specific validation - use separate if statements to help mypy track control flow</span>
+        <span class="k">if</span> <span class="n">role</span> <span class="o">==</span> <span class="s2">&quot;analysis&quot;</span><span class="p">:</span>
+            <span class="n">_validate_analysis_phase</span><span class="p">(</span><span class="n">phase_name</span><span class="p">,</span> <span class="n">phase_def</span><span class="p">,</span> <span class="n">bundle</span><span class="p">,</span> <span class="n">errors</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">role</span> <span class="o">==</span> <span class="s2">&quot;review&quot;</span><span class="p">:</span>
+            <span class="n">_validate_review_phase</span><span class="p">(</span><span class="n">phase_name</span><span class="p">,</span> <span class="n">phase_def</span><span class="p">,</span> <span class="n">errors</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">role</span> <span class="o">==</span> <span class="s2">&quot;commit&quot;</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">phase_def</span><span class="o">.</span><span class="n">commit_policy</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="n">errors</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+                    <span class="sa">f</span><span class="s2">&quot;phases.</span><span class="si">{</span><span class="n">phase_name</span><span class="si">}</span><span class="s2">: role=&#39;commit&#39; requires commit_policy &quot;</span>
+                    <span class="sa">f</span><span class="s2">&quot;(requires_artifact, increments_counter, loop_resets)&quot;</span>
+                <span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="c1"># increments_counter=&#39;none&#39; is valid — indicates no outer-progress bump</span>
+                <span class="c1"># Only flag commit_policy=None (missing entirely), not any specific value</span>
+                <span class="n">_validate_commit_phase_loop_resets</span><span class="p">(</span><span class="n">phase_name</span><span class="p">,</span> <span class="n">phase_def</span><span class="p">,</span> <span class="n">policy</span><span class="p">,</span> <span class="n">errors</span><span class="p">)</span>
+                <span class="n">_validate_commit_phase_post_commit_routes</span><span class="p">(</span><span class="n">phase_name</span><span class="p">,</span> <span class="n">phase_def</span><span class="p">,</span> <span class="n">policy</span><span class="p">,</span> <span class="n">errors</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">role</span> <span class="o">==</span> <span class="s2">&quot;verification&quot;</span><span class="p">:</span>
+            <span class="n">_validate_verification_phase</span><span class="p">(</span><span class="n">phase_name</span><span class="p">,</span> <span class="n">phase_def</span><span class="p">,</span> <span class="n">policy</span><span class="p">,</span> <span class="n">errors</span><span class="p">)</span>
+
+        <span class="n">_validate_skip_invocation_has_on_success</span><span class="p">(</span><span class="n">phase_name</span><span class="p">,</span> <span class="n">phase_def</span><span class="p">,</span> <span class="n">errors</span><span class="p">)</span>
+        <span class="n">_validate_parallelization_consistency</span><span class="p">(</span><span class="n">phase_name</span><span class="p">,</span> <span class="n">phase_def</span><span class="p">,</span> <span class="n">errors</span><span class="p">)</span>
+
+    <span class="c1"># Validate recovery.failed_route consistency</span>
+    <span class="n">_validate_recovery_failed_route</span><span class="p">(</span><span class="n">policy</span><span class="p">,</span> <span class="n">errors</span><span class="p">)</span>
+
+    <span class="c1"># Validate that legacy pseudo-phase tokens are not used</span>
+    <span class="n">_validate_no_legacy_phase_constants</span><span class="p">(</span><span class="n">policy</span><span class="p">,</span> <span class="n">errors</span><span class="p">)</span>
+
+    <span class="c1"># Validate that every declared phase is reachable from the entry point</span>
+    <span class="n">_validate_reachability</span><span class="p">(</span><span class="n">policy</span><span class="p">,</span> <span class="n">errors</span><span class="p">)</span>
+
+    <span class="c1"># Validate that budget-tracked commit phases cover all three budget states</span>
+    <span class="n">_validate_post_commit_routes_complete</span><span class="p">(</span><span class="n">policy</span><span class="p">,</span> <span class="n">errors</span><span class="p">)</span>
+
+    <span class="c1"># Validate that review phases have bypass routes covering their clean_outcome</span>
+    <span class="n">_validate_review_phase_outcome_complete</span><span class="p">(</span><span class="n">policy</span><span class="p">,</span> <span class="n">errors</span><span class="p">)</span>
+
+    <span class="c1"># Validate that a terminal-failure phase is declared when failures can occur</span>
+    <span class="n">_validate_terminal_failure_phase_declared</span><span class="p">(</span><span class="n">policy</span><span class="p">,</span> <span class="n">errors</span><span class="p">)</span>
+
+    <span class="c1"># Validate that budget-tracked counters have positive default_max</span>
+    <span class="n">_validate_tracked_counters_have_positive_max</span><span class="p">(</span><span class="n">policy</span><span class="p">,</span> <span class="n">errors</span><span class="p">)</span>
+
+    <span class="c1"># Validate CLI counter overrides reference declared budget counters</span>
+    <span class="k">if</span> <span class="n">cli_counter_overrides</span><span class="p">:</span>
+        <span class="n">_validate_cli_counter_overrides</span><span class="p">(</span><span class="n">policy</span><span class="p">,</span> <span class="n">cli_counter_overrides</span><span class="p">,</span> <span class="n">errors</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">errors</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="n">PolicyValidationError</span><span class="p">(</span>
+            <span class="s2">&quot;Policy completeness validation failed:</span><span class="se">\n</span><span class="s2">&quot;</span>
+            <span class="o">+</span> <span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;  </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span> <span class="k">for</span> <span class="n">e</span> <span class="ow">in</span> <span class="n">errors</span><span class="p">),</span>
+            <span class="n">source</span><span class="o">=</span><span class="s2">&quot;completeness&quot;</span><span class="p">,</span>
+        <span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="get_drain_resolution_matrix">
+<a class="viewcode-back" href="../../../modules.html#ralph.policy.validation.get_drain_resolution_matrix">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_drain_resolution_matrix</span><span class="p">(</span><span class="n">bundle</span><span class="p">:</span> <span class="n">PolicyBundle</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Generate a normalized drain resolution matrix.</span>
+
+<span class="sd">    For each drain, emits a normalized record showing which chain it resolves to,</span>
+<span class="sd">    enabling explainability and test snapshots.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        bundle: Currently loaded policy bundle.</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        Dictionary mapping drain names to their resolved chain information.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">matrix</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]]</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="k">for</span> <span class="n">drain_name</span> <span class="ow">in</span> <span class="n">bundle</span><span class="o">.</span><span class="n">agents</span><span class="o">.</span><span class="n">agent_drains</span><span class="p">:</span>
+        <span class="n">drain_config</span> <span class="o">=</span> <span class="n">bundle</span><span class="o">.</span><span class="n">agents</span><span class="o">.</span><span class="n">agent_drains</span><span class="p">[</span><span class="n">drain_name</span><span class="p">]</span>
+        <span class="n">chain_name</span> <span class="o">=</span> <span class="n">drain_config</span><span class="o">.</span><span class="n">chain</span>
+        <span class="n">chain_config</span> <span class="o">=</span> <span class="n">bundle</span><span class="o">.</span><span class="n">agents</span><span class="o">.</span><span class="n">agent_chains</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">chain_name</span><span class="p">)</span>
+
+        <span class="n">matrix</span><span class="p">[</span><span class="n">drain_name</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="s2">&quot;chain&quot;</span><span class="p">:</span> <span class="n">chain_name</span><span class="p">,</span>
+            <span class="s2">&quot;agents&quot;</span><span class="p">:</span> <span class="s2">&quot;,&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">chain_config</span><span class="o">.</span><span class="n">agents</span><span class="p">)</span> <span class="k">if</span> <span class="n">chain_config</span> <span class="k">else</span> <span class="s2">&quot;&quot;</span><span class="p">,</span>
+            <span class="s2">&quot;max_retries&quot;</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">chain_config</span><span class="o">.</span><span class="n">max_retries</span><span class="p">)</span> <span class="k">if</span> <span class="n">chain_config</span> <span class="k">else</span> <span class="s2">&quot;&quot;</span><span class="p">,</span>
+        <span class="p">}</span>
+    <span class="k">return</span> <span class="n">matrix</span></div>
+
+
+
+<div class="viewcode-block" id="validate_work_units_against_policy">
+<a class="viewcode-back" href="../../../modules.html#ralph.policy.validation.validate_work_units_against_policy">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">validate_work_units_against_policy</span><span class="p">(</span>
+    <span class="n">work_units</span><span class="p">:</span> <span class="n">WorkUnitsPlan</span><span class="p">,</span>
+    <span class="n">pipeline_policy</span><span class="p">:</span> <span class="n">PipelinePolicy</span><span class="p">,</span>
+    <span class="o">*</span><span class="p">,</span>
+    <span class="n">phase</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Validate parsed planning work_units against the active phase&#39;s parallelization policy.</span>
+
+<span class="sd">    Fan-out is transition-scoped: only phases that declare a parallelization block</span>
+<span class="sd">    can accept multi-work-unit plans. When the active phase has no parallelization</span>
+<span class="sd">    policy, multi-work-unit plans are rejected fail-closed.</span>
+
+<span class="sd">    For plans with multiple work units, also runs the same-workspace overlap check</span>
+<span class="sd">    (validate_for_same_workspace) as a fail-closed guardrail, in addition to the</span>
+<span class="sd">    runtime pre-flight check in the runner.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        work_units: Parsed work units from planning artifact.</span>
+<span class="sd">        pipeline_policy: Currently loaded pipeline policy.</span>
+<span class="sd">        phase: The phase where the work units will execute (e.g., &#39;development&#39;).</span>
+
+<span class="sd">    Raises:</span>
+<span class="sd">        PolicyValidationError: If the plan is unsafe or the phase does not permit fan-out.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">ralph.pipeline.work_units</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>  <span class="c1"># noqa: PLC0415</span>
+        <span class="n">WorkUnitsValidationError</span><span class="p">,</span>
+        <span class="n">validate_for_same_workspace</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">work_units</span><span class="o">.</span><span class="n">work_units</span><span class="p">)</span> <span class="o">&lt;=</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="k">return</span>
+
+    <span class="n">phase_def</span> <span class="o">=</span> <span class="n">pipeline_policy</span><span class="o">.</span><span class="n">phases</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">phase</span><span class="p">)</span>
+    <span class="n">parallel_policy</span> <span class="o">=</span> <span class="n">phase_def</span><span class="o">.</span><span class="n">parallelization</span> <span class="k">if</span> <span class="n">phase_def</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="kc">None</span>
+
+    <span class="k">if</span> <span class="n">parallel_policy</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">work_units_count</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">work_units</span><span class="o">.</span><span class="n">work_units</span><span class="p">)</span>
+        <span class="k">raise</span> <span class="n">PolicyValidationError</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;Phase </span><span class="si">{</span><span class="n">phase</span><span class="si">!r}</span><span class="s2"> does not declare parallelization but the plan declares &quot;</span>
+            <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">work_units_count</span><span class="si">}</span><span class="s2"> work_units; the active transition policy must explicitly &quot;</span>
+            <span class="sa">f</span><span class="s2">&quot;enable same-workspace fan-out via [phases.</span><span class="si">{</span><span class="n">phase</span><span class="si">}</span><span class="s2">.parallelization]&quot;</span>
+        <span class="p">)</span>
+
+    <span class="n">work_units_count</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">work_units</span><span class="o">.</span><span class="n">work_units</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">work_units_count</span> <span class="o">&gt;</span> <span class="n">parallel_policy</span><span class="o">.</span><span class="n">max_work_units</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="n">PolicyViolation</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;work_units count </span><span class="si">{</span><span class="n">work_units_count</span><span class="si">}</span><span class="s2"> exceeds cap </span><span class="si">{</span><span class="n">parallel_policy</span><span class="o">.</span><span class="n">max_work_units</span><span class="si">}</span><span class="s2">&quot;</span>
+        <span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">work_units_count</span> <span class="o">&gt;</span> <span class="n">parallel_policy</span><span class="o">.</span><span class="n">max_parallel_workers</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="n">PolicyValidationError</span><span class="p">(</span>
+            <span class="s2">&quot;Planning artifact declares &quot;</span>
+            <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">work_units_count</span><span class="si">}</span><span class="s2"> work_units, exceeding &quot;</span>
+            <span class="sa">f</span><span class="s2">&quot;max_parallel_workers=</span><span class="si">{</span><span class="n">parallel_policy</span><span class="o">.</span><span class="n">max_parallel_workers</span><span class="si">}</span><span class="s2">&quot;</span>
+        <span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">parallel_policy</span><span class="o">.</span><span class="n">require_allowed_directories</span><span class="p">:</span>
+        <span class="k">for</span> <span class="n">unit</span> <span class="ow">in</span> <span class="n">work_units</span><span class="o">.</span><span class="n">work_units</span><span class="p">:</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">unit</span><span class="o">.</span><span class="n">allowed_directories</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="n">PolicyValidationError</span><span class="p">(</span>
+                    <span class="sa">f</span><span class="s2">&quot;Work unit &#39;</span><span class="si">{</span><span class="n">unit</span><span class="o">.</span><span class="n">unit_id</span><span class="si">}</span><span class="s2">&#39; must declare allowed_directories&quot;</span>
+                <span class="p">)</span>
+
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">validate_for_same_workspace</span><span class="p">(</span><span class="n">work_units</span><span class="p">)</span>
+    <span class="k">except</span> <span class="n">WorkUnitsValidationError</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="n">PolicyValidationError</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">exc</span><span class="p">))</span> <span class="kn">from</span><span class="w"> </span><span class="nn">exc</span></div>
+
+
+
+<div class="viewcode-block" id="validate_agent_chains_satisfiable">
+<a class="viewcode-back" href="../../../modules.html#ralph.policy.validation.validate_agent_chains_satisfiable">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">validate_agent_chains_satisfiable</span><span class="p">(</span>
+    <span class="n">bundle</span><span class="p">:</span> <span class="n">PolicyBundle</span><span class="p">,</span>
+    <span class="n">agent_registry</span><span class="p">:</span> <span class="n">AgentRegistry</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Validate that every agent referenced in every chain exists in the registry.</span>
+
+<span class="sd">    This catches references to unregistered agents at startup rather than</span>
+<span class="sd">    at runtime. Config consistency check only — not binary presence on PATH.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        bundle: Currently loaded policy bundle.</span>
+<span class="sd">        agent_registry: Populated agent registry to check against.</span>
+
+<span class="sd">    Raises:</span>
+<span class="sd">        PolicyValidationError: If any chain references an unknown agent.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">unknown_agents</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">chain_name</span><span class="p">,</span> <span class="n">chain_config</span> <span class="ow">in</span> <span class="n">bundle</span><span class="o">.</span><span class="n">agents</span><span class="o">.</span><span class="n">agent_chains</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+        <span class="n">unknown_agents</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;chain &#39;</span><span class="si">{</span><span class="n">chain_name</span><span class="si">}</span><span class="s2">&#39; references unknown agent &#39;</span><span class="si">{</span><span class="n">agent_name</span><span class="si">}</span><span class="s2">&#39;&quot;</span>
+            <span class="k">for</span> <span class="n">agent_name</span> <span class="ow">in</span> <span class="n">chain_config</span><span class="o">.</span><span class="n">agents</span>
+            <span class="k">if</span> <span class="n">agent_registry</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">agent_name</span><span class="p">)</span> <span class="ow">is</span> <span class="kc">None</span>
+        <span class="p">)</span>
+    <span class="k">if</span> <span class="n">unknown_agents</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="n">PolicyValidationError</span><span class="p">(</span>
+            <span class="s2">&quot;Agent chains reference unknown agents (check configuration, not PATH): &quot;</span>
+            <span class="o">+</span> <span class="s2">&quot;; &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">unknown_agents</span><span class="p">)</span>
+        <span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="validate_recovery_config">
+<a class="viewcode-back" href="../../../modules.html#ralph.policy.validation.validate_recovery_config">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">validate_recovery_config</span><span class="p">(</span><span class="n">bundle</span><span class="p">:</span> <span class="n">PolicyBundle</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Validate recovery-related configuration in the policy bundle.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        bundle: Currently loaded policy bundle.</span>
+
+<span class="sd">    Raises:</span>
+<span class="sd">        PolicyValidationError: If recovery config is invalid.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">for</span> <span class="n">chain_name</span><span class="p">,</span> <span class="n">chain_config</span> <span class="ow">in</span> <span class="n">bundle</span><span class="o">.</span><span class="n">agents</span><span class="o">.</span><span class="n">agent_chains</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+        <span class="k">if</span> <span class="n">chain_config</span><span class="o">.</span><span class="n">max_retries</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">PolicyValidationError</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;Chain &#39;</span><span class="si">{</span><span class="n">chain_name</span><span class="si">}</span><span class="s2">&#39; has invalid &quot;</span>
+                <span class="sa">f</span><span class="s2">&quot;max_retries=</span><span class="si">{</span><span class="n">chain_config</span><span class="o">.</span><span class="n">max_retries</span><span class="si">}</span><span class="s2">; must be &gt;= 0&quot;</span>
+            <span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="validate_checkpoint_against_policy">
+<a class="viewcode-back" href="../../../modules.html#ralph.policy.validation.validate_checkpoint_against_policy">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">validate_checkpoint_against_policy</span><span class="p">(</span>
+    <span class="n">state</span><span class="p">:</span> <span class="n">PipelineState</span><span class="p">,</span>
+    <span class="n">bundle</span><span class="p">:</span> <span class="n">PolicyBundle</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Validate a checkpoint state against the current policy bundle.</span>
+
+<span class="sd">    Validates the phase exists and, if a drain is set, that it is bound.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        state: Pipeline state loaded from checkpoint.</span>
+<span class="sd">        bundle: Currently loaded policy bundle.</span>
+
+<span class="sd">    Raises:</span>
+<span class="sd">        CheckpointPolicyMismatchError: If the checkpoint phase is unknown.</span>
+<span class="sd">        PolicyValidationError: If the checkpoint drain is not bound.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">validate_phase_exists_in_policy</span><span class="p">(</span><span class="n">state</span><span class="o">.</span><span class="n">phase</span><span class="p">,</span> <span class="n">bundle</span><span class="o">.</span><span class="n">pipeline</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">state</span><span class="o">.</span><span class="n">current_drain</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">state</span><span class="o">.</span><span class="n">current_drain</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">bundle</span><span class="o">.</span><span class="n">agents</span><span class="o">.</span><span class="n">agent_drains</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="n">PolicyValidationError</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;Checkpoint references drain &#39;</span><span class="si">{</span><span class="n">state</span><span class="o">.</span><span class="n">current_drain</span><span class="si">}</span><span class="s2">&#39; which is not bound &quot;</span>
+            <span class="sa">f</span><span class="s2">&quot;in agents.toml. Available drains: </span><span class="si">{</span><span class="nb">sorted</span><span class="p">(</span><span class="n">bundle</span><span class="o">.</span><span class="n">agents</span><span class="o">.</span><span class="n">agent_drains</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span><span class="si">}</span><span class="s2">&quot;</span>
+        <span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="validate_required_inputs">
+<a class="viewcode-back" href="../../../modules.html#ralph.policy.validation.validate_required_inputs">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">validate_required_inputs</span><span class="p">(</span>
+    <span class="n">workspace_scope</span><span class="p">:</span> <span class="n">WorkspaceScope</span><span class="p">,</span>
+    <span class="n">inline_prompt</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Validate that required input files exist and are readable.</span>
+
+<span class="sd">    Checks that PROMPT.md exists in the workspace root, as it is required</span>
+<span class="sd">    for the pipeline to run. When inline_prompt is provided, the PROMPT.md</span>
+<span class="sd">    check is skipped.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        workspace_scope: The workspace scope containing the root path.</span>
+<span class="sd">        inline_prompt: Optional inline prompt supplied via CLI; bypasses PROMPT.md check.</span>
+
+<span class="sd">    Raises:</span>
+<span class="sd">        PolicyValidationError: If required inputs are missing or unreadable.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">inline_prompt</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">return</span>
+    <span class="n">prompt_path</span> <span class="o">=</span> <span class="n">workspace_scope</span><span class="o">.</span><span class="n">root</span> <span class="o">/</span> <span class="s2">&quot;PROMPT.md&quot;</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">prompt_path</span><span class="o">.</span><span class="n">exists</span><span class="p">():</span>
+        <span class="k">raise</span> <span class="n">PolicyValidationError</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;Required input file not found: </span><span class="si">{</span><span class="n">prompt_path</span><span class="si">}</span><span class="s2">. &quot;</span>
+            <span class="s2">&quot;PROMPT.md is the goal/acceptance-criteria document &quot;</span>
+            <span class="s2">&quot;Ralph Workflow reads as its task input. &quot;</span>
+            <span class="s2">&quot;Run `ralph --init` to scaffold PROMPT.md and project config files, &quot;</span>
+            <span class="s2">&quot;then edit PROMPT.md with the task you want Ralph Workflow to run. &quot;</span>
+            <span class="s2">&quot;New to Ralph Workflow? See docs/sphinx/getting-started.md for a walkthrough.&quot;</span>
+        <span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">prompt_path</span><span class="o">.</span><span class="n">is_file</span><span class="p">():</span>
+        <span class="k">raise</span> <span class="n">PolicyValidationError</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;Required input is not a file: </span><span class="si">{</span><span class="n">prompt_path</span><span class="si">}</span><span class="s2">&quot;</span>
+        <span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">prompt_path</span><span class="o">.</span><span class="n">stat</span><span class="p">()</span><span class="o">.</span><span class="n">st_size</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="n">PolicyValidationError</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;Required input file is empty: </span><span class="si">{</span><span class="n">prompt_path</span><span class="si">}</span><span class="s2">. &quot;</span>
+            <span class="s2">&quot;Run `ralph --init` to scaffold a starter template, then edit it with your task.&quot;</span>
+        <span class="p">)</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">ralph.cli.commands.init</span><span class="w"> </span><span class="kn">import</span> <span class="n">STARTER_PROMPT_SENTINEL</span>  <span class="c1"># noqa: PLC0415</span>
+
+    <span class="n">content</span> <span class="o">=</span> <span class="n">prompt_path</span><span class="o">.</span><span class="n">read_text</span><span class="p">(</span><span class="n">encoding</span><span class="o">=</span><span class="s2">&quot;utf-8&quot;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">STARTER_PROMPT_SENTINEL</span> <span class="ow">in</span> <span class="n">content</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="n">PolicyValidationError</span><span class="p">(</span>
+            <span class="sa">f</span><span class="s2">&quot;PROMPT.md at </span><span class="si">{</span><span class="n">prompt_path</span><span class="si">}</span><span class="s2"> is still the `ralph --init` starter template. &quot;</span>
+            <span class="s2">&quot;Edit it to describe YOUR task (remove the `&lt;!-- ralph:starter-prompt ... --&gt;` &quot;</span>
+            <span class="s2">&quot;marker at the top once you have replaced the example content), then re-run `ralph`. &quot;</span>
+            <span class="s2">&quot;New to Ralph Workflow? See docs/sphinx/getting-started.md for a walkthrough, &quot;</span>
+            <span class="s2">&quot;or docs/sphinx/concepts.md for what a good PROMPT.md should contain.&quot;</span>
+        <span class="p">)</span></div>
+
+</pre></div>
+        </article>
+      </div>
+      <footer>
+        
+        <div class="related-pages">
+          
+          
+        </div>
+        <div class="bottom-of-page">
+          <div class="left-details">
+            <div class="copyright">
+                Copyright &#169; 2026, Ralph Workflow Contributors
+            </div>
+            Made with 
+            <a href="https://github.com/pradyunsg/furo">Furo</a>
+            
+          </div>
+          <div class="right-details">
+            
+          </div>
+        </div>
+        
+      </footer>
+    </div>
+    <aside class="toc-drawer no-toc">
+      
+      
+      
+    </aside>
+  </div>
+</div><script src="../../../_static/documentation_options.js?v=9c3e2bee"></script>
+    <script src="../../../_static/doctools.js?v=fd6eb6e6"></script>
+    <script src="../../../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="../../../_static/scripts/furo.js?v=46bd48cc"></script>
+    <script src="../../../_static/clipboard.min.js?v=a7894cd8"></script>
+    <script src="../../../_static/copybutton.js?v=f281be69"></script>
+    <script src="../../../_static/design-tabs.js?v=f930bc37"></script>
+    </body>
+</html>

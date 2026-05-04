@@ -413,17 +413,13 @@ def test_default_policy_failed_analysis_decisions_route_to_same_rework_target() 
 
     bundle = load_policy(defaults_dir)
     development_decisions = bundle.pipeline.phases["development_analysis"].decisions
-    review_decisions = bundle.pipeline.phases["review_analysis"].decisions
     planning_decisions = bundle.pipeline.phases["planning_analysis"].decisions
 
     assert development_decisions is not None
-    assert review_decisions is not None
     assert planning_decisions is not None
     assert development_decisions["failed"].target == development_decisions["request_changes"].target
-    assert review_decisions["failed"].target == review_decisions["request_changes"].target
     assert planning_decisions["failed"].target == planning_decisions["request_changes"].target
     assert development_decisions["failed"].target == "development"
-    assert review_decisions["failed"].target == "fix"
     assert planning_decisions["failed"].target == "planning"
 
 
@@ -452,3 +448,23 @@ def test_default_policy_routes_planning_through_planning_analysis() -> None:
     contract = bundle.artifacts.artifacts["planning_analysis_decision"]
     assert contract.artifact_type == "planning_analysis_decision"
     assert contract.prompt_template == "planning_analysis.jinja"
+
+
+def test_bundled_defaults_have_reviewless_phase_set() -> None:
+    """Bundled default policy must expose the reviewless phase set and no reviewer_pass counter."""
+    defaults_dir = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
+
+    bundle = load_policy(defaults_dir)
+    expected_phases = {
+        "planning",
+        "planning_analysis",
+        "development",
+        "development_analysis",
+        "development_commit",
+        "complete",
+        "failed_terminal",
+    }
+    assert set(bundle.pipeline.phases) == expected_phases
+    assert "reviewer_pass" not in bundle.pipeline.budget_counters
+    assert bundle.pipeline.entry_phase == "planning"
+    assert bundle.pipeline.terminal_phase == "complete"

@@ -23,6 +23,20 @@ from typing import TYPE_CHECKING
 
 from loguru import logger
 
+from ralph.process.child_liveness import AliveBy
+from ralph.timeout_defaults import (
+    DESCENDANT_WAIT_POLL_SECONDS,
+    DESCENDANT_WAIT_TIMEOUT_SECONDS,
+    DRAIN_WINDOW_SECONDS,
+    IDLE_POLL_INTERVAL_SECONDS,
+    MAX_WAITING_ON_CHILD_NO_PROGRESS_SECONDS,
+    MAX_WAITING_ON_CHILD_SECONDS,
+    PARENT_EXIT_GRACE_SECONDS,
+    PROCESS_EXIT_WAIT_SECONDS,
+    SUSPECT_WAITING_ON_CHILD_SECONDS,
+    WAITING_STATUS_INTERVAL_SECONDS,
+)
+
 if TYPE_CHECKING:
     from ralph.agents.execution_state import AgentExecutionState
     from ralph.agents.timeout_clock import Clock
@@ -80,15 +94,6 @@ class WaitingStatusKind(StrEnum):
     SUSPECTED_FROZEN = "suspected_frozen"
     EXITED = "exited"
     HARD_STOP = "hard_stop"
-
-
-class AliveBy(StrEnum):
-    """Typed corroboration reasons describing why child work still appears alive."""
-
-    FRESH_PROGRESS = "fresh_progress"
-    FRESH_HEARTBEAT_ONLY = "fresh_heartbeat_only"
-    STALE_LABEL_ONLY = "stale_label_only"
-    OS_DESCENDANT_ONLY_STALE_PROGRESS = "os_descendant_only_stale_progress"
 
 
 @dataclass(frozen=True)
@@ -210,17 +215,19 @@ class TimeoutPolicy:
     """
 
     idle_timeout_seconds: float | None
-    drain_window_seconds: float = 0.5
-    max_waiting_on_child_seconds: float = 1800.0
+    drain_window_seconds: float = DRAIN_WINDOW_SECONDS
+    max_waiting_on_child_seconds: float = MAX_WAITING_ON_CHILD_SECONDS
     max_session_seconds: float | None = None
-    idle_poll_interval_seconds: float = 0.05
-    parent_exit_grace_seconds: float = 5.0
-    descendant_wait_timeout_seconds: float = 30.0
-    descendant_wait_poll_seconds: float = 0.5
-    process_exit_wait_seconds: float = 30.0
-    waiting_status_interval_seconds: float = 30.0
-    suspect_waiting_on_child_seconds: float | None = 600.0
-    max_waiting_on_child_no_progress_seconds: float | None = None
+    idle_poll_interval_seconds: float = IDLE_POLL_INTERVAL_SECONDS
+    parent_exit_grace_seconds: float = PARENT_EXIT_GRACE_SECONDS
+    descendant_wait_timeout_seconds: float = DESCENDANT_WAIT_TIMEOUT_SECONDS
+    descendant_wait_poll_seconds: float = DESCENDANT_WAIT_POLL_SECONDS
+    process_exit_wait_seconds: float = PROCESS_EXIT_WAIT_SECONDS
+    waiting_status_interval_seconds: float = WAITING_STATUS_INTERVAL_SECONDS
+    suspect_waiting_on_child_seconds: float | None = SUSPECT_WAITING_ON_CHILD_SECONDS
+    max_waiting_on_child_no_progress_seconds: float | None = (
+        MAX_WAITING_ON_CHILD_NO_PROGRESS_SECONDS
+    )
 
     def __post_init__(self) -> None:
         self._validate_idle_fields()

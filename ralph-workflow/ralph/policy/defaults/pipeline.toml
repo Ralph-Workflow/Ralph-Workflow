@@ -48,7 +48,7 @@
 #   execution    - transitions.on_success
 #   analysis     - loop_policy, decisions (covering all artifact decision_vocabulary entries)
 #   review       - transitions.on_success, issues_outcome; clean_outcome when bypass_routes set
-#   commit       - commit_policy (increments_counter, loop_resets)
+#   commit       - commit_policy (requires_artifact, increments_counter, loop_resets)
 #   terminal     - terminal_outcome
 # See ralph/policy/validation.py:validate_policy_completeness for authoritative checks.
 #
@@ -72,10 +72,6 @@ description = "Development analysis loop iteration counter"
 default_max = 10
 description = "Planning analysis loop iteration counter"
 
-[loop_counters.review_analysis_iteration]
-default_max = 2
-description = "Review analysis loop iteration counter"
-
 # ---------------------------------------------------------------------------
 # Budget counters (policy-declared outer-progress and budget tracking)
 # ---------------------------------------------------------------------------
@@ -88,11 +84,6 @@ description = "Review analysis loop iteration counter"
 description = "Development iteration counter (developer cycles)"
 tracks_budget = true
 default_max = 5
-
-[budget_counters.reviewer_pass]
-description = "Review pass counter"
-tracks_budget = true
-default_max = 1
 
 # ---------------------------------------------------------------------------
 # Phase definitions
@@ -167,68 +158,13 @@ drain = "development_commit"
 role = "commit"
 prompt_template = "development_commit_message.jinja"
 [phases.development_commit.transitions]
-on_success = "review"
+on_success = "complete"
 on_failure = "failed_terminal"
 [phases.development_commit.commit_policy]
 requires_artifact = true
 skipped_advances_progress = true
 increments_counter = "iteration"
 loop_resets = ["development_analysis_iteration"]
-
-[phases.review]
-drain = "review"
-role = "review"
-prompt_template = "review.jinja"
-clean_outcome = "clean"
-issues_outcome = "has_issues"
-[phases.review.transitions]
-on_success = "review_analysis"
-on_loopback = "fix"
-[phases.review.bypass_routes]
-clean = "review_commit"
-
-[phases.review_analysis]
-drain = "review_analysis"
-role = "analysis"
-prompt_template = "review_analysis.jinja"
-[phases.review_analysis.transitions]
-on_success = "review_commit"
-on_loopback = "fix"
-[phases.review_analysis.loop_policy]
-max_iterations = 2
-iteration_state_field = "review_analysis_iteration"
-loopback_review_outcome = "has_issues"
-[phases.review_analysis.decisions.completed]
-target = "review_commit"
-reset_loop = true
-[phases.review_analysis.decisions.request_changes]
-target = "fix"
-reset_loop = false
-[phases.review_analysis.decisions.failed]
-target = "fix"
-reset_loop = false
-
-[phases.fix]
-drain = "fix"
-role = "execution"
-prompt_template = "fix_mode.jinja"
-skip_invocation = true
-[phases.fix.transitions]
-on_success = "review_analysis"
-on_loopback = "review"
-
-[phases.review_commit]
-drain = "review_commit"
-role = "commit"
-prompt_template = "commit_message.jinja"
-[phases.review_commit.transitions]
-on_success = "complete"
-on_failure = "failed_terminal"
-[phases.review_commit.commit_policy]
-requires_artifact = true
-skipped_advances_progress = true
-increments_counter = "reviewer_pass"
-loop_resets = ["review_analysis_iteration"]
 
 # The 'complete' phase is the terminal marker — it has no transitions
 # because the pipeline ends when it reaches terminal_phase.
@@ -259,9 +195,9 @@ on_loopback = "failed_terminal"
 # These routes apply after any commit-role phase completes successfully.
 # The runtime matches routes by the POLICY-DECLARED phase name (when.phase)
 # and the computed budget state (when.budget_state). There is no hardcoded
-# recognition of "development_commit" or "review_commit" in the runtime —
-# the names here are examples from the default workflow and can be replaced
-# with any custom commit-role phase name in a user-defined pipeline.
+# recognition of "development_commit" in the runtime — the name here is an
+# example from the default workflow and can be replaced with any custom
+# commit-role phase name in a user-defined pipeline.
 #
 # Budget state is derived from commit_policy.increments_counter and budget_remaining:
 #   remaining  = budget counter > 0 (continue iterating)
@@ -283,7 +219,7 @@ phase = "development_commit"
 budget_state = "remaining"
 
 [[post_commit_routes]]
-target = "review"
+target = "complete"
 [post_commit_routes.when]
 phase = "development_commit"
 budget_state = "exhausted"
@@ -292,24 +228,6 @@ budget_state = "exhausted"
 target = "complete"
 [post_commit_routes.when]
 phase = "development_commit"
-budget_state = "no_review"
-
-[[post_commit_routes]]
-target = "review"
-[post_commit_routes.when]
-phase = "review_commit"
-budget_state = "remaining"
-
-[[post_commit_routes]]
-target = "complete"
-[post_commit_routes.when]
-phase = "review_commit"
-budget_state = "exhausted"
-
-[[post_commit_routes]]
-target = "complete"
-[post_commit_routes.when]
-phase = "review_commit"
 budget_state = "no_review"
 
 # ---------------------------------------------------------------------------

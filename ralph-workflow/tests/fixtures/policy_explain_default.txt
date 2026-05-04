@@ -46,32 +46,6 @@
 +--------------------+
     |
     v
-+-------------+
-|    review   |
-| role=review |
-+-------------+
-    <<==[loopback]== returns to 'fix'
-    >> RE-ENTRY at fix
-    |
-    v
-[loop: counter=review_analysis_iteration, max=2]
-+-----------------+
-| review_analysis |
-|  role=analysis  |
-+-----------------+
-    +--[failed]-----------> fix
-    +--[request_changes]--> fix
-    <<==[loopback]== returns to 'fix'
-    [LOOPBACK: counter=review_analysis_iteration, max=2]
-    >> RE-ENTRY at fix
-    |
-    v
-+---------------+
-| review_commit |
-|  role=commit  |
-+---------------+
-    |
-    v
 +---------------+
 |    complete   |
 | role=terminal |
@@ -82,12 +56,6 @@
 |  role=terminal  |
 +-----------------+
 ==FAILURE==>
-+----------------+
-|      fix       |
-| role=execution |
-+----------------+
-    <<==[loopback]== returns to 'review'
-    >> RE-ENTRY at review
 
 Legend:
   =ENTRY=>           pipeline entry point

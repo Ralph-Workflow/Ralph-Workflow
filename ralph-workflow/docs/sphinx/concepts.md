@@ -19,10 +19,12 @@ Every phase has a **role** that determines what the runtime expects from it and
 how it routes on completion. Phase names have **no behavioral meaning** — all
 behavior comes from the `role` field and associated policy declarations.
 
-The bundled defaults define phases named `planning`, `development`,
-`development_analysis`, `development_commit`, `review`, `review_analysis`,
-`fix`, `review_commit`, and `complete`. These are examples only — any name
-works. The runtime does not recognize or treat any phase name specially.
+The bundled defaults define phases named `planning`, `planning_analysis`,
+`development`, `development_analysis`, `development_commit`, `complete`, and
+`failed_terminal`. These are examples only — any name works. The runtime does
+not recognize or treat any phase name specially. Custom policies can declare
+additional phases (such as `review`, `fix`, or any other name) by adding them
+to `pipeline.toml`.
 
 Phase roles:
 
@@ -129,10 +131,10 @@ phase. Use `ralph --inspect-checkpoint` to display the current checkpoint and
 
 ## Recovery Cycle
 
-When a development phase produces output that does not satisfy the acceptance criteria,
-the review phase classifies the issues and triggers a fix phase. This review → fix loop
-repeats up to `--reviewer-reviews` times. The recovery controller decides whether to
-continue, escalate, or abort based on issue severity. See `ralph.recovery`.
+When a phase produces output that does not satisfy the acceptance criteria, the recovery
+controller decides whether to continue, escalate, or abort based on issue severity.
+Custom policies can add review and fix phases to create a review → fix loop; the
+default bundled policy uses a planning → development loop only. See `ralph.recovery`.
 
 ## Work Unit
 
@@ -196,7 +198,7 @@ Levels (least to most severe):
 | `SUCCESS` | Phase or pipeline completed successfully |
 | `WARN` | Non-fatal issue or degraded state |
 | `ERROR` | Fatal error or malformed input |
-| `MILESTONE` | Major phase transition (planning, development, review, fix) |
+| `MILESTONE` | Major phase transition (planning, development, commit) |
 
 Categories:
 
@@ -222,8 +224,8 @@ Loop counters are declared in `pipeline.toml` under `[loop_counters.<name>]` wit
 via `loop_policy.iteration_state_field`. When the counter reaches its cap, the
 pipeline treats the next analysis outcome as a failure rather than a loopback.
 
-The `--developer-iters` and `--reviewer-reviews` CLI flags override the `default_max`
-of the named loop counters at runtime.
+The `--developer-iters` (`-D`) CLI flag overrides the `default_max` of the named
+loop counter at runtime. Use `--counter NAME=VALUE` for arbitrary counter overrides.
 
 See `ralph.policy.models.LoopCounterConfig`.
 

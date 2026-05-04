@@ -43,18 +43,12 @@ def _policy_bundle_for_testing() -> PolicyBundle:
                 "planning": AgentChainConfig(agents=["claude"]),
                 "development": AgentChainConfig(agents=["claude"]),
                 "development_analysis": AgentChainConfig(agents=["claude"]),
-                "review": AgentChainConfig(agents=["claude"]),
-                "review_analysis": AgentChainConfig(agents=["claude"]),
-                "fix": AgentChainConfig(agents=["claude"]),
                 "complete": AgentChainConfig(agents=["claude"]),
             },
             agent_drains={
                 "planning": AgentDrainConfig(chain="planning"),
                 "development": AgentDrainConfig(chain="development"),
                 "development_analysis": AgentDrainConfig(chain="development_analysis"),
-                "review": AgentDrainConfig(chain="review"),
-                "review_analysis": AgentDrainConfig(chain="review_analysis"),
-                "fix": AgentDrainConfig(chain="fix"),
                 "complete": AgentDrainConfig(chain="complete"),
             },
         ),
@@ -143,10 +137,6 @@ _DEFAULT_DRAINS = [
     "development",
     "development_analysis",
     "development_commit",
-    "review",
-    "review_analysis",
-    "review_commit",
-    "fix",
 ]
 
 
@@ -203,7 +193,7 @@ def test_run_pipeline_dry_run_reports_summary(
 ) -> None:
     _configure_workspace(monkeypatch, tmp_path)
     config = _fake_config()
-    state = PipelineState(phase="review")
+    state = PipelineState(phase="development")
 
     monkeypatch.setattr(run_module, "load_config", lambda *args, **kwargs: config)
     monkeypatch.setattr(run_module.ckpt, "load", lambda: state)
@@ -214,7 +204,7 @@ def test_run_pipeline_dry_run_reports_summary(
 
     assert run_module.run_pipeline(dry_run=True, resume=True) == 0
     assert "Dry run mode" in console.lines[0]
-    assert "Phase: review" in console.lines[1]
+    assert "Phase: development" in console.lines[1]
 
 
 class _RegistryWithFromConfigOnly:
@@ -381,6 +371,44 @@ def test_run_pipeline_injects_workspace_scope_when_config_path_is_implicit(
 def test_standalone_run_module_is_not_a_cli_surface() -> None:
     """Cleanup should remove the standalone run.py CLI entry surface."""
     assert not hasattr(run_module, "app")
+
+
+class TestInlinePromptPersistence:
+    """Tests for inline prompt persistence and quick-mode preflight bypass."""
+
+    def test_inline_prompt_is_written_to_current_prompt_md(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+    ) -> None:
+        """run_pipeline with inline_prompt writes to .agent/CURRENT_PROMPT.md."""
+        scope = _configure_workspace(monkeypatch, tmp_path)
+        monkeypatch.setattr(run_module, "load_config", lambda *args, **kwargs: _fake_config())
+        monkeypatch.setattr(run_module, "_run_func", lambda *_args, **_kwargs: 0)
+
+        run_module.run_pipeline(inline_prompt="do a quick change")
+
+        current_prompt = scope.root / ".agent" / "CURRENT_PROMPT.md"
+        assert current_prompt.exists(), "CURRENT_PROMPT.md must be created for inline prompts"
+        assert current_prompt.read_text(encoding="utf-8") == "do a quick change"
+
+    def test_inline_prompt_bypasses_prompt_md_preflight(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+    ) -> None:
+        """Quick-mode run with inline_prompt succeeds even when workspace has no PROMPT.md."""
+        # Set up workspace with .agent dir but no PROMPT.md
+        agent_dir = tmp_path / ".agent"
+        agent_dir.mkdir()
+        scope = WorkspaceScope(tmp_path)
+        monkeypatch.setattr(run_module, "resolve_workspace_scope", lambda: scope)
+        monkeypatch.setattr(run_module, "load_config", lambda *args, **kwargs: _fake_config())
+        monkeypatch.setattr(run_module, "_run_func", lambda *_args, **_kwargs: 0)
+
+        assert not (tmp_path / "PROMPT.md").exists()
+        result = run_module.run_pipeline(dry_run=True, inline_prompt="quick task")
+        assert result == 0
 
 
 class TestValidateCounterOverrides:

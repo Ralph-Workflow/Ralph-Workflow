@@ -3227,6 +3227,8 @@ def test_idle_timeout_fires_when_children_persist_past_hard_ceiling(
                     show_progress=False,
                     idle_timeout_seconds=0.2,
                     max_waiting_on_child_seconds=0.4,
+                    # Disable no-progress ceiling to avoid conflict with 600.0 default
+                    max_waiting_on_child_no_progress_seconds=None,
                 ),
                 _clock=clock,
             )
@@ -3638,6 +3640,8 @@ def test_idle_timeout_children_persist_uses_distinct_reason_and_message(
                     show_progress=False,
                     idle_timeout_seconds=10,
                     max_waiting_on_child_seconds=20.0,
+                    # Disable no-progress ceiling to avoid conflict with 600.0 default
+                    max_waiting_on_child_no_progress_seconds=None,
                 ),
                 _clock=FakeClock(),
             )

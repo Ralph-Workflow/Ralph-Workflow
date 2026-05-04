@@ -81,9 +81,10 @@ Ralph Workflow runs the pipeline in phases. At a high level:
 2. **Development** — a developer agent implements the plan, up to `--developer-iters` times
 3. **Development analysis** — the pipeline evaluates the development output; loops back to
    development if further iteration is needed, then commits when satisfied
-4. **Review** — a reviewer agent inspects the commit and produces an issues artifact
-5. **Review analysis** — the pipeline evaluates the review; routes to fix if issues remain,
-   then commits again when the review passes
+4. **Complete** — the pipeline ends successfully after the iteration budget is spent
+
+Custom policies declared in `.agent/pipeline.toml` can add review, fix, or any other phase.
+The default bundled policy is a clean planning → development loop.
 
 Progress is shown inline. If interrupted, Ralph Workflow saves a checkpoint and resumes
 from the last completed phase on the next run.

@@ -89,9 +89,7 @@ def _convert_legacy_config(data: dict[str, object]) -> dict[str, object]:
 
     general: dict[str, object] = {}
     _migrate_verbosity(data, general)
-    _migrate_behavior_flags(data, general)
     _migrate_workflow_flags(data, general)
-    _migrate_execution_flags(data, general)
     _migrate_simple_fields(data, general)
     _migrate_agent_policy_tables(data)
 
@@ -140,16 +138,6 @@ def _migrate_verbosity(data: dict[str, object], general: dict[str, object]) -> N
         general["verbosity"] = data.pop("verbosity")
 
 
-def _migrate_behavior_flags(data: dict[str, object], general: dict[str, object]) -> None:
-    """Migrate behavior flags."""
-    behavior: dict[str, object] = {}
-    for field in ("interactive", "auto_detect_stack", "strict_validation"):
-        if field in data:
-            behavior[field] = data.pop(field)
-    if behavior:
-        general["behavior"] = behavior
-
-
 def _migrate_workflow_flags(data: dict[str, object], general: dict[str, object]) -> None:
     """Migrate workflow flags."""
     workflow: dict[str, object] = {}
@@ -159,24 +147,11 @@ def _migrate_workflow_flags(data: dict[str, object], general: dict[str, object])
         general["workflow"] = workflow
 
 
-def _migrate_execution_flags(data: dict[str, object], general: dict[str, object]) -> None:
-    """Migrate execution flags."""
-    execution: dict[str, object] = {}
-    for field in ("force_universal_prompt",):
-        if field in data:
-            execution[field] = data.pop(field)
-    if execution:
-        general["execution"] = execution
-
-
 def _migrate_simple_fields(data: dict[str, object], general: dict[str, object]) -> None:
     """Migrate simple configuration fields."""
     simple_fields = (
         "developer_iters",
-        "reviewer_reviews",
         "developer_context",
-        "reviewer_context",
-        "review_depth",
         "prompt_path",
         "templates_dir",
         "git_user_name",

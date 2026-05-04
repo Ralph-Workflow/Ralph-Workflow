@@ -41,14 +41,11 @@ def _make_initial_state() -> PipelineState:
     bundle = _load_default_bundle()
     return PipelineState(
         phase=bundle.pipeline.entry_phase,
-        budget_caps={"iteration": 1, "reviewer_pass": 1},
-        budget_remaining={"iteration": 1, "reviewer_pass": 1},
+        budget_caps={"iteration": 1},
+        budget_remaining={"iteration": 1},
         phase_chains={
             "development": AgentChainState(
                 agents=bundle.agents.agent_chains["development"].agents,
-            ),
-            "review": AgentChainState(
-                agents=bundle.agents.agent_chains["review"].agents,
             ),
         },
         rebase=RebaseState(),
@@ -102,18 +99,6 @@ def test_full_pipeline_transitions_from_planning_to_complete() -> None:
 
     state = _apply(state, PipelineEvent.COMMIT_SUCCESS)
     visited_phases.append(state.phase)
-    assert state.phase == "review"
-
-    state = _apply(state, PipelineEvent.AGENT_SUCCESS)
-    visited_phases.append(state.phase)
-    assert state.phase == "review_analysis"
-
-    state = _apply(state, PipelineEvent.ANALYSIS_SUCCESS)
-    visited_phases.append(state.phase)
-    assert state.phase == "review_commit"
-
-    state = _apply(state, PipelineEvent.COMMIT_SUCCESS)
-    visited_phases.append(state.phase)
     assert state.phase == "complete"
     assert determine_next_effect(state, bundle.pipeline, bundle.agents) == ExitSuccessEffect()
     assert visited_phases == [
@@ -122,9 +107,6 @@ def test_full_pipeline_transitions_from_planning_to_complete() -> None:
         "development",
         "development_analysis",
         "development_commit",
-        "review",
-        "review_analysis",
-        "review_commit",
         "complete",
     ]
 
@@ -139,7 +121,7 @@ def test_run_recovers_when_planner_does_not_submit_plan_artifact(
     state = PipelineState(
         phase="planning",
         phase_chains={"planning": AgentChainState(agents=["claude"], current_index=0, retries=3)},
-        budget_caps={"iteration": 1, "reviewer_pass": 1},
+        budget_caps={"iteration": 1},
         rebase=RebaseState(),
         commit=CommitState(),
     )

@@ -398,7 +398,7 @@ def test_cli_first_run_panel_includes_what_is_ralph_pitch(
     result = runner.invoke(app, ["--check-config"], catch_exceptions=False)
 
     assert result.exit_code == 0, f"Expected exit 0, got {result.exit_code}: {result.output}"
-    assert "planning" in result.output and "review" in result.output, (
+    assert "planning" in result.output and "development" in result.output, (
         f"Expected pipeline loop description in first-run output, got: {result.output}"
     )
     for token in _RAW_MARKUP_TOKENS:
@@ -533,7 +533,7 @@ def test_cli_run_with_only_prompt_shows_init_hint(
         f"Expected exit code 2 (preflight), got {result.exit_code}: {result.output}"
     )
     # Validation error message from validate_required_inputs references ralph --init.
-    # Normalize whitespace so wrapped terminal output from parallel test workers stays comparable.
+    # Normalize whitespace so wrapped output stays comparable across worker and terminal widths.
     normalized_output = " ".join(result.output.split())
     assert "ralph --init" in normalized_output, (
         f"Expected 'ralph --init' guidance in output, got: {result.output}"

@@ -21,9 +21,8 @@ if TYPE_CHECKING:
 # Path to the default policy directory
 DEFAULT_POLICY_DIR = Path(__file__).parent.parent.parent / "ralph" / "policy" / "defaults"
 
-# Analysis iteration cap values for testing
+# Analysis iteration cap value for testing
 _DEV_MAX_ANALYSIS = 3
-_REVIEW_MAX_ANALYSIS = 2
 
 
 def _reduce(
@@ -74,35 +73,3 @@ class TestDevAnalysisCapTriggeredCorrectionRouting:
         assert new_state.get_loop_iteration("development_analysis_iteration") == 0
 
 
-class TestReviewAnalysisCapTriggeredCorrectionRouting:
-    """Test that review analysis loopback at max still routes to fix under the default policy."""
-
-    def test_review_analysis_at_max_routes_to_fix(self) -> None:
-        """At max-1 iterations, ANALYSIS_LOOPBACK still routes to fix."""
-        policy = _load_default_policy()
-        state = PipelineState(
-            phase="review_analysis",
-            loop_iterations={"review_analysis_iteration": 1},  # max-1 where max=2
-            loop_caps={"review_analysis_iteration": _REVIEW_MAX_ANALYSIS},
-            budget_remaining={"iteration": 3, "reviewer_pass": 2},
-        )
-
-        new_state, _ = _reduce(state, PipelineEvent.ANALYSIS_LOOPBACK, policy)
-        assert new_state.phase == "fix"
-        assert new_state.get_loop_iteration("review_analysis_iteration") == _REVIEW_MAX_ANALYSIS
-
-    def test_review_analysis_commit_resets_counter_and_increments_reviewer_pass(
-        self,
-    ) -> None:
-        """COMMIT_SUCCESS after cap resets review_analysis_iteration."""
-        policy = _load_default_policy()
-        state = PipelineState(
-            phase="review_commit",
-            loop_iterations={"review_analysis_iteration": _REVIEW_MAX_ANALYSIS},
-            budget_remaining={"iteration": 3, "reviewer_pass": 2},
-        )
-
-        new_state, _ = _reduce(state, PipelineEvent.COMMIT_SUCCESS, policy)
-        expected_reviewer_pass = state.get_outer_progress("reviewer_pass") + 1
-        assert new_state.get_outer_progress("reviewer_pass") == expected_reviewer_pass
-        assert new_state.get_loop_iteration("review_analysis_iteration") == 0
