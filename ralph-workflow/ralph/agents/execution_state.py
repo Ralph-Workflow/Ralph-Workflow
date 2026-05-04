@@ -12,6 +12,7 @@ from enum import StrEnum
 from typing import TYPE_CHECKING, cast
 
 from ralph.agents.activity import AgentActivityKind, AgentActivitySignal
+from ralph.process.child_liveness import classify_child_snapshot
 
 if TYPE_CHECKING:
     from typing import Protocol
@@ -179,55 +180,30 @@ class OpenCodeExecutionStrategy:
         # Check own registry first for fresh child evidence
         registry = cast("ChildLivenessRegistry | None", getattr(self, "_registry", None))
         if registry is not None:
-            result = self._classify_quiet_from_registry(registry, probe_prefix)
-            if result is not None:
-                return result
-            if registry.snapshot(probe_prefix).has_process:
-                scoped_child_evidence_stale = True
-
-        # Use child_snapshot if the probe supports it (DefaultLivenessProbe/FakeLivenessProbe)
-        try:
-            snap = liveness_probe.child_snapshot(probe_prefix)
-            if snap.has_fresh_progress or snap.has_fresh_label:
-                return AgentExecutionState.WAITING_ON_CHILD
-            if snap.has_process:
-                scoped_child_evidence_stale = True
-        except Exception:
             try:
-                if bool(liveness_probe.any_agent_active(probe_prefix)):
+                reg_snap = registry.snapshot(probe_prefix)
+                verdict = classify_child_snapshot(reg_snap)
+                if verdict.all_children_terminal:
+                    return AgentExecutionState.ACTIVE
+                if verdict.deferral_allowed:
                     return AgentExecutionState.WAITING_ON_CHILD
+                if reg_snap.has_process:
+                    scoped_child_evidence_stale = True
             except Exception:
                 pass
+
+        # Use child_snapshot if the probe supports it (DefaultLivenessProbe/FakeLivenessProbe)
+        probe_state, probe_stale = _probe_check_quiet(liveness_probe, probe_prefix)
+        if probe_state is not None:
+            return probe_state
+        scoped_child_evidence_stale = scoped_child_evidence_stale or probe_stale
 
         # Only fall back to psutil-based descendant check when there is NO scoped
         # Ralph child evidence at all. When scoped evidence exists but is stale,
         # raw OS descendant presence alone is insufficient to keep deferring timeout.
         if scoped_child_evidence_stale:
             return AgentExecutionState.ACTIVE
-
-        if hasattr(handle, "has_live_descendants"):
-            try:
-                if bool(handle.has_live_descendants()):
-                    return AgentExecutionState.WAITING_ON_CHILD
-            except Exception:
-                pass
-        return AgentExecutionState.ACTIVE
-
-    def _classify_quiet_from_registry(
-        self,
-        registry: ChildLivenessRegistry,
-        probe_prefix: str,
-    ) -> AgentExecutionState | None:
-        """Check registry for child state; returns state or None if inconclusive."""
-        try:
-            reg_snap = registry.snapshot(probe_prefix)
-            if reg_snap.terminal_count > 0 and reg_snap.active_count == 0:
-                return AgentExecutionState.ACTIVE
-            if reg_snap.has_fresh_progress or reg_snap.has_fresh_label:
-                return AgentExecutionState.WAITING_ON_CHILD
-        except Exception:
-            pass
-        return None
+        return _os_descendant_state(handle, AgentExecutionState.ACTIVE)
 
     def classify_exit(
         self,
@@ -351,40 +327,77 @@ def _check_signals_terminal(completion_signals: CompletionSignals) -> bool:
         return False
 
 
-def _check_registry_state(
-    registry: ChildLivenessRegistry,
-    label_prefix: str | None,
-) -> AgentExecutionState | None:
-    try:
-        reg_snap = registry.snapshot(label_prefix if label_prefix is not None else "")
-        if reg_snap.terminal_count > 0 and reg_snap.active_count == 0:
-            return AgentExecutionState.TERMINAL_COMPLETE
-        if reg_snap.has_fresh_progress or reg_snap.has_fresh_label:
-            return AgentExecutionState.WAITING_ON_CHILD
-    except Exception:
-        pass
-    return None
-
-
-def _check_probe_state(
-    liveness_probe: LivenessProbe,
-    label_prefix: str | None,
-) -> AgentExecutionState | None:
-    prefix = label_prefix if label_prefix is not None else ""
-    try:
-        snap = liveness_probe.child_snapshot(prefix)
-        if snap.has_fresh_progress or snap.has_fresh_label:
-            return AgentExecutionState.WAITING_ON_CHILD
-        return None
-    except Exception:
-        pass
-    if label_prefix is not None:
+def _os_descendant_state(
+    handle: _LiveDescendantHandle,
+    default: AgentExecutionState,
+) -> AgentExecutionState:
+    if hasattr(handle, "has_live_descendants"):
         try:
-            if bool(liveness_probe.any_agent_active(label_prefix)):
+            if bool(handle.has_live_descendants()):
                 return AgentExecutionState.WAITING_ON_CHILD
         except Exception:
             pass
-    return None
+    return default
+
+
+def _probe_check_quiet(
+    liveness_probe: LivenessProbe,
+    probe_prefix: str,
+) -> tuple[AgentExecutionState | None, bool]:
+    """Returns (decided_state_or_none, scoped_evidence_stale)."""
+    try:
+        snap = liveness_probe.child_snapshot(probe_prefix)
+        verdict = classify_child_snapshot(snap)
+        if verdict.deferral_allowed:
+            return AgentExecutionState.WAITING_ON_CHILD, False
+        return None, snap.has_process
+    except Exception:
+        try:
+            if bool(liveness_probe.any_agent_active(probe_prefix)):
+                return AgentExecutionState.WAITING_ON_CHILD, False
+        except Exception:
+            pass
+    return None, False
+
+
+def _registry_check_for_exit(
+    registry: ChildLivenessRegistry,
+    label_prefix: str | None,
+) -> tuple[AgentExecutionState | None, bool]:
+    """Returns (decided_state_or_none, scoped_evidence_stale)."""
+    try:
+        reg_snap = registry.snapshot(label_prefix if label_prefix is not None else "")
+        verdict = classify_child_snapshot(reg_snap)
+        if verdict.all_children_terminal:
+            return AgentExecutionState.TERMINAL_COMPLETE, False
+        if verdict.deferral_allowed:
+            return AgentExecutionState.WAITING_ON_CHILD, False
+        return None, reg_snap.has_process
+    except Exception:
+        pass
+    return None, False
+
+
+def _probe_check_exit(
+    liveness_probe: LivenessProbe,
+    label_prefix: str | None,
+) -> tuple[AgentExecutionState | None, bool]:
+    """Returns (decided_state_or_none, scoped_evidence_stale)."""
+    prefix = label_prefix if label_prefix is not None else ""
+    try:
+        snap = liveness_probe.child_snapshot(prefix)
+        verdict = classify_child_snapshot(snap)
+        if verdict.deferral_allowed:
+            return AgentExecutionState.WAITING_ON_CHILD, False
+        return None, snap.has_process
+    except Exception:
+        if label_prefix is not None:
+            try:
+                if bool(liveness_probe.any_agent_active(label_prefix)):
+                    return AgentExecutionState.WAITING_ON_CHILD, False
+            except Exception:
+                pass
+    return None, False
 
 
 def _evidence_precedence(
@@ -400,8 +413,8 @@ def _evidence_precedence(
     Priority:
       1. terminal_ack_seen or required_artifact_present -> TERMINAL_COMPLETE
       2. registry: all children acked with no remaining active -> TERMINAL_COMPLETE
-      3. registry: has_fresh_progress or has_fresh_label -> WAITING_ON_CHILD
-      4. probe: has_fresh_progress or has_fresh_label -> WAITING_ON_CHILD
+      3. registry: deferral_allowed -> WAITING_ON_CHILD
+      4. probe: deferral_allowed -> WAITING_ON_CHILD
       5. scoped Ralph child evidence exists but is stale -> RESUMABLE_CONTINUE
       6. OS descendants (only when no scoped Ralph evidence exists at all) -> WAITING_ON_CHILD
       7. else -> RESUMABLE_CONTINUE
@@ -409,64 +422,25 @@ def _evidence_precedence(
     if _check_signals_terminal(completion_signals):
         return AgentExecutionState.TERMINAL_COMPLETE
 
-    scoped_child_evidence_stale = False
+    stale = False
 
     if registry is not None:
-        result = _check_registry_state(registry, label_prefix)
-        if result is not None:
-            return result
-        if _registry_has_stale_child(registry, label_prefix):
-            scoped_child_evidence_stale = True
+        state, reg_stale = _registry_check_for_exit(registry, label_prefix)
+        if state is not None:
+            return state
+        stale = reg_stale
 
     if liveness_probe is not None:
-        result = _check_probe_state(liveness_probe, label_prefix)
-        if result is not None:
-            return result
-        if _probe_has_stale_child(liveness_probe, label_prefix):
-            scoped_child_evidence_stale = True
+        state, probe_stale = _probe_check_exit(liveness_probe, label_prefix)
+        if state is not None:
+            return state
+        stale = stale or probe_stale
 
     # When scoped Ralph evidence exists but is stale, do not fall back to raw
     # descendants - return RESUMABLE_CONTINUE so the timeout can fire.
-    if scoped_child_evidence_stale:
+    if stale:
         return AgentExecutionState.RESUMABLE_CONTINUE
-
-    if hasattr(handle, "has_live_descendants"):
-        try:
-            if bool(handle.has_live_descendants()):
-                return AgentExecutionState.WAITING_ON_CHILD
-        except Exception:
-            pass
-    return AgentExecutionState.RESUMABLE_CONTINUE
-
-
-def _registry_has_stale_child(
-    registry: ChildLivenessRegistry,
-    label_prefix: str | None,
-) -> bool:
-    """Return True if registry has children but they're all stale."""
-    try:
-        prefix = label_prefix if label_prefix is not None else ""
-        reg_snap = registry.snapshot(prefix)
-        if reg_snap.has_process:
-            return not (reg_snap.has_fresh_progress or reg_snap.has_fresh_label)
-    except Exception:
-        pass
-    return False
-
-
-def _probe_has_stale_child(
-    liveness_probe: LivenessProbe,
-    label_prefix: str | None,
-) -> bool:
-    """Return True if probe has children but they're all stale."""
-    prefix = label_prefix if label_prefix is not None else ""
-    try:
-        snap = liveness_probe.child_snapshot(prefix)
-        if snap.has_process:
-            return not (snap.has_fresh_progress or snap.has_fresh_label)
-    except Exception:
-        pass
-    return False
+    return _os_descendant_state(handle, AgentExecutionState.RESUMABLE_CONTINUE)
 
 
 def _classify_claude_prefixed_line(stripped: str) -> AgentActivitySignal | None:

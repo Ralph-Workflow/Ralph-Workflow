@@ -35,7 +35,6 @@ from ralph.agents.execution_state import (
     strategy_for_transport,
 )
 from ralph.agents.idle_watchdog import (
-    AliveBy,
     CorroborationSnapshot,
     IdleWatchdog,
     TimeoutPolicy,
@@ -68,13 +67,19 @@ from ralph.mcp.transport.common import (
     set_upstream_mcp_config,
 )
 from ralph.mcp.transport.opencode import build_opencode_provider_config
-from ralph.process.child_liveness import ChildLivenessRegistry
+from ralph.process.child_liveness import AliveBy, ChildLivenessRegistry, classify_child_snapshot
 from ralph.process.liveness import DefaultLivenessProbe, LivenessProbe
 from ralph.process.manager import (
     ManagedProcess,
     ProcessEvent,
     ProcessStatus,
     get_process_manager,
+)
+from ralph.timeout_defaults import (
+    CHILD_EXIT_RECONCILE_SECONDS,
+    CHILD_HEARTBEAT_TTL_SECONDS,
+    CHILD_PROGRESS_TTL_SECONDS,
+    CHILD_STALE_LABEL_TTL_SECONDS,
 )
 
 _MODELED_FLAG_PARTS = 2
@@ -170,7 +175,7 @@ class ResolvedInvocationRuntime:
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
-    from ralph.config.models import AgentConfig
+    from ralph.config.models import AgentConfig, GeneralConfig
     from ralph.phases.required_artifacts import RequiredArtifact
 
 # Runtime imports with graceful fallback when watchdog is not available
@@ -539,27 +544,21 @@ def invoke_agent(
         _stop_workspace_monitor(monitor)
 
 
-_CHILD_PROGRESS_TTL_DEFAULT = 45.0
-_CHILD_HEARTBEAT_TTL_DEFAULT = 15.0
-_CHILD_STALE_LABEL_TTL_DEFAULT = 10.0
-_CHILD_EXIT_RECONCILE_DEFAULT = 5.0
-
-
 def _make_child_registry(opts: InvokeOptions) -> ChildLivenessRegistry:
     """Create a new per-invoke ChildLivenessRegistry using config-driven TTL values."""
     return ChildLivenessRegistry(
         progress_ttl=opts.child_progress_ttl_seconds
         if opts.child_progress_ttl_seconds is not None
-        else _CHILD_PROGRESS_TTL_DEFAULT,
+        else CHILD_PROGRESS_TTL_SECONDS,
         heartbeat_ttl=opts.child_heartbeat_ttl_seconds
         if opts.child_heartbeat_ttl_seconds is not None
-        else _CHILD_HEARTBEAT_TTL_DEFAULT,
+        else CHILD_HEARTBEAT_TTL_SECONDS,
         stale_label_ttl=opts.child_stale_label_ttl_seconds
         if opts.child_stale_label_ttl_seconds is not None
-        else _CHILD_STALE_LABEL_TTL_DEFAULT,
+        else CHILD_STALE_LABEL_TTL_SECONDS,
         exit_reconcile=opts.child_exit_reconcile_seconds
         if opts.child_exit_reconcile_seconds is not None
-        else _CHILD_EXIT_RECONCILE_DEFAULT,
+        else CHILD_EXIT_RECONCILE_SECONDS,
     )
 
 
@@ -793,6 +792,49 @@ def _agent_command_name(config: AgentConfig) -> str:
     return config.cmd.split()[0]
 
 
+def build_invoke_options_from_config(  # noqa: PLR0913
+    general_config: GeneralConfig,
+    *,
+    verbose: bool = False,
+    show_progress: bool = True,
+    workspace_path: Path | None = None,
+    extra_env: dict[str, str] | None = None,
+    pure: bool = False,
+    session_id: str | None = None,
+    system_prompt_file: str | None = None,
+    waiting_listener: WaitingStatusListener | None = None,
+    required_artifact: RequiredArtifact | None = None,
+) -> InvokeOptions:
+    """Build InvokeOptions from GeneralConfig, mapping all timeout fields."""
+    return InvokeOptions(
+        verbose=verbose,
+        show_progress=show_progress,
+        workspace_path=workspace_path,
+        extra_env=extra_env,
+        pure=pure,
+        session_id=session_id,
+        system_prompt_file=system_prompt_file,
+        waiting_listener=waiting_listener,
+        required_artifact=required_artifact,
+        idle_timeout_seconds=general_config.agent_idle_timeout_seconds,
+        drain_window_seconds=general_config.agent_idle_drain_window_seconds,
+        max_waiting_on_child_seconds=general_config.agent_idle_max_waiting_on_child_seconds,
+        idle_poll_interval_seconds=general_config.agent_idle_poll_interval_seconds,
+        parent_exit_grace_seconds=general_config.agent_parent_exit_grace_seconds,
+        descendant_wait_timeout_seconds=general_config.agent_descendant_wait_timeout_seconds,
+        descendant_wait_poll_seconds=general_config.agent_descendant_wait_poll_seconds,
+        process_exit_wait_seconds=general_config.agent_process_exit_wait_seconds,
+        max_session_seconds=general_config.agent_max_session_seconds,
+        waiting_status_interval_seconds=general_config.agent_waiting_status_interval_seconds,
+        suspect_waiting_on_child_seconds=general_config.agent_suspect_waiting_on_child_seconds,
+        max_waiting_on_child_no_progress_seconds=general_config.agent_idle_no_progress_waiting_on_child_seconds,
+        child_progress_ttl_seconds=general_config.agent_child_progress_ttl_seconds,
+        child_heartbeat_ttl_seconds=general_config.agent_child_heartbeat_ttl_seconds,
+        child_stale_label_ttl_seconds=general_config.agent_child_stale_label_ttl_seconds,
+        child_exit_reconcile_seconds=general_config.agent_child_exit_reconcile_seconds,
+    )
+
+
 def _policy_from_options(opts: InvokeOptions) -> TimeoutPolicy:
     """Build a TimeoutPolicy from InvokeOptions, falling back to policy defaults for None fields."""
     _base = TimeoutPolicy(idle_timeout_seconds=opts.idle_timeout_seconds)
@@ -858,6 +900,13 @@ def _policy_from_options(opts: InvokeOptions) -> TimeoutPolicy:
             opts.max_waiting_on_child_no_progress_seconds
             if opts.max_waiting_on_child_no_progress_seconds is not None
             else _base.max_waiting_on_child_no_progress_seconds
+            if (
+                _effective_max is not None
+                and _base.max_waiting_on_child_no_progress_seconds is not None
+                and _base.max_waiting_on_child_no_progress_seconds
+                <= _effective_max
+            )
+            else None  # No max set or constraint would be violated; disable
         ),
     )
 
@@ -929,17 +978,13 @@ def _read_lines_from_process(  # noqa: PLR0913,PLR0915
                     getattr(strategy, "_active_label_prefix", lambda: None)(),
                 )
                 reg_snap = reg.snapshot(label_prefix or "")
-                if reg_snap.has_fresh_progress:
-                    alive_by = AliveBy.FRESH_PROGRESS
-                elif reg_snap.has_fresh_label and reg_snap.has_process:
-                    alive_by = AliveBy.FRESH_HEARTBEAT_ONLY
-                elif reg_snap.has_process and not reg_snap.has_fresh_label:
-                    alive_by = AliveBy.STALE_LABEL_ONLY
-                elif scoped_active:
-                    alive_by = AliveBy.OS_DESCENDANT_ONLY_STALE_PROGRESS
+                verdict = classify_child_snapshot(
+                    reg_snap, has_os_descendants=bool(scoped_active)
+                )
+                alive_by = verdict.alive_by
             except Exception:
                 logger.debug("corroborator: registry snapshot failed (suppressed)")
-        elif scoped_active and alive_by is None:
+        elif scoped_active:
             alive_by = AliveBy.OS_DESCENDANT_ONLY_STALE_PROGRESS
         return CorroborationSnapshot(
             workspace_event_count=ws_count,
@@ -1054,6 +1099,10 @@ def _read_lines_from_process(  # noqa: PLR0913,PLR0915
                         activity_signal.kind not in _NON_MEANINGFUL_ACTIVITY_KINDS
                     )
                     watchdog.record_activity()
+                else:
+                    # Unrecognized output is not meaningful activity — reset to False
+                    # to avoid stale True values from previous meaningful output.
+                    last_activity_meaningful[0] = False
                 strategy.observe_line(queued_line)
                 yield queued_line
                 # Evaluate after every yield: SESSION_CEILING_EXCEEDED can fire even

@@ -11,16 +11,98 @@ from __future__ import annotations
 
 import time as _time
 from dataclasses import dataclass
+from enum import StrEnum
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
 __all__ = [
+    "AliveBy",
     "ChildActivitySnapshot",
+    "ChildEvidenceVerdict",
     "ChildLivenessRecord",
     "ChildLivenessRegistry",
+    "classify_child_snapshot",
 ]
+
+
+class AliveBy(StrEnum):
+    """Typed corroboration reasons describing why child work still appears alive."""
+
+    FRESH_PROGRESS = "fresh_progress"
+    FRESH_HEARTBEAT_ONLY = "fresh_heartbeat_only"
+    STALE_LABEL_ONLY = "stale_label_only"
+    OS_DESCENDANT_ONLY_STALE_PROGRESS = "os_descendant_only_stale_progress"
+
+
+@dataclass(frozen=True)
+class ChildEvidenceVerdict:
+    """Unified verdict from child-liveness evidence classification.
+
+    Attributes:
+        alive_by: Why child work appears alive (for diagnostics and ceiling selection),
+            or None if there is no evidence.
+        deferral_allowed: Whether WAITING_ON_CHILD deferral should apply.
+        all_children_terminal: All Ralph-tracked children have terminated and none
+            remain active (terminal-only registry state).
+    """
+
+    alive_by: AliveBy | None
+    deferral_allowed: bool
+    all_children_terminal: bool = False
+
+
+def classify_child_snapshot(
+    snapshot: ChildActivitySnapshot,
+    *,
+    has_os_descendants: bool = False,
+) -> ChildEvidenceVerdict:
+    """Classify child-liveness evidence from a snapshot into a typed verdict.
+
+    This is the single source of truth for stale/fresh precedence logic.
+    Both execution_state and invoke corroboration must consume this function
+    rather than re-implementing the precedence rules independently.
+
+    Args:
+        snapshot: Freshness-aware aggregate snapshot from a registry or probe.
+        has_os_descendants: Whether OS-level descendants exist (from process tree scan).
+            Only consulted when no scoped Ralph evidence is present.
+
+    Returns:
+        A ChildEvidenceVerdict encoding alive_by classification, deferral_allowed,
+        and all_children_terminal flags.
+    """
+    # All Ralph-tracked children are terminal and none remain active.
+    if snapshot.terminal_count > 0 and snapshot.active_count == 0:
+        return ChildEvidenceVerdict(
+            alive_by=None, deferral_allowed=False, all_children_terminal=True
+        )
+
+    if snapshot.has_fresh_progress:
+        return ChildEvidenceVerdict(alive_by=AliveBy.FRESH_PROGRESS, deferral_allowed=True)
+
+    if snapshot.has_fresh_heartbeat and snapshot.has_process:
+        return ChildEvidenceVerdict(alive_by=AliveBy.FRESH_HEARTBEAT_ONLY, deferral_allowed=True)
+
+    if snapshot.has_process:
+        # Child is in registry but has no fresh heartbeat or progress.
+        # Deferral is allowed only while the label is still fresh (stale_label_ttl
+        # grace window) to preserve the grace period for newly registered children
+        # that have not yet sent their first heartbeat.
+        return ChildEvidenceVerdict(
+            alive_by=AliveBy.STALE_LABEL_ONLY,
+            deferral_allowed=snapshot.has_fresh_label,
+        )
+
+    # No scoped Ralph evidence at all — fall back to OS descendants if present.
+    if has_os_descendants:
+        return ChildEvidenceVerdict(
+            alive_by=AliveBy.OS_DESCENDANT_ONLY_STALE_PROGRESS,
+            deferral_allowed=True,
+        )
+
+    return ChildEvidenceVerdict(alive_by=None, deferral_allowed=False)
 
 
 @dataclass(frozen=True)
@@ -50,6 +132,7 @@ class ChildActivitySnapshot:
     oldest_live_child_seconds: float | None
     active_count: int
     terminal_count: int
+    has_fresh_heartbeat: bool = False  # Default False for backward compatibility
 
 
 @dataclass
@@ -150,6 +233,7 @@ class ChildLivenessRegistry:
         terminal_count = 0
         has_process = False
         has_fresh_label = False
+        has_fresh_heartbeat = False
         has_fresh_progress = False
         oldest_live_child_seconds: float | None = None
 
@@ -187,6 +271,14 @@ class ChildLivenessRegistry:
                     child_has_fresh_label = True
             has_fresh_label = has_fresh_label or child_has_fresh_label
 
+            # has_fresh_heartbeat: child had a heartbeat within heartbeat_ttl but NOT
+            # counted as progress. Distinct from has_fresh_label because has_fresh_label
+            # can also be True due to recent registration (within stale_label_ttl).
+            if rec.last_heartbeat_at is not None:
+                heartbeat_age = now - rec.last_heartbeat_at
+                if heartbeat_age <= self._heartbeat_ttl:
+                    has_fresh_heartbeat = True
+
             # has_fresh_progress: child produced a progress signal within progress_ttl
             if rec.last_progress_at is not None:
                 progress_age = now - rec.last_progress_at
@@ -197,6 +289,7 @@ class ChildLivenessRegistry:
             scope_prefix=scope_prefix,
             has_process=has_process,
             has_fresh_label=has_fresh_label,
+            has_fresh_heartbeat=has_fresh_heartbeat,
             has_fresh_progress=has_fresh_progress,
             oldest_live_child_seconds=oldest_live_child_seconds,
             active_count=active_count,

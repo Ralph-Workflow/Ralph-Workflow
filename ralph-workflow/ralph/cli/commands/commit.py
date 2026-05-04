@@ -20,6 +20,7 @@ from rich.text import Text
 from ralph.agents.invoke import (
     AgentInvocationError,
     InvokeOptions,
+    build_invoke_options_from_config,
     extract_session_id,
     invoke_agent,
 )
@@ -58,7 +59,7 @@ from ralph.workspace.scope import resolve_workspace_scope
 if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator
 
-    from ralph.config.models import AgentConfig, UnifiedConfig
+    from ralph.config.models import AgentConfig, GeneralConfig, UnifiedConfig
     from ralph.display.context import DisplayContext
     from ralph.policy.models import AgentsPolicy
 
@@ -89,13 +90,13 @@ class CommitAttemptContext:
         repo_root: Repository root path.
         verbose: Whether verbose output is enabled.
         extra_env: Extra environment variables for the agent subprocess.
-        agent_idle_timeout_seconds: Maximum idle time before killing a stalled agent.
+        general_config: Full general config supplying all timeout fields.
     """
 
     repo_root: Path
     verbose: bool
     extra_env: dict[str, str]
-    agent_idle_timeout_seconds: float = 300.0
+    general_config: GeneralConfig | None = None
 
 
 @dataclass(frozen=True)
@@ -218,7 +219,7 @@ def _handle_agent_commit_generation(
         agents=agents,
         verbose=config.general.verbosity >= _VERBOSE_THRESHOLD,
         agents_policy=load_agents_policy_for_workspace_scope(workspace_scope, config=config),
-        agent_idle_timeout_seconds=config.general.agent_idle_timeout_seconds,
+        general_config=config.general,
         display_context=ctx,
     )
 
@@ -377,7 +378,7 @@ def _generate_commit_message_with_chain(  # noqa: PLR0913
     agents: list[str],
     verbose: bool,
     agents_policy: AgentsPolicy,
-    agent_idle_timeout_seconds: float = 300.0,
+    general_config: GeneralConfig | None = None,
     display_context: DisplayContext,
 ) -> CommitAgentResult:
     template_dirs = (repo_root / ".agent" / "prompts" / "commit", *default_template_dirs(repo_root))
@@ -412,7 +413,7 @@ def _generate_commit_message_with_chain(  # noqa: PLR0913
                 prompt_file=prompt_file,
                 verbose=verbose,
                 extra_env=extra_env,
-                agent_idle_timeout_seconds=agent_idle_timeout_seconds,
+                general_config=general_config,
                 display_context=display_context,
             )
             failure_details.extend(result.failure_details)
@@ -434,7 +435,7 @@ def _generate_commit_message_with_agent(  # noqa: PLR0913
     prompt_file: str,
     verbose: bool,
     extra_env: dict[str, str],
-    agent_idle_timeout_seconds: float = 300.0,
+    general_config: GeneralConfig | None = None,
     display_context: DisplayContext,
 ) -> CommitAgentResult:
     failure_details: list[str] = []
@@ -442,7 +443,7 @@ def _generate_commit_message_with_agent(  # noqa: PLR0913
         repo_root=repo_root,
         verbose=verbose,
         extra_env=extra_env,
-        agent_idle_timeout_seconds=agent_idle_timeout_seconds,
+        general_config=general_config,
     )
     initial_attempt = _invoke_commit_agent_attempt(
         agent,
@@ -509,23 +510,35 @@ def _invoke_commit_agent_attempt(
     display_context: DisplayContext,
 ) -> CommitAgentAttempt:
     delete_commit_message_artifacts(attempt_context.repo_root)
+    system_prompt = materialize_system_prompt(
+        workspace_root=attempt_context.repo_root,
+        name="commit",
+        default_current_prompt="Commit message generation task.",
+    )
+    if attempt_context.general_config is not None:
+        options = build_invoke_options_from_config(
+            attempt_context.general_config,
+            verbose=attempt_context.verbose,
+            workspace_path=attempt_context.repo_root,
+            extra_env=attempt_context.extra_env,
+            pure=_is_opencode_agent(agent),
+            session_id=session_id,
+            system_prompt_file=system_prompt,
+        )
+    else:
+        options = InvokeOptions(
+            verbose=attempt_context.verbose,
+            workspace_path=attempt_context.repo_root,
+            extra_env=attempt_context.extra_env,
+            pure=_is_opencode_agent(agent),
+            session_id=session_id,
+            system_prompt_file=system_prompt,
+        )
     try:
         lines = invoke_agent(
             agent,
             prompt_file,
-            options=InvokeOptions(
-                verbose=attempt_context.verbose,
-                workspace_path=attempt_context.repo_root,
-                extra_env=attempt_context.extra_env,
-                pure=_is_opencode_agent(agent),
-                session_id=session_id,
-                idle_timeout_seconds=attempt_context.agent_idle_timeout_seconds,
-                system_prompt_file=materialize_system_prompt(
-                    workspace_root=attempt_context.repo_root,
-                    name="commit",
-                    default_current_prompt="Commit message generation task.",
-                ),
-            ),
+            options=options,
         )
     except AgentInvocationError as exc:
         return CommitAgentAttempt(
