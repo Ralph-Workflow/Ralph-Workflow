@@ -180,15 +180,19 @@ class PhaseRetryPolicy(_FrozenPolicyModel):  # type: ignore[explicit-any]  # rea
 
 
 class PhaseLoopPolicy(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
-    """Loop bounds for analysis phases.
+    """Loop linkage for analysis phases.
+
+    The analysis cap is declared once in ``pipeline.loop_counters``. This policy
+    block only links the phase to its named counter and optionally declares the
+    review outcome to stamp on loopback transitions.
 
     Attributes:
-        max_iterations: Maximum analysis loop iterations before forcing loopback.
         iteration_state_field: Key in PipelineState.loop_iterations tracking this phase's counter.
         loopback_review_outcome: When set, loopback transitions set review_outcome to this value.
     """
 
-    max_iterations: int = Field(..., ge=0)
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
     iteration_state_field: str = Field(...)
     loopback_review_outcome: str | None = None
 

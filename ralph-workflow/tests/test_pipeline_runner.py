@@ -3371,22 +3371,14 @@ class TestPhaseContextRoleBasedDispatch:
         ctx = self._call(state, "seal", policy)
         assert not any(k.endswith("_budget") for k in ctx)
 
-    def test_analysis_uses_loop_counters_default_max_not_phase_max_iterations(self) -> None:
-        """When loop_counters is declared, _phase_context should use its default_max as cap.
-
-        This verifies the fix for the regression where runner fell back to
-        phase_def.loop_policy.max_iterations instead of
-        policy.loop_counters[iteration_field].default_max when state.loop_caps is absent.
-        """
-        # Create policy with loop_counters.default_max = 3 but loop_policy.max_iterations = 99
-        # The runner should use 3, not 99
+    def test_analysis_uses_loop_counters_default_max_when_loop_caps_absent(self) -> None:
+        """When loop_caps is absent, _phase_context should use loop_counters.default_max."""
         policy = PipelinePolicy(
             phases={
                 "planning_analysis": PhaseDefinition(
                     drain="planning_analysis",
                     role="analysis",
                     loop_policy=PhaseLoopPolicy(
-                        max_iterations=99,  # Intentional mismatch to detect the bug
                         iteration_state_field="planning_analysis_iteration",
                     ),
                     transitions=PhaseTransition(on_success="planning"),
@@ -3408,14 +3400,13 @@ class TestPhaseContextRoleBasedDispatch:
                 "planning_analysis_iteration": LoopCounterConfig(default_max=3),
             },
         )
-        # State WITHOUT loop_caps set - this is the key test condition
-        # The cap should come from loop_counters, not loop_policy.max_iterations
+        # State WITHOUT loop_caps set - cap should come from loop_counters.default_max
         state = PipelineState(
             phase="planning",
             loop_iterations={"planning_analysis_iteration": 2},  # 3rd iteration (0-indexed)
         )
         ctx = self._call(state, "planning_analysis", policy)
-        # Should show 3/3 (using loop_counters default_max=3), NOT 3/99
+        # Should show 3/3 using loop_counters.default_max=3
         assert ctx.get("Planning Analysis") == "3/3"
         # Should indicate final since analysis_cur (2) >= max_iter - 1 (3 - 1 = 2)
         assert ctx.get("analysis_status") == "final, skipping next"
@@ -3427,10 +3418,7 @@ class TestPhaseContextRoleBasedDispatch:
                 "planning_analysis": PhaseDefinition(
                     drain="planning_analysis",
                     role="analysis",
-                    loop_policy=PhaseLoopPolicy(
-                        max_iterations=99,
-                        iteration_state_field="planning_analysis_iteration",
-                    ),
+                    loop_policy=PhaseLoopPolicy(iteration_state_field="planning_analysis_iteration"),
                     transitions=PhaseTransition(on_success="planning"),
                     decisions={},
                 ),
@@ -3467,10 +3455,7 @@ class TestPhaseContextRoleBasedDispatch:
                 "planning_analysis": PhaseDefinition(
                     drain="planning_analysis",
                     role="analysis",
-                    loop_policy=PhaseLoopPolicy(
-                        max_iterations=5,
-                        iteration_state_field="planning_analysis_iteration",
-                    ),
+                    loop_policy=PhaseLoopPolicy(iteration_state_field="planning_analysis_iteration"),
                     transitions=PhaseTransition(on_success="planning"),
                     decisions={},
                 ),
@@ -3514,10 +3499,7 @@ class TestPhaseContextRoleBasedDispatch:
                 "planning_analysis": PhaseDefinition(
                     drain="planning_analysis",
                     role="analysis",
-                    loop_policy=PhaseLoopPolicy(
-                        max_iterations=1,
-                        iteration_state_field="planning_analysis_iteration",
-                    ),
+                    loop_policy=PhaseLoopPolicy(iteration_state_field="planning_analysis_iteration"),
                     transitions=PhaseTransition(on_success="planning"),
                     decisions={},
                 ),
@@ -3551,10 +3533,7 @@ class TestPhaseContextRoleBasedDispatch:
                 "planning_analysis": PhaseDefinition(
                     drain="planning_analysis",
                     role="analysis",
-                    loop_policy=PhaseLoopPolicy(
-                        max_iterations=2,
-                        iteration_state_field="planning_analysis_iteration",
-                    ),
+                    loop_policy=PhaseLoopPolicy(iteration_state_field="planning_analysis_iteration"),
                     transitions=PhaseTransition(on_success="planning"),
                     decisions={},
                 ),
@@ -3602,10 +3581,7 @@ class TestPhaseContextRoleBasedDispatch:
                 "planning_analysis": PhaseDefinition(
                     drain="planning_analysis",
                     role="analysis",
-                    loop_policy=PhaseLoopPolicy(
-                        max_iterations=3,
-                        iteration_state_field="planning_analysis_iteration",
-                    ),
+                    loop_policy=PhaseLoopPolicy(iteration_state_field="planning_analysis_iteration"),
                     transitions=PhaseTransition(on_success="planning"),
                     decisions={},
                 ),
@@ -3649,10 +3625,7 @@ class TestPhaseContextRoleBasedDispatch:
                 "planning_analysis": PhaseDefinition(
                     drain="planning_analysis",
                     role="analysis",
-                    loop_policy=PhaseLoopPolicy(
-                        max_iterations=3,
-                        iteration_state_field="planning_analysis_iteration",
-                    ),
+                    loop_policy=PhaseLoopPolicy(iteration_state_field="planning_analysis_iteration"),
                     transitions=PhaseTransition(on_success="planning"),
                     decisions={},
                 ),
@@ -3709,10 +3682,7 @@ class TestSkippedExhaustedAnalysisInfo:
                     role="analysis",
                     transitions=PhaseTransition(on_success="development", on_loopback="planning"),
                     decisions={},
-                    loop_policy=PhaseLoopPolicy(
-                        max_iterations=3,
-                        iteration_state_field="planning_analysis_iteration",
-                    ),
+                    loop_policy=PhaseLoopPolicy(iteration_state_field="planning_analysis_iteration"),
                 ),
                 "development": PhaseDefinition(
                     drain="development",
@@ -3762,10 +3732,7 @@ class TestSkippedExhaustedAnalysisInfo:
                         on_success="development_commit", on_loopback="development"
                     ),
                     decisions={},
-                    loop_policy=PhaseLoopPolicy(
-                        max_iterations=3,
-                        iteration_state_field="development_analysis_iteration",
-                    ),
+                    loop_policy=PhaseLoopPolicy(iteration_state_field="development_analysis_iteration"),
                 ),
                 "development_commit": PhaseDefinition(
                     drain="development_commit",
@@ -3813,10 +3780,7 @@ class TestSkippedExhaustedAnalysisInfo:
                     role="analysis",
                     transitions=PhaseTransition(on_success="review_commit", on_loopback="fix"),
                     decisions={},
-                    loop_policy=PhaseLoopPolicy(
-                        max_iterations=2,
-                        iteration_state_field="review_analysis_iteration",
-                    ),
+                    loop_policy=PhaseLoopPolicy(iteration_state_field="review_analysis_iteration"),
                 ),
                 "review_commit": PhaseDefinition(
                     drain="review_commit",

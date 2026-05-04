@@ -208,8 +208,7 @@ Declares a pipeline phase. Required and optional fields:
 
 | Field | Description |
 |-------|-------------|
-| `max_iterations` | Maximum loop iterations before treating next outcome as failure |
-| `iteration_state_field` | Names the loop counter declared in `[loop_counters.*]` |
+| `iteration_state_field` | Names the loop counter declared in `[loop_counters.*]`; that counter's `default_max` is the single analysis cap source |
 | `loopback_review_outcome` | (Optional) Review outcome keyword that triggers loopback |
 
 #### `[phases.<name>.decisions.<key>]` (analysis-role phases)
@@ -331,7 +330,6 @@ drain  = "auditor"
 prompt_template = "analysis.jinja"
 [phases.audit.loop_policy]
 iteration_state_field = "audit_round"
-max_iterations        = 3
 [phases.audit.transitions]
 on_success = "sign_off"
 on_loopback = "build"

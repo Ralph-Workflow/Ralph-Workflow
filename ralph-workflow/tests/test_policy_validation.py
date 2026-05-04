@@ -1031,10 +1031,7 @@ class TestValidatePolicyCompletenessNewRules:
                 on_success=on_success,
                 on_loopback=name,
             ),
-            loop_policy=PhaseLoopPolicy(
-                max_iterations=3,
-                iteration_state_field=iteration_field,
-            ),
+            loop_policy=PhaseLoopPolicy(iteration_state_field=iteration_field),
             decisions={
                 "completed": PhaseDecisionRoute(target=on_success, reset_loop=True),
                 "failed": PhaseDecisionRoute(target=failure_target, reset_loop=False),
@@ -1110,10 +1107,7 @@ class TestValidatePolicyCompletenessNewRules:
                         on_failure=None,
                         on_loopback="development_analysis",
                     ),
-                    loop_policy=PhaseLoopPolicy(
-                        max_iterations=3,
-                        iteration_state_field="development_analysis_iteration",
-                    ),
+                    loop_policy=PhaseLoopPolicy(iteration_state_field="development_analysis_iteration"),
                     decisions={
                         "completed": PhaseDecisionRoute(target="complete", reset_loop=True),
                     },
@@ -1301,10 +1295,7 @@ class TestValidatePolicyCompletenessNewRules:
                         on_success="development_commit",
                         on_loopback="development_analysis",
                     ),
-                    loop_policy=PhaseLoopPolicy(
-                        max_iterations=3,
-                        iteration_state_field="development_analysis_iteration",
-                    ),
+                    loop_policy=PhaseLoopPolicy(iteration_state_field="development_analysis_iteration"),
                     decisions=dev_analysis_decisions,
                 ),
                 "development_commit": PhaseDefinition(
@@ -1361,10 +1352,7 @@ class TestValidatePolicyCompletenessNewRules:
                         on_success="development_commit",
                         on_loopback="development_analysis",
                     ),
-                    loop_policy=PhaseLoopPolicy(
-                        max_iterations=3,
-                        iteration_state_field="development_analysis_iteration",
-                    ),
+                    loop_policy=PhaseLoopPolicy(iteration_state_field="development_analysis_iteration"),
                     decisions=dev_analysis_decisions,
                 ),
                 "development_commit": PhaseDefinition(
@@ -1750,10 +1738,7 @@ class TestValidatePolicyCompletenessReachability:
                         on_success="complete",
                         on_loopback="analysis",
                     ),
-                    loop_policy=PhaseLoopPolicy(
-                        max_iterations=3,
-                        iteration_state_field="development_analysis_iteration",
-                    ),
+                    loop_policy=PhaseLoopPolicy(iteration_state_field="development_analysis_iteration"),
                     decisions={
                         "completed": PhaseDecisionRoute(target="complete", reset_loop=True),
                         "needs_work": PhaseDecisionRoute(target="alt_path", reset_loop=False),

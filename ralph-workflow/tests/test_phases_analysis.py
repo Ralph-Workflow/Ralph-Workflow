@@ -199,10 +199,7 @@ class TestParseAnalysisDecisionPhaseNameParameter:
                         on_loopback="development",
                         on_failure=None,
                     ),
-                    loop_policy=PhaseLoopPolicy(
-                        max_iterations=3,
-                        iteration_state_field="development_analysis_iteration",
-                    ),
+                    loop_policy=PhaseLoopPolicy(iteration_state_field="development_analysis_iteration"),
                     decisions={
                         "completed": PhaseDecisionRoute(
                             target="development_commit", reset_loop=True
@@ -312,10 +309,7 @@ class TestRegisterRoleHandlers:
                         on_loopback="complete",
                         on_failure=None,
                     ),
-                    loop_policy=PhaseLoopPolicy(
-                        max_iterations=3,
-                        iteration_state_field="development_analysis_iteration",
-                    ),
+                    loop_policy=PhaseLoopPolicy(iteration_state_field="development_analysis_iteration"),
                     decisions={
                         "completed": PhaseDecisionRoute(
                             target="complete", reset_loop=True

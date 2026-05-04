@@ -5,7 +5,7 @@
 +----------------+
     |
     v
-[loop: counter=planning_analysis_iteration, max=10]
+[loop: counter=planning_analysis_iteration, max=5]
 +-------------------+
 | planning_analysis |
 |   role=analysis   |
@@ -13,7 +13,7 @@
     +--[failed]-----------> planning
     +--[request_changes]--> planning
     <<==[loopback]== returns to 'planning'
-    [LOOPBACK: counter=planning_analysis_iteration, max=10]
+    [LOOPBACK: counter=planning_analysis_iteration, max=5]
     >> RE-ENTRY at planning
     |
     v
@@ -28,7 +28,7 @@
 <<< REJOIN >>>
     |
     v
-[loop: counter=development_analysis_iteration, max=3]
+[loop: counter=development_analysis_iteration, max=5]
 +----------------------+
 | development_analysis |
 |    role=analysis     |
@@ -36,7 +36,7 @@
     +--[failed]-----------> development
     +--[request_changes]--> development
     <<==[loopback]== returns to 'development'
-    [LOOPBACK: counter=development_analysis_iteration, max=3]
+    [LOOPBACK: counter=development_analysis_iteration, max=5]
     >> RE-ENTRY at development
     |
     v

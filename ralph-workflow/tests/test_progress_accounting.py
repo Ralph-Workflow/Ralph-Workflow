@@ -22,6 +22,7 @@ from ralph.pipeline.reducer import reduce as reducer_reduce
 from ralph.pipeline.state import PipelineState
 from ralph.policy.models import (
     BudgetCounterConfig,
+    LoopCounterConfig,
     PhaseCommitPolicy,
     PhaseDefinition,
     PhaseLoopPolicy,
@@ -92,7 +93,6 @@ def _progress_policy() -> PipelinePolicy:
                     on_failure=None,
                 ),
                 loop_policy=PhaseLoopPolicy(
-                    max_iterations=2,
                     iteration_state_field="review_analysis_iteration",
                     loopback_review_outcome="has_issues",
                 ),
@@ -120,6 +120,9 @@ def _progress_policy() -> PipelinePolicy:
         },
         entry_phase="planning",
         terminal_phase="complete",
+        loop_counters={
+            "review_analysis_iteration": LoopCounterConfig(default_max=2),
+        },
         budget_counters={
             "iteration": BudgetCounterConfig(
                 tracks_budget=True, description="development iteration counter", default_max=3
@@ -165,14 +168,8 @@ def test_analysis_iteration_helpers_separate_final_run_from_next_reentry(
     expected_final: bool,
     expected_skip: bool,
 ) -> None:
-    assert (
-        progress.is_final_analysis_iteration(current_iteration, max_iterations)
-        is expected_final
-    )
-    assert (
-        progress.should_skip_analysis_reentry(current_iteration, max_iterations)
-        is expected_skip
-    )
+    assert progress.is_final_analysis_iteration(current_iteration, max_iterations) is expected_final
+    assert progress.should_skip_analysis_reentry(current_iteration, max_iterations) is expected_skip
 
 
 def test_review_analysis_loopback_updates_only_review_analysis_fields() -> None:
@@ -182,7 +179,7 @@ def test_review_analysis_loopback_updates_only_review_analysis_fields() -> None:
         outer_progress={"reviewer_pass": 1},
         loop_iterations={"review_analysis_iteration": 0},
         budget_remaining={"reviewer_pass": INITIAL_REVIEW_BUDGET},
-        )
+    )
 
     new_state, _ = _reduce(state, PipelineEvent.ANALYSIS_LOOPBACK, policy)
 
@@ -203,7 +200,7 @@ def test_capped_review_analysis_loopback_preserves_outer_progress_and_marks_issu
         loop_iterations={"review_analysis_iteration": 1},
         loop_caps={"review_analysis_iteration": FORCED_REVIEW_ANALYSIS_ITERATION},
         budget_remaining={"reviewer_pass": 1},
-        )
+    )
 
     new_state, _ = _reduce(state, PipelineEvent.ANALYSIS_LOOPBACK, policy)
 

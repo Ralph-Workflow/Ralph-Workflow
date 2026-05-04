@@ -206,7 +206,6 @@ prompt_template = \"planning_analysis.jinja\"
 on_success = \"complete\"
 on_loopback = \"planning\"
 [phases.planning_analysis.loop_policy]
-max_iterations = 2
 iteration_state_field = \"planning_analysis_iteration\"
 [phases.planning_analysis.decisions.accepted]
 target = \"complete\"

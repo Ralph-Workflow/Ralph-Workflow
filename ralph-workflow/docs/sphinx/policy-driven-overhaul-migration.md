@@ -86,7 +86,7 @@ policy declarations. Configurations that relied on the old implicit behavior wil
 | Removed hidden behavior | Replaced by |
 |-------------------------|-------------|
 | `drain_to_policy_mode()` resolved drain class by substring matching on the drain name | `AgentDrainConfig.drain_class` field — must be set explicitly in `agents.toml`; substring inference was removed completely |
-| Analysis loop cap read from `PipelineState.loop_caps` only | Cap resolution now falls back to `pipeline.loop_counters[field].default_max`, then `loop_policy.max_iterations`; `loop_caps` is an optional runtime override |
+| Analysis loop cap read from `PipelineState.loop_caps` only | Cap resolution now uses `pipeline.loop_counters[field].default_max`, with `loop_caps` as an optional runtime override |
 | `_handle_analysis_decision` required `loop_caps` pre-populated | Now resolved from policy without requiring state initialization |
 | `access_mode_for_drain()` / `build_session_mcp_plan()` ignored `AgentsPolicy` | Both now accept `agents_policy` and pass it to drain classification, so custom drain names declared with `drain_class` receive the correct MCP mode |
 | Phase banner (`show_phase_transition`, `show_phase_start`, `show_phase_complete`) used hardcoded canonical phase name tables | All three functions accept an optional `pipeline_policy` parameter; when provided, styles and transition descriptions are derived from the phase's declared `role` so renamed phases render correctly |

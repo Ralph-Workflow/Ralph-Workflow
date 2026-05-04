@@ -694,10 +694,7 @@ class TestAnalysisExecutionTransitionBannerCounters:
                 "planning_analysis": PhaseDefinition(
                     drain="planning_analysis",
                     role="analysis",
-                    loop_policy=PhaseLoopPolicy(
-                        max_iterations=3,
-                        iteration_state_field="planning_analysis_iteration",
-                    ),
+                    loop_policy=PhaseLoopPolicy(iteration_state_field="planning_analysis_iteration"),
                     transitions=PhaseTransition(on_success="planning"),
                     decisions={},
                 ),
@@ -766,10 +763,7 @@ class TestAnalysisExecutionTransitionBannerCounters:
                 "planning_analysis": PhaseDefinition(
                     drain="planning_analysis",
                     role="analysis",
-                    loop_policy=PhaseLoopPolicy(
-                        max_iterations=3,
-                        iteration_state_field="planning_analysis_iteration",
-                    ),
+                    loop_policy=PhaseLoopPolicy(iteration_state_field="planning_analysis_iteration"),
                     transitions=PhaseTransition(on_success="planning"),
                     decisions={},
                 ),
@@ -820,10 +814,7 @@ class TestAnalysisExecutionTransitionBannerCounters:
                 "development_analysis": PhaseDefinition(
                     drain="development_analysis",
                     role="analysis",
-                    loop_policy=PhaseLoopPolicy(
-                        max_iterations=3,
-                        iteration_state_field="development_analysis_iteration",
-                    ),
+                    loop_policy=PhaseLoopPolicy(iteration_state_field="development_analysis_iteration"),
                     transitions=PhaseTransition(on_success="development"),
                     decisions={},
                 ),

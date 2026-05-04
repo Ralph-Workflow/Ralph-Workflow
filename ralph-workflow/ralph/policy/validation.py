@@ -216,7 +216,7 @@ def _validate_analysis_phase(
     if phase_def.loop_policy is None:
         errors.append(
             f"phases.{phase_name}: role='analysis' requires loop_policy "
-            f"(max_iterations and iteration_state_field)"
+            f"(iteration_state_field)"
         )
     else:
         field = phase_def.loop_policy.iteration_state_field

@@ -104,10 +104,7 @@ def _build_custom_bundle() -> PolicyBundle:
                     on_success="sign_off",
                     on_loopback="build",
                 ),
-                loop_policy=PhaseLoopPolicy(
-                    max_iterations=_AUDIT_MAX,
-                    iteration_state_field="audit_round",
-                ),
+                loop_policy=PhaseLoopPolicy(iteration_state_field="audit_round"),
                 decisions={
                     "approved": PhaseDecisionRoute(target="sign_off", reset_loop=True),
                     "request_changes": PhaseDecisionRoute(target="build", reset_loop=False),

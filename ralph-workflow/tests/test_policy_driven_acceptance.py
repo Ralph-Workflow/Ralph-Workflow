@@ -82,9 +82,7 @@ def policy_with_renamed_phases() -> PolicyBundle:
         entry_phase="design",
         terminal_phase="done",
         loop_counters={
-            "audit_round": LoopCounterConfig(
-                default_max=3, description="Audit loop counter"
-            ),
+            "audit_round": LoopCounterConfig(default_max=3, description="Audit loop counter"),
         },
         budget_counters={
             "cycles": BudgetCounterConfig(
@@ -112,10 +110,7 @@ def policy_with_renamed_phases() -> PolicyBundle:
                     on_success="sign_off",
                     on_loopback="build",
                 ),
-                loop_policy=PhaseLoopPolicy(
-                    max_iterations=3,
-                    iteration_state_field="audit_round",
-                ),
+                loop_policy=PhaseLoopPolicy(iteration_state_field="audit_round"),
                 decisions={
                     "completed": PhaseDecisionRoute(target="sign_off", reset_loop=True),
                     "request_changes": PhaseDecisionRoute(target="build", reset_loop=False),
@@ -239,9 +234,7 @@ class TestRequirement1RoutingSemantics:
 
 
 class TestRequirement2PhaseBehaviorClasses:
-    def test_phase_role_comes_from_policy(
-        self, policy_with_renamed_phases: PolicyBundle
-    ) -> None:
+    def test_phase_role_comes_from_policy(self, policy_with_renamed_phases: PolicyBundle) -> None:
         """The role of 'audit' is 'analysis' because the policy declares it, not the name."""
         phases = policy_with_renamed_phases.pipeline.phases
         assert phases["audit"].role == "analysis"
@@ -288,18 +281,14 @@ class TestRequirement3FallbackBehavior:
 
 
 class TestRequirement4AnalysisLoopBehavior:
-    def test_loop_policy_declared_in_policy(
-        self, policy_with_renamed_phases: PolicyBundle
-    ) -> None:
+    def test_loop_policy_declared_in_policy(self, policy_with_renamed_phases: PolicyBundle) -> None:
         """The 'audit' phase has a loop_policy declared in policy."""
         audit_def = policy_with_renamed_phases.pipeline.phases["audit"]
         assert audit_def.loop_policy is not None
-        assert audit_def.loop_policy.max_iterations == 3  # noqa: PLR2004
         assert audit_def.loop_policy.iteration_state_field == "audit_round"
+        assert policy_with_renamed_phases.pipeline.loop_counters["audit_round"].default_max == 3  # noqa: PLR2004
 
-    def test_explain_exposes_loop_policy(
-        self, policy_with_renamed_phases: PolicyBundle
-    ) -> None:
+    def test_explain_exposes_loop_policy(self, policy_with_renamed_phases: PolicyBundle) -> None:
         """explain_policy surfaces loop policy from the policy declaration."""
         exp = explain_policy(policy_with_renamed_phases)
         audit = next(p for p in exp.phases if p.name == "audit")
@@ -580,9 +569,9 @@ class TestAcceptanceASingleSourceOfTruth:
         self, policy_with_renamed_phases: PolicyBundle
     ) -> None:
         """The route declared in policy matches what reduce() produces."""
-        policy_target = policy_with_renamed_phases.pipeline.phases["audit"].decisions[
-            "request_changes"
-        ].target
+        policy_target = (
+            policy_with_renamed_phases.pipeline.phases["audit"].decisions["request_changes"].target
+        )
         state = PipelineState(phase="audit")
         new_state, _ = reduce(
             state,
@@ -606,8 +595,13 @@ class TestAcceptanceBBuiltInNames:
         ascii_out = render_explanation_ascii(exp)
         text_out = render_explanation_text(exp)
         combined = ascii_out + "\n" + text_out
-        for absent in ("planning", "development_analysis", "review_analysis",
-                       "development_commit", "review_commit"):
+        for absent in (
+            "planning",
+            "development_analysis",
+            "review_analysis",
+            "development_commit",
+            "review_commit",
+        ):
             # Check box labels and phase headers specifically
             assert f"| {absent} |" not in combined, (
                 f"Canonical name '| {absent} |' must not appear in custom-policy render"
@@ -667,10 +661,7 @@ class TestAcceptanceCChangingBehavior:
                     drain="audit_alt",
                     role="analysis",
                     transitions=PhaseTransition(on_success="done", on_loopback="design"),
-                    loop_policy=PhaseLoopPolicy(
-                        max_iterations=2,
-                        iteration_state_field="audit_round",
-                    ),
+                    loop_policy=PhaseLoopPolicy(iteration_state_field="audit_round"),
                     decisions={
                         "completed": PhaseDecisionRoute(target="done", reset_loop=True),
                         "request_changes": PhaseDecisionRoute(target="design", reset_loop=False),
@@ -848,20 +839,14 @@ class TestAcceptanceFInspectAndVisualize:
 
 
 class TestAcceptanceGVisualLegibility:
-    def test_ascii_render_has_phase_boxes(
-        self, policy_with_renamed_phases: PolicyBundle
-    ) -> None:
+    def test_ascii_render_has_phase_boxes(self, policy_with_renamed_phases: PolicyBundle) -> None:
         """ASCII render contains phase boxes for key phases."""
         exp = explain_policy(policy_with_renamed_phases)
         ascii_out = render_explanation_ascii(exp)
         for phase_name in ("design", "build", "audit", "sign_off"):
-            assert phase_name in ascii_out, (
-                f"Phase '{phase_name}' missing from ASCII render"
-            )
+            assert phase_name in ascii_out, f"Phase '{phase_name}' missing from ASCII render"
 
-    def test_text_render_has_phases_section(
-        self, policy_with_renamed_phases: PolicyBundle
-    ) -> None:
+    def test_text_render_has_phases_section(self, policy_with_renamed_phases: PolicyBundle) -> None:
         """Text render has a PHASES section listing all phases."""
         exp = explain_policy(policy_with_renamed_phases)
         text = render_explanation_text(exp)

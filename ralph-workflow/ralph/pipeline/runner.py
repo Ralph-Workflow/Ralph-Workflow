@@ -789,14 +789,12 @@ def _resolve_analysis_cap(
     iteration_field: str,
     state: PipelineState,
     pipeline_policy: PipelinePolicy,
-    phase_def_loop_policy_max_iterations: int,
 ) -> int:
     """Resolve the analysis loop iteration cap from canonical progress state."""
     return progress.resolve_analysis_cap(
         state,
         iteration_field,
         pipeline_policy,
-        fallback_max=phase_def_loop_policy_max_iterations,
     )
 
 
@@ -843,7 +841,7 @@ def _phase_context(
             iteration_field = loop_policy.iteration_state_field
             analysis_cur = state.get_loop_iteration(iteration_field)
             max_iter = _resolve_analysis_cap(
-                iteration_field, state, pipeline_policy, loop_policy.max_iterations
+                iteration_field, state, pipeline_policy
             )
             analysis_name = previous_phase.replace("_", " ").title()
             display_iter = min(analysis_cur + 1, max_iter)
@@ -896,7 +894,7 @@ def _show_phase_start_with_context(
             field = phase_def.loop_policy.iteration_state_field
             analysis_iteration = state.get_loop_iteration(field)
             max_analysis_iterations = _resolve_analysis_cap(
-                field, state, pipeline_policy, phase_def.loop_policy.max_iterations
+                field, state, pipeline_policy
             )
 
     # Extract iteration context values from state
@@ -967,7 +965,7 @@ def _skipped_exhausted_analysis_info(
     iteration_field = target_def.loop_policy.iteration_state_field
     current_iteration = state.get_loop_iteration(iteration_field)
     max_iter = _resolve_analysis_cap(
-        iteration_field, state, pipeline_policy, target_def.loop_policy.max_iterations
+        iteration_field, state, pipeline_policy
     )
 
     if not progress.should_skip_analysis_reentry(current_iteration, max_iter):
@@ -2488,7 +2486,6 @@ def _render_phase_artifact_handoff(  # noqa: PLR0913
                     loop_field,
                     state,
                     policy_bundle.pipeline,
-                    phase_def.loop_policy.max_iterations,
                 )
                 if loop_field is not None
                 and phase_def is not None

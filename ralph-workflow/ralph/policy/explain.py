@@ -192,7 +192,7 @@ def _explain_phase(
     if phase_def.loop_policy is not None:
         lp = phase_def.loop_policy
         loop_expl = LoopPolicyExplanation(
-            max_iterations=lp.max_iterations,
+            max_iterations=pipeline.loop_counters[lp.iteration_state_field].default_max,
             iteration_state_field=lp.iteration_state_field,
             loopback_review_outcome=lp.loopback_review_outcome,
         )

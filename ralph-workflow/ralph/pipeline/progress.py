@@ -60,8 +60,6 @@ def resolve_analysis_cap(
     state: PipelineState,
     iteration_field: str,
     policy: PipelinePolicy,
-    *,
-    fallback_max: int,
 ) -> int:
     """Resolve the effective analysis cap from canonical state/policy sources."""
     cap_value = state.loop_caps.get(iteration_field)
@@ -69,7 +67,11 @@ def resolve_analysis_cap(
         return cap_value
     if iteration_field in policy.loop_counters:
         return policy.loop_counters[iteration_field].default_max
-    return fallback_max
+    msg = (
+        f"Analysis loop counter '{iteration_field}' is not declared in pipeline.loop_counters. "
+        "Analysis caps must come from a declared loop counter."
+    )
+    raise ValueError(msg)
 
 
 def is_final_analysis_iteration(current_iteration: int, max_iterations: int) -> bool:

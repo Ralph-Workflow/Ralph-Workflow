@@ -62,10 +62,7 @@ def _dev_analysis_policy() -> PipelinePolicy:
                     on_failure=None,
                     on_loopback="development",
                 ),
-                loop_policy=PhaseLoopPolicy(
-                    max_iterations=3,
-                    iteration_state_field="development_analysis_iteration",
-                ),
+                loop_policy=PhaseLoopPolicy(iteration_state_field="development_analysis_iteration"),
             ),
             "development_commit": PhaseDefinition(
                 drain="development_commit",
@@ -96,10 +93,7 @@ def _dev_analysis_policy() -> PipelinePolicy:
                     on_failure=None,
                     on_loopback="fix",
                 ),
-                loop_policy=PhaseLoopPolicy(
-                    max_iterations=2,
-                    iteration_state_field="review_analysis_iteration",
-                ),
+                loop_policy=PhaseLoopPolicy(iteration_state_field="review_analysis_iteration"),
             ),
             "fix": PhaseDefinition(
                 drain="fix",

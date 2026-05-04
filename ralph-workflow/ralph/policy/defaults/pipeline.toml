@@ -65,11 +65,11 @@
 # default_max: default cap used at pipeline start (overridable via config)
 
 [loop_counters.development_analysis_iteration]
-default_max = 3
+default_max = 5
 description = "Development analysis loop iteration counter"
 
 [loop_counters.planning_analysis_iteration]
-default_max = 10
+default_max = 5
 description = "Planning analysis loop iteration counter"
 
 # ---------------------------------------------------------------------------
@@ -105,7 +105,6 @@ prompt_template = "planning_analysis.jinja"
 on_success = "development"
 on_loopback = "planning"
 [phases.planning_analysis.loop_policy]
-max_iterations = 10
 iteration_state_field = "planning_analysis_iteration"
 [phases.planning_analysis.decisions.completed]
 target = "development"
@@ -141,7 +140,6 @@ prompt_template = "development_analysis.jinja"
 on_success = "development_commit"
 on_loopback = "development"
 [phases.development_analysis.loop_policy]
-max_iterations = 3
 iteration_state_field = "development_analysis_iteration"
 [phases.development_analysis.decisions.completed]
 target = "development_commit"

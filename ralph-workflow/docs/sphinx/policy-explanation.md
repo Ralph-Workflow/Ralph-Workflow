@@ -276,7 +276,7 @@ Every routing decision the pipeline makes traces back to a single declared field
 | Analysis decision → phase | `phases.<name>.decisions.<decision>.target` |
 | Terminal pipeline outcome | `phases.<name>.terminal_outcome` |
 | Review bypass | `phases.<name>.bypass_routes.<outcome>` |
-| Loop cap exhausted | `phases.<name>.loop_policy.max_iterations` |
+| Loop cap exhausted | `loop_counters.<iteration_state_field>.default_max` |
 | Verification failure | `phases.<name>.verification.on_failure_route` |
 | Parallel execution rejected | Absence of `phases.<name>.parallelization` |
 | Post-commit route | `[[post_commit_routes]]` entry matching phase and budget_state |

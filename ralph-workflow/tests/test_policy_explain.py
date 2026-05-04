@@ -124,10 +124,7 @@ class TestExplainPolicy:
                     drain="development_analysis",
                     role="analysis",
                     transitions=PhaseTransition(on_success="done", on_loopback="start"),
-                    loop_policy=PhaseLoopPolicy(
-                        max_iterations=_CHECK_LOOP_MAX,
-                        iteration_state_field="check_loop",
-                    ),
+                    loop_policy=PhaseLoopPolicy(iteration_state_field="check_loop"),
                     decisions={
                         "approve": PhaseDecisionRoute(target="done"),
                     },
@@ -171,8 +168,8 @@ class TestExplainPolicy:
         result = explain_policy(bundle)
         check = next(p for p in result.phases if p.name == "check")
         assert check.loop_policy is not None
-        assert check.loop_policy.max_iterations == _CHECK_LOOP_MAX
         assert check.loop_policy.iteration_state_field == "check_loop"
+        assert check.loop_policy.max_iterations == _CHECK_LOOP_MAX
 
         assert len(result.loop_counters) == 1
         assert result.loop_counters[0].name == "check_loop"

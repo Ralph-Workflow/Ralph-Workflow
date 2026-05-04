@@ -71,9 +71,7 @@ def _build_custom_bundle() -> PolicyBundle:
                 role="analysis",
                 transitions=PhaseTransition(on_success="seal", on_loopback="build"),
                 loop_policy=PhaseLoopPolicy(
-                    max_iterations=_BUILD_LOOP_MAX,
-                    iteration_state_field="build_loop",
-                    loopback_review_outcome="has_issues",
+                    iteration_state_field="build_loop", loopback_review_outcome="has_issues"
                 ),
                 decisions={
                     "approve": PhaseDecisionRoute(target="seal"),
@@ -217,9 +215,16 @@ class TestCustomPipelineHappyPath:
     def test_phases_never_reference_canonical_names(self, custom_bundle: PolicyBundle) -> None:
         """Verify no canonical phase name is hard-required by the custom pipeline."""
         canonical = {
-            "planning", "development", "development_analysis",
-            "development_commit", "review", "review_analysis",
-            "review_commit", "fix", "complete", "failed",
+            "planning",
+            "development",
+            "development_analysis",
+            "development_commit",
+            "review",
+            "review_analysis",
+            "review_commit",
+            "fix",
+            "complete",
+            "failed",
         }
         phase_names = set(custom_bundle.pipeline.phases.keys())
         overlap = phase_names & canonical
@@ -309,8 +314,8 @@ class TestCustomPipelineVerificationFailure:
     def _advance_to_verify(self, policy: PipelinePolicy) -> PipelineState:
         """Helper: advance state from kickoff all the way to verify."""
         state = _initial_state(policy)
-        state, _ = reducer_reduce(state, PipelineEvent.AGENT_SUCCESS, policy)   # kickoff→build
-        state, _ = reducer_reduce(state, PipelineEvent.AGENT_SUCCESS, policy)   # build→gate
+        state, _ = reducer_reduce(state, PipelineEvent.AGENT_SUCCESS, policy)  # kickoff→build
+        state, _ = reducer_reduce(state, PipelineEvent.AGENT_SUCCESS, policy)  # build→gate
         state, _ = reducer_reduce(state, PipelineEvent.ANALYSIS_SUCCESS, policy)  # gate→seal
         state, _ = reducer_reduce(state, PipelineEvent.COMMIT_SUCCESS, policy)  # seal→verify
         assert state.phase == "verify", f"Expected verify, got {state.phase}"
@@ -337,9 +342,7 @@ class TestCustomPipelineVerificationFailure:
         state, _ = reducer_reduce(state, PipelineEvent.AGENT_SUCCESS, policy)  # verify→done
         assert state.phase == "done", f"Expected done, got {state.phase}"
 
-    def test_crashed_phase_is_not_canonical_terminal(
-        self, custom_bundle: PolicyBundle
-    ) -> None:
+    def test_crashed_phase_is_not_canonical_terminal(self, custom_bundle: PolicyBundle) -> None:
         """The crashed phase is a non-canonical failure terminal — not 'failed' or 'complete'."""
         assert "crashed" in custom_bundle.pipeline.phases
         phase_def = custom_bundle.pipeline.phases["crashed"]
@@ -350,45 +353,39 @@ class TestCustomPipelineVerificationFailure:
 class TestCustomPipelineCounters:
     """Budget and loop counter tracking tests."""
 
-    def test_build_pass_increments_on_commit_success(
-        self, custom_bundle: PolicyBundle
-    ) -> None:
+    def test_build_pass_increments_on_commit_success(self, custom_bundle: PolicyBundle) -> None:
         policy = custom_bundle.pipeline
         state = _initial_state(policy)
 
-        state, _ = reducer_reduce(state, PipelineEvent.AGENT_SUCCESS, policy)   # kickoff→build
-        state, _ = reducer_reduce(state, PipelineEvent.AGENT_SUCCESS, policy)   # build→gate
+        state, _ = reducer_reduce(state, PipelineEvent.AGENT_SUCCESS, policy)  # kickoff→build
+        state, _ = reducer_reduce(state, PipelineEvent.AGENT_SUCCESS, policy)  # build→gate
         state, _ = reducer_reduce(state, PipelineEvent.ANALYSIS_SUCCESS, policy)  # gate→seal
 
         assert state.get_outer_progress("build_pass") == 0
         state, _ = reducer_reduce(state, PipelineEvent.COMMIT_SUCCESS, policy)  # seal→verify
         assert state.get_outer_progress("build_pass") == 1
 
-    def test_build_pass_unchanged_on_commit_skipped(
-        self, custom_bundle: PolicyBundle
-    ) -> None:
+    def test_build_pass_unchanged_on_commit_skipped(self, custom_bundle: PolicyBundle) -> None:
         policy = custom_bundle.pipeline
         state = _initial_state(policy)
 
-        state, _ = reducer_reduce(state, PipelineEvent.AGENT_SUCCESS, policy)   # kickoff→build
-        state, _ = reducer_reduce(state, PipelineEvent.AGENT_SUCCESS, policy)   # build→gate
+        state, _ = reducer_reduce(state, PipelineEvent.AGENT_SUCCESS, policy)  # kickoff→build
+        state, _ = reducer_reduce(state, PipelineEvent.AGENT_SUCCESS, policy)  # build→gate
         state, _ = reducer_reduce(state, PipelineEvent.ANALYSIS_SUCCESS, policy)  # gate→seal
 
         state, _ = reducer_reduce(state, PipelineEvent.COMMIT_SKIPPED, policy)  # seal→verify
         assert state.get_outer_progress("build_pass") == 0
 
-    def test_build_loop_counter_resets_after_commit(
-        self, custom_bundle: PolicyBundle
-    ) -> None:
+    def test_build_loop_counter_resets_after_commit(self, custom_bundle: PolicyBundle) -> None:
         policy = custom_bundle.pipeline
         state = _initial_state(policy)
 
-        state, _ = reducer_reduce(state, PipelineEvent.AGENT_SUCCESS, policy)   # kickoff→build
-        state, _ = reducer_reduce(state, PipelineEvent.AGENT_SUCCESS, policy)   # build→gate
+        state, _ = reducer_reduce(state, PipelineEvent.AGENT_SUCCESS, policy)  # kickoff→build
+        state, _ = reducer_reduce(state, PipelineEvent.AGENT_SUCCESS, policy)  # build→gate
         state, _ = reducer_reduce(state, PipelineEvent.ANALYSIS_LOOPBACK, policy)  # gate→build
         assert state.get_loop_iteration("build_loop") == 1
 
-        state, _ = reducer_reduce(state, PipelineEvent.AGENT_SUCCESS, policy)   # build→gate
+        state, _ = reducer_reduce(state, PipelineEvent.AGENT_SUCCESS, policy)  # build→gate
         state, _ = reducer_reduce(state, PipelineEvent.ANALYSIS_SUCCESS, policy)  # gate→seal
         state, _ = reducer_reduce(state, PipelineEvent.COMMIT_SUCCESS, policy)  # seal→verify
         assert state.get_loop_iteration("build_loop") == 0
@@ -479,7 +476,5 @@ class TestCustomPipelinePolicyValidation:
 
         validate_policy_completeness(custom_bundle)  # must not raise
 
-    def test_failed_route_is_custom_phase(
-        self, custom_bundle: PolicyBundle
-    ) -> None:
+    def test_failed_route_is_custom_phase(self, custom_bundle: PolicyBundle) -> None:
         assert custom_bundle.pipeline.recovery.failed_route == "crashed"
