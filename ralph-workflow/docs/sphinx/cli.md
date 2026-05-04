@@ -28,11 +28,13 @@ otherwise the bundled defaults) and prints a structured summary:
 
 ```
 Policy OK: /path/to/.agent
-  phases: 9
-  drains: 9
-  artifact contracts: 8
+  phases: 7
+  drains: 11
+  artifact contracts: 5
   loop counters: 2
-  budget counters: 2
+  budget counters: 1
+  workflow fallbacks: 0
+  terminal failure phase: failed_terminal
 ```
 
 Exits 0 on success, 2 on `PolicyValidationError`, 1 on any other error.

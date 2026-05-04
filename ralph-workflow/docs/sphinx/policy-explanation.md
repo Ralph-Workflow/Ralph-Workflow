@@ -31,11 +31,13 @@ This validates the same policy source as `--explain-policy` and prints a brief s
 
 ```
 Policy OK: /path/to/.agent
-  phases: 9
-  drains: 9
-  artifact contracts: 8
+  phases: 7
+  drains: 11
+  artifact contracts: 5
   loop counters: 2
-  budget counters: 2
+  budget counters: 1
+  workflow fallbacks: 0
+  terminal failure phase: failed_terminal
 ```
 
 Exit codes: 0 = valid, 2 = `PolicyValidationError`, 1 = other error.
@@ -216,7 +218,7 @@ Explanation: phase 'development_analysis' loops back to 'development' until 3 at
     Drain      : development_commit
     Chain      : development_commit → agents: [claude]
     Retry      : up to 3 retries per agent, then fail
-    On success → review
+    On success → complete
     On failure → failed_terminal
     Commit     : increments 'iteration'
                  resets loop counters: ['development_analysis_iteration']
@@ -224,63 +226,8 @@ Explanation: phase 'development_analysis' loops back to 'development' until 3 at
     When is commit required? When this phase is active and the agent
       produces changes that need to be committed.
 Explanation: after commit phase 'development_commit' with budget_state 'remaining' → routes to 'planning' because the workflow policy declares this post_commit_route
-Explanation: after commit phase 'development_commit' with budget_state 'exhausted' → routes to 'review' because the workflow policy declares this post_commit_route
+Explanation: after commit phase 'development_commit' with budget_state 'exhausted' → routes to 'complete' because the workflow policy declares this post_commit_route
 Explanation: after commit phase 'development_commit' with budget_state 'no_review' → routes to 'complete' because the workflow policy declares this post_commit_route
-
-  Phase: review
-    Role       : review (agent performs code review)
-    Drain      : review
-    Chain      : review → agents: [claude]
-    Retry      : up to 3 retries per agent, then fail
-    On success → review_analysis
-    On failure → pipeline fails (no on_failure route)
-    On loopback → fix
-    Bypass [clean] → review_commit
-    Clean outcome: clean
-    Issues outcome: has_issues
-Explanation: phase 'review' bypasses to 'review_commit' when the configured outcome is 'clean'.
-
-  Phase: review_analysis
-    Role       : analysis (agent reviews output, decides next step)
-    Drain      : review_analysis
-    Chain      : review_analysis → agents: [claude]
-    Retry      : up to 3 retries per agent, then fail
-    On success → review_commit
-    On failure → pipeline fails (no on_failure route)
-    On loopback → fix
-    Decisions:
-      completed            → review_commit
-      request_changes      → fix
-      failed               → fix
-    Loop       : counter='review_analysis_iteration', max=2
-                 loopback sets review_outcome='has_issues'
-Explanation: phase 'review_analysis' routes to 'review_commit' because the configured decision was 'completed'.
-Explanation: phase 'review_analysis' routes to 'fix' because the configured decision was 'request_changes'.
-Explanation: phase 'review_analysis' routes to 'fix' because the configured decision was 'failed'.
-Explanation: phase 'review_analysis' loops back to 'fix' until 2 attempts are exhausted, after which the run terminates.
-
-  Phase: fix
-    Role       : execution (agent runs code)
-    Drain      : fix
-    Chain      : fix → agents: [claude]
-    Retry      : up to 3 retries per agent, then fail
-    Invocation : SKIPPED — routing proceeds without invoking an agent
-    On success → review_analysis
-    On failure → pipeline fails (no on_failure route)
-    On loopback → review
-
-  Phase: review_commit
-    Role       : commit (agent commits changes)
-    Drain      : review_commit
-    Chain      : review_commit → agents: [claude]
-    Retry      : up to 3 retries per agent, then fail
-    On success → complete
-    On failure → failed
-    Commit     : increments 'reviewer_pass'
-                 resets loop counters: ['review_analysis_iteration']
-                 requires artifact: yes
-    When is commit required? When this phase is active and the agent
-      produces changes that need to be committed.
 
   Phase: complete [TERMINAL]
     Role       : terminal (pipeline ends here)
@@ -293,13 +240,12 @@ Explanation: when reached, the run terminates because the workflow policy declar
 LOOP COUNTERS
 ----------------------------------------------------------------------
   development_analysis_iteration: max=3 — Development analysis loop iteration counter
-  review_analysis_iteration: max=2 — Review analysis loop iteration counter
+  planning_analysis_iteration: max=10 — Planning analysis loop iteration counter
 
 ----------------------------------------------------------------------
 BUDGET COUNTERS
 ----------------------------------------------------------------------
   iteration: tracked (exhaustion matters) — Development iteration counter (developer cycles)
-  reviewer_pass: tracked (exhaustion matters) — Review pass counter
 
 ----------------------------------------------------------------------
 PARALLEL EXECUTION

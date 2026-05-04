@@ -7,7 +7,7 @@ Typical entry points:
 
 - ``ralph.config.loader.load_config`` to build the merged runtime config
 - ``AgentConfig`` and ``UnifiedConfig`` for validated configuration objects
-- ``Verbosity``, ``ReviewDepth``, and related enums for CLI/config values
+- ``Verbosity`` and related enums for CLI/config values
 - ``ensure_global_config`` and friends to bootstrap user configs on first run
 """
 
@@ -23,7 +23,6 @@ from ralph.config.enums import (
     JsonParserType,
     PauseOnExit,
     RecoveryStrategy,
-    ReviewDepth,
     Verbosity,
 )
 from ralph.config.models import (
@@ -42,7 +41,6 @@ __all__ = [
     "JsonParserType",
     "PauseOnExit",
     "RecoveryStrategy",
-    "ReviewDepth",
     "UnifiedConfig",
     "Verbosity",
     "emit_first_run_welcome",

@@ -157,8 +157,8 @@ def emit_first_run_welcome(
     content: list[object] = []
 
     intro = Text("Ralph Workflow orchestrates AI coding agents through a ")
-    intro.append("planning → development → review → fix", style="theme.phase.planning")
-    intro.append(" loop driven by your PROMPT.md.")
+    intro.append("planning → development loop", style="theme.phase.planning")
+    intro.append(" driven by your PROMPT.md.")
     content.append(intro)
 
     docs_line1 = Text("New to Ralph Workflow? Read ", style="theme.text.muted")

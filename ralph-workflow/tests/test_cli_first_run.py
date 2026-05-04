@@ -398,7 +398,7 @@ def test_cli_first_run_panel_includes_what_is_ralph_pitch(
     result = runner.invoke(app, ["--check-config"], catch_exceptions=False)
 
     assert result.exit_code == 0, f"Expected exit 0, got {result.exit_code}: {result.output}"
-    assert "planning" in result.output and "review" in result.output, (
+    assert "planning" in result.output and "development" in result.output, (
         f"Expected pipeline loop description in first-run output, got: {result.output}"
     )
     for token in _RAW_MARKUP_TOKENS:

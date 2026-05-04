@@ -42,7 +42,7 @@ ralph --generate-local-config
 The bundled defaults live in `ralph/policy/defaults/`. Each file contains inline comments
 explaining every field. The canonical reference is the file itself:
 
-- `ralph-workflow.toml` — general config (iterations, review depth, verbosity, isolation)
+- `ralph-workflow.toml` — general config (iterations, verbosity, isolation)
 - `mcp.toml` — empty MCP server list (add custom servers here)
 - `pipeline.toml` — default phase sequence and parallel execution policy
 - `artifacts.toml` — artifact type contracts
@@ -55,7 +55,7 @@ use their documented defaults automatically.
 
 ### `[general]`
 
-Core workflow settings: verbosity, review depth, git identity, and retry behavior.
+Core workflow settings: verbosity, git identity, and retry behavior.
 
 | Key | Default | Description |
 |-----|---------|-------------|
@@ -259,7 +259,7 @@ Declares a loop iteration counter referenced by `loop_policy.iteration_state_fie
 
 | Field | Description |
 |-------|-------------|
-| `default_max` | Default cap (can be overridden at runtime with `--counter NAME=VALUE`; `--developer-iters` / `--reviewer-reviews` are deprecated aliases) |
+| `default_max` | Default cap (can be overridden at runtime with `--counter NAME=VALUE`; `--developer-iters` / `-D` is a shorthand alias for the `iteration` counter) |
 | `description` | Human-readable description |
 
 ### `[budget_counters.<name>]`

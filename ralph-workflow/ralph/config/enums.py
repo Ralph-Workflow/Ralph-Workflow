@@ -28,22 +28,6 @@ class Verbosity(StrEnum):
     DEBUG = "debug"
 
 
-class ReviewDepth(StrEnum):
-    """Review depth level for code review.
-
-    Attributes:
-        STANDARD: Balanced review (default)
-        COMPREHENSIVE: Thorough review with all checks
-        SECURITY: OWASP-focused security review
-        INCREMENTAL: Review only changed files
-    """
-
-    STANDARD = "standard"
-    COMPREHENSIVE = "comprehensive"
-    SECURITY = "security"
-    INCREMENTAL = "incremental"
-
-
 class JsonParserType(StrEnum):
     """JSON parser type for agent output parsing.
 

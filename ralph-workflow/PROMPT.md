@@ -31,4 +31,4 @@ It is used by load balancers and uptime monitors to verify the service is runnin
 
 1. Edit the sections above to describe YOUR task and remove the sentinel comment.
 2. Run `ralph --diagnose` to verify agents, MCP servers, and config.
-3. Run `ralph` to start the planning → development → review → fix pipeline.
+3. Run `ralph` to start the planning → development pipeline.

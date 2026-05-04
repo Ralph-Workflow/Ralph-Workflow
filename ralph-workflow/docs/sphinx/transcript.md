@@ -86,7 +86,7 @@ On Windows, the refresher is a no-op.
 | `SUCCESS` | Phase or pipeline completed successfully |
 | `WARN` | Non-fatal issue or degraded state |
 | `ERROR` | Fatal error or malformed input |
-| `MILESTONE` | Major phase transition (planning, development, review, fix) |
+| `MILESTONE` | Major phase transition (planning, development, commit) |
 
 Verbosity controls which levels are shown. Use `--quiet` to suppress everything except
 `ERROR`, or `--debug` to show all levels.

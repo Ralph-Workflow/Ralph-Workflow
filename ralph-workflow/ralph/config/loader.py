@@ -173,10 +173,7 @@ def _migrate_simple_fields(data: dict[str, object], general: dict[str, object]) 
     """Migrate simple configuration fields."""
     simple_fields = (
         "developer_iters",
-        "reviewer_reviews",
         "developer_context",
-        "reviewer_context",
-        "review_depth",
         "prompt_path",
         "templates_dir",
         "git_user_name",

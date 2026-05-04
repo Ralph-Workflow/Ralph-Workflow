@@ -10,7 +10,7 @@ import pytest
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-from ralph.config.enums import AgentTransport, JsonParserType, ReviewDepth, Verbosity
+from ralph.config.enums import AgentTransport, JsonParserType, Verbosity
 from ralph.config.loader import (
     GLOBAL_CONFIG_PATH,
     LOCAL_CONFIG_PATH,
@@ -202,14 +202,6 @@ def test_general_config_does_not_expose_removed_field() -> None:
     """Test that the dead field is removed."""
     field_name = "max_dev" + "_continuations"
     assert field_name not in GeneralConfig.model_fields
-
-
-def test_review_depth_enum() -> None:
-    """Test ReviewDepth enum values."""
-    assert str(ReviewDepth.STANDARD) == "standard"
-    assert str(ReviewDepth.COMPREHENSIVE) == "comprehensive"
-    assert str(ReviewDepth.SECURITY) == "security"
-    assert str(ReviewDepth.INCREMENTAL) == "incremental"
 
 
 def test_verbosity_enum() -> None:

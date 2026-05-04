@@ -10,7 +10,7 @@ import pathlib
 
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl, model_validator
 
-from ralph.config.enums import AgentTransport, JsonParserType, ReviewDepth
+from ralph.config.enums import AgentTransport, JsonParserType
 
 PATH_RUNTIME_CLASS = pathlib.Path
 
@@ -138,10 +138,7 @@ class GeneralConfig(_FrozenConfigModel):  # type: ignore[explicit-any]  # reason
         workflow: Workflow automation flags (checkpoint, auto-rebase).
         execution: Execution behavior flags (universal prompt).
         developer_iters: Number of developer iterations.
-        reviewer_reviews: Number of reviewer re-review passes.
         developer_context: Developer context level.
-        reviewer_context: Reviewer context level.
-        review_depth: Review depth level.
         prompt_path: Path to save last prompt.
         templates_dir: User templates directory for custom template overrides.
         git_user_name: Git user name for commits.
@@ -185,10 +182,7 @@ class GeneralConfig(_FrozenConfigModel):  # type: ignore[explicit-any]  # reason
     workflow: GeneralWorkflowFlags = Field(default_factory=GeneralWorkflowFlags)
     execution: GeneralExecutionFlags = Field(default_factory=GeneralExecutionFlags)
     developer_iters: int = Field(default=5, ge=1)
-    reviewer_reviews: int = Field(default=2, ge=0)
     developer_context: int = Field(default=1, ge=1)
-    reviewer_context: int = Field(default=0, ge=0)
-    review_depth: ReviewDepth = ReviewDepth.STANDARD
     prompt_path: pathlib.Path | None = None
     templates_dir: pathlib.Path | None = None
     git_user_name: str | None = None
