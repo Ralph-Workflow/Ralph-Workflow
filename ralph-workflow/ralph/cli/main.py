@@ -111,7 +111,8 @@ def _prepare_init_args(args: Sequence[str] | None) -> list[str] | None:
       inline prompt can be passed without conflicting with subcommand dispatch.
     """
     if args is None:
-        return None
+        import sys  # noqa: PLC0415
+        args = sys.argv[1:]
 
     normalized_args: list[str] = list(args)
 

@@ -701,6 +701,24 @@ class TestIterationCounterFlags:
         assert captured.get("counter_overrides") == {"iteration": 2, "reviewer_pass": 1}
 
 
+class TestPrepareInitArgs:
+    """Tests for _prepare_init_args sys.argv fallback."""
+
+    def test_none_falls_back_to_sys_argv(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from ralph.cli.main import _prepare_init_args  # noqa: PLC0415
+
+        monkeypatch.setattr("sys.argv", ["ralph", "-Q", "do a quick change", "--dry-run"])
+        result = _prepare_init_args(None)
+        assert result == ["-Q", "--prompt", "do a quick change", "--dry-run"]
+
+    def test_explicit_args_bypass_sys_argv(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from ralph.cli.main import _prepare_init_args  # noqa: PLC0415
+
+        monkeypatch.setattr("sys.argv", ["ralph", "--should-not-be-used"])
+        result = _prepare_init_args(["-Q", "task"])
+        assert result == ["-Q", "--prompt", "task"]
+
+
 class TestInjectQuickPrompt:
     """Tests for _inject_quick_prompt preprocessing helper."""
 

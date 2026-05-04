@@ -56,7 +56,6 @@ The runtime validates that policy is semantically complete at startup and reject
 
 ```bash
 ralph --counter iteration=2         # limit developer cycles to 2
-ralph --counter reviewer_pass=1     # limit review passes to 1
 ```
 
 Counter names must match `[budget_counters.<name>]` entries declared in `pipeline.toml`. Use `--check-policy` to confirm effective caps after overrides.
@@ -302,8 +301,8 @@ Use package/module docstrings for API understanding and this README for workflow
 
 Ralph Workflow now treats several agent-driven phases as producing explicit evidence, not just a zero exit code.
 
-- `review` must leave behind a fresh `.agent/artifacts/issues.json`.
-- In same-workspace parallel mode, `development` and `fix` workers are judged by per-worker artifact evidence only: a worker succeeds when it submits an artifact under `.agent/workers/<unit_id>/artifacts/`. Repo-wide `git status` is never used to determine worker success in parallel mode. Exit code is retained as diagnostic information only.
+- In same-workspace parallel mode, `development` workers (and custom `fix` workers) are judged by per-worker artifact evidence only: a worker succeeds when it submits an artifact under `.agent/workers/<unit_id>/artifacts/`. Repo-wide `git status` is never used to determine worker success in parallel mode. Exit code is retained as diagnostic information only.
+- Custom review phases (declared in `pipeline.toml`) must leave behind a fresh `.agent/artifacts/issues.json`.
 - Planning keeps `.agent/artifacts/plan.json` as the canonical machine-readable artifact and mirrors it to `.agent/PLAN.md` as the human/agent handoff.
 - The runner still removes per-phase artifacts before each invocation so interrupted runs cannot leak stale summaries or review findings into later phases.
 
@@ -313,12 +312,12 @@ Artifact contract:
 - Current mirrored handoffs are:
   - `.agent/PLAN.md`
   - `.agent/DEVELOPMENT_RESULT.md`
-  - `.agent/ISSUES.md`
-  - `.agent/FIX_RESULT.md`
   - `.agent/DEVELOPMENT_ANALYSIS_DECISION.md`
-  - `.agent/REVIEW_ANALYSIS_DECISION.md`
+  - `.agent/ISSUES.md` *(custom review phase)*
+  - `.agent/FIX_RESULT.md` *(custom fix phase)*
+  - `.agent/REVIEW_ANALYSIS_DECISION.md` *(custom review analysis phase)*
 
-This hardening is intentionally selective. Review and planning rely on explicit artifacts where Ralph Workflow needs structured evidence. In same-workspace parallel mode, `development` and `fix` workers are judged by per-worker artifact evidence under `.agent/workers/<unit_id>/artifacts/`; repo-wide workspace changes are not used as a success signal in parallel mode.
+This hardening is intentionally selective. Planning relies on explicit artifacts where Ralph Workflow needs structured evidence. In same-workspace parallel mode, `development` workers are judged by per-worker artifact evidence under `.agent/workers/<unit_id>/artifacts/`; repo-wide workspace changes are not used as a success signal in parallel mode. Custom review/fix phases follow the same contract for their own artifacts.
 
 ## Built-in web tools
 
