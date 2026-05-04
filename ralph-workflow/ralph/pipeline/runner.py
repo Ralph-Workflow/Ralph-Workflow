@@ -1057,6 +1057,9 @@ def _emit_final_summary(
     """
     try:
         from ralph.display.completion_summary import emit_completion_summary  # noqa: PLC0415
+        from ralph.display.parallel_display import (  # noqa: PLC0415
+            ParallelDisplay as _ParallelDisplayCls,
+        )
         from ralph.display.snapshot import snapshot_from_state  # noqa: PLC0415
 
         dropped_count = 0
@@ -1079,6 +1082,19 @@ def _emit_final_summary(
             )
         pipeline_policy = subscriber.pipeline_policy if subscriber is not None else None
         ctx = _get_display_context(display, display_context)
+        if isinstance(display, _ParallelDisplayCls):
+            pr = display._plain_renderer
+            content_block_count: int = pr.content_blocks_count
+            thinking_block_count: int = pr.thinking_blocks_count
+            tool_call_count: int = pr.tool_calls_count
+            error_count: int = pr.errors_count
+            elapsed_seconds: float | None = pr.run_elapsed_seconds
+        else:
+            content_block_count = 0
+            thinking_block_count = 0
+            tool_call_count = 0
+            error_count = 0
+            elapsed_seconds = None
         emit_completion_summary(
             snapshot,
             workspace_root=workspace_root,
@@ -1086,6 +1102,11 @@ def _emit_final_summary(
             include_context_sections=not (
                 isinstance(display, _LegacyConsoleDisplay) or state.interrupted_by_user
             ),
+            content_block_count=content_block_count,
+            thinking_block_count=thinking_block_count,
+            tool_call_count=tool_call_count,
+            error_count=error_count,
+            elapsed_seconds=elapsed_seconds,
             display_context=ctx,
             pipeline_policy=pipeline_policy,
         )

@@ -13,6 +13,7 @@ from ralph.display.phase_status import (
     format_analysis_cycle,
     format_budget_remaining,
     format_dev_cycle,
+    format_exit_trigger,
     format_fixer_cycle,
     format_transition_context_items,
 )
@@ -266,3 +267,45 @@ def test_transition_context_multiple_items_preserve_order() -> None:
 def test_transition_context_empty_dict_returns_empty_list() -> None:
     """Empty context dict returns empty list."""
     assert format_transition_context_items({}) == []
+
+
+# --- Unit tests for format_exit_trigger ---
+
+
+class _FakeSnapshot:
+    def __init__(
+        self,
+        *,
+        interrupted_by_user: bool = False,
+        is_terminal_success: bool = False,
+        is_terminal_failure: bool = False,
+    ) -> None:
+        self.interrupted_by_user = interrupted_by_user
+        self.is_terminal_success = is_terminal_success
+        self.is_terminal_failure = is_terminal_failure
+
+
+def test_format_exit_trigger_interrupted() -> None:
+    snap = _FakeSnapshot(interrupted_by_user=True)
+    assert format_exit_trigger(snap) == "interrupted"
+
+
+def test_format_exit_trigger_success() -> None:
+    snap = _FakeSnapshot(is_terminal_success=True)
+    assert format_exit_trigger(snap) == "completed"
+
+
+def test_format_exit_trigger_failure() -> None:
+    snap = _FakeSnapshot(is_terminal_failure=True)
+    assert format_exit_trigger(snap) == "failed"
+
+
+def test_format_exit_trigger_unknown_state() -> None:
+    snap = _FakeSnapshot()
+    assert format_exit_trigger(snap) == "exited"
+
+
+def test_format_exit_trigger_interrupted_takes_priority() -> None:
+    """interrupted_by_user has highest priority over terminal flags."""
+    snap = _FakeSnapshot(interrupted_by_user=True, is_terminal_success=True)
+    assert format_exit_trigger(snap) == "interrupted"

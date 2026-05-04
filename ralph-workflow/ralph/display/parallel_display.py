@@ -10,7 +10,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Literal, cast
 
 from ralph.display.activity_router import ActivityRouter
-from ralph.display.completion_summary import emit_completion_summary
 from ralph.display.content_condenser import condense_content
 from ralph.display.context import DisplayContext
 from ralph.display.lifecycle_filter import is_bare_lifecycle as _is_bare_lifecycle
@@ -331,33 +330,6 @@ class ParallelDisplay:
                 pr_url=pr_url,
                 exit_trigger=exit_trigger,
             )
-        last_state = self._subscriber.last_state
-        if last_state is not None:
-            try:
-                snapshot = self._subscriber.build_snapshot(last_state)
-                is_terminal = (
-                    snapshot is not None
-                    and (snapshot.is_terminal_success or snapshot.is_terminal_failure)
-                )
-                if is_terminal and snapshot is not None:
-                    emit_completion_summary(
-                        snapshot,
-                        workspace_root=self._workspace_root,
-                        dropped_count=self._subscriber.dropped_count,
-                        content_block_count=self._plain_renderer.content_blocks_count,
-                        thinking_block_count=self._plain_renderer.thinking_blocks_count,
-                        tool_call_count=self._plain_renderer.tool_calls_count,
-                        error_count=self._plain_renderer.errors_count,
-                        elapsed_seconds=self._plain_renderer.run_elapsed_seconds,
-                        display_context=self._ctx,
-                        pipeline_policy=self._subscriber.pipeline_policy,
-                    )
-            except Exception as exc:
-                self._plain_renderer.emit_warn_line(
-                    "run",
-                    "run-end",
-                    f"completion panel failed: {exc}",
-                )
 
     @property
     def console(self) -> Console:

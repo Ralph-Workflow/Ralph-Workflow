@@ -1,10 +1,14 @@
-"""Tests for ParallelDisplay completion panel wiring in emit_run_end."""
+"""Tests for ParallelDisplay emit_run_end: [run-end] block wiring only.
+
+Completion panels are now emitted by _emit_final_summary in runner.py,
+not by emit_run_end.  These tests verify the [run-end] block behaviour
+without asserting that the completion panel appears here.
+"""
 
 from __future__ import annotations
 
 from pathlib import Path
 from queue import Queue
-from unittest.mock import patch
 
 from rich.console import Console
 
@@ -40,16 +44,15 @@ def _make_display(tmp_path: Path) -> tuple[ParallelDisplay, Console]:
     return display, console
 
 
-def test_emit_run_end_prints_completion_panel_when_state_complete(tmp_path: Path) -> None:
+def test_emit_run_end_complete_state_emits_run_end_block_only(tmp_path: Path) -> None:
     display, console = _make_display(tmp_path)
     state = PipelineState(phase="complete")
     display.subscriber.notify(state)
     display.emit_run_end(phase="complete", total_agent_calls=1)
     out = console.export_text()
-    assert "Pipeline Complete" in out
     assert "[run-end]" in out
-    # [run-end] lines appear before the completion panel
-    assert out.index("[run-end]") < out.index("Pipeline Complete")
+    # Completion panel is emitted by _emit_final_summary, not here
+    assert "Pipeline Complete" not in out
 
 
 def test_emit_run_end_without_last_state_still_emits_run_end_lines(tmp_path: Path) -> None:
@@ -60,16 +63,16 @@ def test_emit_run_end_without_last_state_still_emits_run_end_lines(tmp_path: Pat
     assert "◆ Ralph Workflow run end" in out
 
 
-def test_emit_run_end_failed_state_prints_pipeline_failed_panel(tmp_path: Path) -> None:
-    # Use the actual failure terminal phase from the default policy
+def test_emit_run_end_failed_state_emits_run_end_block_only(tmp_path: Path) -> None:
     failure_phase = _DEFAULT_POLICY.pipeline.recovery.failed_route
     display, console = _make_display(tmp_path)
     state = PipelineState(phase=failure_phase, last_error="something broke")
     display.subscriber.notify(state)
     display.emit_run_end(phase=failure_phase, total_agent_calls=0)
     out = console.export_text()
-    assert "Pipeline Failed" in out
     assert "[run-end]" in out
+    # Completion panel is emitted by _emit_final_summary, not here
+    assert "Pipeline Failed" not in out
 
 
 def test_emit_run_end_non_terminal_phase_no_panel(tmp_path: Path) -> None:
@@ -81,21 +84,3 @@ def test_emit_run_end_non_terminal_phase_no_panel(tmp_path: Path) -> None:
     assert "Pipeline Complete" not in out
     assert "Pipeline Failed" not in out
     assert "[run-end]" in out
-
-
-def test_emit_run_end_does_not_crash_on_summary_error(tmp_path: Path) -> None:
-    display, console = _make_display(tmp_path)
-    state = PipelineState(phase="complete")
-    display.subscriber.notify(state)
-
-    with patch(
-        "ralph.display.parallel_display.emit_completion_summary",
-        side_effect=RuntimeError("panel boom"),
-    ):
-        display.emit_run_end(phase="complete", total_agent_calls=0)
-
-    out = console.export_text()
-    # The [run-end] block still appears despite the summary failure
-    assert "[run-end]" in out
-    # An observable diagnostic is emitted instead of silently swallowing the error
-    assert "completion panel failed" in out

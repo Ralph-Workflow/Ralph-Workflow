@@ -15,6 +15,7 @@ from ralph.display.phase_status import (
     format_analysis_cycle,
     format_dev_cycle,
     format_elapsed_seconds,
+    format_exit_trigger,
     format_fixer_cycle,
 )
 from ralph.mcp.artifacts.commit_message import read_commit_message_artifact
@@ -203,13 +204,7 @@ def _fixer_iteration_summary(snapshot: PipelineSnapshot) -> str | None:
 
 def _exit_trigger_label(snapshot: PipelineSnapshot) -> str:
     """Return a human-readable exit trigger label derived from snapshot state."""
-    if snapshot.interrupted_by_user:
-        return "interrupted"
-    if snapshot.is_terminal_success:
-        return "completed"
-    if snapshot.is_terminal_failure:
-        return "failed"
-    return "exited"
+    return format_exit_trigger(snapshot)
 
 
 def _has_iteration_context(snapshot: PipelineSnapshot) -> bool:

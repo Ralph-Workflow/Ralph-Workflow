@@ -11,6 +11,7 @@ No Console construction, no env reads, no pipeline logic.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Protocol
 
 
 def format_dev_cycle(n: int) -> str:
@@ -38,6 +39,28 @@ def format_budget_remaining(n: int) -> str:
 def format_elapsed_seconds(s: float) -> str:
     """Return canonical elapsed-time label."""
     return f"{round(s, 1)}s"
+
+
+class _ExitState(Protocol):
+    @property
+    def interrupted_by_user(self) -> bool: ...
+
+    @property
+    def is_terminal_success(self) -> bool: ...
+
+    @property
+    def is_terminal_failure(self) -> bool: ...
+
+
+def format_exit_trigger(snapshot: _ExitState) -> str:
+    """Return canonical exit-trigger label from a PipelineSnapshot-like object."""
+    if snapshot.interrupted_by_user:
+        return "interrupted"
+    if snapshot.is_terminal_success:
+        return "completed"
+    if snapshot.is_terminal_failure:
+        return "failed"
+    return "exited"
 
 
 def format_transition_context_items(context: dict[str, object]) -> list[str]:
@@ -122,6 +145,7 @@ __all__ = [
     "format_budget_remaining",
     "format_dev_cycle",
     "format_elapsed_seconds",
+    "format_exit_trigger",
     "format_fixer_cycle",
     "format_transition_context_items",
 ]
