@@ -1,4 +1,4 @@
-"""Regression tests: visit_url is enabled out-of-the-box for all drains."""
+"""Regression tests: visit_url is enabled out-of-the-box for non-commit drains."""
 
 from __future__ import annotations
 
@@ -16,6 +16,13 @@ from ralph.prompts.template_variables import DEFAULT_CAPABILITIES
 if TYPE_CHECKING:
     from pathlib import Path
 
+# Commit-class drains are read-only and do not receive web capabilities.
+_COMMIT_CLASS_DRAINS = (
+    SessionDrain.DEVELOPMENT_COMMIT,
+    SessionDrain.REVIEW_COMMIT,
+    SessionDrain.COMMIT,
+)
+
 
 class _StubWorkspace:
     def absolute_path(self, path: str) -> str:
@@ -31,12 +38,25 @@ def _session_with_web_visit(drain: str) -> AgentSession:
     )
 
 
-@pytest.mark.parametrize("drain", [d.value for d in SessionDrain])
-def test_all_drains_have_web_visit_in_defaults(drain: str) -> None:
+_NON_COMMIT_DRAINS = [d.value for d in SessionDrain if d not in _COMMIT_CLASS_DRAINS]
+
+
+@pytest.mark.parametrize("drain", _NON_COMMIT_DRAINS)
+def test_non_commit_drains_have_web_visit_in_defaults(drain: str) -> None:
     session_drain = SessionDrain(drain)
     caps = DEFAULT_CAPABILITIES.get(session_drain, ())
     assert Capability.WEB_VISIT in caps, (
         f"SessionDrain.{session_drain.name} is missing Capability.WEB_VISIT in DEFAULT_CAPABILITIES"
+    )
+
+
+@pytest.mark.parametrize("drain", [d.value for d in _COMMIT_CLASS_DRAINS])
+def test_commit_drains_do_not_have_web_visit_in_defaults(drain: str) -> None:
+    session_drain = SessionDrain(drain)
+    caps = DEFAULT_CAPABILITIES.get(session_drain, ())
+    assert Capability.WEB_VISIT not in caps, (
+        f"SessionDrain.{session_drain.name} should not have Capability.WEB_VISIT "
+        "in DEFAULT_CAPABILITIES (commit-class drains are web-restricted)"
     )
 
 

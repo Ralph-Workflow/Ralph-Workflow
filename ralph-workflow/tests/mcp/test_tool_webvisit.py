@@ -265,3 +265,62 @@ def test_text_truncated_to_max_bytes_divided_by_4(monkeypatch: pytest.MonkeyPatc
     assert result.is_error is False
     data = json.loads(result.content[0].text)
     assert len(data["text"]) <= 100 // 4
+
+
+def test_fetch_unreachable_returns_structured_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    unreachable_outcome = FetchOutcome(
+        status="unreachable",
+        error="All connection attempts failed",
+    )
+    monkeypatch.setattr(tool_webvisit, "fetch_url", lambda *a, **kw: unreachable_outcome)
+
+    result = tool_webvisit.handle_visit_url(
+        _AllowedSession(),
+        _StubWorkspace(),
+        {"url": "https://example.com/page"},
+        web_visit_config=_make_config(),
+    )
+
+    assert result.is_error is True
+    data = json.loads(result.content[0].text)
+    assert data["status"] == "unreachable"
+    assert "error" in data
+
+
+def test_fetch_too_large_returns_structured_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    too_large_outcome = FetchOutcome(
+        status="too_large",
+        effective_url="https://example.com/huge",
+        error="response body exceeds 2097152 bytes",
+    )
+    monkeypatch.setattr(tool_webvisit, "fetch_url", lambda *a, **kw: too_large_outcome)
+
+    result = tool_webvisit.handle_visit_url(
+        _AllowedSession(),
+        _StubWorkspace(),
+        {"url": "https://example.com/huge"},
+        web_visit_config=_make_config(),
+    )
+
+    assert result.is_error is True
+    data = json.loads(result.content[0].text)
+    assert data["status"] == "too_large"
+
+
+def test_fetch_invalid_url_returns_structured_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    invalid_outcome = FetchOutcome(
+        status="invalid_url",
+        error="unsupported scheme: 'ftp'",
+    )
+    monkeypatch.setattr(tool_webvisit, "fetch_url", lambda *a, **kw: invalid_outcome)
+
+    result = tool_webvisit.handle_visit_url(
+        _AllowedSession(),
+        _StubWorkspace(),
+        {"url": "ftp://example.com/file"},
+        web_visit_config=_make_config(),
+    )
+
+    assert result.is_error is True
+    data = json.loads(result.content[0].text)
+    assert data["status"] == "invalid_url"

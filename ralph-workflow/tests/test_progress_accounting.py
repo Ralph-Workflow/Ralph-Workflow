@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 import pytest
 
+from ralph.pipeline import progress
 from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.progress import advance_phase, apply_commit_outcome
 from ralph.pipeline.reducer import reduce as reducer_reduce
@@ -145,6 +146,32 @@ def _progress_policy() -> PipelinePolicy:
                 target="complete",
             ),
         ],
+    )
+
+
+@pytest.mark.parametrize(
+    ("current_iteration", "max_iterations", "expected_final", "expected_skip"),
+    [
+        (0, 1, True, False),
+        (0, 2, False, False),
+        (1, 2, True, False),
+        (2, 2, True, True),
+        (0, 0, True, True),
+    ],
+)
+def test_analysis_iteration_helpers_separate_final_run_from_next_reentry(
+    current_iteration: int,
+    max_iterations: int,
+    expected_final: bool,
+    expected_skip: bool,
+) -> None:
+    assert (
+        progress.is_final_analysis_iteration(current_iteration, max_iterations)
+        is expected_final
+    )
+    assert (
+        progress.should_skip_analysis_reentry(current_iteration, max_iterations)
+        is expected_skip
     )
 
 

@@ -490,17 +490,23 @@ class TestWebSearchCapabilitySupport:
             SessionDrain.PLANNING,
             SessionDrain.DEVELOPMENT,
             SessionDrain.DEVELOPMENT_ANALYSIS,
-            SessionDrain.DEVELOPMENT_COMMIT,
             SessionDrain.REVIEW,
             SessionDrain.REVIEW_ANALYSIS,
             SessionDrain.FIX,
-            SessionDrain.REVIEW_COMMIT,
         ],
     )
     def test_web_search_in_granted_drains(self, drain: SessionDrain) -> None:
         assert CapabilitySet.defaults_for_drain(drain).contains(Capability.WEB_SEARCH)
 
-    @pytest.mark.parametrize("drain", [SessionDrain.ANALYSIS, SessionDrain.COMMIT])
+    @pytest.mark.parametrize(
+        "drain",
+        [
+            SessionDrain.ANALYSIS,
+            SessionDrain.COMMIT,
+            SessionDrain.DEVELOPMENT_COMMIT,
+            SessionDrain.REVIEW_COMMIT,
+        ],
+    )
     def test_web_search_not_granted_to_other_drains(self, drain: SessionDrain) -> None:
         assert not CapabilitySet.defaults_for_drain(drain).contains(Capability.WEB_SEARCH)
 
@@ -599,6 +605,13 @@ class TestMediaReadCapability:
 # =============================================================================
 
 
+_COMMIT_DRAINS = (
+    SessionDrain.DEVELOPMENT_COMMIT,
+    SessionDrain.REVIEW_COMMIT,
+    SessionDrain.COMMIT,
+)
+
+
 class TestWebVisitCapability:
     """Tests for WebVisit capability mapping."""
 
@@ -669,10 +682,21 @@ class TestWebVisitCapability:
         )
         assert result.is_allowed() is False
 
-    @pytest.mark.parametrize("drain", list(SessionDrain))
-    def test_web_visit_granted_to_all_drains(self, drain: SessionDrain) -> None:
+
+    @pytest.mark.parametrize(
+        "drain",
+        [d for d in SessionDrain if d not in _COMMIT_DRAINS],
+    )
+    def test_web_visit_granted_to_non_commit_drains(self, drain: SessionDrain) -> None:
         assert CapabilitySet.defaults_for_drain(drain).contains(Capability.WEB_VISIT), (
             f"SessionDrain.{drain.name} is missing Capability.WEB_VISIT"
+        )
+
+    @pytest.mark.parametrize("drain", list(_COMMIT_DRAINS))
+    def test_web_visit_not_granted_to_commit_drains(self, drain: SessionDrain) -> None:
+        assert not CapabilitySet.defaults_for_drain(drain).contains(Capability.WEB_VISIT), (
+            f"SessionDrain.{drain.name} should not have Capability.WEB_VISIT "
+            "(commit-class drains are web-restricted)"
         )
 
 

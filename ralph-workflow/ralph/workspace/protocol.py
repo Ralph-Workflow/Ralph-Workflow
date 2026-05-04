@@ -136,6 +136,30 @@ class Workspace(Protocol):
         """
         ...
 
+    def read_bytes(
+        self,
+        path: str,
+        *,
+        offset: int = 0,
+        limit: int | None = None,
+    ) -> tuple[str, dict[str, object]]:
+        """Read a byte window from a file, decoded as UTF-8.
+
+        Args:
+            path: Relative path to the file.
+            offset: 0-based byte offset to start reading from.
+            limit: Maximum number of bytes to read (None means read to end).
+
+        Returns:
+            Tuple of (text content, metadata dict) where metadata has
+            total_bytes, returned_bytes, truncated keys.
+
+        Raises:
+            FileNotFoundError: If file doesn't exist.
+            UnicodeDecodeError: If the byte range cannot be decoded as UTF-8.
+        """
+        ...
+
     def stat(self, path: str) -> dict[str, object]:
         """Get file metadata/stat data.
 

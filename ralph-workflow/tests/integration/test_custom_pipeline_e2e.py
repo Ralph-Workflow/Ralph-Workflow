@@ -40,7 +40,6 @@ from ralph.policy.models import (
 from ralph.policy.render import render_explanation_text
 
 _BUILD_LOOP_MAX = 3
-_FINAL_BUILD_REENTRY_THRESHOLD = _BUILD_LOOP_MAX - 1
 
 
 def _build_custom_bundle() -> PolicyBundle:
@@ -267,15 +266,15 @@ class TestCustomPipelineLoopback:
         state, _ = reducer_reduce(state, PipelineEvent.AGENT_SUCCESS, policy)  # kickoff→build
         state, _ = reducer_reduce(state, PipelineEvent.AGENT_SUCCESS, policy)  # build→gate
 
-        # Loop back until the final-labeled gate state, then bypass on re-entry
+        # Loop back through every allowed gate run, then bypass on the next re-entry.
         for i in range(1, _BUILD_LOOP_MAX + 1):
             state, _ = reducer_reduce(state, PipelineEvent.ANALYSIS_LOOPBACK, policy)
             # After loopback, we're back at build
             assert state.phase == "build", f"iter {i}: Expected build after loopback"
-            expected_counter = min(i, _FINAL_BUILD_REENTRY_THRESHOLD)
+            expected_counter = min(i, _BUILD_LOOP_MAX)
             assert state.get_loop_iteration("build_loop") == expected_counter
             state, _ = reducer_reduce(state, PipelineEvent.AGENT_SUCCESS, policy)
-            if i < _FINAL_BUILD_REENTRY_THRESHOLD:
+            if i < _BUILD_LOOP_MAX:
                 assert state.phase == "gate"
             else:
                 assert state.phase == "seal"

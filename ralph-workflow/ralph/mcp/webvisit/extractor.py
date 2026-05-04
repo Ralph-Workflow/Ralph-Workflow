@@ -7,24 +7,43 @@ plain-text rendering. Both dependencies are optional ([web-visit] extras).
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import Protocol
 from urllib.parse import urljoin, urlparse
-
-if TYPE_CHECKING:
-    from readability import Document as _ReadabilityDocumentType
-    from selectolax.parser import HTMLParser as _HTMLParserType
 
 _MAX_LINKS = 100
 
-# Module-level optional imports — stubs in stubs/ provide types; runtime may lack the extras.
-_ReadabilityDocument: type[_ReadabilityDocumentType] | None
-_HTMLParser: type[_HTMLParserType] | None
+
+class _ReadabilityDocumentProtocol(Protocol):
+    def __init__(self, input: str) -> None: ...
+    def title(self) -> str: ...
+    def summary(self, html_partial: bool = ...) -> str: ...
+
+
+class _HTMLNodeProtocol(Protocol):
+    @property
+    def attributes(self) -> dict[str, str | None]: ...
+    def decompose(self) -> None: ...
+    def text(self, *, separator: str = ..., strip: bool = ...) -> str: ...
+
+
+class _HTMLParserProtocol(Protocol):
+    def __init__(self, html: str) -> None: ...
+    @property
+    def root(self) -> _HTMLNodeProtocol | None: ...
+    def css(self, selector: str) -> list[_HTMLNodeProtocol]: ...
+
+
+# Module-level optional imports — runtime may lack the extras.
+_ReadabilityDocument: type[_ReadabilityDocumentProtocol] | None = None
+_HTMLParser: type[_HTMLParserProtocol] | None = None
 try:
-    from readability import Document as _ReadabilityDocument
-    from selectolax.parser import HTMLParser as _HTMLParser
+    from readability import Document as _RawDocument
+    from selectolax.parser import HTMLParser as _RawHTMLParser
+
+    _ReadabilityDocument = _RawDocument
+    _HTMLParser = _RawHTMLParser  # type: ignore[assignment]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
 except ImportError:
-    _ReadabilityDocument = None
-    _HTMLParser = None
+    pass
 
 
 @dataclass(frozen=True)
@@ -36,7 +55,9 @@ class ExtractedPage:
     links: tuple[str, ...]
 
 
-def _require_deps() -> tuple[type[_ReadabilityDocumentType], type[_HTMLParserType]]:
+def _require_deps() -> (
+    tuple[type[_ReadabilityDocumentProtocol], type[_HTMLParserProtocol]]
+):
     if _ReadabilityDocument is None or _HTMLParser is None:
         raise ImportError(
             "Web visit text extraction requires optional dependencies. "

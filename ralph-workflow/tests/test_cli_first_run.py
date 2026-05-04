@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -533,7 +534,9 @@ def test_cli_run_with_only_prompt_shows_init_hint(
         f"Expected exit code 2 (preflight), got {result.exit_code}: {result.output}"
     )
     # Validation error message from validate_required_inputs references ralph --init
-    assert "ralph --init" in result.output, (
+    # Normalize whitespace to handle terminal line-wrap when running in parallel test workers.
+    normalized_output = re.sub(r"\s+", " ", result.output)
+    assert "ralph --init" in normalized_output, (
         f"Expected 'ralph --init' guidance in output, got: {result.output}"
     )
     # Must mention PROMPT.md to explain what is wrong

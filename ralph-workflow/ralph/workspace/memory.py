@@ -259,6 +259,29 @@ class MemoryWorkspace:
             "truncated": truncated,
         }
 
+    def read_bytes(
+        self,
+        path: str,
+        *,
+        offset: int = 0,
+        limit: int | None = None,
+    ) -> tuple[str, dict[str, object]]:
+        """Read a byte window from a file, decoded as UTF-8."""
+        normalized = self._normalize(path)
+        if normalized not in self._storage:
+            raise FileNotFoundError(f"File not found: {path}")
+        raw = self._storage[normalized].encode("utf-8")
+        total_bytes = len(raw)
+        sliced = raw[offset : offset + limit] if limit is not None else raw[offset:]
+        returned_bytes = len(sliced)
+        truncated = (offset + returned_bytes) < total_bytes
+        text = sliced.decode("utf-8")
+        return text, {
+            "total_bytes": total_bytes,
+            "returned_bytes": returned_bytes,
+            "truncated": truncated,
+        }
+
     def stat(self, path: str) -> dict[str, object]:
         """Get file metadata/stat data.
 
