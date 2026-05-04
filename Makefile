@@ -3,7 +3,7 @@
 
 PY_DIR := ralph-workflow
 
-.PHONY: all build verify lint format format-check typecheck test test-unit test-integration test-cov clean install dev install-dev publish test-pypi twine-upload twine-upload-testpypi help docs serve-docs
+.PHONY: all build verify lint format format-check typecheck test test-unit test-integration test-cov test-subprocess-e2e clean install dev install-dev publish test-pypi twine-upload twine-upload-testpypi help docs serve-docs
 
 all: verify
 
@@ -36,6 +36,9 @@ test-integration:
 
 test-cov:
 	$(MAKE) -C $(PY_DIR) test-cov
+
+test-subprocess-e2e:
+	$(MAKE) -C $(PY_DIR) test-subprocess-e2e
 
 clean:
 	$(MAKE) -C $(PY_DIR) clean
@@ -76,6 +79,7 @@ help:
 	@echo "  make test-unit   - run tests excluding tests/integration/"
 	@echo "  make test-integration - run tests/integration/ only"
 	@echo "  make test-cov    - run the full pytest suite with coverage"
+	@echo "  make test-subprocess-e2e - run subprocess-e2e marked tests (60s limit)"
 	@echo "  make build       - build Python distribution"
 	@echo "  make publish     - upload dist/* to PyPI via Twine"
 	@echo "  make test-pypi   - upload dist/* to Test PyPI via Twine"

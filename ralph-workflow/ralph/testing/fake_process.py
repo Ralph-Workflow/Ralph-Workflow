@@ -54,6 +54,7 @@ class FakePsutilProcess:
     _terminated: bool = False
     _killed: bool = False
     _children: list["FakePsutilProcess"] = field(default_factory=list)  # noqa: UP037
+    stubborn: bool = False
 
     def is_running(self) -> bool:
         return (
@@ -77,7 +78,8 @@ class FakePsutilProcess:
         return self._children
 
     def terminate(self) -> None:
-        self._terminated = True
+        if not self.stubborn:
+            self._terminated = True
 
     def kill(self) -> None:
         self._killed = True

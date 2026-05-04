@@ -498,7 +498,19 @@ class _FallbackStandaloneServer:
         self._mcp_server = mcp_server
         self._httpd: _FallbackHttpServer | None = None
 
-    def run(self, transport: Literal["streamable-http"] = DEFAULT_TRANSPORT) -> None:
+    @property
+    def bound_address(self) -> tuple[str, int]:
+        """Return the (host, port) the server is bound to after run() is called."""
+        if self._httpd is None:
+            raise RuntimeError("Server has not been started yet")
+        return cast("tuple[str, int]", self._httpd.server_address)
+
+    def run(
+        self,
+        transport: Literal["streamable-http"] = DEFAULT_TRANSPORT,
+        *,
+        ready_event: Event | None = None,
+    ) -> None:
         if transport != DEFAULT_TRANSPORT:
             raise ValueError(f"Unsupported transport: {transport}")
         httpd = _FallbackHttpServer((self._host, self._port), _FallbackHttpHandler)
@@ -506,6 +518,8 @@ class _FallbackStandaloneServer:
         httpd.state = ServerState.UNINITIALIZED
         httpd.shutdown_event = Event()
         self._httpd = httpd
+        if ready_event is not None:
+            ready_event.set()
         httpd.serve_forever(poll_interval=SERVER_POLL_INTERVAL_SECONDS)
 
 
