@@ -41,6 +41,7 @@ def explain_command(policy_dir: Path | None = None) -> int:
     Returns:
         Exit code: 0 on success, 1 on general error, 2 on policy validation error.
     """
+    from ralph.config.loader import load_config  # noqa: PLC0415
     from ralph.policy.explain import explain_policy  # noqa: PLC0415
     from ralph.policy.loader import load_policy, load_policy_for_workspace_scope  # noqa: PLC0415
     from ralph.policy.render import (  # noqa: PLC0415
@@ -61,8 +62,9 @@ def explain_command(policy_dir: Path | None = None) -> int:
             from ralph.workspace.scope import resolve_workspace_scope  # noqa: PLC0415
 
             scope = resolve_workspace_scope()
+            config = load_config(None, {}, workspace_scope=scope)
             resolved_dir, is_bundled = _resolve_policy_dir()
-            bundle = load_policy_for_workspace_scope(scope)
+            bundle = load_policy_for_workspace_scope(scope, config=config)
         if is_bundled:
             print(
                 "INFO: Using bundled default policy — "
