@@ -40,6 +40,39 @@ def format_elapsed_seconds(s: float) -> str:
     return f"{round(s, 1)}s"
 
 
+def format_transition_context_items(context: dict[str, object]) -> list[str]:
+    """Return formatted display strings for a phase transition context dict.
+
+    Normalizes context items from generic key=value to canonical display format:
+    - 'analysis_status' key: rendered as the bare value (no key prefix)
+    - 'decision' key: rendered as '→ {value}' (arrow notation)
+    - keys ending in '_budget': rendered as canonical 'Budget: N left' label
+    - multi-word keys (containing spaces): rendered as '[key value]' bracket notation
+    - all other keys: rendered as 'key=value'
+    """
+    parts: list[str] = []
+    for k, v in context.items():
+        v_str = str(v)
+        if k == "analysis_status":
+            parts.append(v_str)
+        elif k == "decision":
+            parts.append(f"→ {v_str}")
+        elif k.endswith("_budget"):
+            if v_str.endswith(" remaining"):
+                try:
+                    n = int(v_str.split(maxsplit=1)[0])
+                    parts.append(format_budget_remaining(n))
+                except (ValueError, IndexError):
+                    parts.append(f"Budget: {v_str}")
+            else:
+                parts.append(f"Budget: {v_str}")
+        elif " " in k:
+            parts.append(f"[{k} {v_str}]")
+        else:
+            parts.append(f"{k}={v_str}")
+    return parts
+
+
 @dataclass(frozen=True)
 class PhaseIterationContext:
     """Canonical iteration context for phase start/close rendering.
@@ -90,4 +123,5 @@ __all__ = [
     "format_dev_cycle",
     "format_elapsed_seconds",
     "format_fixer_cycle",
+    "format_transition_context_items",
 ]

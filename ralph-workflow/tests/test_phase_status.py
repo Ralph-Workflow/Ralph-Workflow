@@ -14,6 +14,7 @@ from ralph.display.phase_status import (
     format_budget_remaining,
     format_dev_cycle,
     format_fixer_cycle,
+    format_transition_context_items,
 )
 
 # --- Unit tests for format functions ---
@@ -192,3 +193,76 @@ def test_phase_start_new_labels_not_using_old_format() -> None:
     assert "dev-iteration=" not in output, "Old format should not appear"
     assert "fixer-iteration=" not in output, "Old format should not appear"
     assert "budget=" not in output, "Old format should not appear"
+
+
+# --- Tests for format_transition_context_items ---
+
+
+def test_transition_context_analysis_status_renders_as_value_only() -> None:
+    """'analysis_status' key renders as the bare value without key prefix."""
+    result = format_transition_context_items({"analysis_status": "final, skipping next"})
+    assert result == ["final, skipping next"]
+
+
+def test_transition_context_decision_renders_with_arrow() -> None:
+    """'decision' key renders as '→ value'."""
+    result = format_transition_context_items({"decision": "approved"})
+    assert result == ["→ approved"]
+
+
+def test_transition_context_decision_needs_changes_renders_with_arrow() -> None:
+    """'decision' key with 'needs changes' value renders as '→ needs changes'."""
+    result = format_transition_context_items({"decision": "needs changes"})
+    assert result == ["→ needs changes"]
+
+
+def test_transition_context_budget_key_uses_canonical_label() -> None:
+    """Keys ending in '_budget' with 'N remaining' value use canonical Budget label."""
+    result = format_transition_context_items({"iteration_budget": "3 remaining"})
+    assert result == ["Budget: 3 left"]
+
+
+def test_transition_context_budget_key_zero_remaining() -> None:
+    """Budget of 0 remaining renders as 'Budget: 0 left'."""
+    result = format_transition_context_items({"dev_budget": "0 remaining"})
+    assert result == ["Budget: 0 left"]
+
+
+def test_transition_context_multi_word_key_uses_bracket_notation() -> None:
+    """Multi-word keys (with spaces) render as '[key value]' bracket notation."""
+    result = format_transition_context_items({"Planning Analysis": "3/3"})
+    assert result == ["[Planning Analysis 3/3]"]
+
+
+def test_transition_context_multi_word_key_with_slash_value() -> None:
+    """Multi-word key with slash value still uses bracket notation."""
+    result = format_transition_context_items({"Development Analysis": "2/4"})
+    assert result == ["[Development Analysis 2/4]"]
+
+
+def test_transition_context_single_word_key_uses_equals_format() -> None:
+    """Single-word keys (no spaces) render as 'key=value'."""
+    result = format_transition_context_items({"iteration": "1/5"})
+    assert result == ["iteration=1/5"]
+
+
+def test_transition_context_multiple_items_preserve_order() -> None:
+    """Multiple context items are returned in insertion order."""
+    context = {
+        "Planning Analysis": "3/3",
+        "analysis_status": "final, skipping next",
+        "decision": "needs changes",
+        "iteration": "1/5",
+    }
+    result = format_transition_context_items(context)
+    assert result == [
+        "[Planning Analysis 3/3]",
+        "final, skipping next",
+        "→ needs changes",
+        "iteration=1/5",
+    ]
+
+
+def test_transition_context_empty_dict_returns_empty_list() -> None:
+    """Empty context dict returns empty list."""
+    assert format_transition_context_items({}) == []

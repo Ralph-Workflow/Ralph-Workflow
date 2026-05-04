@@ -18,6 +18,7 @@ from ralph.display.phase_status import (
     format_budget_remaining,
     format_dev_cycle,
     format_fixer_cycle,
+    format_transition_context_items,
 )
 from ralph.pipeline import progress
 
@@ -214,14 +215,7 @@ def _render_major_transition(  # noqa: PLR0913
     banner.append(f" {arrow} ", style="theme.text.emphasis")
     banner.append(to_label, style=style)
     if context:
-        # Format analysis_status naturally without the key name or = sign
-        formatted_parts = []
-        for k, v in context.items():
-            if k == "analysis_status":
-                formatted_parts.append(str(v))
-            else:
-                formatted_parts.append(f"{k}={v}")
-        detail = "  ".join(formatted_parts)
+        detail = "  ".join(format_transition_context_items(context))
         banner.append(f"  ({detail})", style="theme.text.muted")
     c.print(banner)
     if description:
