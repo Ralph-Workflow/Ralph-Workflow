@@ -109,6 +109,8 @@ class TestPhaseExitModel:
         assert m.errors == 0
         assert m.artifact_outcome == ""
         assert m.review_issues_found is None
+        assert m.waiting_status_line is None
+        assert m.last_failure_category is None
 
     def test_exit_trigger_set(self) -> None:
         m = PhaseExitModel(phase_name="development", exit_trigger="produced")
@@ -134,6 +136,8 @@ class TestPhaseExitModel:
             tool_calls=7,
             errors=0,
             artifact_outcome="fix: applied",
+            waiting_status_line="waiting for child",
+            last_failure_category="timeout",
         )
         assert exit_model.phase_name == "fix"
         assert exit_model.phase_role == "fix"
@@ -150,6 +154,8 @@ class TestPhaseExitModel:
         assert exit_model.tool_calls == 7  # noqa: PLR2004
         assert exit_model.errors == 0
         assert exit_model.artifact_outcome == "fix: applied"
+        assert exit_model.waiting_status_line == "waiting for child"
+        assert exit_model.last_failure_category == "timeout"
 
     def test_to_iteration_context_reflects_entry_fields(self) -> None:
         m = PhaseExitModel(phase_name="fix", outer_dev_iteration=3)
@@ -184,6 +190,8 @@ class TestRunCompletionModel:
         assert not m.review_issues_found
         assert m.last_error is None
         assert m.budget_progress == {}
+        assert m.waiting_status_line is None
+        assert m.last_failure_category is None
 
     def test_failure_flag(self) -> None:
         m = RunCompletionModel(final_phase="failed", is_failure=True, exit_trigger="failed")
@@ -217,6 +225,8 @@ class TestRunCompletionModel:
         snap.last_error = None
         snap.decision_log = ()
         snap.last_activity_line = None
+        snap.waiting_status_line = None
+        snap.last_failure_category = None
         snap.budget_progress = {
             "dev_cycles": BudgetProgress(
                 completed=3,
@@ -260,6 +270,8 @@ class TestRunCompletionModel:
         snap.last_error = None
         snap.decision_log = ()
         snap.last_activity_line = None
+        snap.waiting_status_line = None
+        snap.last_failure_category = None
         snap.budget_progress = {
             "tracked": BudgetProgress(
                 completed=1, cap=5, description="tracked", tracks_budget=True
@@ -296,6 +308,8 @@ class TestRunCompletionModel:
         snap.review_issues_found = False
         snap.last_error = None
         snap.last_activity_line = None
+        snap.waiting_status_line = None
+        snap.last_failure_category = None
         snap.decision_log = (
             ("development_analysis", "proceed", "tests green", "2026-01-01T00:00:00"),
             ("commit", "complete", "committed", "2026-01-01T00:01:00"),
@@ -320,10 +334,31 @@ class TestRunCompletionModel:
         snap.last_error = None
         snap.decision_log = ()
         snap.last_activity_line = "read file: src/main.py"
+        snap.waiting_status_line = None
+        snap.last_failure_category = None
         snap.budget_progress = {}
 
         model = RunCompletionModel.from_snapshot(snap, exit_trigger="completed")
         assert model.last_activity_line == "read file: src/main.py"
+
+    def test_from_snapshot_extracts_waiting_status_and_failure_category(self) -> None:
+        """from_snapshot carries waiting_status_line and last_failure_category."""
+        snap = MagicMock()
+        snap.phase = "done"
+        snap.is_terminal_failure = False
+        snap.outer_dev_iteration = None
+        snap.total_agent_calls = 0
+        snap.review_issues_found = False
+        snap.last_error = None
+        snap.decision_log = ()
+        snap.last_activity_line = None
+        snap.waiting_status_line = "waiting for child process"
+        snap.last_failure_category = "timeout"
+        snap.budget_progress = {}
+
+        model = RunCompletionModel.from_snapshot(snap, exit_trigger="failed")
+        assert model.waiting_status_line == "waiting for child process"
+        assert model.last_failure_category == "timeout"
 
     def test_from_snapshot_analysis_decisions_empty_when_no_analysis_phases(self) -> None:
         """from_snapshot yields empty analysis_decisions when log has no analysis phases."""
@@ -335,6 +370,8 @@ class TestRunCompletionModel:
         snap.review_issues_found = False
         snap.last_error = None
         snap.last_activity_line = None
+        snap.waiting_status_line = None
+        snap.last_failure_category = None
         snap.decision_log = (
             ("commit", "complete", "committed", "2026-01-01T00:01:00"),
         )

@@ -245,6 +245,59 @@ class TestEmitPhaseCloseFromExit:
         assert "[Dev" not in out
         assert "[Analysis" not in out
 
+    def test_emits_debug_line_when_waiting_status_set(self) -> None:
+        renderer, buf = _make_renderer()
+        renderer.begin_phase("development")
+        entry = PhaseEntryModel(phase_name="development")
+        exit_model = PhaseExitModel.from_entry_model(
+            entry,
+            exit_trigger="timeout",
+            waiting_status_line="waiting for tool result",
+        )
+        renderer.emit_phase_close_from_exit(exit_model)
+        out = buf.getvalue()
+        assert "[phase-close] debug phase=development" in out
+        assert "waiting=waiting for tool result" in out
+
+    def test_emits_debug_line_when_failure_category_set(self) -> None:
+        renderer, buf = _make_renderer()
+        renderer.begin_phase("development")
+        entry = PhaseEntryModel(phase_name="development")
+        exit_model = PhaseExitModel.from_entry_model(
+            entry,
+            exit_trigger="failed",
+            last_failure_category="timeout",
+        )
+        renderer.emit_phase_close_from_exit(exit_model)
+        out = buf.getvalue()
+        assert "[phase-close] debug phase=development" in out
+        assert "failure_category=timeout" in out
+
+    def test_emits_debug_line_when_both_breadcrumbs_set(self) -> None:
+        renderer, buf = _make_renderer()
+        renderer.begin_phase("fix")
+        entry = PhaseEntryModel(phase_name="fix")
+        exit_model = PhaseExitModel.from_entry_model(
+            entry,
+            exit_trigger="failed",
+            waiting_status_line="waiting for child",
+            last_failure_category="tool_error",
+        )
+        renderer.emit_phase_close_from_exit(exit_model)
+        out = buf.getvalue()
+        assert "[phase-close] debug phase=fix" in out
+        assert "waiting=waiting for child" in out
+        assert "failure_category=tool_error" in out
+
+    def test_no_debug_line_when_no_breadcrumbs(self) -> None:
+        renderer, buf = _make_renderer()
+        renderer.begin_phase("development")
+        entry = PhaseEntryModel(phase_name="development")
+        exit_model = PhaseExitModel.from_entry_model(entry, exit_trigger="produced")
+        renderer.emit_phase_close_from_exit(exit_model)
+        out = buf.getvalue()
+        assert "[phase-close] debug" not in out
+
 
 # ---------------------------------------------------------------------------
 # Debug breadcrumbs in text-mode render_completion_summary

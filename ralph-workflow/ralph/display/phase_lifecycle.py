@@ -121,6 +121,8 @@ class PhaseExitModel:
             (e.g. ``"plan: 5 step(s), 2 risk(s)"``).
         review_issues_found: Whether the phase found review issues, or ``None``
             when not applicable.
+        waiting_status_line: Last recorded waiting-status line for debug breadcrumbs.
+        last_failure_category: Last recorded failure category for debug breadcrumbs.
     """
 
     phase_name: str
@@ -142,6 +144,9 @@ class PhaseExitModel:
     # Outcome
     artifact_outcome: str = ""
     review_issues_found: bool | None = None
+    # Debug breadcrumbs
+    waiting_status_line: str | None = None
+    last_failure_category: str | None = None
 
     def to_iteration_context(self) -> PhaseIterationContext:
         """Return a :class:`PhaseIterationContext` for canonical label rendering."""
@@ -166,6 +171,8 @@ class PhaseExitModel:
         errors: int = 0,
         artifact_outcome: str = "",
         review_issues_found: bool | None = None,
+        waiting_status_line: str | None = None,
+        last_failure_category: str | None = None,
     ) -> PhaseExitModel:
         """Construct a :class:`PhaseExitModel` by extending a :class:`PhaseEntryModel`."""
         return cls(
@@ -186,6 +193,8 @@ class PhaseExitModel:
             errors=errors,
             artifact_outcome=artifact_outcome,
             review_issues_found=review_issues_found,
+            waiting_status_line=waiting_status_line,
+            last_failure_category=last_failure_category,
         )
 
 
@@ -234,8 +243,10 @@ class RunCompletionModel:
     budget_progress: dict[str, tuple[int, int]] = field(default_factory=dict)
     # Analysis decision trace: (phase, decision, reason) for analysis phases
     analysis_decisions: tuple[tuple[str, str, str], ...] = ()
-    # Last recorded activity line for debug breadcrumbs
+    # Debug breadcrumbs: last activity, waiting state, and failure category
     last_activity_line: str | None = None
+    waiting_status_line: str | None = None
+    last_failure_category: str | None = None
 
     @classmethod
     def from_snapshot(  # noqa: PLR0913
@@ -276,6 +287,8 @@ class RunCompletionModel:
             budget_progress=budget_progress,
             analysis_decisions=analysis_decisions,
             last_activity_line=snapshot.last_activity_line,
+            waiting_status_line=snapshot.waiting_status_line,
+            last_failure_category=snapshot.last_failure_category,
         )
 
 

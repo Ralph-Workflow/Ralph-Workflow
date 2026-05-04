@@ -775,7 +775,8 @@ class PlainLogRenderer:
 
         Canonical model-based path for phase-close after-banners. Bridges
         PhaseExitModel into emit_phase_close so iteration labels never diverge
-        between phase-start and phase-close surfaces.
+        between phase-start and phase-close surfaces. Emits an additional
+        debug line when the model carries waiting or failure breadcrumbs.
         """
         iter_ctx = exit_model.to_iteration_context()
         self.emit_phase_close(
@@ -785,6 +786,26 @@ class PlainLogRenderer:
             iteration_context=iter_ctx if iter_ctx.has_context() else None,
             exit_trigger=exit_model.exit_trigger,
         )
+        if exit_model.waiting_status_line or exit_model.last_failure_category:
+            timestamp = self._format_timestamp(self._clock())
+            debug_parts: list[str] = []
+            if exit_model.waiting_status_line:
+                debug_parts.append(f"waiting={_sanitize(exit_model.waiting_status_line)}")
+            if exit_model.last_failure_category:
+                debug_parts.append(
+                    f"failure_category={_sanitize(exit_model.last_failure_category)}"
+                )
+            self._console.print(
+                self._build_line(
+                    timestamp,
+                    "WARN",
+                    "META",
+                    f"[phase-close] debug phase={exit_model.phase_name} {' '.join(debug_parts)}",
+                ),
+                markup=False,
+                highlight=False,
+                no_wrap=True,
+            )
 
     def _update_counters(self, kind: str, is_new_block: bool) -> None:
         """Increment activity counters for a new streaming block.
