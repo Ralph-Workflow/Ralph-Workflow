@@ -144,6 +144,26 @@ When a block ends, Ralph Workflow may append summary lines depending on configur
 - `⇳ preview:` — first *N* characters of the block content
 - `⇳ ai-summary:` — LLM-generated one-line summary (requires `RALPH_LONG_CONTENT_AI_SUMMARY`)
 
+## Phase-Start Banner
+
+Before each phase begins, a single-line phase-start banner is printed to the console:
+
+```
+<glyph> <Phase Label>  <od_glyph> Dev N/cap  <ia_glyph> Analysis N/cap  <budget_glyph> Budget: N left  agent=<name>
+```
+
+| Field | Notes |
+|-------|-------|
+| `<Phase Label>` | Human-readable phase name (e.g. `Development Analysis`) |
+| `Dev N/cap` or `Dev #N` | Outer development cycle — 1-indexed current cycle number; shows cap when budget is tracked |
+| `Analysis N/cap` or `Analysis #N` | Inner analysis loop iteration — 1-indexed; shows cap when known |
+| `Budget: N left` | Remaining budget from the active budget counter |
+| `agent=<name>` | Active agent identity, if known |
+
+All iteration fields are optional and appear only when the pipeline has that context.
+`Dev N/cap` counts from 1: `Dev 1/5` means the pipeline is entering its first development
+cycle out of a total budget of 5. `Dev 0/cap` is never shown.
+
 ## `[phase-close]` Line
 
 After each phase completes, a single `[phase-close]` line is appended to the transcript:

@@ -908,11 +908,13 @@ def _show_phase_start_with_context(
             if outer_iteration is not None and budget_remaining is not None:
                 outer_dev_cap = outer_iteration + budget_remaining
 
+    # Convert completed cycle count (0-indexed) to current cycle number (1-indexed)
+    current_dev_cycle = outer_iteration + 1 if outer_iteration is not None else None
     entry = PhaseEntryModel(
         phase_name=phase,
         phase_role=phase_role,
         agent_name=agent_name,
-        outer_dev_iteration=outer_iteration,
+        outer_dev_iteration=current_dev_cycle,
         outer_dev_cap=outer_dev_cap,
         inner_analysis=inner_analysis,
         inner_analysis_cap=inner_analysis_cap,
@@ -2481,10 +2483,14 @@ def _render_phase_artifact_handoff(  # noqa: PLR0913
                 if outer_iteration is not None and budget_remaining is not None
                 else None
             )
+            # Convert completed cycle count (0-indexed) to current cycle number (1-indexed)
+            current_dev_cycle: int | None = (
+                outer_iteration + 1 if outer_iteration is not None else None
+            )
             entry = PhaseEntryModel(
                 phase_name=phase,
                 phase_role=phase_role,
-                outer_dev_iteration=outer_iteration,
+                outer_dev_iteration=current_dev_cycle,
                 outer_dev_cap=outer_dev_cap,
                 inner_analysis=inner_analysis,
                 inner_analysis_cap=inner_analysis_cap,

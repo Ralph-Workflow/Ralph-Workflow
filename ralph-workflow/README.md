@@ -444,6 +444,11 @@ In `compact` mode, secondary columns, extra blank lines, and descriptive rules a
 to fit narrow terminals. In `medium` and `wide` modes, phase banners include descriptions,
 additional context lines, and fuller iteration/budget labels.
 
+Phase-start banners show iteration context as `Dev N/cap` (outer development cycle, 1-indexed)
+and `Analysis N/cap` (inner analysis loop, 1-indexed). `Dev 1/5` means the pipeline is entering
+its first development cycle out of a total budget of 5. Phase-close lines echo the same labels
+alongside elapsed time, exit trigger, and activity counters.
+
 **Environment knobs**
 
 | Variable | Effect |

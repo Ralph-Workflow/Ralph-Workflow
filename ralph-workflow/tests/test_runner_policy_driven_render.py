@@ -293,12 +293,16 @@ class TestEntryModelFlowsToRenderSuccessArtifact:
         self,
         tmp_workspace: Path,
     ) -> None:
-        """When state carries outer_dev progress, entry_model has outer_dev_iteration set."""
-        expected_outer_dev = 2
+        """When state carries outer_dev progress, entry_model has outer_dev_iteration set.
+
+        outer_dev_iteration is 1-indexed (current cycle = completed + 1) so that
+        the phase-start banner shows "Dev 1/5" on the first cycle, not "Dev 0/5".
+        """
+        outer_completed = 2
         bundle = _make_bundle_with_dev_result_contract()
         state = (
             PipelineState.from_policy(bundle.pipeline)
-            .with_outer_progress("dev_iter", expected_outer_dev)
+            .with_outer_progress("dev_iter", outer_completed)
         )
 
         display = MagicMock()
@@ -329,7 +333,8 @@ class TestEntryModelFlowsToRenderSuccessArtifact:
         assert len(captured_entries) == 1
         entry = captured_entries[0]
         assert isinstance(entry, PhaseEntryModel)
-        assert entry.outer_dev_iteration == expected_outer_dev
+        # 1-indexed: completed=2 means we're on cycle 3
+        assert entry.outer_dev_iteration == outer_completed + 1
 
     def test_no_entry_model_when_state_is_none(
         self,
