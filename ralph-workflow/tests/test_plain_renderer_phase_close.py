@@ -7,6 +7,7 @@ from io import StringIO
 from rich.console import Console
 
 from ralph.display.context import make_display_context
+from ralph.display.phase_status import PhaseIterationContext
 from ralph.display.plain_renderer import _TAG_CATEGORY, _TAGS, PlainLogRenderer
 from ralph.display.theme import UNICODE_GLYPHS
 
@@ -90,3 +91,43 @@ def test_phase_close_milestone_role_ascii_glyph() -> None:
     out = buf.getvalue()
     assert "[phase-close] * phase=planning" in out
     assert UNICODE_GLYPHS["milestone"] not in out
+
+
+def test_phase_close_iteration_context_labels_appear_after_phase_name() -> None:
+    """emit_phase_close with iteration_context includes canonical labels in output."""
+    renderer, buf = _make_renderer()
+    ctx = PhaseIterationContext(outer_dev=2, fixer=1)
+    renderer.emit_phase_close("fix", "fix: applied", iteration_context=ctx)
+    out = buf.getvalue()
+    assert "phase=fix" in out
+    assert "[Dev #2]" in out
+    assert "[Fixer #1]" in out
+    assert "fix: applied" in out
+
+
+def test_phase_close_iteration_context_none_no_labels() -> None:
+    """emit_phase_close without iteration_context emits no canonical label brackets."""
+    renderer, buf = _make_renderer()
+    renderer.emit_phase_close("planning", "plan: done")
+    out = buf.getvalue()
+    assert "[Dev #" not in out
+    assert "[Fixer #" not in out
+    assert "[Analysis" not in out
+
+
+def test_phase_close_iteration_context_empty_no_labels() -> None:
+    """emit_phase_close with empty PhaseIterationContext emits no extra brackets."""
+    renderer, buf = _make_renderer()
+    renderer.emit_phase_close("planning", "plan: done", iteration_context=PhaseIterationContext())
+    out = buf.getvalue()
+    assert "[Dev #" not in out
+    assert "[Fixer #" not in out
+
+
+def test_phase_close_iteration_context_analysis_with_cap() -> None:
+    """emit_phase_close with inner_analysis + cap shows [Analysis N/cap] label."""
+    renderer, buf = _make_renderer()
+    ctx = PhaseIterationContext(inner_analysis=3, inner_analysis_cap=5)
+    renderer.emit_phase_close("development_analysis", "analysis: done", iteration_context=ctx)
+    out = buf.getvalue()
+    assert "[Analysis 3/5]" in out

@@ -441,8 +441,13 @@ policy, terminal width, and adaptive layout limits. No renderer constructs its o
 
 | Mode | Trigger | Headline cap | Condenser soft limit |
 |------|---------|--------------|---------------------|
-| `wide` | width ≥ 60 (default) | 120 chars | 400 cells |
 | `compact` | width < 60, or `RALPH_FORCE_NARROW=1` | 80 chars | 240 cells |
+| `medium` | width 60–99 | 100 chars | 300 cells |
+| `wide` | width ≥ 100 (default) | 120 chars | 400 cells |
+
+In `compact` mode, secondary columns, extra blank lines, and descriptive rules are suppressed
+to fit narrow terminals. In `medium` and `wide` modes, phase banners include descriptions,
+additional context lines, and fuller iteration/budget labels.
 
 **Environment knobs**
 
@@ -452,6 +457,9 @@ policy, terminal width, and adaptive layout limits. No renderer constructs its o
 | `NO_COLOR=1` | Disable colour output (standard, wins over `FORCE_COLOR`) |
 | `FORCE_COLOR=1` | Force colour output even in non-TTY environments |
 | `COLUMNS=<n>` | Override terminal width used for mode detection |
+| `RALPH_FORCE_ASCII=1` | Use ASCII glyph fallbacks (e.g. `->` instead of `→`) |
+| `RALPH_STREAMING_DEDUP=0` | Disable deduplication of consecutive identical streaming fragments |
+| `RALPH_STREAMING_CHECKPOINTS=0` | Disable periodic checkpoint lines during long streaming blocks |
 
 Colours come from the Okabe-Ito palette defined in `ralph/display/theme.py` and are
 applied through semantic theme keys (`theme.banner.title`, `theme.text.muted`, etc.).

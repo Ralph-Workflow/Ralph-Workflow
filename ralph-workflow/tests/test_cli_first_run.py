@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -533,9 +532,9 @@ def test_cli_run_with_only_prompt_shows_init_hint(
     assert result.exit_code == 2, (  # noqa: PLR2004
         f"Expected exit code 2 (preflight), got {result.exit_code}: {result.output}"
     )
-    # Validation error message from validate_required_inputs references ralph --init
-    # Normalize whitespace to handle terminal line-wrap when running in parallel test workers.
-    normalized_output = re.sub(r"\s+", " ", result.output)
+    # Validation error message from validate_required_inputs references ralph --init.
+    # Normalize whitespace so wrapped terminal output from parallel test workers stays comparable.
+    normalized_output = " ".join(result.output.split())
     assert "ralph --init" in normalized_output, (
         f"Expected 'ralph --init' guidance in output, got: {result.output}"
     )

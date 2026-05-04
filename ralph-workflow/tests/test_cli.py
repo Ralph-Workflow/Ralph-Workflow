@@ -633,6 +633,8 @@ def test_explain_policy_prints_workflow_diagram(cli_runner: CliRunner) -> None:
 
     # Should contain bypass_routes explanation sentence for the review phase (from bundled defaults)
     assert "Explanation: phase 'review' bypasses to 'review_commit'" in result.stdout
+    # Should contain routing explanation sentences for commit phase post-commit routes
+    assert "Explanation: after commit phase 'development_commit'" in result.stdout
 
 
 class TestParseCounterOverrides:

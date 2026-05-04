@@ -11,6 +11,7 @@ instead.
 
 - [Configuration](configuration.md) — runtime config files, precedence, and policy knobs
 - [Concepts](concepts.md) — agents, chains, drains, phases, and execution strategy
+- [Agents](agents.md) — agent registry, fallback chains, and drain bindings
 - [MCP Architecture](mcp-architecture.md) — server lifecycle, capability gates, and upstream proxying
 - [Artifacts](artifacts.md) — typed handoffs and artifact storage contracts
 - [Prompts](prompts.md) — prompt template loading, rendering, and payload materialisation
@@ -20,6 +21,7 @@ instead.
 :maxdepth: 1
 
 concepts
+agents
 mcp-architecture
 artifacts
 prompts

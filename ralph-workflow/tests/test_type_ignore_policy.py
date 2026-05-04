@@ -5,6 +5,8 @@ import tomllib
 from functools import cache
 from pathlib import Path
 
+import pytest
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 WORKSPACE_ROOT = REPO_ROOT.parent
 MYPY_INI_PATH = REPO_ROOT / "mypy.ini"
@@ -70,6 +72,7 @@ def test_ruff_enforces_blanket_type_ignore_rule() -> None:
 
 
 
+@pytest.mark.timeout_seconds(5)
 def test_repo_type_ignore_comments_follow_policy() -> None:
     blanket_offenders: list[str] = []
     reason_offenders: list[str] = []
