@@ -98,7 +98,6 @@ from ralph.display.phase_status import (
     format_analysis_cycle,
     format_budget_remaining,
     format_dev_cycle,
-    format_fixer_cycle,
 )
 from ralph.display.plain_renderer import RunStartOrientation
 from ralph.display.progress import RalphProgress, get_progress
@@ -116,7 +115,6 @@ __all__ = [
     "format_analysis_cycle",
     "format_budget_remaining",
     "format_dev_cycle",
-    "format_fixer_cycle",
     "get_progress",
     "install_sigwinch_refresher",
     "make_display_context",

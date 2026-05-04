@@ -27,7 +27,6 @@ from ralph.display.phase_status import (
     format_analysis_cycle,
     format_budget_remaining,
     format_dev_cycle,
-    format_fixer_cycle,
 )
 
 if TYPE_CHECKING:
@@ -47,9 +46,9 @@ class PhaseEntryModel:
         phase_role: Role derived from pipeline policy (e.g. ``"analysis"``).
         agent_name: Active agent identity string, if known.
         outer_dev_iteration: Outer development cycle number (1-indexed).
+        outer_dev_cap: Budget cap for the outer development counter.
         inner_analysis: Inner analysis cycle number within the current context.
         inner_analysis_cap: Cap for inner analysis (shown as ``N/cap``).
-        fixer_iteration: Fixer iteration number when in a fix loop.
         budget_remaining: Remaining budget count for the active budget counter.
         budget_counter_name: Name of the budget counter driving ``budget_remaining``.
     """
@@ -58,9 +57,9 @@ class PhaseEntryModel:
     phase_role: str | None = None
     agent_name: str | None = None
     outer_dev_iteration: int | None = None
+    outer_dev_cap: int | None = None
     inner_analysis: int | None = None
     inner_analysis_cap: int | None = None
-    fixer_iteration: int | None = None
     budget_remaining: int | None = None
     budget_counter_name: str | None = None
 
@@ -68,9 +67,9 @@ class PhaseEntryModel:
         """Return a :class:`PhaseIterationContext` for canonical label rendering."""
         return PhaseIterationContext(
             outer_dev=self.outer_dev_iteration,
+            outer_dev_cap=self.outer_dev_cap,
             inner_analysis=self.inner_analysis,
             inner_analysis_cap=self.inner_analysis_cap,
-            fixer=self.fixer_iteration,
             budget_remaining=self.budget_remaining,
         )
 
@@ -89,8 +88,6 @@ class PhaseEntryModel:
             parts.append(format_dev_cycle(self.outer_dev_iteration))
         if self.inner_analysis is not None:
             parts.append(format_analysis_cycle(self.inner_analysis, self.inner_analysis_cap))
-        if self.fixer_iteration is not None:
-            parts.append(format_fixer_cycle(self.fixer_iteration))
         if self.budget_remaining is not None:
             parts.append(format_budget_remaining(self.budget_remaining))
         return parts
@@ -109,9 +106,9 @@ class PhaseExitModel:
         phase_role: Role from pipeline policy.
         agent_name: Active agent identity, if known.
         outer_dev_iteration: Outer development cycle number.
+        outer_dev_cap: Budget cap for the outer development counter.
         inner_analysis: Inner analysis cycle number.
         inner_analysis_cap: Cap for inner analysis.
-        fixer_iteration: Fixer iteration number.
         budget_remaining: Remaining budget count.
         budget_counter_name: Budget counter name.
         elapsed_seconds: Wall-clock time for this phase.
@@ -130,9 +127,9 @@ class PhaseExitModel:
     phase_role: str | None = None
     agent_name: str | None = None
     outer_dev_iteration: int | None = None
+    outer_dev_cap: int | None = None
     inner_analysis: int | None = None
     inner_analysis_cap: int | None = None
-    fixer_iteration: int | None = None
     budget_remaining: int | None = None
     budget_counter_name: str | None = None
     # Performance / activity
@@ -150,9 +147,9 @@ class PhaseExitModel:
         """Return a :class:`PhaseIterationContext` for canonical label rendering."""
         return PhaseIterationContext(
             outer_dev=self.outer_dev_iteration,
+            outer_dev_cap=self.outer_dev_cap,
             inner_analysis=self.inner_analysis,
             inner_analysis_cap=self.inner_analysis_cap,
-            fixer=self.fixer_iteration,
             budget_remaining=self.budget_remaining,
         )
 
@@ -176,9 +173,9 @@ class PhaseExitModel:
             phase_role=entry.phase_role,
             agent_name=entry.agent_name,
             outer_dev_iteration=entry.outer_dev_iteration,
+            outer_dev_cap=entry.outer_dev_cap,
             inner_analysis=entry.inner_analysis,
             inner_analysis_cap=entry.inner_analysis_cap,
-            fixer_iteration=entry.fixer_iteration,
             budget_remaining=entry.budget_remaining,
             budget_counter_name=entry.budget_counter_name,
             elapsed_seconds=elapsed_seconds,
@@ -206,8 +203,6 @@ class RunCompletionModel:
             ``"failed"``, ``"interrupted"``).
         elapsed_seconds: Total wall-clock time for the run.
         outer_dev_iteration: Outer development cycle at termination.
-        fixer_iteration: Fixer iteration at termination, if active.
-        analysis_within_fixer: Inner analysis count within a fixer context.
         total_agent_calls: Total agent invocations across the run.
         content_blocks: Total content streaming blocks.
         thinking_blocks: Total thinking streaming blocks.
@@ -225,8 +220,6 @@ class RunCompletionModel:
     elapsed_seconds: float | None = None
     # Iteration context
     outer_dev_iteration: int | None = None
-    fixer_iteration: int | None = None
-    analysis_within_fixer: int | None = None
     # Activity counters
     total_agent_calls: int = 0
     content_blocks: int = 0
@@ -264,8 +257,6 @@ class RunCompletionModel:
             exit_trigger=exit_trigger,
             elapsed_seconds=elapsed_seconds,
             outer_dev_iteration=snapshot.outer_dev_iteration,
-            fixer_iteration=snapshot.fixer_iteration,
-            analysis_within_fixer=snapshot.analysis_within_fixer,
             total_agent_calls=snapshot.total_agent_calls,
             content_blocks=content_blocks,
             thinking_blocks=thinking_blocks,

@@ -906,6 +906,12 @@ def _show_phase_start_with_context(
             outer_iteration = state.get_outer_progress(counter)
             budget_remaining = state.get_budget_remaining(counter)
 
+    outer_iteration_total: int | None = (
+        outer_iteration + budget_remaining
+        if outer_iteration is not None and budget_remaining is not None
+        else None
+    )
+
     # Build iteration context for display.
     # Note: inner_analysis is intentionally not set here - it tracks
     # analysis-within-fixer context that is supplied separately by richer
@@ -913,6 +919,7 @@ def _show_phase_start_with_context(
     # dedicated analysis_iteration parameter below.
     iteration_context = PhaseStartIterationContext(
         outer_iteration=outer_iteration,
+        outer_iteration_total=outer_iteration_total,
         budget_remaining=budget_remaining,
     )
 
@@ -2492,8 +2499,14 @@ def _render_phase_artifact_handoff(  # noqa: PLR0913
                 and phase_def.loop_policy is not None
                 else None
             )
+            outer_dev_cap: int | None = (
+                outer_dev + budget
+                if outer_dev is not None and budget is not None
+                else None
+            )
             iteration_context = PhaseIterationContext(
                 outer_dev=outer_dev,
+                outer_dev_cap=outer_dev_cap,
                 budget_remaining=budget,
                 inner_analysis=inner_analysis,
                 inner_analysis_cap=inner_analysis_cap,
@@ -2531,9 +2544,9 @@ def _render_success_artifact(  # noqa: PLR0913
 
                 plan = read_plan_artifact(workspace_root)
                 produced = (
-                    f"plan: {plan.total_steps} step(s), {len(plan.risks_mitigations)} risk(s)"
+                    f"{plan.total_steps} step(s), {len(plan.risks_mitigations)} risk(s)"
                     if plan is not None
-                    else "plan: (no plan artifact on disk)"
+                    else "(no plan artifact on disk)"
                 )
                 cast("ParallelDisplay", display).emit_phase_close(
                     phase,
@@ -2549,9 +2562,9 @@ def _render_success_artifact(  # noqa: PLR0913
         if verbosity != Verbosity.QUIET and hasattr(display, "emit_phase_close"):
             with suppress(Exception):
                 produced = (
-                    f"{phase}: result artifact present"
+                    "result produced"
                     if (workspace_root / ra.json_path).exists()
-                    else f"{phase}: no result artifact"
+                    else "no result artifact"
                 )
                 cast("ParallelDisplay", display).emit_phase_close(
                     phase,
@@ -2589,7 +2602,7 @@ def _render_success_artifact(  # noqa: PLR0913
                         pass
                 cast("ParallelDisplay", display).emit_phase_close(
                     phase,
-                    f"{phase}: {issue_count} issue(s)",
+                    f"{issue_count} issue(s)",
                     phase_role=phase_role,
                     iteration_context=iteration_context,
                     exit_trigger="produced",
@@ -2602,7 +2615,7 @@ def _render_success_artifact(  # noqa: PLR0913
             with suppress(Exception):
                 cast("ParallelDisplay", display).emit_phase_close(
                     phase,
-                    f"{phase}: applied",
+                    "applied",
                     phase_role=phase_role,
                     iteration_context=iteration_context,
                     exit_trigger="produced",
@@ -3166,7 +3179,7 @@ def _execute_commit_effect(  # noqa: PLR0913
         if verbosity != Verbosity.QUIET and hasattr(display, "emit_phase_close"):
             with suppress(Exception):
                 cast("ParallelDisplay", display).emit_phase_close(
-                    "commit", "commit: prepared", exit_trigger="produced"
+                    "commit", f"sha={sha[:8]}", exit_trigger="produced"
                 )
         _cleanup_commit_message_artifacts(repo_root)
     except Exception as exc:

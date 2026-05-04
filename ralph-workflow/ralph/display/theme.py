@@ -36,7 +36,6 @@ UNICODE_GLYPHS: Final[dict[str, str]] = {
     "budget": "▲",  # ▲ - budget indicator
     "review_pass": "✔",  # ✔ - review pass
     "review_fail": "✘",  # ✘ - review fail
-    "fixer": "⚙",  # ⚙ - fixer/gear indicator
     "outer_dev": "⊞",  # ⊞ - outer dev indicator
     "inner_analysis": "≴",  # ≴ - inner analysis indicator
     "proceed": "↑",  # ↑ - proceed arrow
@@ -59,7 +58,6 @@ ASCII_GLYPHS: Final[dict[str, str]] = {
     "budget": "^",
     "review_pass": "[+]",
     "review_fail": "[-]",
-    "fixer": "[G]",
     "outer_dev": "[OD]",
     "inner_analysis": "[IA]",
     "proceed": "^",
@@ -147,8 +145,7 @@ _THEME_STYLES: Final[dict[str, str]] = {
     "theme.banner.title": f"bold {SKY_BLUE}",
     "theme.banner.version": f"bold {BLUISH_GREEN}",
     "theme.banner.welcome": "bold",
-    # New theme keys for iteration indicators
-    "theme.fixer_iteration": VERMILLION,
+    # Theme keys for iteration indicators
     "theme.outer_dev": f"bold {SKY_BLUE}",
     "theme.inner_analysis": REDDISH_PURPLE,
     "theme.review_pass": f"bold {BLUISH_GREEN}",

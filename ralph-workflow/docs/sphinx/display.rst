@@ -142,26 +142,22 @@ consistently across all three display surfaces.
    * - Label format
      - Style
      - Meaning
-   * - ``Dev #N``
+   * - ``Dev N/cap`` or ``Dev #N``
      - Bold sky-blue (``theme.outer_dev``)
-     - Outer development cycle number (1-indexed).  Increments each time the
-       pipeline completes a full development loop.
-   * - ``Analysis N/cap``
+     - Outer development cycle number (1-indexed).  Shows ``N/cap`` when the
+       total budget is known, ``#N`` otherwise.
+   * - ``Analysis N/cap`` or ``Analysis #N``
      - Purple (``theme.inner_analysis``)
-     - Inner analysis count within a fixer context, or the current repeat of
-       an analysis phase that has a ``loop_policy``.
-   * - ``Fixer #N``
-     - Vermillion (``theme.fixer_iteration``)
-     - Fixer iteration number (1-indexed) when the pipeline entered a fix
-       loop after analysis issued a *revise* decision.
+     - Inner analysis loop iteration.  Shows ``N/cap`` when the loop cap is
+       known, ``#N`` otherwise.
    * - ``Budget: N left``
      - Bold orange (``theme.level.warn``)
      - Remaining invocations allowed by the active budget counter.
 
 These labels are produced by helpers in ``ralph.display.phase_status``
-(``format_dev_cycle``, ``format_analysis_cycle``, ``format_fixer_cycle``,
-``format_budget_remaining``) and consumed via :class:`PhaseIterationContext`
-when rendering ``[phase-close]`` lines.
+(``format_dev_cycle``, ``format_analysis_cycle``, ``format_budget_remaining``)
+and consumed via :class:`PhaseIterationContext` when rendering
+``[phase-close]`` lines.
 
 Lifecycle view-model
 --------------------
@@ -184,8 +180,8 @@ and the final run summary.  Three frozen dataclasses capture the lifecycle:
      - Final run-completion panel and ``[run-end]`` transcript block.
 
 All three share the same canonical iteration fields
-(``outer_dev_iteration``, ``inner_analysis``, ``inner_analysis_cap``,
-``fixer_iteration``, ``budget_remaining``) so every surface expresses
+(``outer_dev_iteration``, ``outer_dev_cap``, ``inner_analysis``,
+``inner_analysis_cap``, ``budget_remaining``) so every surface expresses
 iteration context in the same vocabulary derived from
 :mod:`ralph.display.phase_status`.
 
@@ -195,12 +191,13 @@ Phase-close line format
 After each phase ends, a structured ``[phase-close]`` line is written to the
 transcript::
 
-    <ISO-TS> INFO META [phase-close] <glyph> phase=<name> [Dev #N] [Analysis N/cap] <produced> exit=<trigger> (elapsed=Ns, content_blocks=N, thinking_blocks=N, tool_calls=N, errors=N)
+    <ISO-TS> INFO META [phase-close] <glyph> phase=<name> [Dev N/cap] [Analysis N/cap] <produced> exit=<trigger> (elapsed=Ns, content_blocks=N, thinking_blocks=N, tool_calls=N, errors=N)
 
 - The ``<glyph>`` prefix (``◆`` Unicode, ``*`` ASCII) appears only for
   milestone-role phases (execution, review, fix).
-- Canonical iteration labels (``[Dev #N]``, ``[Analysis N/cap]``, etc.) appear
-  between the phase name and the produced-artifact summary when an
+- Canonical iteration labels (``[Dev N/cap]`` or ``[Dev #N]``,
+  ``[Analysis N/cap]`` or ``[Analysis #N]``, etc.) appear between the phase
+  name and the produced-artifact summary when a
   :class:`~ralph.display.phase_status.PhaseIterationContext` is provided.
 - ``exit=<trigger>`` (e.g. ``exit=produced``) appears after the artifact
   summary when an ``exit_trigger`` string is supplied to ``emit_phase_close``.

@@ -17,7 +17,6 @@ from ralph.display.phase_status import (
     format_analysis_cycle,
     format_budget_remaining,
     format_dev_cycle,
-    format_fixer_cycle,
     format_transition_context_items,
 )
 from ralph.pipeline import progress
@@ -227,24 +226,24 @@ class PhaseStartContext:
     max_analysis_iterations: int | None = None
     phase_name: str | None = None
     outer_iteration: int | None = None  # Outer dev cycle shown as [Dev #N]
+    outer_iteration_total: int | None = None  # Total cap for outer dev; shows Dev N/total
     inner_analysis: int | None = None  # Inner analysis cycle shown as [Analysis N/cap]
     inner_analysis_cap: int | None = None  # Cap for inner_analysis display
     budget_remaining: int | None = None  # Remaining budget shown as [Budget: N left]
-    fixer_iteration: int | None = None  # Fixer cycle shown as [Fixer #N]
 
 
 @dataclass(frozen=True)
 class PhaseStartIterationContext:
     """Bundled iteration context for show_phase_start_from_state.
 
-    Use this to pass iteration context (outer_dev, inner_analysis, fixer)
-    that cannot be extracted from the raw PipelineState object.
+    Use this to pass iteration context (outer_dev, inner_analysis) that
+    cannot be extracted from the raw PipelineState object.
     """
 
     outer_iteration: int | None = None
+    outer_iteration_total: int | None = None
     inner_analysis: int | None = None
     budget_remaining: int | None = None
-    fixer_iteration: int | None = None
 
 
 def _build_analysis_suffix(
@@ -259,11 +258,11 @@ def _build_analysis_suffix(
     return suffix
 
 
-def _build_outer_iteration_suffix(iteration: int | None) -> str:
+def _build_outer_iteration_suffix(iteration: int | None, cap: int | None = None) -> str:
     """Build the outer dev cycle label string."""
     if iteration is None:
         return ""
-    return f" [{format_dev_cycle(iteration)}]"
+    return f" [{format_dev_cycle(iteration, cap)}]"
 
 
 def _build_inner_analysis_suffix(
@@ -308,7 +307,7 @@ def show_phase_start(  # noqa: PLR0913
     if ctx is not None:
         # Render outer dev cycle FIRST — highest hierarchy level
         if ctx.outer_iteration is not None:
-            suffix = _build_outer_iteration_suffix(ctx.outer_iteration)
+            suffix = _build_outer_iteration_suffix(ctx.outer_iteration, ctx.outer_iteration_total)
             line.append(suffix, style="theme.outer_dev")
         # Render analysis iteration (loop counter) with prominent inner_analysis style
         if (
@@ -330,12 +329,6 @@ def show_phase_start(  # noqa: PLR0913
         if ctx.budget_remaining is not None:
             suffix = _build_budget_remaining_suffix(ctx.budget_remaining)
             line.append(suffix, style="theme.level.warn")
-        # Render fixer cycle if in fixer context
-        if ctx.fixer_iteration is not None:
-            line.append(
-                f" [{format_fixer_cycle(ctx.fixer_iteration)}]",
-                style="theme.fixer_iteration",
-            )
         # Render legacy budget_progress counters last
         for counter_name, (completed, cap) in ctx.budget_progress.items():
             if cap > 0:
@@ -393,15 +386,15 @@ def show_phase_start_from_state(
     agent_name: str | None = agent_raw if isinstance(agent_raw, str) else None
 
     outer_iteration: int | None = None
+    outer_iteration_total: int | None = None
     inner_analysis: int | None = None
     budget_remaining: int | None = None
-    fixer_iteration: int | None = None
 
     if iteration_context is not None:
         outer_iteration = iteration_context.outer_iteration
+        outer_iteration_total = iteration_context.outer_iteration_total
         inner_analysis = iteration_context.inner_analysis
         budget_remaining = iteration_context.budget_remaining
-        fixer_iteration = iteration_context.fixer_iteration
 
     ctx = PhaseStartContext(
         budget_progress=budget_progress,
@@ -410,9 +403,9 @@ def show_phase_start_from_state(
         max_analysis_iterations=analysis_iteration[1] if analysis_iteration else None,
         phase_name=phase.replace("_", " ").title(),
         outer_iteration=outer_iteration,
+        outer_iteration_total=outer_iteration_total,
         inner_analysis=inner_analysis,
         budget_remaining=budget_remaining,
-        fixer_iteration=fixer_iteration,
     )
     show_phase_start(phase, ctx=ctx, display_context=display_context)
 

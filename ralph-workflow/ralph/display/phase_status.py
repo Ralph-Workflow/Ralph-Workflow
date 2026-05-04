@@ -14,8 +14,14 @@ from dataclasses import dataclass
 from typing import Protocol
 
 
-def format_dev_cycle(n: int) -> str:
-    """Return canonical label for outer development cycle number (1-indexed)."""
+def format_dev_cycle(n: int, cap: int | None = None) -> str:
+    """Return canonical label for outer development cycle number (1-indexed).
+
+    When *cap* is provided (and positive), shows ``Dev N/cap`` to make the
+    remaining budget immediately visible.  Without a cap, shows ``Dev #N``.
+    """
+    if cap is not None and cap > 0:
+        return f"Dev {n}/{cap}"
     return f"Dev #{n}"
 
 
@@ -24,11 +30,6 @@ def format_analysis_cycle(n: int, cap: int | None = None) -> str:
     if cap is not None:
         return f"Analysis {n}/{cap}"
     return f"Analysis #{n}"
-
-
-def format_fixer_cycle(n: int) -> str:
-    """Return canonical label for fixer cycle number (1-indexed)."""
-    return f"Fixer #{n}"
 
 
 def format_budget_remaining(n: int) -> str:
@@ -102,6 +103,7 @@ class PhaseIterationContext:
 
     Attributes:
         outer_dev: Outer development cycle number (None if not in outer loop).
+        outer_dev_cap: Budget cap for outer dev cycles (shows Dev N/cap when set).
         inner_analysis: Inner analysis cycle number (None if not in analysis).
         inner_analysis_cap: Max inner analysis cycles (None if unknown).
         fixer: Fixer cycle number (None if not in fixer context).
@@ -109,16 +111,16 @@ class PhaseIterationContext:
     """
 
     outer_dev: int | None = None
+    outer_dev_cap: int | None = None
     inner_analysis: int | None = None
     inner_analysis_cap: int | None = None
-    fixer: int | None = None
     budget_remaining: int | None = None
 
     def has_context(self) -> bool:
         """Return True if any iteration context is set."""
         return any(
             x is not None
-            for x in (self.outer_dev, self.inner_analysis, self.fixer, self.budget_remaining)
+            for x in (self.outer_dev, self.inner_analysis, self.budget_remaining)
         )
 
     def context_labels(self) -> list[tuple[str, str]]:
@@ -128,12 +130,10 @@ class PhaseIterationContext:
         """
         parts: list[tuple[str, str]] = []
         if self.outer_dev is not None:
-            parts.append((format_dev_cycle(self.outer_dev), "theme.outer_dev"))
+            parts.append((format_dev_cycle(self.outer_dev, self.outer_dev_cap), "theme.outer_dev"))
         if self.inner_analysis is not None:
             label = format_analysis_cycle(self.inner_analysis, self.inner_analysis_cap)
             parts.append((label, "theme.inner_analysis"))
-        if self.fixer is not None:
-            parts.append((format_fixer_cycle(self.fixer), "theme.fixer_iteration"))
         if self.budget_remaining is not None:
             parts.append((format_budget_remaining(self.budget_remaining), "theme.level.warn"))
         return parts
@@ -146,6 +146,5 @@ __all__ = [
     "format_dev_cycle",
     "format_elapsed_seconds",
     "format_exit_trigger",
-    "format_fixer_cycle",
     "format_transition_context_items",
 ]

@@ -96,12 +96,12 @@ def test_phase_close_milestone_role_ascii_glyph() -> None:
 def test_phase_close_iteration_context_labels_appear_after_phase_name() -> None:
     """emit_phase_close with iteration_context includes canonical labels in output."""
     renderer, buf = _make_renderer()
-    ctx = PhaseIterationContext(outer_dev=2, fixer=1)
+    ctx = PhaseIterationContext(outer_dev=2, inner_analysis=1)
     renderer.emit_phase_close("fix", "fix: applied", iteration_context=ctx)
     out = buf.getvalue()
     assert "phase=fix" in out
     assert "[Dev #2]" in out
-    assert "[Fixer #1]" in out
+    assert "[Analysis #1]" in out
     assert "fix: applied" in out
 
 

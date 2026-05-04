@@ -12,11 +12,9 @@ from rich.text import Text
 
 from ralph.display.phase_banner import _phase_style
 from ralph.display.phase_status import (
-    format_analysis_cycle,
     format_dev_cycle,
     format_elapsed_seconds,
     format_exit_trigger,
-    format_fixer_cycle,
 )
 from ralph.mcp.artifacts.commit_message import read_commit_message_artifact
 
@@ -190,18 +188,6 @@ def _analysis_decision_summary(
     return results
 
 
-def _fixer_iteration_summary(snapshot: PipelineSnapshot) -> str | None:
-    """Return a summary string for fixer iteration context if active."""
-    if snapshot.fixer_iteration is None:
-        return None
-    parts = [format_fixer_cycle(snapshot.fixer_iteration)]
-    if snapshot.analysis_within_fixer is not None:
-        parts.append(format_analysis_cycle(snapshot.analysis_within_fixer))
-    if snapshot.fixer_phase is not None:
-        parts.append(f"phase={snapshot.fixer_phase}")
-    return " | ".join(parts)
-
-
 def _exit_trigger_label(snapshot: PipelineSnapshot) -> str:
     """Return a human-readable exit trigger label derived from snapshot state."""
     return format_exit_trigger(snapshot)
@@ -209,7 +195,7 @@ def _exit_trigger_label(snapshot: PipelineSnapshot) -> str:
 
 def _has_iteration_context(snapshot: PipelineSnapshot) -> bool:
     """Return True when any iteration context field is populated."""
-    return snapshot.outer_dev_iteration is not None or snapshot.fixer_iteration is not None
+    return snapshot.outer_dev_iteration is not None
 
 
 def _budget_progress_lines(snapshot: PipelineSnapshot) -> list[tuple[str, int, int]]:
@@ -224,16 +210,16 @@ def _budget_progress_lines(snapshot: PipelineSnapshot) -> list[tuple[str, int, i
 def _iteration_context_lines(snapshot: PipelineSnapshot) -> list[str]:
     """Return display lines for the iteration context section.
 
-    Shows outer dev cycle and fixer-analysis context when set.
+    Shows outer dev cycle when set, including total budget cap when available.
     Returns an empty list when no context is available.
     """
-    parts: list[str] = []
     if snapshot.outer_dev_iteration is not None:
-        parts.append(format_dev_cycle(snapshot.outer_dev_iteration))
-    fixer_summary = _fixer_iteration_summary(snapshot)
-    if fixer_summary is not None:
-        parts.append(fixer_summary)
-    return parts
+        cap = next(
+            (bp.cap for bp in snapshot.budget_progress.values() if bp.tracks_budget),
+            None,
+        )
+        return [format_dev_cycle(snapshot.outer_dev_iteration, cap)]
+    return []
 
 
 def _style_for_role(
@@ -612,13 +598,9 @@ def render_completion_summary_group(  # noqa: PLR0912, PLR0913, PLR0915
                 _make_badge_text(decision_badge, f" {phase_title}{reason_part}")
             )
 
-    # Iteration Context section (outer dev + fixer-analysis interaction)
+    # Iteration Context section (outer dev cycle)
     if _has_iteration_context(snapshot):
-        if snapshot.fixer_iteration is not None:
-            iter_style = _style_for_role("fix", pipeline_policy)
-        else:
-            iter_style = style
-        renderables.append(Rule("Iteration Context", style=iter_style))
+        renderables.append(Rule("Iteration Context", style=style))
         renderables.extend(Text(f"  {ln}") for ln in _iteration_context_lines(snapshot))
 
     # Budget Progress section (dev-cycle budget consumed vs cap)

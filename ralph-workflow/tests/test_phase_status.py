@@ -14,7 +14,6 @@ from ralph.display.phase_status import (
     format_budget_remaining,
     format_dev_cycle,
     format_exit_trigger,
-    format_fixer_cycle,
     format_transition_context_items,
 )
 
@@ -38,11 +37,6 @@ def test_format_analysis_cycle_with_cap() -> None:
     assert format_analysis_cycle(2, 5) == "Analysis 2/5"
 
 
-def test_format_fixer_cycle_renders_number() -> None:
-    assert format_fixer_cycle(1) == "Fixer #1"
-    assert format_fixer_cycle(3) == "Fixer #3"
-
-
 def test_format_budget_remaining_renders_count() -> None:
     assert format_budget_remaining(0) == "Budget: 0 left"
     assert format_budget_remaining(5) == "Budget: 5 left"
@@ -62,11 +56,6 @@ def test_phase_iteration_context_has_context_true_with_outer_dev() -> None:
     assert ctx.has_context()
 
 
-def test_phase_iteration_context_has_context_true_with_fixer() -> None:
-    ctx = PhaseIterationContext(fixer=1)
-    assert ctx.has_context()
-
-
 def test_phase_iteration_context_labels_empty() -> None:
     ctx = PhaseIterationContext()
     assert ctx.context_labels() == []
@@ -82,29 +71,26 @@ def test_phase_iteration_context_labels_outer_dev_only() -> None:
 
 
 def test_phase_iteration_context_labels_full_context() -> None:
-    ctx = PhaseIterationContext(outer_dev=2, inner_analysis=1, inner_analysis_cap=3, fixer=1)
+    ctx = PhaseIterationContext(outer_dev=2, inner_analysis=1, inner_analysis_cap=3)
     labels = ctx.context_labels()
     texts = [t for t, _ in labels]
     assert "Dev #2" in texts
     assert "Analysis 1/3" in texts
-    assert "Fixer #1" in texts
-    assert len(texts) == len({"Dev #2", "Analysis 1/3", "Fixer #1"})
+    assert len(texts) == len({"Dev #2", "Analysis 1/3"})
 
 
 def test_phase_iteration_context_labels_order() -> None:
-    """outer_dev appears before inner_analysis before fixer before budget."""
+    """outer_dev appears before inner_analysis before budget."""
     ctx = PhaseIterationContext(
         outer_dev=2,
         inner_analysis=1,
         inner_analysis_cap=3,
-        fixer=1,
         budget_remaining=4,
     )
     labels = ctx.context_labels()
     texts = [t for t, _ in labels]
     assert texts.index("Dev #2") < texts.index("Analysis 1/3")
-    assert texts.index("Analysis 1/3") < texts.index("Fixer #1")
-    assert texts.index("Fixer #1") < texts.index("Budget: 4 left")
+    assert texts.index("Analysis 1/3") < texts.index("Budget: 4 left")
 
 
 def test_phase_iteration_context_labels_budget_style() -> None:
@@ -134,13 +120,14 @@ def test_phase_start_outer_dev_shows_dev_cycle_label() -> None:
     assert "[Dev #3]" in output, f"Expected [Dev #3] in: {output}"
 
 
-def test_phase_start_fixer_shows_fixer_cycle_label() -> None:
-    """show_phase_start with fixer_iteration renders [Fixer #N] label."""
+def test_phase_start_outer_dev_with_total_shows_dev_n_of_total() -> None:
+    """show_phase_start with outer_iteration + outer_iteration_total renders [Dev N/total]."""
     ctx, buf = _make_ctx()
-    phase_ctx = PhaseStartContext(fixer_iteration=2)
-    show_phase_start("fix", ctx=phase_ctx, display_context=ctx)
+    phase_ctx = PhaseStartContext(outer_iteration=2, outer_iteration_total=5)
+    show_phase_start("development", ctx=phase_ctx, display_context=ctx)
     output = buf.getvalue()
-    assert "[Fixer #2]" in output, f"Expected [Fixer #2] in: {output}"
+    assert "[Dev 2/5]" in output, f"Expected [Dev 2/5] in: {output}"
+    assert "Dev #2" not in output, f"Hash format should not appear when total is set: {output}"
 
 
 def test_phase_start_budget_remaining_shows_budget_left_label() -> None:
@@ -175,24 +162,21 @@ def test_phase_start_all_new_context_labels_together() -> None:
     ctx, buf = _make_ctx()
     phase_ctx = PhaseStartContext(
         outer_iteration=2,
-        fixer_iteration=1,
         budget_remaining=3,
     )
     show_phase_start("fix", ctx=phase_ctx, display_context=ctx)
     output = buf.getvalue()
     assert "[Dev #2]" in output, f"Expected [Dev #2] in: {output}"
-    assert "[Fixer #1]" in output, f"Expected [Fixer #1] in: {output}"
     assert "[Budget: 3 left]" in output, f"Expected [Budget: 3 left] in: {output}"
 
 
 def test_phase_start_new_labels_not_using_old_format() -> None:
-    """New canonical labels do not use old key=value format for outer_iteration/fixer."""
+    """New canonical labels do not use old key=value format for outer_iteration."""
     ctx, buf = _make_ctx()
-    phase_ctx = PhaseStartContext(outer_iteration=1, fixer_iteration=2)
+    phase_ctx = PhaseStartContext(outer_iteration=1)
     show_phase_start("development", ctx=phase_ctx, display_context=ctx)
     output = buf.getvalue()
     assert "dev-iteration=" not in output, "Old format should not appear"
-    assert "fixer-iteration=" not in output, "Old format should not appear"
     assert "budget=" not in output, "Old format should not appear"
 
 

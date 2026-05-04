@@ -12,6 +12,7 @@ from ralph.display.phase_banner import (
     _MAJOR_ROLE_PAIRS,
     _ROLE_PAIR_DESCRIPTIONS,
     PhaseStartContext,
+    PhaseStartIterationContext,
     _phase_label,
     _phase_style,
     show_phase_complete,
@@ -469,6 +470,23 @@ def test_show_phase_start_from_state_tolerates_missing_attrs() -> None:
     assert "iteration 1/3" in output
     assert "Planning" in output
     assert "pass" not in output
+
+
+def test_show_phase_start_from_state_outer_iteration_total_shows_dev_n_of_total() -> None:
+    """outer_iteration_total in PhaseStartIterationContext renders Dev N/total format."""
+    stub = types.SimpleNamespace(outer_progress={}, budget_caps={}, agent_name=None)
+    buf = StringIO()
+    console = Console(file=buf, force_terminal=False, color_system=None, width=200)
+    iteration_context = PhaseStartIterationContext(outer_iteration=3, outer_iteration_total=7)
+    show_phase_start_from_state(
+        stub,
+        "development",
+        display_context=_ctx_from_console(console),
+        iteration_context=iteration_context,
+    )
+    output = buf.getvalue()
+    assert "Dev 3/7" in output, f"Expected Dev 3/7 in: {output}"
+    assert "Dev #3" not in output, f"Hash format should not appear: {output}"
 
 
 # --- Tests for compact/medium/wide mode banners ---

@@ -136,11 +136,6 @@ class PipelineSubscriber:
         self._analysis_reason: str | None = None
         self._decision_log: list[tuple[str, str, str, str]] = []
         self._last_state: PipelineState | None = None
-        # Fixer-to-analysis interaction state tracking
-        self._fixer_iteration: int | None = None
-        self._analysis_within_fixer: int | None = None
-        self._fixer_phase: str | None = None
-        self._outer_dev_iteration: int | None = None
 
     @property
     def queue(self) -> Queue[PipelineSnapshot]:
@@ -308,23 +303,6 @@ class PipelineSubscriber:
         if snapshot is not None:
             self._publish(snapshot)
 
-    def record_fixer_context(
-        self,
-        fixer_iteration: int | None = None,
-        analysis_within_fixer: int | None = None,
-        fixer_phase: str | None = None,
-        outer_dev_iteration: int | None = None,
-    ) -> None:
-        """Record fixer-to-analysis interaction context and push a fresh snapshot."""
-        with self._lock:
-            self._fixer_iteration = fixer_iteration
-            self._analysis_within_fixer = analysis_within_fixer
-            self._fixer_phase = fixer_phase
-            self._outer_dev_iteration = outer_dev_iteration
-            snapshot = self._build_snapshot_locked(self._last_state)
-        if snapshot is not None:
-            self._publish(snapshot)
-
     def _record_state_transitions_locked(self, state: PipelineState) -> None:
         prev = self._previous_phase
         cur = state.phase
@@ -454,10 +432,6 @@ class PipelineSubscriber:
             analysis_decision=self._analysis_decision,
             analysis_reason=self._analysis_reason,
             decision_log=tuple(self._decision_log),
-            fixer_iteration=self._fixer_iteration,
-            analysis_within_fixer=self._analysis_within_fixer,
-            fixer_phase=self._fixer_phase,
-            outer_dev_iteration=self._outer_dev_iteration,
         )
 
     def _publish(self, snapshot: PipelineSnapshot) -> None:

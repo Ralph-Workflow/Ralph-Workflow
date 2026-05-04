@@ -149,15 +149,15 @@ When a block ends, Ralph Workflow may append summary lines depending on configur
 After each phase completes, a single `[phase-close]` line is appended to the transcript:
 
 ```
-<ISO-TS> INFO META [phase-close] <glyph?> phase=<name> [Dev #N]? [Analysis N/cap]? <produced> exit=<trigger> (elapsed=Ns, content_blocks=N, thinking_blocks=N, tool_calls=N, errors=N)
+<ISO-TS> INFO META [phase-close] <glyph?> phase=<name> [Dev N/cap]? [Analysis N/cap]? <produced> exit=<trigger> (elapsed=Ns, content_blocks=N, thinking_blocks=N, tool_calls=N, errors=N)
 ```
 
 | Field | Notes |
 |-------|-------|
 | `<glyph?>` | Milestone glyph (`◆` Unicode, `*` ASCII) for execution/review/fix phases only |
 | `phase=<name>` | Name of the phase that just ended |
-| `[Dev #N]`, `[Analysis N/cap]`, `[Fixer #N]`, `[Budget: N left]` | Canonical iteration labels — only present when in a context that tracks them |
-| `<produced>` | Human-readable artifact summary (e.g. `plan: 5 step(s), 2 risk(s)`) |
+| `[Dev N/cap]` or `[Dev #N]`, `[Analysis N/cap]` or `[Analysis #N]`, `[Budget: N left]` | Canonical iteration labels — only present when in a context that tracks them |
+| `<produced>` | Human-readable artifact summary (e.g. `5 step(s), 2 risk(s)`, `result produced`, `sha=abc12345`) |
 | `exit=<trigger>` | Why the phase ended — omitted when the exit trigger is unknown |
 | Counter tuple | Phase-level activity metrics always present |
 
@@ -174,9 +174,8 @@ the same vocabulary for iteration context:
 
 | Label | Meaning | Color |
 |-------|---------|-------|
-| `Dev #N` | Outer development cycle (1-indexed) | Bold sky-blue |
-| `Analysis N/cap` | Inner analysis cycle with cap, or `Analysis #N` without cap | Purple |
-| `Fixer #N` | Fixer iteration within an analysis→fix loop | Vermillion |
+| `Dev N/cap` or `Dev #N` | Outer development cycle (1-indexed); shows cap when the budget is known | Bold sky-blue |
+| `Analysis N/cap` or `Analysis #N` | Inner analysis loop iteration; shows cap when known | Purple |
 | `Budget: N left` | Remaining budget from an active policy counter | Bold orange |
 
 ## `[run-end]` Panel
