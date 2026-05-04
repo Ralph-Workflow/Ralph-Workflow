@@ -23,6 +23,7 @@ from typing import TYPE_CHECKING
 
 from loguru import logger
 
+from ralph.process.child_liveness import AliveBy
 from ralph.timeout_defaults import (
     DESCENDANT_WAIT_POLL_SECONDS,
     DESCENDANT_WAIT_TIMEOUT_SECONDS,
@@ -93,15 +94,6 @@ class WaitingStatusKind(StrEnum):
     SUSPECTED_FROZEN = "suspected_frozen"
     EXITED = "exited"
     HARD_STOP = "hard_stop"
-
-
-class AliveBy(StrEnum):
-    """Typed corroboration reasons describing why child work still appears alive."""
-
-    FRESH_PROGRESS = "fresh_progress"
-    FRESH_HEARTBEAT_ONLY = "fresh_heartbeat_only"
-    STALE_LABEL_ONLY = "stale_label_only"
-    OS_DESCENDANT_ONLY_STALE_PROGRESS = "os_descendant_only_stale_progress"
 
 
 @dataclass(frozen=True)

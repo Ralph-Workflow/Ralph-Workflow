@@ -35,7 +35,6 @@ from ralph.agents.execution_state import (
     strategy_for_transport,
 )
 from ralph.agents.idle_watchdog import (
-    AliveBy,
     CorroborationSnapshot,
     IdleWatchdog,
     TimeoutPolicy,
@@ -68,7 +67,7 @@ from ralph.mcp.transport.common import (
     set_upstream_mcp_config,
 )
 from ralph.mcp.transport.opencode import build_opencode_provider_config
-from ralph.process.child_liveness import ChildLivenessRegistry
+from ralph.process.child_liveness import AliveBy, ChildLivenessRegistry, classify_child_snapshot
 from ralph.process.liveness import DefaultLivenessProbe, LivenessProbe
 from ralph.process.manager import (
     ManagedProcess,
@@ -936,23 +935,13 @@ def _read_lines_from_process(  # noqa: PLR0913,PLR0915
                     getattr(strategy, "_active_label_prefix", lambda: None)(),
                 )
                 reg_snap = reg.snapshot(label_prefix or "")
-                if reg_snap.has_fresh_progress:
-                    alive_by = AliveBy.FRESH_PROGRESS
-                elif reg_snap.has_fresh_heartbeat and reg_snap.has_process:
-                    # Child has a recent heartbeat (within heartbeat_ttl) but no fresh progress.
-                    # This is the "heartbeat-only" case - child is alive but not making
-                    # forward progress.
-                    alive_by = AliveBy.FRESH_HEARTBEAT_ONLY
-                elif reg_snap.has_process and not reg_snap.has_fresh_heartbeat:
-                    # Child exists but has no recent heartbeat (heartbeat stale or never sent).
-                    # The child is "stale" - alive but not sending heartbeats.
-                    alive_by = AliveBy.STALE_LABEL_ONLY
-                elif scoped_active:
-                    # No Ralph child evidence but OS descendant scan shows active processes.
-                    alive_by = AliveBy.OS_DESCENDANT_ONLY_STALE_PROGRESS
+                verdict = classify_child_snapshot(
+                    reg_snap, has_os_descendants=bool(scoped_active)
+                )
+                alive_by = verdict.alive_by
             except Exception:
                 logger.debug("corroborator: registry snapshot failed (suppressed)")
-        elif scoped_active and alive_by is None:
+        elif scoped_active:
             alive_by = AliveBy.OS_DESCENDANT_ONLY_STALE_PROGRESS
         return CorroborationSnapshot(
             workspace_event_count=ws_count,
