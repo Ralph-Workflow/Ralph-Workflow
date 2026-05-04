@@ -62,9 +62,10 @@ was previously controlled by implicit runtime state and `--developer-iters` /
 routing logic. The `increments_counter` field in each commit-role phase's `commit_policy`
 names the counter to increment.
 
-The CLI flags `--developer-iters` and `--reviewer-reviews` have been removed.
-Use `--counter NAME=VALUE` to override the initial cap of any policy-declared budget
-counter (e.g. `--counter iteration=8` or `--counter reviewer_pass=0`).
+The review-era CLI flag `--reviewer-reviews` (and its short form `-R`) has been removed.
+`--developer-iters` (short form `-D`) remains fully supported. Use `--counter NAME=VALUE`
+to override the initial cap of any policy-declared budget counter
+(e.g. `--counter iteration=8` or `--counter reviewer_pass=0`).
 
 ### 4. Phase behavior was partly determined by phase name
 

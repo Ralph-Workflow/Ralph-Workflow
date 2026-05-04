@@ -195,6 +195,25 @@ def test_local_template_defines_active_agent_chain_defaults() -> None:
     assert chains["analysis"] == ["opencode/openai/gpt-5.4"]
     assert chains["commit"] == ["claude/haiku"]
 
+    # Review-era chains must not appear in the active default local template.
+    review_era_chains = {"review", "fix"}
+    assert not review_era_chains.intersection(chains), (
+        f"Review-era chains still active in local template: "
+        f"{review_era_chains.intersection(chains)}"
+    )
+
+
+def test_local_template_does_not_expose_review_era_drain_bindings() -> None:
+    template = Path(ralph.policy.__file__).parent / "defaults" / "ralph-workflow-local.toml"
+    data = tomllib.loads(template.read_text(encoding="utf-8"))
+    drains = data["agent_drains"]
+
+    review_era_drains = {"review", "review_analysis", "review_commit", "fix"}
+    assert not review_era_drains.intersection(drains), (
+        f"Review-era drains still active in local template: "
+        f"{review_era_drains.intersection(drains)}"
+    )
+
 
 def test_local_template_mentions_ccs_alternative() -> None:
     template = Path(ralph.policy.__file__).parent / "defaults" / "ralph-workflow-local.toml"
