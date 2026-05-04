@@ -624,8 +624,7 @@ def test_explain_policy_prints_workflow_diagram(cli_runner: CliRunner) -> None:
     # Should also contain the structural breakdown section
     assert "RALPH WORKFLOW — ACTIVE POLICY EXPLANATION" in result.stdout
 
-    # Should contain the review bypass explanation and development_commit post-commit routing.
-    assert "Explanation: phase 'review' bypasses to 'review_commit'" in result.stdout
+    # Should contain post-commit routing explanation for the reviewless bundled defaults.
     assert "Explanation: after commit phase 'development_commit'" in result.stdout
 
 
