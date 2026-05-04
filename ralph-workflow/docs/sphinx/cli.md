@@ -52,18 +52,32 @@ See [Policy Explanation](policy-explanation.md) for the full policy inspection c
 | `--generate-local-config` | | `False` | Create `.agent/ralph-workflow.toml` as an explicit project-local main override |
 | `--regenerate-config` | | `False` | Rewrite all configs from bundled defaults (existing files are backed up to `<name>.bak`) |
 
+## Quick Mode
+
+Run a single developer iteration with an inline prompt:
+
+```bash
+ralph -Q "do a quick change"
+```
+
+`-Q`/`--quick` forces `developer_iters=1` (equivalent to `-D 1`) and accepts an inline prompt
+as a bare positional argument after the flag. This bypasses `PROMPT.md` preflight validation
+and writes the inline prompt to `.agent/CURRENT_PROMPT.md` instead.
+
+```bash
+ralph -Q "add a /healthz endpoint"       # inline prompt, 1 iteration
+ralph -Q --prompt "add a /healthz endpoint"  # explicit --prompt form
+```
+
 ## Pipeline Tuning
 
 | Flag | Short | Default | Description |
 |------|-------|---------|-------------|
 | `--counter NAME=VALUE` | | | Override a named budget or loop counter declared in `pipeline.toml` (e.g. `--counter iteration=3`). Repeatable. |
-| `--developer-iters N` | `-D` | `5` | *(Deprecated — use `--counter` instead)* Maximum developer agent iterations per run. Overrides the `default_max` of the `iteration` loop/budget counter. |
-| `--reviewer-reviews N` | `-R` | `2` | *(Deprecated — use `--counter` instead)* Maximum review-fix cycles (0 skips review entirely). Overrides the `default_max` of the `reviewer_pass` budget counter. |
-| `--review-depth <mode>` | | `standard` | Review depth: `standard`, `comprehensive`, `security`, `incremental` |
+| `--developer-iters N` | `-D` | `5` | Maximum developer agent iterations per run. Overrides the `default_max` of the `iteration` budget counter. |
+| `--quick` | `-Q` | `False` | Quick mode: run a single developer iteration (equivalent to `-D 1`). Accepts an inline prompt as a bare positional argument. |
 | `--developer-agent <name>` | `-a` | (from config) | Override the developer agent by name |
-| `--reviewer-agent <name>` | `-r` | (from config) | Override the reviewer agent by name |
 | `--developer-model <flag>` | | (from config) | Model flag forwarded to the developer agent binary |
-| `--reviewer-model <flag>` | | (from config) | Model flag forwarded to the reviewer agent binary |
 
 ## Execution Control
 

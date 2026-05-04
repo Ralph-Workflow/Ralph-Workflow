@@ -826,3 +826,26 @@ class TestQuickModeSemantics:
         result = cli_runner.invoke(app, ["--prompt", "some text"])
         assert result.exit_code == 2  # noqa: PLR2004
         assert "--prompt requires --quick/-Q" in result.stderr or "--prompt requires" in result.output  # noqa: E501
+
+
+class TestRemovedReviewFlags:
+    """Verify that review-era CLI flags that no longer exist are absent from help output."""
+
+    @pytest.mark.parametrize(
+        "flag",
+        [
+            "--reviewer-reviews",
+            "--reviewer-agent",
+            "--reviewer-model",
+            "--review-depth",
+        ],
+    )
+    def test_removed_review_flags_not_in_help(self, cli_runner: CliRunner, flag: str) -> None:
+        result = cli_runner.invoke(app, ["--help"])
+        assert result.exit_code == 0
+        assert flag not in result.stdout
+
+    def test_quick_flag_is_in_help(self, cli_runner: CliRunner) -> None:
+        result = cli_runner.invoke(app, ["--help"])
+        assert result.exit_code == 0
+        assert "--quick" in result.stdout or "-Q" in result.stdout

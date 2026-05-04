@@ -2,7 +2,7 @@
 
 > Vendor-neutral AI coding workflow orchestration — unattended, auditable, and configured in your repo.
 
-Ralph Workflow is a Python 3.12+ CLI package and framework for **policy-defined orchestration** of AI coding workflows. You decide which agent runs which phase, keep the workflow configuration in repo-local TOML, and let Ralph Workflow plan, implement, review, fix, and commit work for you. The runtime is a generic policy interpreter: all workflow behavior — phase routing, retry rules, analysis loops, commit semantics, verification gates, recovery routing, and parallel execution constraints — is declared in TOML policy files and enforced by the runtime without hardcoded phase knowledge.
+Ralph Workflow is a Python 3.12+ CLI package and framework for **policy-defined orchestration** of AI coding workflows. You decide which agent runs which phase, keep the workflow configuration in repo-local TOML, and let Ralph Workflow plan, implement, and commit work for you. The runtime is a generic policy interpreter: all workflow behavior — phase routing, retry rules, analysis loops, commit semantics, verification gates, recovery routing, and parallel execution constraints — is declared in TOML policy files and enforced by the runtime without hardcoded phase knowledge.
 
 The package exposes two entry points:
 
@@ -17,9 +17,9 @@ so you can use frontier models where reasoning matters and cheaper models where 
 
 Key differentiators:
 
-- **Vendor-neutral orchestration** — choose different agents for planning, development, review, fix, and commit
-- **Cost arbitrage** — route frontier models to planning/review and cheaper models to development/fix
-- **Unattended execution** — walk away and come back to a reviewed diff instead of babysitting an agent
+- **Vendor-neutral orchestration** — choose different agents for planning, development, and commit; custom policies can add review and fix phases
+- **Cost arbitrage** — route frontier models to planning and cheaper models to development
+- **Unattended execution** — walk away and come back to a finished diff instead of babysitting an agent
 - **Workflow config in repo** — phase graph, agent chains, retry budgets, and recovery rules live in versioned config
 - **Recovery and verification discipline** — checkpoint/resume, failure classification, and evidence-based phase completion
 
@@ -186,14 +186,10 @@ When you run `ralph`, the workflow moves through a structured sequence of phases
 2. **Planning analysis** — the workflow checks whether the proposed plan is executor-ready or needs another planning pass; when it sends planning back for revision, Ralph Workflow surfaces the prior planning-analysis feedback so the planner can edit the existing plan incrementally via the plan-draft MCP tools
 3. **Development** — a developer agent implements the work
 4. **Development analysis** — the workflow decides whether to iterate or continue
-5. **Development commit** — changes are committed
-6. **Review** — a reviewer agent inspects the result and produces issues if needed
-7. **Review analysis** — the workflow decides whether to loop to fix or continue
-8. **Fix** — a fix agent resolves issues found during review
-9. **Review commit** — final changes are committed
-10. **Complete** — the workflow ends successfully
+5. **Development commit** — changes are committed; if the iteration budget remains, the loop returns to planning for another cycle
+6. **Complete** — the workflow ends successfully
 
-If review finds significant problems, the review → fix cycle repeats up to the configured limit.
+Custom policies declared in `.agent/pipeline.toml` can add review, fix, or any other phase. The default bundled policy is a clean planning → development loop.
 
 ## Compatible agents
 

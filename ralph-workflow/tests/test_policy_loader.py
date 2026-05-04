@@ -448,3 +448,23 @@ def test_default_policy_routes_planning_through_planning_analysis() -> None:
     contract = bundle.artifacts.artifacts["planning_analysis_decision"]
     assert contract.artifact_type == "planning_analysis_decision"
     assert contract.prompt_template == "planning_analysis.jinja"
+
+
+def test_bundled_defaults_have_reviewless_phase_set() -> None:
+    """Bundled default policy must expose the reviewless phase set and no reviewer_pass counter."""
+    defaults_dir = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
+
+    bundle = load_policy(defaults_dir)
+    expected_phases = {
+        "planning",
+        "planning_analysis",
+        "development",
+        "development_analysis",
+        "development_commit",
+        "complete",
+        "failed_terminal",
+    }
+    assert set(bundle.pipeline.phases) == expected_phases
+    assert "reviewer_pass" not in bundle.pipeline.budget_counters
+    assert bundle.pipeline.entry_phase == "planning"
+    assert bundle.pipeline.terminal_phase == "complete"

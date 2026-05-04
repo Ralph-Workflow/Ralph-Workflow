@@ -34,8 +34,6 @@
 # Loop iteration caps live in pipeline.toml [loop_counters.*] (see ralph --explain-policy).
 # Override budget caps with: ralph --counter <name>=<value> (e.g. --counter iteration=8).
 # developer_context = 1                 # developer context level (>=1)
-# reviewer_context = 0                  # reviewer context level (>=0)
-# review_depth = "standard"             # standard | comprehensive | security | incremental
 # prompt_path = "/path/to/PROMPT.md"    # override default PROMPT.md path (comment out to use default)
 # templates_dir = "/path/to/templates"  # user templates directory (comment out to use bundled)
 # git_user_name = "Your Name"           # git author name for commits (comment out to use git config)

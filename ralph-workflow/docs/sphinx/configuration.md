@@ -60,7 +60,6 @@ Core workflow settings: verbosity, review depth, git identity, and retry behavio
 | Key | Default | Description |
 |-----|---------|-------------|
 | `verbosity` | `2` | Output verbosity: 0=quiet, 1=normal, 2=verbose, 3=full, 4=debug |
-| `review_depth` | `"standard"` | `standard`, `comprehensive`, `security`, or `incremental` |
 | `git_user_name` | (from git config) | Git author name for commits |
 | `git_user_email` | (from git config) | Git author email for commits |
 | `max_retries` | `3` | Global max retries per agent attempt applied when Ralph Workflow synthesizes chain policy from the main config |
@@ -169,33 +168,27 @@ retry_delay_ms = 1000
 planning = ["claude/opus"]
 development = ["opencode/minimax/MiniMax-M2.7-highspeed", "codex", "claude/sonnet"]
 analysis = ["opencode/openai/gpt-5.4"]
-review = ["opencode/openai/gpt-5.4"]
-fix = ["opencode/zai-coding-plan/glm-5", "claude/sonnet"]
 commit = ["claude/haiku"]
 
 [agent_drains]
 planning = "planning"
+planning_analysis = "analysis"
 development = "development"
 development_analysis = "analysis"
 development_commit = "commit"
-review = "review"
-review_analysis = "analysis"
-review_commit = "commit"
-fix = "fix"
 ```
 
 Ralph Workflow tries agents in order; if one exhausts its retry budget, it falls over to
 the next. OpenCode model-qualified identifiers use `opencode/<provider>/<model>` syntax,
-for example `opencode/minimax/MiniMax-M2.7-highspeed` or `opencode/zai-coding-plan/glm-5`.
-Claude model tags are shorter: `claude` uses your current Claude Code model/profile, while
-`claude/opus` and `claude/sonnet` force those model families for a specific chain entry.
+for example `opencode/minimax/MiniMax-M2.7-highspeed`. Claude model tags are shorter:
+`claude` uses your current Claude Code model/profile, while `claude/opus` and
+`claude/sonnet` force those model families for a specific chain entry.
 
 `[agent_drains]` maps each pipeline drain name (matching a phase's `drain` field in
 `pipeline.toml`) to a chain name from `[agent_chains]`. Multiple drains may share one
-chain — for example, `development_analysis` and `review_analysis` both use the `analysis`
-chain by default. The built-in runtime drain names are: `planning`, `development`,
-`development_analysis`, `development_commit`, `review`, `review_analysis`,
-`review_commit`, and `fix`.
+chain — for example, `planning_analysis` and `development_analysis` both use the `analysis`
+chain by default. Custom policies that add review or fix phases simply declare additional
+chains and drain bindings in this section.
 
 ## `pipeline.toml` Policy Fields
 
