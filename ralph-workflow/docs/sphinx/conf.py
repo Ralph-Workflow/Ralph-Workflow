@@ -30,6 +30,7 @@ autodoc_typehints = "description"
 autodoc_type_aliases = {
     "Capability": "ralph.mcp.protocol.capability_mapping.Capability",
     "SessionLike": "ralph.mcp.protocol.startup.SessionLike",
+    "PhaseEntryModel": "ralph.display.phase_lifecycle.PhaseEntryModel",
 }
 napoleon_google_docstring = True
 napoleon_numpy_docstring = False

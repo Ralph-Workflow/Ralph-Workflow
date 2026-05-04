@@ -89,10 +89,10 @@ from ralph.display.phase_banner import (
     PhaseStartContext,
     show_phase_complete,
     show_phase_start,
+    show_phase_start_from_entry,
     show_phase_start_from_state,
     show_phase_transition,
 )
-from ralph.display.phase_lifecycle import PhaseEntryModel, PhaseExitModel, RunCompletionModel
 from ralph.display.phase_status import (
     PhaseIterationContext,
     format_analysis_cycle,
@@ -105,12 +105,9 @@ from ralph.display.tables import show_agents, show_config, show_providers
 
 __all__ = [
     "DisplayContext",
-    "PhaseEntryModel",
-    "PhaseExitModel",
     "PhaseIterationContext",
     "PhaseStartContext",
     "RalphProgress",
-    "RunCompletionModel",
     "RunStartOrientation",
     "format_analysis_cycle",
     "format_budget_remaining",
@@ -127,6 +124,7 @@ __all__ = [
     "show_config",
     "show_phase_complete",
     "show_phase_start",
+    "show_phase_start_from_entry",
     "show_phase_start_from_state",
     "show_phase_transition",
     "show_providers",

@@ -19,6 +19,7 @@ if TYPE_CHECKING:
 
     from rich.console import Console
 
+    from ralph.display.phase_lifecycle import PhaseExitModel
     from ralph.display.phase_status import PhaseIterationContext
     from ralph.pipeline.state import PipelineState
 
@@ -768,6 +769,22 @@ class PlainLogRenderer:
             no_wrap=True,
         )
         self._phase_counters = None
+
+    def emit_phase_close_from_exit(self, exit_model: PhaseExitModel) -> None:
+        """Emit a phase-close recap from a PhaseExitModel.
+
+        Canonical model-based path for phase-close after-banners. Bridges
+        PhaseExitModel into emit_phase_close so iteration labels never diverge
+        between phase-start and phase-close surfaces.
+        """
+        iter_ctx = exit_model.to_iteration_context()
+        self.emit_phase_close(
+            exit_model.phase_name,
+            exit_model.artifact_outcome,
+            phase_role=exit_model.phase_role,
+            iteration_context=iter_ctx if iter_ctx.has_context() else None,
+            exit_trigger=exit_model.exit_trigger,
+        )
 
     def _update_counters(self, kind: str, is_new_block: bool) -> None:
         """Increment activity counters for a new streaming block.

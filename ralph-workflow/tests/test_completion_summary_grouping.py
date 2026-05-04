@@ -251,9 +251,9 @@ def test_group_activity_summary_no_overflow_path_when_none() -> None:
     assert "raw_overflow=" not in out
 
 
-def test_group_activity_summary_appears_after_verification() -> None:
+def test_group_activity_summary_appears_before_verification() -> None:
     out = _render_group(_make_snapshot())
-    assert out.index("Verification") < out.index("Activity Summary")
+    assert out.index("Activity Summary") < out.index("Verification")
 
 
 def test_emit_completion_summary_accepts_thinking_and_overflow_params() -> None:

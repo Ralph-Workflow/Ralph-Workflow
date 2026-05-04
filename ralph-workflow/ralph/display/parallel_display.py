@@ -26,6 +26,7 @@ if TYPE_CHECKING:
     from rich.console import Console
 
     from ralph.display.activity_model import ActivityEventKind
+    from ralph.display.phase_lifecycle import PhaseExitModel
     from ralph.display.phase_status import PhaseIterationContext
     from ralph.display.plain_renderer import RunStartOrientation
     from ralph.display.snapshot import PipelineSnapshot
@@ -318,6 +319,11 @@ class ParallelDisplay:
                 iteration_context=iteration_context,
                 exit_trigger=exit_trigger,
             )
+
+    def emit_phase_close_from_exit(self, exit_model: PhaseExitModel) -> None:
+        """Emit a phase-close recap from a PhaseExitModel."""
+        with contextlib.suppress(Exception):
+            self._plain_renderer.emit_phase_close_from_exit(exit_model)
 
     def emit_run_end(
         self,

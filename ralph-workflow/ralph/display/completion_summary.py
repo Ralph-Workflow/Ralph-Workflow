@@ -358,6 +358,11 @@ def render_completion_summary(  # noqa: PLR0913, PLR0912, PLR0915
         lines.append("Open Risks:")
         lines.extend(f"- {risk}" for risk in snapshot.plan_risks)
 
+    debug_lines = _debug_breadcrumb_lines(snapshot)
+    if debug_lines:
+        lines.append("Debug:")
+        lines.extend(f"  {ln}" for ln in debug_lines)
+
     dropped_line = _dropped_count_line(dropped_count)
     if dropped_line:
         lines.append(dropped_line)
@@ -627,11 +632,7 @@ def render_completion_summary_group(  # noqa: PLR0912, PLR0913, PLR0915
             remaining = cap - completed
             renderables.append(Text(f"  {desc}: {completed}/{cap} used, {remaining} remaining"))
 
-    # Verification section
-    renderables.append(Rule("Verification", style=style))
-    renderables.append(Text(f"  {_verification_line(workspace_root)}"))
-
-    # Activity Summary section
+    # Activity Summary section — before Verification so timing context precedes status
     renderables.append(Rule("Activity Summary", style=style))
     if elapsed_seconds is not None:
         renderables.append(Text(f"  elapsed={round(elapsed_seconds, 1)}s"))
@@ -643,11 +644,9 @@ def render_completion_summary_group(  # noqa: PLR0912, PLR0913, PLR0915
     if overflow_path is not None:
         renderables.append(Text(f"  raw_overflow={overflow_path}"))
 
-    # Debug breadcrumbs section
-    breadcrumb_lines = _debug_breadcrumb_lines(snapshot)
-    if breadcrumb_lines:
-        renderables.append(Rule("Debug", style="theme.text.muted"))
-        renderables.extend(Text(f"  {ln}") for ln in breadcrumb_lines)
+    # Verification section
+    renderables.append(Rule("Verification", style=style))
+    renderables.append(Text(f"  {_verification_line(workspace_root)}"))
 
     # Commit section
     commit_lines = _commit_message_lines(workspace_root)
@@ -674,6 +673,12 @@ def render_completion_summary_group(  # noqa: PLR0912, PLR0913, PLR0915
     dropped_line = _dropped_count_line(dropped_count)
     if dropped_line:
         renderables.append(Text(f"  {dropped_line}"))
+
+    # Debug breadcrumbs last — diagnostic info for post-mortem investigation
+    breadcrumb_lines = _debug_breadcrumb_lines(snapshot)
+    if breadcrumb_lines:
+        renderables.append(Rule("Debug", style="theme.text.muted"))
+        renderables.extend(Text(f"  {ln}") for ln in breadcrumb_lines)
 
     # Footer rule
     renderables.append(Rule(style=style))

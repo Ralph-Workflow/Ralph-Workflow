@@ -24,6 +24,7 @@ from ralph.pipeline import progress
 if TYPE_CHECKING:
     from rich.console import Console
 
+    from ralph.display.phase_lifecycle import PhaseEntryModel
     from ralph.policy.models import PipelinePolicy
 
 _PHASE_STYLES: dict[str, str] = {
@@ -431,6 +432,52 @@ def show_phase_start_from_state(
     show_phase_start(phase, ctx=ctx, display_context=display_context)
 
 
+
+
+def show_phase_start_from_entry(
+    entry: PhaseEntryModel,
+    *,
+    display_context: DisplayContext,
+    pipeline_policy: PipelinePolicy | None = None,
+) -> None:
+    """Display the start of a pipeline phase from a lifecycle entry model.
+
+    Canonical model-based path for phase-start banners.  Uses the entry model so
+    iteration labels (Dev N/cap, Analysis N/cap, Budget: N left) never diverge
+    between phase-start and phase-close surfaces.
+    """
+    c = display_context.console
+    style = _phase_style(entry.phase_name, pipeline_policy)
+    label = entry.human_label()
+
+    line = Text()
+    start_glyph = display_context.glyph_for("start")
+    od_glyph = display_context.glyph_for("outer_dev")
+    ia_glyph = display_context.glyph_for("inner_analysis")
+    budget_glyph = display_context.glyph_for("budget")
+    line.append(f"{start_glyph} ", style=style)
+    line.append(label, style=style)
+
+    if entry.outer_dev_iteration is not None:
+        suffix = _build_outer_iteration_suffix(
+            entry.outer_dev_iteration, entry.outer_dev_cap, od_glyph=od_glyph
+        )
+        line.append(suffix, style="theme.outer_dev")
+
+    if entry.inner_analysis is not None:
+        suffix = _build_inner_analysis_suffix(
+            entry.inner_analysis, entry.inner_analysis_cap, ia_glyph=ia_glyph
+        )
+        line.append(suffix, style="theme.inner_analysis")
+
+    if entry.budget_remaining is not None:
+        suffix = _build_budget_remaining_suffix(entry.budget_remaining, budget_glyph=budget_glyph)
+        line.append(suffix, style="theme.level.warn")
+
+    if entry.agent_name is not None:
+        line.append(f"  agent={entry.agent_name}", style="theme.text.muted")
+
+    c.print(line)
 
 
 def show_phase_complete(
