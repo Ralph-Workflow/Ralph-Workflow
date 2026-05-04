@@ -175,7 +175,7 @@ class ResolvedInvocationRuntime:
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
-    from ralph.config.models import AgentConfig
+    from ralph.config.models import AgentConfig, GeneralConfig
     from ralph.phases.required_artifacts import RequiredArtifact
 
 # Runtime imports with graceful fallback when watchdog is not available
@@ -790,6 +790,49 @@ def _agent_transport(config: AgentConfig) -> AgentTransport:
 
 def _agent_command_name(config: AgentConfig) -> str:
     return config.cmd.split()[0]
+
+
+def build_invoke_options_from_config(  # noqa: PLR0913
+    general_config: GeneralConfig,
+    *,
+    verbose: bool = False,
+    show_progress: bool = True,
+    workspace_path: Path | None = None,
+    extra_env: dict[str, str] | None = None,
+    pure: bool = False,
+    session_id: str | None = None,
+    system_prompt_file: str | None = None,
+    waiting_listener: WaitingStatusListener | None = None,
+    required_artifact: RequiredArtifact | None = None,
+) -> InvokeOptions:
+    """Build InvokeOptions from GeneralConfig, mapping all timeout fields."""
+    return InvokeOptions(
+        verbose=verbose,
+        show_progress=show_progress,
+        workspace_path=workspace_path,
+        extra_env=extra_env,
+        pure=pure,
+        session_id=session_id,
+        system_prompt_file=system_prompt_file,
+        waiting_listener=waiting_listener,
+        required_artifact=required_artifact,
+        idle_timeout_seconds=general_config.agent_idle_timeout_seconds,
+        drain_window_seconds=general_config.agent_idle_drain_window_seconds,
+        max_waiting_on_child_seconds=general_config.agent_idle_max_waiting_on_child_seconds,
+        idle_poll_interval_seconds=general_config.agent_idle_poll_interval_seconds,
+        parent_exit_grace_seconds=general_config.agent_parent_exit_grace_seconds,
+        descendant_wait_timeout_seconds=general_config.agent_descendant_wait_timeout_seconds,
+        descendant_wait_poll_seconds=general_config.agent_descendant_wait_poll_seconds,
+        process_exit_wait_seconds=general_config.agent_process_exit_wait_seconds,
+        max_session_seconds=general_config.agent_max_session_seconds,
+        waiting_status_interval_seconds=general_config.agent_waiting_status_interval_seconds,
+        suspect_waiting_on_child_seconds=general_config.agent_suspect_waiting_on_child_seconds,
+        max_waiting_on_child_no_progress_seconds=general_config.agent_idle_no_progress_waiting_on_child_seconds,
+        child_progress_ttl_seconds=general_config.agent_child_progress_ttl_seconds,
+        child_heartbeat_ttl_seconds=general_config.agent_child_heartbeat_ttl_seconds,
+        child_stale_label_ttl_seconds=general_config.agent_child_stale_label_ttl_seconds,
+        child_exit_reconcile_seconds=general_config.agent_child_exit_reconcile_seconds,
+    )
 
 
 def _policy_from_options(opts: InvokeOptions) -> TimeoutPolicy:

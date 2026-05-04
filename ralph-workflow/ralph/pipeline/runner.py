@@ -2668,7 +2668,7 @@ def _execute_agent_effect(  # noqa: PLR0913, PLR0915
     from ralph.agents.idle_watchdog import WaitingStatusEvent  # noqa: PLC0415,TC001
     from ralph.agents.invoke import (  # noqa: PLC0415
         AgentInactivityTimeoutError,
-        InvokeOptions,
+        build_invoke_options_from_config,
         extract_session_id,
     )
 
@@ -2782,7 +2782,8 @@ def _execute_agent_effect(  # noqa: PLR0913, PLR0915
                 extra_env=session_mcp_plan.server_env,
             )
 
-            options = InvokeOptions(
+            options = build_invoke_options_from_config(
+                config.general,
                 verbose=config.general.verbosity >= _VERBOSE_LOG_LEVEL,
                 show_progress=False,
                 workspace_path=workspace_scope.root,
@@ -2791,22 +2792,6 @@ def _execute_agent_effect(  # noqa: PLR0913, PLR0915
                     MCP_RUN_ID_ENV: session.run_id,
                     AGENT_LABEL_SCOPE_ENV: session.run_id,
                 },
-                idle_timeout_seconds=config.general.agent_idle_timeout_seconds,
-                drain_window_seconds=config.general.agent_idle_drain_window_seconds,
-                max_waiting_on_child_seconds=config.general.agent_idle_max_waiting_on_child_seconds,
-                idle_poll_interval_seconds=config.general.agent_idle_poll_interval_seconds,
-                parent_exit_grace_seconds=config.general.agent_parent_exit_grace_seconds,
-                descendant_wait_timeout_seconds=config.general.agent_descendant_wait_timeout_seconds,
-                descendant_wait_poll_seconds=config.general.agent_descendant_wait_poll_seconds,
-                process_exit_wait_seconds=config.general.agent_process_exit_wait_seconds,
-                max_session_seconds=config.general.agent_max_session_seconds,
-                waiting_status_interval_seconds=config.general.agent_waiting_status_interval_seconds,
-                suspect_waiting_on_child_seconds=config.general.agent_suspect_waiting_on_child_seconds,
-                max_waiting_on_child_no_progress_seconds=config.general.agent_idle_no_progress_waiting_on_child_seconds,
-                child_progress_ttl_seconds=config.general.agent_child_progress_ttl_seconds,
-                child_heartbeat_ttl_seconds=config.general.agent_child_heartbeat_ttl_seconds,
-                child_stale_label_ttl_seconds=config.general.agent_child_stale_label_ttl_seconds,
-                child_exit_reconcile_seconds=config.general.agent_child_exit_reconcile_seconds,
                 session_id=resume_session_id,
                 system_prompt_file=system_prompt_file,
                 waiting_listener=_waiting_listener,

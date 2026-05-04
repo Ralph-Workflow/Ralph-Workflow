@@ -18,7 +18,7 @@ from ralph.cli.commands import diagnose as diagnose_module
 from ralph.cli.commands import init as init_module
 from ralph.cli.commands.check_policy import check_policy_command
 from ralph.config.enums import AgentTransport, JsonParserType, ReviewDepth
-from ralph.config.models import AgentConfig, UnifiedConfig
+from ralph.config.models import AgentConfig, GeneralConfig, UnifiedConfig
 from ralph.display.context import DisplayContext, make_display_context
 from ralph.display.theme import RALPH_THEME
 from ralph.mcp.artifacts.commit_message import write_commit_message_artifact
@@ -66,11 +66,10 @@ def _attach_console(monkeypatch: pytest.MonkeyPatch, module: object) -> StringIO
 
 def _simple_config() -> SimpleNamespace:
     return SimpleNamespace(
-        general=SimpleNamespace(
+        general=GeneralConfig(
             git_user_name="user",
             git_user_email="user@example.com",
             verbosity=2,
-            agent_idle_timeout_seconds=300.0,
         ),
         agent_drains={"commit": "commit_chain", "review": "review_chain"},
         agent_chains={"commit_chain": ["commit_agent"], "review_chain": ["review_agent"]},
