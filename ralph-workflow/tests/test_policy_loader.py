@@ -468,3 +468,15 @@ def test_bundled_defaults_have_reviewless_phase_set() -> None:
     assert "reviewer_pass" not in bundle.pipeline.budget_counters
     assert bundle.pipeline.entry_phase == "planning"
     assert bundle.pipeline.terminal_phase == "complete"
+
+    # Bundled default agent surface must not expose review-era drains or chains.
+    review_era_drains = {"review", "review_analysis", "review_commit", "fix"}
+    assert not review_era_drains.intersection(bundle.agents.agent_drains), (
+        f"Review-era drains still present in bundled defaults: "
+        f"{review_era_drains.intersection(bundle.agents.agent_drains)}"
+    )
+    review_era_chains = {"review", "fix", "review_commit"}
+    assert not review_era_chains.intersection(bundle.agents.agent_chains), (
+        f"Review-era chains still present in bundled defaults: "
+        f"{review_era_chains.intersection(bundle.agents.agent_chains)}"
+    )

@@ -37,22 +37,16 @@ ralph-mcp
 
 ## Common flags
 
-- `-D, --developer-iters`
-- `-R, --reviewer-reviews`
+- `-Q, --quick` — quick mode: run a single developer iteration; accepts an inline prompt (`ralph -Q "do a quick change"`)
+- `-D, --developer-iters` — maximum developer iterations (default: 5; `-Q` is equivalent to `-D 1`)
 - `-a, --developer-agent`
-- `-r, --reviewer-agent`
 - `--developer-model`
-- `--reviewer-model`
 - `-c, --config`
 - `-d, --diagnose`
-- `-i, --interactive`
 - `-q, --quiet`
 - `-v, --verbosity`
-- `--review-depth`
 - `--dry-run`
 - `--no-resume`
-- `--with-rebase`
-- `--show-streaming-metrics`
 - `-V, --version`
 
 ## Verification
