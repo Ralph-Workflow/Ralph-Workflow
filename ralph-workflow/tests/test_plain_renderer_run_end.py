@@ -141,3 +141,31 @@ def test_emit_run_end_milestone_glyph_ascii_fallback() -> None:
     assert lines, "expected at least one non-empty line"
     assert "[run-end] * Ralph Workflow run end" in lines[0]
     assert "◆" not in lines[0]
+
+
+def test_emit_run_end_exit_trigger_shown_in_wide_output() -> None:
+    """exit_trigger='completed' is surfaced as exit=completed in wide mode output."""
+    renderer, buf = _make_renderer()
+    renderer.emit_run_end(phase="complete", total_agent_calls=0, exit_trigger="completed")
+    out = buf.getvalue()
+    assert "exit=completed" in out
+
+
+def test_emit_run_end_exit_trigger_shown_in_compact_output() -> None:
+    """exit_trigger='failed' is surfaced in compact mode output."""
+    buf = StringIO()
+    console = Console(file=buf, force_terminal=False, highlight=False, color_system=None, width=50)
+    renderer = PlainLogRenderer(
+        make_display_context(console=console, env={"COLUMNS": "50"})
+    )
+    renderer.emit_run_end(phase="failed", total_agent_calls=0, exit_trigger="failed")
+    out = buf.getvalue()
+    assert "failed" in out
+
+
+def test_emit_run_end_exit_trigger_none_omits_exit_field() -> None:
+    """When exit_trigger is None, no exit= field is emitted."""
+    renderer, buf = _make_renderer()
+    renderer.emit_run_end(phase="complete", total_agent_calls=0, exit_trigger=None)
+    out = buf.getvalue()
+    assert "exit=" not in out

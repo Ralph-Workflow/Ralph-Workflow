@@ -179,7 +179,7 @@ The format adapts to the display mode:
 
 **Compact mode** (`< 60` cols): abbreviated 3-line summary:
 ```
-<ISO-TS> MILESTONE META [run-end] <phase> | <elapsed>s
+<ISO-TS> MILESTONE META [run-end] <phase> | <elapsed>s | <exit_trigger>
 <ISO-TS> INFO     META [run-end] agent=N content=X thinking=Y tools=Z errors=W
 <ISO-TS> INFO     META [run-end] pr=<url>
 ```
@@ -187,13 +187,22 @@ The format adapts to the display mode:
 **Wide mode** (`>= 100` cols): multi-line with grouped counters and PR at end:
 ```
 <ISO-TS> MILESTONE META [run-end] ◆ Ralph Workflow run end
-<ISO-TS> INFO     META [run-end] phase=<phase> elapsed=<elapsed>s
+<ISO-TS> INFO     META [run-end] phase=<phase> elapsed=<elapsed>s exit=<exit_trigger>
 <ISO-TS> INFO     META [run-end] agent_calls=N content_blocks=X thinking_blocks=Y tool_calls=Z errors=W
 <ISO-TS> INFO     META [run-end] pr=<url>
 ```
 
 `phase=complete` indicates success; `phase=failed` indicates the pipeline terminated
 with an error.
+
+The `exit` field reports **why** the run ended:
+
+| `exit_trigger` | Meaning |
+|---------------|---------|
+| `completed` | Pipeline reached its terminal success phase |
+| `failed` | Pipeline hit a terminal failure condition |
+| `interrupted` | User cancelled the run (SIGINT / keyboard interrupt) |
+| `exited` | Pipeline exited for another reason |
 
 ## Environment Variables
 

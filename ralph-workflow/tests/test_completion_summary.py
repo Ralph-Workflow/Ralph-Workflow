@@ -475,3 +475,64 @@ def test_completion_summary_budget_progress_absent_when_cap_zero() -> None:
     })
     text = _render_plain(snap)
     assert "Budget Progress:" not in text
+
+
+# --- Exit trigger tests ---
+
+
+def test_completion_summary_exit_trigger_completed_for_success() -> None:
+    """Text mode shows 'Exit: completed' when is_terminal_success=True."""
+    snap = _make_snapshot(is_terminal_success=True, is_terminal_failure=False)
+    text = _render_plain(snap)
+    assert "Exit: completed" in text
+
+
+def test_completion_summary_exit_trigger_failed_for_failure() -> None:
+    """Text mode shows 'Exit: failed' when is_terminal_failure=True."""
+    snap = _make_snapshot(
+        phase="failed",
+        last_error="boom",
+        pr_url=None,
+        is_terminal_success=False,
+        is_terminal_failure=True,
+    )
+    text = _render_plain(snap)
+    assert "Exit: failed" in text
+
+
+def test_completion_summary_exit_trigger_interrupted() -> None:
+    """Text mode shows 'Exit: interrupted' when interrupted_by_user=True."""
+    snap = PipelineSnapshot(
+        phase="complete",
+        previous_phase=None,
+        review_issues_found=False,
+        interrupted_by_user=True,
+        last_error=None,
+        pr_url=None,
+        push_count=0,
+        total_agent_calls=1,
+        total_continuations=0,
+        total_fallbacks=0,
+        total_retries=0,
+        workers=(),
+        prompt_path="PROMPT.md",
+        prompt_preview=(),
+        run_id="run-x",
+        created_at=datetime(2026, 4, 18, 12, 0, tzinfo=UTC),
+        is_terminal_success=False,
+        is_terminal_failure=False,
+    )
+    text = _render_plain(snap)
+    assert "Exit: interrupted" in text
+
+
+def test_completion_summary_exit_trigger_appears_before_elapsed() -> None:
+    """Exit: line appears before Elapsed: line in text mode."""
+    snap = _make_snapshot()
+    rendered = render_completion_summary(snap, elapsed_seconds=20.0)
+    console = Console(record=True, width=120, force_terminal=False, color_system=None)
+    console.print(rendered)
+    text = console.export_text()
+    assert "Exit:" in text
+    assert "Elapsed:" in text
+    assert text.index("Exit:") < text.index("Elapsed:")

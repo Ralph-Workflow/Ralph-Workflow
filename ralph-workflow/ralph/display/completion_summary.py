@@ -201,6 +201,17 @@ def _fixer_iteration_summary(snapshot: PipelineSnapshot) -> str | None:
     return " | ".join(parts)
 
 
+def _exit_trigger_label(snapshot: PipelineSnapshot) -> str:
+    """Return a human-readable exit trigger label derived from snapshot state."""
+    if snapshot.interrupted_by_user:
+        return "interrupted"
+    if snapshot.is_terminal_success:
+        return "completed"
+    if snapshot.is_terminal_failure:
+        return "failed"
+    return "exited"
+
+
 def _has_iteration_context(snapshot: PipelineSnapshot) -> bool:
     """Return True when any iteration context field is populated."""
     return snapshot.outer_dev_iteration is not None or snapshot.fixer_iteration is not None
@@ -275,6 +286,8 @@ def render_completion_summary(  # noqa: PLR0913, PLR0912, PLR0915
 ) -> Text:
     failed = snapshot.is_terminal_failure
     lines: list[str] = ["Pipeline Failed" if failed else "Pipeline Complete"]
+
+    lines.append(f"Exit: {_exit_trigger_label(snapshot)}")
 
     if elapsed_seconds is not None:
         lines.append(f"Elapsed: {format_elapsed_seconds(elapsed_seconds)}")
@@ -387,6 +400,7 @@ def _render_compact_group(  # noqa: PLR0912, PLR0913, PLR0915
     )
 
     renderables: list[Text] = [Text(title_with_elapsed, style=style)]
+    renderables.append(Text(f"EXIT: {_exit_trigger_label(snapshot)}"))
 
     if include_context_sections and (snapshot.plan_summary or snapshot.plan_scope_items):
         if snapshot.plan_summary:
@@ -534,7 +548,8 @@ def render_completion_summary_group(  # noqa: PLR0912, PLR0913, PLR0915
     # Header rule
     renderables.append(Rule(title, style=style))
 
-    # Elapsed time — shown immediately after header for quick orientation
+    # Exit trigger and elapsed — shown immediately after header for quick orientation
+    renderables.append(Text(f"  exit={_exit_trigger_label(snapshot)}"))
     if elapsed_seconds is not None:
         renderables.append(Text(f"  elapsed={format_elapsed_seconds(elapsed_seconds)}"))
 

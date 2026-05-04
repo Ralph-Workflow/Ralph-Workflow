@@ -169,7 +169,12 @@ class _PhaseAwareDisplay(Protocol):
 
 class _RunEndDisplay(Protocol):
     def emit_run_end(
-        self, *, phase: str, total_agent_calls: int, pr_url: str | None = None
+        self,
+        *,
+        phase: str,
+        total_agent_calls: int,
+        pr_url: str | None = None,
+        exit_trigger: str | None = None,
     ) -> None: ...
 
 
@@ -1399,10 +1404,12 @@ def run(  # noqa: PLR0912, PLR0913, PLR0915
             if not is_quiet and hasattr(active_display, "emit_run_end"):
                 with suppress(Exception):
                     total_agent_calls = getattr(state.metrics, "total_agent_calls", 0)  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+                    _exit_trigger = "completed" if exit_code == 0 else "failed"
                     cast("_RunEndDisplay", active_display).emit_run_end(
                         phase=state.phase,
                         total_agent_calls=total_agent_calls,  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
                         pr_url=state.pr_url,
+                        exit_trigger=_exit_trigger,
                     )
     finally:
         with suppress(Exception):

@@ -787,6 +787,7 @@ class PlainLogRenderer:
         phase: str,
         total_agent_calls: int = 0,
         pr_url: str | None = None,
+        exit_trigger: str | None = None,
     ) -> None:
         """Emit a one-time MILESTONE orientation block at pipeline stop.
 
@@ -802,13 +803,14 @@ class PlainLogRenderer:
         is_compact = self._ctx.mode == "compact"
 
         if is_compact:
-            # Compact: 3 lines max — phase+elapsed, counters, PR
+            # Compact: 3 lines max — phase+elapsed+exit_trigger, counters, PR
+            trigger_suffix = f" | {exit_trigger}" if exit_trigger is not None else ""
             self._console.print(
                 self._build_line(
                     timestamp,
                     "MILESTONE",
                     "META",
-                    f"[run-end] {phase} | {total_elapsed_s}s",
+                    f"[run-end] {phase} | {total_elapsed_s}s{trigger_suffix}",
                 ),
                 markup=False,
                 highlight=False,
@@ -852,10 +854,11 @@ class PlainLogRenderer:
                 highlight=False,
                 no_wrap=True,
             )
+            phase_elapsed = f"[run-end] phase={phase} elapsed={total_elapsed_s}s"
+            if exit_trigger is not None:
+                phase_elapsed += f" exit={exit_trigger}"
             self._console.print(
-                self._build_line(
-                    timestamp, "INFO", "META", f"[run-end] phase={phase} elapsed={total_elapsed_s}s"
-                ),
+                self._build_line(timestamp, "INFO", "META", phase_elapsed),
                 markup=False,
                 highlight=False,
                 no_wrap=True,

@@ -511,3 +511,54 @@ def test_compact_budget_absent_when_no_tracked_counters() -> None:
     snap = _make_snapshot_with_budget_bp({})
     out = _render_compact_full(snap)
     assert "BUDGET:" not in out
+
+
+# --- Exit trigger tests ---
+
+
+def test_group_exit_trigger_shown_in_wide_mode() -> None:
+    """Wide mode shows exit= label after header rule."""
+    out = _render_group(_make_snapshot())
+    assert "exit=completed" in out
+
+
+def test_group_exit_trigger_failed_shown_in_wide_mode() -> None:
+    """Wide mode shows exit=failed when is_terminal_failure=True."""
+    out = _render_group(
+        _make_snapshot(
+            phase="failed",
+            last_error="crash",
+            is_terminal_success=False,
+            is_terminal_failure=True,
+        )
+    )
+    assert "exit=failed" in out
+
+
+def test_group_exit_trigger_appears_before_metrics_in_wide_mode() -> None:
+    """exit= line appears before the Metrics section in wide mode output."""
+    out = _render_group(_make_snapshot())
+    assert "exit=completed" in out
+    assert "Metrics" in out
+    assert out.index("exit=completed") < out.index("Metrics")
+
+
+def test_compact_exit_trigger_shown() -> None:
+    """Compact mode shows EXIT: label."""
+    out = _render_compact(_make_snapshot())
+    assert "EXIT:" in out
+    assert "completed" in out
+
+
+def test_compact_exit_trigger_failed_shown() -> None:
+    """Compact mode shows EXIT: failed when is_terminal_failure=True."""
+    out = _render_compact(
+        _make_snapshot(
+            phase="failed",
+            last_error="crash",
+            is_terminal_success=False,
+            is_terminal_failure=True,
+        )
+    )
+    assert "EXIT:" in out
+    assert "failed" in out

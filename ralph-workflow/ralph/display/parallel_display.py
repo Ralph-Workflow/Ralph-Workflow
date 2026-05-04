@@ -321,6 +321,7 @@ class ParallelDisplay:
         phase: str,
         total_agent_calls: int = 0,
         pr_url: str | None = None,
+        exit_trigger: str | None = None,
     ) -> None:
         """Emit a one-time run-end orientation block at pipeline stop."""
         with contextlib.suppress(Exception):
@@ -328,6 +329,7 @@ class ParallelDisplay:
                 phase=phase,
                 total_agent_calls=total_agent_calls,
                 pr_url=pr_url,
+                exit_trigger=exit_trigger,
             )
         last_state = self._subscriber.last_state
         if last_state is not None:
