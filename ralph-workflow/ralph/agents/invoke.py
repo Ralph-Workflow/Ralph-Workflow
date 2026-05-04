@@ -911,7 +911,7 @@ def _policy_from_options(opts: InvokeOptions) -> TimeoutPolicy:
     )
 
 
-def _read_lines_from_process(  # noqa: PLR0913,PLR0915
+def _read_lines_from_process(  # noqa: PLR0912,PLR0913,PLR0915
     handle: ManagedProcess,
     *,
     policy: TimeoutPolicy,
@@ -1119,6 +1119,35 @@ def _read_lines_from_process(  # noqa: PLR0913,PLR0915
                 continue
 
             if is_done:
+                # Reader finished but idle watchdog hasn't had a chance to fire yet.
+                # Keep evaluating until watchdog fires or we've passed the drain window.
+                drain_window_deadline = (
+                    clock.monotonic() + policy.drain_window_seconds
+                    if policy.drain_window_seconds
+                    else None
+                )
+                while True:
+                    fire_result = _handle_fire_verdict(
+                        watchdog.evaluate(classify_quiet=_safe_classify_quiet)
+                    )
+                    if fire_result is not None:
+                        pending_lines, exc = fire_result
+                        yield from pending_lines
+                        raise exc
+                    # Drain window expired - exit gracefully
+                    if (
+                        drain_window_deadline is not None
+                        and clock.monotonic() >= drain_window_deadline
+                    ):
+                        break
+                    # If no idle timeout is configured, exit the drain loop.
+                    # The watchdog will never fire, so we must not loop forever.
+                    if policy.idle_timeout_seconds is None:
+                        break
+                    # Advance clock and re-evaluate
+                    clock.wait_for_event(
+                        lines_event, policy.idle_poll_interval_seconds
+                    )
                 break
 
             fire_result = _handle_fire_verdict(
