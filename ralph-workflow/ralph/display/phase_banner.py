@@ -7,12 +7,19 @@ so the user can easily follow the flow of planning → development → review �
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING
 
 from rich.rule import Rule
 from rich.text import Text
 
 from ralph.display.context import DisplayContext, make_display_context
+from ralph.display.phase_status import (
+    format_analysis_cycle,
+    format_budget_remaining,
+    format_dev_cycle,
+    format_fixer_cycle,
+    format_transition_context_items,
+)
 from ralph.pipeline import progress
 
 if TYPE_CHECKING:
@@ -94,71 +101,6 @@ def _phase_label(phase: str) -> str:
     return phase.replace("_", " ").title()
 
 
-@dataclass(frozen=True)
-class _TransitionLayout:
-    """Layout knobs for phase transition banner rendering."""
-
-    leading_blank: bool
-    separator_rule: bool
-    trailing_rule: bool
-
-
-@dataclass(frozen=True)
-class _BannerOptions:
-    """Options for rendering a transition banner."""
-
-    from_label: str
-    to_label: str
-    description: str | None = None
-    context: dict[str, object] | None = None
-    style: str = "theme.text.muted"
-
-
-_MODE_LAYOUTS: dict[Literal["compact", "medium", "wide"], _TransitionLayout] = {
-    "compact": _TransitionLayout(leading_blank=False, separator_rule=False, trailing_rule=True),
-    "medium": _TransitionLayout(leading_blank=True, separator_rule=True, trailing_rule=True),
-    "wide": _TransitionLayout(leading_blank=True, separator_rule=True, trailing_rule=True),
-}
-
-
-def _render_transition_banner(
-    display_context: DisplayContext,
-    options: _BannerOptions,
-    is_major: bool,
-) -> None:
-    """Render a phase transition banner using mode-driven layout.
-
-    Args:
-        display_context: DisplayContext providing console and mode.
-        options: Banner options including labels, description, context, and style.
-        is_major: True for major transitions, False for minor.
-    """
-    c = display_context.console
-    mode = display_context.mode
-    layout = _MODE_LAYOUTS[mode]
-
-    if layout.leading_blank:
-        c.print()
-
-    if layout.separator_rule:
-        c.print(Rule(style=options.style))
-
-    banner = Text()
-    arrow = display_context.glyph_for("arrow")
-    banner.append(f"  {options.from_label}", style="theme.text.muted")
-    banner.append(f" {arrow} ", style="theme.text.emphasis")
-    banner.append(options.to_label, style=options.style)
-    if options.context:
-        detail = "  ".join(f"{k}={v}" for k, v in options.context.items())
-        banner.append(f"  ({detail})", style="theme.text.muted")
-    c.print(banner)
-
-    if options.description and is_major:
-        c.print(Text(f"  {options.description}", style="theme.text.dim_italic"))
-
-    if layout.trailing_rule:
-        c.print(Rule(style=options.style))
-
 
 def _resolve_transition_meta(
     from_phase: str,
@@ -208,14 +150,7 @@ def _render_major_transition(  # noqa: PLR0913
     banner.append(f" {arrow} ", style="theme.text.emphasis")
     banner.append(to_label, style=style)
     if context:
-        # Format analysis_status naturally without the key name or = sign
-        formatted_parts = []
-        for k, v in context.items():
-            if k == "analysis_status":
-                formatted_parts.append(str(v))
-            else:
-                formatted_parts.append(f"{k}={v}")
-        detail = "  ".join(formatted_parts)
+        detail = "  ".join(format_transition_context_items(context))
         banner.append(f"  ({detail})", style="theme.text.muted")
     c.print(banner)
     if description:
@@ -291,10 +226,11 @@ class PhaseStartContext:
     analysis_iteration: int | None = None
     max_analysis_iterations: int | None = None
     phase_name: str | None = None
-    outer_iteration: int | None = None  # Outer dev iteration with label 'dev-iteration=X'
-    inner_analysis: int | None = None  # Inner analysis count with label 'analysis=X/Y'
-    budget_remaining: int | None = None  # Remaining budget with label 'budget=Z'
-    fixer_iteration: int | None = None  # Current fixer iteration if in fixer context
+    outer_iteration: int | None = None  # Outer dev cycle shown as [Dev #N]
+    inner_analysis: int | None = None  # Inner analysis cycle shown as [Analysis N/cap]
+    inner_analysis_cap: int | None = None  # Cap for inner_analysis display
+    budget_remaining: int | None = None  # Remaining budget shown as [Budget: N left]
+    fixer_iteration: int | None = None  # Fixer cycle shown as [Fixer #N]
 
 
 @dataclass(frozen=True)
@@ -324,29 +260,27 @@ def _build_analysis_suffix(
 
 
 def _build_outer_iteration_suffix(iteration: int | None) -> str:
-    """Build the outer dev iteration suffix string."""
+    """Build the outer dev cycle label string."""
     if iteration is None:
         return ""
-    return f" [dev-iteration={iteration}]"
+    return f" [{format_dev_cycle(iteration)}]"
 
 
 def _build_inner_analysis_suffix(
     inner: int | None,
     max_inner: int | None = None,
 ) -> str:
-    """Build the inner analysis suffix string."""
+    """Build the inner analysis cycle label string."""
     if inner is None:
         return ""
-    if max_inner is not None:
-        return f" [analysis={inner}/{max_inner}]"
-    return f" [analysis={inner}]"
+    return f" [{format_analysis_cycle(inner, max_inner)}]"
 
 
 def _build_budget_remaining_suffix(remaining: int | None) -> str:
-    """Build the budget remaining suffix string."""
+    """Build the budget remaining label string."""
     if remaining is None:
         return ""
-    return f" [budget={remaining}]"
+    return f" [{format_budget_remaining(remaining)}]"
 
 
 def show_phase_start(  # noqa: PLR0913
@@ -389,23 +323,23 @@ def show_phase_start(  # noqa: PLR0913
                 ctx.max_analysis_iterations,
             )
             line.append(suffix, style="theme.text.muted")
-        # Render outer dev iteration with distinct styling
+        # Render outer dev cycle with distinct styling
         if ctx.outer_iteration is not None:
             suffix = _build_outer_iteration_suffix(ctx.outer_iteration)
-            line.append(suffix, style="theme.text.emphasis")
+            line.append(suffix, style="theme.outer_dev")
         # Render inner analysis count
         if ctx.inner_analysis is not None:
-            suffix = _build_inner_analysis_suffix(ctx.inner_analysis)
-            line.append(suffix, style="theme.text.muted")
+            suffix = _build_inner_analysis_suffix(ctx.inner_analysis, ctx.inner_analysis_cap)
+            line.append(suffix, style="theme.inner_analysis")
         # Render budget remaining
         if ctx.budget_remaining is not None:
             suffix = _build_budget_remaining_suffix(ctx.budget_remaining)
             line.append(suffix, style="theme.level.warn")
-        # Render fixer iteration if in fixer context
+        # Render fixer cycle if in fixer context
         if ctx.fixer_iteration is not None:
             line.append(
-                f" [fixer-iteration={ctx.fixer_iteration}]",
-                style="theme.phase.fix",
+                f" [{format_fixer_cycle(ctx.fixer_iteration)}]",
+                style="theme.fixer_iteration",
             )
         effective_agent = ctx.agent_name or agent_name
     else:

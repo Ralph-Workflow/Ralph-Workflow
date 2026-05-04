@@ -46,6 +46,7 @@ from ralph.display.phase_banner import (
     show_phase_start_from_state,
     show_phase_transition,
 )
+from ralph.display.phase_status import PhaseIterationContext
 from ralph.interrupt import controller_from_process_manager
 from ralph.interrupt.controller import install_force_kill_handler
 from ralph.mcp.artifacts.commit_message import (
@@ -707,6 +708,7 @@ def _run_pipeline_step(  # noqa: PLR0913
                     display=display,
                     display_context=display_context,
                     verbosity=verbosity,
+                    state=state,
                 )
 
         _commit_phase_def = policy_bundle.pipeline.phases.get(state.phase)
@@ -1070,6 +1072,7 @@ def _emit_final_summary(
                 prompt_preview=(),
                 run_id=None,
             )
+        pipeline_policy = subscriber.pipeline_policy if subscriber is not None else None
         ctx = _get_display_context(display, display_context)
         emit_completion_summary(
             snapshot,
@@ -1079,6 +1082,7 @@ def _emit_final_summary(
                 isinstance(display, _LegacyConsoleDisplay) or state.interrupted_by_user
             ),
             display_context=ctx,
+            pipeline_policy=pipeline_policy,
         )
     except Exception:
         logger.debug("Failed to emit completion summary", exc_info=True)
@@ -2329,6 +2333,7 @@ def _phase_event_after_agent_run(  # noqa: PLR0913
     display: ParallelDisplay | _LegacyConsoleDisplay | None = None,
     display_context: DisplayContext | None = None,
     verbosity: Verbosity = Verbosity.VERBOSE,
+    state: PipelineState | None = None,
 ) -> Event:
     ctx = PhaseContext.model_construct(
         workspace=workspace,
@@ -2369,6 +2374,7 @@ def _phase_event_after_agent_run(  # noqa: PLR0913
             verbosity=verbosity,
             drain=effect.drain,
             policy_bundle=policy_bundle,
+            state=state,
         )
 
     if (
@@ -2406,6 +2412,7 @@ def _render_phase_artifact_handoff(  # noqa: PLR0913
     verbosity: Verbosity = Verbosity.VERBOSE,
     drain: str | None = None,
     policy_bundle: PolicyBundle | None = None,
+    state: PipelineState | None = None,
 ) -> None:
     ctx = _get_display_context(display, display_context)
     effective_drain = drain or phase
@@ -2440,6 +2447,24 @@ def _render_phase_artifact_handoff(  # noqa: PLR0913
     if event == PipelineEvent.AGENT_SUCCESS:
         phase_def = policy_bundle.pipeline.phases.get(phase) if policy_bundle is not None else None
         phase_role = phase_def.role if phase_def is not None else None
+        iteration_context: PhaseIterationContext | None = None
+        if state is not None and policy_bundle is not None:
+            counter = _find_commit_counter_from_phase(phase, policy_bundle.pipeline)
+            outer_dev = state.get_outer_progress(counter) if counter is not None else None
+            budget = state.get_budget_remaining(counter) if counter is not None else None
+            loop_field = (
+                phase_def.loop_policy.iteration_state_field
+                if phase_def is not None and phase_def.loop_policy is not None
+                else None
+            )
+            inner_analysis = (
+                state.get_loop_iteration(loop_field) if loop_field is not None else None
+            )
+            iteration_context = PhaseIterationContext(
+                outer_dev=outer_dev,
+                budget_remaining=budget,
+                inner_analysis=inner_analysis,
+            )
         _render_success_artifact(
             artifact_type,
             phase,
@@ -2449,6 +2474,7 @@ def _render_phase_artifact_handoff(  # noqa: PLR0913
             verbosity,
             required_artifact,
             phase_role=phase_role,
+            iteration_context=iteration_context,
         )
 
 
@@ -2462,6 +2488,7 @@ def _render_success_artifact(  # noqa: PLR0913
     ra: RequiredArtifact,
     *,
     phase_role: str | None = None,
+    iteration_context: PhaseIterationContext | None = None,
 ) -> None:
     if artifact_type == "plan":
         render_plan_artifact(workspace_root, display_context)
@@ -2476,7 +2503,7 @@ def _render_success_artifact(  # noqa: PLR0913
                     else "plan: (no plan artifact on disk)"
                 )
                 cast("ParallelDisplay", display).emit_phase_close(
-                    phase, produced, phase_role=phase_role
+                    phase, produced, phase_role=phase_role, iteration_context=iteration_context
                 )
         return
 
@@ -2490,7 +2517,7 @@ def _render_success_artifact(  # noqa: PLR0913
                     else f"{phase}: no result artifact"
                 )
                 cast("ParallelDisplay", display).emit_phase_close(
-                    phase, produced, phase_role=phase_role
+                    phase, produced, phase_role=phase_role, iteration_context=iteration_context
                 )
         return
 
@@ -2520,7 +2547,10 @@ def _render_success_artifact(  # noqa: PLR0913
                     except Exception:
                         pass
                 cast("ParallelDisplay", display).emit_phase_close(
-                    phase, f"{phase}: {issue_count} issue(s)", phase_role=phase_role
+                    phase,
+                    f"{phase}: {issue_count} issue(s)",
+                    phase_role=phase_role,
+                    iteration_context=iteration_context,
                 )
         return
 
@@ -2529,7 +2559,10 @@ def _render_success_artifact(  # noqa: PLR0913
         if verbosity != Verbosity.QUIET and hasattr(display, "emit_phase_close"):
             with suppress(Exception):
                 cast("ParallelDisplay", display).emit_phase_close(
-                    phase, f"{phase}: applied", phase_role=phase_role
+                    phase,
+                    f"{phase}: applied",
+                    phase_role=phase_role,
+                    iteration_context=iteration_context,
                 )
 
 

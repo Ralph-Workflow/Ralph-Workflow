@@ -681,9 +681,9 @@ class TestAnalysisExecutionTransitionBannerCounters:
 
         The banner should show:
         - The outer iteration counter (e.g., iteration=1/5)
-        - The analysis counter (e.g., Planning Analysis=3/3)
+        - The analysis counter (e.g., [Planning Analysis 3/3])
         - The final-skip indicator (final, skipping next)
-        - The decision (needs changes)
+        - The decision (→ needs changes)
 
         This verifies the fix for the regression where _phase_context only emitted the
         analysis counter when previous_role='analysis', dropping the outer iteration
@@ -725,9 +725,9 @@ class TestAnalysisExecutionTransitionBannerCounters:
         )
         console = Console(record=True, width=120)
         # Context that _phase_context would build for this transition:
-        # - Planning Analysis=3/3 (analysis counter, final)
+        # - [Planning Analysis 3/3] (analysis counter, final)
         # - iteration=1/5 (outer iteration)
-        # - decision=needs changes
+        # - → needs changes
         context = {
             "Planning Analysis": "3/3",
             "analysis_status": "final, skipping next",
@@ -747,7 +747,7 @@ class TestAnalysisExecutionTransitionBannerCounters:
             f"Outer iteration counter missing from banner. Output:\n{output}"
         )
         # Must show analysis counter
-        assert "Planning Analysis=3/3" in output, (
+        assert "[Planning Analysis 3/3]" in output, (
             f"Analysis counter missing from banner. Output:\n{output}"
         )
         # Must show final-skip indicator
@@ -755,7 +755,7 @@ class TestAnalysisExecutionTransitionBannerCounters:
             f"Final-skip indicator missing from banner. Output:\n{output}"
         )
         # Must show decision
-        assert "decision=needs changes" in output, (
+        assert "→ needs changes" in output, (
             f"Decision missing from banner. Output:\n{output}"
         )
 
@@ -809,7 +809,7 @@ class TestAnalysisExecutionTransitionBannerCounters:
             f"Outer iteration counter missing from banner. Output:\n{output}"
         )
         # Must show analysis counter
-        assert "Planning Analysis=2/3" in output, (
+        assert "[Planning Analysis 2/3]" in output, (
             f"Analysis counter missing from banner. Output:\n{output}"
         )
 
@@ -870,7 +870,7 @@ class TestAnalysisExecutionTransitionBannerCounters:
             f"Outer iteration counter missing from banner. Output:\n{output}"
         )
         # Must show analysis counter
-        assert "Development Analysis=3/3" in output, (
+        assert "[Development Analysis 3/3]" in output, (
             f"Analysis counter missing from banner. Output:\n{output}"
         )
         # Must show final-skip indicator

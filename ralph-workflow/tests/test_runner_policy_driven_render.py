@@ -10,25 +10,30 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock, patch
 
-if TYPE_CHECKING:
-    from pathlib import Path
-
 import pytest
 
+from ralph.display.phase_status import PhaseIterationContext
 from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.runner import _render_phase_artifact_handoff
+from ralph.pipeline.state import PipelineState
 from ralph.policy.models import (
     AgentChainConfig,
     AgentDrainConfig,
     AgentsPolicy,
     ArtifactContract,
     ArtifactsPolicy,
+    BudgetCounterConfig,
+    PhaseCommitPolicy,
     PhaseDefinition,
     PhaseTransition,
     PipelinePolicy,
     PolicyBundle,
     RecoveryPolicy,
 )
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
 
 
 def _make_custom_bundle() -> PolicyBundle:
@@ -223,3 +228,139 @@ class TestRenderPhaseArtifactHandoffIsGeneric:
         mock_plan.assert_not_called()
         mock_analysis.assert_not_called()
         mock_dev.assert_not_called()
+
+
+def _make_bundle_with_dev_result_contract() -> PolicyBundle:
+    """Bundle where 'build' has a development_result contract and commit follows on_success."""
+    agents = AgentsPolicy(
+        agent_chains={
+            "build_chain": AgentChainConfig(agents=["fake-agent"]),
+            "commit_chain": AgentChainConfig(agents=["fake-agent"]),
+        },
+        agent_drains={
+            "build": AgentDrainConfig(chain="build_chain", drain_class="development"),
+            "commit": AgentDrainConfig(chain="commit_chain", drain_class="commit"),
+            "done": AgentDrainConfig(chain="build_chain"),
+            "aborted": AgentDrainConfig(chain="build_chain"),
+        },
+    )
+    pipeline = PipelinePolicy(
+        entry_phase="build",
+        terminal_phase="done",
+        budget_counters={"dev_iter": BudgetCounterConfig(default_max=3)},
+        phases={
+            "build": PhaseDefinition(
+                drain="build",
+                role="execution",
+                transitions=PhaseTransition(on_success="commit"),
+            ),
+            "commit": PhaseDefinition(
+                drain="commit",
+                role="commit",
+                transitions=PhaseTransition(on_success="done"),
+                commit_policy=PhaseCommitPolicy(increments_counter="dev_iter"),
+            ),
+            "done": PhaseDefinition(
+                drain="done",
+                role="terminal",
+                terminal_outcome="success",
+                transitions=PhaseTransition(on_success="done", on_loopback="done"),
+            ),
+            "aborted": PhaseDefinition(
+                drain="aborted",
+                role="terminal",
+                terminal_outcome="failure",
+                transitions=PhaseTransition(on_success="aborted", on_loopback="aborted"),
+            ),
+        },
+        recovery=RecoveryPolicy(failed_route="aborted"),
+    )
+    artifacts = ArtifactsPolicy(
+        artifacts={
+            "build": ArtifactContract(
+                drain="build",
+                artifact_type="development_result",
+            ),
+        }
+    )
+    return PolicyBundle(agents=agents, pipeline=pipeline, artifacts=artifacts)
+
+
+class TestIterationContextFlowsToEmitPhaseClose:
+    """iteration_context from state flows through to emit_phase_close."""
+
+    def test_iteration_context_passed_to_emit_phase_close_when_state_has_outer_dev(
+        self,
+        tmp_workspace: Path,
+    ) -> None:
+        """When state carries outer_dev progress, emit_phase_close receives it."""
+        expected_outer_dev = 2
+        bundle = _make_bundle_with_dev_result_contract()
+        state = (
+            PipelineState.from_policy(bundle.pipeline)
+            .with_outer_progress("dev_iter", expected_outer_dev)
+        )
+
+        display = MagicMock()
+        display.emit_phase_close = MagicMock()
+
+        (tmp_workspace / "build.json").write_text("{}")
+
+        with (
+            patch("ralph.pipeline.runner.render_development_artifact"),
+            patch("ralph.pipeline.runner._render_success_artifact", wraps=None) as mock_rsa,
+        ):
+            mock_rsa.side_effect = None
+
+            captured_contexts: list[object] = []
+
+            def capture_iteration_context(*args: object, **kwargs: object) -> None:
+                captured_contexts.append(kwargs.get("iteration_context"))
+
+            mock_rsa.side_effect = capture_iteration_context
+
+            _render_phase_artifact_handoff(
+                "build",
+                PipelineEvent.AGENT_SUCCESS,
+                tmp_workspace,
+                display,
+                policy_bundle=bundle,
+                state=state,
+            )
+
+        assert len(captured_contexts) == 1
+        ctx = captured_contexts[0]
+        assert isinstance(ctx, PhaseIterationContext)
+        assert ctx.outer_dev == expected_outer_dev
+
+    def test_no_iteration_context_when_state_is_none(
+        self,
+        tmp_workspace: Path,
+    ) -> None:
+        """When state=None, iteration_context passed to _render_success_artifact is None."""
+        bundle = _make_bundle_with_dev_result_contract()
+        display = MagicMock()
+
+        captured_contexts: list[object] = []
+
+        def capture_iteration_context(*args: object, **kwargs: object) -> None:
+            captured_contexts.append(kwargs.get("iteration_context"))
+
+        with (
+            patch("ralph.pipeline.runner.render_development_artifact"),
+            patch(
+                "ralph.pipeline.runner._render_success_artifact",
+                side_effect=capture_iteration_context,
+            ),
+        ):
+            _render_phase_artifact_handoff(
+                "build",
+                PipelineEvent.AGENT_SUCCESS,
+                tmp_workspace,
+                display,
+                policy_bundle=bundle,
+                state=None,
+            )
+
+        assert len(captured_contexts) == 1
+        assert captured_contexts[0] is None
