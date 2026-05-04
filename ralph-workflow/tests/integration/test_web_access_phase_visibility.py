@@ -14,8 +14,7 @@ from __future__ import annotations
 
 import pytest
 
-import ralph.mcp.webvisit.extractor as extractor_module
-import ralph.mcp.webvisit.fetcher as fetcher_module
+import ralph.mcp.tools.webvisit as webvisit_handler_module
 from ralph.config.mcp_models import McpConfig, WebVisitConfig
 from ralph.mcp.protocol.capability_mapping import Capability, SessionDrain
 from ralph.mcp.protocol.session import AgentSession
@@ -23,6 +22,8 @@ from ralph.mcp.tools.bridge import ToolBridge, build_ralph_tool_registry
 from ralph.mcp.tools.names import VISIT_URL_TOOL, upstream_proxy_tool_name
 from ralph.mcp.upstream.models import UpstreamTool
 from ralph.mcp.upstream.registry import ProxiedTool, UpstreamRegistry
+from ralph.mcp.webvisit.extractor import ExtractedPage
+from ralph.mcp.webvisit.fetcher import FetchOutcome
 from ralph.prompts.template_variables import DEFAULT_CAPABILITIES
 
 
@@ -52,21 +53,21 @@ class TestVisitUrlPhaseVisibility:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """visit_url must appear in the tool registry and be dispatchable for each drain."""
-        mock_outcome = fetcher_module.FetchOutcome(
+        mock_outcome = FetchOutcome(
             status="ok",
             effective_url="https://example.com/page",
             http_status=200,
             content_type="text/html; charset=utf-8",
             body=b"<html><body><p>Test content</p></body></html>",
         )
-        monkeypatch.setattr(fetcher_module, "fetch_url", lambda *a, **kw: mock_outcome)
+        monkeypatch.setattr(webvisit_handler_module, "fetch_url", lambda *a, **kw: mock_outcome)
 
-        mock_page = extractor_module.ExtractedPage(
+        mock_page = ExtractedPage(
             title="Example Page",
             text="Test content",
             links=(),
         )
-        monkeypatch.setattr(extractor_module, "extract_readable", lambda *a, **kw: mock_page)
+        monkeypatch.setattr(webvisit_handler_module, "extract_readable", lambda *a, **kw: mock_page)
 
         session = _make_session(drain_str)
         registry = _visit_registry(session)
