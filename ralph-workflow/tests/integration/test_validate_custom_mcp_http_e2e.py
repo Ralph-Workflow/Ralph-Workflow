@@ -1,13 +1,10 @@
-"""End-to-end HTTP validation of the runner's custom MCP startup probe."""
+"""Integration tests for the runner's HTTP MCP startup validation.
 
+Tests the full chain from mcp.toml parsing through _validate_custom_mcp_servers
+without spawning real subprocess servers or waiting on real sockets.
+"""
 from __future__ import annotations
 
-import contextlib
-import socket
-import subprocess
-import sys
-import time
-from contextlib import contextmanager
 from io import StringIO
 from textwrap import dedent
 from typing import TYPE_CHECKING
@@ -15,14 +12,16 @@ from typing import TYPE_CHECKING
 import pytest
 from loguru import logger
 
+from ralph.mcp.protocol.startup import RetryablePreflightError
+from ralph.mcp.upstream.validation import (
+    validate_upstream_mcp_servers,
+)
 from ralph.pipeline import runner as runner_module
-from ralph.process.manager import ProcessTerminationError, get_process_manager
+from tests.fixtures.mcp_test_harness import FAKE_TOOL, StubUpstreamClient
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
     from pathlib import Path
-
-pytestmark = [pytest.mark.subprocess_e2e, pytest.mark.timeout_seconds(30)]
 
 
 @pytest.fixture(autouse=True)
@@ -30,59 +29,6 @@ def _reset_loguru() -> Iterator[None]:
     logger.remove()
     yield
     logger.remove()
-
-
-@pytest.fixture(autouse=True)
-def _short_preflight_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("RALPH_MCP_PREFLIGHT_TIMEOUT_MS", "300")
-
-
-@contextmanager
-def _spawn_fake_http_mcp() -> Iterator[int]:
-    handle = get_process_manager().spawn(
-        [sys.executable, "-m", "tests.fixtures.fake_http_mcp"],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        label="test:fake-http-mcp-validate",
-    )
-    try:
-        stdout = handle.stdout
-        assert stdout is not None
-        port_line = stdout.readline().strip()
-        if not port_line:
-            raise AssertionError("fake_http_mcp did not print its port before exiting")
-        port = int(port_line)
-        _wait_for_port(port)
-        yield port
-    finally:
-        with contextlib.suppress(ProcessTerminationError):
-            handle.terminate(grace_period_s=5.0)
-        if handle.stdout is not None:
-            with contextlib.suppress(Exception):
-                handle.stdout.close()
-        if handle.stderr is not None:
-            with contextlib.suppress(Exception):
-                handle.stderr.close()
-
-
-def _wait_for_port(port: int) -> None:
-    deadline = time.monotonic() + 5
-    last_error: Exception | None = None
-    while time.monotonic() < deadline:
-        try:
-            with socket.create_connection(("127.0.0.1", port), timeout=0.1):
-                return
-        except OSError as exc:
-            last_error = exc
-            time.sleep(0.01)
-    raise AssertionError(f"fake_http_mcp never bound port {port}: {last_error}")
-
-
-def _reserve_port() -> int:
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-        sock.bind(("127.0.0.1", 0))
-        return int(sock.getsockname()[1])
 
 
 def _write_http_mcp_toml(workspace: Path, port: int) -> None:
@@ -101,26 +47,49 @@ def _write_http_mcp_toml(workspace: Path, port: int) -> None:
     (agent_dir / "mcp.toml").write_text(body, encoding="utf-8")
 
 
-def test_validate_with_real_http_fixture_returns_zero(
+def test_validate_http_server_healthy_returns_zero(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
+    """_validate_custom_mcp_servers returns 0 when HTTP preflight and tool probe pass."""
+    _write_http_mcp_toml(tmp_path, 9999)
     monkeypatch.setenv("HOME", str(tmp_path / "fake-home"))
     monkeypatch.delenv("RALPH_MCP_STRICT", raising=False)
 
-    with _spawn_fake_http_mcp() as port:
-        _write_http_mcp_toml(tmp_path, port)
-        rc = runner_module._validate_custom_mcp_servers(tmp_path)
+    def passing_validate(servers, *, strict):
+        return validate_upstream_mcp_servers(
+            servers,
+            strict=strict,
+            preflight_http=lambda *a, **k: None,
+        )
+
+    monkeypatch.setattr(
+        "ralph.mcp.upstream.validation.make_upstream_client",
+        lambda server, **kw: StubUpstreamClient([FAKE_TOOL]),
+    )
+    monkeypatch.setattr(runner_module, "_VALIDATE_MCP", passing_validate)
+    monkeypatch.setattr(runner_module, "_PROBE_AGENT_TRANSPORTS", lambda *a, **k: ())
+
+    rc = runner_module._validate_custom_mcp_servers(tmp_path)
 
     assert rc == 0
 
 
-def test_validate_with_unreachable_http_url_returns_one_in_strict_mode(
+def test_validate_http_server_unreachable_strict_returns_one(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
+    """_validate_custom_mcp_servers returns 1 in strict mode when HTTP server unreachable."""
+    _write_http_mcp_toml(tmp_path, 9999)
     monkeypatch.setenv("HOME", str(tmp_path / "fake-home"))
     monkeypatch.delenv("RALPH_MCP_STRICT", raising=False)
-    closed_port = _reserve_port()
-    _write_http_mcp_toml(tmp_path, closed_port)
+
+    def failing_validate(servers, *, strict):
+        def boom(*a, **k):
+            raise RetryablePreflightError("connection refused")
+
+        return validate_upstream_mcp_servers(servers, strict=strict, preflight_http=boom)
+
+    monkeypatch.setattr(runner_module, "_VALIDATE_MCP", failing_validate)
+    monkeypatch.setattr(runner_module, "_PROBE_AGENT_TRANSPORTS", lambda *a, **k: ())
 
     error_stream = StringIO()
     sink_id = logger.add(error_stream, level="ERROR")
@@ -133,13 +102,22 @@ def test_validate_with_unreachable_http_url_returns_one_in_strict_mode(
     assert "fake_http" in error_stream.getvalue()
 
 
-def test_validate_with_unreachable_http_url_returns_zero_in_soft_mode(
+def test_validate_http_server_unreachable_soft_returns_zero(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
+    """_validate_custom_mcp_servers returns 0 in soft mode when HTTP server unreachable."""
+    _write_http_mcp_toml(tmp_path, 9999)
     monkeypatch.setenv("HOME", str(tmp_path / "fake-home"))
     monkeypatch.setenv("RALPH_MCP_STRICT", "0")
-    closed_port = _reserve_port()
-    _write_http_mcp_toml(tmp_path, closed_port)
+
+    def failing_validate(servers, *, strict):
+        def boom(*a, **k):
+            raise RetryablePreflightError("connection refused")
+
+        return validate_upstream_mcp_servers(servers, strict=strict, preflight_http=boom)
+
+    monkeypatch.setattr(runner_module, "_VALIDATE_MCP", failing_validate)
+    monkeypatch.setattr(runner_module, "_PROBE_AGENT_TRANSPORTS", lambda *a, **k: ())
 
     warning_stream = StringIO()
     sink_id = logger.add(warning_stream, level="WARNING")

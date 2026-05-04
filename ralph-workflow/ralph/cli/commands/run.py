@@ -112,7 +112,7 @@ def _load_configuration(
             err_text = Text()
             err_text.append("Preflight error:", style="theme.status.error")
             err_text.append(f" {e}")
-            console.print(err_text)
+            console.print(err_text, soft_wrap=True)
             return _EXIT_PREFLIGHT
 
     if resume:
@@ -182,30 +182,30 @@ def _run_policy_preflight_checks(
         agent_registry = AgentRegistry.from_config(config)
         validate_agent_chains_satisfiable(policy_bundle, agent_registry)
     except PolicyValidationError as e:
-        console.print(_preflight_error_text(e.message))
+        console.print(_preflight_error_text(e.message), soft_wrap=True)
         return _EXIT_PREFLIGHT
 
     try:
         validate_recovery_config(policy_bundle)
     except PolicyValidationError as e:
-        console.print(_preflight_error_text(e.message))
+        console.print(_preflight_error_text(e.message), soft_wrap=True)
         return _EXIT_PREFLIGHT
 
     if counter_overrides:
         try:
             validate_policy_completeness(policy_bundle, cli_counter_overrides=counter_overrides)
         except PolicyValidationError as e:
-            console.print(_preflight_error_text(e.message))
+            console.print(_preflight_error_text(e.message), soft_wrap=True)
             return _EXIT_PREFLIGHT
 
     if initial_state is not None:
         try:
             validate_checkpoint_against_policy(initial_state, policy_bundle)
         except CheckpointPolicyMismatchError as e:
-            console.print(_checkpoint_mismatch_text(str(e)))
+            console.print(_checkpoint_mismatch_text(str(e)), soft_wrap=True)
             return _EXIT_PREFLIGHT
         except PolicyValidationError as e:
-            console.print(_preflight_error_text(e.message))
+            console.print(_preflight_error_text(e.message), soft_wrap=True)
             return _EXIT_PREFLIGHT
 
     return _EXIT_SUCCESS
@@ -240,7 +240,7 @@ def _run_preflight_checks(  # noqa: PLR0913
         try:
             validate_required_inputs(workspace_scope)
         except PolicyValidationError as e:
-            console.print(_preflight_error_text(e.message))
+            console.print(_preflight_error_text(e.message), soft_wrap=True)
             return _EXIT_PREFLIGHT
 
     # Only run policy-based validations if we have a loaded policy bundle.
@@ -249,7 +249,7 @@ def _run_preflight_checks(  # noqa: PLR0913
         try:
             _validate_loaded_policy_bundle(loaded_policy_bundle)
         except PolicyValidationError as e:
-            console.print(_preflight_error_text(e.message))
+            console.print(_preflight_error_text(e.message), soft_wrap=True)
             return _EXIT_PREFLIGHT
         return _run_policy_preflight_checks(
             config,

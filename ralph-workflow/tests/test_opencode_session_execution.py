@@ -35,6 +35,7 @@ from ralph.agents.invoke import (
     _wait_for_descendants_then_recheck,
 )
 from ralph.agents.registry import _builtin_agents
+from ralph.agents.timeout_clock import FakeClock
 from ralph.config.enums import AgentTransport, JsonParserType
 from ralph.config.models import AgentConfig, UnifiedConfig
 from ralph.display.context import make_display_context
@@ -1330,28 +1331,22 @@ class TestCheckProcessResultWaitsForLiveChildren:
             "ralph.agents.invoke.evaluate_completion", _fake_evaluate_completion
         )
 
-        # Time: 0.0 → 0.5 → deadline at 0.6
-        # First poll (t=0.0): no artifact → WAITING_ON_CHILD, wait 0.5s
-        # Second poll (t=0.5): artifact present → TERMINAL_COMPLETE
-        monotonic_vals = iter([0.0, 0.5, 0.55])
-
-        with (
-            patch.object(_time_module, "monotonic", side_effect=lambda: next(monotonic_vals)),
-        ):
-            _check_process_result(
-                cast("ManagedProcess", handle),
-                "opencode",
-                [],
-                _CompletionCheckOptions(
-                    execution_strategy=strategy,
-                    workspace_path=tmp_path,
-                    liveness_probe=probe,
-                    policy=TimeoutPolicy(
-                        idle_timeout_seconds=None,
-                        descendant_wait_timeout_seconds=0.6,
-                    ),
+        # FakeClock: t=0.0 → sleep(0.5) → t=0.5 → artifact appears (call 3) → TERMINAL_COMPLETE
+        _check_process_result(
+            cast("ManagedProcess", handle),
+            "opencode",
+            [],
+            _CompletionCheckOptions(
+                execution_strategy=strategy,
+                workspace_path=tmp_path,
+                liveness_probe=probe,
+                policy=TimeoutPolicy(
+                    idle_timeout_seconds=None,
+                    descendant_wait_timeout_seconds=0.6,
                 ),
-            )
+            ),
+            _clock=FakeClock(0.0),
+        )
         # No exception raised because artifact appeared during wait → TERMINAL_COMPLETE
 
     def test_explicit_complete_appears_during_wait_produces_terminal_complete(
@@ -1379,25 +1374,22 @@ class TestCheckProcessResultWaitsForLiveChildren:
             "ralph.agents.invoke.evaluate_completion", _fake_evaluate_completion
         )
 
-        monotonic_vals = iter([0.0, 0.5, 0.55])
-
-        with (
-            patch.object(_time_module, "monotonic", side_effect=lambda: next(monotonic_vals)),
-        ):
-            _check_process_result(
-                cast("ManagedProcess", handle),
-                "opencode",
-                [],
-                _CompletionCheckOptions(
-                    execution_strategy=strategy,
-                    workspace_path=tmp_path,
-                    liveness_probe=probe,
-                    policy=TimeoutPolicy(
-                        idle_timeout_seconds=None,
-                        descendant_wait_timeout_seconds=0.6,
-                    ),
+        # FakeClock: t=0.0 → sleep(0.5) → t=0.5 → explicit_complete (call 3) → TERMINAL_COMPLETE
+        _check_process_result(
+            cast("ManagedProcess", handle),
+            "opencode",
+            [],
+            _CompletionCheckOptions(
+                execution_strategy=strategy,
+                workspace_path=tmp_path,
+                liveness_probe=probe,
+                policy=TimeoutPolicy(
+                    idle_timeout_seconds=None,
+                    descendant_wait_timeout_seconds=0.6,
                 ),
-            )
+            ),
+            _clock=FakeClock(0.0),
+        )
         # No exception raised because explicit_complete appeared during wait
 
     def test_descendants_finish_during_wait_produces_terminal_complete(
@@ -1439,28 +1431,22 @@ class TestCheckProcessResultWaitsForLiveChildren:
             "ralph.agents.invoke.evaluate_completion", _fake_evaluate_completion_with_artifact
         )
 
-        # Time: 0.0 → 0.5 → deadline at 0.6
-        # First poll (t=0.0): descendants alive → WAITING_ON_CHILD, wait 0.5s
-        # Second poll (t=0.5): descendants alive, but artifact appears (call 3) → TERMINAL_COMPLETE
-        monotonic_vals = iter([0.0, 0.5, 0.55])
-
-        with (
-            patch.object(_time_module, "monotonic", side_effect=lambda: next(monotonic_vals)),
-        ):
-            _check_process_result(
-                cast("ManagedProcess", handle),
-                "opencode",
-                [],
-                _CompletionCheckOptions(
-                    execution_strategy=strategy,
-                    workspace_path=tmp_path,
-                    liveness_probe=probe,
-                    policy=TimeoutPolicy(
-                        idle_timeout_seconds=None,
-                        descendant_wait_timeout_seconds=0.6,
-                    ),
+        # FakeClock: t=0.0 → sleep(0.5) → t=0.5 → artifact appears (call 3) → TERMINAL_COMPLETE
+        _check_process_result(
+            cast("ManagedProcess", handle),
+            "opencode",
+            [],
+            _CompletionCheckOptions(
+                execution_strategy=strategy,
+                workspace_path=tmp_path,
+                liveness_probe=probe,
+                policy=TimeoutPolicy(
+                    idle_timeout_seconds=None,
+                    descendant_wait_timeout_seconds=0.6,
                 ),
-            )
+            ),
+            _clock=FakeClock(0.0),
+        )
         # No exception raised because descendants finished and artifact appeared during wait
 
     def test_wait_helper_timeout_then_final_recheck_finds_completion(
