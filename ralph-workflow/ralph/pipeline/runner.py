@@ -2455,10 +2455,23 @@ def _render_phase_artifact_handoff(  # noqa: PLR0913
             inner_analysis = (
                 state.get_loop_iteration(loop_field) if loop_field is not None else None
             )
+            inner_analysis_cap = (
+                _resolve_analysis_cap(
+                    loop_field,
+                    state,
+                    policy_bundle.pipeline,
+                    phase_def.loop_policy.max_iterations,
+                )
+                if loop_field is not None
+                and phase_def is not None
+                and phase_def.loop_policy is not None
+                else None
+            )
             iteration_context = PhaseIterationContext(
                 outer_dev=outer_dev,
                 budget_remaining=budget,
                 inner_analysis=inner_analysis,
+                inner_analysis_cap=inner_analysis_cap,
             )
         _render_success_artifact(
             artifact_type,

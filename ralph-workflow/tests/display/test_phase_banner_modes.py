@@ -12,7 +12,12 @@ from typing import Literal
 from rich.console import Console
 
 from ralph.display.context import DisplayContext, make_display_context
-from ralph.display.phase_banner import show_phase_complete, show_phase_start, show_phase_transition
+from ralph.display.phase_banner import (
+    PhaseStartContext,
+    show_phase_complete,
+    show_phase_start,
+    show_phase_transition,
+)
 from ralph.display.theme import ASCII_GLYPHS, UNICODE_GLYPHS
 from ralph.policy.models import PhaseDefinition, PhaseTransition, PipelinePolicy, RecoveryPolicy
 
@@ -160,3 +165,40 @@ def test_phase_complete_uses_ok_badge_in_ascii_mode() -> None:
     output = _export(ctx)
     assert ASCII_GLYPHS["success"] in output
     assert UNICODE_GLYPHS["success"] not in output
+
+
+# --- Phase-start ordering tests ---
+
+def test_phase_start_outer_dev_appears_before_analysis_iteration() -> None:
+    """outer_dev ([Dev #N]) must appear before analysis_iteration in phase-start output."""
+    ctx = _make_ctx("wide")
+    start_ctx = PhaseStartContext(
+        outer_iteration=3,
+        analysis_iteration=1,
+        max_analysis_iterations=5,
+        phase_name="analysis",
+    )
+    show_phase_start("analysis", display_context=ctx, ctx=start_ctx)
+    output = _export(ctx)
+    dev_pos = output.find("[Dev #3]")
+    analysis_pos = output.find("analysis 2/5")
+    assert dev_pos != -1, f"Expected '[Dev #3]' in output, got: {output!r}"
+    assert analysis_pos != -1, f"Expected 'analysis 2/5' in output, got: {output!r}"
+    assert dev_pos < analysis_pos, (
+        f"[Dev #3] must appear before analysis 2/5, "
+        f"but dev_pos={dev_pos} analysis_pos={analysis_pos}"
+    )
+
+
+def test_phase_start_no_outer_dev_only_analysis_iteration() -> None:
+    """Without outer_dev, analysis_iteration still renders with inner_analysis style."""
+    ctx = _make_ctx("wide")
+    start_ctx = PhaseStartContext(
+        analysis_iteration=0,
+        max_analysis_iterations=3,
+        phase_name="analysis",
+    )
+    show_phase_start("analysis", display_context=ctx, ctx=start_ctx)
+    output = _export(ctx)
+    assert "analysis 1/3" in output
+    assert "[Dev #" not in output

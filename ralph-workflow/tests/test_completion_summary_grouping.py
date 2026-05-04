@@ -12,7 +12,7 @@ from ralph.display.completion_summary import (
     render_completion_summary_group,
 )
 from ralph.display.context import make_display_context
-from ralph.display.snapshot import PipelineSnapshot
+from ralph.display.snapshot import BudgetProgress, PipelineSnapshot
 from ralph.display.theme import RALPH_THEME
 
 
@@ -442,3 +442,72 @@ def test_compact_context_prefix_with_outer_dev() -> None:
     out = _render_compact_full(_make_snapshot_with_outer_dev(outer_dev_iteration=2))
     assert "CONTEXT:" in out
     assert "Dev #2" in out
+
+
+# --- Budget Progress section tests ---
+
+def _make_snapshot_with_budget_bp(budget_progress: dict) -> PipelineSnapshot:
+    return PipelineSnapshot(
+        phase="complete",
+        previous_phase="development",
+        review_issues_found=False,
+        interrupted_by_user=False,
+        last_error=None,
+        pr_url=None,
+        push_count=0,
+        total_agent_calls=5,
+        total_continuations=0,
+        total_fallbacks=0,
+        total_retries=0,
+        workers=(),
+        prompt_path="PROMPT.md",
+        prompt_preview=(),
+        run_id="run-bp",
+        created_at=datetime(2026, 4, 18, tzinfo=UTC),
+        budget_progress=budget_progress,
+    )
+
+
+def test_wide_budget_progress_rule_and_content_shown() -> None:
+    """Wide mode shows 'Budget Progress' rule when budget counters exist."""
+    snap = _make_snapshot_with_budget_bp({
+        "dev_cycles": BudgetProgress(
+            completed=2, cap=8, description="Dev Cycles", tracks_budget=True
+        ),
+    })
+    out = _render_group_full(snap)
+    assert "Budget Progress" in out
+    assert "Dev Cycles" in out
+    assert "2/8" in out
+    assert "6 remaining" in out
+
+
+def test_wide_budget_progress_absent_when_no_tracked_counters() -> None:
+    """Wide mode omits 'Budget Progress' section when no budget-tracked counters exist."""
+    snap = _make_snapshot_with_budget_bp({
+        "dev_cycles": BudgetProgress(
+            completed=2, cap=8, description="Dev Cycles", tracks_budget=False
+        ),
+    })
+    out = _render_group_full(snap)
+    assert "Budget Progress" not in out
+
+
+def test_compact_budget_prefix_shown() -> None:
+    """Compact mode shows 'BUDGET:' prefix line when budget-tracked counters exist."""
+    snap = _make_snapshot_with_budget_bp({
+        "dev_cycles": BudgetProgress(
+            completed=4, cap=10, description="Dev Cycles", tracks_budget=True
+        ),
+    })
+    out = _render_compact_full(snap)
+    assert "BUDGET:" in out
+    assert "Dev Cycles" in out
+    assert "4/10" in out
+
+
+def test_compact_budget_absent_when_no_tracked_counters() -> None:
+    """Compact mode omits 'BUDGET:' when no budget-tracked counters exist."""
+    snap = _make_snapshot_with_budget_bp({})
+    out = _render_compact_full(snap)
+    assert "BUDGET:" not in out

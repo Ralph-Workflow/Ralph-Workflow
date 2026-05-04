@@ -14,7 +14,7 @@ from ralph.display.completion_summary import (
     render_completion_summary,
 )
 from ralph.display.context import make_display_context
-from ralph.display.snapshot import PipelineSnapshot, WorkerSnapshot
+from ralph.display.snapshot import BudgetProgress, PipelineSnapshot, WorkerSnapshot
 from ralph.display.subscriber import PipelineSubscriber
 from ralph.pipeline.state import PipelineState
 
@@ -408,3 +408,70 @@ def test_completion_summary_no_iteration_context_label_when_absent() -> None:
     snap = _make_snapshot()
     text = _render_plain(snap)
     assert "Iteration Context:" not in text
+
+
+# --- Budget Progress tests ---
+
+def _make_snapshot_with_budget(budget_progress: dict) -> PipelineSnapshot:
+    return PipelineSnapshot(
+        phase="complete",
+        previous_phase="development",
+        review_issues_found=False,
+        interrupted_by_user=False,
+        last_error=None,
+        pr_url=None,
+        push_count=0,
+        total_agent_calls=5,
+        total_continuations=0,
+        total_fallbacks=0,
+        total_retries=0,
+        workers=(),
+        prompt_path="PROMPT.md",
+        prompt_preview=(),
+        run_id="run-bp",
+        created_at=datetime(2026, 4, 18, 12, 0, tzinfo=UTC),
+        budget_progress=budget_progress,
+    )
+
+
+def test_completion_summary_budget_progress_section_shown() -> None:
+    """Text mode shows 'Budget Progress:' section when budget counters are present."""
+    snap = _make_snapshot_with_budget({
+        "dev_cycles": BudgetProgress(
+            completed=3, cap=10, description="Dev Cycles", tracks_budget=True
+        ),
+    })
+    text = _render_plain(snap)
+    assert "Budget Progress:" in text
+    assert "Dev Cycles" in text
+    assert "3/10" in text
+    assert "7 remaining" in text
+
+
+def test_completion_summary_budget_progress_absent_when_no_tracked_budget() -> None:
+    """Text mode omits 'Budget Progress:' when no budget-tracked counters exist."""
+    snap = _make_snapshot_with_budget({
+        "dev_cycles": BudgetProgress(
+            completed=3, cap=10, description="Dev Cycles", tracks_budget=False
+        ),
+    })
+    text = _render_plain(snap)
+    assert "Budget Progress:" not in text
+
+
+def test_completion_summary_budget_progress_absent_when_no_budget_progress() -> None:
+    """Text mode omits 'Budget Progress:' when budget_progress dict is empty."""
+    snap = _make_snapshot_with_budget({})
+    text = _render_plain(snap)
+    assert "Budget Progress:" not in text
+
+
+def test_completion_summary_budget_progress_absent_when_cap_zero() -> None:
+    """Text mode omits 'Budget Progress:' when cap is 0 (uncapped counter)."""
+    snap = _make_snapshot_with_budget({
+        "dev_cycles": BudgetProgress(
+            completed=3, cap=0, description="Dev Cycles", tracks_budget=True
+        ),
+    })
+    text = _render_plain(snap)
+    assert "Budget Progress:" not in text

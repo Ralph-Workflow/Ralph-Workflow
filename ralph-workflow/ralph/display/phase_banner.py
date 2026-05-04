@@ -306,12 +306,11 @@ def show_phase_start(  # noqa: PLR0913
     line.append(label, style=style)
 
     if ctx is not None:
-        for counter_name, (completed, cap) in ctx.budget_progress.items():
-            if cap > 0:
-                line.append(
-                    f" [{counter_name} {completed + 1}/{cap}]",
-                    style="theme.text.muted",
-                )
+        # Render outer dev cycle FIRST — highest hierarchy level
+        if ctx.outer_iteration is not None:
+            suffix = _build_outer_iteration_suffix(ctx.outer_iteration)
+            line.append(suffix, style="theme.outer_dev")
+        # Render analysis iteration (loop counter) with prominent inner_analysis style
         if (
             ctx.analysis_iteration is not None
             and ctx.max_analysis_iterations is not None
@@ -322,12 +321,8 @@ def show_phase_start(  # noqa: PLR0913
                 ctx.analysis_iteration,
                 ctx.max_analysis_iterations,
             )
-            line.append(suffix, style="theme.text.muted")
-        # Render outer dev cycle with distinct styling
-        if ctx.outer_iteration is not None:
-            suffix = _build_outer_iteration_suffix(ctx.outer_iteration)
-            line.append(suffix, style="theme.outer_dev")
-        # Render inner analysis count
+            line.append(suffix, style="theme.inner_analysis")
+        # Render inner analysis count (fixer-context analysis)
         if ctx.inner_analysis is not None:
             suffix = _build_inner_analysis_suffix(ctx.inner_analysis, ctx.inner_analysis_cap)
             line.append(suffix, style="theme.inner_analysis")
@@ -341,6 +336,13 @@ def show_phase_start(  # noqa: PLR0913
                 f" [{format_fixer_cycle(ctx.fixer_iteration)}]",
                 style="theme.fixer_iteration",
             )
+        # Render legacy budget_progress counters last
+        for counter_name, (completed, cap) in ctx.budget_progress.items():
+            if cap > 0:
+                line.append(
+                    f" [{counter_name} {completed + 1}/{cap}]",
+                    style="theme.text.muted",
+                )
         effective_agent = ctx.agent_name or agent_name
     else:
         effective_agent = agent_name

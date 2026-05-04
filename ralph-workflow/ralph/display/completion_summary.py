@@ -206,6 +206,15 @@ def _has_iteration_context(snapshot: PipelineSnapshot) -> bool:
     return snapshot.outer_dev_iteration is not None or snapshot.fixer_iteration is not None
 
 
+def _budget_progress_lines(snapshot: PipelineSnapshot) -> list[tuple[str, int, int]]:
+    """Return (description, completed, cap) for budget-tracked counters with a cap > 0."""
+    return [
+        (bp.description, bp.completed, bp.cap)
+        for bp in snapshot.budget_progress.values()
+        if bp.tracks_budget and bp.cap > 0
+    ]
+
+
 def _iteration_context_lines(snapshot: PipelineSnapshot) -> list[str]:
     """Return display lines for the iteration context section.
 
@@ -321,6 +330,14 @@ def render_completion_summary(  # noqa: PLR0913, PLR0912, PLR0915
         lines.append("Iteration Context:")
         lines.extend(f"  {ln}" for ln in iter_lines)
 
+    # Budget progress (shows dev-cycle budget consumed vs cap)
+    budget_lines = _budget_progress_lines(snapshot)
+    if budget_lines:
+        lines.append("Budget Progress:")
+        for desc, completed, cap in budget_lines:
+            remaining = cap - completed
+            lines.append(f"  {desc}: {completed}/{cap} used, {remaining} remaining")
+
     lines.append(_verification_line(workspace_root))
     lines.extend(_commit_message_lines(workspace_root))
 
@@ -415,6 +432,13 @@ def _render_compact_group(  # noqa: PLR0912, PLR0913, PLR0915
     iter_lines = _iteration_context_lines(snapshot)
     if iter_lines:
         renderables.append(Text(f"CONTEXT: {' | '.join(iter_lines)}"))
+
+    # Budget progress in compact mode
+    budget_lines = _budget_progress_lines(snapshot)
+    if budget_lines:
+        for desc, completed, cap in budget_lines:
+            remaining = cap - completed
+            renderables.append(Text(f"BUDGET: {desc}: {completed}/{cap} ({remaining} left)"))
 
     renderables.append(Text(f"VERIFICATION: {_verification_line(workspace_root)}"))
 
@@ -586,6 +610,15 @@ def render_completion_summary_group(  # noqa: PLR0912, PLR0913, PLR0915
             iter_style = style
         renderables.append(Rule("Iteration Context", style=iter_style))
         renderables.extend(Text(f"  {ln}") for ln in _iteration_context_lines(snapshot))
+
+    # Budget Progress section (dev-cycle budget consumed vs cap)
+    budget_lines = _budget_progress_lines(snapshot)
+    if budget_lines:
+        budget_style = _style_for_role("execution", pipeline_policy) if pipeline_policy else style
+        renderables.append(Rule("Budget Progress", style=budget_style))
+        for desc, completed, cap in budget_lines:
+            remaining = cap - completed
+            renderables.append(Text(f"  {desc}: {completed}/{cap} used, {remaining} remaining"))
 
     # Verification section
     renderables.append(Rule("Verification", style=style))
