@@ -250,36 +250,49 @@ def _build_analysis_suffix(
     phase_name: str,
     iteration: int,
     max_iterations: int,
+    *,
+    ia_glyph: str = "≴",
 ) -> str:
     """Build the analysis iteration suffix string."""
-    suffix = f"[{phase_name} {iteration + 1}/{max_iterations}]"
+    suffix = f"  {ia_glyph} {phase_name} {iteration + 1}/{max_iterations}"
     if progress.is_final_analysis_iteration(iteration, max_iterations):
         suffix += " (final, skipping next)"
     return suffix
 
 
-def _build_outer_iteration_suffix(iteration: int | None, cap: int | None = None) -> str:
+def _build_outer_iteration_suffix(
+    iteration: int | None,
+    cap: int | None = None,
+    *,
+    od_glyph: str = "⊞",
+) -> str:
     """Build the outer dev cycle label string."""
     if iteration is None:
         return ""
-    return f" [{format_dev_cycle(iteration, cap)}]"
+    return f"  {od_glyph} {format_dev_cycle(iteration, cap)}"
 
 
 def _build_inner_analysis_suffix(
     inner: int | None,
     max_inner: int | None = None,
+    *,
+    ia_glyph: str = "≴",
 ) -> str:
     """Build the inner analysis cycle label string."""
     if inner is None:
         return ""
-    return f" [{format_analysis_cycle(inner, max_inner)}]"
+    return f"  {ia_glyph} {format_analysis_cycle(inner, max_inner)}"
 
 
-def _build_budget_remaining_suffix(remaining: int | None) -> str:
+def _build_budget_remaining_suffix(
+    remaining: int | None,
+    *,
+    budget_glyph: str = "▲",
+) -> str:
     """Build the budget remaining label string."""
     if remaining is None:
         return ""
-    return f" [{format_budget_remaining(remaining)}]"
+    return f"  {budget_glyph} {format_budget_remaining(remaining)}"
 
 
 def show_phase_start(  # noqa: PLR0913
@@ -301,13 +314,18 @@ def show_phase_start(  # noqa: PLR0913
 
     line = Text()
     start_glyph = effective_ctx.glyph_for("start")
+    od_glyph = effective_ctx.glyph_for("outer_dev")
+    ia_glyph = effective_ctx.glyph_for("inner_analysis")
+    budget_glyph = effective_ctx.glyph_for("budget")
     line.append(f"{start_glyph} ", style=style)
     line.append(label, style=style)
 
     if ctx is not None:
         # Render outer dev cycle FIRST — highest hierarchy level
         if ctx.outer_iteration is not None:
-            suffix = _build_outer_iteration_suffix(ctx.outer_iteration, ctx.outer_iteration_total)
+            suffix = _build_outer_iteration_suffix(
+                ctx.outer_iteration, ctx.outer_iteration_total, od_glyph=od_glyph
+            )
             line.append(suffix, style="theme.outer_dev")
         # Render analysis iteration (loop counter) with prominent inner_analysis style
         if (
@@ -319,15 +337,18 @@ def show_phase_start(  # noqa: PLR0913
                 phase_name,
                 ctx.analysis_iteration,
                 ctx.max_analysis_iterations,
+                ia_glyph=ia_glyph,
             )
             line.append(suffix, style="theme.inner_analysis")
         # Render inner analysis count (fixer-context analysis)
         if ctx.inner_analysis is not None:
-            suffix = _build_inner_analysis_suffix(ctx.inner_analysis, ctx.inner_analysis_cap)
+            suffix = _build_inner_analysis_suffix(
+                ctx.inner_analysis, ctx.inner_analysis_cap, ia_glyph=ia_glyph
+            )
             line.append(suffix, style="theme.inner_analysis")
         # Render budget remaining
         if ctx.budget_remaining is not None:
-            suffix = _build_budget_remaining_suffix(ctx.budget_remaining)
+            suffix = _build_budget_remaining_suffix(ctx.budget_remaining, budget_glyph=budget_glyph)
             line.append(suffix, style="theme.level.warn")
         # Render legacy budget_progress counters last
         for counter_name, (completed, cap) in ctx.budget_progress.items():

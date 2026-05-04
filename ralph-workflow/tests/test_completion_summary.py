@@ -523,3 +523,76 @@ def test_completion_summary_exit_trigger_appears_before_elapsed() -> None:
     assert "Exit:" in text
     assert "Elapsed:" in text
     assert text.index("Exit:") < text.index("Elapsed:")
+
+
+# --- Debug breadcrumbs tests ---
+
+
+def _make_snapshot_with_debug(
+    last_activity_line: str | None = None,
+    waiting_status_line: str | None = None,
+    last_failure_category: str | None = None,
+) -> PipelineSnapshot:
+    return PipelineSnapshot(
+        phase="complete",
+        previous_phase=None,
+        review_issues_found=False,
+        interrupted_by_user=False,
+        last_error=None,
+        pr_url=None,
+        push_count=0,
+        total_agent_calls=1,
+        total_continuations=0,
+        total_fallbacks=0,
+        total_retries=0,
+        workers=(),
+        prompt_path="PROMPT.md",
+        prompt_preview=(),
+        run_id="run-debug",
+        created_at=datetime(2026, 4, 18, 12, 0, tzinfo=UTC),
+        last_activity_line=last_activity_line,
+        waiting_status_line=waiting_status_line,
+        last_failure_category=last_failure_category,
+    )
+
+
+def test_completion_summary_debug_section_shows_last_activity() -> None:
+    """Debug section surfaces last_activity_line when set."""
+    snap = _make_snapshot_with_debug(last_activity_line="read file: src/main.py")
+    console = Console(record=True, width=120, force_terminal=False, color_system=None)
+    ctx = make_display_context(console=console)
+    emit_completion_summary(snap, display_context=ctx)
+    out = console.export_text()
+    assert "last_activity: read file: src/main.py" in out
+
+
+def test_completion_summary_debug_section_shows_waiting_status() -> None:
+    """Debug section surfaces waiting_status_line when set."""
+    snap = _make_snapshot_with_debug(waiting_status_line="waiting for MCP response")
+    console = Console(record=True, width=120, force_terminal=False, color_system=None)
+    ctx = make_display_context(console=console)
+    emit_completion_summary(snap, display_context=ctx)
+    out = console.export_text()
+    assert "waiting: waiting for MCP response" in out
+
+
+def test_completion_summary_debug_section_shows_failure_category() -> None:
+    """Debug section surfaces last_failure_category when set."""
+    snap = _make_snapshot_with_debug(last_failure_category="timeout")
+    console = Console(record=True, width=120, force_terminal=False, color_system=None)
+    ctx = make_display_context(console=console)
+    emit_completion_summary(snap, display_context=ctx)
+    out = console.export_text()
+    assert "failure_category: timeout" in out
+
+
+def test_completion_summary_debug_section_absent_when_no_debug_fields() -> None:
+    """Debug section is absent when no debug fields are set on the snapshot."""
+    snap = _make_snapshot()
+    console = Console(record=True, width=120, force_terminal=False, color_system=None)
+    ctx = make_display_context(console=console)
+    emit_completion_summary(snap, display_context=ctx)
+    out = console.export_text()
+    assert "last_activity:" not in out
+    assert "waiting:" not in out
+    assert "failure_category:" not in out

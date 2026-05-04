@@ -117,7 +117,7 @@ def test_phase_start_outer_dev_shows_dev_cycle_label() -> None:
     phase_ctx = PhaseStartContext(outer_iteration=3)
     show_phase_start("development", ctx=phase_ctx, display_context=ctx)
     output = buf.getvalue()
-    assert "[Dev #3]" in output, f"Expected [Dev #3] in: {output}"
+    assert "Dev #3" in output, f"Expected Dev #3 in: {output}"
 
 
 def test_phase_start_outer_dev_with_total_shows_dev_n_of_total() -> None:
@@ -126,7 +126,7 @@ def test_phase_start_outer_dev_with_total_shows_dev_n_of_total() -> None:
     phase_ctx = PhaseStartContext(outer_iteration=2, outer_iteration_total=5)
     show_phase_start("development", ctx=phase_ctx, display_context=ctx)
     output = buf.getvalue()
-    assert "[Dev 2/5]" in output, f"Expected [Dev 2/5] in: {output}"
+    assert "Dev 2/5" in output, f"Expected Dev 2/5 in: {output}"
     assert "Dev #2" not in output, f"Hash format should not appear when total is set: {output}"
 
 
@@ -136,7 +136,7 @@ def test_phase_start_budget_remaining_shows_budget_left_label() -> None:
     phase_ctx = PhaseStartContext(budget_remaining=5)
     show_phase_start("development", ctx=phase_ctx, display_context=ctx)
     output = buf.getvalue()
-    assert "[Budget: 5 left]" in output, f"Expected [Budget: 5 left] in: {output}"
+    assert "Budget: 5 left" in output, f"Expected Budget: 5 left in: {output}"
 
 
 def test_phase_start_inner_analysis_shows_analysis_label_with_cap() -> None:
@@ -145,7 +145,7 @@ def test_phase_start_inner_analysis_shows_analysis_label_with_cap() -> None:
     phase_ctx = PhaseStartContext(inner_analysis=2, inner_analysis_cap=4)
     show_phase_start("development_analysis", ctx=phase_ctx, display_context=ctx)
     output = buf.getvalue()
-    assert "[Analysis 2/4]" in output, f"Expected [Analysis 2/4] in: {output}"
+    assert "Analysis 2/4" in output, f"Expected Analysis 2/4 in: {output}"
 
 
 def test_phase_start_inner_analysis_without_cap_shows_analysis_label() -> None:
@@ -154,7 +154,7 @@ def test_phase_start_inner_analysis_without_cap_shows_analysis_label() -> None:
     phase_ctx = PhaseStartContext(inner_analysis=1)
     show_phase_start("development_analysis", ctx=phase_ctx, display_context=ctx)
     output = buf.getvalue()
-    assert "[Analysis #1]" in output, f"Expected [Analysis #1] in: {output}"
+    assert "Analysis #1" in output, f"Expected Analysis #1 in: {output}"
 
 
 def test_phase_start_all_new_context_labels_together() -> None:
@@ -166,8 +166,8 @@ def test_phase_start_all_new_context_labels_together() -> None:
     )
     show_phase_start("fix", ctx=phase_ctx, display_context=ctx)
     output = buf.getvalue()
-    assert "[Dev #2]" in output, f"Expected [Dev #2] in: {output}"
-    assert "[Budget: 3 left]" in output, f"Expected [Budget: 3 left] in: {output}"
+    assert "Dev #2" in output, f"Expected Dev #2 in: {output}"
+    assert "Budget: 3 left" in output, f"Expected Budget: 3 left in: {output}"
 
 
 def test_phase_start_new_labels_not_using_old_format() -> None:

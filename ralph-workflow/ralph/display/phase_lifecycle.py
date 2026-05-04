@@ -232,6 +232,10 @@ class RunCompletionModel:
     last_error: str | None = None
     # Budget progress: counter_name → (completed, cap)
     budget_progress: dict[str, tuple[int, int]] = field(default_factory=dict)
+    # Analysis decision trace: (phase, decision, reason) for analysis phases
+    analysis_decisions: tuple[tuple[str, str, str], ...] = ()
+    # Last recorded activity line for debug breadcrumbs
+    last_activity_line: str | None = None
 
     @classmethod
     def from_snapshot(  # noqa: PLR0913
@@ -251,6 +255,11 @@ class RunCompletionModel:
             for name, bp in snapshot.budget_progress.items()
             if bp.tracks_budget and bp.cap > 0
         }
+        analysis_decisions: tuple[tuple[str, str, str], ...] = tuple(
+            (phase, decision, reason)
+            for phase, decision, reason, _ts in snapshot.decision_log
+            if "analysis" in phase.lower()
+        )
         return cls(
             final_phase=snapshot.phase,
             is_failure=snapshot.is_terminal_failure,
@@ -265,6 +274,8 @@ class RunCompletionModel:
             review_issues_found=snapshot.review_issues_found,
             last_error=snapshot.last_error,
             budget_progress=budget_progress,
+            analysis_decisions=analysis_decisions,
+            last_activity_line=snapshot.last_activity_line,
         )
 
 

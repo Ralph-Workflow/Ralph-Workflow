@@ -215,6 +215,8 @@ class TestRunCompletionModel:
         snap.total_agent_calls = 10
         snap.review_issues_found = False
         snap.last_error = None
+        snap.decision_log = ()
+        snap.last_activity_line = None
         snap.budget_progress = {
             "dev_cycles": BudgetProgress(
                 completed=3,
@@ -256,6 +258,8 @@ class TestRunCompletionModel:
         snap.total_agent_calls = 0
         snap.review_issues_found = False
         snap.last_error = None
+        snap.decision_log = ()
+        snap.last_activity_line = None
         snap.budget_progress = {
             "tracked": BudgetProgress(
                 completed=1, cap=5, description="tracked", tracks_budget=True
@@ -272,6 +276,72 @@ class TestRunCompletionModel:
         assert "tracked" in model.budget_progress
         assert "untracked" not in model.budget_progress
         assert "zero_cap" not in model.budget_progress
+
+
+    def test_analysis_decisions_defaults_empty(self) -> None:
+        m = RunCompletionModel(final_phase="done", is_failure=False)
+        assert m.analysis_decisions == ()
+
+    def test_last_activity_line_defaults_none(self) -> None:
+        m = RunCompletionModel(final_phase="done", is_failure=False)
+        assert m.last_activity_line is None
+
+    def test_from_snapshot_extracts_analysis_decisions(self) -> None:
+        """from_snapshot filters analysis phases from decision_log."""
+        snap = MagicMock()
+        snap.phase = "done"
+        snap.is_terminal_failure = False
+        snap.outer_dev_iteration = None
+        snap.total_agent_calls = 0
+        snap.review_issues_found = False
+        snap.last_error = None
+        snap.last_activity_line = None
+        snap.decision_log = (
+            ("development_analysis", "proceed", "tests green", "2026-01-01T00:00:00"),
+            ("commit", "complete", "committed", "2026-01-01T00:01:00"),
+            ("review_analysis", "revise", "nit fixes", "2026-01-01T00:02:00"),
+        )
+        snap.budget_progress = {}
+
+        model = RunCompletionModel.from_snapshot(snap, exit_trigger="completed")
+
+        assert len(model.analysis_decisions) == 2  # noqa: PLR2004
+        assert model.analysis_decisions[0] == ("development_analysis", "proceed", "tests green")
+        assert model.analysis_decisions[1] == ("review_analysis", "revise", "nit fixes")
+
+    def test_from_snapshot_extracts_last_activity_line(self) -> None:
+        """from_snapshot carries last_activity_line from snapshot."""
+        snap = MagicMock()
+        snap.phase = "done"
+        snap.is_terminal_failure = False
+        snap.outer_dev_iteration = None
+        snap.total_agent_calls = 0
+        snap.review_issues_found = False
+        snap.last_error = None
+        snap.decision_log = ()
+        snap.last_activity_line = "read file: src/main.py"
+        snap.budget_progress = {}
+
+        model = RunCompletionModel.from_snapshot(snap, exit_trigger="completed")
+        assert model.last_activity_line == "read file: src/main.py"
+
+    def test_from_snapshot_analysis_decisions_empty_when_no_analysis_phases(self) -> None:
+        """from_snapshot yields empty analysis_decisions when log has no analysis phases."""
+        snap = MagicMock()
+        snap.phase = "done"
+        snap.is_terminal_failure = False
+        snap.outer_dev_iteration = None
+        snap.total_agent_calls = 0
+        snap.review_issues_found = False
+        snap.last_error = None
+        snap.last_activity_line = None
+        snap.decision_log = (
+            ("commit", "complete", "committed", "2026-01-01T00:01:00"),
+        )
+        snap.budget_progress = {}
+
+        model = RunCompletionModel.from_snapshot(snap, exit_trigger="completed")
+        assert model.analysis_decisions == ()
 
 
 # ---------------------------------------------------------------------------

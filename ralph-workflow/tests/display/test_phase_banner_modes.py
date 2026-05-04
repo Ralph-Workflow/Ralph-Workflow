@@ -180,9 +180,9 @@ def test_phase_start_outer_dev_appears_before_analysis_iteration() -> None:
     )
     show_phase_start("analysis", display_context=ctx, ctx=start_ctx)
     output = _export(ctx)
-    dev_pos = output.find("[Dev #3]")
+    dev_pos = output.find("Dev #3")
     analysis_pos = output.find("analysis 2/5")
-    assert dev_pos != -1, f"Expected '[Dev #3]' in output, got: {output!r}"
+    assert dev_pos != -1, f"Expected 'Dev #3' in output, got: {output!r}"
     assert analysis_pos != -1, f"Expected 'analysis 2/5' in output, got: {output!r}"
     assert dev_pos < analysis_pos, (
         f"[Dev #3] must appear before analysis 2/5, "

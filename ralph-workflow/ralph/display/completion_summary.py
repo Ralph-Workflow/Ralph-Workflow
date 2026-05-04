@@ -125,6 +125,18 @@ def _verification_line(workspace_root: Path | None) -> str:
     return f"Verification: {status}{suffix}"
 
 
+def _debug_breadcrumb_lines(snapshot: PipelineSnapshot) -> list[str]:
+    """Return debug breadcrumb lines for last activity, waiting status, and failure category."""
+    lines = []
+    if snapshot.last_activity_line:
+        lines.append(f"last_activity: {snapshot.last_activity_line}")
+    if snapshot.waiting_status_line:
+        lines.append(f"waiting: {snapshot.waiting_status_line}")
+    if snapshot.last_failure_category:
+        lines.append(f"failure_category: {snapshot.last_failure_category}")
+    return lines
+
+
 def _dropped_count_line(dropped: int) -> str:
     """Return a line reporting dropped snapshots, shown only when drops occurred."""
     if dropped <= 0:
@@ -463,6 +475,9 @@ def _render_compact_group(  # noqa: PLR0912, PLR0913, PLR0915
         if diag:
             renderables.append(Text(f"REASON: {diag}"))
 
+    # Debug breadcrumbs in compact mode
+    renderables.extend(Text(f"DEBUG: {ln}") for ln in _debug_breadcrumb_lines(snapshot))
+
     dropped_line = _dropped_count_line(dropped_count)
     if dropped_line:
         renderables.append(Text(f"  {dropped_line}"))
@@ -627,6 +642,12 @@ def render_completion_summary_group(  # noqa: PLR0912, PLR0913, PLR0915
     renderables.append(Text(f"  errors={error_count}"))
     if overflow_path is not None:
         renderables.append(Text(f"  raw_overflow={overflow_path}"))
+
+    # Debug breadcrumbs section
+    breadcrumb_lines = _debug_breadcrumb_lines(snapshot)
+    if breadcrumb_lines:
+        renderables.append(Rule("Debug", style="theme.text.muted"))
+        renderables.extend(Text(f"  {ln}") for ln in breadcrumb_lines)
 
     # Commit section
     commit_lines = _commit_message_lines(workspace_root)

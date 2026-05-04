@@ -308,7 +308,7 @@ def test_show_phase_start_dev_analysis_shows_analysis_counter() -> None:
     show_phase_start("development_analysis", ctx=ctx, display_context=_ctx_from_console(console))
     output = console.export_text()
     assert "Development Analysis" in output
-    assert "[analysis 2/3]" in output
+    assert "analysis 2/3" in output
 
 
 def test_show_phase_start_dev_analysis_zero_index_shows_one() -> None:
@@ -320,7 +320,7 @@ def test_show_phase_start_dev_analysis_zero_index_shows_one() -> None:
     )
     show_phase_start("development_analysis", ctx=ctx, display_context=_ctx_from_console(console))
     output = console.export_text()
-    assert "[analysis 1/3]" in output
+    assert "analysis 1/3" in output
 
 
 def test_show_phase_start_dev_analysis_at_max_shows_max() -> None:
@@ -332,7 +332,7 @@ def test_show_phase_start_dev_analysis_at_max_shows_max() -> None:
     )
     show_phase_start("development_analysis", ctx=ctx, display_context=_ctx_from_console(console))
     output = console.export_text()
-    assert "[analysis 3/3]" in output
+    assert "analysis 3/3" in output
 
 
 def test_show_phase_start_review_analysis_shows_analysis_counter() -> None:
@@ -345,7 +345,7 @@ def test_show_phase_start_review_analysis_shows_analysis_counter() -> None:
     show_phase_start("review_analysis", ctx=ctx, display_context=_ctx_from_console(console))
     output = console.export_text()
     assert "Review Analysis" in output
-    assert "[analysis 1/2]" in output
+    assert "analysis 1/2" in output
     assert "final, skipping next" not in output
 
 
@@ -358,7 +358,7 @@ def test_show_phase_start_review_analysis_at_max_shows_max() -> None:
     )
     show_phase_start("review_analysis", ctx=ctx, display_context=_ctx_from_console(console))
     output = console.export_text()
-    assert "[analysis 2/2]" in output
+    assert "analysis 2/2" in output
     assert "final, skipping next" in output
 
 
@@ -411,7 +411,7 @@ def test_show_phase_start_combines_iteration_and_analysis_counters() -> None:
     output = console.export_text()
     assert "Development Analysis" in output
     assert "[iteration 3/5]" in output
-    assert "[analysis 2/3]" in output
+    assert "analysis 2/3" in output
 
 
 def test_show_phase_start_uses_phase_specific_analysis_label() -> None:
@@ -425,7 +425,7 @@ def test_show_phase_start_uses_phase_specific_analysis_label() -> None:
     show_phase_start("planning_analysis", ctx=ctx, display_context=_ctx_from_console(console))
     output = console.export_text()
     assert "Planning Analysis" in output
-    assert "[Planning Analysis 3/3]" in output
+    assert "Planning Analysis 3/3" in output
     assert "final, skipping next" in output
 
 
@@ -439,7 +439,7 @@ def test_show_phase_start_single_analysis_iteration_is_final() -> None:
     )
     show_phase_start("planning_analysis", ctx=ctx, display_context=_ctx_from_console(console))
     output = console.export_text()
-    assert "[Planning Analysis 1/1]" in output
+    assert "Planning Analysis 1/1" in output
     assert "final, skipping next" in output
 
 
