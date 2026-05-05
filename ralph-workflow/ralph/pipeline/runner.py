@@ -1072,6 +1072,7 @@ def _emit_phase_transition_if_changed(
             tool_calls=tool_calls,
             errors=errors,
             artifact_outcome=artifact_outcome,
+            review_issues_found=progress.review_issues_found(state, pipeline_policy),
             waiting_status_line=waiting_status_line,
             last_failure_category=state.last_failure_category,
         )

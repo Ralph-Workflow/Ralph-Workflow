@@ -390,6 +390,52 @@ def _build_phase_close_stats_line(
     return stats
 
 
+def _build_review_outcome_line(
+    exit_model: PhaseExitModel,
+    display_context: DisplayContext,
+) -> Text | None:
+    """Build a review outcome line if review_issues_found is set.
+
+    Returns None when review_issues_found is None or in compact mode.
+    """
+    if exit_model.review_issues_found is None:
+        return None
+    review_line = Text()
+    review_glyph_pass = display_context.glyph_for("review_pass")
+    review_glyph_fail = display_context.glyph_for("review_fail")
+    if exit_model.review_issues_found:
+        review_line.append(f"    {review_glyph_fail} ", style="theme.review_fail")
+        review_line.append("review: ", style="theme.text.muted")
+        review_line.append("issues found", style="theme.level.error")
+    else:
+        review_line.append(f"    {review_glyph_pass} ", style="theme.review_pass")
+        review_line.append("review: ", style="theme.text.muted")
+        review_line.append("clean", style="theme.status.success")
+    return review_line
+
+
+def _build_debug_line(
+    exit_model: PhaseExitModel,
+    display_context: DisplayContext,
+) -> Text | None:
+    """Build a debug breadcrumb line if waiting status or failure category is set.
+
+    Returns None when neither is set.
+    """
+    if not exit_model.waiting_status_line and not exit_model.last_failure_category:
+        return None
+    debug_line = Text()
+    warning_glyph = display_context.glyph_for("warning")
+    debug_parts: list[str] = []
+    if exit_model.waiting_status_line:
+        debug_parts.append(f"waiting: {exit_model.waiting_status_line[:80]}")
+    if exit_model.last_failure_category:
+        debug_parts.append(f"failure: {exit_model.last_failure_category}")
+    debug_line.append(f"  {warning_glyph} debug: ", style="theme.level.warn")
+    debug_line.append(" | ".join(debug_parts), style="theme.text.muted")
+    return debug_line
+
+
 def show_phase_close_banner(
     exit_model: PhaseExitModel,
     *,
@@ -420,7 +466,6 @@ def show_phase_close_banner(
     line.append(label, style=style)
 
     mode = display_context.mode
-    # Medium and wide mode show qualifiers; compact omits them
     outer_qualifier = "(outer)" if mode in ("medium", "wide") else ""
     inner_qualifier = "(inner)" if mode in ("medium", "wide") else ""
 
@@ -453,7 +498,6 @@ def show_phase_close_banner(
 
     c.print(line)
 
-    # Activity stats supplementary line (medium/wide only)
     stats_line = _build_phase_close_stats_line(exit_model, display_context)
     if stats_line is not None:
         c.print(stats_line)
@@ -464,14 +508,11 @@ def show_phase_close_banner(
         artifact_line.append(exit_model.artifact_outcome, style="theme.text.emphasis")
         c.print(artifact_line)
 
-    if exit_model.waiting_status_line or exit_model.last_failure_category:
-        debug_line = Text()
-        warning_glyph = display_context.glyph_for("warning")
-        debug_parts: list[str] = []
-        if exit_model.waiting_status_line:
-            debug_parts.append(f"waiting: {exit_model.waiting_status_line[:80]}")
-        if exit_model.last_failure_category:
-            debug_parts.append(f"failure: {exit_model.last_failure_category}")
-        debug_line.append(f"  {warning_glyph} debug: ", style="theme.level.warn")
-        debug_line.append(" | ".join(debug_parts), style="theme.text.muted")
+    if mode != "compact":
+        review_line = _build_review_outcome_line(exit_model, display_context)
+        if review_line is not None:
+            c.print(review_line)
+
+    debug_line = _build_debug_line(exit_model, display_context)
+    if debug_line is not None:
         c.print(debug_line)
