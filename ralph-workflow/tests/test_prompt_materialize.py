@@ -963,3 +963,62 @@ def test_materialize_commit_phase_with_oversized_surrogate_diff(
     assert payload_path.exists()
     written = payload_path.read_text(encoding="utf-8")
     assert "\udca4" not in written
+
+
+def test_development_analysis_prompt_renders_without_development_result(
+    tmp_path: Path,
+) -> None:
+    """development_analysis prompt must render even when development_result.json is absent.
+
+    Since development_result is optional, the analysis agent must still receive
+    a complete prompt referencing the plan handoff and diff context.
+    LATEST_ARTIFACT may be empty, but prompt generation must not crash.
+    """
+    policy = load_policy(tmp_path / ".agent")
+    workspace = MemoryWorkspace(root=str(tmp_path))
+    workspace.write("PROMPT.md", "implement the feature")
+    workspace.write(
+        ".agent/artifacts/plan.json",
+        json.dumps({
+            "type": "plan",
+            "content": {
+                "summary": {
+                    "context": "ctx",
+                    "scope_items": [
+                        {"text": "item one"},
+                        {"text": "item two"},
+                        {"text": "item three"},
+                    ],
+                },
+                "steps": [{"number": 1, "title": "step", "content": "do it"}],
+                "critical_files": {"primary_files": [{"path": "src/a.py", "action": "modify"}]},
+                "risks_mitigations": [{"risk": "r", "mitigation": "m"}],
+                "verification_strategy": [{"method": "run tests", "expected_outcome": "pass"}],
+                "work_units": [
+                    {"unit_id": "u1", "description": "do stuff", "allowed_directories": ["src"]}
+                ],
+            },
+        }),
+    )
+    # Intentionally do NOT write development_result.json
+
+    with patch.object(materialize_module, "_git_diff", return_value="diff --git a/x.py"):
+        prompt_path = materialize_prompt_for_phase(
+            phase="development_analysis",
+            workspace=workspace,
+            pipeline_policy=policy.pipeline,
+            artifacts_policy=policy.artifacts,
+            session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT),
+            workspace_root=tmp_path,
+        )
+
+    rendered = workspace.read(prompt_path)
+    assert rendered, "Prompt must not be empty"
+    # render_payload_path emits a file reference, not inlined content — check the path appears
+    assert str(tmp_path / ".agent" / "CURRENT_PROMPT.md") in rendered, (
+        "Prompt must reference the CURRENT_PROMPT path"
+    )
+    # Plan is referenced via its Markdown handoff (.agent/PLAN.md), not the JSON artifact path
+    assert str(tmp_path / ".agent" / "PLAN.md") in rendered, (
+        "Prompt must reference the plan handoff path"
+    )

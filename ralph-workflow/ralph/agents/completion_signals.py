@@ -7,7 +7,12 @@ tool. Explicit completion and artifact presence are separate signals; the
 explicit-complete flag is never auto-set just because a phase has no required
 artifact entry.
 
-Phases without a required artifact return required_artifact_present=False.
+Phases with an optional artifact contract (artifact_required=False) are treated
+as terminal on a clean exit even when no artifact is produced and no explicit
+declare_complete call is made. The artifact provides context only; its absence
+does not gate phase success. A present optional artifact is still fully validated.
+
+Phases without any artifact contract return required_artifact_present=False.
 OpenCode agents running such phases must still call declare_complete explicitly
 rather than relying on implicit success.
 """
@@ -39,12 +44,16 @@ class CompletionSignals:
         artifact_types: Tuple of artifact type names found.
         terminal_ack_seen: True when a child_terminal lifecycle ACK was received
             from the OpenCode transport.
+        artifact_optional: True when the phase has an optional artifact contract
+            (artifact_required=False). A clean exit is terminal even without the
+            artifact or an explicit declare_complete call.
     """
 
     explicit_complete: bool
     required_artifact_present: bool
     artifact_types: tuple[str, ...]
     terminal_ack_seen: bool = False
+    artifact_optional: bool = False
 
 
 def extract_explicit_completion(raw_output: list[str]) -> bool:
@@ -109,10 +118,12 @@ def evaluate_completion(
         )
     artifact_path = workspace / ra.json_path
     present = _artifact_is_schema_valid(artifact_path)
+    optional = not ra.artifact_required
     return CompletionSignals(
         explicit_complete=explicit,
         required_artifact_present=present,
         artifact_types=(ra.artifact_type,) if present else (),
+        artifact_optional=optional,
     )
 
 

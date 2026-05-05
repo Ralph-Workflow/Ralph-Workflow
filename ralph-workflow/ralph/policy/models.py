@@ -894,6 +894,9 @@ class ArtifactContract(_FrozenPolicyModel):  # type: ignore[explicit-any]  # rea
     Attributes:
         drain: Which drain this artifact is submitted at.
         artifact_type: Type identifier for the artifact (e.g., planning_json).
+        artifact_required: Whether the artifact JSON must be present for phase success.
+            When False, an absent artifact does not fail the phase; a present artifact
+            is still validated. Defaults to True.
         decision_vocabulary: Valid values for the decision field (for analysis drains).
         prompt_template: Optional template for generating prompts (None = use default).
         artifact_json_path: Override path for the artifact JSON file. When set,
@@ -906,6 +909,14 @@ class ArtifactContract(_FrozenPolicyModel):  # type: ignore[explicit-any]  # rea
     artifact_type: str = Field(
         ...,
         description="Artifact type identifier submitted via MCP",
+    )
+    artifact_required: bool = Field(
+        default=True,
+        description=(
+            "Whether the artifact JSON must be present for phase success. "
+            "When False, an absent artifact does not fail the phase; a present "
+            "artifact is still validated. Defaults to True."
+        ),
     )
     decision_vocabulary: list[str] = Field(
         default_factory=list,

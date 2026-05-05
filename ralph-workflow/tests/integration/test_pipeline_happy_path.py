@@ -62,8 +62,8 @@ class MockAgentInvoker:
         self.call_counts[phase] = self.call_counts.get(phase, 0) + 1
         self.call_history.append({"agent": agent_name, "phase": phase})
 
-        # For planning and development: return AGENT_SUCCESS
-        if phase in ("planning", "development"):
+        # For execution/review phases: return AGENT_SUCCESS
+        if phase in ("planning", "development", "review"):
             return cast("PipelineEvent", PipelineEvent.AGENT_SUCCESS)
 
         # For analysis phases: return ANALYSIS_SUCCESS
