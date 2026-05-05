@@ -2080,6 +2080,48 @@ class TestOptionalArtifactCompletion:
             ),
         )
 
+    def test_optional_artifact_malformed_present_does_not_raise(
+        self, tmp_path: Path
+    ) -> None:
+        """Optional artifact present but malformed must not raise OpenCodeResumableExitError.
+
+        _check_process_result is not responsible for validating artifact content.
+        When artifact_required=False the exit is terminal regardless of what the
+        file contains; content validation is the execution.py layer's job.
+        """
+        artifact_path = tmp_path / ".agent" / "artifacts" / "development_result.json"
+        artifact_path.parent.mkdir(parents=True, exist_ok=True)
+        artifact_path.write_text("not valid json {{{")
+
+        ra = RequiredArtifact(
+            phase="development",
+            artifact_type="development_result",
+            json_path=".agent/artifacts/development_result.json",
+            markdown_path=None,
+            normalizer=None,
+            artifact_required=False,
+        )
+        strategy = OpenCodeExecutionStrategy()
+        handle = _FakeHandle(returncode=0, has_descendants=False)
+        probe = FakeLivenessProbe(active=False)
+
+        _check_process_result(
+            cast("ManagedProcess", handle),
+            "opencode",
+            [],
+            _CompletionCheckOptions(
+                execution_strategy=strategy,
+                workspace_path=tmp_path,
+                liveness_probe=probe,
+                required_artifact=ra,
+                policy=TimeoutPolicy(
+                    idle_timeout_seconds=None,
+                    parent_exit_grace_seconds=0.0,
+                    descendant_wait_timeout_seconds=0.0,
+                ),
+            ),
+        )
+
     def test_required_artifact_absent_still_raises_resumable(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
