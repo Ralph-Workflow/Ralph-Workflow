@@ -6,15 +6,21 @@ Structured JSON payloads submitted by agents through the MCP layer. Every phase 
 
 ## Artifact types
 
-| Artifact type | Submitted by | Purpose |
-|---|---|---|
-| `plan` | planning agent | Implementation plan with steps and work units |
-| `development_result` | development agent | Summary of changes made |
-| `issues` | review agent | List of issues found in the development output |
-| `fix_result` | fix agent | Summary of fixes applied |
-| `commit_message` | commit agent | Proposed commit subject and body |
-| `development_analysis_decision` | analysis agent | Go/no-go for development output |
-| `review_analysis_decision` | analysis agent | Go/no-go for review output |
+| Artifact type | Submitted by | Purpose | Required? |
+|---|---|---|---|
+| `plan` | planning agent | Implementation plan with steps and work units | yes |
+| `development_result` | development agent | Summary of changes made (context for analysis) | **no** |
+| `issues` | review agent | List of issues found in the development output | yes |
+| `fix_result` | fix agent | Summary of fixes applied | yes |
+| `commit_message` | commit agent | Proposed commit subject and body | yes |
+| `development_analysis_decision` | analysis agent | Go/no-go for development output | yes |
+| `review_analysis_decision` | analysis agent | Go/no-go for review output | yes |
+
+> **Optional artifacts:** When *Required?* is **no**, phase success does not depend on the artifact
+> being present. The development agent *may* submit `development_result` to give the analysis agent
+> richer context, but omitting it is not a failure. A submitted optional artifact is still fully
+> validated against its schema. The `artifact_required` flag in `artifacts.toml` controls this
+> behaviour; all other artifacts default to `artifact_required = true`.
 
 See `ralph.mcp.artifacts.typed_artifacts` for Pydantic schema definitions for each type.
 

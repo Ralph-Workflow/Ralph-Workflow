@@ -761,3 +761,33 @@ def test_checkpoint_resume_preserves_budget(
     assert final_state.phase == "complete"
     assert final_state.get_outer_progress("iteration") == 1
     assert final_state.get_budget_remaining("iteration") == 0
+
+
+def test_dev_cycle_completes_without_development_result_artifact(
+    monkeypatch: MonkeyPatch,
+    tmp_path: Path,
+    mock_agent_invoker: MockAgentInvoker,
+) -> None:
+    """Full development cycle must complete even when development_result is never written.
+
+    Regression: the optional development_result contract must not cause early termination
+    or off-by-one bugs in the development -> development_analysis -> development_commit cycle.
+    The mock agent invoker never writes development_result, so this exercises the optional
+    artifact path end-to-end at the routing layer.
+    """
+    result, saved_states = _run_pipeline(
+        monkeypatch,
+        tmp_path,
+        mock_agent_invoker,
+        _config(),
+        counter_overrides={"iteration": DEVELOPMENT_CYCLES_TWO, "reviewer_pass": 0},
+    )
+
+    assert result == 0
+    assert mock_agent_invoker.count_for("development") == DEVELOPMENT_CYCLES_TWO
+    assert mock_agent_invoker.count_for("development_analysis") == DEVELOPMENT_CYCLES_TWO
+    assert mock_agent_invoker.count_for("development_commit") == DEVELOPMENT_CYCLES_TWO
+    final_state = saved_states[-1]
+    assert final_state.phase == "complete"
+    assert final_state.get_outer_progress("iteration") == DEVELOPMENT_CYCLES_TWO
+    assert final_state.get_budget_remaining("iteration") == 0

@@ -155,6 +155,12 @@ present, Ralph Workflow raises `OpenCodeResumableExitError` and the runner retri
 (preserving `session_id`) rather than restarting from scratch. This prevents silent no-op runs where
 the agent exits early without producing the required output.
 
+**Optional artifacts:** Some phases declare their artifact as optional via `artifact_required = false`
+in `artifacts.toml`. The `development_result` artifact (development phase) is the canonical example:
+it provides context for the analysis agent but phase success does not depend on its presence. When an
+optional artifact is absent, `required_artifact_present` stays `False` and the phase can only complete
+via an explicit `declare_complete` call. A present optional artifact is still fully validated.
+
 Phases with no registered required artifact (not in `REQUIRED_ARTIFACTS`) also return
 `required_artifact_present=False`, so OpenCode agents on such phases must call `declare_complete`
 explicitly. This prevents implicit success from being granted just because a phase has no artifact

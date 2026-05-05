@@ -1998,3 +1998,151 @@ class TestStaleScopedChildEvidenceTimeout:
             "No scoped evidence + raw descendants in exit must return "
             f"WAITING_ON_CHILD, not {state!r}."
         )
+
+
+# ---------------------------------------------------------------------------
+# Optional-artifact completion contracts
+# ---------------------------------------------------------------------------
+
+
+class TestOptionalArtifactCompletion:
+    """Optional-artifact phases must succeed on declare_complete but still retry on no evidence."""
+
+    def test_optional_artifact_absent_with_declare_complete_does_not_raise(
+        self, tmp_path: Path
+    ) -> None:
+        """Optional artifact absent + declare_complete must not raise OpenCodeResumableExitError."""
+        ra = RequiredArtifact(
+            phase="development",
+            artifact_type="development_result",
+            json_path=".agent/artifacts/development_result.json",
+            markdown_path=None,
+            normalizer=None,
+            artifact_required=False,
+        )
+        strategy = OpenCodeExecutionStrategy()
+        handle = _FakeHandle(returncode=0, has_descendants=False)
+        probe = FakeLivenessProbe(active=False)
+        output = ['{"type": "result", "message": "Task declared complete: done"}']
+
+        _check_process_result(
+            cast("ManagedProcess", handle),
+            "opencode",
+            output,
+            _CompletionCheckOptions(
+                execution_strategy=strategy,
+                workspace_path=tmp_path,
+                liveness_probe=probe,
+                required_artifact=ra,
+                policy=TimeoutPolicy(
+                    idle_timeout_seconds=None,
+                    parent_exit_grace_seconds=0.0,
+                    descendant_wait_timeout_seconds=0.0,
+                ),
+            ),
+        )
+
+    def test_optional_artifact_absent_without_evidence_raises_resumable(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Optional artifact absent + no evidence must raise OpenCodeResumableExitError.
+
+        Silent no-op exits must still be rejected even when the artifact is optional.
+        """
+        ra = RequiredArtifact(
+            phase="development",
+            artifact_type="development_result",
+            json_path=".agent/artifacts/development_result.json",
+            markdown_path=None,
+            normalizer=None,
+            artifact_required=False,
+        )
+
+        def _fake_evaluate_completion(workspace, raw_output, *, required_artifact=None):
+            return CompletionSignals(False, False, ())
+
+        monkeypatch.setattr(
+            "ralph.agents.invoke.evaluate_completion", _fake_evaluate_completion
+        )
+
+        strategy = OpenCodeExecutionStrategy()
+        handle = _FakeHandle(returncode=0, has_descendants=False)
+        probe = FakeLivenessProbe(active=False)
+
+        monotonic_vals = iter([0.0, 0.5, 1.0])
+
+        def _fake_event_wait(self, timeout=None):
+            return None
+
+        with (
+            patch.object(_time_module, "monotonic", side_effect=lambda: next(monotonic_vals)),
+            patch.object(threading.Event, "wait", _fake_event_wait),
+            pytest.raises(OpenCodeResumableExitError),
+        ):
+            _check_process_result(
+                cast("ManagedProcess", handle),
+                "opencode",
+                [],
+                _CompletionCheckOptions(
+                    execution_strategy=strategy,
+                    workspace_path=tmp_path,
+                    liveness_probe=probe,
+                    required_artifact=ra,
+                    policy=TimeoutPolicy(
+                        idle_timeout_seconds=None,
+                        parent_exit_grace_seconds=1.0,
+                        descendant_wait_timeout_seconds=30.0,
+                    ),
+                ),
+            )
+
+    def test_required_artifact_absent_still_raises_resumable(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Required artifact absent without evidence still raises OpenCodeResumableExitError."""
+        ra = RequiredArtifact(
+            phase="development_analysis",
+            artifact_type="development_analysis_decision",
+            json_path=".agent/artifacts/development_analysis_decision.json",
+            markdown_path=None,
+            normalizer=None,
+            artifact_required=True,
+        )
+
+        def _fake_evaluate_completion(workspace, raw_output, *, required_artifact=None):
+            return CompletionSignals(False, False, ())
+
+        monkeypatch.setattr(
+            "ralph.agents.invoke.evaluate_completion", _fake_evaluate_completion
+        )
+
+        strategy = OpenCodeExecutionStrategy()
+        handle = _FakeHandle(returncode=0, has_descendants=False)
+        probe = FakeLivenessProbe(active=False)
+
+        monotonic_vals = iter([0.0, 0.5, 1.0])
+
+        def _fake_event_wait(self, timeout=None):
+            return None
+
+        with (
+            patch.object(_time_module, "monotonic", side_effect=lambda: next(monotonic_vals)),
+            patch.object(threading.Event, "wait", _fake_event_wait),
+            pytest.raises(OpenCodeResumableExitError),
+        ):
+            _check_process_result(
+                cast("ManagedProcess", handle),
+                "opencode",
+                [],
+                _CompletionCheckOptions(
+                    execution_strategy=strategy,
+                    workspace_path=tmp_path,
+                    liveness_probe=probe,
+                    required_artifact=ra,
+                    policy=TimeoutPolicy(
+                        idle_timeout_seconds=None,
+                        parent_exit_grace_seconds=1.0,
+                        descendant_wait_timeout_seconds=30.0,
+                    ),
+                ),
+            )
