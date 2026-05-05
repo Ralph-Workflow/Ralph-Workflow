@@ -314,6 +314,11 @@ class ParallelDisplay:
         """
         return self._plain_renderer.last_phase_counters
 
+    @property
+    def last_phase_artifact_outcome(self) -> str:
+        """Return the artifact outcome from the most recently closed phase."""
+        return self._plain_renderer.last_phase_artifact_outcome
+
     def emit_phase_close(
         self,
         phase: str,

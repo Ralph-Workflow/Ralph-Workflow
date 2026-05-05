@@ -1055,6 +1055,13 @@ def _emit_phase_transition_if_changed(
                 thinking_blocks = phase_counters.thinking_blocks
                 tool_calls = phase_counters.tool_calls
                 errors = phase_counters.errors
+        # Get artifact outcome from the display if available
+        artifact_outcome = ""
+        if not isinstance(display, _LegacyConsoleDisplay):
+            raw_outcome = cast(
+                "str | None", getattr(display, "last_phase_artifact_outcome", None)
+            )
+            artifact_outcome = raw_outcome if raw_outcome else ""
         entry = _build_phase_entry_model_from_state(previous_phase, state, pipeline_policy)
         exit_model = PhaseExitModel.from_entry_model(
             entry,
@@ -1064,6 +1071,7 @@ def _emit_phase_transition_if_changed(
             thinking_blocks=thinking_blocks,
             tool_calls=tool_calls,
             errors=errors,
+            artifact_outcome=artifact_outcome,
             waiting_status_line=waiting_status_line,
             last_failure_category=state.last_failure_category,
         )
