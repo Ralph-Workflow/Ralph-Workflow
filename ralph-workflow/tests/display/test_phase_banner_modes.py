@@ -276,3 +276,150 @@ def test_phase_close_banner_ascii_arrow_for_exit_trigger() -> None:
     output = _export(ctx)
     assert ASCII_GLYPHS["arrow"] in output
     assert "produced" in output
+
+
+# --- Outer/inner qualifier tests ---
+
+
+def test_phase_start_wide_mode_shows_outer_qualifier() -> None:
+    """In wide mode, show_phase_start_from_entry appends '(outer)' to dev cycle label."""
+    ctx = _make_ctx("wide")
+    entry = PhaseEntryModel(
+        phase_name="development",
+        outer_dev_iteration=2,
+        outer_dev_cap=3,
+    )
+    show_phase_start_from_entry(entry, display_context=ctx)
+    output = _export(ctx)
+    assert "Dev 2/3" in output
+    assert "(outer)" in output
+
+
+def test_phase_start_compact_mode_omits_outer_qualifier() -> None:
+    """In compact mode, show_phase_start_from_entry omits '(outer)' qualifier."""
+    ctx = _make_ctx("compact")
+    entry = PhaseEntryModel(
+        phase_name="development",
+        outer_dev_iteration=2,
+        outer_dev_cap=3,
+    )
+    show_phase_start_from_entry(entry, display_context=ctx)
+    output = _export(ctx)
+    assert "Dev 2/3" in output
+    assert "(outer)" not in output
+
+
+def test_phase_start_medium_mode_omits_outer_qualifier() -> None:
+    """In medium mode, show_phase_start_from_entry omits '(outer)' qualifier."""
+    ctx = _make_ctx("medium")
+    entry = PhaseEntryModel(
+        phase_name="development",
+        outer_dev_iteration=2,
+        outer_dev_cap=3,
+    )
+    show_phase_start_from_entry(entry, display_context=ctx)
+    output = _export(ctx)
+    assert "Dev 2/3" in output
+    assert "(outer)" not in output
+
+
+def test_phase_start_wide_mode_shows_inner_qualifier() -> None:
+    """In wide mode, show_phase_start_from_entry appends '(inner)' to analysis cycle label."""
+    ctx = _make_ctx("wide")
+    entry = PhaseEntryModel(
+        phase_name="development_analysis",
+        inner_analysis=1,
+        inner_analysis_cap=3,
+    )
+    show_phase_start_from_entry(entry, display_context=ctx)
+    output = _export(ctx)
+    assert "Analysis 1/3" in output
+    assert "(inner)" in output
+
+
+def test_phase_start_compact_mode_omits_inner_qualifier() -> None:
+    """In compact mode, show_phase_start_from_entry omits '(inner)' qualifier."""
+    ctx = _make_ctx("compact")
+    entry = PhaseEntryModel(
+        phase_name="development_analysis",
+        inner_analysis=1,
+        inner_analysis_cap=3,
+    )
+    show_phase_start_from_entry(entry, display_context=ctx)
+    output = _export(ctx)
+    assert "Analysis 1/3" in output
+    assert "(inner)" not in output
+
+
+def test_phase_close_wide_mode_shows_outer_qualifier() -> None:
+    """In wide mode, show_phase_close_banner appends '(outer)' to dev cycle label."""
+    ctx = _make_ctx("wide")
+    exit_model = PhaseExitModel(
+        phase_name="development",
+        outer_dev_iteration=3,
+        outer_dev_cap=5,
+    )
+    show_phase_close_banner(exit_model, display_context=ctx)
+    output = _export(ctx)
+    assert "Dev 3/5" in output
+    assert "(outer)" in output
+
+
+def test_phase_close_compact_mode_omits_outer_qualifier() -> None:
+    """In compact mode, show_phase_close_banner omits '(outer)' qualifier."""
+    ctx = _make_ctx("compact")
+    exit_model = PhaseExitModel(
+        phase_name="development",
+        outer_dev_iteration=3,
+        outer_dev_cap=5,
+    )
+    show_phase_close_banner(exit_model, display_context=ctx)
+    output = _export(ctx)
+    assert "Dev 3/5" in output
+    assert "(outer)" not in output
+
+
+def test_phase_close_wide_mode_shows_inner_qualifier() -> None:
+    """In wide mode, show_phase_close_banner appends '(inner)' to analysis cycle label."""
+    ctx = _make_ctx("wide")
+    exit_model = PhaseExitModel(
+        phase_name="development_analysis",
+        inner_analysis=2,
+        inner_analysis_cap=4,
+    )
+    show_phase_close_banner(exit_model, display_context=ctx)
+    output = _export(ctx)
+    assert "Analysis 2/4" in output
+    assert "(inner)" in output
+
+
+def test_phase_close_debug_breadcrumbs_wide_mode() -> None:
+    """In wide mode, show_phase_close_banner shows debug breadcrumbs when set."""
+    ctx = _make_ctx("wide")
+    exit_model = PhaseExitModel(
+        phase_name="development",
+        exit_trigger="timeout",
+        waiting_status_line="waiting for tool response",
+        last_failure_category="environmental",
+    )
+    show_phase_close_banner(exit_model, display_context=ctx)
+    output = _export(ctx)
+    assert "debug:" in output
+    assert "waiting: waiting for tool response" in output
+    assert "failure: environmental" in output
+
+
+def test_phase_close_debug_breadcrumbs_compact_mode() -> None:
+    """In compact mode, show_phase_close_banner still shows debug breadcrumbs when set."""
+    ctx = _make_ctx("compact")
+    exit_model = PhaseExitModel(
+        phase_name="development",
+        exit_trigger="timeout",
+        waiting_status_line="waiting for something",
+        last_failure_category="agent",
+    )
+    show_phase_close_banner(exit_model, display_context=ctx)
+    output = _export(ctx)
+    assert "debug:" in output
+    assert "waiting: waiting for something" in output
+    assert "failure: agent" in output

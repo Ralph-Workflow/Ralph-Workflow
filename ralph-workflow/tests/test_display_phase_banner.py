@@ -813,3 +813,73 @@ def test_show_phase_close_banner_uses_policy_for_style() -> None:
     )
     output = console.export_text()
     assert "My Work" in output
+
+
+def test_show_phase_close_banner_shows_debug_waiting_status() -> None:
+    """Close banner emits a debug line when waiting_status_line is set."""
+    console = Console(record=True, no_color=True)
+    exit_model = PhaseExitModel(
+        phase_name="development",
+        exit_trigger="timeout",
+        waiting_status_line="waiting for tool result",
+    )
+    show_phase_close_banner(exit_model, display_context=_ctx_from_console(console))
+    output = console.export_text()
+    assert "debug:" in output
+    assert "waiting: waiting for tool result" in output
+
+
+def test_show_phase_close_banner_shows_debug_failure_category() -> None:
+    """Close banner emits a debug line when last_failure_category is set."""
+    console = Console(record=True, no_color=True)
+    exit_model = PhaseExitModel(
+        phase_name="development",
+        exit_trigger="failed",
+        last_failure_category="timeout",
+    )
+    show_phase_close_banner(exit_model, display_context=_ctx_from_console(console))
+    output = console.export_text()
+    assert "debug:" in output
+    assert "failure: timeout" in output
+
+
+def test_show_phase_close_banner_shows_both_breadcrumbs() -> None:
+    """Close banner emits debug line with both breadcrumbs when both are set."""
+    console = Console(record=True, no_color=True)
+    exit_model = PhaseExitModel(
+        phase_name="fix",
+        exit_trigger="failed",
+        waiting_status_line="waiting for child",
+        last_failure_category="tool_error",
+    )
+    show_phase_close_banner(exit_model, display_context=_ctx_from_console(console))
+    output = console.export_text()
+    assert "debug:" in output
+    assert "waiting: waiting for child" in output
+    assert "failure: tool_error" in output
+
+
+def test_show_phase_close_banner_no_debug_when_no_breadcrumbs() -> None:
+    """Close banner emits no debug line when no breadcrumbs are set."""
+    console = Console(record=True, no_color=True)
+    exit_model = PhaseExitModel(
+        phase_name="development",
+        exit_trigger="produced",
+    )
+    show_phase_close_banner(exit_model, display_context=_ctx_from_console(console))
+    output = console.export_text()
+    assert "debug:" not in output
+
+
+def test_show_phase_close_banner_waiting_status_truncated_at_80() -> None:
+    """Close banner truncates waiting_status_line to 80 chars."""
+    console = Console(record=True, no_color=True)
+    long_status = "x" * 100
+    exit_model = PhaseExitModel(
+        phase_name="development",
+        waiting_status_line=long_status,
+    )
+    show_phase_close_banner(exit_model, display_context=_ctx_from_console(console))
+    output = console.export_text()
+    assert "x" * 80 in output
+    assert "x" * 81 not in output

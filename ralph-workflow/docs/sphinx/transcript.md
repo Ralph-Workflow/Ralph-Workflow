@@ -149,14 +149,16 @@ When a block ends, Ralph Workflow may append summary lines depending on configur
 Before each phase begins, a single-line phase-start banner is printed to the console:
 
 ```
-<glyph> <Phase Label>  <od_glyph> Dev N/cap  <ia_glyph> Analysis N/cap  <budget_glyph> Budget: N left  agent=<name>
+<glyph> <Phase Label>  <od_glyph> Dev N/cap [(outer)]  <ia_glyph> Analysis N/cap [(inner)]  <budget_glyph> Budget: N left  agent=<name>
 ```
 
 | Field | Notes |
 |-------|-------|
 | `<Phase Label>` | Human-readable phase name (e.g. `Development Analysis`) |
 | `Dev N/cap` or `Dev #N` | Outer development cycle — 1-indexed current cycle number; shows cap when budget is tracked |
+| `(outer)` | Qualifier appended in **wide mode only** to clarify this is the outer dev cycle |
 | `Analysis N/cap` or `Analysis #N` | Inner analysis loop iteration — 1-indexed; shows cap when known |
+| `(inner)` | Qualifier appended in **wide mode only** to clarify this is the inner analysis cycle |
 | `Budget: N left` | Remaining budget from the active budget counter |
 | `agent=<name>` | Active agent identity, if known |
 
@@ -164,13 +166,18 @@ All iteration fields are optional and appear only when the pipeline has that con
 `Dev N/cap` counts from 1: `Dev 1/5` means the pipeline is entering its first development
 cycle out of a total budget of 5. `Dev 0/cap` is never shown.
 
+In wide mode (`≥ 100` cols), `(outer)` and `(inner)` qualifiers are appended to the
+development and analysis cycle labels respectively, making the distinction between
+outer dev and inner analysis cycles explicit when debugging.
+
 ## Phase-Close Banner
 
 When a phase ends and the pipeline transitions to the next phase, a rich visual
 phase-close banner is printed to the console:
 
 ```
-<success_glyph> <Phase Label>  <od_glyph> Dev N/cap  <ia_glyph> Analysis N/cap  <budget_glyph> Budget: N left  Ns  <arrow> <exit_trigger>
+<success_glyph> <Phase Label>  <od_glyph> Dev N/cap [(outer)]  <ia_glyph> Analysis N/cap [(inner)]  <budget_glyph> Budget: N left  Ns  <arrow> <exit_trigger>
+  <warning_glyph> debug: waiting: <waiting_status> | failure: <failure_category>   ← only when breadcrumbs exist
 ```
 
 | Field | Notes |
@@ -178,14 +185,24 @@ phase-close banner is printed to the console:
 | `<success_glyph>` | `✓` (Unicode) or `[OK]` (ASCII) |
 | `<Phase Label>` | Human-readable phase name (e.g. `Development Analysis`) |
 | `Dev N/cap` or `Dev #N` | Outer development cycle — 1-indexed; same label as phase-start |
+| `(outer)` | Qualifier appended in **wide mode only** |
 | `Analysis N/cap` or `Analysis #N` | Inner analysis loop iteration — same label as phase-start |
+| `(inner)` | Qualifier appended in **wide mode only** |
 | `Budget: N left` | Remaining budget from the active budget counter |
 | `Ns` | Wall-clock elapsed time for the phase, in seconds (omitted when 0) |
 | `<arrow> <exit_trigger>` | Why the phase ended — present when an exit trigger is known |
+| `debug: waiting: …` | Last waiting-status line recorded during this phase (present only when set) |
+| `debug: … failure: …` | Last failure category recorded during this phase (present only when set) |
 
 All iteration fields are optional and appear only when the pipeline has that context.
 This banner is symmetric with the phase-start banner: same field ordering, same glyphs,
 same style keys — making before/after pairs easy to read in the terminal.
+
+When a phase ends with a waiting or failure breadcrumb still set (e.g. a timeout or tool
+error), an indented debug line appears immediately below the close banner. This makes
+failure-related state visible without requiring the completion summary to be read first.
+The waiting status is truncated to 80 characters. The debug line appears in all display
+modes (compact, medium, wide) whenever the data is present.
 
 ## `[phase-close]` Line
 

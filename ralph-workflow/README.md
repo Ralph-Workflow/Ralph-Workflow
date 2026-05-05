@@ -446,8 +446,16 @@ additional context lines, and fuller iteration/budget labels.
 
 Phase-start banners show iteration context as `Dev N/cap` (outer development cycle, 1-indexed)
 and `Analysis N/cap` (inner analysis loop, 1-indexed). `Dev 1/5` means the pipeline is entering
-its first development cycle out of a total budget of 5. Phase-close lines echo the same labels
-alongside elapsed time, exit trigger, and activity counters.
+its first development cycle out of a total budget of 5. In **wide mode**, `(outer)` and `(inner)`
+qualifiers are appended to the dev and analysis cycle labels to make the distinction explicit.
+
+Phase-close banners echo the same iteration context alongside elapsed time (e.g. `7.5s`) and the
+exit trigger (e.g. `→ produced`, `→ timeout`). When a phase ends with debug breadcrumbs still set
+(waiting-status or failure category), a `debug:` line is appended immediately below the close banner
+in all display modes — making failure context visible without reading the completion summary.
+
+See [`docs/sphinx/transcript.md`](docs/sphinx/transcript.md) for the full phase-start, phase-close,
+and `[run-end]` format specifications.
 
 **Environment knobs**
 

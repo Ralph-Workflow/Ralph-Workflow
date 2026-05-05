@@ -221,11 +221,13 @@ def _build_outer_iteration_suffix(
     cap: int | None = None,
     *,
     od_glyph: str = "⊞",
+    qualifier: str = "",
 ) -> str:
     """Build the outer dev cycle label string."""
     if iteration is None:
         return ""
-    return f"  {od_glyph} {format_dev_cycle(iteration, cap)}"
+    qual = f" {qualifier}" if qualifier else ""
+    return f"  {od_glyph} {format_dev_cycle(iteration, cap)}{qual}"
 
 
 def _build_inner_analysis_suffix(
@@ -233,11 +235,13 @@ def _build_inner_analysis_suffix(
     max_inner: int | None = None,
     *,
     ia_glyph: str = "≴",
+    qualifier: str = "",
 ) -> str:
     """Build the inner analysis cycle label string."""
     if inner is None:
         return ""
-    return f"  {ia_glyph} {format_analysis_cycle(inner, max_inner)}"
+    qual = f" {qualifier}" if qualifier else ""
+    return f"  {ia_glyph} {format_analysis_cycle(inner, max_inner)}{qual}"
 
 
 def _build_budget_remaining_suffix(
@@ -305,15 +309,21 @@ def show_phase_start_from_entry(
     line.append(f"{start_glyph} ", style=style)
     line.append(label, style=style)
 
+    mode = display_context.mode
+    outer_qualifier = "(outer)" if mode == "wide" else ""
+    inner_qualifier = "(inner)" if mode == "wide" else ""
+
     if entry.outer_dev_iteration is not None:
         suffix = _build_outer_iteration_suffix(
-            entry.outer_dev_iteration, entry.outer_dev_cap, od_glyph=od_glyph
+            entry.outer_dev_iteration, entry.outer_dev_cap,
+            od_glyph=od_glyph, qualifier=outer_qualifier,
         )
         line.append(suffix, style="theme.outer_dev")
 
     if entry.inner_analysis is not None:
         suffix = _build_inner_analysis_suffix(
-            entry.inner_analysis, entry.inner_analysis_cap, ia_glyph=ia_glyph
+            entry.inner_analysis, entry.inner_analysis_cap,
+            ia_glyph=ia_glyph, qualifier=inner_qualifier,
         )
         line.append(suffix, style="theme.inner_analysis")
 
@@ -378,15 +388,21 @@ def show_phase_close_banner(
     line.append(f"{success_glyph} ", style=style)
     line.append(label, style=style)
 
+    mode = display_context.mode
+    outer_qualifier = "(outer)" if mode == "wide" else ""
+    inner_qualifier = "(inner)" if mode == "wide" else ""
+
     if exit_model.outer_dev_iteration is not None:
         suffix = _build_outer_iteration_suffix(
-            exit_model.outer_dev_iteration, exit_model.outer_dev_cap, od_glyph=od_glyph
+            exit_model.outer_dev_iteration, exit_model.outer_dev_cap,
+            od_glyph=od_glyph, qualifier=outer_qualifier,
         )
         line.append(suffix, style="theme.outer_dev")
 
     if exit_model.inner_analysis is not None:
         suffix = _build_inner_analysis_suffix(
-            exit_model.inner_analysis, exit_model.inner_analysis_cap, ia_glyph=ia_glyph
+            exit_model.inner_analysis, exit_model.inner_analysis_cap,
+            ia_glyph=ia_glyph, qualifier=inner_qualifier,
         )
         line.append(suffix, style="theme.inner_analysis")
 
@@ -404,3 +420,15 @@ def show_phase_close_banner(
         line.append(f"  {arrow} {exit_model.exit_trigger}", style="theme.text.muted")
 
     c.print(line)
+
+    if exit_model.waiting_status_line or exit_model.last_failure_category:
+        debug_line = Text()
+        warning_glyph = display_context.glyph_for("warning")
+        debug_parts: list[str] = []
+        if exit_model.waiting_status_line:
+            debug_parts.append(f"waiting: {exit_model.waiting_status_line[:80]}")
+        if exit_model.last_failure_category:
+            debug_parts.append(f"failure: {exit_model.last_failure_category}")
+        debug_line.append(f"  {warning_glyph} debug: ", style="theme.level.warn")
+        debug_line.append(" | ".join(debug_parts), style="theme.text.muted")
+        c.print(debug_line)
