@@ -610,7 +610,11 @@ def test_regenerate_config_flag_creates_bak(
 
 def test_explain_policy_prints_workflow_diagram(cli_runner: CliRunner) -> None:
     """--explain-policy prints the workflow diagram and structural breakdown."""
-    result = cli_runner.invoke(app, ["--explain-policy"])
+    from ralph.cli.commands.explain import _BUNDLED_DEFAULTS_DIR  # noqa: PLC0415
+
+    result = cli_runner.invoke(
+        app, ["--explain-policy", "--explain-policy-dir", str(_BUNDLED_DEFAULTS_DIR)]
+    )
 
     # Should exit successfully
     assert result.exit_code == 0

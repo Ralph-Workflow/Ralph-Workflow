@@ -184,11 +184,13 @@ class PhaseLoopPolicy(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reas
 
     Attributes:
         max_iterations: Maximum analysis loop iterations before forcing loopback.
+            Optional when loop_counters declares a matching entry with default_max;
+            the runtime prefers loop_counters.default_max over this field.
         iteration_state_field: Key in PipelineState.loop_iterations tracking this phase's counter.
         loopback_review_outcome: When set, loopback transitions set review_outcome to this value.
     """
 
-    max_iterations: int = Field(..., ge=0)
+    max_iterations: int = Field(default=0, ge=0)
     iteration_state_field: str = Field(...)
     loopback_review_outcome: str | None = None
 
@@ -890,6 +892,9 @@ class ArtifactContract(_FrozenPolicyModel):  # type: ignore[explicit-any]  # rea
     Attributes:
         drain: Which drain this artifact is submitted at.
         artifact_type: Type identifier for the artifact (e.g., planning_json).
+        artifact_required: Whether the artifact JSON must be present for phase success.
+            When False, an absent artifact does not fail the phase; a present artifact
+            is still validated. Defaults to True.
         decision_vocabulary: Valid values for the decision field (for analysis drains).
         prompt_template: Optional template for generating prompts (None = use default).
         artifact_json_path: Override path for the artifact JSON file. When set,
@@ -902,6 +907,14 @@ class ArtifactContract(_FrozenPolicyModel):  # type: ignore[explicit-any]  # rea
     artifact_type: str = Field(
         ...,
         description="Artifact type identifier submitted via MCP",
+    )
+    artifact_required: bool = Field(
+        default=True,
+        description=(
+            "Whether the artifact JSON must be present for phase success. "
+            "When False, an absent artifact does not fail the phase; a present "
+            "artifact is still validated. Defaults to True."
+        ),
     )
     decision_vocabulary: list[str] = Field(
         default_factory=list,

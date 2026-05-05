@@ -199,9 +199,18 @@ def _setup_phase_prerequisites(
         workspace.write(".agent/artifacts/issues.json", _VALID_ISSUES_JSON)
 
 
+_OPTIONAL_ARTIFACTS = {
+    p for p, ra in REQUIRED_ARTIFACTS.items() if not ra.artifact_required
+}
+
+
 @pytest.mark.parametrize(
     "phase",
-    [p for p in REQUIRED_ARTIFACTS if p != "planning" and p in _PHASE_TO_HANDLER],
+    [
+        p
+        for p in REQUIRED_ARTIFACTS
+        if p != "planning" and p in _PHASE_TO_HANDLER and p not in _OPTIONAL_ARTIFACTS
+    ],
 )
 def test_missing_artifact_writes_retry_hint(phase: str) -> None:
     workspace = MemoryWorkspace()
@@ -274,23 +283,23 @@ def test_development_missing_plan_hint_names_upstream_planning_phase() -> None:
     )
 
 
-def test_development_missing_dev_result_writes_retry_hint() -> None:
-    """When development_result is missing, development must write a retry hint."""
+def test_development_missing_dev_result_succeeds_optional() -> None:
+    """When development_result is missing, development succeeds (artifact is optional)."""
     workspace = MemoryWorkspace()
     workspace.write(".agent/artifacts/plan.json", _VALID_PLAN_JSON_LEGACY)
     ctx = _make_ctx(workspace)
 
     events = _execution_handler_for("development")(_invoke_effect("development"), ctx)
 
-    failure_events = [e for e in events if isinstance(e, PhaseFailureEvent)]
-    assert failure_events, "Expected PhaseFailureEvent when development_result is missing"
-    assert failure_events[0].recoverable is True
-    assert "development_result" in failure_events[0].reason
-
+    # development_result is optional — missing artifact must not fail the phase
+    assert events == [PipelineEvent.AGENT_SUCCESS], (
+        "Missing optional development_result must not produce PhaseFailureEvent"
+    )
+    # No retry hint should be written for a missing optional artifact
     hint_path = retry_hint_path("development")
-    assert workspace.exists(hint_path)
-    hint_content = workspace.read(hint_path)
-    assert "development_result" in hint_content
+    assert not workspace.exists(hint_path), (
+        "No retry hint should be written for a missing optional artifact"
+    )
 
 
 def test_read_and_clear_retry_hint_returns_content_and_deletes_file() -> None:
@@ -311,7 +320,11 @@ def test_read_and_clear_retry_hint_returns_empty_when_absent() -> None:
 
 @pytest.mark.parametrize(
     "phase",
-    [p for p in REQUIRED_ARTIFACTS if p not in {"planning"} and p in _PHASE_TO_HANDLER],
+    [
+        p
+        for p in REQUIRED_ARTIFACTS
+        if p not in {"planning"} and p in _PHASE_TO_HANDLER and p not in _OPTIONAL_ARTIFACTS
+    ],
 )
 def test_retry_hint_content_includes_artifact_info(phase: str) -> None:
     ra = REQUIRED_ARTIFACTS[phase]
@@ -374,7 +387,7 @@ def test_materialize_development_analysis_prompt_includes_last_retry_error(
 @pytest.mark.parametrize(
     "phase,drain",
     [
-        ("development", SessionDrain.DEVELOPMENT),
+        # development is excluded: development_result is optional, so absence succeeds
         ("review", SessionDrain.REVIEW),
         ("development_analysis", SessionDrain.DEVELOPMENT),
         ("review_analysis", SessionDrain.REVIEW),

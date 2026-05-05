@@ -232,9 +232,20 @@ def _validate_plan_input(
 def _validate_output_artifact(
     effect: InvokeAgentEffect, ctx: PhaseContext, ra: RequiredArtifact
 ) -> list[Event] | None:
-    """Validate the output artifact contract. Returns failure events if invalid, else None."""
+    """Validate the output artifact contract. Returns failure events if invalid, else None.
+
+    When ra.artifact_required is False and the artifact is absent, returns None
+    (treat as success). A present optional artifact is still parsed and type-checked.
+    """
     phase = effect.phase
     if not ctx.workspace.exists(ra.json_path):
+        if not ra.artifact_required:
+            logger.debug(
+                "Execution phase '{}': optional artifact at {} absent — treating as success",
+                phase,
+                ra.json_path,
+            )
+            return None
         detail = (
             f"Missing required artifact at {ra.json_path}; "
             f"the agent must submit {ra.artifact_type} before declaring completion"

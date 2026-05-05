@@ -2543,3 +2543,42 @@ class TestValidatePostCommitAllBudgetStatesCovered:
             ("no_review", "complete"),
         ])
         validate_policy_completeness(bundle)  # must not raise
+
+
+class TestOptionalArtifactPolicy:
+    """Tests for optional artifact contract behavior."""
+
+    def test_default_policy_loads_with_development_output_optional(self, tmp_path: Path) -> None:
+        """Default policy must load with development_output marked as not required."""
+        bundle = load_policy(tmp_path / ".agent")
+        dev_contract = bundle.artifacts.artifacts.get("development_output")
+        assert dev_contract is not None, "development_output must be declared in default policy"
+        assert dev_contract.artifact_required is False, (
+            "development_output.artifact_required must be False in default policy"
+        )
+
+    def test_artifact_contract_defaults_to_required(self) -> None:
+        """ArtifactContract.artifact_required defaults to True when not specified."""
+        contract = ArtifactContract(drain="some_drain", artifact_type="some_type")
+        assert contract.artifact_required is True
+
+    def test_artifact_contract_can_be_set_optional(self) -> None:
+        """ArtifactContract.artifact_required can be set to False."""
+        contract = ArtifactContract(
+            drain="development",
+            artifact_type="development_result",
+            artifact_required=False,
+        )
+        assert contract.artifact_required is False
+
+    def test_required_artifact_builds_with_optional_flag(self, tmp_path: Path) -> None:
+        """build_required_artifacts threads artifact_required from policy to RequiredArtifact."""
+        from ralph.phases.required_artifacts import build_required_artifacts  # noqa: PLC0415
+
+        bundle = load_policy(tmp_path / ".agent")
+        registry = build_required_artifacts(bundle.artifacts)
+        dev_ra = registry.get("development")
+        assert dev_ra is not None, "development drain must have a RequiredArtifact entry"
+        assert dev_ra.artifact_required is False, (
+            "RequiredArtifact for development must have artifact_required=False"
+        )

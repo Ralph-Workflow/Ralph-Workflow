@@ -33,13 +33,18 @@ _ARTIFACT_TYPE_NORMALIZERS: dict[str, Callable[[dict[str, object]], dict[str, ob
 
 @dataclass(frozen=True)
 class RequiredArtifact:
-    """Metadata about an artifact required by a pipeline phase."""
+    """Metadata about an artifact contract for a pipeline phase.
+
+    When artifact_required is False, an absent artifact does not fail the phase;
+    a present artifact is still validated.
+    """
 
     phase: str
     artifact_type: str
     json_path: str
     markdown_path: str | None
     normalizer: Callable[[dict[str, object]], dict[str, object]] | None
+    artifact_required: bool = True
 
 
 def build_required_artifacts(
@@ -74,6 +79,7 @@ def build_required_artifacts(
             json_path=json_path,
             markdown_path=markdown_path,
             normalizer=normalizer,
+            artifact_required=contract.artifact_required,
         )
     return result
 
