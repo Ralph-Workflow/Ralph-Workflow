@@ -782,7 +782,7 @@ def test_show_phase_close_banner_shows_exit_trigger() -> None:
 
 def test_show_phase_close_banner_full_context() -> None:
     """Close banner shows all context fields together."""
-    console = Console(record=True, no_color=True)
+    console = Console(record=True, no_color=True, width=200)
     exit_model = PhaseExitModel(
         phase_name="development_analysis",
         outer_dev_iteration=2,

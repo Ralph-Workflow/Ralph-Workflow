@@ -24,6 +24,7 @@ from ralph.display.theme import ASCII_GLYPHS, UNICODE_GLYPHS
 from ralph.policy.models import PhaseDefinition, PhaseTransition, PipelinePolicy, RecoveryPolicy
 
 _WIDE_EXPECTED_RULES = 2
+_WIDE_PHASE_START_RULES = 1
 
 
 def _make_ctx(
@@ -309,8 +310,8 @@ def test_phase_start_compact_mode_omits_outer_qualifier() -> None:
     assert "(outer)" not in output
 
 
-def test_phase_start_medium_mode_omits_outer_qualifier() -> None:
-    """In medium mode, show_phase_start_from_entry omits '(outer)' qualifier."""
+def test_phase_start_medium_mode_shows_outer_qualifier() -> None:
+    """In medium mode, show_phase_start_from_entry shows '(outer)' qualifier."""
     ctx = _make_ctx("medium")
     entry = PhaseEntryModel(
         phase_name="development",
@@ -320,7 +321,7 @@ def test_phase_start_medium_mode_omits_outer_qualifier() -> None:
     show_phase_start_from_entry(entry, display_context=ctx)
     output = _export(ctx)
     assert "Dev 2/3" in output
-    assert "(outer)" not in output
+    assert "(outer)" in output
 
 
 def test_phase_start_wide_mode_shows_inner_qualifier() -> None:
@@ -423,3 +424,112 @@ def test_phase_close_debug_breadcrumbs_compact_mode() -> None:
     assert "debug:" in output
     assert "waiting: waiting for something" in output
     assert "failure: agent" in output
+
+
+def test_phase_close_medium_mode_shows_outer_qualifier() -> None:
+    """In medium mode, show_phase_close_banner appends '(outer)' to dev cycle label."""
+    ctx = _make_ctx("medium")
+    exit_model = PhaseExitModel(
+        phase_name="development",
+        outer_dev_iteration=2,
+        outer_dev_cap=4,
+    )
+    show_phase_close_banner(exit_model, display_context=ctx)
+    output = _export(ctx)
+    assert "Dev 2/4" in output
+    assert "(outer)" in output
+
+
+def test_phase_close_stats_line_medium_mode() -> None:
+    """In medium mode, show_phase_close_banner emits a stats line when activity > 0."""
+    ctx = _make_ctx("medium")
+    exit_model = PhaseExitModel(
+        phase_name="development",
+        content_blocks=3,
+        thinking_blocks=1,
+        tool_calls=7,
+        errors=0,
+    )
+    show_phase_close_banner(exit_model, display_context=ctx)
+    output = _export(ctx)
+    assert "stats:" in output
+    assert "content=3" in output
+    assert "thinking=1" in output
+    assert "tools=7" in output
+
+
+def test_phase_close_stats_line_omitted_when_all_zero() -> None:
+    """show_phase_close_banner omits the stats line when all counters are zero."""
+    ctx = _make_ctx("medium")
+    exit_model = PhaseExitModel(phase_name="development")
+    show_phase_close_banner(exit_model, display_context=ctx)
+    output = _export(ctx)
+    assert "stats:" not in output
+
+
+def test_phase_close_stats_line_compact_mode_omitted() -> None:
+    """In compact mode, stats line is never shown even with non-zero counters."""
+    ctx = _make_ctx("compact")
+    exit_model = PhaseExitModel(
+        phase_name="development",
+        content_blocks=5,
+        tool_calls=3,
+    )
+    show_phase_close_banner(exit_model, display_context=ctx)
+    output = _export(ctx)
+    assert "stats:" not in output
+
+
+def test_phase_close_stats_line_errors_shown() -> None:
+    """When errors > 0, stats line shows errors in medium/wide mode."""
+    ctx = _make_ctx("wide")
+    exit_model = PhaseExitModel(
+        phase_name="development",
+        content_blocks=2,
+        tool_calls=1,
+        errors=3,
+    )
+    show_phase_close_banner(exit_model, display_context=ctx)
+    output = _export(ctx)
+    assert "stats:" in output
+    assert "errors=3" in output
+
+
+def test_phase_start_wide_mode_shows_rule_separator() -> None:
+    """In wide mode, show_phase_start_from_entry emits a Rule separator line."""
+    ctx = _make_ctx("wide")
+    entry = PhaseEntryModel(phase_name="development")
+    show_phase_start_from_entry(entry, display_context=ctx)
+    output = _export(ctx)
+    rule_lines = [ln for ln in output.split("\n") if "─" in ln or "━" in ln]
+    assert len(rule_lines) >= _WIDE_PHASE_START_RULES, (
+        f"Expected at least {_WIDE_PHASE_START_RULES} rule line(s), got {len(rule_lines)}"
+    )
+
+
+def test_phase_start_compact_mode_no_rule_separator() -> None:
+    """In compact mode, show_phase_start_from_entry emits no Rule separator."""
+    ctx = _make_ctx("compact")
+    entry = PhaseEntryModel(phase_name="development")
+    show_phase_start_from_entry(entry, display_context=ctx)
+    output = _export(ctx)
+    rule_lines = [ln for ln in output.split("\n") if "─" in ln or "━" in ln]
+    assert len(rule_lines) == 0, f"Compact mode must not emit rule lines: {rule_lines}"
+
+
+def test_phase_start_wide_mode_agent_on_separate_line() -> None:
+    """In wide mode, agent name appears on its own indented line."""
+    ctx = _make_ctx("wide")
+    entry = PhaseEntryModel(phase_name="development", agent_name="claude-opus")
+    show_phase_start_from_entry(entry, display_context=ctx)
+    output = _export(ctx)
+    assert "agent: claude-opus" in output
+
+
+def test_phase_start_medium_mode_agent_on_banner_line() -> None:
+    """In medium mode, agent name stays on the banner line (not separate)."""
+    ctx = _make_ctx("medium")
+    entry = PhaseEntryModel(phase_name="development", agent_name="claude-opus")
+    show_phase_start_from_entry(entry, display_context=ctx)
+    output = _export(ctx)
+    assert "agent=claude-opus" in output

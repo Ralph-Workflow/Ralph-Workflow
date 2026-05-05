@@ -296,10 +296,20 @@ def show_phase_start_from_entry(
     Canonical model-based path for phase-start banners.  Uses the entry model so
     iteration labels (Dev N/cap, Analysis N/cap, Budget: N left) never diverge
     between phase-start and phase-close surfaces.
+
+    In wide mode a titled Rule separator precedes the banner line to visually
+    anchor the start of each phase section.  Outer/inner qualifiers are shown in
+    both medium and wide modes; compact mode omits them to save space.
     """
     c = display_context.console
     style = _phase_style(entry.phase_name, pipeline_policy)
     label = entry.human_label()
+
+    mode = display_context.mode
+
+    # Wide mode: titled Rule separator before the main banner line
+    if mode == "wide":
+        c.print(Rule(title=label, style=style))
 
     line = Text()
     start_glyph = display_context.glyph_for("start")
@@ -309,9 +319,9 @@ def show_phase_start_from_entry(
     line.append(f"{start_glyph} ", style=style)
     line.append(label, style=style)
 
-    mode = display_context.mode
-    outer_qualifier = "(outer)" if mode == "wide" else ""
-    inner_qualifier = "(inner)" if mode == "wide" else ""
+    # Medium and wide mode show qualifiers; compact omits them
+    outer_qualifier = "(outer)" if mode in ("medium", "wide") else ""
+    inner_qualifier = "(inner)" if mode in ("medium", "wide") else ""
 
     if entry.outer_dev_iteration is not None:
         suffix = _build_outer_iteration_suffix(
@@ -331,10 +341,17 @@ def show_phase_start_from_entry(
         suffix = _build_budget_remaining_suffix(entry.budget_remaining, budget_glyph=budget_glyph)
         line.append(suffix, style="theme.level.warn")
 
-    if entry.agent_name is not None:
+    if entry.agent_name is not None and mode != "wide":
         line.append(f"  agent={entry.agent_name}", style="theme.text.muted")
 
     c.print(line)
+
+    # Wide mode: agent on its own indented line for readability
+    if mode == "wide" and entry.agent_name is not None:
+        agent_line = Text()
+        agent_line.append("    agent: ", style="theme.text.muted")
+        agent_line.append(entry.agent_name, style="theme.text.emphasis")
+        c.print(agent_line)
 
 
 def show_phase_complete(
@@ -363,6 +380,42 @@ def show_phase_complete(
     c.print(line)
 
 
+def _build_phase_close_stats_line(
+    exit_model: PhaseExitModel,
+    display_context: DisplayContext,
+) -> Text | None:
+    """Build an activity-stats supplementary line for the phase-close banner.
+
+    Returns None when all counters are zero or when in compact mode.
+    In medium and wide mode surfaces content/thinking/tool/error counts so
+    the phase-close banner gives a full picture of agent activity.
+    """
+    if display_context.mode == "compact":
+        return None
+    total = (
+        exit_model.content_blocks
+        + exit_model.thinking_blocks
+        + exit_model.tool_calls
+        + exit_model.errors
+    )
+    if total == 0:
+        return None
+    stats = Text()
+    stats.append("    ↳ stats: ", style="theme.text.muted")
+    parts: list[tuple[str, str]] = [
+        (f"content={exit_model.content_blocks}", "theme.text.muted"),
+        (f"thinking={exit_model.thinking_blocks}", "theme.text.muted"),
+        (f"tools={exit_model.tool_calls}", "theme.text.muted"),
+    ]
+    if exit_model.errors > 0:
+        parts.append((f"errors={exit_model.errors}", "theme.level.error"))
+    for i, (part_text, part_style) in enumerate(parts):
+        if i > 0:
+            stats.append(" ", style="theme.text.muted")
+        stats.append(part_text, style=part_style)
+    return stats
+
+
 def show_phase_close_banner(
     exit_model: PhaseExitModel,
     *,
@@ -374,6 +427,10 @@ def show_phase_close_banner(
     Canonical model-based path for phase-close rich banners. Symmetric with
     :func:`show_phase_start_from_entry`: same field ordering, same glyphs, same
     style keys. Appends elapsed time and exit trigger after the iteration context.
+
+    In medium and wide modes an additional stats line surfaces content/thinking/
+    tool/error counters from the exit model so the close banner is a full
+    phase-level performance report.
     """
     c = display_context.console
     style = _phase_style(exit_model.phase_name, pipeline_policy)
@@ -389,8 +446,9 @@ def show_phase_close_banner(
     line.append(label, style=style)
 
     mode = display_context.mode
-    outer_qualifier = "(outer)" if mode == "wide" else ""
-    inner_qualifier = "(inner)" if mode == "wide" else ""
+    # Medium and wide mode show qualifiers; compact omits them
+    outer_qualifier = "(outer)" if mode in ("medium", "wide") else ""
+    inner_qualifier = "(inner)" if mode in ("medium", "wide") else ""
 
     if exit_model.outer_dev_iteration is not None:
         suffix = _build_outer_iteration_suffix(
@@ -420,6 +478,11 @@ def show_phase_close_banner(
         line.append(f"  {arrow} {exit_model.exit_trigger}", style="theme.text.muted")
 
     c.print(line)
+
+    # Activity stats supplementary line (medium/wide only)
+    stats_line = _build_phase_close_stats_line(exit_model, display_context)
+    if stats_line is not None:
+        c.print(stats_line)
 
     if exit_model.waiting_status_line or exit_model.last_failure_category:
         debug_line = Text()
