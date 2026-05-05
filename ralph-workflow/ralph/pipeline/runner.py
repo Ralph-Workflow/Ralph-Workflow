@@ -132,6 +132,15 @@ if TYPE_CHECKING:
         def notify(self, state: PipelineState) -> None: ...
 
 
+class _PhaseCountersProtocol(Protocol):
+    """Protocol for phase activity counters."""
+
+    content_blocks: int
+    thinking_blocks: int
+    tool_calls: int
+    errors: int
+
+
 class _ConsoleLikeDisplay(Protocol):
     console: Console
 
@@ -1032,11 +1041,29 @@ def _emit_phase_transition_if_changed(
             if isinstance(display, _LegacyConsoleDisplay)
             else display.subscriber.waiting_status_line
         )
+        # Get activity counters from the display if available
+        content_blocks = 0
+        thinking_blocks = 0
+        tool_calls = 0
+        errors = 0
+        if not isinstance(display, _LegacyConsoleDisplay):
+            phase_counters = cast(
+                "_PhaseCountersProtocol | None", getattr(display, "last_phase_counters", None)
+            )
+            if phase_counters is not None:
+                content_blocks = phase_counters.content_blocks
+                thinking_blocks = phase_counters.thinking_blocks
+                tool_calls = phase_counters.tool_calls
+                errors = phase_counters.errors
         entry = _build_phase_entry_model_from_state(previous_phase, state, pipeline_policy)
         exit_model = PhaseExitModel.from_entry_model(
             entry,
             elapsed_seconds=elapsed,
             exit_trigger="completed",
+            content_blocks=content_blocks,
+            thinking_blocks=thinking_blocks,
+            tool_calls=tool_calls,
+            errors=errors,
             waiting_status_line=waiting_status_line,
             last_failure_category=state.last_failure_category,
         )

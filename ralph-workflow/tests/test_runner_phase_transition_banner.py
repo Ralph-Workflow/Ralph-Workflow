@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 from unittest.mock import patch
@@ -18,6 +19,18 @@ if TYPE_CHECKING:
 
 _DEFAULT_POLICY = load_policy(Path(__file__).parent.parent / "ralph" / "policy" / "defaults")
 _EXPECTED_ELAPSED_SECONDS = 12.5
+_STUB_CONTENT_BLOCKS = 5
+_STUB_THINKING_BLOCKS = 3
+_STUB_TOOL_CALLS = 7
+_STUB_ERRORS = 1
+
+
+@dataclass
+class _StubPhaseCounters:
+    content_blocks: int = 0
+    thinking_blocks: int = 0
+    tool_calls: int = 0
+    errors: int = 0
 
 
 class _StubSubscriber:
@@ -33,6 +46,12 @@ class _StubDisplay:
         console = Console(record=True, force_terminal=False, width=120, color_system=None)
         self._ctx = make_display_context(console=console, env={})
         self.last_phase_elapsed_seconds = _EXPECTED_ELAPSED_SECONDS
+        self.last_phase_counters = _StubPhaseCounters(
+            content_blocks=_STUB_CONTENT_BLOCKS,
+            thinking_blocks=_STUB_THINKING_BLOCKS,
+            tool_calls=_STUB_TOOL_CALLS,
+            errors=_STUB_ERRORS,
+        )
         self.subscriber = _StubSubscriber()
 
 
@@ -155,3 +174,41 @@ def test_emit_phase_transition_populates_waiting_status_from_subscriber() -> Non
 
     exit_model = captured["exit_model"]
     assert exit_model.waiting_status_line == "waiting for child process"
+
+
+def test_emit_phase_transition_populates_activity_counters_from_display() -> None:
+    """Exit model should carry activity counters from display's last_phase_counters."""
+    display = _StubDisplay()
+    state = PipelineState(
+        phase="planning_analysis",
+        previous_phase="planning",
+        budget_caps={"iteration": 1},
+        budget_remaining={"iteration": 1},
+    )
+
+    captured: dict[str, PhaseExitModel] = {}
+
+    def _capture_close(
+        exit_model: PhaseExitModel, *, display_context: object, pipeline_policy: object
+    ) -> None:
+        del display_context, pipeline_policy
+        captured["exit_model"] = exit_model
+
+    with (
+        patch("ralph.pipeline.runner.show_phase_close_banner", side_effect=_capture_close),
+        patch("ralph.pipeline.runner.show_phase_transition"),
+    ):
+        result = runner_module._emit_phase_transition_if_changed(
+            cast("runner_module.ParallelDisplay | runner_module._LegacyConsoleDisplay", display),
+            "planning",
+            state,
+            verbosity=runner_module.Verbosity.VERBOSE,
+            pipeline_policy=_DEFAULT_POLICY.pipeline,
+        )
+
+    assert result == "planning_analysis"
+    exit_model = captured["exit_model"]
+    assert exit_model.content_blocks == _STUB_CONTENT_BLOCKS
+    assert exit_model.thinking_blocks == _STUB_THINKING_BLOCKS
+    assert exit_model.tool_calls == _STUB_TOOL_CALLS
+    assert exit_model.errors == _STUB_ERRORS

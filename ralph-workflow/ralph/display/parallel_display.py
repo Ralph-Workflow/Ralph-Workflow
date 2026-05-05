@@ -15,7 +15,7 @@ from ralph.display.context import DisplayContext
 from ralph.display.lifecycle_filter import is_bare_lifecycle as _is_bare_lifecycle
 from ralph.display.long_content_summary import build_headline_or_placeholder
 from ralph.display.phase_banner import show_phase_transition
-from ralph.display.plain_renderer import PlainLogRenderer
+from ralph.display.plain_renderer import PlainLogRenderer, _PhaseCounters
 from ralph.display.raw_overflow import RawOverflowLog
 from ralph.display.subscriber import PipelineSubscriber
 from ralph.display.tool_args import format_tool_input, friendly_tool_name
@@ -305,6 +305,14 @@ class ParallelDisplay:
     def last_phase_elapsed_seconds(self) -> float:
         """Return elapsed time of the most recently closed phase in seconds."""
         return self._plain_renderer.last_phase_elapsed_seconds
+
+    @property
+    def last_phase_counters(self) -> _PhaseCounters | None:
+        """Return the counters from the most recently closed phase, if available.
+
+        Returns None when no phase has been closed yet.
+        """
+        return self._plain_renderer.last_phase_counters
 
     def emit_phase_close(
         self,

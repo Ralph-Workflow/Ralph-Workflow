@@ -191,6 +191,26 @@ class _PhaseCounters:
 
 
 @dataclass(frozen=True)
+class _PhaseCloseCounters:
+    """Optional counter overrides for emit_phase_close."""
+
+    content_blocks: int | None = None
+    thinking_blocks: int | None = None
+    tool_calls: int | None = None
+    errors: int | None = None
+
+
+@dataclass(frozen=True)
+class _PhaseCloseOptions:
+    """Optional parameters for emit_phase_close."""
+
+    phase_role: str | None = None
+    iteration_context: PhaseIterationContext | None = None
+    exit_trigger: str | None = None
+    counter_overrides: _PhaseCloseCounters | None = None
+
+
+@dataclass(frozen=True)
 class RunStartOrientation:
     """Orientation data emitted once at pipeline start as a structured block."""
 
@@ -712,7 +732,7 @@ class PlainLogRenderer:
         if self._run_start_time is None:
             self._run_start_time = self._monotonic()
 
-    def emit_phase_close(
+    def emit_phase_close(  # noqa: PLR0913
         self,
         phase: str,
         produced: str,
@@ -720,16 +740,17 @@ class PlainLogRenderer:
         phase_role: str | None = None,
         iteration_context: PhaseIterationContext | None = None,
         exit_trigger: str | None = None,
+        counter_overrides: _PhaseCloseCounters | None = None,
     ) -> None:
         """Emit a single-line recap after a phase's artifact blocks are rendered.
 
         Args:
             phase: Phase name.
             produced: Human-readable artifact-outcome string.
-            phase_role: Role for milestone glyph selection.
-            iteration_context: Canonical iteration labels to include.
-            exit_trigger: Why the phase ended (e.g. ``"produced"``, ``"timeout"``).
-                Included as ``exit=<trigger>`` in the output when provided.
+            phase_role: Optional phase role for milestone glyph selection.
+            iteration_context: Optional iteration context for labels.
+            exit_trigger: Optional exit trigger string.
+            counter_overrides: Optional counter overrides for activity stats.
         """
         self.flush_blocks()
         timestamp = self._format_timestamp(self._clock())
@@ -740,11 +761,36 @@ class PlainLogRenderer:
         else:
             elapsed_s = 0.0
             counters = _PhaseCounters()
+        # Use provided counter values if non-None and non-zero
+        if counter_overrides is not None:
+            cb = (
+                counter_overrides.content_blocks
+                if counter_overrides.content_blocks
+                else counters.content_blocks
+            )
+            tb = (
+                counter_overrides.thinking_blocks
+                if counter_overrides.thinking_blocks
+                else counters.thinking_blocks
+            )
+            tc = (
+                counter_overrides.tool_calls
+                if counter_overrides.tool_calls
+                else counters.tool_calls
+            )
+            err = (
+                counter_overrides.errors if counter_overrides.errors else counters.errors
+            )
+        else:
+            cb = counters.content_blocks
+            tb = counters.thinking_blocks
+            tc = counters.tool_calls
+            err = counters.errors
         exit_part = f" exit={exit_trigger}" if exit_trigger is not None else ""
         suffix = (
-            f"{exit_part} (elapsed={elapsed_s}s, content_blocks={counters.content_blocks},"
-            f" thinking_blocks={counters.thinking_blocks}, tool_calls={counters.tool_calls},"
-            f" errors={counters.errors})"
+            f"{exit_part} (elapsed={elapsed_s}s, content_blocks={cb},"
+            f" thinking_blocks={tb}, tool_calls={tc},"
+            f" errors={err})"
         )
         glyph_prefix = (
             f"{self._ctx.glyph_for('milestone')} "
@@ -777,6 +823,15 @@ class PlainLogRenderer:
         """Return elapsed time of the most recently closed phase in seconds."""
         return self._last_phase_elapsed_seconds
 
+    @property
+    def last_phase_counters(self) -> _PhaseCounters | None:
+        """Return the counters from the most recently closed phase, if available.
+
+        Returns None when no phase has been closed yet or after emit_phase_close
+        has been called and reset the counters.
+        """
+        return self._phase_counters
+
     def emit_phase_close_from_exit(self, exit_model: PhaseExitModel) -> None:
         """Emit a phase-close recap from a PhaseExitModel.
 
@@ -784,14 +839,33 @@ class PlainLogRenderer:
         PhaseExitModel into emit_phase_close so iteration labels never diverge
         between phase-start and phase-close surfaces. Emits an additional
         debug line when the model carries waiting or failure breadcrumbs.
+
+        Counter values from exit_model are used when they are non-zero, as they
+        represent explicitly recorded activity during the phase. Falls back to
+        internal phase counters if the model's counters are zero.
         """
         iter_ctx = exit_model.to_iteration_context()
+        # Build counter overrides from exit model if any are non-zero
+        counter_overrides = None
+        if (
+            exit_model.content_blocks > 0
+            or exit_model.thinking_blocks > 0
+            or exit_model.tool_calls > 0
+            or exit_model.errors > 0
+        ):
+            counter_overrides = _PhaseCloseCounters(
+                content_blocks=exit_model.content_blocks,
+                thinking_blocks=exit_model.thinking_blocks,
+                tool_calls=exit_model.tool_calls,
+                errors=exit_model.errors,
+            )
         self.emit_phase_close(
             exit_model.phase_name,
             exit_model.artifact_outcome,
             phase_role=exit_model.phase_role,
             iteration_context=iter_ctx if iter_ctx.has_context() else None,
             exit_trigger=exit_model.exit_trigger,
+            counter_overrides=counter_overrides,
         )
         if exit_model.waiting_status_line or exit_model.last_failure_category:
             timestamp = self._format_timestamp(self._clock())
