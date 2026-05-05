@@ -797,6 +797,52 @@ def _resolve_analysis_cap(
     )
 
 
+def _build_phase_entry_model_from_state(
+    phase: str,
+    state: PipelineState,
+    pipeline_policy: PipelinePolicy,
+    *,
+    agent_name: str | None = None,
+) -> PhaseEntryModel:
+    """Build the canonical phase-entry model from pipeline state.
+
+    This is the runner-level source of truth for the phase lifecycle fields that
+    must stay aligned across phase-start banners, phase-close banners, and
+    artifact handoff recaps.
+    """
+    phase_role: str | None = None
+    inner_analysis: int | None = None
+    inner_analysis_cap: int | None = None
+    phase_def = pipeline_policy.phases.get(phase)
+    if phase_def is not None:
+        phase_role = phase_def.role
+        if phase_def.loop_policy is not None:
+            field = phase_def.loop_policy.iteration_state_field
+            inner_analysis = state.get_loop_iteration(field) + 1
+            inner_analysis_cap = _resolve_analysis_cap(field, state, pipeline_policy)
+
+    outer_iteration: int | None = None
+    outer_dev_cap: int | None = None
+    budget_remaining: int | None = None
+    counter = _find_commit_counter_from_phase(phase, pipeline_policy)
+    if counter is not None:
+        outer_iteration = state.get_outer_progress(counter)
+        budget_remaining = state.get_budget_remaining(counter)
+        outer_dev_cap = outer_iteration + budget_remaining
+
+    current_dev_cycle = outer_iteration + 1 if outer_iteration is not None else None
+    return PhaseEntryModel(
+        phase_name=phase,
+        phase_role=phase_role,
+        agent_name=agent_name,
+        outer_dev_iteration=current_dev_cycle,
+        outer_dev_cap=outer_dev_cap,
+        inner_analysis=inner_analysis,
+        inner_analysis_cap=inner_analysis_cap,
+        budget_remaining=budget_remaining,
+    )
+
+
 def _is_analysis_loopback(previous_phase_def: PhaseDefinition, current_phase: str) -> bool:
     """Check if transition is an analysis loopback within the same outer phase."""
     return (
@@ -885,40 +931,20 @@ def _show_phase_start_with_context(
         )
         return
 
-    phase_role: str | None = None
-    inner_analysis: int | None = None
-    inner_analysis_cap: int | None = None
-    if pipeline_policy is not None:
-        phase_def = pipeline_policy.phases.get(phase)
-        if phase_def is not None:
-            phase_role = phase_def.role
-            if phase_def.loop_policy is not None:
-                field = phase_def.loop_policy.iteration_state_field
-                inner_analysis = state.get_loop_iteration(field) + 1
-                inner_analysis_cap = _resolve_analysis_cap(field, state, pipeline_policy)
+    if pipeline_policy is None:
+        show_phase_start(
+            phase,
+            agent_name=agent_name,
+            display_context=display_context,
+            pipeline_policy=pipeline_policy,
+        )
+        return
 
-    outer_iteration: int | None = None
-    outer_dev_cap: int | None = None
-    budget_remaining: int | None = None
-    if pipeline_policy is not None:
-        counter = _find_commit_counter_from_phase(phase, pipeline_policy)
-        if counter is not None:
-            outer_iteration = state.get_outer_progress(counter)
-            budget_remaining = state.get_budget_remaining(counter)
-            if outer_iteration is not None and budget_remaining is not None:
-                outer_dev_cap = outer_iteration + budget_remaining
-
-    # Convert completed cycle count (0-indexed) to current cycle number (1-indexed)
-    current_dev_cycle = outer_iteration + 1 if outer_iteration is not None else None
-    entry = PhaseEntryModel(
-        phase_name=phase,
-        phase_role=phase_role,
+    entry = _build_phase_entry_model_from_state(
+        phase,
+        state,
+        pipeline_policy,
         agent_name=agent_name,
-        outer_dev_iteration=current_dev_cycle,
-        outer_dev_cap=outer_dev_cap,
-        inner_analysis=inner_analysis,
-        inner_analysis_cap=inner_analysis_cap,
-        budget_remaining=budget_remaining,
     )
     show_phase_start_from_entry(
         entry, display_context=display_context, pipeline_policy=pipeline_policy
@@ -981,37 +1007,11 @@ def _build_phase_exit_model_from_state(
     elapsed_seconds: float = 0.0,
 ) -> PhaseExitModel:
     """Build a PhaseExitModel for the phase we're leaving, from pipeline state."""
-    phase_role: str | None = None
-    inner_analysis: int | None = None
-    inner_analysis_cap: int | None = None
-    phase_def = pipeline_policy.phases.get(previous_phase)
-    if phase_def is not None:
-        phase_role = phase_def.role
-        if phase_def.loop_policy is not None:
-            field = phase_def.loop_policy.iteration_state_field
-            inner_analysis = state.get_loop_iteration(field) + 1
-            inner_analysis_cap = _resolve_analysis_cap(field, state, pipeline_policy)
-
-    outer_iteration: int | None = None
-    outer_dev_cap: int | None = None
-    budget_remaining: int | None = None
-    counter = _find_commit_counter_from_phase(previous_phase, pipeline_policy)
-    if counter is not None:
-        outer_iteration = state.get_outer_progress(counter)
-        budget_remaining = state.get_budget_remaining(counter)
-        if outer_iteration is not None and budget_remaining is not None:
-            outer_dev_cap = outer_iteration + budget_remaining
-
-    current_dev_cycle = outer_iteration + 1 if outer_iteration is not None else None
-    return PhaseExitModel(
-        phase_name=previous_phase,
-        phase_role=phase_role,
-        outer_dev_iteration=current_dev_cycle,
-        outer_dev_cap=outer_dev_cap,
-        inner_analysis=inner_analysis,
-        inner_analysis_cap=inner_analysis_cap,
-        budget_remaining=budget_remaining,
+    entry = _build_phase_entry_model_from_state(previous_phase, state, pipeline_policy)
+    return PhaseExitModel.from_entry_model(
+        entry,
         elapsed_seconds=elapsed_seconds,
+        exit_trigger="completed",
     )
 
 
@@ -2517,34 +2517,10 @@ def _render_phase_artifact_handoff(  # noqa: PLR0913
         phase_role = phase_def.role if phase_def is not None else None
         entry: PhaseEntryModel | None = None
         if state is not None and policy_bundle is not None:
-            inner_analysis: int | None = None
-            inner_analysis_cap: int | None = None
-            if phase_def is not None and phase_def.loop_policy is not None:
-                loop_field = phase_def.loop_policy.iteration_state_field
-                inner_analysis = state.get_loop_iteration(loop_field) + 1
-                inner_analysis_cap = _resolve_analysis_cap(
-                    loop_field, state, policy_bundle.pipeline
-                )
-            counter = _find_commit_counter_from_phase(phase, policy_bundle.pipeline)
-            outer_iteration = state.get_outer_progress(counter) if counter is not None else None
-            budget_remaining = state.get_budget_remaining(counter) if counter is not None else None
-            outer_dev_cap: int | None = (
-                outer_iteration + budget_remaining
-                if outer_iteration is not None and budget_remaining is not None
-                else None
-            )
-            # Convert completed cycle count (0-indexed) to current cycle number (1-indexed)
-            current_dev_cycle: int | None = (
-                outer_iteration + 1 if outer_iteration is not None else None
-            )
-            entry = PhaseEntryModel(
-                phase_name=phase,
-                phase_role=phase_role,
-                outer_dev_iteration=current_dev_cycle,
-                outer_dev_cap=outer_dev_cap,
-                inner_analysis=inner_analysis,
-                inner_analysis_cap=inner_analysis_cap,
-                budget_remaining=budget_remaining,
+            entry = _build_phase_entry_model_from_state(
+                phase,
+                state,
+                policy_bundle.pipeline,
             )
         _render_success_artifact(
             artifact_type,
