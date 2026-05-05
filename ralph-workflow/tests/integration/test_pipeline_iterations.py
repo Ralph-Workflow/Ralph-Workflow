@@ -388,7 +388,9 @@ def test_review_analysis_cap_routes_through_final_fix_with_persisted_max_counter
     )
     assert capped_fix_state.get_outer_progress("reviewer_pass") == 0
     assert capped_fix_state.review_outcome is not None
-    assert invoker.count_for("fix") == MAX_REVIEW_ANALYSIS_ITERATIONS
+    fix_visits = sum(1 for state in saved_states if state.phase == "fix")
+    assert fix_visits == MAX_REVIEW_ANALYSIS_ITERATIONS
+    assert invoker.count_for("fix") == 0  # skip_invocation: no agent invoked for fix
     final_state = saved_states[-1]
     assert final_state.phase == "complete"
     assert final_state.get_outer_progress("reviewer_pass") == 1

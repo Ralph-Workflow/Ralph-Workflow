@@ -593,18 +593,16 @@ class TestDetermineEffect:
         assert effect.agent_name == "analysis-agent"
         assert effect.drain == "review_analysis"
 
-    def test_fix_phase_uses_config_binding(self) -> None:
+    def test_fix_phase_routes_via_skip_invocation(self) -> None:
         bundle = _load_default_policy_bundle()
         state = PipelineState(phase="fix")
-        config = _config_with_agents(
-            agent_chains={"fix_chain": ["claude"]},
-            agent_drains={"fix": "fix_chain"},
-        )
 
         effect = runner_module._determine_effect_from_policy(
-            state, bundle, WorkspaceScope("/tmp/worktree"), config=config
+            state, bundle, WorkspaceScope("/tmp/worktree")
         )
-        assert isinstance(effect, InvokeAgentEffect)
+        assert isinstance(effect, PreparePromptEffect)
+        assert effect.phase == "review_analysis"
+        assert effect.skip_materialization is True
 
     def test_missing_bound_agent_returns_exit_failure(self) -> None:
         bundle = _load_default_policy_bundle()
