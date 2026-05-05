@@ -396,7 +396,9 @@ def _build_review_outcome_line(
 ) -> Text | None:
     """Build a review outcome line if review_issues_found is set.
 
-    Returns None when review_issues_found is None or in compact mode.
+    Returns None when review_issues_found is None (not applicable).
+    Review outcome is always shown regardless of display mode since it is
+    critical UX information about whether review passed or found issues.
     """
     if exit_model.review_issues_found is None:
         return None
@@ -508,10 +510,9 @@ def show_phase_close_banner(
         artifact_line.append(exit_model.artifact_outcome, style="theme.text.emphasis")
         c.print(artifact_line)
 
-    if mode != "compact":
-        review_line = _build_review_outcome_line(exit_model, display_context)
-        if review_line is not None:
-            c.print(review_line)
+    review_line = _build_review_outcome_line(exit_model, display_context)
+    if review_line is not None:
+        c.print(review_line)
 
     debug_line = _build_debug_line(exit_model, display_context)
     if debug_line is not None:

@@ -36,8 +36,8 @@ UNICODE_GLYPHS: Final[dict[str, str]] = {
     "budget": "▲",  # ▲ - budget indicator
     "review_pass": "✔",  # ✔ - review pass
     "review_fail": "✘",  # ✘ - review fail
-    "outer_dev": "⊞",  # ⊞ - outer dev indicator
-    "inner_analysis": "≴",  # ≴ - inner analysis indicator
+    "outer_dev": "◎",  # ◎ - outer dev indicator (bullseye: clear outer cycle marker)
+    "inner_analysis": "▸",  # ▸ - inner analysis indicator (triangle: direction/analysis)
     "proceed": "↑",  # ↑ - proceed arrow
     "revise": "↓",  # ↓ - revise arrow
 }
