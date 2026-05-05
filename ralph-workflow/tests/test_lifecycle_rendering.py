@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from io import StringIO
+from typing import Literal
 
 from rich.console import Console
 
@@ -374,3 +375,73 @@ class TestGroupedSectionOrdering:
     def test_debug_absent_when_no_breadcrumbs(self) -> None:
         out = self._render(_blank_snapshot())
         assert "Debug" not in out
+
+
+# ---------------------------------------------------------------------------
+# Rich close banner artifact_outcome display
+# ---------------------------------------------------------------------------
+
+
+class TestRichCloseArtifactOutcome:
+    def _render_close(
+        self, exit_model: PhaseExitModel, mode: Literal["compact", "medium", "wide"] = "medium"
+    ) -> str:
+        buf = StringIO()
+        console = Console(
+            file=buf, record=True, force_terminal=False, color_system=None,
+            width={"compact": 50, "medium": 80, "wide": 120}[mode],
+        )
+        ctx = make_display_context(console=console, env={}, force_mode=mode)
+        from ralph.display.phase_banner import show_phase_close_banner  # noqa: PLC0415
+        show_phase_close_banner(exit_model, display_context=ctx)
+        return console.export_text()
+
+    def test_artifact_outcome_appears_in_medium_mode(self) -> None:
+        exit_model = PhaseExitModel(
+            phase_name="planning",
+            exit_trigger="produced",
+            artifact_outcome="plan: 5 step(s), 2 risk(s)",
+        )
+        output = self._render_close(exit_model, "medium")
+        assert "artifact:" in output
+        assert "plan: 5 step(s), 2 risk(s)" in output
+
+    def test_artifact_outcome_appears_in_wide_mode(self) -> None:
+        exit_model = PhaseExitModel(
+            phase_name="development",
+            exit_trigger="produced",
+            artifact_outcome="result produced",
+        )
+        output = self._render_close(exit_model, "wide")
+        assert "artifact:" in output
+        assert "result produced" in output
+
+    def test_artifact_outcome_absent_when_empty(self) -> None:
+        exit_model = PhaseExitModel(phase_name="development", artifact_outcome="")
+        output = self._render_close(exit_model, "wide")
+        assert "artifact:" not in output
+
+    def test_artifact_outcome_omitted_in_compact_mode(self) -> None:
+        exit_model = PhaseExitModel(
+            phase_name="planning",
+            exit_trigger="produced",
+            artifact_outcome="plan: 3 step(s)",
+        )
+        output = self._render_close(exit_model, "compact")
+        assert "artifact:" not in output
+
+    def test_artifact_outcome_after_stats_line(self) -> None:
+        """artifact line must appear after the main banner line and before debug breadcrumbs."""
+        exit_model = PhaseExitModel(
+            phase_name="development",
+            exit_trigger="produced",
+            artifact_outcome="result produced",
+            content_blocks=2,
+            tool_calls=3,
+        )
+        output = self._render_close(exit_model, "medium")
+        # artifact line should exist; stats line should exist
+        assert "artifact:" in output
+        assert "stats:" in output
+        # artifact should appear after the banner (which has the phase name)
+        assert output.index("Development") < output.index("artifact:")

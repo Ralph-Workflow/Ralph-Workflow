@@ -533,3 +533,56 @@ def test_phase_start_medium_mode_agent_on_banner_line() -> None:
     show_phase_start_from_entry(entry, display_context=ctx)
     output = _export(ctx)
     assert "agent=claude-opus" in output
+
+
+# --- Artifact outcome in phase-close banner ---
+
+
+def test_phase_close_banner_shows_artifact_outcome_medium_mode() -> None:
+    """In medium mode, show_phase_close_banner shows artifact_outcome as a ↳ artifact: line."""
+    ctx = _make_ctx("medium")
+    exit_model = PhaseExitModel(
+        phase_name="planning",
+        exit_trigger="produced",
+        artifact_outcome="plan: 5 step(s), 2 risk(s)",
+    )
+    show_phase_close_banner(exit_model, display_context=ctx)
+    output = _export(ctx)
+    assert "artifact:" in output
+    assert "plan: 5 step(s), 2 risk(s)" in output
+
+
+def test_phase_close_banner_shows_artifact_outcome_wide_mode() -> None:
+    """In wide mode, show_phase_close_banner shows artifact_outcome as a ↳ artifact: line."""
+    ctx = _make_ctx("wide")
+    exit_model = PhaseExitModel(
+        phase_name="development",
+        exit_trigger="produced",
+        artifact_outcome="result produced",
+    )
+    show_phase_close_banner(exit_model, display_context=ctx)
+    output = _export(ctx)
+    assert "artifact:" in output
+    assert "result produced" in output
+
+
+def test_phase_close_banner_omits_artifact_outcome_when_empty() -> None:
+    """show_phase_close_banner must not emit ↳ artifact: line when artifact_outcome is empty."""
+    ctx = _make_ctx("wide")
+    exit_model = PhaseExitModel(phase_name="development", artifact_outcome="")
+    show_phase_close_banner(exit_model, display_context=ctx)
+    output = _export(ctx)
+    assert "artifact:" not in output
+
+
+def test_phase_close_banner_artifact_outcome_omitted_compact_mode() -> None:
+    """In compact mode, artifact_outcome secondary line is not shown (too noisy)."""
+    ctx = _make_ctx("compact")
+    exit_model = PhaseExitModel(
+        phase_name="planning",
+        exit_trigger="produced",
+        artifact_outcome="plan: 3 step(s)",
+    )
+    show_phase_close_banner(exit_model, display_context=ctx)
+    output = _export(ctx)
+    assert "artifact:" not in output

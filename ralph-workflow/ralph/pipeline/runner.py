@@ -999,21 +999,6 @@ def _skipped_exhausted_analysis_info(
     return (on_success_target, info_message)
 
 
-def _build_phase_exit_model_from_state(
-    previous_phase: str,
-    state: PipelineState,
-    pipeline_policy: PipelinePolicy,
-    *,
-    elapsed_seconds: float = 0.0,
-) -> PhaseExitModel:
-    """Build a PhaseExitModel for the phase we're leaving, from pipeline state."""
-    entry = _build_phase_entry_model_from_state(previous_phase, state, pipeline_policy)
-    return PhaseExitModel.from_entry_model(
-        entry,
-        elapsed_seconds=elapsed_seconds,
-        exit_trigger="completed",
-    )
-
 
 def _emit_phase_transition_if_changed(
     display: ParallelDisplay | _LegacyConsoleDisplay,
@@ -1042,8 +1027,18 @@ def _emit_phase_transition_if_changed(
             if isinstance(display, _LegacyConsoleDisplay)
             else display.last_phase_elapsed_seconds
         )
-        exit_model = _build_phase_exit_model_from_state(
-            previous_phase, state, pipeline_policy, elapsed_seconds=elapsed
+        waiting_status_line = (
+            None
+            if isinstance(display, _LegacyConsoleDisplay)
+            else display.subscriber.waiting_status_line
+        )
+        entry = _build_phase_entry_model_from_state(previous_phase, state, pipeline_policy)
+        exit_model = PhaseExitModel.from_entry_model(
+            entry,
+            elapsed_seconds=elapsed,
+            exit_trigger="completed",
+            waiting_status_line=waiting_status_line,
+            last_failure_category=state.last_failure_category,
         )
         show_phase_close_banner(
             exit_model,

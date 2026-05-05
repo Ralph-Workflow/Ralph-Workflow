@@ -180,6 +180,12 @@ class PipelineSubscriber:
         with self._lock:
             return self._active_path
 
+    @property
+    def waiting_status_line(self) -> str | None:
+        """The current waiting-status line for debug breadcrumbs."""
+        with self._lock:
+            return self._waiting_status_line
+
     def notify(self, state: PipelineState) -> None:
         """Build a PipelineSnapshot from state and enqueue it non-blocking.
 

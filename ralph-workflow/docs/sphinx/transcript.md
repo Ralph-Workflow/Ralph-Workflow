@@ -166,7 +166,7 @@ All iteration fields are optional and appear only when the pipeline has that con
 `Dev N/cap` counts from 1: `Dev 1/5` means the pipeline is entering its first development
 cycle out of a total budget of 5. `Dev 0/cap` is never shown.
 
-In wide mode (`≥ 100` cols), `(outer)` and `(inner)` qualifiers are appended to the
+In medium and wide modes, `(outer)` and `(inner)` qualifiers are appended to the
 development and analysis cycle labels respectively, making the distinction between
 outer dev and inner analysis cycles explicit when debugging.
 
@@ -177,6 +177,8 @@ phase-close banner is printed to the console:
 
 ```
 <success_glyph> <Phase Label>  <od_glyph> Dev N/cap [(outer)]  <ia_glyph> Analysis N/cap [(inner)]  <budget_glyph> Budget: N left  Ns  <arrow> <exit_trigger>
+    ↳ stats: content=N thinking=N tools=N [errors=N]        ← medium/wide only, when activity > 0
+    ↳ artifact: <artifact_outcome>                           ← medium/wide only, when artifact produced
   <warning_glyph> debug: waiting: <waiting_status> | failure: <failure_category>   ← only when breadcrumbs exist
 ```
 
@@ -185,12 +187,14 @@ phase-close banner is printed to the console:
 | `<success_glyph>` | `✓` (Unicode) or `[OK]` (ASCII) |
 | `<Phase Label>` | Human-readable phase name (e.g. `Development Analysis`) |
 | `Dev N/cap` or `Dev #N` | Outer development cycle — 1-indexed; same label as phase-start |
-| `(outer)` | Qualifier appended in **wide mode only** |
+| `(outer)` | Qualifier appended in **medium/wide mode** |
 | `Analysis N/cap` or `Analysis #N` | Inner analysis loop iteration — same label as phase-start |
-| `(inner)` | Qualifier appended in **wide mode only** |
+| `(inner)` | Qualifier appended in **medium/wide mode** |
 | `Budget: N left` | Remaining budget from the active budget counter |
 | `Ns` | Wall-clock elapsed time for the phase, in seconds (omitted when 0) |
 | `<arrow> <exit_trigger>` | Why the phase ended — present when an exit trigger is known |
+| `↳ stats:` | Phase-level activity counters — shown in medium/wide mode when any counter is non-zero |
+| `↳ artifact:` | What the phase produced (e.g. `plan: 5 step(s), 2 risk(s)`) — shown in medium/wide mode when set |
 | `debug: waiting: …` | Last waiting-status line recorded during this phase (present only when set) |
 | `debug: … failure: …` | Last failure category recorded during this phase (present only when set) |
 

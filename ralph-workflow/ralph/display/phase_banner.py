@@ -484,6 +484,12 @@ def show_phase_close_banner(
     if stats_line is not None:
         c.print(stats_line)
 
+    if exit_model.artifact_outcome and mode != "compact":
+        artifact_line = Text()
+        artifact_line.append("    ↳ artifact: ", style="theme.text.muted")
+        artifact_line.append(exit_model.artifact_outcome, style="theme.text.emphasis")
+        c.print(artifact_line)
+
     if exit_model.waiting_status_line or exit_model.last_failure_category:
         debug_line = Text()
         warning_glyph = display_context.glyph_for("warning")

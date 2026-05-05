@@ -205,6 +205,27 @@ transcript::
 - The trailing counter tuple always appears so every ``[phase-close]`` line
   carries phase-level activity metrics.
 
+Phase-close rich banner
+-----------------------
+
+In addition to the ``[phase-close]`` transcript line, a rich visual banner is
+emitted to the console at the start of each phase transition.  In medium and
+wide modes the banner also includes:
+
+- A ``↳ artifact:`` line showing what was produced (e.g.
+  ``plan: 5 step(s), 2 risk(s)``), sourced from
+  :attr:`~ralph.display.phase_lifecycle.PhaseExitModel.artifact_outcome`.
+  This line is omitted in compact mode and when the artifact outcome is empty.
+- A ``↳ stats:`` line showing per-phase activity counters (content, thinking,
+  tool calls, errors), omitted when all counters are zero.
+- A ``debug:`` line showing the last waiting-status breadcrumb and failure
+  category when either is set, to surface failure context without requiring
+  the completion summary to be read.
+
+The runner populates ``waiting_status_line`` from the display subscriber and
+``last_failure_category`` from pipeline state so these breadcrumbs appear even
+when the phase exits unexpectedly.
+
 See also
 --------
 

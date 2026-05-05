@@ -255,3 +255,14 @@ def test_suspected_frozen_event_with_stale_label_includes_alive_by(tmp_path: Pat
     line = _last_line(sub)
     assert line is not None
     assert "alive_by=stale_label_only" in line
+
+
+def test_waiting_status_line_property_returns_current_value(tmp_path: Path) -> None:
+    """PipelineSubscriber.waiting_status_line property returns the internal status line."""
+    sub = _make_subscriber(tmp_path)
+    assert sub.waiting_status_line is None
+    sub.record_waiting_status(
+        _event(WaitingStatusKind.PROGRESS)
+    )
+    assert sub.waiting_status_line is not None
+    assert "still active" in sub.waiting_status_line

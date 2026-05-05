@@ -20,11 +20,20 @@ _DEFAULT_POLICY = load_policy(Path(__file__).parent.parent / "ralph" / "policy" 
 _EXPECTED_ELAPSED_SECONDS = 12.5
 
 
+class _StubSubscriber:
+    """Minimal subscriber stub — only waiting_status_line is needed."""
+
+    @property
+    def waiting_status_line(self) -> str | None:
+        return None
+
+
 class _StubDisplay:
     def __init__(self) -> None:
         console = Console(record=True, force_terminal=False, width=120, color_system=None)
         self._ctx = make_display_context(console=console, env={})
         self.last_phase_elapsed_seconds = _EXPECTED_ELAPSED_SECONDS
+        self.subscriber = _StubSubscriber()
 
 
 def test_emit_phase_transition_populates_close_banner_exit_trigger() -> None:
@@ -61,3 +70,88 @@ def test_emit_phase_transition_populates_close_banner_exit_trigger() -> None:
     exit_model = captured["exit_model"]
     assert exit_model.elapsed_seconds == _EXPECTED_ELAPSED_SECONDS
     assert exit_model.exit_trigger == "completed"
+
+
+def test_emit_phase_transition_populates_last_failure_category_from_state() -> None:
+    """Exit model should carry last_failure_category from pipeline state."""
+    display = _StubDisplay()
+    state = PipelineState(
+        phase="planning_analysis",
+        previous_phase="planning",
+        budget_caps={"iteration": 1},
+        budget_remaining={"iteration": 1},
+        last_failure_category="timeout",
+    )
+
+    captured: dict[str, PhaseExitModel] = {}
+
+    def _capture_close(
+        exit_model: PhaseExitModel, *, display_context: object, pipeline_policy: object
+    ) -> None:
+        del display_context, pipeline_policy
+        captured["exit_model"] = exit_model
+
+    with (
+        patch("ralph.pipeline.runner.show_phase_close_banner", side_effect=_capture_close),
+        patch("ralph.pipeline.runner.show_phase_transition"),
+    ):
+        runner_module._emit_phase_transition_if_changed(
+            cast("runner_module.ParallelDisplay | runner_module._LegacyConsoleDisplay", display),
+            "planning",
+            state,
+            verbosity=runner_module.Verbosity.VERBOSE,
+            pipeline_policy=_DEFAULT_POLICY.pipeline,
+        )
+
+    exit_model = captured["exit_model"]
+    assert exit_model.last_failure_category == "timeout"
+
+
+def test_emit_phase_transition_populates_waiting_status_from_subscriber() -> None:
+    """Exit model should carry waiting_status_line from display subscriber."""
+    import queue  # noqa: PLC0415
+
+    from ralph.display.parallel_display import ParallelDisplay  # noqa: PLC0415
+    from ralph.display.subscriber import PipelineSubscriber  # noqa: PLC0415
+
+    q: queue.Queue = queue.Queue(maxsize=64)
+    buf_console = Console(record=True, force_terminal=False, width=120, color_system=None)
+    ctx = make_display_context(console=buf_console, env={})
+    subscriber = PipelineSubscriber(
+        queue=q,
+        workspace_root=Path("/tmp"),
+        run_id="test-run",
+    )
+    # Manually set the waiting status line via the property
+    subscriber._waiting_status_line = "waiting for child process"
+
+    display = ParallelDisplay(ctx, subscriber=subscriber)
+    state = PipelineState(
+        phase="planning_analysis",
+        previous_phase="planning",
+        budget_caps={"iteration": 1},
+        budget_remaining={"iteration": 1},
+    )
+
+    captured: dict[str, PhaseExitModel] = {}
+
+    def _capture_close(
+        exit_model: PhaseExitModel, *, display_context: object, pipeline_policy: object
+    ) -> None:
+        del display_context, pipeline_policy
+        captured["exit_model"] = exit_model
+
+    with (
+        patch("ralph.pipeline.runner.show_phase_close_banner", side_effect=_capture_close),
+        patch("ralph.pipeline.runner.show_phase_transition"),
+    ):
+        runner_module._emit_phase_transition_if_changed(
+            cast("runner_module.ParallelDisplay | runner_module._LegacyConsoleDisplay", display),
+            "planning",
+            state,
+            verbosity=runner_module.Verbosity.VERBOSE,
+            pipeline_policy=_DEFAULT_POLICY.pipeline,
+        )
+
+    exit_model = captured["exit_model"]
+    assert exit_model.waiting_status_line == "waiting for child process"
