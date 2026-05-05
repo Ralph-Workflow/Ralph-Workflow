@@ -330,7 +330,7 @@ def render_completion_summary(  # noqa: PLR0913, PLR0912, PLR0915
             reason_part = f" — {reason}" if reason else ""
             lines.append(f"- {phase.replace('_', ' ').title()}: {decision}{reason_part}")
 
-    # Iteration context (outer dev + fixer)
+    # Iteration context (outer dev)
     iter_lines = _iteration_context_lines(snapshot)
     if iter_lines:
         lines.append("Iteration Context:")
@@ -440,7 +440,7 @@ def _render_compact_group(  # noqa: PLR0912, PLR0913, PLR0915
             analysis_line = f"ANALYSIS: {phase.replace('_', ' ').title()}: {decision}{reason_part}"
             renderables.append(Text(analysis_line.upper()))
 
-    # Iteration context (outer dev + fixer) in compact mode
+    # Iteration context (outer dev) in compact mode
     iter_lines = _iteration_context_lines(snapshot)
     if iter_lines:
         renderables.append(Text(f"CONTEXT: {' | '.join(iter_lines)}"))

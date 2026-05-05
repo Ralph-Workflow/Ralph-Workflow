@@ -39,7 +39,7 @@ class PhaseEntryModel:
 
     Carries all the data needed to render a phase-start banner in a stable,
     unambiguous hierarchy.  Field ordering matches the canonical display order:
-    phase identity → outer dev → inner analysis → budget → fixer → agent.
+    phase identity → outer dev → inner analysis → budget → agent.
 
     Attributes:
         phase_name: Raw phase name (e.g. ``"development_analysis"``).

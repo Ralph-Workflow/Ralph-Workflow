@@ -1,7 +1,7 @@
 """Canonical presentation formatters for phase lifecycle rendering.
 
 This is the single source of truth for how iteration context (dev cycles,
-analysis cycles, fixer cycles) and phase outcomes are labeled across
+analysis cycles) and phase outcomes are labeled across
 phase-start banners, phase-close lines, and run-end summaries.
 
 All formatters are pure: they accept simple values and return strings.
@@ -106,7 +106,6 @@ class PhaseIterationContext:
         outer_dev_cap: Budget cap for outer dev cycles (shows Dev N/cap when set).
         inner_analysis: Inner analysis cycle number (None if not in analysis).
         inner_analysis_cap: Max inner analysis cycles (None if unknown).
-        fixer: Fixer cycle number (None if not in fixer context).
         budget_remaining: Remaining budget (None if not tracked).
     """
 
@@ -126,7 +125,7 @@ class PhaseIterationContext:
     def context_labels(self) -> list[tuple[str, str]]:
         """Return (label, style_key) pairs for rendering, in display priority order.
 
-        Order: outer dev (highest visibility) → inner analysis → fixer → budget.
+        Order: outer dev (highest visibility) → inner analysis → budget.
         """
         parts: list[tuple[str, str]] = []
         if self.outer_dev is not None:
