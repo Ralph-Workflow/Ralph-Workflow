@@ -319,6 +319,11 @@ def _check_signals_terminal(completion_signals: CompletionSignals) -> bool:
     except AttributeError:
         pass
     try:
+        if completion_signals.artifact_optional:
+            return True
+    except AttributeError:
+        pass
+    try:
         return bool(
             completion_signals.explicit_complete
             or completion_signals.required_artifact_present

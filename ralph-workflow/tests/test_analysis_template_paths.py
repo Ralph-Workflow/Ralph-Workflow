@@ -145,3 +145,42 @@ class TestAnalysisTemplatesStructuralInvariants:
             assert 'render_payload_section("PLAN"' not in source, (
                 f'{template.name}: render_payload_section("PLAN" is forbidden'
             )
+
+
+def _render_development_analysis_no_dev_result(tmp_path: Path) -> str:
+    """Render development_analysis prompt without a development_result artifact present."""
+    policy = load_policy(tmp_path / ".agent")
+    workspace = MemoryWorkspace(root=str(tmp_path))
+    workspace.write("PROMPT.md", _TINY_PROMPT)
+    _write_plan_handoff(workspace)
+    # Intentionally do NOT write development_result.json
+    with patch.object(materialize_module, "_git_diff", return_value="diff"):
+        path = materialize_prompt_for_phase(
+            phase="development_analysis",
+            workspace=workspace,
+            pipeline_policy=policy.pipeline,
+            artifacts_policy=policy.artifacts,
+            session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT),
+            workspace_root=tmp_path,
+        )
+    return workspace.read(path)
+
+
+class TestDevelopmentAnalysisWithoutDevResult:
+    """Verify development_analysis prompt renders correctly when development_result is absent.
+
+    Since development_result is optional (artifact_required=false), prompt materialization
+    for development_analysis must not crash and must still reference CURRENT_PROMPT.md and PLAN.
+    """
+
+    def test_renders_without_crash_when_dev_result_absent(self, tmp_path: Path) -> None:
+        rendered = _render_development_analysis_no_dev_result(tmp_path)
+        assert len(rendered) > 0
+
+    def test_prompt_reference_present_when_dev_result_absent(self, tmp_path: Path) -> None:
+        rendered = _render_development_analysis_no_dev_result(tmp_path)
+        assert "CURRENT_PROMPT.md" in rendered
+
+    def test_plan_reference_present_when_dev_result_absent(self, tmp_path: Path) -> None:
+        rendered = _render_development_analysis_no_dev_result(tmp_path)
+        assert "Read the complete plan from file at" in rendered

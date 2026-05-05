@@ -126,7 +126,7 @@ class TestHandleDevelopment:
         result = handle_execution_phase(effect, ctx)
         assert result == [PipelineEvent.AGENT_SUCCESS]
 
-    def test_invoke_agent_effect_without_development_result_returns_phase_failure(
+    def test_invoke_agent_effect_without_development_result_returns_agent_success(
         self,
     ) -> None:
         workspace = MagicMock()
@@ -136,12 +136,32 @@ class TestHandleDevelopment:
 
         effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="dev.txt")
         result = handle_execution_phase(effect, ctx)
+        # development_result is optional — missing artifact succeeds
+        assert result == [PipelineEvent.AGENT_SUCCESS]
+
+    def test_invoke_agent_effect_with_malformed_development_result_returns_phase_failure(
+        self,
+    ) -> None:
+        workspace = MagicMock()
+        workspace.exists.side_effect = lambda path: path in {
+            ".agent/artifacts/plan.json",
+            ".agent/artifacts/development_result.json",
+        }
+        workspace.read.side_effect = lambda path: (
+            '{"type": "wrong_type", "content": {}}'
+            if path == ".agent/artifacts/development_result.json"
+            else _VALID_PLAN_JSON
+        )
+        ctx = self._make_context(workspace)
+
+        effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="dev.txt")
+        result = handle_execution_phase(effect, ctx)
+        # Present optional artifact with wrong type still fails
         assert len(result) == 1
         event = result[0]
         assert isinstance(event, PhaseFailureEvent)
         assert event.phase == "development"
         assert event.recoverable is True
-        assert "development_result" in event.reason
 
     def test_other_effect_returns_empty_list(self) -> None:
         effect = MagicMock(spec=Effect)

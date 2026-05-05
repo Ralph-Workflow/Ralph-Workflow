@@ -1985,32 +1985,33 @@ def _handle_inline_effect(  # noqa: PLR0913
         return new_state
 
     if isinstance(effect, PreparePromptEffect):
-        try:
-            _materialize_prepared_prompt(
-                effect,
-                pipeline_policy,
-                artifacts_policy,
-                workspace_scope,
-                agents_policy,
-            )
-        except MissingPlanHandoffError as exc:
-            if state.phase != pipeline_policy.recovery.failed_route:
-                raise
-            logger.warning(
-                "Missing plan handoff for phase={phase}: {err}; re-routing to entry phase",
-                phase=effect.phase,
-                err=exc,
-            )
-            current_epoch = state.recovery_epoch if isinstance(state.recovery_epoch, int) else 0
-            recovered_state = state.copy_with(
-                phase=pipeline_policy.entry_phase,
-                previous_phase=state.phase,
-                last_error=str(exc),
-                recovery_epoch=current_epoch + 1,
-            )
-            ckpt.save(recovered_state)
-            _notify_pipeline_subscriber(effective_pipeline_subscriber, recovered_state)
-            return recovered_state
+        if not effect.skip_materialization:
+            try:
+                _materialize_prepared_prompt(
+                    effect,
+                    pipeline_policy,
+                    artifacts_policy,
+                    workspace_scope,
+                    agents_policy,
+                )
+            except MissingPlanHandoffError as exc:
+                if state.phase != pipeline_policy.recovery.failed_route:
+                    raise
+                logger.warning(
+                    "Missing plan handoff for phase={phase}: {err}; re-routing to entry phase",
+                    phase=effect.phase,
+                    err=exc,
+                )
+                current_epoch = state.recovery_epoch if isinstance(state.recovery_epoch, int) else 0
+                recovered_state = state.copy_with(
+                    phase=pipeline_policy.entry_phase,
+                    previous_phase=state.phase,
+                    last_error=str(exc),
+                    recovery_epoch=current_epoch + 1,
+                )
+                ckpt.save(recovered_state)
+                _notify_pipeline_subscriber(effective_pipeline_subscriber, recovered_state)
+                return recovered_state
         prepared_state = state
         if state.phase == pipeline_policy.recovery.failed_route:
             prepared_state = _reset_phase_chain_for_recovery(state, effect.phase)
@@ -2251,6 +2252,16 @@ def _determine_effect_from_policy(  # noqa: PLR0911
     phase_def = policy_bundle.pipeline.phases.get(state.phase)
     if phase_def is None:
         return ExitFailureEffect(reason=f"Unknown phase: {state.phase}")
+
+    if phase_def.skip_invocation is True:
+        on_success = phase_def.transitions.on_success
+        if on_success == policy_bundle.pipeline.terminal_phase:
+            return ExitSuccessEffect()
+        return PreparePromptEffect(
+            phase=on_success,
+            previous_phase=state.phase,
+            skip_materialization=True,
+        )
 
     if phase_def.role == "commit":
         scope = workspace_scope or resolve_workspace_scope()
