@@ -895,6 +895,19 @@ class PlainLogRenderer:
                 highlight=False,
                 no_wrap=True,
             )
+        # Emit review outcome line when review_issues_found is set (not None)
+        if exit_model.review_issues_found is not None:
+            timestamp = self._format_timestamp(self._clock())
+            if exit_model.review_issues_found:
+                review_text = "[phase-close] review: issues found"
+            else:
+                review_text = "[phase-close] review: clean"
+            self._console.print(
+                self._build_line(timestamp, "INFO", "META", review_text),
+                markup=False,
+                highlight=False,
+                no_wrap=True,
+            )
 
     def _update_counters(self, kind: str, is_new_block: bool) -> None:
         """Increment activity counters for a new streaming block.

@@ -855,3 +855,59 @@ def test_show_phase_close_banner_waiting_status_truncated_at_80() -> None:
     output = console.export_text()
     assert "x" * 80 in output
     assert "x" * 81 not in output
+
+
+def test_show_phase_close_banner_shows_review_issues_found() -> None:
+    """Close banner emits a review line when review_issues_found=True."""
+    console = Console(record=True, no_color=True)
+    exit_model = PhaseExitModel(
+        phase_name="review",
+        exit_trigger="completed",
+        review_issues_found=True,
+    )
+    show_phase_close_banner(exit_model, display_context=_ctx_from_console(console))
+    output = console.export_text()
+    assert "review:" in output
+    assert "issues found" in output
+
+
+def test_show_phase_close_banner_shows_review_clean() -> None:
+    """Close banner emits a review line when review_issues_found=False."""
+    console = Console(record=True, no_color=True)
+    exit_model = PhaseExitModel(
+        phase_name="review",
+        exit_trigger="completed",
+        review_issues_found=False,
+    )
+    show_phase_close_banner(exit_model, display_context=_ctx_from_console(console))
+    output = console.export_text()
+    assert "review:" in output
+    assert "clean" in output
+
+
+def test_show_phase_close_banner_no_review_when_not_applicable() -> None:
+    """Close banner emits no review line when review_issues_found is None."""
+    console = Console(record=True, no_color=True)
+    exit_model = PhaseExitModel(
+        phase_name="development",
+        exit_trigger="produced",
+        review_issues_found=None,
+    )
+    show_phase_close_banner(exit_model, display_context=_ctx_from_console(console))
+    output = console.export_text()
+    assert "review:" not in output
+
+
+def test_show_phase_close_banner_review_shown_in_compact_mode() -> None:
+    """Review line is shown in compact mode since it is critical UX information."""
+    console = Console(record=True, no_color=True, width=50)
+    ctx = make_display_context(console=console, force_mode="compact")
+    exit_model = PhaseExitModel(
+        phase_name="review",
+        exit_trigger="completed",
+        review_issues_found=True,
+    )
+    show_phase_close_banner(exit_model, display_context=ctx)
+    output = console.export_text()
+    assert "review:" in output
+    assert "issues found" in output

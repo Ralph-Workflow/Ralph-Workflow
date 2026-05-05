@@ -299,6 +299,42 @@ class TestEmitPhaseCloseFromExit:
         out = buf.getvalue()
         assert "[phase-close] debug" not in out
 
+    def test_emits_review_issues_found(self) -> None:
+        """emit_phase_close_from_exit emits review: issues found when review_issues_found=True."""
+        renderer, buf = _make_renderer()
+        renderer.begin_phase("review")
+        entry = PhaseEntryModel(phase_name="review")
+        exit_model = PhaseExitModel.from_entry_model(
+            entry, exit_trigger="completed", review_issues_found=True
+        )
+        renderer.emit_phase_close_from_exit(exit_model)
+        out = buf.getvalue()
+        assert "[phase-close] review: issues found" in out
+
+    def test_emits_review_clean(self) -> None:
+        """emit_phase_close_from_exit emits review: clean when review_issues_found=False."""
+        renderer, buf = _make_renderer()
+        renderer.begin_phase("review")
+        entry = PhaseEntryModel(phase_name="review")
+        exit_model = PhaseExitModel.from_entry_model(
+            entry, exit_trigger="completed", review_issues_found=False
+        )
+        renderer.emit_phase_close_from_exit(exit_model)
+        out = buf.getvalue()
+        assert "[phase-close] review: clean" in out
+
+    def test_no_review_line_when_not_applicable(self) -> None:
+        """emit_phase_close_from_exit emits no review line when review_issues_found is None."""
+        renderer, buf = _make_renderer()
+        renderer.begin_phase("development")
+        entry = PhaseEntryModel(phase_name="development")
+        exit_model = PhaseExitModel.from_entry_model(
+            entry, exit_trigger="produced", review_issues_found=None
+        )
+        renderer.emit_phase_close_from_exit(exit_model)
+        out = buf.getvalue()
+        assert "[phase-close] review:" not in out
+
 
 # ---------------------------------------------------------------------------
 # Debug breadcrumbs in text-mode render_completion_summary
