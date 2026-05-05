@@ -14,7 +14,6 @@ from rich.console import Console
 from ralph.display.context import DisplayContext, make_display_context
 from ralph.display.phase_banner import (
     show_phase_close_banner,
-    show_phase_complete,
     show_phase_start,
     show_phase_start_from_entry,
     show_phase_transition,
@@ -151,23 +150,6 @@ def test_start_glyph_swaps_to_ascii_with_force_ascii() -> None:
     output = _export(ctx)
     assert ASCII_GLYPHS["start"] in output
     assert UNICODE_GLYPHS["start"] not in output
-
-
-def test_phase_complete_uses_unicode_checkmark_by_default() -> None:
-    """Without ASCII override, show_phase_complete uses a Unicode checkmark."""
-    ctx = _make_ctx("wide", ascii_mode=False)
-    show_phase_complete("review", display_context=ctx)
-    output = _export(ctx)
-    assert UNICODE_GLYPHS["success"] in output
-
-
-def test_phase_complete_uses_ok_badge_in_ascii_mode() -> None:
-    """With RALPH_FORCE_ASCII=1, show_phase_complete uses '[OK]'."""
-    ctx = _make_ctx("wide", ascii_mode=True)
-    show_phase_complete("review", display_context=ctx)
-    output = _export(ctx)
-    assert ASCII_GLYPHS["success"] in output
-    assert UNICODE_GLYPHS["success"] not in output
 
 
 # --- Phase-start ordering tests ---

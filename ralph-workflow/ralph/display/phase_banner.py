@@ -354,32 +354,6 @@ def show_phase_start_from_entry(
         c.print(agent_line)
 
 
-def show_phase_complete(
-    phase: str,
-    *,
-    decision: str | None = None,
-    console: Console | None = None,
-    display_context: DisplayContext | None = None,
-    pipeline_policy: PipelinePolicy | None = None,
-) -> None:
-    """Display phase completion with an optional decision outcome."""
-    c = _resolve_console(console, display_context)
-    effective_ctx = (
-        display_context if display_context is not None else make_display_context(console=c)
-    )
-    style = _phase_style(phase, pipeline_policy)
-    label = _phase_label(phase)
-
-    line = Text()
-    success_glyph = effective_ctx.glyph_for("success")
-    line.append(f"{success_glyph} ", style=style)
-    line.append(f"{label} complete", style=style)
-    if decision is not None:
-        line.append(f" — {decision}", style="theme.text.emphasis")
-
-    c.print(line)
-
-
 def _build_phase_close_stats_line(
     exit_model: PhaseExitModel,
     display_context: DisplayContext,

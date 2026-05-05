@@ -13,7 +13,6 @@ from ralph.display.phase_banner import (
     _phase_label,
     _phase_style,
     show_phase_close_banner,
-    show_phase_complete,
     show_phase_start,
     show_phase_start_from_entry,
     show_phase_transition,
@@ -53,16 +52,6 @@ def test_show_phase_transition_minor_renders_rule() -> None:
     assert "Development Analysis" in output
 
 
-def test_show_phase_complete_with_decision() -> None:
-    console = Console(record=True)
-    show_phase_complete(
-        "review_analysis", decision="approved", display_context=_ctx_from_console(console)
-    )
-    output = console.export_text()
-    assert "approved" in output
-    assert "Review Analysis" in output
-
-
 def test_phase_label_converts_underscore_names() -> None:
     assert _phase_label("development_analysis") == "Development Analysis"
     assert _phase_label("review_commit") == "Review Commit"
@@ -97,14 +86,6 @@ def test_show_phase_start_with_agent_name() -> None:
     output = console.export_text()
     assert "Development" in output
     assert "claude" in output
-
-
-def test_show_phase_complete_without_decision() -> None:
-    console = Console(record=True)
-    show_phase_complete("development", display_context=_ctx_from_console(console))
-    output = console.export_text()
-    assert "Development" in output
-    assert "complete" in output
 
 
 def test_show_phase_transition_with_context() -> None:
@@ -484,15 +465,6 @@ class TestPolicyDrivenPhaseBanner:
         show_phase_start("my_work", pipeline_policy=policy, console=console)
         output = console.export_text()
         assert "My Work" in output
-
-    def test_show_phase_complete_with_policy_uses_role_style(self) -> None:
-        """show_phase_complete passes through pipeline_policy to _phase_style."""
-        policy = _make_two_phase_policy("execution", "analysis", "my_work", "my_check")
-        console = Console(record=True)
-        show_phase_complete("my_work", pipeline_policy=policy, console=console)
-        output = console.export_text()
-        assert "My Work" in output
-
 
 class TestAnalysisExecutionTransitionBannerCounters:
     """Verify analysis → execution banners show BOTH outer iteration AND analysis counter.

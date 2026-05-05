@@ -87,7 +87,6 @@ from ralph.display.artifact_renderer import (
 from ralph.display.context import DisplayContext, install_sigwinch_refresher, make_display_context
 from ralph.display.phase_banner import (
     show_phase_close_banner,
-    show_phase_complete,
     show_phase_start,
     show_phase_start_from_entry,
     show_phase_transition,
@@ -121,7 +120,6 @@ __all__ = [
     "show_agents",
     "show_config",
     "show_phase_close_banner",
-    "show_phase_complete",
     "show_phase_start",
     "show_phase_start_from_entry",
     "show_phase_transition",

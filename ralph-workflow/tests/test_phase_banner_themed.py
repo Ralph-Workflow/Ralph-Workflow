@@ -7,7 +7,7 @@ from io import StringIO
 from rich.console import Console
 
 from ralph.display.context import make_display_context
-from ralph.display.phase_banner import show_phase_complete, show_phase_start, show_phase_transition
+from ralph.display.phase_banner import show_phase_start, show_phase_transition
 from ralph.display.theme import RALPH_THEME
 
 
@@ -67,23 +67,6 @@ def test_show_phase_start_no_ansi_on_plain() -> None:
     out = buf.getvalue()
     assert "\x1b[" not in out
     assert "Development" in out
-
-
-def test_show_phase_complete_emits_ansi_on_tty() -> None:
-    buf = StringIO()
-    ctx = _themed_context(buf)
-    show_phase_complete("review", display_context=ctx)
-    assert "\x1b[" in buf.getvalue()
-
-
-def test_show_phase_complete_no_ansi_on_plain() -> None:
-    buf = StringIO()
-    ctx = _plain_context(buf)
-    show_phase_complete("review", display_context=ctx)
-    out = buf.getvalue()
-    assert "\x1b[" not in out
-    assert "Review" in out
-    assert "complete" in out
 
 
 def test_minor_transition_emits_ansi_on_tty() -> None:
