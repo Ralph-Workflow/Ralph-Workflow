@@ -2006,7 +2006,7 @@ class TestStaleScopedChildEvidenceTimeout:
 
 
 class TestOptionalArtifactCompletion:
-    """Optional-artifact phases must succeed on declare_complete but still retry on no evidence."""
+    """Optional-artifact phases terminal on clean exit; required phases enforce presence."""
 
     def test_optional_artifact_absent_with_declare_complete_does_not_raise(
         self, tmp_path: Path
@@ -2042,12 +2042,14 @@ class TestOptionalArtifactCompletion:
             ),
         )
 
-    def test_optional_artifact_absent_without_evidence_raises_resumable(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    def test_optional_artifact_absent_without_evidence_is_terminal(
+        self, tmp_path: Path
     ) -> None:
-        """Optional artifact absent + no evidence must raise OpenCodeResumableExitError.
+        """Optional artifact absent with no evidence must be terminal (not resumable).
 
-        Silent no-op exits must still be rejected even when the artifact is optional.
+        The development_result artifact is optional context for the analysis agent.
+        A clean exit (0) with an optional artifact contract is terminal success even
+        when the agent produces no artifact and makes no declare_complete call.
         """
         ra = RequiredArtifact(
             phase="development",
@@ -2057,44 +2059,26 @@ class TestOptionalArtifactCompletion:
             normalizer=None,
             artifact_required=False,
         )
-
-        def _fake_evaluate_completion(workspace, raw_output, *, required_artifact=None):
-            return CompletionSignals(False, False, ())
-
-        monkeypatch.setattr(
-            "ralph.agents.invoke.evaluate_completion", _fake_evaluate_completion
-        )
-
         strategy = OpenCodeExecutionStrategy()
         handle = _FakeHandle(returncode=0, has_descendants=False)
         probe = FakeLivenessProbe(active=False)
 
-        monotonic_vals = iter([0.0, 0.5, 1.0])
-
-        def _fake_event_wait(self, timeout=None):
-            return None
-
-        with (
-            patch.object(_time_module, "monotonic", side_effect=lambda: next(monotonic_vals)),
-            patch.object(threading.Event, "wait", _fake_event_wait),
-            pytest.raises(OpenCodeResumableExitError),
-        ):
-            _check_process_result(
-                cast("ManagedProcess", handle),
-                "opencode",
-                [],
-                _CompletionCheckOptions(
-                    execution_strategy=strategy,
-                    workspace_path=tmp_path,
-                    liveness_probe=probe,
-                    required_artifact=ra,
-                    policy=TimeoutPolicy(
-                        idle_timeout_seconds=None,
-                        parent_exit_grace_seconds=1.0,
-                        descendant_wait_timeout_seconds=30.0,
-                    ),
+        _check_process_result(
+            cast("ManagedProcess", handle),
+            "opencode",
+            [],
+            _CompletionCheckOptions(
+                execution_strategy=strategy,
+                workspace_path=tmp_path,
+                liveness_probe=probe,
+                required_artifact=ra,
+                policy=TimeoutPolicy(
+                    idle_timeout_seconds=None,
+                    parent_exit_grace_seconds=0.0,
+                    descendant_wait_timeout_seconds=0.0,
                 ),
-            )
+            ),
+        )
 
     def test_required_artifact_absent_still_raises_resumable(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

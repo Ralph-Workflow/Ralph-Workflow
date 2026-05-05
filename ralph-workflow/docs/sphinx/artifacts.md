@@ -17,8 +17,9 @@ Structured JSON payloads submitted by agents through the MCP layer. Every phase 
 | `review_analysis_decision` | analysis agent | Go/no-go for review output | yes |
 
 > **Optional artifacts:** When *Required?* is **no**, phase success does not depend on the artifact
-> being present. The development agent *may* submit `development_result` to give the analysis agent
-> richer context, but omitting it is not a failure. A submitted optional artifact is still fully
+> being present and no explicit `declare_complete` call is required. The development agent *may*
+> submit `development_result` to give the analysis agent richer context, but a clean exit (exit
+> code 0) alone is sufficient for terminal success. A submitted optional artifact is still fully
 > validated against its schema. The `artifact_required` flag in `artifacts.toml` controls this
 > behaviour; all other artifacts default to `artifact_required = true`.
 
