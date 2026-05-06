@@ -48,20 +48,22 @@ show_phase_start("planning", display_context=ctx)
 
 `NO_COLOR` takes precedence over `FORCE_COLOR` per standard CLI conventions.
 
-### SIGWINCH Refresh (POSIX)
+### Width Refresh (cross-platform)
 
-On POSIX systems (non-Windows), a `SIGWINCH` signal handler is installed at pipeline
-start via `install_sigwinch_refresher()`. When the terminal is resized:
+A width refresher is installed at pipeline start via `install_width_refresher()`. When
+the terminal is resized:
 
-1. The signal handler calls `DisplayContext.refreshed()` which re-reads the current
-   terminal width and recomputes mode and adaptive limits.
+1. The refresher calls `DisplayContext.refreshed()` which re-reads the current terminal
+   width and recomputes mode and adaptive limits.
 2. Renderers that buffer adaptive limits (e.g., `PlainLogRenderer`) refresh their context
    at phase boundaries via `flush_blocks()`.
 3. The runner keeps its live display object and nested plain renderer synced with the
    refreshed context, so later banners and summaries render with the new mode.
 
-The signal handler is installed only from the main thread ( `signal.signal` requires it).
-On Windows, the refresher is a no-op.
+On POSIX systems (Linux, macOS) when called from the main thread, the refresher installs
+a `SIGWINCH` signal handler. On Windows, or when called from a non-main thread, a
+background poll thread monitors width changes instead. The returned stop callback is
+invoked at pipeline shutdown to clean up the poll thread when one was started.
 
 ## Line Format
 
@@ -289,7 +291,7 @@ The `exit` field reports **why** the run ended:
 ## Related Modules
 
 - `ralph.display` — public display API and `DisplayContext` factory
-- `ralph.display.plain_renderer` — line-format renderer with SIGWINCH-aware resize
+- `ralph.display.plain_renderer` — line-format renderer with cross-platform width-aware resize
 - `ralph.display.long_content_summary` — streaming block summarisation
 - `ralph.display.completion_summary` — `[run-end]` panel renderer with mode-adaptive layout
 

@@ -1364,13 +1364,16 @@ def run(  # noqa: PLR0912, PLR0913, PLR0915
             workspace_scope.root, display_context, policy_bundle
         )
 
-    # Install SIGWINCH refresher for adaptive terminal resize on POSIX.
+    # Install cross-platform width refresher (SIGWINCH on POSIX, poll thread on Windows).
     # The refresher reads the current console width and recomputes mode/limits.
-    from ralph.display.context import install_sigwinch_refresher  # noqa: PLC0415
+    from ralph.display.context import install_width_refresher  # noqa: PLC0415
+
+    def _display_stop() -> None:
+        pass
 
     if isinstance(active_display, _LegacyConsoleDisplay) or hasattr(active_display, "_ctx"):
         ctx_holder = [active_display._ctx]
-        install_sigwinch_refresher(
+        _display_stop = install_width_refresher(
             ctx_holder,
             on_refresh=lambda ctx: _sync_live_display_context(active_display, ctx),
         )
@@ -1514,6 +1517,8 @@ def run(  # noqa: PLR0912, PLR0913, PLR0915
     finally:
         with suppress(Exception):
             _unsubscribe_bus()
+        with suppress(Exception):
+            _display_stop()
         if _monitor_stop is not None:
             with suppress(Exception):
                 _monitor_stop()

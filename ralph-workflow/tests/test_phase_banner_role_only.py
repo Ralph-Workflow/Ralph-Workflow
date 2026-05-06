@@ -8,7 +8,6 @@ from rich.console import Console
 
 from ralph.display.context import make_display_context
 from ralph.display.phase_banner import (
-    _ROLE_PAIR_DESCRIPTIONS,
     _phase_style,
     show_phase_transition,
 )
@@ -133,15 +132,22 @@ class TestPhaseStyleRoleOnly:
 
 
 class TestTransitionDescriptionRoleOnly:
-    def test_role_pair_description_used_with_renamed_phases(self) -> None:
-        """show_phase_transition uses role-pair description for renamed phases."""
+    def test_renamed_phases_transition_shows_routing_not_status_prose(self) -> None:
+        """show_phase_transition with renamed phases shows routing labels, not status prose.
+
+        The phase-close banner communicates exit context; the transition
+        banner shows only routing context (from-phase → to-phase labels).
+        """
         policy = _make_execution_to_analysis_policy()
         console = _console()
         ctx = make_display_context(console=console)
         show_phase_transition("design", "audit", pipeline_policy=policy, display_context=ctx)
         output = console.file.getvalue()  # type: ignore[union-attr]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
-        expected_description = _ROLE_PAIR_DESCRIPTIONS[("execution", "analysis")]
-        assert expected_description in output
+        assert "Design" in output
+        assert "Audit" in output
+        # Must not contain old duplicated status prose
+        assert "Work complete" not in output
+        assert "analyzing results" not in output
 
     def test_no_phase_pair_fallback(self) -> None:
         """show_phase_transition without policy shows no hardcoded canonical description."""
