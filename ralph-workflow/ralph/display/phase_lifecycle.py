@@ -132,6 +132,8 @@ class PhaseExitModel:
     # Outcome
     artifact_outcome: str = ""
     review_issues_found: bool | None = None
+    # Routing context — why an adjacent phase was skipped (e.g. analysis cap reached)
+    routing_note: str | None = None
     # Debug breadcrumbs
     waiting_status_line: str | None = None
     last_failure_category: str | None = None
@@ -158,6 +160,7 @@ class PhaseExitModel:
         errors: int = 0,
         artifact_outcome: str = "",
         review_issues_found: bool | None = None,
+        routing_note: str | None = None,
         waiting_status_line: str | None = None,
         last_failure_category: str | None = None,
     ) -> PhaseExitModel:
@@ -178,6 +181,7 @@ class PhaseExitModel:
             errors=errors,
             artifact_outcome=artifact_outcome,
             review_issues_found=review_issues_found,
+            routing_note=routing_note,
             waiting_status_line=waiting_status_line,
             last_failure_category=last_failure_category,
         )

@@ -752,3 +752,114 @@ def test_phase_start_compact_mode_omits_analysis_budget_indicator() -> None:
     assert "last" not in output, (
         f"Compact mode must not show '[last]' indicator: {output!r}"
     )
+
+
+# --- Wide mode non-redundancy tests ---
+
+
+def test_phase_start_wide_mode_no_duplicate_phase_name() -> None:
+    """Wide mode: phase label appears in the Rule title only — no redundant banner line after it."""
+    ctx = _make_ctx("wide")
+    entry = PhaseEntryModel(
+        phase_name="development_analysis",
+        outer_dev_iteration=2,
+        outer_dev_cap=5,
+    )
+    show_phase_start_from_entry(entry, display_context=ctx)
+    output = _export(ctx)
+    count = output.count("Development Analysis")
+    assert count == 1, (
+        f"Expected 'Development Analysis' exactly once (no redundant banner line), "
+        f"but found {count} time(s): {output!r}"
+    )
+
+
+def test_phase_start_wide_mode_rule_title_contains_qualifiers() -> None:
+    """Wide mode: the Rule separator line itself contains (outer) and (inner) qualifiers."""
+    ctx = _make_ctx("wide")
+    entry = PhaseEntryModel(
+        phase_name="development_analysis",
+        outer_dev_iteration=1,
+        outer_dev_cap=3,
+        inner_analysis=2,
+        inner_analysis_cap=4,
+    )
+    show_phase_start_from_entry(entry, display_context=ctx)
+    output = _export(ctx)
+    rule_lines = [ln for ln in output.split("\n") if "─" in ln or "─" in ln]
+    assert len(rule_lines) >= 1, "Expected at least one Rule line"
+    rule_text = " ".join(rule_lines)
+    assert "(outer)" in rule_text, f"Rule title must contain '(outer)': {rule_text!r}"
+    assert "(inner)" in rule_text, f"Rule title must contain '(inner)': {rule_text!r}"
+
+
+def test_phase_start_wide_mode_rule_title_contains_budget_indicator() -> None:
+    """Wide mode: the Rule separator line itself contains the [N left] budget indicator."""
+    ctx = _make_ctx("wide")
+    entry = PhaseEntryModel(
+        phase_name="development_analysis",
+        inner_analysis=1,
+        inner_analysis_cap=5,
+    )
+    show_phase_start_from_entry(entry, display_context=ctx)
+    output = _export(ctx)
+    rule_lines = [ln for ln in output.split("\n") if "─" in ln or "─" in ln]
+    assert len(rule_lines) >= 1, "Expected at least one Rule line"
+    rule_text = " ".join(rule_lines)
+    assert "4 left" in rule_text, (
+        f"Rule title must contain '4 left' (cap 5 - current 1): {rule_text!r}"
+    )
+
+
+# --- Routing note tests ---
+
+
+def test_phase_close_banner_shows_routing_note_all_modes() -> None:
+    """show_phase_close_banner shows routing_note when set, in all display modes."""
+    for mode in ("compact", "medium", "wide"):
+        ctx = _make_ctx(mode)
+        exit_model = PhaseExitModel(
+            phase_name="development",
+            routing_note="Development Analysis cap reached, skipping",
+        )
+        show_phase_close_banner(exit_model, display_context=ctx)
+        output = _export(ctx)
+        assert "cap reached" in output, (
+            f"routing_note not shown in {mode} mode: {output!r}"
+        )
+
+
+def test_phase_close_banner_omits_routing_note_when_none() -> None:
+    """show_phase_close_banner must not emit any routing note line when routing_note is None."""
+    ctx = _make_ctx("wide")
+    exit_model = PhaseExitModel(phase_name="development")
+    show_phase_close_banner(exit_model, display_context=ctx)
+    output = _export(ctx)
+    # routing_note=None means nothing about "skipping" or "cap" should appear
+    assert "cap reached" not in output
+    assert "skipping" not in output
+
+
+def test_phase_close_wide_mode_trailing_rule_has_no_repeated_elapsed() -> None:
+    """Wide mode: trailing Rule is a plain separator with no repeated elapsed/trigger text."""
+    ctx = _make_ctx("wide")
+    exit_model = PhaseExitModel(
+        phase_name="development",
+        elapsed_seconds=12.5,
+        exit_trigger="completed",
+    )
+    show_phase_close_banner(exit_model, display_context=ctx)
+    output = _export(ctx)
+    # elapsed and trigger appear on the main banner line
+    assert "12" in output
+    assert "completed" in output
+    # The trailing Rule line (identified by ─ chars) must NOT repeat elapsed or trigger
+    rule_lines = [ln for ln in output.split("\n") if "─" in ln or "─" in ln]
+    assert len(rule_lines) >= 1, "Expected trailing Rule in wide mode"
+    rule_text = " ".join(rule_lines)
+    assert "completed" not in rule_text, (
+        f"Trailing Rule must not repeat exit trigger: {rule_text!r}"
+    )
+    assert "12.5" not in rule_text, (
+        f"Trailing Rule must not repeat elapsed time: {rule_text!r}"
+    )

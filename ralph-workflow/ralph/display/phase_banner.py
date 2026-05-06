@@ -240,7 +240,7 @@ def show_phase_start(
     c.print(line)
 
 
-def show_phase_start_from_entry(
+def show_phase_start_from_entry(  # noqa: PLR0912
     entry: PhaseEntryModel,
     *,
     display_context: DisplayContext,
@@ -252,50 +252,68 @@ def show_phase_start_from_entry(
     iteration labels (Dev N/cap, Analysis N/cap) never diverge
     between phase-start and phase-close surfaces.
 
-    In wide mode a titled Rule separator precedes the banner line to visually
-    anchor the start of each phase section.  Outer/inner qualifiers are shown in
-    both medium and wide modes; compact mode omits them to save space.
+    Wide mode: a single titled Rule carries all context — start glyph, phase label,
+    outer/inner qualifiers, and remaining-budget indicator — followed by an optional
+    agent line.  No redundant banner line is emitted after the Rule.
+
+    Medium mode: blank line + banner line with qualifiers and budget indicator.
+    Compact mode: terse banner line, no qualifiers, no Rule.
     """
     c = display_context.console
     style = _phase_style(entry.phase_name, pipeline_policy)
     label = entry.human_label()
-
     mode = display_context.mode
     start_glyph = display_context.glyph_for("start")
     od_glyph = display_context.glyph_for("outer_dev")
     ia_glyph = display_context.glyph_for("inner_analysis")
 
-    # Medium mode: blank line provides visual phase boundary without a full separator
-    if mode == "medium":
-        c.print()
-
-    # Wide mode: titled Rule as section heading with brief iteration context
     if mode == "wide":
+        # All context goes into the Rule title — single source of truth for this phase section.
+        # Qualifiers (outer)/(inner) appear here instead of on a separate redundant banner line.
         rule_title = Text()
+        rule_title.append(f"{start_glyph} ", style=style)
         rule_title.append(label, style=style)
         if entry.outer_dev_iteration is not None:
             rule_title.append(
                 _build_outer_iteration_suffix(
-                    entry.outer_dev_iteration, entry.outer_dev_cap, od_glyph=od_glyph
+                    entry.outer_dev_iteration, entry.outer_dev_cap,
+                    od_glyph=od_glyph, qualifier="(outer)",
                 ),
                 style="theme.outer_dev",
             )
         if entry.inner_analysis is not None:
             rule_title.append(
                 _build_inner_analysis_suffix(
-                    entry.inner_analysis, entry.inner_analysis_cap, ia_glyph=ia_glyph
+                    entry.inner_analysis, entry.inner_analysis_cap,
+                    ia_glyph=ia_glyph, qualifier="(inner)",
                 ),
                 style="theme.inner_analysis",
             )
+        if entry.inner_analysis is not None and entry.inner_analysis_cap is not None:
+            remaining = entry.inner_analysis_cap - entry.inner_analysis
+            if remaining > 0:
+                rule_title.append(f"  [{remaining} left]", style="theme.text.muted")
+            elif remaining == 0:
+                rule_title.append("  [last]", style="theme.level.warn")
         c.print(Rule(title=rule_title, style=style))
+        if entry.agent_name is not None:
+            agent_line = Text()
+            agent_line.append("    agent: ", style="theme.text.muted")
+            agent_line.append(entry.agent_name, style="theme.text.emphasis")
+            c.print(agent_line)
+        return
 
+    # Medium mode: blank line provides visual phase boundary without a full separator
+    if mode == "medium":
+        c.print()
+
+    # Medium and compact mode: banner line with iteration context
     line = Text()
     line.append(f"{start_glyph} ", style=style)
     line.append(label, style=style)
 
-    # Medium and wide mode show qualifiers; compact omits them
-    outer_qualifier = "(outer)" if mode in ("medium", "wide") else ""
-    inner_qualifier = "(inner)" if mode in ("medium", "wide") else ""
+    outer_qualifier = "(outer)" if mode == "medium" else ""
+    inner_qualifier = "(inner)" if mode == "medium" else ""
 
     if entry.outer_dev_iteration is not None:
         suffix = _build_outer_iteration_suffix(
@@ -311,9 +329,9 @@ def show_phase_start_from_entry(
         )
         line.append(suffix, style="theme.inner_analysis")
 
-    # Show remaining analysis slots in medium/wide mode when cap is known
+    # Show remaining analysis slots in medium mode when cap is known
     if (
-        mode in ("medium", "wide")
+        mode == "medium"
         and entry.inner_analysis is not None
         and entry.inner_analysis_cap is not None
     ):
@@ -323,17 +341,10 @@ def show_phase_start_from_entry(
         elif remaining == 0:
             line.append("  [last]", style="theme.level.warn")
 
-    if entry.agent_name is not None and mode != "wide":
+    if entry.agent_name is not None:
         line.append(f"  agent={entry.agent_name}", style="theme.text.muted")
 
     c.print(line)
-
-    # Wide mode: agent on its own indented line for readability
-    if mode == "wide" and entry.agent_name is not None:
-        agent_line = Text()
-        agent_line.append("    agent: ", style="theme.text.muted")
-        agent_line.append(entry.agent_name, style="theme.text.emphasis")
-        c.print(agent_line)
 
 
 def _build_phase_close_stats_line(
@@ -367,7 +378,7 @@ def _build_phase_close_stats_line(
         parts.append((f"errors={exit_model.errors}", "theme.level.error"))
     for i, (part_text, part_style) in enumerate(parts):
         if i > 0:
-            stats.append(" ", style="theme.text.muted")
+            stats.append("  ", style="theme.text.muted")
         stats.append(part_text, style=part_style)
     return stats
 
@@ -421,22 +432,15 @@ def _build_debug_line(
 
 
 def _print_wide_close_rule(
-    elapsed_label: str | None,
-    exit_trigger: str | None,
-    arrow: str,
     style: str,
     console: Console,
 ) -> None:
-    """Print the wide-mode trailing Rule with an optional elapsed+trigger title."""
-    if elapsed_label is not None or exit_trigger is not None:
-        title = Text()
-        if elapsed_label is not None:
-            title.append(elapsed_label, style="theme.text.muted")
-        if exit_trigger is not None:
-            title.append(f"  {arrow} {exit_trigger}", style="theme.text.muted")
-        console.print(Rule(title=title, style=style))
-    else:
-        console.print(Rule(style=style))
+    """Print the wide-mode trailing Rule as a plain section-close separator.
+
+    The elapsed time and exit trigger are already on the main banner line;
+    repeating them in the Rule title would duplicate information.
+    """
+    console.print(Rule(style=style))
 
 
 def show_phase_close_banner(
@@ -485,10 +489,11 @@ def show_phase_close_banner(
         )
         line.append(suffix, style="theme.inner_analysis")
 
-    elapsed_label: str | None = None
     if exit_model.elapsed_seconds > 0:
-        elapsed_label = format_elapsed_seconds(exit_model.elapsed_seconds)
-        line.append(f"  {elapsed_label}", style="theme.text.muted")
+        line.append(
+            f"  {format_elapsed_seconds(exit_model.elapsed_seconds)}",
+            style="theme.text.muted",
+        )
 
     if exit_model.exit_trigger is not None:
         line.append(f"  {arrow} {exit_model.exit_trigger}", style="theme.text.muted")
@@ -509,11 +514,19 @@ def show_phase_close_banner(
     if review_line is not None:
         c.print(review_line)
 
+    # Routing note — explains why an adjacent phase was skipped (e.g. analysis cap reached).
+    # Shown in all modes since it is actionable routing context, not merely decorative.
+    if exit_model.routing_note is not None:
+        routing_line = Text()
+        routing_line.append(f"  {arrow} ", style="theme.text.muted")
+        routing_line.append(exit_model.routing_note, style="theme.level.warn")
+        c.print(routing_line)
+
     debug_line = _build_debug_line(exit_model, display_context)
     if debug_line is not None:
         c.print(debug_line)
 
-    # Wide mode: trailing Rule closes the phase section; title shows elapsed + trigger
-    # as a concise footer so the section boundaries are visually informative.
+    # Wide mode: plain trailing Rule closes the section visually.
+    # Elapsed and exit trigger are already on the main banner line above.
     if mode == "wide":
-        _print_wide_close_rule(elapsed_label, exit_model.exit_trigger, arrow, style, c)
+        _print_wide_close_rule(style, c)

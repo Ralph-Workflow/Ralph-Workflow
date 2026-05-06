@@ -993,6 +993,12 @@ def _emit_phase_transition_if_changed(
         entry = _build_phase_entry_model_from_state(previous_phase, state, pipeline_policy)
         prev_phase_def = pipeline_policy.phases.get(previous_phase)
         prev_phase_role: str | None = prev_phase_def.role if prev_phase_def is not None else None
+        # Detect skipped analysis before building exit model so routing context
+        # is surfaced through the canonical close banner instead of a separate print.
+        skipped_info = _skipped_exhausted_analysis_info(
+            previous_phase, state.phase, state, pipeline_policy
+        )
+        routing_note: str | None = skipped_info[1] if skipped_info is not None else None
         exit_model = PhaseExitModel.from_entry_model(
             entry,
             elapsed_seconds=elapsed,
@@ -1007,6 +1013,7 @@ def _emit_phase_transition_if_changed(
                 if prev_phase_role == "review"
                 else None
             ),
+            routing_note=routing_note,
             waiting_status_line=waiting_status_line,
             last_failure_category=state.last_failure_category,
         )
@@ -1029,26 +1036,6 @@ def _emit_phase_transition_if_changed(
     except Exception:  # pragma: no cover - defensive
         logger.debug("phase close emission failed", exc_info=True)
 
-    # Transition banner is suppressed - the close banner already communicates
-    # what ended (exit_trigger) and the start banner shows what began.
-    # Showing "A -> B" unconditionally duplicates this information.
-    # When analysis was skipped (cap exhausted), emit a brief single-line
-    # routing note instead of a full transition banner, so the user sees
-    # *why* the routing happened without re-stating what the close banner
-    # already communicated.
-    skipped_info = _skipped_exhausted_analysis_info(
-        previous_phase, state.phase, state, pipeline_policy
-    )
-    if skipped_info is not None:
-        _, info_message = skipped_info
-        try:
-            routing_line = Text()
-            glyph = ctx.glyph_for("arrow")
-            routing_line.append(f"  {glyph} ", style="theme.text.muted")
-            routing_line.append(info_message, style="theme.level.warn")
-            ctx.console.print(routing_line)
-        except Exception:  # pragma: no cover - defensive
-            logger.debug("Routing note failed", exc_info=True)
     return state.phase
 
 
