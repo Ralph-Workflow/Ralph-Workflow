@@ -2561,8 +2561,11 @@ class TestExecuteEffect:
         captured: dict[str, bool] = {}
 
         def stub_commit(  # noqa: PLR0913
-            effect, create_commit, stage_all, repo_root, display=None, *, verbosity=None
-        ):
+            effect, create_commit, stage_all, repo_root, display=None, *, verbosity=None,
+            phase_name="commit", state=None, pipeline_policy=None
+        ) -> PipelineEvent:
+            del create_commit, stage_all, repo_root, display, verbosity, phase_name
+            del state, pipeline_policy
             captured["called"] = True
             captured["message_file"] = effect.message_file
             return PipelineEvent.COMMIT_SUCCESS

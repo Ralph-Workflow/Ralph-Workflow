@@ -181,6 +181,7 @@ phase-close banner is printed to the console:
     ↳ stats: content=N thinking=N tools=N [errors=N]        ← medium/wide only, when activity > 0
     ↳ artifact: <artifact_outcome>                           ← medium/wide only, when artifact produced
   <warning_glyph> debug: waiting: <waiting_status> | failure: <failure_category>   ← only when breadcrumbs exist
+────────────────────────────────────────────────────────── ← wide mode only, trailing Rule separator
 ```
 
 | Field | Notes |

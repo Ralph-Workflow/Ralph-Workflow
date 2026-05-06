@@ -2721,6 +2721,9 @@ def _execute_effect(  # noqa: PLR0913
             workspace_scope.root,
             display,
             verbosity=verbosity,
+            phase_name=state.phase if state is not None else "commit",
+            state=state,
+            pipeline_policy=policy_bundle.pipeline if policy_bundle is not None else None,
         )
     if isinstance(effect, EarlySkipCommitEffect):
         logger.info("Skipping commit early: worktree is clean")
@@ -3209,6 +3212,9 @@ def _execute_commit_effect(  # noqa: PLR0913
     display: ParallelDisplay | _LegacyConsoleDisplay | None = None,
     *,
     verbosity: Verbosity = Verbosity.VERBOSE,
+    phase_name: str = "commit",
+    state: PipelineState | None = None,
+    pipeline_policy: PipelinePolicy | None = None,
 ) -> PipelineEvent:
     try:
         message = _read_commit_effect_message(effect)
@@ -3233,13 +3239,22 @@ def _execute_commit_effect(  # noqa: PLR0913
             render_commit_message(repo_root, _get_display_context(display))
         if verbosity != Verbosity.QUIET and hasattr(display, "emit_phase_close_from_exit"):
             with suppress(Exception):
-                cast("ParallelDisplay", display).emit_phase_close_from_exit(
-                    PhaseExitModel(
-                        phase_name="commit",
+                if state is not None and pipeline_policy is not None:
+                    _commit_entry = _build_phase_entry_model_from_state(
+                        phase_name, state, pipeline_policy
+                    )
+                    _commit_exit = PhaseExitModel.from_entry_model(
+                        _commit_entry,
                         artifact_outcome=f"sha={sha[:8]}",
                         exit_trigger="produced",
                     )
-                )
+                else:
+                    _commit_exit = PhaseExitModel(
+                        phase_name=phase_name,
+                        artifact_outcome=f"sha={sha[:8]}",
+                        exit_trigger="produced",
+                    )
+                cast("ParallelDisplay", display).emit_phase_close_from_exit(_commit_exit)
         _cleanup_commit_message_artifacts(repo_root)
     except Exception as exc:
         logger.error("Commit failed: {}", exc)

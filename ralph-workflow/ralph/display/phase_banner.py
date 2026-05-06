@@ -471,3 +471,8 @@ def show_phase_close_banner(
     debug_line = _build_debug_line(exit_model, display_context)
     if debug_line is not None:
         c.print(debug_line)
+
+    # Wide mode: trailing separator symmetrically closes the phase section started by
+    # the titled Rule in show_phase_start_from_entry.
+    if mode == "wide":
+        c.print(Rule(style=style))

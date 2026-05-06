@@ -24,6 +24,7 @@ from ralph.policy.models import PhaseDefinition, PhaseTransition, PipelinePolicy
 
 _WIDE_EXPECTED_RULES = 2
 _WIDE_PHASE_START_RULES = 1
+_WIDE_PHASE_CLOSE_RULES = 1
 
 
 def _make_ctx(
@@ -624,3 +625,65 @@ def test_phase_start_close_symmetry_same_phase_dev_analysis_labels() -> None:
     # Start label appears before analysis label in both
     assert start_out.index("Dev 2/5") < start_out.index("Analysis 3/4")
     assert close_out.index("Dev 2/5") < close_out.index("Analysis 3/4")
+
+
+# --- Wide mode Rule symmetry ---
+
+
+def test_phase_close_wide_mode_has_trailing_rule() -> None:
+    """Wide mode: show_phase_close_banner emits a trailing Rule separator."""
+    ctx = _make_ctx("wide")
+    exit_model = PhaseExitModel(
+        phase_name="development",
+        elapsed_seconds=5.0,
+        exit_trigger="completed",
+    )
+    show_phase_close_banner(exit_model, display_context=ctx)
+    output = _export(ctx)
+    rule_lines = [ln for ln in output.split("\n") if "─" in ln or "━" in ln]
+    assert len(rule_lines) >= _WIDE_PHASE_CLOSE_RULES, (
+        f"Wide mode close banner must have at least {_WIDE_PHASE_CLOSE_RULES} rule line(s), "
+        f"got {len(rule_lines)}"
+    )
+
+
+def test_phase_close_compact_mode_no_trailing_rule() -> None:
+    """Compact mode: show_phase_close_banner emits no trailing Rule."""
+    ctx = _make_ctx("compact")
+    exit_model = PhaseExitModel(
+        phase_name="development",
+        elapsed_seconds=3.0,
+        exit_trigger="completed",
+    )
+    show_phase_close_banner(exit_model, display_context=ctx)
+    output = _export(ctx)
+    rule_lines = [ln for ln in output.split("\n") if "─" in ln or "━" in ln]
+    assert len(rule_lines) == 0, (
+        f"Compact mode must not emit rule lines in close banner: {rule_lines}"
+    )
+
+
+def test_wide_phase_start_and_close_have_same_rule_count() -> None:
+    """Wide mode: phase-start and phase-close both emit exactly one Rule (structural symmetry)."""
+    ctx_start = _make_ctx("wide")
+    ctx_close = _make_ctx("wide")
+    entry = PhaseEntryModel(
+        phase_name="development",
+        outer_dev_iteration=1,
+        outer_dev_cap=3,
+    )
+    exit_model = PhaseExitModel(
+        phase_name="development",
+        outer_dev_iteration=1,
+        outer_dev_cap=3,
+        elapsed_seconds=4.2,
+        exit_trigger="completed",
+    )
+    show_phase_start_from_entry(entry, display_context=ctx_start)
+    show_phase_close_banner(exit_model, display_context=ctx_close)
+    start_rules = [ln for ln in _export(ctx_start).split("\n") if "─" in ln or "━" in ln]
+    close_rules = [ln for ln in _export(ctx_close).split("\n") if "─" in ln or "━" in ln]
+    assert len(start_rules) == len(close_rules), (
+        f"Phase-start has {len(start_rules)} rule(s), phase-close has {len(close_rules)} rule(s) "
+        "— wide mode start and close must be structurally symmetric"
+    )

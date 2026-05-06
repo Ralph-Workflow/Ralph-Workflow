@@ -311,3 +311,162 @@ def test_emit_phase_transition_uses_completed_exit_trigger_without_artifact() ->
 
     exit_model = captured["exit_model"]
     assert exit_model.exit_trigger == "completed"
+
+
+def test_execute_commit_effect_uses_canonical_phase_name() -> None:
+    """Commit close banner must use the canonical phase name, not the hardcoded 'commit' string."""
+    import tempfile  # noqa: PLC0415
+    import types  # noqa: PLC0415
+
+    from ralph.pipeline.effects import CommitEffect  # noqa: PLC0415
+
+    captured: dict[str, PhaseExitModel] = {}
+
+    def _capture_close(exit_model: PhaseExitModel) -> None:
+        captured["exit_model"] = exit_model
+
+    # Build a minimal display stub with emit_phase_close_from_exit so the runner's
+    # hasattr guard passes and we can capture the PhaseExitModel it builds.
+    display = types.SimpleNamespace(
+        emit_phase_close_from_exit=_capture_close,
+    )
+
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
+        f.write("feat: add canonical phase name\n")
+        msg_path = f.name
+
+    effect = CommitEffect(message_file=msg_path)
+
+    def _fake_create_commit(repo_root: str, message: str) -> str:
+        del repo_root, message
+        return "abc1234567890"
+
+    def _fake_stage_all(repo_root: str) -> None:
+        del repo_root
+
+    with (
+        patch("ralph.pipeline.runner.render_commit_message"),
+        patch("ralph.pipeline.runner._repo_has_commit_work", return_value=True),
+    ):
+        runner_module._execute_commit_effect(
+            effect,
+            _fake_create_commit,
+            _fake_stage_all,
+            Path("/tmp"),
+            cast("runner_module.ParallelDisplay | runner_module._LegacyConsoleDisplay", display),
+            verbosity=runner_module.Verbosity.VERBOSE,
+            phase_name="development_commit",
+        )
+
+    assert "exit_model" in captured, "emit_phase_close_from_exit was not called"
+    assert captured["exit_model"].phase_name == "development_commit"
+    assert captured["exit_model"].exit_trigger == "produced"
+
+
+def test_execute_commit_effect_carries_iteration_context_from_state() -> None:
+    """Commit close banner must carry outer dev iteration context when state/policy given."""
+    import tempfile  # noqa: PLC0415
+    import types  # noqa: PLC0415
+
+    from ralph.pipeline.effects import CommitEffect  # noqa: PLC0415
+    from ralph.pipeline.state import PipelineState  # noqa: PLC0415
+    from ralph.policy.models import (  # noqa: PLC0415
+        BudgetCounterConfig,
+        PhaseCommitPolicy,
+        PhaseDefinition,
+        PhaseTransition,
+        PipelinePolicy,
+        RecoveryPolicy,
+    )
+
+    captured: dict[str, PhaseExitModel] = {}
+
+    def _capture_close(exit_model: PhaseExitModel) -> None:
+        captured["exit_model"] = exit_model
+
+    display = types.SimpleNamespace(
+        emit_phase_close_from_exit=_capture_close,
+    )
+
+    # Build a policy with a commit phase that increments the 'iteration' counter
+    policy = PipelinePolicy(
+        entry_phase="development",
+        terminal_phase="done",
+        phases={
+            "development": PhaseDefinition(
+                drain="development",
+                role="execution",
+                transitions=PhaseTransition(on_success="development_commit"),
+            ),
+            "development_commit": PhaseDefinition(
+                drain="development_commit",
+                role="commit",
+                commit_policy=PhaseCommitPolicy(increments_counter="iteration"),
+                transitions=PhaseTransition(on_success="done"),
+            ),
+            "done": PhaseDefinition(
+                drain="development",
+                role="terminal",
+                terminal_outcome="success",
+                transitions=PhaseTransition(on_success="done"),
+            ),
+            "failed_terminal": PhaseDefinition(
+                drain="development",
+                role="terminal",
+                terminal_outcome="failure",
+                transitions=PhaseTransition(on_success="failed_terminal"),
+            ),
+        },
+        budget_counters={"iteration": BudgetCounterConfig(tracks_budget=True, default_max=4)},
+        recovery=RecoveryPolicy(failed_route="failed_terminal"),
+    )
+    # State: on second iteration (outer_progress=1 means iteration #2 is about to start)
+    state = PipelineState(
+        phase="development_commit",
+        outer_progress={"iteration": 1},
+        budget_caps={"iteration": 4},
+    )
+
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
+        f.write("feat: add iteration context\n")
+        msg_path = f.name
+
+    effect = CommitEffect(message_file=msg_path)
+
+    def _fake_create_commit(repo_root: str, message: str) -> str:
+        del repo_root, message
+        return "def4567890ab"
+
+    def _fake_stage_all(repo_root: str) -> None:
+        del repo_root
+
+    with (
+        patch("ralph.pipeline.runner.render_commit_message"),
+        patch("ralph.pipeline.runner._repo_has_commit_work", return_value=True),
+    ):
+        runner_module._execute_commit_effect(
+            effect,
+            _fake_create_commit,
+            _fake_stage_all,
+            Path("/tmp"),
+            cast("runner_module.ParallelDisplay | runner_module._LegacyConsoleDisplay", display),
+            verbosity=runner_module.Verbosity.VERBOSE,
+            phase_name="development_commit",
+            state=state,
+            pipeline_policy=policy,
+        )
+
+    assert "exit_model" in captured, "emit_phase_close_from_exit was not called"
+    exit_model = captured["exit_model"]
+    assert exit_model.phase_name == "development_commit"
+    assert exit_model.exit_trigger == "produced"
+    # Iteration context must be populated from state
+    _expected_iteration = 2
+    _expected_cap = 4
+    assert exit_model.outer_dev_iteration == _expected_iteration, (
+        f"Expected outer_dev_iteration={_expected_iteration} (iteration 1+1),"
+        f" got {exit_model.outer_dev_iteration}"
+    )
+    assert exit_model.outer_dev_cap == _expected_cap, (
+        f"Expected outer_dev_cap={_expected_cap}, got {exit_model.outer_dev_cap}"
+    )

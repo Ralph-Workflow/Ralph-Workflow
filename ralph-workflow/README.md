@@ -462,6 +462,9 @@ of display mode. When a phase ends with debug breadcrumbs still set (waiting-sta
 category), a `debug:` line is appended immediately below the close banner in all display modes —
 making failure context visible without reading the completion summary.
 
+In **wide mode**, a trailing horizontal Rule separator is printed after the close banner,
+symmetrically closing the phase section opened by the titled Rule from the phase-start banner.
+
 See [`docs/sphinx/transcript.md`](docs/sphinx/transcript.md) for the full phase-start, phase-close,
 and `[run-end]` format specifications.
 
