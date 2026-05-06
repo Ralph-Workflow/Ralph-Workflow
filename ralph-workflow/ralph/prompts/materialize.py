@@ -781,6 +781,20 @@ def _git_diff(workspace_root: Path) -> str:
         return "(no diff available)"
 
 
+def _pending_diff(workspace_root: Path) -> str:
+    """Return only the current pending work against the last commit (HEAD).
+
+    This covers staged and unstaged changes vs HEAD — exactly what a commit
+    agent needs to describe. Unlike _git_diff(), this never includes commits
+    from earlier in the dev cycle, so it is safe to use for commit-role prompts.
+    """
+    try:
+        repo = Repo(workspace_root)
+        return _sanitize_surrogates(cast("str", repo.git.diff("HEAD"))) or "(no diff available)"
+    except Exception:
+        return "(no diff available)"
+
+
 def _commit_phase_diff(workspace_root: Path) -> str:
-    diff = _git_diff(workspace_root).strip()
+    diff = _pending_diff(workspace_root).strip()
     return diff or "(no diff available)"
