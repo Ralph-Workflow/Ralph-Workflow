@@ -282,7 +282,7 @@ def show_phase_start_from_entry(
     """Display the start of a pipeline phase from a lifecycle entry model.
 
     Canonical model-based path for phase-start banners.  Uses the entry model so
-    iteration labels (Dev N/cap, Analysis N/cap, Budget: N left) never diverge
+    iteration labels (Dev N/cap, Analysis N/cap) never diverge
     between phase-start and phase-close surfaces.
 
     In wide mode a titled Rule separator precedes the banner line to visually

@@ -3434,7 +3434,7 @@ class TestPhaseContextRoleBasedDispatch:
         ctx = self._call(state, "gate", policy)
         assert ctx.get("decision") == "needs changes"
 
-    def test_commit_role_previous_shows_counter_budget(self) -> None:
+    def test_commit_role_previous_omits_budget_context(self) -> None:
         policy = _make_minimal_policy(
             {
                 "seal": PhaseDefinition(
@@ -3461,7 +3461,7 @@ class TestPhaseContextRoleBasedDispatch:
             budget_caps={"build_pass": 2},
         )
         ctx = self._call(state, "seal", policy)
-        assert ctx.get("build_pass_budget") == "2 remaining"
+        assert "build_pass_budget" not in ctx
 
     def test_unknown_phase_returns_empty_context(self) -> None:
         policy = PipelinePolicy.model_construct(phases={})

@@ -81,7 +81,7 @@ Ralph Workflow runs the pipeline in phases. At a high level:
 2. **Development** — a developer agent implements the plan, up to `--developer-iters` times
 3. **Development analysis** — the pipeline evaluates the development output; loops back to
    development if further iteration is needed, then commits when satisfied
-4. **Complete** — the pipeline ends successfully after the iteration budget is spent
+4. **Complete** — the pipeline ends successfully once all iterations are exhausted (cap minus completed progress)
 
 Custom policies declared in `.agent/pipeline.toml` can add review, fix, or any other phase.
 The default bundled policy is a clean planning → development loop.

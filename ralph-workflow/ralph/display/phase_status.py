@@ -32,11 +32,6 @@ def format_analysis_cycle(n: int, cap: int | None = None) -> str:
     return f"Analysis #{n}"
 
 
-def format_budget_remaining(n: int) -> str:
-    """Return canonical label for remaining budget counter."""
-    return f"Budget: {n} left"
-
-
 def format_elapsed_seconds(s: float) -> str:
     """Return canonical elapsed-time label."""
     return f"{round(s, 1)}s"
@@ -70,7 +65,6 @@ def format_transition_context_items(context: dict[str, object]) -> list[str]:
     Normalizes context items from generic key=value to canonical display format:
     - 'analysis_status' key: rendered as the bare value (no key prefix)
     - 'decision' key: rendered as '→ {value}' (arrow notation)
-    - keys ending in '_budget': rendered as canonical 'Budget: N left' label
     - multi-word keys (containing spaces): rendered as '[key value]' bracket notation
     - all other keys: rendered as 'key=value'
     """
@@ -81,15 +75,6 @@ def format_transition_context_items(context: dict[str, object]) -> list[str]:
             parts.append(v_str)
         elif k == "decision":
             parts.append(f"→ {v_str}")
-        elif k.endswith("_budget"):
-            if v_str.endswith(" remaining"):
-                try:
-                    n = int(v_str.split(maxsplit=1)[0])
-                    parts.append(format_budget_remaining(n))
-                except (ValueError, IndexError):
-                    parts.append(f"Budget: {v_str}")
-            else:
-                parts.append(f"Budget: {v_str}")
         elif " " in k:
             parts.append(f"[{k} {v_str}]")
         else:
@@ -134,7 +119,6 @@ class PhaseIterationContext:
 __all__ = [
     "PhaseIterationContext",
     "format_analysis_cycle",
-    "format_budget_remaining",
     "format_dev_cycle",
     "format_elapsed_seconds",
     "format_exit_trigger",

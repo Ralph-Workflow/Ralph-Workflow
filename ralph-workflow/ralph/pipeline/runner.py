@@ -911,12 +911,6 @@ def _phase_context(
     elif current_role in ("execution", "review"):
         _add_outer_counter_context(context, state.phase, pipeline_policy, state)
 
-    if previous_role == "commit" and previous_phase_def is not None:
-        commit_policy = previous_phase_def.commit_policy
-        if commit_policy is not None and commit_policy.increments_counter:
-            counter = commit_policy.increments_counter
-            remaining = state.get_budget_remaining(counter)
-            context[f"{counter}_budget"] = f"{remaining} remaining"
     return context
 
 

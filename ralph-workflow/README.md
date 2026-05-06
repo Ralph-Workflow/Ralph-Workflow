@@ -185,7 +185,7 @@ When you run `ralph`, the workflow moves through a structured sequence of phases
 2. **Planning analysis** — the workflow checks whether the proposed plan is executor-ready or needs another planning pass; when it sends planning back for revision, Ralph Workflow surfaces the prior planning-analysis feedback so the planner can edit the existing plan incrementally via the plan-draft MCP tools
 3. **Development** — a developer agent implements the work
 4. **Development analysis** — the workflow decides whether to iterate or continue
-5. **Development commit** — changes are committed; if the iteration budget remains, the loop returns to planning for another cycle
+5. **Development commit** — changes are committed; if iterations remain (derived from cap minus completed progress), the loop returns to planning for another cycle
 6. **Complete** — the workflow ends successfully
 
 Custom policies declared in `.agent/pipeline.toml` can add review, fix, or any other phase. The default bundled policy is a clean planning → development loop.
@@ -442,11 +442,11 @@ policy, terminal width, and adaptive layout limits. No renderer constructs its o
 
 In `compact` mode, secondary columns, extra blank lines, and descriptive rules are suppressed
 to fit narrow terminals. In `medium` and `wide` modes, phase banners include descriptions,
-additional context lines, and fuller iteration/budget labels.
+additional context lines, and fuller iteration labels.
 
 Phase-start banners show iteration context as `Dev N/cap` (outer development cycle, 1-indexed)
 and `Analysis N/cap` (inner analysis loop, 1-indexed). `Dev 1/5` means the pipeline is entering
-its first development cycle out of a total budget of 5. In **wide mode**, `(outer)` and `(inner)`
+its first development cycle out of five total. In **wide mode**, `(outer)` and `(inner)`
 qualifiers are appended to the dev and analysis cycle labels to make the distinction explicit.
 
 Phase-close banners echo the same iteration context alongside elapsed time (e.g. `7.5s`) and the
