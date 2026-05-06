@@ -12,8 +12,9 @@ Contract:
 * Analysis loopbacks mutate only the inner loop counter for the current cycle or pass.
 * Capped analysis loopback preserves outer progress and carries the inner loop counter
   to the cap until analysis or commit outcome resets it.
-* Skipped commits route onward without incrementing outer progress, but they end
-  the current inner loop and therefore reset the corresponding analysis counter.
+* Skipped commits honour the commit_policy.skipped_advances_progress flag; when
+  true (the default), a skip still advances outer progress and ends the current inner
+  loop, so routing can distinguish a consumed-but-skipped iteration from one that never ran.
 * Checkpoint mirrors derive from canonical ``PipelineState`` and policy-declared budget
   counters: the first budget-tracked counter (in commit-phase BFS order) maps to
   ``actual_developer_runs``; the second maps to ``actual_reviewer_runs``.
@@ -204,17 +205,13 @@ def _apply_commit_outcome_policy_driven(
     if counter is None:
         return result
 
-    result = result.with_budget_remaining(
-        counter,
-        max(0, state.get_budget_remaining(counter) - 1),
-    )
-    if skipped:
-        return result
-
-    return result.with_outer_progress(
-        counter,
-        state.get_outer_progress(counter) + 1,
-    )
+    advances = not skipped or commit_policy.skipped_advances_progress
+    if advances:
+        return result.with_outer_progress(
+            counter,
+            state.get_outer_progress(counter) + 1,
+        )
+    return result
 
 
 def _tracked_budget_counters_in_commit_order(policy: PipelinePolicy) -> list[str]:

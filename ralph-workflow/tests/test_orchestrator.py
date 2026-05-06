@@ -273,7 +273,7 @@ class TestCommitBudgetRouting:
 
     def test_development_commit_with_budget_remaining_routes_to_planning(self) -> None:
         """Post-commit route should send development_commit to planning when budget remains."""
-        state = PipelineState(phase="development_commit", budget_remaining={"iteration": 1})
+        state = PipelineState(phase="development_commit", budget_caps={"iteration": 1})
         next_phase = resolve_post_commit_phase(state, _make_minimal_pipeline_policy())
         assert next_phase == "planning"
 
@@ -281,20 +281,25 @@ class TestCommitBudgetRouting:
         """Post-commit route should send development_commit to review when budget exhausted."""
         state = PipelineState(
             phase="development_commit",
-            budget_remaining={"iteration": 0, "reviewer_pass": 1},
+            budget_caps={"iteration": 1, "reviewer_pass": 1},
+            outer_progress={"iteration": 1},
         )
         next_phase = resolve_post_commit_phase(state, _make_minimal_pipeline_policy())
         assert next_phase == "review"
 
     def test_review_commit_with_budget_remaining_routes_to_review(self) -> None:
         """Post-commit route should send review_commit to review when budget remains."""
-        state = PipelineState(phase="review_commit", budget_remaining={"reviewer_pass": 1})
+        state = PipelineState(phase="review_commit", budget_caps={"reviewer_pass": 1})
         next_phase = resolve_post_commit_phase(state, _make_minimal_pipeline_policy())
         assert next_phase == "review"
 
     def test_review_commit_on_success_routes_to_complete(self) -> None:
         """Test that review_commit with exhausted budget routes to complete."""
-        state = PipelineState(phase="review_commit", budget_remaining={"reviewer_pass": 0})
+        state = PipelineState(
+            phase="review_commit",
+            budget_caps={"reviewer_pass": 1},
+            outer_progress={"reviewer_pass": 1},
+        )
         next_phase = resolve_post_commit_phase(state, _make_minimal_pipeline_policy())
         assert next_phase == "complete"
 
@@ -302,7 +307,8 @@ class TestCommitBudgetRouting:
         """Post-commit route sends development_commit with exhausted budgets to complete."""
         state = PipelineState(
             phase="development_commit",
-            budget_remaining={"iteration": 0, "reviewer_pass": 0},
+            budget_caps={"iteration": 1, "reviewer_pass": 1},
+            outer_progress={"iteration": 1, "reviewer_pass": 1},
         )
         next_phase = resolve_post_commit_phase(state, _make_minimal_pipeline_policy())
         assert next_phase == "complete"

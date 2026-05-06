@@ -152,7 +152,7 @@ class TestDevCommitSuccessIncrementsIteration:
         """When development_commit emits COMMIT_SUCCESS, iteration should increment by 1."""
         state = PipelineState(
             phase="development_commit",
-            budget_remaining={"iteration": 3, "reviewer_pass": 2},
+            budget_caps={"iteration": 3, "reviewer_pass": 2},
         )
         policy = _dev_analysis_policy()
         new_state, _ = _reduce(state, PipelineEvent.COMMIT_SUCCESS, policy)
@@ -166,7 +166,7 @@ class TestReviewCommitSuccessIncrementsReviewerPass:
         """When review_commit emits COMMIT_SUCCESS, reviewer_pass should increment by 1."""
         state = PipelineState(
             phase="review_commit",
-            budget_remaining={"iteration": 3, "reviewer_pass": 2},
+            budget_caps={"iteration": 3, "reviewer_pass": 2},
         )
         policy = _dev_analysis_policy()
         new_state, _ = _reduce(state, PipelineEvent.COMMIT_SUCCESS, policy)
@@ -215,7 +215,7 @@ class TestDevCommitSuccessResetsDevAnalysisIteration:
         state = PipelineState(
             phase="development_commit",
             loop_iterations={"development_analysis_iteration": 3},
-            budget_remaining={"iteration": 3, "reviewer_pass": 2},
+            budget_caps={"iteration": 3, "reviewer_pass": 2},
         )
         policy = _dev_analysis_policy()
         new_state, _ = _reduce(state, PipelineEvent.COMMIT_SUCCESS, policy)
@@ -266,7 +266,7 @@ class TestReviewCommitSuccessResetsReviewAnalysisIteration:
         state = PipelineState(
             phase="review_commit",
             loop_iterations={"review_analysis_iteration": 2},
-            budget_remaining={"iteration": 3, "reviewer_pass": 2},
+            budget_caps={"iteration": 3, "reviewer_pass": 2},
         )
         policy = _dev_analysis_policy()
         new_state, _ = _reduce(state, PipelineEvent.COMMIT_SUCCESS, policy)

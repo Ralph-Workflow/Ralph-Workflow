@@ -121,7 +121,6 @@ def initial_state() -> PipelineState:
     return PipelineState(
         phase="planning",
         budget_caps={"iteration": 1},
-        budget_remaining={"iteration": 1},
         phase_chains={
             "development": AgentChainState(agents=["claude"]),
         },
@@ -164,7 +163,7 @@ class TestPipelineHappyPath:
         # Set state to development_commit phase with exhausted budget
         state = (
             initial_state.copy_with(phase="development_commit")
-            .with_budget_remaining("iteration", 0)
+            .with_outer_progress("iteration", initial_state.get_budget_cap("iteration"))
         )
 
         effect = determine_next_effect(state, pipeline_policy, agents_policy)
@@ -273,7 +272,7 @@ class TestPipelinePhaseTransitions:
         agents_policy, pipeline_policy, _ = default_policy
 
         # Set state to development with remaining budget
-        state = initial_state.copy_with(phase="development").with_budget_remaining("iteration", 1)
+        state = initial_state.copy_with(phase="development")
 
         effect = determine_next_effect(state, pipeline_policy, agents_policy)
 

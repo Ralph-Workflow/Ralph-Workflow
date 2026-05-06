@@ -3458,7 +3458,7 @@ class TestPhaseContextRoleBasedDispatch:
         )
         state = PipelineState(
             phase="build",
-            budget_remaining={"build_pass": 2},
+            budget_caps={"build_pass": 2},
         )
         ctx = self._call(state, "seal", policy)
         assert ctx.get("build_pass_budget") == "2 remaining"

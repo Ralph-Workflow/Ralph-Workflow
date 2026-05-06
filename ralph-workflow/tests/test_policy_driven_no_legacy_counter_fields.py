@@ -16,7 +16,7 @@ from ralph.pipeline.state import PipelineState
 def _minimal_state() -> PipelineState:
     return PipelineState(
         phase="planning",
-        budget_remaining={"iteration": 2},
+        budget_caps={"iteration": 3},
         outer_progress={"iteration": 1},
     )
 

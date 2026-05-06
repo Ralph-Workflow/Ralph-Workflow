@@ -324,8 +324,7 @@ class TestRequirement5CommitSemantics:
         """resolve_post_commit_phase returns 'design' when cycles budget > 0."""
         state = PipelineState(
             phase="sign_off",
-            budget_remaining={"cycles": 2},
-            outer_progress={"cycles": 0},
+            budget_caps={"cycles": 2},
         )
         result = resolve_post_commit_phase(state, policy_with_renamed_phases.pipeline)
         assert result == "design"
@@ -336,7 +335,7 @@ class TestRequirement5CommitSemantics:
         """resolve_post_commit_phase returns 'done' when cycles are exhausted."""
         state = PipelineState(
             phase="sign_off",
-            budget_remaining={"cycles": 0},
+            budget_caps={"cycles": 3},
             outer_progress={"cycles": 3},
         )
         result = resolve_post_commit_phase(state, policy_with_renamed_phases.pipeline)

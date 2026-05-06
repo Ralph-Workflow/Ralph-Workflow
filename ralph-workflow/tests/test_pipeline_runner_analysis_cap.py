@@ -50,7 +50,7 @@ class TestDevAnalysisCapTriggeredCorrectionRouting:
             phase="development_analysis",
             loop_iterations={"development_analysis_iteration": 2},  # max-1 where max=3
             loop_caps={"development_analysis_iteration": _DEV_MAX_ANALYSIS},
-            budget_remaining={"iteration": 3},
+            budget_caps={"iteration": 3},
         )
 
         new_state, _ = _reduce(state, PipelineEvent.ANALYSIS_LOOPBACK, policy)
@@ -64,7 +64,7 @@ class TestDevAnalysisCapTriggeredCorrectionRouting:
             phase="development_commit",
             loop_iterations={"development_analysis_iteration": _DEV_MAX_ANALYSIS},
             outer_progress={"iteration": 1},
-            budget_remaining={"iteration": 3, "reviewer_pass": 2},
+            budget_caps={"iteration": 3, "reviewer_pass": 2},
         )
 
         new_state, _ = _reduce(state, PipelineEvent.COMMIT_SUCCESS, policy)

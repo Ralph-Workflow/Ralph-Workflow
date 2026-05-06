@@ -365,7 +365,7 @@ class TestCustomPipelineCounters:
         state, _ = reducer_reduce(state, PipelineEvent.COMMIT_SUCCESS, policy)  # seal→verify
         assert state.get_outer_progress("build_pass") == 1
 
-    def test_build_pass_unchanged_on_commit_skipped(self, custom_bundle: PolicyBundle) -> None:
+    def test_build_pass_advances_on_commit_skipped(self, custom_bundle: PolicyBundle) -> None:
         policy = custom_bundle.pipeline
         state = _initial_state(policy)
 
@@ -374,7 +374,7 @@ class TestCustomPipelineCounters:
         state, _ = reducer_reduce(state, PipelineEvent.ANALYSIS_SUCCESS, policy)  # gate→seal
 
         state, _ = reducer_reduce(state, PipelineEvent.COMMIT_SKIPPED, policy)  # seal→verify
-        assert state.get_outer_progress("build_pass") == 0
+        assert state.get_outer_progress("build_pass") == 1
 
     def test_build_loop_counter_resets_after_commit(self, custom_bundle: PolicyBundle) -> None:
         policy = custom_bundle.pipeline

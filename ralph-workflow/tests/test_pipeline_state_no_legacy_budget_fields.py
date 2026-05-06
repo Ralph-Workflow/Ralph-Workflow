@@ -6,11 +6,12 @@ that should no longer be first-class declared fields on PipelineState:
 - total_reviewer_passes
 - development_budget_remaining
 - review_budget_remaining
+- budget_remaining    (replaced by derived get_budget_remaining() from budget_caps/outer_progress)
 - iteration          (scalar mirror of outer_progress['iteration'])
 - reviewer_pass      (scalar mirror of outer_progress['reviewer_pass'])
 
-All of these were replaced by the generic budget_remaining / outer_progress dicts
-keyed by policy-declared counter names. They remain in _migrate_legacy_state_fields
+All of these were migrated away in favour of budget_caps / outer_progress dicts
+keyed by policy-declared counter names. They remain handled in _migrate_legacy_state_fields
 for checkpoint backward-compat, but must NOT be declared as Pydantic fields.
 """
 
@@ -23,6 +24,7 @@ FORBIDDEN_LEGACY_FIELDS = {
     "total_reviewer_passes",
     "development_budget_remaining",
     "review_budget_remaining",
+    "budget_remaining",
     "iteration",
     "reviewer_pass",
 }
@@ -59,6 +61,13 @@ class TestNoLegacyBudgetFieldsOnPipelineState:
         assert "review_budget_remaining" not in model_fields, (
             "PipelineState.review_budget_remaining is a legacy hardcoded field "
             "that was removed. Use state.get_budget_remaining('reviewer_pass') instead."
+        )
+
+    def test_budget_remaining_not_declared(self) -> None:
+        model_fields = set(PipelineState.model_fields.keys())
+        assert "budget_remaining" not in model_fields, (
+            "PipelineState.budget_remaining is a legacy field that was removed. "
+            "Use state.get_budget_remaining(counter) via budget_caps/outer_progress instead."
         )
 
     def test_no_forbidden_fields_declared(self) -> None:

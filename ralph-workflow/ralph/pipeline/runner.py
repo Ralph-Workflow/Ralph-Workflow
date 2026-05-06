@@ -833,12 +833,10 @@ def _build_phase_entry_model_from_state(
 
     outer_iteration: int | None = None
     outer_dev_cap: int | None = None
-    budget_remaining: int | None = None
     counter = _find_commit_counter_from_phase(phase, pipeline_policy)
     if counter is not None:
         outer_iteration = state.get_outer_progress(counter)
-        budget_remaining = state.get_budget_remaining(counter)
-        outer_dev_cap = outer_iteration + budget_remaining
+        outer_dev_cap = state.get_budget_cap(counter)
 
     current_dev_cycle = outer_iteration + 1 if outer_iteration is not None else None
     return PhaseEntryModel(
@@ -849,7 +847,6 @@ def _build_phase_entry_model_from_state(
         outer_dev_cap=outer_dev_cap,
         inner_analysis=inner_analysis,
         inner_analysis_cap=inner_analysis_cap,
-        budget_remaining=budget_remaining,
     )
 
 
@@ -2173,7 +2170,6 @@ def _create_initial_state(
     return PipelineState(
         phase=entry_phase,
         budget_caps=caps,
-        budget_remaining=dict(caps),
         phase_chains=phase_chains,
         rebase=RebaseState(),
         commit=CommitState(),

@@ -199,8 +199,7 @@ class TestCustomPolicyResolvePostCommit:
         """resolve_post_commit_phase returns 'design' when cycles budget > 0."""
         state = PipelineState(
             phase="sign_off",
-            budget_remaining={"cycles": 2},
-            outer_progress={"cycles": 0},
+            budget_caps={"cycles": 2},
         )
         result = resolve_post_commit_phase(state, custom_bundle.pipeline)
         assert result == "design"
@@ -211,7 +210,7 @@ class TestCustomPolicyResolvePostCommit:
         """resolve_post_commit_phase returns 'done' when cycles budget = 0 (no_review)."""
         state = PipelineState(
             phase="sign_off",
-            budget_remaining={"cycles": 0},
+            budget_caps={"cycles": 2},
             outer_progress={"cycles": 2},
         )
         result = resolve_post_commit_phase(state, custom_bundle.pipeline)
