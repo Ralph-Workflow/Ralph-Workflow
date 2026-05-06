@@ -232,6 +232,28 @@ def test_generate_commit_stages_working_tree_changes_when_nothing_is_staged(
     assert "No staged changes to commit" not in output
 
 
+def test_working_tree_diff_excludes_mid_cycle_committed_files(tmp_git_repo: Path) -> None:
+    """_working_tree_diff must exclude files committed in earlier mid-cycle commits.
+
+    The standalone commit plumbing must use HEAD-only diff semantics so that
+    files committed during an earlier dev iteration do not appear in the prompt
+    sent to the commit agent.
+    """
+    from git import Repo  # noqa: PLC0415
+
+    repo = Repo(tmp_git_repo)
+    (tmp_git_repo / "mid_cycle.py").write_text("mid = 1\n")
+    repo.index.add(["mid_cycle.py"])
+    repo.index.commit("mid-cycle commit")
+    (tmp_git_repo / "pending.py").write_text("pending = 2\n")
+    repo.index.add(["pending.py"])
+
+    diff = commit_module._working_tree_diff(tmp_git_repo)
+
+    assert "pending.py" in diff
+    assert "mid_cycle.py" not in diff
+
+
 def test_dead_cli_option_helpers_are_not_exposed_by_options_module() -> None:
     """Cleanup should remove the unused option helper decorators entirely."""
     assert not hasattr(options_module, "verbose_option")
