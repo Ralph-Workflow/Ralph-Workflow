@@ -370,6 +370,30 @@ class TestRunCompletionModel:
         model = RunCompletionModel.from_snapshot(snap, exit_trigger="completed")
         assert model.analysis_decisions == ()
 
+    def test_mcp_restart_count_defaults_zero(self) -> None:
+        """RunCompletionModel.mcp_restart_count defaults to zero."""
+        m = RunCompletionModel(final_phase="done", is_failure=False)
+        assert m.mcp_restart_count == 0
+
+    def test_from_snapshot_extracts_mcp_restart_count(self) -> None:
+        """from_snapshot carries mcp_restart_count from snapshot."""
+        snap = MagicMock()
+        snap.phase = "done"
+        snap.is_terminal_failure = False
+        snap.outer_dev_iteration = None
+        snap.total_agent_calls = 0
+        snap.review_issues_found = False
+        snap.last_error = None
+        snap.decision_log = ()
+        snap.last_activity_line = None
+        snap.waiting_status_line = None
+        snap.last_failure_category = None
+        snap.mcp_restart_count = 2
+        snap.budget_progress = {}
+
+        model = RunCompletionModel.from_snapshot(snap, exit_trigger="completed")
+        assert model.mcp_restart_count == 2  # noqa: PLR2004
+
 
 # ---------------------------------------------------------------------------
 # Cross-model consistency

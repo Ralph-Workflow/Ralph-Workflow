@@ -595,3 +595,41 @@ def test_completion_summary_debug_section_absent_when_no_debug_fields() -> None:
     assert "last_activity:" not in out
     assert "waiting:" not in out
     assert "failure_category:" not in out
+
+
+def test_completion_summary_debug_section_shows_mcp_restart_count() -> None:
+    """Debug section surfaces mcp_restart_count when non-zero."""
+    snap = PipelineSnapshot(
+        phase="complete",
+        previous_phase=None,
+        review_issues_found=False,
+        interrupted_by_user=False,
+        last_error=None,
+        pr_url=None,
+        push_count=0,
+        total_agent_calls=1,
+        total_continuations=0,
+        total_fallbacks=0,
+        total_retries=0,
+        workers=(),
+        prompt_path="PROMPT.md",
+        prompt_preview=(),
+        run_id="run-mcp",
+        created_at=datetime(2026, 4, 18, 12, 0, tzinfo=UTC),
+        mcp_restart_count=2,
+    )
+    console = Console(record=True, width=120, force_terminal=False, color_system=None)
+    ctx = make_display_context(console=console)
+    emit_completion_summary(snap, display_context=ctx)
+    out = console.export_text()
+    assert "mcp_restarts: 2" in out
+
+
+def test_completion_summary_debug_section_omits_mcp_restart_count_when_zero() -> None:
+    """Debug section omits mcp_restarts line when count is zero."""
+    snap = _make_snapshot_with_debug()
+    console = Console(record=True, width=120, force_terminal=False, color_system=None)
+    ctx = make_display_context(console=console)
+    emit_completion_summary(snap, display_context=ctx)
+    out = console.export_text()
+    assert "mcp_restarts:" not in out

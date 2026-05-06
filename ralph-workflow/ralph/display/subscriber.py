@@ -135,6 +135,7 @@ class PipelineSubscriber:
         self._analysis_decision: str | None = None
         self._analysis_reason: str | None = None
         self._decision_log: list[tuple[str, str, str, str]] = []
+        self._mcp_restart_count: int = 0
         self._last_state: PipelineState | None = None
 
     @property
@@ -309,6 +310,14 @@ class PipelineSubscriber:
         if snapshot is not None:
             self._publish(snapshot)
 
+    def record_mcp_restart(self, restart_count: int) -> None:
+        """Record the current MCP server restart count and push a fresh snapshot."""
+        with self._lock:
+            self._mcp_restart_count = restart_count
+            snapshot = self._build_snapshot_locked(self._last_state)
+        if snapshot is not None:
+            self._publish(snapshot)
+
     def _record_state_transitions_locked(self, state: PipelineState) -> None:
         prev = self._previous_phase
         cur = state.phase
@@ -438,6 +447,7 @@ class PipelineSubscriber:
             analysis_decision=self._analysis_decision,
             analysis_reason=self._analysis_reason,
             decision_log=tuple(self._decision_log),
+            mcp_restart_count=self._mcp_restart_count,
         )
 
     def _publish(self, snapshot: PipelineSnapshot) -> None:

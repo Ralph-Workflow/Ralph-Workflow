@@ -105,6 +105,8 @@ class PipelineSnapshot:
     # Generic budget progress keyed by policy-declared counter name
     budget_progress: dict[str, BudgetProgress] = field(default_factory=dict)
     outer_dev_iteration: int | None = None  # Computed from budget_progress tracks_budget counter
+    # MCP health observability
+    mcp_restart_count: int = 0
 
 
 def snapshot_from_state(  # noqa: PLR0913
@@ -132,6 +134,7 @@ def snapshot_from_state(  # noqa: PLR0913
     analysis_decision: str | None = None,
     analysis_reason: str | None = None,
     decision_log: tuple[tuple[str, str, str, str], ...] = (),
+    mcp_restart_count: int = 0,
 ) -> PipelineSnapshot:
     """Project PipelineState into an immutable pipeline snapshot."""
     from ralph.pipeline.progress import review_issues_found as _review_issues_found  # noqa: PLC0415
@@ -248,6 +251,7 @@ def snapshot_from_state(  # noqa: PLR0913
             ),
             None,
         ),
+        mcp_restart_count=mcp_restart_count,
     )
 
 

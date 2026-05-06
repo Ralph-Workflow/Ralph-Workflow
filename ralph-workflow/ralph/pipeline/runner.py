@@ -58,6 +58,7 @@ from ralph.mcp.protocol.env import AGENT_LABEL_SCOPE_ENV
 from ralph.mcp.protocol.session import MCP_ENDPOINT_ENV, MCP_RUN_ID_ENV, AgentSession
 from ralph.mcp.server.lifecycle import (
     McpServerError,
+    RestartAwareMcpBridge,
     check_mcp_bridge_health,
     shutdown_mcp_server,
     start_mcp_server,
@@ -2771,7 +2772,7 @@ def _dispatch_waiting_event(
         logger.debug("_dispatch_waiting_event.cloud_progress failed", exc_info=True)
 
 
-def _execute_agent_effect(  # noqa: PLR0911, PLR0913, PLR0915
+def _execute_agent_effect(  # noqa: PLR0911, PLR0912, PLR0913, PLR0915
     effect: InvokeAgentEffect,
     config: UnifiedConfig,
     deps: _AgentExecutionDeps,
@@ -2929,6 +2930,12 @@ def _execute_agent_effect(  # noqa: PLR0911, PLR0913, PLR0915
             rendered_output: list[str] = []
             try:
                 check_mcp_bridge_health(bridge)
+                if (
+                    isinstance(bridge, RestartAwareMcpBridge)
+                    and bridge.restart_count > 0
+                    and _display_subscriber is not None
+                ):
+                    _display_subscriber.record_mcp_restart(bridge.restart_count)
                 options = build_invoke_options_from_config(
                     config.general,
                     verbose=config.general.verbosity >= _VERBOSE_LOG_LEVEL,

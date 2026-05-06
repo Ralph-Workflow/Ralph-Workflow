@@ -228,10 +228,11 @@ class RunCompletionModel:
     budget_progress: dict[str, tuple[int, int]] = field(default_factory=dict)
     # Analysis decision trace: (phase, decision, reason) for analysis phases
     analysis_decisions: tuple[tuple[str, str, str], ...] = ()
-    # Debug breadcrumbs: last activity, waiting state, and failure category
+    # Debug breadcrumbs: last activity, waiting state, failure category, and MCP health
     last_activity_line: str | None = None
     waiting_status_line: str | None = None
     last_failure_category: str | None = None
+    mcp_restart_count: int = 0
 
     @classmethod
     def from_snapshot(  # noqa: PLR0913
@@ -274,6 +275,7 @@ class RunCompletionModel:
             last_activity_line=snapshot.last_activity_line,
             waiting_status_line=snapshot.waiting_status_line,
             last_failure_category=snapshot.last_failure_category,
+            mcp_restart_count=snapshot.mcp_restart_count,
         )
 
 

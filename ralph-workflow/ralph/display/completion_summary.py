@@ -126,7 +126,6 @@ def _verification_line(workspace_root: Path | None) -> str:
 
 
 def _debug_breadcrumb_lines(snapshot: PipelineSnapshot) -> list[str]:
-    """Return debug breadcrumb lines for last activity, waiting status, and failure category."""
     lines = []
     if snapshot.last_activity_line:
         lines.append(f"last_activity: {snapshot.last_activity_line}")
@@ -134,6 +133,8 @@ def _debug_breadcrumb_lines(snapshot: PipelineSnapshot) -> list[str]:
         lines.append(f"waiting: {snapshot.waiting_status_line}")
     if snapshot.last_failure_category:
         lines.append(f"failure_category: {snapshot.last_failure_category}")
+    if snapshot.mcp_restart_count > 0:
+        lines.append(f"mcp_restarts: {snapshot.mcp_restart_count}")
     return lines
 
 
