@@ -23,7 +23,9 @@ from ralph.display.context import DisplayContext, make_display_context
 from ralph.display.theme import RALPH_THEME
 from ralph.mcp.artifacts.commit_message import write_commit_message_artifact
 from ralph.mcp.protocol.session import AgentSession
+from ralph.mcp.session_plan import build_session_mcp_plan
 from ralph.mcp.tools.bridge import build_ralph_tool_registry
+from ralph.policy.models import AgentChainConfig, AgentDrainConfig, AgentsPolicy
 from ralph.workspace.fs import FsWorkspace
 from ralph.workspace.scope import WorkspaceScope
 
@@ -230,6 +232,52 @@ def test_generate_commit_stages_working_tree_changes_when_nothing_is_staged(
     output = stream.getvalue()
     assert "Created commit" in output
     assert "No staged changes to commit" not in output
+
+
+def test_working_tree_diff_excludes_mid_cycle_committed_files(tmp_git_repo: Path) -> None:
+    """_working_tree_diff must exclude files committed in earlier mid-cycle commits.
+
+    The standalone commit plumbing must use HEAD-only diff semantics so that
+    files committed during an earlier dev iteration do not appear in the prompt
+    sent to the commit agent.
+    """
+    from git import Repo  # noqa: PLC0415
+
+    repo = Repo(tmp_git_repo)
+    (tmp_git_repo / "mid_cycle.py").write_text("mid = 1\n")
+    repo.index.add(["mid_cycle.py"])
+    repo.index.commit("mid-cycle commit")
+    (tmp_git_repo / "pending.py").write_text("pending = 2\n")
+    repo.index.add(["pending.py"])
+
+    diff = commit_module._working_tree_diff(tmp_git_repo)
+
+    assert "pending.py" in diff
+    assert "mid_cycle.py" not in diff
+
+
+def test_commit_bridge_session_plan_grants_write_ephemeral(tmp_path: Path) -> None:
+    """The MCP session built for commit plumbing must expose workspace.write_ephemeral.
+
+    Commit prompts instruct the agent to fall back to write_file when
+    artifact.submit is unavailable. That fallback only works if the commit
+    session grants workspace.write_ephemeral so the MCP server allows the
+    write_file tool call to .agent/tmp/commit_message.json.
+    """
+    agents_policy = AgentsPolicy(
+        agent_chains={"commit_chain": AgentChainConfig(agents=["claude"])},
+        agent_drains={"commit": AgentDrainConfig(chain="commit_chain", drain_class="commit")},
+    )
+    plan = build_session_mcp_plan(
+        transport=None,
+        drain="commit",
+        workspace_path=tmp_path,
+        agents_policy=agents_policy,
+    )
+
+    assert "workspace.write_ephemeral" in plan.capabilities
+    assert "workspace.write_tracked" not in plan.capabilities
+    assert "git.write" not in plan.capabilities
 
 
 def test_dead_cli_option_helpers_are_not_exposed_by_options_module() -> None:

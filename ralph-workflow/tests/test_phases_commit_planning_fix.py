@@ -6,7 +6,10 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from ralph.mcp.artifacts.commit_message import COMMIT_MESSAGE_ARTIFACT
+from ralph.mcp.artifacts.commit_message import (
+    COMMIT_MESSAGE_ARTIFACT,
+    write_commit_message_artifact,
+)
 from ralph.phases import (
     HANDLERS,
     PhaseContext,
@@ -213,6 +216,44 @@ def test_review_commit_missing_commit_message_emits_retry_in_session(
     assert event.phase == "review_commit"
     assert event.recoverable is True
     assert event.retry_in_session is True
+
+
+def test_development_commit_emits_skip_when_agent_submits_skip_artifact(
+    tmp_git_repo: Path,
+) -> None:
+    """When the agent submits a skip artifact, handle_commit_phase must return COMMIT_SKIPPED.
+
+    This prevents the runner from creating a git commit whose subject is literally
+    'SKIP: reason' — the skip response must be honoured at the phase-handler layer.
+    """
+    (tmp_git_repo / "dirty.py").write_text("untracked_only = True\n")
+    ctx = _fs_context(tmp_git_repo)  # worktree is dirty (untracked file)
+    write_commit_message_artifact(tmp_git_repo, {"type": "skip", "reason": "no diff available"})
+    effect = InvokeAgentEffect(
+        agent_name="dev",
+        phase="development_commit",
+        prompt_file="dev-plan.txt",
+    )
+
+    result = handle_commit_phase(effect, ctx)
+    assert result == [PipelineEvent.COMMIT_SKIPPED]
+
+
+def test_review_commit_emits_skip_when_agent_submits_skip_artifact(
+    tmp_git_repo: Path,
+) -> None:
+    """Same as above but for a review-role commit phase."""
+    (tmp_git_repo / "dirty.py").write_text("untracked_only = True\n")
+    ctx = _fs_context(tmp_git_repo)
+    write_commit_message_artifact(tmp_git_repo, {"type": "skip", "reason": "no pending changes"})
+    effect = InvokeAgentEffect(
+        agent_name="review",
+        phase="review_commit",
+        prompt_file="review-plan.txt",
+    )
+
+    result = handle_commit_phase(effect, ctx)
+    assert result == [PipelineEvent.COMMIT_SKIPPED]
 
 
 def test_handle_commit_delegates_based_on_phase() -> None:

@@ -157,6 +157,18 @@ class ExitFailureEffect:
 
 
 @dataclass(frozen=True)
+class EarlySkipCommitEffect:
+    """Effect to skip a commit phase before prompt materialization or agent invocation.
+
+    Emitted by the orchestrator when the worktree has no pending work so the
+    commit phase can advance via COMMIT_SKIPPED without creating a commit prompt
+    or invoking a commit agent.
+    """
+
+    pass
+
+
+@dataclass(frozen=True)
 class FanOutEffect:
     """Effect to fan out parallel work for any phase whose [parallelization] policy is declared.
 
@@ -198,6 +210,7 @@ Effect = (
     InvokeAgentEffect
     | PreparePromptEffect
     | CommitEffect
+    | EarlySkipCommitEffect
     | PushEffect
     | SaveCheckpointEffect
     | ExitSuccessEffect

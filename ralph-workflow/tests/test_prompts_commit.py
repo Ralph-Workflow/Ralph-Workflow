@@ -51,6 +51,8 @@ def test_commit_prompt_includes_diff_and_guidance() -> None:
     assert "bad: chore: update files" in prompt.lower()
     assert "bad: fix: stuff" in prompt.lower()
     assert "most commits need a body" in prompt.lower()
+    assert "changes not yet committed" in prompt.lower()
+    assert "current worktree vs the last commit" in prompt.lower()
 
 
 def test_commit_prompt_rejects_empty_diff() -> None:

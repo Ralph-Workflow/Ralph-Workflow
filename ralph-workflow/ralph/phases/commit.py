@@ -14,13 +14,14 @@ for all commit-role phases declared in the active pipeline policy.
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from git import InvalidGitRepositoryError
 from loguru import logger
 
 from ralph.git.operations import GitOperationError, has_uncommitted_changes
-from ralph.mcp.artifacts.commit_message import COMMIT_MESSAGE_ARTIFACT
+from ralph.mcp.artifacts.commit_message import COMMIT_MESSAGE_ARTIFACT, read_commit_message_artifact
 from ralph.pipeline.effects import Effect, InvokeAgentEffect
 from ralph.pipeline.events import PhaseFailureEvent, PipelineEvent
 
@@ -49,6 +50,19 @@ def _has_no_diff(ctx: PhaseContext) -> bool:
         GitOperationError,
     ):
         return False
+
+
+def _read_commit_message(ctx: PhaseContext) -> str | None:
+    """Read the commit message artifact content from the workspace.
+
+    Returns None when the artifact is absent, the workspace does not support
+    absolute paths (e.g., mock), or the artifact is unreadable.
+    """
+    try:
+        root = ctx.workspace.absolute_path(".")
+        return read_commit_message_artifact(Path(root))
+    except Exception:
+        return None
 
 
 def handle_commit_phase(effect: Effect, ctx: PhaseContext) -> list[Event]:
@@ -87,6 +101,14 @@ def handle_commit_phase(effect: Effect, ctx: PhaseContext) -> list[Event]:
                 retry_in_session=True,
             )
         ]
+
+    # Artifact exists — check if the agent submitted a skip response.
+    # Without this guard, a skip artifact would be passed to the runner
+    # and committed verbatim as a "SKIP: ..." git commit subject.
+    message = _read_commit_message(ctx)
+    if message is not None and message.strip().lower().startswith("skip:"):
+        logger.info("{}: commit agent requested skip — skipping", phase_name)
+        return [PipelineEvent.COMMIT_SKIPPED]
 
     logger.info("{}: deferring commit execution to runner", phase_name)
     return []
