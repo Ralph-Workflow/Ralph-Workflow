@@ -32,6 +32,7 @@ from ralph.phases import HANDLERS, PhaseContext, handle_phase
 from ralph.pipeline import runner as runner_module
 from ralph.pipeline.effects import (
     CommitEffect,
+    EarlySkipCommitEffect,
     Effect,
     ExitFailureEffect,
     ExitSuccessEffect,
@@ -2066,6 +2067,109 @@ def test_determine_effect_commits_after_agent_invoked(
     assert isinstance(effect, CommitEffect)
     assert str(tmp_path) in effect.message_file
     assert "commit_message.json" in effect.message_file
+
+
+def test_determine_effect_early_skips_commit_when_worktree_is_clean(
+    tmp_git_repo: Path,
+) -> None:
+    policy_bundle = MagicMock()
+    phase_def = MagicMock()
+    phase_def.role = "commit"
+    phase_def.drain = "development_commit"
+    policy_bundle.pipeline.phases.get.return_value = phase_def
+
+    state = PipelineState(phase="development_commit", commit=CommitState(agent_invoked=False))
+    workspace_scope = WorkspaceScope(root=tmp_git_repo, allowed_roots=[tmp_git_repo])
+    config = _config_with_agents(
+        agent_chains={"commit_chain": ["commit-agent"]},
+        agent_drains={"development_commit": "commit_chain"},
+    )
+
+    effect = runner_module._determine_effect_from_policy(
+        state,
+        policy_bundle,
+        workspace_scope,
+        config=config,
+    )
+
+    assert isinstance(effect, EarlySkipCommitEffect)
+
+
+def test_determine_effect_does_not_early_skip_commit_when_worktree_is_dirty(
+    tmp_git_repo: Path,
+) -> None:
+    (tmp_git_repo / "dirty.py").write_text("dirty = True\n")
+    policy_bundle = MagicMock()
+    phase_def = MagicMock()
+    phase_def.role = "commit"
+    phase_def.drain = "development_commit"
+    policy_bundle.pipeline.phases.get.return_value = phase_def
+
+    state = PipelineState(phase="development_commit", commit=CommitState(agent_invoked=False))
+    workspace_scope = WorkspaceScope(root=tmp_git_repo, allowed_roots=[tmp_git_repo])
+    config = _config_with_agents(
+        agent_chains={"commit_chain": ["commit-agent"]},
+        agent_drains={"development_commit": "commit_chain"},
+    )
+
+    effect = runner_module._determine_effect_from_policy(
+        state,
+        policy_bundle,
+        workspace_scope,
+        config=config,
+    )
+
+    assert isinstance(effect, InvokeAgentEffect)
+
+
+def test_determine_effect_does_not_early_skip_after_agent_already_invoked(
+    tmp_git_repo: Path,
+) -> None:
+    policy_bundle = MagicMock()
+    phase_def = MagicMock()
+    phase_def.role = "commit"
+    policy_bundle.pipeline.phases.get.return_value = phase_def
+
+    # agent_invoked=True: commit message was already produced, proceed to CommitEffect
+    state = PipelineState(phase="development_commit", commit=CommitState(agent_invoked=True))
+    workspace_scope = WorkspaceScope(root=tmp_git_repo, allowed_roots=[tmp_git_repo])
+
+    effect = runner_module._determine_effect_from_policy(state, policy_bundle, workspace_scope)
+
+    assert isinstance(effect, CommitEffect)
+
+
+class TestEarlySkipCommitEffectExecution:
+    def test_execute_returns_commit_skipped(self, tmp_path: Path, monkeypatch) -> None:
+        monkeypatch.setattr(runner_module, "_cleanup_commit_message_artifacts", lambda _root: None)
+        config = MagicMock()
+        workspace_scope = WorkspaceScope(root=tmp_path, allowed_roots=[tmp_path])
+
+        result = runner_module._execute_effect(
+            EarlySkipCommitEffect(),
+            config,
+            workspace_scope,
+        )
+
+        assert result == PipelineEvent.COMMIT_SKIPPED
+
+    def test_execute_cleans_up_stale_commit_artifacts(self, tmp_path: Path, monkeypatch) -> None:
+        cleaned: list[Path] = []
+        monkeypatch.setattr(
+            runner_module,
+            "_cleanup_commit_message_artifacts",
+            cleaned.append,
+        )
+        config = MagicMock()
+        workspace_scope = WorkspaceScope(root=tmp_path, allowed_roots=[tmp_path])
+
+        runner_module._execute_effect(
+            EarlySkipCommitEffect(),
+            config,
+            workspace_scope,
+        )
+
+        assert cleaned == [tmp_path]
 
 
 class TestPhaseEventAfterAgentRun:

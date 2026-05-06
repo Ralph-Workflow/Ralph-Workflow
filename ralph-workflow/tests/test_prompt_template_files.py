@@ -41,7 +41,6 @@ def test_legacy_prompt_families_have_file_backed_jinja_templates() -> None:
         "developer_iteration.jinja",
         "developer_iteration_continuation.jinja",
         "development_analysis.jinja",
-        "development_commit_message.jinja",
         "fix_mode.jinja",
         "planning.jinja",
         "planning_edit.jinja",
@@ -83,7 +82,7 @@ def test_default_artifacts_policy_references_file_backed_templates() -> None:
     assert 'prompt_template = "planning.jinja"' in artifacts_toml
     assert 'prompt_template = "planning_analysis.jinja"' in artifacts_toml
     assert 'prompt_template = "development_analysis.jinja"' in artifacts_toml
-    assert 'prompt_template = "development_commit_message.jinja"' in artifacts_toml
+    assert 'prompt_template = "commit_message.jinja"' in artifacts_toml
     assert 'prompt_template = ""' not in artifacts_toml
 
 

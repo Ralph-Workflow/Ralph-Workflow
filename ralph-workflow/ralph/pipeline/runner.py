@@ -69,6 +69,7 @@ from ralph.pipeline.cycle_baseline import (
 )
 from ralph.pipeline.effects import (
     CommitEffect,
+    EarlySkipCommitEffect,
     Effect,
     ExitFailureEffect,
     ExitSuccessEffect,
@@ -2322,6 +2323,11 @@ def _commit_phase_effect(
 ) -> Effect:
     if state.commit.agent_invoked:
         return _commit_effect(workspace_scope.root)
+    # Early skip: if the worktree is clean before the agent is invoked, skip the
+    # commit phase entirely — no prompt materialization, no agent invocation.
+    if _should_early_skip_commit(workspace_scope.root):
+        _cleanup_commit_message_artifacts(workspace_scope.root)
+        return EarlySkipCommitEffect()
     agent_name = _agent_name_for_phase_from_policy(state, policy_bundle, config=config)
     if agent_name is None:
         return ExitFailureEffect(reason=f"No agent configured for commit phase '{state.phase}'")
@@ -2710,6 +2716,10 @@ def _execute_effect(  # noqa: PLR0913
             display,
             verbosity=verbosity,
         )
+    if isinstance(effect, EarlySkipCommitEffect):
+        logger.info("Skipping commit early: worktree is clean")
+        _cleanup_commit_message_artifacts(workspace_scope.root)
+        return PipelineEvent.COMMIT_SKIPPED
     if isinstance(effect, SaveCheckpointEffect):
         return PipelineEvent.CHECKPOINT_SAVED
 
@@ -3235,6 +3245,18 @@ def _repo_has_commit_work(repo_root: Path) -> bool:
 
 def _cleanup_commit_message_artifacts(repo_root: Path) -> None:
     delete_commit_message_artifacts(repo_root)
+
+
+def _should_early_skip_commit(workspace_root: Path) -> bool:
+    """Return True iff the worktree is clean and the commit phase should be skipped early.
+
+    Fails open (returns False) when git state cannot be inspected so the pipeline
+    falls back to the late-skip guard in _execute_commit_effect().
+    """
+    try:
+        return not _repo_has_commit_work(workspace_root)
+    except Exception:
+        return False
 
 
 def _subscriber_for_display(
