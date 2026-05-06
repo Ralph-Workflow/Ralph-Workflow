@@ -79,3 +79,19 @@ segment-delimited prefix `agent:<scope>:<unit_id>:` rather than a bare unit id.
 `get_process_manager()` registers an `atexit` hook on first call that calls
 `shutdown_all(grace_period_s=0.5)`. This is a last-resort net for crash/abort
 scenarios — always prefer explicit `shutdown_all` or `process_phase_scope`.
+
+## MCP server monitoring and restart
+
+The MCP server is a subprocess managed by ProcessManager like any other child.
+Restart logic lives in `ralph.mcp.server.lifecycle.RestartAwareMcpBridge`, which:
+
+1. Checks `process.poll()` before each agent attempt to detect unexpected exits.
+2. On exit, calls `ProcessManager.terminate()` on the stale process, then spawns a
+   new one via `ProcessManager.spawn()` with fresh preflight validation.
+3. Tracks a bounded restart budget (`McpRestartPolicy.max_restarts = 3` by default)
+   and raises `McpServerError` once exhausted so the pipeline gets a crisp failure.
+
+ProcessManager remains the **only** process spawner and terminator; the bridge
+consumes the manager's APIs and never holds raw `Popen` handles outside them.
+Listeners registered via `ProcessManager.register_listener` receive events for
+MCP server spawns and terminations the same as for any other child process.

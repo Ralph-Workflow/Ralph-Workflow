@@ -253,6 +253,18 @@ Any MCP code that is proven unused during feature work must be either:
 
 Do not leave "reserved for later" MCP scaffolding behind. If in doubt, remove it — it can be restored from git if needed later.
 
+## MCP server lifecycle contract
+
+When working on `ralph/mcp/server/` or `ralph/pipeline/runner.py`, preserve these invariants:
+
+1. **`RestartAwareMcpBridge` is the only restart mechanism.** MCP servers must not be restarted by calling `start_mcp_server()` again from arbitrary callsites. All restart logic lives inside `RestartAwareMcpBridge._restart_fn()`, which is closed at bridge creation time.
+2. **Preflight runs on every spawn.** `_spawn_mcp_process()` calls `deps.preflight()` before returning the new `StandaloneMcpProcess`, whether on initial startup or after a crash restart. Any preflight failure aborts the restart and propagates the error.
+3. **Budget exhaustion raises `McpServerError`.** When `RestartAwareMcpBridge._restart_count` reaches `McpRestartPolicy.max_restarts`, `check_health_and_restart_if_needed()` raises `McpServerError(restart_count=n)` instead of attempting another spawn.
+4. **`check_mcp_bridge_health` is called per retry attempt.** In `runner.py`, the health check must execute at the top of every retry loop iteration so crashed servers are detected before the agent is invoked, not after.
+5. **`ProcessManager` owns all process spawning.** Every subprocess — MCP server or AI agent — must be registered with `ProcessManager`. Do not call `subprocess.Popen` or similar outside `ProcessManager`.
+
+If you change any of these, update tests and docs together.
+
 ## Recovery architecture contract
 
 Recovery, failure classification, retry counting, and chain fallover each have a single conceptual owner in `ralph/recovery/`. Extend the owner, do not add handlers at call sites. New failure modes are added by extending the `FailureClassifier` in `ralph/recovery/classifier.py`, not by sprinkling classification logic at invoke sites.

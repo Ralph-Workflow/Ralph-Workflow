@@ -320,3 +320,97 @@ def test_standalone_mcp_process_shutdown_removes_session_file_even_if_process_ex
     bridge.shutdown()
 
     assert session_file.exists() is False
+
+
+def test_start_mcp_server_restart_fn_runs_preflight(tmp_path: Path) -> None:
+    """Restart function from start_mcp_server re-runs preflight on each restart."""
+    preflight_calls: list[str] = []
+    spawn_call_count = [0]
+
+    def fake_reserve_port() -> int:
+        return 43200 + spawn_call_count[0]
+
+    def fake_create_session_file(root: Path, session: object) -> Path:
+        del root, session
+        path = tmp_path / f"session-{spawn_call_count[0]}.json"
+        path.write_text("{}", encoding="utf-8")
+        return path
+
+    def fake_subprocess_env(session_file: Path) -> dict[str, str]:
+        return {"RALPH_MCP_SESSION_FILE": str(session_file)}
+
+    def fake_spawn(
+        command: list[str], cwd: Path, env: dict[str, str], *, phase: str | None = None
+    ) -> FakeProcess:
+        del command, cwd, env, phase
+        spawn_call_count[0] += 1
+        return FakeProcess(poll_result=1 if spawn_call_count[0] == 1 else None)
+
+    def fake_preflight(endpoint: str, required_tools: list[str], timeout: object) -> None:
+        preflight_calls.append(endpoint)
+
+    deps = lifecycle.LifecycleDeps(
+        reserve_port=fake_reserve_port,
+        create_session_file=fake_create_session_file,
+        subprocess_env=fake_subprocess_env,
+        spawn_process=fake_spawn,
+        preflight=fake_preflight,
+        preflight_timeout=lambda: timedelta(seconds=5),
+    )
+
+    session = AgentSession(
+        session_id="restart-preflight-test",
+        run_id="run-restart-preflight",
+        drain="planning",
+        capabilities={"WorkspaceRead"},
+    )
+    workspace = lifecycle.FsWorkspace(tmp_path)
+
+    bridge = lifecycle.start_mcp_server(session, workspace, deps=deps)
+    assert len(preflight_calls) == 1, "preflight runs once at initial spawn"
+
+    # Trigger a restart: process is dead (poll_result=1), so health check restarts
+    bridge.check_health_and_restart_if_needed()
+    assert len(preflight_calls) == 2, "preflight runs again after restart"  # noqa: PLR2004
+    assert spawn_call_count[0] == 2, "spawn called twice (initial + restart)"  # noqa: PLR2004
+
+
+def test_restart_aware_bridge_process_dying_after_initial_preflight(tmp_path: Path) -> None:
+    """Simulates process dying after initial preflight; bridge detects and restarts."""
+    # Start with a process that is alive (poll=None)
+    initial_process = FakeProcess(poll_result=None)
+    session_file = tmp_path / "session.json"
+    session_file.write_text("{}", encoding="utf-8")
+    inner = lifecycle.StandaloneMcpProcess(
+        endpoint="http://127.0.0.1:9010/mcp",
+        process=initial_process,
+        session_file=session_file,
+    )
+    restarted_process = FakeProcess(poll_result=None)
+    restarted_session = tmp_path / "restarted-session.json"
+    restarted_session.write_text("{}", encoding="utf-8")
+    restarted = lifecycle.StandaloneMcpProcess(
+        endpoint="http://127.0.0.1:9011/mcp",
+        process=restarted_process,
+        session_file=restarted_session,
+    )
+
+    bridge = lifecycle.RestartAwareMcpBridge(
+        inner,
+        restart_fn=lambda: restarted,
+        restart_policy=lifecycle.McpRestartPolicy(max_restarts=3),
+    )
+
+    # Process is alive — health check returns False
+    result = bridge.check_health_and_restart_if_needed()
+    assert result is False
+    assert bridge.restart_count == 0
+
+    # Now simulate process crash (as if it died after initial preflight)
+    initial_process._poll_result = 1
+
+    result = bridge.check_health_and_restart_if_needed()
+    assert result is True
+    assert bridge.restart_count == 1
+    # Bridge now uses the restarted process
+    assert bridge.agent_endpoint_uri() == "http://127.0.0.1:9011/mcp"

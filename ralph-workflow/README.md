@@ -383,6 +383,17 @@ When a client connects without declaring multimodal support, `read_image` is **n
 
 Clients that declare `capabilities.image`, `capabilities.media`, or `capabilities.multimodal` in the `initialize` request will see `read_image` in `tools/list` when `media.enabled = true`.
 
+## MCP server robustness
+
+Ralph Workflow runs external MCP servers (declared in `mcp.toml`) as subprocesses inside `RestartAwareMcpBridge`. Each bridge wraps a `StandaloneMcpProcess` and monitors it for unexpected exits:
+
+- **Preflight on every spawn** — before the bridge becomes active (initial start and each restart), a preflight probe connects to the server's HTTP endpoint and verifies that all required tools are advertised. A missing tool on restart is treated the same as on initial startup and surfaces a hard error.
+- **Bounded auto-restart** — if the subprocess exits unexpectedly during a pipeline run, the bridge restarts it automatically up to `McpRestartPolicy.max_restarts` times (default 3). When the budget is exhausted, `McpServerError` is raised and the pipeline surfaces the restart count so the failure is diagnosable.
+- **Per-attempt health check** — `check_mcp_bridge_health(bridge)` is called at the start of every agent retry attempt in `runner.py`. On a non-bridge type (e.g., tests that inject a stub), the call is a safe no-op.
+- **Display breadcrumb** — when at least one restart has occurred, the restart count is forwarded to `PipelineSubscriber.record_mcp_restart()` and surfaced in the debug output at run completion.
+
+All process spawning for both MCP servers and AI agents flows through `ProcessManager` in `ralph/process/`. Do not spawn subprocesses outside this class.
+
 ## Claude/CCS MCP safety note
 
 Claude-compatible transports such as `claude` and `ccs` run through a stricter MCP path. Ralph Workflow still uses `--mcp-config` plus `--strict-mcp-config`, but it only emits `--tools ""` / `--allowedTools ...` when live MCP tool discovery succeeds with a non-empty allowlist. That avoids a brittle edge case in non-interactive Claude/CCS runs where empty-tool configurations and MCP bootstrapping can produce misleadingly successful no-op executions.

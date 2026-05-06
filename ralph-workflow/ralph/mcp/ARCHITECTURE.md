@@ -76,8 +76,27 @@ The standalone `ralph-mcp` runtime (not changed in this reorganization).
 |------|---------|
 | `runtime.py` | Server runtime (`build_standalone_http_server`, `build_fastmcp_server`) |
 | `factory.py` / `factory_impl.py` | Server factory |
-| `lifecycle.py` | Server lifecycle; spawns the standalone process via `ProcessManager` |
+| `lifecycle.py` | Server lifecycle; spawns the standalone process via `ProcessManager`; owns the `RestartAwareMcpBridge` restart policy |
 | `__main__.py` | Entry point |
+
+#### MCP server restart contract
+
+`start_mcp_server(...)` returns a `RestartAwareMcpBridge` that wraps the live process and session.
+The bridge monitors liveness by calling `process.poll()` before each agent attempt; if the process
+has exited, it restarts via `_spawn_mcp_process` (which re-runs full preflight) up to
+`McpRestartPolicy.max_restarts` times (default: 3). Once the budget is exhausted it raises
+`McpServerError` so the caller can surface a precise MCP-specific failure rather than an opaque
+agent error.
+
+All process spawning and termination during restart routes through `ProcessManager` as normal;
+the bridge never holds a raw `Popen` handle outside that boundary.
+
+Key guarantees:
+
+- Restart is only reported successful after a full preflight re-validates endpoint tool reachability.
+- The bridge endpoint URI may change after a restart (new port); callers must re-read
+  `bridge.agent_endpoint_uri()` after each health check.
+- `check_mcp_bridge_health(bridge)` is a safe no-op on any non-`RestartAwareMcpBridge` object.
 
 **Canonical import path:** `from ralph.mcp.server import ...` or `from ralph.mcp.server.<module> import ...`
 

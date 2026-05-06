@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import pytest
 from pydantic import ValidationError
@@ -485,3 +485,153 @@ def test_bridge_shared_across_retry_attempts(
 
     assert len(bridge_start_calls) == 1, "bridge must be started only once"
     assert len(invoke_calls) == 2, "agent must be invoked twice (retry)"  # noqa: PLR2004
+
+
+def test_check_mcp_bridge_health_called_per_retry_attempt(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """check_mcp_bridge_health is called once per attempt (not just once at start)."""
+    config = _make_config(300.0)
+    effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="dev.md")
+
+    health_check_calls: list[int] = []
+    invoke_attempt = 0
+
+    class FakeBridge:
+        def shutdown(self) -> None:
+            return
+
+        def agent_endpoint_uri(self) -> str:
+            return "http://127.0.0.1:9999/mcp"
+
+    def fake_start_mcp_server(*_args: object, **_kwargs: object) -> FakeBridge:
+        return FakeBridge()
+
+    def fake_shutdown_mcp_server(_bridge: object) -> None:
+        return
+
+    def fake_materialize_system_prompt(*, workspace_root: Path, name: str) -> str:
+        del workspace_root, name
+        return str(tmp_path / "SYSTEM_PROMPT.md")
+
+    def fake_check_mcp_bridge_health(_bridge: object) -> None:
+        health_check_calls.append(1)
+
+    def fake_invoke_agent(
+        cfg: AgentConfig, prompt_file: str, *, options: object = None
+    ) -> list[str]:
+        nonlocal invoke_attempt
+        invoke_attempt += 1
+        if invoke_attempt == 1:
+            raise RuntimeError("timeout on attempt 1")
+        return []
+
+    monkeypatch.setattr(runner_module, "start_mcp_server", fake_start_mcp_server)
+    monkeypatch.setattr(runner_module, "shutdown_mcp_server", fake_shutdown_mcp_server)
+    monkeypatch.setattr(runner_module, "materialize_system_prompt", fake_materialize_system_prompt)
+    monkeypatch.setattr(runner_module, "check_mcp_bridge_health", fake_check_mcp_bridge_health)
+
+    deps = runner_module._AgentExecutionDeps(
+        invoke_agent=fake_invoke_agent,
+        agent_invocation_error=RuntimeError,
+        agent_registry=_registry_factory(config),
+    )
+
+    runner_module._execute_agent_effect(
+        effect, config, deps, WorkspaceScope(tmp_path), display_context=make_display_context()
+    )
+
+    assert len(health_check_calls) == 2, (  # noqa: PLR2004
+        "health check must fire on each attempt; got "
+        f"{len(health_check_calls)} call(s)"
+    )
+
+
+def test_record_mcp_restart_forwarded_to_subscriber(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """When bridge.restart_count > 0, record_mcp_restart is called on the display subscriber."""
+    import pathlib  # noqa: PLC0415
+    import tempfile  # noqa: PLC0415
+
+    from ralph.mcp.server.lifecycle import (  # noqa: PLC0415
+        McpRestartPolicy,
+        ProcessLike,
+        RestartAwareMcpBridge,
+        StandaloneMcpProcess,
+    )
+
+    config = _make_config(300.0)
+    effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="dev.md")
+
+    # Build a RestartAwareMcpBridge that already has a restart
+    td = pathlib.Path(tempfile.mkdtemp())
+    sf = td / "session.json"
+    sf.write_text("{}", encoding="utf-8")
+
+    class _FakePopen:
+        def poll(self) -> int | None:
+            return None
+
+        def terminate(self, grace_period_s: float = 5.0) -> None:
+            return
+
+        def wait(self, timeout: object = None) -> int:
+            return 0
+
+        def kill(self) -> None:
+            return
+
+        @property
+        def pid(self) -> int:
+            return 1
+
+    inner = StandaloneMcpProcess(
+        endpoint="http://127.0.0.1:9888/mcp",
+        process=cast("ProcessLike", _FakePopen()),
+        session_file=sf,
+    )
+    bridge = RestartAwareMcpBridge(
+        inner,
+        restart_fn=lambda: inner,
+        restart_policy=McpRestartPolicy(max_restarts=3),
+    )
+    # Manually advance restart count to 1 without the restart loop
+    bridge._restart_count = 1
+
+    def fake_start_mcp_server(*_args: object, **_kwargs: object) -> RestartAwareMcpBridge:
+        return bridge
+
+    def fake_shutdown_mcp_server(_bridge: object) -> None:
+        return
+
+    def fake_materialize_system_prompt(*, workspace_root: Path, name: str) -> str:
+        del workspace_root, name
+        return str(tmp_path / "SYSTEM_PROMPT.md")
+
+    recorded: list[int] = []
+
+    class FakeSubscriber:
+        def record_mcp_restart(self, restart_count: int) -> None:
+            recorded.append(restart_count)
+
+    monkeypatch.setattr(runner_module, "start_mcp_server", fake_start_mcp_server)
+    monkeypatch.setattr(runner_module, "shutdown_mcp_server", fake_shutdown_mcp_server)
+    monkeypatch.setattr(runner_module, "materialize_system_prompt", fake_materialize_system_prompt)
+    monkeypatch.setattr(
+        runner_module, "_subscriber_for_display", lambda _: FakeSubscriber()
+    )
+
+    deps = runner_module._AgentExecutionDeps(
+        invoke_agent=lambda *_a, **_kw: [],
+        agent_invocation_error=RuntimeError,
+        agent_registry=_registry_factory(config),
+    )
+
+    runner_module._execute_agent_effect(
+        effect, config, deps, WorkspaceScope(tmp_path), display_context=make_display_context()
+    )
+
+    assert recorded == [1], (
+        f"expected record_mcp_restart([1]); got {recorded}"
+    )
