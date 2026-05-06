@@ -1758,6 +1758,47 @@ class TestCheckProcessResultWaitsForLiveChildren:
             f"Expected >2 probe calls proving descendant wait engaged; got {probe.call_count}"
         )
 
+    def test_artifact_present_at_exit_with_live_children_is_terminal(
+        self, tmp_path: Path
+    ) -> None:
+        """Artifact already present at exit time is TERMINAL_COMPLETE even with live children.
+
+        Regression for wt-97: an agent that exits rc=0 with children still alive must not
+        be retried when the required artifact is already on disk at exit time.
+        signals.required_artifact_present=True takes priority over live-child evidence.
+        """
+        artifact_path = tmp_path / ".agent" / "artifacts" / "development_result.json"
+        artifact_path.parent.mkdir(parents=True, exist_ok=True)
+        artifact_path.write_text('{"summary": "done"}')
+
+        strategy = OpenCodeExecutionStrategy()
+        handle = _FakeHandle(returncode=0, has_descendants=True)
+        probe = FakeLivenessProbe(active=True)  # children still running
+
+        _check_process_result(
+            cast("ManagedProcess", handle),
+            "opencode",
+            [],
+            _CompletionCheckOptions(
+                execution_strategy=strategy,
+                workspace_path=tmp_path,
+                liveness_probe=probe,
+                required_artifact=RequiredArtifact(
+                    phase="development",
+                    artifact_type="development_result",
+                    json_path=".agent/artifacts/development_result.json",
+                    markdown_path=None,
+                    normalizer=None,
+                ),
+                policy=TimeoutPolicy(
+                    idle_timeout_seconds=None,
+                    parent_exit_grace_seconds=0.0,
+                    descendant_wait_timeout_seconds=0.0,
+                ),
+            ),
+        )
+        # No exception raised: artifact present → TERMINAL_COMPLETE despite live children
+
 
 # ---------------------------------------------------------------------------
 # (wt-97) Stale scoped child evidence must not defer timeout via raw descendants
