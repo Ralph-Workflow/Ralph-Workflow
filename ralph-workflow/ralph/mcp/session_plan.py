@@ -24,7 +24,10 @@ _CAPABILITY_PRESETS: dict[str, frozenset[str]] = {
     "planning": frozenset(),
     "review": frozenset({"run.report_progress"}),
     "analysis": frozenset({"process.exec_bounded", "run.report_progress"}),
-    "commit": frozenset({"run.report_progress"}),
+    # workspace.write_ephemeral allows the write_file fallback path when
+    # artifact.submit is unavailable; it only permits writes to non-tracked
+    # files (.agent/tmp/commit_message.json), not codebase files.
+    "commit": frozenset({"run.report_progress", "workspace.write_ephemeral"}),
 }
 
 if TYPE_CHECKING:

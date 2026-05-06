@@ -282,7 +282,14 @@ class TestWorkspaceEditAndDeleteGrantedToDevAndFixDrains:
 
 
 class TestCommitDrainIsStrictlyReadOnly:
-    """Commit drains must be strictly read-only; git.write is reserved to the orchestrator."""
+    """Commit drains must not be able to modify git-tracked files or run processes.
+
+    workspace.write_ephemeral is intentionally granted so the commit agent can
+    use the write_file fallback path (.agent/tmp/commit_message.json) when
+    artifact.submit is unavailable. Only non-tracked ephemeral files may be
+    written; git.write and workspace.write_tracked remain reserved for the
+    orchestrator.
+    """
 
     @pytest.fixture
     def commit_drain_workspace(self, tmp_path: Path, isolated_home: Path) -> Path:
@@ -305,7 +312,7 @@ enabled = true
         "drain",
         ["development_commit", "review_commit", "commit"],
     )
-    def test_commit_drain_does_not_grant_write_capabilities(
+    def test_commit_drain_does_not_grant_git_write_or_exec(
         self,
         commit_drain_workspace: Path,
         drain: str,
@@ -318,12 +325,34 @@ enabled = true
         )
 
         assert "git.write" not in plan.capabilities
-        assert "workspace.write_ephemeral" not in plan.capabilities
         assert "workspace.write_tracked" not in plan.capabilities
         assert "process.exec_bounded" not in plan.capabilities
         assert "upstream.tool_use" not in plan.capabilities
         assert "web.visit" not in plan.capabilities
         assert "web.search" not in plan.capabilities
+
+    @pytest.mark.parametrize(
+        "drain",
+        ["development_commit", "review_commit", "commit"],
+    )
+    def test_commit_drain_grants_write_ephemeral_for_artifact_fallback(
+        self,
+        commit_drain_workspace: Path,
+        drain: str,
+    ) -> None:
+        """Commit sessions need workspace.write_ephemeral so the agent can write
+        the commit payload to .agent/tmp/commit_message.json when artifact.submit
+        is unavailable. This is the write_file fallback promised by commit prompts.
+        """
+        plan = build_session_mcp_plan(
+            transport=AgentTransport.CLAUDE,
+            drain=drain,
+            workspace_path=commit_drain_workspace,
+            agents_policy=_default_agents_policy(commit_drain_workspace),
+        )
+
+        assert "workspace.write_ephemeral" in plan.capabilities
+        assert "workspace.write_tracked" not in plan.capabilities
 
     @pytest.mark.parametrize(
         "drain",
