@@ -184,6 +184,7 @@ class _RunEndDisplay(Protocol):
         total_agent_calls: int,
         pr_url: str | None = None,
         exit_trigger: str | None = None,
+        outer_dev_iteration: int | None = None,
     ) -> None: ...
 
 
@@ -1058,7 +1059,7 @@ def _emit_phase_transition_if_changed(
         exit_model = PhaseExitModel.from_entry_model(
             entry,
             elapsed_seconds=elapsed,
-            exit_trigger="completed",
+            exit_trigger="produced" if artifact_outcome else "completed",
             content_blocks=content_blocks,
             thinking_blocks=thinking_blocks,
             tool_calls=tool_calls,
@@ -1494,11 +1495,21 @@ def run(  # noqa: PLR0912, PLR0913, PLR0915
                 with suppress(Exception):
                     total_agent_calls = getattr(state.metrics, "total_agent_calls", 0)  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
                     _exit_trigger = "completed" if exit_code == 0 else "failed"
+                    _outer_dev = next(
+                        (
+                            state.get_outer_progress(bp_name)
+                            for bp_name, bp_cfg in policy_bundle.pipeline.budget_counters.items()
+                            if bp_cfg.tracks_budget
+                            and state.get_outer_progress(bp_name) > 0
+                        ),
+                        None,
+                    )
                     cast("_RunEndDisplay", active_display).emit_run_end(
                         phase=state.phase,
                         total_agent_calls=total_agent_calls,  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
                         pr_url=state.pr_url,
                         exit_trigger=_exit_trigger,
+                        outer_dev_iteration=_outer_dev,
                     )
     finally:
         with suppress(Exception):

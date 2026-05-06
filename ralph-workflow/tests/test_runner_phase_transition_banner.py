@@ -242,3 +242,72 @@ def test_emit_phase_transition_propagates_artifact_outcome_from_display() -> Non
 
     exit_model = captured["exit_model"]
     assert exit_model.artifact_outcome == "plan: 3 step(s), 2 risk(s)"
+
+
+def test_emit_phase_transition_uses_produced_exit_trigger_when_artifact_present() -> None:
+    """When last_phase_artifact_outcome is non-empty, exit_trigger should be 'produced'."""
+    display = _StubDisplay()
+    display.last_phase_artifact_outcome = "plan: 5 step(s), 2 risk(s)"
+    state = PipelineState(
+        phase="planning_analysis",
+        previous_phase="planning",
+        budget_caps={"iteration": 1},
+    )
+
+    captured: dict[str, PhaseExitModel] = {}
+
+    def _capture_close(
+        exit_model: PhaseExitModel, *, display_context: object, pipeline_policy: object
+    ) -> None:
+        del display_context, pipeline_policy
+        captured["exit_model"] = exit_model
+
+    with (
+        patch("ralph.pipeline.runner.show_phase_close_banner", side_effect=_capture_close),
+        patch("ralph.pipeline.runner.show_phase_transition"),
+    ):
+        runner_module._emit_phase_transition_if_changed(
+            cast("runner_module.ParallelDisplay | runner_module._LegacyConsoleDisplay", display),
+            "planning",
+            state,
+            verbosity=runner_module.Verbosity.VERBOSE,
+            pipeline_policy=_DEFAULT_POLICY.pipeline,
+        )
+
+    exit_model = captured["exit_model"]
+    assert exit_model.artifact_outcome == "plan: 5 step(s), 2 risk(s)"
+    assert exit_model.exit_trigger == "produced"
+
+
+def test_emit_phase_transition_uses_completed_exit_trigger_without_artifact() -> None:
+    """When last_phase_artifact_outcome is empty, exit_trigger should be 'completed'."""
+    display = _StubDisplay()
+    # Do not set last_phase_artifact_outcome (not in _StubDisplay) so it returns None/empty
+    state = PipelineState(
+        phase="planning_analysis",
+        previous_phase="planning",
+        budget_caps={"iteration": 1},
+    )
+
+    captured: dict[str, PhaseExitModel] = {}
+
+    def _capture_close(
+        exit_model: PhaseExitModel, *, display_context: object, pipeline_policy: object
+    ) -> None:
+        del display_context, pipeline_policy
+        captured["exit_model"] = exit_model
+
+    with (
+        patch("ralph.pipeline.runner.show_phase_close_banner", side_effect=_capture_close),
+        patch("ralph.pipeline.runner.show_phase_transition"),
+    ):
+        runner_module._emit_phase_transition_if_changed(
+            cast("runner_module.ParallelDisplay | runner_module._LegacyConsoleDisplay", display),
+            "planning",
+            state,
+            verbosity=runner_module.Verbosity.VERBOSE,
+            pipeline_policy=_DEFAULT_POLICY.pipeline,
+        )
+
+    exit_model = captured["exit_model"]
+    assert exit_model.exit_trigger == "completed"

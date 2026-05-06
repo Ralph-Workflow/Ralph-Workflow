@@ -270,6 +270,7 @@ class PlainLogRenderer:
         self._emitted_empty_decision_log: bool = False
         # Per-phase activity counters
         self._phase_counters: _PhaseCounters | None = None
+        self._last_phase_saved_counters: _PhaseCounters | None = None
         self._last_phase_elapsed_seconds: float = 0.0
         self._last_phase_artifact_outcome: str = ""
         self._run_start_time: float | None = None
@@ -816,6 +817,7 @@ class PlainLogRenderer:
             highlight=False,
             no_wrap=True,
         )
+        self._last_phase_saved_counters = counters
         self._last_phase_elapsed_seconds = elapsed_s
         self._phase_counters = None
 
@@ -826,12 +828,13 @@ class PlainLogRenderer:
 
     @property
     def last_phase_counters(self) -> _PhaseCounters | None:
-        """Return the counters from the most recently closed phase, if available.
+        """Return the counters from the most recently closed phase.
 
-        Returns None when no phase has been closed yet or after emit_phase_close
-        has been called and reset the counters.
+        Returns None when no phase has ever been closed.  After ``emit_phase_close``
+        runs, the counters are saved and the property returns them so callers can
+        retrieve activity stats from the just-finished phase.
         """
-        return self._phase_counters
+        return self._last_phase_saved_counters
 
     @property
     def last_phase_artifact_outcome(self) -> str:
@@ -939,6 +942,7 @@ class PlainLogRenderer:
         total_agent_calls: int = 0,
         pr_url: str | None = None,
         exit_trigger: str | None = None,
+        outer_dev_iteration: int | None = None,
     ) -> None:
         """Emit a one-time MILESTONE orientation block at pipeline stop.
 
@@ -1008,6 +1012,8 @@ class PlainLogRenderer:
             phase_elapsed = f"[run-end] phase={phase} elapsed={total_elapsed_s}s"
             if exit_trigger is not None:
                 phase_elapsed += f" exit={exit_trigger}"
+            if outer_dev_iteration is not None:
+                phase_elapsed += f" dev_cycle={outer_dev_iteration}"
             self._console.print(
                 self._build_line(timestamp, "INFO", "META", phase_elapsed),
                 markup=False,

@@ -350,6 +350,7 @@ class ParallelDisplay:
         total_agent_calls: int = 0,
         pr_url: str | None = None,
         exit_trigger: str | None = None,
+        outer_dev_iteration: int | None = None,
     ) -> None:
         """Emit a one-time run-end orientation block at pipeline stop."""
         with contextlib.suppress(Exception):
@@ -358,6 +359,7 @@ class ParallelDisplay:
                 total_agent_calls=total_agent_calls,
                 pr_url=pr_url,
                 exit_trigger=exit_trigger,
+                outer_dev_iteration=outer_dev_iteration,
             )
 
     @property

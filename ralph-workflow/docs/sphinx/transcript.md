@@ -228,6 +228,7 @@ The `exit=<trigger>` values for phase-close lines:
 | Value | Meaning |
 |-------|---------|
 | `produced` | Phase completed by producing its expected artifact |
+| `completed` | Phase ended without producing a tracked artifact (e.g. a pass-through or skipped phase) |
 
 ### Canonical iteration labels
 
@@ -254,13 +255,14 @@ The format adapts to the display mode:
 **Wide mode** (`>= 100` cols): multi-line with grouped counters and PR at end:
 ```
 <ISO-TS> MILESTONE META [run-end] ◆ Ralph Workflow run end
-<ISO-TS> INFO     META [run-end] phase=<phase> elapsed=<elapsed>s exit=<exit_trigger>
+<ISO-TS> INFO     META [run-end] phase=<phase> elapsed=<elapsed>s exit=<exit_trigger> [dev_cycle=N]
 <ISO-TS> INFO     META [run-end] agent_calls=N content_blocks=X thinking_blocks=Y tool_calls=Z errors=W
 <ISO-TS> INFO     META [run-end] pr=<url>
 ```
 
 `phase=complete` indicates success; `phase=failed` indicates the pipeline terminated
-with an error.
+with an error.  `dev_cycle=N` appears only when at least one outer development cycle
+has been completed (i.e., at least one commit was made during the run).
 
 The `exit` field reports **why** the run ended:
 
