@@ -178,6 +178,14 @@ resets to base after a successful agent invocation or a chain fallover to the ne
 
 Connectivity probe interval can be configured in code via `ConnectivityMonitor(probe_interval_s=10.0)`.
 
+## Missing plan handoff during recovery
+
+When the pipeline is in the `failed_route` recovery phase and tries to re-enter a non-planning phase, prompt materialization checks for `.agent/PLAN.md` (or a `plan.json` artifact it can regenerate from). If neither exists — for example because a fresh checkout or partial reset removed the plan files — the runner intercepts the `MissingPlanHandoffError`, logs a warning, and reroutes the state back to the pipeline entry phase (usually `planning`) instead of crashing with an ambiguous terminal error.
+
+The reroute increments `recovery_epoch` and stores the error in `last_error`, so the checkpoint reflects the new state. The next pipeline step then begins a fresh planning pass from scratch.
+
+This reroute applies **only** inside the `failed_route` recovery path. If a non-recovery execution phase raises `MissingPlanHandoffError`, the exception propagates normally so the genuine contract violation remains visible.
+
 ## Checkpoints
 
 Ralph Workflow saves a checkpoint after each phase completes so the pipeline can resume

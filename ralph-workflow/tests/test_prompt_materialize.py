@@ -9,6 +9,12 @@ from git import Repo as GitRepo
 import ralph.prompts.materialize as materialize_module
 from ralph.pipeline.cycle_baseline import write_cycle_baseline
 from ralph.policy.loader import load_policy
+from ralph.policy.models import (
+    ArtifactsPolicy,
+    PhaseDefinition,
+    PhaseTransition,
+    PipelinePolicy,
+)
 from ralph.prompts.materialize import materialize_prompt_for_phase, prompt_file_for_phase
 from ralph.prompts.template_engine import TemplateRenderingError
 from ralph.prompts.types import SessionCapabilities, SessionDrain
@@ -457,6 +463,77 @@ def test_materialize_planning_loopback_uses_edit_prompt_and_analysis_feedback_ha
     assert "The plan needs revisions." not in rendered
     assert workspace.exists(".agent/artifacts/plan.json") is True
     assert workspace.exists(".agent/artifacts/planning_analysis_decision.json") is True
+
+
+def test_materialize_review_phase_references_plan_handoff_when_plan_exists(
+    tmp_path: Path,
+) -> None:
+    """A custom review-role phase rendered with review.jinja must reference the plan handoff.
+
+    When a plan.json artifact is present the prompt-materialization layer
+    regenerates .agent/PLAN.md and passes its absolute path as PLAN_PATH.
+    The rendered review prompt must point at that file rather than inlining the
+    plan content, because review.jinja uses render_payload_section which emits a
+    file-reference instruction when the path variable is non-empty.
+    """
+    pipeline_policy = PipelinePolicy(
+        phases={
+            "review": PhaseDefinition(
+                drain="review",
+                role="review",
+                prompt_template="review.jinja",
+                transitions=PhaseTransition(on_success="complete"),
+            ),
+            "complete": PhaseDefinition(
+                drain="complete",
+                transitions=PhaseTransition(on_success="complete", on_loopback="complete"),
+            ),
+        },
+        entry_phase="review",
+        terminal_phase="complete",
+    )
+    artifacts_policy = ArtifactsPolicy(artifacts={})
+    workspace = MemoryWorkspace(root=str(tmp_path))
+    workspace.write("PROMPT.md", "Review the implementation.")
+    workspace.write(
+        ".agent/artifacts/plan.json",
+        json.dumps(
+            {
+                "type": "plan",
+                "content": {
+                    "summary": {
+                        "context": "Plan for the reviewed change.",
+                        "scope_items": [{"text": "one"}, {"text": "two"}, {"text": "three"}],
+                    },
+                    "steps": [{"number": 1, "title": "Implement", "content": "do the work"}],
+                    "critical_files": {
+                        "primary_files": [{"path": "src/app.py", "action": "modify"}],
+                    },
+                    "risks_mitigations": [{"risk": "regression", "mitigation": "run tests"}],
+                    "verification_strategy": [
+                        {"method": "pytest", "expected_outcome": "passes"}
+                    ],
+                },
+            }
+        ),
+    )
+
+    expected_plan_path = str(tmp_path / ".agent" / "PLAN.md")
+
+    with patch.object(materialize_module, "_git_diff", return_value="diff --git a/src/app.py"):
+        prompt_path = materialize_prompt_for_phase(
+            phase="review",
+            workspace=workspace,
+            pipeline_policy=pipeline_policy,
+            artifacts_policy=artifacts_policy,
+            session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.REVIEW),
+            workspace_root=tmp_path,
+        )
+
+    rendered = workspace.read(prompt_path)
+    assert expected_plan_path in rendered
+    assert "Read the complete plan from file at" in rendered
+    assert (tmp_path / ".agent" / "PLAN.md").exists()
 
 
 def test_prompt_file_for_phase_uses_agent_tmp_file_name() -> None:

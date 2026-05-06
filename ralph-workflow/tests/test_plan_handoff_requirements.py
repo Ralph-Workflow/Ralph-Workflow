@@ -8,6 +8,12 @@ import pytest
 
 import ralph.prompts.materialize as materialize_module
 from ralph.policy.loader import load_policy
+from ralph.policy.models import (
+    ArtifactsPolicy,
+    PhaseDefinition,
+    PhaseTransition,
+    PipelinePolicy,
+)
 from ralph.prompts.materialize import materialize_prompt_for_phase
 from ralph.prompts.types import SessionCapabilities, SessionDrain
 from ralph.workspace.memory import MemoryWorkspace
@@ -88,4 +94,46 @@ def test_non_new_plan_prompts_require_existing_plan_handoff(
             session_caps=SessionCapabilities.defaults_for_drain(drain),
             workspace_root=tmp_path,
             previous_phase=previous_phase,
+        )
+
+
+def test_review_role_requires_existing_plan_handoff(tmp_path: Path) -> None:
+    """A custom review-role phase bound to review.jinja must require an existing plan.
+
+    review.jinja is never part of the default pipeline, so the default policy
+    cannot cover it. This test constructs a minimal custom policy and verifies
+    that prompt materialization raises the expected MissingPlanHandoffError when
+    no .agent/PLAN.md (or plan.json) is present.
+    """
+    pipeline_policy = PipelinePolicy(
+        phases={
+            "review": PhaseDefinition(
+                drain="review",
+                role="review",
+                prompt_template="review.jinja",
+                transitions=PhaseTransition(on_success="complete"),
+            ),
+            "complete": PhaseDefinition(
+                drain="complete",
+                transitions=PhaseTransition(on_success="complete", on_loopback="complete"),
+            ),
+        },
+        entry_phase="review",
+        terminal_phase="complete",
+    )
+    artifacts_policy = ArtifactsPolicy(artifacts={})
+    workspace = MemoryWorkspace(root=str(tmp_path))
+    workspace.write("PROMPT.md", "Review the implementation.")
+
+    with (
+        patch.object(materialize_module, "_git_diff", return_value="diff"),
+        pytest.raises(ValueError, match=r"\.agent/PLAN\.md"),
+    ):
+        materialize_prompt_for_phase(
+            phase="review",
+            workspace=workspace,
+            pipeline_policy=pipeline_policy,
+            artifacts_policy=artifacts_policy,
+            session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.REVIEW),
+            workspace_root=tmp_path,
         )
