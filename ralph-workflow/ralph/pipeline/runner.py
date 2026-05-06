@@ -3209,6 +3209,13 @@ def _execute_commit_effect(  # noqa: PLR0913
         if not message:
             logger.error("Commit message file is empty: {}", effect.message_file)
             return PipelineEvent.COMMIT_FAILURE
+        # Late guard: commit agent may have submitted a skip artifact when it
+        # saw no pending diff.  Detect it here so we never create a git commit
+        # whose subject is literally "SKIP: ...".
+        if message.strip().lower().startswith("skip:"):
+            logger.info("Commit agent requested skip — skipping commit execution")
+            _cleanup_commit_message_artifacts(repo_root)
+            return PipelineEvent.COMMIT_SKIPPED
         if not _repo_has_commit_work(repo_root):
             logger.info("Skipping commit because the worktree is empty")
             _cleanup_commit_message_artifacts(repo_root)

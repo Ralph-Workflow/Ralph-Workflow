@@ -2468,6 +2468,51 @@ class TestExecuteCommitEffect:
         assert not message_file.exists()
         assert not text_file.exists()
 
+    def test_skips_commit_when_message_is_skip_artifact(
+        self, tmp_path: Path, monkeypatch: MonkeyPatch
+    ) -> None:
+        """_execute_commit_effect must return COMMIT_SKIPPED when the message is a skip response.
+
+        This is the late guard that prevents 'SKIP: reason' from being committed
+        as a real git commit subject when the phase handler missed the skip.
+        """
+        stage_all = MagicMock()
+        create_commit = MagicMock()
+        message_file = tmp_path / ".agent" / "tmp" / "commit_message.json"
+        text_file = tmp_path / ".agent" / "tmp" / "commit-message.txt"
+        message_file.parent.mkdir(parents=True, exist_ok=True)
+        text_file.write_text("SKIP: no pending changes visible in diff", encoding="utf-8")
+        message_file.write_text(
+            json.dumps(
+                {
+                    "name": "commit_message",
+                    "type": "commit_message",
+                    "content": {
+                        "type": "skip",
+                        "reason": "no pending changes visible in diff",
+                    },
+                    "created_at": "STATIC",
+                    "updated_at": "STATIC",
+                    "metadata": {},
+                }
+            ),
+            encoding="utf-8",
+        )
+        monkeypatch.setattr(runner_module, "_repo_has_commit_work", lambda _repo_root: True)
+
+        result = runner_module._execute_commit_effect(
+            CommitEffect(message_file=str(message_file)),
+            create_commit,
+            stage_all,
+            tmp_path,
+        )
+
+        assert result == PipelineEvent.COMMIT_SKIPPED
+        stage_all.assert_not_called()
+        create_commit.assert_not_called()
+        assert not message_file.exists()
+        assert not text_file.exists()
+
 
 class TestExecuteEffect:
     def test_save_checkpoint_returns_checkpoint_event(self) -> None:
