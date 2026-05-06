@@ -56,7 +56,12 @@ from ralph.mcp.artifacts.commit_message import (
 from ralph.mcp.protocol.capability_mapping import DrainClass
 from ralph.mcp.protocol.env import AGENT_LABEL_SCOPE_ENV
 from ralph.mcp.protocol.session import MCP_ENDPOINT_ENV, MCP_RUN_ID_ENV, AgentSession
-from ralph.mcp.server.lifecycle import shutdown_mcp_server, start_mcp_server
+from ralph.mcp.server.lifecycle import (
+    McpServerError,
+    check_mcp_bridge_health,
+    shutdown_mcp_server,
+    start_mcp_server,
+)
 from ralph.mcp.session_plan import build_session_mcp_plan
 from ralph.phases import PhaseContext, handle_phase, register_role_handlers
 from ralph.phases.required_artifacts import build_required_artifacts
@@ -2766,7 +2771,7 @@ def _dispatch_waiting_event(
         logger.debug("_dispatch_waiting_event.cloud_progress failed", exc_info=True)
 
 
-def _execute_agent_effect(  # noqa: PLR0913, PLR0915
+def _execute_agent_effect(  # noqa: PLR0911, PLR0913, PLR0915
     effect: InvokeAgentEffect,
     config: UnifiedConfig,
     deps: _AgentExecutionDeps,
@@ -2884,110 +2889,122 @@ def _execute_agent_effect(  # noqa: PLR0913, PLR0915
     )
     max_recovery_attempts = _same_agent_recovery_attempts(config)
 
-    for attempt_index in range(max_recovery_attempts + 1):
-        bridge = None
-        raw_output: list[str] = []
-        rendered_output: list[str] = []
-        try:
-            system_prompt_file = materialize_system_prompt(
-                workspace_root=workspace_scope.root,
-                name=str(effect.phase),
-            )
-            session_mcp_plan = build_session_mcp_plan(
-                transport=agent_config.transport,
-                drain=effect.drain or effect.phase,
-                workspace_path=workspace_scope.root,
-                agents_policy=effective_agents_policy,
-            )
-            session = AgentSession(
-                session_id=f"{effect.phase}-{uuid.uuid4().hex[:8]}",
-                run_id=str(uuid.uuid4()),
-                drain=effect.drain or effect.phase,
-                capabilities=set(session_mcp_plan.capabilities),
-            )
-            workspace = FsWorkspace(
-                workspace_scope.root,
-                allowed_roots=workspace_scope.allowed_roots,
-            )
-            _clear_phase_output_artifacts(
-                workspace,
-                effect.phase,
-                drain=effect.drain,
-                policy_bundle=policy_bundle,
-            )
-            bridge = start_mcp_server(
-                session,
-                workspace,
-                phase=effect.phase,
-                extra_env=session_mcp_plan.server_env,
-            )
+    bridge = None
+    try:
+        system_prompt_file = materialize_system_prompt(
+            workspace_root=workspace_scope.root,
+            name=str(effect.phase),
+        )
+        session_mcp_plan = build_session_mcp_plan(
+            transport=agent_config.transport,
+            drain=effect.drain or effect.phase,
+            workspace_path=workspace_scope.root,
+            agents_policy=effective_agents_policy,
+        )
+        session = AgentSession(
+            session_id=f"{effect.phase}-{uuid.uuid4().hex[:8]}",
+            run_id=str(uuid.uuid4()),
+            drain=effect.drain or effect.phase,
+            capabilities=set(session_mcp_plan.capabilities),
+        )
+        workspace = FsWorkspace(
+            workspace_scope.root,
+            allowed_roots=workspace_scope.allowed_roots,
+        )
+        _clear_phase_output_artifacts(
+            workspace,
+            effect.phase,
+            drain=effect.drain,
+            policy_bundle=policy_bundle,
+        )
+        bridge = start_mcp_server(
+            session,
+            workspace,
+            phase=effect.phase,
+            extra_env=session_mcp_plan.server_env,
+        )
 
-            options = build_invoke_options_from_config(
-                config.general,
-                verbose=config.general.verbosity >= _VERBOSE_LOG_LEVEL,
-                show_progress=False,
-                workspace_path=workspace_scope.root,
-                extra_env={
-                    MCP_ENDPOINT_ENV: bridge.agent_endpoint_uri(),
-                    MCP_RUN_ID_ENV: session.run_id,
-                    AGENT_LABEL_SCOPE_ENV: session.run_id,
-                },
-                session_id=resume_session_id,
-                system_prompt_file=system_prompt_file,
-                waiting_listener=_waiting_listener,
-                required_artifact=(
-                    build_required_artifacts(policy_bundle.artifacts).get(
-                        effect.drain or effect.phase
-                    )
-                    if policy_bundle is not None
-                    else None
-                ),
-            )
-            output_lines = deps.invoke_agent(agent_config, attempt_prompt_file, options=options)
-            if _verbosity_rank(verbosity) >= _VERBOSITY_RANK[Verbosity.NORMAL]:
-                _stream_parsed_agent_activity(
-                    output_lines,
-                    str(agent_config.json_parser),
-                    effect.agent_name,
-                    display,
-                    display_context=resolved_display_context,
-                    raw_output_sink=raw_output,
-                    rendered_output_sink=rendered_output,
+        for attempt_index in range(max_recovery_attempts + 1):
+            raw_output: list[str] = []
+            rendered_output: list[str] = []
+            try:
+                check_mcp_bridge_health(bridge)
+                options = build_invoke_options_from_config(
+                    config.general,
+                    verbose=config.general.verbosity >= _VERBOSE_LOG_LEVEL,
+                    show_progress=False,
+                    workspace_path=workspace_scope.root,
+                    extra_env={
+                        MCP_ENDPOINT_ENV: bridge.agent_endpoint_uri(),
+                        MCP_RUN_ID_ENV: session.run_id,
+                        AGENT_LABEL_SCOPE_ENV: session.run_id,
+                    },
+                    session_id=resume_session_id,
+                    system_prompt_file=system_prompt_file,
+                    waiting_listener=_waiting_listener,
+                    required_artifact=(
+                        build_required_artifacts(policy_bundle.artifacts).get(
+                            effect.drain or effect.phase
+                        )
+                        if policy_bundle is not None
+                        else None
+                    ),
                 )
-            else:
-                raw_output.extend(str(line) for line in output_lines)
-            _set_last_captured_session_id(extract_session_id(raw_output))
-            return PipelineEvent.AGENT_SUCCESS
-        except deps.agent_invocation_error as exc:
-            recovery_plan = _build_agent_recovery_plan(
-                exc=exc,
-                attempt_index=attempt_index,
-                max_recovery_attempts=max_recovery_attempts,
-                effect=effect,
-                workspace_root=workspace_scope.root,
-                raw_output=raw_output,
-                rendered_output=rendered_output,
-                extracted_session_id=extract_session_id(raw_output),
-                inactivity_error_type=AgentInactivityTimeoutError,
-            )
-            if recovery_plan is None:
-                logger.error("Agent invocation failed: {}", exc)
+                output_lines = deps.invoke_agent(agent_config, attempt_prompt_file, options=options)
+                if _verbosity_rank(verbosity) >= _VERBOSITY_RANK[Verbosity.NORMAL]:
+                    _stream_parsed_agent_activity(
+                        output_lines,
+                        str(agent_config.json_parser),
+                        effect.agent_name,
+                        display,
+                        display_context=resolved_display_context,
+                        raw_output_sink=raw_output,
+                        rendered_output_sink=rendered_output,
+                    )
+                else:
+                    raw_output.extend(str(line) for line in output_lines)
+                _set_last_captured_session_id(extract_session_id(raw_output))
+                return PipelineEvent.AGENT_SUCCESS
+            except McpServerError as exc:
+                logger.error(
+                    "MCP server failed permanently after {} restart(s): {}",
+                    exc.restart_count,
+                    exc,
+                )
                 return PipelineEvent.AGENT_FAILURE
-            logger.warning(
-                "Retrying agent '{}' after {} ({}/{})",
-                effect.agent_name,
-                recovery_plan.reason,
-                attempt_index + 1,
-                max_recovery_attempts,
-            )
-            attempt_prompt_file = recovery_plan.prompt_file
-            resume_session_id = recovery_plan.session_id
-        except Exception:
-            logger.exception("Unexpected error during agent invocation: {}")
-            return PipelineEvent.AGENT_FAILURE
-        finally:
-            if bridge is not None:
-                shutdown_mcp_server(bridge)
+            except deps.agent_invocation_error as exc:
+                recovery_plan = _build_agent_recovery_plan(
+                    exc=exc,
+                    attempt_index=attempt_index,
+                    max_recovery_attempts=max_recovery_attempts,
+                    effect=effect,
+                    workspace_root=workspace_scope.root,
+                    raw_output=raw_output,
+                    rendered_output=rendered_output,
+                    extracted_session_id=extract_session_id(raw_output),
+                    inactivity_error_type=AgentInactivityTimeoutError,
+                )
+                if recovery_plan is None:
+                    logger.error("Agent invocation failed: {}", exc)
+                    return PipelineEvent.AGENT_FAILURE
+                logger.warning(
+                    "Retrying agent '{}' after {} ({}/{})",
+                    effect.agent_name,
+                    recovery_plan.reason,
+                    attempt_index + 1,
+                    max_recovery_attempts,
+                )
+                attempt_prompt_file = recovery_plan.prompt_file
+                resume_session_id = recovery_plan.session_id
+            except Exception:
+                logger.exception("Unexpected error during agent invocation: {}")
+                return PipelineEvent.AGENT_FAILURE
+    except Exception:
+        logger.exception("Unexpected error during agent invocation: {}")
+        return PipelineEvent.AGENT_FAILURE
+    finally:
+        if bridge is not None:
+            shutdown_mcp_server(bridge)
     return PipelineEvent.AGENT_FAILURE
 
 

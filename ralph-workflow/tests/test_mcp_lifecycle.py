@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from datetime import timedelta
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Any, cast
+
+import pytest
 
 from ralph.mcp.protocol.session import AgentSession
 from ralph.mcp.server import lifecycle
@@ -207,6 +209,101 @@ def test_start_mcp_server_preflight_includes_upstream_tool_names(tmp_path: Path)
 
     required = cast("list[str]", seen["required_tools"])
     assert "ralph_upstream__remote__ping" in required
+
+
+# ---------------------------------------------------------------------------
+# RestartAwareMcpBridge tests
+# ---------------------------------------------------------------------------
+
+
+def _make_standalone(
+    endpoint: str = "http://127.0.0.1:9001/mcp", *, poll_result: int | None = None
+) -> lifecycle.StandaloneMcpProcess:
+    import pathlib  # noqa: PLC0415
+    import tempfile  # noqa: PLC0415
+
+    tmp_dir = pathlib.Path(tempfile.mkdtemp())
+    session_file = tmp_dir / "session.json"
+    session_file.write_text("{}", encoding="utf-8")
+    return lifecycle.StandaloneMcpProcess(
+        endpoint=endpoint,
+        process=FakeProcess(poll_result=poll_result),
+        session_file=session_file,
+    )
+
+
+def test_restart_aware_bridge_returns_false_when_process_alive() -> None:
+    inner = _make_standalone(poll_result=None)
+    bridge = lifecycle.RestartAwareMcpBridge(
+        inner,
+        restart_fn=_make_standalone,
+        restart_policy=lifecycle.McpRestartPolicy(max_restarts=3),
+    )
+    result = bridge.check_health_and_restart_if_needed()
+    assert result is False
+    assert bridge.restart_count == 0
+
+
+def test_restart_aware_bridge_restarts_dead_process() -> None:
+    inner = _make_standalone(endpoint="http://127.0.0.1:9001/mcp", poll_result=1)
+    new_inner = _make_standalone(endpoint="http://127.0.0.1:9002/mcp", poll_result=None)
+    bridge = lifecycle.RestartAwareMcpBridge(
+        inner,
+        restart_fn=lambda: new_inner,
+        restart_policy=lifecycle.McpRestartPolicy(max_restarts=3),
+    )
+    result = bridge.check_health_and_restart_if_needed()
+    assert result is True
+    assert bridge.restart_count == 1
+    assert bridge.agent_endpoint_uri() == "http://127.0.0.1:9002/mcp"
+
+
+def test_restart_aware_bridge_raises_when_budget_exhausted() -> None:
+    inner = _make_standalone(poll_result=1)
+    bridge = lifecycle.RestartAwareMcpBridge(
+        inner,
+        restart_fn=lambda: _make_standalone(poll_result=1),
+        restart_policy=lifecycle.McpRestartPolicy(max_restarts=2),
+    )
+    bridge.check_health_and_restart_if_needed()  # restart 1
+    bridge.check_health_and_restart_if_needed()  # restart 2
+    with pytest.raises(lifecycle.McpServerError) as exc_info:
+        bridge.check_health_and_restart_if_needed()  # budget exhausted
+    assert exc_info.value.restart_count == 2  # noqa: PLR2004
+
+
+def test_restart_aware_bridge_calls_restart_fn_on_each_restart() -> None:
+    calls: list[int] = []
+    counter = 0
+
+    def counting_restart_fn() -> lifecycle.StandaloneMcpProcess:
+        nonlocal counter
+        counter += 1
+        calls.append(counter)
+        return _make_standalone(endpoint=f"http://127.0.0.1:{9000 + counter}/mcp", poll_result=1)
+
+    inner = _make_standalone(poll_result=1)
+    bridge = lifecycle.RestartAwareMcpBridge(
+        inner,
+        restart_fn=counting_restart_fn,
+        restart_policy=lifecycle.McpRestartPolicy(max_restarts=3),
+    )
+    bridge.check_health_and_restart_if_needed()
+    bridge.check_health_and_restart_if_needed()
+    assert calls == [1, 2]
+
+
+def test_check_mcp_bridge_health_noop_for_non_restart_bridge() -> None:
+    """check_mcp_bridge_health is safe to call on bridges that are not RestartAwareMcpBridge."""
+
+    class FakeBridge:
+        def start(self) -> None: ...
+        def agent_endpoint_uri(self) -> str: return "http://x"
+        def endpoint_uri(self) -> str: return "http://x"
+        def shutdown(self) -> None: ...
+
+    fake: Any = FakeBridge()
+    lifecycle.check_mcp_bridge_health(fake)  # must not raise
 
 
 def test_standalone_mcp_process_shutdown_removes_session_file_even_if_process_exited(

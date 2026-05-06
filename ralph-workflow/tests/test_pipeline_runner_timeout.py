@@ -10,8 +10,10 @@ from pydantic import ValidationError
 from ralph.config.models import AgentConfig, GeneralConfig, UnifiedConfig
 from ralph.display.context import make_display_context
 from ralph.mcp.protocol.env import AGENT_LABEL_SCOPE_ENV, MCP_RUN_ID_ENV
+from ralph.mcp.server.lifecycle import McpServerError
 from ralph.pipeline import runner as runner_module
 from ralph.pipeline.effects import InvokeAgentEffect
+from ralph.pipeline.events import PipelineEvent
 from ralph.pipeline.runner import WorkspaceScope
 
 if TYPE_CHECKING:
@@ -377,3 +379,109 @@ def test_config_default_descendant_wait_poll_is_0_5() -> None:
     """Default GeneralConfig.agent_descendant_wait_poll_seconds is 0.5s."""
     config = GeneralConfig()
     assert config.agent_descendant_wait_poll_seconds == 0.5  # noqa: PLR2004
+
+
+# ---------------------------------------------------------------------------
+# McpServerError / bridge-sharing tests
+# ---------------------------------------------------------------------------
+
+
+def test_mcp_server_error_causes_agent_failure(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """McpServerError from check_mcp_bridge_health surfaces as AGENT_FAILURE."""
+    config = _make_config(300.0)
+    effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="dev.md")
+
+    class FakeBridge:
+        def shutdown(self) -> None:
+            return
+
+        def agent_endpoint_uri(self) -> str:
+            return "http://127.0.0.1:9999/mcp"
+
+    def fake_start_mcp_server(*_args: object, **_kwargs: object) -> FakeBridge:
+        return FakeBridge()
+
+    def fake_shutdown_mcp_server(_bridge: object) -> None:
+        return
+
+    def fake_materialize_system_prompt(*, workspace_root: Path, name: str) -> str:
+        del workspace_root, name
+        return str(tmp_path / "SYSTEM_PROMPT.md")
+
+    def fake_check_mcp_bridge_health(_bridge: object) -> None:
+        raise McpServerError("budget exhausted", restart_count=3)
+
+    monkeypatch.setattr(runner_module, "start_mcp_server", fake_start_mcp_server)
+    monkeypatch.setattr(runner_module, "shutdown_mcp_server", fake_shutdown_mcp_server)
+    monkeypatch.setattr(runner_module, "materialize_system_prompt", fake_materialize_system_prompt)
+    monkeypatch.setattr(runner_module, "check_mcp_bridge_health", fake_check_mcp_bridge_health)
+
+    deps = runner_module._AgentExecutionDeps(
+        invoke_agent=lambda *_a, **_kw: [],
+        agent_invocation_error=RuntimeError,
+        agent_registry=_registry_factory(config),
+    )
+
+    result = runner_module._execute_agent_effect(
+        effect, config, deps, WorkspaceScope(tmp_path), display_context=make_display_context()
+    )
+    assert result == PipelineEvent.AGENT_FAILURE
+
+
+def test_bridge_shared_across_retry_attempts(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """start_mcp_server is called once; the same bridge serves all retry attempts."""
+    config = _make_config(300.0)
+    effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="dev.md")
+
+    bridge_start_calls: list[int] = []
+    invoke_calls: list[int] = []
+    attempt = 0
+
+    class FakeBridge:
+        def shutdown(self) -> None:
+            return
+
+        def agent_endpoint_uri(self) -> str:
+            return "http://127.0.0.1:9999/mcp"
+
+    def fake_start_mcp_server(*_args: object, **_kwargs: object) -> FakeBridge:
+        bridge_start_calls.append(1)
+        return FakeBridge()
+
+    def fake_shutdown_mcp_server(_bridge: object) -> None:
+        return
+
+    def fake_materialize_system_prompt(*, workspace_root: Path, name: str) -> str:
+        del workspace_root, name
+        return str(tmp_path / "SYSTEM_PROMPT.md")
+
+    def fake_invoke_agent(
+        agent_cfg: AgentConfig, prompt_file: str, *, options: object = None
+    ) -> list[str]:
+        nonlocal attempt
+        invoke_calls.append(attempt)
+        attempt += 1
+        if attempt < 2:  # noqa: PLR2004
+            raise RuntimeError("timeout")
+        return []
+
+    monkeypatch.setattr(runner_module, "start_mcp_server", fake_start_mcp_server)
+    monkeypatch.setattr(runner_module, "shutdown_mcp_server", fake_shutdown_mcp_server)
+    monkeypatch.setattr(runner_module, "materialize_system_prompt", fake_materialize_system_prompt)
+
+    deps = runner_module._AgentExecutionDeps(
+        invoke_agent=fake_invoke_agent,
+        agent_invocation_error=RuntimeError,
+        agent_registry=_registry_factory(config),
+    )
+
+    runner_module._execute_agent_effect(
+        effect, config, deps, WorkspaceScope(tmp_path), display_context=make_display_context()
+    )
+
+    assert len(bridge_start_calls) == 1, "bridge must be started only once"
+    assert len(invoke_calls) == 2, "agent must be invoked twice (retry)"  # noqa: PLR2004

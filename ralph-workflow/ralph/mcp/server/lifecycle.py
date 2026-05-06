@@ -14,6 +14,8 @@ from datetime import timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, cast
 
+from loguru import logger
+
 from ralph.mcp.protocol.env import MCP_SESSION_FILE_ENV as SESSION_FILE_ENV
 from ralph.mcp.protocol.startup import (
     SessionBridgeLike,
@@ -93,6 +95,99 @@ class StandaloneMcpProcess:
         self.session_file.unlink(missing_ok=True)
 
 
+class McpServerError(Exception):
+    """Raised when the MCP server fails and the restart budget is exhausted."""
+
+    def __init__(self, message: str, *, restart_count: int) -> None:
+        self.restart_count = restart_count
+        super().__init__(message)
+
+
+@dataclass(frozen=True)
+class McpRestartPolicy:
+    """Bounded restart policy for the MCP server bridge."""
+
+    max_restarts: int = 3
+
+
+class RestartAwareMcpBridge:
+    """SessionBridgeLike wrapper that auto-restarts the MCP server on crash.
+
+    Bounded restart budget prevents unbounded retry loops. All process
+    spawning continues to flow through ProcessManager via the injected
+    LifecycleDeps so ProcessManager remains the single process authority.
+    """
+
+    def __init__(
+        self,
+        inner: StandaloneMcpProcess,
+        *,
+        restart_fn: Callable[[], StandaloneMcpProcess],
+        restart_policy: McpRestartPolicy,
+    ) -> None:
+        self._inner = inner
+        self._restart_fn = restart_fn
+        self._restart_policy = restart_policy
+        self._restart_count = 0
+
+    @property
+    def restart_count(self) -> int:
+        return self._restart_count
+
+    def start(self) -> None:
+        return
+
+    def agent_endpoint_uri(self) -> str:
+        return self._inner.endpoint
+
+    def endpoint_uri(self) -> str:
+        return self._inner.endpoint
+
+    def shutdown(self) -> None:
+        self._inner.shutdown()
+
+    def check_health_and_restart_if_needed(self) -> bool:
+        """Check if MCP server is alive; restart if dead.
+
+        Returns True when a restart was performed.
+        Raises McpServerError when the restart budget is exhausted.
+        """
+        if self._inner.process.poll() is None:
+            return False
+
+        if self._restart_count >= self._restart_policy.max_restarts:
+            raise McpServerError(
+                f"MCP server exited and restart budget ({self._restart_policy.max_restarts})"
+                f" exhausted after {self._restart_count} restart(s)",
+                restart_count=self._restart_count,
+            )
+
+        logger.warning(
+            "MCP server process exited unexpectedly; restarting ({}/{})",
+            self._restart_count + 1,
+            self._restart_policy.max_restarts,
+        )
+        self._inner.shutdown()
+        self._inner = self._restart_fn()
+        self._restart_count += 1
+        logger.info(
+            "MCP server restarted successfully; endpoint={}; restart_count={}",
+            self._inner.endpoint,
+            self._restart_count,
+        )
+        return True
+
+
+def check_mcp_bridge_health(bridge: SessionBridgeLike) -> None:
+    """Perform a health check on the MCP bridge, restarting if it crashed.
+
+    Only has an effect when ``bridge`` is a :class:`RestartAwareMcpBridge`.
+    Raises :class:`McpServerError` when the restart budget is exhausted.
+    """
+    if isinstance(bridge, RestartAwareMcpBridge):
+        bridge.check_health_and_restart_if_needed()
+
+
 def start_mcp_server(  # noqa: PLR0913
     session: SessionLike,
     workspace: WorkspaceLike,
@@ -101,19 +196,49 @@ def start_mcp_server(  # noqa: PLR0913
     deps: LifecycleDeps | None = None,
     phase: str | None = None,
     extra_env: dict[str, str] | None = None,
-) -> SessionBridgeLike:
-    """Start a standalone Ralph MCP HTTP subprocess and verify tool reachability."""
+    restart_policy: McpRestartPolicy | None = None,
+) -> RestartAwareMcpBridge:
+    """Start a standalone Ralph MCP HTTP subprocess and verify tool reachability.
+
+    Returns a :class:`RestartAwareMcpBridge` that can auto-restart the server
+    on crash up to the ``restart_policy`` budget (default: 3 restarts).
+    """
     lifecycle_deps = deps or _default_lifecycle_deps()
     root = _workspace_root(workspace)
-    port = lifecycle_deps.reserve_port()
+    visible_tools = _visible_mcp_tool_names_owned(
+        session, workspace, upstream_registry=upstream_registry
+    )
+
+    inner = _spawn_mcp_process(root, session, lifecycle_deps, phase, extra_env, visible_tools)
+
+    def _restart_fn() -> StandaloneMcpProcess:
+        return _spawn_mcp_process(root, session, lifecycle_deps, phase, extra_env, visible_tools)
+
+    return RestartAwareMcpBridge(
+        inner,
+        restart_fn=_restart_fn,
+        restart_policy=restart_policy or McpRestartPolicy(),
+    )
+
+
+def _spawn_mcp_process(  # noqa: PLR0913
+    root: Path,
+    session: SessionLike,
+    deps: LifecycleDeps,
+    phase: str | None,
+    extra_env: dict[str, str] | None,
+    visible_tools: list[str],
+) -> StandaloneMcpProcess:
+    """Spawn a fresh MCP server process and run preflight validation."""
+    port = deps.reserve_port()
     endpoint = f"http://127.0.0.1:{port}/mcp"
-    session_file = lifecycle_deps.create_session_file(root, session)
-    env = lifecycle_deps.subprocess_env(session_file)
+    session_file = deps.create_session_file(root, session)
+    env = deps.subprocess_env(session_file)
     if extra_env:
         # Merge extra_env so the subprocess inherits worker-specific env vars
         # (e.g. RALPH_WORKER_ARTIFACT_DIR for parallel workers).
         env.update(extra_env)
-    process = lifecycle_deps.spawn_process(
+    process = deps.spawn_process(
         [
             sys.executable,
             "-m",
@@ -132,16 +257,12 @@ def start_mcp_server(  # noqa: PLR0913
     bridge = StandaloneMcpProcess(endpoint=endpoint, process=process, session_file=session_file)
 
     try:
-        lifecycle_deps.preflight(
-            endpoint,
-            _visible_mcp_tool_names_owned(session, workspace, upstream_registry=upstream_registry),
-            lifecycle_deps.preflight_timeout(),
-        )
+        deps.preflight(endpoint, visible_tools, deps.preflight_timeout())
     except Exception:
         bridge.shutdown()
         raise
 
-    return cast("SessionBridgeLike", bridge)
+    return bridge
 
 
 def shutdown_mcp_server(bridge: SessionBridgeLike) -> None:
@@ -238,7 +359,11 @@ def _session_payload_json(session: SessionLike) -> str:
 
 __all__ = [
     "LifecycleDeps",
+    "McpRestartPolicy",
+    "McpServerError",
+    "RestartAwareMcpBridge",
     "SessionBridgeLike",
+    "check_mcp_bridge_health",
     "shutdown_mcp_server",
     "start_mcp_server",
 ]

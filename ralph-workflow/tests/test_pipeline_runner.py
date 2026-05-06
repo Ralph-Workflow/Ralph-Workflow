@@ -1906,22 +1906,15 @@ class TestExecuteAgentEffect:
         )
         registry = _registry_factory(agent_config)
 
-        bridge_starts: list[int] = []
-
         class FakeBridge:
-            def __init__(self, marker: int) -> None:
-                self.marker = marker
-
             def shutdown(self) -> None:
                 return
 
             def agent_endpoint_uri(self) -> str:
-                return f"http://127.0.0.1:{12345 + self.marker}/mcp"
+                return "http://127.0.0.1:12345/mcp"
 
         def fake_start_mcp_server(*_args, **_kwargs):
-            marker = len(bridge_starts)
-            bridge_starts.append(marker)
-            return FakeBridge(marker)
+            return FakeBridge()
 
         monkeypatch.setattr(runner_module, "start_mcp_server", fake_start_mcp_server)
 
@@ -1955,7 +1948,6 @@ class TestExecuteAgentEffect:
 
         assert result == PipelineEvent.AGENT_SUCCESS
         assert seen_session_ids == [None, "claude-session-42"]
-        assert bridge_starts == [0, 1]
 
     def test_retries_inactivity_failures_with_summary_prompt(
         self,
