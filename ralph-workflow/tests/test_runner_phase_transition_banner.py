@@ -313,22 +313,20 @@ def test_emit_phase_transition_uses_completed_exit_trigger_without_artifact() ->
     assert exit_model.exit_trigger == "completed"
 
 
-def test_execute_commit_effect_uses_canonical_phase_name() -> None:
-    """Commit close banner must use the canonical phase name, not the hardcoded 'commit' string."""
+def test_execute_commit_effect_records_sha_artifact_outcome() -> None:
+    """Commit effect must record the sha as artifact outcome for the phase-close banner."""
     import tempfile  # noqa: PLC0415
     import types  # noqa: PLC0415
 
     from ralph.pipeline.effects import CommitEffect  # noqa: PLC0415
 
-    captured: dict[str, PhaseExitModel] = {}
+    recorded: dict[str, str] = {}
 
-    def _capture_close(exit_model: PhaseExitModel) -> None:
-        captured["exit_model"] = exit_model
+    def _capture_outcome(outcome: str) -> None:
+        recorded["outcome"] = outcome
 
-    # Build a minimal display stub with emit_phase_close_from_exit so the runner's
-    # hasattr guard passes and we can capture the PhaseExitModel it builds.
     display = types.SimpleNamespace(
-        emit_phase_close_from_exit=_capture_close,
+        record_artifact_outcome=_capture_outcome,
     )
 
     with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
@@ -358,13 +356,14 @@ def test_execute_commit_effect_uses_canonical_phase_name() -> None:
             phase_name="development_commit",
         )
 
-    assert "exit_model" in captured, "emit_phase_close_from_exit was not called"
-    assert captured["exit_model"].phase_name == "development_commit"
-    assert captured["exit_model"].exit_trigger == "produced"
+    assert "outcome" in recorded, "record_artifact_outcome was not called"
+    assert recorded["outcome"].startswith("sha="), (
+        f"Expected sha=<short-sha>, got: {recorded['outcome']}"
+    )
 
 
-def test_execute_commit_effect_carries_iteration_context_from_state() -> None:
-    """Commit close banner must carry outer dev iteration context when state/policy given."""
+def test_execute_commit_effect_records_sha_regardless_of_state() -> None:
+    """Commit effect records sha artifact outcome even when state and policy are provided."""
     import tempfile  # noqa: PLC0415
     import types  # noqa: PLC0415
 
@@ -379,16 +378,15 @@ def test_execute_commit_effect_carries_iteration_context_from_state() -> None:
         RecoveryPolicy,
     )
 
-    captured: dict[str, PhaseExitModel] = {}
+    recorded: dict[str, str] = {}
 
-    def _capture_close(exit_model: PhaseExitModel) -> None:
-        captured["exit_model"] = exit_model
+    def _capture_outcome(outcome: str) -> None:
+        recorded["outcome"] = outcome
 
     display = types.SimpleNamespace(
-        emit_phase_close_from_exit=_capture_close,
+        record_artifact_outcome=_capture_outcome,
     )
 
-    # Build a policy with a commit phase that increments the 'iteration' counter
     policy = PipelinePolicy(
         entry_phase="development",
         terminal_phase="done",
@@ -420,7 +418,6 @@ def test_execute_commit_effect_carries_iteration_context_from_state() -> None:
         budget_counters={"iteration": BudgetCounterConfig(tracks_budget=True, default_max=4)},
         recovery=RecoveryPolicy(failed_route="failed_terminal"),
     )
-    # State: on second iteration (outer_progress=1 means iteration #2 is about to start)
     state = PipelineState(
         phase="development_commit",
         outer_progress={"iteration": 1},
@@ -456,19 +453,9 @@ def test_execute_commit_effect_carries_iteration_context_from_state() -> None:
             pipeline_policy=policy,
         )
 
-    assert "exit_model" in captured, "emit_phase_close_from_exit was not called"
-    exit_model = captured["exit_model"]
-    assert exit_model.phase_name == "development_commit"
-    assert exit_model.exit_trigger == "produced"
-    # Iteration context must be populated from state
-    _expected_iteration = 2
-    _expected_cap = 4
-    assert exit_model.outer_dev_iteration == _expected_iteration, (
-        f"Expected outer_dev_iteration={_expected_iteration} (iteration 1+1),"
-        f" got {exit_model.outer_dev_iteration}"
-    )
-    assert exit_model.outer_dev_cap == _expected_cap, (
-        f"Expected outer_dev_cap={_expected_cap}, got {exit_model.outer_dev_cap}"
+    assert "outcome" in recorded, "record_artifact_outcome was not called"
+    assert recorded["outcome"].startswith("sha="), (
+        f"Expected sha=<short-sha>, got: {recorded['outcome']}"
     )
 
 

@@ -161,6 +161,8 @@ Before each phase begins, a single-line phase-start banner is printed to the con
 | `(outer)` | Qualifier appended in **wide mode only** to clarify this is the outer dev cycle |
 | `Analysis N/cap` or `Analysis #N` | Inner analysis loop iteration — 1-indexed; shows cap when known |
 | `(inner)` | Qualifier appended in **wide mode only** to clarify this is the inner analysis cycle |
+| `[N left]` | Remaining analysis iterations before cap is reached — shown in **medium/wide mode** when the cap is known and iterations remain |
+| `[last]` | Shown in **medium/wide mode** when the current analysis iteration is the final one allowed by the cap |
 | `agent=<name>` | Active agent identity, if known |
 
 All iteration fields are optional and appear only when the pipeline has that context.
@@ -211,7 +213,7 @@ modes (compact, medium, wide) whenever the data is present.
 
 ## `[phase-close]` Line
 
-After each phase produces its artifact, a single `[phase-close]` line is appended to the transcript:
+At every phase transition, a single `[phase-close]` line is appended to the transcript:
 
 ```
 <ISO-TS> INFO META [phase-close] <glyph?> phase=<name> [Dev N/cap]? [Analysis N/cap]? <produced> exit=<trigger> (elapsed=Ns, content_blocks=N, thinking_blocks=N, tool_calls=N, errors=N)

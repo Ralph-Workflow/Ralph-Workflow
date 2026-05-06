@@ -1023,6 +1023,8 @@ def _emit_phase_transition_if_changed(
             )
             artifact_outcome = raw_outcome if raw_outcome else ""
         entry = _build_phase_entry_model_from_state(previous_phase, state, pipeline_policy)
+        prev_phase_def = pipeline_policy.phases.get(previous_phase)
+        prev_phase_role: str | None = prev_phase_def.role if prev_phase_def is not None else None
         exit_model = PhaseExitModel.from_entry_model(
             entry,
             elapsed_seconds=elapsed,
@@ -1032,10 +1034,26 @@ def _emit_phase_transition_if_changed(
             tool_calls=tool_calls,
             errors=errors,
             artifact_outcome=artifact_outcome,
-            review_issues_found=progress.review_issues_found(state, pipeline_policy),
+            review_issues_found=(
+                progress.review_issues_found(state, pipeline_policy)
+                if prev_phase_role == "review"
+                else None
+            ),
             waiting_status_line=waiting_status_line,
             last_failure_category=state.last_failure_category,
         )
+        # Emit plain-log close for any phase that hasn't already emitted it
+        # (artifact/commit paths that already called emit_phase_close_from_exit
+        # set phase_close_emitted=True so we skip the double-emit here)
+        phase_close_already_emitted: bool = (
+            display.phase_close_emitted
+            if not isinstance(display, _LegacyConsoleDisplay)
+            and hasattr(display, "phase_close_emitted")
+            else False
+        )
+        if not phase_close_already_emitted and hasattr(display, "emit_phase_close_from_exit"):
+            with suppress(Exception):
+                cast("ParallelDisplay", display).emit_phase_close_from_exit(exit_model)
         show_phase_close_banner(
             exit_model,
             display_context=ctx,
@@ -2569,13 +2587,9 @@ def _render_success_artifact(  # noqa: PLR0913
     entry_model: PhaseEntryModel | None = None,
 ) -> None:
     def _emit_close(produced: str) -> None:
-        if verbosity != Verbosity.QUIET and hasattr(display, "emit_phase_close_from_exit"):
+        if verbosity != Verbosity.QUIET and hasattr(display, "record_artifact_outcome"):
             with suppress(Exception):
-                base = entry_model or PhaseEntryModel(phase_name=phase, phase_role=phase_role)
-                exit_model = PhaseExitModel.from_entry_model(
-                    base, artifact_outcome=produced, exit_trigger="produced"
-                )
-                cast("ParallelDisplay", display).emit_phase_close_from_exit(exit_model)
+                cast("ParallelDisplay", display).record_artifact_outcome(produced)
 
     if artifact_type == "plan":
         render_plan_artifact(workspace_root, display_context)
@@ -3204,24 +3218,9 @@ def _execute_commit_effect(  # noqa: PLR0913
         logger.info("Created commit: {}", sha[:8])
         with suppress(Exception):
             render_commit_message(repo_root, _get_display_context(display))
-        if verbosity != Verbosity.QUIET and hasattr(display, "emit_phase_close_from_exit"):
+        if verbosity != Verbosity.QUIET and hasattr(display, "record_artifact_outcome"):
             with suppress(Exception):
-                if state is not None and pipeline_policy is not None:
-                    _commit_entry = _build_phase_entry_model_from_state(
-                        phase_name, state, pipeline_policy
-                    )
-                    _commit_exit = PhaseExitModel.from_entry_model(
-                        _commit_entry,
-                        artifact_outcome=f"sha={sha[:8]}",
-                        exit_trigger="produced",
-                    )
-                else:
-                    _commit_exit = PhaseExitModel(
-                        phase_name=phase_name,
-                        artifact_outcome=f"sha={sha[:8]}",
-                        exit_trigger="produced",
-                    )
-                cast("ParallelDisplay", display).emit_phase_close_from_exit(_commit_exit)
+                cast("ParallelDisplay", display).record_artifact_outcome(f"sha={sha[:8]}")
         _cleanup_commit_message_artifacts(repo_root)
     except Exception as exc:
         logger.error("Commit failed: {}", exc)

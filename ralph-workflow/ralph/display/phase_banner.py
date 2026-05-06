@@ -291,6 +291,18 @@ def show_phase_start_from_entry(
         )
         line.append(suffix, style="theme.inner_analysis")
 
+    # Show remaining analysis slots in medium/wide mode when cap is known
+    if (
+        mode in ("medium", "wide")
+        and entry.inner_analysis is not None
+        and entry.inner_analysis_cap is not None
+    ):
+        remaining = entry.inner_analysis_cap - entry.inner_analysis
+        if remaining > 0:
+            line.append(f"  [{remaining} left]", style="theme.text.muted")
+        elif remaining == 0:
+            line.append("  [last]", style="theme.level.warn")
+
     if entry.agent_name is not None and mode != "wide":
         line.append(f"  agent={entry.agent_name}", style="theme.text.muted")
 

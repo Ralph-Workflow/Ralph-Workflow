@@ -319,6 +319,16 @@ class ParallelDisplay:
         """Return the artifact outcome from the most recently closed phase."""
         return self._plain_renderer.last_phase_artifact_outcome
 
+    @property
+    def phase_close_emitted(self) -> bool:
+        """Return True when emit_phase_close_from_exit was called for the current phase."""
+        return self._plain_renderer.phase_close_emitted
+
+    def record_artifact_outcome(self, outcome: str) -> None:
+        """Record artifact outcome without emitting a log line."""
+        with contextlib.suppress(Exception):
+            self._plain_renderer.record_artifact_outcome(outcome)
+
     def emit_phase_close(
         self,
         phase: str,
