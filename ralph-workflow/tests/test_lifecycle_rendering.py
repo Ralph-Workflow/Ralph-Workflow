@@ -474,3 +474,71 @@ class TestRichCloseArtifactOutcome:
         assert "stats:" in output
         # artifact should appear after the banner (which has the phase name)
         assert output.index("Development") < output.index("artifact:")
+
+
+# ---------------------------------------------------------------------------
+# Symmetric start/close transcript ordering
+# ---------------------------------------------------------------------------
+
+
+class TestSymmetricStartCloseTranscriptOrdering:
+    """Verify that phase-start and phase-close lines appear in the correct order
+    and carry the same iteration context vocabulary."""
+
+    def test_phase_start_before_phase_close_in_transcript(self) -> None:
+        """[phase] snapshot line for a phase appears before its [phase-close] line.
+
+        [phase] lines are emitted via emit_snapshot() when the phase changes;
+        [phase-close] lines are emitted via emit_phase_close_from_exit().
+        """
+        renderer, buf = _make_renderer()
+        # emit_snapshot triggers [phase] when phase changes
+        snapshot = _blank_snapshot(phase="development", is_terminal_success=False)
+        renderer.emit_snapshot(snapshot)
+        renderer.begin_phase("development")
+        entry = PhaseEntryModel(phase_name="development", phase_role="execution")
+        exit_model = PhaseExitModel.from_entry_model(entry, exit_trigger="produced")
+        renderer.emit_phase_close_from_exit(exit_model)
+        out = buf.getvalue()
+        # phase start marker (emit_snapshot emits [phase]) appears before phase-close
+        phase_pos = out.find("[phase]")
+        close_pos = out.find("[phase-close]")
+        assert phase_pos != -1, "Expected [phase] in transcript"
+        assert close_pos != -1, "Expected [phase-close] in transcript"
+        assert phase_pos < close_pos, "[phase] must appear before [phase-close]"
+
+    def test_start_and_close_use_same_dev_label_vocabulary(self) -> None:
+        """Phase-start banner and [phase-close] transcript line use the same Dev label."""
+        from io import StringIO  # noqa: PLC0415
+
+        from rich.console import Console  # noqa: PLC0415
+
+        from ralph.display.phase_banner import show_phase_start_from_entry  # noqa: PLC0415
+
+        # Phase-start banner
+        start_buf = StringIO()
+        start_console = Console(
+            file=start_buf, force_terminal=False, highlight=False, color_system=None, width=200
+        )
+        start_ctx = make_display_context(console=start_console, env={})
+        entry = PhaseEntryModel(
+            phase_name="development",
+            outer_dev_iteration=3,
+            outer_dev_cap=5,
+        )
+        show_phase_start_from_entry(entry, display_context=start_ctx)
+
+        # Phase-close transcript
+        renderer, close_buf = _make_renderer()
+        renderer.begin_phase("development")
+        exit_model = PhaseExitModel.from_entry_model(
+            entry, exit_trigger="produced"
+        )
+        renderer.emit_phase_close_from_exit(exit_model)
+
+        start_out = start_buf.getvalue()
+        close_out = close_buf.getvalue()
+
+        # Both should reference Dev 3/5
+        assert "Dev 3/5" in start_out, f"Expected 'Dev 3/5' in start banner: {start_out!r}"
+        assert "Dev 3/5" in close_out, f"Expected 'Dev 3/5' in phase-close line: {close_out!r}"

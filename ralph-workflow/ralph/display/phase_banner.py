@@ -51,20 +51,6 @@ _MAJOR_ROLE_PAIRS: frozenset[tuple[str, str]] = frozenset(
     }
 )
 
-# Role-pair based transition descriptions
-_ROLE_PAIR_DESCRIPTIONS: dict[tuple[str, str], str] = {
-    ("execution", "analysis"): "Work complete — analyzing results",
-    ("analysis", "commit"): "Analysis approved — committing changes",
-    ("analysis", "execution"): "Analysis requested changes — returning to work",
-    ("commit", "review"): "Changes committed — starting review",
-    ("commit", "execution"): "Commit complete — continuing work",
-    ("review", "analysis"): "Review complete — analyzing findings",
-    ("analysis", "review"): "Analysis approved — reviewing changes",
-    ("commit", "terminal"): "Commit complete — pipeline finished",
-    ("review", "terminal"): "Review complete — pipeline finished",
-    ("execution", "terminal"): "Work complete — pipeline finished",
-}
-
 
 def _phase_style(phase: str, pipeline_policy: PipelinePolicy | None = None) -> str:
     """Return the rich style string for a phase name or role.
@@ -104,24 +90,22 @@ def _resolve_transition_meta(
     from_phase: str,
     to_phase: str,
     pipeline_policy: PipelinePolicy | None,
-) -> tuple[str | None, bool]:
-    """Return (description, is_major) for a phase transition.
+) -> bool:
+    """Return is_major for a phase transition.
 
-    Uses role-pair tables when policy is available. Without policy, no
-    description is shown and the transition is treated as minor.
+    Uses role-pair tables when policy is available. Without policy, the
+    transition is treated as minor.
     """
     if pipeline_policy is None:
-        return None, False
+        return False
     phases = pipeline_policy.phases
     from_def = phases.get(from_phase)
     to_def = phases.get(to_phase)
     if from_def is None or to_def is None:
-        return None, False
+        return False
     from_role = from_def.role or ""
     to_role = to_def.role or ""
-    description = _ROLE_PAIR_DESCRIPTIONS.get((from_role, to_role))
-    is_major = (from_role, to_role) in _MAJOR_ROLE_PAIRS
-    return description, is_major
+    return (from_role, to_role) in _MAJOR_ROLE_PAIRS
 
 
 def _render_major_transition(  # noqa: PLR0913
@@ -129,7 +113,6 @@ def _render_major_transition(  # noqa: PLR0913
     from_label: str,
     to_label: str,
     style: str,
-    description: str | None,
     context: dict[str, object] | None,
     mode: str,
     arrow: str,
@@ -151,8 +134,6 @@ def _render_major_transition(  # noqa: PLR0913
         detail = "  ".join(format_transition_context_items(context))
         banner.append(f"  ({detail})", style="theme.text.muted")
     c.print(banner)
-    if description:
-        c.print(Text(f"  {description}", style="theme.text.dim_italic"))
     c.print(Rule(style=style))
 
 
@@ -190,7 +171,7 @@ def show_phase_transition(  # noqa: PLR0913
     style = _phase_style(to_phase, pipeline_policy)
     from_label = _phase_label(from_phase)
     to_label = _phase_label(to_phase)
-    description, is_major = _resolve_transition_meta(from_phase, to_phase, pipeline_policy)
+    is_major = _resolve_transition_meta(from_phase, to_phase, pipeline_policy)
 
     if is_major:
         _render_major_transition(
@@ -198,7 +179,6 @@ def show_phase_transition(  # noqa: PLR0913
             from_label,
             to_label,
             style,
-            description,
             context,
             ctx.mode,
             ctx.glyph_for("arrow"),
@@ -210,8 +190,6 @@ def show_phase_transition(  # noqa: PLR0913
     title = Text()
     arrow = ctx.glyph_for("arrow")
     title.append(f"{from_label} {arrow} {to_label}")
-    if description:
-        title.append(f"  {description}", style="theme.text.dim_italic")
     c.print(Rule(title=title, style=style))
 
 
@@ -493,3 +471,8 @@ def show_phase_close_banner(
     debug_line = _build_debug_line(exit_model, display_context)
     if debug_line is not None:
         c.print(debug_line)
+
+    # Wide mode: trailing separator symmetrically closes the phase section started by
+    # the titled Rule in show_phase_start_from_entry.
+    if mode == "wide":
+        c.print(Rule(style=style))

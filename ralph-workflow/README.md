@@ -444,15 +444,26 @@ In `compact` mode, secondary columns, extra blank lines, and descriptive rules a
 to fit narrow terminals. In `medium` and `wide` modes, phase banners include descriptions,
 additional context lines, and fuller iteration labels.
 
-Phase-start banners show iteration context as `Dev N/cap` (outer development cycle, 1-indexed)
+**Phase-start banners** show iteration context as `Dev N/cap` (outer development cycle, 1-indexed)
 and `Analysis N/cap` (inner analysis loop, 1-indexed). `Dev 1/5` means the pipeline is entering
-its first development cycle out of five total. In **wide mode**, `(outer)` and `(inner)`
+its first development cycle out of five total. In **medium and wide mode**, `(outer)` and `(inner)`
 qualifiers are appended to the dev and analysis cycle labels to make the distinction explicit.
+In **wide mode**, a titled rule separator precedes the banner and the agent name appears on its
+own indented line for readability.
 
-Phase-close banners echo the same iteration context alongside elapsed time (e.g. `7.5s`) and the
-exit trigger (e.g. `→ produced`, `→ timeout`). When a phase ends with debug breadcrumbs still set
-(waiting-status or failure category), a `debug:` line is appended immediately below the close banner
-in all display modes — making failure context visible without reading the completion summary.
+**Phase-close banners** are symmetric with phase-start: same field ordering and glyphs, followed
+by elapsed time (e.g. `7.5s`) and the exit trigger (e.g. `→ produced`, `→ completed`). In
+**medium and wide mode**, two additional lines appear below the header when applicable:
+- `↳ stats:` — content/thinking/tool/error activity counters (omitted when all are zero)
+- `↳ artifact:` — what the phase produced (e.g. `plan: 5 step(s), 2 risk(s)`)
+
+For review phases, a `review: clean` or `review: issues found` line is always shown regardless
+of display mode. When a phase ends with debug breadcrumbs still set (waiting-status or failure
+category), a `debug:` line is appended immediately below the close banner in all display modes —
+making failure context visible without reading the completion summary.
+
+In **wide mode**, a trailing horizontal Rule separator is printed after the close banner,
+symmetrically closing the phase section opened by the titled Rule from the phase-start banner.
 
 See [`docs/sphinx/transcript.md`](docs/sphinx/transcript.md) for the full phase-start, phase-close,
 and `[run-end]` format specifications.

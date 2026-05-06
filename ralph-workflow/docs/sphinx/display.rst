@@ -155,9 +155,8 @@ consistently across all three display surfaces.
      - Remaining invocations allowed by the active budget counter.
 
 These labels are produced by helpers in ``ralph.display.phase_status``
-(``format_dev_cycle``, ``format_analysis_cycle``, ``format_budget_remaining``)
-and consumed via :class:`PhaseIterationContext` when rendering
-``[phase-close]`` lines.
+(``format_dev_cycle``, ``format_analysis_cycle``) and consumed via
+:class:`PhaseIterationContext` when rendering ``[phase-close]`` lines.
 
 Lifecycle view-model
 --------------------
@@ -181,9 +180,8 @@ and the final run summary.  Three frozen dataclasses capture the lifecycle:
 
 All three share the same canonical iteration fields
 (``outer_dev_iteration``, ``outer_dev_cap``, ``inner_analysis``,
-``inner_analysis_cap``, ``budget_remaining``) so every surface expresses
-iteration context in the same vocabulary derived from
-:mod:`ralph.display.phase_status`.
+``inner_analysis_cap``) so every surface expresses iteration context in the
+same vocabulary derived from :mod:`ralph.display.phase_status`.
 
 Phase-close line format
 -----------------------

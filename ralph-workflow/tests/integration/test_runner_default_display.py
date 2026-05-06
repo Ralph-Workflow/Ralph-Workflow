@@ -154,10 +154,15 @@ def test_default_run_propagates_display_subscriber(
         assert all(s is not None for s in captured_subscribers)
 
 
-def test_sigwinch_refresh_updates_live_display_context(
+def test_width_refresher_updates_live_display_context(
     monkeypatch: MonkeyPatch, tmp_path: Path
 ) -> None:
-    """SIGWINCH refresh must update the display object the runner keeps using."""
+    """Width refresher must update the display object the runner keeps using.
+
+    The runner now uses install_width_refresher (cross-platform: SIGWINCH on
+    POSIX, poll thread on Windows) instead of the POSIX-only
+    install_sigwinch_refresher.
+    """
     policy_bundle = load_policy(DEFAULT_POLICY_DIR)
     base_console = Console(record=True, width=120, force_terminal=True)
     wide_ctx = make_display_context(console=base_console, env={"COLUMNS": "120"})
@@ -190,15 +195,24 @@ def test_sigwinch_refresh_updates_live_display_context(
     monkeypatch.setattr(runner_module, "load_policy_or_die", lambda _path: policy_bundle)
     monkeypatch.setattr(runner_module.ckpt, "save", lambda _state: None)
 
-    def fake_install_sigwinch_refresher(ctx_holder: list[object], on_refresh=None) -> None:
+    stop_called: list[bool] = []
+
+    def fake_install_width_refresher(
+        ctx_holder: list[object], on_refresh: object = None
+    ) -> object:
         ctx_holder[0] = compact_ctx
-        if on_refresh is not None:
+        if callable(on_refresh):
             on_refresh(compact_ctx)
+
+        def stop() -> None:
+            stop_called.append(True)
+
+        return stop
 
     monkeypatch.setattr(
         display_context_module,
-        "install_sigwinch_refresher",
-        fake_install_sigwinch_refresher,
+        "install_width_refresher",
+        fake_install_width_refresher,
     )
 
     state = PipelineState(
@@ -215,3 +229,5 @@ def test_sigwinch_refresh_updates_live_display_context(
     assert exit_code == 0
     assert display._ctx.mode == "compact"
     assert display._plain_renderer._ctx.mode == "compact"
+    # The stop callback returned by install_width_refresher must be called on shutdown
+    assert stop_called, "Runner did not call the width refresher stop callback on shutdown"

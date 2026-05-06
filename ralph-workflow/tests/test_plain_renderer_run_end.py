@@ -169,3 +169,19 @@ def test_emit_run_end_exit_trigger_none_omits_exit_field() -> None:
     renderer.emit_run_end(phase="complete", total_agent_calls=0, exit_trigger=None)
     out = buf.getvalue()
     assert "exit=" not in out
+
+
+def test_emit_run_end_outer_dev_iteration_shown_when_set() -> None:
+    """outer_dev_iteration is surfaced as dev_cycle=N in wide mode output."""
+    renderer, buf = _make_renderer()
+    renderer.emit_run_end(phase="complete", total_agent_calls=0, outer_dev_iteration=3)
+    out = buf.getvalue()
+    assert "dev_cycle=3" in out
+
+
+def test_emit_run_end_outer_dev_iteration_none_omits_field() -> None:
+    """When outer_dev_iteration is None, no dev_cycle= field is emitted."""
+    renderer, buf = _make_renderer()
+    renderer.emit_run_end(phase="complete", total_agent_calls=0, outer_dev_iteration=None)
+    out = buf.getvalue()
+    assert "dev_cycle=" not in out

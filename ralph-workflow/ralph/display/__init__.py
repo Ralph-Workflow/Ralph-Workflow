@@ -63,14 +63,17 @@ views used by CLI diagnostics and listing commands.
    - ``medium`` — terminal width 60-99 columns.
    - ``wide`` — terminal width ≥ 100 columns.
 
-   **SIGWINCH refresh (POSIX):** On non-Windows platforms, a SIGWINCH signal
-   handler is installed via ``install_sigwinch_refresher()`` at pipeline start.
-   The handler calls ``DisplayContext.refreshed()`` which re-reads the current
-   terminal width and recomputes mode and adaptive limits. Renderers that
-   buffer adaptive limits (e.g. ``PlainLogRenderer``) call ``refreshed()`` at
-   phase boundaries via ``flush_blocks()`` to pick up new sizes. The runner
-   also keeps its live display object and nested plain renderer synced with
-   the refreshed context so later banners and summaries use the new mode.
+   **Width refresh (cross-platform):** The runner installs a width refresher
+   via ``install_width_refresher()`` at pipeline start. On POSIX this uses a
+   SIGWINCH signal handler; on Windows or non-main threads it falls back to a
+   poll-based daemon thread. Either path calls ``DisplayContext.refreshed()``
+   which re-reads the current terminal width and recomputes mode and adaptive
+   limits. Renderers that buffer adaptive limits (e.g. ``PlainLogRenderer``)
+   call ``refreshed()`` at phase boundaries via ``flush_blocks()`` to pick up
+   new sizes. The runner also keeps its live display object and nested plain
+   renderer synced with the refreshed context so later banners and summaries
+   use the new mode. The returned stop callback is invoked on shutdown to
+   clean up any poll thread.
 
    **Compact mode:** When ``ctx.mode == 'compact'``, renderers suppress
    secondary columns, extra blank lines, and descriptive rules to fit
@@ -84,7 +87,12 @@ from ralph.display.artifact_renderer import (
     render_missing_plan_hint,
     render_plan_artifact,
 )
-from ralph.display.context import DisplayContext, install_sigwinch_refresher, make_display_context
+from ralph.display.context import (
+    DisplayContext,
+    install_sigwinch_refresher,
+    install_width_refresher,
+    make_display_context,
+)
 from ralph.display.phase_banner import (
     show_phase_close_banner,
     show_phase_start,
@@ -109,6 +117,7 @@ __all__ = [
     "format_dev_cycle",
     "get_progress",
     "install_sigwinch_refresher",
+    "install_width_refresher",
     "make_display_context",
     "render_analysis_decision",
     "render_commit_message",

@@ -184,6 +184,7 @@ class _RunEndDisplay(Protocol):
         total_agent_calls: int,
         pr_url: str | None = None,
         exit_trigger: str | None = None,
+        outer_dev_iteration: int | None = None,
     ) -> None: ...
 
 
@@ -1058,7 +1059,7 @@ def _emit_phase_transition_if_changed(
         exit_model = PhaseExitModel.from_entry_model(
             entry,
             elapsed_seconds=elapsed,
-            exit_trigger="completed",
+            exit_trigger="produced" if artifact_outcome else "completed",
             content_blocks=content_blocks,
             thinking_blocks=thinking_blocks,
             tool_calls=tool_calls,
@@ -1363,13 +1364,16 @@ def run(  # noqa: PLR0912, PLR0913, PLR0915
             workspace_scope.root, display_context, policy_bundle
         )
 
-    # Install SIGWINCH refresher for adaptive terminal resize on POSIX.
+    # Install cross-platform width refresher (SIGWINCH on POSIX, poll thread on Windows).
     # The refresher reads the current console width and recomputes mode/limits.
-    from ralph.display.context import install_sigwinch_refresher  # noqa: PLC0415
+    from ralph.display.context import install_width_refresher  # noqa: PLC0415
+
+    def _display_stop() -> None:
+        pass
 
     if isinstance(active_display, _LegacyConsoleDisplay) or hasattr(active_display, "_ctx"):
         ctx_holder = [active_display._ctx]
-        install_sigwinch_refresher(
+        _display_stop = install_width_refresher(
             ctx_holder,
             on_refresh=lambda ctx: _sync_live_display_context(active_display, ctx),
         )
@@ -1494,15 +1498,27 @@ def run(  # noqa: PLR0912, PLR0913, PLR0915
                 with suppress(Exception):
                     total_agent_calls = getattr(state.metrics, "total_agent_calls", 0)  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
                     _exit_trigger = "completed" if exit_code == 0 else "failed"
+                    _outer_dev = next(
+                        (
+                            state.get_outer_progress(bp_name)
+                            for bp_name, bp_cfg in policy_bundle.pipeline.budget_counters.items()
+                            if bp_cfg.tracks_budget
+                            and state.get_outer_progress(bp_name) > 0
+                        ),
+                        None,
+                    )
                     cast("_RunEndDisplay", active_display).emit_run_end(
                         phase=state.phase,
                         total_agent_calls=total_agent_calls,  # type: ignore[misc]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
                         pr_url=state.pr_url,
                         exit_trigger=_exit_trigger,
+                        outer_dev_iteration=_outer_dev,
                     )
     finally:
         with suppress(Exception):
             _unsubscribe_bus()
+        with suppress(Exception):
+            _display_stop()
         if _monitor_stop is not None:
             with suppress(Exception):
                 _monitor_stop()
@@ -2705,6 +2721,9 @@ def _execute_effect(  # noqa: PLR0913
             workspace_scope.root,
             display,
             verbosity=verbosity,
+            phase_name=state.phase if state is not None else "commit",
+            state=state,
+            pipeline_policy=policy_bundle.pipeline if policy_bundle is not None else None,
         )
     if isinstance(effect, EarlySkipCommitEffect):
         logger.info("Skipping commit early: worktree is clean")
@@ -3193,6 +3212,9 @@ def _execute_commit_effect(  # noqa: PLR0913
     display: ParallelDisplay | _LegacyConsoleDisplay | None = None,
     *,
     verbosity: Verbosity = Verbosity.VERBOSE,
+    phase_name: str = "commit",
+    state: PipelineState | None = None,
+    pipeline_policy: PipelinePolicy | None = None,
 ) -> PipelineEvent:
     try:
         message = _read_commit_effect_message(effect)
@@ -3217,13 +3239,22 @@ def _execute_commit_effect(  # noqa: PLR0913
             render_commit_message(repo_root, _get_display_context(display))
         if verbosity != Verbosity.QUIET and hasattr(display, "emit_phase_close_from_exit"):
             with suppress(Exception):
-                cast("ParallelDisplay", display).emit_phase_close_from_exit(
-                    PhaseExitModel(
-                        phase_name="commit",
+                if state is not None and pipeline_policy is not None:
+                    _commit_entry = _build_phase_entry_model_from_state(
+                        phase_name, state, pipeline_policy
+                    )
+                    _commit_exit = PhaseExitModel.from_entry_model(
+                        _commit_entry,
                         artifact_outcome=f"sha={sha[:8]}",
                         exit_trigger="produced",
                     )
-                )
+                else:
+                    _commit_exit = PhaseExitModel(
+                        phase_name=phase_name,
+                        artifact_outcome=f"sha={sha[:8]}",
+                        exit_trigger="produced",
+                    )
+                cast("ParallelDisplay", display).emit_phase_close_from_exit(_commit_exit)
         _cleanup_commit_message_artifacts(repo_root)
     except Exception as exc:
         logger.error("Commit failed: {}", exc)
