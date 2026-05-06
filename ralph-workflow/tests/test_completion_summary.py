@@ -421,22 +421,21 @@ def _make_snapshot_with_budget(budget_progress: dict) -> PipelineSnapshot:
     )
 
 
-def test_completion_summary_budget_progress_section_shown() -> None:
-    """Text mode shows 'Budget Progress:' section when budget counters are present."""
+def test_completion_summary_budget_progress_never_shown() -> None:
+    """Text mode never shows 'Budget Progress:' or 'remaining' budget wording."""
     snap = _make_snapshot_with_budget({
         "dev_cycles": BudgetProgress(
             completed=3, cap=10, description="Dev Cycles", tracks_budget=True
         ),
     })
     text = _render_plain(snap)
-    assert "Budget Progress:" in text
-    assert "Dev Cycles" in text
-    assert "3/10" in text
-    assert "7 remaining" in text
+    assert "Budget Progress:" not in text
+    assert "remaining" not in text
+    assert "BUDGET:" not in text
 
 
 def test_completion_summary_budget_progress_absent_when_no_tracked_budget() -> None:
-    """Text mode omits 'Budget Progress:' when no budget-tracked counters exist."""
+    """Text mode omits budget wording when no budget-tracked counters exist."""
     snap = _make_snapshot_with_budget({
         "dev_cycles": BudgetProgress(
             completed=3, cap=10, description="Dev Cycles", tracks_budget=False
@@ -447,14 +446,14 @@ def test_completion_summary_budget_progress_absent_when_no_tracked_budget() -> N
 
 
 def test_completion_summary_budget_progress_absent_when_no_budget_progress() -> None:
-    """Text mode omits 'Budget Progress:' when budget_progress dict is empty."""
+    """Text mode omits budget wording when budget_progress dict is empty."""
     snap = _make_snapshot_with_budget({})
     text = _render_plain(snap)
     assert "Budget Progress:" not in text
 
 
 def test_completion_summary_budget_progress_absent_when_cap_zero() -> None:
-    """Text mode omits 'Budget Progress:' when cap is 0 (uncapped counter)."""
+    """Text mode omits budget wording when cap is 0 (uncapped counter)."""
     snap = _make_snapshot_with_budget({
         "dev_cycles": BudgetProgress(
             completed=3, cap=0, description="Dev Cycles", tracks_budget=True

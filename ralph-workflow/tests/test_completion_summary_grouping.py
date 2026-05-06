@@ -468,18 +468,16 @@ def _make_snapshot_with_budget_bp(budget_progress: dict) -> PipelineSnapshot:
     )
 
 
-def test_wide_budget_progress_rule_and_content_shown() -> None:
-    """Wide mode shows 'Budget Progress' rule when budget counters exist."""
+def test_wide_budget_progress_never_shown() -> None:
+    """Wide mode never shows 'Budget Progress' or 'remaining' budget wording."""
     snap = _make_snapshot_with_budget_bp({
         "dev_cycles": BudgetProgress(
             completed=2, cap=8, description="Dev Cycles", tracks_budget=True
         ),
     })
     out = _render_group_full(snap)
-    assert "Budget Progress" in out
-    assert "Dev Cycles" in out
-    assert "2/8" in out
-    assert "6 remaining" in out
+    assert "Budget Progress" not in out
+    assert "remaining" not in out
 
 
 def test_wide_budget_progress_absent_when_no_tracked_counters() -> None:
@@ -493,17 +491,16 @@ def test_wide_budget_progress_absent_when_no_tracked_counters() -> None:
     assert "Budget Progress" not in out
 
 
-def test_compact_budget_prefix_shown() -> None:
-    """Compact mode shows 'BUDGET:' prefix line when budget-tracked counters exist."""
+def test_compact_budget_never_shown() -> None:
+    """Compact mode never shows 'BUDGET:' or 'remaining' budget wording."""
     snap = _make_snapshot_with_budget_bp({
         "dev_cycles": BudgetProgress(
             completed=4, cap=10, description="Dev Cycles", tracks_budget=True
         ),
     })
     out = _render_compact_full(snap)
-    assert "BUDGET:" in out
-    assert "Dev Cycles" in out
-    assert "4/10" in out
+    assert "BUDGET:" not in out
+    assert "remaining" not in out
 
 
 def test_compact_budget_absent_when_no_tracked_counters() -> None:
