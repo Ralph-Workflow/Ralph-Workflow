@@ -106,26 +106,21 @@ class PhaseIterationContext:
         outer_dev_cap: Budget cap for outer dev cycles (shows Dev N/cap when set).
         inner_analysis: Inner analysis cycle number (None if not in analysis).
         inner_analysis_cap: Max inner analysis cycles (None if unknown).
-        budget_remaining: Remaining budget (None if not tracked).
     """
 
     outer_dev: int | None = None
     outer_dev_cap: int | None = None
     inner_analysis: int | None = None
     inner_analysis_cap: int | None = None
-    budget_remaining: int | None = None
 
     def has_context(self) -> bool:
         """Return True if any iteration context is set."""
-        return any(
-            x is not None
-            for x in (self.outer_dev, self.inner_analysis, self.budget_remaining)
-        )
+        return any(x is not None for x in (self.outer_dev, self.inner_analysis))
 
     def context_labels(self) -> list[tuple[str, str]]:
         """Return (label, style_key) pairs for rendering, in display priority order.
 
-        Order: outer dev (highest visibility) → inner analysis → budget.
+        Order: outer dev (highest visibility) → inner analysis.
         """
         parts: list[tuple[str, str]] = []
         if self.outer_dev is not None:
@@ -133,8 +128,6 @@ class PhaseIterationContext:
         if self.inner_analysis is not None:
             label = format_analysis_cycle(self.inner_analysis, self.inner_analysis_cap)
             parts.append((label, "theme.inner_analysis"))
-        if self.budget_remaining is not None:
-            parts.append((format_budget_remaining(self.budget_remaining), "theme.level.warn"))
         return parts
 
 

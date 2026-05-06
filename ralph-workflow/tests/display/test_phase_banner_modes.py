@@ -232,25 +232,6 @@ def test_phase_close_banner_dev_appears_before_analysis() -> None:
     )
 
 
-def test_phase_close_banner_elapsed_appears_after_budget() -> None:
-    """Elapsed time appears after budget remaining in phase-close banner."""
-    ctx = _make_ctx("wide")
-    exit_model = PhaseExitModel(
-        phase_name="development",
-        budget_remaining=1,
-        elapsed_seconds=5.0,
-    )
-    show_phase_close_banner(exit_model, display_context=ctx)
-    output = _export(ctx)
-    budget_pos = output.find("Budget: 1 left")
-    elapsed_pos = output.find("5.0s")
-    assert budget_pos != -1, f"Expected 'Budget: 1 left' in output, got: {output!r}"
-    assert elapsed_pos != -1, f"Expected '5.0s' in output, got: {output!r}"
-    assert budget_pos < elapsed_pos, (
-        f"Budget must appear before elapsed, but budget_pos={budget_pos} elapsed_pos={elapsed_pos}"
-    )
-
-
 def test_phase_close_banner_ascii_arrow_for_exit_trigger() -> None:
     """With RALPH_FORCE_ASCII=1, exit trigger arrow uses '->'."""
     ctx = _make_ctx("wide", ascii_mode=True)

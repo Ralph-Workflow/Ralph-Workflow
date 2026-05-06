@@ -74,25 +74,15 @@ def test_phase_iteration_context_labels_full_context() -> None:
 
 
 def test_phase_iteration_context_labels_order() -> None:
-    """outer_dev appears before inner_analysis before budget."""
+    """outer_dev appears before inner_analysis."""
     ctx = PhaseIterationContext(
         outer_dev=2,
         inner_analysis=1,
         inner_analysis_cap=3,
-        budget_remaining=4,
     )
     labels = ctx.context_labels()
     texts = [t for t, _ in labels]
     assert texts.index("Dev #2") < texts.index("Analysis 1/3")
-    assert texts.index("Analysis 1/3") < texts.index("Budget: 4 left")
-
-
-def test_phase_iteration_context_labels_budget_style() -> None:
-    ctx = PhaseIterationContext(budget_remaining=2)
-    labels = ctx.context_labels()
-    assert len(labels) == 1
-    _, style = labels[0]
-    assert style == "theme.level.warn"
 
 
 # --- Tests for format_transition_context_items ---

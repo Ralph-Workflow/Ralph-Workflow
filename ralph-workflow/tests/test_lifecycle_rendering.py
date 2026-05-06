@@ -117,13 +117,6 @@ class TestShowPhaseStartFromEntry:
         assert "1" in out
         assert "3" in out
 
-    def test_renders_budget_remaining(self) -> None:
-        console, buf = _make_console()
-        ctx = make_display_context(console=console, env={})
-        entry = PhaseEntryModel(phase_name="fix", budget_remaining=4)
-        show_phase_start_from_entry(entry, display_context=ctx)
-        assert "4" in buf.getvalue()
-
     def test_renders_agent_name(self) -> None:
         console, buf = _make_console()
         ctx = make_display_context(console=console, env={})

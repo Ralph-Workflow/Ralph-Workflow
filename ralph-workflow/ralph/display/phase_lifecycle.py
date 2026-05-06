@@ -25,7 +25,6 @@ from typing import TYPE_CHECKING
 from ralph.display.phase_status import (
     PhaseIterationContext,
     format_analysis_cycle,
-    format_budget_remaining,
     format_dev_cycle,
 )
 
@@ -49,8 +48,6 @@ class PhaseEntryModel:
         outer_dev_cap: Budget cap for the outer development counter.
         inner_analysis: Inner analysis cycle number within the current context.
         inner_analysis_cap: Cap for inner analysis (shown as ``N/cap``).
-        budget_remaining: Remaining budget count for the active budget counter.
-        budget_counter_name: Name of the budget counter driving ``budget_remaining``.
     """
 
     phase_name: str
@@ -60,8 +57,6 @@ class PhaseEntryModel:
     outer_dev_cap: int | None = None
     inner_analysis: int | None = None
     inner_analysis_cap: int | None = None
-    budget_remaining: int | None = None
-    budget_counter_name: str | None = None
 
     def to_iteration_context(self) -> PhaseIterationContext:
         """Return a :class:`PhaseIterationContext` for canonical label rendering."""
@@ -70,7 +65,6 @@ class PhaseEntryModel:
             outer_dev_cap=self.outer_dev_cap,
             inner_analysis=self.inner_analysis,
             inner_analysis_cap=self.inner_analysis_cap,
-            budget_remaining=self.budget_remaining,
         )
 
     def human_label(self) -> str:
@@ -88,8 +82,6 @@ class PhaseEntryModel:
             parts.append(format_dev_cycle(self.outer_dev_iteration))
         if self.inner_analysis is not None:
             parts.append(format_analysis_cycle(self.inner_analysis, self.inner_analysis_cap))
-        if self.budget_remaining is not None:
-            parts.append(format_budget_remaining(self.budget_remaining))
         return parts
 
 
@@ -109,8 +101,6 @@ class PhaseExitModel:
         outer_dev_cap: Budget cap for the outer development counter.
         inner_analysis: Inner analysis cycle number.
         inner_analysis_cap: Cap for inner analysis.
-        budget_remaining: Remaining budget count.
-        budget_counter_name: Budget counter name.
         elapsed_seconds: Wall-clock time for this phase.
         exit_trigger: Why the phase ended (e.g. ``"produced"``, ``"timeout"``).
         content_blocks: Number of content streaming blocks in this phase.
@@ -132,8 +122,6 @@ class PhaseExitModel:
     outer_dev_cap: int | None = None
     inner_analysis: int | None = None
     inner_analysis_cap: int | None = None
-    budget_remaining: int | None = None
-    budget_counter_name: str | None = None
     # Performance / activity
     elapsed_seconds: float = 0.0
     exit_trigger: str | None = None
@@ -155,7 +143,6 @@ class PhaseExitModel:
             outer_dev_cap=self.outer_dev_cap,
             inner_analysis=self.inner_analysis,
             inner_analysis_cap=self.inner_analysis_cap,
-            budget_remaining=self.budget_remaining,
         )
 
     @classmethod
@@ -183,8 +170,6 @@ class PhaseExitModel:
             outer_dev_cap=entry.outer_dev_cap,
             inner_analysis=entry.inner_analysis,
             inner_analysis_cap=entry.inner_analysis_cap,
-            budget_remaining=entry.budget_remaining,
-            budget_counter_name=entry.budget_counter_name,
             elapsed_seconds=elapsed_seconds,
             exit_trigger=exit_trigger,
             content_blocks=content_blocks,
