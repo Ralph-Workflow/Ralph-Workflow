@@ -9,6 +9,7 @@ instead.
 
 ## What lives here
 
+- [Agents](agents.md) — agent registry, chains, drains, and waiting-state lifecycle
 - [Configuration](configuration.md) — runtime config files, precedence, and policy knobs
 - [Concepts](concepts.md) — agents, chains, drains, phases, and execution strategy
 - [MCP Architecture](mcp-architecture.md) — server lifecycle, capability gates, and upstream proxying
@@ -19,6 +20,7 @@ instead.
 ```{toctree}
 :maxdepth: 1
 
+agents
 concepts
 mcp-architecture
 artifacts
