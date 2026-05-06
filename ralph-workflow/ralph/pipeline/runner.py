@@ -43,7 +43,6 @@ from ralph.display.phase_banner import (
     show_phase_close_banner,
     show_phase_start,
     show_phase_start_from_entry,
-    show_phase_transition,
 )
 from ralph.display.phase_lifecycle import PhaseEntryModel, PhaseExitModel
 from ralph.interrupt import controller_from_process_manager
@@ -851,37 +850,6 @@ def _build_phase_entry_model_from_state(
     )
 
 
-def _phase_context(
-    state: PipelineState,
-    previous_phase: str,
-    pipeline_policy: PipelinePolicy,
-) -> dict[str, object]:
-    """Build a context dict for emit_phase_transition with decision/analysis hints."""
-    context: dict[str, object] = {}
-    current_phase_def = pipeline_policy.phases.get(state.phase)
-    previous_phase_def = pipeline_policy.phases.get(previous_phase)
-
-    current_role = current_phase_def.role if current_phase_def is not None else None
-    previous_role = previous_phase_def.role if previous_phase_def is not None else None
-
-    if previous_role == "analysis" and previous_phase_def is not None:
-        loop_policy = previous_phase_def.loop_policy
-        if loop_policy is not None:
-            iteration_field = loop_policy.iteration_state_field
-            analysis_cur = state.get_loop_iteration(iteration_field)
-            max_iter = _resolve_analysis_cap(
-                iteration_field, state, pipeline_policy
-            )
-            if progress.is_final_analysis_iteration(analysis_cur, max_iter):
-                context["analysis_status"] = "final, skipping next"
-        if current_role == "commit":
-            context["decision"] = "approved"
-        elif current_role == "execution":
-            context["decision"] = "needs changes"
-
-    return context
-
-
 def _show_phase_start_with_context(
     phase: str,
     agent_name: str,
@@ -1054,37 +1022,33 @@ def _emit_phase_transition_if_changed(
         if not phase_close_already_emitted and hasattr(display, "emit_phase_close_from_exit"):
             with suppress(Exception):
                 cast("ParallelDisplay", display).emit_phase_close_from_exit(exit_model)
-        show_phase_close_banner(
-            exit_model,
-            display_context=ctx,
-            pipeline_policy=pipeline_policy,
-        )
+        with suppress(Exception):
+            show_phase_close_banner(
+                exit_model, display_context=ctx, pipeline_policy=pipeline_policy
+            )
     except Exception:  # pragma: no cover - defensive
-        logger.debug("show_phase_close_banner failed", exc_info=True)
+        logger.debug("phase close emission failed", exc_info=True)
 
-    # Build context and add skipped analysis info if applicable
-    context = _phase_context(state, previous_phase, pipeline_policy) or None
-    if context is None:
-        context = {}
-
-    # Check if we're skipping an exhausted analysis phase
+    # Transition banner is suppressed - the close banner already communicates
+    # what ended (exit_trigger) and the start banner shows what began.
+    # Showing "A -> B" unconditionally duplicates this information.
+    # When analysis was skipped (cap exhausted), emit a brief single-line
+    # routing note instead of a full transition banner, so the user sees
+    # *why* the routing happened without re-stating what the close banner
+    # already communicated.
     skipped_info = _skipped_exhausted_analysis_info(
         previous_phase, state.phase, state, pipeline_policy
     )
     if skipped_info is not None:
         _, info_message = skipped_info
-        context["skipped_analysis"] = info_message
-
-    try:
-        show_phase_transition(
-            previous_phase,
-            state.phase,
-            context=context if context else None,
-            display_context=ctx,
-            pipeline_policy=pipeline_policy,
-        )
-    except Exception:  # pragma: no cover - defensive
-        logger.debug("show_phase_transition failed", exc_info=True)
+        try:
+            routing_line = Text()
+            glyph = ctx.glyph_for("arrow")
+            routing_line.append(f"  {glyph} ", style="theme.text.muted")
+            routing_line.append(info_message, style="theme.level.warn")
+            ctx.console.print(routing_line)
+        except Exception:  # pragma: no cover - defensive
+            logger.debug("Routing note failed", exc_info=True)
     return state.phase
 
 

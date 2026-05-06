@@ -261,15 +261,35 @@ def show_phase_start_from_entry(
     label = entry.human_label()
 
     mode = display_context.mode
-
-    # Wide mode: titled Rule separator before the main banner line
-    if mode == "wide":
-        c.print(Rule(title=label, style=style))
-
-    line = Text()
     start_glyph = display_context.glyph_for("start")
     od_glyph = display_context.glyph_for("outer_dev")
     ia_glyph = display_context.glyph_for("inner_analysis")
+
+    # Medium mode: blank line provides visual phase boundary without a full separator
+    if mode == "medium":
+        c.print()
+
+    # Wide mode: titled Rule as section heading with brief iteration context
+    if mode == "wide":
+        rule_title = Text()
+        rule_title.append(label, style=style)
+        if entry.outer_dev_iteration is not None:
+            rule_title.append(
+                _build_outer_iteration_suffix(
+                    entry.outer_dev_iteration, entry.outer_dev_cap, od_glyph=od_glyph
+                ),
+                style="theme.outer_dev",
+            )
+        if entry.inner_analysis is not None:
+            rule_title.append(
+                _build_inner_analysis_suffix(
+                    entry.inner_analysis, entry.inner_analysis_cap, ia_glyph=ia_glyph
+                ),
+                style="theme.inner_analysis",
+            )
+        c.print(Rule(title=rule_title, style=style))
+
+    line = Text()
     line.append(f"{start_glyph} ", style=style)
     line.append(label, style=style)
 
@@ -400,6 +420,25 @@ def _build_debug_line(
     return debug_line
 
 
+def _print_wide_close_rule(
+    elapsed_label: str | None,
+    exit_trigger: str | None,
+    arrow: str,
+    style: str,
+    console: Console,
+) -> None:
+    """Print the wide-mode trailing Rule with an optional elapsed+trigger title."""
+    if elapsed_label is not None or exit_trigger is not None:
+        title = Text()
+        if elapsed_label is not None:
+            title.append(elapsed_label, style="theme.text.muted")
+        if exit_trigger is not None:
+            title.append(f"  {arrow} {exit_trigger}", style="theme.text.muted")
+        console.print(Rule(title=title, style=style))
+    else:
+        console.print(Rule(style=style))
+
+
 def show_phase_close_banner(
     exit_model: PhaseExitModel,
     *,
@@ -446,6 +485,7 @@ def show_phase_close_banner(
         )
         line.append(suffix, style="theme.inner_analysis")
 
+    elapsed_label: str | None = None
     if exit_model.elapsed_seconds > 0:
         elapsed_label = format_elapsed_seconds(exit_model.elapsed_seconds)
         line.append(f"  {elapsed_label}", style="theme.text.muted")
@@ -473,7 +513,7 @@ def show_phase_close_banner(
     if debug_line is not None:
         c.print(debug_line)
 
-    # Wide mode: trailing separator symmetrically closes the phase section started by
-    # the titled Rule in show_phase_start_from_entry.
+    # Wide mode: trailing Rule closes the phase section; title shows elapsed + trigger
+    # as a concise footer so the section boundaries are visually informative.
     if mode == "wide":
-        c.print(Rule(style=style))
+        _print_wide_close_rule(elapsed_label, exit_model.exit_trigger, arrow, style, c)

@@ -687,3 +687,68 @@ def test_wide_phase_start_and_close_have_same_rule_count() -> None:
         f"Phase-start has {len(start_rules)} rule(s), phase-close has {len(close_rules)} rule(s) "
         "— wide mode start and close must be structurally symmetric"
     )
+
+
+# --- Analysis budget indicator tests ---
+
+
+def test_phase_start_medium_mode_shows_remaining_analysis_budget() -> None:
+    """Medium mode: phase-start shows [N left] when analysis iterations remain."""
+    ctx = _make_ctx("medium")
+    entry = PhaseEntryModel(
+        phase_name="development_analysis",
+        inner_analysis=2,
+        inner_analysis_cap=5,
+    )
+    show_phase_start_from_entry(entry, display_context=ctx)
+    output = _export(ctx)
+    assert "left" in output, f"Expected '[N left]' indicator in medium mode output: {output!r}"
+    assert "3 left" in output, (
+        f"Expected '3 left' (cap 5 - current 2) in medium mode output: {output!r}"
+    )
+
+
+def test_phase_start_wide_mode_shows_remaining_analysis_budget() -> None:
+    """Wide mode: phase-start shows [N left] when analysis iterations remain."""
+    ctx = _make_ctx("wide")
+    entry = PhaseEntryModel(
+        phase_name="development_analysis",
+        inner_analysis=1,
+        inner_analysis_cap=4,
+    )
+    show_phase_start_from_entry(entry, display_context=ctx)
+    output = _export(ctx)
+    assert "3 left" in output, (
+        f"Expected '3 left' (cap 4 - current 1) in wide mode output: {output!r}"
+    )
+
+
+def test_phase_start_medium_mode_shows_last_when_at_cap() -> None:
+    """Medium mode: phase-start shows [last] when on the final analysis iteration."""
+    ctx = _make_ctx("medium")
+    entry = PhaseEntryModel(
+        phase_name="development_analysis",
+        inner_analysis=3,
+        inner_analysis_cap=3,
+    )
+    show_phase_start_from_entry(entry, display_context=ctx)
+    output = _export(ctx)
+    assert "last" in output, f"Expected '[last]' indicator in medium mode output: {output!r}"
+
+
+def test_phase_start_compact_mode_omits_analysis_budget_indicator() -> None:
+    """Compact mode: phase-start must NOT show [N left] or [last] indicators."""
+    ctx = _make_ctx("compact")
+    entry = PhaseEntryModel(
+        phase_name="development_analysis",
+        inner_analysis=2,
+        inner_analysis_cap=5,
+    )
+    show_phase_start_from_entry(entry, display_context=ctx)
+    output = _export(ctx)
+    assert "left" not in output, (
+        f"Compact mode must not show '[N left]' indicator: {output!r}"
+    )
+    assert "last" not in output, (
+        f"Compact mode must not show '[last]' indicator: {output!r}"
+    )

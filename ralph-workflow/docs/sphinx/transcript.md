@@ -148,30 +148,39 @@ When a block ends, Ralph Workflow may append summary lines depending on configur
 
 ## Phase-Start Banner
 
-Before each phase begins, a single-line phase-start banner is printed to the console:
+Before each phase begins, a phase-start banner is printed to the console.  The exact
+layout depends on the display mode:
+
+- **compact**: single-line banner with no separators or qualifiers
+- **medium**: blank line before the banner provides a visual phase boundary; `(outer)` /
+  `(inner)` qualifiers are appended to the iteration labels
+- **wide**: a titled Rule separator precedes the banner (title = phase label + iteration
+  context); `(outer)` / `(inner)` qualifiers are appended; agent name appears on its own
+  indented line
 
 ```
-<glyph> <Phase Label>  <od_glyph> Dev N/cap [(outer)]  <ia_glyph> Analysis N/cap [(inner)]  agent=<name>
+─────────── <Phase Label>  <od_glyph> Dev N/cap  <ia_glyph> Analysis N/cap ─── ← wide only
+<glyph> <Phase Label>  <od_glyph> Dev N/cap [(outer)]  <ia_glyph> Analysis N/cap [(inner)]  [N left|last]  [agent=<name>]
+    agent: <name>                                                               ← wide only
 ```
 
 | Field | Notes |
 |-------|-------|
 | `<Phase Label>` | Human-readable phase name (e.g. `Development Analysis`) |
 | `Dev N/cap` or `Dev #N` | Outer development cycle — 1-indexed current cycle number; shows cap when progress is tracked |
-| `(outer)` | Qualifier appended in **wide mode only** to clarify this is the outer dev cycle |
+| `(outer)` | Qualifier appended in **medium and wide mode** to clarify this is the outer dev cycle |
 | `Analysis N/cap` or `Analysis #N` | Inner analysis loop iteration — 1-indexed; shows cap when known |
-| `(inner)` | Qualifier appended in **wide mode only** to clarify this is the inner analysis cycle |
+| `(inner)` | Qualifier appended in **medium and wide mode** to clarify this is the inner analysis cycle |
 | `[N left]` | Remaining analysis iterations before cap is reached — shown in **medium/wide mode** when the cap is known and iterations remain |
 | `[last]` | Shown in **medium/wide mode** when the current analysis iteration is the final one allowed by the cap |
-| `agent=<name>` | Active agent identity, if known |
+| `agent=<name>` | Active agent identity — shown inline in compact/medium mode; shown on its own indented line in wide mode |
 
 All iteration fields are optional and appear only when the pipeline has that context.
 `Dev N/cap` counts from 1: `Dev 1/5` means the pipeline is entering its first development
 cycle out of a total budget of 5. `Dev 0/cap` is never shown.
 
-In medium and wide modes, `(outer)` and `(inner)` qualifiers are appended to the
-development and analysis cycle labels respectively, making the distinction between
-outer dev and inner analysis cycles explicit when debugging.
+In wide mode the titled Rule carries the same iteration labels as the banner line so
+the section heading is immediately scannable even when the banner itself scrolls out of view.
 
 ## Phase-Close Banner
 
@@ -183,7 +192,7 @@ phase-close banner is printed to the console:
     ↳ stats: content=N thinking=N tools=N [errors=N]        ← medium/wide only, when activity > 0
     ↳ artifact: <artifact_outcome>                           ← medium/wide only, when artifact produced
   <warning_glyph> debug: waiting: <waiting_status> | failure: <failure_category>   ← only when breadcrumbs exist
-────────────────────────────────────────────────────────── ← wide mode only, trailing Rule separator
+──────────── Ns  <arrow> <exit_trigger> ──────────────────── ← wide only, titled trailing Rule
 ```
 
 | Field | Notes |
@@ -200,6 +209,9 @@ phase-close banner is printed to the console:
 | `↳ artifact:` | What the phase produced (e.g. `plan: 5 step(s), 2 risk(s)`) — shown in medium/wide mode when set |
 | `debug: waiting: …` | Last waiting-status line recorded during this phase (present only when set) |
 | `debug: … failure: …` | Last failure category recorded during this phase (present only when set) |
+| trailing Rule | **Wide mode only** — printed after all detail lines with `Ns  → exit_trigger` as
+    the Rule title (or a plain Rule when both are absent); symmetrically closes the section opened
+    by the phase-start titled Rule |
 
 All iteration fields are optional and appear only when the pipeline has that context.
 This banner is symmetric with the phase-start banner: same field ordering, same glyphs,
