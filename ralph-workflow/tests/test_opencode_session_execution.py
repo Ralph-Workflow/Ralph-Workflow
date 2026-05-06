@@ -722,6 +722,73 @@ class TestCheckProcessResultCompletionSeam:
                 ),
             )
 
+    def test_optional_artifact_absent_does_not_raise(self, tmp_path: Path) -> None:
+        """OpenCode rc=0 without artifact is terminal when artifact_required=False.
+
+        When a phase has an optional artifact contract (artifact_required=False), a clean
+        exit is terminal even without the artifact or a declare_complete signal. The
+        completion check must not raise OpenCodeResumableExitError in this case.
+        """
+        strategy = OpenCodeExecutionStrategy()
+        handle = _FakeHandle(returncode=0)
+
+        _check_process_result(
+            cast("ManagedProcess", handle),
+            "opencode",
+            [],  # no declare_complete marker
+            _CompletionCheckOptions(
+                execution_strategy=strategy,
+                workspace_path=tmp_path,
+                required_artifact=RequiredArtifact(
+                    phase="development",
+                    artifact_type="development_result",
+                    json_path=".agent/artifacts/development_result.json",
+                    markdown_path=None,
+                    normalizer=None,
+                    artifact_required=False,
+                ),
+                policy=TimeoutPolicy(idle_timeout_seconds=None, parent_exit_grace_seconds=0.0),
+            ),
+        )
+        # No exception raised: artifact_optional=True -> TERMINAL_COMPLETE
+
+    def test_optional_artifact_malformed_does_not_raise_at_completion_check(
+        self, tmp_path: Path
+    ) -> None:
+        """OpenCode rc=0 with a malformed optional artifact is still terminal at completion layer.
+
+        When artifact_required=False, artifact_optional=True is set regardless of whether
+        the artifact file exists or is valid. The completion check returns TERMINAL_COMPLETE.
+        Malformed-artifact validation is the execution phase's responsibility, not the
+        completion check's.
+        """
+        artifact_dir = tmp_path / ".agent" / "artifacts"
+        artifact_dir.mkdir(parents=True)
+        (artifact_dir / "development_result.json").write_text("not-valid-json")
+
+        strategy = OpenCodeExecutionStrategy()
+        handle = _FakeHandle(returncode=0)
+
+        _check_process_result(
+            cast("ManagedProcess", handle),
+            "opencode",
+            [],  # no declare_complete marker
+            _CompletionCheckOptions(
+                execution_strategy=strategy,
+                workspace_path=tmp_path,
+                required_artifact=RequiredArtifact(
+                    phase="development",
+                    artifact_type="development_result",
+                    json_path=".agent/artifacts/development_result.json",
+                    markdown_path=None,
+                    normalizer=None,
+                    artifact_required=False,
+                ),
+                policy=TimeoutPolicy(idle_timeout_seconds=None, parent_exit_grace_seconds=0.0),
+            ),
+        )
+        # No exception: artifact_optional=True -> TERMINAL_COMPLETE even for malformed file
+
 
 # ---------------------------------------------------------------------------
 # (k) extract_explicit_completion detects declare_complete marker
