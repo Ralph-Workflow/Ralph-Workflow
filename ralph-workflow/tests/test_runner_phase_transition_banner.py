@@ -208,3 +208,37 @@ def test_emit_phase_transition_populates_activity_counters_from_display() -> Non
     assert exit_model.thinking_blocks == _STUB_THINKING_BLOCKS
     assert exit_model.tool_calls == _STUB_TOOL_CALLS
     assert exit_model.errors == _STUB_ERRORS
+
+
+def test_emit_phase_transition_propagates_artifact_outcome_from_display() -> None:
+    """Exit model should carry artifact_outcome from display's last_phase_artifact_outcome."""
+    display = _StubDisplay()
+    display.last_phase_artifact_outcome = "plan: 3 step(s), 2 risk(s)"
+    state = PipelineState(
+        phase="planning_analysis",
+        previous_phase="planning",
+        budget_caps={"iteration": 1},
+    )
+
+    captured: dict[str, PhaseExitModel] = {}
+
+    def _capture_close(
+        exit_model: PhaseExitModel, *, display_context: object, pipeline_policy: object
+    ) -> None:
+        del display_context, pipeline_policy
+        captured["exit_model"] = exit_model
+
+    with (
+        patch("ralph.pipeline.runner.show_phase_close_banner", side_effect=_capture_close),
+        patch("ralph.pipeline.runner.show_phase_transition"),
+    ):
+        runner_module._emit_phase_transition_if_changed(
+            cast("runner_module.ParallelDisplay | runner_module._LegacyConsoleDisplay", display),
+            "planning",
+            state,
+            verbosity=runner_module.Verbosity.VERBOSE,
+            pipeline_policy=_DEFAULT_POLICY.pipeline,
+        )
+
+    exit_model = captured["exit_model"]
+    assert exit_model.artifact_outcome == "plan: 3 step(s), 2 risk(s)"
