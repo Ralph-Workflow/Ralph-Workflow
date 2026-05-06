@@ -253,7 +253,6 @@ def test_planning_analysis_cap_skips_reentry_and_enters_development(
     initial_state = PipelineState.from_policy(
         policy_bundle.pipeline,
         budget_caps={"iteration": 1},
-        budget_remaining={"iteration": 1},
         loop_iterations={"planning_analysis_iteration": 1},
         loop_caps={
             "planning_analysis_iteration": 1,
@@ -294,7 +293,6 @@ def test_runner_uses_real_planning_analysis_decision_and_skips_reentry_at_cap(
     initial_state = PipelineState.from_policy(
         policy_bundle.pipeline,
         budget_caps={"iteration": 1},
-        budget_remaining={"iteration": 1},
         loop_caps=initial_loop_caps,
     )
     (tmp_path / "PROMPT.md").write_text("# Prompt\n\nReproduce exhausted planning analysis.")
@@ -425,7 +423,6 @@ def test_development_analysis_runs_exactly_up_to_cap_then_skips_reentry(
         policy_entry_phase=policy_bundle.pipeline.entry_phase,
         current_drain="development",
         budget_caps={"iteration": 1, "reviewer_pass": 0},
-        budget_remaining={"iteration": 1, "reviewer_pass": 0},
         loop_caps=initial_loop_caps,
     )
 
@@ -484,7 +481,6 @@ def test_runner_uses_real_development_analysis_decision_and_skips_reentry_at_cap
         policy_entry_phase=policy_bundle.pipeline.entry_phase,
         current_drain="development",
         budget_caps={"iteration": 1},
-        budget_remaining={"iteration": 1},
         loop_caps=initial_loop_caps,
     )
     (tmp_path / "PROMPT.md").write_text("# Prompt\n\nReproduce exhausted development analysis.")
@@ -625,7 +621,6 @@ def test_checkpoint_resume_preserves_budget(
     state = PipelineState(
         phase="planning",
         budget_caps={"iteration": 1},
-        budget_remaining={"iteration": 1},
     )
     ckpt_save(state, checkpoint_path)
 

@@ -94,7 +94,6 @@ def test_default_run_constructs_parallel_display_and_renders_surfaces(
     state = PipelineState(
         phase="planning",
         budget_caps={"iteration": 1, "reviewer_pass": 0},
-        budget_remaining={"iteration": 1, "reviewer_pass": 0},
     )
 
     exit_code = runner_module.run(_config(), initial_state=state)

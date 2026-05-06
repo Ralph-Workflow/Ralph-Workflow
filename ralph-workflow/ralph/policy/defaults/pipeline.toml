@@ -154,7 +154,7 @@ reset_loop = false
 [phases.development_commit]
 drain = "development_commit"
 role = "commit"
-prompt_template = "development_commit_message.jinja"
+prompt_template = "commit_message.jinja"
 [phases.development_commit.transitions]
 on_success = "complete"
 on_failure = "failed_terminal"

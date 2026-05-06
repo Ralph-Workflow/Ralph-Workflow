@@ -77,5 +77,5 @@ markdown_summary_path = ".agent/PLANNING_ANALYSIS_DECISION.md"
 drain = "development_commit"
 artifact_type = "commit_message"
 decision_vocabulary = []
-prompt_template = "development_commit_message.jinja"
+prompt_template = "commit_message.jinja"
 artifact_json_path = ".agent/tmp/commit_message.json"

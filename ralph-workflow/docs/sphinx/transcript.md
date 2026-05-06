@@ -149,17 +149,16 @@ When a block ends, Ralph Workflow may append summary lines depending on configur
 Before each phase begins, a single-line phase-start banner is printed to the console:
 
 ```
-<glyph> <Phase Label>  <od_glyph> Dev N/cap [(outer)]  <ia_glyph> Analysis N/cap [(inner)]  <budget_glyph> Budget: N left  agent=<name>
+<glyph> <Phase Label>  <od_glyph> Dev N/cap [(outer)]  <ia_glyph> Analysis N/cap [(inner)]  agent=<name>
 ```
 
 | Field | Notes |
 |-------|-------|
 | `<Phase Label>` | Human-readable phase name (e.g. `Development Analysis`) |
-| `Dev N/cap` or `Dev #N` | Outer development cycle — 1-indexed current cycle number; shows cap when budget is tracked |
+| `Dev N/cap` or `Dev #N` | Outer development cycle — 1-indexed current cycle number; shows cap when progress is tracked |
 | `(outer)` | Qualifier appended in **wide mode only** to clarify this is the outer dev cycle |
 | `Analysis N/cap` or `Analysis #N` | Inner analysis loop iteration — 1-indexed; shows cap when known |
 | `(inner)` | Qualifier appended in **wide mode only** to clarify this is the inner analysis cycle |
-| `Budget: N left` | Remaining budget from the active budget counter |
 | `agent=<name>` | Active agent identity, if known |
 
 All iteration fields are optional and appear only when the pipeline has that context.
@@ -176,7 +175,7 @@ When a phase ends and the pipeline transitions to the next phase, a rich visual
 phase-close banner is printed to the console:
 
 ```
-<success_glyph> <Phase Label>  <od_glyph> Dev N/cap [(outer)]  <ia_glyph> Analysis N/cap [(inner)]  <budget_glyph> Budget: N left  Ns  <arrow> <exit_trigger>
+<success_glyph> <Phase Label>  <od_glyph> Dev N/cap [(outer)]  <ia_glyph> Analysis N/cap [(inner)]  Ns  <arrow> <exit_trigger>
     ↳ stats: content=N thinking=N tools=N [errors=N]        ← medium/wide only, when activity > 0
     ↳ artifact: <artifact_outcome>                           ← medium/wide only, when artifact produced
   <warning_glyph> debug: waiting: <waiting_status> | failure: <failure_category>   ← only when breadcrumbs exist
@@ -190,7 +189,6 @@ phase-close banner is printed to the console:
 | `(outer)` | Qualifier appended in **medium/wide mode** |
 | `Analysis N/cap` or `Analysis #N` | Inner analysis loop iteration — same label as phase-start |
 | `(inner)` | Qualifier appended in **medium/wide mode** |
-| `Budget: N left` | Remaining budget from the active budget counter |
 | `Ns` | Wall-clock elapsed time for the phase, in seconds (omitted when 0) |
 | `<arrow> <exit_trigger>` | Why the phase ended — present when an exit trigger is known |
 | `↳ stats:` | Phase-level activity counters — shown in medium/wide mode when any counter is non-zero |
@@ -220,7 +218,7 @@ After each phase produces its artifact, a single `[phase-close]` line is appende
 |-------|-------|
 | `<glyph?>` | Milestone glyph (`◆` Unicode, `*` ASCII) for execution/review/fix phases only |
 | `phase=<name>` | Name of the phase that just ended |
-| `[Dev N/cap]` or `[Dev #N]`, `[Analysis N/cap]` or `[Analysis #N]`, `[Budget: N left]` | Canonical iteration labels — only present when in a context that tracks them |
+| `[Dev N/cap]` or `[Dev #N]`, `[Analysis N/cap]` or `[Analysis #N]` | Canonical iteration labels — only present when in a context that tracks them |
 | `<produced>` | Human-readable artifact summary (e.g. `5 step(s), 2 risk(s)`, `result produced`, `sha=abc12345`) |
 | `exit=<trigger>` | Why the phase ended — omitted when the exit trigger is unknown |
 | Counter tuple | Phase-level activity metrics always present |
@@ -238,9 +236,8 @@ the same vocabulary for iteration context:
 
 | Label | Meaning | Color |
 |-------|---------|-------|
-| `Dev N/cap` or `Dev #N` | Outer development cycle (1-indexed); shows cap when the budget is known | Bold sky-blue |
+| `Dev N/cap` or `Dev #N` | Outer development cycle (1-indexed); shows cap when the progress cap is known | Bold sky-blue |
 | `Analysis N/cap` or `Analysis #N` | Inner analysis loop iteration; shows cap when known | Purple |
-| `Budget: N left` | Remaining budget from an active policy counter | Bold orange |
 
 ## `[run-end]` Panel
 

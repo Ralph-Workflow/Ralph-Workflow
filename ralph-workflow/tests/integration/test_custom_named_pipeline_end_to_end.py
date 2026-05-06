@@ -249,8 +249,8 @@ class TestCustomNamedPipelinePostCommitRouting:
         policy = custom_bundle.pipeline
         state = PipelineState(
             phase="sign_off",
-            budget_remaining={"cycles": 2},
             outer_progress={"cycles": 1},
+            budget_caps={"cycles": 3},
         )
         next_phase = resolve_post_commit_phase(state, policy)
         assert next_phase == "design", f"Expected design, got {next_phase}"
@@ -260,8 +260,8 @@ class TestCustomNamedPipelinePostCommitRouting:
         policy = custom_bundle.pipeline
         state = PipelineState(
             phase="sign_off",
-            budget_remaining={"cycles": 0},
             outer_progress={"cycles": _CYCLE_CAP},
+            budget_caps={"cycles": _CYCLE_CAP},
         )
         next_phase = resolve_post_commit_phase(state, policy)
         assert next_phase == "done", f"Expected done, got {next_phase}"

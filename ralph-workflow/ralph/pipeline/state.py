@@ -15,8 +15,9 @@ are keyed by policy-declared names, not hardcoded field names. This enables
 custom workflows with arbitrary phase and counter names to work without
 modifying source code.
 
-Budget counters (budget_remaining / outer_progress) track remaining budget
-and completed cycles for each policy-declared budget counter.
+Budget counters (budget_caps / outer_progress) track the cap and completed
+cycles for each policy-declared budget counter. Remaining budget is always
+derived: remaining = max(0, cap - progress).
 
 Legacy checkpoint fields (budget fields only) are migrated to the generic
 dicts at deserialise time via the _migrate_legacy_state_fields model_validator.
@@ -154,9 +155,9 @@ class PipelineState(_FrozenPipelineStateModel):  # type: ignore[explicit-any]  #
         phase_chains: Per-phase agent chain state keyed by canonical phase name.
         loop_iterations: Loop iteration counters keyed by iteration_state_field name.
         loop_caps: Loop iteration caps keyed by iteration_state_field name.
-        budget_remaining: Remaining budget keyed by budget counter name.
         budget_caps: Max budget keyed by budget counter name (seeded from policy).
         outer_progress: Completed cycle counts keyed by budget counter name.
+        Remaining budget is derived on-demand: max(0, cap - progress).
     """
 
     phase: PipelinePhase = _UNSET_PHASE
@@ -173,7 +174,7 @@ class PipelineState(_FrozenPipelineStateModel):  # type: ignore[explicit-any]  #
     loop_caps: dict[str, int] = Field(default_factory=dict)
 
     # Generic budget counter tracking (keyed by budget counter name from budget_counters)
-    budget_remaining: dict[str, int] = Field(default_factory=dict)
+    # Remaining budget is derived: max(0, budget_caps[k] - outer_progress[k])
     budget_caps: dict[str, int] = Field(default_factory=dict)
     outer_progress: dict[str, int] = Field(default_factory=dict)
 
@@ -237,17 +238,15 @@ class PipelineState(_FrozenPipelineStateModel):  # type: ignore[explicit-any]  #
 
         Handles old checkpoints that stored:
         - Typed chain fields → migrated into phase_chains
-        - Legacy budget fields → migrated into budget_remaining / outer_progress
+        - Legacy budget fields → migrated into budget_caps / outer_progress
+
+        Legacy budget_remaining values are converted to outer_progress by computing
+        progress = cap - remaining, so the derived remaining stays the same.
         """
         if not isinstance(data, dict):
             return data
         d = cast("dict[str, object]", dict(data))
 
-        # Migrate legacy budget fields into budget_remaining, budget_caps, and outer_progress
-        _raw_br = d.get("budget_remaining")
-        budget_remaining: dict[str, object] = dict(
-            cast("dict[str, object]", _raw_br) if _raw_br is not None else {}
-        )
         _raw_bc = d.get("budget_caps")
         budget_caps_data: dict[str, object] = dict(
             cast("dict[str, object]", _raw_bc) if _raw_bc is not None else {}
@@ -256,15 +255,40 @@ class PipelineState(_FrozenPipelineStateModel):  # type: ignore[explicit-any]  #
         outer_progress_data: dict[str, object] = dict(
             cast("dict[str, object]", _raw_op) if _raw_op is not None else {}
         )
-        _migrate_counter_field(d, budget_remaining, "development_budget_remaining", "iteration")
-        _migrate_counter_field(d, budget_remaining, "review_budget_remaining", "reviewer_pass")
         _migrate_counter_field(d, budget_caps_data, "total_iterations", "iteration")
         _migrate_counter_field(d, budget_caps_data, "total_reviewer_passes", "reviewer_pass")
         _migrate_counter_field(d, outer_progress_data, "iteration", "iteration")
         _migrate_counter_field(d, outer_progress_data, "reviewer_pass", "reviewer_pass")
-        d["budget_remaining"] = budget_remaining
+
+        # Migrate very-old scalar remaining fields to outer_progress via progress = cap - remaining
+        for _br_field, _counter in (
+            ("development_budget_remaining", "iteration"),
+            ("review_budget_remaining", "reviewer_pass"),
+        ):
+            _scalar_br = d.get(_br_field)
+            if (
+                _scalar_br is not None
+                and _counter not in outer_progress_data
+                and _counter in budget_caps_data
+            ):
+                _cap = int(cast("int", budget_caps_data[_counter]))
+                _rem = int(cast("int", _scalar_br))
+                outer_progress_data[_counter] = max(0, _cap - _rem)
+
+        # Migrate legacy budget_remaining dict into outer_progress via progress = cap - remaining
+        _raw_br = d.get("budget_remaining")
+        if isinstance(_raw_br, dict):
+            legacy_br = cast("dict[str, object]", _raw_br)
+            for counter, remaining_val in legacy_br.items():
+                if counter not in outer_progress_data and counter in budget_caps_data:
+                    cap = int(cast("int", budget_caps_data[counter]))
+                    remaining = int(cast("int", remaining_val))
+                    outer_progress_data[counter] = max(0, cap - remaining)
+
         d["budget_caps"] = budget_caps_data
         d["outer_progress"] = outer_progress_data
+        # Drop legacy budget_remaining — no longer a field
+        d.pop("budget_remaining", None)
 
         return d
 
@@ -333,15 +357,6 @@ class PipelineState(_FrozenPipelineStateModel):  # type: ignore[explicit-any]  #
         if isinstance(v, dict):
             return {str(k): int(val) for k, val in v.items()}
         raise TypeError(f"Expected dict for loop_caps, got {type(v).__name__!r}")
-
-    @field_validator("budget_remaining", mode="before")
-    @classmethod
-    def _coerce_budget_remaining(cls, v: object) -> dict[str, int]:
-        if v is None:
-            return {}
-        if isinstance(v, dict):
-            return {str(k): int(val) for k, val in v.items()}
-        raise TypeError(f"Expected dict for budget_remaining, got {type(v).__name__!r}")
 
     @field_validator("budget_caps", mode="before")
     @classmethod
@@ -451,9 +466,12 @@ class PipelineState(_FrozenPipelineStateModel):  # type: ignore[explicit-any]  #
             counter_name: The budget counter name from PhaseCommitPolicy.increments_counter.
 
         Returns:
-            Remaining budget count.
+            Remaining budget count, derived as max(0, cap - completed).
         """
-        return self.budget_remaining.get(counter_name, 0)
+        return max(
+            0,
+            self.budget_caps.get(counter_name, 0) - self.outer_progress.get(counter_name, 0),
+        )
 
     def get_budget_cap(self, counter_name: str) -> int:
         """Get the budget cap for a policy-declared budget counter.
@@ -469,12 +487,6 @@ class PipelineState(_FrozenPipelineStateModel):  # type: ignore[explicit-any]  #
     def get_outer_progress(self, counter_name: str) -> int:
         """Get the completed cycle count for a policy-declared budget counter."""
         return self.outer_progress.get(counter_name, 0)
-
-    def with_budget_remaining(self, counter_name: str, value: int) -> PipelineState:
-        """Return a copy with the specified budget counter set to value."""
-        return self.copy_with(
-            budget_remaining={**self.budget_remaining, counter_name: value},
-        )
 
     def with_outer_progress(self, counter_name: str, value: int) -> PipelineState:
         """Return a copy with the specified outer progress counter set to value."""

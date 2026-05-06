@@ -69,6 +69,7 @@ from ralph.pipeline.cycle_baseline import (
 )
 from ralph.pipeline.effects import (
     CommitEffect,
+    EarlySkipCommitEffect,
     Effect,
     ExitFailureEffect,
     ExitSuccessEffect,
@@ -832,12 +833,10 @@ def _build_phase_entry_model_from_state(
 
     outer_iteration: int | None = None
     outer_dev_cap: int | None = None
-    budget_remaining: int | None = None
     counter = _find_commit_counter_from_phase(phase, pipeline_policy)
     if counter is not None:
         outer_iteration = state.get_outer_progress(counter)
-        budget_remaining = state.get_budget_remaining(counter)
-        outer_dev_cap = outer_iteration + budget_remaining
+        outer_dev_cap = state.get_budget_cap(counter)
 
     current_dev_cycle = outer_iteration + 1 if outer_iteration is not None else None
     return PhaseEntryModel(
@@ -848,7 +847,6 @@ def _build_phase_entry_model_from_state(
         outer_dev_cap=outer_dev_cap,
         inner_analysis=inner_analysis,
         inner_analysis_cap=inner_analysis_cap,
-        budget_remaining=budget_remaining,
     )
 
 
@@ -913,12 +911,6 @@ def _phase_context(
     elif current_role in ("execution", "review"):
         _add_outer_counter_context(context, state.phase, pipeline_policy, state)
 
-    if previous_role == "commit" and previous_phase_def is not None:
-        commit_policy = previous_phase_def.commit_policy
-        if commit_policy is not None and commit_policy.increments_counter:
-            counter = commit_policy.increments_counter
-            remaining = state.get_budget_remaining(counter)
-            context[f"{counter}_budget"] = f"{remaining} remaining"
     return context
 
 
@@ -2172,7 +2164,6 @@ def _create_initial_state(
     return PipelineState(
         phase=entry_phase,
         budget_caps=caps,
-        budget_remaining=dict(caps),
         phase_chains=phase_chains,
         rebase=RebaseState(),
         commit=CommitState(),
@@ -2322,6 +2313,11 @@ def _commit_phase_effect(
 ) -> Effect:
     if state.commit.agent_invoked:
         return _commit_effect(workspace_scope.root)
+    # Early skip: if the worktree is clean before the agent is invoked, skip the
+    # commit phase entirely — no prompt materialization, no agent invocation.
+    if _should_early_skip_commit(workspace_scope.root):
+        _cleanup_commit_message_artifacts(workspace_scope.root)
+        return EarlySkipCommitEffect()
     agent_name = _agent_name_for_phase_from_policy(state, policy_bundle, config=config)
     if agent_name is None:
         return ExitFailureEffect(reason=f"No agent configured for commit phase '{state.phase}'")
@@ -2710,6 +2706,10 @@ def _execute_effect(  # noqa: PLR0913
             display,
             verbosity=verbosity,
         )
+    if isinstance(effect, EarlySkipCommitEffect):
+        logger.info("Skipping commit early: worktree is clean")
+        _cleanup_commit_message_artifacts(workspace_scope.root)
+        return PipelineEvent.COMMIT_SKIPPED
     if isinstance(effect, SaveCheckpointEffect):
         return PipelineEvent.CHECKPOINT_SAVED
 
@@ -3199,6 +3199,13 @@ def _execute_commit_effect(  # noqa: PLR0913
         if not message:
             logger.error("Commit message file is empty: {}", effect.message_file)
             return PipelineEvent.COMMIT_FAILURE
+        # Late guard: commit agent may have submitted a skip artifact when it
+        # saw no pending diff.  Detect it here so we never create a git commit
+        # whose subject is literally "SKIP: ...".
+        if message.strip().lower().startswith("skip:"):
+            logger.info("Commit agent requested skip — skipping commit execution")
+            _cleanup_commit_message_artifacts(repo_root)
+            return PipelineEvent.COMMIT_SKIPPED
         if not _repo_has_commit_work(repo_root):
             logger.info("Skipping commit because the worktree is empty")
             _cleanup_commit_message_artifacts(repo_root)
@@ -3235,6 +3242,18 @@ def _repo_has_commit_work(repo_root: Path) -> bool:
 
 def _cleanup_commit_message_artifacts(repo_root: Path) -> None:
     delete_commit_message_artifacts(repo_root)
+
+
+def _should_early_skip_commit(workspace_root: Path) -> bool:
+    """Return True iff the worktree is clean and the commit phase should be skipped early.
+
+    Fails open (returns False) when git state cannot be inspected so the pipeline
+    falls back to the late-skip guard in _execute_commit_effect().
+    """
+    try:
+        return not _repo_has_commit_work(workspace_root)
+    except Exception:
+        return False
 
 
 def _subscriber_for_display(

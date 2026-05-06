@@ -51,6 +51,8 @@ def test_commit_prompt_includes_diff_and_guidance() -> None:
     assert "bad: chore: update files" in prompt.lower()
     assert "bad: fix: stuff" in prompt.lower()
     assert "most commits need a body" in prompt.lower()
+    assert "changes not yet committed" in prompt.lower()
+    assert "current worktree vs the last commit" in prompt.lower()
 
 
 def test_commit_prompt_rejects_empty_diff() -> None:
@@ -83,7 +85,9 @@ def test_opencode_commit_prompt_uses_direct_tool_call_language() -> None:
         submit_artifact_tool_name="ralph_submit_artifact",
     )
 
-    assert prompt.startswith("Do not analyze anything.")
+    assert "current pending work" in prompt
+    assert "current worktree vs the last commit" in prompt
+    assert "Do not analyze anything" in prompt
     assert "Immediately call `ralph_submit_artifact`" in prompt
     assert 'artifact_type="commit_message"' in prompt
     assert '\\"type\\":\\"commit\\",\\"subject\\":\\"type(scope): description\\"' in prompt

@@ -5,7 +5,6 @@ from __future__ import annotations
 from ralph.display.phase_status import (
     PhaseIterationContext,
     format_analysis_cycle,
-    format_budget_remaining,
     format_dev_cycle,
     format_exit_trigger,
     format_transition_context_items,
@@ -29,12 +28,6 @@ def test_format_analysis_cycle_with_cap() -> None:
     assert format_analysis_cycle(1, 3) == "Analysis 1/3"
     assert format_analysis_cycle(3, 3) == "Analysis 3/3"
     assert format_analysis_cycle(2, 5) == "Analysis 2/5"
-
-
-def test_format_budget_remaining_renders_count() -> None:
-    assert format_budget_remaining(0) == "Budget: 0 left"
-    assert format_budget_remaining(5) == "Budget: 5 left"
-    assert format_budget_remaining(1) == "Budget: 1 left"
 
 
 # --- PhaseIterationContext tests ---
@@ -74,25 +67,15 @@ def test_phase_iteration_context_labels_full_context() -> None:
 
 
 def test_phase_iteration_context_labels_order() -> None:
-    """outer_dev appears before inner_analysis before budget."""
+    """outer_dev appears before inner_analysis."""
     ctx = PhaseIterationContext(
         outer_dev=2,
         inner_analysis=1,
         inner_analysis_cap=3,
-        budget_remaining=4,
     )
     labels = ctx.context_labels()
     texts = [t for t, _ in labels]
     assert texts.index("Dev #2") < texts.index("Analysis 1/3")
-    assert texts.index("Analysis 1/3") < texts.index("Budget: 4 left")
-
-
-def test_phase_iteration_context_labels_budget_style() -> None:
-    ctx = PhaseIterationContext(budget_remaining=2)
-    labels = ctx.context_labels()
-    assert len(labels) == 1
-    _, style = labels[0]
-    assert style == "theme.level.warn"
 
 
 # --- Tests for format_transition_context_items ---
@@ -114,18 +97,6 @@ def test_transition_context_decision_needs_changes_renders_with_arrow() -> None:
     """'decision' key with 'needs changes' value renders as '→ needs changes'."""
     result = format_transition_context_items({"decision": "needs changes"})
     assert result == ["→ needs changes"]
-
-
-def test_transition_context_budget_key_uses_canonical_label() -> None:
-    """Keys ending in '_budget' with 'N remaining' value use canonical Budget label."""
-    result = format_transition_context_items({"iteration_budget": "3 remaining"})
-    assert result == ["Budget: 3 left"]
-
-
-def test_transition_context_budget_key_zero_remaining() -> None:
-    """Budget of 0 remaining renders as 'Budget: 0 left'."""
-    result = format_transition_context_items({"dev_budget": "0 remaining"})
-    assert result == ["Budget: 0 left"]
 
 
 def test_transition_context_multi_word_key_uses_bracket_notation() -> None:

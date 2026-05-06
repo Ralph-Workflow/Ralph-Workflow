@@ -42,7 +42,6 @@ def _make_initial_state() -> PipelineState:
     return PipelineState(
         phase=bundle.pipeline.entry_phase,
         budget_caps={"iteration": 1},
-        budget_remaining={"iteration": 1},
         phase_chains={
             "development": AgentChainState(
                 agents=bundle.agents.agent_chains["development"].agents,

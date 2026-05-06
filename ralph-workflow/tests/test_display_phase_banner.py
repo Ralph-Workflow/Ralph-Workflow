@@ -249,16 +249,6 @@ def test_show_phase_start_from_entry_inner_analysis_label() -> None:
     assert "Analysis 2/3" in output
 
 
-def test_show_phase_start_from_entry_budget_remaining_label() -> None:
-    """show_phase_start_from_entry renders canonical Budget: N left label."""
-    buf = StringIO()
-    console = Console(file=buf, force_terminal=False, color_system=None, width=200)
-    entry = PhaseEntryModel(phase_name="development", budget_remaining=5)
-    show_phase_start_from_entry(entry, display_context=_ctx_from_console(console))
-    output = buf.getvalue()
-    assert "Budget: 5 left" in output
-
-
 def test_show_phase_start_from_entry_no_raw_counter_format() -> None:
     """show_phase_start_from_entry never emits legacy [counter_name N/cap] format."""
     buf = StringIO()
@@ -704,18 +694,6 @@ def test_show_phase_close_banner_shows_analysis_cycle() -> None:
     assert "Analysis 1/3" in output
 
 
-def test_show_phase_close_banner_shows_budget_remaining() -> None:
-    """Close banner shows budget remaining label."""
-    console = Console(record=True, no_color=True)
-    exit_model = PhaseExitModel(
-        phase_name="development",
-        budget_remaining=2,
-    )
-    show_phase_close_banner(exit_model, display_context=_ctx_from_console(console))
-    output = console.export_text()
-    assert "Budget: 2 left" in output
-
-
 def test_show_phase_close_banner_shows_elapsed_when_nonzero() -> None:
     """Close banner shows elapsed time when elapsed_seconds > 0."""
     console = Console(record=True, no_color=True)
@@ -761,7 +739,6 @@ def test_show_phase_close_banner_full_context() -> None:
         outer_dev_cap=3,
         inner_analysis=1,
         inner_analysis_cap=5,
-        budget_remaining=1,
         elapsed_seconds=12.3,
         exit_trigger="produced",
     )
@@ -770,7 +747,6 @@ def test_show_phase_close_banner_full_context() -> None:
     assert "Development Analysis" in output
     assert "Dev 2/3" in output
     assert "Analysis 1/5" in output
-    assert "Budget: 1 left" in output
     assert "12.3s" in output
     assert "produced" in output
 

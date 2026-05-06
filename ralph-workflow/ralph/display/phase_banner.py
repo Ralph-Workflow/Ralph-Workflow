@@ -14,7 +14,6 @@ from rich.text import Text
 from ralph.display.context import DisplayContext, make_display_context
 from ralph.display.phase_status import (
     format_analysis_cycle,
-    format_budget_remaining,
     format_dev_cycle,
     format_elapsed_seconds,
     format_transition_context_items,
@@ -244,17 +243,6 @@ def _build_inner_analysis_suffix(
     return f"  {ia_glyph} {format_analysis_cycle(inner, max_inner)}{qual}"
 
 
-def _build_budget_remaining_suffix(
-    remaining: int | None,
-    *,
-    budget_glyph: str = "▲",
-) -> str:
-    """Build the budget remaining label string."""
-    if remaining is None:
-        return ""
-    return f"  {budget_glyph} {format_budget_remaining(remaining)}"
-
-
 def show_phase_start(
     phase: str,
     *,
@@ -294,7 +282,7 @@ def show_phase_start_from_entry(
     """Display the start of a pipeline phase from a lifecycle entry model.
 
     Canonical model-based path for phase-start banners.  Uses the entry model so
-    iteration labels (Dev N/cap, Analysis N/cap, Budget: N left) never diverge
+    iteration labels (Dev N/cap, Analysis N/cap) never diverge
     between phase-start and phase-close surfaces.
 
     In wide mode a titled Rule separator precedes the banner line to visually
@@ -315,7 +303,6 @@ def show_phase_start_from_entry(
     start_glyph = display_context.glyph_for("start")
     od_glyph = display_context.glyph_for("outer_dev")
     ia_glyph = display_context.glyph_for("inner_analysis")
-    budget_glyph = display_context.glyph_for("budget")
     line.append(f"{start_glyph} ", style=style)
     line.append(label, style=style)
 
@@ -336,10 +323,6 @@ def show_phase_start_from_entry(
             ia_glyph=ia_glyph, qualifier=inner_qualifier,
         )
         line.append(suffix, style="theme.inner_analysis")
-
-    if entry.budget_remaining is not None:
-        suffix = _build_budget_remaining_suffix(entry.budget_remaining, budget_glyph=budget_glyph)
-        line.append(suffix, style="theme.level.warn")
 
     if entry.agent_name is not None and mode != "wide":
         line.append(f"  agent={entry.agent_name}", style="theme.text.muted")
@@ -462,7 +445,6 @@ def show_phase_close_banner(
     success_glyph = display_context.glyph_for("success")
     od_glyph = display_context.glyph_for("outer_dev")
     ia_glyph = display_context.glyph_for("inner_analysis")
-    budget_glyph = display_context.glyph_for("budget")
     arrow = display_context.glyph_for("arrow")
     line.append(f"{success_glyph} ", style=style)
     line.append(label, style=style)
@@ -484,12 +466,6 @@ def show_phase_close_banner(
             ia_glyph=ia_glyph, qualifier=inner_qualifier,
         )
         line.append(suffix, style="theme.inner_analysis")
-
-    if exit_model.budget_remaining is not None:
-        suffix = _build_budget_remaining_suffix(
-            exit_model.budget_remaining, budget_glyph=budget_glyph
-        )
-        line.append(suffix, style="theme.level.warn")
 
     if exit_model.elapsed_seconds > 0:
         elapsed_label = format_elapsed_seconds(exit_model.elapsed_seconds)

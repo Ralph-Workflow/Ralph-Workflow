@@ -62,7 +62,6 @@ def test_emit_phase_transition_populates_close_banner_exit_trigger() -> None:
         phase="planning_analysis",
         previous_phase="planning",
         budget_caps={"iteration": 1},
-        budget_remaining={"iteration": 1},
     )
 
     captured: dict[str, PhaseExitModel] = {}
@@ -98,7 +97,6 @@ def test_emit_phase_transition_populates_last_failure_category_from_state() -> N
         phase="planning_analysis",
         previous_phase="planning",
         budget_caps={"iteration": 1},
-        budget_remaining={"iteration": 1},
         last_failure_category="timeout",
     )
 
@@ -149,7 +147,6 @@ def test_emit_phase_transition_populates_waiting_status_from_subscriber() -> Non
         phase="planning_analysis",
         previous_phase="planning",
         budget_caps={"iteration": 1},
-        budget_remaining={"iteration": 1},
     )
 
     captured: dict[str, PhaseExitModel] = {}
@@ -183,7 +180,6 @@ def test_emit_phase_transition_populates_activity_counters_from_display() -> Non
         phase="planning_analysis",
         previous_phase="planning",
         budget_caps={"iteration": 1},
-        budget_remaining={"iteration": 1},
     )
 
     captured: dict[str, PhaseExitModel] = {}

@@ -32,11 +32,6 @@ def format_analysis_cycle(n: int, cap: int | None = None) -> str:
     return f"Analysis #{n}"
 
 
-def format_budget_remaining(n: int) -> str:
-    """Return canonical label for remaining budget counter."""
-    return f"Budget: {n} left"
-
-
 def format_elapsed_seconds(s: float) -> str:
     """Return canonical elapsed-time label."""
     return f"{round(s, 1)}s"
@@ -70,7 +65,6 @@ def format_transition_context_items(context: dict[str, object]) -> list[str]:
     Normalizes context items from generic key=value to canonical display format:
     - 'analysis_status' key: rendered as the bare value (no key prefix)
     - 'decision' key: rendered as '→ {value}' (arrow notation)
-    - keys ending in '_budget': rendered as canonical 'Budget: N left' label
     - multi-word keys (containing spaces): rendered as '[key value]' bracket notation
     - all other keys: rendered as 'key=value'
     """
@@ -81,15 +75,6 @@ def format_transition_context_items(context: dict[str, object]) -> list[str]:
             parts.append(v_str)
         elif k == "decision":
             parts.append(f"→ {v_str}")
-        elif k.endswith("_budget"):
-            if v_str.endswith(" remaining"):
-                try:
-                    n = int(v_str.split(maxsplit=1)[0])
-                    parts.append(format_budget_remaining(n))
-                except (ValueError, IndexError):
-                    parts.append(f"Budget: {v_str}")
-            else:
-                parts.append(f"Budget: {v_str}")
         elif " " in k:
             parts.append(f"[{k} {v_str}]")
         else:
@@ -106,26 +91,21 @@ class PhaseIterationContext:
         outer_dev_cap: Budget cap for outer dev cycles (shows Dev N/cap when set).
         inner_analysis: Inner analysis cycle number (None if not in analysis).
         inner_analysis_cap: Max inner analysis cycles (None if unknown).
-        budget_remaining: Remaining budget (None if not tracked).
     """
 
     outer_dev: int | None = None
     outer_dev_cap: int | None = None
     inner_analysis: int | None = None
     inner_analysis_cap: int | None = None
-    budget_remaining: int | None = None
 
     def has_context(self) -> bool:
         """Return True if any iteration context is set."""
-        return any(
-            x is not None
-            for x in (self.outer_dev, self.inner_analysis, self.budget_remaining)
-        )
+        return any(x is not None for x in (self.outer_dev, self.inner_analysis))
 
     def context_labels(self) -> list[tuple[str, str]]:
         """Return (label, style_key) pairs for rendering, in display priority order.
 
-        Order: outer dev (highest visibility) → inner analysis → budget.
+        Order: outer dev (highest visibility) → inner analysis.
         """
         parts: list[tuple[str, str]] = []
         if self.outer_dev is not None:
@@ -133,15 +113,12 @@ class PhaseIterationContext:
         if self.inner_analysis is not None:
             label = format_analysis_cycle(self.inner_analysis, self.inner_analysis_cap)
             parts.append((label, "theme.inner_analysis"))
-        if self.budget_remaining is not None:
-            parts.append((format_budget_remaining(self.budget_remaining), "theme.level.warn"))
         return parts
 
 
 __all__ = [
     "PhaseIterationContext",
     "format_analysis_cycle",
-    "format_budget_remaining",
     "format_dev_cycle",
     "format_elapsed_seconds",
     "format_exit_trigger",

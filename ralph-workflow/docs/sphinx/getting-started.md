@@ -134,8 +134,8 @@ When you run `ralph`, the pipeline moves through the phases declared in
 3. **Development analysis** — the pipeline evaluates the development output; loops
    back to development if more iteration is needed, otherwise proceeds
 4. **Development commit** — the changes are committed to the repository
-5. **Complete** — the pipeline ends successfully; if the iteration budget remains,
-   the loop returns to planning for another cycle
+5. **Complete** — the pipeline ends successfully; if iterations remain (cap minus
+   completed progress), the loop returns to planning for another cycle
 
 This sequence is declared in `.agent/pipeline.toml`. Custom policies can add review
 and fix phases on top of this base workflow. See [Configuration](configuration.md) to

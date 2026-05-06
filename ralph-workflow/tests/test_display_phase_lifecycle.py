@@ -12,7 +12,6 @@ from unittest.mock import MagicMock
 from ralph.display.phase_lifecycle import PhaseEntryModel, PhaseExitModel, RunCompletionModel
 from ralph.display.phase_status import (
     format_analysis_cycle,
-    format_budget_remaining,
     format_dev_cycle,
 )
 from ralph.display.snapshot import BudgetProgress
@@ -30,7 +29,6 @@ class TestPhaseEntryModel:
         assert m.outer_dev_iteration is None
         assert m.inner_analysis is None
         assert m.inner_analysis_cap is None
-        assert m.budget_remaining is None
 
     def test_human_label_converts_underscores(self) -> None:
         assert PhaseEntryModel(phase_name="development_analysis").human_label() == (
@@ -49,18 +47,16 @@ class TestPhaseEntryModel:
         assert parts[0] == format_dev_cycle(3)
 
     def test_iteration_label_parts_full_context_order(self) -> None:
-        """Labels are ordered: outer_dev → inner_analysis → budget."""
+        """Labels are ordered: outer_dev → inner_analysis."""
         m = PhaseEntryModel(
             phase_name="fix",
             outer_dev_iteration=2,
             inner_analysis=1,
             inner_analysis_cap=5,
-            budget_remaining=3,
         )
         parts = m.iteration_label_parts()
         assert parts[0] == format_dev_cycle(2)
         assert parts[1] == format_analysis_cycle(1, 5)
-        assert parts[2] == format_budget_remaining(3)
 
     def test_to_iteration_context_carries_all_fields(self) -> None:
         m = PhaseEntryModel(
@@ -68,13 +64,11 @@ class TestPhaseEntryModel:
             outer_dev_iteration=1,
             inner_analysis=2,
             inner_analysis_cap=4,
-            budget_remaining=7,
         )
         ctx = m.to_iteration_context()
         assert ctx.outer_dev == 1
         assert ctx.inner_analysis == 2  # noqa: PLR2004
         assert ctx.inner_analysis_cap == 4  # noqa: PLR2004
-        assert ctx.budget_remaining == 7  # noqa: PLR2004
 
     def test_to_iteration_context_has_context_when_any_field_set(self) -> None:
         m = PhaseEntryModel(phase_name="development", outer_dev_iteration=1)
@@ -124,8 +118,6 @@ class TestPhaseExitModel:
             outer_dev_iteration=2,
             inner_analysis=1,
             inner_analysis_cap=3,
-            budget_remaining=5,
-            budget_counter_name="dev_budget",
         )
         exit_model = PhaseExitModel.from_entry_model(
             entry,
@@ -145,8 +137,6 @@ class TestPhaseExitModel:
         assert exit_model.outer_dev_iteration == 2  # noqa: PLR2004
         assert exit_model.inner_analysis == 1
         assert exit_model.inner_analysis_cap == 3  # noqa: PLR2004
-        assert exit_model.budget_remaining == 5  # noqa: PLR2004
-        assert exit_model.budget_counter_name == "dev_budget"
         assert exit_model.elapsed_seconds == 12.5  # noqa: PLR2004
         assert exit_model.exit_trigger == "produced"
         assert exit_model.content_blocks == 3  # noqa: PLR2004
@@ -404,7 +394,6 @@ def test_entry_exit_iteration_context_labels_are_consistent() -> None:
     entry = PhaseEntryModel(
         phase_name="fix",
         outer_dev_iteration=3,
-        budget_remaining=4,
     )
     exit_model = PhaseExitModel.from_entry_model(entry, elapsed_seconds=10.0)
     entry_labels = list(entry.to_iteration_context().context_labels())

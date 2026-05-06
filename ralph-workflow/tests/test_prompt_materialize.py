@@ -470,7 +470,7 @@ def test_materialize_commit_phase_tolerates_empty_diff(
     policy = load_policy(tmp_path / ".agent")
     workspace = MemoryWorkspace(root=str(tmp_path))
 
-    monkeypatch.setattr(materialize_module, "_git_diff", lambda _workspace_root: "")
+    monkeypatch.setattr(materialize_module, "_pending_diff", lambda _workspace_root: "")
 
     prompt_path = materialize_prompt_for_phase(
         phase="development_commit",
@@ -494,7 +494,7 @@ def test_materialize_commit_phase_with_claude_prefix_includes_both_tool_aliases(
 
     monkeypatch.setattr(
         materialize_module,
-        "_git_diff",
+        "_pending_diff",
         lambda _workspace_root: "diff --git a/app.py b/app.py\n+hello",
     )
 
@@ -886,6 +886,58 @@ def test_git_diff_zero_mid_cycle_commits_only_uncommitted(tmp_git_repo: Path) ->
     assert "uncommitted.py" in diff
 
 
+def test_pending_diff_shows_only_uncommitted_work(tmp_git_repo: Path) -> None:
+    repo = GitRepo(tmp_git_repo)
+    baseline_sha = repo.head.commit.hexsha
+    write_cycle_baseline(tmp_git_repo, baseline_sha)
+
+    (tmp_git_repo / "committed.py").write_text("committed = True\n")
+    repo.index.add(["committed.py"])
+    repo.index.commit("mid-cycle commit")
+
+    (tmp_git_repo / "pending.py").write_text("pending = True\n")
+    repo.index.add(["pending.py"])
+
+    diff = materialize_module._pending_diff(tmp_git_repo)
+
+    assert "pending.py" in diff
+    assert "committed.py" not in diff
+
+
+def test_commit_phase_prompt_excludes_mid_cycle_committed_files(
+    tmp_git_repo: Path,
+) -> None:
+    repo = GitRepo(tmp_git_repo)
+    baseline_sha = repo.head.commit.hexsha
+    write_cycle_baseline(tmp_git_repo, baseline_sha)
+
+    (tmp_git_repo / "already_committed.py").write_text("x = 1\n")
+    repo.index.add(["already_committed.py"])
+    repo.index.commit("earlier dev commit")
+
+    (tmp_git_repo / "new_pending.py").write_text("y = 2\n")
+    repo.index.add(["new_pending.py"])
+
+    policy = load_policy(tmp_git_repo / ".agent")
+    workspace = MemoryWorkspace(root=str(tmp_git_repo))
+    prompt_path = materialize_prompt_for_phase(
+        phase="development_commit",
+        workspace=workspace,
+        pipeline_policy=policy.pipeline,
+        session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.COMMIT),
+        workspace_root=tmp_git_repo,
+    )
+
+    rendered = workspace.read(prompt_path)
+    assert "new_pending.py" in rendered
+    assert "already_committed.py" not in rendered
+
+
+def test_pending_diff_falls_back_when_not_a_git_repo(tmp_path: Path) -> None:
+    diff = materialize_module._pending_diff(tmp_path)
+    assert diff == "(no diff available)"
+
+
 def test_git_diff_strips_lone_surrogates_from_gitpython_output(
     tmp_path: Path,
     monkeypatch,
@@ -918,7 +970,7 @@ def test_materialize_commit_phase_handles_surrogate_diff(
     surrogate_diff = "diff --git a/x.py b/x.py\n+\udca4\n"
     monkeypatch.setattr(
         materialize_module,
-        "_git_diff",
+        "_pending_diff",
         lambda _workspace_root: surrogate_diff,
     )
 
@@ -945,7 +997,7 @@ def test_materialize_commit_phase_with_oversized_surrogate_diff(
     big_surrogate = "\udca4" + ("x" * (100 * 1024 + 1))
     monkeypatch.setattr(
         materialize_module,
-        "_git_diff",
+        "_pending_diff",
         lambda _workspace_root: big_surrogate,
     )
 

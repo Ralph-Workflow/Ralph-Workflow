@@ -6,17 +6,20 @@ These tests verify:
 3. analysis counters increment on loopback
 4. max-analysis still routes through correction phases without exceeding the cap
 5. counters reset on commit success and analysis success
+6. AnalysisDecisionEvent with request_changes mirrors ANALYSIS_LOOPBACK counter accounting
+7. AnalysisDecisionEvent with completed mirrors ANALYSIS_SUCCESS counter reset
 """
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, cast
 
-from ralph.pipeline.events import PipelineEvent
+from ralph.pipeline.events import AnalysisDecisionEvent, PipelineEvent
 from ralph.pipeline.reducer import reduce as reducer_reduce
 from ralph.pipeline.state import PipelineState
 from ralph.policy.models import (
     PhaseCommitPolicy,
+    PhaseDecisionRoute,
     PhaseDefinition,
     PhaseLoopPolicy,
     PhaseTransition,
@@ -63,6 +66,10 @@ def _dev_analysis_policy() -> PipelinePolicy:
                     on_loopback="development",
                 ),
                 loop_policy=PhaseLoopPolicy(iteration_state_field="development_analysis_iteration"),
+                decisions={
+                    "completed": PhaseDecisionRoute(target="development_commit", reset_loop=True),
+                    "request_changes": PhaseDecisionRoute(target="development", reset_loop=False),
+                },
             ),
             "development_commit": PhaseDefinition(
                 drain="development_commit",
@@ -145,7 +152,7 @@ class TestDevCommitSuccessIncrementsIteration:
         """When development_commit emits COMMIT_SUCCESS, iteration should increment by 1."""
         state = PipelineState(
             phase="development_commit",
-            budget_remaining={"iteration": 3, "reviewer_pass": 2},
+            budget_caps={"iteration": 3, "reviewer_pass": 2},
         )
         policy = _dev_analysis_policy()
         new_state, _ = _reduce(state, PipelineEvent.COMMIT_SUCCESS, policy)
@@ -159,7 +166,7 @@ class TestReviewCommitSuccessIncrementsReviewerPass:
         """When review_commit emits COMMIT_SUCCESS, reviewer_pass should increment by 1."""
         state = PipelineState(
             phase="review_commit",
-            budget_remaining={"iteration": 3, "reviewer_pass": 2},
+            budget_caps={"iteration": 3, "reviewer_pass": 2},
         )
         policy = _dev_analysis_policy()
         new_state, _ = _reduce(state, PipelineEvent.COMMIT_SUCCESS, policy)
@@ -208,7 +215,7 @@ class TestDevCommitSuccessResetsDevAnalysisIteration:
         state = PipelineState(
             phase="development_commit",
             loop_iterations={"development_analysis_iteration": 3},
-            budget_remaining={"iteration": 3, "reviewer_pass": 2},
+            budget_caps={"iteration": 3, "reviewer_pass": 2},
         )
         policy = _dev_analysis_policy()
         new_state, _ = _reduce(state, PipelineEvent.COMMIT_SUCCESS, policy)
@@ -259,7 +266,7 @@ class TestReviewCommitSuccessResetsReviewAnalysisIteration:
         state = PipelineState(
             phase="review_commit",
             loop_iterations={"review_analysis_iteration": 2},
-            budget_remaining={"iteration": 3, "reviewer_pass": 2},
+            budget_caps={"iteration": 3, "reviewer_pass": 2},
         )
         policy = _dev_analysis_policy()
         new_state, _ = _reduce(state, PipelineEvent.COMMIT_SUCCESS, policy)
@@ -295,3 +302,63 @@ class TestAnalysisSuccessResetsCounters:
         # Success routes to review_commit
         assert new_state.phase == "review_commit"
         assert new_state.get_loop_iteration("review_analysis_iteration") == 0
+
+
+class TestAnalysisDecisionEventRequestChanges:
+    """Test 6: AnalysisDecisionEvent(request_changes) mirrors ANALYSIS_LOOPBACK accounting."""
+
+    def test_request_changes_increments_loop_counter(self) -> None:
+        """AnalysisDecisionEvent(request_changes) increments development_analysis_iteration."""
+        state = PipelineState(
+            phase="development_analysis",
+            loop_iterations={"development_analysis_iteration": 0},
+            loop_caps={"development_analysis_iteration": 3},
+        )
+        policy = _dev_analysis_policy()
+        event = AnalysisDecisionEvent(phase="development_analysis", decision="request_changes")
+        new_state, _ = _reduce(state, event, policy)
+        assert new_state.phase == "development"
+        assert new_state.get_loop_iteration("development_analysis_iteration") == 1
+
+    def test_request_changes_at_cap_clamps_to_max(self) -> None:
+        """AnalysisDecisionEvent(request_changes) at cap clamps counter to max, does not exceed."""
+        state = PipelineState(
+            phase="development_analysis",
+            loop_iterations={"development_analysis_iteration": 2},
+            loop_caps={"development_analysis_iteration": 3},
+        )
+        policy = _dev_analysis_policy()
+        event = AnalysisDecisionEvent(phase="development_analysis", decision="request_changes")
+        new_state, _ = _reduce(state, event, policy)
+        assert new_state.phase == "development"
+        max_cap = state.loop_caps.get("development_analysis_iteration", 3)
+        assert new_state.get_loop_iteration("development_analysis_iteration") == max_cap
+
+
+class TestAnalysisDecisionEventCompleted:
+    """Test 7: AnalysisDecisionEvent(completed) mirrors ANALYSIS_SUCCESS counter reset."""
+
+    def test_completed_resets_loop_counter_to_zero(self) -> None:
+        """AnalysisDecisionEvent(completed) resets development_analysis_iteration to 0."""
+        state = PipelineState(
+            phase="development_analysis",
+            loop_iterations={"development_analysis_iteration": 2},
+            loop_caps={"development_analysis_iteration": 3},
+        )
+        policy = _dev_analysis_policy()
+        event = AnalysisDecisionEvent(phase="development_analysis", decision="completed")
+        new_state, _ = _reduce(state, event, policy)
+        assert new_state.phase == "development_commit"
+        assert new_state.get_loop_iteration("development_analysis_iteration") == 0
+
+    def test_completed_routes_to_commit_phase(self) -> None:
+        """AnalysisDecisionEvent(completed) routes to development_commit regardless of counter."""
+        state = PipelineState(
+            phase="development_analysis",
+            loop_iterations={"development_analysis_iteration": 0},
+            loop_caps={"development_analysis_iteration": 3},
+        )
+        policy = _dev_analysis_policy()
+        event = AnalysisDecisionEvent(phase="development_analysis", decision="completed")
+        new_state, _ = _reduce(state, event, policy)
+        assert new_state.phase == "development_commit"
