@@ -470,3 +470,85 @@ def test_execute_commit_effect_carries_iteration_context_from_state() -> None:
     assert exit_model.outer_dev_cap == _expected_cap, (
         f"Expected outer_dev_cap={_expected_cap}, got {exit_model.outer_dev_cap}"
     )
+
+
+def test_emit_phase_transition_close_banner_called_before_transition() -> None:
+    """show_phase_close_banner must be called before show_phase_transition."""
+    display = _StubDisplay()
+    state = PipelineState(
+        phase="planning_analysis",
+        previous_phase="planning",
+        budget_caps={"iteration": 1},
+    )
+
+    call_order: list[str] = []
+
+    def _record_close(*args: object, **kwargs: object) -> None:
+        del args, kwargs
+        call_order.append("close")
+
+    def _record_transition(*args: object, **kwargs: object) -> None:
+        del args, kwargs
+        call_order.append("transition")
+
+    with (
+        patch("ralph.pipeline.runner.show_phase_close_banner", side_effect=_record_close),
+        patch("ralph.pipeline.runner.show_phase_transition", side_effect=_record_transition),
+    ):
+        runner_module._emit_phase_transition_if_changed(
+            cast("runner_module.ParallelDisplay | runner_module._LegacyConsoleDisplay", display),
+            "planning",
+            state,
+            verbosity=runner_module.Verbosity.VERBOSE,
+            pipeline_policy=_DEFAULT_POLICY.pipeline,
+        )
+
+    assert call_order == ["close", "transition"], (
+        f"Expected close-then-transition ordering, got: {call_order}"
+    )
+
+
+def test_emit_phase_transition_context_omits_iteration_counters() -> None:
+    """Transition context must not include iteration counters (those belong in close banner)."""
+    display = _StubDisplay()
+    state = PipelineState(
+        phase="planning_analysis",
+        previous_phase="planning",
+        budget_caps={"iteration": 5},
+    )
+
+    captured_context: dict[str, object] = {}
+
+    def _capture_transition(
+        from_phase: str,
+        to_phase: str,
+        *,
+        context: dict[str, object] | None = None,
+        display_context: object,
+        pipeline_policy: object,
+    ) -> None:
+        del from_phase, to_phase, display_context, pipeline_policy
+        if context is not None:
+            captured_context.update(context)
+
+    with (
+        patch("ralph.pipeline.runner.show_phase_close_banner"),
+        patch("ralph.pipeline.runner.show_phase_transition", side_effect=_capture_transition),
+    ):
+        runner_module._emit_phase_transition_if_changed(
+            cast("runner_module.ParallelDisplay | runner_module._LegacyConsoleDisplay", display),
+            "planning",
+            state,
+            verbosity=runner_module.Verbosity.VERBOSE,
+            pipeline_policy=_DEFAULT_POLICY.pipeline,
+        )
+
+    assert "iteration" not in captured_context, (
+        "Transition context must not include iteration counters"
+    )
+    assert "Planning Analysis" not in captured_context, (
+        "Transition context must not include 'Planning Analysis' counter"
+    )
+    assert "dev_cycle" not in captured_context, (
+        "Transition context must not include dev_cycle"
+    )

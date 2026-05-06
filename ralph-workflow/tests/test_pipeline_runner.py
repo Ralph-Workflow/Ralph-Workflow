@@ -3315,9 +3315,8 @@ class TestPhaseContextRoleBasedDispatch:
     ) -> dict[str, object]:
         return _phase_context(state, previous_phase, policy)
 
-    def test_execution_role_shows_iteration_context(self) -> None:
-        # Policy must have a commit phase so _find_commit_counter_from_phase can derive the
-        # counter name from the transition chain: build -> build_commit (increments 'iteration').
+    def test_execution_role_omits_iteration_context(self) -> None:
+        """Iteration counter is not in transition context — it belongs in the close banner."""
         policy = _make_minimal_policy(
             {
                 "build": PhaseDefinition(
@@ -3343,11 +3342,10 @@ class TestPhaseContextRoleBasedDispatch:
             phase="build", outer_progress={"iteration": 2}, budget_caps={"iteration": 5}
         )
         ctx = self._call(state, "planning", policy)
-        assert ctx.get("iteration") == "3/5"
+        assert "iteration" not in ctx
 
-    def test_review_role_shows_pass_context(self) -> None:
-        # Policy must have a commit phase so _find_commit_counter_from_phase can derive the
-        # counter name from the transition chain: qa -> qa_commit (increments 'reviewer_pass').
+    def test_review_role_omits_pass_context(self) -> None:
+        """Reviewer pass counter is not in transition context — it belongs in the close banner."""
         policy = _make_minimal_policy(
             {
                 "qa": PhaseDefinition(
@@ -3374,7 +3372,7 @@ class TestPhaseContextRoleBasedDispatch:
             phase="qa", outer_progress={"reviewer_pass": 1}, budget_caps={"reviewer_pass": 3}
         )
         ctx = self._call(state, "planning", policy)
-        assert ctx.get("reviewer_pass") == "2/3"
+        assert "reviewer_pass" not in ctx
 
     def test_analysis_to_commit_shows_approved_decision(self) -> None:
         policy = _make_minimal_policy(
@@ -3557,13 +3555,15 @@ class TestPhaseContextRoleBasedDispatch:
             loop_iterations={"planning_analysis_iteration": 2},  # 3rd iteration (0-indexed)
         )
         ctx = self._call(state, "planning_analysis", policy)
-        # Should show 3/3 using loop_counters.default_max=3
-        assert ctx.get("Planning Analysis") == "3/3"
-        # Should indicate final since analysis_cur (2) >= max_iter - 1 (3 - 1 = 2)
+        # analysis_status is still set; the counter itself belongs in the close banner
         assert ctx.get("analysis_status") == "final, skipping next"
 
     def test_analysis_loop_caps_takes_precedence_over_loop_counters(self) -> None:
-        """state.loop_caps should take precedence over policy.loop_counters.default_max."""
+        """state.loop_caps should take precedence over policy.loop_counters.default_max.
+
+        When loop_caps sets a higher cap than default_max, an iteration that would be
+        final under default_max is not treated as final under loop_caps.
+        """
         policy = PipelinePolicy(
             phases={
                 "planning_analysis": PhaseDefinition(
@@ -3589,18 +3589,18 @@ class TestPhaseContextRoleBasedDispatch:
                 "planning_analysis_iteration": LoopCounterConfig(default_max=3),
             },
         )
-        # State WITH loop_caps set to 5 - should override loop_counters default_max=3
+        # analysis_cur=2 is final under default_max=3 (2 >= 3-1=2),
+        # but NOT final under loop_caps=5 (2 < 5-1=4) — proving loop_caps takes precedence
         state = PipelineState(
             phase="planning",
-            loop_iterations={"planning_analysis_iteration": 4},  # 5th iteration
+            loop_iterations={"planning_analysis_iteration": 2},
             loop_caps={"planning_analysis_iteration": 5},
         )
         ctx = self._call(state, "planning_analysis", policy)
-        assert ctx.get("Planning Analysis") == "5/5"
-        assert ctx.get("analysis_status") == "final, skipping next"
+        assert ctx.get("analysis_status") is None
 
-    def test_analysis_counter_renders_correctly_without_off_by_one(self) -> None:
-        """Analysis counter should render as analysis_cur+1/max_iter without off-by-one errors."""
+    def test_analysis_status_not_set_on_non_final_iteration(self) -> None:
+        """analysis_status is absent when not on the final analysis iteration."""
         policy = PipelinePolicy(
             phases={
                 "planning_analysis": PhaseDefinition(
@@ -3626,22 +3626,20 @@ class TestPhaseContextRoleBasedDispatch:
                 "planning_analysis_iteration": LoopCounterConfig(default_max=5),
             },
         )
-        # First iteration: analysis_cur=0, should show 1/5, not final
+        # First iteration: analysis_cur=0, not final
         state = PipelineState(
             phase="planning",
             loop_iterations={"planning_analysis_iteration": 0},
         )
         ctx = self._call(state, "planning_analysis", policy)
-        assert ctx.get("Planning Analysis") == "1/5"
         assert ctx.get("analysis_status") is None
 
-        # Last iteration: analysis_cur=4, should show 5/5 and be final
+        # Last iteration: analysis_cur=4, is final
         state = PipelineState(
             phase="planning",
             loop_iterations={"planning_analysis_iteration": 4},
         )
         ctx = self._call(state, "planning_analysis", policy)
-        assert ctx.get("Planning Analysis") == "5/5"
         assert ctx.get("analysis_status") == "final, skipping next"
 
     def test_analysis_counter_marks_single_allowed_run_as_final(self) -> None:
@@ -3675,7 +3673,6 @@ class TestPhaseContextRoleBasedDispatch:
             loop_iterations={"planning_analysis_iteration": 0},
         )
         ctx = self._call(state, "planning_analysis", policy)
-        assert ctx.get("Planning Analysis") == "1/1"
         assert ctx.get("analysis_status") == "final, skipping next"
 
     def test_analysis_counter_marks_only_second_of_two_runs_as_final(self) -> None:
@@ -3709,7 +3706,6 @@ class TestPhaseContextRoleBasedDispatch:
             loop_iterations={"planning_analysis_iteration": 0},
         )
         first_ctx = self._call(first_run, "planning_analysis", policy)
-        assert first_ctx.get("Planning Analysis") == "1/2"
         assert first_ctx.get("analysis_status") is None
 
         second_run = PipelineState(
@@ -3717,7 +3713,6 @@ class TestPhaseContextRoleBasedDispatch:
             loop_iterations={"planning_analysis_iteration": 1},
         )
         second_ctx = self._call(second_run, "planning_analysis", policy)
-        assert second_ctx.get("Planning Analysis") == "2/2"
         assert second_ctx.get("analysis_status") == "final, skipping next"
 
     def test_analysis_counter_clamps_correctly_at_exact_cap_boundary(self) -> None:
@@ -3759,15 +3754,12 @@ class TestPhaseContextRoleBasedDispatch:
             loop_iterations={"planning_analysis_iteration": 3},
         )
         ctx = self._call(state, "planning_analysis", policy)
-        assert ctx.get("Planning Analysis") == "3/3"
         assert ctx.get("analysis_status") == "final, skipping next"
 
-    def test_analysis_to_execution_transition_shows_both_counters(self) -> None:
-        """Analysis -> execution transition must show BOTH outer iteration AND analysis counter.
+    def test_analysis_to_execution_transition_shows_decision_not_counters(self) -> None:
+        """Analysis -> execution transition shows decision and analysis_status, not counters.
 
-        This verifies the fix for the regression where _phase_context only emitted
-        the analysis counter when previous_role='analysis', dropping the outer iteration
-        counter that should also be visible in the banner alongside it.
+        Iteration counters belong in the phase-close banner, not the transition separator.
         """
         # Policy needs a commit phase in the transition chain so _find_commit_counter_from_phase
         # can derive the counter name for the execution phase
@@ -3811,12 +3803,11 @@ class TestPhaseContextRoleBasedDispatch:
             loop_iterations={"planning_analysis_iteration": 2},  # 3rd analysis (final)
         )
         ctx = self._call(state, "planning_analysis", policy)
-        # Must show analysis counter
-        assert ctx.get("Planning Analysis") == "3/3"
         assert ctx.get("analysis_status") == "final, skipping next"
-        # Must ALSO show outer iteration counter (this was the bug - only analysis was shown)
-        assert ctx.get("iteration") == "1/5"
         assert ctx.get("decision") == "needs changes"
+        # Iteration counters are NOT in transition context (they belong in the close banner)
+        assert "Planning Analysis" not in ctx
+        assert "iteration" not in ctx
 
 
 class TestSkippedExhaustedAnalysisInfo:

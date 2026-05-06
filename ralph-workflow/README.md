@@ -441,8 +441,10 @@ policy, terminal width, and adaptive layout limits. No renderer constructs its o
 | `wide` | width ≥ 100 (default) | 120 chars | 400 cells |
 
 In `compact` mode, secondary columns, extra blank lines, and descriptive rules are suppressed
-to fit narrow terminals. In `medium` and `wide` modes, phase banners include descriptions,
-additional context lines, and fuller iteration labels.
+to fit narrow terminals. In `medium` and `wide` modes, phase-start and phase-close banners
+include additional context lines and fuller iteration labels. Major phase transitions (e.g.
+execution→analysis, analysis→commit) render as a single titled horizontal Rule in all modes,
+showing the routing decision and analysis-status hint when applicable.
 
 **Phase-start banners** show iteration context as `Dev N/cap` (outer development cycle, 1-indexed)
 and `Analysis N/cap` (inner analysis loop, 1-indexed). `Dev 1/5` means the pipeline is entering

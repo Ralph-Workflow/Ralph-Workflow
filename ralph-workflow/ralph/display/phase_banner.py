@@ -114,27 +114,17 @@ def _render_major_transition(  # noqa: PLR0913
     to_label: str,
     style: str,
     context: dict[str, object] | None,
-    mode: str,
     arrow: str,
 ) -> None:
     """Render a major (prominent) phase transition banner."""
-    if mode == "compact":
-        slim_title = Text()
-        slim_title.append(f"{from_label} → {to_label}", style=style)
-        c.print(Rule(title=slim_title, style=style))
-        return
-    if mode != "medium":
-        c.print()
-    c.print(Rule(style=style))
-    banner = Text()
-    banner.append(f"  {from_label}", style="theme.text.muted")
-    banner.append(f" {arrow} ", style="theme.text.emphasis")
-    banner.append(to_label, style=style)
+    title = Text()
+    title.append(from_label, style="theme.text.muted")
+    title.append(f" {arrow} ", style="theme.text.emphasis")
+    title.append(to_label, style=style)
     if context:
         detail = "  ".join(format_transition_context_items(context))
-        banner.append(f"  ({detail})", style="theme.text.muted")
-    c.print(banner)
-    c.print(Rule(style=style))
+        title.append(f"  ({detail})", style="theme.text.muted")
+    c.print(Rule(title=title, style=style))
 
 
 def _resolve_console(
@@ -180,7 +170,6 @@ def show_phase_transition(  # noqa: PLR0913
             to_label,
             style,
             context,
-            ctx.mode,
             ctx.glyph_for("arrow"),
         )
         return

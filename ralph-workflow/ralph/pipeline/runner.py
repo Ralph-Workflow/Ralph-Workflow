@@ -851,35 +851,12 @@ def _build_phase_entry_model_from_state(
     )
 
 
-def _is_analysis_loopback(previous_phase_def: PhaseDefinition, current_phase: str) -> bool:
-    """Check if transition is an analysis loopback within the same outer phase."""
-    return (
-        previous_phase_def.transitions is not None
-        and previous_phase_def.transitions.on_loopback is not None
-        and previous_phase_def.transitions.on_loopback == current_phase
-    )
-
-
-def _add_outer_counter_context(
-    context: dict[str, object],
-    phase: str,
-    pipeline_policy: PipelinePolicy,
-    state: PipelineState,
-) -> None:
-    """Add outer counter context for execution/review phases."""
-    counter = _find_commit_counter_from_phase(phase, pipeline_policy)
-    if counter:
-        cur = state.get_outer_progress(counter) + 1
-        cap = state.get_budget_cap(counter)
-        context[counter] = f"{cur}/{cap}"
-
-
 def _phase_context(
     state: PipelineState,
     previous_phase: str,
     pipeline_policy: PipelinePolicy,
 ) -> dict[str, object]:
-    """Build a context dict for emit_phase_transition with iteration/decision hints."""
+    """Build a context dict for emit_phase_transition with decision/analysis hints."""
     context: dict[str, object] = {}
     current_phase_def = pipeline_policy.phases.get(state.phase)
     previous_phase_def = pipeline_policy.phases.get(previous_phase)
@@ -887,7 +864,6 @@ def _phase_context(
     current_role = current_phase_def.role if current_phase_def is not None else None
     previous_role = previous_phase_def.role if previous_phase_def is not None else None
 
-    # When transitioning FROM an analysis phase, show the analysis counter
     if previous_role == "analysis" and previous_phase_def is not None:
         loop_policy = previous_phase_def.loop_policy
         if loop_policy is not None:
@@ -896,21 +872,12 @@ def _phase_context(
             max_iter = _resolve_analysis_cap(
                 iteration_field, state, pipeline_policy
             )
-            analysis_name = previous_phase.replace("_", " ").title()
-            display_iter = min(analysis_cur + 1, max_iter)
-            context[analysis_name] = f"{display_iter}/{max_iter}"
             if progress.is_final_analysis_iteration(analysis_cur, max_iter):
                 context["analysis_status"] = "final, skipping next"
         if current_role == "commit":
             context["decision"] = "approved"
         elif current_role == "execution":
             context["decision"] = "needs changes"
-            if not _is_analysis_loopback(previous_phase_def, state.phase):
-                _add_outer_counter_context(context, state.phase, pipeline_policy, state)
-        elif current_role == "review":
-            _add_outer_counter_context(context, state.phase, pipeline_policy, state)
-    elif current_role in ("execution", "review"):
-        _add_outer_counter_context(context, state.phase, pipeline_policy, state)
 
     return context
 

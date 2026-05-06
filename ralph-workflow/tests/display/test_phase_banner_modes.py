@@ -22,7 +22,7 @@ from ralph.display.phase_lifecycle import PhaseEntryModel, PhaseExitModel
 from ralph.display.theme import ASCII_GLYPHS, UNICODE_GLYPHS
 from ralph.policy.models import PhaseDefinition, PhaseTransition, PipelinePolicy, RecoveryPolicy
 
-_WIDE_EXPECTED_RULES = 2
+_WIDE_EXPECTED_RULES = 1
 _WIDE_PHASE_START_RULES = 1
 _WIDE_PHASE_CLOSE_RULES = 1
 
@@ -103,26 +103,26 @@ def test_compact_major_transition_one_rule() -> None:
 
 # --- Wide mode ---
 
-def test_wide_major_transition_has_two_rules() -> None:
-    """Wide: major transition emits two Rules (separator + trailing)."""
+def test_wide_major_transition_has_one_rule() -> None:
+    """Wide: major transition emits exactly one Rule (same as compact)."""
     ctx = _make_ctx("wide")
     policy = _make_execution_to_analysis_policy()
     show_phase_transition("design", "audit", pipeline_policy=policy, display_context=ctx)
     output = _export(ctx)
     rule_lines = [ln for ln in output.split("\n") if "─" in ln or "━" in ln]
     assert len(rule_lines) == _WIDE_EXPECTED_RULES, (
-        f"Expected {_WIDE_EXPECTED_RULES} rule lines, got {len(rule_lines)}: {rule_lines}"
+        f"Expected {_WIDE_EXPECTED_RULES} rule line, got {len(rule_lines)}: {rule_lines}"
     )
 
 
-def test_wide_major_transition_has_leading_blank() -> None:
-    """Wide: major transition starts with a blank line."""
+def test_wide_major_transition_no_leading_blank() -> None:
+    """Wide: major transition does not emit a leading blank line."""
     ctx = _make_ctx("wide")
     policy = _make_execution_to_analysis_policy()
     show_phase_transition("design", "audit", pipeline_policy=policy, display_context=ctx)
     output = _export(ctx)
     lines = output.split("\n")
-    assert lines[0] == "", "Wide mode must start with a blank line"
+    assert lines[0].strip() != "", "Wide major transition must not start with blank line"
 
 
 # --- ASCII glyph fallbacks ---
