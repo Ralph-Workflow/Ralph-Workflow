@@ -14,7 +14,6 @@ from ralph.display.content_condenser import condense_content
 from ralph.display.context import DisplayContext
 from ralph.display.lifecycle_filter import is_bare_lifecycle as _is_bare_lifecycle
 from ralph.display.long_content_summary import build_headline_or_placeholder
-from ralph.display.phase_banner import show_phase_transition
 from ralph.display.plain_renderer import PlainLogRenderer, _PhaseCounters
 from ralph.display.raw_overflow import RawOverflowLog
 from ralph.display.subscriber import PipelineSubscriber
@@ -279,17 +278,6 @@ class ParallelDisplay:
     ) -> None:
         with contextlib.suppress(Exception):
             self._subscriber.record_analysis(phase, decision, reason)
-
-    def emit_phase_transition(self, from_phase: str, to_phase: str) -> None:
-        self._plain_renderer.flush_blocks()
-        show_phase_transition(
-            from_phase,
-            to_phase,
-            display_context=self._ctx,
-            pipeline_policy=self._subscriber.pipeline_policy,
-        )
-        with contextlib.suppress(Exception):
-            self._subscriber.record_phase_transition(from_phase, to_phase)
 
     def emit_run_start(self, orientation: RunStartOrientation) -> None:
         """Emit a one-time run-start orientation block at pipeline start."""
