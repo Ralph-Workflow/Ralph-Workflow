@@ -100,6 +100,40 @@ class TestBuildAgentRecoveryPlanResumableSession:
 
         assert plan is None
 
+
+class TestOptionalArtifactNeverTriggersRecovery:
+    """Optional-artifact phases exit cleanly and terminal without raising
+    OpenCodeResumableExitError, so _build_agent_recovery_plan is never
+    called on their behalf.  This class documents the runner-side contract.
+    """
+
+    def test_non_resumable_exception_yields_no_recovery_plan(
+        self, tmp_path: Path
+    ) -> None:
+        """Any exception that is not OpenCodeResumableExitError or a timeout
+        produces no recovery plan.
+
+        Optional-artifact development phases never raise either of those types
+        (a clean exit with artifact_optional=True is immediately terminal), so
+        the runner never enters the recovery path for them.
+        """
+        exc = RuntimeError("process completed normally")
+        effect = _make_effect(phase="development")
+
+        plan = _build_agent_recovery_plan(
+            exc=exc,
+            attempt_index=0,
+            max_recovery_attempts=3,
+            effect=effect,
+            workspace_root=tmp_path,
+            raw_output=[],
+            rendered_output=[],
+            extracted_session_id=None,
+            inactivity_error_type=AgentInactivityTimeoutError,
+        )
+
+        assert plan is None
+
     def test_recovery_plan_prompt_file_preserved(self, tmp_path: Path) -> None:
         """prompt_file from the original effect is propagated to the recovery plan."""
         exc = OpenCodeResumableExitError("opencode", session_id="sess-def")
