@@ -27,6 +27,7 @@ class DeveloperPromptInputs:
     plan_path: str = ""
     analysis_feedback_path: str = ""
     artifact_history_path: str = ""
+    artifact_history_dir: str = ""
     prompt_name_prefix: str = "development"
     last_retry_error: str = ""
 
@@ -39,6 +40,7 @@ class PlanningPromptInputs:
     plan_path: str = ""
     analysis_feedback_path: str = ""
     artifact_history_path: str = ""
+    artifact_history_dir: str = ""
     last_retry_error: str = ""
 
 
@@ -89,6 +91,7 @@ def prompt_developer_iteration_xml_with_context(
             }
         )
     base_vars["ARTIFACT_HISTORY_PATH"] = inputs.artifact_history_path
+    base_vars["ARTIFACT_HISTORY_DIR"] = inputs.artifact_history_dir
 
     capability_vars = capability_template_variables(
         session_caps.capabilities,
@@ -110,6 +113,7 @@ def prompt_developer_iteration_xml_with_context(
                 "PLAN": inputs.plan_content or "(no plan available)",
                 "ANALYSIS_FEEDBACK": inputs.analysis_feedback_content or "",
                 "ARTIFACT_HISTORY_PATH": inputs.artifact_history_path,
+                "ARTIFACT_HISTORY_DIR": inputs.artifact_history_dir,
                 "PROMPT_PATH": workspace.absolute_path(".agent/CURRENT_PROMPT.md"),
                 "PLAN_PATH": inputs.plan_path
                 or str(
@@ -167,6 +171,7 @@ def prompt_planning_xml_with_context(
             }
         )
     base_vars["ARTIFACT_HISTORY_PATH"] = inputs.artifact_history_path
+    base_vars["ARTIFACT_HISTORY_DIR"] = inputs.artifact_history_dir
 
     capability_vars = capability_template_variables(
         session_caps.capabilities,
@@ -202,6 +207,7 @@ def prompt_planning_xml_with_context(
             ),
         }
         fallback_vars["ARTIFACT_HISTORY_PATH"] = inputs.artifact_history_path
+        fallback_vars["ARTIFACT_HISTORY_DIR"] = inputs.artifact_history_dir
         return _render_static_fallback(
             context,
             fallback_template,

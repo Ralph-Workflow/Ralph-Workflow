@@ -154,6 +154,7 @@ def _render_prompt_for_phase(  # noqa: PLR0913
                 plan_path=plan_path,
                 analysis_feedback_path=analysis_feedback_path,
                 artifact_history_path=artifact_history_path,
+                artifact_history_dir=_artifact_history_dir_from_path(artifact_history_path),
                 last_retry_error=last_retry_error,
             ),
             workspace=workspace,
@@ -209,6 +210,7 @@ def _render_prompt_for_phase(  # noqa: PLR0913
                 prompt_name_prefix=phase,
                 last_retry_error=last_retry_error,
                 artifact_history_path=dev_artifact_history_path,
+                artifact_history_dir=_artifact_history_dir_from_path(dev_artifact_history_path),
             ),
             workspace=workspace,
             session_caps=session_caps,
@@ -432,6 +434,13 @@ def _resolve_artifact_history_path(workspace_root: Path, artifact_type: str) -> 
     if index.exists():
         return str(index)
     return ""
+
+
+def _artifact_history_dir_from_path(history_path: str) -> str:
+    """Return the archive directory for a resolved artifact history index path."""
+    if not history_path:
+        return ""
+    return str(Path(history_path).parent)
 
 
 def _resolve_planning_history_path(

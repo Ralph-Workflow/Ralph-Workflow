@@ -144,11 +144,11 @@ clear_on_fresh_entry = true
 
 Phases that share a drain must agree on `artifact_history.enabled`; the policy loader raises a `PolicyValidationError` if they do not.
 
-**Default pipeline behavior:** The default pipeline enables `artifact_history` on both `planning` (with `clear_on_fresh_entry = true`) and `planning_analysis` (with `clear_on_fresh_entry = false`). This means each fresh planning cycle starts with a clean history, while the planning editor agent retains history across analysis loopbacks within the same cycle.
+**Default pipeline behavior:** The default pipeline enables `artifact_history` on `planning` (with `clear_on_fresh_entry = true`), `planning_analysis` (with `clear_on_fresh_entry = false`), and `development` (with `clear_on_fresh_entry = true`). This means each fresh planning or development cycle starts with a clean history, while the planning editor agent retains history across analysis loopbacks within the same planning cycle.
 
 ### Prompt integration
 
-Phases that have `artifact_history` enabled receive an `ARTIFACT_HISTORY_PATH` template variable that points to the history `index.md` when it exists. The variable is empty when no history is present, and the template renders no history section in that case.
+Phases that have `artifact_history` enabled receive an `ARTIFACT_HISTORY_PATH` template variable that points to the history `index.md` when it exists, plus an `ARTIFACT_HISTORY_DIR` variable that points to the containing archive directory. These variables are empty when no history is present, and the template renders no history section in that case.
 
 This applies to both planning prompts (`planning.jinja`, `planning_edit.jinja`, and their fallbacks) and development prompts (`developer_iteration.jinja`, `developer_iteration_continuation.jinja`, `developer_iteration_fallback.jinja`). See {doc}`prompts` for details.
 
