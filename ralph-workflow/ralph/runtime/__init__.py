@@ -1,4 +1,22 @@
-"""Runtime environment helpers for Ralph."""
+"""Python runtime environment detection and test-timeout utilities.
+
+This package combines two concerns that phase handlers and tests regularly need
+together: detecting the Python runtime environment, and managing wall-clock
+timeout budgets for test commands.
+
+Main entry points:
+
+- ``detect_runtime_environment()`` — inspects the running Python interpreter and
+  returns a ``RuntimeEnvironment`` with version, virtualenv status, and path details.
+- ``RuntimeEnvironment`` — structured runtime snapshot (``PythonVersionInfo``,
+  virtualenv path, site-packages path).
+- ``PythonVersionInfo`` — major, minor, patch version tuple.
+- ``is_virtualenv()`` / ``detect_virtualenv_path()`` — virtualenv detection helpers.
+- ``run_command_with_timeout``, ``timeout_seconds_from_env``, ``build_timeout_env`` —
+  re-exported from ``ralph.verify_timeout``; used by test commands to enforce the
+  30-second test-suite budget.
+- ``SuiteTimeoutError`` — raised on suite timeout budget exhaustion.
+"""
 
 from ralph.runtime.environment import (
     PythonVersionInfo,

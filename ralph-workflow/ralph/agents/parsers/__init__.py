@@ -1,4 +1,28 @@
-"""Agent output parsing package."""
+"""Agent output parsers: one per agent transport, plus a generic fallback.
+
+This package converts raw stdout lines from an agent subprocess into structured
+``AgentOutputLine`` objects for the invocation engine in ``ralph.agents.invoke``.
+
+Main entry points:
+
+- ``get_parser(parser_type)`` — factory function; maps a parser type name string
+  (``'claude'``, ``'codex'``, ``'gemini'``, ``'opencode'``, ``'generic'``) to the
+  corresponding parser instance. Raises ``ValueError`` for unknown names.
+- ``AgentParser`` — the protocol that all parsers implement; defines ``parse_line``.
+- ``AgentOutputLine`` — structured parse result (content, kind, raw text).
+- ``ClaudeParser`` — parses Claude stream-JSON NDJSON output.
+- ``CodexParser`` — parses Codex per-event JSON output.
+- ``GeminiParser`` — parses Gemini output.
+- ``OpenCodeParser`` — parses OpenCode NDJSON stream output.
+- ``GenericParser`` — fallback parser for unknown or plain-text agent output.
+
+Parser selection is driven by ``AgentConfig.json_parser`` (a ``JsonParserType`` enum
+value in ``ralph.config.enums``). The invocation engine calls ``get_parser()`` at the
+start of each agent run and feeds every stdout line through ``parser.parse_line()``.
+
+To add a parser for a new agent transport, create a module in this package, implement
+``AgentParser``, and register the class in both ``get_parser()`` and ``__all__``.
+"""
 
 from ralph.agents.parsers.base import AgentOutputLine, AgentParser
 from ralph.agents.parsers.claude import ClaudeParser
