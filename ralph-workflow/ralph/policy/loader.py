@@ -205,6 +205,26 @@ def _validate_artifacts(data: dict[str, object]) -> ArtifactsPolicy:
         ) from exc
 
 
+
+def _merge_mapping_defaults(
+    defaults: Mapping[str, object], overrides: Mapping[str, object]
+) -> dict[str, object]:
+    """Recursively merge a project-local policy mapping onto bundled defaults.
+
+    This preserves backward compatibility for older generated policy files that
+    omit newly added fields or artifact contracts. Explicit project-local values
+    still win over the bundled defaults.
+    """
+    merged: dict[str, object] = dict(defaults)
+    for key, override_value in overrides.items():
+        default_value = merged.get(key)
+        if isinstance(default_value, Mapping) and isinstance(override_value, Mapping):
+            merged[key] = _merge_mapping_defaults(default_value, override_value)
+            continue
+        merged[key] = override_value
+    return merged
+
+
 def _config_defines_agent_policy(config: object) -> bool:
     chains: object = getattr(config, "agent_chains", None)
     drains: object = getattr(config, "agent_drains", None)
@@ -329,14 +349,18 @@ def _load_policy_from_paths(
     config: UnifiedConfig | None = None,
 ) -> PolicyBundle:
     """Load a policy bundle from explicit file paths."""
+    default_dir = _default_dir()
     pipeline_data = _load_toml(pipeline_path)
     artifacts_data = _load_toml(artifacts_path)
 
     if not pipeline_data:
-        pipeline_data = _load_toml(_default_dir() / "pipeline.toml")
+        pipeline_data = _load_toml(default_dir / "pipeline.toml")
 
-    if not artifacts_data:
-        artifacts_data = _load_toml(_default_dir() / "artifacts.toml")
+    default_artifacts_data = _load_toml(default_dir / "artifacts.toml")
+    if artifacts_data:
+        artifacts_data = _merge_mapping_defaults(default_artifacts_data, artifacts_data)
+    else:
+        artifacts_data = default_artifacts_data
 
     agents_policy = _load_agents_policy_from_path(agents_path, config=config)
     pipeline_policy = _validate_pipeline(pipeline_data)

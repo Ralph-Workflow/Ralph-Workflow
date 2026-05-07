@@ -119,6 +119,7 @@ reset_loop = false
 [phases.development]
 drain = "development"
 role = "execution"
+artifact_required = false
 prompt_template = "developer_iteration.jinja"
 continuation_template = "developer_iteration_continuation.jinja"
 [phases.development.transitions]

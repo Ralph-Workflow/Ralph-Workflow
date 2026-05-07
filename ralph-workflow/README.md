@@ -29,9 +29,9 @@ Ralph Workflow's pipeline behavior is defined entirely by three TOML policy file
 
 | File | What it declares |
 |------|------------------|
-| `.agent/pipeline.toml` | Phase graph, roles, transitions, retry rules, analysis loops, commit semantics, recovery routing, parallel execution |
+| `.agent/pipeline.toml` | Phase graph, roles, transitions, retry rules, analysis loops, artifact requirements, commit semantics, recovery routing, parallel execution |
 | `.agent/ralph-workflow.toml` | Agent chains and drain-to-chain bindings |
-| `.agent/artifacts.toml` | Artifact contracts and decision vocabularies per drain |
+| `.agent/artifacts.toml` | Artifact contracts, paths, and decision vocabularies per drain |
 
 The runtime validates that policy is semantically complete at startup and rejects incomplete configurations with actionable errors — it does not silently fall back to hidden built-in semantics.
 
@@ -46,7 +46,7 @@ The runtime validates that policy is semantically complete at startup and reject
 - Retry and fallback strategy per phase
 - Recovery cycle cap and terminal routing
 - Parallel execution constraints
-- Artifact requirements per drain
+- Phase-owned artifact requirements
 
 **To understand why Ralph Workflow routed a certain way**, read the active `.agent/pipeline.toml` — all routing decisions trace back to declared policy, not code branches.
 

@@ -1,10 +1,11 @@
 """Centralized required-artifact metadata for all pipeline phases.
 
-Artifact metadata is derived exclusively from ArtifactsPolicy via
-resolve_required_artifact() and build_required_artifacts(). Artifact JSON
-and markdown paths come from the contract fields declared in artifacts.toml
-(artifact_json_path and markdown_summary_path). There are no built-in
-override tables — all path overrides must be declared in artifacts.toml.
+Artifact metadata is split across two policy surfaces. ``artifacts.toml`` owns
+artifact type, JSON path, markdown handoff path, and schema normalizer lookup.
+``pipeline.toml`` owns whether a phase's output artifact is required for
+success. There are no built-in override tables — artifact paths must be
+declared in ``artifacts.toml`` and requiredness must be declared on the phase
+definition.
 """
 
 from __future__ import annotations
@@ -21,7 +22,7 @@ from ralph.mcp.artifacts.typed_artifacts import (
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from ralph.policy.models import ArtifactsPolicy
+    from ralph.policy.models import ArtifactsPolicy, PipelinePolicy
 
 # Normalizers keyed by artifact_type — used by build_required_artifacts()
 _ARTIFACT_TYPE_NORMALIZERS: dict[str, Callable[[dict[str, object]], dict[str, object]]] = {
@@ -50,25 +51,15 @@ class RequiredArtifact:
 def build_required_artifacts(
     artifacts_policy: ArtifactsPolicy,
 ) -> dict[str, RequiredArtifact]:
-    """Build a required-artifact registry from an ArtifactsPolicy.
+    """Build a drain-keyed artifact registry from ArtifactsPolicy.
 
-    Derives the artifact table from the loaded artifacts.toml. Each artifact
-    contract in the policy produces a RequiredArtifact entry keyed by drain name.
-    JSON and markdown paths come from the policy contract fields (artifact_json_path
-    and markdown_summary_path) with a conventional fallback for the JSON path.
-
-    Args:
-        artifacts_policy: Loaded artifacts policy.
-
-    Returns:
-        Dict mapping drain name -> RequiredArtifact for each artifact contract.
+    The registry contains artifact identity and path metadata only. Callers that
+    need phase-specific requiredness must use resolve_phase_required_artifact().
     """
     result: dict[str, RequiredArtifact] = {}
     for contract in artifacts_policy.artifacts.values():
         drain = str(contract.drain)
         artifact_type = contract.artifact_type
-
-        # Use policy-declared paths; fall back to convention for json_path only.
         json_path = contract.artifact_json_path or f".agent/artifacts/{artifact_type}.json"
         markdown_path = contract.markdown_summary_path
         normalizer = _ARTIFACT_TYPE_NORMALIZERS.get(artifact_type)
@@ -79,7 +70,7 @@ def build_required_artifacts(
             json_path=json_path,
             markdown_path=markdown_path,
             normalizer=normalizer,
-            artifact_required=contract.artifact_required,
+            artifact_required=True,
         )
     return result
 
@@ -89,24 +80,37 @@ def resolve_required_artifact(
     *,
     drain: str,
 ) -> RequiredArtifact | None:
-    """Resolve the required artifact for a drain from the artifacts policy.
-
-    Returns None when the drain has no artifact contract in the policy.
-    Callers must declare artifacts in artifacts.toml — there is no built-in
-    fallback registry.
-
-    Args:
-        artifacts_policy: Loaded artifacts policy.
-        drain: The drain name to look up.
-
-    Returns:
-        RequiredArtifact if the drain has a contract, None otherwise.
-    """
+    """Resolve artifact identity/path metadata for a drain from artifacts.toml."""
     try:
         registry = build_required_artifacts(artifacts_policy)
         return registry.get(drain)
     except AttributeError:
         return None
+
+
+
+def resolve_phase_required_artifact(
+    pipeline_policy: PipelinePolicy,
+    artifacts_policy: ArtifactsPolicy,
+    *,
+    phase: str,
+    drain: str | None = None,
+) -> RequiredArtifact | None:
+    """Resolve the artifact contract for a phase, including phase-owned requiredness."""
+    phase_def = pipeline_policy.phases.get(phase)
+    effective_drain = drain or (phase_def.drain if phase_def is not None else phase)
+    ra = resolve_required_artifact(artifacts_policy, drain=effective_drain)
+    if ra is None:
+        return None
+    required = phase_def.artifact_required if phase_def is not None else True
+    return RequiredArtifact(
+        phase=phase,
+        artifact_type=ra.artifact_type,
+        json_path=ra.json_path,
+        markdown_path=ra.markdown_path,
+        normalizer=ra.normalizer,
+        artifact_required=required,
+    )
 
 
 def retry_hint_path(phase: str) -> str:
@@ -163,6 +167,7 @@ __all__ = [
     "build_missing_input_hint",
     "build_required_artifacts",
     "build_retry_hint",
+    "resolve_phase_required_artifact",
     "resolve_required_artifact",
     "retry_hint_path",
 ]

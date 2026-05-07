@@ -40,7 +40,7 @@ from ralph.phases.artifacts import (
 from ralph.phases.required_artifacts import (
     build_missing_input_hint,
     build_retry_hint,
-    resolve_required_artifact,
+    resolve_phase_required_artifact,
     retry_hint_path,
 )
 from ralph.pipeline.effects import Effect, InvokeAgentEffect, PreparePromptEffect
@@ -68,7 +68,9 @@ def handle_execution_phase(effect: Effect, ctx: PhaseContext) -> list[Event]:
         phase = effect.phase
         phase_def = ctx.pipeline_policy.phases.get(phase)
         drain = phase_def.drain if phase_def is not None else phase
-        ra = resolve_required_artifact(ctx.artifacts_policy, drain=drain)
+        ra = resolve_phase_required_artifact(
+            ctx.pipeline_policy, ctx.artifacts_policy, phase=phase, drain=drain
+        )
 
         if ra is not None and ra.artifact_type == "plan":
             _clear_stale_plan_draft_if_needed(ctx)
@@ -82,7 +84,9 @@ def handle_execution_phase(effect: Effect, ctx: PhaseContext) -> list[Event]:
 
         phase_def = ctx.pipeline_policy.phases.get(phase)
         drain = phase_def.drain if phase_def is not None else phase
-        ra = resolve_required_artifact(ctx.artifacts_policy, drain=drain)
+        ra = resolve_phase_required_artifact(
+            ctx.pipeline_policy, ctx.artifacts_policy, phase=phase, drain=drain
+        )
 
         if ra is not None and ra.artifact_type == "plan":
             return _validate_plan_output(effect, ctx, ra, phase_def)

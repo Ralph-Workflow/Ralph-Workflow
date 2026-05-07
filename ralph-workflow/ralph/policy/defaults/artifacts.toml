@@ -32,9 +32,6 @@ markdown_summary_path = ".agent/PLAN.md"
 [artifacts.development_output]
 drain = "development"
 artifact_type = "development_result"
-# artifact_required = false: the development_result is context for the analysis agent;
-# phase success does not depend on its presence. A present artifact is still validated.
-artifact_required = false
 decision_vocabulary = []
 prompt_template = "developer_iteration.jinja"
 markdown_summary_path = ".agent/DEVELOPMENT_RESULT.md"

@@ -16,6 +16,7 @@ Covers the contract:
 from __future__ import annotations
 
 import json
+import shutil
 import tempfile
 from pathlib import Path
 from unittest.mock import patch
@@ -38,11 +39,34 @@ from ralph.prompts.materialize import _read_and_clear_retry_hint
 from ralph.prompts.types import SessionCapabilities, SessionDrain
 from ralph.workspace.memory import MemoryWorkspace
 
+_DEFAULT_POLICY_DIR = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
+
+
+def _copy_default_policy_files(target_dir: Path) -> None:
+    target_dir.mkdir(parents=True, exist_ok=True)
+    for filename in ("agents.toml", "pipeline.toml", "artifacts.toml"):
+        shutil.copy(_DEFAULT_POLICY_DIR / filename, target_dir / filename)
+
 
 def _load_default_artifact_registry() -> dict:
     with tempfile.TemporaryDirectory() as tmp:
-        policy = load_policy(Path(tmp) / ".agent")
+        policy_dir = Path(tmp) / ".agent"
+        _copy_default_policy_files(policy_dir)
+        policy = load_policy(policy_dir)
         return build_required_artifacts(policy.artifacts)
+
+
+
+def _load_default_optional_artifact_phases() -> set[str]:
+    with tempfile.TemporaryDirectory() as tmp:
+        policy_dir = Path(tmp) / ".agent"
+        _copy_default_policy_files(policy_dir)
+        policy = load_policy(policy_dir)
+        return {
+            phase_name
+            for phase_name, phase_def in policy.pipeline.phases.items()
+            if phase_def.artifact_required is False
+        }
 
 
 REQUIRED_ARTIFACTS = _load_default_artifact_registry()
@@ -158,9 +182,7 @@ def _setup_phase_prerequisites(
         workspace.write(".agent/artifacts/development_result.json", _VALID_DEV_RESULT_JSON)
 
 
-_OPTIONAL_ARTIFACTS = {
-    p for p, ra in REQUIRED_ARTIFACTS.items() if not ra.artifact_required
-}
+_OPTIONAL_ARTIFACTS = _load_default_optional_artifact_phases()
 
 
 @pytest.mark.parametrize(
@@ -259,6 +281,26 @@ def test_development_missing_dev_result_succeeds_optional() -> None:
     assert not workspace.exists(hint_path), (
         "No retry hint should be written for a missing optional artifact"
     )
+
+
+
+def test_development_missing_dev_result_uses_pipeline_owned_optional_policy(
+    tmp_path: Path,
+) -> None:
+    """Missing development_result must succeed when pipeline.toml marks the phase optional."""
+    artifact_policy_dir = tmp_path / ".agent"
+    _copy_default_policy_files(artifact_policy_dir)
+    policy = load_policy(artifact_policy_dir)
+    workspace = MemoryWorkspace()
+    workspace.write(".agent/artifacts/plan.json", _VALID_PLAN_JSON_LEGACY)
+    ctx = _make_ctx(workspace, policy=policy)
+
+    events = _execution_handler_for("development")(_invoke_effect("development"), ctx)
+
+    assert events == [PipelineEvent.AGENT_SUCCESS], (
+        "Pipeline-owned optional artifact policy must allow missing development_result"
+    )
+    assert not workspace.exists(retry_hint_path("development"))
 
 
 def test_read_and_clear_retry_hint_returns_content_and_deletes_file() -> None:

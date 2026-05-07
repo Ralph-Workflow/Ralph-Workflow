@@ -65,7 +65,10 @@ from ralph.mcp.server.lifecycle import (
 )
 from ralph.mcp.session_plan import build_session_mcp_plan
 from ralph.phases import PhaseContext, handle_phase, register_role_handlers
-from ralph.phases.required_artifacts import build_required_artifacts
+from ralph.phases.required_artifacts import (
+    build_required_artifacts,
+    resolve_phase_required_artifact,
+)
 from ralph.pipeline import checkpoint as ckpt
 from ralph.pipeline import progress
 from ralph.pipeline.cycle_baseline import (
@@ -74,6 +77,7 @@ from ralph.pipeline.cycle_baseline import (
     write_cycle_baseline,
 )
 from ralph.pipeline.effects import (
+    AutoAnalysisSuccessEffect,
     CommitEffect,
     EarlySkipCommitEffect,
     Effect,
@@ -2296,6 +2300,21 @@ def _terminal_phase_effect(state: PipelineState, pipeline_policy: PipelinePolicy
     return None
 
 
+def _should_auto_skip_current_analysis_phase(
+    state: PipelineState,
+    phase_def: PhaseDefinition,
+    pipeline_policy: PipelinePolicy,
+) -> bool:
+    """Return True when the current analysis phase is already beyond its allowed budget."""
+    if phase_def.role != "analysis" or phase_def.loop_policy is None:
+        return False
+    iteration_field = phase_def.loop_policy.iteration_state_field
+    current_iteration = state.get_loop_iteration(iteration_field)
+    max_iterations = _resolve_analysis_cap(iteration_field, state, pipeline_policy)
+    return progress.should_skip_analysis_reentry(current_iteration, max_iterations)
+
+
+
 def _determine_effect_from_policy(  # noqa: PLR0911
     state: PipelineState,
     policy_bundle: PolicyBundle,
@@ -2310,6 +2329,9 @@ def _determine_effect_from_policy(  # noqa: PLR0911
     phase_def = policy_bundle.pipeline.phases.get(state.phase)
     if phase_def is None:
         return ExitFailureEffect(reason=f"Unknown phase: {state.phase}")
+
+    if _should_auto_skip_current_analysis_phase(state, phase_def, policy_bundle.pipeline):
+        return AutoAnalysisSuccessEffect(phase=state.phase)
 
     if phase_def.skip_invocation is True:
         on_success = phase_def.transitions.on_success
@@ -2590,7 +2612,12 @@ def _render_phase_artifact_handoff(  # noqa: PLR0913
     ctx = _get_display_context(display, display_context)
     effective_drain = drain or phase
     required_artifact = (
-        build_required_artifacts(policy_bundle.artifacts).get(effective_drain)
+        resolve_phase_required_artifact(
+            policy_bundle.pipeline,
+            policy_bundle.artifacts,
+            phase=phase,
+            drain=effective_drain,
+        )
         if policy_bundle is not None
         else None
     )
@@ -2776,6 +2803,12 @@ def _execute_effect(  # noqa: PLR0913
         logger.info("Skipping commit early: worktree is clean")
         _cleanup_commit_message_artifacts(workspace_scope.root)
         return PipelineEvent.COMMIT_SKIPPED
+    if isinstance(effect, AutoAnalysisSuccessEffect):
+        logger.info(
+            "Skipping exhausted analysis phase '{}' and emitting ANALYSIS_SUCCESS",
+            effect.phase,
+        )
+        return PipelineEvent.ANALYSIS_SUCCESS
     if isinstance(effect, SaveCheckpointEffect):
         return PipelineEvent.CHECKPOINT_SAVED
 
@@ -2992,8 +3025,11 @@ def _execute_agent_effect(  # noqa: PLR0911, PLR0912, PLR0913, PLR0915
                     system_prompt_file=system_prompt_file,
                     waiting_listener=_waiting_listener,
                     required_artifact=(
-                        build_required_artifacts(policy_bundle.artifacts).get(
-                            effect.drain or effect.phase
+                        resolve_phase_required_artifact(
+                            policy_bundle.pipeline,
+                            policy_bundle.artifacts,
+                            phase=effect.phase,
+                            drain=effect.drain or effect.phase,
                         )
                         if policy_bundle is not None
                         else None

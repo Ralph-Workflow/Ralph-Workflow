@@ -20,8 +20,9 @@ Structured JSON payloads submitted by agents through the MCP layer. Every phase 
 > being present and no explicit `declare_complete` call is required. The development agent *may*
 > submit `development_result` to give the analysis agent richer context, but a clean exit (exit
 > code 0) alone is sufficient for terminal success. A submitted optional artifact is still fully
-> validated against its schema. The `artifact_required` flag in `artifacts.toml` controls this
-> behaviour; all other artifacts default to `artifact_required = true`.
+> validated against its schema. The `artifact_required` flag in `pipeline.toml` controls this
+> behaviour on the phase definition; artifact contracts in `artifacts.toml` only describe the
+> artifact itself.
 
 See `ralph.mcp.artifacts.typed_artifacts` for Pydantic schema definitions for each type.
 

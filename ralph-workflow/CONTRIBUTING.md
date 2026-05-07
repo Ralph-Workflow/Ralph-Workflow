@@ -176,7 +176,7 @@ present, Ralph Workflow raises `OpenCodeResumableExitError` and the runner retri
 the agent exits early without producing the required output.
 
 **Optional artifacts:** Some phases declare their artifact as optional via `artifact_required = false`
-in `artifacts.toml`. The `development_result` artifact (development phase) is the canonical example:
+in `pipeline.toml`. The `development_result` artifact (development phase) is the canonical example:
 it provides context for the analysis agent but phase success does not depend on its presence. A clean
 exit (exit code 0) is sufficient for terminal-complete on optional-artifact phases — no explicit
 `declare_complete` call and no artifact file are required. When an optional artifact is absent,

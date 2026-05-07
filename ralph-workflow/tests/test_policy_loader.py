@@ -269,6 +269,45 @@ def test_load_policy_uses_unified_config_for_agents_policy_when_provided(tmp_pat
     assert bundle.agents.agent_drains["planning"].chain == "planning"
 
 
+def test_load_policy_rejects_artifact_required_in_artifacts_toml(tmp_path: Path) -> None:
+    _copy_default_policy_files(tmp_path)
+    (tmp_path / "artifacts.toml").write_text(
+        dedent(
+            """
+            [artifacts.planning_output]
+            drain = "planning"
+            artifact_type = "plan"
+            decision_vocabulary = []
+            prompt_template = "planning.jinja"
+            markdown_summary_path = ".agent/PLAN.md"
+
+            [artifacts.development_output]
+            drain = "development"
+            artifact_type = "development_result"
+            artifact_required = false
+            decision_vocabulary = []
+            prompt_template = "developer_iteration.jinja"
+            markdown_summary_path = ".agent/DEVELOPMENT_RESULT.md"
+            """
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(LoaderPolicyValidationError, match="artifact_required"):
+        load_policy(tmp_path)
+
+
+
+def test_load_policy_supports_phase_owned_artifact_required_in_pipeline_toml(
+    tmp_path: Path,
+) -> None:
+    _copy_default_policy_files(tmp_path)
+
+    bundle = load_policy(tmp_path)
+
+    assert bundle.pipeline.phases["development"].artifact_required is False
+
+
 def test_load_policy_wraps_validate_drain_contracts_error(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

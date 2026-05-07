@@ -169,6 +169,19 @@ class EarlySkipCommitEffect:
 
 
 @dataclass(frozen=True)
+class AutoAnalysisSuccessEffect:
+    """Effect to synthesize ANALYSIS_SUCCESS without invoking an analysis agent.
+
+    Used when the pipeline is already sitting in an exhausted analysis phase.
+    The runner must not invoke the AI agent in this invalid state; instead it
+    emits ANALYSIS_SUCCESS so reducer-owned success/reset logic remains the
+    single source of truth.
+    """
+
+    phase: PipelinePhase
+
+
+@dataclass(frozen=True)
 class FanOutEffect:
     """Effect to fan out parallel work for any phase whose [parallelization] policy is declared.
 
@@ -211,6 +224,7 @@ Effect = (
     | PreparePromptEffect
     | CommitEffect
     | EarlySkipCommitEffect
+    | AutoAnalysisSuccessEffect
     | PushEffect
     | SaveCheckpointEffect
     | ExitSuccessEffect

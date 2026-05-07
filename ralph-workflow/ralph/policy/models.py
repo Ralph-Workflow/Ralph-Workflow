@@ -456,6 +456,8 @@ class PhaseDefinition(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reas
         decisions: Decision vocabulary routing map; required when role='analysis'.
         commit_policy: Required when role='commit'; declares commit semantics.
         verification: Optional verification gating policy.
+        artifact_required: Whether this phase's output artifact is required for phase success
+            when the phase's drain has an artifact contract. Defaults to True.
         terminal_outcome: Explicit terminal outcome; required when role='terminal'.
         bypass_routes: Named bypass routes (e.g. clean -> review_commit).
         clean_outcome: For role='review': the bypass_routes key that means the review
@@ -510,6 +512,13 @@ class PhaseDefinition(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reas
     verification: PhaseVerificationPolicy | None = Field(
         default=None,
         description="Verification gating policy",
+    )
+    artifact_required: bool = Field(
+        default=True,
+        description=(
+            "Whether this phase's output artifact is required for phase success when "
+            "the phase's drain has an artifact contract. Defaults to True."
+        ),
     )
     terminal_outcome: Literal["success", "failure"] | None = Field(
         default=None,
@@ -894,9 +903,6 @@ class ArtifactContract(_FrozenPolicyModel):  # type: ignore[explicit-any]  # rea
     Attributes:
         drain: Which drain this artifact is submitted at.
         artifact_type: Type identifier for the artifact (e.g., planning_json).
-        artifact_required: Whether the artifact JSON must be present for phase success.
-            When False, an absent artifact does not fail the phase; a present artifact
-            is still validated. Defaults to True.
         decision_vocabulary: Valid values for the decision field (for analysis drains).
         prompt_template: Optional template for generating prompts (None = use default).
         artifact_json_path: Override path for the artifact JSON file. When set,
@@ -909,14 +915,6 @@ class ArtifactContract(_FrozenPolicyModel):  # type: ignore[explicit-any]  # rea
     artifact_type: str = Field(
         ...,
         description="Artifact type identifier submitted via MCP",
-    )
-    artifact_required: bool = Field(
-        default=True,
-        description=(
-            "Whether the artifact JSON must be present for phase success. "
-            "When False, an absent artifact does not fail the phase; a present "
-            "artifact is still validated. Defaults to True."
-        ),
     )
     decision_vocabulary: list[str] = Field(
         default_factory=list,
@@ -940,6 +938,20 @@ class ArtifactContract(_FrozenPolicyModel):  # type: ignore[explicit-any]  # rea
             "When set, the runner writes a markdown handoff at this path."
         ),
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _reject_phase_owned_fields(cls, data: object) -> object:
+        """Reject fields that belong to pipeline.toml rather than artifacts.toml."""
+        if not isinstance(data, dict):
+            return data
+        raw = cast("dict[str, object]", dict(data))
+        if "artifact_required" in raw:
+            raise ValueError(
+                "ArtifactContract.artifact_required has moved to pipeline.toml. "
+                "Set phases.<phase>.artifact_required instead."
+            )
+        return raw
 
 
 class ArtifactsPolicy(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library

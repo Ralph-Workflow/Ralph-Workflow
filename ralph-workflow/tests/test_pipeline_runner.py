@@ -31,6 +31,7 @@ from ralph.mcp.upstream.validation import UpstreamValidationError
 from ralph.phases import HANDLERS, PhaseContext, handle_phase
 from ralph.pipeline import runner as runner_module
 from ralph.pipeline.effects import (
+    AutoAnalysisSuccessEffect,
     CommitEffect,
     EarlySkipCommitEffect,
     Effect,
@@ -2127,6 +2128,58 @@ def test_determine_effect_does_not_early_skip_after_agent_already_invoked(
     effect = runner_module._determine_effect_from_policy(state, policy_bundle, workspace_scope)
 
     assert isinstance(effect, CommitEffect)
+
+
+
+def test_determine_effect_auto_skips_exhausted_planning_analysis_without_invoking_agent() -> None:
+    policy_bundle = load_policy(
+        Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
+    )
+    state = PipelineState(
+        phase="planning_analysis",
+        loop_iterations={"planning_analysis_iteration": 5},
+        loop_caps={"planning_analysis_iteration": 5},
+    )
+
+    effect = runner_module._determine_effect_from_policy(state, policy_bundle)
+
+    assert isinstance(effect, AutoAnalysisSuccessEffect)
+    assert effect.phase == "planning_analysis"
+
+
+
+def test_determine_effect_auto_skips_exhausted_development_analysis_without_invoking_agent(
+) -> None:
+    policy_bundle = load_policy(
+        Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
+    )
+    state = PipelineState(
+        phase="development_analysis",
+        loop_iterations={"development_analysis_iteration": 5},
+        loop_caps={"development_analysis_iteration": 5},
+        budget_caps={"iteration": 5},
+    )
+
+    effect = runner_module._determine_effect_from_policy(state, policy_bundle)
+
+    assert isinstance(effect, AutoAnalysisSuccessEffect)
+    assert effect.phase == "development_analysis"
+
+
+class TestAutoAnalysisSuccessEffectExecution:
+    def test_execute_returns_analysis_success_without_invoking_agent(
+        self, tmp_path: Path
+    ) -> None:
+        config = MagicMock()
+        workspace_scope = WorkspaceScope(root=tmp_path, allowed_roots=[tmp_path])
+
+        result = runner_module._execute_effect(
+            AutoAnalysisSuccessEffect(phase="planning_analysis"),
+            config,
+            workspace_scope,
+        )
+
+        assert result == PipelineEvent.ANALYSIS_SUCCESS
 
 
 class TestEarlySkipCommitEffectExecution:
