@@ -135,6 +135,8 @@ def _debug_breadcrumb_lines(snapshot: PipelineSnapshot) -> list[str]:
         lines.append(f"failure_category: {snapshot.last_failure_category}")
     if snapshot.mcp_restart_count > 0:
         lines.append(f"mcp_restarts: {snapshot.mcp_restart_count}")
+    if snapshot.active_process_labels:
+        lines.append(f"active_processes: {', '.join(snapshot.active_process_labels)}")
     return lines
 
 

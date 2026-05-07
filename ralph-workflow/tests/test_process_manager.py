@@ -109,6 +109,45 @@ def test_terminate_escalates_to_sigkill() -> None:
 
 
 # ---------------------------------------------------------------------------
+# list_active returns labeled records for shared process observability
+# ---------------------------------------------------------------------------
+
+
+def test_list_active_returns_labeled_running_records() -> None:
+    """list_active() returns all non-terminated records; labels are preserved."""
+    pm = _make_pm()
+    h1 = pm.spawn([sys.executable, "-c", "pass"], label="phase:development:mcp-server")
+    h2 = pm.spawn([sys.executable, "-c", "pass"], label="invoke:dev-agent")
+    active = pm.list_active()
+    labels = {r.label for r in active}
+    assert "phase:development:mcp-server" in labels
+    assert "invoke:dev-agent" in labels
+    # Clean up
+    h1.terminate(grace_period_s=0.1)
+    h2.terminate(grace_period_s=0.1)
+
+
+def test_list_active_excludes_terminated_processes() -> None:
+    """list_active() excludes processes that have exited."""
+    sync_factory = make_sync_process_factory(itertools.count(1), returncode=0)
+    pm = _make_pm(sync_factory=sync_factory)
+    handle = pm.spawn([sys.executable, "-c", "pass"], label="phase:test")
+    handle.wait(timeout=2.0)
+    active = pm.list_active()
+    assert all(r.label != "phase:test" for r in active)
+
+
+def test_list_active_unlabeled_processes_not_included_when_filtering_labels() -> None:
+    """Processes without labels have label=None and should be filterable at call site."""
+    pm = _make_pm()
+    handle = pm.spawn([sys.executable, "-c", "pass"])
+    active = pm.list_active()
+    unlabeled = [r for r in active if r.label is None]
+    assert any(r.pid == handle.pid for r in unlabeled)
+    handle.terminate(grace_period_s=0.1)
+
+
+# ---------------------------------------------------------------------------
 # 3. spawn_async captures output via fake async process
 # ---------------------------------------------------------------------------
 

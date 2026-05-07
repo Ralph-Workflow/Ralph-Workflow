@@ -18,6 +18,7 @@ from ralph.display.lifecycle_filter import is_bare_lifecycle
 from ralph.display.prompt_reader import find_prompt_path, read_prompt_preview
 from ralph.display.snapshot import PipelineSnapshot, snapshot_from_state
 from ralph.policy.models import ROLE_REVIEW
+from ralph.process.manager import get_process_manager
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -436,6 +437,11 @@ class PipelineSubscriber:
             analysis_reason=self._analysis_reason,
             decision_log=tuple(self._decision_log),
             mcp_restart_count=self._mcp_restart_count,
+            active_process_labels=tuple(
+                r.label
+                for r in get_process_manager().list_active()
+                if r.label is not None
+            ),
         )
 
     def _publish(self, snapshot: PipelineSnapshot) -> None:

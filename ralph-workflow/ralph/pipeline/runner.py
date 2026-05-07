@@ -55,6 +55,7 @@ from ralph.mcp.artifacts.commit_message import (
 from ralph.mcp.protocol.capability_mapping import DrainClass
 from ralph.mcp.protocol.env import AGENT_LABEL_SCOPE_ENV
 from ralph.mcp.protocol.session import MCP_ENDPOINT_ENV, MCP_RUN_ID_ENV, AgentSession
+from ralph.mcp.protocol.startup import heartbeat_policy_from_env
 from ralph.mcp.server.lifecycle import (
     McpServerError,
     RestartAwareMcpBridge,
@@ -3003,7 +3004,11 @@ def _execute_agent_effect(  # noqa: PLR0911, PLR0912, PLR0913, PLR0915
                     if _display_subscriber is not None
                     else None
                 )
-                with McpSupervisor(bridge, on_restart=_on_mcp_restart):
+                with McpSupervisor(
+                    bridge,
+                    check_interval=heartbeat_policy_from_env().interval,
+                    on_restart=_on_mcp_restart,
+                ):
                     output_lines = deps.invoke_agent(
                         agent_config, attempt_prompt_file, options=options
                     )

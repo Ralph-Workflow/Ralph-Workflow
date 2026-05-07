@@ -18,6 +18,7 @@ import httpx
 from ralph.mcp.protocol.capability_mapping import AccessMode, drain_to_access_mode
 from ralph.mcp.protocol.env import (
     MCP_PREFLIGHT_TIMEOUT_MS_ENV,
+    MCP_PROBE_TIMEOUT_MS_ENV,
     MCP_SUPERVISION_INTERVAL_MS_ENV,
 )
 from ralph.mcp.tools.bridge import build_ralph_tool_registry
@@ -713,11 +714,69 @@ def _configure_stream_timeouts(sock: socket.socket, io_timeout: timedelta) -> No
     sock.settimeout(io_timeout.total_seconds())
 
 
+def mcp_probe_timeout_from_env(env: Mapping[str, str] | None = None) -> timedelta:
+    """Return the configured MCP responsiveness probe timeout duration."""
+    default = timedelta(milliseconds=5_000)
+    env_map = os.environ if env is None else env
+    raw = env_map.get(MCP_PROBE_TIMEOUT_MS_ENV)
+    if raw is None:
+        return default
+    try:
+        parsed = int(raw)
+    except ValueError:
+        return default
+    return timedelta(milliseconds=max(1, parsed))
+
+
+def probe_mcp_http_endpoint(endpoint: str, timeout: timedelta) -> None:
+    """Verify MCP HTTP endpoint responsiveness via an isolated initialize/tools-list handshake.
+
+    Raises PreflightError if the endpoint does not respond within the timeout.
+    Uses a fresh, isolated MCP session that never reuses or mutates any active agent session.
+    """
+    timeout_s = max(0.001, timeout.total_seconds())
+    target = parse_http_endpoint(endpoint)
+
+    def _bounded_post(
+        url: str, *, json: JsonRpcResponse, headers: dict[str, str], timeout: float
+    ) -> httpx.Response:
+        del timeout
+        return httpx.post(url, json=json, headers=headers, timeout=timeout_s)
+
+    def _bounded_post_with_session(
+        endpoint_or_target: str | HttpEndpointTarget,
+        target_or_payload: HttpEndpointTarget | JsonRpcResponse,
+        payload: JsonRpcResponse | None = None,
+        *,
+        session_id: str | None = None,
+        post_fn: HttpPostFn = httpx.post,
+    ) -> tuple[JsonRpcResponse, str | None]:
+        del post_fn
+        return post_http_jsonrpc_with_session(
+            endpoint_or_target,
+            target_or_payload,
+            payload,
+            session_id=session_id,
+            post_fn=_bounded_post,
+        )
+
+    preflight_http_attempt(
+        endpoint, target, [], timeout, post_with_session_fn=_bounded_post_with_session
+    )
+
+
 def heartbeat_policy_from_env(env: Mapping[str, str] | None = None) -> HeartbeatPolicy:
     """Return the configured MCP supervision check interval."""
+    default_ms = 2000
     env_map = os.environ if env is None else env
-    interval = int(env_map.get(MCP_SUPERVISION_INTERVAL_MS_ENV, "2000"))
-    return HeartbeatPolicy(interval=timedelta(milliseconds=max(100, interval)))
+    raw = env_map.get(MCP_SUPERVISION_INTERVAL_MS_ENV)
+    if raw is None:
+        return HeartbeatPolicy(interval=timedelta(milliseconds=default_ms))
+    try:
+        parsed = int(raw)
+    except ValueError:
+        return HeartbeatPolicy(interval=timedelta(milliseconds=default_ms))
+    return HeartbeatPolicy(interval=timedelta(milliseconds=max(100, parsed)))
 
 
 def access_mode_for_drain(

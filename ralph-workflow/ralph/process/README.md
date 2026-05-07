@@ -87,17 +87,27 @@ Restart logic lives in `ralph.mcp.server.lifecycle.RestartAwareMcpBridge`, which
 
 1. Reserves one localhost port at bridge creation time and reuses it on every restart
    so `MCP_ENDPOINT_ENV` remains constant for running agents.
-2. On unexpected exit, calls `ProcessManager.terminate()` on the stale process, then
-   spawns a new one via `ProcessManager.spawn()` with fresh preflight validation.
-3. Tracks a bounded restart budget (`McpRestartPolicy.max_restarts = 3` by default)
+2. Treats the server as unhealthy when **either** the subprocess exits **or** the
+   subprocess is alive but a responsiveness probe fails: `probe_mcp_http_endpoint`
+   (in `ralph.mcp.protocol.startup`) sends an isolated `initialize` / `tools/list`
+   handshake using a fresh session (never the agent's) and raises on timeout.
+3. On an unhealthy result, calls `StandaloneMcpProcess.shutdown()` on the stale
+   process, then spawns a new one via `ProcessManager.spawn()` with fresh preflight.
+4. Tracks a bounded restart budget (`McpRestartPolicy.max_restarts = 3` by default)
    and raises `McpServerError` once exhausted so the pipeline gets a crisp failure.
 
 `ralph.process.mcp_supervisor.McpSupervisor` wraps an active attempt and polls
 `check_mcp_bridge_health(bridge)` every 2 s (configurable via
-`MCP_SUPERVISION_INTERVAL_MS`) in a background thread. This surfaces a crash-and-restart
-within seconds rather than waiting for the next MCP request to time out.
+`MCP_SUPERVISION_INTERVAL_MS`) in a background thread. This surfaces both
+process crashes and hung-but-alive servers before they produce opaque timeouts.
+The probe timeout defaults to 5 s and is configurable via `RALPH_MCP_PROBE_TIMEOUT_MS`.
 
 ProcessManager remains the **only** process spawner and terminator; the bridge
 consumes the manager's APIs and never holds raw `Popen` handles outside them.
 Listeners registered via `ProcessManager.register_listener` receive events for
 MCP server spawns and terminations the same as for any other child process.
+
+When at least one restart occurs, the count is forwarded to
+`PipelineSubscriber.record_mcp_restart()` and surfaced as `mcp_restarts: <n>`
+in the run-end debug output. Active labeled processes from `list_active()` are
+likewise rendered as `active_processes:` when non-empty.

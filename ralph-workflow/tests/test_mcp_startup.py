@@ -435,3 +435,25 @@ def test_read_legacy_sse_message_endpoint_accepts_same_origin_relative_path() ->
     endpoint = startup._read_legacy_sse_message_endpoint("http://demo.local/sse", lines)
 
     assert endpoint == "http://demo.local/message?sessionId=abc123"
+
+
+def test_heartbeat_policy_from_env_returns_default_when_unset() -> None:
+    policy = startup.heartbeat_policy_from_env({})
+    assert policy.interval == datetime.timedelta(milliseconds=2000)
+
+
+def test_heartbeat_policy_from_env_reads_env_variable() -> None:
+    policy = startup.heartbeat_policy_from_env({"RALPH_MCP_SUPERVISION_INTERVAL_MS": "500"})
+    assert policy.interval == datetime.timedelta(milliseconds=500)
+
+
+def test_heartbeat_policy_from_env_enforces_minimum_bound() -> None:
+    policy = startup.heartbeat_policy_from_env({"RALPH_MCP_SUPERVISION_INTERVAL_MS": "5"})
+    assert policy.interval == datetime.timedelta(milliseconds=100)
+
+
+def test_heartbeat_policy_from_env_ignores_invalid_value() -> None:
+    policy = startup.heartbeat_policy_from_env(
+        {"RALPH_MCP_SUPERVISION_INTERVAL_MS": "not-a-number"}
+    )
+    assert policy.interval == datetime.timedelta(milliseconds=2000)

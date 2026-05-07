@@ -107,6 +107,8 @@ class PipelineSnapshot:
     outer_dev_iteration: int | None = None  # Computed from budget_progress tracks_budget counter
     # MCP health observability
     mcp_restart_count: int = 0
+    # ProcessManager-backed active process labels (compact, label-driven)
+    active_process_labels: tuple[str, ...] = ()
 
 
 def snapshot_from_state(  # noqa: PLR0913
@@ -135,6 +137,7 @@ def snapshot_from_state(  # noqa: PLR0913
     analysis_reason: str | None = None,
     decision_log: tuple[tuple[str, str, str, str], ...] = (),
     mcp_restart_count: int = 0,
+    active_process_labels: tuple[str, ...] = (),
 ) -> PipelineSnapshot:
     """Project PipelineState into an immutable pipeline snapshot."""
     from ralph.pipeline.progress import review_issues_found as _review_issues_found  # noqa: PLC0415
@@ -252,6 +255,7 @@ def snapshot_from_state(  # noqa: PLR0913
             None,
         ),
         mcp_restart_count=mcp_restart_count,
+        active_process_labels=active_process_labels,
     )
 
 
