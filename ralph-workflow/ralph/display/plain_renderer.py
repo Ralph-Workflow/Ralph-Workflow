@@ -273,6 +273,7 @@ class PlainLogRenderer:
         self._last_phase_saved_counters: _PhaseCounters | None = None
         self._last_phase_elapsed_seconds: float = 0.0
         self._last_phase_artifact_outcome: str = ""
+        self._phase_close_emitted: bool = False
         self._run_start_time: float | None = None
         self._run_counters: _PhaseCounters = _PhaseCounters()
         # Step 4: Track last emitted tool signature per unit to deduplicate META [activity] line
@@ -731,6 +732,8 @@ class PlainLogRenderer:
     def begin_phase(self, phase: str) -> None:
         """Start timing a new phase and reset its counters to zero."""
         self._phase_counters = _PhaseCounters(start_time=self._monotonic())
+        self._last_phase_artifact_outcome = ""
+        self._phase_close_emitted = False
         if self._run_start_time is None:
             self._run_start_time = self._monotonic()
 
@@ -841,6 +844,15 @@ class PlainLogRenderer:
         """Return the artifact outcome from the most recently closed phase."""
         return self._last_phase_artifact_outcome
 
+    @property
+    def phase_close_emitted(self) -> bool:
+        """Return True when emit_phase_close_from_exit has been called for the current phase."""
+        return self._phase_close_emitted
+
+    def record_artifact_outcome(self, outcome: str) -> None:
+        """Record artifact outcome for retrieval at phase-close time without emitting a log line."""
+        self._last_phase_artifact_outcome = outcome
+
     def emit_phase_close_from_exit(self, exit_model: PhaseExitModel) -> None:
         """Emit a phase-close recap from a PhaseExitModel.
 
@@ -853,8 +865,9 @@ class PlainLogRenderer:
         represent explicitly recorded activity during the phase. Falls back to
         internal phase counters if the model's counters are zero.
         """
-        # Store artifact outcome so it can be retrieved at phase transition time
+        # Store artifact outcome and mark close as emitted for this phase
         self._last_phase_artifact_outcome = exit_model.artifact_outcome
+        self._phase_close_emitted = True
         iter_ctx = exit_model.to_iteration_context()
         # Build counter overrides from exit model if any are non-zero
         counter_overrides = None

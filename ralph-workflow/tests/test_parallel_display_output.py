@@ -64,30 +64,6 @@ def test_emit_analysis_result_updates_subscriber_state_in_medium_mode() -> None:
     assert any(entry[1].lower() == "proceed" and "all good" in entry[2] for entry in log), log
 
 
-def test_emit_phase_transition_records_into_decision_log() -> None:
-    """emit_phase_transition records to decision_log."""
-    console = Console(file=io.StringIO(), force_terminal=False, width=120, color_system=None)
-    pd = ParallelDisplay(
-        make_display_context(console=console, env={"CI": "1"}, force_mode="medium")
-    )
-    pd.emit_phase_transition("planning", "development")
-    log = pd.subscriber.decision_log
-    assert any(entry[0] == "planning" and "development" in entry[1] for entry in log), log
-
-
-def test_emit_phase_transition_writes_banner_in_medium_mode() -> None:
-    """emit_phase_transition writes banner in medium mode."""
-    buf = io.StringIO()
-    console = Console(file=buf, force_terminal=False, width=120, color_system=None)
-    pd = ParallelDisplay(
-        make_display_context(console=console, env={"CI": "1"}, force_mode="medium")
-    )
-    pd.emit_phase_transition("planning", "development")
-    text = buf.getvalue()
-    assert "Planning" in text
-    assert "Development" in text
-
-
 def test_record_activity_updates_snapshot_fields() -> None:
     """record_activity propagates to snapshot fields and build_snapshot mirrors notify."""
     console = Console(file=io.StringIO(), force_terminal=True, width=120)

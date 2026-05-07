@@ -22,7 +22,7 @@ from ralph.display.phase_lifecycle import PhaseEntryModel, PhaseExitModel
 from ralph.display.theme import ASCII_GLYPHS, UNICODE_GLYPHS
 from ralph.policy.models import PhaseDefinition, PhaseTransition, PipelinePolicy, RecoveryPolicy
 
-_WIDE_EXPECTED_RULES = 2
+_WIDE_EXPECTED_RULES = 1
 _WIDE_PHASE_START_RULES = 1
 _WIDE_PHASE_CLOSE_RULES = 1
 
@@ -103,26 +103,26 @@ def test_compact_major_transition_one_rule() -> None:
 
 # --- Wide mode ---
 
-def test_wide_major_transition_has_two_rules() -> None:
-    """Wide: major transition emits two Rules (separator + trailing)."""
+def test_wide_major_transition_has_one_rule() -> None:
+    """Wide: major transition emits exactly one Rule (same as compact)."""
     ctx = _make_ctx("wide")
     policy = _make_execution_to_analysis_policy()
     show_phase_transition("design", "audit", pipeline_policy=policy, display_context=ctx)
     output = _export(ctx)
     rule_lines = [ln for ln in output.split("\n") if "─" in ln or "━" in ln]
     assert len(rule_lines) == _WIDE_EXPECTED_RULES, (
-        f"Expected {_WIDE_EXPECTED_RULES} rule lines, got {len(rule_lines)}: {rule_lines}"
+        f"Expected {_WIDE_EXPECTED_RULES} rule line, got {len(rule_lines)}: {rule_lines}"
     )
 
 
-def test_wide_major_transition_has_leading_blank() -> None:
-    """Wide: major transition starts with a blank line."""
+def test_wide_major_transition_no_leading_blank() -> None:
+    """Wide: major transition does not emit a leading blank line."""
     ctx = _make_ctx("wide")
     policy = _make_execution_to_analysis_policy()
     show_phase_transition("design", "audit", pipeline_policy=policy, display_context=ctx)
     output = _export(ctx)
     lines = output.split("\n")
-    assert lines[0] == "", "Wide mode must start with a blank line"
+    assert lines[0].strip() != "", "Wide major transition must not start with blank line"
 
 
 # --- ASCII glyph fallbacks ---
@@ -686,4 +686,178 @@ def test_wide_phase_start_and_close_have_same_rule_count() -> None:
     assert len(start_rules) == len(close_rules), (
         f"Phase-start has {len(start_rules)} rule(s), phase-close has {len(close_rules)} rule(s) "
         "— wide mode start and close must be structurally symmetric"
+    )
+
+
+# --- Analysis budget indicator tests ---
+
+
+def test_phase_start_medium_mode_shows_remaining_analysis_budget() -> None:
+    """Medium mode: phase-start shows [N left] when analysis iterations remain."""
+    ctx = _make_ctx("medium")
+    entry = PhaseEntryModel(
+        phase_name="development_analysis",
+        inner_analysis=2,
+        inner_analysis_cap=5,
+    )
+    show_phase_start_from_entry(entry, display_context=ctx)
+    output = _export(ctx)
+    assert "left" in output, f"Expected '[N left]' indicator in medium mode output: {output!r}"
+    assert "3 left" in output, (
+        f"Expected '3 left' (cap 5 - current 2) in medium mode output: {output!r}"
+    )
+
+
+def test_phase_start_wide_mode_shows_remaining_analysis_budget() -> None:
+    """Wide mode: phase-start shows [N left] when analysis iterations remain."""
+    ctx = _make_ctx("wide")
+    entry = PhaseEntryModel(
+        phase_name="development_analysis",
+        inner_analysis=1,
+        inner_analysis_cap=4,
+    )
+    show_phase_start_from_entry(entry, display_context=ctx)
+    output = _export(ctx)
+    assert "3 left" in output, (
+        f"Expected '3 left' (cap 4 - current 1) in wide mode output: {output!r}"
+    )
+
+
+def test_phase_start_medium_mode_shows_last_when_at_cap() -> None:
+    """Medium mode: phase-start shows [last] when on the final analysis iteration."""
+    ctx = _make_ctx("medium")
+    entry = PhaseEntryModel(
+        phase_name="development_analysis",
+        inner_analysis=3,
+        inner_analysis_cap=3,
+    )
+    show_phase_start_from_entry(entry, display_context=ctx)
+    output = _export(ctx)
+    assert "last" in output, f"Expected '[last]' indicator in medium mode output: {output!r}"
+
+
+def test_phase_start_compact_mode_omits_analysis_budget_indicator() -> None:
+    """Compact mode: phase-start must NOT show [N left] or [last] indicators."""
+    ctx = _make_ctx("compact")
+    entry = PhaseEntryModel(
+        phase_name="development_analysis",
+        inner_analysis=2,
+        inner_analysis_cap=5,
+    )
+    show_phase_start_from_entry(entry, display_context=ctx)
+    output = _export(ctx)
+    assert "left" not in output, (
+        f"Compact mode must not show '[N left]' indicator: {output!r}"
+    )
+    assert "last" not in output, (
+        f"Compact mode must not show '[last]' indicator: {output!r}"
+    )
+
+
+# --- Wide mode non-redundancy tests ---
+
+
+def test_phase_start_wide_mode_no_duplicate_phase_name() -> None:
+    """Wide mode: phase label appears in the Rule title only — no redundant banner line after it."""
+    ctx = _make_ctx("wide")
+    entry = PhaseEntryModel(
+        phase_name="development_analysis",
+        outer_dev_iteration=2,
+        outer_dev_cap=5,
+    )
+    show_phase_start_from_entry(entry, display_context=ctx)
+    output = _export(ctx)
+    count = output.count("Development Analysis")
+    assert count == 1, (
+        f"Expected 'Development Analysis' exactly once (no redundant banner line), "
+        f"but found {count} time(s): {output!r}"
+    )
+
+
+def test_phase_start_wide_mode_rule_title_contains_qualifiers() -> None:
+    """Wide mode: the Rule separator line itself contains (outer) and (inner) qualifiers."""
+    ctx = _make_ctx("wide")
+    entry = PhaseEntryModel(
+        phase_name="development_analysis",
+        outer_dev_iteration=1,
+        outer_dev_cap=3,
+        inner_analysis=2,
+        inner_analysis_cap=4,
+    )
+    show_phase_start_from_entry(entry, display_context=ctx)
+    output = _export(ctx)
+    rule_lines = [ln for ln in output.split("\n") if "─" in ln or "─" in ln]
+    assert len(rule_lines) >= 1, "Expected at least one Rule line"
+    rule_text = " ".join(rule_lines)
+    assert "(outer)" in rule_text, f"Rule title must contain '(outer)': {rule_text!r}"
+    assert "(inner)" in rule_text, f"Rule title must contain '(inner)': {rule_text!r}"
+
+
+def test_phase_start_wide_mode_rule_title_contains_budget_indicator() -> None:
+    """Wide mode: the Rule separator line itself contains the [N left] budget indicator."""
+    ctx = _make_ctx("wide")
+    entry = PhaseEntryModel(
+        phase_name="development_analysis",
+        inner_analysis=1,
+        inner_analysis_cap=5,
+    )
+    show_phase_start_from_entry(entry, display_context=ctx)
+    output = _export(ctx)
+    rule_lines = [ln for ln in output.split("\n") if "─" in ln or "─" in ln]
+    assert len(rule_lines) >= 1, "Expected at least one Rule line"
+    rule_text = " ".join(rule_lines)
+    assert "4 left" in rule_text, (
+        f"Rule title must contain '4 left' (cap 5 - current 1): {rule_text!r}"
+    )
+
+
+# --- Routing note tests ---
+
+
+def test_phase_close_banner_shows_routing_note_all_modes() -> None:
+    """show_phase_close_banner shows routing_note when set, in all display modes."""
+    for mode in ("compact", "medium", "wide"):
+        ctx = _make_ctx(mode)
+        exit_model = PhaseExitModel(
+            phase_name="development",
+            routing_note="Development Analysis cap reached, skipping",
+        )
+        show_phase_close_banner(exit_model, display_context=ctx)
+        output = _export(ctx)
+        assert "cap reached" in output, (
+            f"routing_note not shown in {mode} mode: {output!r}"
+        )
+
+
+def test_phase_close_banner_omits_routing_note_when_none() -> None:
+    """show_phase_close_banner must not emit any routing note line when routing_note is None."""
+    ctx = _make_ctx("wide")
+    exit_model = PhaseExitModel(phase_name="development")
+    show_phase_close_banner(exit_model, display_context=ctx)
+    output = _export(ctx)
+    # routing_note=None means nothing about "skipping" or "cap" should appear
+    assert "cap reached" not in output
+    assert "skipping" not in output
+
+
+def test_phase_close_wide_mode_trailing_rule_is_titled_with_elapsed_and_trigger() -> None:
+    """Wide mode: trailing Rule title shows elapsed time and exit trigger."""
+    # This mirrors the phase-start Rule title so the section footer is readable when scrolling.
+    ctx = _make_ctx("wide")
+    exit_model = PhaseExitModel(
+        phase_name="development",
+        elapsed_seconds=12.5,
+        exit_trigger="completed",
+    )
+    show_phase_close_banner(exit_model, display_context=ctx)
+    output = _export(ctx)
+    # The trailing Rule line (identified by ─ chars) must contain elapsed and trigger
+    rule_lines = [ln for ln in output.split("\n") if "─" in ln or "─" in ln]
+    assert len(rule_lines) >= 1, "Expected trailing Rule in wide mode"
+    rule_text = " ".join(rule_lines)
+    assert "completed" in rule_text, (
+        f"Trailing Rule title must contain exit trigger: {rule_text!r}"
+    )
+    assert "12" in rule_text, (
+        f"Trailing Rule title must contain elapsed time: {rule_text!r}"
     )

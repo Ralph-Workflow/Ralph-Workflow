@@ -85,9 +85,9 @@ class PipelineSubscriber:
     as thread-safe and never blocks. Prompt preview and the plan artifact are
     read once at construction and cached for the lifetime of the subscriber.
 
-    The subscriber additionally exposes record_activity, record_phase_transition,
-    and record_analysis to receive lightweight presentation events that should
-    flow into the same snapshot queue without breaking the notify(state) contract.
+    The subscriber additionally exposes record_activity and record_analysis to
+    receive lightweight presentation events that should flow into the same
+    snapshot queue without breaking the notify(state) contract.
     """
 
     def __init__(  # noqa: PLR0913
@@ -241,18 +241,6 @@ class PipelineSubscriber:
             # they carry no user payload and would overwrite a richer previous value.
             if line and not is_bare_lifecycle(line):
                 self._last_activity_line = line
-            snapshot = self._build_snapshot_locked(self._last_state)
-        if snapshot is not None:
-            self._publish(snapshot)
-
-    def record_phase_transition(self, from_phase: str, to_phase: str) -> None:
-        """Record a phase transition into the decision log."""
-        with self._lock:
-            self._append_decision_log_locked(
-                phase=from_phase,
-                decision=f"→ {to_phase}",
-                reason="phase transition",
-            )
             snapshot = self._build_snapshot_locked(self._last_state)
         if snapshot is not None:
             self._publish(snapshot)
