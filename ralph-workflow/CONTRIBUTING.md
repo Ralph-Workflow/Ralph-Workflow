@@ -74,7 +74,7 @@ You can narrow failures with:
 ruff check ralph/ tests/
 ruff format --check ralph/ tests/
 uv run python -m mypy ralph/
-uv run python -m ralph.verify_timeout --suite-timeout 30 -- pytest tests/ -q -n 8 --cov=ralph --cov-report=term-missing --cov-report=html --cov-fail-under=80
+make test-cov
 make test
 make test-unit
 make test-integration

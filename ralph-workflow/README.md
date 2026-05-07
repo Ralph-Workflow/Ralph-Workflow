@@ -249,7 +249,7 @@ That runs:
 - `make lint` (`ruff check ralph/ tests/`)
 - `make typecheck` (`uv run python -m mypy ralph/`)
 - `make docs` (`uv run --extra docs sphinx-build -b html docs/sphinx docs/sphinx/_build/html -W --keep-going`)
-- `make test-cov` (`uv run python -m ralph.verify_timeout --suite-timeout 30 -- pytest tests/ -q -n 8 --cov=ralph --cov-report=term-missing --cov-report=html --cov-fail-under 80`)
+- `make test-cov` — runs pytest with coverage enabled and enforces ≥80% coverage (uses `$(PYTEST_WORKERS)` workers, defaulting to 8; excludes subprocess_e2e tests)
 - `make test-subprocess-e2e`
 
 If any step fails, `make verify` prints a high-visibility banner that cites `AGENTS.md` and `CLAUDE.md` and tells the active AI agent to fix the failure immediately before doing anything else.
