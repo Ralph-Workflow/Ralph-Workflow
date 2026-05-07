@@ -13,3 +13,11 @@ IMPLEMENTATION PLAN:
 ANALYSIS FEEDBACK:
 {{ render_payload_section('ANALYSIS FEEDBACK', ANALYSIS_FEEDBACK|default(''), ANALYSIS_FEEDBACK_PATH) }}
 
+{% if ARTIFACT_HISTORY_PATH %}
+ARTIFACT HISTORY:
+Prior development artifacts from previous iterations are archived at:
+`{{ARTIFACT_HISTORY_PATH}}`
+Inspect this history when you want to understand what has been tried before
+and what development-analysis feedback they received.
+{% endif %}
+

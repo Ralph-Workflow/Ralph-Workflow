@@ -118,7 +118,7 @@ When a phase has `artifact_history.enabled = true` in its `pipeline.toml` policy
 
 ### Policy
 
-Artifact history is configured per-phase in `pipeline.toml`:
+Artifact history is a per-phase option configured in `pipeline.toml`. Any execution phase can opt in by declaring an `artifact_history` block:
 
 ```toml
 [phases.planning.artifact_history]
@@ -128,20 +128,29 @@ clear_on_fresh_entry = true
 [phases.planning_analysis.artifact_history]
 enabled = true
 clear_on_fresh_entry = false
+
+# Example: development phase opting in to artifact history
+[phases.development.artifact_history]
+enabled = true
+clear_on_fresh_entry = true
 ```
 
 | Field | Default | Meaning |
 |---|---|---|
 | `enabled` | `false` | Archive the current artifact before each overwrite |
-| `clear_on_fresh_entry` | `true` | Wipe the history archive at the start of a new (non-loopback) planning entry |
+| `clear_on_fresh_entry` | `true` | Wipe the history archive at the start of a new (non-loopback) phase entry |
 
-`clear_on_fresh_entry = true` means each new planning cycle starts with a clean history so history from a prior dev-iteration does not leak into the next run. Set it to `false` on analysis phases (like `planning_analysis`) so the editor agent can still see history during the same iteration.
+`clear_on_fresh_entry = true` means each fresh phase entry starts with a clean history so history from a prior iteration does not leak into the next run. Set it to `false` on analysis phases (like `planning_analysis`) so the editor agent can still see history during the same iteration.
 
 Phases that share a drain must agree on `artifact_history.enabled`; the policy loader raises a `PolicyValidationError` if they do not.
 
-### Planning prompt integration
+**Default pipeline behavior:** The default pipeline enables `artifact_history` on both `planning` (with `clear_on_fresh_entry = true`) and `planning_analysis` (with `clear_on_fresh_entry = false`). This means each fresh planning cycle starts with a clean history, while the planning editor agent retains history across analysis loopbacks within the same cycle.
 
-Planning prompts (`planning.jinja`, `planning_edit.jinja`, and their fallbacks) receive an `ARTIFACT_HISTORY_PATH` template variable that points to the history `index.md` when it exists. The variable is empty when no history is present, and the template renders no history section in that case. See {doc}`prompts` for details.
+### Prompt integration
+
+Phases that have `artifact_history` enabled receive an `ARTIFACT_HISTORY_PATH` template variable that points to the history `index.md` when it exists. The variable is empty when no history is present, and the template renders no history section in that case.
+
+This applies to both planning prompts (`planning.jinja`, `planning_edit.jinja`, and their fallbacks) and development prompts (`developer_iteration.jinja`, `developer_iteration_continuation.jinja`, `developer_iteration_fallback.jinja`). See {doc}`prompts` for details.
 
 ### Implementation
 
