@@ -840,8 +840,9 @@ def test_phase_close_banner_omits_routing_note_when_none() -> None:
     assert "skipping" not in output
 
 
-def test_phase_close_wide_mode_trailing_rule_has_no_repeated_elapsed() -> None:
-    """Wide mode: trailing Rule is a plain separator with no repeated elapsed/trigger text."""
+def test_phase_close_wide_mode_trailing_rule_is_titled_with_elapsed_and_trigger() -> None:
+    """Wide mode: trailing Rule title shows elapsed time and exit trigger."""
+    # This mirrors the phase-start Rule title so the section footer is readable when scrolling.
     ctx = _make_ctx("wide")
     exit_model = PhaseExitModel(
         phase_name="development",
@@ -850,16 +851,13 @@ def test_phase_close_wide_mode_trailing_rule_has_no_repeated_elapsed() -> None:
     )
     show_phase_close_banner(exit_model, display_context=ctx)
     output = _export(ctx)
-    # elapsed and trigger appear on the main banner line
-    assert "12" in output
-    assert "completed" in output
-    # The trailing Rule line (identified by ─ chars) must NOT repeat elapsed or trigger
+    # The trailing Rule line (identified by ─ chars) must contain elapsed and trigger
     rule_lines = [ln for ln in output.split("\n") if "─" in ln or "─" in ln]
     assert len(rule_lines) >= 1, "Expected trailing Rule in wide mode"
     rule_text = " ".join(rule_lines)
-    assert "completed" not in rule_text, (
-        f"Trailing Rule must not repeat exit trigger: {rule_text!r}"
+    assert "completed" in rule_text, (
+        f"Trailing Rule title must contain exit trigger: {rule_text!r}"
     )
-    assert "12.5" not in rule_text, (
-        f"Trailing Rule must not repeat elapsed time: {rule_text!r}"
+    assert "12" in rule_text, (
+        f"Trailing Rule title must contain elapsed time: {rule_text!r}"
     )

@@ -434,13 +434,26 @@ def _build_debug_line(
 def _print_wide_close_rule(
     style: str,
     console: Console,
+    *,
+    elapsed_seconds: float = 0.0,
+    exit_trigger: str | None = None,
+    arrow: str = "→",
 ) -> None:
-    """Print the wide-mode trailing Rule as a plain section-close separator.
+    """Print the wide-mode trailing titled Rule as the section-close separator.
 
-    The elapsed time and exit trigger are already on the main banner line;
-    repeating them in the Rule title would duplicate information.
+    When elapsed time and/or exit trigger are available, they form the Rule title
+    so the section footer mirrors the header and is immediately readable when
+    scrolling through output. Falls back to a plain Rule when both are absent.
     """
-    console.print(Rule(style=style))
+    parts: list[str] = []
+    if elapsed_seconds > 0:
+        parts.append(format_elapsed_seconds(elapsed_seconds))
+    if exit_trigger is not None:
+        parts.append(f"{arrow} {exit_trigger}")
+    if parts:
+        console.print(Rule(title="  ".join(parts), style=style))
+    else:
+        console.print(Rule(style=style))
 
 
 def show_phase_close_banner(
@@ -526,7 +539,12 @@ def show_phase_close_banner(
     if debug_line is not None:
         c.print(debug_line)
 
-    # Wide mode: plain trailing Rule closes the section visually.
-    # Elapsed and exit trigger are already on the main banner line above.
+    # Wide mode: titled trailing Rule closes the section visually.
+    # The title mirrors the header so the section footer is readable when scrolling.
     if mode == "wide":
-        _print_wide_close_rule(style, c)
+        _print_wide_close_rule(
+            style, c,
+            elapsed_seconds=exit_model.elapsed_seconds,
+            exit_trigger=exit_model.exit_trigger,
+            arrow=arrow,
+        )
