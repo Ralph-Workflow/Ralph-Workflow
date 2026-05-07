@@ -418,6 +418,124 @@ def test_restart_aware_bridge_process_dying_after_initial_preflight(tmp_path: Pa
     assert bridge.agent_endpoint_uri() == "http://127.0.0.1:9010/mcp"
 
 
+# ---------------------------------------------------------------------------
+# Responsiveness probe tests (alive-but-unresponsive scenario)
+# ---------------------------------------------------------------------------
+
+
+def test_restart_aware_bridge_restarts_when_process_alive_but_probe_fails() -> None:
+    """Bridge restarts when process is alive (poll=None) but responsiveness probe fails."""
+    from datetime import timedelta  # noqa: PLC0415
+
+    inner = _make_standalone(poll_result=None)
+    new_inner = _make_standalone(poll_result=None)
+    restart_calls: list[int] = []
+
+    def failing_probe(endpoint: str, timeout: timedelta) -> None:
+        del endpoint, timeout
+        raise Exception("probe timed out")
+
+    bridge = lifecycle.RestartAwareMcpBridge(
+        inner,
+        restart_fn=lambda: (restart_calls.append(1), new_inner)[-1],
+        restart_policy=lifecycle.McpRestartPolicy(max_restarts=3),
+        probe_fn=failing_probe,
+        probe_timeout_fn=lambda: timedelta(seconds=1),
+    )
+    result = bridge.check_health_and_restart_if_needed()
+    assert result is True
+    assert bridge.restart_count == 1
+    assert restart_calls == [1]
+
+
+def test_restart_aware_bridge_raises_budget_exhausted_on_probe_failure() -> None:
+    """McpServerError raised when budget exhausted even though process is alive (probe failure)."""
+    from datetime import timedelta  # noqa: PLC0415
+
+    inner = _make_standalone(poll_result=None)
+
+    def failing_probe(endpoint: str, timeout: timedelta) -> None:
+        del endpoint, timeout
+        raise Exception("connection refused")
+
+    bridge = lifecycle.RestartAwareMcpBridge(
+        inner,
+        restart_fn=lambda: _make_standalone(poll_result=None),
+        restart_policy=lifecycle.McpRestartPolicy(max_restarts=0),
+        probe_fn=failing_probe,
+        probe_timeout_fn=lambda: timedelta(seconds=1),
+    )
+    with pytest.raises(lifecycle.McpServerError) as exc_info:
+        bridge.check_health_and_restart_if_needed()
+    assert exc_info.value.restart_count == 0
+
+
+def test_restart_aware_bridge_terminates_stale_process_on_probe_failure(tmp_path: Path) -> None:
+    """Stale but alive process is terminated via shutdown() before respawn on probe failure."""
+    from datetime import timedelta  # noqa: PLC0415
+
+    session_file = tmp_path / "probe-stale-session.json"
+    session_file.write_text("{}", encoding="utf-8")
+    initial_process = FakeProcess(poll_result=None)
+    inner = lifecycle.StandaloneMcpProcess(
+        endpoint="http://127.0.0.1:9900/mcp",
+        process=initial_process,
+        session_file=session_file,
+    )
+
+    def failing_probe(endpoint: str, timeout: timedelta) -> None:
+        del endpoint, timeout
+        raise Exception("request timed out")
+
+    new_inner = _make_standalone(poll_result=None)
+    bridge = lifecycle.RestartAwareMcpBridge(
+        inner,
+        restart_fn=lambda: new_inner,
+        restart_policy=lifecycle.McpRestartPolicy(max_restarts=3),
+        probe_fn=failing_probe,
+        probe_timeout_fn=lambda: timedelta(seconds=1),
+    )
+    bridge.check_health_and_restart_if_needed()
+    assert initial_process.terminated is True, "stale process must be terminated before respawn"
+
+
+def test_restart_aware_bridge_no_probe_fn_means_alive_is_healthy() -> None:
+    """When probe_fn is None, a live process is always treated as healthy (backward compat)."""
+    inner = _make_standalone(poll_result=None)
+    bridge = lifecycle.RestartAwareMcpBridge(
+        inner,
+        restart_fn=_make_standalone,
+        restart_policy=lifecycle.McpRestartPolicy(max_restarts=3),
+        probe_fn=None,
+    )
+    result = bridge.check_health_and_restart_if_needed()
+    assert result is False
+    assert bridge.restart_count == 0
+
+
+def test_restart_aware_bridge_passing_probe_does_not_trigger_restart() -> None:
+    """When probe_fn succeeds, bridge reports healthy and does not restart."""
+    from datetime import timedelta  # noqa: PLC0415
+
+    probe_calls: list[str] = []
+
+    def passing_probe(endpoint: str, timeout: timedelta) -> None:
+        probe_calls.append(endpoint)
+
+    inner = _make_standalone(poll_result=None)
+    bridge = lifecycle.RestartAwareMcpBridge(
+        inner,
+        restart_fn=_make_standalone,
+        restart_policy=lifecycle.McpRestartPolicy(max_restarts=3),
+        probe_fn=passing_probe,
+        probe_timeout_fn=lambda: timedelta(seconds=1),
+    )
+    result = bridge.check_health_and_restart_if_needed()
+    assert result is False
+    assert bridge.restart_count == 0
+    assert probe_calls  # probe was called
+
+
 def test_start_mcp_server_stable_endpoint_across_restarts(tmp_path: Path) -> None:
     """start_mcp_server reuses the same port on every restart so the endpoint stays stable."""
     reserved_ports: list[int] = []

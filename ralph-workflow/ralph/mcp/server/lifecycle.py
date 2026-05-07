@@ -21,7 +21,9 @@ from ralph.mcp.protocol.env import MCP_SESSION_FILE_ENV as SESSION_FILE_ENV
 from ralph.mcp.protocol.startup import (
     SessionBridgeLike,
     mcp_preflight_timeout_from_env,
+    mcp_probe_timeout_from_env,
     preflight_http_mcp_server_tools,
+    probe_mcp_http_endpoint,
 )
 from ralph.mcp.tools.bridge import build_ralph_tool_registry
 from ralph.process.manager import ManagedProcess, get_process_manager
@@ -73,6 +75,8 @@ class LifecycleDeps:
     spawn_process: SpawnProcess
     preflight: PreflightFn
     preflight_timeout: Callable[[], timedelta]
+    probe: Callable[[str, timedelta], None] | None = None
+    probe_timeout: Callable[[], timedelta] | None = None
 
 
 @dataclass
@@ -131,10 +135,14 @@ class RestartAwareMcpBridge:
         *,
         restart_fn: Callable[[], StandaloneMcpProcess],
         restart_policy: McpRestartPolicy,
+        probe_fn: Callable[[str, timedelta], None] | None = None,
+        probe_timeout_fn: Callable[[], timedelta] | None = None,
     ) -> None:
         self._inner = inner
         self._restart_fn = restart_fn
         self._restart_policy = restart_policy
+        self._probe_fn = probe_fn
+        self._probe_timeout_fn = probe_timeout_fn
         self._restart_count = 0
         self._lock = threading.Lock()
 
@@ -155,28 +163,56 @@ class RestartAwareMcpBridge:
         self._inner.shutdown()
 
     def check_health_and_restart_if_needed(self) -> bool:
-        """Check if MCP server is alive; restart if dead.
+        """Check if MCP server is alive and responsive; restart if not.
+
+        Treats the bridge as unhealthy when either (a) the subprocess has exited
+        or (b) the subprocess is alive but the responsiveness probe times out or
+        fails. On an unhealthy result the stale process is terminated, a new one
+        is spawned via restart_fn (which reruns full preflight), and the bounded
+        restart counter is incremented.
 
         Returns True when a restart was performed.
         Raises McpServerError when the restart budget is exhausted.
         Thread-safe: may be called from a background McpSupervisor thread.
         """
         with self._lock:
-            if self._inner.process.poll() is None:
+            process_exited = self._inner.process.poll() is not None
+            probe_failed = False
+            if not process_exited and self._probe_fn is not None:
+                try:
+                    probe_timeout = (
+                        self._probe_timeout_fn()
+                        if self._probe_timeout_fn is not None
+                        else timedelta(seconds=5)
+                    )
+                    self._probe_fn(self._inner.endpoint, probe_timeout)
+                except Exception:
+                    probe_failed = True
+
+            if not process_exited and not probe_failed:
                 return False
 
             if self._restart_count >= self._restart_policy.max_restarts:
+                reason = "probe failed" if probe_failed and not process_exited else "exited"
                 raise McpServerError(
-                    f"MCP server exited and restart budget ({self._restart_policy.max_restarts})"
-                    f" exhausted after {self._restart_count} restart(s)",
+                    f"MCP server {reason} and restart budget"
+                    f" ({self._restart_policy.max_restarts}) exhausted"
+                    f" after {self._restart_count} restart(s)",
                     restart_count=self._restart_count,
                 )
 
-            logger.warning(
-                "MCP server process exited unexpectedly; restarting ({}/{})",
-                self._restart_count + 1,
-                self._restart_policy.max_restarts,
-            )
+            if probe_failed and not process_exited:
+                logger.warning(
+                    "MCP server unresponsive (probe timed out or failed); restarting ({}/{})",
+                    self._restart_count + 1,
+                    self._restart_policy.max_restarts,
+                )
+            else:
+                logger.warning(
+                    "MCP server process exited unexpectedly; restarting ({}/{})",
+                    self._restart_count + 1,
+                    self._restart_policy.max_restarts,
+                )
             self._inner.shutdown()
             self._inner = self._restart_fn()
             self._restart_count += 1
@@ -236,6 +272,8 @@ def start_mcp_server(  # noqa: PLR0913
         inner,
         restart_fn=_restart_fn,
         restart_policy=restart_policy or McpRestartPolicy(),
+        probe_fn=lifecycle_deps.probe,
+        probe_timeout_fn=lifecycle_deps.probe_timeout,
     )
 
 
@@ -353,6 +391,8 @@ def _default_lifecycle_deps() -> LifecycleDeps:
         spawn_process=_spawn_process,
         preflight=preflight_http_mcp_server_tools,
         preflight_timeout=mcp_preflight_timeout_from_env,
+        probe=probe_mcp_http_endpoint,
+        probe_timeout=mcp_probe_timeout_from_env,
     )
 
 

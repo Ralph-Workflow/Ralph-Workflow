@@ -259,9 +259,10 @@ When working on `ralph/mcp/server/` or `ralph/pipeline/runner.py`, preserve thes
 
 1. **`RestartAwareMcpBridge` is the only restart mechanism.** MCP servers must not be restarted by calling `start_mcp_server()` again from arbitrary callsites. All restart logic lives inside `RestartAwareMcpBridge._restart_fn()`, which is closed at bridge creation time.
 2. **Preflight runs on every spawn.** `_spawn_mcp_process()` calls `deps.preflight()` before returning the new `StandaloneMcpProcess`, whether on initial startup or after a crash restart. Any preflight failure aborts the restart and propagates the error.
-3. **Budget exhaustion raises `McpServerError`.** When `RestartAwareMcpBridge._restart_count` reaches `McpRestartPolicy.max_restarts`, `check_health_and_restart_if_needed()` raises `McpServerError(restart_count=n)` instead of attempting another spawn.
-4. **`check_mcp_bridge_health` is called per retry attempt.** In `runner.py`, the health check must execute at the top of every retry loop iteration so crashed servers are detected before the agent is invoked, not after.
-5. **`ProcessManager` owns all process spawning.** Every subprocess — MCP server or AI agent — must be registered with `ProcessManager`. Do not call `subprocess.Popen` or similar outside `ProcessManager`.
+3. **Unhealthy means exited OR probe-failed.** `check_health_and_restart_if_needed()` treats the server as unhealthy when either the subprocess has exited **or** the subprocess is alive but the responsiveness probe (`probe_mcp_http_endpoint`) fails. Both cases trigger the same terminate-respawn-preflight path. The probe uses a fresh isolated session and never touches the agent's active session.
+4. **Budget exhaustion raises `McpServerError`.** When `RestartAwareMcpBridge._restart_count` reaches `McpRestartPolicy.max_restarts`, `check_health_and_restart_if_needed()` raises `McpServerError(restart_count=n)` instead of attempting another spawn.
+5. **`check_mcp_bridge_health` is called per retry attempt.** In `runner.py`, the health check must execute at the top of every retry loop iteration so crashed or hung servers are detected before the agent is invoked, not after.
+6. **`ProcessManager` owns all process spawning.** Every subprocess — MCP server or AI agent — must be registered with `ProcessManager`. Do not call `subprocess.Popen` or similar outside `ProcessManager`.
 
 If you change any of these, update tests and docs together.
 

@@ -179,3 +179,61 @@ def test_supervisor_uses_configured_check_interval() -> None:
 def test_supervisor_default_interval_equals_two_seconds() -> None:
     """The module-level _DEFAULT_INTERVAL constant is still 2 s for explicit construction."""
     assert timedelta(seconds=2) == _DEFAULT_INTERVAL
+
+
+def test_supervisor_restarts_alive_but_probe_failing_bridge() -> None:
+    """McpSupervisor restarts a bridge whose process is alive but responsiveness probe fails."""
+    import pathlib  # noqa: PLC0415
+    import tempfile  # noqa: PLC0415
+
+    td = pathlib.Path(tempfile.mkdtemp())
+    sf = td / "session.json"
+    sf.write_text("{}", encoding="utf-8")
+
+    probe_should_fail = [False]
+    # Tracks whether the restart has run; probe passes after the first restart
+    # so the budget is not exhausted by subsequent health checks.
+    restart_done = [False]
+
+    def controlled_probe(endpoint: str, timeout: timedelta) -> None:
+        del endpoint, timeout
+        if probe_should_fail[0] and not restart_done[0]:
+            raise Exception("probe timed out")
+
+    initial_process = FakeProcess(poll_result=None)
+    inner = lifecycle.StandaloneMcpProcess(
+        endpoint="http://127.0.0.1:9510/mcp",
+        process=initial_process,
+        session_file=sf,
+    )
+
+    def restart_fn() -> lifecycle.StandaloneMcpProcess:
+        restart_done[0] = True  # after restart the new server is responsive
+        new_sf = td / "session-restart.json"
+        new_sf.write_text("{}", encoding="utf-8")
+        return lifecycle.StandaloneMcpProcess(
+            endpoint="http://127.0.0.1:9510/mcp",
+            process=FakeProcess(poll_result=None),
+            session_file=new_sf,
+        )
+
+    bridge = lifecycle.RestartAwareMcpBridge(
+        inner,
+        restart_fn=restart_fn,
+        restart_policy=lifecycle.McpRestartPolicy(max_restarts=3),
+        probe_fn=controlled_probe,
+        probe_timeout_fn=lambda: timedelta(milliseconds=200),
+    )
+    restart_recorded: list[int] = []
+
+    with McpSupervisor(
+        bridge,
+        check_interval=timedelta(milliseconds=30),
+        on_restart=restart_recorded.append,
+    ):
+        time.sleep(0.02)
+        probe_should_fail[0] = True  # process alive, probe now fails
+        time.sleep(0.12)
+
+    assert bridge.restart_count == 1
+    assert restart_recorded == [1]
