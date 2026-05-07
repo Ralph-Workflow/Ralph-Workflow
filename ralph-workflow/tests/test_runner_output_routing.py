@@ -120,7 +120,13 @@ def test_run_streams_transcript_output_without_dashboard(monkeypatch: pytest.Mon
     def stub_determine_effect(_state: object, _bundle: object) -> object:
         return effects.pop(0)
 
-    def stub_reducer(current_state: PipelineState, _event: object, _policy: object):
+    def stub_reducer(
+        current_state: PipelineState,
+        _event: object,
+        _policy: object,
+        recovery: object | None = None,
+    ):
+        del recovery
         return current_state.copy_with(phase="complete"), None
 
     def fake_invoke_agent(
@@ -189,7 +195,13 @@ def test_single_agent_visual_parity(monkeypatch: pytest.MonkeyPatch) -> None:
     def stub_determine_effect(_state: object, _bundle: object) -> object:
         return effects.pop(0)
 
-    def stub_reducer(_state: PipelineState, _event: object, _policy: object):
+    def stub_reducer(
+        _state: PipelineState,
+        _event: object,
+        _policy: object,
+        recovery: object | None = None,
+    ):
+        del recovery
         return next(next_states), None
 
     def fake_invoke_agent(
@@ -251,7 +263,13 @@ def test_run_notifies_dashboard_subscriber_after_reduce(monkeypatch: pytest.Monk
     def stub_determine_effect(_state: object, _bundle: object) -> object:
         return effects.pop(0)
 
-    def stub_reducer(current_state: PipelineState, _event: object, _policy: object):
+    def stub_reducer(
+        current_state: PipelineState,
+        _event: object,
+        _policy: object,
+        recovery: object | None = None,
+    ):
+        del recovery
         next_state = current_state.copy_with(phase="complete")
         call_order.append(("reduce", next_state.phase))
         return next_state, None

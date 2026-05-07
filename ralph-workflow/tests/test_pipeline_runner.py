@@ -878,6 +878,82 @@ class TestCommitEffect:
         assert ".agent/tmp/commit_message.json" in effect.message_file
 
 
+def test_build_agent_recovery_plan_uses_retry_prompt_when_same_session_has_context(
+    tmp_path: Path,
+) -> None:
+    prompt_file = tmp_path / "planning_prompt.md"
+    prompt_file.write_text("ORIGINAL PROMPT", encoding="utf-8")
+    effect = InvokeAgentEffect(
+        agent_name="planner",
+        phase="planning",
+        prompt_file=str(prompt_file),
+    )
+    exc = AgentInactivityTimeoutError(
+        "planner",
+        30.0,
+        parsed_output=["analysis failed", "need more detail"],
+        session_resume_safe=True,
+    )
+
+    plan = runner_module._build_agent_recovery_plan(
+        exc=exc,
+        attempt_index=0,
+        max_recovery_attempts=1,
+        effect=effect,
+        workspace_root=tmp_path,
+        raw_output=[],
+        rendered_output=["captured context line"],
+        extracted_session_id="session-123",
+        inactivity_error_type=AgentInactivityTimeoutError,
+    )
+
+    assert plan is not None
+    assert plan.session_id == "session-123"
+    assert plan.prompt_file != str(prompt_file)
+    retry_prompt = Path(plan.prompt_file).read_text(encoding="utf-8")
+    assert "ORIGINAL PROMPT" in retry_prompt
+    assert "RETRY CONTEXT:" in retry_prompt
+    assert "captured context line" in retry_prompt
+
+
+
+def test_build_agent_recovery_plan_falls_back_to_original_prompt_when_context_missing(
+    monkeypatch: MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    prompt_file = tmp_path / "planning_prompt.md"
+    prompt_file.write_text("ORIGINAL PROMPT", encoding="utf-8")
+    effect = InvokeAgentEffect(
+        agent_name="planner",
+        phase="planning",
+        prompt_file=str(prompt_file),
+    )
+    exc = AgentInactivityTimeoutError(
+        "planner",
+        30.0,
+        parsed_output=None,
+        session_resume_safe=True,
+    )
+    monkeypatch.setattr(runner_module, "_recovery_error_parts", lambda _exc: [])
+
+    plan = runner_module._build_agent_recovery_plan(
+        exc=exc,
+        attempt_index=0,
+        max_recovery_attempts=1,
+        effect=effect,
+        workspace_root=tmp_path,
+        raw_output=[],
+        rendered_output=[],
+        extracted_session_id="session-123",
+        inactivity_error_type=AgentInactivityTimeoutError,
+    )
+
+    assert plan is not None
+    assert plan.session_id == "session-123"
+    assert plan.prompt_file == str(prompt_file)
+
+
+
 def test_materialize_agent_prompt_if_needed_prefixes_claude_tools(monkeypatch: MonkeyPatch) -> None:
     captured: dict[str, object] = {}
 
@@ -1072,7 +1148,7 @@ class TestPipelineRunnerLoop:
         monkeypatch.setattr(
             runner_module,
             "reducer_reduce",
-            lambda current_state, _event, _policy: (current_state, []),
+            lambda current_state, _event, _policy, recovery=None: (current_state, []),
         )
         monkeypatch.setattr(runner_module.ckpt, "save", MagicMock())
         display_context = make_display_context()
@@ -1472,7 +1548,11 @@ class TestPipelineRunnerLoop:
         materialize.assert_called_once()
         execute_effect.assert_called_once()
 
-    def test_run_passes_policy_to_reducer(self, monkeypatch, tmp_path: Path) -> None:
+    def test_run_passes_policy_and_recovery_controller_to_reducer(
+        self,
+        monkeypatch,
+        tmp_path: Path,
+    ) -> None:
         state = MagicMock()
         state.phase = "planning"
 
@@ -1507,7 +1587,12 @@ class TestPipelineRunnerLoop:
         result = runner_module.run(MagicMock(), initial_state=state, verbosity=Verbosity.QUIET)
 
         assert result == 0
-        reducer.assert_called_once_with(state, PipelineEvent.AGENT_SUCCESS, policy_bundle.pipeline)
+        reducer.assert_called_once()
+        args, kwargs = reducer.call_args
+        assert args[0] is state
+        assert args[1] == PipelineEvent.AGENT_SUCCESS
+        assert args[2] == policy_bundle.pipeline
+        assert kwargs.get("recovery") is not None
 
     def test_run_uses_phase_handler_event_after_agent_execution(
         self, monkeypatch, tmp_path: Path
@@ -1556,11 +1641,12 @@ class TestPipelineRunnerLoop:
         )
 
         assert result == 0
-        reducer.assert_called_once_with(
-            planning_state,
-            PipelineEvent.AGENT_FAILURE,
-            policy_bundle.pipeline,
-        )
+        reducer.assert_called_once()
+        args, kwargs = reducer.call_args
+        assert args[0] is planning_state
+        assert args[1] == PipelineEvent.AGENT_FAILURE
+        assert args[2] == policy_bundle.pipeline
+        assert kwargs.get("recovery") is not None
 
     def test_run_notifies_subscriber_with_initial_state_before_loop(self, monkeypatch) -> None:
         """run() must seed the subscriber with initial state before executing any effects.
@@ -3608,7 +3694,7 @@ class TestCycleBaselineLifecycle:
         monkeypatch.setattr(
             runner_module,
             "reducer_reduce",
-            lambda _state, _event, _policy: (state, []),
+            lambda _state, _event, _policy, recovery=None: (state, []),
         )
 
         runner_module.run(MagicMock(), initial_state=state, verbosity=Verbosity.QUIET)

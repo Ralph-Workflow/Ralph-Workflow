@@ -769,7 +769,12 @@ def _run_pipeline_step(  # noqa: PLR0913
             and event in (PipelineEvent.COMMIT_SUCCESS, PipelineEvent.COMMIT_SKIPPED)
         ):
             clear_cycle_baseline(workspace_scope.root)
-        next_state, _ = reducer_reduce(state, event, policy_bundle.pipeline)
+        next_state, _ = reducer_reduce(
+            state,
+            event,
+            policy_bundle.pipeline,
+            recovery=recovery_controller,
+        )
         _notify_pipeline_subscriber(pipeline_subscriber, next_state)
         _save_checkpoint_or_log(
             next_state,
@@ -3130,13 +3135,15 @@ def _build_agent_recovery_plan(  # noqa: PLR0913
     if reason is None:
         return None
 
+    context_lines = _recovery_context_lines(exc, raw_output, rendered_output)
+
     if _failure_requires_fresh_session(exc, inactivity_error_type):
         return _AgentRecoveryPlan(
-            prompt_file=_write_agent_retry_prompt(
+            prompt_file=_retry_prompt_file_for_context(
                 workspace_root=workspace_root,
                 prompt_file=effect.prompt_file,
                 reason=reason,
-                context_lines=_recovery_context_lines(exc, raw_output, rendered_output),
+                context_lines=context_lines,
             ),
             session_id=None,
             reason=reason,
@@ -3145,24 +3152,34 @@ def _build_agent_recovery_plan(  # noqa: PLR0913
     resumable_session_id = cast("object", getattr(exc, "resumable_session_id", None))
     if isinstance(resumable_session_id, str) and resumable_session_id:
         return _AgentRecoveryPlan(
-            prompt_file=effect.prompt_file,
+            prompt_file=_retry_prompt_file_for_context(
+                workspace_root=workspace_root,
+                prompt_file=effect.prompt_file,
+                reason=reason,
+                context_lines=context_lines,
+            ),
             session_id=resumable_session_id,
             reason=reason,
         )
 
     if extracted_session_id:
         return _AgentRecoveryPlan(
-            prompt_file=effect.prompt_file,
+            prompt_file=_retry_prompt_file_for_context(
+                workspace_root=workspace_root,
+                prompt_file=effect.prompt_file,
+                reason=reason,
+                context_lines=context_lines,
+            ),
             session_id=extracted_session_id,
             reason=reason,
         )
 
     return _AgentRecoveryPlan(
-        prompt_file=_write_agent_retry_prompt(
+        prompt_file=_retry_prompt_file_for_context(
             workspace_root=workspace_root,
             prompt_file=effect.prompt_file,
             reason=reason,
-            context_lines=_recovery_context_lines(exc, raw_output, rendered_output),
+            context_lines=context_lines,
         ),
         session_id=None,
         reason=reason,
@@ -3230,7 +3247,28 @@ def _recovery_context_lines(
         return [str(item) for item in parsed_output[-_RECOVERY_CONTEXT_LINES:]]
 
     stripped_raw = [line.strip() for line in raw_output if line.strip()]
-    return stripped_raw[-_RECOVERY_CONTEXT_LINES:]
+    if stripped_raw:
+        return stripped_raw[-_RECOVERY_CONTEXT_LINES:]
+
+    error_parts = [part.strip() for part in _recovery_error_parts(exc) if part.strip()]
+    return error_parts[-_RECOVERY_CONTEXT_LINES:]
+
+
+def _retry_prompt_file_for_context(
+    *,
+    workspace_root: Path,
+    prompt_file: str,
+    reason: str,
+    context_lines: list[str],
+) -> str:
+    if not context_lines:
+        return prompt_file
+    return _write_agent_retry_prompt(
+        workspace_root=workspace_root,
+        prompt_file=prompt_file,
+        reason=reason,
+        context_lines=context_lines,
+    )
 
 
 def _write_agent_retry_prompt(

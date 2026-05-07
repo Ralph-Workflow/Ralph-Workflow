@@ -55,7 +55,7 @@ class TestBuildAgentRecoveryPlanResumableSession:
 
         assert plan is not None, "Expected a recovery plan, got None"
         assert plan.session_id == "sess-abc"
-        assert plan.prompt_file == "PROMPT.md"
+        assert plan.prompt_file != "PROMPT.md"
 
     def test_fallback_to_extract_session_id_when_resumable_session_id_is_none(
         self, tmp_path: Path
@@ -79,7 +79,7 @@ class TestBuildAgentRecoveryPlanResumableSession:
 
         assert plan is not None, "Expected a recovery plan, got None"
         assert plan.session_id == "sess-from-output"
-        assert plan.prompt_file == "PROMPT.md"
+        assert plan.prompt_file != "PROMPT.md"
 
     def test_no_plan_when_attempt_limit_exceeded(self, tmp_path: Path) -> None:
         """No recovery plan when attempt_index >= max_recovery_attempts."""
@@ -152,5 +152,5 @@ class TestOptionalArtifactNeverTriggersRecovery:
         )
 
         assert plan is not None
-        assert plan.prompt_file == ".agent/PROMPT.md"
+        assert plan.prompt_file != ".agent/PROMPT.md"
         assert plan.session_id == "sess-def"

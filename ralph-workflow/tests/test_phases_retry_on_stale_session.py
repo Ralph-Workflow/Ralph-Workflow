@@ -183,9 +183,13 @@ def test_runner_stale_session_internal_retry_succeeds(
     # (3) Retry prompt contains stale-session context — produced by _write_agent_retry_prompt,
     # not by manual test-side construction
     retry_content = Path(second_prompt).read_text(encoding="utf-8")
-    assert "stale session" in retry_content.lower() or "session" in retry_content.lower(), (
-        f"Retry prompt must contain stale-session context, got: {retry_content[:200]!r}"
+    assert "RETRY CONTEXT:" in retry_content, (
+        f"Retry prompt must contain retry context, got: {retry_content[:200]!r}"
     )
+    assert (
+        "fresh session required" in retry_content.lower()
+        or "session" in retry_content.lower()
+    ), f"Retry prompt must contain stale-session context, got: {retry_content[:200]!r}"
 
 
 def test_runner_inactivity_timeout_with_captured_session_retries_fresh(
