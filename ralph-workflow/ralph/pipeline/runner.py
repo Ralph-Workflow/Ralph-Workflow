@@ -514,20 +514,40 @@ def _execute_effect_with_optional_display(  # noqa: PLR0913
     display: ParallelDisplay | _LegacyConsoleDisplay | None = None,
     verbosity: Verbosity = Verbosity.VERBOSE,
     state: PipelineState | None = None,
+    policy_bundle: PolicyBundle | None = None,
 ) -> Event:
     params = frozenset(signature(_execute_effect).parameters)
     has_display = "display" in params
     has_verbosity = "verbosity" in params
     has_state = "state" in params
-    if has_state and has_verbosity:
+    has_policy_bundle = "policy_bundle" in params
+
+    if has_display and has_verbosity and has_state and has_policy_bundle:
         return _execute_effect(
-            effect, config, workspace_scope,
-            display=display, verbosity=verbosity, state=state,
+            effect,
+            config,
+            workspace_scope,
+            display=display,
+            verbosity=verbosity,
+            state=state,
+            policy_bundle=policy_bundle,
         )
-    if has_verbosity:
+    if has_display and has_verbosity and has_state:
         return _execute_effect(
-            effect, config, workspace_scope,
-            display=display, verbosity=verbosity,
+            effect,
+            config,
+            workspace_scope,
+            display=display,
+            verbosity=verbosity,
+            state=state,
+        )
+    if has_display and has_verbosity:
+        return _execute_effect(
+            effect,
+            config,
+            workspace_scope,
+            display=display,
+            verbosity=verbosity,
         )
     if has_display:
         return _execute_effect(effect, config, workspace_scope, display=display)
@@ -542,12 +562,14 @@ def _invoke_execute_effect_with_optional_display(  # noqa: PLR0913
     display: ParallelDisplay | _LegacyConsoleDisplay | None,
     verbosity: Verbosity,
     state: PipelineState,
+    policy_bundle: PolicyBundle,
 ) -> Event:
     return _execute_effect_with_optional_display(
         effect, config, workspace_scope,
         display=display,
         verbosity=verbosity,
         state=state,
+        policy_bundle=policy_bundle,
     )
 
 
@@ -707,6 +729,7 @@ def _run_pipeline_step(  # noqa: PLR0913
                 display=display,
                 verbosity=verbosity,
                 state=state,
+                policy_bundle=policy_bundle,
             )
             if isinstance(effect, InvokeAgentEffect):
                 captured_session_id = _pop_last_captured_session_id()
