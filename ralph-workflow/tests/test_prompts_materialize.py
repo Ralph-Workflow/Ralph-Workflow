@@ -32,6 +32,81 @@ def test_resolve_fix_result_content_returns_placeholder_when_missing(tmp_path: P
     assert path == ""
 
 
+def test_fresh_development_prompt_removes_artifact_history_on_fresh_entry(
+    tmp_path: Path,
+) -> None:
+    from ralph.mcp.artifacts.history import history_index_path  # noqa: PLC0415
+    from ralph.policy.models import (  # noqa: PLC0415
+        ArtifactContract,
+        ArtifactHistoryPolicy,
+        ArtifactsPolicy,
+        PhaseDefinition,
+        PhaseTransition,
+        PipelinePolicy,
+    )
+    from ralph.prompts.materialize import materialize_prompt_for_phase  # noqa: PLC0415
+    from ralph.prompts.types import SessionCapabilities, SessionDrain  # noqa: PLC0415
+    from ralph.workspace.memory import MemoryWorkspace  # noqa: PLC0415
+
+    pipeline_policy = PipelinePolicy(
+        phases={
+            "planning": PhaseDefinition(
+                drain="planning",
+                role="execution",
+                prompt_template="planning.jinja",
+                transitions=PhaseTransition(on_success="development"),
+            ),
+            "development": PhaseDefinition(
+                drain="development",
+                role="execution",
+                prompt_template="developer_iteration.jinja",
+                transitions=PhaseTransition(on_success="complete"),
+                artifact_history=ArtifactHistoryPolicy(enabled=True, clear_on_fresh_entry=True),
+            ),
+            "complete": PhaseDefinition(
+                drain="complete",
+                role="terminal",
+                terminal_outcome="success",
+                transitions=PhaseTransition(on_success="complete", on_loopback="complete"),
+            ),
+        },
+        entry_phase="planning",
+        terminal_phase="complete",
+    )
+
+    artifacts_policy = ArtifactsPolicy(
+        artifacts={
+            "development_result": ArtifactContract(
+                drain="development",
+                artifact_type="development_result",
+            ),
+        }
+    )
+
+    workspace = MemoryWorkspace(root=str(tmp_path))
+    workspace.write("PROMPT.md", "Implement the feature")
+    workspace.write(".agent/PLAN.md", "# Implementation Plan\n\n1. Do the thing\n")
+    history_file = history_index_path(tmp_path / ".agent" / "artifacts", "development_result")
+    history_file.parent.mkdir(parents=True, exist_ok=True)
+    history_file.write_text("# History\n\n## Entry 1\n", encoding="utf-8")
+
+    prompt_path = materialize_prompt_for_phase(
+        phase="development",
+        workspace=workspace,
+        pipeline_policy=pipeline_policy,
+        artifacts_policy=artifacts_policy,
+        session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT),
+        workspace_root=tmp_path,
+        previous_phase=None,
+    )
+
+    rendered = workspace.read(prompt_path)
+    assert "ARTIFACT HISTORY" not in rendered
+    assert str(history_file) not in rendered
+    assert history_file.exists() is False
+
+
+
 def test_fresh_development_entry_clears_history_when_clear_on_fresh_entry_enabled(
     tmp_path: Path,
 ) -> None:

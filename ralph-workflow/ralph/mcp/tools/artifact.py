@@ -26,10 +26,7 @@ from ralph.mcp.artifacts.format_docs import (
     materialize_format_index,
 )
 from ralph.mcp.artifacts.handoffs import delete_markdown_handoff, sync_markdown_handoff
-from ralph.mcp.artifacts.history import (
-    archive_artifact_before_overwrite,
-    rebuild_history_index,
-)
+from ralph.mcp.artifacts.history import rebuild_history_index, snapshot_current_artifact
 from ralph.mcp.artifacts.plan import (
     PLAN_ARTIFACT_TYPE,
     PLAN_SECTION_NAMES,
@@ -819,30 +816,6 @@ def _submit_ops_for_artifact(
     """Return the ordered (op, undo) pairs for a complete artifact submit."""
     ops: list[_SubmitOp] = []
 
-    # History archival must come first so we capture the current canonical
-    # artifact before any of the overwrite ops run. If a later op fails,
-    # the undo rolls back the archive entry to keep history consistent.
-    if deps.history_enabled:
-        _archived_paths: list[Path] = []
-        _at_hist = artifact_type
-        _wr = workspace_root
-        _ad = artifact_dir
-
-        def _run_history_archive() -> None:
-            paths = archive_artifact_before_overwrite(
-                _ad, _wr, _at_hist,
-                backend=deps.backend,
-                now_iso=deps.now_iso,
-            )
-            _archived_paths.extend(paths)
-
-        def _undo_history_archive() -> None:
-            for path in _archived_paths:
-                deps.backend.unlink(path, missing_ok=True)
-            rebuild_history_index(_ad, _at_hist, backend=deps.backend)
-
-        ops.append(_SubmitOp(run=_run_history_archive, undo=_undo_history_archive))
-
     if artifact_type == COMMIT_MESSAGE_TYPE:
         _content = parsed_content
         ops.append(_SubmitOp(
@@ -873,6 +846,29 @@ def _submit_ops_for_artifact(
         ),
         undo=lambda: delete_markdown_handoff(workspace_root, _at, backend=deps.backend),
     ))
+
+    if deps.history_enabled:
+        _snapshotted_paths: list[Path] = []
+        _at_hist = artifact_type
+        _wr = workspace_root
+        _ad = artifact_dir
+
+        def _run_history_snapshot() -> None:
+            paths = snapshot_current_artifact(
+                _ad,
+                _wr,
+                _at_hist,
+                backend=deps.backend,
+                now_iso=deps.now_iso,
+            )
+            _snapshotted_paths.extend(paths)
+
+        def _undo_history_snapshot() -> None:
+            for path in _snapshotted_paths:
+                deps.backend.unlink(path, missing_ok=True)
+            rebuild_history_index(_ad, _at_hist, backend=deps.backend)
+
+        ops.append(_SubmitOp(run=_run_history_snapshot, undo=_undo_history_snapshot))
 
     if artifact_type == PLAN_ARTIFACT_TYPE:
         ops.append(_SubmitOp(

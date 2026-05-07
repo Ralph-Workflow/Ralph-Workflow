@@ -406,10 +406,12 @@ def _prepare_planning_prompt_context(
         previous_phase=previous_phase,
         pipeline_policy=pipeline_policy,
     )
-    # Clear fresh planning context when NOT a loopback (fresh planning entry).
-    # This clearing is independent of the selected template - we clear first,
-    # then potentially switch to a loopback template based on the routing context.
-    if not is_loopback:
+    has_retry_hint = bool(_read_optional(workspace, retry_hint_path(phase)))
+    preserve_retry_context = previous_phase == phase and has_retry_hint
+    # Clear fresh planning context only for true fresh entry.
+    # Analysis loopbacks and same-phase recoverable retries must preserve
+    # the current plan + history so the planner can revise instead of restart.
+    if not is_loopback and not preserve_retry_context:
         _clear_fresh_planning_context(
             workspace,
             phase=phase,

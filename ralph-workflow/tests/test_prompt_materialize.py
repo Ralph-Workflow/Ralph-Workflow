@@ -139,6 +139,35 @@ def test_materialize_prompt_for_phase_renders_planning_prompt_to_agent_tmp(tmp_p
     assert current_prompt_path.read_text(encoding="utf-8") == "Plan the template migration"
 
 
+def test_fresh_planning_prompt_does_not_include_artifact_history_even_if_history_exists(
+    tmp_path: Path,
+) -> None:
+    from ralph.mcp.artifacts.history import history_index_path  # noqa: PLC0415
+
+    policy = load_policy(tmp_path / ".agent")
+    workspace = MemoryWorkspace(root=str(tmp_path))
+    workspace.write("PROMPT.md", "Create a brand new plan")
+    history_file = history_index_path(tmp_path / ".agent" / "artifacts", "plan")
+    history_file.parent.mkdir(parents=True, exist_ok=True)
+    history_file.write_text("# Planning History\n\n## Entry 1\n", encoding="utf-8")
+
+    prompt_path = materialize_prompt_for_phase(
+        phase="planning",
+        workspace=workspace,
+        pipeline_policy=policy.pipeline,
+        artifacts_policy=policy.artifacts,
+        session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.PLANNING),
+        workspace_root=tmp_path,
+        previous_phase=None,
+    )
+
+    rendered = workspace.read(prompt_path)
+    assert "ARTIFACT HISTORY" not in rendered
+    assert str(history_file) not in rendered
+    assert history_file.exists() is False
+
+
+
 def test_materialize_fresh_planning_clears_previous_plan_context(tmp_path: Path) -> None:
     policy = load_policy(tmp_path / ".agent")
     workspace = MemoryWorkspace(root=str(tmp_path))
@@ -439,6 +468,178 @@ def test_repeated_planning_loopback_never_renders_fresh_template(
     assert "PLANNING EDIT MODE" in rendered
     assert "PLANNING MODE" not in rendered
     assert "Your job is to revise the existing plan" in rendered
+
+
+def test_planning_loopback_prompt_includes_artifact_history_path_when_history_exists(
+    tmp_path: Path,
+) -> None:
+    from ralph.mcp.artifacts.history import history_index_path  # noqa: PLC0415
+
+    policy = load_policy(tmp_path / ".agent")
+    workspace = MemoryWorkspace(root=str(tmp_path))
+    workspace.write("PROMPT.md", "Revise the pipeline plan with history")
+    workspace.write(
+        ".agent/artifacts/plan.json",
+        json.dumps(
+            {
+                "type": "plan",
+                "content": {
+                    "summary": {
+                        "context": "Existing plan to revise.",
+                        "scope_items": [
+                            {"text": "one"},
+                            {"text": "two"},
+                            {"text": "three"},
+                        ],
+                    },
+                    "steps": [{"number": 1, "title": "Revise", "content": "keep context"}],
+                    "critical_files": {
+                        "primary_files": [{"path": "src/plan.py", "action": "modify"}],
+                    },
+                    "risks_mitigations": [{"risk": "drift", "mitigation": "revise carefully"}],
+                    "verification_strategy": [
+                        {"method": "pytest", "expected_outcome": "passes"}
+                    ],
+                },
+            }
+        ),
+    )
+    history_file = history_index_path(tmp_path / ".agent" / "artifacts", "plan")
+    history_file.parent.mkdir(parents=True, exist_ok=True)
+    history_file.write_text("# Planning History\n\n## Entry 1\n", encoding="utf-8")
+
+    prompt_path = materialize_prompt_for_phase(
+        phase="planning",
+        workspace=workspace,
+        pipeline_policy=policy.pipeline,
+        artifacts_policy=policy.artifacts,
+        session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.PLANNING),
+        workspace_root=tmp_path,
+        previous_phase="planning_analysis",
+    )
+
+    rendered = workspace.read(prompt_path)
+    assert "ARTIFACT HISTORY" in rendered
+    assert str(history_file) in rendered
+
+
+
+def test_materialize_planning_retry_preserves_current_plan_context_when_last_retry_error_exists(
+    tmp_path: Path,
+) -> None:
+    policy = load_policy(tmp_path / ".agent")
+    workspace = MemoryWorkspace(root=str(tmp_path))
+    workspace.write("PROMPT.md", "Revise the failed plan without losing current context")
+    workspace.write(
+        ".agent/artifacts/plan.json",
+        json.dumps(
+            {
+                "type": "plan",
+                "content": {
+                    "summary": {
+                        "context": "Current plan that must survive retry.",
+                        "scope_items": [
+                            {"text": "one"},
+                            {"text": "two"},
+                            {"text": "three"},
+                        ],
+                    },
+                    "steps": [
+                        {"number": 1, "title": "Revise", "content": "preserve current work"}
+                    ],
+                    "critical_files": {
+                        "primary_files": [{"path": "src/plan.py", "action": "modify"}],
+                    },
+                    "risks_mitigations": [{"risk": "drift", "mitigation": "preserve"}],
+                    "verification_strategy": [
+                        {"method": "pytest", "expected_outcome": "passes"}
+                    ],
+                },
+            }
+        ),
+    )
+    workspace.write(".agent/PLAN.md", "# Implementation Plan\n\nCurrent retryable plan context.\n")
+    workspace.write(
+        ".agent/tmp/last_retry_error_planning.txt",
+        "PREVIOUS ATTEMPT FAILED: validation error during planning retry",
+    )
+
+    prompt_path = materialize_prompt_for_phase(
+        phase="planning",
+        workspace=workspace,
+        pipeline_policy=policy.pipeline,
+        artifacts_policy=policy.artifacts,
+        session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.PLANNING),
+        workspace_root=tmp_path,
+        previous_phase="planning",
+    )
+
+    rendered = workspace.read(prompt_path)
+    assert "PLANNING EDIT MODE" in rendered
+    assert "PREVIOUS ATTEMPT ERROR" in rendered
+    assert str(tmp_path / ".agent" / "PLAN.md") in rendered
+    assert workspace.exists(".agent/artifacts/plan.json") is True
+    assert workspace.exists(".agent/PLAN.md") is True
+
+
+
+def test_planning_retry_prompt_includes_artifact_history_path_when_history_exists(
+    tmp_path: Path,
+) -> None:
+    from ralph.mcp.artifacts.history import history_index_path  # noqa: PLC0415
+
+    policy = load_policy(tmp_path / ".agent")
+    workspace = MemoryWorkspace(root=str(tmp_path))
+    workspace.write("PROMPT.md", "Revise the failed plan with history")
+    workspace.write(
+        ".agent/artifacts/plan.json",
+        json.dumps(
+            {
+                "type": "plan",
+                "content": {
+                    "summary": {
+                        "context": "Retryable plan context.",
+                        "scope_items": [
+                            {"text": "one"},
+                            {"text": "two"},
+                            {"text": "three"},
+                        ],
+                    },
+                    "steps": [{"number": 1, "title": "Revise", "content": "keep retry context"}],
+                    "critical_files": {
+                        "primary_files": [{"path": "src/plan.py", "action": "modify"}],
+                    },
+                    "risks_mitigations": [{"risk": "drift", "mitigation": "preserve"}],
+                    "verification_strategy": [
+                        {"method": "pytest", "expected_outcome": "passes"}
+                    ],
+                },
+            }
+        ),
+    )
+    workspace.write(".agent/PLAN.md", "# Implementation Plan\n\nRetryable plan context.\n")
+    workspace.write(
+        ".agent/tmp/last_retry_error_planning.txt",
+        "PREVIOUS ATTEMPT FAILED: validation error during planning retry",
+    )
+    history_file = history_index_path(tmp_path / ".agent" / "artifacts", "plan")
+    history_file.parent.mkdir(parents=True, exist_ok=True)
+    history_file.write_text("# Planning History\n\n## Entry 1\n", encoding="utf-8")
+
+    prompt_path = materialize_prompt_for_phase(
+        phase="planning",
+        workspace=workspace,
+        pipeline_policy=policy.pipeline,
+        artifacts_policy=policy.artifacts,
+        session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.PLANNING),
+        workspace_root=tmp_path,
+        previous_phase="planning",
+    )
+
+    rendered = workspace.read(prompt_path)
+    assert "ARTIFACT HISTORY" in rendered
+    assert str(history_file) in rendered
+
 
 
 def test_materialize_planning_loopback_uses_edit_prompt_and_analysis_feedback_handoff(

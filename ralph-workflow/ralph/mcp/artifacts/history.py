@@ -48,8 +48,25 @@ def _safe_timestamp(now_iso: Callable[[], str]) -> str:
     raw = now_iso()
     # Convert "2026-04-15T12:00:00+00:00" -> "20260415T120000"
     compact = raw.replace("-", "").replace(":", "").replace("+", "").replace(".", "")
-    # Keep only the 15-char date-time prefix: YYYYMMDDTHHMMSS
+    # Keep the 15-char date-time prefix: YYYYMMDDTHHMMSS
     return compact[:_TIMESTAMP_LENGTH] if len(compact) >= _TIMESTAMP_LENGTH else compact
+
+
+def _unique_archive_path(
+    hist_dir: Path,
+    artifact_type: str,
+    suffix: str,
+    *,
+    backend: FileBackend,
+    now_iso: Callable[[], str],
+) -> Path:
+    base = _safe_timestamp(now_iso)
+    candidate = hist_dir / f"{base}_{artifact_type}{suffix}"
+    counter = 1
+    while backend.exists(candidate):
+        candidate = hist_dir / f"{base}_{counter}_{artifact_type}{suffix}"
+        counter += 1
+    return candidate
 
 
 def archive_artifact_before_overwrite(
@@ -106,6 +123,57 @@ def archive_artifact_before_overwrite(
     # Rebuild the index to include the new entry
     rebuild_history_index(artifact_dir, artifact_type, backend=backend)
 
+    return created
+
+
+def snapshot_current_artifact(
+    artifact_dir: Path,
+    workspace_root: Path,
+    artifact_type: str,
+    *,
+    backend: FileBackend = DEFAULT_FILE_BACKEND,
+    now_iso: Callable[[], str],
+) -> list[Path]:
+    """Snapshot the current canonical artifact and handoff into history.
+
+    Unlike archive-before-overwrite, this records the current successful artifact
+    immediately after submission so history exists from the first completed phase.
+    """
+    canonical_json = artifact_dir / f"{artifact_type}.json"
+    if not backend.exists(canonical_json):
+        return []
+
+    hist_dir = history_dir_for_artifact(artifact_dir, artifact_type)
+    backend.mkdir(hist_dir, parents=True, exist_ok=True)
+    created: list[Path] = []
+
+    archive_json = _unique_archive_path(
+        hist_dir,
+        artifact_type,
+        ".json",
+        backend=backend,
+        now_iso=now_iso,
+    )
+    backend.write_text(archive_json, backend.read_text(canonical_json))
+    created.append(archive_json)
+
+    from ralph.mcp.artifacts.handoffs import handoff_path_for_artifact  # noqa: PLC0415
+
+    handoff_rel = handoff_path_for_artifact(artifact_type)
+    if handoff_rel:
+        handoff_abs = workspace_root / handoff_rel
+        if backend.exists(handoff_abs):
+            archive_md = _unique_archive_path(
+                hist_dir,
+                artifact_type,
+                ".md",
+                backend=backend,
+                now_iso=now_iso,
+            )
+            backend.write_text(archive_md, backend.read_text(handoff_abs))
+            created.append(archive_md)
+
+    rebuild_history_index(artifact_dir, artifact_type, backend=backend)
     return created
 
 
@@ -185,4 +253,5 @@ __all__ = [
     "history_dir_for_artifact",
     "history_index_path",
     "rebuild_history_index",
+    "snapshot_current_artifact",
 ]
