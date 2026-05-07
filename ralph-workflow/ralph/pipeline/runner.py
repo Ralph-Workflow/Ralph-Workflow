@@ -43,7 +43,6 @@ from ralph.display.phase_banner import (
     show_phase_close_banner,
     show_phase_start,
     show_phase_start_from_entry,
-    show_phase_transition,
 )
 from ralph.display.phase_lifecycle import PhaseEntryModel, PhaseExitModel
 from ralph.interrupt import controller_from_process_manager
@@ -858,70 +857,6 @@ def _build_phase_entry_model_from_state(
     )
 
 
-def _is_analysis_loopback(previous_phase_def: PhaseDefinition, current_phase: str) -> bool:
-    """Check if transition is an analysis loopback within the same outer phase."""
-    return (
-        previous_phase_def.transitions is not None
-        and previous_phase_def.transitions.on_loopback is not None
-        and previous_phase_def.transitions.on_loopback == current_phase
-    )
-
-
-def _add_outer_counter_context(
-    context: dict[str, object],
-    phase: str,
-    pipeline_policy: PipelinePolicy,
-    state: PipelineState,
-) -> None:
-    """Add outer counter context for execution/review phases."""
-    counter = _find_commit_counter_from_phase(phase, pipeline_policy)
-    if counter:
-        cur = state.get_outer_progress(counter) + 1
-        cap = state.get_budget_cap(counter)
-        context[counter] = f"{cur}/{cap}"
-
-
-def _phase_context(
-    state: PipelineState,
-    previous_phase: str,
-    pipeline_policy: PipelinePolicy,
-) -> dict[str, object]:
-    """Build a context dict for emit_phase_transition with iteration/decision hints."""
-    context: dict[str, object] = {}
-    current_phase_def = pipeline_policy.phases.get(state.phase)
-    previous_phase_def = pipeline_policy.phases.get(previous_phase)
-
-    current_role = current_phase_def.role if current_phase_def is not None else None
-    previous_role = previous_phase_def.role if previous_phase_def is not None else None
-
-    # When transitioning FROM an analysis phase, show the analysis counter
-    if previous_role == "analysis" and previous_phase_def is not None:
-        loop_policy = previous_phase_def.loop_policy
-        if loop_policy is not None:
-            iteration_field = loop_policy.iteration_state_field
-            analysis_cur = state.get_loop_iteration(iteration_field)
-            max_iter = _resolve_analysis_cap(
-                iteration_field, state, pipeline_policy
-            )
-            analysis_name = previous_phase.replace("_", " ").title()
-            display_iter = min(analysis_cur + 1, max_iter)
-            context[analysis_name] = f"{display_iter}/{max_iter}"
-            if progress.is_final_analysis_iteration(analysis_cur, max_iter):
-                context["analysis_status"] = "final, skipping next"
-        if current_role == "commit":
-            context["decision"] = "approved"
-        elif current_role == "execution":
-            context["decision"] = "needs changes"
-            if not _is_analysis_loopback(previous_phase_def, state.phase):
-                _add_outer_counter_context(context, state.phase, pipeline_policy, state)
-        elif current_role == "review":
-            _add_outer_counter_context(context, state.phase, pipeline_policy, state)
-    elif current_role in ("execution", "review"):
-        _add_outer_counter_context(context, state.phase, pipeline_policy, state)
-
-    return context
-
-
 def _show_phase_start_with_context(
     phase: str,
     agent_name: str,
@@ -1063,6 +998,14 @@ def _emit_phase_transition_if_changed(
             )
             artifact_outcome = raw_outcome if raw_outcome else ""
         entry = _build_phase_entry_model_from_state(previous_phase, state, pipeline_policy)
+        prev_phase_def = pipeline_policy.phases.get(previous_phase)
+        prev_phase_role: str | None = prev_phase_def.role if prev_phase_def is not None else None
+        # Detect skipped analysis before building exit model so routing context
+        # is surfaced through the canonical close banner instead of a separate print.
+        skipped_info = _skipped_exhausted_analysis_info(
+            previous_phase, state.phase, state, pipeline_policy
+        )
+        routing_note: str | None = skipped_info[1] if skipped_info is not None else None
         exit_model = PhaseExitModel.from_entry_model(
             entry,
             elapsed_seconds=elapsed,
@@ -1072,41 +1015,34 @@ def _emit_phase_transition_if_changed(
             tool_calls=tool_calls,
             errors=errors,
             artifact_outcome=artifact_outcome,
-            review_issues_found=progress.review_issues_found(state, pipeline_policy),
+            review_issues_found=(
+                progress.review_issues_found(state, pipeline_policy)
+                if prev_phase_role == "review"
+                else None
+            ),
+            routing_note=routing_note,
             waiting_status_line=waiting_status_line,
             last_failure_category=state.last_failure_category,
         )
-        show_phase_close_banner(
-            exit_model,
-            display_context=ctx,
-            pipeline_policy=pipeline_policy,
+        # Emit plain-log close for any phase that hasn't already emitted it
+        # (artifact/commit paths that already called emit_phase_close_from_exit
+        # set phase_close_emitted=True so we skip the double-emit here)
+        phase_close_already_emitted: bool = (
+            display.phase_close_emitted
+            if not isinstance(display, _LegacyConsoleDisplay)
+            and hasattr(display, "phase_close_emitted")
+            else False
         )
+        if not phase_close_already_emitted and hasattr(display, "emit_phase_close_from_exit"):
+            with suppress(Exception):
+                cast("ParallelDisplay", display).emit_phase_close_from_exit(exit_model)
+        with suppress(Exception):
+            show_phase_close_banner(
+                exit_model, display_context=ctx, pipeline_policy=pipeline_policy
+            )
     except Exception:  # pragma: no cover - defensive
-        logger.debug("show_phase_close_banner failed", exc_info=True)
+        logger.debug("phase close emission failed", exc_info=True)
 
-    # Build context and add skipped analysis info if applicable
-    context = _phase_context(state, previous_phase, pipeline_policy) or None
-    if context is None:
-        context = {}
-
-    # Check if we're skipping an exhausted analysis phase
-    skipped_info = _skipped_exhausted_analysis_info(
-        previous_phase, state.phase, state, pipeline_policy
-    )
-    if skipped_info is not None:
-        _, info_message = skipped_info
-        context["skipped_analysis"] = info_message
-
-    try:
-        show_phase_transition(
-            previous_phase,
-            state.phase,
-            context=context if context else None,
-            display_context=ctx,
-            pipeline_policy=pipeline_policy,
-        )
-    except Exception:  # pragma: no cover - defensive
-        logger.debug("show_phase_transition failed", exc_info=True)
     return state.phase
 
 
@@ -2609,13 +2545,9 @@ def _render_success_artifact(  # noqa: PLR0913
     entry_model: PhaseEntryModel | None = None,
 ) -> None:
     def _emit_close(produced: str) -> None:
-        if verbosity != Verbosity.QUIET and hasattr(display, "emit_phase_close_from_exit"):
+        if verbosity != Verbosity.QUIET and hasattr(display, "record_artifact_outcome"):
             with suppress(Exception):
-                base = entry_model or PhaseEntryModel(phase_name=phase, phase_role=phase_role)
-                exit_model = PhaseExitModel.from_entry_model(
-                    base, artifact_outcome=produced, exit_trigger="produced"
-                )
-                cast("ParallelDisplay", display).emit_phase_close_from_exit(exit_model)
+                cast("ParallelDisplay", display).record_artifact_outcome(produced)
 
     if artifact_type == "plan":
         render_plan_artifact(workspace_root, display_context)
@@ -3270,24 +3202,9 @@ def _execute_commit_effect(  # noqa: PLR0913
         logger.info("Created commit: {}", sha[:8])
         with suppress(Exception):
             render_commit_message(repo_root, _get_display_context(display))
-        if verbosity != Verbosity.QUIET and hasattr(display, "emit_phase_close_from_exit"):
+        if verbosity != Verbosity.QUIET and hasattr(display, "record_artifact_outcome"):
             with suppress(Exception):
-                if state is not None and pipeline_policy is not None:
-                    _commit_entry = _build_phase_entry_model_from_state(
-                        phase_name, state, pipeline_policy
-                    )
-                    _commit_exit = PhaseExitModel.from_entry_model(
-                        _commit_entry,
-                        artifact_outcome=f"sha={sha[:8]}",
-                        exit_trigger="produced",
-                    )
-                else:
-                    _commit_exit = PhaseExitModel(
-                        phase_name=phase_name,
-                        artifact_outcome=f"sha={sha[:8]}",
-                        exit_trigger="produced",
-                    )
-                cast("ParallelDisplay", display).emit_phase_close_from_exit(_commit_exit)
+                cast("ParallelDisplay", display).record_artifact_outcome(f"sha={sha[:8]}")
         _cleanup_commit_message_artifacts(repo_root)
     except Exception as exc:
         logger.error("Commit failed: {}", exc)

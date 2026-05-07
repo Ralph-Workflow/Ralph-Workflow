@@ -1366,6 +1366,63 @@ def test_waiting_events_surface_effective_ceiling_when_no_progress_limit_applies
     assert progress[0].ceiling_seconds == _NO_PROGRESS_CEILING
 
 
+def test_no_progress_ceiling_adapts_when_corroboration_degrades() -> None:
+    """No-progress ceiling activates mid-wait when corroboration degrades from fresh to stale.
+
+    Regression for wt-97: when the watchdog enters WAITING_ON_CHILD with fresh-progress
+    evidence (full ceiling), then the corroboration degrades to OS-descendant-only
+    evidence (no scoped progress), the effective ceiling must switch to the shorter
+    no-progress ceiling on the very next tick — not wait for the full ceiling.
+
+    Timeline (full_ceiling=100s, no_progress_ceiling=20s):
+    - T1 (t=1.5): ENTER WAITING with fresh_progress → ceiling=100s.
+    - T2 (t=19.5): cumulative=18s < 20s, corr still fresh_progress → WAITING.
+    - Corroborator degrades to os_descendant_only_stale_progress.
+    - T3 (t=22.5): cumulative=21s >= 20s (no-progress ceiling) → FIRE.
+    """
+    full_ceiling = 100.0
+    no_progress_ceiling = 20.0
+
+    phase: list[str] = ["fresh"]
+
+    def _corroborator() -> CorroborationSnapshot:
+        if phase[0] == "fresh":
+            return CorroborationSnapshot(alive_by="fresh_progress", scoped_child_active=True)
+        return CorroborationSnapshot(
+            alive_by="os_descendant_only_stale_progress", scoped_child_active=True
+        )
+
+    config = TimeoutPolicy(
+        idle_timeout_seconds=1.0,
+        drain_window_seconds=0.0,
+        max_waiting_on_child_seconds=full_ceiling,
+        suspect_waiting_on_child_seconds=None,
+        waiting_status_interval_seconds=100.0,
+        max_waiting_on_child_no_progress_seconds=no_progress_ceiling,
+    )
+    clock = FakeClock(start=0.0)
+    watchdog = IdleWatchdog(config, clock, corroborator=_corroborator)
+
+    # T1: enter WAITING at t=1.5s (cumulative=0s), fresh_progress → full ceiling.
+    clock.advance(1.5)
+    result = watchdog.evaluate(classify_quiet=_waiting)
+    assert result == WatchdogVerdict.WAITING_ON_CHILD
+
+    # T2: cumulative=18s, still fresh_progress → ceiling=100s → WAITING.
+    clock.advance(18.0)
+    result = watchdog.evaluate(classify_quiet=_waiting)
+    assert result == WatchdogVerdict.WAITING_ON_CHILD
+
+    # Corroboration degrades to OS-descendant-only (no scoped progress any more).
+    phase[0] = "degraded"
+
+    # T3: cumulative=21s >= no_progress_ceiling=20s → FIRE (not waiting for full ceiling=100s).
+    clock.advance(3.0)
+    result = watchdog.evaluate(classify_quiet=_waiting)
+    assert result == WatchdogVerdict.FIRE
+    assert watchdog.last_fire_reason == WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG
+
+
 def test_validation_rejects_no_progress_ceiling_above_max_waiting() -> None:
     """TimeoutPolicy rejects no_progress_ceiling > max_waiting_on_child_seconds."""
     with pytest.raises(ValueError, match="max_waiting_on_child_no_progress_seconds must be <="):

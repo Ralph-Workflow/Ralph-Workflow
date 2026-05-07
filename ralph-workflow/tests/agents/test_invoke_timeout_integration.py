@@ -20,7 +20,11 @@ import pytest
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
-from ralph.agents.execution_state import AgentExecutionState, GenericExecutionStrategy
+from ralph.agents.execution_state import (
+    AgentExecutionState,
+    GenericExecutionStrategy,
+    OpenCodeExecutionStrategy,
+)
 from ralph.agents.idle_watchdog import (
     TimeoutPolicy,
     WaitingStatusEvent,
@@ -29,6 +33,7 @@ from ralph.agents.idle_watchdog import (
 )
 from ralph.agents.invoke import _IdleStreamTimeoutError, _read_lines_from_process
 from ralph.agents.timeout_clock import FakeClock
+from ralph.process.liveness import FakeLivenessProbe
 
 
 class _FakeManagedHandle:
@@ -569,5 +574,95 @@ def test_no_progress_ceiling_fires_on_stale_child_liveness() -> None:
     )
     assert "alive_by" in diag, f"Expected 'alive_by' key in diagnostic: {diag}"
     assert diag["alive_by"] == "os_descendant_only_stale_progress", (
+        f"Expected alive_by='os_descendant_only_stale_progress', got {diag.get('alive_by')}"
+    )
+
+
+def test_no_progress_ceiling_fires_with_opencode_strategy_os_descendants_only() -> None:
+    """CHILDREN_PERSIST_TOO_LONG fires at no-progress ceiling with real OpenCodeExecutionStrategy.
+
+    Regression for wt-97 Bug 1: an agent in WAITING_ON_CHILD with OS-descendant-only evidence
+    (no scoped Ralph child registrations, alive_by=os_descendant_only_stale_progress) must fire
+    at the shorter no-progress ceiling, not the full ceiling.
+
+    Unlike test_no_progress_ceiling_fires_on_stale_child_liveness which uses a stub strategy,
+    this test uses the real OpenCodeExecutionStrategy (empty registry, OS descendants present)
+    to prove the end-to-end path from classify_quiet → corroborator → effective ceiling.
+    """
+    idle_timeout = 0.5
+    max_waiting = 100.0
+    no_progress_ceiling = 10.0
+    status_interval = 100.0
+
+    policy = TimeoutPolicy(
+        idle_timeout_seconds=idle_timeout,
+        max_waiting_on_child_seconds=max_waiting,
+        max_waiting_on_child_no_progress_seconds=no_progress_ceiling,
+        drain_window_seconds=0.0,
+        idle_poll_interval_seconds=0.05,
+        waiting_status_interval_seconds=status_interval,
+        suspect_waiting_on_child_seconds=None,
+    )
+    clock = FakeClock(start=0.0)
+    _reader_release = threading.Event()
+
+    def _blocking_stdout() -> Iterator[str]:
+        _reader_release.wait()
+        yield from ()
+
+    handle = _FakeManagedHandle(
+        _blocking_stdout(),
+        descendant_count=1,
+        descendant_oldest_seconds=5.0,
+    )
+
+    # Real OpenCodeExecutionStrategy with no registered children.
+    # classify_quiet will fall back to OS descendants → WAITING_ON_CHILD.
+    # corroborator will see no registry → scoped_active=True → alive_by=OS_DESCENDANT_ONLY.
+    strategy = OpenCodeExecutionStrategy()
+    # No scoped Ralph evidence: probe returns no active children.
+    probe = FakeLivenessProbe(active=False)
+    captured_events: list[WaitingStatusEvent] = []
+
+    def _listener(event: WaitingStatusEvent) -> None:
+        captured_events.append(event)
+
+    try:
+        with pytest.raises(_IdleStreamTimeoutError) as exc_info:
+            for _ in _read_lines_from_process(
+                handle,
+                policy=policy,
+                execution_strategy=strategy,
+                liveness_probe=probe,
+                waiting_listener=_listener,
+                _clock=clock,
+            ):
+                pass
+    finally:
+        _reader_release.set()
+
+    assert exc_info.value.reason == WatchdogFireReason.CHILDREN_PERSIST_TOO_LONG
+
+    # Must fire at no-progress ceiling (~10s), NOT the full ceiling (~100s).
+    err_msg = str(exc_info.value)
+    match = re.search(r"cumulative=([\.\d]+)s", err_msg)
+    assert match is not None, f"Expected 'cumulative=' in: {err_msg}"
+    cumulative = float(match.group(1))
+    assert cumulative < max_waiting, (
+        f"Expected to fire before full ceiling ({max_waiting}s), but cumulative={cumulative}s"
+    )
+    assert cumulative >= no_progress_ceiling, (
+        f"Expected to fire at or after no-progress ceiling ({no_progress_ceiling}s), "
+        f"but cumulative={cumulative}s"
+    )
+
+    # HARD_STOP diagnostic must confirm OS-descendant-only evidence and no-progress ceiling.
+    hard_stops = [e for e in captured_events if e.kind == WaitingStatusKind.HARD_STOP]
+    assert len(hard_stops) == 1, f"Expected 1 HARD_STOP, got {len(hard_stops)}"
+    diag = hard_stops[0].diagnostic
+    assert diag.get("effective_ceiling") == "no_progress", (
+        f"Expected effective_ceiling='no_progress', got {diag.get('effective_ceiling')}"
+    )
+    assert diag.get("alive_by") == "os_descendant_only_stale_progress", (
         f"Expected alive_by='os_descendant_only_stale_progress', got {diag.get('alive_by')}"
     )

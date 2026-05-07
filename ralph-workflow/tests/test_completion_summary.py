@@ -277,7 +277,6 @@ def test_emit_completion_summary_uses_subscriber_decision_log(tmp_path: Path) ->
         workspace_root=tmp_path,
         run_id="r1",
     )
-    subscriber.record_phase_transition("planning", "development")
     subscriber.record_analysis("development_analysis", "proceed", "all green")
 
     state = PipelineState(phase="complete", previous_phase="review_commit")
@@ -292,8 +291,6 @@ def test_emit_completion_summary_uses_subscriber_decision_log(tmp_path: Path) ->
     assert "Development Analysis" in out
     assert "proceed" in out
     assert "all green" in out
-    # phase transition row from record_phase_transition
-    assert "\u2192 development" in out
 
 
 def test_completion_summary_outer_dev_uses_canonical_label() -> None:

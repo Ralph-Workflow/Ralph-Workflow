@@ -260,12 +260,20 @@ def test_stop_flushes_streaming_blocks(tmp_path: Path) -> None:
     assert "[content-end]" in rendered
 
 
-def test_emit_phase_transition_flushes_blocks(tmp_path: Path) -> None:
+def test_phase_close_from_exit_flushes_blocks(tmp_path: Path) -> None:
+    from ralph.display.phase_lifecycle import PhaseExitModel  # noqa: PLC0415
+
     console, buf = _make_wide_console()
     pd = ParallelDisplay(make_display_context(console=console, env={}), workspace_root=tmp_path)
 
     pd._emit_activity_event("unit-1", ActivityEventKind.TEXT, "some content", None, {})
-    pd.emit_phase_transition("planning", "development")
+    exit_model = PhaseExitModel(
+        phase_name="planning",
+        phase_role="planning",
+        agent_name="planner",
+        elapsed_seconds=1.0,
+    )
+    pd.emit_phase_close_from_exit(exit_model)
 
     rendered = buf.getvalue()
     assert "[content-end]" in rendered
