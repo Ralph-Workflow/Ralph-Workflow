@@ -89,6 +89,14 @@ Each validated artifact is also written as a human-readable Markdown file direct
 
 Handoff rendering is handled by `ralph.mcp.artifacts.handoffs`.
 
+### Plan handoff precondition
+
+`.agent/PLAN.md` is the authoritative human- and agent-readable form of the finalized plan. Every downstream prompt (planning loopback/edit, planning analysis, development, development analysis, review, and any other non-fresh-planning template) **must** have either a `plan.json` artifact or an existing `.agent/PLAN.md` before prompt materialization runs. If neither is present, `materialize_prompt_for_phase` raises `MissingPlanHandoffError`.
+
+The only templates that are allowed to run without a plan are `planning.jinja` and `planning_fallback.jinja`, because those are the phases that *create* the plan in the first place. All other templates — including `planning_edit.jinja`, `planning_analysis.jinja`, `developer_iteration.jinja`, `development_analysis.jinja`, and `review.jinja` — require the plan to already exist.
+
+When `plan.json` is present but `.agent/PLAN.md` is absent, the materialization layer regenerates the Markdown handoff automatically from the JSON artifact before rendering the prompt.
+
 ## Audit adapter
 
 `ralph.mcp.artifacts.audit_adapter` wraps the store and records every artifact submission to the pipeline transcript so operators can trace exactly what each agent produced.
