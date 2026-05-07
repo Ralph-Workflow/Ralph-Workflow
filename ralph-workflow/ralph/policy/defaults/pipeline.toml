@@ -131,6 +131,9 @@ continuation_template = "developer_iteration_continuation.jinja"
 [phases.development.transitions]
 on_success = "development_analysis"
 on_loopback = "development"
+[phases.development.artifact_history]
+enabled = true
+clear_on_fresh_entry = true
 
 [phases.development.parallelization]
 mode = "same_workspace"

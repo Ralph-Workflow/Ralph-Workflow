@@ -49,7 +49,7 @@ if TYPE_CHECKING:
 
     from ralph.phases.required_artifacts import RequiredArtifact
     from ralph.pipeline.work_units import WorkUnit
-    from ralph.policy.models import ArtifactsPolicy, PipelinePolicy
+    from ralph.policy.models import ArtifactsPolicy, PhaseDefinition, PipelinePolicy
     from ralph.workspace.protocol import Workspace
 
 
@@ -154,6 +154,7 @@ def _render_prompt_for_phase(  # noqa: PLR0913
                 plan_path=plan_path,
                 analysis_feedback_path=analysis_feedback_path,
                 artifact_history_path=artifact_history_path,
+                artifact_history_dir=_artifact_history_dir_from_path(artifact_history_path),
                 last_retry_error=last_retry_error,
             ),
             workspace=workspace,
@@ -183,6 +184,17 @@ def _render_prompt_for_phase(  # noqa: PLR0913
 
     # Developer-style prompt: execution role producing a development_result artifact
     if phase_role == "execution" and drain_artifact_type == "development_result":
+        dev_is_loopback = _is_analysis_loopback_into_phase(
+            phase=phase,
+            previous_phase=previous_phase,
+            pipeline_policy=pipeline_policy,
+        )
+        dev_artifact_history_path = _resolve_and_clear_dev_artifact_history(
+            workspace_root=workspace_root,
+            phase_def=phase_def,
+            drain_artifact_type=drain_artifact_type,
+            is_loopback=dev_is_loopback,
+        )
         analysis_feedback_content, analysis_feedback_path = _resolve_loopback_analysis_feedback(
             workspace, phase, pipeline_policy, artifacts_policy
         )
@@ -197,6 +209,8 @@ def _render_prompt_for_phase(  # noqa: PLR0913
                 analysis_feedback_path=analysis_feedback_path,
                 prompt_name_prefix=phase,
                 last_retry_error=last_retry_error,
+                artifact_history_path=dev_artifact_history_path,
+                artifact_history_dir=_artifact_history_dir_from_path(dev_artifact_history_path),
             ),
             workspace=workspace,
             session_caps=session_caps,
@@ -413,15 +427,45 @@ def _prepare_planning_prompt_context(
     )
 
 
+def _resolve_artifact_history_path(workspace_root: Path, artifact_type: str) -> str:
+    """Return the absolute path to the artifact history index for the given type, if it exists."""
+    artifact_dir = workspace_root / ".agent" / "artifacts"
+    index = history_index_path(artifact_dir, artifact_type)
+    if index.exists():
+        return str(index)
+    return ""
+
+
+def _artifact_history_dir_from_path(history_path: str) -> str:
+    """Return the archive directory for a resolved artifact history index path."""
+    if not history_path:
+        return ""
+    return str(Path(history_path).parent)
+
+
 def _resolve_planning_history_path(
     workspace_root: Path,
 ) -> str:
     """Return the absolute path to the planning artifact history index, if it exists."""
-    artifact_dir = workspace_root / ".agent" / "artifacts"
-    index = history_index_path(artifact_dir, PLAN_ARTIFACT_TYPE)
-    if index.exists():
-        return str(index)
-    return ""
+    return _resolve_artifact_history_path(workspace_root, PLAN_ARTIFACT_TYPE)
+
+
+def _resolve_and_clear_dev_artifact_history(
+    *,
+    workspace_root: Path,
+    phase_def: PhaseDefinition | None,
+    drain_artifact_type: str | None,
+    is_loopback: bool,
+) -> str:
+    """Resolve the artifact history path and optionally clear it on fresh entry."""
+    if phase_def is None or phase_def.artifact_history is None or not drain_artifact_type:
+        return ""
+    if not is_loopback and phase_def.artifact_history.clear_on_fresh_entry:
+        artifact_dir = workspace_root / ".agent" / "artifacts"
+        clear_artifact_history(
+            artifact_dir, drain_artifact_type, backend=DEFAULT_FILE_BACKEND
+        )
+    return _resolve_artifact_history_path(workspace_root, drain_artifact_type)
 
 
 def _clear_fresh_planning_context(

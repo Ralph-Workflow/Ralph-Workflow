@@ -359,12 +359,14 @@ def test_planning_prompt_with_artifact_history_path_shows_history_section(tmp_pa
     workspace = MemoryWorkspace(root=str(tmp_path))
     session_caps = SessionCapabilities.defaults_for_drain(SessionDrain.PLANNING)
     history_path = str(tmp_path / ".agent" / "artifacts" / "history" / "plan" / "index.md")
+    history_dir = str(Path(history_path).parent)
 
     prompt = prompt_planning_xml_with_context(
         context=context,
         inputs=PlanningPromptInputs(
             prompt_content="Plan the feature",
             artifact_history_path=history_path,
+            artifact_history_dir=history_dir,
         ),
         workspace=workspace,
         session_caps=session_caps,
@@ -372,6 +374,7 @@ def test_planning_prompt_with_artifact_history_path_shows_history_section(tmp_pa
 
     assert "ARTIFACT HISTORY" in prompt
     assert history_path in prompt
+    assert history_dir in prompt
 
 
 def test_planning_prompt_without_history_path_omits_history_section(tmp_path: Path) -> None:
@@ -394,6 +397,7 @@ def test_planning_edit_prompt_with_artifact_history_path_includes_history(tmp_pa
     workspace = MemoryWorkspace(root=str(tmp_path))
     session_caps = SessionCapabilities.defaults_for_drain(SessionDrain.PLANNING)
     history_path = str(tmp_path / ".agent" / "artifacts" / "history" / "plan" / "index.md")
+    history_dir = str(Path(history_path).parent)
 
     prompt = prompt_planning_xml_with_context(
         context=context,
@@ -402,6 +406,7 @@ def test_planning_edit_prompt_with_artifact_history_path_includes_history(tmp_pa
             analysis_feedback_content="The plan needs narrower scope.",
             analysis_feedback_path=workspace.absolute_path(".agent/PLANNING_ANALYSIS_DECISION.md"),
             artifact_history_path=history_path,
+            artifact_history_dir=history_dir,
         ),
         workspace=workspace,
         session_caps=session_caps,
@@ -410,3 +415,100 @@ def test_planning_edit_prompt_with_artifact_history_path_includes_history(tmp_pa
 
     assert "ARTIFACT HISTORY" in prompt
     assert history_path in prompt
+    assert history_dir in prompt
+
+
+def test_developer_iteration_prompt_with_artifact_history_path_shows_history_section(tmp_path):
+    context = TemplateContext.default()
+    workspace = MemoryWorkspace(root=str(tmp_path))
+    session_caps = SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT)
+    history_path = str(
+        tmp_path / ".agent" / "artifacts" / "history" / "development_result" / "index.md"
+    )
+    history_dir = str(Path(history_path).parent)
+
+    prompt = prompt_developer_iteration_xml_with_context(
+        context=context,
+        inputs=DeveloperPromptInputs(
+            prompt_content="Implement the feature",
+            plan_content="1. Do the thing",
+            artifact_history_path=history_path,
+            artifact_history_dir=history_dir,
+        ),
+        workspace=workspace,
+        session_caps=session_caps,
+    )
+
+    assert "ARTIFACT HISTORY" in prompt
+    assert history_path in prompt
+    assert history_dir in prompt
+
+
+def test_developer_iteration_prompt_without_history_path_omits_history_section(tmp_path):
+    context = TemplateContext.default()
+    workspace = MemoryWorkspace(root=str(tmp_path))
+    session_caps = SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT)
+
+    prompt = prompt_developer_iteration_xml_with_context(
+        context=context,
+        inputs=DeveloperPromptInputs(
+            prompt_content="Implement the feature",
+            plan_content="1. Do the thing",
+        ),
+        workspace=workspace,
+        session_caps=session_caps,
+    )
+
+    assert "ARTIFACT HISTORY" not in prompt
+
+
+def test_developer_fallback_prompt_with_artifact_history_path_shows_history_section(tmp_path):
+    context = TemplateContext.default()
+    workspace = MemoryWorkspace(root=str(tmp_path))
+    session_caps = SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT)
+    history_path = str(
+        tmp_path / ".agent" / "artifacts" / "history" / "development_result" / "index.md"
+    )
+    history_dir = str(Path(history_path).parent)
+
+    with patch(
+        "ralph.prompts.developer.render_template",
+        side_effect=TemplateRenderingError("boom"),
+    ):
+        prompt = prompt_developer_iteration_xml_with_context(
+            context=context,
+            inputs=DeveloperPromptInputs(
+                prompt_content="Implement the feature",
+                plan_content="1. Do the thing",
+                artifact_history_path=history_path,
+                artifact_history_dir=history_dir,
+            ),
+            workspace=workspace,
+            session_caps=session_caps,
+        )
+
+    assert "ARTIFACT HISTORY" in prompt
+    assert history_path in prompt
+    assert history_dir in prompt
+
+
+def test_developer_fallback_prompt_without_history_path_omits_history_section(tmp_path):
+    context = TemplateContext.default()
+    workspace = MemoryWorkspace(root=str(tmp_path))
+    session_caps = SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT)
+
+    with patch(
+        "ralph.prompts.developer.render_template",
+        side_effect=TemplateRenderingError("boom"),
+    ):
+        prompt = prompt_developer_iteration_xml_with_context(
+            context=context,
+            inputs=DeveloperPromptInputs(
+                prompt_content="Implement the feature",
+                plan_content="1. Do the thing",
+            ),
+            workspace=workspace,
+            session_caps=session_caps,
+        )
+
+    assert "ARTIFACT HISTORY" not in prompt

@@ -70,8 +70,24 @@ Planning prompts receive a set of template variables assembled by `ralph.prompts
 | `PLAN_MD` | `.agent/PLAN.md` | Full text of the current plan (loopback / edit paths only) |
 | `ANALYSIS_FEEDBACK` | `.agent/PLANNING_ANALYSIS_DECISION.md` | Feedback from the latest planning-analysis decision (edit paths only) |
 | `ARTIFACT_HISTORY_PATH` | `.agent/artifacts/history/plan/index.md` | Absolute path to the artifact history index, or empty string when no history exists |
+| `ARTIFACT_HISTORY_DIR` | `.agent/artifacts/history/plan/` | Absolute path to the artifact history directory, or empty string when no history exists |
 
-When `ARTIFACT_HISTORY_PATH` is non-empty, planning templates render an **ARTIFACT HISTORY** section that points agents to the archive so they can review past plans and avoid repeating already-rejected approaches. When no history exists (first iteration or after `clear_on_fresh_entry` wipes it) the section is omitted entirely.
+When `ARTIFACT_HISTORY_PATH` is non-empty, planning templates render an **ARTIFACT HISTORY** section that points agents to both the archive directory and the canonical history index so they can review past plans and avoid repeating already-rejected approaches. When no history exists (first iteration or after `clear_on_fresh_entry` wipes it) the section is omitted entirely.
+
+## Development prompt variables
+
+Development prompts receive a similar set of template variables. When the development phase has `artifact_history.enabled = true` in its `pipeline.toml` policy, the `ARTIFACT_HISTORY_PATH` variable is populated:
+
+| Variable | Source | Description |
+|---|---|---|
+| `PLAN` / `PLAN_PATH` | `.agent/PLAN.md` | Implementation plan content or file reference |
+| `ANALYSIS_FEEDBACK` / `ANALYSIS_FEEDBACK_PATH` | `.agent/DEVELOPMENT_ANALYSIS_DECISION.md` | Feedback from the latest development-analysis decision (loopback paths only) |
+| `ARTIFACT_HISTORY_PATH` | `.agent/artifacts/history/development_result/index.md` | Absolute path to the development artifact history index, or empty string when no history or policy not enabled |
+| `ARTIFACT_HISTORY_DIR` | `.agent/artifacts/history/development_result/` | Absolute path to the development artifact history directory, or empty string when no history or policy not enabled |
+
+When `ARTIFACT_HISTORY_PATH` is non-empty, development templates (`developer_iteration.jinja`, `developer_iteration_continuation.jinja`, `developer_iteration_fallback.jinja`) render an **ARTIFACT HISTORY** section. This lets development agents inspect both the archive directory and the canonical index for prior failed iterations so they do not repeat already-rejected approaches.
+
+`clear_on_fresh_entry` controls whether artifact history is wiped at the start of a new (non-loopback) development entry. On a loopback from `development_analysis`, history is preserved so the agent can reference what was tried before.
 
 See {doc}`artifacts` for how artifact history archival and clearing works.
 

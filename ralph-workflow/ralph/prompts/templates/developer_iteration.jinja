@@ -24,4 +24,14 @@ IMPLEMENTATION PLAN:
 
 {% include 'shared/_analysis_context.j2' %}
 
+{% if ARTIFACT_HISTORY_PATH %}
+ARTIFACT HISTORY:
+Prior development artifacts from previous iterations are archived under:
+`{{ARTIFACT_HISTORY_DIR}}`
+Canonical history index file:
+`{{ARTIFACT_HISTORY_PATH}}`
+Inspect this history when you want to understand what has been tried before
+and what development-analysis feedback they received.
+{% endif %}
+
 {% include 'shared/_developer_iteration_guidance.j2' %}

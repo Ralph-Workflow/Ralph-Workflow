@@ -539,6 +539,17 @@ def test_default_policy_has_artifact_history_enabled_on_planning_analysis() -> N
     assert planning_analysis.artifact_history.enabled is True
 
 
+def test_default_policy_has_artifact_history_enabled_on_development() -> None:
+    """Default policy must have artifact_history.enabled=True on development phase."""
+    defaults_dir = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
+    bundle = load_policy(defaults_dir)
+    development = bundle.pipeline.phases["development"]
+    assert development.artifact_history is not None, (
+        "development phase must declare artifact_history"
+    )
+    assert development.artifact_history.enabled is True
+
+
 def test_default_policy_planning_clears_history_on_fresh_entry() -> None:
     """Default planning phase must clear history on fresh (non-loopback) entry."""
     defaults_dir = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
@@ -555,3 +566,12 @@ def test_default_policy_planning_analysis_preserves_history_on_fresh_entry() -> 
     planning_analysis = bundle.pipeline.phases["planning_analysis"]
     assert planning_analysis.artifact_history is not None
     assert planning_analysis.artifact_history.clear_on_fresh_entry is False
+
+
+def test_default_policy_development_clears_history_on_fresh_entry() -> None:
+    """Default development phase must clear history on fresh (non-loopback) entry."""
+    defaults_dir = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
+    bundle = load_policy(defaults_dir)
+    development = bundle.pipeline.phases["development"]
+    assert development.artifact_history is not None
+    assert development.artifact_history.clear_on_fresh_entry is True
