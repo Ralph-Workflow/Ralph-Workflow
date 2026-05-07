@@ -326,6 +326,16 @@ def test_analysis_templates_require_exact_artifact_types_and_detailed_fix_sectio
 
 
 
+def test_planning_fallback_templates_reference_artifact_history_path() -> None:
+    planning_fallback = (TEMPLATES_ROOT / "planning_fallback.jinja").read_text(encoding="utf-8")
+    planning_edit_fallback = (TEMPLATES_ROOT / "planning_edit_fallback.jinja").read_text(
+        encoding="utf-8"
+    )
+
+    assert "ARTIFACT_HISTORY_PATH" in planning_fallback
+    assert "ARTIFACT_HISTORY_PATH" in planning_edit_fallback
+
+
 def test_planning_prompt_requires_verified_low_research_executor_handoff() -> None:
     planning = (TEMPLATES_ROOT / "planning.jinja").read_text(encoding="utf-8")
 
