@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import cast
+from typing import TYPE_CHECKING, cast
 from unittest.mock import patch
 
 from rich.console import Console
@@ -13,6 +13,9 @@ from ralph.display.context import make_display_context
 from ralph.pipeline import runner as runner_module
 from ralph.pipeline.state import PipelineState
 from ralph.policy.loader import load_policy
+
+if TYPE_CHECKING:
+    from ralph.display.phase_lifecycle import PhaseExitModel
 
 _DEFAULT_POLICY = load_policy(Path(__file__).parent.parent / "ralph" / "policy" / "defaults")
 _EXPECTED_ELAPSED_SECONDS = 12.5
@@ -51,7 +54,7 @@ class _StubDisplay:
         )
         self.subscriber = _StubSubscriber()
         self._phase_close_emitted = False
-        self._last_exit_model: object | None = None
+        self._last_exit_model: PhaseExitModel | None = None
         self._last_phase_artifact_outcome: str | None = None
 
     @property
@@ -62,7 +65,7 @@ class _StubDisplay:
     def last_phase_artifact_outcome(self) -> str | None:
         return self._last_phase_artifact_outcome
 
-    def emit_phase_close_from_exit(self, exit_model: object) -> None:
+    def emit_phase_close_from_exit(self, exit_model: PhaseExitModel) -> None:
         # Record that close was emitted (for phase_close_emitted flag)
         self._phase_close_emitted = True
         self._last_exit_model = exit_model
@@ -379,12 +382,13 @@ def test_execute_commit_effect_records_sha_regardless_of_state() -> None:
     )
 
 
-def test_emit_phase_transition_no_transition_banner_for_normal_routing() -> None:
-    """emit_phase_close_from_exit must be called for normal phase transitions.
+def test_emit_phase_transition_shows_rich_transition_banner_for_major_routing() -> None:
+    """Major phase transitions should render the dedicated transition banner.
 
-    The transition banner is only shown when there's additional routing context
-    (like skipped analysis due to cap exhaustion) that is not already obvious
-    from the adjacent close/start banners.
+    The runtime already emits the close banner for the phase being left and the
+    next phase later emits its own start banner. This test locks in the missing
+    middle surface: the rich transition separator that shows the actual phase
+    handoff (for example Planning → Planning Analysis).
     """
     display = _StubDisplay()
     state = PipelineState(
@@ -401,18 +405,22 @@ def test_emit_phase_transition_no_transition_banner_for_normal_routing() -> None
         pipeline_policy=_DEFAULT_POLICY.pipeline,
     )
 
-    # emit_phase_close_from_exit is always called for phase transitions
+    # The close banner still emits for the phase being left.
     assert display._phase_close_emitted, "emit_phase_close_from_exit must be called"
-    # _last_exit_model is populated
     exit_model = display._last_exit_model
     assert exit_model is not None
 
+    output = display._ctx.console.export_text()
+    arrow = display._ctx.glyph_for("arrow")
+    assert f"Planning {arrow} Planning Analysis" in output, output
 
-def test_emit_phase_transition_calls_show_phase_close_banner() -> None:
-    """show_phase_close_banner must be called from _emit_phase_transition_if_changed.
 
-    This verifies that the rich visual close banner is wired into the runner and
-    not dead code.
+def test_emit_phase_transition_calls_canonical_rich_phase_change_surfaces() -> None:
+    """Runner phase changes must emit both the close and transition rich surfaces.
+
+    This locks the runner contract instead of only testing the individual
+    renderers in isolation: if a refactor drops either surface from the live
+    path, this test should fail immediately.
     """
     display = _StubDisplay()
     state = PipelineState(
@@ -421,7 +429,10 @@ def test_emit_phase_transition_calls_show_phase_close_banner() -> None:
         budget_caps={"iteration": 1},
     )
 
-    with patch("ralph.pipeline.runner.show_phase_close_banner") as mock_banner:
+    with (
+        patch("ralph.pipeline.runner.show_phase_close_banner") as mock_close,
+        patch("ralph.pipeline.runner.show_phase_transition") as mock_transition,
+    ):
         runner_module._emit_phase_transition_if_changed(
             cast("runner_module.ParallelDisplay | runner_module._LegacyConsoleDisplay", display),
             "planning",
@@ -430,13 +441,19 @@ def test_emit_phase_transition_calls_show_phase_close_banner() -> None:
             pipeline_policy=_DEFAULT_POLICY.pipeline,
         )
 
-    mock_banner.assert_called_once()
-    call_kwargs = mock_banner.call_args
-    assert call_kwargs is not None
-    exit_model_arg = (
-        call_kwargs.args[0] if call_kwargs.args else call_kwargs.kwargs.get("exit_model")
-    )
+    mock_close.assert_called_once()
+    close_call = mock_close.call_args
+    assert close_call is not None
+    exit_model_arg = close_call.args[0] if close_call.args else close_call.kwargs.get("exit_model")
     assert exit_model_arg is not None, "show_phase_close_banner must receive exit_model"
+
+    mock_transition.assert_called_once_with(
+        "planning",
+        "planning_analysis",
+        context=None,
+        display_context=display._ctx,
+        pipeline_policy=_DEFAULT_POLICY.pipeline,
+    )
 
 
 def test_emit_phase_transition_skipped_analysis_emits_routing_note() -> None:

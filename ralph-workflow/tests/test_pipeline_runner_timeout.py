@@ -615,12 +615,17 @@ def test_record_mcp_restart_forwarded_to_subscriber(
         def record_mcp_restart(self, restart_count: int) -> None:
             recorded.append(restart_count)
 
+    class _FakeDisplay:
+        def __init__(self) -> None:
+            self._ctx = make_display_context()
+            self.subscriber = FakeSubscriber()
+
+        def emit(self, _unit_id: str, _line: str) -> None:
+            return
+
     monkeypatch.setattr(runner_module, "start_mcp_server", fake_start_mcp_server)
     monkeypatch.setattr(runner_module, "shutdown_mcp_server", fake_shutdown_mcp_server)
     monkeypatch.setattr(runner_module, "materialize_system_prompt", fake_materialize_system_prompt)
-    monkeypatch.setattr(
-        runner_module, "_subscriber_for_display", lambda _: FakeSubscriber()
-    )
 
     deps = runner_module._AgentExecutionDeps(
         invoke_agent=lambda *_a, **_kw: [],
@@ -629,7 +634,11 @@ def test_record_mcp_restart_forwarded_to_subscriber(
     )
 
     runner_module._execute_agent_effect(
-        effect, config, deps, WorkspaceScope(tmp_path), display_context=make_display_context()
+        effect,
+        config,
+        deps,
+        WorkspaceScope(tmp_path),
+        display=cast("runner_module.ParallelDisplay", _FakeDisplay()),
     )
 
     assert recorded == [1], (

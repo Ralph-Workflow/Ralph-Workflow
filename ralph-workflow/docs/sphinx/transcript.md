@@ -223,6 +223,33 @@ failure-related state visible without requiring the completion summary to be rea
 The waiting status is truncated to 80 characters. The debug line appears in all display
 modes (compact, medium, wide) whenever the data is present.
 
+## Phase-Transition Banner
+
+When the pipeline advances from one phase to another, Ralph Workflow emits a dedicated
+transition separator **between** the previous phase's close banner and the next phase's
+start banner. This is a distinct runtime surface, not just a renderer helper.
+
+```
+────────── <From Phase> → <To Phase>  (<routing context>) ──────────
+```
+
+| Field | Notes |
+|-------|-------|
+| `<From Phase>` | Human-readable label of the phase that just ended |
+| `<To Phase>` | Human-readable label of the phase about to begin |
+| `<routing context>` | Optional handoff hints such as `→ approved`, `→ needs changes`, or `final, skipping next` |
+
+The live runner treats phase changes as a coordinated display contract with three rich
+surfaces emitted in order:
+1. the **phase-close banner** for the phase being left,
+2. the **phase-transition banner** explaining the handoff,
+3. the **phase-start banner** for the phase being entered.
+
+This ordering is intentional. The close banner owns exit context and counters, the
+transition banner owns routing semantics, and the start banner owns entry/iteration
+context. Keeping these responsibilities separate prevents any one surface from becoming a
+catch-all dump and makes regressions easier to detect in runner-level tests.
+
 ## `[phase-close]` Line
 
 At every phase transition, a single `[phase-close]` line is appended to the transcript:

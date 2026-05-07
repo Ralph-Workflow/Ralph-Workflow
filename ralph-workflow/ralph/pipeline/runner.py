@@ -41,8 +41,8 @@ from ralph.display.artifact_renderer import (
 from ralph.display.context import DisplayContext, make_display_context
 from ralph.display.phase_banner import (
     show_phase_close_banner,
-    show_phase_start,
     show_phase_start_from_entry,
+    show_phase_transition,
 )
 from ralph.display.phase_lifecycle import PhaseEntryModel, PhaseExitModel
 from ralph.interrupt import controller_from_process_manager
@@ -861,29 +861,11 @@ def _show_phase_start_with_context(
     phase: str,
     agent_name: str,
     display_context: DisplayContext,
-    state: PipelineState | None,
+    state: PipelineState,
     *,
-    pipeline_policy: PipelinePolicy | None = None,
+    pipeline_policy: PipelinePolicy,
 ) -> None:
-    """Display a phase-start banner using the canonical PhaseEntryModel path."""
-    if state is None:
-        show_phase_start(
-            phase,
-            agent_name=agent_name,
-            display_context=display_context,
-            pipeline_policy=pipeline_policy,
-        )
-        return
-
-    if pipeline_policy is None:
-        show_phase_start(
-            phase,
-            agent_name=agent_name,
-            display_context=display_context,
-            pipeline_policy=pipeline_policy,
-        )
-        return
-
+    """Display the canonical model-based phase-start banner for the live runner."""
     entry = _build_phase_entry_model_from_state(
         phase,
         state,
@@ -893,6 +875,61 @@ def _show_phase_start_with_context(
     show_phase_start_from_entry(
         entry, display_context=display_context, pipeline_policy=pipeline_policy
     )
+
+
+@dataclass(frozen=True)
+class _PhaseChangeRenderData:
+    """Canonical display payload for a single phase change.
+
+    A phase change in the live runner has three coordinated surfaces:
+    the plain-log recap, the rich close banner for the phase being left,
+    and the dedicated transition banner that explains the handoff.
+    Keeping them in one payload makes it much harder for one surface to
+    drift out of sync or silently disappear during refactors.
+    """
+
+    previous_phase: str
+    current_phase: str
+    exit_model: PhaseExitModel
+    transition_context: dict[str, object] | None
+
+
+
+def _phase_transition_context(
+    previous_phase: str,
+    current_phase: str,
+    state: PipelineState,
+    pipeline_policy: PipelinePolicy,
+) -> dict[str, object] | None:
+    """Return routing context for the rich phase-transition banner.
+
+    The dedicated transition banner sits between the previous phase's close
+    banner and the next phase's start banner, so it should focus on handoff
+    semantics rather than repeating iteration details already shown elsewhere.
+    """
+    previous_phase_def = pipeline_policy.phases.get(previous_phase)
+    current_phase_def = pipeline_policy.phases.get(current_phase)
+    if previous_phase_def is None or current_phase_def is None:
+        return None
+
+    context: dict[str, object] = {}
+    previous_role = previous_phase_def.role
+    current_role = current_phase_def.role
+    if previous_role == "analysis":
+        loop_policy = previous_phase_def.loop_policy
+        if loop_policy is not None:
+            iteration_field = loop_policy.iteration_state_field
+            analysis_cur = state.get_loop_iteration(iteration_field)
+            max_iter = _resolve_analysis_cap(iteration_field, state, pipeline_policy)
+            if progress.is_final_analysis_iteration(analysis_cur, max_iter):
+                context["analysis_status"] = "final, skipping next"
+        if current_role == "commit":
+            context["decision"] = "approved"
+        elif current_role == "execution":
+            context["decision"] = "needs changes"
+
+    return context or None
+
 
 
 def _skipped_exhausted_analysis_info(
@@ -944,6 +981,116 @@ def _skipped_exhausted_analysis_info(
 
 
 
+def _build_phase_change_render_data(
+    display: ParallelDisplay | _LegacyConsoleDisplay,
+    previous_phase: str,
+    state: PipelineState,
+    *,
+    pipeline_policy: PipelinePolicy,
+) -> _PhaseChangeRenderData:
+    """Build the canonical render payload for a phase change."""
+    elapsed = (
+        0.0
+        if isinstance(display, _LegacyConsoleDisplay)
+        else display.last_phase_elapsed_seconds
+    )
+    waiting_status_line = (
+        None
+        if isinstance(display, _LegacyConsoleDisplay)
+        else display.subscriber.waiting_status_line
+    )
+    content_blocks = 0
+    thinking_blocks = 0
+    tool_calls = 0
+    errors = 0
+    if not isinstance(display, _LegacyConsoleDisplay):
+        phase_counters = cast(
+            "_PhaseCountersProtocol | None", getattr(display, "last_phase_counters", None)
+        )
+        if phase_counters is not None:
+            content_blocks = phase_counters.content_blocks
+            thinking_blocks = phase_counters.thinking_blocks
+            tool_calls = phase_counters.tool_calls
+            errors = phase_counters.errors
+    artifact_outcome = ""
+    if not isinstance(display, _LegacyConsoleDisplay):
+        raw_outcome = cast(
+            "str | None", getattr(display, "last_phase_artifact_outcome", None)
+        )
+        artifact_outcome = raw_outcome if raw_outcome else ""
+    entry = _build_phase_entry_model_from_state(previous_phase, state, pipeline_policy)
+    prev_phase_def = pipeline_policy.phases.get(previous_phase)
+    prev_phase_role: str | None = prev_phase_def.role if prev_phase_def is not None else None
+    skipped_info = _skipped_exhausted_analysis_info(
+        previous_phase, state.phase, state, pipeline_policy
+    )
+    routing_note: str | None = skipped_info[1] if skipped_info is not None else None
+    exit_model = PhaseExitModel.from_entry_model(
+        entry,
+        elapsed_seconds=elapsed,
+        exit_trigger="produced" if artifact_outcome else "completed",
+        content_blocks=content_blocks,
+        thinking_blocks=thinking_blocks,
+        tool_calls=tool_calls,
+        errors=errors,
+        artifact_outcome=artifact_outcome,
+        review_issues_found=(
+            progress.review_issues_found(state, pipeline_policy)
+            if prev_phase_role == "review"
+            else None
+        ),
+        routing_note=routing_note,
+        waiting_status_line=waiting_status_line,
+        last_failure_category=state.last_failure_category,
+    )
+    return _PhaseChangeRenderData(
+        previous_phase=previous_phase,
+        current_phase=state.phase,
+        exit_model=exit_model,
+        transition_context=_phase_transition_context(
+            previous_phase,
+            state.phase,
+            state,
+            pipeline_policy,
+        ),
+    )
+
+
+
+def _emit_phase_change_surfaces(
+    display: ParallelDisplay | _LegacyConsoleDisplay,
+    render_data: _PhaseChangeRenderData,
+    *,
+    display_context: DisplayContext,
+    pipeline_policy: PipelinePolicy,
+) -> None:
+    """Emit every display surface that defines a live phase change."""
+    phase_close_already_emitted: bool = (
+        display.phase_close_emitted
+        if not isinstance(display, _LegacyConsoleDisplay)
+        and hasattr(display, "phase_close_emitted")
+        else False
+    )
+    if not phase_close_already_emitted and hasattr(display, "emit_phase_close_from_exit"):
+        with suppress(Exception):
+            cast("ParallelDisplay", display).emit_phase_close_from_exit(render_data.exit_model)
+    with suppress(Exception):
+        show_phase_close_banner(
+            render_data.exit_model,
+            display_context=display_context,
+            pipeline_policy=pipeline_policy,
+        )
+    with suppress(Exception):
+        show_phase_transition(
+            render_data.previous_phase,
+            render_data.current_phase,
+            context=render_data.transition_context,
+            display_context=display_context,
+            pipeline_policy=pipeline_policy,
+        )
+
+
+
 def _emit_phase_transition_if_changed(
     display: ParallelDisplay | _LegacyConsoleDisplay,
     previous_phase: str,
@@ -952,7 +1099,7 @@ def _emit_phase_transition_if_changed(
     verbosity: Verbosity,
     pipeline_policy: PipelinePolicy,
 ) -> str:
-    """Emit a phase-transition banner if state.phase != previous_phase.
+    """Emit the canonical close+transition display when the phase changes.
 
     Returns the new previous_phase value (always state.phase). Quiet mode
     is a no-op except for state tracking.
@@ -964,84 +1111,21 @@ def _emit_phase_transition_if_changed(
 
     ctx = _get_display_context(display)
 
-    # Emit phase completion for the phase we're leaving
     try:
-        elapsed = (
-            0.0
-            if isinstance(display, _LegacyConsoleDisplay)
-            else display.last_phase_elapsed_seconds
+        render_data = _build_phase_change_render_data(
+            display,
+            previous_phase,
+            state,
+            pipeline_policy=pipeline_policy,
         )
-        waiting_status_line = (
-            None
-            if isinstance(display, _LegacyConsoleDisplay)
-            else display.subscriber.waiting_status_line
+        _emit_phase_change_surfaces(
+            display,
+            render_data,
+            display_context=ctx,
+            pipeline_policy=pipeline_policy,
         )
-        # Get activity counters from the display if available
-        content_blocks = 0
-        thinking_blocks = 0
-        tool_calls = 0
-        errors = 0
-        if not isinstance(display, _LegacyConsoleDisplay):
-            phase_counters = cast(
-                "_PhaseCountersProtocol | None", getattr(display, "last_phase_counters", None)
-            )
-            if phase_counters is not None:
-                content_blocks = phase_counters.content_blocks
-                thinking_blocks = phase_counters.thinking_blocks
-                tool_calls = phase_counters.tool_calls
-                errors = phase_counters.errors
-        # Get artifact outcome from the display if available
-        artifact_outcome = ""
-        if not isinstance(display, _LegacyConsoleDisplay):
-            raw_outcome = cast(
-                "str | None", getattr(display, "last_phase_artifact_outcome", None)
-            )
-            artifact_outcome = raw_outcome if raw_outcome else ""
-        entry = _build_phase_entry_model_from_state(previous_phase, state, pipeline_policy)
-        prev_phase_def = pipeline_policy.phases.get(previous_phase)
-        prev_phase_role: str | None = prev_phase_def.role if prev_phase_def is not None else None
-        # Detect skipped analysis before building exit model so routing context
-        # is surfaced through the canonical close banner instead of a separate print.
-        skipped_info = _skipped_exhausted_analysis_info(
-            previous_phase, state.phase, state, pipeline_policy
-        )
-        routing_note: str | None = skipped_info[1] if skipped_info is not None else None
-        exit_model = PhaseExitModel.from_entry_model(
-            entry,
-            elapsed_seconds=elapsed,
-            exit_trigger="produced" if artifact_outcome else "completed",
-            content_blocks=content_blocks,
-            thinking_blocks=thinking_blocks,
-            tool_calls=tool_calls,
-            errors=errors,
-            artifact_outcome=artifact_outcome,
-            review_issues_found=(
-                progress.review_issues_found(state, pipeline_policy)
-                if prev_phase_role == "review"
-                else None
-            ),
-            routing_note=routing_note,
-            waiting_status_line=waiting_status_line,
-            last_failure_category=state.last_failure_category,
-        )
-        # Emit plain-log close for any phase that hasn't already emitted it
-        # (artifact/commit paths that already called emit_phase_close_from_exit
-        # set phase_close_emitted=True so we skip the double-emit here)
-        phase_close_already_emitted: bool = (
-            display.phase_close_emitted
-            if not isinstance(display, _LegacyConsoleDisplay)
-            and hasattr(display, "phase_close_emitted")
-            else False
-        )
-        if not phase_close_already_emitted and hasattr(display, "emit_phase_close_from_exit"):
-            with suppress(Exception):
-                cast("ParallelDisplay", display).emit_phase_close_from_exit(exit_model)
-        with suppress(Exception):
-            show_phase_close_banner(
-                exit_model, display_context=ctx, pipeline_policy=pipeline_policy
-            )
     except Exception:  # pragma: no cover - defensive
-        logger.debug("phase close emission failed", exc_info=True)
+        logger.debug("phase change emission failed", exc_info=True)
 
     return state.phase
 
@@ -2736,13 +2820,14 @@ def _execute_agent_effect(  # noqa: PLR0911, PLR0912, PLR0913, PLR0915
         else load_agents_policy_for_workspace_scope(workspace_scope, config=config)
     )
 
-    _show_phase_start_with_context(
-        effect.phase,
-        effect.agent_name,
-        resolved_display_context,
-        state,
-        pipeline_policy=policy_bundle.pipeline if policy_bundle is not None else None,
-    )
+    if state is not None and policy_bundle is not None:
+        _show_phase_start_with_context(
+            effect.phase,
+            effect.agent_name,
+            resolved_display_context,
+            state,
+            pipeline_policy=policy_bundle.pipeline,
+        )
 
     from ralph.agents.idle_watchdog import WaitingStatusEvent  # noqa: PLC0415,TC001
     from ralph.agents.invoke import (  # noqa: PLC0415
