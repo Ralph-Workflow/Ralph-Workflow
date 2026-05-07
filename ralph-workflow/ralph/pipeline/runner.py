@@ -2062,6 +2062,7 @@ def _handle_inline_effect(  # noqa: PLR0913
                     artifacts_policy,
                     workspace_scope,
                     agents_policy,
+                    state,
                 )
             except MissingPlanHandoffError as exc:
                 if state.phase != pipeline_policy.recovery.failed_route:
@@ -2120,12 +2121,13 @@ def _handle_inline_effect(  # noqa: PLR0913
     return None
 
 
-def _materialize_prepared_prompt(
+def _materialize_prepared_prompt(  # noqa: PLR0913
     effect: PreparePromptEffect,
     pipeline_policy: PipelinePolicy,
     artifacts_policy: ArtifactsPolicy,
     workspace_scope: WorkspaceScope,
     agents_policy: AgentsPolicy | None = None,
+    state: PipelineState | None = None,
 ) -> None:
 
     workspace = FsWorkspace(
@@ -2140,6 +2142,13 @@ def _materialize_prepared_prompt(
         pipeline_policy=pipeline_policy,
         artifacts_policy=artifacts_policy,
         previous_phase=effect.previous_phase,
+        resume_existing_phase=_should_resume_existing_planning_phase_name(
+            phase=effect.phase,
+            drain=effect.drain,
+            state=state,
+            pipeline_policy=pipeline_policy,
+            artifacts_policy=artifacts_policy,
+        ),
         session_caps=SessionCapabilities.defaults_for_drain(
             _prompt_session_drain_for_phase(
                 effect.drain or resolve_phase_drain(effect.phase, pipeline_policy) or effect.phase,
@@ -2148,6 +2157,44 @@ def _materialize_prepared_prompt(
         ),
         workspace_root=workspace_scope.root,
         worker_namespace=worker_namespace,
+    )
+
+
+def _should_resume_existing_planning_phase_name(
+    *,
+    phase: str,
+    drain: str | None,
+    state: PipelineState | None,
+    pipeline_policy: PipelinePolicy,
+    artifacts_policy: ArtifactsPolicy,
+) -> bool:
+    if state is None or state.phase != phase:
+        return False
+    if state.previous_phase is not None or state.checkpoint_saved_count <= 0:
+        return False
+    effective_drain = drain or resolve_phase_drain(phase, pipeline_policy) or phase
+    required_artifact = resolve_phase_required_artifact(
+        pipeline_policy,
+        artifacts_policy,
+        phase=phase,
+        drain=effective_drain,
+    )
+    return bool(required_artifact is not None and required_artifact.artifact_type == "plan")
+
+
+
+def _should_resume_existing_planning_phase(
+    *,
+    effect: InvokeAgentEffect,
+    state: PipelineState,
+    policy_bundle: PolicyBundle,
+) -> bool:
+    return _should_resume_existing_planning_phase_name(
+        phase=effect.phase,
+        drain=effect.drain,
+        state=state,
+        pipeline_policy=policy_bundle.pipeline,
+        artifacts_policy=policy_bundle.artifacts,
     )
 
 
@@ -2172,6 +2219,11 @@ def _materialize_agent_prompt_if_needed(
         pipeline_policy=policy_bundle.pipeline,
         artifacts_policy=policy_bundle.artifacts,
         previous_phase=state.previous_phase,
+        resume_existing_phase=_should_resume_existing_planning_phase(
+            effect=effect,
+            state=state,
+            policy_bundle=policy_bundle,
+        ),
         session_caps=SessionCapabilities.defaults_for_drain(
             _prompt_session_drain_for_phase(
                 effect.drain
@@ -3309,11 +3361,25 @@ def _clear_phase_output_artifacts(
 ) -> None:
     """Remove stale per-phase artifacts before invoking an agent.
 
-    This hardening makes phase handlers reason about outputs created by the
-    current invocation instead of silently accepting artifacts left behind by a
-    prior interrupted run. Cleanup keys off the active drain when available so
-    custom phase names still clear the correct per-drain artifacts.
+    Planning artifacts are an exception: fresh-vs-preserve invalidation is
+    owned by prompt materialization, which has the semantic context to
+    distinguish fresh planning from loopback, retry, and resume. Clearing plan
+    outputs again here reintroduces a second, less-informed authority and can
+    delete the live plan handoff on non-fresh planning entries.
     """
+    effective_drain = drain or phase
+    required_artifact = (
+        resolve_phase_required_artifact(
+            policy_bundle.pipeline,
+            policy_bundle.artifacts,
+            phase=phase,
+            drain=effective_drain,
+        )
+        if policy_bundle is not None
+        else None
+    )
+    if required_artifact is not None and required_artifact.artifact_type == "plan":
+        return
     for path in _phase_output_artifact_paths(phase, drain=drain, policy_bundle=policy_bundle):
         workspace.remove(path)
 

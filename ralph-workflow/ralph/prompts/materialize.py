@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from contextlib import suppress
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
@@ -67,6 +68,7 @@ def materialize_prompt_for_phase(  # noqa: PLR0913
     workspace_root: Path,
     worker_namespace: Path | None = None,
     previous_phase: str | None = None,
+    resume_existing_phase: bool = False,
 ) -> str:
     prompt = _render_prompt_for_phase(
         phase=phase,
@@ -77,6 +79,7 @@ def materialize_prompt_for_phase(  # noqa: PLR0913
         workspace_root=workspace_root,
         worker_namespace=worker_namespace,
         previous_phase=previous_phase,
+        resume_existing_phase=resume_existing_phase,
     )
     return dump_rendered_prompt(workspace, phase, prompt)
 
@@ -121,6 +124,7 @@ def _render_prompt_for_phase(  # noqa: PLR0913
     workspace_root: Path,
     worker_namespace: Path | None = None,
     previous_phase: str | None = None,
+    resume_existing_phase: bool = False,
 ) -> str:
     context = TemplateContext.default(workspace_root)
     template_name = _template_name_for_phase(phase, pipeline_policy)
@@ -148,6 +152,7 @@ def _render_prompt_for_phase(  # noqa: PLR0913
             pipeline_policy=pipeline_policy,
             artifacts_policy=artifacts_policy,
             previous_phase=previous_phase,
+            resume_existing_phase=resume_existing_phase,
         )
         last_retry_error = _read_and_clear_retry_hint(workspace, phase)
         artifact_history_path = _resolve_planning_history_path(workspace_root)
@@ -379,10 +384,17 @@ def _resolve_required_plan_handoff(
     workspace: Workspace,
     *,
     template_name: str,
+    allow_draft_fallback: bool = False,
 ) -> tuple[str | None, str]:
     plan_content, plan_path = _resolve_plan_handoff(workspace)
     if plan_path:
         return plan_content, plan_path
+    if allow_draft_fallback and workspace.exists(PLAN_DRAFT_PATH):
+        with suppress(Exception):
+            parsed = cast("object", json.loads(workspace.read(PLAN_DRAFT_PATH)))
+            if isinstance(parsed, dict) and isinstance(parsed.get("sections"), dict):
+                sections = cast("dict[str, object]", parsed["sections"])
+                return _format_plan_for_execution(json.dumps(sections)), ""
     plan_handoff_path = handoff_path_for_artifact("plan") or ".agent/PLAN.md"
     msg = (
         f"Template '{template_name}' requires an existing plan handoff at "
@@ -391,16 +403,14 @@ def _resolve_required_plan_handoff(
     raise MissingPlanHandoffError(msg)
 
 
-def _prepare_planning_prompt_context(
+def _should_preserve_planning_context(
     *,
     phase: str,
     workspace: Workspace,
-    pipeline_policy: PipelinePolicy,
-    artifacts_policy: ArtifactsPolicy | None,
     previous_phase: str | None,
-) -> tuple[str | None, str, str, str, str]:
-    phase_def = pipeline_policy.phases.get(phase)
-    template_name = _template_name_for_phase(phase, pipeline_policy)
+    pipeline_policy: PipelinePolicy,
+    resume_existing_phase: bool,
+) -> bool:
     is_loopback = _is_analysis_loopback_into_phase(
         phase=phase,
         previous_phase=previous_phase,
@@ -408,10 +418,32 @@ def _prepare_planning_prompt_context(
     )
     has_retry_hint = bool(_read_optional(workspace, retry_hint_path(phase)))
     preserve_retry_context = previous_phase == phase and has_retry_hint
+    return is_loopback or preserve_retry_context or resume_existing_phase
+
+
+def _prepare_planning_prompt_context(  # noqa: PLR0913
+    *,
+    phase: str,
+    workspace: Workspace,
+    pipeline_policy: PipelinePolicy,
+    artifacts_policy: ArtifactsPolicy | None,
+    previous_phase: str | None,
+    resume_existing_phase: bool,
+) -> tuple[str | None, str, str, str, str]:
+    phase_def = pipeline_policy.phases.get(phase)
+    template_name = _template_name_for_phase(phase, pipeline_policy)
+    preserve_planning_context = _should_preserve_planning_context(
+        phase=phase,
+        workspace=workspace,
+        previous_phase=previous_phase,
+        pipeline_policy=pipeline_policy,
+        resume_existing_phase=resume_existing_phase,
+    )
     # Clear fresh planning context only for true fresh entry.
-    # Analysis loopbacks and same-phase recoverable retries must preserve
-    # the current plan + history so the planner can revise instead of restart.
-    if not is_loopback and not preserve_retry_context:
+    # Analysis loopbacks, same-phase recoverable retries, and resumed
+    # planning passes must preserve the current plan + history so the
+    # planner can revise instead of restart.
+    if not preserve_planning_context:
         _clear_fresh_planning_context(
             workspace,
             phase=phase,
@@ -429,6 +461,7 @@ def _prepare_planning_prompt_context(
         plan_content, plan_path = _resolve_required_plan_handoff(
             workspace,
             template_name=template_name,
+            allow_draft_fallback=resume_existing_phase,
         )
     return (
         plan_content,

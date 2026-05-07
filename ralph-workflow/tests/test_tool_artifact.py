@@ -1265,8 +1265,12 @@ def test_get_plan_draft_hydrates_from_existing_plan_artifact(tmp_path: Path) -> 
 
     result = handle_get_plan_draft(MockSession(), MockWorkspace(tmp_path), {})
 
-    payload = json.loads(cast("ToolContent", result.content[0]).text)
-    assert sorted(payload["staged_sections"]) == [
+    payload = cast("dict[str, object]", json.loads(cast("ToolContent", result.content[0]).text))
+    draft_payload = cast("dict[str, object]", payload["draft"])
+    draft_summary = cast("dict[str, object]", draft_payload["summary"])
+    plan_summary = cast("dict[str, object]", plan["summary"])
+    staged_sections = cast("list[str]", payload["staged_sections"])
+    assert sorted(staged_sections) == [
         "critical_files",
         "risks_mitigations",
         "steps",
@@ -1274,7 +1278,47 @@ def test_get_plan_draft_hydrates_from_existing_plan_artifact(tmp_path: Path) -> 
         "verification_strategy",
     ]
     assert payload["source"] == "finalized_plan"
-    assert payload["draft"]["summary"]["context"] == plan["summary"]["context"]
+    assert draft_summary["context"] == plan_summary["context"]
+
+
+
+def test_get_plan_draft_prefers_newer_finalized_plan_over_older_draft(tmp_path: Path) -> None:
+    plan = _full_plan_payload()
+    handle_submit_artifact(
+        MockSession(),
+        MockWorkspace(tmp_path),
+        {"artifact_type": "plan", "content": _content(plan)},
+    )
+    draft_path = tmp_path / ".agent" / "artifacts" / ".plan_draft.json"
+    draft_path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "started_at": "2026-01-01T00:00:00+00:00",
+                "updated_at": "2026-01-01T00:00:00+00:00",
+                "sections": {
+                    "summary": {
+                        "context": "Older stale draft.",
+                        "scope_items": [
+                            {"text": "one"},
+                            {"text": "two"},
+                            {"text": "three"},
+                        ],
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = handle_get_plan_draft(MockSession(), MockWorkspace(tmp_path), {})
+
+    payload = cast("dict[str, object]", json.loads(cast("ToolContent", result.content[0]).text))
+    draft_payload = cast("dict[str, object]", payload["draft"])
+    draft_summary = cast("dict[str, object]", draft_payload["summary"])
+    plan_summary = cast("dict[str, object]", plan["summary"])
+    assert payload["source"] == "finalized_plan"
+    assert draft_summary["context"] == plan_summary["context"]
 
 
 def test_discard_plan_draft_deletes_draft_file(tmp_path: Path) -> None:
@@ -1363,11 +1407,15 @@ def test_submit_plan_section_can_edit_existing_finalized_plan_without_resubmitti
     result = handle_finalize_plan(MockSession(), MockWorkspace(tmp_path), {})
 
     assert result.is_error is False
-    stored = json.loads(
-        (tmp_path / ".agent" / "artifacts" / "plan.json").read_text(encoding="utf-8")
+    stored = cast(
+        "dict[str, object]",
+        json.loads((tmp_path / ".agent" / "artifacts" / "plan.json").read_text(encoding="utf-8")),
     )
-    assert stored["content"]["summary"]["context"] == plan["summary"]["context"]
-    assert stored["content"]["verification_strategy"] == updated_verification
+    stored_content = cast("dict[str, object]", stored["content"])
+    stored_summary = cast("dict[str, object]", stored_content["summary"])
+    plan_summary = cast("dict[str, object]", plan["summary"])
+    assert stored_summary["context"] == plan_summary["context"]
+    assert stored_content["verification_strategy"] == updated_verification
 
 
 def test_submit_plan_section_can_edit_work_units_on_existing_finalized_plan(

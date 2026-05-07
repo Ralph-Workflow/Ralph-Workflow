@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from io import StringIO
 from typing import TYPE_CHECKING
+from unittest.mock import MagicMock
 
 from rich.console import Console
 from rich.text import Text
@@ -170,6 +171,29 @@ def test_run_pipeline_load_config_failure(monkeypatch: pytest.MonkeyPatch) -> No
     monkeypatch.setattr(run_module.logger, "error", capture_error)
     assert run_module.run_pipeline() == 1
     assert errors == ["Failed to load configuration: {}"]
+
+
+def test_run_pipeline_without_resume_ignores_existing_checkpoint(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _configure_workspace(monkeypatch, tmp_path)
+    checkpoint_state = PipelineState(phase="planning", checkpoint_saved_count=1)
+    monkeypatch.setattr(run_module, "load_config", lambda *args, **kwargs: _fake_config())
+    load_checkpoint = MagicMock(return_value=checkpoint_state)
+    monkeypatch.setattr(run_module.ckpt, "load", load_checkpoint)
+    seen: dict[str, object] = {}
+
+    def fake_run(*_args, **kwargs):
+        seen["initial_state"] = kwargs.get("initial_state")
+        return 0
+
+    monkeypatch.setattr(run_module, "_run_func", fake_run)
+
+    assert run_module.run_pipeline() == 0
+    load_checkpoint.assert_not_called()
+    assert seen["initial_state"] is None
+
 
 
 def test_run_pipeline_resume_without_checkpoint_prints_notice(

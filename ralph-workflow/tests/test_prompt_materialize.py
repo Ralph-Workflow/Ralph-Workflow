@@ -583,6 +583,124 @@ def test_materialize_planning_retry_preserves_current_plan_context_when_last_ret
 
 
 
+def test_materialize_resumed_planning_with_draft_only_uses_draft_context(
+    tmp_path: Path,
+) -> None:
+    policy = load_policy(tmp_path / ".agent")
+    workspace = MemoryWorkspace(root=str(tmp_path))
+    workspace.write("PROMPT.md", "Resume the interrupted planning pass")
+    workspace.write(
+        ".agent/artifacts/.plan_draft.json",
+        json.dumps(
+            {
+                "schema_version": 1,
+                "started_at": "2026-01-01T00:00:00+00:00",
+                "updated_at": "2026-01-01T00:00:01+00:00",
+                "sections": {
+                    "summary": {
+                        "context": "Resumed draft-only context.",
+                        "scope_items": [
+                            {"text": "one"},
+                            {"text": "two"},
+                            {"text": "three"},
+                        ],
+                    }
+                },
+            }
+        ),
+    )
+
+    prompt_path = materialize_prompt_for_phase(
+        phase="planning",
+        workspace=workspace,
+        pipeline_policy=policy.pipeline,
+        artifacts_policy=policy.artifacts,
+        session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.PLANNING),
+        workspace_root=tmp_path,
+        previous_phase=None,
+        resume_existing_phase=True,
+    )
+
+    rendered = workspace.read(prompt_path)
+    assert "PLANNING EDIT MODE" in rendered
+    assert "Resumed draft-only context." in rendered
+    assert workspace.exists(".agent/artifacts/.plan_draft.json") is True
+
+
+
+def test_materialize_resumed_planning_preserves_existing_plan_context(
+    tmp_path: Path,
+) -> None:
+    policy = load_policy(tmp_path / ".agent")
+    workspace = MemoryWorkspace(root=str(tmp_path))
+    workspace.write("PROMPT.md", "Resume the interrupted planning pass")
+    workspace.write(
+        ".agent/artifacts/plan.json",
+        json.dumps(
+            {
+                "type": "plan",
+                "content": {
+                    "summary": {
+                        "context": "Resumed plan context.",
+                        "scope_items": [
+                            {"text": "one"},
+                            {"text": "two"},
+                            {"text": "three"},
+                        ],
+                    },
+                    "steps": [{"number": 1, "title": "Resume", "content": "continue editing"}],
+                    "critical_files": {
+                        "primary_files": [{"path": "src/plan.py", "action": "modify"}],
+                    },
+                    "risks_mitigations": [{"risk": "drift", "mitigation": "preserve"}],
+                    "verification_strategy": [
+                        {"method": "pytest", "expected_outcome": "passes"}
+                    ],
+                },
+            }
+        ),
+    )
+    workspace.write(".agent/PLAN.md", "# Implementation Plan\n\nResumed plan context.\n")
+    workspace.write(
+        ".agent/artifacts/.plan_draft.json",
+        json.dumps(
+            {
+                "schema_version": 1,
+                "started_at": "2026-01-01T00:00:00+00:00",
+                "updated_at": "2026-01-01T00:00:01+00:00",
+                "sections": {
+                    "summary": {
+                        "context": "Resumed draft context.",
+                        "scope_items": [
+                            {"text": "one"},
+                            {"text": "two"},
+                            {"text": "three"},
+                        ],
+                    }
+                },
+            }
+        ),
+    )
+
+    prompt_path = materialize_prompt_for_phase(
+        phase="planning",
+        workspace=workspace,
+        pipeline_policy=policy.pipeline,
+        artifacts_policy=policy.artifacts,
+        session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.PLANNING),
+        workspace_root=tmp_path,
+        previous_phase=None,
+        resume_existing_phase=True,
+    )
+
+    rendered = workspace.read(prompt_path)
+    assert "PLANNING EDIT MODE" in rendered
+    assert workspace.exists(".agent/artifacts/plan.json") is True
+    assert workspace.exists(".agent/artifacts/.plan_draft.json") is True
+    assert workspace.exists(".agent/PLAN.md") is True
+
+
+
 def test_planning_retry_prompt_includes_artifact_history_path_when_history_exists(
     tmp_path: Path,
 ) -> None:
