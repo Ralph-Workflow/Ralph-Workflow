@@ -165,6 +165,32 @@ class AgentsPolicy(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reason:
 # ---------------------------------------------------------------------------
 
 
+class ArtifactHistoryPolicy(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+    """Per-phase artifact history policy.
+
+    When enabled, the runtime archives the previous canonical artifact and its
+    Markdown handoff into a stable history location before overwriting them.
+    The history is retained across re-planning loops so planning agents can
+    inspect prior failed plans and analysis decisions.
+
+    Attributes:
+        enabled: Whether to keep history for this phase's output artifact.
+        clear_on_fresh_entry: Whether a fresh (non-loopback) entry into this
+            phase clears old history before prompt materialization.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    enabled: bool = Field(
+        default=False,
+        description="Whether to archive prior artifact versions before overwrite",
+    )
+    clear_on_fresh_entry: bool = Field(
+        default=True,
+        description="Whether a fresh phase entry clears old history (not a loopback)",
+    )
+
+
 class PhaseRetryPolicy(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     """Per-phase retry policy overriding chain-level defaults.
 
@@ -555,6 +581,14 @@ class PhaseDefinition(_FrozenPolicyModel):  # type: ignore[explicit-any]  # reas
         description=(
             "Transition-scoped parallelization policy. When None, multi-work-unit plans "
             "must not fan out from this phase."
+        ),
+    )
+    artifact_history: ArtifactHistoryPolicy | None = Field(
+        default=None,
+        description=(
+            "Optional artifact history policy. When set with enabled=True, the runtime "
+            "archives the prior canonical artifact and Markdown handoff before overwrite. "
+            "Phases sharing the same drain must agree on artifact_history.enabled."
         ),
     )
     workflow_fallback: PhaseWorkflowFallback | None = Field(

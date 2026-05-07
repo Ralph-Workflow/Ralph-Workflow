@@ -10,6 +10,7 @@ import pytest
 
 from ralph.mcp.artifacts.commit_message import COMMIT_MESSAGE_TYPE
 from ralph.mcp.artifacts.handoffs import HANDOFF_PATHS
+from ralph.mcp.artifacts.history import history_dir_for_artifact
 from ralph.mcp.artifacts.plan import PLAN_ARTIFACT_TYPE
 from ralph.mcp.artifacts.typed_artifacts import (
     TypedArtifactValidationError,
@@ -527,3 +528,108 @@ class TestInvalidContentRollback:
         assert not artifact_file.exists(), (
             f"{artifact_type}: no artifact must remain on disk after validation failure"
         )
+
+
+class TestHistoryIntegrationInSubmitOps:
+    """Tests for artifact history archival integrated into _submit_ops_for_artifact."""
+
+    def _now_iso(self) -> str:
+        return "2026-05-06T12:00:00+00:00"
+
+    def test_history_disabled_does_not_prepend_extra_op(self, tmp_path: Path) -> None:
+        artifact_dir = tmp_path / ".agent" / "artifacts"
+        artifact_dir.mkdir(parents=True)
+        deps = ArtifactHandlerDeps(history_enabled=False)
+
+        ops = _submit_ops_for_artifact(
+            "development_analysis_decision",
+            tmp_path,
+            artifact_dir,
+            {"status": "completed", "summary": "done"},
+            deps=deps,
+        )
+
+        assert len(ops) == _GENERIC_OP_COUNT
+
+    def test_history_enabled_prepends_archive_op_to_plan(self, tmp_path: Path) -> None:
+        artifact_dir = tmp_path / ".agent" / "artifacts"
+        artifact_dir.mkdir(parents=True)
+        deps = ArtifactHandlerDeps(history_enabled=True)
+        content: dict[str, object] = {
+            "summary": {"context": "ctx", "scope_items": [{"text": "item"}]},
+            "steps": [{"number": 1, "title": "t", "content": "c"}],
+            "critical_files": {"primary_files": [], "reference_files": []},
+            "risks_mitigations": [],
+            "verification_strategy": [{"method": "m", "expected_outcome": "o"}],
+        }
+
+        ops = _submit_ops_for_artifact(
+            PLAN_ARTIFACT_TYPE,
+            tmp_path,
+            artifact_dir,
+            content,
+            deps=deps,
+        )
+
+        # history op prepended: history + main JSON + markdown + delete_draft
+        assert len(ops) == _PLAN_OP_COUNT + 1
+
+    def test_history_op_archives_existing_artifact(self, tmp_path: Path) -> None:
+        artifact_dir = tmp_path / ".agent" / "artifacts"
+        artifact_dir.mkdir(parents=True)
+        (artifact_dir / "plan.json").write_text('{"type":"plan","old":true}', encoding="utf-8")
+
+        deps = ArtifactHandlerDeps(now_iso=self._now_iso, history_enabled=True)
+        content: dict[str, object] = {
+            "summary": {"context": "ctx", "scope_items": [{"text": "item"}]},
+            "steps": [{"number": 1, "title": "t", "content": "c"}],
+            "critical_files": {"primary_files": [], "reference_files": []},
+            "risks_mitigations": [],
+            "verification_strategy": [{"method": "m", "expected_outcome": "o"}],
+        }
+
+        ops = _submit_ops_for_artifact(
+            PLAN_ARTIFACT_TYPE,
+            tmp_path,
+            artifact_dir,
+            content,
+            deps=deps,
+        )
+
+        # Run just the history archive op (first op)
+        ops[0].run()
+
+        hist_dir = history_dir_for_artifact(artifact_dir, PLAN_ARTIFACT_TYPE)
+        json_archives = list(hist_dir.glob("*.json"))
+        assert len(json_archives) == 1
+        assert "old" in json_archives[0].read_text(encoding="utf-8")
+
+    def test_history_undo_removes_archived_files(self, tmp_path: Path) -> None:
+        artifact_dir = tmp_path / ".agent" / "artifacts"
+        artifact_dir.mkdir(parents=True)
+        (artifact_dir / "plan.json").write_text('{"type":"plan"}', encoding="utf-8")
+
+        deps = ArtifactHandlerDeps(now_iso=self._now_iso, history_enabled=True)
+        content: dict[str, object] = {
+            "summary": {"context": "ctx", "scope_items": [{"text": "item"}]},
+            "steps": [{"number": 1, "title": "t", "content": "c"}],
+            "critical_files": {"primary_files": [], "reference_files": []},
+            "risks_mitigations": [],
+            "verification_strategy": [{"method": "m", "expected_outcome": "o"}],
+        }
+
+        ops = _submit_ops_for_artifact(
+            PLAN_ARTIFACT_TYPE,
+            tmp_path,
+            artifact_dir,
+            content,
+            deps=deps,
+        )
+
+        # Run then undo the history archive op
+        ops[0].run()
+        ops[0].undo()
+
+        hist_dir = history_dir_for_artifact(artifact_dir, PLAN_ARTIFACT_TYPE)
+        json_archives = list(hist_dir.glob("*.json"))
+        assert json_archives == [], "archived files must be removed after undo"

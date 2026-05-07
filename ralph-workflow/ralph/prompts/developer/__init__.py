@@ -37,6 +37,7 @@ class PlanningPromptInputs:
     analysis_feedback_content: str | None = None
     plan_path: str = ""
     analysis_feedback_path: str = ""
+    artifact_history_path: str = ""
     last_retry_error: str = ""
 
 
@@ -162,6 +163,7 @@ def prompt_planning_xml_with_context(
                 "ANALYSIS_FEEDBACK_PATH": inputs.analysis_feedback_path,
             }
         )
+    base_vars["ARTIFACT_HISTORY_PATH"] = inputs.artifact_history_path
 
     capability_vars = capability_template_variables(
         session_caps.capabilities,
@@ -179,26 +181,28 @@ def prompt_planning_xml_with_context(
             if template_name == "planning_edit.jinja"
             else "planning_fallback.jinja"
         )
+        fallback_vars: dict[str, str] = {
+            **capability_vars,
+            "PROMPT": inputs.prompt_content or "No requirements provided",
+            "PLAN": inputs.plan_content or "(no plan available)",
+            "ANALYSIS_FEEDBACK": inputs.analysis_feedback_content or "",
+            "PROMPT_PATH": workspace.absolute_path(".agent/CURRENT_PROMPT.md"),
+            "PLAN_PATH": inputs.plan_path
+            or str(
+                Path(workspace.absolute_path(".agent/tmp/prompt_payloads"))
+                / "planning_plan.txt"
+            ),
+            "ANALYSIS_FEEDBACK_PATH": inputs.analysis_feedback_path
+            or str(
+                Path(workspace.absolute_path(".agent/tmp/prompt_payloads"))
+                / "planning_analysis_feedback.txt"
+            ),
+        }
+        fallback_vars["ARTIFACT_HISTORY_PATH"] = inputs.artifact_history_path
         return _render_static_fallback(
             context,
             fallback_template,
-            {
-                **capability_vars,
-                "PROMPT": inputs.prompt_content or "No requirements provided",
-                "PLAN": inputs.plan_content or "(no plan available)",
-                "ANALYSIS_FEEDBACK": inputs.analysis_feedback_content or "",
-                "PROMPT_PATH": workspace.absolute_path(".agent/CURRENT_PROMPT.md"),
-                "PLAN_PATH": inputs.plan_path
-                or str(
-                    Path(workspace.absolute_path(".agent/tmp/prompt_payloads"))
-                    / "planning_plan.txt"
-                ),
-                "ANALYSIS_FEEDBACK_PATH": inputs.analysis_feedback_path
-                or str(
-                    Path(workspace.absolute_path(".agent/tmp/prompt_payloads"))
-                    / "planning_analysis_feedback.txt"
-                ),
-            },
+            fallback_vars,
         )
 
 

@@ -26,6 +26,10 @@ from ralph.mcp.artifacts.format_docs import (
     materialize_format_index,
 )
 from ralph.mcp.artifacts.handoffs import delete_markdown_handoff, sync_markdown_handoff
+from ralph.mcp.artifacts.history import (
+    archive_artifact_before_overwrite,
+    rebuild_history_index,
+)
 from ralph.mcp.artifacts.plan import (
     PLAN_ARTIFACT_TYPE,
     PLAN_SECTION_NAMES,
@@ -63,6 +67,7 @@ from ralph.mcp.tools.coordination import (
     WorkspaceLike,
     require_capability,
 )
+from ralph.policy.loader import load_policy
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -115,6 +120,7 @@ def _noop_now_iso() -> str:
 class ArtifactHandlerDeps:
     backend: FileBackend = DEFAULT_FILE_BACKEND
     now_iso: Callable[[], str] = _noop_now_iso
+    history_enabled: bool = False
 
     @property
     def artifact_persistence(self) -> ArtifactPersistence:
@@ -143,6 +149,32 @@ def _resolve_artifact_dir(
     return _artifact_dir(workspace)
 
 
+def _resolve_history_enabled(
+    artifact_type: str,
+    workspace_root: Path,
+    drain: str | None,
+) -> bool:
+    """Check whether artifact history is enabled for the given drain.
+
+    Loads the active policy bundle from workspace_root / '.agent' and inspects
+    the artifact_history.enabled flag on phases matching the drain. Returns False
+    on any load or validation error so history is always opt-in.
+    """
+    try:
+        bundle = load_policy(workspace_root / ".agent")
+        for phase_def in bundle.pipeline.phases.values():
+            if drain is not None and phase_def.drain != drain:
+                continue
+            if (
+                phase_def.artifact_history is not None
+                and phase_def.artifact_history.enabled
+            ):
+                return True
+    except Exception:  # policy load errors must not surface to agents
+        pass
+    return False
+
+
 def handle_submit_artifact(
     session: CoordinationSessionLike,
     workspace: WorkspaceLike,
@@ -152,21 +184,29 @@ def handle_submit_artifact(
 ) -> ToolResult:
     require_capability(session, ARTIFACT_SUBMIT_CAPABILITY, "Artifact submission")
     resolved_deps = deps or DEFAULT_ARTIFACT_HANDLER_DEPS
+    drain = _session_drain(session)
+    workspace_root = _workspace_root(workspace)
     artifact_type, parsed_content = _prepare_artifact_submission(
         params,
-        session_drain=_session_drain(session),
-        base_path=_workspace_root(workspace),
+        session_drain=drain,
+        base_path=workspace_root,
         backend=resolved_deps.backend,
     )
 
     artifact_dir = _resolve_artifact_dir(session, workspace)
+    history_enabled = _resolve_history_enabled(artifact_type, workspace_root, drain)
+    effective_deps = ArtifactHandlerDeps(
+        backend=resolved_deps.backend,
+        now_iso=resolved_deps.now_iso,
+        history_enabled=history_enabled,
+    )
     _execute_ops_with_rollback(
         _submit_ops_for_artifact(
             artifact_type,
-            _workspace_root(workspace),
+            workspace_root,
             artifact_dir,
             parsed_content,
-            deps=resolved_deps,
+            deps=effective_deps,
         )
     )
 
@@ -258,13 +298,21 @@ def handle_finalize_plan(
     # Keep the structured JSON artifact for Ralph's validation/routing, but
     # always mirror agent/user-consumed artifacts into Markdown handoffs so
     # downstream phases never need to read raw JSON directly.
+    workspace_root = _workspace_root(workspace)
+    drain = _session_drain(session)
+    history_enabled = _resolve_history_enabled(PLAN_ARTIFACT_TYPE, workspace_root, drain)
+    effective_deps = ArtifactHandlerDeps(
+        backend=resolved_deps.backend,
+        now_iso=resolved_deps.now_iso,
+        history_enabled=history_enabled,
+    )
     _execute_ops_with_rollback(
         _submit_ops_for_artifact(
             PLAN_ARTIFACT_TYPE,
-            _workspace_root(workspace),
+            workspace_root,
             artifact_dir,
             normalized,
-            deps=resolved_deps,
+            deps=effective_deps,
         )
     )
 
@@ -771,6 +819,30 @@ def _submit_ops_for_artifact(
     """Return the ordered (op, undo) pairs for a complete artifact submit."""
     ops: list[_SubmitOp] = []
 
+    # History archival must come first so we capture the current canonical
+    # artifact before any of the overwrite ops run. If a later op fails,
+    # the undo rolls back the archive entry to keep history consistent.
+    if deps.history_enabled:
+        _archived_paths: list[Path] = []
+        _at_hist = artifact_type
+        _wr = workspace_root
+        _ad = artifact_dir
+
+        def _run_history_archive() -> None:
+            paths = archive_artifact_before_overwrite(
+                _ad, _wr, _at_hist,
+                backend=deps.backend,
+                now_iso=deps.now_iso,
+            )
+            _archived_paths.extend(paths)
+
+        def _undo_history_archive() -> None:
+            for path in _archived_paths:
+                deps.backend.unlink(path, missing_ok=True)
+            rebuild_history_index(_ad, _at_hist, backend=deps.backend)
+
+        ops.append(_SubmitOp(run=_run_history_archive, undo=_undo_history_archive))
+
     if artifact_type == COMMIT_MESSAGE_TYPE:
         _content = parsed_content
         ops.append(_SubmitOp(
@@ -818,6 +890,7 @@ __all__ = [
     "_SubmitOp",
     "_execute_ops_with_rollback",
     "_prepare_artifact_submission",
+    "_resolve_history_enabled",
     "_submit_ops_for_artifact",
     "handle_discard_plan_draft",
     "handle_finalize_plan",

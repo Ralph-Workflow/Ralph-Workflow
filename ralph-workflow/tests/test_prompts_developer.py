@@ -352,3 +352,38 @@ def test_default_artifacts_policy_uses_plan_artifact_type() -> None:
 
     assert 'artifact_type = "plan"' in content
     assert 'artifact_type = "planning_json"' not in content
+
+
+def test_planning_prompt_with_artifact_history_path_shows_history_section(tmp_path: Path) -> None:
+    context = TemplateContext.default()
+    workspace = MemoryWorkspace(root=str(tmp_path))
+    session_caps = SessionCapabilities.defaults_for_drain(SessionDrain.PLANNING)
+    history_path = str(tmp_path / ".agent" / "artifacts" / "history" / "plan" / "index.md")
+
+    prompt = prompt_planning_xml_with_context(
+        context=context,
+        inputs=PlanningPromptInputs(
+            prompt_content="Plan the feature",
+            artifact_history_path=history_path,
+        ),
+        workspace=workspace,
+        session_caps=session_caps,
+    )
+
+    assert "ARTIFACT HISTORY" in prompt
+    assert history_path in prompt
+
+
+def test_planning_prompt_without_history_path_omits_history_section(tmp_path: Path) -> None:
+    context = TemplateContext.default()
+    workspace = MemoryWorkspace(root=str(tmp_path))
+    session_caps = SessionCapabilities.defaults_for_drain(SessionDrain.PLANNING)
+
+    prompt = prompt_planning_xml_with_context(
+        context=context,
+        inputs=PlanningPromptInputs(prompt_content="Plan the feature"),
+        workspace=workspace,
+        session_caps=session_caps,
+    )
+
+    assert "ARTIFACT HISTORY" not in prompt

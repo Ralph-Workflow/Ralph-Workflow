@@ -30,3 +30,5 @@ def test_resolve_fix_result_content_returns_placeholder_when_missing(tmp_path: P
     content, path = _resolve_fix_result_content(workspace)
     assert content == "(no fix result available)"
     assert path == ""
+
+
