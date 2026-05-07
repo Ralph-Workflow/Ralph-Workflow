@@ -9,7 +9,7 @@ from datetime import timedelta
 import pytest
 
 from ralph.mcp.server import lifecycle
-from ralph.process.mcp_supervisor import McpSupervisor
+from ralph.process.mcp_supervisor import _DEFAULT_INTERVAL, McpSupervisor
 
 
 class FakeProcess:
@@ -166,3 +166,16 @@ def test_supervisor_mid_run_restart_preserves_endpoint() -> None:
     assert bridge.restart_count == 1
     # Endpoint unchanged — agent's MCP_ENDPOINT_ENV value remains valid
     assert bridge.agent_endpoint_uri() == initial_endpoint
+
+
+def test_supervisor_uses_configured_check_interval() -> None:
+    """McpSupervisor stores and exposes the interval it was constructed with."""
+    bridge, _ = _make_bridge_with_process()
+    custom_interval = timedelta(milliseconds=350)
+    supervisor = McpSupervisor(bridge, check_interval=custom_interval)
+    assert supervisor._check_interval == custom_interval
+
+
+def test_supervisor_default_interval_equals_two_seconds() -> None:
+    """The module-level _DEFAULT_INTERVAL constant is still 2 s for explicit construction."""
+    assert timedelta(seconds=2) == _DEFAULT_INTERVAL

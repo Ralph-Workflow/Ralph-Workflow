@@ -715,9 +715,16 @@ def _configure_stream_timeouts(sock: socket.socket, io_timeout: timedelta) -> No
 
 def heartbeat_policy_from_env(env: Mapping[str, str] | None = None) -> HeartbeatPolicy:
     """Return the configured MCP supervision check interval."""
+    default_ms = 2000
     env_map = os.environ if env is None else env
-    interval = int(env_map.get(MCP_SUPERVISION_INTERVAL_MS_ENV, "2000"))
-    return HeartbeatPolicy(interval=timedelta(milliseconds=max(100, interval)))
+    raw = env_map.get(MCP_SUPERVISION_INTERVAL_MS_ENV)
+    if raw is None:
+        return HeartbeatPolicy(interval=timedelta(milliseconds=default_ms))
+    try:
+        parsed = int(raw)
+    except ValueError:
+        return HeartbeatPolicy(interval=timedelta(milliseconds=default_ms))
+    return HeartbeatPolicy(interval=timedelta(milliseconds=max(100, parsed)))
 
 
 def access_mode_for_drain(

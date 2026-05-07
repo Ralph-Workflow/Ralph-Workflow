@@ -101,3 +101,8 @@ ProcessManager remains the **only** process spawner and terminator; the bridge
 consumes the manager's APIs and never holds raw `Popen` handles outside them.
 Listeners registered via `ProcessManager.register_listener` receive events for
 MCP server spawns and terminations the same as for any other child process.
+
+When at least one restart occurs, the count is forwarded to
+`PipelineSubscriber.record_mcp_restart()` and surfaced as `mcp_restarts: <n>`
+in the run-end debug output. Active labeled processes from `list_active()` are
+likewise rendered as `active_processes:` when non-empty.

@@ -10,7 +10,8 @@ from pydantic import ValidationError
 from ralph.config.models import AgentConfig, GeneralConfig, UnifiedConfig
 from ralph.display.context import make_display_context
 from ralph.mcp.protocol.env import AGENT_LABEL_SCOPE_ENV, MCP_RUN_ID_ENV
-from ralph.mcp.server.lifecycle import McpServerError
+from ralph.mcp.protocol.startup import HeartbeatPolicy
+from ralph.mcp.server.lifecycle import McpServerError, RestartAwareMcpBridge
 from ralph.pipeline import runner as runner_module
 from ralph.pipeline.effects import InvokeAgentEffect
 from ralph.pipeline.events import PipelineEvent
@@ -634,4 +635,71 @@ def test_record_mcp_restart_forwarded_to_subscriber(
 
     assert recorded == [1], (
         f"expected record_mcp_restart([1]); got {recorded}"
+    )
+
+
+def test_supervision_interval_from_env_flows_to_mcp_supervisor(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """_execute_agent_effect passes heartbeat_policy_from_env().interval to McpSupervisor."""
+    from datetime import timedelta  # noqa: PLC0415
+
+    from ralph.process.mcp_supervisor import McpSupervisor  # noqa: PLC0415
+
+    config = _make_config_with_watchdog()
+    effect = InvokeAgentEffect(agent_name="dev", phase="development", prompt_file="dev.md")
+
+    custom_interval = timedelta(milliseconds=750)
+    captured_intervals: list[timedelta] = []
+
+    original_init = McpSupervisor.__init__
+
+    from collections.abc import Callable  # noqa: PLC0415, TC003
+
+    def patched_init(
+        self: McpSupervisor,
+        bridge: RestartAwareMcpBridge,
+        *,
+        check_interval: timedelta = timedelta(seconds=2),
+        on_restart: Callable[[int], None] | None = None,
+    ) -> None:
+        captured_intervals.append(check_interval)
+        original_init(self, bridge, check_interval=check_interval, on_restart=on_restart)
+
+    monkeypatch.setattr(McpSupervisor, "__init__", patched_init)
+    monkeypatch.setattr(
+        runner_module,
+        "heartbeat_policy_from_env",
+        lambda: HeartbeatPolicy(interval=custom_interval),
+    )
+
+    class FakeBridge:
+        def shutdown(self) -> None:
+            return
+
+        def agent_endpoint_uri(self) -> str:
+            return "http://127.0.0.1:9999/mcp"
+
+    monkeypatch.setattr(
+        runner_module, "start_mcp_server", lambda *_a, **_kw: FakeBridge()
+    )
+    monkeypatch.setattr(runner_module, "shutdown_mcp_server", lambda _b: None)
+    monkeypatch.setattr(
+        runner_module,
+        "materialize_system_prompt",
+        lambda *, workspace_root, name: str(tmp_path / "SYSTEM_PROMPT.md"),
+    )
+
+    deps = runner_module._AgentExecutionDeps(
+        invoke_agent=lambda *_a, **_kw: [],
+        agent_invocation_error=RuntimeError,
+        agent_registry=_registry_factory(config),
+    )
+    runner_module._execute_agent_effect(
+        effect, config, deps, WorkspaceScope(tmp_path), display_context=make_display_context()
+    )
+
+    assert captured_intervals, "McpSupervisor was not constructed"
+    assert captured_intervals[0] == custom_interval, (
+        f"expected {custom_interval}, got {captured_intervals[0]}"
     )

@@ -102,6 +102,9 @@ Key guarantees:
 - The bridge endpoint URI is **stable for the full bridge lifetime** — the port is reserved once
   and reused on every respawn; `bridge.agent_endpoint_uri()` never changes after the bridge starts.
 - `check_mcp_bridge_health(bridge)` is a safe no-op on any non-`RestartAwareMcpBridge` object.
+- When at least one restart occurs, the count is forwarded to `PipelineSubscriber.record_mcp_restart()`
+  and surfaced as `mcp_restarts: <n>` in the run-end debug output. Active process labels from
+  `ProcessManager.list_active()` are likewise included as `active_processes:` when non-empty.
 
 **Canonical import path:** `from ralph.mcp.server import ...` or `from ralph.mcp.server.<module> import ...`
 

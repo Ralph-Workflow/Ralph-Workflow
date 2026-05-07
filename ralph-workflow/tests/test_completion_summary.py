@@ -630,3 +630,41 @@ def test_completion_summary_debug_section_omits_mcp_restart_count_when_zero() ->
     emit_completion_summary(snap, display_context=ctx)
     out = console.export_text()
     assert "mcp_restarts:" not in out
+
+
+def test_completion_summary_debug_section_shows_active_process_labels() -> None:
+    """Debug section surfaces active_process_labels when non-empty."""
+    snap = PipelineSnapshot(
+        phase="complete",
+        previous_phase=None,
+        review_issues_found=False,
+        interrupted_by_user=False,
+        last_error=None,
+        pr_url=None,
+        push_count=0,
+        total_agent_calls=1,
+        total_continuations=0,
+        total_fallbacks=0,
+        total_retries=0,
+        workers=(),
+        prompt_path="PROMPT.md",
+        prompt_preview=(),
+        run_id="run-proc",
+        created_at=datetime(2026, 4, 18, 12, 0, tzinfo=UTC),
+        active_process_labels=("phase:development:mcp-server", "invoke:dev-agent"),
+    )
+    console = Console(record=True, width=120, force_terminal=False, color_system=None)
+    ctx = make_display_context(console=console)
+    emit_completion_summary(snap, display_context=ctx)
+    out = console.export_text()
+    assert "active_processes: phase:development:mcp-server, invoke:dev-agent" in out
+
+
+def test_completion_summary_debug_section_omits_active_process_labels_when_empty() -> None:
+    """Debug section omits active_processes line when no labels are set."""
+    snap = _make_snapshot_with_debug()
+    console = Console(record=True, width=120, force_terminal=False, color_system=None)
+    ctx = make_display_context(console=console)
+    emit_completion_summary(snap, display_context=ctx)
+    out = console.export_text()
+    assert "active_processes:" not in out
