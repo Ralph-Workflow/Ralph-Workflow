@@ -85,7 +85,7 @@ def test_mcp_server_package_import_is_lazy_when_mcp_dependency_missing(
         "ralph.mcp.server.runtime",
         "ralph.mcp.server.lifecycle",
     ):
-        sys.modules.pop(module_name, None)
+        monkeypatch.delitem(sys.modules, module_name, raising=False)
 
     module = importlib.import_module("ralph.mcp.server")
 

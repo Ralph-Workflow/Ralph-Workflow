@@ -61,7 +61,22 @@ The function routes to phase-specific rendering logic internally based on the `p
 | `ralph.prompts.types` | Shared type definitions |
 | `ralph.prompts.debug_dump` | Debug helper that dumps rendered prompts to disk |
 
+## Planning prompt variables
+
+Planning prompts receive a set of template variables assembled by `ralph.prompts.materialize`. Key variables:
+
+| Variable | Source | Description |
+|---|---|---|
+| `PLAN_MD` | `.agent/PLAN.md` | Full text of the current plan (loopback / edit paths only) |
+| `ANALYSIS_FEEDBACK` | `.agent/PLANNING_ANALYSIS_DECISION.md` | Feedback from the latest planning-analysis decision (edit paths only) |
+| `ARTIFACT_HISTORY_PATH` | `.agent/artifacts/history/plan/index.md` | Absolute path to the artifact history index, or empty string when no history exists |
+
+When `ARTIFACT_HISTORY_PATH` is non-empty, planning templates render an **ARTIFACT HISTORY** section that points agents to the archive so they can review past plans and avoid repeating already-rejected approaches. When no history exists (first iteration or after `clear_on_fresh_entry` wipes it) the section is omitted entirely.
+
+See {doc}`artifacts` for how artifact history archival and clearing works.
+
 ## Related pages
 
 - {doc}`concepts` — phase and drain concepts
+- {doc}`artifacts` — artifact history archival and policy
 - {py:mod}`ralph.prompts` — full API reference
