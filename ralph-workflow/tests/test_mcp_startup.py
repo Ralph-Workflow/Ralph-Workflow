@@ -23,7 +23,6 @@ from ralph.policy.models import AgentChainConfig, AgentDrainConfig, AgentsPolicy
 if TYPE_CHECKING:
     import socket
 
-EXPECTED_HEARTBEAT_MISSES = 4
 EXPECTED_PREFLIGHT_ATTEMPTS = 2
 
 
@@ -202,16 +201,10 @@ def test_mcp_preflight_timeout_from_mapping_is_injectable() -> None:
 
 def test_heartbeat_policy_from_mapping_is_injectable() -> None:
     policy = startup.heartbeat_policy_from_env(
-        {
-            "RALPH_MCP_HEARTBEAT_INTERVAL_MS": "1500",
-            "RALPH_MCP_HEARTBEAT_MISSES": "4",
-            "RALPH_MCP_HEARTBEAT_RECONNECT_MS": "9000",
-        }
+        {"RALPH_MCP_SUPERVISION_INTERVAL_MS": "1500"}
     )
 
     assert policy.interval == datetime.timedelta(milliseconds=1500)
-    assert policy.misses == EXPECTED_HEARTBEAT_MISSES
-    assert policy.reconnect_interval == datetime.timedelta(milliseconds=9000)
 
 
 def test_run_preflight_loop_accepts_injected_clock_and_sleep() -> None:

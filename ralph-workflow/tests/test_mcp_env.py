@@ -9,9 +9,7 @@ def test_mcp_env_constants_are_stable() -> None:
     assert mcp_env.MCP_SESSION_ENV == "RALPH_MCP_SESSION_JSON"
     assert mcp_env.MCP_SESSION_FILE_ENV == "RALPH_MCP_SESSION_FILE"
     assert mcp_env.MCP_PREFLIGHT_TIMEOUT_MS_ENV == "RALPH_MCP_PREFLIGHT_TIMEOUT_MS"
-    assert mcp_env.MCP_HEARTBEAT_INTERVAL_MS_ENV == "RALPH_MCP_HEARTBEAT_INTERVAL_MS"
-    assert mcp_env.MCP_HEARTBEAT_MISSES_ENV == "RALPH_MCP_HEARTBEAT_MISSES"
-    assert mcp_env.MCP_HEARTBEAT_RECONNECT_MS_ENV == "RALPH_MCP_HEARTBEAT_RECONNECT_MS"
+    assert mcp_env.MCP_SUPERVISION_INTERVAL_MS_ENV == "RALPH_MCP_SUPERVISION_INTERVAL_MS"
 
 
 def test_mcp_env_uses_string_enum_for_internal_typing() -> None:

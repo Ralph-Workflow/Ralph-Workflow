@@ -1357,6 +1357,12 @@ ralph.process.manager
 .. automodule:: ralph.process.manager
    :no-members:
 
+ralph.process.mcp_supervisor
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.process.mcp_supervisor
+   :no-members:
+
 ----
 
 API / Cloud

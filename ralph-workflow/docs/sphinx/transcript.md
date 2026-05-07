@@ -267,6 +267,18 @@ The format adapts to the display mode:
 with an error.  `dev_cycle=N` appears only when at least one outer development cycle
 has been completed (i.e., at least one commit was made during the run).
 
+When the MCP server crashed and was automatically restarted at least once during the
+run, an additional diagnostic line is appended to the `[run-end]` block:
+
+```
+<ISO-TS> INFO     META [run-end] mcp_restarts: N
+```
+
+This count is emitted by `PipelineSubscriber.record_mcp_restart()` every time
+`McpSupervisor` detects an unexpected MCP server exit and successfully restarts it.
+The count accumulates across all retry attempts in the run; if it equals
+`McpRestartPolicy.max_restarts` (default 3), the run ended with `McpServerError`.
+
 The `exit` field reports **why** the run ended:
 
 | `exit_trigger` | Meaning |

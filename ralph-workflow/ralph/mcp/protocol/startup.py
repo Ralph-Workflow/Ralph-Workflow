@@ -17,10 +17,8 @@ import httpx
 
 from ralph.mcp.protocol.capability_mapping import AccessMode, drain_to_access_mode
 from ralph.mcp.protocol.env import (
-    MCP_HEARTBEAT_INTERVAL_MS_ENV,
-    MCP_HEARTBEAT_MISSES_ENV,
-    MCP_HEARTBEAT_RECONNECT_MS_ENV,
     MCP_PREFLIGHT_TIMEOUT_MS_ENV,
+    MCP_SUPERVISION_INTERVAL_MS_ENV,
 )
 from ralph.mcp.tools.bridge import build_ralph_tool_registry
 from ralph.workspace import Workspace
@@ -144,11 +142,9 @@ class SessionBridgeError(Exception):
 
 @dataclass(frozen=True)
 class HeartbeatPolicy:
-    """Configuration for heartbeat enforcement."""
+    """Supervision interval configuration for active MCP health monitoring."""
 
     interval: timedelta
-    misses: int
-    reconnect_interval: timedelta
 
 
 class PreflightError(Exception):
@@ -718,15 +714,10 @@ def _configure_stream_timeouts(sock: socket.socket, io_timeout: timedelta) -> No
 
 
 def heartbeat_policy_from_env(env: Mapping[str, str] | None = None) -> HeartbeatPolicy:
+    """Return the configured MCP supervision check interval."""
     env_map = os.environ if env is None else env
-    interval = int(env_map.get(MCP_HEARTBEAT_INTERVAL_MS_ENV, "2000"))
-    misses = max(1, int(env_map.get(MCP_HEARTBEAT_MISSES_ENV, "3")))
-    reconnect = int(env_map.get(MCP_HEARTBEAT_RECONNECT_MS_ENV, "10000"))
-    return HeartbeatPolicy(
-        interval=timedelta(milliseconds=interval),
-        misses=misses,
-        reconnect_interval=timedelta(milliseconds=reconnect),
-    )
+    interval = int(env_map.get(MCP_SUPERVISION_INTERVAL_MS_ENV, "2000"))
+    return HeartbeatPolicy(interval=timedelta(milliseconds=max(100, interval)))
 
 
 def access_mode_for_drain(

@@ -85,11 +85,17 @@ scenarios — always prefer explicit `shutdown_all` or `process_phase_scope`.
 The MCP server is a subprocess managed by ProcessManager like any other child.
 Restart logic lives in `ralph.mcp.server.lifecycle.RestartAwareMcpBridge`, which:
 
-1. Checks `process.poll()` before each agent attempt to detect unexpected exits.
-2. On exit, calls `ProcessManager.terminate()` on the stale process, then spawns a
-   new one via `ProcessManager.spawn()` with fresh preflight validation.
+1. Reserves one localhost port at bridge creation time and reuses it on every restart
+   so `MCP_ENDPOINT_ENV` remains constant for running agents.
+2. On unexpected exit, calls `ProcessManager.terminate()` on the stale process, then
+   spawns a new one via `ProcessManager.spawn()` with fresh preflight validation.
 3. Tracks a bounded restart budget (`McpRestartPolicy.max_restarts = 3` by default)
    and raises `McpServerError` once exhausted so the pipeline gets a crisp failure.
+
+`ralph.process.mcp_supervisor.McpSupervisor` wraps an active attempt and polls
+`check_mcp_bridge_health(bridge)` every 2 s (configurable via
+`MCP_SUPERVISION_INTERVAL_MS`) in a background thread. This surfaces a crash-and-restart
+within seconds rather than waiting for the next MCP request to time out.
 
 ProcessManager remains the **only** process spawner and terminator; the bridge
 consumes the manager's APIs and never holds raw `Popen` handles outside them.

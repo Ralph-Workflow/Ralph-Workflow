@@ -8,6 +8,7 @@ import socket
 import subprocess
 import sys
 import tempfile
+import threading
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import timedelta
@@ -116,6 +117,12 @@ class RestartAwareMcpBridge:
     Bounded restart budget prevents unbounded retry loops. All process
     spawning continues to flow through ProcessManager via the injected
     LifecycleDeps so ProcessManager remains the single process authority.
+
+    The endpoint URI is stable for the full bridge lifetime: the same host/port
+    is reused on every restart so agents never see a changed MCP_ENDPOINT_ENV.
+    Thread-safe: a lock guards all inner-process mutations so the background
+    McpSupervisor can safely call check_health_and_restart_if_needed() while
+    the main thread is executing agent output streaming.
     """
 
     def __init__(
@@ -129,6 +136,7 @@ class RestartAwareMcpBridge:
         self._restart_fn = restart_fn
         self._restart_policy = restart_policy
         self._restart_count = 0
+        self._lock = threading.Lock()
 
     @property
     def restart_count(self) -> int:
@@ -151,31 +159,33 @@ class RestartAwareMcpBridge:
 
         Returns True when a restart was performed.
         Raises McpServerError when the restart budget is exhausted.
+        Thread-safe: may be called from a background McpSupervisor thread.
         """
-        if self._inner.process.poll() is None:
-            return False
+        with self._lock:
+            if self._inner.process.poll() is None:
+                return False
 
-        if self._restart_count >= self._restart_policy.max_restarts:
-            raise McpServerError(
-                f"MCP server exited and restart budget ({self._restart_policy.max_restarts})"
-                f" exhausted after {self._restart_count} restart(s)",
-                restart_count=self._restart_count,
+            if self._restart_count >= self._restart_policy.max_restarts:
+                raise McpServerError(
+                    f"MCP server exited and restart budget ({self._restart_policy.max_restarts})"
+                    f" exhausted after {self._restart_count} restart(s)",
+                    restart_count=self._restart_count,
+                )
+
+            logger.warning(
+                "MCP server process exited unexpectedly; restarting ({}/{})",
+                self._restart_count + 1,
+                self._restart_policy.max_restarts,
             )
-
-        logger.warning(
-            "MCP server process exited unexpectedly; restarting ({}/{})",
-            self._restart_count + 1,
-            self._restart_policy.max_restarts,
-        )
-        self._inner.shutdown()
-        self._inner = self._restart_fn()
-        self._restart_count += 1
-        logger.info(
-            "MCP server restarted successfully; endpoint={}; restart_count={}",
-            self._inner.endpoint,
-            self._restart_count,
-        )
-        return True
+            self._inner.shutdown()
+            self._inner = self._restart_fn()
+            self._restart_count += 1
+            logger.info(
+                "MCP server restarted on stable endpoint {}; restart_count={}",
+                self._inner.endpoint,
+                self._restart_count,
+            )
+            return True
 
 
 def check_mcp_bridge_health(bridge: SessionBridgeLike) -> None:
@@ -209,10 +219,18 @@ def start_mcp_server(  # noqa: PLR0913
         session, workspace, upstream_registry=upstream_registry
     )
 
-    inner = _spawn_mcp_process(root, session, lifecycle_deps, phase, extra_env, visible_tools)
+    # Reserve the port once so the endpoint stays stable across all restarts.
+    # The same port is reused by every _restart_fn() call so agents never see a
+    # changed MCP_ENDPOINT_ENV value after a mid-run crash and restart.
+    port = lifecycle_deps.reserve_port()
+    inner = _spawn_mcp_process(
+        root, session, lifecycle_deps, phase, extra_env, visible_tools, port=port
+    )
 
     def _restart_fn() -> StandaloneMcpProcess:
-        return _spawn_mcp_process(root, session, lifecycle_deps, phase, extra_env, visible_tools)
+        return _spawn_mcp_process(
+            root, session, lifecycle_deps, phase, extra_env, visible_tools, port=port
+        )
 
     return RestartAwareMcpBridge(
         inner,
@@ -228,9 +246,10 @@ def _spawn_mcp_process(  # noqa: PLR0913
     phase: str | None,
     extra_env: dict[str, str] | None,
     visible_tools: list[str],
+    *,
+    port: int,
 ) -> StandaloneMcpProcess:
     """Spawn a fresh MCP server process and run preflight validation."""
-    port = deps.reserve_port()
     endpoint = f"http://127.0.0.1:{port}/mcp"
     session_file = deps.create_session_file(root, session)
     env = deps.subprocess_env(session_file)

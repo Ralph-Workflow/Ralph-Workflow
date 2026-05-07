@@ -246,7 +246,8 @@ def test_restart_aware_bridge_returns_false_when_process_alive() -> None:
 
 def test_restart_aware_bridge_restarts_dead_process() -> None:
     inner = _make_standalone(endpoint="http://127.0.0.1:9001/mcp", poll_result=1)
-    new_inner = _make_standalone(endpoint="http://127.0.0.1:9002/mcp", poll_result=None)
+    # Restarted process uses the same endpoint — stable endpoint invariant
+    new_inner = _make_standalone(endpoint="http://127.0.0.1:9001/mcp", poll_result=None)
     bridge = lifecycle.RestartAwareMcpBridge(
         inner,
         restart_fn=lambda: new_inner,
@@ -255,7 +256,7 @@ def test_restart_aware_bridge_restarts_dead_process() -> None:
     result = bridge.check_health_and_restart_if_needed()
     assert result is True
     assert bridge.restart_count == 1
-    assert bridge.agent_endpoint_uri() == "http://127.0.0.1:9002/mcp"
+    assert bridge.agent_endpoint_uri() == "http://127.0.0.1:9001/mcp"
 
 
 def test_restart_aware_bridge_raises_when_budget_exhausted() -> None:
@@ -389,8 +390,9 @@ def test_restart_aware_bridge_process_dying_after_initial_preflight(tmp_path: Pa
     restarted_process = FakeProcess(poll_result=None)
     restarted_session = tmp_path / "restarted-session.json"
     restarted_session.write_text("{}", encoding="utf-8")
+    # Same endpoint as initial process — stable port guaranteed by start_mcp_server
     restarted = lifecycle.StandaloneMcpProcess(
-        endpoint="http://127.0.0.1:9011/mcp",
+        endpoint="http://127.0.0.1:9010/mcp",
         process=restarted_process,
         session_file=restarted_session,
     )
@@ -412,5 +414,66 @@ def test_restart_aware_bridge_process_dying_after_initial_preflight(tmp_path: Pa
     result = bridge.check_health_and_restart_if_needed()
     assert result is True
     assert bridge.restart_count == 1
-    # Bridge now uses the restarted process
-    assert bridge.agent_endpoint_uri() == "http://127.0.0.1:9011/mcp"
+    # Endpoint stays stable (same port) even after restart
+    assert bridge.agent_endpoint_uri() == "http://127.0.0.1:9010/mcp"
+
+
+def test_start_mcp_server_stable_endpoint_across_restarts(tmp_path: Path) -> None:
+    """start_mcp_server reuses the same port on every restart so the endpoint stays stable."""
+    reserved_ports: list[int] = []
+    spawn_call_count = [0]
+
+    def fake_reserve_port() -> int:
+        reserved_ports.append(43300)
+        return 43300
+
+    def fake_create_session_file(root: Path, session: object) -> Path:
+        path = tmp_path / f"session-stable-{spawn_call_count[0]}.json"
+        path.write_text("{}", encoding="utf-8")
+        return path
+
+    def fake_subprocess_env(session_file: Path) -> dict[str, str]:
+        return {"RALPH_MCP_SESSION_FILE": str(session_file)}
+
+    def fake_spawn(
+        command: list[str], cwd: Path, env: dict[str, str], *, phase: str | None = None
+    ) -> FakeProcess:
+        del command, cwd, env, phase
+        spawn_call_count[0] += 1
+        # First process is dead; second is alive
+        return FakeProcess(poll_result=1 if spawn_call_count[0] == 1 else None)
+
+    endpoints_seen: list[str] = []
+
+    def fake_preflight(endpoint: str, required_tools: list[str], timeout: object) -> None:
+        endpoints_seen.append(endpoint)
+
+    deps = lifecycle.LifecycleDeps(
+        reserve_port=fake_reserve_port,
+        create_session_file=fake_create_session_file,
+        subprocess_env=fake_subprocess_env,
+        spawn_process=fake_spawn,
+        preflight=fake_preflight,
+        preflight_timeout=lambda: timedelta(seconds=5),
+    )
+
+    session = AgentSession(
+        session_id="stable-endpoint-test",
+        run_id="run-stable",
+        drain="planning",
+        capabilities={"WorkspaceRead"},
+    )
+    workspace = lifecycle.FsWorkspace(tmp_path)
+
+    bridge = lifecycle.start_mcp_server(session, workspace, deps=deps)
+    initial_endpoint = bridge.agent_endpoint_uri()
+
+    bridge.check_health_and_restart_if_needed()
+
+    # Port reserved exactly once, not on each restart
+    assert reserved_ports == [43300], "reserve_port called more than once"
+    # Endpoint unchanged after restart
+    assert bridge.agent_endpoint_uri() == initial_endpoint
+    assert initial_endpoint == "http://127.0.0.1:43300/mcp"
+    # Both preflight calls use the same endpoint
+    assert endpoints_seen == [initial_endpoint, initial_endpoint]

@@ -97,6 +97,7 @@ from ralph.policy.loader import (
     load_policy_or_die as _dir_load_policy_or_die,
 )
 from ralph.process.manager import get_process_manager, process_phase_scope
+from ralph.process.mcp_supervisor import McpSupervisor
 from ralph.prompts.materialize import (
     MissingPlanHandoffError,
     materialize_prompt_for_phase,
@@ -2957,19 +2958,27 @@ def _execute_agent_effect(  # noqa: PLR0911, PLR0912, PLR0913, PLR0915
                         else None
                     ),
                 )
-                output_lines = deps.invoke_agent(agent_config, attempt_prompt_file, options=options)
-                if _verbosity_rank(verbosity) >= _VERBOSITY_RANK[Verbosity.NORMAL]:
-                    _stream_parsed_agent_activity(
-                        output_lines,
-                        str(agent_config.json_parser),
-                        effect.agent_name,
-                        display,
-                        display_context=resolved_display_context,
-                        raw_output_sink=raw_output,
-                        rendered_output_sink=rendered_output,
+                _on_mcp_restart = (
+                    _display_subscriber.record_mcp_restart
+                    if _display_subscriber is not None
+                    else None
+                )
+                with McpSupervisor(bridge, on_restart=_on_mcp_restart):
+                    output_lines = deps.invoke_agent(
+                        agent_config, attempt_prompt_file, options=options
                     )
-                else:
-                    raw_output.extend(str(line) for line in output_lines)
+                    if _verbosity_rank(verbosity) >= _VERBOSITY_RANK[Verbosity.NORMAL]:
+                        _stream_parsed_agent_activity(
+                            output_lines,
+                            str(agent_config.json_parser),
+                            effect.agent_name,
+                            display,
+                            display_context=resolved_display_context,
+                            raw_output_sink=raw_output,
+                            rendered_output_sink=rendered_output,
+                        )
+                    else:
+                        raw_output.extend(str(line) for line in output_lines)
                 _set_last_captured_session_id(extract_session_id(raw_output))
                 return PipelineEvent.AGENT_SUCCESS
             except McpServerError as exc:

@@ -82,11 +82,16 @@ The standalone `ralph-mcp` runtime (not changed in this reorganization).
 #### MCP server restart contract
 
 `start_mcp_server(...)` returns a `RestartAwareMcpBridge` that wraps the live process and session.
-The bridge monitors liveness by calling `process.poll()` before each agent attempt; if the process
-has exited, it restarts via `_spawn_mcp_process` (which re-runs full preflight) up to
-`McpRestartPolicy.max_restarts` times (default: 3). Once the budget is exhausted it raises
-`McpServerError` so the caller can surface a precise MCP-specific failure rather than an opaque
-agent error.
+The bridge reserves one localhost port at startup and reuses it on every restart so the
+`MCP_ENDPOINT_ENV` value remains constant for the full lifetime of the bridge — agents that are
+already executing never see a changed endpoint after a mid-run crash.
+
+Active supervision runs via `McpSupervisor` (in `ralph.process.mcp_supervisor`) which polls
+`check_mcp_bridge_health(bridge)` in a background thread for the duration of each agent attempt.
+If the subprocess exits unexpectedly, the bridge restarts it via `_spawn_mcp_process` (which
+re-runs full preflight) up to `McpRestartPolicy.max_restarts` times (default: 3). Once the budget
+is exhausted it raises `McpServerError` so the caller gets a crisp MCP-specific failure rather
+than an opaque agent timeout.
 
 All process spawning and termination during restart routes through `ProcessManager` as normal;
 the bridge never holds a raw `Popen` handle outside that boundary.
@@ -94,8 +99,8 @@ the bridge never holds a raw `Popen` handle outside that boundary.
 Key guarantees:
 
 - Restart is only reported successful after a full preflight re-validates endpoint tool reachability.
-- The bridge endpoint URI may change after a restart (new port); callers must re-read
-  `bridge.agent_endpoint_uri()` after each health check.
+- The bridge endpoint URI is **stable for the full bridge lifetime** — the port is reserved once
+  and reused on every respawn; `bridge.agent_endpoint_uri()` never changes after the bridge starts.
 - `check_mcp_bridge_health(bridge)` is a safe no-op on any non-`RestartAwareMcpBridge` object.
 
 **Canonical import path:** `from ralph.mcp.server import ...` or `from ralph.mcp.server.<module> import ...`
