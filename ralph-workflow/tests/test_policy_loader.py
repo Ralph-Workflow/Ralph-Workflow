@@ -515,3 +515,43 @@ def test_bundled_defaults_have_reviewless_phase_set() -> None:
         f"Review-era chains still present in bundled defaults: "
         f"{review_era_chains.intersection(bundle.agents.agent_chains)}"
     )
+
+
+def test_default_policy_has_artifact_history_enabled_on_planning() -> None:
+    """Default policy must have artifact_history.enabled=True on planning phase."""
+    defaults_dir = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
+    bundle = load_policy(defaults_dir)
+    planning = bundle.pipeline.phases["planning"]
+    assert planning.artifact_history is not None, (
+        "planning phase must declare artifact_history"
+    )
+    assert planning.artifact_history.enabled is True
+
+
+def test_default_policy_has_artifact_history_enabled_on_planning_analysis() -> None:
+    """Default policy must have artifact_history.enabled=True on planning_analysis phase."""
+    defaults_dir = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
+    bundle = load_policy(defaults_dir)
+    planning_analysis = bundle.pipeline.phases["planning_analysis"]
+    assert planning_analysis.artifact_history is not None, (
+        "planning_analysis phase must declare artifact_history"
+    )
+    assert planning_analysis.artifact_history.enabled is True
+
+
+def test_default_policy_planning_clears_history_on_fresh_entry() -> None:
+    """Default planning phase must clear history on fresh (non-loopback) entry."""
+    defaults_dir = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
+    bundle = load_policy(defaults_dir)
+    planning = bundle.pipeline.phases["planning"]
+    assert planning.artifact_history is not None
+    assert planning.artifact_history.clear_on_fresh_entry is True
+
+
+def test_default_policy_planning_analysis_preserves_history_on_fresh_entry() -> None:
+    """Default planning_analysis phase must NOT clear history on fresh entry."""
+    defaults_dir = Path(__file__).resolve().parents[1] / "ralph" / "policy" / "defaults"
+    bundle = load_policy(defaults_dir)
+    planning_analysis = bundle.pipeline.phases["planning_analysis"]
+    assert planning_analysis.artifact_history is not None
+    assert planning_analysis.artifact_history.clear_on_fresh_entry is False

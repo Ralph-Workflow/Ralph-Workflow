@@ -1151,3 +1151,160 @@ def test_development_analysis_prompt_renders_without_development_result(
     assert str(tmp_path / ".agent" / "PLAN.md") in rendered, (
         "Prompt must reference the plan handoff path"
     )
+
+
+def test_fresh_planning_clears_history_when_clear_on_fresh_entry_enabled(
+    tmp_path: Path,
+) -> None:
+    """Fresh planning entry clears artifact history when planning policy enables it."""
+    from ralph.mcp.artifacts.history import (  # noqa: PLC0415
+        history_dir_for_artifact,
+        history_index_path,
+    )
+
+    policy = load_policy(tmp_path / ".agent")
+    workspace = MemoryWorkspace(root=str(tmp_path))
+    workspace.write("PROMPT.md", "Plan the new feature")
+
+    # Create history files on disk (bypass MemoryWorkspace)
+    artifact_dir = tmp_path / ".agent" / "artifacts"
+    hist_dir = history_dir_for_artifact(artifact_dir, "plan")
+    hist_dir.mkdir(parents=True, exist_ok=True)
+    archived_json = hist_dir / "20260506T120000_plan.json"
+    archived_json.write_text('{"type":"plan"}', encoding="utf-8")
+    index_file = history_index_path(artifact_dir, "plan")
+    index_file.write_text("# History", encoding="utf-8")
+
+    materialize_prompt_for_phase(
+        phase="planning",
+        workspace=workspace,
+        pipeline_policy=policy.pipeline,
+        artifacts_policy=policy.artifacts,
+        session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.PLANNING),
+        workspace_root=tmp_path,
+        previous_phase=None,
+    )
+
+    assert not archived_json.exists(), "archive json must be removed on fresh planning entry"
+    assert not index_file.exists(), "history index must be removed on fresh planning entry"
+
+
+def test_resolve_planning_history_path_returns_empty_when_no_index(tmp_path: Path) -> None:
+    """Returns empty string when no history index exists."""
+    from ralph.prompts.materialize import _resolve_planning_history_path  # noqa: PLC0415
+
+    result = _resolve_planning_history_path(tmp_path)
+    assert result == ""
+
+
+def test_resolve_planning_history_path_returns_path_when_index_exists(tmp_path: Path) -> None:
+    """Returns the index path string when the history index file exists."""
+    from ralph.mcp.artifacts.history import history_index_path  # noqa: PLC0415
+    from ralph.prompts.materialize import _resolve_planning_history_path  # noqa: PLC0415
+
+    artifact_dir = tmp_path / ".agent" / "artifacts"
+    index = history_index_path(artifact_dir, "plan")
+    index.parent.mkdir(parents=True, exist_ok=True)
+    index.write_text("# History", encoding="utf-8")
+
+    result = _resolve_planning_history_path(tmp_path)
+    assert result == str(index)
+
+
+def test_planning_loopback_from_analysis_preserves_history(
+    tmp_path: Path,
+) -> None:
+    """Planning loopback from planning_analysis must not clear artifact history."""
+    from ralph.mcp.artifacts.history import (  # noqa: PLC0415
+        history_dir_for_artifact,
+        history_index_path,
+    )
+
+    policy = load_policy(tmp_path / ".agent")
+    workspace = MemoryWorkspace(root=str(tmp_path))
+    workspace.write("PROMPT.md", "Plan the new feature")
+
+    # Write plan + analysis feedback so the loopback prompt can render
+    plan_artifact = {
+        "type": "plan",
+        "content": {
+            "summary": {
+                "context": "ctx",
+                "scope_items": [{"text": "a"}, {"text": "b"}, {"text": "c"}],
+            },
+            "steps": [{"number": 1, "title": "t", "content": "c", "step_type": "file_change",
+                        "priority": "high", "targets": [{"path": "f.py", "action": "modify"}],
+                        "depends_on": []}],
+            "critical_files": {"primary_files": [{"path": "f.py", "action": "modify"}],
+                               "reference_files": []},
+            "risks_mitigations": [{"risk": "r", "mitigation": "m", "severity": "low"}],
+            "verification_strategy": [{"method": "make test", "expected_outcome": "green"}],
+        },
+    }
+    analysis_artifact = {
+        "type": "planning_analysis_decision",
+        "content": {
+            "status": "request_changes",
+            "summary": "Revise the plan.",
+            "what_came_up_short": ["Verification is weak."],
+            "how_to_fix": ["Add exact commands."],
+        },
+    }
+    import json  # noqa: PLC0415
+
+    workspace.write(
+        ".agent/artifacts/plan.json",
+        json.dumps(plan_artifact),
+    )
+    workspace.write(
+        ".agent/artifacts/planning_analysis_decision.json",
+        json.dumps(analysis_artifact),
+    )
+
+    # Create history files on disk (bypass MemoryWorkspace)
+    artifact_dir = tmp_path / ".agent" / "artifacts"
+    hist_dir = history_dir_for_artifact(artifact_dir, "plan")
+    hist_dir.mkdir(parents=True, exist_ok=True)
+    archived_json = hist_dir / "20260506T120000_plan.json"
+    archived_json.write_text('{"type":"plan"}', encoding="utf-8")
+    index_file = history_index_path(artifact_dir, "plan")
+    index_file.write_text("# History", encoding="utf-8")
+
+    with patch.object(materialize_module, "_git_diff", return_value="diff"):
+        materialize_prompt_for_phase(
+            phase="planning",
+            workspace=workspace,
+            pipeline_policy=policy.pipeline,
+            artifacts_policy=policy.artifacts,
+            session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.PLANNING),
+            workspace_root=tmp_path,
+            previous_phase="planning_analysis",
+        )
+
+    assert archived_json.exists(), "archive json must be preserved on planning loopback"
+    assert index_file.exists(), "history index must be preserved on planning loopback"
+
+
+def test_missing_history_does_not_break_fresh_planning(
+    tmp_path: Path,
+) -> None:
+    """Fresh planning entry with no prior history directory must not raise."""
+    policy = load_policy(tmp_path / ".agent")
+    workspace = MemoryWorkspace(root=str(tmp_path))
+    workspace.write("PROMPT.md", "Plan the new feature")
+
+    # No history files exist at all — history directory does not exist
+    artifact_dir = tmp_path / ".agent" / "artifacts"
+    assert not (artifact_dir / "history").exists()
+
+    materialize_prompt_for_phase(
+        phase="planning",
+        workspace=workspace,
+        pipeline_policy=policy.pipeline,
+        artifacts_policy=policy.artifacts,
+        session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.PLANNING),
+        workspace_root=tmp_path,
+        previous_phase=None,
+    )
+    # Must complete without error; no history is also fine
+    assert not (artifact_dir / "history").exists()

@@ -513,6 +513,35 @@ def _validate_no_legacy_phase_constants(
                 )
 
 
+def _validate_shared_drain_history_consistency(
+    policy: PipelinePolicy,
+    errors: list[str],
+) -> None:
+    """Reject configurations where phases sharing a drain declare conflicting artifact_history.
+
+    The artifact submit path only knows the active drain, not the phase name.
+    If two phases share a drain but have different artifact_history.enabled values,
+    the runtime cannot determine which policy to apply and must reject the configuration.
+    """
+    drain_enabled: dict[str, bool] = {}
+    for phase_name, phase_def in policy.phases.items():
+        if phase_def.artifact_history is None:
+            continue
+        drain = phase_def.drain
+        enabled = phase_def.artifact_history.enabled
+        if drain in drain_enabled:
+            if drain_enabled[drain] != enabled:
+                errors.append(
+                    f"phases.{phase_name}: artifact_history.enabled={enabled} conflicts with "
+                    f"another phase that shares drain '{drain}' and declares "
+                    f"artifact_history.enabled={drain_enabled[drain]}. "
+                    f"Phases sharing a drain must agree on artifact_history.enabled because "
+                    f"the runtime cannot distinguish between phases at artifact-submit time."
+                )
+        else:
+            drain_enabled[drain] = enabled
+
+
 def _validate_post_commit_routes_complete(
     policy: PipelinePolicy,
     errors: list[str],
@@ -765,6 +794,9 @@ def validate_policy_completeness(
 
     # Validate that budget-tracked counters have positive default_max
     _validate_tracked_counters_have_positive_max(policy, errors)
+
+    # Validate that phases sharing a drain agree on artifact_history.enabled
+    _validate_shared_drain_history_consistency(policy, errors)
 
     # Validate CLI counter overrides reference declared budget counters
     if cli_counter_overrides:

@@ -27,6 +27,14 @@ CURRENT PLAN:
 ANALYSIS FEEDBACK:
 {{ render_payload_section('ANALYSIS FEEDBACK', ANALYSIS_FEEDBACK|default(''), ANALYSIS_FEEDBACK_PATH) }}
 
+{% if ARTIFACT_HISTORY_PATH %}
+ARTIFACT HISTORY:
+Prior planning artifacts from earlier iterations are archived at:
+`{{ARTIFACT_HISTORY_PATH}}`
+Inspect this history to understand what plans have been tried and rejected before
+so you do not repeat prior mistakes or revisit already-ruled-out approaches.
+{% endif %}
+
 Not submitting the revised plan is a FAILURE.
 
 Your job is to revise the existing plan, not start from a blank slate unless the feedback proves the plan is unsalvageable.

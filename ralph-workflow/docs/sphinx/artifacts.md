@@ -98,6 +98,56 @@ The only templates that are allowed to run without a plan are `planning.jinja` a
 
 When `plan.json` is present but `.agent/PLAN.md` is absent, the materialization layer regenerates the Markdown handoff automatically from the JSON artifact before rendering the prompt.
 
+## Artifact history
+
+When a phase has `artifact_history.enabled = true` in its `pipeline.toml` policy, the artifact layer archives the current canonical artifact and its Markdown handoff **before** overwriting them with the new submission. Archives are stored under `.agent/artifacts/history/<artifact_type>/` with a timestamped filename:
+
+```
+.agent/
+  artifacts/
+    plan.json          ← canonical latest
+    history/
+      plan/
+        20260415T120000_plan.json
+        20260415T120000_PLAN.md
+        20260416T093000_plan.json
+        20260416T093000_PLAN.md
+        index.md       ← chronological index rebuilt after each archive
+```
+
+`index.md` lists every archived entry with its filename and a one-line excerpt, newest last, so an agent can quickly scan what plans have been tried before.
+
+### Policy
+
+Artifact history is configured per-phase in `pipeline.toml`:
+
+```toml
+[phases.planning.artifact_history]
+enabled = true
+clear_on_fresh_entry = true
+
+[phases.planning_analysis.artifact_history]
+enabled = true
+clear_on_fresh_entry = false
+```
+
+| Field | Default | Meaning |
+|---|---|---|
+| `enabled` | `false` | Archive the current artifact before each overwrite |
+| `clear_on_fresh_entry` | `true` | Wipe the history archive at the start of a new (non-loopback) planning entry |
+
+`clear_on_fresh_entry = true` means each new planning cycle starts with a clean history so history from a prior dev-iteration does not leak into the next run. Set it to `false` on analysis phases (like `planning_analysis`) so the editor agent can still see history during the same iteration.
+
+Phases that share a drain must agree on `artifact_history.enabled`; the policy loader raises a `PolicyValidationError` if they do not.
+
+### Planning prompt integration
+
+Planning prompts (`planning.jinja`, `planning_edit.jinja`, and their fallbacks) receive an `ARTIFACT_HISTORY_PATH` template variable that points to the history `index.md` when it exists. The variable is empty when no history is present, and the template renders no history section in that case. See {doc}`prompts` for details.
+
+### Implementation
+
+Archival is handled by `ralph.mcp.artifacts.history`. The `archive_artifact_before_overwrite` function copies the current `.agent/artifacts/<type>.json` and `.agent/<TYPE>.md` to the history directory and rebuilds `index.md`. This runs as the first `_SubmitOp` inside the artifact submission transaction so that a submission failure triggers rollback and removes the orphaned archive files.
+
 ## Audit adapter
 
 `ralph.mcp.artifacts.audit_adapter` wraps the store and records every artifact submission to the pipeline transcript so operators can trace exactly what each agent produced.

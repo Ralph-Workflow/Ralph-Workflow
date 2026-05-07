@@ -9,6 +9,7 @@ The goal is not merely to fix what the analyzer found; it is to eliminate every 
 Canonical request file: `{{PROMPT_PATH}}`
 Canonical current plan file: `{{PLAN_PATH}}`
 Canonical analysis feedback file: `{{ANALYSIS_FEEDBACK_PATH}}`
+{% if ARTIFACT_HISTORY_PATH %}Canonical artifact history file: `{{ARTIFACT_HISTORY_PATH}}`{% endif %}
 
 ORIGINAL REQUEST:
 {{PROMPT}}

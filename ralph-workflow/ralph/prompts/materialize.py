@@ -9,11 +9,16 @@ from typing import TYPE_CHECKING, cast
 from git import Repo
 
 from ralph.config.enums import AgentTransport
+from ralph.mcp.artifacts.file_backend import DEFAULT_FILE_BACKEND
 from ralph.mcp.artifacts.handoffs import (
     ensure_markdown_handoff_from_artifact,
     handoff_path_for_artifact,
 )
-from ralph.mcp.artifacts.plan import PLAN_ARTIFACT_PATH, PLAN_DRAFT_PATH
+from ralph.mcp.artifacts.history import (
+    clear_artifact_history,
+    history_index_path,
+)
+from ralph.mcp.artifacts.plan import PLAN_ARTIFACT_PATH, PLAN_ARTIFACT_TYPE, PLAN_DRAFT_PATH
 from ralph.mcp.tools.names import SUBMIT_ARTIFACT_TOOL, claude_tool_name_prefix
 from ralph.phases.required_artifacts import (
     build_required_artifacts,
@@ -139,6 +144,7 @@ def _render_prompt_for_phase(  # noqa: PLR0913
             previous_phase=previous_phase,
         )
         last_retry_error = _read_and_clear_retry_hint(workspace, phase)
+        artifact_history_path = _resolve_planning_history_path(workspace_root)
         return prompt_planning_xml_with_context(
             context=context,
             inputs=PlanningPromptInputs(
@@ -147,6 +153,7 @@ def _render_prompt_for_phase(  # noqa: PLR0913
                 analysis_feedback_content=analysis_feedback_content,
                 plan_path=plan_path,
                 analysis_feedback_path=analysis_feedback_path,
+                artifact_history_path=artifact_history_path,
                 last_retry_error=last_retry_error,
             ),
             workspace=workspace,
@@ -406,6 +413,17 @@ def _prepare_planning_prompt_context(
     )
 
 
+def _resolve_planning_history_path(
+    workspace_root: Path,
+) -> str:
+    """Return the absolute path to the planning artifact history index, if it exists."""
+    artifact_dir = workspace_root / ".agent" / "artifacts"
+    index = history_index_path(artifact_dir, PLAN_ARTIFACT_TYPE)
+    if index.exists():
+        return str(index)
+    return ""
+
+
 def _clear_fresh_planning_context(
     workspace: Workspace,
     *,
@@ -420,13 +438,25 @@ def _clear_fresh_planning_context(
     handoff_path = handoff_path_for_artifact("plan")
     if handoff_path and workspace.exists(handoff_path):
         workspace.remove(handoff_path)
+
+    # Clear planning artifact history when the phase policy opts in.
+    phase_def = pipeline_policy.phases.get(phase)
+    if (
+        phase_def is not None
+        and phase_def.artifact_history is not None
+        and phase_def.artifact_history.clear_on_fresh_entry
+    ):
+        workspace_root = Path(workspace.absolute_path("."))
+        artifact_dir = workspace_root / ".agent" / "artifacts"
+        clear_artifact_history(artifact_dir, PLAN_ARTIFACT_TYPE, backend=DEFAULT_FILE_BACKEND)
+
     if artifacts_policy is None:
         return
     required_artifacts = build_required_artifacts(artifacts_policy)
-    for phase_def in pipeline_policy.phases.values():
-        if phase_def.role != "analysis" or phase_def.transitions.on_loopback != phase:
+    for p in pipeline_policy.phases.values():
+        if p.role != "analysis" or p.transitions.on_loopback != phase:
             continue
-        required_artifact = required_artifacts.get(phase_def.drain)
+        required_artifact = required_artifacts.get(p.drain)
         if required_artifact is None:
             continue
         if workspace.exists(required_artifact.json_path):

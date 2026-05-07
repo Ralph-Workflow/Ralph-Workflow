@@ -733,6 +733,13 @@ ralph.mcp.artifacts.handoffs
    :members:
    :show-inheritance:
 
+ralph.mcp.artifacts.history
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.mcp.artifacts.history
+   :members:
+   :show-inheritance:
+
 ralph.mcp.artifacts.plan
 ~~~~~~~~~~~~~~~~~~~~~~~~
 

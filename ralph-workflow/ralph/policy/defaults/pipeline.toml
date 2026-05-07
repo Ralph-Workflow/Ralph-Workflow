@@ -96,6 +96,9 @@ prompt_template = "planning.jinja"
 loopback_prompt_template = "planning_edit.jinja"
 [phases.planning.transitions]
 on_success = "planning_analysis"
+[phases.planning.artifact_history]
+enabled = true
+clear_on_fresh_entry = true
 
 [phases.planning_analysis]
 drain = "planning_analysis"
@@ -104,6 +107,9 @@ prompt_template = "planning_analysis.jinja"
 [phases.planning_analysis.transitions]
 on_success = "development"
 on_loopback = "planning"
+[phases.planning_analysis.artifact_history]
+enabled = true
+clear_on_fresh_entry = false
 [phases.planning_analysis.loop_policy]
 iteration_state_field = "planning_analysis_iteration"
 [phases.planning_analysis.decisions.completed]
