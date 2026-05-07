@@ -48,20 +48,22 @@ show_phase_start("planning", display_context=ctx)
 
 `NO_COLOR` takes precedence over `FORCE_COLOR` per standard CLI conventions.
 
-### SIGWINCH Refresh (POSIX)
+### Width Refresh (cross-platform)
 
-On POSIX systems (non-Windows), a `SIGWINCH` signal handler is installed at pipeline
-start via `install_sigwinch_refresher()`. When the terminal is resized:
+A width refresher is installed at pipeline start via `install_width_refresher()`. When
+the terminal is resized:
 
-1. The signal handler calls `DisplayContext.refreshed()` which re-reads the current
-   terminal width and recomputes mode and adaptive limits.
+1. The refresher calls `DisplayContext.refreshed()` which re-reads the current terminal
+   width and recomputes mode and adaptive limits.
 2. Renderers that buffer adaptive limits (e.g., `PlainLogRenderer`) refresh their context
    at phase boundaries via `flush_blocks()`.
 3. The runner keeps its live display object and nested plain renderer synced with the
    refreshed context, so later banners and summaries render with the new mode.
 
-The signal handler is installed only from the main thread ( `signal.signal` requires it).
-On Windows, the refresher is a no-op.
+On POSIX systems (Linux, macOS) when called from the main thread, the refresher installs
+a `SIGWINCH` signal handler. On Windows, or when called from a non-main thread, a
+background poll thread monitors width changes instead. The returned stop callback is
+invoked at pipeline shutdown to clean up the poll thread when one was started.
 
 ## Line Format
 
@@ -179,6 +181,7 @@ phase-close banner is printed to the console:
     ↳ stats: content=N thinking=N tools=N [errors=N]        ← medium/wide only, when activity > 0
     ↳ artifact: <artifact_outcome>                           ← medium/wide only, when artifact produced
   <warning_glyph> debug: waiting: <waiting_status> | failure: <failure_category>   ← only when breadcrumbs exist
+────────────────────────────────────────────────────────── ← wide mode only, trailing Rule separator
 ```
 
 | Field | Notes |
@@ -228,6 +231,7 @@ The `exit=<trigger>` values for phase-close lines:
 | Value | Meaning |
 |-------|---------|
 | `produced` | Phase completed by producing its expected artifact |
+| `completed` | Phase ended without producing a tracked artifact (e.g. a pass-through or skipped phase) |
 
 ### Canonical iteration labels
 
@@ -254,13 +258,14 @@ The format adapts to the display mode:
 **Wide mode** (`>= 100` cols): multi-line with grouped counters and PR at end:
 ```
 <ISO-TS> MILESTONE META [run-end] ◆ Ralph Workflow run end
-<ISO-TS> INFO     META [run-end] phase=<phase> elapsed=<elapsed>s exit=<exit_trigger>
+<ISO-TS> INFO     META [run-end] phase=<phase> elapsed=<elapsed>s exit=<exit_trigger> [dev_cycle=N]
 <ISO-TS> INFO     META [run-end] agent_calls=N content_blocks=X thinking_blocks=Y tool_calls=Z errors=W
 <ISO-TS> INFO     META [run-end] pr=<url>
 ```
 
 `phase=complete` indicates success; `phase=failed` indicates the pipeline terminated
-with an error.
+with an error.  `dev_cycle=N` appears only when at least one outer development cycle
+has been completed (i.e., at least one commit was made during the run).
 
 The `exit` field reports **why** the run ended:
 
@@ -287,7 +292,7 @@ The `exit` field reports **why** the run ended:
 ## Related Modules
 
 - `ralph.display` — public display API and `DisplayContext` factory
-- `ralph.display.plain_renderer` — line-format renderer with SIGWINCH-aware resize
+- `ralph.display.plain_renderer` — line-format renderer with cross-platform width-aware resize
 - `ralph.display.long_content_summary` — streaming block summarisation
 - `ralph.display.completion_summary` — `[run-end]` panel renderer with mode-adaptive layout
 

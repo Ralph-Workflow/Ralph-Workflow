@@ -9,7 +9,6 @@ from rich.console import Console
 from ralph.display.context import DisplayContext, make_display_context
 from ralph.display.phase_banner import (
     _MAJOR_ROLE_PAIRS,
-    _ROLE_PAIR_DESCRIPTIONS,
     _phase_label,
     _phase_style,
     show_phase_close_banner,
@@ -110,7 +109,7 @@ def test_show_phase_transition_with_context() -> None:
 
 
 def test_major_transition_analysis_to_commit_with_policy() -> None:
-    """Analysis approved → commit should be a major transition when policy is provided."""
+    """Analysis → commit is a major transition that shows routing labels without status prose."""
     policy = _make_two_phase_policy("analysis", "commit", "dev_analysis", "dev_commit")
     console = Console(record=True, width=120)
     show_phase_transition(
@@ -121,11 +120,12 @@ def test_major_transition_analysis_to_commit_with_policy() -> None:
     output = console.export_text()
     assert "Dev Analysis" in output
     assert "Dev Commit" in output
-    assert "Analysis approved" in output
+    # Phase-close banner handles status prose; transition shows only routing
+    assert "Analysis approved" not in output
 
 
 def test_major_transition_analysis_loopback_with_policy() -> None:
-    """Analysis loopback → execution should be a major transition when policy is provided."""
+    """Analysis loopback → execution is a major transition with routing labels only."""
     policy = _make_two_phase_policy("analysis", "execution", "check", "work")
     console = Console(record=True, width=120)
     show_phase_transition(
@@ -136,7 +136,8 @@ def test_major_transition_analysis_loopback_with_policy() -> None:
     output = console.export_text()
     assert "Check" in output
     assert "Work" in output
-    assert "Analysis requested changes" in output
+    # Phase-close banner handles status prose; transition shows only routing
+    assert "Analysis requested changes" not in output
 
 
 def test_major_transition_review_to_terminal_with_policy() -> None:
@@ -183,19 +184,13 @@ def test_unknown_transition_renders_gracefully() -> None:
     assert "Another Unknown" in output
 
 
-def test_all_major_role_pairs_have_descriptions() -> None:
-    """Every major role-pair transition should have a description for good UX."""
+def test_major_role_pairs_transition_shows_no_duplicated_description() -> None:
+    """Major role-pair transitions must not show duplicated description prose.
+
+    The phase-close banner already communicates exit context via exit_trigger;
+    the transition banner should not repeat status prose.
+    """
     for from_role, to_role in _MAJOR_ROLE_PAIRS:
-        assert (from_role, to_role) in _ROLE_PAIR_DESCRIPTIONS, (
-            f"Major role-pair ({from_role}, {to_role}) has no description"
-        )
-
-
-def test_role_pair_descriptions_render_in_major_banners() -> None:
-    """Major role-pair transitions should include the description text in output."""
-    for (from_role, to_role), description in _ROLE_PAIR_DESCRIPTIONS.items():
-        if (from_role, to_role) not in _MAJOR_ROLE_PAIRS:
-            continue
         policy = _make_two_phase_policy(from_role, to_role, "phase_a", "phase_b")
         console = Console(record=True, width=120)
         show_phase_transition(
@@ -204,8 +199,9 @@ def test_role_pair_descriptions_render_in_major_banners() -> None:
             display_context=_ctx_from_console(console),
         )
         output = console.export_text()
-        assert description[:20] in output, (
-            f"Description '{description}' not found for role-pair ({from_role}, {to_role})"
+        # Transition must not contain status prose that the phase-close banner handles
+        assert "complete" not in output.lower().split("—")[0] or "Phase A" in output, (
+            f"Transition ({from_role}->{to_role}) should not contain duplicated status prose"
         )
 
 
@@ -316,8 +312,12 @@ def test_show_phase_transition_compact_mode_no_leading_blank_line() -> None:
     assert len(rule_lines) == 1
 
 
-def test_show_phase_transition_medium_mode_has_two_rules_with_description() -> None:
-    """Medium mode major transition keeps both Rules and the description text."""
+def test_show_phase_transition_medium_mode_has_two_rules_no_description() -> None:
+    """Medium mode major transition keeps both Rules but no duplicated description prose.
+
+    The phase-close banner already communicates exit context; the transition
+    banner shows only routing context (from-phase → to-phase).
+    """
     console = Console(record=True, width=80)
     ctx = make_display_context(console=console, force_mode="medium")
     policy = _make_execution_to_analysis_policy()
@@ -333,12 +333,17 @@ def test_show_phase_transition_medium_mode_has_two_rules_with_description() -> N
     assert len(rule_lines) == expected_rule_count, (
         f"Expected {expected_rule_count} rule lines for medium mode, got: {rule_lines}"
     )
-    # Medium should still preserve the description text (execution → analysis)
-    assert "Work complete" in output
+    # Must NOT contain duplicated transition description prose
+    assert "Work complete" not in output
+    assert "analyzing results" not in output
 
 
-def test_show_phase_transition_wide_mode_has_description_and_leading_blank() -> None:
-    """Wide mode major transition has leading blank, description text, and two Rules."""
+def test_show_phase_transition_wide_mode_has_leading_blank_no_description() -> None:
+    """Wide mode major transition has leading blank and two Rules but no description prose.
+
+    The phase-close banner already communicates exit context; the transition
+    banner shows only routing context (from-phase → to-phase).
+    """
     console = Console(record=True, width=120)
     ctx = make_display_context(console=console, force_mode="wide")
     policy = _make_execution_to_analysis_policy()
@@ -350,8 +355,9 @@ def test_show_phase_transition_wide_mode_has_description_and_leading_blank() -> 
     # Wide should have leading blank line
     lines = output.split("\n")
     assert lines[0] == ""  # First line is blank
-    # Wide should have description text (execution → analysis)
-    assert "Work complete" in output
+    # Must NOT contain duplicated transition description prose
+    assert "Work complete" not in output
+    assert "analyzing results" not in output
     # Wide should have two Rule lines
     rule_lines = [line for line in lines if "─" in line or "━" in line]
     expected_rule_count = 2

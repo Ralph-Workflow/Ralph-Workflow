@@ -246,3 +246,39 @@ def test_run_elapsed_seconds_reflects_elapsed_time() -> None:
     elapsed = renderer.run_elapsed_seconds
     assert elapsed is not None
     assert elapsed == fake_elapsed, f"Expected elapsed == {fake_elapsed}s, got {elapsed}"
+
+
+def test_last_phase_counters_preserved_after_emit_phase_close() -> None:
+    """last_phase_counters returns the counters from the just-closed phase, not None."""
+    renderer, _buf = _make_renderer()
+    renderer.begin_phase("development")
+    renderer.emit_activity_line("u", "text", "content")
+    renderer.emit_activity_line("u", "tool_use", "bash ls")
+    renderer.emit_phase_close("development", "result artifact present")
+    # Counters should be retrievable after close
+    counters = renderer.last_phase_counters
+    assert counters is not None, "last_phase_counters must not be None after emit_phase_close"
+    assert counters.content_blocks == 1
+    assert counters.tool_calls == 1
+
+
+def test_last_phase_counters_none_before_any_phase_close() -> None:
+    """last_phase_counters returns None when no phase has ever been closed."""
+    renderer, _buf = _make_renderer()
+    assert renderer.last_phase_counters is None
+
+
+def test_last_phase_counters_updated_by_second_close() -> None:
+    """last_phase_counters reflects the most recently closed phase."""
+    renderer, _buf = _make_renderer()
+    renderer.begin_phase("planning")
+    renderer.emit_activity_line("u", "tool_use", "bash ls")
+    renderer.emit_phase_close("planning", "")
+    renderer.begin_phase("development")
+    renderer.emit_activity_line("u", "text", "some content")
+    renderer.emit_phase_close("development", "result artifact present")
+    counters = renderer.last_phase_counters
+    assert counters is not None
+    # Second phase had 1 content block and 0 tool calls
+    assert counters.content_blocks == 1
+    assert counters.tool_calls == 0

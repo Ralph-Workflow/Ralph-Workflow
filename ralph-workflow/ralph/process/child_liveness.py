@@ -1,10 +1,16 @@
-"""In-memory child liveness lease registry for OpenCode child process tracking.
+"""In-memory child liveness lease registry and canonical evidence classifier.
 
-Tracks per-child evidence (heartbeat, progress, terminal ack) with an injectable
-clock so tests can use deterministic FakeClock-compatible now sources.
+This module is the single source of truth for child-evidence freshness decisions.
+``classify_child_snapshot()`` is the canonical verdict function: both the
+in-stream idle-watchdog path (``execution_state.classify_quiet``) and the post-exit
+path (``execution_state.classify_exit`` / ``invoke._evidence_precedence``) must call
+this function rather than re-encoding the stale-vs-fresh precedence rules independently.
 
-No on-disk persistence in v1: the registry is instantiated per invoke and lives
-only as long as the invocation.
+Evidence is tracked per-child with heartbeat, progress, and terminal-ack signals
+using an injectable clock so tests can use deterministic FakeClock-compatible sources.
+
+No on-disk persistence: the registry is instantiated per invoke and lives only as
+long as the invocation.
 """
 
 from __future__ import annotations

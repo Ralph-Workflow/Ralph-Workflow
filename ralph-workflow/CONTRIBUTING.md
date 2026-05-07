@@ -136,6 +136,26 @@ a missing watchdog seam.
   exception cannot silence the watchdog (default to `WAITING_ON_CHILD` on exception so
   the cumulative child-wait ceiling remains in force).
 
+**Canonical child-evidence model:** All stale-vs-fresh child-liveness decisions flow
+through one function: `classify_child_snapshot()` in `ralph/process/child_liveness.py`.
+Both the in-stream idle-timeout path (`classify_quiet` in `execution_state.py`) and the
+post-exit path (`classify_exit` / `_evidence_precedence`) must call this function rather
+than reimplementing the precedence rules independently. The function returns a
+`ChildEvidenceVerdict` with an `alive_by` label that encodes why child work appears alive:
+
+- `fresh_progress` — child produced a scoped progress signal within `progress_ttl`.
+- `fresh_heartbeat_only` — child sent a heartbeat but no progress within `progress_ttl`.
+- `stale_label_only` — child is registered but both heartbeat and progress have expired.
+- `os_descendant_only_stale_progress` — no scoped Ralph Workflow evidence; raw OS descendants exist.
+
+The `alive_by` label drives the `CHILDREN_PERSIST_TOO_LONG` ceiling selection in
+`IdleWatchdog._effective_waiting_ceiling()`: `fresh_progress` uses the full
+`max_waiting_on_child_seconds` ceiling; all other values use the shorter
+`max_waiting_on_child_no_progress_seconds` ceiling (default 600s) to ensure a stuck or
+heartbeat-only child does not defer the timeout for the full 1800s hard ceiling. When
+scoped Ralph Workflow evidence is stale, raw OS-descendant presence alone is insufficient to keep
+WAITING_ON_CHILD open; the watchdog transitions to ACTIVE and fires `NO_OUTPUT_DEADLINE`.
+
 See `ralph/agents/post_exit_watchdog.py` for the full post-exit transition matrix and
 verdict semantics.
 
