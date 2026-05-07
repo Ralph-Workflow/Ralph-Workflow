@@ -318,7 +318,7 @@ run, an additional diagnostic line is appended to the `[run-end]` block:
 This count is emitted by `PipelineSubscriber.record_mcp_restart()` every time
 `McpSupervisor` detects an unexpected MCP server exit and successfully restarts it.
 The count accumulates across all retry attempts in the run; if it equals
-`McpRestartPolicy.max_restarts` (default 3), the run ended with `McpServerError`.
+`McpRestartPolicy.max_restarts` (default 1000), the run ended with `McpServerError`.
 
 The `exit` field reports **why** the run ended:
 

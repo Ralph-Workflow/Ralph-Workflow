@@ -20,7 +20,6 @@ instead.
 :maxdepth: 1
 
 concepts
-agents
 mcp-architecture
 artifacts
 prompts

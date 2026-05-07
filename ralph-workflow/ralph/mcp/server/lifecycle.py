@@ -112,7 +112,7 @@ class McpServerError(Exception):
 class McpRestartPolicy:
     """Bounded restart policy for the MCP server bridge."""
 
-    max_restarts: int = 3
+    max_restarts: int = 1000
 
 
 class RestartAwareMcpBridge:
@@ -247,7 +247,7 @@ def start_mcp_server(  # noqa: PLR0913
     """Start a standalone Ralph MCP HTTP subprocess and verify tool reachability.
 
     Returns a :class:`RestartAwareMcpBridge` that can auto-restart the server
-    on crash up to the ``restart_policy`` budget (default: 3 restarts).
+    on crash up to the ``restart_policy`` budget (default: 1000 restarts).
     """
     lifecycle_deps = deps or _default_lifecycle_deps()
     root = _workspace_root(workspace)

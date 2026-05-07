@@ -93,7 +93,7 @@ Restart logic lives in `ralph.mcp.server.lifecycle.RestartAwareMcpBridge`, which
    handshake using a fresh session (never the agent's) and raises on timeout.
 3. On an unhealthy result, calls `StandaloneMcpProcess.shutdown()` on the stale
    process, then spawns a new one via `ProcessManager.spawn()` with fresh preflight.
-4. Tracks a bounded restart budget (`McpRestartPolicy.max_restarts = 3` by default)
+4. Tracks a bounded restart budget (`McpRestartPolicy.max_restarts = 1000` by default)
    and raises `McpServerError` once exhausted so the pipeline gets a crisp failure.
 
 `ralph.process.mcp_supervisor.McpSupervisor` wraps an active attempt and polls

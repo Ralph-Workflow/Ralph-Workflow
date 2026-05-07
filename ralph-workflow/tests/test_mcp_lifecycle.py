@@ -232,6 +232,11 @@ def _make_standalone(
     )
 
 
+def test_mcp_restart_policy_default_is_1000() -> None:
+    policy = lifecycle.McpRestartPolicy()
+    assert policy.max_restarts == 1000  # noqa: PLR2004
+
+
 def test_restart_aware_bridge_returns_false_when_process_alive() -> None:
     inner = _make_standalone(poll_result=None)
     bridge = lifecycle.RestartAwareMcpBridge(
