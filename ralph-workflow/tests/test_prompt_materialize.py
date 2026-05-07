@@ -4,6 +4,7 @@ import json
 from typing import TYPE_CHECKING
 from unittest.mock import patch
 
+import pytest
 from git import Repo as GitRepo
 
 import ralph.prompts.materialize as materialize_module
@@ -375,6 +376,71 @@ def test_planning_loopback_entry_preserves_plan_and_analysis_artifacts(
     assert workspace.exists(".agent/artifacts/planning_analysis_decision.json") is True
 
 
+@pytest.mark.parametrize("analysis_iteration", [2, 3, 4])
+def test_repeated_planning_loopback_never_renders_fresh_template(
+    tmp_path: Path,
+    analysis_iteration: int,
+) -> None:
+    policy = load_policy(tmp_path / ".agent")
+    workspace = MemoryWorkspace(root=str(tmp_path))
+    workspace.write(
+        "PROMPT.md",
+        f"Revise the pipeline plan after planning-analysis iteration {analysis_iteration}",
+    )
+    workspace.write(
+        ".agent/artifacts/plan.json",
+        json.dumps(
+            {
+                "type": "plan",
+                "content": {
+                    "summary": {
+                        "context": (
+                            "Existing plan preserved for loopback iteration "
+                            f"{analysis_iteration}."
+                        ),
+                        "scope_items": [
+                            {"text": "one"},
+                            {"text": "two"},
+                            {"text": "three"},
+                        ],
+                    },
+                    "steps": [
+                        {
+                            "number": 1,
+                            "title": "Revise",
+                            "content": "keep context instead of restarting",
+                        }
+                    ],
+                    "critical_files": {
+                        "primary_files": [{"path": "src/plan.py", "action": "modify"}],
+                    },
+                    "risks_mitigations": [
+                        {"risk": "drift", "mitigation": "revise carefully"}
+                    ],
+                    "verification_strategy": [
+                        {"method": "pytest", "expected_outcome": "passes"}
+                    ],
+                },
+            }
+        ),
+    )
+
+    prompt_path = materialize_prompt_for_phase(
+        phase="planning",
+        workspace=workspace,
+        pipeline_policy=policy.pipeline,
+        artifacts_policy=policy.artifacts,
+        session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.PLANNING),
+        workspace_root=tmp_path,
+        previous_phase="planning_analysis",
+    )
+
+    rendered = workspace.read(prompt_path)
+    assert "PLANNING EDIT MODE" in rendered
+    assert "PLANNING MODE" not in rendered
+    assert "Your job is to revise the existing plan" in rendered
+
+
 def test_materialize_planning_loopback_uses_edit_prompt_and_analysis_feedback_handoff(
     tmp_path: Path,
 ) -> None:
@@ -717,6 +783,36 @@ def test_materialize_development_prompt_uses_analysis_feedback_handoff(
     assert "Read the complete analysis feedback from file at" in rendered
     assert "This file is the authoritative source for analysis feedback in this prompt." in rendered
     assert "Need another iteration." not in rendered
+
+
+@pytest.mark.parametrize("analysis_iteration", [2, 3, 4])
+def test_repeated_development_loopback_never_renders_fresh_template(
+    tmp_path: Path,
+    analysis_iteration: int,
+) -> None:
+    policy = load_policy(tmp_path / ".agent")
+    workspace = MemoryWorkspace(root=str(tmp_path))
+    workspace.write(
+        "PROMPT.md",
+        f"Continue implementation after development-analysis iteration {analysis_iteration}",
+    )
+    _write_plan_handoff(workspace)
+
+    prompt_path = materialize_prompt_for_phase(
+        phase="development",
+        workspace=workspace,
+        pipeline_policy=policy.pipeline,
+        artifacts_policy=policy.artifacts,
+        session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT),
+        workspace_root=tmp_path,
+        previous_phase="development_analysis",
+    )
+
+    rendered = workspace.read(prompt_path)
+    assert "continuing a DEVELOPMENT iteration" in rendered
+    assert "You are in IMPLEMENTATION MODE" not in rendered
+    assert str(tmp_path / ".agent" / "PLAN.md") in rendered
+
 
 
 def test_materialize_development_analysis_uses_markdown_result_handoff(

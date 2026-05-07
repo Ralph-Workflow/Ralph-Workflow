@@ -84,7 +84,6 @@ def test_fresh_development_entry_clears_history_when_clear_on_fresh_entry_enable
             "development_result": ArtifactContract(
                 drain="development",
                 artifact_type="development_result",
-                artifact_required=False,
             ),
         }
     )
@@ -190,7 +189,6 @@ def test_development_analysis_loopback_preserves_development_artifact_history(
             "development_result": ArtifactContract(
                 drain="development",
                 artifact_type="development_result",
-                artifact_required=False,
             ),
             "development_analysis_decision": ArtifactContract(
                 drain="development_analysis",
@@ -289,7 +287,6 @@ def test_development_prompt_includes_artifact_history_path_when_history_exists(
             "development_result": ArtifactContract(
                 drain="development",
                 artifact_type="development_result",
-                artifact_required=False,
             ),
         }
     )

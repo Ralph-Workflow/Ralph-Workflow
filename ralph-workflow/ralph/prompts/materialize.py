@@ -93,6 +93,12 @@ def _template_name_for_phase(phase: str, pipeline_policy: PipelinePolicy) -> str
     return phase_def.prompt_template
 
 
+def _loopback_template_name_for_phase(phase_def: PhaseDefinition | None) -> str | None:
+    if phase_def is None:
+        return None
+    return phase_def.loopback_prompt_template or phase_def.continuation_template
+
+
 def _read_and_clear_retry_hint(workspace: Workspace, phase: str) -> str:
     """Read the retry hint file for a phase and delete it after reading."""
     path = retry_hint_path(phase)
@@ -189,6 +195,10 @@ def _render_prompt_for_phase(  # noqa: PLR0913
             previous_phase=previous_phase,
             pipeline_policy=pipeline_policy,
         )
+        if dev_is_loopback:
+            loopback_template_name = _loopback_template_name_for_phase(phase_def)
+            if loopback_template_name:
+                template_name = loopback_template_name
         dev_artifact_history_path = _resolve_and_clear_dev_artifact_history(
             workspace_root=workspace_root,
             phase_def=phase_def,
@@ -398,7 +408,7 @@ def _prepare_planning_prompt_context(
     )
     # Clear fresh planning context when NOT a loopback (fresh planning entry).
     # This clearing is independent of the selected template - we clear first,
-    # then potentially switch to a loopback template based on existing feedback.
+    # then potentially switch to a loopback template based on the routing context.
     if not is_loopback:
         _clear_fresh_planning_context(
             workspace,
@@ -406,11 +416,11 @@ def _prepare_planning_prompt_context(
             pipeline_policy=pipeline_policy,
             artifacts_policy=artifacts_policy,
         )
+    elif phase_def is not None and phase_def.loopback_prompt_template:
+        template_name = phase_def.loopback_prompt_template
     analysis_feedback_content, analysis_feedback_path = _resolve_loopback_analysis_feedback(
         workspace, phase, pipeline_policy, artifacts_policy
     )
-    if analysis_feedback_path and phase_def is not None and phase_def.loopback_prompt_template:
-        template_name = phase_def.loopback_prompt_template
     if _template_allows_missing_plan_handoff(template_name):
         plan_content, plan_path = _resolve_plan_handoff(workspace)
     else:
