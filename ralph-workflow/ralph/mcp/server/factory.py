@@ -1,3 +1,10 @@
+"""Protocol and handle types for the MCP server factory abstraction.
+
+Defines ``McpServerFactory`` (the ``Protocol`` every factory must satisfy) and
+``McpServerHandle`` (the value returned by ``build``, carrying the server endpoint,
+process PID, and a shutdown callback).
+"""
+
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Protocol, runtime_checkable

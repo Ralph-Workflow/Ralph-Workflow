@@ -1,3 +1,11 @@
+"""Wave scheduler for parallel work-unit execution.
+
+Provides ``schedule_next_wave``, which selects the next batch of ready work units
+given the set of already-completed unit IDs, the full plan, currently running unit
+IDs, and the maximum worker concurrency. Units are ready when all their declared
+dependencies are in ``completed``.
+"""
+
 from ralph.pipeline.work_units import WorkUnit
 
 

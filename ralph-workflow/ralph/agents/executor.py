@@ -1,3 +1,10 @@
+"""Protocol and result types for the agent executor abstraction.
+
+Defines ``AgentExecutor`` (the ``Protocol`` every executor must satisfy),
+``WorkerResult`` (the typed return value after a work unit completes), and
+``ExecutorError`` (the base exception for unrecoverable executor failures).
+"""
+
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Protocol, runtime_checkable

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import re
 from pathlib import Path
 
@@ -170,4 +171,88 @@ def test_all_public_modules_and_packages_covered_in_modules_rst() -> None:
         + "\n".join(f"  ralph.{name}" for name in missing)
         + "\n\nAdd corresponding entries to modules.rst and update _EXCLUDED "
         "in this test if the module is intentionally private."
+    )
+
+
+def _resolve_to_source(rel_name: str, ralph_root: Path) -> Path | None:
+    """Map a documented ralph submodule name to its backing source file.
+
+    ``rel_name`` is relative to ``ralph`` (e.g. ``mcp.server.factory``).
+    Returns the leaf ``.py`` path for modules or the ``__init__.py`` for packages.
+    Returns ``None`` if neither exists.
+    """
+    parts = rel_name.split(".")
+    # Try as leaf module
+    leaf = ralph_root.joinpath(*parts[:-1], parts[-1] + ".py")
+    if leaf.exists():
+        return leaf
+    # Try as package
+    pkg = ralph_root.joinpath(*parts, "__init__.py")
+    if pkg.exists():
+        return pkg
+    return None
+
+
+def _ast_module_docstring(source_path: Path) -> str:
+    """Return the top-level module docstring from a source file, or empty string."""
+    tree = ast.parse(source_path.read_text(encoding="utf-8"))
+    if (
+        tree.body
+        and isinstance(tree.body[0], ast.Expr)
+        and isinstance(tree.body[0].value, ast.Constant)
+        and isinstance(tree.body[0].value.value, str)
+    ):
+        return tree.body[0].value.value
+    return ""
+
+
+def _documented_public_targets() -> list[str]:
+    """Return documented module names (relative to ralph) that are also public surface.
+
+    This is the intersection of the modules.rst documented set and the names
+    produced by the public surface walker, so __main__ modules and explicitly
+    excluded names are not included.
+    """
+    modules_rst_text = _MODULES_RST.read_text(encoding="utf-8")
+    documented = _extract_documented_modules(modules_rst_text)
+    all_names = _walk_public_modules_and_packages(_RALPH_ROOT)
+
+    def is_excluded(name: str) -> bool:
+        return any(
+            name == excluded or name.startswith(excluded + ".")
+            for excluded in _EXCLUDED
+        )
+
+    public_names = {n for n in all_names if not is_excluded(n)}
+    return sorted(documented & public_names)
+
+
+def test_documented_public_modules_have_non_empty_docstrings() -> None:
+    """Every public module/package documented in modules.rst must have a docstring.
+
+    Uses AST-based inspection so the check is import-free and exhaustive.
+    """
+    missing: list[str] = []
+    for rel_name in _documented_public_targets():
+        source = _resolve_to_source(rel_name, _RALPH_ROOT)
+        if source is None:
+            continue  # covered by coverage test
+        docstring = _ast_module_docstring(source)
+        if not docstring.strip():
+            missing.append(f"  ralph.{rel_name}  ({source.relative_to(_RALPH_ROOT.parent)})")
+
+    assert not missing, (
+        "The following documented public modules/packages have no top-level "
+        "module docstring (pydoc-first contract):\n"
+        + "\n".join(missing)
+        + "\n\nAdd a module docstring to each listed source file."
+    )
+
+
+def test_modules_rst_has_no_stale_readme_package_map_claim() -> None:
+    """modules.rst must not claim to mirror a README package map."""
+    modules_rst_text = _MODULES_RST.read_text(encoding="utf-8")
+    assert "package map in ``ralph-workflow/README.md``" not in modules_rst_text, (
+        "docs/sphinx/modules.rst still contains the stale claim that it mirrors "
+        "a README package map. Remove that sentence."
     )

@@ -1,8 +1,7 @@
 Python API Reference
 ====================
 
-This section documents every public Ralph Workflow subpackage. The structure mirrors
-the package map in ``ralph-workflow/README.md``.
+This section documents every public Ralph Workflow subpackage.
 
 ----
 

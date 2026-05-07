@@ -1,3 +1,10 @@
+"""MCP tool handler for web search across pluggable backends.
+
+Exposes ``handle_web_search``, which dispatches a search query through the
+configured backend (and optional fallbacks) and returns a ``ToolResult``.
+Backends are loaded lazily; the dispatch order is taken from ``WebSearchConfig``.
+"""
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING

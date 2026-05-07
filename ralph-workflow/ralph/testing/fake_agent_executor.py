@@ -1,3 +1,11 @@
+"""In-process fake executor for unit-testing parallel pipeline logic.
+
+Provides ``FakeAgentExecutor`` and ``FakeRun``. Seed a ``FakeAgentExecutor`` with a
+mapping of ``unit_id`` to ``FakeRun`` instances; the executor replays the seeded
+output lines and exit code, emitting the correct ``WorkerStatus`` transitions, without
+spawning any subprocess or real agent process.
+"""
+
 import asyncio
 from collections.abc import Callable
 from dataclasses import dataclass, field

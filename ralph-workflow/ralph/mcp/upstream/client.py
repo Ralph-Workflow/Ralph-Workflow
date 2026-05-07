@@ -1,3 +1,11 @@
+"""HTTP and stdio clients for proxying calls to upstream MCP servers.
+
+Provides ``HttpUpstreamClient`` and ``StdioUpstreamClient``, both implementing
+``UpstreamMcpClient``. ``make_upstream_client`` selects the right implementation
+from the server's transport field. Internal helpers handle JSON-RPC framing,
+legacy SSE endpoints, and multimodal content-block rejection.
+"""
+
 from __future__ import annotations
 
 import json

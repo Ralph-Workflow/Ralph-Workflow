@@ -1,3 +1,11 @@
+"""Factory helpers for building per-worker MCP session bundles.
+
+Provides ``build_worker_session``, which constructs an ``AgentSession``,
+starts an MCP server for it via ``McpServerFactory``, and returns a
+``WorkerSessionBundle`` containing the session, its server handle, and the
+workspace scope that the worker should operate in.
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass

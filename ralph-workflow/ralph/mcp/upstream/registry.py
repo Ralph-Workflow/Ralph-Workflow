@@ -1,3 +1,11 @@
+"""Registry that aggregates tools from multiple upstream MCP servers.
+
+``UpstreamRegistry`` is built from a list of configured ``UpstreamMcpServer`` entries;
+it contacts each server, collects its tool list, assigns stable alias names via
+``upstream_proxy_tool_name``, and exposes ``tool_definitions`` and ``call_tool`` for
+use by the MCP bridge. Alias collisions raise ``RegistryCollisionError`` immediately.
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass

@@ -1,3 +1,10 @@
+"""Compatibility re-export of the verify-timeout policy from ``ralph.verify_timeout``.
+
+This module makes ``ralph.runtime.verify_timeout`` a stable documented surface
+for callers that import through the ``ralph.runtime`` namespace. All public
+symbols are re-exported from ``ralph.verify_timeout`` unchanged.
+"""
+
 from ralph.verify_timeout import (
     DEFAULT_SUITE_TIMEOUT_SECONDS,
     DEFAULT_TEST_TIMEOUT_SECONDS,

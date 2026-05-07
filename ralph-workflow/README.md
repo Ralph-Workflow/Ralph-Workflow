@@ -518,6 +518,8 @@ Useful pages:
 - [`docs/sphinx/recovery.md`](docs/sphinx/recovery.md) — failure classification, retry budgets, and recovery behavior
 - [`docs/sphinx/parallel-mode.md`](docs/sphinx/parallel-mode.md) — same-checkout parallel execution for multi-work-unit plans
 - [`docs/sphinx/troubleshooting.md`](docs/sphinx/troubleshooting.md) — common issues and FAQ
+- [`docs/sphinx/developer-reference.md`](docs/sphinx/developer-reference.md) — contributor and integrator index (architecture, internals, API)
+- [`docs/sphinx/modules.rst`](docs/sphinx/modules.rst) — autodoc Python API reference for all public `ralph.*` packages and modules
 
 ## License
 

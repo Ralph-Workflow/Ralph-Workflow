@@ -15,6 +15,7 @@ INDEX_RST_PATH = REPO_ROOT / "docs" / "sphinx" / "index.rst"
 GETTING_STARTED_PATH = REPO_ROOT / "docs" / "sphinx" / "getting-started.md"
 SPHINX_DIR = REPO_ROOT / "docs" / "sphinx"
 DEVELOPER_INTERNALS_PATH = SPHINX_DIR / "developer-internals.md"
+README_PATH = REPO_ROOT / "README.md"
 
 # Public packages that must have non-empty docstrings (pydoc-first contract)
 _PUBLIC_PACKAGES_WITH_REQUIRED_DOCSTRINGS = [
@@ -249,4 +250,19 @@ def test_public_packages_have_non_empty_docstrings() -> None:
     assert not missing, (
         "The following public packages have no docstring (pydoc-first contract):\n"
         + "\n".join(f"  {pkg}" for pkg in missing)
+    )
+
+
+def test_readme_has_developer_reference_and_modules_rst_pointers() -> None:
+    """README.md must link to developer-reference.md and modules.rst."""
+    readme = README_PATH.read_text(encoding="utf-8")
+    missing = [
+        needle
+        for needle in ("developer-reference.md", "modules.rst")
+        if needle not in readme
+    ]
+    assert not missing, (
+        "README.md is missing pointers to the maintained developer/API pages:\n"
+        + "\n".join(f"  {n}" for n in missing)
+        + "\n\nAdd links to these pages in the Documentation section of README.md."
     )
