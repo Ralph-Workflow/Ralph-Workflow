@@ -723,6 +723,7 @@ def _run_pipeline_step(  # noqa: PLR0913
             )
             _materialize_agent_prompt_if_needed(
                 effect,
+                state,
                 workspace,
                 policy_bundle,
                 registry,
@@ -2147,13 +2148,12 @@ def _materialize_prepared_prompt(
 
 def _materialize_agent_prompt_if_needed(
     effect: Effect,
+    state: PipelineState,
     workspace: FsWorkspace,
     policy_bundle: PolicyBundle,
     registry: _RegistryLike,
 ) -> None:
     if not isinstance(effect, InvokeAgentEffect):
-        return
-    if hasattr(workspace, "exists") and workspace.exists(prompt_file_for_phase(effect.phase)):
         return
 
     agent = registry.get(effect.agent_name)
@@ -2166,6 +2166,7 @@ def _materialize_agent_prompt_if_needed(
         workspace=workspace,
         pipeline_policy=policy_bundle.pipeline,
         artifacts_policy=policy_bundle.artifacts,
+        previous_phase=state.previous_phase,
         session_caps=SessionCapabilities.defaults_for_drain(
             _prompt_session_drain_for_phase(
                 effect.drain

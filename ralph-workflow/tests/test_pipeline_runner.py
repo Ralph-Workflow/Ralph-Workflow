@@ -133,6 +133,165 @@ def test_resolve_display_defaults_to_legacy_console_display() -> None:
     assert isinstance(display, runner_module._LegacyConsoleDisplay)
 
 
+def test_materialize_agent_prompt_if_needed_rewrites_existing_prompt_on_fresh_planning_entry(
+    tmp_path: Path,
+) -> None:
+    policy_bundle = _load_default_policy_bundle()
+    workspace = FsWorkspace(tmp_path)
+    workspace.write("PROMPT.md", "Create a fresh plan")
+    workspace.write(
+        ".agent/tmp/planning_prompt.md",
+        "You are in PLANNING EDIT MODE. Revise the existing implementation plan.",
+    )
+    effect = InvokeAgentEffect(
+        agent_name="claude",
+        phase="planning",
+        prompt_file="PROMPT.md",
+        drain="planning",
+        chain_name="planning",
+    )
+    state = PipelineState(phase="planning", previous_phase=None)
+    registry = MagicMock()
+    registry.get.return_value = None
+
+    runner_module._materialize_agent_prompt_if_needed(
+        effect,
+        state,
+        workspace,
+        policy_bundle,
+        registry,
+    )
+
+    rendered = workspace.read(".agent/tmp/planning_prompt.md")
+    assert "You are in PLANNING MODE" in rendered
+    assert "PLANNING EDIT MODE" not in rendered
+
+
+
+def test_materialize_agent_prompt_if_needed_rewrites_stale_planning_prompt_on_analysis_loopback(
+    tmp_path: Path,
+) -> None:
+    policy_bundle = _load_default_policy_bundle()
+    workspace = FsWorkspace(tmp_path)
+    workspace.write("PROMPT.md", "Revise the plan")
+    workspace.write(
+        ".agent/artifacts/plan.json",
+        json.dumps(
+            {
+                "type": "plan",
+                "content": {
+                    "summary": {
+                        "context": "Existing plan",
+                        "scope_items": [
+                            {"text": "one"},
+                            {"text": "two"},
+                            {"text": "three"},
+                        ],
+                    },
+                    "steps": [{"number": 1, "title": "Revise", "content": "keep context"}],
+                    "critical_files": {
+                        "primary_files": [{"path": "src/plan.py", "action": "modify"}],
+                        "reference_files": [],
+                    },
+                    "risks_mitigations": [{"risk": "drift", "mitigation": "revise"}],
+                    "verification_strategy": [
+                        {"method": "pytest", "expected_outcome": "passes"}
+                    ],
+                    "work_units": [],
+                },
+            }
+        ),
+    )
+    workspace.write(
+        ".agent/artifacts/planning_analysis_decision.json",
+        json.dumps(
+            {
+                "type": "planning_analysis_decision",
+                "content": {
+                    "status": "request_changes",
+                    "summary": "Need revisions",
+                    "what_came_up_short": ["issue"],
+                    "how_to_fix": ["fix it"],
+                },
+            }
+        ),
+    )
+    workspace.write(
+        ".agent/tmp/planning_prompt.md",
+        "You are in PLANNING MODE. Create a detailed, structured implementation plan.",
+    )
+    effect = InvokeAgentEffect(
+        agent_name="claude",
+        phase="planning",
+        prompt_file="PROMPT.md",
+        drain="planning",
+        chain_name="planning",
+    )
+    state = PipelineState(phase="planning", previous_phase="planning_analysis")
+    registry = MagicMock()
+    registry.get.return_value = None
+
+    runner_module._materialize_agent_prompt_if_needed(
+        effect,
+        state,
+        workspace,
+        policy_bundle,
+        registry,
+    )
+
+    rendered = workspace.read(".agent/tmp/planning_prompt.md")
+    assert "PLANNING EDIT MODE" in rendered
+    assert "You are in PLANNING MODE" not in rendered
+
+
+@pytest.mark.parametrize("analysis_iteration", [2, 3, 4])
+def test_materialize_agent_prompt_if_needed_rewrites_stale_development_prompt_on_analysis_loopback(
+    tmp_path: Path,
+    analysis_iteration: int,
+) -> None:
+    policy_bundle = _load_default_policy_bundle()
+    workspace = FsWorkspace(tmp_path)
+    workspace.write(
+        "PROMPT.md",
+        f"Continue development after analysis iteration {analysis_iteration}",
+    )
+    workspace.write(
+        ".agent/PLAN.md",
+        "# Implementation Plan\n\n1. Continue implementing the feature\n",
+    )
+    workspace.write(
+        ".agent/tmp/development_prompt.md",
+        "You are in IMPLEMENTATION MODE. Execute the plan and make progress.",
+    )
+    effect = InvokeAgentEffect(
+        agent_name="claude",
+        phase="development",
+        prompt_file="PROMPT.md",
+        drain="development",
+        chain_name="development",
+    )
+    state = PipelineState(
+        phase="development",
+        previous_phase="development_analysis",
+        loop_iterations={"development_analysis_iteration": analysis_iteration - 1},
+        loop_caps={"development_analysis_iteration": 5},
+    )
+    registry = MagicMock()
+    registry.get.return_value = None
+
+    runner_module._materialize_agent_prompt_if_needed(
+        effect,
+        state,
+        workspace,
+        policy_bundle,
+        registry,
+    )
+
+    rendered = workspace.read(".agent/tmp/development_prompt.md")
+    assert "continuing a DEVELOPMENT iteration" in rendered
+    assert "You are in IMPLEMENTATION MODE" not in rendered
+
+
 class TestCreateInitialState:
     def test_creates_state_with_planning_phase(self) -> None:
         config = MagicMock()
@@ -396,7 +555,7 @@ class TestDetermineEffect:
         assert isinstance(effect, InvokeAgentEffect)
         assert effect.agent_name == "claude"
 
-    def test_agent_prompt_materialization_reuses_prepared_planning_prompt(
+    def test_agent_prompt_materialization_rewrites_existing_planning_prompt(
         self,
         tmp_path: Path,
     ) -> None:
@@ -421,16 +580,19 @@ class TestDetermineEffect:
                 prompt_file=".agent/tmp/planning_prompt.md",
                 drain="planning",
             ),
+            PipelineState(phase="planning", previous_phase=None),
             workspace,
             bundle,
             registry,
         )
 
-        assert (tmp_path / ".agent" / "tmp" / "planning_prompt.md").read_text(
+        rendered = (tmp_path / ".agent" / "tmp" / "planning_prompt.md").read_text(
             encoding="utf-8"
-        ) == "prepared edit prompt"
-        assert (tmp_path / ".agent" / "artifacts" / "plan.json").exists() is True
-        assert (tmp_path / ".agent" / "PLAN.md").read_text(encoding="utf-8") == "existing plan"
+        )
+        assert "You are in PLANNING MODE" in rendered
+        assert "prepared edit prompt" not in rendered
+        assert (tmp_path / ".agent" / "artifacts" / "plan.json").exists() is False
+        assert (tmp_path / ".agent" / "PLAN.md").exists() is False
 
     def test_development_phase_with_work_units_uses_fan_out_effect(self) -> None:
         bundle = _load_default_policy_bundle()
@@ -739,11 +901,13 @@ def test_materialize_agent_prompt_if_needed_prefixes_claude_tools(monkeypatch: M
     bundle = _load_default_policy_bundle()
     runner_module._materialize_agent_prompt_if_needed(
         InvokeAgentEffect(agent_name="planner", phase="planning", prompt_file="planning.txt"),
+        PipelineState(phase="planning", previous_phase="planning_analysis"),
         MagicMock(spec=["root"]),
         bundle,
         Registry(),
     )
 
+    assert captured["previous_phase"] == "planning_analysis"
     session_caps = cast("SessionCapabilities", captured["session_caps"])
     assert session_caps.tool_name_prefix == claude_tool_name_prefix()
 
@@ -819,6 +983,119 @@ def test_execute_agent_effect_uses_single_workspace_root(monkeypatch, tmp_path: 
 
 
 class TestPipelineRunnerLoop:
+    def test_run_pipeline_step_rewrites_stale_planning_prompt_before_agent_invoke(
+        self,
+        monkeypatch: MonkeyPatch,
+        tmp_path: Path,
+    ) -> None:
+        bundle = _load_default_policy_bundle()
+        workspace_scope = WorkspaceScope(tmp_path)
+        workspace = FsWorkspace(tmp_path)
+        workspace.write("PROMPT.md", "Revise the plan after analysis")
+        workspace.write(
+            ".agent/artifacts/plan.json",
+            json.dumps(
+                {
+                    "type": "plan",
+                    "content": {
+                        "summary": {
+                            "context": "Existing plan",
+                            "scope_items": [
+                                {"text": "one"},
+                                {"text": "two"},
+                                {"text": "three"},
+                            ],
+                        },
+                        "steps": [
+                            {"number": 1, "title": "Revise", "content": "keep context"}
+                        ],
+                        "critical_files": {
+                            "primary_files": [{"path": "src/plan.py", "action": "modify"}],
+                            "reference_files": [],
+                        },
+                        "risks_mitigations": [{"risk": "drift", "mitigation": "revise"}],
+                        "verification_strategy": [
+                            {"method": "pytest", "expected_outcome": "passes"}
+                        ],
+                        "work_units": [],
+                    },
+                }
+            ),
+        )
+        workspace.write(
+            ".agent/artifacts/planning_analysis_decision.json",
+            json.dumps(
+                {
+                    "type": "planning_analysis_decision",
+                    "content": {
+                        "status": "request_changes",
+                        "summary": "Need revisions",
+                        "what_came_up_short": ["issue"],
+                        "how_to_fix": ["fix it"],
+                    },
+                }
+            ),
+        )
+        workspace.write(
+            ".agent/tmp/planning_prompt.md",
+            "You are in PLANNING MODE. Create a detailed, structured implementation plan.",
+        )
+        state = PipelineState(phase="planning", previous_phase="planning_analysis")
+        effect = InvokeAgentEffect(
+            agent_name="planner",
+            phase="planning",
+            prompt_file=".agent/tmp/planning_prompt.md",
+            drain="planning",
+        )
+        seen: dict[str, str] = {}
+
+        monkeypatch.setattr(
+            runner_module,
+            "_call_determine_effect_from_policy",
+            lambda *_args, **_kwargs: effect,
+        )
+
+        def fake_invoke(*_args, **_kwargs):
+            seen["prompt"] = workspace.read(".agent/tmp/planning_prompt.md")
+            return PipelineEvent.AGENT_SUCCESS
+
+        monkeypatch.setattr(
+            runner_module,
+            "_invoke_execute_effect_with_optional_display",
+            fake_invoke,
+        )
+        monkeypatch.setattr(
+            runner_module,
+            "_phase_event_after_agent_run",
+            lambda **_kwargs: PipelineEvent.AGENT_SUCCESS,
+        )
+        monkeypatch.setattr(
+            runner_module,
+            "reducer_reduce",
+            lambda current_state, _event, _policy: (current_state, []),
+        )
+        monkeypatch.setattr(runner_module.ckpt, "save", MagicMock())
+        display_context = make_display_context()
+        display = runner_module._LegacyConsoleDisplay(display_context)
+        registry = MagicMock()
+        registry.get.return_value = None
+
+        result = runner_module._run_pipeline_step(
+            state=state,
+            policy_bundle=bundle,
+            workspace_scope=workspace_scope,
+            config=MagicMock(),
+            display=display,
+            display_context=display_context,
+            verbosity=Verbosity.QUIET,
+            registry=registry,
+            pipeline_subscriber=None,
+        )
+
+        assert isinstance(result, PipelineState)
+        assert "PLANNING EDIT MODE" in seen["prompt"]
+        assert "You are in PLANNING MODE" not in seen["prompt"]
+
     def test_save_checkpoint_effect_triggers_checkpoint_and_returns_success(
         self,
         monkeypatch,
