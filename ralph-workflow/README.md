@@ -393,6 +393,16 @@ When a client connects without declaring multimodal support, `read_media` and `r
 
 Clients that declare `capabilities.image`, `capabilities.media`, or `capabilities.multimodal` in the `initialize` request will see `read_media` and `read_image` in `tools/list` when `media.enabled = true`.
 
+### Supported multimodal workflows
+
+Ralph Workflow supports the following first-class multimodal workflow patterns:
+
+- **Screenshot and browser-captured visual QA** — a browser automation tool captures a screenshot; Ralph Workflow preserves it as multimodal context, routes it to the model inline (for capable providers) or as a replayable `ralph://media/<id>` artifact retrievable via `resources/read`.
+- **Mixed-modality execution** — workflows that combine multiple modalities in a single run (e.g. screenshot + PDF context, audio + text artifacts, image + document metadata). Ralph Workflow treats these as normal platform use cases rather than edge cases.
+- **Replayable resource handles** — for providers that do not support inline delivery, or when the artifact should remain accessible after the initial call, Ralph Workflow stores the bytes in the session manifest and returns a `ralph://media/<id>` URI. The artifact bytes are retrievable via `resources/read` using the same URI, allowing replay across tool calls.
+- **Document understanding** — PDFs and office documents where layout or visual structure matters are delivered as typed blocks (Claude, Gemini) or as replayable resource references (unknown providers), preserving structure rather than collapsing to plain text.
+- **Audio and video understanding** — audio/video modalities are delivered as typed blocks for Gemini; Ralph Workflow returns an explicit unsupported error for providers that do not support those modalities, rather than silently degrading.
+
 ## MCP server robustness
 
 Ralph Workflow runs external MCP servers (declared in `mcp.toml`) as subprocesses inside `RestartAwareMcpBridge`. Each bridge wraps a `StandaloneMcpProcess` and monitors it for unexpected exits:

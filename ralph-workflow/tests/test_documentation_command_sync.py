@@ -260,3 +260,78 @@ def test_architecture_md_upstream_normalization_not_rejection() -> None:
     assert "normalized to" in content or "normalizes" in content, (
         "ARCHITECTURE.md must describe the upstream normalization policy"
     )
+
+
+def test_readme_describes_screenshot_and_browser_visual_workflows() -> None:
+    """README.md must describe screenshot and browser-captured visual QA workflows."""
+    content = _README_PATH.read_text(encoding="utf-8")
+    assert "screenshot" in content.lower(), (
+        "README.md must describe screenshot/browser-captured visual QA workflows"
+    )
+    assert "browser" in content.lower(), (
+        "README.md must mention browser-captured visuals as a multimodal workflow"
+    )
+
+
+def test_readme_describes_replayable_resource_handles_via_resources_read() -> None:
+    """README.md must describe replayable ralph://media/... handles via resources/read."""
+    content = _README_PATH.read_text(encoding="utf-8")
+    assert "ralph://media/" in content, (
+        "README.md must describe replayable ralph://media/... handles"
+    )
+    assert "resources/read" in content, (
+        "README.md must describe how artifacts are retrievable via resources/read"
+    )
+
+
+def test_readme_describes_mixed_modality_workflows() -> None:
+    """README.md must describe mixed-modality execution combining multiple modality types."""
+    content = _README_PATH.read_text(encoding="utf-8")
+    content_lower = content.lower()
+    assert "mixed" in content_lower or "mixed-modality" in content_lower, (
+        "README.md must describe mixed-modality workflows combining multiple modalities"
+    )
+
+
+def test_readme_text_only_safety_is_explicit() -> None:
+    """README.md must explicitly state that text-only workflows remain safe and unchanged."""
+    content = _README_PATH.read_text(encoding="utf-8")
+    assert "text-only" in content, (
+        "README.md must explicitly describe text-only safety/compatibility"
+    )
+
+
+def test_mcp_servers_doc_describes_screenshot_and_browser_visual_workflows() -> None:
+    """docs/mcp/mcp-servers.md must describe screenshot and browser-captured workflows."""
+    content = _MCP_SERVERS_DOC.read_text(encoding="utf-8")
+    assert "screenshot" in content.lower(), (
+        "docs/mcp/mcp-servers.md must describe screenshot/browser-captured visual workflows"
+    )
+
+
+def test_mcp_servers_doc_describes_replayable_resource_handles_via_resources_read() -> None:
+    """docs/mcp/mcp-servers.md must describe replayable handles retrievable via resources/read."""
+    content = _MCP_SERVERS_DOC.read_text(encoding="utf-8")
+    assert "ralph://media/" in content, (
+        "docs/mcp/mcp-servers.md must describe replayable ralph://media/... handles"
+    )
+    assert "resources/read" in content, (
+        "docs/mcp/mcp-servers.md must describe artifact retrieval via resources/read"
+    )
+
+
+def test_mcp_servers_doc_describes_mixed_modality_workflows() -> None:
+    """docs/mcp/mcp-servers.md must describe mixed-modality workflow execution."""
+    content = _MCP_SERVERS_DOC.read_text(encoding="utf-8")
+    content_lower = content.lower()
+    assert "mixed" in content_lower or "mixed-modality" in content_lower, (
+        "docs/mcp/mcp-servers.md must describe mixed-modality workflow execution"
+    )
+
+
+def test_mcp_servers_doc_text_only_safety_is_explicit() -> None:
+    """docs/mcp/mcp-servers.md must explicitly state text-only workflow safety."""
+    content = _MCP_SERVERS_DOC.read_text(encoding="utf-8")
+    assert "text-only" in content, (
+        "docs/mcp/mcp-servers.md must explicitly describe text-only client safety"
+    )

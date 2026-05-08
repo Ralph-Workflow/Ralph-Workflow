@@ -102,6 +102,16 @@ When `media.enabled = true` (default), Ralph Workflow registers `read_media` as 
 
 `read_image` is a compatibility alias that forwards to `read_media` for inline image workflows.
 
+### Supported multimodal workflows
+
+Ralph Workflow supports the following first-class multimodal workflow patterns:
+
+- **Screenshot and browser-captured visual QA** — a browser automation tool captures a screenshot; Ralph Workflow preserves it as multimodal context and routes it to the model inline (for capable providers) or as a replayable `ralph://media/<id>` artifact retrievable via `resources/read`.
+- **Mixed-modality execution** — workflows combining multiple modalities in a single run (e.g. screenshot + PDF context, audio + text artifacts, image + document metadata) are treated as normal platform use cases.
+- **Replayable resource handles** — when inline delivery is unsupported, Ralph Workflow stores artifact bytes in the session manifest and returns a `ralph://media/<id>` URI retrievable via `resources/read`.
+- **Document understanding** — PDFs and office documents are delivered as typed blocks (Claude, Gemini) or replayable resource references (unknown providers).
+- **Audio and video understanding** — delivered as typed blocks for Gemini; other providers receive an explicit unsupported error.
+
 ### What text-only clients see
 
 When a client connects without declaring multimodal support, the `read_media` and `read_image` tools are **automatically suppressed** from `tools/list` even if `media.enabled = true`. This ensures:
