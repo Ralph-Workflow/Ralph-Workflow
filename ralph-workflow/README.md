@@ -143,8 +143,10 @@ ralph
 
 `ralph --init` is the canonical form. Compatibility labels such as `default` are deprecated,
 ignored, and no longer recommended in docs or scripts. `ralph --init` scaffolds the project-local
-support files; use `ralph --generate-local-config` only when this repo needs a main-config override
-instead of inheriting from `~/.config/ralph-workflow.toml`.
+support files and seeds a small default `.gitignore` policy for Ralph Workflow local artifacts such as
+`.agent/`, the local `PROMPT` file pattern, and default `wt-*` worktree directories; use
+`ralph --generate-local-config` only when this repo needs a main-config override instead of
+inheriting from `~/.config/ralph-workflow.toml`.
 
 ## First-run configuration
 
@@ -249,7 +251,7 @@ That runs:
 - `make lint` (`ruff check ralph/ tests/`)
 - `make typecheck` (`uv run python -m mypy ralph/`)
 - `make docs` (`uv run --extra docs sphinx-build -b html docs/sphinx docs/sphinx/_build/html -W --keep-going`)
-- `make test-cov` (`uv run python -m ralph.verify_timeout --suite-timeout 30 -- pytest tests/ -q -n 8 --cov=ralph --cov-report=term-missing --cov-report=html --cov-fail-under 80`)
+- `make test-cov` — runs pytest with coverage enabled and enforces ≥80% coverage (uses `$(PYTEST_WORKERS)` workers, defaulting to 8; excludes subprocess_e2e tests)
 - `make test-subprocess-e2e`
 
 If any step fails, `make verify` prints a high-visibility banner that cites `AGENTS.md` and `CLAUDE.md` and tells the active AI agent to fix the failure immediately before doing anything else.
@@ -343,9 +345,16 @@ as an upstream MCP server — see [`docs/mcp/mcp-servers.md`](docs/mcp/mcp-serve
 
 ## Multimodal MCP support (default-on)
 
-Ralph Workflow supports image-reading MCP tools via `read_image`. This feature is **enabled by default**.
+Ralph Workflow has broad multimodal support via `read_media` (primary tool) and `read_image` (compatibility alias). This feature is **enabled by default**.
 
-To disable it, add to `.agent/mcp.toml`:
+Supported modalities include images (PNG, JPEG, GIF, WebP), PDFs, documents, audio, video, and resource/file-reference-based flows. Ralph Workflow selects the delivery mode based on a static provider/model capability matrix:
+
+- **Claude/Anthropic** — images delivered inline; PDFs and documents as resource references; audio and video are unsupported via Ralph Workflow's managed MCP path.
+- **OpenAI/Codex** — vision-capable models (gpt-4o, gpt-4-turbo, o1, o3) receive images inline; other models fall back to resource reference. PDFs, documents, audio, and video are unsupported via the chat completion API.
+- **Gemini** — images, PDFs, documents, audio, and video are all delivered as resource references (Gemini supports them natively).
+- **Unknown providers** — all modalities are made available as resource references (safe default, no capability blocked).
+
+To disable multimodal support, add to `.agent/mcp.toml`:
 
 ```toml
 [media]
@@ -353,11 +362,12 @@ enabled = false
 ```
 
 When enabled (default):
-- supported formats are PNG, JPEG, GIF, and WebP
-- `read_image` only appears for clients that declare multimodal/image/media capability
+- `read_media` exposes broad multimodal capability; `read_image` is a compatibility alias for inline-image workflows
+- multimodal tools only appear for clients that declare multimodal/image/media capability in `initialize`
 - text-only clients keep the pre-multimodal tool set unchanged
-- image payloads are returned as MCP image content blocks with base64-encoded data
+- inline delivery (base64-encoded data blocks) is used when the model supports it; resource-reference delivery is used otherwise
 - `max_inline_bytes` enforces the inline size guard (5 MiB by default)
+- upstream non-text content blocks are normalized to `resource_reference` artifacts rather than rejected
 
 To customize, add to `.agent/mcp.toml`:
 
@@ -372,16 +382,16 @@ max_inline_bytes = 10485760  # 10 MiB to allow larger images
 The multimodal support is designed with strict backward compatibility:
 
 1. **Text-only clients unchanged** — Existing tools (`read_file`, `write_file`, etc.) continue to return text content blocks with the same shape.
-2. **Client capability filtering** — `read_image` only appears in `tools/list` for clients that declare multimodal/image/media capability in the MCP `initialize` handshake.
-3. **Upstream multimodal rejection** — If an upstream MCP server returns a non-text content block, Ralph Workflow rejects it with a clear error rather than silently passing it through.
+2. **Client capability filtering** — `read_media` and `read_image` only appear in `tools/list` for clients that declare multimodal/image/media capability in the MCP `initialize` handshake.
+3. **Upstream normalization** — If an upstream MCP server returns a non-text content block, Ralph Workflow normalizes it to a `resource_reference` artifact (for embedded-data content) or preserves the external URI (for URI-backed content) rather than rejecting it or silently dropping it.
 
 ### What text-only clients see
 
-When a client connects without declaring multimodal support, `read_image` is **not visible** in `tools/list`, even if `media.enabled = true`. The text-only tool set is byte-equivalent to pre-multimodal behavior.
+When a client connects without declaring multimodal support, `read_media` and `read_image` are **not visible** in `tools/list`, even if `media.enabled = true`. The text-only tool set is byte-equivalent to pre-multimodal behavior.
 
 ### What multimodal clients see
 
-Clients that declare `capabilities.image`, `capabilities.media`, or `capabilities.multimodal` in the `initialize` request will see `read_image` in `tools/list` when `media.enabled = true`.
+Clients that declare `capabilities.image`, `capabilities.media`, or `capabilities.multimodal` in the `initialize` request will see `read_media` and `read_image` in `tools/list` when `media.enabled = true`.
 
 ## MCP server robustness
 
@@ -518,6 +528,8 @@ Useful pages:
 - [`docs/sphinx/recovery.md`](docs/sphinx/recovery.md) — failure classification, retry budgets, and recovery behavior
 - [`docs/sphinx/parallel-mode.md`](docs/sphinx/parallel-mode.md) — same-checkout parallel execution for multi-work-unit plans
 - [`docs/sphinx/troubleshooting.md`](docs/sphinx/troubleshooting.md) — common issues and FAQ
+- [`docs/sphinx/developer-reference.md`](docs/sphinx/developer-reference.md) — contributor and integrator index (architecture, internals, API)
+- [`docs/sphinx/modules.rst`](docs/sphinx/modules.rst) — autodoc Python API reference for all public `ralph.*` packages and modules
 
 ## License
 

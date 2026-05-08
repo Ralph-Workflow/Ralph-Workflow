@@ -43,6 +43,12 @@ def _strip_markup(line: str) -> str:
 
 
 class ParallelDisplay:
+    """Multiplexed terminal display for parallel pipeline workers.
+
+    Maintains per-worker ``RingBuffer`` instances through an ``ActivityRouter``
+    and renders them as a live Rich table while agents are running.
+    """
+
     __slots__ = (
         "_activity_router",
         "_ctx",

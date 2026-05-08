@@ -167,6 +167,13 @@ class _BuildCommandOptions:
 
 @dataclass(frozen=True)
 class ResolvedInvocationRuntime:
+    """Resolved runtime configuration for a single agent invocation.
+
+    ``agent_env`` is the environment passed to the agent subprocess.
+    ``server_env`` holds extra variables forwarded to the MCP server process.
+    ``mcp_endpoint`` is the endpoint URL when MCP transport is used.
+    """
+
     agent_env: dict[str, str] | None = None
     server_env: dict[str, str] | None = None
     mcp_endpoint: str | None = None
@@ -703,6 +710,13 @@ def resolve_invocation_runtime(
     *,
     system_prompt_file: str | None = None,
 ) -> ResolvedInvocationRuntime:
+    """Build the runtime configuration needed to launch an agent.
+
+    Resolves transport-specific environment variables, MCP server configuration,
+    and endpoint address from ``config`` and ``extra_env``.  Returns a
+    ``ResolvedInvocationRuntime`` whose fields are ready to pass to the
+    subprocess launcher.
+    """
     runtime_env = dict(extra_env or {})
     server_env: dict[str, str] = {}
     endpoint = runtime_env.get("RALPH_MCP_ENDPOINT")
@@ -1486,6 +1500,53 @@ def _resolve_prompt_path(prompt_file: str, workspace_path: Path | None) -> Path:
     return workspace_path / prompt_path
 
 
+def _sidecar_path_for_prompt(prompt_path: Path) -> Path | None:
+    if not prompt_path.name.endswith("_prompt.md"):
+        return None
+    normalized = prompt_path.stem.removesuffix("_prompt")
+    return prompt_path.parent / f"{normalized}_multimodal_handoff.json"
+
+
+def _read_multimodal_sidecar(
+    prompt_file: str,
+    workspace_path: Path | None,
+) -> list[dict[str, object]] | None:
+    resolved = _resolve_prompt_path(prompt_file, workspace_path)
+    sidecar = _sidecar_path_for_prompt(resolved)
+    if sidecar is None or not sidecar.exists():
+        return None
+    try:
+        data: dict[str, object] = json.loads(sidecar.read_text(encoding="utf-8"))
+        artifacts = data.get("artifacts")
+        if isinstance(artifacts, list) and artifacts:
+            return cast("list[dict[str, object]]", artifacts)
+        return None
+    except Exception:
+        return None
+
+
+def _build_multimodal_appendix(artifacts: list[dict[str, object]]) -> str:
+    lines = [
+        "",
+        "",
+        "## Multimodal Artifacts",
+        "",
+        "The following artifacts are available via Ralph's MCP surface.",
+        "Retrieve each artifact using the read_media tool (or resources/read) with its URI:",
+        "",
+    ]
+    for entry in artifacts:
+        modality = entry.get("modality", "unknown")
+        title = entry.get("title", "untitled")
+        uri = entry.get("uri", "")
+        delivery = entry.get("delivery", "resource_reference")
+        lines.append(f"- [{modality}] {title}")
+        lines.append(f'  URI: {uri}')
+        lines.append(f'  Delivery: {delivery}')
+        lines.append("")
+    return "\n".join(lines)
+
+
 def _append_transport_prompt_arg(
     cmd: list[str],
     transport: AgentTransport,
@@ -1495,7 +1556,11 @@ def _append_transport_prompt_arg(
     if transport == AgentTransport.CLAUDE and build_options.mcp_endpoint:
         cmd.append("--")
         resolved_prompt = _resolve_prompt_path(prompt_file, build_options.workspace_path)
-        cmd.append(resolved_prompt.read_text(encoding="utf-8"))
+        prompt_text = resolved_prompt.read_text(encoding="utf-8")
+        artifacts = _read_multimodal_sidecar(prompt_file, build_options.workspace_path)
+        if artifacts:
+            prompt_text += _build_multimodal_appendix(artifacts)
+        cmd.append(prompt_text)
         return
     cmd.append(prompt_file)
 
@@ -1550,6 +1615,9 @@ def _build_opencode_command(
     prompt_text = _resolve_prompt_path(prompt_file, options.workspace_path).read_text(
         encoding="utf-8"
     )
+    artifacts = _read_multimodal_sidecar(prompt_file, options.workspace_path)
+    if artifacts:
+        prompt_text += _build_multimodal_appendix(artifacts)
     cmd = [_agent_command_name(config), "run"]
     if options.pure:
         cmd.append("--pure")
@@ -1580,6 +1648,9 @@ def _build_codex_command(
     prompt_text = _resolve_prompt_path(prompt_file, options.workspace_path).read_text(
         encoding="utf-8"
     )
+    artifacts = _read_multimodal_sidecar(prompt_file, options.workspace_path)
+    if artifacts:
+        prompt_text += _build_multimodal_appendix(artifacts)
     cmd = config.cmd.split()
     cmd.append(config.output_flag)
 

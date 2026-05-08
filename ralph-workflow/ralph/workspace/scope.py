@@ -1,4 +1,32 @@
-"""Canonical workspace scope for the active Ralph run."""
+"""Canonical workspace scope for the active Ralph run.
+
+Provides ``WorkspaceScope``, the frozen dataclass that centralises all
+workspace-root and allowed-directory decisions made at process startup. Every
+component that needs to know where files live or which paths an agent may write
+should read its values from a ``WorkspaceScope`` instance rather than calling
+``Path.cwd()`` directly.
+
+Key API:
+
+- ``resolve_workspace_scope(start)`` - detect the active workspace from the
+  filesystem. Walks upward from *start* (default: ``cwd()``) looking for a
+  ``ralph-workflow.toml`` config file or a git repo root. Linked worktrees
+  automatically inherit config from the main worktree unless the linked
+  worktree has its own override.
+- ``WorkspaceScope`` - frozen dataclass with ``root``, ``allowed_roots``,
+  ``local_config_path``, and ``propagated_config_paths``. Use
+  ``scope.resolve_agent_file(filename)`` to locate ``.agent/`` files with
+  correct inheritance between linked and main worktrees.
+- ``WorkspaceScope.for_same_workspace_worker(...)`` - builds a restricted
+  scope for parallel workers that share a single checkout; the repo root is NOT
+  added to allowed roots, enforcing that workers only write to their declared
+  directories and their own worker namespace.
+
+Config files searched (in order):
+  ``ralph-workflow.toml``, ``agents.toml``, ``pipeline.toml``,
+  ``artifacts.toml``, ``mcp.toml`` (all under ``.agent/`` in the workspace
+  root).
+"""
 
 from __future__ import annotations
 

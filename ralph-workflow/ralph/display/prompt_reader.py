@@ -14,6 +14,7 @@ PREVIEW_LINES = 10
 
 
 def find_prompt_path(workspace_root: Path) -> Path | None:
+    """Return the path to the workspace prompt file, or ``None`` if absent."""
     path = workspace_root / "PROMPT.md"
     if path.exists():
         return path

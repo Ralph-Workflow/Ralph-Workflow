@@ -20,6 +20,8 @@ if TYPE_CHECKING:
 
 
 class DetectPlatformKwargs(TypedDict, total=False):
+    """Keyword arguments accepted by detect_platform for dependency injection."""
+
     system_name: str | None
     machine_name: str | None
     env: Mapping[str, str] | None

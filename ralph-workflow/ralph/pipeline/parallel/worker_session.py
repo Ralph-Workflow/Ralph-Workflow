@@ -1,3 +1,11 @@
+"""Factory helpers for building per-worker MCP session bundles.
+
+Provides ``build_worker_session``, which constructs an ``AgentSession``,
+starts an MCP server for it via ``McpServerFactory``, and returns a
+``WorkerSessionBundle`` containing the session, its server handle, and the
+workspace scope that the worker should operate in.
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -16,6 +24,8 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class WorkerSessionBundle:
+    """Assembled session, MCP server handle, and workspace scope for a parallel worker."""
+
     session: AgentSession
     mcp_handle: McpServerHandle
     workspace_scope: WorkspaceScope
@@ -29,6 +39,7 @@ def build_worker_session(
     worker_artifact_dir: Path | None = None,
     worker_namespace: Path | None = None,
 ) -> WorkerSessionBundle:
+    """Create an AgentSession, start an MCP server, and return the worker bundle."""
     session_id = f"dev-{unit.unit_id}-{uuid4().hex[:8]}"
     session = AgentSession(
         session_id=session_id,

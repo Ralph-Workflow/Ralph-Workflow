@@ -1,4 +1,28 @@
-"""Standalone FastMCP HTTP server runtime for Ralph tools."""
+"""Standalone FastMCP HTTP server runtime for Ralph tools.
+
+Runs the Ralph MCP server as a long-lived HTTP process that AI agents connect
+to over the MCP protocol. The server exposes Ralph's tool registry (file
+operations, git commands, artifact submission, coordination, etc.) through
+FastMCP endpoints.
+
+Key responsibilities:
+
+- ``RalphmcpServer`` - the main server class; call ``start(config)`` to launch
+  and ``stop()`` to shut down gracefully. A health-check endpoint listens on
+  ``/health``; liveness is polled by ``ralph.process.mcp_supervisor``.
+- Environment handshake: the server reads ``MCP_SESSION`` (session JSON) and
+  ``MCP_SESSION_FILE`` env vars to populate the agent session, which governs
+  which capabilities and upstream MCP servers are enabled.
+- Tool capability filtering: tools are registered or skipped based on the
+  session's declared ``McpCapability`` set so each agent only sees the tools
+  it needs.
+- Upstream MCP registry: ``load_upstream_mcp_servers`` discovers additional
+  MCP servers from ``UPSTREAM_MCP_CONFIG`` and mounts them alongside Ralph
+  tools.
+
+The server is launched by ``ralph.process.manager`` via the
+``ralph-mcp`` entry point (``ralph/mcp/server/__main__.py``).
+"""
 
 from __future__ import annotations
 
@@ -32,6 +56,7 @@ from loguru import logger
 
 from ralph import __version__
 from ralph.config.mcp_loader import load_mcp_config
+from ralph.mcp.artifacts.policy_outcomes import is_policy_approved
 from ralph.mcp.protocol.capability_mapping import Capability, McpCapability
 from ralph.mcp.protocol.env import (
     MCP_SESSION_ENV as SESSION_ENV,
@@ -143,12 +168,16 @@ class FastMcpServerLike(Protocol):
 
 
 class FastMcpConstructorLike(Protocol):
+    """Protocol for constructing FastMCP server instances."""
+
     def __call__(self, *args: object, **kwargs: object) -> FastMcpServerLike:
         """Construct a FastMCP server instance."""
         ...
 
 
 class ServerState(StrEnum):
+    """Lifecycle state of a running MCP server instance."""
+
     UNINITIALIZED = "uninitialized"
     RUNNING = "running"
     SHUTDOWN = "shutdown"
@@ -156,6 +185,8 @@ class ServerState(StrEnum):
 
 @dataclass
 class JsonRpcRequest:
+    """Parsed representation of an incoming JSON-RPC request."""
+
     jsonrpc: str
     method: str
     params: dict[str, object] | None = None
@@ -164,6 +195,8 @@ class JsonRpcRequest:
 
 @dataclass
 class JsonRpcResponse:
+    """Outgoing JSON-RPC response built by McpServer request handlers."""
+
     jsonrpc: str
     result: object = None
     error: dict[str, object] | None = None
@@ -254,6 +287,8 @@ def _extract_client_capabilities(params: dict[str, object] | None) -> set[str]:
 
 
 class McpServer:
+    """Lightweight MCP server that dispatches JSON-RPC requests to Ralph tools."""
+
     def __init__(self, session: AgentSession, workspace: FsWorkspace, registry: ToolBridge) -> None:
         self._session = session
         self._workspace = workspace
@@ -273,6 +308,7 @@ class McpServer:
             "prompts/list": self._handle_prompts_list,
             "resources/list": self._handle_resources_list,
             "resources/templates/list": self._handle_resource_templates_list,
+            "resources/read": self._handle_resources_read,
             "tools/list": self._handle_tools_list,
         }
         handler = handlers.get(request.method)
@@ -323,18 +359,86 @@ class McpServer:
     def _handle_resources_list(
         self, request: JsonRpcRequest
     ) -> tuple[JsonRpcResponse, ServerState]:
+        resources: list[dict[str, object]] = []
+        resources.extend(
+            entry.resource_list_entry()
+            for entry in self._session.media_manifest.list_entries()
+        )
         return (
-            JsonRpcResponse(jsonrpc="2.0", result={"resources": []}, msg_id=request.msg_id),
+            JsonRpcResponse(jsonrpc="2.0", result={"resources": resources}, msg_id=request.msg_id),
             ServerState.RUNNING,
         )
 
     def _handle_resource_templates_list(
         self, request: JsonRpcRequest
     ) -> tuple[JsonRpcResponse, ServerState]:
+        templates: list[dict[str, object]] = []
+        if is_policy_approved(self._session.check_capability("media.read")):
+            templates.append(
+                {
+                    "uriTemplate": "ralph://media/{artifact_id}",
+                    "name": "Ralph media artifact",
+                    "description": (
+                        "Binary media artifact stored by read_media. "
+                        "Retrieve via resources/read with the full URI."
+                    ),
+                }
+            )
         return (
             JsonRpcResponse(
                 jsonrpc="2.0",
-                result={"resourceTemplates": []},
+                result={"resourceTemplates": templates},
+                msg_id=request.msg_id,
+            ),
+            ServerState.RUNNING,
+        )
+
+    def _handle_resources_read(
+        self, request: JsonRpcRequest
+    ) -> tuple[JsonRpcResponse, ServerState]:
+        import base64 as _base64  # noqa: PLC0415
+
+        from ralph.mcp.multimodal.resources import parse_media_uri  # noqa: PLC0415
+
+        params = request.params or {}
+        uri = params.get("uri")
+        if not isinstance(uri, str) or not uri:
+            error = {"code": -32602, "message": "resources/read requires a 'uri' parameter"}
+            return (
+                JsonRpcResponse(jsonrpc="2.0", error=error, msg_id=request.msg_id),
+                ServerState.RUNNING,
+            )
+
+        artifact_id = parse_media_uri(uri)
+        if artifact_id is None:
+            error = {
+                "code": -32602,
+                "message": (
+                    f"Unsupported resource URI: '{uri}'. "
+                    "Expected ralph://media/<artifact_id>"
+                ),
+            }
+            return (
+                JsonRpcResponse(jsonrpc="2.0", error=error, msg_id=request.msg_id),
+                ServerState.RUNNING,
+            )
+
+        entry = self._session.media_manifest.get(artifact_id)
+        if entry is None:
+            error = {"code": -32602, "message": f"Resource not found: '{uri}'"}
+            return (
+                JsonRpcResponse(jsonrpc="2.0", error=error, msg_id=request.msg_id),
+                ServerState.RUNNING,
+            )
+
+        blob = _base64.b64encode(entry.raw_bytes).decode("ascii")
+        contents: list[dict[str, object]] = [
+            {"uri": entry.uri, "mimeType": entry.mime_type, "blob": blob},
+        ]
+        return (
+            JsonRpcResponse(
+                jsonrpc="2.0",
+                result={"contents": contents},
                 msg_id=request.msg_id,
             ),
             ServerState.RUNNING,
@@ -355,7 +459,9 @@ class McpServer:
             return (JsonRpcResponse(jsonrpc="2.0", error=error, msg_id=request.msg_id), state)
 
         try:
-            raw_result = self._registry.dispatch(tool_name, dict(arguments_value))
+            raw_result = self._registry.dispatch(
+                tool_name, dict(arguments_value), host_session=self._session
+            )
         except Exception as exc:
             error = {"code": -32603, "message": str(exc)}
             return (JsonRpcResponse(jsonrpc="2.0", error=error, msg_id=request.msg_id), state)
@@ -536,6 +642,7 @@ def build_standalone_http_server(  # noqa: PLR0913
     upstream_registry: UpstreamRegistry | None = None,
     mcp_config: McpConfig | None = None,
 ) -> _StandaloneHttpServer:
+    """Build a standalone HTTP MCP server backed by the Ralph tool registry."""
     effective_session = session or AgentSession(
         session_id=f"standalone-{uuid.uuid4().hex[:8]}",
         run_id=str(uuid.uuid4()),
@@ -593,6 +700,8 @@ class FileBackedSession:
             lambda: f"standalone-{uuid.uuid4().hex[:8]}"
         )
         self._run_id_factory = run_id_factory or (lambda: str(uuid.uuid4()))
+        from ralph.mcp.multimodal.resources import MediaManifest  # noqa: PLC0415
+        self._media_manifest = MediaManifest()
 
 
     def _load(self) -> dict[str, object]:
@@ -629,6 +738,28 @@ class FileBackedSession:
         if raw is None:
             return None
         return Path(raw)
+
+    @property
+    def model_identity(self) -> object:
+        from ralph.mcp.multimodal.capabilities import (  # noqa: PLC0415
+            UNKNOWN_IDENTITY,
+            MultimodalModelIdentity,
+        )
+        raw = self._load().get("model_identity")
+        if not isinstance(raw, dict):
+            return UNKNOWN_IDENTITY
+        provider = str(raw.get("provider", "unknown"))
+        model_id = raw.get("model_id")
+        transport = raw.get("transport")
+        return MultimodalModelIdentity(
+            provider=provider,
+            model_id=str(model_id) if model_id is not None else None,
+            transport=str(transport) if transport is not None else None,
+        )
+
+    @property
+    def media_manifest(self) -> object:
+        return self._media_manifest
 
     def check_capability(self, capability: str) -> object:
         return "approved" if session_has_capability(self.capabilities, capability) else "denied"

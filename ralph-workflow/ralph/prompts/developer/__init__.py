@@ -21,6 +21,8 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class DeveloperPromptInputs:
+    """Inputs for rendering a developer-iteration prompt."""
+
     prompt_content: str | None
     plan_content: str | None
     analysis_feedback_content: str | None = None
@@ -34,6 +36,8 @@ class DeveloperPromptInputs:
 
 @dataclass(frozen=True)
 class PlanningPromptInputs:
+    """Inputs for rendering a planning-phase prompt."""
+
     prompt_content: str | None
     plan_content: str | None = None
     analysis_feedback_content: str | None = None
@@ -52,6 +56,7 @@ def prompt_developer_iteration_xml_with_context(
     *,
     template_name: str = "developer_iteration.jinja",
 ) -> str:
+    """Render the developer-iteration prompt, falling back to a static template on error."""
     template_content = context.registry.get_template(template_name)
 
     base_vars: dict[str, str] = {
@@ -137,6 +142,7 @@ def prompt_planning_xml_with_context(
     *,
     template_name: str = "planning.jinja",
 ) -> str:
+    """Render the planning-phase prompt, falling back to a static template on error."""
     template_content = context.registry.get_template(template_name)
 
     base_vars: dict[str, str] = {

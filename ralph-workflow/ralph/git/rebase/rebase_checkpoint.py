@@ -91,6 +91,8 @@ def _int_value(data: Mapping[str, object], key: str, default: int = 0) -> int:
 
 
 class RebasePhase(StrEnum):
+    """Lifecycle phase of an in-progress rebase operation."""
+
     NotStarted = "not_started"
     PreRebaseCheck = "pre_rebase_check"
     RebaseInProgress = "rebase_in_progress"
@@ -112,6 +114,8 @@ class RebasePhase(StrEnum):
 
 @dataclass
 class RebaseCheckpoint:
+    """Persisted state for a rebase operation, written to ``.agent/rebase_checkpoint.json``."""
+
     phase: RebasePhase = RebasePhase.NotStarted
     upstream_branch: str = ""
     conflicted_files: list[str] = field(default_factory=list)
@@ -191,6 +195,7 @@ class RebaseCheckpoint:
 
 
 def save_rebase_checkpoint(checkpoint: RebaseCheckpoint) -> None:
+    """Atomically persist ``checkpoint`` to the agent rebase checkpoint file."""
     _ensure_agent_dir()
     path = _checkpoint_path()
     checkpoint_existed = path.exists()
@@ -215,6 +220,7 @@ def _backup_checkpoint() -> None:
 
 
 def load_rebase_checkpoint() -> RebaseCheckpoint | None:
+    """Load and validate the rebase checkpoint, falling back to backup on error."""
     path = _checkpoint_path()
     if not path.exists():
         return None
@@ -232,16 +238,19 @@ def load_rebase_checkpoint() -> RebaseCheckpoint | None:
 
 
 def clear_rebase_checkpoint() -> None:
+    """Delete the rebase checkpoint file if it exists."""
     path = _checkpoint_path()
     if path.exists():
         path.unlink()
 
 
 def rebase_checkpoint_exists() -> bool:
+    """Return True if a rebase checkpoint file exists on disk."""
     return _checkpoint_path().exists()
 
 
 def validate_checkpoint(checkpoint: RebaseCheckpoint) -> None:
+    """Raise ``ValueError`` if ``checkpoint`` contains invalid or inconsistent data."""
     if checkpoint.phase != RebasePhase.NotStarted and not checkpoint.upstream_branch:
         raise ValueError("Checkpoint must contain upstream branch once the rebase starts")
 
@@ -256,6 +265,7 @@ def validate_checkpoint(checkpoint: RebaseCheckpoint) -> None:
 
 
 def restore_from_backup() -> RebaseCheckpoint | None:
+    """Attempt to restore a valid checkpoint from the backup file."""
     backup = _backup_path()
     if not backup.exists():
         return None
@@ -268,6 +278,7 @@ def restore_from_backup() -> RebaseCheckpoint | None:
 
 
 def acquire_rebase_lock() -> None:
+    """Acquire the rebase lock file, raising ``OSError`` if another process holds it."""
     _ensure_agent_dir()
     path = _lock_path()
     if path.exists():
@@ -279,6 +290,7 @@ def acquire_rebase_lock() -> None:
 
 
 def release_rebase_lock() -> None:
+    """Release the rebase lock file if it exists."""
     path = _lock_path()
     if path.exists():
         path.unlink()
@@ -310,6 +322,8 @@ def _is_lock_stale() -> bool:
 
 
 class RebaseLock:
+    """Context manager that acquires and releases the rebase lock."""
+
     def __init__(self) -> None:
         self.owns_lock = False
 

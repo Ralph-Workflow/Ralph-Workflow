@@ -50,12 +50,14 @@ def _prioritize_languages(language_counts: list[tuple[str, int]]) -> list[str]:
 
 
 def detect_languages(workspace_or_root: WorkspaceLike, root: str = "") -> list[str]:
+    """Return detected language names ordered by source-file prevalence."""
     workspace, coerced_root = _coerce_workspace(workspace_or_root)
     effective_root = root or coerced_root
     return _prioritize_languages(_sorted_language_counts(workspace, effective_root))
 
 
 def get_project_stack(workspace_or_root: WorkspaceLike, root: str = "") -> ProjectStack:
+    """Detect the full project stack including languages, frameworks, and test infrastructure."""
     workspace, coerced_root = _coerce_workspace(workspace_or_root)
     effective_root = root or coerced_root
 

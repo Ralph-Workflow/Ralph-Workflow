@@ -18,6 +18,7 @@ if TYPE_CHECKING:
 
 
 def mcp_toml_as_upstreams(workspace_path: Path | None) -> tuple[UpstreamMcpServer, ...]:
+    """Load .agent/mcp.toml and return the configured upstream MCP servers."""
     config_path = (workspace_path / ".agent" / "mcp.toml") if workspace_path is not None else None
     mcp_config = load_mcp_config(config_path=config_path)
     return tuple(
@@ -37,6 +38,7 @@ def merge_mcp_toml_into_upstreams(
     agent_native: tuple[UpstreamMcpServer, ...],
     mcp_toml_servers: tuple[UpstreamMcpServer, ...],
 ) -> tuple[UpstreamMcpServer, ...]:
+    """Merge mcp.toml servers into agent-native upstreams, preferring mcp.toml on conflict."""
     merged: dict[str, UpstreamMcpServer] = {s.name: s for s in agent_native}
     for server in mcp_toml_servers:
         if server.name in merged:
@@ -51,6 +53,7 @@ def merge_mcp_toml_into_upstreams(
 def set_upstream_mcp_config(
     runtime_env: dict[str, str], upstreams: tuple[UpstreamMcpServer, ...]
 ) -> None:
+    """Inject upstream MCP config into the runtime environment dict."""
     if upstreams:
         runtime_env[UPSTREAM_MCP_CONFIG_ENV] = serialize_upstream_mcp_servers(upstreams)
         return

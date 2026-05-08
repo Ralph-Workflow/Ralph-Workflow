@@ -29,6 +29,8 @@ class PlanArtifactValidationError(ValueError):
 
 
 class ScopeItem(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+    """A single item describing a unit of work within the plan scope."""
+
     model_config = ConfigDict(extra="forbid")
 
     text: str = Field(..., min_length=1)
@@ -37,6 +39,8 @@ class ScopeItem(BaseModel):  # type: ignore[explicit-any]  # reason: external li
 
 
 class Summary(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+    """High-level context and scope summary for the plan."""
+
     model_config = ConfigDict(extra="forbid")
 
     context: str = Field(..., min_length=1)
@@ -44,6 +48,8 @@ class Summary(BaseModel):  # type: ignore[explicit-any]  # reason: external libr
 
 
 class SkillsMcp(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+    """Skills and MCP servers required to execute the plan."""
+
     model_config = ConfigDict(extra="forbid")
 
     skills: list[str] = Field(default_factory=list)
@@ -51,6 +57,8 @@ class SkillsMcp(BaseModel):  # type: ignore[explicit-any]  # reason: external li
 
 
 class StepTarget(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+    """A file path and the action taken on it within a plan step."""
+
     model_config = ConfigDict(extra="forbid")
 
     path: str = Field(..., min_length=1)
@@ -58,6 +66,8 @@ class StepTarget(BaseModel):  # type: ignore[explicit-any]  # reason: external l
 
 
 class PlanStep(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+    """A single numbered implementation step within the plan."""
+
     model_config = ConfigDict(extra="forbid")
 
     number: int = Field(..., ge=1)
@@ -72,6 +82,8 @@ class PlanStep(BaseModel):  # type: ignore[explicit-any]  # reason: external lib
 
 
 class CriticalPrimaryFile(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+    """A primary file that will be created, modified, or deleted by the plan."""
+
     model_config = ConfigDict(extra="forbid")
 
     path: str = Field(..., min_length=1)
@@ -80,6 +92,8 @@ class CriticalPrimaryFile(BaseModel):  # type: ignore[explicit-any]  # reason: e
 
 
 class ReferenceFile(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+    """A reference file consulted during implementation but not modified."""
+
     model_config = ConfigDict(extra="forbid")
 
     path: str = Field(..., min_length=1)
@@ -87,6 +101,8 @@ class ReferenceFile(BaseModel):  # type: ignore[explicit-any]  # reason: externa
 
 
 class CriticalFiles(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+    """All files touched by the plan, split into primary and reference groups."""
+
     model_config = ConfigDict(extra="forbid")
 
     primary_files: list[CriticalPrimaryFile] = Field(..., min_length=1)
@@ -94,6 +110,8 @@ class CriticalFiles(BaseModel):  # type: ignore[explicit-any]  # reason: externa
 
 
 class RiskMitigation(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+    """A risk identified during planning together with its mitigation strategy."""
+
     model_config = ConfigDict(extra="forbid")
 
     risk: str = Field(..., min_length=1)
@@ -102,6 +120,8 @@ class RiskMitigation(BaseModel):  # type: ignore[explicit-any]  # reason: extern
 
 
 class VerificationStep(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+    """A single verification step with a method and expected outcome."""
+
     model_config = ConfigDict(extra="forbid")
 
     method: str = Field(..., min_length=1)
@@ -109,6 +129,8 @@ class VerificationStep(BaseModel):  # type: ignore[explicit-any]  # reason: exte
 
 
 class EditArea(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+    """File paths and directories edited by a parallel plan item."""
+
     model_config = ConfigDict(extra="forbid")
 
     paths: list[str] = Field(default_factory=list)
@@ -116,6 +138,8 @@ class EditArea(BaseModel):  # type: ignore[explicit-any]  # reason: external lib
 
 
 class ParallelPlanItem(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+    """A unit of parallelisable work with dependency tracking."""
+
     model_config = ConfigDict(extra="forbid")
 
     id: str = Field(..., min_length=1)
@@ -125,6 +149,8 @@ class ParallelPlanItem(BaseModel):  # type: ignore[explicit-any]  # reason: exte
 
 
 class PlanArtifact(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+    """Top-level validated schema for a plan artifact."""
+
     model_config = ConfigDict(extra="forbid")
 
     summary: Summary
@@ -180,6 +206,7 @@ def is_noop_plan(artifact: Mapping[str, object]) -> bool:
 
 
 def normalize_plan_artifact_content(content: dict[str, object]) -> dict[str, object]:
+    """Validate and normalize a raw plan artifact content dict."""
     if is_noop_plan(content):
         return {"noop": True}
     try:
@@ -308,6 +335,7 @@ def _now_iso() -> str:
 
 
 def new_plan_draft(*, now_iso: Callable[[], str] = _now_iso) -> dict[str, object]:
+    """Return a fresh plan draft with empty sections and timestamps."""
     now = now_iso()
     return {
         "schema_version": PLAN_DRAFT_SCHEMA_VERSION,

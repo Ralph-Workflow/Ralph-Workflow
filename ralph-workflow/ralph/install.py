@@ -14,6 +14,8 @@ if TYPE_CHECKING:
 
 
 class RunCommand(Protocol):
+    """Protocol for the subprocess runner passed to ``install_package``."""
+
     def __call__(self, command: Sequence[str], *, cwd: Path) -> None: ...
 
 

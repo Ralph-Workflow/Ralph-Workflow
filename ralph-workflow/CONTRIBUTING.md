@@ -74,7 +74,7 @@ You can narrow failures with:
 ruff check ralph/ tests/
 ruff format --check ralph/ tests/
 uv run python -m mypy ralph/
-uv run python -m ralph.verify_timeout --suite-timeout 30 -- pytest tests/ -q -n 8 --cov=ralph --cov-report=term-missing --cov-report=html --cov-fail-under=80
+make test-cov
 make test
 make test-unit
 make test-integration
@@ -224,11 +224,13 @@ All existing MCP tools (`read_file`, `write_file`, `list_directory`, etc.) must 
 
 ### Multimodal support is default-on with explicit opt-out
 
-The `read_image` tool and associated `MediaRead` capability:
+The `read_media` tool (primary) and `read_image` tool (compatibility alias) and the associated `MediaRead` capability:
 
 - Default to enabled (`media.enabled = true`)
 - Can be disabled via `[media]` section in `mcp.toml` with `enabled = false`
-- Are gated at registration time (tool only registered when `media.enabled = true`)
+- Are gated at registration time (tools only registered when `media.enabled = true`)
+- Support broad modality classes: images, PDFs, documents, audio, video, and resource/file-reference-based flows
+- Automatically detect what the active provider/model supports and select inline vs resource-reference delivery accordingly
 
 ### Client capability filtering
 
@@ -240,9 +242,12 @@ This is enforced by:
 
 ### Upstream multimodal boundary
 
-When an upstream MCP server returns a non-text content block, Ralph Workflow must reject it with a clear error rather than silently stringify or drop the block. The error message must identify the server, tool, and block type.
+When an upstream MCP server returns a non-text content block, Ralph Workflow normalizes it rather than rejecting it:
 
-This prevents silent data loss in text-only downstream flows and makes incompatibility visible rather than implicit.
+- **URI-backed content**: the external URI is preserved as-is in a `resource_reference` block
+- **Embedded-data content**: the bytes are stored in the session `MediaManifest` and a `resource_reference` block with a `ralph://media/...` URI is returned
+
+This preserves multimodal meaning across upstream tool boundaries and makes the content retrievable via `resources/read`.
 
 ### Dead code policy
 

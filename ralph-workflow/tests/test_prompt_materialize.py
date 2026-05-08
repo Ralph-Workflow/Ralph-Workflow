@@ -16,7 +16,12 @@ from ralph.policy.models import (
     PhaseTransition,
     PipelinePolicy,
 )
-from ralph.prompts.materialize import materialize_prompt_for_phase, prompt_file_for_phase
+from ralph.prompts.debug_dump import multimodal_sidecar_path
+from ralph.prompts.materialize import (
+    MultimodalSidecarEntry,
+    materialize_prompt_for_phase,
+    prompt_file_for_phase,
+)
 from ralph.prompts.template_engine import TemplateRenderingError
 from ralph.prompts.types import SessionCapabilities, SessionDrain
 from ralph.workspace.memory import MemoryWorkspace
@@ -579,6 +584,124 @@ def test_materialize_planning_retry_preserves_current_plan_context_when_last_ret
     assert "PREVIOUS ATTEMPT ERROR" in rendered
     assert str(tmp_path / ".agent" / "PLAN.md") in rendered
     assert workspace.exists(".agent/artifacts/plan.json") is True
+    assert workspace.exists(".agent/PLAN.md") is True
+
+
+
+def test_materialize_resumed_planning_with_draft_only_uses_draft_context(
+    tmp_path: Path,
+) -> None:
+    policy = load_policy(tmp_path / ".agent")
+    workspace = MemoryWorkspace(root=str(tmp_path))
+    workspace.write("PROMPT.md", "Resume the interrupted planning pass")
+    workspace.write(
+        ".agent/artifacts/.plan_draft.json",
+        json.dumps(
+            {
+                "schema_version": 1,
+                "started_at": "2026-01-01T00:00:00+00:00",
+                "updated_at": "2026-01-01T00:00:01+00:00",
+                "sections": {
+                    "summary": {
+                        "context": "Resumed draft-only context.",
+                        "scope_items": [
+                            {"text": "one"},
+                            {"text": "two"},
+                            {"text": "three"},
+                        ],
+                    }
+                },
+            }
+        ),
+    )
+
+    prompt_path = materialize_prompt_for_phase(
+        phase="planning",
+        workspace=workspace,
+        pipeline_policy=policy.pipeline,
+        artifacts_policy=policy.artifacts,
+        session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.PLANNING),
+        workspace_root=tmp_path,
+        previous_phase=None,
+        resume_existing_phase=True,
+    )
+
+    rendered = workspace.read(prompt_path)
+    assert "PLANNING EDIT MODE" in rendered
+    assert "Resumed draft-only context." in rendered
+    assert workspace.exists(".agent/artifacts/.plan_draft.json") is True
+
+
+
+def test_materialize_resumed_planning_preserves_existing_plan_context(
+    tmp_path: Path,
+) -> None:
+    policy = load_policy(tmp_path / ".agent")
+    workspace = MemoryWorkspace(root=str(tmp_path))
+    workspace.write("PROMPT.md", "Resume the interrupted planning pass")
+    workspace.write(
+        ".agent/artifacts/plan.json",
+        json.dumps(
+            {
+                "type": "plan",
+                "content": {
+                    "summary": {
+                        "context": "Resumed plan context.",
+                        "scope_items": [
+                            {"text": "one"},
+                            {"text": "two"},
+                            {"text": "three"},
+                        ],
+                    },
+                    "steps": [{"number": 1, "title": "Resume", "content": "continue editing"}],
+                    "critical_files": {
+                        "primary_files": [{"path": "src/plan.py", "action": "modify"}],
+                    },
+                    "risks_mitigations": [{"risk": "drift", "mitigation": "preserve"}],
+                    "verification_strategy": [
+                        {"method": "pytest", "expected_outcome": "passes"}
+                    ],
+                },
+            }
+        ),
+    )
+    workspace.write(".agent/PLAN.md", "# Implementation Plan\n\nResumed plan context.\n")
+    workspace.write(
+        ".agent/artifacts/.plan_draft.json",
+        json.dumps(
+            {
+                "schema_version": 1,
+                "started_at": "2026-01-01T00:00:00+00:00",
+                "updated_at": "2026-01-01T00:00:01+00:00",
+                "sections": {
+                    "summary": {
+                        "context": "Resumed draft context.",
+                        "scope_items": [
+                            {"text": "one"},
+                            {"text": "two"},
+                            {"text": "three"},
+                        ],
+                    }
+                },
+            }
+        ),
+    )
+
+    prompt_path = materialize_prompt_for_phase(
+        phase="planning",
+        workspace=workspace,
+        pipeline_policy=policy.pipeline,
+        artifacts_policy=policy.artifacts,
+        session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.PLANNING),
+        workspace_root=tmp_path,
+        previous_phase=None,
+        resume_existing_phase=True,
+    )
+
+    rendered = workspace.read(prompt_path)
+    assert "PLANNING EDIT MODE" in rendered
+    assert workspace.exists(".agent/artifacts/plan.json") is True
+    assert workspace.exists(".agent/artifacts/.plan_draft.json") is True
     assert workspace.exists(".agent/PLAN.md") is True
 
 
@@ -1605,3 +1728,206 @@ def test_missing_history_does_not_break_fresh_planning(
     )
     # Must complete without error; no history is also fine
     assert not (artifact_dir / "history").exists()
+
+
+# ---------------------------------------------------------------------------
+# Multimodal sidecar contract tests
+# ---------------------------------------------------------------------------
+
+def _make_sidecar_entry(  # noqa: PLR0913
+    *,
+    artifact_id: str = "abc123",
+    uri: str = "ralph://media/abc123",
+    mime_type: str = "image/png",
+    title: str = "screenshot.png",
+    modality: str = "image",
+    delivery: str = "inline",
+    reason: str = "Claude supports inline image delivery",
+) -> MultimodalSidecarEntry:
+    return MultimodalSidecarEntry(
+        artifact_id=artifact_id,
+        uri=uri,
+        mime_type=mime_type,
+        title=title,
+        modality=modality,
+        delivery=delivery,
+        reason=reason,
+    )
+
+
+def test_multimodal_sidecar_path_is_deterministic_from_phase() -> None:
+    assert (
+        multimodal_sidecar_path("development")
+        == ".agent/tmp/development_multimodal_handoff.json"
+    )
+    assert (
+        multimodal_sidecar_path("planning")
+        == ".agent/tmp/planning_multimodal_handoff.json"
+    )
+    assert (
+        multimodal_sidecar_path("foo/bar")
+        == ".agent/tmp/foo_bar_multimodal_handoff.json"
+    )
+    assert (
+        multimodal_sidecar_path("foo bar")
+        == ".agent/tmp/foo_bar_multimodal_handoff.json"
+    )
+
+
+def test_materialize_with_no_multimodal_entries_does_not_create_sidecar(
+    tmp_path: Path,
+) -> None:
+    policy = load_policy(tmp_path / ".agent")
+    workspace = MemoryWorkspace(root=str(tmp_path))
+    workspace.write("PROMPT.md", "Build the feature")
+    workspace.write(".agent/PLAN.md", "# Implementation Plan\n\nStep 1.\n")
+
+    materialize_prompt_for_phase(
+        phase="development",
+        workspace=workspace,
+        pipeline_policy=policy.pipeline,
+        artifacts_policy=policy.artifacts,
+        session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT),
+        workspace_root=tmp_path,
+        previous_phase=None,
+        multimodal_entries=None,
+    )
+
+    assert not workspace.exists(multimodal_sidecar_path("development"))
+
+
+def test_materialize_with_empty_multimodal_entries_does_not_create_sidecar(
+    tmp_path: Path,
+) -> None:
+    policy = load_policy(tmp_path / ".agent")
+    workspace = MemoryWorkspace(root=str(tmp_path))
+    workspace.write("PROMPT.md", "Build the feature")
+    workspace.write(".agent/PLAN.md", "# Implementation Plan\n\nStep 1.\n")
+
+    materialize_prompt_for_phase(
+        phase="development",
+        workspace=workspace,
+        pipeline_policy=policy.pipeline,
+        artifacts_policy=policy.artifacts,
+        session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT),
+        workspace_root=tmp_path,
+        previous_phase=None,
+        multimodal_entries=[],
+    )
+
+    assert not workspace.exists(multimodal_sidecar_path("development"))
+
+
+def test_materialize_with_multimodal_entries_creates_sidecar(
+    tmp_path: Path,
+) -> None:
+    policy = load_policy(tmp_path / ".agent")
+    workspace = MemoryWorkspace(root=str(tmp_path))
+    workspace.write("PROMPT.md", "Build the feature")
+    workspace.write(".agent/PLAN.md", "# Implementation Plan\n\nStep 1.\n")
+
+    entry = _make_sidecar_entry()
+    materialize_prompt_for_phase(
+        phase="development",
+        workspace=workspace,
+        pipeline_policy=policy.pipeline,
+        artifacts_policy=policy.artifacts,
+        session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT),
+        workspace_root=tmp_path,
+        previous_phase=None,
+        multimodal_entries=[entry],
+    )
+
+    sidecar_path = multimodal_sidecar_path("development")
+    assert workspace.exists(sidecar_path)
+    data = json.loads(workspace.read(sidecar_path))
+    assert data["schema_version"] == "1"
+    assert data["phase"] == "development"
+    assert len(data["artifacts"]) == 1
+    art = data["artifacts"][0]
+    assert art["artifact_id"] == "abc123"
+    assert art["uri"] == "ralph://media/abc123"
+    assert art["mime_type"] == "image/png"
+    assert art["title"] == "screenshot.png"
+    assert art["modality"] == "image"
+    assert art["delivery"] == "inline"
+    assert art["reason"] == "Claude supports inline image delivery"
+
+
+def test_materialize_sidecar_contains_all_artifacts(
+    tmp_path: Path,
+) -> None:
+    policy = load_policy(tmp_path / ".agent")
+    workspace = MemoryWorkspace(root=str(tmp_path))
+    workspace.write("PROMPT.md", "Build the feature")
+    workspace.write(".agent/PLAN.md", "# Implementation Plan\n\nStep 1.\n")
+
+    entries = [
+        _make_sidecar_entry(
+            artifact_id="img1",
+            uri="ralph://media/img1",
+            modality="image",
+            title="screen.png",
+        ),
+        _make_sidecar_entry(
+            artifact_id="pdf1",
+            uri="ralph://media/pdf1",
+            modality="pdf",
+            title="doc.pdf",
+            mime_type="application/pdf",
+            delivery="resource_reference",
+        ),
+    ]
+    materialize_prompt_for_phase(
+        phase="development",
+        workspace=workspace,
+        pipeline_policy=policy.pipeline,
+        artifacts_policy=policy.artifacts,
+        session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT),
+        workspace_root=tmp_path,
+        previous_phase=None,
+        multimodal_entries=entries,
+    )
+
+    data = json.loads(workspace.read(multimodal_sidecar_path("development")))
+    assert len(data["artifacts"]) == 2  # noqa: PLR2004
+    assert data["artifacts"][0]["artifact_id"] == "img1"
+    assert data["artifacts"][1]["artifact_id"] == "pdf1"
+
+
+def test_stale_sidecar_is_cleared_on_text_only_run(
+    tmp_path: Path,
+) -> None:
+    policy = load_policy(tmp_path / ".agent")
+    workspace = MemoryWorkspace(root=str(tmp_path))
+    workspace.write("PROMPT.md", "Build the feature")
+    workspace.write(".agent/PLAN.md", "# Implementation Plan\n\nStep 1.\n")
+
+    # First run: multimodal
+    entry = _make_sidecar_entry()
+    materialize_prompt_for_phase(
+        phase="development",
+        workspace=workspace,
+        pipeline_policy=policy.pipeline,
+        artifacts_policy=policy.artifacts,
+        session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT),
+        workspace_root=tmp_path,
+        previous_phase=None,
+        multimodal_entries=[entry],
+    )
+    sidecar_path = multimodal_sidecar_path("development")
+    assert workspace.exists(sidecar_path)
+
+    # Second run: text-only (no entries)
+    materialize_prompt_for_phase(
+        phase="development",
+        workspace=workspace,
+        pipeline_policy=policy.pipeline,
+        artifacts_policy=policy.artifacts,
+        session_caps=SessionCapabilities.defaults_for_drain(SessionDrain.DEVELOPMENT),
+        workspace_root=tmp_path,
+        previous_phase=None,
+        multimodal_entries=None,
+    )
+
+    assert not workspace.exists(sidecar_path), "Stale sidecar must be removed on text-only run"

@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, Protocol, cast
 
 from loguru import logger
 
+from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity
 from ralph.mcp.protocol.env import MCP_SESSION_FILE_ENV as SESSION_FILE_ENV
 from ralph.mcp.protocol.startup import (
     SessionBridgeLike,
@@ -38,6 +39,8 @@ _PACKAGE_ROOT = Path(__file__).resolve().parents[3]
 
 
 class ProcessLike(Protocol):
+    """Subset of ManagedProcess API required by the MCP server lifecycle."""
+
     def poll(self) -> int | None: ...
     def terminate(self, grace_period_s: float = 5.0) -> None: ...
     def wait(self, timeout: float | None = None) -> int | None: ...
@@ -69,6 +72,8 @@ type PreflightFn = Callable[[str, list[str], timedelta], None]
 
 @dataclass(frozen=True)
 class LifecycleDeps:
+    """Injectable dependencies for MCP server lifecycle management."""
+
     reserve_port: Callable[[], int]
     create_session_file: Callable[[Path, SessionLike], Path]
     subprocess_env: Callable[[Path], dict[str, str]]
@@ -81,6 +86,8 @@ class LifecycleDeps:
 
 @dataclass
 class StandaloneMcpProcess:
+    """A running standalone MCP HTTP server process with its endpoint and session file."""
+
     endpoint: str
     process: ProcessLike
     session_file: Path
@@ -413,6 +420,13 @@ def _session_payload_json(session: SessionLike) -> str:
         "drain": session.drain,
         "capabilities": sorted(session.capabilities),
     }
+    raw_identity: object = getattr(session, "model_identity", None)
+    if isinstance(raw_identity, MultimodalModelIdentity) and raw_identity.is_known():
+        session_payload["model_identity"] = {
+            "provider": raw_identity.provider,
+            "model_id": raw_identity.model_id,
+            "transport": raw_identity.transport,
+        }
     return json.dumps(session_payload)
 
 

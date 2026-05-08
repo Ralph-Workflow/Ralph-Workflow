@@ -514,3 +514,158 @@ class TestStdioUpstreamClient:
         assert content[0].get("type") == "text"
         assert content[0].get("text") == "fake-result"
         assert result_dict.get("isError") is False
+
+
+# ---------------------------------------------------------------------------
+# Multimodal tool roundtrip tests (Step 3)
+# ---------------------------------------------------------------------------
+
+# Minimal valid 1x1 PNG (67 bytes) — no external file needed.
+_TINY_PNG_BYTES = bytes([
+    0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,  # PNG signature
+    0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52,  # IHDR chunk length + type
+    0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,  # width=1, height=1
+    0x08, 0x02, 0x00, 0x00, 0x00, 0x90, 0x77, 0x53,  # bit depth, color type, etc.
+    0xDE, 0x00, 0x00, 0x00, 0x0C, 0x49, 0x44, 0x41,  # IDAT chunk
+    0x54, 0x08, 0xD7, 0x63, 0xF8, 0xCF, 0xC0, 0x00,
+    0x00, 0x00, 0x02, 0x00, 0x01, 0xE2, 0x21, 0xBC,
+    0x33, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4E,  # IEND chunk
+    0x44, 0xAE, 0x42, 0x60, 0x82,
+])
+
+# Minimal PDF header bytes — sufficient to pass MIME routing.
+_TINY_PDF_BYTES = b"%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\n%%EOF\n"
+
+_MULTIMODAL_CAPABILITIES = _REQUIRED_CAPABILITIES | {"media.read"}
+
+
+def _build_multimodal_server(
+    workspace_path: Path,
+    *,
+    session_id: str = "test-media",
+    provider: str = "claude",
+    model_id: str = "claude-3-5-sonnet-20241022",
+) -> McpServer:
+    """Build a McpServer with media.read capability and Claude model identity."""
+    from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity  # noqa: PLC0415
+
+    workspace = FsWorkspace(workspace_path)
+    session = AgentSession(
+        session_id=session_id,
+        run_id="test-run",
+        drain="development",
+        capabilities=_MULTIMODAL_CAPABILITIES,
+        model_identity=MultimodalModelIdentity(
+            provider=provider,
+            model_id=model_id,
+        ),
+    )
+    registry = build_ralph_tool_registry(session, workspace)
+    return McpServer(session, workspace, registry)
+
+
+def _initialize_multimodal(server: McpServer) -> ServerState:
+    """Send initialize with multimodal client capabilities; return running state."""
+    req = JsonRpcRequest(
+        jsonrpc="2.0",
+        method="initialize",
+        params={
+            "protocolVersion": "2024-11-05",
+            "capabilities": {"media": {}, "image": {}},
+            "clientInfo": {"name": "test", "version": "1.0"},
+        },
+        msg_id=1,
+    )
+    resp, state = server.handle_request(req, ServerState.UNINITIALIZED)
+    assert resp is not None and resp.result is not None
+    notif = JsonRpcRequest(jsonrpc="2.0", method="notifications/initialized", params={})
+    none_resp, state = server.handle_request(notif, state)
+    assert none_resp is None
+    return state
+
+
+@pytest.mark.integration
+class TestMultimodalToolRoundtrip:
+    """Black-box multimodal tool/resource roundtrips via McpServer.handle_request()."""
+
+    def test_read_media_png_with_claude_session_returns_inline_image(
+        self, tmp_path: Path
+    ) -> None:
+        """PNG file with Claude model identity delivers an inline image block."""
+        png_file = tmp_path / "screenshot.png"
+        png_file.write_bytes(_TINY_PNG_BYTES)
+
+        server = _build_multimodal_server(tmp_path, provider="claude")
+        state = _initialize_multimodal(server)
+
+        call_id = [10]
+        result = _do_tool_call(
+            server, state, call_id, str(RalphToolName.READ_MEDIA), {"path": "screenshot.png"}
+        )
+
+        assert result.get("isError") is not True, f"read_media returned error: {result}"
+        content = cast("list[dict[str, Any]]", result.get("content", []))
+        assert len(content) == 1
+        block = content[0]
+        assert block.get("type") == "image", (
+            f"Expected inline image block, got type={block.get('type')!r}"
+        )
+        assert block.get("mimeType") == "image/png"
+        assert isinstance(block.get("data"), str) and len(block["data"]) > 0
+
+    def test_read_media_pdf_returns_resource_reference_and_is_retrievable(
+        self, tmp_path: Path
+    ) -> None:
+        """PDF with unknown provider delivers resource_reference retrievable via resources/read."""
+        pdf_file = tmp_path / "report.pdf"
+        pdf_file.write_bytes(_TINY_PDF_BYTES)
+
+        server = _build_multimodal_server(tmp_path, provider="unknown-provider")
+        state = _initialize_multimodal(server)
+
+        call_id = [10]
+        result = _do_tool_call(
+            server, state, call_id, str(RalphToolName.READ_MEDIA), {"path": "report.pdf"}
+        )
+
+        assert result.get("isError") is not True, f"read_media returned error: {result}"
+        content = cast("list[dict[str, Any]]", result.get("content", []))
+        assert len(content) == 1
+        block = content[0]
+        assert block.get("type") == "resource_reference", (
+            f"Expected resource_reference block, got type={block.get('type')!r}"
+        )
+        uri = str(block.get("uri", ""))
+        assert uri.startswith("ralph://media/"), f"Expected ralph://media/ URI, got: {uri!r}"
+        assert block.get("mimeType") == "application/pdf"
+        assert block.get("modality") == "pdf"
+
+        # Artifact must appear in resources/list
+        list_req = JsonRpcRequest(
+            jsonrpc="2.0", method="resources/list", params={}, msg_id=20
+        )
+        list_resp, _ = server.handle_request(list_req, state)
+        assert list_resp is not None and list_resp.result is not None
+        resources = cast(
+            "list[dict[str, Any]]",
+            cast("dict[str, Any]", list_resp.result).get("resources", []),
+        )
+        resource_uris = {r.get("uri") for r in resources}
+        assert uri in resource_uris, f"URI {uri!r} not found in resources/list: {resource_uris}"
+
+        # Artifact bytes must be retrievable via resources/read
+        read_req = JsonRpcRequest(
+            jsonrpc="2.0", method="resources/read", params={"uri": uri}, msg_id=21
+        )
+        read_resp, _ = server.handle_request(read_req, state)
+        assert read_resp is not None and read_resp.result is not None, (
+            f"resources/read failed: {read_resp}"
+        )
+        contents = cast(
+            "list[dict[str, Any]]",
+            cast("dict[str, Any]", read_resp.result).get("contents", []),
+        )
+        assert len(contents) == 1
+        assert contents[0].get("uri") == uri
+        assert contents[0].get("mimeType") == "application/pdf"
+        assert isinstance(contents[0].get("blob"), str) and len(contents[0]["blob"]) > 0

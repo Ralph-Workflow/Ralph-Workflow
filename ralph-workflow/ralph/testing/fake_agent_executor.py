@@ -1,3 +1,11 @@
+"""In-process fake executor for unit-testing parallel pipeline logic.
+
+Provides ``FakeAgentExecutor`` and ``FakeRun``. Seed a ``FakeAgentExecutor`` with a
+mapping of ``unit_id`` to ``FakeRun`` instances; the executor replays the seeded
+output lines and exit code, emitting the correct ``WorkerStatus`` transitions, without
+spawning any subprocess or real agent process.
+"""
+
 import asyncio
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -9,6 +17,8 @@ from ralph.pipeline.worker_state import WorkerStatus
 
 @dataclass
 class FakeRun:
+    """Seeded replay script for a single parallel work unit."""
+
     outputs: list[str]
     exit_code: int
     duration_ms: int
@@ -17,6 +27,8 @@ class FakeRun:
 
 
 class FakeAgentExecutor:
+    """In-process agent executor that replays seeded FakeRun scripts without subprocesses."""
+
     def __init__(self, runs: dict[str, FakeRun]) -> None:
         self._runs = runs
         self.calls: list[WorkUnit] = []

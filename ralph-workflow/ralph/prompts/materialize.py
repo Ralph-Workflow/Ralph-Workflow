@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+from contextlib import suppress
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
@@ -28,7 +30,12 @@ from ralph.phases.required_artifacts import (
 from ralph.pipeline.cycle_baseline import read_cycle_baseline
 from ralph.policy.models import ROLE_REVIEW
 from ralph.prompts.commit import CommitPromptPayloadConfig, prompt_commit_message
-from ralph.prompts.debug_dump import dump_rendered_prompt, prompt_dump_path
+from ralph.prompts.debug_dump import (
+    dump_rendered_prompt,
+    media_session_path,
+    multimodal_sidecar_path,
+    prompt_dump_path,
+)
 from ralph.prompts.developer import (
     DeveloperPromptInputs,
     PlanningPromptInputs,
@@ -57,6 +64,97 @@ class MissingPlanHandoffError(ValueError):
     """Raised when a template requires an existing plan handoff that is absent."""
 
 
+@dataclass(frozen=True)
+class MultimodalSidecarEntry:
+    """A single multimodal artifact entry in the prompt-to-invoke handoff sidecar."""
+
+    artifact_id: str
+    uri: str
+    mime_type: str
+    title: str
+    modality: str
+    delivery: str
+    reason: str = ""
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "artifact_id": self.artifact_id,
+            "uri": self.uri,
+            "mime_type": self.mime_type,
+            "title": self.title,
+            "modality": self.modality,
+            "delivery": self.delivery,
+            "reason": self.reason,
+        }
+
+
+_SIDECAR_SCHEMA_VERSION = "1"
+
+
+def _write_multimodal_sidecar(
+    workspace: Workspace,
+    phase: str,
+    entries: list[MultimodalSidecarEntry],
+) -> None:
+    path = multimodal_sidecar_path(phase)
+    payload = {
+        "schema_version": _SIDECAR_SCHEMA_VERSION,
+        "phase": phase,
+        "artifacts": [e.to_dict() for e in entries],
+    }
+    workspace.write(path, json.dumps(payload, indent=2))
+
+
+def _clear_multimodal_sidecar(workspace: Workspace, phase: str) -> None:
+    path = multimodal_sidecar_path(phase)
+    with suppress(Exception):
+        workspace.remove(path)
+
+
+def collect_media_entries_for_phase(
+    workspace: Workspace,
+    phase: str,
+) -> list[MultimodalSidecarEntry]:
+    """Read media entries from the persistent session index for a phase.
+
+    The MCP server writes artifact metadata to this index whenever read_media
+    creates a resource-reference artifact during a live session. The runner
+    reads this index at the next prompt materialization to carry those artifacts
+    forward so the agent can retrieve them via read_media / resources/read.
+
+    Returns an empty list when no session index exists or it cannot be parsed.
+    """
+    path = media_session_path(phase)
+    try:
+        raw = workspace.read(path)
+    except Exception:
+        return []
+    try:
+        data: dict[str, object] = json.loads(raw)
+        artifacts = data.get("artifacts")
+        if not isinstance(artifacts, list):
+            return []
+        entries: list[MultimodalSidecarEntry] = []
+        for item in artifacts:
+            if not isinstance(item, dict):
+                continue
+            try:
+                entries.append(MultimodalSidecarEntry(
+                    artifact_id=str(item.get("artifact_id", "")),
+                    uri=str(item.get("uri", "")),
+                    mime_type=str(item.get("mime_type", "")),
+                    title=str(item.get("title", "")),
+                    modality=str(item.get("modality", "")),
+                    delivery=str(item.get("delivery", "resource_reference")),
+                    reason=str(item.get("reason", "")),
+                ))
+            except Exception:
+                continue
+        return entries
+    except Exception:
+        return []
+
+
 def materialize_prompt_for_phase(  # noqa: PLR0913
     *,
     phase: str,
@@ -67,7 +165,10 @@ def materialize_prompt_for_phase(  # noqa: PLR0913
     workspace_root: Path,
     worker_namespace: Path | None = None,
     previous_phase: str | None = None,
+    resume_existing_phase: bool = False,
+    multimodal_entries: list[MultimodalSidecarEntry] | None = None,
 ) -> str:
+    """Render and persist the prompt for a pipeline phase, returning its dump path."""
     prompt = _render_prompt_for_phase(
         phase=phase,
         workspace=workspace,
@@ -77,11 +178,18 @@ def materialize_prompt_for_phase(  # noqa: PLR0913
         workspace_root=workspace_root,
         worker_namespace=worker_namespace,
         previous_phase=previous_phase,
+        resume_existing_phase=resume_existing_phase,
     )
-    return dump_rendered_prompt(workspace, phase, prompt)
+    path = dump_rendered_prompt(workspace, phase, prompt)
+    if multimodal_entries:
+        _write_multimodal_sidecar(workspace, phase, multimodal_entries)
+    else:
+        _clear_multimodal_sidecar(workspace, phase)
+    return path
 
 
 def prompt_file_for_phase(phase: str) -> str:
+    """Return the workspace-relative path where a phase's prompt is stored."""
     return prompt_dump_path(phase)
 
 
@@ -121,6 +229,7 @@ def _render_prompt_for_phase(  # noqa: PLR0913
     workspace_root: Path,
     worker_namespace: Path | None = None,
     previous_phase: str | None = None,
+    resume_existing_phase: bool = False,
 ) -> str:
     context = TemplateContext.default(workspace_root)
     template_name = _template_name_for_phase(phase, pipeline_policy)
@@ -148,6 +257,7 @@ def _render_prompt_for_phase(  # noqa: PLR0913
             pipeline_policy=pipeline_policy,
             artifacts_policy=artifacts_policy,
             previous_phase=previous_phase,
+            resume_existing_phase=resume_existing_phase,
         )
         last_retry_error = _read_and_clear_retry_hint(workspace, phase)
         artifact_history_path = _resolve_planning_history_path(workspace_root)
@@ -308,6 +418,7 @@ def render_worker_prompt(unit: WorkUnit, base_prompt: str, policy: PipelinePolic
 
 
 def tool_name_prefix_for_transport(transport: AgentTransport | None) -> str:
+    """Return the tool name prefix for the given agent transport."""
     # Prompt templates should talk about the same tool names the current agent
     # transport will actually see. Claude gets namespaced MCP tools; other
     # transports continue to see Ralph's bare tool names.
@@ -379,10 +490,17 @@ def _resolve_required_plan_handoff(
     workspace: Workspace,
     *,
     template_name: str,
+    allow_draft_fallback: bool = False,
 ) -> tuple[str | None, str]:
     plan_content, plan_path = _resolve_plan_handoff(workspace)
     if plan_path:
         return plan_content, plan_path
+    if allow_draft_fallback and workspace.exists(PLAN_DRAFT_PATH):
+        with suppress(Exception):
+            parsed = cast("object", json.loads(workspace.read(PLAN_DRAFT_PATH)))
+            if isinstance(parsed, dict) and isinstance(parsed.get("sections"), dict):
+                sections = cast("dict[str, object]", parsed["sections"])
+                return _format_plan_for_execution(json.dumps(sections)), ""
     plan_handoff_path = handoff_path_for_artifact("plan") or ".agent/PLAN.md"
     msg = (
         f"Template '{template_name}' requires an existing plan handoff at "
@@ -391,16 +509,14 @@ def _resolve_required_plan_handoff(
     raise MissingPlanHandoffError(msg)
 
 
-def _prepare_planning_prompt_context(
+def _should_preserve_planning_context(
     *,
     phase: str,
     workspace: Workspace,
-    pipeline_policy: PipelinePolicy,
-    artifacts_policy: ArtifactsPolicy | None,
     previous_phase: str | None,
-) -> tuple[str | None, str, str, str, str]:
-    phase_def = pipeline_policy.phases.get(phase)
-    template_name = _template_name_for_phase(phase, pipeline_policy)
+    pipeline_policy: PipelinePolicy,
+    resume_existing_phase: bool,
+) -> bool:
     is_loopback = _is_analysis_loopback_into_phase(
         phase=phase,
         previous_phase=previous_phase,
@@ -408,10 +524,32 @@ def _prepare_planning_prompt_context(
     )
     has_retry_hint = bool(_read_optional(workspace, retry_hint_path(phase)))
     preserve_retry_context = previous_phase == phase and has_retry_hint
+    return is_loopback or preserve_retry_context or resume_existing_phase
+
+
+def _prepare_planning_prompt_context(  # noqa: PLR0913
+    *,
+    phase: str,
+    workspace: Workspace,
+    pipeline_policy: PipelinePolicy,
+    artifacts_policy: ArtifactsPolicy | None,
+    previous_phase: str | None,
+    resume_existing_phase: bool,
+) -> tuple[str | None, str, str, str, str]:
+    phase_def = pipeline_policy.phases.get(phase)
+    template_name = _template_name_for_phase(phase, pipeline_policy)
+    preserve_planning_context = _should_preserve_planning_context(
+        phase=phase,
+        workspace=workspace,
+        previous_phase=previous_phase,
+        pipeline_policy=pipeline_policy,
+        resume_existing_phase=resume_existing_phase,
+    )
     # Clear fresh planning context only for true fresh entry.
-    # Analysis loopbacks and same-phase recoverable retries must preserve
-    # the current plan + history so the planner can revise instead of restart.
-    if not is_loopback and not preserve_retry_context:
+    # Analysis loopbacks, same-phase recoverable retries, and resumed
+    # planning passes must preserve the current plan + history so the
+    # planner can revise instead of restart.
+    if not preserve_planning_context:
         _clear_fresh_planning_context(
             workspace,
             phase=phase,
@@ -429,6 +567,7 @@ def _prepare_planning_prompt_context(
         plan_content, plan_path = _resolve_required_plan_handoff(
             workspace,
             template_name=template_name,
+            allow_draft_fallback=resume_existing_phase,
         )
     return (
         plan_content,

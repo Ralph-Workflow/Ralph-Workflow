@@ -11,6 +11,8 @@ from enum import StrEnum
 
 
 class ConnectivityState(StrEnum):
+    """Enumeration of observed network connectivity states."""
+
     ONLINE = "online"
     OFFLINE = "offline"
     UNKNOWN = "unknown"
@@ -18,6 +20,8 @@ class ConnectivityState(StrEnum):
 
 @dataclass
 class ConnectivityEvent:
+    """A snapshot of a connectivity state transition."""
+
     state: ConnectivityState
     since: datetime
     reason: str

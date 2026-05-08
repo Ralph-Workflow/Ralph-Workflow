@@ -19,6 +19,8 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class TemplateContext:
+    """Bundled registry and partials for prompt template rendering."""
+
     registry: TemplateRegistry
     partials: Mapping[str, str]
 

@@ -9,6 +9,8 @@ if TYPE_CHECKING:
 
 
 class FileBackend(Protocol):
+    """Protocol for filesystem I/O required by artifact persistence."""
+
     def exists(self, path: Path) -> bool: ...
     def mkdir(self, path: Path, *, parents: bool = False, exist_ok: bool = False) -> None: ...
     def read_text(self, path: Path, *, encoding: str = "utf-8") -> str: ...
@@ -19,6 +21,8 @@ class FileBackend(Protocol):
 
 
 class PathFileBackend:
+    """Concrete FileBackend implementation backed by pathlib.Path operations."""
+
     def exists(self, path: Path) -> bool:
         return path.exists()
 

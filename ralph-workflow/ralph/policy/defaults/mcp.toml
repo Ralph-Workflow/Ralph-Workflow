@@ -102,13 +102,14 @@
 # extract_links = false
 # @EXAMPLE-END
 
-# Multimodal image reading support (read_image tool).
+# Broad multimodal support (read_media tool; read_image is a compatibility alias for inline images).
+# Covers images, PDFs, audio, video, and office documents.
 # ENABLED BY DEFAULT - no config required for basic use.
 # To disable or customize:
 # @EXAMPLE-START
 # [media]
 # enabled = false  # set to false to opt out
-# max_inline_bytes = 5242880  # 5 MiB default; increase for larger images
+# max_inline_bytes = 5242880  # 5 MiB default; increase for larger inline images
 # @EXAMPLE-END
 
 # Crawl4AI upstream MCP server for advanced web crawling (multi-page, JS-rendered).

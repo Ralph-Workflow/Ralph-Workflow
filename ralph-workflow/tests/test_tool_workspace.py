@@ -5,13 +5,16 @@ from __future__ import annotations
 import base64
 import json
 import tempfile
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import cast
 from unittest.mock import MagicMock
 
 import pytest
 
+from ralph.mcp.multimodal.artifacts import ResourceReferenceContent
+from ralph.mcp.multimodal.capabilities import UNKNOWN_IDENTITY, MultimodalModelIdentity
+from ralph.mcp.multimodal.resources import MediaManifest
 from ralph.mcp.tools.coordination import (
     CapabilityDeniedError,
     ImageContent,
@@ -51,6 +54,7 @@ from ralph.mcp.tools.workspace import (
     handle_move_file,
     handle_read_file,
     handle_read_image,
+    handle_read_media,
     handle_read_multiple_files,
     handle_search_files,
     handle_stat,
@@ -1589,3 +1593,311 @@ class TestHandleReadImage:
 def test_read_env_value_uses_injected_mapping() -> None:
     assert _read_env_value({"DEMO_KEY": "demo-value"}, "DEMO_KEY") == "demo-value"
     assert _read_env_value({}, "MISSING_KEY") == "[not found]"
+
+
+# =============================================================================
+# handle_read_media tests
+# =============================================================================
+
+
+@dataclass
+class MockSessionWithManifest:
+    allowed_capability: str | None = None
+    session_id: str = "test-session"
+    media_manifest: MediaManifest = field(default_factory=MediaManifest)
+    model_identity: MultimodalModelIdentity = field(default=UNKNOWN_IDENTITY)
+
+    def check_capability(self, capability: str) -> object:
+        return capability == self.allowed_capability
+
+    def check_edit_area(self, path: str) -> object:
+        return True
+
+
+class TestHandleReadMedia:
+    def test_no_manifest_returns_explicit_error(self) -> None:
+        """When no session manifest is available, resource-reference delivery returns an error."""
+        pdf_bytes = b"%PDF-1.4 fake pdf content"
+        with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as f:
+            f.write(pdf_bytes)
+            temp_path = f.name
+
+        try:
+            ws = MagicMock()
+            ws.absolute_path.return_value = temp_path
+            # MockSession has no media_manifest attribute
+            session = MockSession(MEDIA_READ_CAPABILITY)
+
+            result = handle_read_media(session, ws, {"path": "report.pdf"})
+
+            assert result.is_error is True
+            msg = cast("ToolContent", result.content[0]).text
+            assert "no active session manifest" in msg
+            assert "report.pdf" in msg
+        finally:
+            Path(temp_path).unlink()
+
+    def test_requires_media_read_capability(self) -> None:
+        ws = MagicMock()
+
+        with pytest.raises(CapabilityDeniedError) as exc_info:
+            handle_read_media(MockSession(), ws, {"path": "image.png"})
+
+        assert "media.read" in str(exc_info.value)
+
+    def test_returns_error_for_unsupported_format(self) -> None:
+        ws = MagicMock()
+
+        result = handle_read_media(
+            MockSession(MEDIA_READ_CAPABILITY),
+            ws,
+            {"path": "file.txt"},
+        )
+
+        assert result.is_error is True
+        assert "Unsupported media format" in cast("ToolContent", result.content[0]).text
+
+    def test_inline_image_returns_image_content_block(self) -> None:
+        png_bytes = base64.b64decode(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk"
+            "+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+        )
+
+        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
+            f.write(png_bytes)
+            temp_path = f.name
+
+        try:
+            ws = MagicMock()
+            ws.absolute_path.return_value = temp_path
+            session = MockSessionWithManifest(
+                MEDIA_READ_CAPABILITY,
+                model_identity=MultimodalModelIdentity(provider="claude"),
+            )
+
+            result = handle_read_media(session, ws, {"path": "test.png"})
+
+            assert result.is_error is False
+            assert len(result.content) == 1
+            content = result.content[0]
+            assert isinstance(content, ImageContent)
+            assert content.type == "image"
+            assert content.mime_type == "image/png"
+        finally:
+            Path(temp_path).unlink()
+
+    def test_pdf_returns_resource_reference_block(self) -> None:
+        pdf_bytes = b"%PDF-1.4 fake pdf content"
+
+        with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as f:
+            f.write(pdf_bytes)
+            temp_path = f.name
+
+        try:
+            ws = MagicMock()
+            ws.absolute_path.return_value = temp_path
+            session = MockSessionWithManifest(MEDIA_READ_CAPABILITY)
+
+            result = handle_read_media(session, ws, {"path": "report.pdf"})
+
+            assert result.is_error is False
+            assert len(result.content) == 1
+            content = result.content[0]
+            assert isinstance(content, ResourceReferenceContent)
+            assert content.type == "resource_reference"
+            assert content.modality == "pdf"
+            assert content.mime_type == "application/pdf"
+            assert content.title == "report.pdf"
+            assert content.delivery == "resource_reference"
+            assert content.uri.startswith("ralph://media/")
+        finally:
+            Path(temp_path).unlink()
+
+    def test_pdf_stored_in_manifest(self) -> None:
+        pdf_bytes = b"%PDF-1.4 fake pdf content"
+
+        with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as f:
+            f.write(pdf_bytes)
+            temp_path = f.name
+
+        try:
+            ws = MagicMock()
+            ws.absolute_path.return_value = temp_path
+            session = MockSessionWithManifest(MEDIA_READ_CAPABILITY)
+
+            result = handle_read_media(session, ws, {"path": "report.pdf"})
+            content = cast("ResourceReferenceContent", result.content[0])
+
+            # The artifact must be stored in the manifest
+            assert not session.media_manifest.is_empty()
+            entries = session.media_manifest.list_entries()
+            assert len(entries) == 1
+            entry = entries[0]
+            assert entry.uri == content.uri
+            assert entry.mime_type == "application/pdf"
+            assert entry.modality == "pdf"
+            assert entry.raw_bytes == pdf_bytes
+        finally:
+            Path(temp_path).unlink()
+
+    def test_audio_returns_resource_reference_block(self) -> None:
+        mp3_bytes = b"ID3" + b"\x00" * 50  # Minimal fake MP3
+
+        with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
+            f.write(mp3_bytes)
+            temp_path = f.name
+
+        try:
+            ws = MagicMock()
+            ws.absolute_path.return_value = temp_path
+            session = MockSessionWithManifest(MEDIA_READ_CAPABILITY)
+
+            result = handle_read_media(session, ws, {"path": "clip.mp3"})
+
+            assert result.is_error is False
+            content = result.content[0]
+            assert isinstance(content, ResourceReferenceContent)
+            assert content.modality == "audio"
+            assert content.mime_type == "audio/mpeg"
+            assert content.uri.startswith("ralph://media/")
+        finally:
+            Path(temp_path).unlink()
+
+    def test_video_returns_resource_reference_block(self) -> None:
+        mp4_bytes = b"\x00" * 100  # Fake video bytes
+
+        with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as f:
+            f.write(mp4_bytes)
+            temp_path = f.name
+
+        try:
+            ws = MagicMock()
+            ws.absolute_path.return_value = temp_path
+            session = MockSessionWithManifest(MEDIA_READ_CAPABILITY)
+
+            result = handle_read_media(session, ws, {"path": "video.mp4"})
+
+            assert result.is_error is False
+            content = result.content[0]
+            assert isinstance(content, ResourceReferenceContent)
+            assert content.modality == "video"
+            assert content.mime_type == "video/mp4"
+        finally:
+            Path(temp_path).unlink()
+
+    def test_oversized_image_returns_resource_reference_block(self) -> None:
+        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
+            f.write(b"\x89PNG" + b"\x00" * 100)  # Fake PNG
+            temp_path = f.name
+
+        try:
+            ws = MagicMock()
+            ws.absolute_path.return_value = temp_path
+            session = MockSessionWithManifest(MEDIA_READ_CAPABILITY)
+
+            result = handle_read_media(
+                session, ws, {"path": "large.png"}, max_inline_bytes=10
+            )
+
+            assert result.is_error is False
+            content = result.content[0]
+            assert isinstance(content, ResourceReferenceContent)
+            assert content.modality == "image"
+            assert content.mime_type == "image/png"
+        finally:
+            Path(temp_path).unlink()
+
+    def test_resource_reference_to_dict_shape(self) -> None:
+        ref = ResourceReferenceContent(
+            uri="ralph://media/test-id",
+            mime_type="application/pdf",
+            title="report.pdf",
+            modality="pdf",
+        )
+        d = ref.to_dict()
+        assert d["type"] == "resource_reference"
+        assert d["uri"] == "ralph://media/test-id"
+        assert d["mimeType"] == "application/pdf"
+        assert d["title"] == "report.pdf"
+        assert d["modality"] == "pdf"
+        assert d["delivery"] == "resource_reference"
+
+
+    def test_resource_reference_persists_to_session_index(self, tmp_path: Path) -> None:
+        """handle_read_media must write artifact metadata to the session media index."""
+        from ralph.workspace.fs import FsWorkspace  # noqa: PLC0415
+
+        pdf_bytes = b"%PDF-1.4 fake pdf content"
+        media_file = tmp_path / "report.pdf"
+        media_file.write_bytes(pdf_bytes)
+
+        @dataclass
+        class SessionWithDrain:
+            allowed_capability: str | None = None
+            drain: str = "development"
+            session_id: str = "test-session"
+            media_manifest: MediaManifest = field(default_factory=MediaManifest)
+            model_identity: MultimodalModelIdentity = field(default=UNKNOWN_IDENTITY)
+
+            def check_capability(self, capability: str) -> object:
+                return capability == self.allowed_capability
+
+            def check_edit_area(self, _: str) -> object:
+                return True
+
+        session = SessionWithDrain(MEDIA_READ_CAPABILITY)
+        ws = FsWorkspace(tmp_path)
+
+        result = handle_read_media(session, ws, {"path": "report.pdf"})
+
+        assert result.is_error is False
+        index_path = tmp_path / ".agent" / "tmp" / "development_media_session.json"
+        assert index_path.exists(), (
+            "Media session index must be written after resource_reference delivery"
+        )
+        data = json.loads(index_path.read_text(encoding="utf-8"))
+        assert data["phase"] == "development"
+        artifacts = data["artifacts"]
+        assert len(artifacts) == 1
+        assert artifacts[0]["modality"] == "pdf"
+        assert artifacts[0]["mime_type"] == "application/pdf"
+        assert artifacts[0]["title"] == "report.pdf"
+        assert artifacts[0]["delivery"] == "resource_reference"
+        assert artifacts[0]["uri"].startswith("ralph://media/")
+
+    def test_resource_reference_accumulates_entries_in_session_index(self, tmp_path: Path) -> None:
+        """Multiple read_media calls must append entries to the session index."""
+        from ralph.workspace.fs import FsWorkspace  # noqa: PLC0415
+
+        @dataclass
+        class SessionWithDrain:
+            allowed_capability: str | None = None
+            drain: str = "development"
+            session_id: str = "test-session"
+            media_manifest: MediaManifest = field(default_factory=MediaManifest)
+            model_identity: MultimodalModelIdentity = field(default=UNKNOWN_IDENTITY)
+
+            def check_capability(self, capability: str) -> object:
+                return capability == self.allowed_capability
+
+            def check_edit_area(self, _: str) -> object:
+                return True
+
+        session = SessionWithDrain(MEDIA_READ_CAPABILITY)
+        ws = FsWorkspace(tmp_path)
+
+        pdf1 = tmp_path / "a.pdf"
+        pdf2 = tmp_path / "b.pdf"
+        pdf1.write_bytes(b"%PDF-1.4 doc1")
+        pdf2.write_bytes(b"%PDF-1.4 doc2")
+
+        handle_read_media(session, ws, {"path": "a.pdf"})
+        handle_read_media(session, ws, {"path": "b.pdf"})
+
+        index_path = tmp_path / ".agent" / "tmp" / "development_media_session.json"
+        data = json.loads(index_path.read_text(encoding="utf-8"))
+        artifacts = data["artifacts"]
+        assert len(artifacts) == 2  # noqa: PLR2004
+        titles = {a["title"] for a in artifacts}
+        assert "a.pdf" in titles
+        assert "b.pdf" in titles

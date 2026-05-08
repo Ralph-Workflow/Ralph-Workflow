@@ -58,6 +58,8 @@ class _WorkerContext:
 
 
 class ParallelCoordinator:
+    """Orchestrates parallel work-unit execution with DAG dependency ordering."""
+
     def __init__(self, *, activity_router: ActivityRouter | None = None) -> None:
         self.activity_router = activity_router
 
@@ -459,6 +461,7 @@ async def run_fan_out(
     ctx: _WorkerContext | None = None,
     activity_router: ActivityRouter | None = None,
 ) -> list[Event]:
+    """Execute a fan-out effect using a fresh ParallelCoordinator instance."""
     coordinator = ParallelCoordinator(activity_router=activity_router)
     return await coordinator.run_fan_out(effect, executor, display, ctx)
 

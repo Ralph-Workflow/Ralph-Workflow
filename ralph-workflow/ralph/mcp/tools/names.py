@@ -12,6 +12,8 @@ RALPH_MCP_SERVER_NAME = "ralph"
 
 
 class RalphToolName(StrEnum):
+    """Canonical names for all Ralph MCP tools."""
+
     READ_FILE = "read_file"
     WRITE_FILE = "write_file"
     LIST_DIRECTORY = "list_directory"
@@ -45,20 +47,25 @@ class RalphToolName(StrEnum):
     WEB_SEARCH = "web_search"
     VISIT_URL = "visit_url"
     READ_IMAGE = "read_image"
+    READ_MEDIA = "read_media"
 
     def with_prefix(self, *, tool_name_prefix: str = "") -> str:
+        """Return the tool name with an optional prefix applied."""
         return f"{tool_name_prefix}{self}" if tool_name_prefix else self.value
 
     def as_claude_alias(self, *, server_name: str = RALPH_MCP_SERVER_NAME) -> str:
+        """Return the Claude MCP tool alias in the form mcp__<server>__<tool>."""
         return f"mcp__{server_name}__{self}"
 
     def prompt_aliases(self, *, tool_name_prefix: str = "") -> tuple[str, ...]:
+        """Return the full set of prompt-facing alias names for this tool."""
         primary = self.with_prefix(tool_name_prefix=tool_name_prefix)
         if primary == self.value:
             return (self.value,)
         return (primary, self.value)
 
     def prompt_reference(self, *, tool_name_prefix: str = "") -> str:
+        """Return a human-readable reference string for prompts."""
         aliases = self.prompt_aliases(tool_name_prefix=tool_name_prefix)
         if len(aliases) == 1:
             return f"`{aliases[0]}`"
@@ -98,6 +105,7 @@ READ_ENV_TOOL = RalphToolName.READ_ENV
 WEB_SEARCH_TOOL = RalphToolName.WEB_SEARCH
 VISIT_URL_TOOL = RalphToolName.VISIT_URL
 READ_IMAGE_TOOL = RalphToolName.READ_IMAGE
+READ_MEDIA_TOOL = RalphToolName.READ_MEDIA
 
 WORKSPACE_READ_TOOLS: tuple[str, ...] = (
     READ_FILE_TOOL,
@@ -139,7 +147,7 @@ PROGRESS_TOOLS: tuple[str, ...] = (REPORT_PROGRESS_TOOL,)
 ENV_READ_TOOLS: tuple[str, ...] = (READ_ENV_TOOL,)
 WEB_SEARCH_TOOLS: tuple[str, ...] = (WEB_SEARCH_TOOL,)
 WEB_VISIT_TOOLS: tuple[str, ...] = (VISIT_URL_TOOL,)
-MEDIA_READ_TOOLS: tuple[str, ...] = (READ_IMAGE_TOOL,)
+MEDIA_READ_TOOLS: tuple[str, ...] = (READ_IMAGE_TOOL, READ_MEDIA_TOOL)
 
 ALL_RALPH_TOOLS: tuple[str, ...] = (
     *WORKSPACE_READ_TOOLS,
@@ -199,6 +207,7 @@ def _coerce_tool_name(tool_name: str | RalphToolName) -> RalphToolName | None:
 
 
 def prefix_tool_name(tool_name: str | RalphToolName, *, tool_name_prefix: str = "") -> str:
+    """Return the tool name with an optional prefix applied."""
     coerced = _coerce_tool_name(tool_name)
     if coerced is not None:
         return coerced.with_prefix(tool_name_prefix=tool_name_prefix)
@@ -210,6 +219,7 @@ def prefix_tool_names(
     *,
     tool_name_prefix: str = "",
 ) -> list[str]:
+    """Apply the given prefix to each tool name in the sequence."""
     return [
         prefix_tool_name(tool_name, tool_name_prefix=tool_name_prefix) for tool_name in tool_names
     ]
@@ -218,6 +228,7 @@ def prefix_tool_names(
 def claude_tool_name(
     tool_name: str | RalphToolName, *, server_name: str = RALPH_MCP_SERVER_NAME
 ) -> str:
+    """Return the Claude MCP alias for a tool name (`mcp__<server>__<tool>`)."""
     # Claude exposes every MCP tool as `mcp__<server>__<tool>`. This helper is the
     # canonical alias builder used by prompts/tests so transport-specific naming does
     # not drift from the runtime CLI wiring.
@@ -228,8 +239,10 @@ def claude_tool_name(
 
 
 def claude_tool_name_prefix(*, server_name: str = RALPH_MCP_SERVER_NAME) -> str:
+    """Return the `mcp__<server>__` prefix string used by Claude for MCP tools."""
     return f"mcp__{server_name}__"
 
 
 def upstream_proxy_tool_name(server_name: str, tool_name: str) -> str:
+    """Return the stable proxy alias for an upstream server's tool."""
     return f"ralph_upstream__{server_name}__{tool_name}"

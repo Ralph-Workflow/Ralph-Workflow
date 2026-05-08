@@ -13,6 +13,8 @@ if TYPE_CHECKING:
 
 
 class DetectionResults:
+    """Accumulator for detected frameworks, test frameworks, and package managers."""
+
     def __init__(self) -> None:
         self.frameworks: list[str] = []
         self.test_frameworks: list[str] = []
@@ -66,6 +68,7 @@ def _read_signature_contents(
 def detect_signature_files(
     workspace: Workspace, root: str = ""
 ) -> tuple[list[str], str | None, str | None]:
+    """Scan workspace signature files to detect frameworks, test frameworks, and package manager."""
     signatures = collect_signature_files(workspace, root)
     contents = _read_signature_contents(workspace, signatures)
     results = DetectionResults()

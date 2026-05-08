@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from contextlib import suppress
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, NoReturn, cast
 
@@ -115,6 +116,8 @@ def _noop_now_iso() -> str:
 
 @dataclass(frozen=True)
 class ArtifactHandlerDeps:
+    """Injectable dependencies for artifact handler operations."""
+
     backend: FileBackend = DEFAULT_FILE_BACKEND
     now_iso: Callable[[], str] = _noop_now_iso
     history_enabled: bool = False
@@ -179,6 +182,7 @@ def handle_submit_artifact(
     *,
     deps: ArtifactHandlerDeps | None = None,
 ) -> ToolResult:
+    """Validate and persist an artifact submitted by an MCP agent."""
     require_capability(session, ARTIFACT_SUBMIT_CAPABILITY, "Artifact submission")
     resolved_deps = deps or DEFAULT_ARTIFACT_HANDLER_DEPS
     drain = _session_drain(session)
@@ -319,6 +323,77 @@ def handle_finalize_plan(
     )
 
 
+def _iso_timestamp(value: object) -> datetime | None:
+    if not isinstance(value, str):
+        return None
+    with suppress(ValueError):
+        return datetime.fromisoformat(value)
+    return None
+
+
+
+def _load_finalized_plan_response(
+    artifact_dir: Path,
+    *,
+    backend: FileBackend,
+) -> dict[str, object] | None:
+    hydrated_sections = load_plan_artifact_sections(artifact_dir, backend=backend)
+    if hydrated_sections is None:
+        return None
+    updated_at: object = None
+    with suppress(OSError, json.JSONDecodeError):
+        raw = backend.read_text(artifact_dir / "plan.json", encoding="utf-8")
+        parsed = cast("object", json.loads(raw))
+        if isinstance(parsed, dict):
+            updated_at = parsed.get("updated_at")
+    return {
+        "staged_sections": sorted(hydrated_sections.keys()),
+        "draft": hydrated_sections,
+        "source": "finalized_plan",
+        "updated_at": updated_at,
+    }
+
+
+
+def _current_plan_draft_response(
+    artifact_dir: Path,
+    *,
+    backend: FileBackend,
+) -> dict[str, object]:
+    draft = load_plan_draft(artifact_dir, backend=backend)
+    finalized_response = _load_finalized_plan_response(artifact_dir, backend=backend)
+    if draft is None:
+        if finalized_response is None:
+            return {"staged_sections": []}
+        finalized_response.pop("updated_at", None)
+        return finalized_response
+
+    draft_updated_at = _iso_timestamp(draft.get("updated_at"))
+    finalized_updated_at = (
+        _iso_timestamp(finalized_response.get("updated_at"))
+        if finalized_response is not None
+        else None
+    )
+    if (
+        finalized_response is not None
+        and finalized_updated_at is not None
+        and draft_updated_at is not None
+        and finalized_updated_at >= draft_updated_at
+    ):
+        finalized_response.pop("updated_at", None)
+        return finalized_response
+
+    sections = cast("dict[str, object]", draft.get("sections", {}))
+    return {
+        "staged_sections": sorted(sections.keys()),
+        "started_at": draft.get("started_at"),
+        "updated_at": draft.get("updated_at"),
+        "draft": sections,
+        "source": "draft",
+    }
+
+
+
 def handle_get_plan_draft(
     session: CoordinationSessionLike,
     workspace: WorkspaceLike,
@@ -332,26 +407,10 @@ def handle_get_plan_draft(
     resolved_deps = deps or DEFAULT_ARTIFACT_HANDLER_DEPS
 
     artifact_dir = _resolve_artifact_dir(session, workspace)
-    draft = load_plan_draft(artifact_dir, backend=resolved_deps.backend)
-    if draft is None:
-        hydrated_sections = load_plan_artifact_sections(artifact_dir, backend=resolved_deps.backend)
-        if hydrated_sections is None:
-            response: dict[str, object] = {"staged_sections": []}
-        else:
-            response = {
-                "staged_sections": sorted(hydrated_sections.keys()),
-                "draft": hydrated_sections,
-                "source": "finalized_plan",
-            }
-    else:
-        sections = cast("dict[str, object]", draft.get("sections", {}))
-        response = {
-            "staged_sections": sorted(sections.keys()),
-            "started_at": draft.get("started_at"),
-            "updated_at": draft.get("updated_at"),
-            "draft": sections,
-            "source": "draft",
-        }
+    response = _current_plan_draft_response(
+        artifact_dir,
+        backend=resolved_deps.backend,
+    )
 
     return ToolResult(
         content=[ToolContent.text_content(json.dumps(response))],

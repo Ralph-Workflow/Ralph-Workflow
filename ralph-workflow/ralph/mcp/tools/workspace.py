@@ -16,6 +16,18 @@ from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, NamedTuple, cast
 
 from ralph.mcp.artifacts.policy_outcomes import is_policy_approved
+from ralph.mcp.multimodal.artifacts import (
+    INLINE_IMAGE_MIME_TYPES,
+    ResourceReferenceContent,
+    infer_modality_and_mime,
+)
+from ralph.mcp.multimodal.capabilities import (
+    UNKNOWN_IDENTITY,
+    DeliveryMode,
+    MultimodalModelIdentity,
+    get_delivery_mode,
+)
+from ralph.mcp.multimodal.resources import MediaManifest
 from ralph.mcp.tools.coordination import (
     CapabilityDeniedError,
     CoordinationSessionLike,
@@ -26,6 +38,7 @@ from ralph.mcp.tools.coordination import (
     ToolResult,
     require_capability,
 )
+from ralph.prompts.debug_dump import media_session_path
 from ralph.workspace.skip import RECURSIVE_SKIP_DIRECTORY_NAMES
 
 if TYPE_CHECKING:
@@ -444,6 +457,7 @@ def handle_read_multiple_files(
     workspace: Workspace,
     params: dict[str, object],
 ) -> ToolResult:
+    """Read multiple workspace files in one call and return per-file results."""
     require_capability(session, WORKSPACE_READ_CAPABILITY, "Read multiple files")
     paths_param = params.get("paths")
     if not isinstance(paths_param, list):
@@ -470,6 +484,7 @@ def handle_stat(
     workspace: Workspace,
     params: dict[str, object],
 ) -> ToolResult:
+    """Return file metadata (type, size, timestamps) for a workspace path."""
     require_capability(
         session, WORKSPACE_METADATA_READ_CAPABILITY, "Workspace metadata read"
     )
@@ -489,6 +504,7 @@ def handle_list_allowed_roots(
     workspace: Workspace,
     params: dict[str, object],
 ) -> ToolResult:
+    """Return the list of workspace paths the session is permitted to access."""
     require_capability(session, WORKSPACE_READ_CAPABILITY, "List allowed roots")
     try:
         roots = workspace.allowed_roots()
@@ -503,6 +519,7 @@ def handle_list_directory(
     workspace: Workspace,
     params: dict[str, object],
 ) -> ToolResult:
+    """List entries in a workspace directory, optionally recursive."""
     require_capability(session, WORKSPACE_READ_CAPABILITY, "Directory listing")
     path = required_string_param(params, "path")
     recursive = bool(params.get("recursive", False))
@@ -519,6 +536,7 @@ def handle_list_directory_recursive(
     workspace: Workspace,
     params: dict[str, object],
 ) -> ToolResult:
+    """Return a flat listing of all entries under a workspace directory."""
     require_capability(
         session, WORKSPACE_READ_CAPABILITY, "Recursive directory listing"
     )
@@ -580,6 +598,7 @@ def handle_directory_tree(
     workspace: Workspace,
     params: dict[str, object],
 ) -> ToolResult:
+    """Return a nested JSON directory tree for a workspace path."""
     require_capability(session, WORKSPACE_READ_CAPABILITY, "Directory tree")
     path = required_string_param(params, "path")
     max_depth = _int_opt_param(params, "max_depth")
@@ -606,6 +625,7 @@ def handle_search_files(
     workspace: Workspace,
     params: dict[str, object],
 ) -> ToolResult:
+    """Search for files matching a glob pattern within a workspace directory."""
     require_capability(session, WORKSPACE_READ_CAPABILITY, "File search")
     pattern = required_string_param(params, "pattern")
     path = required_string_param(params, "path")
@@ -714,6 +734,7 @@ def handle_grep_files(
     workspace: Workspace,
     params: dict[str, object],
 ) -> ToolResult:
+    """Search file contents for a pattern and return line-level matches."""
     require_capability(session, WORKSPACE_READ_CAPABILITY, "Content search")
     pattern = required_string_param(params, "pattern")
     path = required_string_param(params, "path")
@@ -801,6 +822,7 @@ def handle_write_file(
     workspace: Workspace,
     params: dict[str, object],
 ) -> ToolResult:
+    """Write UTF-8 content to a workspace file, creating it if necessary."""
     # Path is extracted first to determine which write capability applies
     # (tracked vs ephemeral), then capability check fires before content extraction.
     path = required_string_param(params, "path")
@@ -828,6 +850,7 @@ def handle_edit_file(
     workspace: Workspace,
     params: dict[str, object],
 ) -> ToolResult:
+    """Apply structured oldText/newText replacements to a workspace file."""
     path = required_string_param(params, "path")
     normalized = _normalize_relative_path(path)
     _check_edit_area_restriction(session, normalized)
@@ -912,6 +935,7 @@ def handle_append_file(
     workspace: Workspace,
     params: dict[str, object],
 ) -> ToolResult:
+    """Append content to a workspace file."""
     path = required_string_param(params, "path")
     normalized = _normalize_relative_path(path)
     _check_edit_area_restriction(session, normalized)
@@ -937,6 +961,7 @@ def handle_create_directory(
     workspace: Workspace,
     params: dict[str, object],
 ) -> ToolResult:
+    """Create a directory (and parents) within the workspace."""
     path = required_string_param(params, "path")
     normalized = _normalize_relative_path(path)
     _check_edit_area_restriction(session, normalized)
@@ -961,6 +986,7 @@ def handle_move_file(
     workspace: Workspace,
     params: dict[str, object],
 ) -> ToolResult:
+    """Move or rename a workspace file or directory."""
     src = required_string_param(params, "src")
     dest = required_string_param(params, "dest")
     src_norm = _normalize_relative_path(src)
@@ -991,6 +1017,7 @@ def handle_copy_file(
     workspace: Workspace,
     params: dict[str, object],
 ) -> ToolResult:
+    """Copy a workspace file or directory to a new location."""
     src = required_string_param(params, "src")
     dest = required_string_param(params, "dest")
     src_norm = _normalize_relative_path(src)
@@ -1020,6 +1047,7 @@ def handle_delete_path(
     workspace: Workspace,
     params: dict[str, object],
 ) -> ToolResult:
+    """Delete a workspace file or directory."""
     path = required_string_param(params, "path")
     normalized = _normalize_relative_path(path)
     _check_edit_area_restriction(session, normalized)
@@ -1053,6 +1081,188 @@ def handle_delete_path(
 def _infer_image_mime_type(path: str) -> str | None:
     suffix = PurePosixPath(path).suffix.lower()
     return _SUPPORTED_IMAGE_MIME_TYPES.get(suffix)
+
+
+def _get_media_manifest(session: object) -> MediaManifest | None:
+    """Return the session's MediaManifest if available."""
+    raw: object = getattr(session, "media_manifest", None)
+    if isinstance(raw, MediaManifest):
+        return raw
+    return None
+
+
+def _get_session_model_identity(session: object) -> MultimodalModelIdentity:
+    """Extract the model identity from a session, defaulting to UNKNOWN_IDENTITY."""
+    raw: object = getattr(session, "model_identity", None)
+    if isinstance(raw, MultimodalModelIdentity):
+        return raw
+    return UNKNOWN_IDENTITY
+
+
+_MEDIA_SESSION_SCHEMA_VERSION = "1"
+
+
+def _persist_media_session_entry(
+    session: object,
+    workspace: Workspace,
+    meta: dict[str, str],
+) -> None:
+    """Append a resource-reference artifact to the persistent session media index.
+
+    The runner reads this index at the next prompt materialization to carry
+    media artifacts forward across sessions via the handoff sidecar.
+
+    *meta* must contain: uri, mime_type, title, modality, reason.
+    """
+    drain: object = getattr(session, "drain", None)
+    phase = str(drain) if drain else "standalone"
+    path = media_session_path(phase)
+    uri = meta["uri"]
+    artifact_id = uri.rsplit("/", maxsplit=1)[-1]
+    new_entry: dict[str, str] = {
+        "artifact_id": artifact_id,
+        "uri": uri,
+        "mime_type": meta["mime_type"],
+        "title": meta["title"],
+        "modality": meta["modality"],
+        "delivery": "resource_reference",
+        "reason": meta["reason"],
+    }
+    try:
+        try:
+            data: dict[str, object] = json.loads(workspace.read(path))
+            raw_artifacts = data.get("artifacts", [])
+            artifacts: list[dict[str, str]] = (
+                list(raw_artifacts) if isinstance(raw_artifacts, list) else []
+            )
+        except Exception:
+            artifacts = []
+        artifacts = [*artifacts, new_entry]
+        payload: dict[str, object] = {
+            "schema_version": _MEDIA_SESSION_SCHEMA_VERSION,
+            "phase": phase,
+            "artifacts": artifacts,
+        }
+        workspace.write(path, json.dumps(payload, indent=2))
+    except Exception:
+        pass  # Session index persistence is best-effort; never block a tool call
+
+
+def handle_read_media(
+    session: CoordinationSessionLike,
+    workspace: Workspace,
+    params: dict[str, object],
+    *,
+    max_inline_bytes: int = 5_242_880,
+) -> ToolResult:
+    """Read a media file and return the appropriate content block.
+
+    Supports images, PDFs, audio, video, and visually meaningful documents.
+    Delivery mode (inline image vs resource_reference) is determined by the
+    session's model identity via the capability policy, not just file type/size.
+    For models that support inline delivery and small-enough images, returns an
+    ImageContent block. For all other media or unsupported delivery modes, returns
+    a ResourceReferenceContent block stored in the session manifest.
+    """
+    require_capability(session, MEDIA_READ_CAPABILITY, "Media read")
+    path = required_string_param(params, "path")
+    normalized = _normalize_relative_path(path)
+
+    suffix = PurePosixPath(normalized or path).suffix.lower()
+    inferred = infer_modality_and_mime(suffix)
+    if inferred is None:
+        supported = sorted({
+            ".png", ".jpg", ".jpeg", ".gif", ".webp",
+            ".pdf", ".mp3", ".wav", ".ogg", ".m4a", ".flac", ".aac",
+            ".mp4", ".avi", ".mov", ".mkv", ".webm",
+            ".docx", ".pptx", ".xlsx",
+        })
+        return ToolResult(
+            content=[
+                ToolContent.text_content(
+                    f"Unsupported media format '{suffix or '(none)'}'. "
+                    f"Supported: {', '.join(supported)}"
+                )
+            ],
+            is_error=True,
+        )
+
+    modality, mime_type = inferred
+
+    # Consult the capability policy to determine model-aware delivery mode.
+    model_identity = _get_session_model_identity(session)
+    verdict = get_delivery_mode(model_identity, modality)
+
+    if verdict.delivery == DeliveryMode.UNSUPPORTED:
+        return ToolResult(
+            content=[ToolContent.text_content(
+                f"Modality '{modality}' is not supported by provider '{verdict.provider}' "
+                f"(model: {verdict.model_id or 'unknown'}). "
+                f"Accepted forms: resource_reference or none. Reason: {verdict.reason}"
+            )],
+            is_error=True,
+        )
+
+    abs_path = workspace.absolute_path(normalized or path)
+
+    try:
+        raw_bytes = Path(abs_path).read_bytes()
+    except OSError as exc:
+        return ToolResult(
+            content=[ToolContent.text_content(
+                f"Failed to read media file '{path}': {exc}"
+            )],
+            is_error=True,
+        )
+
+    file_size = len(raw_bytes)
+    title = PurePosixPath(path).name
+
+    # Deliver inline when the capability policy allows and the file is within the size limit.
+    use_inline = (
+        verdict.delivery == DeliveryMode.INLINE
+        and modality == "image"
+        and mime_type in INLINE_IMAGE_MIME_TYPES
+        and file_size <= max_inline_bytes
+    )
+    if use_inline:
+        encoded = base64.b64encode(raw_bytes).decode("ascii")
+        return ToolResult(
+            content=[ImageContent(data=encoded, mime_type=mime_type)],
+            is_error=False,
+        )
+
+    # Resource-reference delivery for all other media.
+    manifest = _get_media_manifest(session)
+    if manifest is None:
+        return ToolResult(
+            content=[ToolContent.text_content(
+                f"Media file '{path}' ({modality}, {mime_type}) cannot be delivered: "
+                f"no active session manifest is available. "
+                f"Resource-reference delivery requires an active session."
+            )],
+            is_error=True,
+        )
+
+    entry = manifest.add(
+        title=title,
+        mime_type=mime_type,
+        modality=modality,
+        raw_bytes=raw_bytes,
+    )
+    ref = ResourceReferenceContent(
+        uri=entry.uri,
+        mime_type=mime_type,
+        title=title,
+        modality=modality,
+    )
+    _persist_media_session_entry(
+        session,
+        workspace,
+        {"uri": entry.uri, "mime_type": mime_type, "title": title,
+         "modality": modality, "reason": verdict.reason},
+    )
+    return ToolResult(content=[ref], is_error=False)
 
 
 def handle_read_image(
@@ -1144,6 +1354,7 @@ __all__ = [
     "handle_move_file",
     "handle_read_file",
     "handle_read_image",
+    "handle_read_media",
     "handle_read_multiple_files",
     "handle_search_files",
     "handle_stat",

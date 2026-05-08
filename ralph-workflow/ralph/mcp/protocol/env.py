@@ -6,6 +6,8 @@ from enum import StrEnum
 
 
 class McpEnvVar(StrEnum):
+    """Environment variable names used to configure the Ralph MCP connection."""
+
     ENDPOINT = "RALPH_MCP_ENDPOINT"
     RUN_ID = "RALPH_MCP_RUN_ID"
     AGENT_LABEL_SCOPE = "RALPH_AGENT_LABEL_SCOPE"

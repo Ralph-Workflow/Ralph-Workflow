@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib
 import runpy
 import tomllib
 from pathlib import Path
@@ -12,6 +13,22 @@ PYPROJECT_PATH = REPO_ROOT / "pyproject.toml"
 GITIGNORE_PATH = REPO_ROOT.parent / ".gitignore"
 INDEX_RST_PATH = REPO_ROOT / "docs" / "sphinx" / "index.rst"
 GETTING_STARTED_PATH = REPO_ROOT / "docs" / "sphinx" / "getting-started.md"
+SPHINX_DIR = REPO_ROOT / "docs" / "sphinx"
+DEVELOPER_INTERNALS_PATH = SPHINX_DIR / "developer-internals.md"
+README_PATH = REPO_ROOT / "README.md"
+
+# Public packages that must have non-empty docstrings (pydoc-first contract)
+_PUBLIC_PACKAGES_WITH_REQUIRED_DOCSTRINGS = [
+    "ralph.testing",
+    "ralph.checkpoint",
+    "ralph.executor",
+    "ralph.platform",
+    "ralph.runtime",
+    "ralph.recovery",
+    "ralph.prompts",
+    "ralph.agents.parsers",
+    "ralph.mcp.webvisit",
+]
 
 # Pages that must cross-link to getting-started.md
 _PAGES_WITH_GETTING_STARTED_LINKS = [
@@ -155,4 +172,97 @@ def test_index_toctree_entries_resolve_to_real_sphinx_pages() -> None:
     assert not missing, (
         "The following index.rst toctree entries do not resolve to docs/sphinx pages:\n"
         + "\n".join(f"  {docname}" for docname in missing)
+    )
+
+
+def _md_toctree_docnames(content: str) -> list[str]:
+    """Extract toctree docnames from a MyST Markdown file."""
+    docnames: list[str] = []
+    in_toctree = False
+    in_directive = False
+
+    for line in content.splitlines():
+        stripped = line.strip()
+        if stripped == "```{toctree}":
+            in_toctree = True
+            in_directive = True
+            continue
+        if in_toctree and stripped == "```":
+            in_toctree = False
+            in_directive = False
+            continue
+        if not in_directive:
+            continue
+        if not stripped or stripped.startswith(":"):
+            continue
+        docnames.append(stripped)
+
+    return docnames
+
+
+def test_developer_internals_toctree_entries_resolve_to_real_sphinx_pages() -> None:
+    """Every toctree entry in developer-internals.md must point at an existing page."""
+    content = DEVELOPER_INTERNALS_PATH.read_text(encoding="utf-8")
+
+    missing = [
+        docname
+        for docname in _md_toctree_docnames(content)
+        if not (
+            (SPHINX_DIR / f"{docname}.md").exists()
+            or (SPHINX_DIR / f"{docname}.rst").exists()
+        )
+    ]
+
+    assert not missing, (
+        "The following developer-internals.md toctree entries do not resolve:\n"
+        + "\n".join(f"  docs/sphinx/{name}.md" for name in missing)
+    )
+
+
+def test_agents_page_exists() -> None:
+    """docs/sphinx/agents.md must exist."""
+    agents_page = SPHINX_DIR / "agents.md"
+    assert agents_page.exists(), (
+        "docs/sphinx/agents.md does not exist. "
+        "Create it as the maintainer-facing agents architecture reference."
+    )
+
+
+def test_agents_page_referenced_in_developer_internals_toctree() -> None:
+    """developer-internals.md toctree must include 'agents'."""
+    content = DEVELOPER_INTERNALS_PATH.read_text(encoding="utf-8")
+    docnames = _md_toctree_docnames(content)
+    assert "agents" in docnames, (
+        "developer-internals.md toctree must include 'agents' so the agents "
+        "architecture page is wired into the developer navigation."
+    )
+
+
+def test_public_packages_have_non_empty_docstrings() -> None:
+    """Every public package in _PUBLIC_PACKAGES_WITH_REQUIRED_DOCSTRINGS must have a docstring."""
+    missing: list[str] = []
+
+    for pkg_name in _PUBLIC_PACKAGES_WITH_REQUIRED_DOCSTRINGS:
+        mod = importlib.import_module(pkg_name)
+        if not (mod.__doc__ and mod.__doc__.strip()):
+            missing.append(pkg_name)
+
+    assert not missing, (
+        "The following public packages have no docstring (pydoc-first contract):\n"
+        + "\n".join(f"  {pkg}" for pkg in missing)
+    )
+
+
+def test_readme_has_developer_reference_and_modules_rst_pointers() -> None:
+    """README.md must link to developer-reference.md and modules.rst."""
+    readme = README_PATH.read_text(encoding="utf-8")
+    missing = [
+        needle
+        for needle in ("developer-reference.md", "modules.rst")
+        if needle not in readme
+    ]
+    assert not missing, (
+        "README.md is missing pointers to the maintained developer/API pages:\n"
+        + "\n".join(f"  {n}" for n in missing)
+        + "\n\nAdd links to these pages in the Documentation section of README.md."
     )

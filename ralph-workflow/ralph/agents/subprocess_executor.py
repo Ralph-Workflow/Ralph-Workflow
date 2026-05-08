@@ -27,6 +27,7 @@ if TYPE_CHECKING:
 
 
 def agent_process_label(unit_id: str, env: dict[str, str] | None = None) -> str:
+    """Return the full process label for the root subprocess of a work unit."""
     scope = None if env is None else env.get(str(AGENT_LABEL_SCOPE_ENV))
     if scope:
         return f"agent:{scope}:{unit_id}:root"
@@ -35,6 +36,7 @@ def agent_process_label(unit_id: str, env: dict[str, str] | None = None) -> str:
 
 
 def agent_process_label_prefix(unit_id: str, env: dict[str, str] | None = None) -> str:
+    """Return the label prefix shared by all child processes of a work unit."""
     scope = None if env is None else env.get(str(AGENT_LABEL_SCOPE_ENV))
     if scope:
         return f"agent:{scope}:{unit_id}:"

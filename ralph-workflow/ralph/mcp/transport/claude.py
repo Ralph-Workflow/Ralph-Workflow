@@ -11,6 +11,7 @@ from ralph.mcp.upstream.config import UpstreamMcpServer, normalize_upstream_mcp_
 
 
 def claude_mcp_config(endpoint: str, *, workspace_path: Path | None = None) -> str:
+    """Return the Claude MCP JSON config string pointing to the given endpoint."""
     del workspace_path
     config_payload = {
         "mcpServers": {
@@ -26,6 +27,7 @@ def claude_mcp_config(endpoint: str, *, workspace_path: Path | None = None) -> s
 def load_existing_claude_upstream_servers(
     workspace_path: Path | None = None,
 ) -> tuple[UpstreamMcpServer, ...]:
+    """Read Claude's MCP config files and return any upstream MCP servers found."""
     merged: dict[str, object] = {}
     for path in _claude_mcp_config_paths(workspace_path):
         config_obj = _parse_json_config_file(path)

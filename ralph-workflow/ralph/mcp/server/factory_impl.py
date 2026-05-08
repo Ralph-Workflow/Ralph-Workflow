@@ -1,3 +1,11 @@
+"""Concrete MCP server factory that allocates dynamically bound localhost endpoints.
+
+``DynamicBindingMcpServerFactory`` is the production implementation of
+``McpServerFactory``. It reserves a unique TCP port per worker session, starts an
+MCP server subprocess via ``lifecycle.start_mcp_server``, and returns a
+``McpServerHandle`` that callers can use to reach the server or shut it down.
+"""
+
 from __future__ import annotations
 
 from dataclasses import replace
@@ -14,6 +22,8 @@ from ralph.mcp.server.factory import McpServerFactory, McpServerHandle
 
 
 class StartServer(Protocol):
+    """Callable signature for the MCP server start function."""
+
     def __call__(
         self,
         session: AgentSession,

@@ -7,6 +7,8 @@ from enum import StrEnum
 
 
 class PipelineEvent(StrEnum):
+    """Enumeration of all pipeline state-machine transition events."""
+
     AGENT_SUCCESS = "agent_success"
     AGENT_FAILURE = "agent_failure"
     AGENT_RETRY = "agent_retry"
@@ -59,17 +61,23 @@ class PhaseFailureEvent:
 
 @dataclass(frozen=True)
 class WorkerStartedEvent:
+    """Emitted when a parallel worker begins execution."""
+
     unit_id: str
 
 
 @dataclass(frozen=True)
 class WorkerCompletedEvent:
+    """Emitted when a parallel worker finishes successfully."""
+
     unit_id: str
     exit_code: int
 
 
 @dataclass(frozen=True)
 class WorkerFailedEvent:
+    """Emitted when a parallel worker terminates with a failure."""
+
     unit_id: str
     exit_code: int
     error: str

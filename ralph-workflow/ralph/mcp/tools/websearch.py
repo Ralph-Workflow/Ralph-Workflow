@@ -1,3 +1,10 @@
+"""MCP tool handler for web search across pluggable backends.
+
+Exposes ``handle_web_search``, which dispatches a search query through the
+configured backend (and optional fallbacks) and returns a ``ToolResult``.
+Backends are loaded lazily; the dispatch order is taken from ``WebSearchConfig``.
+"""
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -87,6 +94,7 @@ def handle_web_search(
     *,
     web_search_config: WebSearchConfig | None = None,
 ) -> ToolResult:
+    """Dispatch a web search query through the configured backend and return results."""
     config = web_search_config if web_search_config is not None else WebSearchConfig()
     try:
         require_capability(session, WEB_SEARCH_CAPABILITY, "Web search")
