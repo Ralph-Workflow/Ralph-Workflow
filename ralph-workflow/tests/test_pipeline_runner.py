@@ -4199,3 +4199,163 @@ def test_handle_inline_effect_propagates_plan_handoff_error_outside_recovery(
             agents_policy=bundle.agents,
             workspace_scope=WorkspaceScope(str(tmp_path)),
         )
+
+
+# ---------------------------------------------------------------------------
+# Runner-level multimodal sidecar wiring
+# ---------------------------------------------------------------------------
+
+
+def _write_media_session(tmp_path: Path, phase: str, artifacts: list[dict[str, object]]) -> None:
+    """Write a media session index file into the workspace as the MCP server would."""
+    import json as _json  # noqa: PLC0415
+
+    normalized = phase.replace("/", "_").replace(" ", "_")
+    path = tmp_path / ".agent" / "tmp" / f"{normalized}_media_session.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        _json.dumps({
+            "schema_version": "1",
+            "phase": phase,
+            "artifacts": artifacts,
+        }),
+        encoding="utf-8",
+    )
+
+
+_SAMPLE_SESSION_IMAGE = {
+    "artifact_id": "sess-img-001",
+    "uri": "ralph://media/sess-img-001",
+    "mime_type": "image/png",
+    "title": "screenshot.png",
+    "modality": "image",
+    "delivery": "resource_reference",
+    "reason": "test session entry",
+}
+
+_SAMPLE_SESSION_PDF = {
+    "artifact_id": "sess-pdf-002",
+    "uri": "ralph://media/sess-pdf-002",
+    "mime_type": "application/pdf",
+    "title": "report.pdf",
+    "modality": "pdf",
+    "delivery": "resource_reference",
+    "reason": "test session entry",
+}
+
+
+def test_materialize_agent_prompt_creates_sidecar_from_session_index(
+    tmp_path: Path,
+) -> None:
+    """Runner must read the persistent media session index and create a sidecar."""
+    policy_bundle = _load_default_policy_bundle()
+    workspace = FsWorkspace(tmp_path)
+    workspace.write("PROMPT.md", "Build the feature")
+    workspace.write(".agent/PLAN.md", "# Implementation Plan\n\nStep 1.\n")
+    _write_media_session(tmp_path, "development", [_SAMPLE_SESSION_IMAGE])
+
+    effect = InvokeAgentEffect(
+        agent_name="claude",
+        phase="development",
+        prompt_file="PROMPT.md",
+        drain="development",
+        chain_name="development",
+    )
+    state = PipelineState(phase="development", previous_phase="planning")
+    registry = MagicMock()
+    registry.get.return_value = None
+
+    runner_module._materialize_agent_prompt_if_needed(
+        effect,
+        state,
+        workspace,
+        policy_bundle,
+        registry,
+    )
+
+    sidecar_path = tmp_path / ".agent" / "tmp" / "development_multimodal_handoff.json"
+    assert sidecar_path.exists(), "Sidecar must be created when session index has entries"
+    data = json.loads(sidecar_path.read_text(encoding="utf-8"))
+    assert data["phase"] == "development"
+    assert len(data["artifacts"]) == 1
+    assert data["artifacts"][0]["artifact_id"] == "sess-img-001"
+    assert data["artifacts"][0]["uri"] == "ralph://media/sess-img-001"
+
+
+def test_materialize_agent_prompt_clears_sidecar_when_no_session_index(
+    tmp_path: Path,
+) -> None:
+    """Runner must clear any stale sidecar when no media session index exists."""
+    policy_bundle = _load_default_policy_bundle()
+    workspace = FsWorkspace(tmp_path)
+    workspace.write("PROMPT.md", "Build the feature")
+    workspace.write(".agent/PLAN.md", "# Implementation Plan\n\nStep 1.\n")
+    stale_sidecar = tmp_path / ".agent" / "tmp" / "development_multimodal_handoff.json"
+    stale_sidecar.parent.mkdir(parents=True, exist_ok=True)
+    stale_sidecar.write_text(
+        json.dumps({
+            "schema_version": "1",
+            "phase": "development",
+            "artifacts": [_SAMPLE_SESSION_IMAGE],
+        }),
+        encoding="utf-8",
+    )
+    assert stale_sidecar.exists()
+
+    effect = InvokeAgentEffect(
+        agent_name="claude",
+        phase="development",
+        prompt_file="PROMPT.md",
+        drain="development",
+        chain_name="development",
+    )
+    state = PipelineState(phase="development", previous_phase="planning")
+    registry = MagicMock()
+    registry.get.return_value = None
+
+    runner_module._materialize_agent_prompt_if_needed(
+        effect,
+        state,
+        workspace,
+        policy_bundle,
+        registry,
+    )
+
+    assert not stale_sidecar.exists(), "Stale sidecar must be removed when no session index"
+
+
+def test_materialize_agent_prompt_carries_multiple_media_entries(
+    tmp_path: Path,
+) -> None:
+    """Runner must carry all entries from the session index into the sidecar."""
+    policy_bundle = _load_default_policy_bundle()
+    workspace = FsWorkspace(tmp_path)
+    workspace.write("PROMPT.md", "Build the feature")
+    workspace.write(".agent/PLAN.md", "# Implementation Plan\n\nStep 1.\n")
+    _write_media_session(tmp_path, "development", [_SAMPLE_SESSION_IMAGE, _SAMPLE_SESSION_PDF])
+
+    effect = InvokeAgentEffect(
+        agent_name="claude",
+        phase="development",
+        prompt_file="PROMPT.md",
+        drain="development",
+        chain_name="development",
+    )
+    state = PipelineState(phase="development", previous_phase="planning")
+    registry = MagicMock()
+    registry.get.return_value = None
+
+    runner_module._materialize_agent_prompt_if_needed(
+        effect,
+        state,
+        workspace,
+        policy_bundle,
+        registry,
+    )
+
+    sidecar_path = tmp_path / ".agent" / "tmp" / "development_multimodal_handoff.json"
+    data = json.loads(sidecar_path.read_text(encoding="utf-8"))
+    assert len(data["artifacts"]) == 2  # noqa: PLR2004
+    ids = {a["artifact_id"] for a in data["artifacts"]}
+    assert "sess-img-001" in ids
+    assert "sess-pdf-002" in ids

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from contextlib import suppress
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
@@ -29,7 +30,12 @@ from ralph.phases.required_artifacts import (
 from ralph.pipeline.cycle_baseline import read_cycle_baseline
 from ralph.policy.models import ROLE_REVIEW
 from ralph.prompts.commit import CommitPromptPayloadConfig, prompt_commit_message
-from ralph.prompts.debug_dump import dump_rendered_prompt, prompt_dump_path
+from ralph.prompts.debug_dump import (
+    dump_rendered_prompt,
+    media_session_path,
+    multimodal_sidecar_path,
+    prompt_dump_path,
+)
 from ralph.prompts.developer import (
     DeveloperPromptInputs,
     PlanningPromptInputs,
@@ -58,6 +64,97 @@ class MissingPlanHandoffError(ValueError):
     """Raised when a template requires an existing plan handoff that is absent."""
 
 
+@dataclass(frozen=True)
+class MultimodalSidecarEntry:
+    """A single multimodal artifact entry in the prompt-to-invoke handoff sidecar."""
+
+    artifact_id: str
+    uri: str
+    mime_type: str
+    title: str
+    modality: str
+    delivery: str
+    reason: str = ""
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "artifact_id": self.artifact_id,
+            "uri": self.uri,
+            "mime_type": self.mime_type,
+            "title": self.title,
+            "modality": self.modality,
+            "delivery": self.delivery,
+            "reason": self.reason,
+        }
+
+
+_SIDECAR_SCHEMA_VERSION = "1"
+
+
+def _write_multimodal_sidecar(
+    workspace: Workspace,
+    phase: str,
+    entries: list[MultimodalSidecarEntry],
+) -> None:
+    path = multimodal_sidecar_path(phase)
+    payload = {
+        "schema_version": _SIDECAR_SCHEMA_VERSION,
+        "phase": phase,
+        "artifacts": [e.to_dict() for e in entries],
+    }
+    workspace.write(path, json.dumps(payload, indent=2))
+
+
+def _clear_multimodal_sidecar(workspace: Workspace, phase: str) -> None:
+    path = multimodal_sidecar_path(phase)
+    with suppress(Exception):
+        workspace.remove(path)
+
+
+def collect_media_entries_for_phase(
+    workspace: Workspace,
+    phase: str,
+) -> list[MultimodalSidecarEntry]:
+    """Read media entries from the persistent session index for a phase.
+
+    The MCP server writes artifact metadata to this index whenever read_media
+    creates a resource-reference artifact during a live session. The runner
+    reads this index at the next prompt materialization to carry those artifacts
+    forward so the agent can retrieve them via read_media / resources/read.
+
+    Returns an empty list when no session index exists or it cannot be parsed.
+    """
+    path = media_session_path(phase)
+    try:
+        raw = workspace.read(path)
+    except Exception:
+        return []
+    try:
+        data: dict[str, object] = json.loads(raw)
+        artifacts = data.get("artifacts")
+        if not isinstance(artifacts, list):
+            return []
+        entries: list[MultimodalSidecarEntry] = []
+        for item in artifacts:
+            if not isinstance(item, dict):
+                continue
+            try:
+                entries.append(MultimodalSidecarEntry(
+                    artifact_id=str(item.get("artifact_id", "")),
+                    uri=str(item.get("uri", "")),
+                    mime_type=str(item.get("mime_type", "")),
+                    title=str(item.get("title", "")),
+                    modality=str(item.get("modality", "")),
+                    delivery=str(item.get("delivery", "resource_reference")),
+                    reason=str(item.get("reason", "")),
+                ))
+            except Exception:
+                continue
+        return entries
+    except Exception:
+        return []
+
+
 def materialize_prompt_for_phase(  # noqa: PLR0913
     *,
     phase: str,
@@ -69,6 +166,7 @@ def materialize_prompt_for_phase(  # noqa: PLR0913
     worker_namespace: Path | None = None,
     previous_phase: str | None = None,
     resume_existing_phase: bool = False,
+    multimodal_entries: list[MultimodalSidecarEntry] | None = None,
 ) -> str:
     """Render and persist the prompt for a pipeline phase, returning its dump path."""
     prompt = _render_prompt_for_phase(
@@ -82,7 +180,12 @@ def materialize_prompt_for_phase(  # noqa: PLR0913
         previous_phase=previous_phase,
         resume_existing_phase=resume_existing_phase,
     )
-    return dump_rendered_prompt(workspace, phase, prompt)
+    path = dump_rendered_prompt(workspace, phase, prompt)
+    if multimodal_entries:
+        _write_multimodal_sidecar(workspace, phase, multimodal_entries)
+    else:
+        _clear_multimodal_sidecar(workspace, phase)
+    return path
 
 
 def prompt_file_for_phase(phase: str) -> str:

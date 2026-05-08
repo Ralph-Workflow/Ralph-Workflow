@@ -833,6 +833,40 @@ ralph.mcp.server.__main__
 .. automodule:: ralph.mcp.server.__main__
    :no-members:
 
+ralph.mcp.multimodal
+~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.mcp.multimodal
+   :no-members:
+
+ralph.mcp.multimodal.artifacts
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.mcp.multimodal.artifacts
+   :members:
+   :show-inheritance:
+
+ralph.mcp.multimodal.capabilities
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.mcp.multimodal.capabilities
+   :members:
+   :show-inheritance:
+
+ralph.mcp.multimodal.errors
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.mcp.multimodal.errors
+   :members:
+   :show-inheritance:
+
+ralph.mcp.multimodal.resources
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.mcp.multimodal.resources
+   :members:
+   :show-inheritance:
+
 ralph.mcp.session_plan
 ~~~~~~~~~~~~~~~~~~~~~~
 

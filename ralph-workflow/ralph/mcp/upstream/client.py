@@ -3,11 +3,15 @@
 Provides ``HttpUpstreamClient`` and ``StdioUpstreamClient``, both implementing
 ``UpstreamMcpClient``. ``make_upstream_client`` selects the right implementation
 from the server's transport field. Internal helpers handle JSON-RPC framing,
-legacy SSE endpoints, and multimodal content-block rejection.
+legacy SSE endpoints, and multimodal content-block normalization.
+
+Multimodal normalization is done at the registry level via
+``normalize_upstream_content_blocks()``, not inside individual clients.
 """
 
 from __future__ import annotations
 
+import base64
 import json
 import os
 import subprocess
@@ -16,6 +20,7 @@ from typing import TYPE_CHECKING, Protocol, cast
 
 import httpx
 
+from ralph.mcp.multimodal.artifacts import infer_modality_and_mime
 from ralph.mcp.protocol.startup import (
     initialize_request,
     initialized_notification,
@@ -26,6 +31,7 @@ from ralph.mcp.upstream.models import UpstreamCallError, UpstreamTool
 from ralph.process.manager import get_process_manager
 
 if TYPE_CHECKING:
+    from ralph.mcp.multimodal.resources import MediaManifest
     from ralph.mcp.upstream.config import UpstreamMcpServer
 
 JsonObject = dict[str, object]
@@ -37,6 +43,11 @@ class UpstreamMcpClient(Protocol):
 
     def list_tools(self) -> list[UpstreamTool]: ...
     def call_tool(self, name: str, arguments: JsonObject) -> object: ...
+
+
+class HasMediaManifest(Protocol):
+    @property
+    def media_manifest(self) -> MediaManifest: ...
 
 
 class HttpUpstreamClient:
@@ -73,7 +84,6 @@ class HttpUpstreamClient:
             raise UpstreamCallError(
                 f"upstream server '{self._server.name}' tool '{name}' failed: {exc}"
             ) from exc
-        _check_upstream_content_blocks(result, self._server.name, name)
         return result
 
 
@@ -109,7 +119,6 @@ class StdioUpstreamClient:
             raise UpstreamCallError(
                 f"upstream server '{self._server.name}' tool '{name}' failed: {exc}"
             ) from exc
-        _check_upstream_content_blocks(result, self._server.name, name)
         return result
 
 
@@ -160,6 +169,165 @@ def _json_rpc_result(raw: object, context: str) -> JsonObject:
     return {}
 
 
+_UPSTREAM_MEDIA_BLOCK_TYPES: frozenset[str] = frozenset({
+    "image", "audio", "video", "pdf", "document"
+})
+
+_MAX_EXTENSION_LEN = 6
+
+_DEFAULT_MIME_BY_BLOCK_TYPE: dict[str, str] = {
+    "image": "image/png",
+    "audio": "audio/mpeg",
+    "video": "video/mp4",
+    "pdf": "application/pdf",
+    "document": "application/octet-stream",
+}
+
+
+def _modality_from_mime(mime_type: str) -> str | None:
+    """Return modality for a MIME type by prefix, or None if unrecognized."""
+    if mime_type.startswith("image/"):
+        return "image"
+    if mime_type.startswith("audio/"):
+        return "audio"
+    if mime_type.startswith("video/"):
+        return "video"
+    if mime_type == "application/pdf":
+        return "pdf"
+    if mime_type in (
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    ):
+        return "document"
+    return None
+
+
+def _extract_mime(block: Mapping[str, object], block_type: str) -> str:
+    """Extract MIME type from an upstream block, falling back by block_type."""
+    mime = block.get("mimeType")
+    if isinstance(mime, str) and mime:
+        return mime
+    source = block.get("source")
+    if isinstance(source, Mapping):
+        media_type = source.get("media_type")
+        if isinstance(media_type, str) and media_type:
+            return media_type
+    upstream_uri = _extract_uri(block)
+    if upstream_uri:
+        stem = upstream_uri.split("?")[0].split("#")[0]
+        if "." in stem:
+            ext = "." + stem.rsplit(".", 1)[-1]
+            if len(ext) <= _MAX_EXTENSION_LEN:
+                inferred = infer_modality_and_mime(ext)
+                if inferred:
+                    return inferred[1]
+    return _DEFAULT_MIME_BY_BLOCK_TYPE.get(block_type, "application/octet-stream")
+
+
+def _extract_uri(block: Mapping[str, object]) -> str | None:
+    """Extract URI from URI-backed upstream block, or None if not URI-backed."""
+    uri = block.get("uri")
+    if isinstance(uri, str) and uri:
+        return uri
+    source = block.get("source")
+    if isinstance(source, Mapping):
+        src_uri = source.get("uri")
+        if isinstance(src_uri, str) and src_uri:
+            return src_uri
+    return None
+
+
+def _extract_data(block: Mapping[str, object]) -> bytes | None:
+    """Extract raw bytes from embedded-data upstream block, or None if not embedded."""
+    data = block.get("data")
+    if isinstance(data, str) and data:
+        try:
+            return base64.b64decode(data)
+        except Exception:
+            return None
+    source = block.get("source")
+    if isinstance(source, Mapping):
+        src_data = source.get("data")
+        if isinstance(src_data, str) and src_data:
+            try:
+                return base64.b64decode(src_data)
+            except Exception:
+                return None
+    return None
+
+
+def _get_block_title(block: Mapping[str, object], tool_name: str, idx: int, block_type: str) -> str:
+    """Get display title for a normalized block."""
+    title = block.get("title") or block.get("name")
+    if isinstance(title, str) and title:
+        return title
+    return f"{tool_name}_{block_type}_{idx}"
+
+
+def _normalize_media_block(  # noqa: PLR0913
+    block: Mapping[str, object],
+    block_type: str,
+    idx: int,
+    server_name: str,
+    tool_name: str,
+    session: HasMediaManifest | None,
+) -> dict[str, object]:
+    """Normalize an upstream media block into a resource_reference content block.
+
+    Handles image/audio/video/pdf/document blocks with either URI-backed or
+    embedded-data shapes. URI-backed blocks preserve the upstream URI; embedded
+    blocks store bytes in the session manifest when a session is available.
+    """
+    mime_type = _extract_mime(block, block_type)
+
+    derived_modality = _modality_from_mime(mime_type)
+    if derived_modality is not None and derived_modality != block_type:
+        raise UpstreamCallError(
+            f"upstream server '{server_name}' tool '{tool_name}' returned "
+            f"content block (type='{block_type}') with inconsistent MIME type '{mime_type}' "
+            f"(derived modality '{derived_modality}' != declared type '{block_type}') "
+            f"at index {idx}."
+        )
+
+    title = _get_block_title(block, tool_name, idx, block_type)
+    upstream_uri = _extract_uri(block)
+    raw_bytes = _extract_data(block)
+
+    if raw_bytes is not None:
+        if session is None:
+            raise UpstreamCallError(
+                f"upstream server '{server_name}' tool '{tool_name}' returned "
+                f"embedded {block_type} content block at index {idx} "
+                f"but no active session is available to store the artifact bytes. "
+                f"Embedded media requires an active session manifest."
+            )
+        entry = session.media_manifest.add(
+            title=title,
+            mime_type=mime_type,
+            modality=block_type,
+            raw_bytes=raw_bytes,
+        )
+        uri = entry.uri
+    elif upstream_uri is not None:
+        uri = upstream_uri
+    else:
+        raise UpstreamCallError(
+            f"upstream server '{server_name}' tool '{tool_name}' returned "
+            f"content block (type='{block_type}') at index {idx} with neither "
+            f"'uri'/'source.uri' nor 'data'/'source.data' — cannot normalize."
+        )
+
+    return {
+        "type": "resource_reference",
+        "uri": uri,
+        "mimeType": mime_type,
+        "title": title,
+        "modality": block_type,
+        "delivery": "resource_reference",
+    }
+
+
 def _get_content_list(result: JsonObject) -> list[object] | None:
     """Extract content list from result, returning None if not a valid list of blocks."""
     content = result.get("content")
@@ -168,32 +336,51 @@ def _get_content_list(result: JsonObject) -> list[object] | None:
     return list(content)
 
 
-def _check_upstream_content_blocks(result: JsonObject, server_name: str, tool_name: str) -> None:
-    """Check upstream tool result for multimodal content blocks and reject if found.
+def normalize_upstream_content_blocks(
+    result: JsonObject,
+    server_name: str,
+    tool_name: str,
+    session: HasMediaManifest | None = None,
+) -> None:
+    """Normalize upstream tool result content blocks into the multimodal contract.
 
-    This enforces the boundary policy: upstream multimodal payloads are not
-    supported in Ralph's text-only passthrough. Non-text content blocks are
-    rejected with a clear error rather than silently stringified or dropped.
+    - text blocks: pass through unchanged.
+    - resource_reference blocks: pass through unchanged.
+    - image/audio/video/pdf/document blocks: normalized to resource_reference.
+      URI-backed blocks preserve the upstream URI; embedded-data blocks store
+      bytes in the session manifest (ralph://media/... URI) when available.
+    - Other types: raise UpstreamCallError with a clear explanation.
+
+    Modifies the result dict in place.
     """
     content_blocks = _get_content_list(result)
     if content_blocks is None:
         return
 
+    normalized: list[object] = []
     for idx, block in enumerate(content_blocks):
         if not isinstance(block, Mapping):
+            normalized.append(block)
             continue
         block_type = block.get("type")
-        if block_type is None:
-            continue
         if not isinstance(block_type, str):
+            normalized.append(block)
             continue
-        if block_type != "text":
+        if block_type in ("text", "resource_reference"):
+            normalized.append(block)
+        elif block_type in _UPSTREAM_MEDIA_BLOCK_TYPES:
+            normalized.append(
+                _normalize_media_block(block, block_type, idx, server_name, tool_name, session)
+            )
+        else:
             raise UpstreamCallError(
                 f"upstream server '{server_name}' tool '{tool_name}' returned "
-                f"multimodal content block (type='{block_type}') which is not "
-                f"supported in Ralph's text-only passthrough at index {idx}. "
-                "Upstream multimodal payloads must be rejected rather than passed through."
+                f"unsupported content block (type='{block_type}') at index {idx}. "
+                f"Accepted types: text, resource_reference, "
+                f"image, audio, video, pdf, document."
             )
+
+    result["content"] = normalized
 
 
 def _make_http_caller(url: str) -> JsonRpcCaller:
@@ -288,6 +475,7 @@ def _make_stdio_caller(server: UpstreamMcpServer) -> JsonRpcCaller:
 
 
 __all__ = [
+    "HasMediaManifest",
     "HttpUpstreamClient",
     "JsonObject",
     "JsonRpcCaller",
@@ -295,4 +483,5 @@ __all__ = [
     "UpstreamCallError",
     "UpstreamMcpClient",
     "make_upstream_client",
+    "normalize_upstream_content_blocks",
 ]

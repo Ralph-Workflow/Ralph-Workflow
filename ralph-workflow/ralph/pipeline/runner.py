@@ -104,6 +104,7 @@ from ralph.process.manager import get_process_manager, process_phase_scope
 from ralph.process.mcp_supervisor import McpSupervisor
 from ralph.prompts.materialize import (
     MissingPlanHandoffError,
+    collect_media_entries_for_phase,
     materialize_prompt_for_phase,
     prompt_file_for_phase,
     tool_name_prefix_for_transport,
@@ -2136,6 +2137,7 @@ def _materialize_prepared_prompt(  # noqa: PLR0913
     )
     worker_ns_str = os.environ.get("RALPH_WORKER_NAMESPACE")
     worker_namespace = Path(worker_ns_str) if worker_ns_str else None
+    media_entries = collect_media_entries_for_phase(workspace, effect.phase) or None
     materialize_prompt_for_phase(
         phase=effect.phase,
         workspace=workspace,
@@ -2157,6 +2159,7 @@ def _materialize_prepared_prompt(  # noqa: PLR0913
         ),
         workspace_root=workspace_scope.root,
         worker_namespace=worker_namespace,
+        multimodal_entries=media_entries,
     )
 
 
@@ -2213,6 +2216,7 @@ def _materialize_agent_prompt_if_needed(
     if agent is not None:
         tool_name_prefix = tool_name_prefix_for_transport(agent.transport)
 
+    media_entries = collect_media_entries_for_phase(workspace, effect.phase) or None
     materialize_prompt_for_phase(
         phase=effect.phase,
         workspace=workspace,
@@ -2234,6 +2238,7 @@ def _materialize_agent_prompt_if_needed(
             tool_name_prefix=tool_name_prefix,
         ),
         workspace_root=workspace.root,
+        multimodal_entries=media_entries,
     )
 
 
@@ -3034,12 +3039,14 @@ def _execute_agent_effect(  # noqa: PLR0911, PLR0912, PLR0913, PLR0915
             drain=effect.drain or effect.phase,
             workspace_path=workspace_scope.root,
             agents_policy=effective_agents_policy,
+            model_flag=agent_config.model_flag,
         )
         session = AgentSession(
             session_id=f"{effect.phase}-{uuid.uuid4().hex[:8]}",
             run_id=str(uuid.uuid4()),
             drain=effect.drain or effect.phase,
             capabilities=set(session_mcp_plan.capabilities),
+            model_identity=session_mcp_plan.model_identity,
         )
         workspace = FsWorkspace(
             workspace_scope.root,

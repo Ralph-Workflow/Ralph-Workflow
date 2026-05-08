@@ -56,6 +56,7 @@ from loguru import logger
 
 from ralph import __version__
 from ralph.config.mcp_loader import load_mcp_config
+from ralph.mcp.artifacts.policy_outcomes import is_policy_approved
 from ralph.mcp.protocol.capability_mapping import Capability, McpCapability
 from ralph.mcp.protocol.env import (
     MCP_SESSION_ENV as SESSION_ENV,
@@ -307,6 +308,7 @@ class McpServer:
             "prompts/list": self._handle_prompts_list,
             "resources/list": self._handle_resources_list,
             "resources/templates/list": self._handle_resource_templates_list,
+            "resources/read": self._handle_resources_read,
             "tools/list": self._handle_tools_list,
         }
         handler = handlers.get(request.method)
@@ -357,18 +359,86 @@ class McpServer:
     def _handle_resources_list(
         self, request: JsonRpcRequest
     ) -> tuple[JsonRpcResponse, ServerState]:
+        resources: list[dict[str, object]] = []
+        resources.extend(
+            entry.resource_list_entry()
+            for entry in self._session.media_manifest.list_entries()
+        )
         return (
-            JsonRpcResponse(jsonrpc="2.0", result={"resources": []}, msg_id=request.msg_id),
+            JsonRpcResponse(jsonrpc="2.0", result={"resources": resources}, msg_id=request.msg_id),
             ServerState.RUNNING,
         )
 
     def _handle_resource_templates_list(
         self, request: JsonRpcRequest
     ) -> tuple[JsonRpcResponse, ServerState]:
+        templates: list[dict[str, object]] = []
+        if is_policy_approved(self._session.check_capability("media.read")):
+            templates.append(
+                {
+                    "uriTemplate": "ralph://media/{artifact_id}",
+                    "name": "Ralph media artifact",
+                    "description": (
+                        "Binary media artifact stored by read_media. "
+                        "Retrieve via resources/read with the full URI."
+                    ),
+                }
+            )
         return (
             JsonRpcResponse(
                 jsonrpc="2.0",
-                result={"resourceTemplates": []},
+                result={"resourceTemplates": templates},
+                msg_id=request.msg_id,
+            ),
+            ServerState.RUNNING,
+        )
+
+    def _handle_resources_read(
+        self, request: JsonRpcRequest
+    ) -> tuple[JsonRpcResponse, ServerState]:
+        import base64 as _base64  # noqa: PLC0415
+
+        from ralph.mcp.multimodal.resources import parse_media_uri  # noqa: PLC0415
+
+        params = request.params or {}
+        uri = params.get("uri")
+        if not isinstance(uri, str) or not uri:
+            error = {"code": -32602, "message": "resources/read requires a 'uri' parameter"}
+            return (
+                JsonRpcResponse(jsonrpc="2.0", error=error, msg_id=request.msg_id),
+                ServerState.RUNNING,
+            )
+
+        artifact_id = parse_media_uri(uri)
+        if artifact_id is None:
+            error = {
+                "code": -32602,
+                "message": (
+                    f"Unsupported resource URI: '{uri}'. "
+                    "Expected ralph://media/<artifact_id>"
+                ),
+            }
+            return (
+                JsonRpcResponse(jsonrpc="2.0", error=error, msg_id=request.msg_id),
+                ServerState.RUNNING,
+            )
+
+        entry = self._session.media_manifest.get(artifact_id)
+        if entry is None:
+            error = {"code": -32602, "message": f"Resource not found: '{uri}'"}
+            return (
+                JsonRpcResponse(jsonrpc="2.0", error=error, msg_id=request.msg_id),
+                ServerState.RUNNING,
+            )
+
+        blob = _base64.b64encode(entry.raw_bytes).decode("ascii")
+        contents: list[dict[str, object]] = [
+            {"uri": entry.uri, "mimeType": entry.mime_type, "blob": blob},
+        ]
+        return (
+            JsonRpcResponse(
+                jsonrpc="2.0",
+                result={"contents": contents},
                 msg_id=request.msg_id,
             ),
             ServerState.RUNNING,
@@ -389,7 +459,9 @@ class McpServer:
             return (JsonRpcResponse(jsonrpc="2.0", error=error, msg_id=request.msg_id), state)
 
         try:
-            raw_result = self._registry.dispatch(tool_name, dict(arguments_value))
+            raw_result = self._registry.dispatch(
+                tool_name, dict(arguments_value), host_session=self._session
+            )
         except Exception as exc:
             error = {"code": -32603, "message": str(exc)}
             return (JsonRpcResponse(jsonrpc="2.0", error=error, msg_id=request.msg_id), state)
@@ -628,6 +700,8 @@ class FileBackedSession:
             lambda: f"standalone-{uuid.uuid4().hex[:8]}"
         )
         self._run_id_factory = run_id_factory or (lambda: str(uuid.uuid4()))
+        from ralph.mcp.multimodal.resources import MediaManifest  # noqa: PLC0415
+        self._media_manifest = MediaManifest()
 
 
     def _load(self) -> dict[str, object]:
@@ -664,6 +738,28 @@ class FileBackedSession:
         if raw is None:
             return None
         return Path(raw)
+
+    @property
+    def model_identity(self) -> object:
+        from ralph.mcp.multimodal.capabilities import (  # noqa: PLC0415
+            UNKNOWN_IDENTITY,
+            MultimodalModelIdentity,
+        )
+        raw = self._load().get("model_identity")
+        if not isinstance(raw, dict):
+            return UNKNOWN_IDENTITY
+        provider = str(raw.get("provider", "unknown"))
+        model_id = raw.get("model_id")
+        transport = raw.get("transport")
+        return MultimodalModelIdentity(
+            provider=provider,
+            model_id=str(model_id) if model_id is not None else None,
+            transport=str(transport) if transport is not None else None,
+        )
+
+    @property
+    def media_manifest(self) -> object:
+        return self._media_manifest
 
     def check_capability(self, capability: str) -> object:
         return "approved" if session_has_capability(self.capabilities, capability) else "denied"

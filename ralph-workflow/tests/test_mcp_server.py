@@ -1185,3 +1185,89 @@ class TestMultimodalToolVisibility:
         }
         # Multimodal-capable client should NOT see read_image when media is explicitly disabled
         assert "read_image" not in tool_names
+
+
+# ---------------------------------------------------------------------------
+# FileBackedSession.model_identity tests
+# ---------------------------------------------------------------------------
+
+
+class TestFileBackedSessionModelIdentity:
+    """Tests for FileBackedSession.model_identity property."""
+
+    def test_file_backed_session_restores_known_model_identity(self, tmp_path: Path) -> None:
+        """FileBackedSession.model_identity returns the deserialized MultimodalModelIdentity."""
+        from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity  # noqa: PLC0415
+        from ralph.mcp.server.runtime import FileBackedSession  # noqa: PLC0415
+
+        payload = {
+            "session_id": "sid-fbs",
+            "run_id": "run-fbs",
+            "drain": "development",
+            "capabilities": ["WorkspaceRead"],
+            "model_identity": {
+                "provider": "anthropic",
+                "model_id": "claude-3-5-sonnet",
+                "transport": "cli",
+            },
+        }
+        session_file = tmp_path / "session.json"
+        session_file.write_text(json.dumps(payload), encoding="utf-8")
+
+        session = FileBackedSession(session_file)
+        identity = session.model_identity
+        assert isinstance(identity, MultimodalModelIdentity)
+        assert identity.provider == "anthropic"
+        assert identity.model_id == "claude-3-5-sonnet"
+        assert identity.transport == "cli"
+
+    def test_file_backed_session_falls_back_to_unknown_identity_when_absent(
+        self, tmp_path: Path
+    ) -> None:
+        """FileBackedSession.model_identity returns UNKNOWN_IDENTITY when payload omits it."""
+        from ralph.mcp.multimodal.capabilities import UNKNOWN_IDENTITY  # noqa: PLC0415
+        from ralph.mcp.server.runtime import FileBackedSession  # noqa: PLC0415
+
+        payload = {
+            "session_id": "sid-no-mi",
+            "run_id": "run-no-mi",
+            "drain": "development",
+            "capabilities": ["WorkspaceRead"],
+        }
+        session_file = tmp_path / "session.json"
+        session_file.write_text(json.dumps(payload), encoding="utf-8")
+
+        session = FileBackedSession(session_file)
+        identity = session.model_identity
+        assert identity == UNKNOWN_IDENTITY
+
+    def test_lifecycle_payload_roundtrip_preserves_model_identity(self, tmp_path: Path) -> None:
+        """session_payload_json + FileBackedSession restores the same model identity."""
+        import json as _json  # noqa: PLC0415
+
+        from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity  # noqa: PLC0415
+        from ralph.mcp.server.lifecycle import _session_payload_json  # noqa: PLC0415
+        from ralph.mcp.server.runtime import FileBackedSession  # noqa: PLC0415
+
+        agent_session = AgentSession(
+            session_id="sid-rt",
+            run_id="run-rt",
+            drain="development",
+            capabilities={"WorkspaceRead"},
+            model_identity=MultimodalModelIdentity(
+                provider="anthropic", model_id="claude-opus-4-7", transport="api"
+            ),
+        )
+        payload_str = _session_payload_json(agent_session)
+        session_file = tmp_path / "session-rt.json"
+        session_file.write_text(payload_str, encoding="utf-8")
+
+        restored = FileBackedSession(session_file)
+        identity = restored.model_identity
+        assert isinstance(identity, MultimodalModelIdentity)
+        assert identity.provider == "anthropic"
+        assert identity.model_id == "claude-opus-4-7"
+        assert identity.transport == "api"
+        # Verify the raw payload also contains model_identity
+        raw = _json.loads(payload_str)
+        assert raw["model_identity"]["provider"] == "anthropic"

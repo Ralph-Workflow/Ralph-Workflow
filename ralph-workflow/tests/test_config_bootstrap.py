@@ -178,6 +178,17 @@ def test_bundled_global_template_parses_as_valid_toml() -> None:
     assert isinstance(result, dict)
 
 
+def test_bundled_mcp_template_describes_broad_multimodal_support() -> None:
+    """Default mcp.toml must describe the broad multimodal surface, not image-only."""
+    template = Path(ralph.policy.__file__).parent / "defaults" / "mcp.toml"
+    content = template.read_text(encoding="utf-8")
+    assert "read_media" in content
+    assert "read_image" in content
+    assert "compatibility" in content
+    # Must not imply image-only support
+    assert "Multimodal image reading support" not in content
+
+
 def test_local_template_defines_active_runtime_drain_bindings() -> None:
     template = Path(ralph.policy.__file__).parent / "defaults" / "ralph-workflow-local.toml"
     data = tomllib.loads(template.read_text(encoding="utf-8"))

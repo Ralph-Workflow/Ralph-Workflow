@@ -595,3 +595,66 @@ def test_start_mcp_server_stable_endpoint_across_restarts(tmp_path: Path) -> Non
     assert initial_endpoint == "http://127.0.0.1:43300/mcp"
     # Both preflight calls use the same endpoint
     assert endpoints_seen == [initial_endpoint, initial_endpoint]
+
+
+# ---------------------------------------------------------------------------
+# model_identity serialization tests
+# ---------------------------------------------------------------------------
+
+
+def test_session_payload_json_includes_model_identity_when_known() -> None:
+    """_session_payload_json serializes model_identity for sessions with a known provider."""
+    import json  # noqa: PLC0415
+
+    from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity  # noqa: PLC0415
+    from ralph.mcp.server.lifecycle import _session_payload_json  # noqa: PLC0415
+
+    session = AgentSession(
+        session_id="sid-mi",
+        run_id="run-mi",
+        drain="development",
+        capabilities={"WorkspaceRead"},
+        model_identity=MultimodalModelIdentity(
+            provider="anthropic", model_id="claude-3-5-sonnet", transport="cli"
+        ),
+    )
+    payload = json.loads(_session_payload_json(session))
+    assert "model_identity" in payload
+    assert payload["model_identity"]["provider"] == "anthropic"
+    assert payload["model_identity"]["model_id"] == "claude-3-5-sonnet"
+    assert payload["model_identity"]["transport"] == "cli"
+
+
+def test_session_payload_json_omits_model_identity_when_unknown() -> None:
+    """_session_payload_json omits model_identity for UNKNOWN_IDENTITY sessions."""
+    import json  # noqa: PLC0415
+
+    from ralph.mcp.server.lifecycle import _session_payload_json  # noqa: PLC0415
+
+    session = AgentSession(
+        session_id="sid-unknown",
+        run_id="run-unknown",
+        drain="development",
+        capabilities={"WorkspaceRead"},
+    )
+    payload = json.loads(_session_payload_json(session))
+    assert "model_identity" not in payload
+
+
+def test_session_payload_json_omits_model_identity_for_sessions_without_attribute() -> None:
+    """_session_payload_json is safe when session lacks model_identity attribute."""
+    import json  # noqa: PLC0415
+
+    from ralph.mcp.server.lifecycle import _session_payload_json  # noqa: PLC0415
+
+    class _MinimalSession:
+        session_id = "sid-min"
+        run_id = "run-min"
+        drain = "development"
+        capabilities: set[str]
+
+        def __init__(self) -> None:
+            self.capabilities = set()
+
+    payload = json.loads(_session_payload_json(_MinimalSession()))  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+    assert "model_identity" not in payload
