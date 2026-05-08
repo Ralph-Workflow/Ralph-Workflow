@@ -4129,3 +4129,246 @@ def test_process_exit_observed_before_deadline_does_not_fire(
     )
     assert result == []
 
+
+# ---------------------------------------------------------------------------
+# Multimodal sidecar consumption tests
+# ---------------------------------------------------------------------------
+
+
+def _write_sidecar(
+    prompt_file: Path,
+    artifacts: list[dict[str, object]],
+) -> None:
+    """Write a multimodal handoff sidecar next to the given _prompt.md file."""
+    import json as _json  # noqa: PLC0415
+
+    stem = prompt_file.stem  # e.g. "development_prompt"
+    normalized = stem.removesuffix("_prompt")
+    sidecar = prompt_file.parent / f"{normalized}_multimodal_handoff.json"
+    payload = {
+        "schema_version": "1",
+        "phase": normalized,
+        "artifacts": artifacts,
+    }
+    sidecar.write_text(_json.dumps(payload), encoding="utf-8")
+
+
+_SAMPLE_IMAGE_ARTIFACT: dict[str, object] = {
+    "artifact_id": "abc123",
+    "uri": "ralph://media/abc123",
+    "mime_type": "image/png",
+    "title": "screenshot.png",
+    "modality": "image",
+    "delivery": "inline",
+    "reason": "Claude supports inline image delivery",
+}
+
+_SAMPLE_PDF_ARTIFACT: dict[str, object] = {
+    "artifact_id": "pdf456",
+    "uri": "ralph://media/pdf456",
+    "mime_type": "application/pdf",
+    "title": "report.pdf",
+    "modality": "pdf",
+    "delivery": "resource_reference",
+    "reason": "'pdf' delivered as resource reference",
+}
+
+
+def test_claude_mcp_prompt_includes_multimodal_appendix_when_sidecar_present(
+    tmp_path: Path,
+) -> None:
+    prompt_file = tmp_path / "development_prompt.md"
+    prompt_file.write_text("Build the feature.", encoding="utf-8")
+    _write_sidecar(prompt_file, [_SAMPLE_IMAGE_ARTIFACT])
+
+    config = AgentConfig(
+        cmd="claude -p",
+        output_flag="--output-format=stream-json",
+        yolo_flag="--permission-mode auto",
+        json_parser=JsonParserType.CLAUDE,
+        transport=AgentTransport.CLAUDE,
+    )
+
+    cmd = _build_command(
+        config,
+        str(prompt_file),
+        options=_BuildCommandOptions(mcp_endpoint="http://localhost:9999"),
+    )
+
+    full_prompt = cmd[-1]
+    assert "Build the feature." in full_prompt
+    assert "Multimodal Artifacts" in full_prompt
+    assert "ralph://media/abc123" in full_prompt
+    assert "[image] screenshot.png" in full_prompt
+
+
+def test_claude_mcp_prompt_text_only_when_no_sidecar(tmp_path: Path) -> None:
+    prompt_file = tmp_path / "development_prompt.md"
+    prompt_text = "Build the feature text only."
+    prompt_file.write_text(prompt_text, encoding="utf-8")
+
+    config = AgentConfig(
+        cmd="claude -p",
+        output_flag="--output-format=stream-json",
+        yolo_flag="--permission-mode auto",
+        json_parser=JsonParserType.CLAUDE,
+        transport=AgentTransport.CLAUDE,
+    )
+
+    cmd = _build_command(
+        config,
+        str(prompt_file),
+        options=_BuildCommandOptions(mcp_endpoint="http://localhost:9999"),
+    )
+
+    full_prompt = cmd[-1]
+    assert full_prompt == prompt_text
+    assert "Multimodal Artifacts" not in full_prompt
+
+
+def test_opencode_prompt_includes_multimodal_appendix_when_sidecar_present(
+    tmp_path: Path,
+) -> None:
+    prompt_file = tmp_path / "development_prompt.md"
+    prompt_file.write_text("Do the opencode work.", encoding="utf-8")
+    _write_sidecar(prompt_file, [_SAMPLE_PDF_ARTIFACT])
+
+    config = AgentConfig(
+        cmd="opencode",
+        output_flag="--json-stream",
+        json_parser=JsonParserType.OPENCODE,
+        transport=AgentTransport.OPENCODE,
+    )
+
+    cmd = _build_command(
+        config,
+        str(prompt_file),
+        options=_BuildCommandOptions(),
+    )
+
+    full_prompt = cmd[-1]
+    assert "Do the opencode work." in full_prompt
+    assert "Multimodal Artifacts" in full_prompt
+    assert "ralph://media/pdf456" in full_prompt
+    assert "[pdf] report.pdf" in full_prompt
+
+
+def test_opencode_prompt_text_only_when_no_sidecar(tmp_path: Path) -> None:
+    prompt_file = tmp_path / "development_prompt.md"
+    prompt_text = "Plain text prompt only."
+    prompt_file.write_text(prompt_text, encoding="utf-8")
+
+    config = AgentConfig(
+        cmd="opencode",
+        output_flag="--json-stream",
+        json_parser=JsonParserType.OPENCODE,
+        transport=AgentTransport.OPENCODE,
+    )
+
+    cmd = _build_command(
+        config,
+        str(prompt_file),
+        options=_BuildCommandOptions(),
+    )
+
+    assert cmd[-1] == prompt_text
+    assert "Multimodal Artifacts" not in cmd[-1]
+
+
+def test_codex_prompt_includes_multimodal_appendix_when_sidecar_present(
+    tmp_path: Path,
+) -> None:
+    prompt_file = tmp_path / "development_prompt.md"
+    prompt_file.write_text("Fix the codex issue.", encoding="utf-8")
+    _write_sidecar(prompt_file, [_SAMPLE_IMAGE_ARTIFACT, _SAMPLE_PDF_ARTIFACT])
+
+    config = AgentConfig(
+        cmd="codex exec",
+        output_flag="--json",
+        yolo_flag="--dangerously-bypass-approvals-and-sandbox",
+        json_parser=JsonParserType.CODEX,
+        transport=AgentTransport.CODEX,
+    )
+
+    cmd = _build_command(
+        config,
+        str(prompt_file),
+        options=_BuildCommandOptions(),
+    )
+
+    full_prompt = cmd[-1]
+    assert "Fix the codex issue." in full_prompt
+    assert "Multimodal Artifacts" in full_prompt
+    assert "ralph://media/abc123" in full_prompt
+    assert "ralph://media/pdf456" in full_prompt
+
+
+def test_codex_prompt_text_only_when_no_sidecar(tmp_path: Path) -> None:
+    prompt_file = tmp_path / "development_prompt.md"
+    prompt_text = "Codex plain text prompt."
+    prompt_file.write_text(prompt_text, encoding="utf-8")
+
+    config = AgentConfig(
+        cmd="codex exec",
+        output_flag="--json",
+        yolo_flag="--dangerously-bypass-approvals-and-sandbox",
+        json_parser=JsonParserType.CODEX,
+        transport=AgentTransport.CODEX,
+    )
+
+    cmd = _build_command(
+        config,
+        str(prompt_file),
+        options=_BuildCommandOptions(),
+    )
+
+    assert cmd[-1] == prompt_text
+    assert "Multimodal Artifacts" not in cmd[-1]
+
+
+def test_multimodal_appendix_includes_all_artifacts_for_mixed_modality(
+    tmp_path: Path,
+) -> None:
+    prompt_file = tmp_path / "development_prompt.md"
+    prompt_file.write_text("Mixed modality run.", encoding="utf-8")
+    _write_sidecar(prompt_file, [_SAMPLE_IMAGE_ARTIFACT, _SAMPLE_PDF_ARTIFACT])
+
+    config = AgentConfig(
+        cmd="opencode",
+        output_flag="--json-stream",
+        json_parser=JsonParserType.OPENCODE,
+        transport=AgentTransport.OPENCODE,
+    )
+
+    cmd = _build_command(config, str(prompt_file), options=_BuildCommandOptions())
+    full_prompt = cmd[-1]
+
+    assert "[image] screenshot.png" in full_prompt
+    assert "[pdf] report.pdf" in full_prompt
+    assert "ralph://media/abc123" in full_prompt
+    assert "ralph://media/pdf456" in full_prompt
+
+
+def test_sidecar_with_non_standard_prompt_name_is_ignored(tmp_path: Path) -> None:
+    """Prompt file not ending in _prompt.md must not attempt sidecar lookup."""
+    prompt_file = tmp_path / "PROMPT.md"
+    prompt_text = "Plain old prompt."
+    prompt_file.write_text(prompt_text, encoding="utf-8")
+    # Write a file that would match if the logic were wrong
+    bad_sidecar = tmp_path / "PROMPT_multimodal_handoff.json"
+    bad_sidecar.write_text(
+        '{"schema_version":"1","phase":"test","artifacts":[{"artifact_id":"x","uri":"ralph://media/x","mime_type":"image/png","title":"t","modality":"image","delivery":"inline"}]}',
+        encoding="utf-8",
+    )
+
+    config = AgentConfig(
+        cmd="opencode",
+        output_flag="--json-stream",
+        json_parser=JsonParserType.OPENCODE,
+        transport=AgentTransport.OPENCODE,
+    )
+
+    cmd = _build_command(config, str(prompt_file), options=_BuildCommandOptions())
+
+    assert cmd[-1] == prompt_text
+    assert "Multimodal Artifacts" not in cmd[-1]

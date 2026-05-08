@@ -13,6 +13,11 @@ def prompt_dump_path(phase: str) -> str:
     return f".agent/tmp/{normalized}_prompt.md"
 
 
+def multimodal_sidecar_path(phase: str) -> str:
+    normalized = phase.replace("/", "_").replace(" ", "_")
+    return f".agent/tmp/{normalized}_multimodal_handoff.json"
+
+
 def dump_rendered_prompt(workspace: Workspace, phase: str, prompt: str) -> str:
     path = prompt_dump_path(phase)
     workspace.write(path, prompt)
