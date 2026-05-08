@@ -15,14 +15,12 @@ from __future__ import annotations
 
 import os
 import shutil
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal
+from typing import Literal, cast
 
 from ralph.git.operations import append_to_gitignore
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping
 
 _GLOBAL_CONFIG_FILENAME = "ralph-workflow.toml"
 _GLOBAL_MCP_FILENAME = "ralph-workflow-mcp.toml"
@@ -92,7 +90,12 @@ def ensure_global_config(global_dir: Path | None = None, *, force: bool = False)
         global_dir = resolve_global_config_dir()
     target = global_dir / _GLOBAL_CONFIG_FILENAME
     source = _get_bundled_defaults_dir() / _GLOBAL_CONFIG_FILENAME
-    return _copy_with_backup(source, target, force)
+    result = _copy_with_backup(source, target, force)
+    if result.action == "skipped":
+        migrated = _migrate_legacy_global_config(target)
+        if migrated is not None:
+            return migrated
+    return result
 
 
 def ensure_global_mcp_config(
@@ -227,6 +230,61 @@ def regenerate_all(
     return results
 
 
+def _backup_path(target: Path) -> Path:
+    return target.with_suffix(target.suffix + ".bak")
+
+
+
+def _migrate_legacy_global_config(target: Path) -> BootstrapResult | None:
+    from ralph.config.loader import load_toml  # noqa: PLC0415
+
+    try:
+        text = target.read_text(encoding="utf-8")
+    except OSError:
+        return None
+
+    data = cast("Mapping[str, object]", load_toml(target))
+    raw_drains_obj: object = data.get("agent_drains")
+    if not isinstance(raw_drains_obj, Mapping):
+        return None
+    raw_drains = cast("Mapping[str, object]", raw_drains_obj)
+
+    drains: dict[str, object] = {
+        key: value
+        for key, value in raw_drains.items()
+        if isinstance(key, str)
+    }
+    missing: list[tuple[str, str]] = []
+    analysis_chain: object = drains.get("analysis")
+    commit_chain: object = drains.get("commit")
+    if isinstance(analysis_chain, str):
+        missing.extend(
+            (drain_name, analysis_chain)
+            for drain_name in ("planning_analysis", "development_analysis")
+            if drain_name not in drains
+        )
+    if isinstance(commit_chain, str) and "development_commit" not in drains:
+        missing.append(("development_commit", commit_chain))
+
+    section_start = text.find("[agent_drains]")
+    if not missing or section_start == -1:
+        return None
+
+    next_section = text.find("\n[", section_start + len("[agent_drains]"))
+    insert_at = len(text) if next_section == -1 else next_section + 1
+    insert_lines = "".join(f'{name} = "{chain}"\n' for name, chain in missing)
+    if insert_at == len(text) and not text.endswith("\n"):
+        insert_lines = "\n" + insert_lines
+
+    backup = _backup_path(target)
+    if backup.exists():
+        backup.unlink()
+    shutil.copy2(str(target), str(backup))
+    target.write_text(text[:insert_at] + insert_lines + text[insert_at:], encoding="utf-8")
+    return BootstrapResult(target, "regenerated", backup)
+
+
+
 def _copy_with_backup(source: Path, target: Path, force: bool) -> BootstrapResult:
     """Copy source to target, optionally backing up an existing target first.
 
@@ -249,7 +307,7 @@ def _copy_with_backup(source: Path, target: Path, force: bool) -> BootstrapResul
 
     backup: Path | None = None
     if pre_existed and force:
-        backup = target.with_suffix(target.suffix + ".bak")
+        backup = _backup_path(target)
         if backup.exists():
             backup.unlink()
         shutil.move(str(target), str(backup))
