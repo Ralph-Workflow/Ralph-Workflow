@@ -234,3 +234,80 @@ def test_secret_never_in_e2e_logs() -> None:
         logger.remove(sink_id)
     log_output = "\n".join(captured)
     assert BROKEN_CANARY not in log_output
+
+
+# ---------------------------------------------------------------------------
+# Multimodal capability-aware tool visibility and resource template tests
+# ---------------------------------------------------------------------------
+
+_MEDIA_CAPABILITIES = _REQUIRED_CAPABILITIES | {"media.read"}
+
+
+def _build_multimodal_server(session_id: str = "test-multimodal") -> McpServer:
+    """Build a McpServer with media.read session capability."""
+    from ralph.mcp.protocol.session import AgentSession  # noqa: PLC0415
+
+    session = AgentSession(
+        session_id=session_id,
+        run_id="test-run",
+        drain="test",
+        capabilities=_MEDIA_CAPABILITIES,
+    )
+    workspace = MemoryWorkspace()
+    registry = build_ralph_tool_registry(session, workspace)
+    return McpServer(session, workspace, registry)
+
+
+def _initialize_with_multimodal_caps(server: McpServer) -> ServerState:
+    """Send initialize declaring multimodal client capabilities; return running ServerState."""
+    req = JsonRpcRequest(
+        jsonrpc="2.0",
+        method="initialize",
+        params={
+            "protocolVersion": "2024-11-05",
+            "capabilities": {"media": {}, "image": {}},
+            "clientInfo": {"name": "test-multimodal", "version": "1.0"},
+        },
+        msg_id=1,
+    )
+    resp, state = server.handle_request(req, ServerState.UNINITIALIZED)
+    assert resp is not None and resp.result is not None, f"initialize failed: {resp}"
+    notif = JsonRpcRequest(jsonrpc="2.0", method="notifications/initialized", params={})
+    none_resp, state = server.handle_request(notif, state)
+    assert none_resp is None
+    return state
+
+
+def test_multimodal_client_sees_read_media_and_read_image_in_tools_list() -> None:
+    """Multimodal-capable client sees read_media and read_image in tools/list."""
+    server = _build_multimodal_server()
+    state = _initialize_with_multimodal_caps(server)
+    tool_names = {tool["name"] for tool in _list_tools(server, state)}
+    assert "read_media" in tool_names, f"read_media missing from tools: {sorted(tool_names)}"
+    assert "read_image" in tool_names, f"read_image missing from tools: {sorted(tool_names)}"
+
+
+def test_text_only_client_does_not_see_read_media_in_tools_list() -> None:
+    """Text-only client (no multimodal capability) does not see read_media or read_image."""
+    server = _build_multimodal_server()
+    state = _initialize(server)
+    tool_names = {tool["name"] for tool in _list_tools(server, state)}
+    assert "read_media" not in tool_names, "read_media should be hidden from text-only client"
+    assert "read_image" not in tool_names, "read_image should be hidden from text-only client"
+
+
+def test_resource_templates_list_includes_media_template_when_media_read_is_granted() -> None:
+    """resources/templates/list exposes ralph://media/{artifact_id} when media.read is granted."""
+    server = _build_multimodal_server()
+    state = _initialize_with_multimodal_caps(server)
+    req = JsonRpcRequest(
+        jsonrpc="2.0", method="resources/templates/list", params={}, msg_id=5
+    )
+    resp, _ = server.handle_request(req, state)
+    assert resp is not None and resp.result is not None, f"resource templates/list failed: {resp}"
+    result = cast("dict[str, Any]", resp.result)
+    templates = cast("list[dict[str, Any]]", result.get("resourceTemplates", []))
+    uri_templates = {t.get("uriTemplate") for t in templates}
+    assert "ralph://media/{artifact_id}" in uri_templates, (
+        f"Expected ralph://media/{{artifact_id}} in resourceTemplates, got: {uri_templates}"
+    )
