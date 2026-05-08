@@ -193,7 +193,12 @@ class TestUpstreamMultimodalBoundary:
             client_factory=lambda srv: client,  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
         )
 
-        result = registry.call_tool("ralph_upstream__image_server__get_screenshot", {})
+        class _FakeSession:
+            media_manifest = MediaManifest()
+
+        result = registry.call_tool(
+            "ralph_upstream__image_server__get_screenshot", {}, session=_FakeSession()
+        )
 
         # Image block must be normalized to resource_reference, not rejected
         content = result.get("content", [])
@@ -226,7 +231,12 @@ class TestUpstreamMultimodalBoundary:
             client_factory=lambda srv: client,  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
         )
 
-        result = registry.call_tool("ralph_upstream__media_server__get_clip", {})
+        class _FakeSession:
+            media_manifest = MediaManifest()
+
+        result = registry.call_tool(
+            "ralph_upstream__media_server__get_clip", {}, session=_FakeSession()
+        )
 
         content = result.get("content", [])
         assert len(content) == 1
@@ -260,7 +270,12 @@ class TestUpstreamMultimodalBoundary:
             client_factory=lambda srv: client,  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
         )
 
-        result = registry.call_tool("ralph_upstream__audio_server__get_clip", {})
+        class _FakeSession:
+            media_manifest = MediaManifest()
+
+        result = registry.call_tool(
+            "ralph_upstream__audio_server__get_clip", {}, session=_FakeSession()
+        )
 
         content = result.get("content", [])
         assert len(content) == 1
@@ -293,7 +308,12 @@ class TestUpstreamMultimodalBoundary:
             client_factory=lambda srv: client,  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
         )
 
-        result = registry.call_tool("ralph_upstream__pdf_server__get_doc", {})
+        class _FakeSession:
+            media_manifest = MediaManifest()
+
+        result = registry.call_tool(
+            "ralph_upstream__pdf_server__get_doc", {}, session=_FakeSession()
+        )
 
         content = result.get("content", [])
         assert len(content) == 1
@@ -329,7 +349,12 @@ class TestUpstreamMultimodalBoundary:
             client_factory=lambda srv: client,  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
         )
 
-        result = registry.call_tool("ralph_upstream__doc_server__get_file", {})
+        class _FakeSession:
+            media_manifest = MediaManifest()
+
+        result = registry.call_tool(
+            "ralph_upstream__doc_server__get_file", {}, session=_FakeSession()
+        )
 
         content = result.get("content", [])
         assert len(content) == 1
@@ -518,7 +543,10 @@ class TestUpstreamMultimodalBoundary:
             client_factory=lambda srv: client,  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
         )
 
-        result = registry.call_tool("ralph_upstream__mix_server__mix", {})
+        class _FakeSession:
+            media_manifest = MediaManifest()
+
+        result = registry.call_tool("ralph_upstream__mix_server__mix", {}, session=_FakeSession())
 
         content = result.get("content", [])
         assert len(content) == 3  # noqa: PLR2004
@@ -557,7 +585,12 @@ class TestUpstreamMultimodalBoundary:
             client_factory=lambda srv: client,  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
         )
 
-        result = registry.call_tool("ralph_upstream__mixed_server__get_mixed", {})
+        class _FakeSession:
+            media_manifest = MediaManifest()
+
+        result = registry.call_tool(
+            "ralph_upstream__mixed_server__get_mixed", {}, session=_FakeSession()
+        )
 
         # Text block passes through; image block becomes resource_reference
         content = result.get("content", [])
@@ -663,7 +696,12 @@ class TestUpstreamMultimodalBoundary:
             client_factory=lambda srv: client,  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
         )
 
-        result = registry.call_tool("ralph_upstream__strict_server__get_both", {})
+        class _FakeSession:
+            media_manifest = MediaManifest()
+
+        result = registry.call_tool(
+            "ralph_upstream__strict_server__get_both", {}, session=_FakeSession()
+        )
 
         content = result.get("content", [])
         # Image must NOT be silently stringified (raw base64 must not appear in any text block)
@@ -679,3 +717,35 @@ class TestUpstreamMultimodalBoundary:
         ]
         assert len(rr_blocks) == 1
         assert str(rr_blocks[0].get("uri", "")).startswith("ralph://media/")
+
+    def test_embedded_media_without_session_raises_explicit_error(self) -> None:
+        """Embedded upstream media without a session raises an explicit error."""
+        # Verify no synthetic ralph://media/... URI is minted when bytes cannot be stored.
+        server = UpstreamMcpServer(name="embed_server", transport="http", url="http://unused")
+        client = self._make_http_client(
+            server,
+            [
+                {"tools": [{"name": "snap", "description": "Snapshot", "inputSchema": {}}]},
+                {
+                    "content": [
+                        {
+                            "type": "image",
+                            "data": "SGVsbG8gV29ybGQ=",
+                            "mimeType": "image/png",
+                        }
+                    ]
+                },
+            ],
+        )
+
+        registry = UpstreamRegistry.build(
+            [server],
+            client_factory=lambda srv: client,  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+        )
+
+        with pytest.raises(UpstreamCallError) as exc_info:
+            registry.call_tool("ralph_upstream__embed_server__snap", {})
+
+        error_message = str(exc_info.value)
+        assert "no active session" in error_message
+        assert "Embedded media requires" in error_message

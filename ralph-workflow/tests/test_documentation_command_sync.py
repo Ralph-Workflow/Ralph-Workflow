@@ -56,3 +56,26 @@ def test_contributing_required_verification_references_make_verify() -> None:
         "CONTRIBUTING.md must reference the canonical `make verify` command "
         "in its Required verification section."
     )
+
+
+_MCP_SERVERS_DOC = REPO_ROOT / "docs" / "mcp" / "mcp-servers.md"
+
+
+def test_mcp_servers_doc_describes_broad_multimodal_surface() -> None:
+    """docs/mcp/mcp-servers.md must describe the broad multimodal contract, not image-only."""
+    content = _MCP_SERVERS_DOC.read_text(encoding="utf-8")
+    assert "read_media" in content
+    assert "read_image" in content
+    assert "compatibility" in content
+    # Old reject-all wording must be gone
+    assert "rejects it with a clear error" not in content
+    assert "text-only passthrough" not in content
+
+
+def test_mcp_servers_doc_describes_upstream_normalization_policy() -> None:
+    """docs/mcp/mcp-servers.md must describe upstream normalization, not reject-all policy."""
+    content = _MCP_SERVERS_DOC.read_text(encoding="utf-8")
+    assert "normalizes it to a" in content
+    assert "resource_reference" in content
+    assert "URI-backed" in content
+    assert "Embedded-data" in content

@@ -67,7 +67,9 @@ url = "https://mcp.example.com/docs"
 
 ## Multimodal MCP Support (default-on)
 
-Ralph Workflow supports multimodal MCP tools (image reading). This support is **enabled by default** to ensure seamless multimodal support without configuration.
+Ralph Workflow supports broad multimodal MCP tools covering **images, PDFs, audio, video, and office documents**. This support is **enabled by default** to ensure seamless multimodal capability without configuration.
+
+The primary entry point is `read_media`, which handles all supported modalities. `read_image` remains available as a compatibility alias for inline image flows.
 
 ### Disabling multimodal support
 
@@ -83,24 +85,27 @@ To customize without disabling:
 ```toml
 [media]
 enabled = true  # default, can be omitted
-max_inline_bytes = 10485760  # 10 MiB to allow larger images
+max_inline_bytes = 10485760  # 10 MiB to allow larger inline images
 ```
 
-### How read_image works
+### How read_media works
 
-When `media.enabled = true` (default), Ralph Workflow registers a `read_image` tool that:
+When `media.enabled = true` (default), Ralph Workflow registers `read_media` as the primary multimodal tool. It:
 
-- Reads binary image files (PNG, JPEG, GIF, WebP)
-- Returns base64-encoded content in MCP image content blocks
-- Enforces a size limit (`max_inline_bytes`) to prevent memory issues
-- Requires `MediaRead` capability from the session
+- Reads images (PNG, JPEG, GIF, WebP), PDFs, audio (MP3, WAV, OGG, M4A, FLAC, AAC), video (MP4, AVI, MOV, MKV, WebM), and office documents (DOCX, PPTX, XLSX)
+- Returns small images inline as base64 MCP image blocks when the model supports it
+- Returns all other media as `resource_reference` blocks stored in the session manifest, retrievable via `ralph://media/...` URIs through `resources/read`
+- Consults the active model’s capability policy to determine the appropriate delivery mode
+- Returns an explicit error when the modality is unsupported by the current provider/model
+
+`read_image` is a compatibility alias that forwards to `read_media` for inline image workflows.
 
 ### What text-only clients see
 
-When a client connects without declaring multimodal support, the `read_image` tool is **automatically suppressed** from `tools/list` even if `media.enabled = true`. This ensures:
+When a client connects without declaring multimodal support, the `read_media` and `read_image` tools are **automatically suppressed** from `tools/list` even if `media.enabled = true`. This ensures:
 
 - Existing text-only clients continue to work unchanged
-- The `read_image` tool only appears for clients that declare image/media capability
+- Multimodal tools only appear for clients that declare image/media capability
 
 ### Client capability declaration
 
@@ -112,7 +117,7 @@ Clients declare multimodal support in the MCP `initialize` handshake via `capabi
 
 If no signal is present, Ralph Workflow treats the client as text-only.
 
-### Content block format
+### Content block formats
 
 Text content uses the standard MCP text block:
 
@@ -120,22 +125,30 @@ Text content uses the standard MCP text block:
 {"type": "text", "text": "..."}
 ```
 
-Image content uses the MCP image block:
+Small images for capable models use the MCP image block:
 
 ```json
 {"type": "image", "data": "<base64>", "mimeType": "image/png"}
 ```
 
-## Upstream multimodal boundary policy
+All other media uses a resource-reference block pointing to the session-stored artifact:
 
-When an upstream MCP server returns a non-text content block (e.g., an image), Ralph Workflow **rejects it with a clear error** rather than silently stringifying or dropping the block. This prevents silent data loss in text-only downstream clients.
+```json
+{"type": "resource_reference", "uri": "ralph://media/<id>", "mimeType": "application/pdf", "modality": "pdf", "title": "report.pdf", "delivery": "resource_reference"}
+```
 
-Error message format:
-```
-upstream server '<name>' tool '<tool>' returned multimodal content block (type='<type>')
-which is not supported in Ralph Workflow's text-only passthrough at index <idx>.
-Upstream multimodal payloads must be rejected rather than passed through.
-```
+The artifact bytes are retrievable via `resources/read` using the `ralph://media/<id>` URI.
+
+## Upstream multimodal normalization policy
+
+When an upstream MCP server returns a multimodal content block (`image`, `audio`, `video`, `pdf`, or `document`), Ralph Workflow **normalizes it to a `resource_reference` block** rather than rejecting or silently stringifying it.
+
+- **URI-backed blocks** (blocks with a `uri` or `source.uri` field): the upstream URI is preserved in the normalized `resource_reference`. The artifact bytes are not fetched or stored by Ralph.
+- **Embedded-data blocks** (blocks with `data` or `source.data`): the bytes are stored in the active session manifest before a `ralph://media/...` URI is returned. This requires an active session; calls without a session raise an explicit error.
+
+Malformed blocks (inconsistent MIME type vs declared type, or blocks with neither URI nor data) raise `UpstreamCallError` with a clear description. Unknown block types (e.g., `binary_blob`) also raise `UpstreamCallError`, listing the accepted types.
+
+This policy prevents silent data loss while preserving multimodal context end to end through Ralph’s managed runtime path.
 
 ## Collision policy
 

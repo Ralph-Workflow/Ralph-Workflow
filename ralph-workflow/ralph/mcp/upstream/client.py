@@ -21,7 +21,6 @@ from typing import TYPE_CHECKING, Protocol, cast
 import httpx
 
 from ralph.mcp.multimodal.artifacts import infer_modality_and_mime
-from ralph.mcp.multimodal.resources import MediaManifest, build_media_uri, new_artifact_id
 from ralph.mcp.protocol.startup import (
     initialize_request,
     initialized_notification,
@@ -32,6 +31,7 @@ from ralph.mcp.upstream.models import UpstreamCallError, UpstreamTool
 from ralph.process.manager import get_process_manager
 
 if TYPE_CHECKING:
+    from ralph.mcp.multimodal.resources import MediaManifest
     from ralph.mcp.upstream.config import UpstreamMcpServer
 
 JsonObject = dict[str, object]
@@ -288,16 +288,20 @@ def _normalize_media_block(  # noqa: PLR0913
     raw_bytes = _extract_data(block)
 
     if raw_bytes is not None:
-        if session is not None:
-            entry = session.media_manifest.add(
-                title=title,
-                mime_type=mime_type,
-                modality=block_type,
-                raw_bytes=raw_bytes,
+        if session is None:
+            raise UpstreamCallError(
+                f"upstream server '{server_name}' tool '{tool_name}' returned "
+                f"embedded {block_type} content block at index {idx} "
+                f"but no active session is available to store the artifact bytes. "
+                f"Embedded media requires an active session manifest."
             )
-            uri = entry.uri
-        else:
-            uri = build_media_uri(new_artifact_id())
+        entry = session.media_manifest.add(
+            title=title,
+            mime_type=mime_type,
+            modality=block_type,
+            raw_bytes=raw_bytes,
+        )
+        uri = entry.uri
     elif upstream_uri is not None:
         uri = upstream_uri
     else:

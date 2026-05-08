@@ -1615,6 +1615,28 @@ class MockSessionWithManifest:
 
 
 class TestHandleReadMedia:
+    def test_no_manifest_returns_explicit_error(self) -> None:
+        """When no session manifest is available, resource-reference delivery returns an error."""
+        pdf_bytes = b"%PDF-1.4 fake pdf content"
+        with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as f:
+            f.write(pdf_bytes)
+            temp_path = f.name
+
+        try:
+            ws = MagicMock()
+            ws.absolute_path.return_value = temp_path
+            # MockSession has no media_manifest attribute
+            session = MockSession(MEDIA_READ_CAPABILITY)
+
+            result = handle_read_media(session, ws, {"path": "report.pdf"})
+
+            assert result.is_error is True
+            msg = cast("ToolContent", result.content[0]).text
+            assert "no active session manifest" in msg
+            assert "report.pdf" in msg
+        finally:
+            Path(temp_path).unlink()
+
     def test_requires_media_read_capability(self) -> None:
         ws = MagicMock()
 

@@ -1141,18 +1141,7 @@ def handle_read_media(
     abs_path = workspace.absolute_path(normalized or path)
 
     try:
-        file_size = Path(abs_path).stat().st_size
-    except OSError as exc:
-        return ToolResult(
-            content=[ToolContent.text_content(
-                f"Failed to stat media file '{path}': {exc}"
-            )],
-            is_error=True,
-        )
-
-    try:
-        with Path(abs_path).open("rb") as fh:
-            raw_bytes = fh.read()
+        raw_bytes = Path(abs_path).read_bytes()
     except OSError as exc:
         return ToolResult(
             content=[ToolContent.text_content(
@@ -1161,6 +1150,7 @@ def handle_read_media(
             is_error=True,
         )
 
+    file_size = len(raw_bytes)
     title = PurePosixPath(path).name
 
     # Deliver inline when the capability policy allows and the file is within the size limit.
@@ -1179,21 +1169,24 @@ def handle_read_media(
 
     # Resource-reference delivery for all other media.
     manifest = _get_media_manifest(session)
-    if manifest is not None:
-        entry = manifest.add(
-            title=title,
-            mime_type=mime_type,
-            modality=modality,
-            raw_bytes=raw_bytes,
+    if manifest is None:
+        return ToolResult(
+            content=[ToolContent.text_content(
+                f"Media file '{path}' ({modality}, {mime_type}) cannot be delivered: "
+                f"no active session manifest is available. "
+                f"Resource-reference delivery requires an active session."
+            )],
+            is_error=True,
         )
-        uri = entry.uri
-    else:
-        # No manifest available (e.g., standalone/test session) — emit reference without storage
-        from ralph.mcp.multimodal.resources import build_media_uri, new_artifact_id  # noqa: PLC0415
-        uri = build_media_uri(new_artifact_id())
 
+    entry = manifest.add(
+        title=title,
+        mime_type=mime_type,
+        modality=modality,
+        raw_bytes=raw_bytes,
+    )
     ref = ResourceReferenceContent(
-        uri=uri,
+        uri=entry.uri,
         mime_type=mime_type,
         title=title,
         modality=modality,
