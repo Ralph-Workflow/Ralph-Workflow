@@ -271,6 +271,7 @@ def render_completion_summary(  # noqa: PLR0913, PLR0912, PLR0915
     error_count: int = 0,
     elapsed_seconds: float | None = None,
 ) -> Text:
+    """Build a rich ``Text`` object summarising pipeline completion for the terminal."""
     failed = snapshot.is_terminal_failure
     lines: list[str] = ["Pipeline Failed" if failed else "Pipeline Complete"]
 

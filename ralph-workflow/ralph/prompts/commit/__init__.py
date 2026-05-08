@@ -21,6 +21,8 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class CommitPromptPayloadConfig:
+    """Configuration for where commit prompt payload files are written."""
+
     output_dir: Path | None = None
     name_prefix: str = "commit_message"
 
@@ -68,6 +70,7 @@ def prompt_commit_message_for_opencode(
     submit_artifact_tool_name: str,
     payload_config: CommitPromptPayloadConfig | None = None,
 ) -> str:
+    """Return a simplified commit message prompt for OpenCode's single-tool interface."""
     diff_content = diff.strip()
     if not diff_content:
         raise ValueError("empty diff provided; cannot build commit prompt")

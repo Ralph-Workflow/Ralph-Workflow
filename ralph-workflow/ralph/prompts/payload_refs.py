@@ -42,12 +42,14 @@ def build_prompt_payload_variables(
 
 
 def prompt_payload_relative_path(prompt_name_prefix: str, variable_name: str) -> str:
+    """Return the relative path for a prompt payload file given its prefix and variable name."""
     normalized_prefix = _normalize_segment(prompt_name_prefix)
     normalized_name = _normalize_segment(variable_name)
     return f".agent/tmp/prompt_payloads/{normalized_prefix}_{normalized_name}.txt"
 
 
 def write_payload_to_directory(output_dir: Path, relative_path: str, content: str) -> str:
+    """Write payload content to a directory and return the absolute path."""
     destination = output_dir / Path(relative_path).name
     destination.parent.mkdir(parents=True, exist_ok=True)
     destination.write_text(_sanitize_surrogates(content), encoding="utf-8")

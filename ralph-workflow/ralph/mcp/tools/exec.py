@@ -88,6 +88,8 @@ class ExecParams:
 
 @dataclass(frozen=True)
 class ExecRunDeps:
+    """Injectable dependencies for exec tool command execution."""
+
     runner: CommandRunner | None = None
     cwd_provider: CwdProvider | None = None
 
@@ -221,6 +223,7 @@ def _contains_any(arg_list: list[str], targets: set[str]) -> bool:
 
 
 def check_version_control(command: str, _args: list[str]) -> str | None:
+    """Return a denial reason if the command is a version control tool."""
     key = _command_key(command)
     if key in _VERSION_CONTROL_COMMANDS:
         desc = _description("version_control")
@@ -232,6 +235,7 @@ def check_version_control(command: str, _args: list[str]) -> str | None:
 
 
 def check_privilege_escalation(command: str, _args: list[str]) -> str | None:
+    """Return a denial reason if the command is a privilege escalation tool."""
     key = _command_key(command)
     if key in _PRIVILEGE_ESCALATION_COMMANDS:
         desc = _description("privilege_escalation")
@@ -240,6 +244,7 @@ def check_privilege_escalation(command: str, _args: list[str]) -> str | None:
 
 
 def check_destructive_system(command: str, args: list[str]) -> str | None:
+    """Return a denial reason if the command is a destructive system operation."""
     key = _command_key(command)
     args_lower = _lower_args(args)
     desc = _description("destructive_system")
@@ -285,6 +290,7 @@ def _is_init_kill(key: str, args_lower: list[str]) -> bool:
 
 
 def check_network_exfiltration(command: str, args: list[str]) -> str | None:
+    """Return a denial reason if the command could exfiltrate data over the network."""
     key = _command_key(command)
     args_lower = _lower_args(args)
 
@@ -320,6 +326,7 @@ def _is_external_url(arg: str) -> bool:
 
 
 def check_package_manager(command: str, args: list[str]) -> str | None:
+    """Return a denial reason if the command invokes a package manager install."""
     key = _command_key(command)
     args_lower = _lower_args(args)
     desc = _description("package_manager")
@@ -360,6 +367,7 @@ def check_package_manager(command: str, args: list[str]) -> str | None:
 
 
 def check_container_escape(command: str, _args: list[str]) -> str | None:
+    """Return a denial reason if the command could escape container isolation."""
     key = _command_key(command)
     if key in _CONTAINER_COMMANDS:
         desc = _description("container_escape")
@@ -368,6 +376,7 @@ def check_container_escape(command: str, _args: list[str]) -> str | None:
 
 
 def check_multi_file_operation(command: str, args: list[str]) -> str | None:
+    """Return a denial reason if the command performs bulk file operations."""
     key = _command_key(command)
     args_lower = _lower_args(args)
     desc = _description("multi_file_operation")

@@ -47,6 +47,8 @@ class BridgeError(Exception):
 
 @dataclass(frozen=True)
 class BridgeArtifactDeps:
+    """Dependencies injected into bridge artifact operations."""
+
     backend: FileBackend = DEFAULT_FILE_BACKEND
     now_iso: Callable[[], str] = DEFAULT_ARTIFACT_PERSISTENCE.now_iso
 

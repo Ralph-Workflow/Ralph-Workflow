@@ -82,6 +82,7 @@ def decision_vocabulary_for_drain(
     drain: str,
     artifact_type: str,
 ) -> list[str]:
+    """Return the allowed decision strings for a given drain and artifact type."""
     contract = artifact_contract_for_drain(artifacts_policy, drain, artifact_type)
     vocabulary: object = (
         getattr(contract, "decision_vocabulary", []) if contract is not None else []

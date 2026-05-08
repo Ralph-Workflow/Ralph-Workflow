@@ -1,4 +1,16 @@
-"""Phase timing utilities."""
+"""Phase timing utilities.
+
+Provides monotonic-clock helpers and two dataclasses for measuring how long
+each pipeline phase takes:
+
+- ``PhaseTimer`` - start timing a phase with ``PhaseTimer.start(phase)`` and
+  stop it with ``timer.finish()`` to get a ``PhaseTimingRecord``.
+- ``PhaseTimingRecord`` - frozen record holding the phase name, iteration
+  number, start timestamp, and elapsed ``timedelta`` / whole-second count.
+
+All time values use ``time.monotonic`` so they are safe across system-clock
+adjustments. Elapsed seconds are truncated (not rounded) to whole integers.
+"""
 
 from __future__ import annotations
 

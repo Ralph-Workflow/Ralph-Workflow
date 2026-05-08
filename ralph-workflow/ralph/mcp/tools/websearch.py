@@ -94,6 +94,7 @@ def handle_web_search(
     *,
     web_search_config: WebSearchConfig | None = None,
 ) -> ToolResult:
+    """Dispatch a web search query through the configured backend and return results."""
     config = web_search_config if web_search_config is not None else WebSearchConfig()
     try:
         require_capability(session, WEB_SEARCH_CAPABILITY, "Web search")

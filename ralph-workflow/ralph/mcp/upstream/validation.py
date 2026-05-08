@@ -32,6 +32,8 @@ _STRICT_FALSE_VALUES = frozenset({"0", "false", "no", "off"})
 
 
 class HttpPreflightFn(Protocol):
+    """Callable protocol for running an HTTP MCP server preflight check."""
+
     def __call__(
         self, endpoint: str, required_tools: tuple[str, ...], timeout: timedelta
     ) -> None: ...
@@ -43,6 +45,8 @@ class UpstreamValidationError(RuntimeError):
 
 @dataclass(frozen=True)
 class UpstreamServerReport:
+    """Validation result for a single upstream MCP server."""
+
     name: str
     transport: Literal["http", "stdio"]
     ok: bool
@@ -53,6 +57,8 @@ class UpstreamServerReport:
 
 @dataclass(frozen=True)
 class UpstreamValidationReport:
+    """Aggregated validation results for all configured upstream MCP servers."""
+
     servers: tuple[UpstreamServerReport, ...]
 
     @property

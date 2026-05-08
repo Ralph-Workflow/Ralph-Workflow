@@ -31,6 +31,8 @@ autodoc_type_aliases = {
     "Capability": "ralph.mcp.protocol.capability_mapping.Capability",
     "SessionLike": "ralph.mcp.protocol.startup.SessionLike",
     "PhaseEntryModel": "ralph.display.phase_lifecycle.PhaseEntryModel",
+    "PhaseIterationContext": "ralph.display.phase_status.PhaseIterationContext",
+    "SessionCapabilities": "ralph.prompts.types.SessionCapabilities",
 }
 napoleon_google_docstring = True
 napoleon_numpy_docstring = False
@@ -96,9 +98,10 @@ pygments_dark_style = "github-dark"
 
 myst_enable_extensions = ["colon_fence", "deflist", "linkify", "substitution"]
 
-# Suppress only unavoidable autodoc import warnings for modules that rely on
-# optional extras (e.g., Pydantic forward-refs that fail without build-time extras).
-suppress_warnings = ["autodoc.import_object"]
+# Suppress unavoidable autodoc import warnings (optional-extras forward-refs) and
+# Python cross-reference ambiguity warnings caused by types defined in multiple
+# modules (e.g. SessionCapabilities in types.py and template_variables.py).
+suppress_warnings = ["autodoc.import_object", "ref.python"]
 
 source_suffix = {
     ".rst": "restructuredtext",

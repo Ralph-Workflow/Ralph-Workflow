@@ -59,10 +59,12 @@ Required next step:
 
 
 def format_verify_failure_banner(*, failed_command: str) -> str:
+    """Return the formatted failure banner text for a failing verify command."""
     return _VERIFY_FAILURE_BANNER_TEMPLATE.format(failed_command=failed_command)
 
 
 def run_verify(*, cwd: Path, runner: VerifyRunner = run_process) -> int:
+    """Run all verification steps and return the first non-zero exit code, or 0."""
     print("Running full verification...", flush=True)
     for args in VERIFY_STEPS:
         result = runner("make", args, cwd=cwd)
@@ -86,6 +88,7 @@ def main(
     runner: VerifyRunner = run_process,
     cwd: Path | None = None,
 ) -> int:
+    """Entry point for the ralph.verify command-line tool."""
     if argv:
         raise SystemExit("ralph.verify does not accept positional arguments")
     return run_verify(cwd=Path.cwd() if cwd is None else cwd, runner=runner)

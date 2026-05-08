@@ -167,6 +167,13 @@ class _BuildCommandOptions:
 
 @dataclass(frozen=True)
 class ResolvedInvocationRuntime:
+    """Resolved runtime configuration for a single agent invocation.
+
+    ``agent_env`` is the environment passed to the agent subprocess.
+    ``server_env`` holds extra variables forwarded to the MCP server process.
+    ``mcp_endpoint`` is the endpoint URL when MCP transport is used.
+    """
+
     agent_env: dict[str, str] | None = None
     server_env: dict[str, str] | None = None
     mcp_endpoint: str | None = None
@@ -703,6 +710,13 @@ def resolve_invocation_runtime(
     *,
     system_prompt_file: str | None = None,
 ) -> ResolvedInvocationRuntime:
+    """Build the runtime configuration needed to launch an agent.
+
+    Resolves transport-specific environment variables, MCP server configuration,
+    and endpoint address from ``config`` and ``extra_env``.  Returns a
+    ``ResolvedInvocationRuntime`` whose fields are ready to pass to the
+    subprocess launcher.
+    """
     runtime_env = dict(extra_env or {})
     server_env: dict[str, str] = {}
     endpoint = runtime_env.get("RALPH_MCP_ENDPOINT")

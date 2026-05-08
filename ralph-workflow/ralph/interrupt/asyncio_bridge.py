@@ -31,6 +31,8 @@ if TYPE_CHECKING:
 
 @dataclass
 class SignalBridge:
+    """Bridge that routes OS signals to asyncio task cancellation and process cleanup."""
+
     pids: set[int] = field(default_factory=set)
     _interrupt_count: int = field(default=0, init=False)
     _unsubscribe: object = field(default=None, init=False)
@@ -59,6 +61,7 @@ def install_signal_handlers(
     bridge: SignalBridge,
     controller: InterruptController | None = None,
 ) -> None:
+    """Register SIGINT and SIGTERM handlers that cancel ``root_task`` and forward to child PIDs."""
     pm = get_process_manager()
     bridge._unsubscribe = pm.register_listener(bridge._on_process_event)
     active_controller = controller or controller_from_process_manager(

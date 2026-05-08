@@ -9,11 +9,13 @@ if TYPE_CHECKING:
 
 
 def prompt_dump_path(phase: str) -> str:
+    """Return the workspace-relative path for a phase's debug prompt dump."""
     normalized = phase.replace("/", "_").replace(" ", "_")
     return f".agent/tmp/{normalized}_prompt.md"
 
 
 def dump_rendered_prompt(workspace: Workspace, phase: str, prompt: str) -> str:
+    """Write the rendered prompt to the debug dump path and return the path."""
     path = prompt_dump_path(phase)
     workspace.write(path, prompt)
     return path

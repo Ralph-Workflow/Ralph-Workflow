@@ -43,6 +43,8 @@ class InvalidTransitionError(Exception):
 
 
 class RebaseEvent(Enum):
+    """Events that drive transitions in the ``RebaseStateMachine``."""
+
     START_REBASE = "start_rebase"
     CONFLICT_DETECTED = "conflict_detected"
     START_RESOLUTION = "start_resolution"
@@ -53,6 +55,8 @@ class RebaseEvent(Enum):
 
 
 class RebaseStateMachine:
+    """State machine that coordinates rebase lifecycle via ``RebaseCheckpoint``."""
+
     def __init__(
         self,
         checkpoint: RebaseCheckpoint,
@@ -211,6 +215,8 @@ class RebaseStateMachine:
 
 
 class RecoveryAction(Enum):
+    """Decision returned by ``decide`` to guide error recovery in a rebase."""
+
     Continue = "continue"
     Retry = "retry"
     Abort = "abort"

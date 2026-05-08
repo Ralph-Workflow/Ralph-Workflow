@@ -1,4 +1,17 @@
-"""Ralph CLI commands package."""
+"""Ralph CLI commands package.
+
+Re-exports the top-level entry points for each CLI sub-command so callers can
+import them from ``ralph.cli.commands`` without knowing the submodule layout.
+The main CLI wiring lives in ``ralph.cli.main``; each sub-command is
+implemented in its own submodule under this package.
+
+Public exports:
+
+- ``commit_plumbing`` - drives ``ralph --generate-commit``
+- ``diagnose_command`` - drives ``ralph diagnose``
+- ``init_command`` - drives ``ralph init``
+- ``run_pipeline`` - drives ``ralph run`` (the primary workflow entry point)
+"""
 
 from ralph.cli.commands.commit import commit_plumbing
 from ralph.cli.commands.diagnose import diagnose_command

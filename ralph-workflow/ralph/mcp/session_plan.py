@@ -38,6 +38,8 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class SessionMcpPlan:
+    """Resolved MCP plan capturing capability grants and server environment for a session."""
+
     capabilities: frozenset[str]
     server_env: dict[str, str] | None = None
 

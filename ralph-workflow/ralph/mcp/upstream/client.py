@@ -33,11 +33,15 @@ JsonRpcCaller = Callable[[str, JsonObject], JsonObject]
 
 
 class UpstreamMcpClient(Protocol):
+    """Protocol satisfied by both HTTP and stdio upstream MCP client implementations."""
+
     def list_tools(self) -> list[UpstreamTool]: ...
     def call_tool(self, name: str, arguments: JsonObject) -> object: ...
 
 
 class HttpUpstreamClient:
+    """Upstream MCP client that communicates over HTTP JSON-RPC."""
+
     def __init__(
         self,
         server: UpstreamMcpServer,
@@ -74,6 +78,8 @@ class HttpUpstreamClient:
 
 
 class StdioUpstreamClient:
+    """Upstream MCP client that communicates over stdio with a subprocess."""
+
     def __init__(
         self,
         server: UpstreamMcpServer,
@@ -112,6 +118,7 @@ def make_upstream_client(
     *,
     caller: JsonRpcCaller | None = None,
 ) -> HttpUpstreamClient | StdioUpstreamClient:
+    """Instantiate the appropriate upstream client for the server's transport."""
     if server.transport == "http":
         return HttpUpstreamClient(server, caller=caller)
     return StdioUpstreamClient(server, caller=caller)

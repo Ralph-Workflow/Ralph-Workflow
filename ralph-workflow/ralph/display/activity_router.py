@@ -40,6 +40,7 @@ def _default_parser_factory(provider: ActivityProvider) -> AgentParser:
 
 
 def detect_provider_from_command(command: list[str]) -> ActivityProvider:
+    """Infer the ``ActivityProvider`` from the agent command executable name."""
     if not command:
         return ActivityProvider.GENERIC
     argv0 = command[0]
@@ -55,6 +56,7 @@ def detect_provider_from_command(command: list[str]) -> ActivityProvider:
 
 
 def map_parser_type_to_kind(parser_type: str) -> ActivityEventKind:
+    """Convert a parser output type string to the canonical ``ActivityEventKind``."""
     mapping: dict[str, ActivityEventKind] = {
         "text": ActivityEventKind.TEXT,
         "thinking": ActivityEventKind.THINKING,

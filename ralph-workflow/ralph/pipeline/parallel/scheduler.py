@@ -15,6 +15,7 @@ def schedule_next_wave(
     currently_running: set[str],
     max_workers: int,
 ) -> list[WorkUnit]:
+    """Return ready work units that can be launched in the next wave."""
     available_slots = max_workers - len(currently_running)
     if available_slots <= 0:
         return []

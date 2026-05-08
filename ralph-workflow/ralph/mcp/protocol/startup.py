@@ -37,6 +37,8 @@ JsonRpcResponse = dict[str, object]
 
 
 class HttpPostFn(Protocol):
+    """Callable protocol for posting JSON-RPC requests over HTTP."""
+
     def __call__(
         self,
         url: str,
@@ -48,6 +50,8 @@ class HttpPostFn(Protocol):
 
 
 class HttpJsonRpcWithSessionFn(Protocol):
+    """Callable protocol for sending a JSON-RPC request and returning a response with session ID."""
+
     def __call__(
         self,
         endpoint_or_target: str | HttpEndpointTarget,
@@ -61,6 +65,8 @@ class HttpJsonRpcWithSessionFn(Protocol):
 
 @dataclass(frozen=True)
 class PreflightTcpDeps:
+    """Injectable dependencies for TCP MCP server preflight probes."""
+
     connect_to_endpoint_fn: Callable[[str, tuple[str, int], timedelta], socket.socket] | None = None
     list_tools_fn: Callable[[socket.socket, timedelta], list[str]] | None = None
 
@@ -221,6 +227,7 @@ def preflight_mcp_server_tools(
 def preflight_http_mcp_server_tools(
     endpoint: str, required_tools: Iterable[str], timeout: timedelta
 ) -> None:
+    """Run preflight tool verification against an HTTP MCP endpoint."""
     target = parse_http_endpoint(endpoint)
     return run_preflight_loop(
         endpoint,
@@ -230,6 +237,7 @@ def preflight_http_mcp_server_tools(
 
 
 def looks_like_legacy_sse_endpoint(endpoint: str) -> bool:
+    """Return True if the endpoint URL looks like a legacy SSE MCP server."""
     parsed = urlparse(endpoint)
     return (parsed.path or "/").rstrip("/").endswith("/sse")
 
@@ -240,6 +248,7 @@ def legacy_sse_jsonrpc_exchange(
     *,
     timeout_s: float,
 ) -> list[JsonRpcResponse]:
+    """Send JSON-RPC requests over a legacy SSE MCP endpoint and collect responses."""
     timeout = httpx.Timeout(timeout_s, connect=min(timeout_s, 5.0))
     responses: list[JsonRpcResponse] = []
     with httpx.Client(timeout=timeout) as client, client.stream(
@@ -365,6 +374,7 @@ def preflight_tcp_attempt(
     *,
     deps: PreflightTcpDeps | None = None,
 ) -> None:
+    """Execute a single TCP preflight check against an MCP endpoint."""
     resolved_deps = deps or PreflightTcpDeps()
     connect_fn = resolved_deps.connect_to_endpoint_fn or connect_to_endpoint
     list_fn = resolved_deps.list_tools_fn or list_tools_for_endpoint
@@ -384,6 +394,7 @@ def preflight_http_attempt(
     *,
     post_with_session_fn: HttpJsonRpcWithSessionFn | None = None,
 ) -> None:
+    """Execute a single HTTP preflight check against an MCP endpoint."""
     if looks_like_legacy_sse_endpoint(endpoint):
         responses = legacy_sse_jsonrpc_exchange(
             endpoint,
@@ -424,6 +435,7 @@ def connect_to_endpoint(
     *,
     connect_fn: Callable[[tuple[str, int], float], socket.socket] = socket.create_connection,
 ) -> socket.socket:
+    """Open a TCP connection to the MCP endpoint within the given time budget."""
     timeout = max(0.001, _connect_timeout_budget(remaining).total_seconds())
     try:
         return connect_fn(address, timeout)
@@ -436,6 +448,7 @@ def connect_to_endpoint(
 
 
 def classify_connect_error(endpoint: str, error: OSError) -> PreflightError:
+    """Map an OS-level connection error to the appropriate PreflightError subclass."""
     message = f"failed to connect to MCP endpoint {endpoint}: {error}"
     if _retryable_connect_error_kind(error.errno):
         return RetryablePreflightError(message)
@@ -443,6 +456,7 @@ def classify_connect_error(endpoint: str, error: OSError) -> PreflightError:
 
 
 def ensure_required_tools(required_tools: Iterable[str], available_tools: list[str]) -> None:
+    """Raise PermanentPreflightError if any required tool is missing from the server."""
     missing = [tool for tool in required_tools if tool not in available_tools]
     if missing:
         raise PermanentPreflightError(
@@ -451,6 +465,7 @@ def ensure_required_tools(required_tools: Iterable[str], available_tools: list[s
 
 
 def list_tools_for_endpoint(sock: socket.socket, io_timeout: timedelta) -> list[str]:
+    """Complete the MCP initialize handshake and return the server's tool names."""
     _configure_stream_timeouts(sock, io_timeout)
     reader = sock.makefile("rb")
     try:
@@ -463,12 +478,14 @@ def list_tools_for_endpoint(sock: socket.socket, io_timeout: timedelta) -> list[
 def read_tools_list_response(
     sock: socket.socket, reader: io.BufferedReader, label: str
 ) -> list[str]:
+    """Send a tools/list request and return the list of tool names."""
     response = send_stdio_request(sock, reader, tools_list_request())
     ensure_no_preflight_error(f"{label} tools/list", response.get("error"))
     return extract_preflight_tool_names(response.get("result"), label)
 
 
 def complete_stdio_initialize(sock: socket.socket, reader: io.BufferedReader) -> None:
+    """Send the initialize request and confirmation notification over stdio."""
     response = send_stdio_request(sock, reader, initialize_request())
     ensure_no_preflight_error("MCP initialize", response.get("error"))
     write_jsonrpc_request(sock, initialized_notification())
@@ -477,17 +494,20 @@ def complete_stdio_initialize(sock: socket.socket, reader: io.BufferedReader) ->
 def send_stdio_request(
     sock: socket.socket, reader: io.BufferedReader, request: JsonRpcResponse
 ) -> JsonRpcResponse:
+    """Send a JSON-RPC request over stdio and return the parsed response."""
     write_jsonrpc_request(sock, request)
     return read_jsonrpc_response(reader)
 
 
 def write_jsonrpc_request(sock: socket.socket, value: JsonRpcResponse) -> None:
+    """Serialise and send a JSON-RPC message with a Content-Length header."""
     body = json.dumps(value, separators=(",", ":")).encode("utf-8")
     header = f"Content-Length: {len(body)}\r\n\r\n".encode("ascii")
     sock.sendall(header + body)
 
 
 def read_jsonrpc_response(reader: io.BufferedReader) -> JsonRpcResponse:
+    """Read and parse a Content-Length-framed JSON-RPC response from a stream."""
     length = _read_content_length(reader)
     body = reader.read(length)
     if len(body) != length:
@@ -524,6 +544,7 @@ def post_http_jsonrpc(
     target_or_payload: HttpEndpointTarget | JsonRpcResponse,
     payload: JsonRpcResponse | None = None,
 ) -> JsonRpcResponse:
+    """Send an HTTP JSON-RPC request and return the response payload."""
     response_payload, _ = post_http_jsonrpc_with_session(
         endpoint_or_target,
         target_or_payload,
@@ -540,6 +561,7 @@ def post_http_jsonrpc_with_session(
     session_id: str | None = None,
     post_fn: HttpPostFn = httpx.post,
 ) -> tuple[JsonRpcResponse, str | None]:
+    """Send an HTTP JSON-RPC request and return the response payload and session id."""
     if isinstance(endpoint_or_target, HttpEndpointTarget):
         endpoint = f"http://{endpoint_or_target.host_header}{endpoint_or_target.path}"
         assert payload is None
@@ -593,6 +615,7 @@ def _normalize_http_jsonrpc_body(body_bytes: bytes) -> bytes:
 
 
 def ensure_http_initialize(endpoint: str, target: HttpEndpointTarget) -> None:
+    """Send an MCP initialize request and verify there is no error response."""
     response = post_http_jsonrpc(endpoint, target, initialize_request())
     ensure_no_preflight_error("HTTP MCP initialize", response.get("error"))
 
@@ -600,6 +623,7 @@ def ensure_http_initialize(endpoint: str, target: HttpEndpointTarget) -> None:
 def reconnect_http_tools_stream(
     endpoint: str, address: tuple[str, int], io_timeout: timedelta
 ) -> socket.socket:
+    """Open a fresh TCP connection to an HTTP MCP endpoint for tool listing."""
     try:
         sock = socket.create_connection(address, timeout=io_timeout.total_seconds())
     except OSError as exc:
@@ -611,17 +635,20 @@ def reconnect_http_tools_stream(
 def read_http_tools_list_response(
     endpoint: str, sock: socket.socket, target: HttpEndpointTarget
 ) -> list[str]:
+    """POST a tools/list request to an HTTP MCP endpoint and return tool names."""
     response = post_http_jsonrpc(endpoint, target, tools_list_request())
     ensure_no_preflight_error("HTTP MCP tools/list", response.get("error"))
     return extract_preflight_tool_names(response.get("result"), "HTTP MCP")
 
 
 def ensure_no_preflight_error(label: str, error: object) -> None:
+    """Raise PermanentPreflightError if the JSON-RPC error field is set."""
     if error is not None:
         raise PermanentPreflightError(f"{label} failed: {error}")
 
 
 def extract_preflight_tool_names(result: object, label: str) -> list[str]:
+    """Parse the tools/list result object and return all tool name strings."""
     if not isinstance(result, Mapping):
         raise PermanentPreflightError(f"{label} tools/list response missing result")
     tools = result.get("tools")
@@ -635,6 +662,7 @@ def extract_preflight_tool_names(result: object, label: str) -> list[str]:
 
 
 def parse_tcp_endpoint(endpoint: str) -> tuple[str, int]:
+    """Parse a tcp:// endpoint URL into a (host, port) tuple."""
     parsed = urlparse(endpoint)
     if parsed.scheme != "tcp":
         raise ValueError(f"MCP endpoint must use tcp://, got '{endpoint}'")
@@ -646,6 +674,7 @@ def parse_tcp_endpoint(endpoint: str) -> tuple[str, int]:
 
 
 def parse_http_endpoint(endpoint: str) -> HttpEndpointTarget:
+    """Parse an http:// endpoint URL into an HttpEndpointTarget."""
     parsed = urlparse(endpoint)
     if parsed.scheme not in {"http", "https"}:
         raise ValueError(

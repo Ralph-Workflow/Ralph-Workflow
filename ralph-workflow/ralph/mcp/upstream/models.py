@@ -12,13 +12,15 @@ from dataclasses import dataclass, field
 
 @dataclass(frozen=True)
 class UpstreamTool:
+    """A tool advertised by an upstream MCP server."""
+
     name: str
     description: str
     input_schema: dict[str, object] = field(default_factory=dict)
 
 
 class UpstreamCallError(Exception):
-    pass
+    """Raised when a remote tool call or upstream server reachability check fails."""
 
 
 __all__ = [

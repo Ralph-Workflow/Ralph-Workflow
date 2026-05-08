@@ -40,6 +40,8 @@ def _cleanup_stray_tmp(path: Path) -> None:
 
 
 class Checkpoint:
+    """Handle for atomic checkpoint read/write operations at a fixed path."""
+
     def __init__(self, path: Path = CHECKPOINT_PATH) -> None:
         self._path = path
         _cleanup_stray_tmp(path)

@@ -14,12 +14,16 @@ class DevelopmentResultValidationError(ValueError):
 
 
 class Continuation(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+    """Reference to a prior session when a development result is partial."""
+
     model_config = ConfigDict(extra="forbid")
 
     prior_session_id: str = Field(..., min_length=1)
 
 
 class DevelopmentResult(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+    """Validated schema for a development_result artifact."""
+
     model_config = ConfigDict(extra="forbid")
 
     status: str = Field(..., min_length=1)
@@ -39,6 +43,7 @@ class DevelopmentResult(BaseModel):  # type: ignore[explicit-any]  # reason: ext
 
 
 def normalize_development_result_content(content: dict[str, object]) -> dict[str, object]:
+    """Validate and normalize a raw development_result content dict."""
     try:
         validated = DevelopmentResult.model_validate(content)
         return cast(

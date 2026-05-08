@@ -108,16 +108,19 @@ def _has_index_conflicts(repo: Repo) -> bool:
 
 
 def rebase_in_progress_at(repo_root: Path | str) -> bool:
+    """Return True if a git rebase is currently in progress at ``repo_root``."""
     repo = _open_repo(repo_root)
     return _rebase_in_progress_impl(repo)
 
 
 def rebase_in_progress(repo_root: Path | str | None = None) -> bool:
+    """Return True if a git rebase is in progress, auto-detecting the repo root."""
     path = _resolve_repo_root(repo_root)
     return rebase_in_progress_at(path)
 
 
 def verify_rebase_completed_at(repo_root: Path | str, upstream_branch: str) -> bool:
+    """Return True if the rebase is complete and HEAD is a descendant of ``upstream_branch``."""
     from git import GitCommandError  # noqa: PLC0415
 
     repo = _open_repo(repo_root)
@@ -143,11 +146,13 @@ def verify_rebase_completed_at(repo_root: Path | str, upstream_branch: str) -> b
 
 
 def verify_rebase_completed(upstream_branch: str, repo_root: Path | str | None = None) -> bool:
+    """Verify rebase completion, auto-detecting the repo root."""
     path = _resolve_repo_root(repo_root)
     return verify_rebase_completed_at(path, upstream_branch)
 
 
 def continue_rebase_at(repo_root: Path | str) -> None:
+    """Resume a paused rebase at ``repo_root``, raising if conflicts remain."""
     repo = _open_repo(repo_root)
 
     if not _rebase_in_progress_impl(repo):
@@ -176,6 +181,7 @@ def continue_rebase_at(repo_root: Path | str) -> None:
 
 
 def continue_rebase(repo_root: Path | str | None = None) -> None:
+    """Resume a paused rebase, auto-detecting the repo root."""
     path = _resolve_repo_root(repo_root)
     continue_rebase_at(path)
 

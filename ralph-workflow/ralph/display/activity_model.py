@@ -82,6 +82,7 @@ def make_event(  # noqa: PLR0913
     visibility: ActivityVisibilityHint = ActivityVisibilityHint.VISIBLE,
     source: str = "",
 ) -> AgentActivityEvent:
+    """Construct an ``AgentActivityEvent`` with an auto-incremented sequence and UTC timestamp."""
     return AgentActivityEvent(
         provider=provider,
         kind=kind,
@@ -129,6 +130,7 @@ def render_event_line(
     *,
     timestamp: str | None = None,
 ) -> str:
+    """Format a single activity event as a rich-markup string for terminal display."""
     icon = _ICON_BY_KIND.get(kind, "?")
     raw_timestamp = timestamp or datetime.now(UTC).isoformat()
     parsed_timestamp = datetime.fromisoformat(raw_timestamp.replace("Z", "+00:00"))

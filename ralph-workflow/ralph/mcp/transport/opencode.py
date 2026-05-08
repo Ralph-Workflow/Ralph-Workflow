@@ -14,6 +14,7 @@ from ralph.mcp.upstream.config import UpstreamMcpServer, normalize_upstream_mcp_
 
 
 def merge_opencode_config_content(existing: str | None, endpoint: str) -> str:
+    """Merge Ralph MCP endpoint into an existing OpenCode config and return JSON."""
     config_text, _upstreams = build_opencode_provider_config(existing, endpoint)
     return config_text
 
@@ -21,6 +22,7 @@ def merge_opencode_config_content(existing: str | None, endpoint: str) -> str:
 def build_opencode_provider_config(
     existing: str | None, endpoint: str
 ) -> tuple[str, tuple[UpstreamMcpServer, ...]]:
+    """Build a full OpenCode config JSON with Ralph MCP and return it with upstream servers."""
     config_obj = _parse_opencode_config_content(existing)
     existing_mcp = config_obj.get("mcp")
     upstreams = (

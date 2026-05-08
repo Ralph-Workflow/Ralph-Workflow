@@ -374,7 +374,8 @@ ralph.pipeline.progress
 ~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.pipeline.progress
-   :no-members:
+   :members:
+   :show-inheritance:
 
 ralph.pipeline.reducer
 ~~~~~~~~~~~~~~~~~~~~~~
@@ -455,13 +456,6 @@ ralph.phases.commit_logging
    :members:
    :show-inheritance:
 
-ralph.phases.development
-~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. automodule:: ralph.phases.development
-   :members:
-   :show-inheritance:
-
 ralph.phases.execution
 ~~~~~~~~~~~~~~~~~~~~~~
 
@@ -469,24 +463,10 @@ ralph.phases.execution
    :members:
    :show-inheritance:
 
-ralph.phases.fix
-~~~~~~~~~~~~~~~~
-
-.. automodule:: ralph.phases.fix
-   :members:
-   :show-inheritance:
-
 ralph.phases.integrity
 ~~~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.phases.integrity
-   :members:
-   :show-inheritance:
-
-ralph.phases.planning
-~~~~~~~~~~~~~~~~~~~~~
-
-.. automodule:: ralph.phases.planning
    :members:
    :show-inheritance:
 
@@ -1213,6 +1193,10 @@ ralph.workspace
 ralph.workspace.fs
 ~~~~~~~~~~~~~~~~~~
 
+.. Note: ralph.workspace.fs re-exports FsWorkspace which is already in ralph.workspace.__all__;
+   using :no-members: avoids a duplicate object description warning for FsWorkspace.root when
+   the package-level module and the submodule are both rendered by autodoc.
+
 .. automodule:: ralph.workspace.fs
    :no-members:
 
@@ -1234,7 +1218,8 @@ ralph.workspace.scope
 ~~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.workspace.scope
-   :no-members:
+   :members:
+   :show-inheritance:
 
 ralph.workspace.skip
 ~~~~~~~~~~~~~~~~~~~~
@@ -1367,7 +1352,8 @@ ralph.process.mcp_supervisor
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.process.mcp_supervisor
-   :no-members:
+   :members:
+   :show-inheritance:
 
 ----
 
@@ -1480,7 +1466,8 @@ ralph.display.artifact_reader
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.display.artifact_reader
-   :no-members:
+   :members:
+   :show-inheritance:
 
 ralph.display.artifact_renderer
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -1514,7 +1501,8 @@ ralph.display.lifecycle_filter
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.display.lifecycle_filter
-   :no-members:
+   :members:
+   :show-inheritance:
 
 ralph.display.line_sanitizer
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -1603,13 +1591,6 @@ ralph.display.snapshot
 ~~~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.display.snapshot
-   :members:
-   :show-inheritance:
-
-ralph.display.status
-~~~~~~~~~~~~~~~~~~~~
-
-.. automodule:: ralph.display.status
    :members:
    :show-inheritance:
 

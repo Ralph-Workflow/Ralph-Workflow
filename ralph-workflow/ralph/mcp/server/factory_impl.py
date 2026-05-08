@@ -22,6 +22,8 @@ from ralph.mcp.server.factory import McpServerFactory, McpServerHandle
 
 
 class StartServer(Protocol):
+    """Callable signature for the MCP server start function."""
+
     def __call__(
         self,
         session: AgentSession,

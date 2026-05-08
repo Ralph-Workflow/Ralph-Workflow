@@ -26,6 +26,7 @@ def prepare_codex_home(
     existing_home: str | None,
     system_prompt_file: str | None,
 ) -> str:
+    """Prepare an isolated Codex home directory and return its path."""
     codex_home, _upstreams = prepare_codex_home_with_upstreams(
         endpoint,
         workspace_path=workspace_path,
@@ -42,6 +43,7 @@ def prepare_codex_home_with_upstreams(
     existing_home: str | None,
     system_prompt_file: str | None,
 ) -> tuple[str, tuple[UpstreamMcpServer, ...]]:
+    """Prepare an isolated Codex home directory and return its path with upstream servers."""
     codex_root = _allocate_codex_home_dir(workspace_path)
     codex_root.mkdir(parents=True, exist_ok=True)
 
