@@ -1329,13 +1329,13 @@ def test_materialize_planning_prompt_uses_file_reference_for_large_prompt(tmp_pa
 
 
 def test_git_diff_uses_start_commit_sha_when_present(tmp_git_repo: Path) -> None:
-    repo = GitRepo(tmp_git_repo)
-    baseline_sha = repo.head.commit.hexsha
+    with GitRepo(tmp_git_repo) as repo:
+        baseline_sha = repo.head.commit.hexsha
 
-    new_file = tmp_git_repo / "feature.py"
-    new_file.write_text("x = 1\n")
-    repo.index.add(["feature.py"])
-    repo.index.commit("add feature")
+        new_file = tmp_git_repo / "feature.py"
+        new_file.write_text("x = 1\n")
+        repo.index.add(["feature.py"])
+        repo.index.commit("add feature")
 
     agent_dir = tmp_git_repo / ".agent"
     agent_dir.mkdir(parents=True, exist_ok=True)
@@ -1347,10 +1347,10 @@ def test_git_diff_uses_start_commit_sha_when_present(tmp_git_repo: Path) -> None
 
 
 def test_git_diff_falls_back_to_head_when_start_commit_absent(tmp_git_repo: Path) -> None:
-    repo = GitRepo(tmp_git_repo)
-    uncommitted = tmp_git_repo / "work.py"
-    uncommitted.write_text("y = 2\n")
-    repo.index.add(["work.py"])
+    with GitRepo(tmp_git_repo) as repo:
+        uncommitted = tmp_git_repo / "work.py"
+        uncommitted.write_text("y = 2\n")
+        repo.index.add(["work.py"])
 
     diff = materialize_module._git_diff(tmp_git_repo)
 
@@ -1358,16 +1358,16 @@ def test_git_diff_falls_back_to_head_when_start_commit_absent(tmp_git_repo: Path
 
 
 def test_git_diff_cumulative_across_multiple_mid_cycle_commits(tmp_git_repo: Path) -> None:
-    repo = GitRepo(tmp_git_repo)
-    baseline_sha = repo.head.commit.hexsha
-    (tmp_git_repo / "file_a.py").write_text("a = 1\n")
-    repo.index.add(["file_a.py"])
-    repo.index.commit("mid-cycle commit 1")
-    (tmp_git_repo / "file_b.py").write_text("b = 2\n")
-    repo.index.add(["file_b.py"])
-    repo.index.commit("mid-cycle commit 2")
-    (tmp_git_repo / "file_c.py").write_text("c = 3\n")
-    repo.index.add(["file_c.py"])
+    with GitRepo(tmp_git_repo) as repo:
+        baseline_sha = repo.head.commit.hexsha
+        (tmp_git_repo / "file_a.py").write_text("a = 1\n")
+        repo.index.add(["file_a.py"])
+        repo.index.commit("mid-cycle commit 1")
+        (tmp_git_repo / "file_b.py").write_text("b = 2\n")
+        repo.index.add(["file_b.py"])
+        repo.index.commit("mid-cycle commit 2")
+        (tmp_git_repo / "file_c.py").write_text("c = 3\n")
+        repo.index.add(["file_c.py"])
     write_cycle_baseline(tmp_git_repo, baseline_sha)
     diff = materialize_module._git_diff(tmp_git_repo)
     assert "file_a.py" in diff
@@ -1375,26 +1375,26 @@ def test_git_diff_cumulative_across_multiple_mid_cycle_commits(tmp_git_repo: Pat
     assert "file_c.py" in diff
 
 def test_git_diff_zero_mid_cycle_commits_only_uncommitted(tmp_git_repo: Path) -> None:
-    repo = GitRepo(tmp_git_repo)
-    baseline_sha = repo.head.commit.hexsha
-    write_cycle_baseline(tmp_git_repo, baseline_sha)
-    (tmp_git_repo / "uncommitted.py").write_text("u = 99\n")
-    repo.index.add(["uncommitted.py"])
+    with GitRepo(tmp_git_repo) as repo:
+        baseline_sha = repo.head.commit.hexsha
+        write_cycle_baseline(tmp_git_repo, baseline_sha)
+        (tmp_git_repo / "uncommitted.py").write_text("u = 99\n")
+        repo.index.add(["uncommitted.py"])
     diff = materialize_module._git_diff(tmp_git_repo)
     assert "uncommitted.py" in diff
 
 
 def test_pending_diff_shows_only_uncommitted_work(tmp_git_repo: Path) -> None:
-    repo = GitRepo(tmp_git_repo)
-    baseline_sha = repo.head.commit.hexsha
-    write_cycle_baseline(tmp_git_repo, baseline_sha)
+    with GitRepo(tmp_git_repo) as repo:
+        baseline_sha = repo.head.commit.hexsha
+        write_cycle_baseline(tmp_git_repo, baseline_sha)
 
-    (tmp_git_repo / "committed.py").write_text("committed = True\n")
-    repo.index.add(["committed.py"])
-    repo.index.commit("mid-cycle commit")
+        (tmp_git_repo / "committed.py").write_text("committed = True\n")
+        repo.index.add(["committed.py"])
+        repo.index.commit("mid-cycle commit")
 
-    (tmp_git_repo / "pending.py").write_text("pending = True\n")
-    repo.index.add(["pending.py"])
+        (tmp_git_repo / "pending.py").write_text("pending = True\n")
+        repo.index.add(["pending.py"])
 
     diff = materialize_module._pending_diff(tmp_git_repo)
 
@@ -1405,16 +1405,16 @@ def test_pending_diff_shows_only_uncommitted_work(tmp_git_repo: Path) -> None:
 def test_commit_phase_prompt_excludes_mid_cycle_committed_files(
     tmp_git_repo: Path,
 ) -> None:
-    repo = GitRepo(tmp_git_repo)
-    baseline_sha = repo.head.commit.hexsha
-    write_cycle_baseline(tmp_git_repo, baseline_sha)
+    with GitRepo(tmp_git_repo) as repo:
+        baseline_sha = repo.head.commit.hexsha
+        write_cycle_baseline(tmp_git_repo, baseline_sha)
 
-    (tmp_git_repo / "already_committed.py").write_text("x = 1\n")
-    repo.index.add(["already_committed.py"])
-    repo.index.commit("earlier dev commit")
+        (tmp_git_repo / "already_committed.py").write_text("x = 1\n")
+        repo.index.add(["already_committed.py"])
+        repo.index.commit("earlier dev commit")
 
-    (tmp_git_repo / "new_pending.py").write_text("y = 2\n")
-    repo.index.add(["new_pending.py"])
+        (tmp_git_repo / "new_pending.py").write_text("y = 2\n")
+        repo.index.add(["new_pending.py"])
 
     policy = load_policy(tmp_git_repo / ".agent")
     workspace = MemoryWorkspace(root=str(tmp_git_repo))

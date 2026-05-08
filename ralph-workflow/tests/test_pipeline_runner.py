@@ -3532,7 +3532,8 @@ class TestStartCommitCapture:
 
         runner_module.run(MagicMock(), initial_state=state, verbosity=Verbosity.QUIET)
 
-        expected_sha = GitRepo(tmp_git_repo).head.commit.hexsha
+        with GitRepo(tmp_git_repo) as _r:
+            expected_sha = _r.head.commit.hexsha
         assert written, ".agent/start_commit was not written during run()"
         assert written[0][1] == expected_sha, (
             f"Expected SHA {expected_sha!r}, got {written[0][1]!r}"
@@ -3546,13 +3547,13 @@ class TestStartCommitCapture:
         # ensuring a buggy "always-write" implementation would be caught.
         from ralph.pipeline.cycle_baseline import write_cycle_baseline as _real_write  # noqa: PLC0415, I001
 
-        repo = GitRepo(tmp_git_repo)
-        sentinel_sha = repo.head.commit.hexsha
+        with GitRepo(tmp_git_repo) as repo:
+            sentinel_sha = repo.head.commit.hexsha
 
-        extra_file = tmp_git_repo / "extra.txt"
-        extra_file.write_text("extra")
-        repo.index.add(["extra.txt"])
-        repo.index.commit("second commit")
+            extra_file = tmp_git_repo / "extra.txt"
+            extra_file.write_text("extra")
+            repo.index.add(["extra.txt"])
+            repo.index.commit("second commit")
 
         agent_dir = tmp_git_repo / ".agent"
         agent_dir.mkdir(parents=True, exist_ok=True)
@@ -3827,9 +3828,9 @@ class TestCycleBaselineLifecycle:
     ) -> None:
         from ralph.pipeline.cycle_baseline import write_cycle_baseline  # noqa: PLC0415
 
-        write_cycle_baseline(
-            tmp_git_repo, GitRepo(tmp_git_repo).head.commit.hexsha
-        )
+        with GitRepo(tmp_git_repo) as _r:
+            _head_sha = _r.head.commit.hexsha
+        write_cycle_baseline(tmp_git_repo, _head_sha)
         assert (tmp_git_repo / ".agent" / "start_commit").exists()
 
         monkeypatch.setattr(
@@ -3859,9 +3860,9 @@ class TestCycleBaselineLifecycle:
     ) -> None:
         from ralph.pipeline.cycle_baseline import write_cycle_baseline  # noqa: PLC0415
 
-        write_cycle_baseline(
-            tmp_git_repo, GitRepo(tmp_git_repo).head.commit.hexsha
-        )
+        with GitRepo(tmp_git_repo) as _r:
+            _head_sha = _r.head.commit.hexsha
+        write_cycle_baseline(tmp_git_repo, _head_sha)
         baseline_path = tmp_git_repo / ".agent" / "start_commit"
         assert baseline_path.exists()
 
@@ -3899,9 +3900,9 @@ class TestCycleBaselineLifecycle:
     ) -> None:
         from ralph.pipeline.cycle_baseline import write_cycle_baseline  # noqa: PLC0415
 
-        write_cycle_baseline(
-            tmp_git_repo, GitRepo(tmp_git_repo).head.commit.hexsha
-        )
+        with GitRepo(tmp_git_repo) as _r:
+            _head_sha = _r.head.commit.hexsha
+        write_cycle_baseline(tmp_git_repo, _head_sha)
         baseline_path = tmp_git_repo / ".agent" / "start_commit"
         assert baseline_path.exists()
 

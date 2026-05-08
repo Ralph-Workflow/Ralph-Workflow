@@ -65,15 +65,18 @@ def _git_repo_template(tmp_path_factory: pytest.TempPathFactory) -> Path:
     """Create a reusable template git repository for fast per-test copies."""
     template_root = tmp_path_factory.mktemp("git-template")
     repo = Repo.init(template_root)
-    writer = repo.config_writer()
-    writer.set_value("user", "name", "Test User")
-    writer.set_value("user", "email", "test@example.com")
-    writer.release()
+    try:
+        writer = repo.config_writer()
+        writer.set_value("user", "name", "Test User")
+        writer.set_value("user", "email", "test@example.com")
+        writer.release()
 
-    readme = template_root / "README.md"
-    readme.write_text("test")
-    repo.index.add(["README.md"])
-    repo.index.commit("initial commit")
+        readme = template_root / "README.md"
+        readme.write_text("test")
+        repo.index.add(["README.md"])
+        repo.index.commit("initial commit")
+    finally:
+        repo.close()
 
     return template_root
 
@@ -88,7 +91,8 @@ def tmp_git_repo(tmp_path: Path, _git_repo_template: Path) -> Path:
     Returns:
         Path to the temporary git repository.
     """
-    Repo.clone_from(_git_repo_template.as_posix(), tmp_path)
+    cloned = Repo.clone_from(_git_repo_template.as_posix(), tmp_path)
+    cloned.close()
     return tmp_path
 
 
