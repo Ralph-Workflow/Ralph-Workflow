@@ -5,7 +5,10 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+import ralph.api.opencode as opencode_module
+import ralph.mcp.session_plan as session_plan_module
 from ralph.config.enums import AgentTransport
+from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity
 from ralph.mcp.session_plan import build_session_mcp_plan
 from ralph.mcp.upstream.config import UPSTREAM_MCP_CONFIG_ENV, load_upstream_mcp_servers
 from ralph.policy.models import AgentChainConfig, AgentDrainConfig, AgentsPolicy
@@ -547,3 +550,120 @@ class TestMediaReadExplicitOptOut:
         )
 
         assert "media.read" not in plan.capabilities
+
+
+class TestModelFlagResolutionInBuildSessionMcpPlan:
+    """build_session_mcp_plan owns model identity resolution via model_flag."""
+
+    def test_model_flag_resolves_claude_identity(
+        self, isolated_home: Path, tmp_path: Path
+    ) -> None:
+        del isolated_home
+        plan = build_session_mcp_plan(
+            transport=AgentTransport.CLAUDE,
+            drain="development",
+            workspace_path=tmp_path,
+            agents_policy=_DEFAULT_AGENTS_POLICY,
+            model_flag="claude-opus-4-7",
+        )
+
+        assert plan.model_identity.provider == "claude"
+        assert plan.model_identity.model_id == "claude-opus-4-7"
+        assert plan.model_identity.transport == "claude"
+
+    def test_model_flag_resolves_codex_identity(
+        self, isolated_home: Path, tmp_path: Path
+    ) -> None:
+        del isolated_home
+        plan = build_session_mcp_plan(
+            transport=AgentTransport.CODEX,
+            drain="development",
+            workspace_path=tmp_path,
+            agents_policy=_DEFAULT_AGENTS_POLICY,
+            model_flag="gpt-4o",
+        )
+
+        assert plan.model_identity.provider == "openai"
+        assert plan.model_identity.model_id == "gpt-4o"
+
+    def test_model_identity_takes_precedence_over_model_flag(
+        self, isolated_home: Path, tmp_path: Path
+    ) -> None:
+        """Explicit model_identity overrides model_flag."""
+        del isolated_home
+        explicit_identity = MultimodalModelIdentity(
+            provider="custom-provider", model_id="custom-model", transport="claude"
+        )
+        plan = build_session_mcp_plan(
+            transport=AgentTransport.CLAUDE,
+            drain="development",
+            workspace_path=tmp_path,
+            agents_policy=_DEFAULT_AGENTS_POLICY,
+            model_identity=explicit_identity,
+            model_flag="claude-opus-4-7",
+        )
+
+        assert plan.model_identity.provider == "custom-provider"
+        assert plan.model_identity.model_id == "custom-model"
+
+    def test_no_model_flag_yields_unknown_identity(
+        self, isolated_home: Path, tmp_path: Path
+    ) -> None:
+        del isolated_home
+        plan = build_session_mcp_plan(
+            transport=AgentTransport.CLAUDE,
+            drain="development",
+            workspace_path=tmp_path,
+            agents_policy=_DEFAULT_AGENTS_POLICY,
+        )
+
+        assert plan.model_identity.provider == "unknown"
+
+    def test_opencode_model_flag_catalog_failure_returns_unknown_provider(
+        self, isolated_home: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """When OpenCode catalog lookup fails, identity has 'unknown' provider."""
+        del isolated_home
+
+        def _fail(*args: object, **kwargs: object) -> None:
+            raise RuntimeError("catalog unreachable")
+
+        monkeypatch.setattr(opencode_module, "fetch_catalog", _fail)
+
+        plan = build_session_mcp_plan(
+            transport=AgentTransport.OPENCODE,
+            drain="development",
+            workspace_path=tmp_path,
+            agents_policy=_DEFAULT_AGENTS_POLICY,
+            model_flag="some-opencode-model",
+        )
+
+        assert plan.model_identity.provider == "unknown"
+        assert plan.model_identity.model_id == "some-opencode-model"
+        assert plan.model_identity.transport == "opencode"
+
+    def test_opencode_model_flag_catalog_success_uses_catalog_provider(
+        self, isolated_home: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """When OpenCode catalog lookup succeeds, provider comes from catalog."""
+        del isolated_home
+        monkeypatch.setattr(
+            session_plan_module,
+            "resolve_model_identity",
+            lambda t, m: MultimodalModelIdentity(
+                provider="anthropic",
+                model_id=m,
+                transport=str(t.value if t else ""),
+            ),
+        )
+
+        plan = build_session_mcp_plan(
+            transport=AgentTransport.OPENCODE,
+            drain="development",
+            workspace_path=tmp_path,
+            agents_policy=_DEFAULT_AGENTS_POLICY,
+            model_flag="anthropic/claude-3-5-sonnet",
+        )
+
+        assert plan.model_identity.provider == "anthropic"
+        assert plan.model_identity.model_id == "anthropic/claude-3-5-sonnet"

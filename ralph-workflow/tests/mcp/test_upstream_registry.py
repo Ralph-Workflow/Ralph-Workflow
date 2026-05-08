@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 from io import StringIO
 from typing import TYPE_CHECKING
 
@@ -9,6 +10,7 @@ if TYPE_CHECKING:
 import pytest
 from loguru import logger
 
+from ralph.mcp.multimodal.resources import MediaManifest, parse_media_uri
 from ralph.mcp.upstream.client import HttpUpstreamClient
 from ralph.mcp.upstream.config import UpstreamMcpServer
 from ralph.mcp.upstream.models import UpstreamCallError
@@ -200,8 +202,8 @@ class TestUpstreamMultimodalBoundary:
         assert content[1].get("type") == "resource_reference"
         assert str(content[1].get("uri", "")).startswith("ralph://media/")
 
-    def test_upstream_video_content_block_raises_upstream_call_error(self) -> None:
-        """Upstream tool returning video content block raises UpstreamCallError."""
+    def test_upstream_video_content_block_normalized_to_resource_reference(self) -> None:
+        """Upstream video block is normalized to resource_reference, not rejected."""
         server = UpstreamMcpServer(name="media_server", transport="http", url="http://unused")
         client = self._make_http_client(
             server,
@@ -224,12 +226,307 @@ class TestUpstreamMultimodalBoundary:
             client_factory=lambda srv: client,  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
         )
 
+        result = registry.call_tool("ralph_upstream__media_server__get_clip", {})
+
+        content = result.get("content", [])
+        assert len(content) == 1
+        block = content[0]
+        assert block.get("type") == "resource_reference"
+        assert block.get("modality") == "video"
+        assert block.get("mimeType") == "video/mp4"
+        assert str(block.get("uri", "")).startswith("ralph://media/")
+
+    def test_upstream_audio_content_block_normalized_to_resource_reference(self) -> None:
+        """Upstream audio block is normalized to resource_reference."""
+        server = UpstreamMcpServer(name="audio_server", transport="http", url="http://unused")
+        client = self._make_http_client(
+            server,
+            [
+                {"tools": [{"name": "get_clip", "description": "Audio", "inputSchema": {}}]},
+                {
+                    "content": [
+                        {
+                            "type": "audio",
+                            "data": "SGVsbG8gV29ybGQ=",
+                            "mimeType": "audio/mpeg",
+                        }
+                    ]
+                },
+            ],
+        )
+
+        registry = UpstreamRegistry.build(
+            [server],
+            client_factory=lambda srv: client,  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+        )
+
+        result = registry.call_tool("ralph_upstream__audio_server__get_clip", {})
+
+        content = result.get("content", [])
+        assert len(content) == 1
+        block = content[0]
+        assert block.get("type") == "resource_reference"
+        assert block.get("modality") == "audio"
+        assert block.get("mimeType") == "audio/mpeg"
+
+    def test_upstream_pdf_content_block_normalized_to_resource_reference(self) -> None:
+        """Upstream PDF block is normalized to resource_reference."""
+        server = UpstreamMcpServer(name="pdf_server", transport="http", url="http://unused")
+        client = self._make_http_client(
+            server,
+            [
+                {"tools": [{"name": "get_doc", "description": "PDF", "inputSchema": {}}]},
+                {
+                    "content": [
+                        {
+                            "type": "pdf",
+                            "data": "SGVsbG8gV29ybGQ=",
+                            "mimeType": "application/pdf",
+                        }
+                    ]
+                },
+            ],
+        )
+
+        registry = UpstreamRegistry.build(
+            [server],
+            client_factory=lambda srv: client,  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+        )
+
+        result = registry.call_tool("ralph_upstream__pdf_server__get_doc", {})
+
+        content = result.get("content", [])
+        assert len(content) == 1
+        block = content[0]
+        assert block.get("type") == "resource_reference"
+        assert block.get("modality") == "pdf"
+        assert block.get("mimeType") == "application/pdf"
+
+    def test_upstream_document_content_block_normalized_to_resource_reference(self) -> None:
+        """Upstream document block is normalized to resource_reference."""
+        server = UpstreamMcpServer(name="doc_server", transport="http", url="http://unused")
+        client = self._make_http_client(
+            server,
+            [
+                {"tools": [{"name": "get_file", "description": "Document", "inputSchema": {}}]},
+                {
+                    "content": [
+                        {
+                            "type": "document",
+                            "data": "SGVsbG8gV29ybGQ=",
+                            "mimeType": (
+                                "application/vnd.openxmlformats-officedocument"
+                                ".wordprocessingml.document"
+                            ),
+                        }
+                    ]
+                },
+            ],
+        )
+
+        registry = UpstreamRegistry.build(
+            [server],
+            client_factory=lambda srv: client,  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+        )
+
+        result = registry.call_tool("ralph_upstream__doc_server__get_file", {})
+
+        content = result.get("content", [])
+        assert len(content) == 1
+        block = content[0]
+        assert block.get("type") == "resource_reference"
+        assert block.get("modality") == "document"
+
+    def test_upstream_uri_backed_image_preserves_upstream_uri(self) -> None:
+        """URI-backed upstream image block preserves the upstream URI."""
+        server = UpstreamMcpServer(name="uri_server", transport="http", url="http://unused")
+        upstream_uri = "https://example.com/screenshot.png"
+        client = self._make_http_client(
+            server,
+            [
+                {"tools": [{"name": "screenshot", "description": "Screenshot", "inputSchema": {}}]},
+                {
+                    "content": [
+                        {
+                            "type": "image",
+                            "uri": upstream_uri,
+                            "mimeType": "image/png",
+                        }
+                    ]
+                },
+            ],
+        )
+
+        registry = UpstreamRegistry.build(
+            [server],
+            client_factory=lambda srv: client,  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+        )
+
+        result = registry.call_tool("ralph_upstream__uri_server__screenshot", {})
+
+        content = result.get("content", [])
+        assert len(content) == 1
+        block = content[0]
+        assert block.get("type") == "resource_reference"
+        assert block.get("uri") == upstream_uri
+
+    def test_upstream_embedded_image_stored_in_session_manifest(self) -> None:
+        """Embedded image bytes are stored in session manifest for retrieval."""
+        server = UpstreamMcpServer(name="img_server", transport="http", url="http://unused")
+        client = self._make_http_client(
+            server,
+            [
+                {"tools": [{"name": "screenshot", "description": "Screenshot", "inputSchema": {}}]},
+                {
+                    "content": [
+                        {
+                            "type": "image",
+                            "data": "SGVsbG8gV29ybGQ=",
+                            "mimeType": "image/png",
+                        }
+                    ]
+                },
+            ],
+        )
+
+        registry = UpstreamRegistry.build(
+            [server],
+            client_factory=lambda srv: client,  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+        )
+
+        class _FakeSession:
+            media_manifest = MediaManifest()
+
+        session = _FakeSession()
+        result = registry.call_tool("ralph_upstream__img_server__screenshot", {}, session=session)
+
+        content = result.get("content", [])
+        assert len(content) == 1
+        block = content[0]
+        assert block.get("type") == "resource_reference"
+        uri = str(block.get("uri", ""))
+        assert uri.startswith("ralph://media/")
+
+        # Bytes must be retrievable from the manifest
+        artifact_id = parse_media_uri(uri)
+        assert artifact_id is not None
+        entry = session.media_manifest.get(artifact_id)
+        assert entry is not None
+        assert entry.raw_bytes == base64.b64decode("SGVsbG8gV29ybGQ=")
+
+    def test_upstream_unknown_block_type_raises_error(self) -> None:
+        """Unknown block types raise UpstreamCallError with accepted types listed."""
+        server = UpstreamMcpServer(name="bad_server", transport="http", url="http://unused")
+        client = self._make_http_client(
+            server,
+            [
+                {"tools": [{"name": "bad_tool", "description": "Bad", "inputSchema": {}}]},
+                {
+                    "content": [
+                        {"type": "binary_blob", "data": "SGVsbG8="}
+                    ]
+                },
+            ],
+        )
+
+        registry = UpstreamRegistry.build(
+            [server],
+            client_factory=lambda srv: client,  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+        )
+
         with pytest.raises(UpstreamCallError) as exc_info:
-            registry.call_tool("ralph_upstream__media_server__get_clip", {})
+            registry.call_tool("ralph_upstream__bad_server__bad_tool", {})
 
         error_message = str(exc_info.value)
-        assert "unsupported content block" in error_message.lower()
-        assert "video" in error_message
+        assert "binary_blob" in error_message
+        assert "Accepted types" in error_message
+
+    def test_upstream_media_block_missing_uri_and_data_raises_error(self) -> None:
+        """Media block with neither uri nor data raises UpstreamCallError."""
+        server = UpstreamMcpServer(name="bad_server", transport="http", url="http://unused")
+        client = self._make_http_client(
+            server,
+            [
+                {"tools": [{"name": "bad_tool", "description": "Bad", "inputSchema": {}}]},
+                {
+                    "content": [
+                        {"type": "image", "mimeType": "image/png"}
+                    ]
+                },
+            ],
+        )
+
+        registry = UpstreamRegistry.build(
+            [server],
+            client_factory=lambda srv: client,  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+        )
+
+        with pytest.raises(UpstreamCallError) as exc_info:
+            registry.call_tool("ralph_upstream__bad_server__bad_tool", {})
+
+        assert "cannot normalize" in str(exc_info.value)
+
+    def test_upstream_mime_modality_mismatch_raises_error(self) -> None:
+        """Block with MIME type inconsistent with declared block type raises error."""
+        server = UpstreamMcpServer(name="mismatch_server", transport="http", url="http://unused")
+        client = self._make_http_client(
+            server,
+            [
+                {"tools": [{"name": "bad_tool", "description": "Bad", "inputSchema": {}}]},
+                {
+                    "content": [
+                        {
+                            "type": "image",
+                            "data": "SGVsbG8gV29ybGQ=",
+                            "mimeType": "audio/mpeg",
+                        }
+                    ]
+                },
+            ],
+        )
+
+        registry = UpstreamRegistry.build(
+            [server],
+            client_factory=lambda srv: client,  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+        )
+
+        with pytest.raises(UpstreamCallError) as exc_info:
+            registry.call_tool("ralph_upstream__mismatch_server__bad_tool", {})
+
+        error_message = str(exc_info.value)
+        assert "inconsistent" in error_message or "derived modality" in error_message
+
+    def test_upstream_mixed_modalities_in_single_response(self) -> None:
+        """Mixed text+image+audio response is fully normalized."""
+        server = UpstreamMcpServer(name="mix_server", transport="http", url="http://unused")
+        client = self._make_http_client(
+            server,
+            [
+                {"tools": [{"name": "mix", "description": "Mixed", "inputSchema": {}}]},
+                {
+                    "content": [
+                        {"type": "text", "text": "caption"},
+                        {"type": "image", "data": "SGVsbG8=", "mimeType": "image/png"},
+                        {"type": "audio", "data": "V29ybGQ=", "mimeType": "audio/mpeg"},
+                    ]
+                },
+            ],
+        )
+
+        registry = UpstreamRegistry.build(
+            [server],
+            client_factory=lambda srv: client,  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+        )
+
+        result = registry.call_tool("ralph_upstream__mix_server__mix", {})
+
+        content = result.get("content", [])
+        assert len(content) == 3  # noqa: PLR2004
+        assert content[0].get("type") == "text"
+        rr_blocks = [b for b in content if b.get("type") == "resource_reference"]
+        assert len(rr_blocks) == 2  # noqa: PLR2004
+        modalities = {b.get("modality") for b in rr_blocks}
+        assert modalities == {"image", "audio"}
 
     def test_upstream_embedded_image_in_content_list_normalized(self) -> None:
         """Upstream content list with image block is normalized to resource_reference."""

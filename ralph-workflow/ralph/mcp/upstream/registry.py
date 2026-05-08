@@ -15,16 +15,18 @@ from loguru import logger
 
 from ralph.mcp.tools.names import upstream_proxy_tool_name
 from ralph.mcp.upstream.client import (
+    HasMediaManifest,
     HttpUpstreamClient,
+    JsonObject,
     StdioUpstreamClient,
     make_upstream_client,
+    normalize_upstream_content_blocks,
 )
 from ralph.mcp.upstream.models import UpstreamCallError, UpstreamTool
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable
 
-    from ralph.mcp.upstream.client import JsonObject
     from ralph.mcp.upstream.config import UpstreamMcpServer
 
 _AnyUpstreamClient = HttpUpstreamClient | StdioUpstreamClient
@@ -100,12 +102,24 @@ class UpstreamRegistry:
     def tool_definitions(self) -> list[ProxiedTool]:
         return list(self._proxied_tools)
 
-    def call_tool(self, alias: str, arguments: JsonObject) -> object:
+    def call_tool(
+        self,
+        alias: str,
+        arguments: JsonObject,
+        session: HasMediaManifest | None = None,
+    ) -> object:
         if alias not in self._alias_map:
             raise UpstreamCallError(f"proxied tool '{alias}' not found in upstream registry")
         proxied = self._alias_map[alias]
         client = self._clients[proxied.server_name]
-        return client.call_tool(proxied.tool.name, arguments)
+        raw_result = client.call_tool(proxied.tool.name, arguments)
+        if isinstance(raw_result, dict):
+            result: JsonObject = raw_result
+            normalize_upstream_content_blocks(
+                result, proxied.server_name, proxied.tool.name, session
+            )
+            return result
+        return raw_result
 
 
 __all__ = [

@@ -51,6 +51,9 @@ def resolve_model_identity(
     """Resolve multimodal model identity from agent transport and model flag.
 
     Returns UNKNOWN_IDENTITY when the provider cannot be determined.
+    For OpenCode transport, attempts a catalog lookup to determine the provider.
+    On catalog failure or unmapped model, returns an unknown-provider identity
+    that still carries model_id and transport so delivery falls back safely.
     """
     if transport is None:
         return UNKNOWN_IDENTITY
@@ -66,6 +69,23 @@ def resolve_model_identity(
             model_id=model_flag,
             transport=transport.value,
         )
+    if transport == AgentTransport.OPENCODE and model_flag is not None:
+        try:
+            from ralph.api.opencode import get_model_by_id  # noqa: PLC0415
+            entry = get_model_by_id(model_flag)
+            if entry is not None and entry.provider is not None:
+                return MultimodalModelIdentity(
+                    provider=entry.provider,
+                    model_id=model_flag,
+                    transport=transport.value,
+                )
+        except Exception:
+            pass
+        return MultimodalModelIdentity(
+            provider="unknown",
+            model_id=model_flag,
+            transport=transport.value,
+        )
     return MultimodalModelIdentity(
         provider=transport.value,
         model_id=model_flag,
@@ -73,19 +93,25 @@ def resolve_model_identity(
     )
 
 
-def build_session_mcp_plan(
+def build_session_mcp_plan(  # noqa: PLR0913
     *,
     transport: AgentTransport | None,
     drain: str,
     workspace_path: Path | None,
     agents_policy: AgentsPolicy | None = None,
     model_identity: MultimodalModelIdentity | None = None,
+    model_flag: str | None = None,
 ) -> SessionMcpPlan:
     """Build the runtime MCP plan for a new agent session.
 
     The result captures both session capability grants and any upstream MCP
     environment that must be present in the Ralph MCP subprocess so its runtime
     tool registry matches what the agent is expected to see.
+
+    Identity resolution precedence:
+    1. ``model_identity`` (explicit, if provided)
+    2. ``model_flag`` resolved via ``resolve_model_identity(transport, model_flag)``
+    3. ``UNKNOWN_IDENTITY`` fallback
     """
 
     capabilities = _base_capabilities_for_drain(drain, agents_policy)
@@ -119,7 +145,12 @@ def build_session_mcp_plan(
     if upstreams and not is_commit:
         capabilities.add("upstream.tool_use")
 
-    resolved_identity = model_identity if model_identity is not None else UNKNOWN_IDENTITY
+    if model_identity is not None:
+        resolved_identity = model_identity
+    elif model_flag is not None:
+        resolved_identity = resolve_model_identity(transport, model_flag)
+    else:
+        resolved_identity = UNKNOWN_IDENTITY
     return SessionMcpPlan(
         capabilities=frozenset(capabilities),
         server_env=server_env or None,

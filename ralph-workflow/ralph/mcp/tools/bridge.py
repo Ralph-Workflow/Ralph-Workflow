@@ -55,6 +55,7 @@ if TYPE_CHECKING:
     from types import ModuleType
 
     from ralph.config.mcp_models import McpConfig
+    from ralph.mcp.upstream.client import HasMediaManifest
     from ralph.mcp.upstream.registry import UpstreamRegistry
 
 JsonObject = dict[str, object]
@@ -163,8 +164,10 @@ class UpstreamProxyHandler:
         workspace: object | None,
         params: JsonObject,
     ) -> object:
-        del host_session, workspace
-        return self._upstream_registry.call_tool(self._alias, params)
+        del workspace
+        return self._upstream_registry.call_tool(
+            self._alias, params, session=cast("HasMediaManifest | None", host_session)
+        )
 
 
 class ToolBridge:

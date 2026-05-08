@@ -425,7 +425,9 @@ class McpServer:
             return (JsonRpcResponse(jsonrpc="2.0", error=error, msg_id=request.msg_id), state)
 
         try:
-            raw_result = self._registry.dispatch(tool_name, dict(arguments_value))
+            raw_result = self._registry.dispatch(
+                tool_name, dict(arguments_value), host_session=self._session
+            )
         except Exception as exc:
             error = {"code": -32603, "message": str(exc)}
             return (JsonRpcResponse(jsonrpc="2.0", error=error, msg_id=request.msg_id), state)
@@ -663,6 +665,8 @@ class FileBackedSession:
             lambda: f"standalone-{uuid.uuid4().hex[:8]}"
         )
         self._run_id_factory = run_id_factory or (lambda: str(uuid.uuid4()))
+        from ralph.mcp.multimodal.resources import MediaManifest  # noqa: PLC0415
+        self._media_manifest = MediaManifest()
 
 
     def _load(self) -> dict[str, object]:
@@ -699,6 +703,10 @@ class FileBackedSession:
         if raw is None:
             return None
         return Path(raw)
+
+    @property
+    def media_manifest(self) -> object:
+        return self._media_manifest
 
     def check_capability(self, capability: str) -> object:
         return "approved" if session_has_capability(self.capabilities, capability) else "denied"
