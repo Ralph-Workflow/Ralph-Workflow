@@ -46,6 +46,8 @@ class UpstreamMcpClient(Protocol):
 
 
 class HasMediaManifest(Protocol):
+    """Protocol for upstream clients that expose a media artifact manifest."""
+
     @property
     def media_manifest(self) -> MediaManifest: ...
 

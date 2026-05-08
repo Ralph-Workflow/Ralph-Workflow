@@ -1,59 +1,56 @@
+"""Tests for system prompt materialization."""
+
 from __future__ import annotations
 
 from pathlib import Path
 
-from ralph.prompts.system_prompt import build_system_prompt, materialize_system_prompt
+import ralph.prompts.system_prompt as system_prompt_module
+from ralph.prompts.system_prompt import materialize_system_prompt
 
 
-def test_build_system_prompt_includes_unattended_mode_and_current_prompt_reference() -> None:
-    prompt = build_system_prompt(current_prompt_path="/tmp/project/.agent/CURRENT_PROMPT.md")
-
-    assert "UNATTENDED MODE" in prompt
-    assert "/tmp/project/.agent/CURRENT_PROMPT.md" in prompt
-    assert "source of truth" in prompt
-
-
-def test_materialize_system_prompt_writes_file(tmp_path: Path) -> None:
-    current_prompt = tmp_path / ".agent" / "CURRENT_PROMPT.md"
-    current_prompt.parent.mkdir(parents=True, exist_ok=True)
-    current_prompt.write_text("Fix the bug", encoding="utf-8")
-
-    system_prompt_path = Path(materialize_system_prompt(workspace_root=tmp_path, name="review"))
-
-    assert system_prompt_path.exists()
-    assert system_prompt_path.read_text(encoding="utf-8")
-    assert str(current_prompt) in system_prompt_path.read_text(encoding="utf-8")
-
-
-def test_materialize_system_prompt_creates_current_prompt_when_missing(tmp_path: Path) -> None:
-    assert not (tmp_path / ".agent" / "CURRENT_PROMPT.md").exists()
-
-    Path(
-        materialize_system_prompt(
-            workspace_root=tmp_path,
-            name="commit",
-            default_current_prompt="Commit message generation task.",
-        )
+def test_materialize_system_prompt_creates_prompt_history_snapshot(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        system_prompt_module,
+        "_history_timestamp",
+        lambda: "20260508T120000Z",
+        raising=False,
     )
-
-    current_prompt = tmp_path / ".agent" / "CURRENT_PROMPT.md"
-    assert current_prompt.exists(), (
-        "CURRENT_PROMPT.md must be created before system prompt references it"
-    )
-    assert current_prompt.read_text(encoding="utf-8") == "Commit message generation task."
-
-
-def test_materialize_system_prompt_preserves_existing_current_prompt(tmp_path: Path) -> None:
-    current_prompt = tmp_path / ".agent" / "CURRENT_PROMPT.md"
-    current_prompt.parent.mkdir(parents=True)
-    current_prompt.write_text("User's actual task.", encoding="utf-8")
+    (tmp_path / "PROMPT.md").write_text("new prompt", encoding="utf-8")
 
     materialize_system_prompt(
         workspace_root=tmp_path,
-        name="commit",
-        default_current_prompt="Commit message generation task.",
+        name="planning",
     )
 
-    assert current_prompt.read_text(encoding="utf-8") == "User's actual task.", (
-        "existing CURRENT_PROMPT.md must not be overwritten"
+    history_path = tmp_path / ".agent" / "prompt_history" / "PROMPT_20260508T120000Z.md"
+    assert history_path.read_text(encoding="utf-8") == "new prompt"
+
+
+def test_materialize_system_prompt_refreshes_current_prompt_from_prompt_md(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        system_prompt_module,
+        "_history_timestamp",
+        lambda: "20260508T120001Z",
+        raising=False,
     )
+    (tmp_path / ".agent").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "PROMPT.md").write_text("new prompt", encoding="utf-8")
+    current_prompt_path = tmp_path / ".agent" / "CURRENT_PROMPT.md"
+    current_prompt_path.write_text("old prompt", encoding="utf-8")
+
+    system_prompt_path = materialize_system_prompt(
+        workspace_root=tmp_path,
+        name="planning",
+    )
+
+    assert current_prompt_path.read_text(encoding="utf-8") == "new prompt"
+    history_path = tmp_path / ".agent" / "prompt_history" / "PROMPT_20260508T120001Z.md"
+    assert history_path.read_text(encoding="utf-8") == "new prompt"
+    system_prompt = Path(system_prompt_path).read_text(encoding="utf-8")
+    assert str(current_prompt_path) in system_prompt

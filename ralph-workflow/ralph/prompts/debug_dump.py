@@ -15,6 +15,7 @@ def prompt_dump_path(phase: str) -> str:
 
 
 def multimodal_sidecar_path(phase: str) -> str:
+    """Return the workspace-relative path for a phase's multimodal handoff sidecar."""
     normalized = phase.replace("/", "_").replace(" ", "_")
     return f".agent/tmp/{normalized}_multimodal_handoff.json"
 
