@@ -455,13 +455,6 @@ ralph.phases.commit_logging
    :members:
    :show-inheritance:
 
-ralph.phases.development
-~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. automodule:: ralph.phases.development
-   :members:
-   :show-inheritance:
-
 ralph.phases.execution
 ~~~~~~~~~~~~~~~~~~~~~~
 
@@ -469,24 +462,10 @@ ralph.phases.execution
    :members:
    :show-inheritance:
 
-ralph.phases.fix
-~~~~~~~~~~~~~~~~
-
-.. automodule:: ralph.phases.fix
-   :members:
-   :show-inheritance:
-
 ralph.phases.integrity
 ~~~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.phases.integrity
-   :members:
-   :show-inheritance:
-
-ralph.phases.planning
-~~~~~~~~~~~~~~~~~~~~~
-
-.. automodule:: ralph.phases.planning
    :members:
    :show-inheritance:
 
@@ -1603,13 +1582,6 @@ ralph.display.snapshot
 ~~~~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ralph.display.snapshot
-   :members:
-   :show-inheritance:
-
-ralph.display.status
-~~~~~~~~~~~~~~~~~~~~
-
-.. automodule:: ralph.display.status
    :members:
    :show-inheritance:
 

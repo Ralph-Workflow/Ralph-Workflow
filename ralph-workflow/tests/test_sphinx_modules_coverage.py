@@ -249,6 +249,34 @@ def test_documented_public_modules_have_non_empty_docstrings() -> None:
     )
 
 
+def test_all_documented_autodoc_targets_resolve_to_real_source() -> None:
+    """Every automodule target in modules.rst must resolve to a real source file.
+
+    Each ``.. automodule:: ralph.*`` entry must map to either a ``.py`` module
+    file or a package ``__init__.py`` in the ralph source tree.  Phantom targets
+    left over from older designs (e.g. ralph.phases.development) must be removed.
+    """
+    modules_rst_text = _MODULES_RST.read_text(encoding="utf-8")
+    phantom: list[str] = []
+    for directive in re.findall(
+        r"^\.\.\s+automodule::\s+(.+)$", modules_rst_text, re.MULTILINE
+    ):
+        module_name = directive.strip()
+        if not module_name.startswith("ralph."):
+            continue
+        rel_name = module_name[len("ralph.") :]
+        source = _resolve_to_source(rel_name, _RALPH_ROOT)
+        if source is None:
+            phantom.append(f"  {module_name}")
+
+    assert not phantom, (
+        "The following autodoc targets in docs/sphinx/modules.rst do not "
+        "resolve to any real source module or package:\n"
+        + "\n".join(phantom)
+        + "\n\nRemove or replace each stale entry with a real maintained module."
+    )
+
+
 def test_modules_rst_has_no_stale_readme_package_map_claim() -> None:
     """modules.rst must not claim to mirror a README package map."""
     modules_rst_text = _MODULES_RST.read_text(encoding="utf-8")
