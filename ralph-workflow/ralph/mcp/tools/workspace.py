@@ -21,6 +21,12 @@ from ralph.mcp.multimodal.artifacts import (
     ResourceReferenceContent,
     infer_modality_and_mime,
 )
+from ralph.mcp.multimodal.capabilities import (
+    UNKNOWN_IDENTITY,
+    DeliveryMode,
+    MultimodalModelIdentity,
+    get_delivery_mode,
+)
 from ralph.mcp.multimodal.resources import MediaManifest
 from ralph.mcp.tools.coordination import (
     CapabilityDeniedError,
@@ -1069,6 +1075,14 @@ def _get_media_manifest(session: object) -> MediaManifest | None:
     return None
 
 
+def _get_session_model_identity(session: object) -> MultimodalModelIdentity:
+    """Extract the model identity from a session, defaulting to UNKNOWN_IDENTITY."""
+    raw: object = getattr(session, "model_identity", None)
+    if isinstance(raw, MultimodalModelIdentity):
+        return raw
+    return UNKNOWN_IDENTITY
+
+
 def handle_read_media(
     session: CoordinationSessionLike,
     workspace: Workspace,
@@ -1079,11 +1093,11 @@ def handle_read_media(
     """Read a media file and return the appropriate content block.
 
     Supports images, PDFs, audio, video, and visually meaningful documents.
-    For supported inline images within the size limit, returns an ImageContent
-    block identical to read_image. For all other media (PDFs, audio, video,
-    oversized images, layout-dependent documents), returns a ResourceReferenceContent
-    block and stores the artifact in the session manifest for later retrieval
-    via resources/read.
+    Delivery mode (inline image vs resource_reference) is determined by the
+    session's model identity via the capability policy, not just file type/size.
+    For models that support inline delivery and small-enough images, returns an
+    ImageContent block. For all other media or unsupported delivery modes, returns
+    a ResourceReferenceContent block stored in the session manifest.
     """
     require_capability(session, MEDIA_READ_CAPABILITY, "Media read")
     path = required_string_param(params, "path")
@@ -1109,6 +1123,21 @@ def handle_read_media(
         )
 
     modality, mime_type = inferred
+
+    # Consult the capability policy to determine model-aware delivery mode.
+    model_identity = _get_session_model_identity(session)
+    verdict = get_delivery_mode(model_identity, modality)
+
+    if verdict.delivery == DeliveryMode.UNSUPPORTED:
+        return ToolResult(
+            content=[ToolContent.text_content(
+                f"Modality '{modality}' is not supported by provider '{verdict.provider}' "
+                f"(model: {verdict.model_id or 'unknown'}). "
+                f"Accepted forms: resource_reference or none. Reason: {verdict.reason}"
+            )],
+            is_error=True,
+        )
+
     abs_path = workspace.absolute_path(normalized or path)
 
     try:
@@ -1134,20 +1163,21 @@ def handle_read_media(
 
     title = PurePosixPath(path).name
 
-    # Deliver small inline images directly when supported
-    is_small_inline_image = (
-        modality == "image"
+    # Deliver inline when the capability policy allows and the file is within the size limit.
+    use_inline = (
+        verdict.delivery == DeliveryMode.INLINE
+        and modality == "image"
         and mime_type in INLINE_IMAGE_MIME_TYPES
         and file_size <= max_inline_bytes
     )
-    if is_small_inline_image:
+    if use_inline:
         encoded = base64.b64encode(raw_bytes).decode("ascii")
         return ToolResult(
             content=[ImageContent(data=encoded, mime_type=mime_type)],
             is_error=False,
         )
 
-    # Everything else (PDF, audio, video, document, oversized image) -> resource_reference
+    # Resource-reference delivery for all other media.
     manifest = _get_media_manifest(session)
     if manifest is not None:
         entry = manifest.add(

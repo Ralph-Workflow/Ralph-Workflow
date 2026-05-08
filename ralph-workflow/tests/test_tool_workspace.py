@@ -13,6 +13,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from ralph.mcp.multimodal.artifacts import ResourceReferenceContent
+from ralph.mcp.multimodal.capabilities import UNKNOWN_IDENTITY, MultimodalModelIdentity
 from ralph.mcp.multimodal.resources import MediaManifest
 from ralph.mcp.tools.coordination import (
     CapabilityDeniedError,
@@ -1604,6 +1605,7 @@ class MockSessionWithManifest:
     allowed_capability: str | None = None
     session_id: str = "test-session"
     media_manifest: MediaManifest = field(default_factory=MediaManifest)
+    model_identity: MultimodalModelIdentity = field(default=UNKNOWN_IDENTITY)
 
     def check_capability(self, capability: str) -> object:
         return capability == self.allowed_capability
@@ -1646,7 +1648,10 @@ class TestHandleReadMedia:
         try:
             ws = MagicMock()
             ws.absolute_path.return_value = temp_path
-            session = MockSessionWithManifest(MEDIA_READ_CAPABILITY)
+            session = MockSessionWithManifest(
+                MEDIA_READ_CAPABILITY,
+                model_identity=MultimodalModelIdentity(provider="claude"),
+            )
 
             result = handle_read_media(session, ws, {"path": "test.png"})
 

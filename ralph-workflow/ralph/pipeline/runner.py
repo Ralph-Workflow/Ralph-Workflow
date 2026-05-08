@@ -63,7 +63,7 @@ from ralph.mcp.server.lifecycle import (
     shutdown_mcp_server,
     start_mcp_server,
 )
-from ralph.mcp.session_plan import build_session_mcp_plan
+from ralph.mcp.session_plan import build_session_mcp_plan, resolve_model_identity
 from ralph.phases import PhaseContext, handle_phase, register_role_handlers
 from ralph.phases.required_artifacts import (
     build_required_artifacts,
@@ -3029,17 +3029,23 @@ def _execute_agent_effect(  # noqa: PLR0911, PLR0912, PLR0913, PLR0915
             workspace_root=workspace_scope.root,
             name=str(effect.phase),
         )
+        _model_identity = resolve_model_identity(
+            agent_config.transport,
+            agent_config.model_flag,
+        )
         session_mcp_plan = build_session_mcp_plan(
             transport=agent_config.transport,
             drain=effect.drain or effect.phase,
             workspace_path=workspace_scope.root,
             agents_policy=effective_agents_policy,
+            model_identity=_model_identity,
         )
         session = AgentSession(
             session_id=f"{effect.phase}-{uuid.uuid4().hex[:8]}",
             run_id=str(uuid.uuid4()),
             drain=effect.drain or effect.phase,
             capabilities=set(session_mcp_plan.capabilities),
+            model_identity=session_mcp_plan.model_identity,
         )
         workspace = FsWorkspace(
             workspace_scope.root,

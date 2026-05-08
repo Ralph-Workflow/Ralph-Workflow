@@ -7,11 +7,12 @@ into the Ralph MCP subprocess for that session.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from ralph.config.enums import AgentTransport
 from ralph.config.mcp_loader import load_mcp_config
+from ralph.mcp.multimodal.capabilities import UNKNOWN_IDENTITY, MultimodalModelIdentity
 from ralph.mcp.protocol.capability_mapping import DrainClass, drain_class_for_session
 from ralph.mcp.transport.claude import load_existing_claude_upstream_servers
 from ralph.mcp.transport.common import (
@@ -40,6 +41,36 @@ if TYPE_CHECKING:
 class SessionMcpPlan:
     capabilities: frozenset[str]
     server_env: dict[str, str] | None = None
+    model_identity: MultimodalModelIdentity = field(default=UNKNOWN_IDENTITY)
+
+
+def resolve_model_identity(
+    transport: AgentTransport | None,
+    model_flag: str | None = None,
+) -> MultimodalModelIdentity:
+    """Resolve multimodal model identity from agent transport and model flag.
+
+    Returns UNKNOWN_IDENTITY when the provider cannot be determined.
+    """
+    if transport is None:
+        return UNKNOWN_IDENTITY
+    if transport == AgentTransport.CLAUDE:
+        return MultimodalModelIdentity(
+            provider="claude",
+            model_id=model_flag,
+            transport=transport.value,
+        )
+    if transport == AgentTransport.CODEX:
+        return MultimodalModelIdentity(
+            provider="openai",
+            model_id=model_flag,
+            transport=transport.value,
+        )
+    return MultimodalModelIdentity(
+        provider=transport.value,
+        model_id=model_flag,
+        transport=transport.value,
+    )
 
 
 def build_session_mcp_plan(
@@ -48,6 +79,7 @@ def build_session_mcp_plan(
     drain: str,
     workspace_path: Path | None,
     agents_policy: AgentsPolicy | None = None,
+    model_identity: MultimodalModelIdentity | None = None,
 ) -> SessionMcpPlan:
     """Build the runtime MCP plan for a new agent session.
 
@@ -87,9 +119,11 @@ def build_session_mcp_plan(
     if upstreams and not is_commit:
         capabilities.add("upstream.tool_use")
 
+    resolved_identity = model_identity if model_identity is not None else UNKNOWN_IDENTITY
     return SessionMcpPlan(
         capabilities=frozenset(capabilities),
         server_env=server_env or None,
+        model_identity=resolved_identity,
     )
 
 
@@ -142,4 +176,4 @@ def _base_capabilities_for_drain(
     return base | _DEVELOPMENT_EXTRA
 
 
-__all__ = ["SessionMcpPlan", "build_session_mcp_plan"]
+__all__ = ["SessionMcpPlan", "build_session_mcp_plan", "resolve_model_identity"]

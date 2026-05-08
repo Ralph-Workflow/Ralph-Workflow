@@ -158,8 +158,8 @@ class TestUpstreamMultimodalBoundary:
 
         return HttpUpstreamClient(server, caller=caller)
 
-    def test_upstream_image_content_block_raises_upstream_call_error(self) -> None:
-        """Upstream image block raises UpstreamCallError with clear message."""
+    def test_upstream_image_content_block_normalized_to_resource_reference(self) -> None:
+        """Upstream image block is normalized to resource_reference content block."""
         server = UpstreamMcpServer(name="image_server", transport="http", url="http://unused")
         client = self._make_http_client(
             server,
@@ -186,23 +186,19 @@ class TestUpstreamMultimodalBoundary:
             ],
         )
 
-        # Register tools
         registry = UpstreamRegistry.build(
             [server],
             client_factory=lambda srv: client,  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
         )
 
-        # Attempt to call the tool
-        with pytest.raises(UpstreamCallError) as exc_info:
-            registry.call_tool("ralph_upstream__image_server__get_screenshot", {})
+        result = registry.call_tool("ralph_upstream__image_server__get_screenshot", {})
 
-        error_message = str(exc_info.value)
-        # Error must mention multimodal
-        assert "multimodal" in error_message.lower()
-        # Error must identify the problematic type
-        assert "image" in error_message
-        # Error must mention the tool or server
-        assert "get_screenshot" in error_message or "image_server" in error_message
+        # Image block must be normalized to resource_reference, not rejected
+        content = result.get("content", [])
+        assert len(content) == 2  # noqa: PLR2004
+        assert content[0].get("type") == "text"
+        assert content[1].get("type") == "resource_reference"
+        assert str(content[1].get("uri", "")).startswith("ralph://media/")
 
     def test_upstream_video_content_block_raises_upstream_call_error(self) -> None:
         """Upstream tool returning video content block raises UpstreamCallError."""
@@ -232,11 +228,11 @@ class TestUpstreamMultimodalBoundary:
             registry.call_tool("ralph_upstream__media_server__get_clip", {})
 
         error_message = str(exc_info.value)
-        assert "multimodal" in error_message.lower()
+        assert "unsupported content block" in error_message.lower()
         assert "video" in error_message
 
-    def test_upstream_embedded_image_in_content_list_raises(self) -> None:
-        """Upstream tool returning content list with non-text block at any index raises error."""
+    def test_upstream_embedded_image_in_content_list_normalized(self) -> None:
+        """Upstream content list with image block is normalized to resource_reference."""
         server = UpstreamMcpServer(name="mixed_server", transport="http", url="http://unused")
         client = self._make_http_client(
             server,
@@ -264,12 +260,15 @@ class TestUpstreamMultimodalBoundary:
             client_factory=lambda srv: client,  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
         )
 
-        with pytest.raises(UpstreamCallError) as exc_info:
-            registry.call_tool("ralph_upstream__mixed_server__get_mixed", {})
+        result = registry.call_tool("ralph_upstream__mixed_server__get_mixed", {})
 
-        # Error should clearly reject the multimodal payload
-        error_message = str(exc_info.value)
-        assert "multimodal" in error_message.lower()
+        # Text block passes through; image block becomes resource_reference
+        content = result.get("content", [])
+        assert len(content) == 2  # noqa: PLR2004
+        assert content[0].get("type") == "text"
+        assert content[0].get("text") == "Here is your result"
+        assert content[1].get("type") == "resource_reference"
+        assert str(content[1].get("uri", "")).startswith("ralph://media/")
 
     def test_upstream_text_only_content_passthrough_works(self) -> None:
         """Upstream tool returning only text content blocks succeeds normally."""
@@ -335,7 +334,7 @@ class TestUpstreamMultimodalBoundary:
         assert result == {"content": []}
 
     def test_no_silent_fallback_for_multimodal_content(self) -> None:
-        """There is no silent fallback path that stringifies multimodal content."""
+        """Image content is normalized to resource_reference, not silently stringified."""
         server = UpstreamMcpServer(name="strict_server", transport="http", url="http://unused")
         client = self._make_http_client(
             server,
@@ -367,12 +366,19 @@ class TestUpstreamMultimodalBoundary:
             client_factory=lambda srv: client,  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
         )
 
-        # Must raise, NOT silently convert image to string
-        with pytest.raises(UpstreamCallError) as exc_info:
-            registry.call_tool("ralph_upstream__strict_server__get_both", {})
+        result = registry.call_tool("ralph_upstream__strict_server__get_both", {})
 
-        error_message = str(exc_info.value)
-        # Must NOT have silently stringified the image block
-        assert "SGVsbG8gV29ybGQ=" not in error_message or "multimodal" in error_message.lower()
-        # Must clearly reject
-        assert "not supported" in error_message.lower() or "multimodal" in error_message.lower()
+        content = result.get("content", [])
+        # Image must NOT be silently stringified (raw base64 must not appear in any text block)
+        text_values = [
+            str(b.get("text", ""))
+            for b in content
+            if isinstance(b, dict) and b.get("type") == "text"
+        ]
+        assert not any("SGVsbG8gV29ybGQ=" in tv for tv in text_values)
+        # Image block must be normalized to resource_reference
+        rr_blocks = [
+            b for b in content if isinstance(b, dict) and b.get("type") == "resource_reference"
+        ]
+        assert len(rr_blocks) == 1
+        assert str(rr_blocks[0].get("uri", "")).startswith("ralph://media/")

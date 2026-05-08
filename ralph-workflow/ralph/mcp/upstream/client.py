@@ -16,6 +16,8 @@ from typing import TYPE_CHECKING, Protocol, cast
 
 import httpx
 
+from ralph.mcp.multimodal.artifacts import infer_modality_and_mime
+from ralph.mcp.multimodal.resources import build_media_uri, new_artifact_id
 from ralph.mcp.protocol.startup import (
     initialize_request,
     initialized_notification,
@@ -161,32 +163,83 @@ def _get_content_list(result: JsonObject) -> list[object] | None:
     return list(content)
 
 
-def _check_upstream_content_blocks(result: JsonObject, server_name: str, tool_name: str) -> None:
-    """Check upstream tool result for multimodal content blocks and reject if found.
+def _normalize_image_block_to_resource_reference(
+    block: Mapping[str, object], idx: int, server_name: str, tool_name: str
+) -> dict[str, object]:
+    """Convert an upstream image block into a resource_reference content block.
 
-    This enforces the boundary policy: upstream multimodal payloads are not
-    supported in Ralph's text-only passthrough. Non-text content blocks are
-    rejected with a clear error rather than silently stringified or dropped.
+    Images returned by upstream tools are normalized into the shared multimodal
+    artifact contract (resource_reference) rather than being blanket-rejected.
+    This preserves the multimodal information in a form that Ralph's runtime can
+    route and store via the session manifest.
+    """
+    source = block.get("source") or {}
+    if isinstance(source, Mapping):
+        mime_type = str(source.get("media_type", "")) or "image/png"
+    else:
+        mime_type = "image/png"
+    ext = "." + mime_type.split("/")[-1].split(";")[0]
+    inferred = infer_modality_and_mime(ext)
+    modality = inferred[0] if inferred else "image"
+    uri = build_media_uri(new_artifact_id())
+    return {
+        "type": "resource_reference",
+        "uri": uri,
+        "mimeType": mime_type,
+        "title": f"{tool_name}_image_{idx}",
+        "modality": modality,
+        "delivery": "resource_reference",
+    }
+
+
+def _normalize_upstream_content_blocks(
+    result: JsonObject, server_name: str, tool_name: str
+) -> None:
+    """Normalize upstream tool result content blocks into the multimodal contract.
+
+    - text blocks: pass through unchanged.
+    - image blocks: converted to resource_reference format.
+    - resource_reference blocks: pass through unchanged.
+    - Other non-text types: raise UpstreamCallError with clear explanation.
+
+    Modifies the result in place so callers see the normalized blocks.
     """
     content_blocks = _get_content_list(result)
     if content_blocks is None:
         return
 
+    normalized: list[object] = []
     for idx, block in enumerate(content_blocks):
         if not isinstance(block, Mapping):
+            normalized.append(block)
             continue
         block_type = block.get("type")
-        if block_type is None:
-            continue
         if not isinstance(block_type, str):
+            normalized.append(block)
             continue
-        if block_type != "text":
+        if block_type in ("text", "resource_reference"):
+            normalized.append(block)
+        elif block_type == "image":
+            normalized.append(
+                _normalize_image_block_to_resource_reference(block, idx, server_name, tool_name)
+            )
+        else:
             raise UpstreamCallError(
                 f"upstream server '{server_name}' tool '{tool_name}' returned "
-                f"multimodal content block (type='{block_type}') which is not "
-                f"supported in Ralph's text-only passthrough at index {idx}. "
-                "Upstream multimodal payloads must be rejected rather than passed through."
+                f"unsupported content block (type='{block_type}') at index {idx}. "
+                "Only text, image, and resource_reference blocks are accepted from upstream tools."
             )
+
+    result["content"] = normalized
+
+
+def _check_upstream_content_blocks(result: JsonObject, server_name: str, tool_name: str) -> None:
+    """Normalize upstream tool result, converting multimodal blocks into the contract.
+
+    Delegates to _normalize_upstream_content_blocks which handles image->resource_reference
+    conversion and passes text/resource_reference blocks through unchanged.
+    """
+    _normalize_upstream_content_blocks(result, server_name, tool_name)
 
 
 def _make_http_caller(url: str) -> JsonRpcCaller:
