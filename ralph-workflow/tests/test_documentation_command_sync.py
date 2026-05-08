@@ -162,3 +162,101 @@ def test_sphinx_agents_describes_bounded_summaries_not_first_class_artifacts() -
     assert "bounded" in content or "summaries" in content or "summary" in content
     # Must not claim parsers preserve multimodal as first-class artifacts in event stream
     assert "preserve these blocks as first-class artifacts" not in content
+
+
+def test_readme_provider_matrix_claude_typed_blocks() -> None:
+    """README.md must document Claude PDF/document delivery as typed blocks."""
+    content = _README_PATH.read_text(encoding="utf-8")
+    # Must say Claude PDFs/documents are typed blocks
+    assert "typed block" in content, (
+        "README.md must describe typed block delivery for Claude PDF/document modalities"
+    )
+    # Must not claim Claude delivers PDFs/documents as resource references
+    assert "PDFs and documents as resource references" not in content, (
+        "README.md must not claim Claude delivers PDFs/documents as resource_reference; "
+        "Claude uses typed blocks for PDF/document modalities"
+    )
+
+
+def test_readme_provider_matrix_gemini_typed_blocks() -> None:
+    """README.md must document Gemini image/PDF/document/audio/video correctly."""
+    content = _README_PATH.read_text(encoding="utf-8")
+    # Must say Gemini uses typed blocks for PDFs/documents/audio/video
+    assert "typed block" in content, (
+        "README.md must describe typed block delivery for Gemini modalities"
+    )
+    # Must not claim Gemini delivers all media as resource references
+    assert (
+        "PDFs, documents, audio, and video are all delivered as resource references"
+        not in content
+    ), (
+        "README.md must not claim Gemini delivers all non-image media as resource_reference; "
+        "Gemini uses typed blocks for PDF/document/audio/video"
+    )
+
+
+def test_readme_provider_matrix_openai_explicitly_unsupported() -> None:
+    """README.md must document OpenAI/Codex non-image modalities as explicitly unsupported."""
+    content = _README_PATH.read_text(encoding="utf-8")
+    # Must say PDFs/docs/audio/video are unsupported for OpenAI
+    assert (
+        "explicitly unsupported" in content
+        or "unsupported via the chat completion API" in content
+    ), (
+        "README.md must describe PDF/document/audio/video as explicitly unsupported"
+        " for OpenAI/Codex"
+    )
+    # Must not say OpenAI non-image media falls back to resource_reference
+    assert "other models fall back to resource reference" not in content, (
+        "README.md must not claim OpenAI non-image media falls back to resource_reference; "
+        "those modalities are explicitly unsupported"
+    )
+
+
+def test_readme_provider_matrix_unknown_providers_replayable() -> None:
+    """README.md must document unknown providers using replayable resource references."""
+    content = _README_PATH.read_text(encoding="utf-8")
+    assert "replayable resource references" in content or "resource_reference_replay" in content, (
+        "README.md must describe unknown providers as using replayable resource references"
+    )
+
+
+def test_mcp_servers_doc_provider_matrix_typed_blocks() -> None:
+    """docs/mcp/mcp-servers.md must document typed block delivery for Claude/Gemini."""
+    content = _MCP_SERVERS_DOC.read_text(encoding="utf-8")
+    assert "typed block" in content, (
+        "docs/mcp/mcp-servers.md must describe typed block delivery mode"
+    )
+    # Must not claim all non-image media returns resource_reference
+    assert "Returns all other media as `resource_reference`" not in content, (
+        "docs/mcp/mcp-servers.md must not claim all non-image media returns resource_reference; "
+        "PDFs/documents use typed blocks for Claude/Gemini"
+    )
+
+
+def test_mcp_servers_doc_provider_matrix_table() -> None:
+    """docs/mcp/mcp-servers.md must include an explicit provider/modality delivery matrix table."""
+    content = _MCP_SERVERS_DOC.read_text(encoding="utf-8")
+    # The matrix table must be present
+    assert "Claude/Anthropic" in content and "Gemini" in content and "OpenAI/Codex" in content, (
+        "docs/mcp/mcp-servers.md must have a provider/modality delivery matrix table"
+    )
+    # Must describe explicit unsupported for OpenAI non-image modalities
+    assert "unsupported" in content, (
+        "docs/mcp/mcp-servers.md must describe modalities as explicitly unsupported"
+        " for some providers"
+    )
+
+
+def test_architecture_md_upstream_normalization_not_rejection() -> None:
+    """ralph/mcp/ARCHITECTURE.md must not describe upstream content as 'explicitly rejected'."""
+    content = _ARCHITECTURE_PATH.read_text(encoding="utf-8")
+    # The old stale wording must be gone
+    assert "Now explicitly rejected with clear error message" not in content, (
+        "ARCHITECTURE.md must not describe upstream multimodal handling as 'explicitly rejected'; "
+        "the current policy normalizes upstream content to resource_reference artifacts"
+    )
+    # Must describe the normalization policy instead
+    assert "normalized to" in content or "normalizes" in content, (
+        "ARCHITECTURE.md must describe the upstream normalization policy"
+    )

@@ -93,8 +93,10 @@ max_inline_bytes = 10485760  # 10 MiB to allow larger inline images
 When `media.enabled = true` (default), Ralph Workflow registers `read_media` as the primary multimodal tool. It:
 
 - Reads images (PNG, JPEG, GIF, WebP), PDFs, audio (MP3, WAV, OGG, M4A, FLAC, AAC), video (MP4, AVI, MOV, MKV, WebM), and office documents (DOCX, PPTX, XLSX)
-- Returns small images inline as base64 MCP image blocks when the model supports it
-- Returns all other media as `resource_reference` blocks stored in the session manifest, retrievable via `ralph://media/...` URIs through `resources/read`
+- Returns images as inline base64 MCP image blocks when the model supports it
+- Returns PDFs and documents as typed blocks (e.g., `pdf` or `document` block type) for providers that support them natively (Claude, Gemini)
+- Returns audio and video as typed blocks for providers that support them (Gemini); returns an explicit unsupported error for providers that do not (Claude, OpenAI/Codex)
+- Returns all media as replayable `resource_reference` blocks for unknown providers, stored in the session manifest and retrievable via `ralph://media/...` URIs through `resources/read`
 - Consults the active model’s capability policy to determine the appropriate delivery mode
 - Returns an explicit error when the modality is unsupported by the current provider/model
 
@@ -131,13 +133,28 @@ Small images for capable models use the MCP image block:
 {"type": "image", "data": "<base64>", "mimeType": "image/png"}
 ```
 
-All other media uses a resource-reference block pointing to the session-stored artifact:
+Typed blocks are used for PDFs, documents, audio, and video on providers that support them natively:
 
 ```json
-{"type": "resource_reference", "uri": "ralph://media/<id>", "mimeType": "application/pdf", "modality": "pdf", "title": "report.pdf", "delivery": "resource_reference"}
+{"type": "pdf", "source": {"type": "base64", "media_type": "application/pdf", "data": "<base64>"}}
+```
+
+For unknown providers, or when the artifact should remain retrievable via `resources/read`, a replayable resource-reference block is used:
+
+```json
+{"type": "resource_reference", "uri": "ralph://media/<id>", "mimeType": "application/pdf", "modality": "pdf", "title": "report.pdf", "delivery": "resource_reference_replay"}
 ```
 
 The artifact bytes are retrievable via `resources/read` using the `ralph://media/<id>` URI.
+
+### Provider/modality delivery matrix
+
+| Provider | Image | PDF | Document | Audio | Video |
+|----------|-------|-----|----------|-------|-------|
+| Claude/Anthropic | inline | typed block | typed block | unsupported | unsupported |
+| Gemini | inline | typed block | typed block | typed block | typed block |
+| OpenAI/Codex | inline (vision models) | unsupported | unsupported | unsupported | unsupported |
+| Unknown | resource_reference_replay | resource_reference_replay | resource_reference_replay | resource_reference_replay | resource_reference_replay |
 
 ## Upstream multimodal normalization policy
 

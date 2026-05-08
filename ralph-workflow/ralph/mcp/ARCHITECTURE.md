@@ -363,7 +363,7 @@ upstream/ (Ralph as client)
 
 During the multimodal MCP implementation, the following previously-dormant MCP paths were evaluated:
 
-- **Upstream multimodal content handling** — Previously would have silently stringified non-text blocks. Now explicitly rejected with clear error message. No dead code removed; behavior corrected.
+- **Upstream multimodal content handling** — Previously would have silently stringified non-text blocks. Now normalized to `resource_reference` artifacts (embedded-data content stored in the session manifest; URI-backed content preserved as external reference) rather than rejected or dropped.
 - **MediaRead capability** — Was defined but not wired to any tool. Now integrated with `read_image` tool registration and client capability filtering.
 - **Client capability extraction** — Was not implemented. Now captures client `capabilities` from MCP `initialize` handshake and uses it to filter multimodal tools.
 
