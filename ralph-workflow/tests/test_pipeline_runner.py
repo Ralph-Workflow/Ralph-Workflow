@@ -119,6 +119,71 @@ def _config_with_agents(
     return config
 
 
+def _write_minimal_plan_artifacts(
+    root: Path,
+    *,
+    context: str = "Existing plan",
+) -> None:
+    (root / ".agent" / "artifacts").mkdir(parents=True, exist_ok=True)
+    (root / ".agent" / "artifacts" / "plan.json").write_text(
+        json.dumps(
+            {
+                "type": "plan",
+                "content": {
+                    "summary": {
+                        "context": context,
+                        "scope_items": [
+                            {"text": "one"},
+                            {"text": "two"},
+                            {"text": "three"},
+                        ],
+                    },
+                    "steps": [{"number": 1, "title": "Revise", "content": "keep context"}],
+                    "critical_files": {
+                        "primary_files": [{"path": "src/plan.py", "action": "modify"}],
+                        "reference_files": [],
+                    },
+                    "risks_mitigations": [{"risk": "drift", "mitigation": "preserve"}],
+                    "verification_strategy": [
+                        {"method": "pytest", "expected_outcome": "passes"}
+                    ],
+                    "work_units": [],
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    (root / ".agent" / "PLAN.md").write_text(
+        f"# Implementation Plan\n\n{context}.\n",
+        encoding="utf-8",
+    )
+
+
+def _write_minimal_plan_draft(root: Path, *, context: str = "Existing draft") -> None:
+    artifact_dir = root / ".agent" / "artifacts"
+    artifact_dir.mkdir(parents=True, exist_ok=True)
+    (artifact_dir / ".plan_draft.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "started_at": "2026-01-01T00:00:00+00:00",
+                "updated_at": "2026-01-01T00:00:01+00:00",
+                "sections": {
+                    "summary": {
+                        "context": context,
+                        "scope_items": [
+                            {"text": "one"},
+                            {"text": "two"},
+                            {"text": "three"},
+                        ],
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
 @pytest.fixture(autouse=True)
 def _stub_workspace_scope_and_policy(monkeypatch: MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setattr(runner_module, "resolve_workspace_scope", lambda: WorkspaceScope(tmp_path))
@@ -1934,6 +1999,196 @@ class TestExecuteAgentEffect:
         assert result == PipelineEvent.AGENT_SUCCESS
         for stale_artifact in stale_artifacts:
             assert not stale_artifact.exists()
+
+    def test_execute_agent_effect_preserves_planning_artifacts_on_analysis_loopback(
+        self,
+        monkeypatch: MonkeyPatch,
+        tmp_path: Path,
+    ) -> None:
+        effect = InvokeAgentEffect(
+            agent_name="planner",
+            phase="planning",
+            prompt_file="PROMPT.md",
+            drain="planning",
+        )
+        _write_minimal_plan_artifacts(tmp_path, context="Loopback plan")
+        _write_minimal_plan_draft(tmp_path, context="Loopback draft")
+        (tmp_path / ".agent" / "artifacts" / "planning_analysis_decision.json").write_text(
+            json.dumps(
+                {
+                    "type": "planning_analysis_decision",
+                    "content": {
+                        "status": "request_changes",
+                        "summary": "Need revisions",
+                        "what_came_up_short": ["issue"],
+                        "how_to_fix": ["fix it"],
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+        prompt_file = tmp_path / "PROMPT.md"
+        prompt_file.write_text("Revise the plan", encoding="utf-8")
+
+        monkeypatch.setattr(
+            runner_module,
+            "start_mcp_server",
+            lambda *_args, **_kwargs: self._FakeBridge(),
+        )
+        monkeypatch.setattr(runner_module, "shutdown_mcp_server", lambda _bridge: None)
+        monkeypatch.setattr(
+            runner_module, "materialize_system_prompt", lambda **_kwargs: str(prompt_file)
+        )
+
+        result = runner_module._execute_agent_effect(
+            effect,
+            UnifiedConfig(),
+            runner_module._AgentExecutionDeps(
+                invoke_agent=lambda *_args, **_kwargs: iter(["line"]),
+                agent_invocation_error=self.AgentError,
+                agent_registry=_registry_factory(MagicMock()),
+            ),
+            WorkspaceScope(tmp_path),
+            display_context=make_display_context(),
+            state=PipelineState(phase="planning", previous_phase="planning_analysis"),
+            policy_bundle=_load_default_policy_bundle(),
+        )
+
+        assert result == PipelineEvent.AGENT_SUCCESS
+        assert (tmp_path / ".agent" / "artifacts" / "plan.json").exists()
+        assert (tmp_path / ".agent" / "artifacts" / ".plan_draft.json").exists()
+        assert (tmp_path / ".agent" / "PLAN.md").exists()
+
+    def test_execute_agent_effect_preserves_planning_artifacts_on_same_phase_retry(
+        self,
+        monkeypatch: MonkeyPatch,
+        tmp_path: Path,
+    ) -> None:
+        effect = InvokeAgentEffect(
+            agent_name="planner",
+            phase="planning",
+            prompt_file="PROMPT.md",
+            drain="planning",
+        )
+        _write_minimal_plan_artifacts(tmp_path, context="Retryable plan")
+        _write_minimal_plan_draft(tmp_path, context="Retryable draft")
+        prompt_file = tmp_path / "PROMPT.md"
+        prompt_file.write_text("Revise the plan", encoding="utf-8")
+        (tmp_path / ".agent" / "tmp").mkdir(parents=True, exist_ok=True)
+        (tmp_path / ".agent" / "tmp" / "last_retry_error_planning.txt").write_text(
+            "PREVIOUS ATTEMPT FAILED: validation error during planning retry",
+            encoding="utf-8",
+        )
+
+        monkeypatch.setattr(
+            runner_module,
+            "start_mcp_server",
+            lambda *_args, **_kwargs: self._FakeBridge(),
+        )
+        monkeypatch.setattr(runner_module, "shutdown_mcp_server", lambda _bridge: None)
+        monkeypatch.setattr(
+            runner_module, "materialize_system_prompt", lambda **_kwargs: str(prompt_file)
+        )
+
+        result = runner_module._execute_agent_effect(
+            effect,
+            UnifiedConfig(),
+            runner_module._AgentExecutionDeps(
+                invoke_agent=lambda *_args, **_kwargs: iter(["line"]),
+                agent_invocation_error=self.AgentError,
+                agent_registry=_registry_factory(MagicMock()),
+            ),
+            WorkspaceScope(tmp_path),
+            display_context=make_display_context(),
+            state=PipelineState(phase="planning", previous_phase="planning"),
+            policy_bundle=_load_default_policy_bundle(),
+        )
+
+        assert result == PipelineEvent.AGENT_SUCCESS
+        assert (tmp_path / ".agent" / "artifacts" / "plan.json").exists()
+        assert (tmp_path / ".agent" / "artifacts" / ".plan_draft.json").exists()
+        assert (tmp_path / ".agent" / "PLAN.md").exists()
+
+    def test_materialize_prepared_prompt_preserves_resumed_planning_context(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        bundle = _load_default_policy_bundle()
+        _write_minimal_plan_artifacts(tmp_path, context="Prepared resumed plan")
+        _write_minimal_plan_draft(tmp_path, context="Prepared resumed draft")
+        (tmp_path / "PROMPT.md").write_text(
+            "Resume the interrupted planning pass",
+            encoding="utf-8",
+        )
+        effect = PreparePromptEffect(
+            phase="planning",
+            drain="planning",
+            previous_phase=None,
+        )
+        state = PipelineState(
+            phase="planning",
+            previous_phase=None,
+            checkpoint_saved_count=1,
+        )
+
+        runner_module._materialize_prepared_prompt(
+            effect,
+            bundle.pipeline,
+            bundle.artifacts,
+            WorkspaceScope(tmp_path),
+            bundle.agents,
+            state,
+        )
+
+        rendered = (tmp_path / ".agent" / "tmp" / "planning_prompt.md").read_text(
+            encoding="utf-8"
+        )
+        assert "PLANNING EDIT MODE" in rendered
+        assert (tmp_path / ".agent" / "artifacts" / "plan.json").exists()
+        assert (tmp_path / ".agent" / "artifacts" / ".plan_draft.json").exists()
+        assert (tmp_path / ".agent" / "PLAN.md").exists()
+
+    def test_materialize_agent_prompt_if_needed_preserves_resumed_planning_context(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        bundle = _load_default_policy_bundle()
+        workspace = FsWorkspace(tmp_path)
+        _write_minimal_plan_artifacts(tmp_path, context="Resumed plan")
+        _write_minimal_plan_draft(tmp_path, context="Resumed draft")
+        (tmp_path / "PROMPT.md").write_text(
+            "Resume the interrupted planning pass",
+            encoding="utf-8",
+        )
+        effect = InvokeAgentEffect(
+            agent_name="planner",
+            phase="planning",
+            prompt_file=".agent/tmp/planning_prompt.md",
+            drain="planning",
+        )
+        state = PipelineState(
+            phase="planning",
+            previous_phase=None,
+            checkpoint_saved_count=1,
+        )
+        registry = MagicMock()
+        registry.get.return_value = None
+
+        runner_module._materialize_agent_prompt_if_needed(
+            effect,
+            state,
+            workspace,
+            bundle,
+            registry,
+        )
+
+        rendered = (tmp_path / ".agent" / "tmp" / "planning_prompt.md").read_text(
+            encoding="utf-8"
+        )
+        assert "PLANNING EDIT MODE" in rendered
+        assert (tmp_path / ".agent" / "artifacts" / "plan.json").exists()
+        assert (tmp_path / ".agent" / "artifacts" / ".plan_draft.json").exists()
+        assert (tmp_path / ".agent" / "PLAN.md").exists()
 
     def test_dynamic_ccs_agent_reaches_invocation(self, monkeypatch: MonkeyPatch) -> None:
         effect = InvokeAgentEffect(
