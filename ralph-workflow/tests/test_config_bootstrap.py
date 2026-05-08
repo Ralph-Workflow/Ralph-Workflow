@@ -362,3 +362,69 @@ def test_regenerate_all_bootstraps_a_valid_policy_bundle(tmp_path: Path) -> None
 
     assert bundle.pipeline.terminal_phase == "complete"
     assert bundle.pipeline.phases["development"].parallelization is not None
+
+
+
+def test_global_template_bootstraps_first_run_policy_without_local_override(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Fresh installs must start from the generated user-global config alone.
+
+    This covers the exact first-run path users hit after installation: Ralph creates
+    ~/.config/ralph-workflow.toml, no project-local .agent/ralph-workflow.toml exists yet,
+    and the runtime falls back to bundled pipeline/artifact defaults. If the generated
+    global template drops any active drain binding, startup fails before the user can even
+    run `ralph --init`, which is why this must stay protected by an integration-style test.
+    """
+    global_dir = tmp_path / "global"
+    global_dir.mkdir()
+    ensure_global_config(global_dir)
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(global_dir))
+
+    project_root = tmp_path / "project"
+    project_root.mkdir()
+
+    config = loader_module.load_config(workspace_scope=WorkspaceScope(project_root))
+    bundle = load_policy(project_root / ".agent", config=config)
+
+    required_drains = {
+        "planning",
+        "planning_analysis",
+        "development",
+        "development_analysis",
+        "development_commit",
+    }
+    assert required_drains.issubset(bundle.agents.agent_drains), (
+        "Fresh-install global config must bind every non-terminal drain used by the "
+        "bundled default pipeline so Ralph works out of the box before any local "
+        "override exists."
+    )
+
+
+
+def test_global_template_missing_active_drain_breaks_first_run_startup(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Protect the exact startup regression users see when global drain bindings drift.
+
+    The failure mode is severe: Ralph rejects startup during policy loading, before any
+    planning or development can begin. This test documents the contract by simulating the
+    broken fresh-install config and asserting the runtime surfaces the same unbound-drain
+    class of failure the user would see on day zero.
+    """
+    global_dir = tmp_path / "global"
+    global_dir.mkdir()
+    created = ensure_global_config(global_dir)
+    config_path = created.path
+    config_path.write_text(
+        config_path.read_text(encoding="utf-8").replace('development_commit = "commit"\n', ''),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(global_dir))
+
+    project_root = tmp_path / "project"
+    project_root.mkdir()
+
+    config = loader_module.load_config(workspace_scope=WorkspaceScope(project_root))
+    with pytest.raises(LoaderPolicyValidationError, match="unbound drains"):
+        load_policy(project_root / ".agent", config=config)
