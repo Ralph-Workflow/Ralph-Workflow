@@ -1863,6 +1863,7 @@ class TestHandleReadMedia:
             "Media session index must be written after resource_reference delivery"
         )
         data = json.loads(index_path.read_text(encoding="utf-8"))
+        assert data["schema_version"] == "2"
         assert data["phase"] == "development"
         artifacts = data["artifacts"]
         assert len(artifacts) == 1
@@ -1871,6 +1872,24 @@ class TestHandleReadMedia:
         assert artifacts[0]["title"] == "report.pdf"
         assert artifacts[0]["delivery"] == "resource_reference_replay"
         assert artifacts[0]["uri"].startswith("ralph://media/")
+        assert artifacts[0]["source_path"] == "report.pdf"
+        assert artifacts[0]["cache_path"].startswith(".agent/tmp/media/")
+        assert artifacts[0]["source_uri"] == ""
+        assert artifacts[0]["block_type"] == ""
+        # Verify durable cache was written
+        artifact_id = artifacts[0]["uri"].rsplit("/", 1)[-1]
+        cache_file = tmp_path / ".agent" / "tmp" / "media" / artifact_id
+        assert cache_file.exists(), "Durable cache file must be written alongside session index"
+        assert cache_file.read_bytes() == pdf_bytes
+        # Verify centralized registry entry
+        registry_path = tmp_path / ".agent" / "tmp" / "media_registry.json"
+        assert registry_path.exists(), "Centralized media registry must be written"
+        registry = json.loads(registry_path.read_text(encoding="utf-8"))
+        assert registry["schema_version"] == "2"
+        reg_artifacts = registry["artifacts"]
+        reg_entry = next(a for a in reg_artifacts if a["artifact_id"] == artifact_id)
+        assert reg_entry["source_path"] == "report.pdf"
+        assert reg_entry["cache_path"].startswith(".agent/tmp/media/")
 
     def test_resource_reference_accumulates_entries_in_session_index(self, tmp_path: Path) -> None:
         """Multiple read_media calls must append entries to the session index."""
@@ -2093,6 +2112,100 @@ class TestHandleReadMedia:
 
         assert result.is_error is True
         text = cast("ToolContent", result.content[0]).text
+        assert MultimodalFailureKind.MISSING_REPLAY_SOURCE in text
+
+    def test_cross_session_replay_from_persisted_cache(self, tmp_path: Path) -> None:
+        """A replay handle must work across sessions using the persisted registry."""
+        from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity  # noqa: PLC0415
+        from ralph.workspace.fs import FsWorkspace  # noqa: PLC0415
+
+        @dataclass
+        class SessionWithDrain:
+            allowed_capability: str | None = None
+            drain: str = "development"
+            session_id: str = "test-session"
+            media_manifest: MediaManifest = field(default_factory=MediaManifest)
+            model_identity: MultimodalModelIdentity = field(
+                default_factory=lambda: MultimodalModelIdentity(provider="claude")
+            )
+
+            def check_capability(self, capability: str) -> object:
+                return capability == self.allowed_capability
+
+            def check_edit_area(self, _: str) -> object:
+                return True
+
+        pdf_bytes = b"%PDF-1.4 fake pdf for cross-session"
+        media_file = tmp_path / "doc.pdf"
+        media_file.write_bytes(pdf_bytes)
+
+        # Session 1: read the file and persist to registry
+        session1 = SessionWithDrain(MEDIA_READ_CAPABILITY)
+        ws = FsWorkspace(tmp_path)
+        result1 = handle_read_media(session1, ws, {"path": "doc.pdf"})
+        assert result1.is_error is False
+        # The artifact URI from session 1
+        from ralph.mcp.multimodal.artifacts import PdfContent as PdfContentClass  # noqa: PLC0415
+        content1 = result1.content[0]
+        assert isinstance(content1, PdfContentClass)
+        artifact_uri = content1.uri
+
+        # Session 2: new empty manifest (simulates new session)
+        session2 = SessionWithDrain(MEDIA_READ_CAPABILITY)
+        assert session2.media_manifest.get(artifact_uri.rsplit("/", 1)[-1]) is None
+
+        # Replay from persisted registry
+        result2 = handle_read_media(session2, ws, {"path": artifact_uri})
+        assert result2.is_error is False
+        content2 = result2.content[0]
+        assert isinstance(content2, PdfContentClass)
+        assert content2.uri == artifact_uri
+
+    def test_cross_session_replay_fails_when_cache_deleted(self, tmp_path: Path) -> None:
+        """Replay returns missing_replay_source when cache bytes are gone."""
+        from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity  # noqa: PLC0415
+        from ralph.workspace.fs import FsWorkspace  # noqa: PLC0415
+
+        @dataclass
+        class SessionWithDrain:
+            allowed_capability: str | None = None
+            drain: str = "development"
+            session_id: str = "test-session"
+            media_manifest: MediaManifest = field(default_factory=MediaManifest)
+            model_identity: MultimodalModelIdentity = field(
+                default_factory=lambda: MultimodalModelIdentity(provider="claude")
+            )
+
+            def check_capability(self, capability: str) -> object:
+                return capability == self.allowed_capability
+
+            def check_edit_area(self, _: str) -> object:
+                return True
+
+        pdf_bytes = b"%PDF-1.4 fake pdf for cache-deleted test"
+        media_file = tmp_path / "gone.pdf"
+        media_file.write_bytes(pdf_bytes)
+
+        session1 = SessionWithDrain(MEDIA_READ_CAPABILITY)
+        ws = FsWorkspace(tmp_path)
+        result1 = handle_read_media(session1, ws, {"path": "gone.pdf"})
+        assert result1.is_error is False
+        from ralph.mcp.multimodal.artifacts import PdfContent as PdfContentClass2  # noqa: PLC0415
+        content1 = result1.content[0]
+        assert isinstance(content1, PdfContentClass2)
+        artifact_uri = content1.uri
+        artifact_id = artifact_uri.rsplit("/", 1)[-1]
+
+        # Delete both the durable cache and the source file
+        cache_file = tmp_path / ".agent" / "tmp" / "media" / artifact_id
+        cache_file.unlink()
+        media_file.unlink()
+
+        # Session 2: replay should fail with missing_replay_source
+        session2 = SessionWithDrain(MEDIA_READ_CAPABILITY)
+        result2 = handle_read_media(session2, ws, {"path": artifact_uri})
+        assert result2.is_error is True
+        text = cast("ToolContent", result2.content[0]).text
         assert MultimodalFailureKind.MISSING_REPLAY_SOURCE in text
 
     def test_typed_block_to_dict_shapes(self) -> None:

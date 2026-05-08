@@ -43,7 +43,11 @@ from ralph.mcp.tools.coordination import (
     ToolResult,
     require_capability,
 )
-from ralph.prompts.debug_dump import media_session_path
+from ralph.prompts.debug_dump import (
+    media_cache_artifact_path,
+    media_registry_path,
+    media_session_path,
+)
 from ralph.workspace.skip import RECURSIVE_SKIP_DIRECTORY_NAMES
 
 if TYPE_CHECKING:
@@ -1107,7 +1111,90 @@ def _get_session_model_identity(session: object) -> MultimodalModelIdentity:
     return UNKNOWN_IDENTITY
 
 
-_MEDIA_SESSION_SCHEMA_VERSION = "1"
+_MEDIA_SESSION_SCHEMA_VERSION = "2"
+
+
+def _write_durable_media_cache(
+    workspace: Workspace,
+    artifact_id: str,
+    raw_bytes: bytes,
+) -> str:
+    """Write raw bytes to the durable media cache and return the workspace-relative path."""
+    cache_path = media_cache_artifact_path(artifact_id)
+    try:
+        abs_path = Path(workspace.absolute_path(cache_path))
+        abs_path.parent.mkdir(parents=True, exist_ok=True)
+        abs_path.write_bytes(raw_bytes)
+    except Exception:
+        return ""
+    return cache_path
+
+
+def _persist_media_registry_entry(
+    workspace: Workspace,
+    entry: dict[str, str],
+) -> None:
+    """Write entry to the centralized media registry for cross-session lookup."""
+    path = media_registry_path()
+    artifact_id = entry["artifact_id"]
+    try:
+        artifacts: list[dict[str, str]] = []
+        try:
+            data: dict[str, object] = json.loads(workspace.read(path))
+            raw_artifacts = data.get("artifacts", [])
+            artifacts = (
+                list(raw_artifacts) if isinstance(raw_artifacts, list) else []
+            )
+        except Exception:
+            artifacts = []
+        artifacts = [a for a in artifacts if a.get("artifact_id") != artifact_id]
+        artifacts.append(entry)
+        payload: dict[str, object] = {
+            "schema_version": _MEDIA_SESSION_SCHEMA_VERSION,
+            "artifacts": artifacts,
+        }
+        workspace.write(path, json.dumps(payload, indent=2))
+    except Exception:
+        pass
+
+
+def _load_persisted_registry_entry(
+    workspace: Workspace,
+    artifact_id: str,
+) -> dict[str, str] | None:
+    """Look up a persisted media artifact entry from the centralized registry."""
+    path = media_registry_path()
+    try:
+        data: dict[str, object] = json.loads(workspace.read(path))
+        raw_artifacts = data.get("artifacts", [])
+        artifacts: list[dict[str, str]] = (
+            list(raw_artifacts) if isinstance(raw_artifacts, list) else []
+        )
+        for entry in artifacts:
+            if entry.get("artifact_id") == artifact_id:
+                return entry
+    except Exception:
+        pass
+    return None
+
+
+def _load_artifact_bytes(
+    workspace: Workspace,
+    cache_path: str,
+    source_path: str,
+) -> bytes | None:
+    """Load artifact bytes from cache_path (durable cache) or source_path (original file)."""
+    if cache_path:
+        try:
+            return Path(workspace.absolute_path(cache_path)).read_bytes()
+        except Exception:
+            pass
+    if source_path:
+        try:
+            return Path(workspace.absolute_path(source_path)).read_bytes()
+        except Exception:
+            pass
+    return None
 
 
 def _persist_media_session_entry(
@@ -1121,6 +1208,7 @@ def _persist_media_session_entry(
     media artifacts forward across sessions via the handoff sidecar.
 
     *meta* must contain: uri, mime_type, title, modality, reason.
+    v2 fields (source_path, cache_path, source_uri, block_type) are written when present.
     """
     drain: object = getattr(session, "drain", None)
     phase = str(drain) if drain else "standalone"
@@ -1135,6 +1223,10 @@ def _persist_media_session_entry(
         "modality": meta["modality"],
         "delivery": meta.get("delivery", "resource_reference_replay"),
         "reason": meta["reason"],
+        "source_path": meta.get("source_path", ""),
+        "cache_path": meta.get("cache_path", ""),
+        "source_uri": meta.get("source_uri", ""),
+        "block_type": meta.get("block_type", ""),
     }
     try:
         try:
@@ -1154,6 +1246,7 @@ def _persist_media_session_entry(
         workspace.write(path, json.dumps(payload, indent=2))
     except Exception:
         pass  # Session index persistence is best-effort; never block a tool call
+    _persist_media_registry_entry(workspace, new_entry)
 
 
 def _make_typed_block(
@@ -1202,32 +1295,11 @@ def _make_non_inline_workspace_block(
     return ref, DeliveryMode.RESOURCE_REFERENCE_REPLAY
 
 
-def _handle_replay_uri(
+def _replay_from_manifest_entry(
     session: CoordinationSessionLike,
-    path: str,
+    entry: ManifestEntry,
 ) -> ToolResult:
-    artifact_id = parse_media_uri(path)
-    if artifact_id is None:
-        return ToolResult(
-            content=[ToolContent.text_content(
-                f"{MultimodalFailureKind.INVALID_REPLAY_HANDLE}: "
-                f"'{path}' is not a valid ralph://media/{{artifact_id}} handle. "
-                f"Use the URI exactly as returned by a prior read_media call."
-            )],
-            is_error=True,
-        )
-    manifest = _get_media_manifest(session)
-    entry = manifest.get(artifact_id) if manifest is not None else None
-    if entry is None:
-        return ToolResult(
-            content=[ToolContent.text_content(
-                f"{MultimodalFailureKind.MISSING_REPLAY_SOURCE}: "
-                f"Artifact '{path}' is not available in the current session manifest. "
-                f"The artifact may be from a previous session or was never created. "
-                f"Replay is only available for artifacts created in the current live session."
-            )],
-            is_error=True,
-        )
+    """Return the appropriate typed block from a live manifest entry."""
     model_identity = _get_session_model_identity(session)
     verdict = get_delivery_mode(model_identity, entry.modality)
     if verdict.delivery == DeliveryMode.INLINE_IMAGE:
@@ -1262,6 +1334,98 @@ def _handle_replay_uri(
         delivery=verdict.delivery,
     )
     return ToolResult(content=[ref], is_error=False)
+
+
+def _replay_from_persisted_entry(
+    session: CoordinationSessionLike,
+    workspace: Workspace,
+    persisted: dict[str, str],
+    original_path: str,
+) -> ToolResult:
+    """Replay a media artifact from persisted v2 registry metadata."""
+    cache_path = persisted.get("cache_path", "")
+    source_path = persisted.get("source_path", "")
+    modality = persisted.get("modality", "")
+    mime_type = persisted.get("mime_type", "")
+    title = persisted.get("title", "")
+    block_type = persisted.get("block_type", "")
+    uri = persisted.get("uri", original_path)
+
+    raw_bytes = _load_artifact_bytes(workspace, cache_path, source_path)
+    if raw_bytes is None:
+        return ToolResult(
+            content=[ToolContent.text_content(
+                f"{MultimodalFailureKind.MISSING_REPLAY_SOURCE}: "
+                f"Artifact '{original_path}' was found in the registry but its "
+                f"cached bytes are no longer available "
+                f"(cache_path={cache_path!r}, source_path={source_path!r}). "
+                f"The original source may have been modified or removed."
+            )],
+            is_error=True,
+        )
+
+    model_identity = _get_session_model_identity(session)
+    verdict = get_delivery_mode(model_identity, modality)
+    if verdict.delivery == DeliveryMode.INLINE_IMAGE:
+        encoded = base64.b64encode(raw_bytes).decode("ascii")
+        return ToolResult(
+            content=[ImageContent(data=encoded, mime_type=mime_type)],
+            is_error=False,
+        )
+    if verdict.delivery == DeliveryMode.TYPED_BLOCK and block_type:
+        block = _make_typed_block(block_type, uri=uri, mime_type=mime_type, title=title)
+        if block is not None:
+            return ToolResult(content=[block], is_error=False)
+    if verdict.delivery == DeliveryMode.UNSUPPORTED:
+        return ToolResult(
+            content=[ToolContent.text_content(
+                f"Modality '{modality}' is not supported by provider "
+                f"'{verdict.provider}' (model: {verdict.model_id or 'unknown'}). "
+                f"Reason: {verdict.reason}"
+            )],
+            is_error=True,
+        )
+    ref = ResourceReferenceContent(
+        uri=uri,
+        mime_type=mime_type,
+        title=title,
+        modality=modality,
+        delivery=verdict.delivery,
+    )
+    return ToolResult(content=[ref], is_error=False)
+
+
+def _handle_replay_uri(
+    session: CoordinationSessionLike,
+    workspace: Workspace,
+    path: str,
+) -> ToolResult:
+    artifact_id = parse_media_uri(path)
+    if artifact_id is None:
+        return ToolResult(
+            content=[ToolContent.text_content(
+                f"{MultimodalFailureKind.INVALID_REPLAY_HANDLE}: "
+                f"'{path}' is not a valid ralph://media/{{artifact_id}} handle. "
+                f"Use the URI exactly as returned by a prior read_media call."
+            )],
+            is_error=True,
+        )
+    manifest = _get_media_manifest(session)
+    entry = manifest.get(artifact_id) if manifest is not None else None
+    if entry is not None:
+        return _replay_from_manifest_entry(session, entry)
+    persisted = _load_persisted_registry_entry(workspace, artifact_id)
+    if persisted is not None:
+        return _replay_from_persisted_entry(session, workspace, persisted, path)
+    return ToolResult(
+        content=[ToolContent.text_content(
+            f"{MultimodalFailureKind.MISSING_REPLAY_SOURCE}: "
+            f"Artifact '{path}' is not available in the current session manifest "
+            f"or the persisted registry. The artifact may be from an earlier session "
+            f"whose cache has been cleared, or it was never created."
+        )],
+        is_error=True,
+    )
 
 
 def _handle_workspace_media(
@@ -1329,6 +1493,9 @@ def _handle_workspace_media(
         )
     entry = manifest.add(title=title, mime_type=mime_type, modality=modality, raw_bytes=raw_bytes)
     block, delivery = _make_non_inline_workspace_block(verdict, entry, mime_type, modality, title)
+    artifact_id = entry.uri.rsplit("/", maxsplit=1)[-1]
+    source_path = normalized or path
+    cache_path = _write_durable_media_cache(workspace, artifact_id, raw_bytes)
     _persist_media_session_entry(
         session,
         workspace,
@@ -1339,6 +1506,10 @@ def _handle_workspace_media(
             "modality": modality,
             "delivery": delivery,
             "reason": verdict.reason,
+            "source_path": source_path,
+            "cache_path": cache_path,
+            "source_uri": "",
+            "block_type": verdict.block_type or "",
         },
     )
     return ToolResult(content=[block], is_error=False)
@@ -1368,7 +1539,7 @@ def handle_read_media(
     require_capability(session, MEDIA_READ_CAPABILITY, "Media read")
     path = required_string_param(params, "path")
     if path.startswith("ralph://media/"):
-        return _handle_replay_uri(session, path)
+        return _handle_replay_uri(session, workspace, path)
     return _handle_workspace_media(session, workspace, path, max_inline_bytes)
 
 

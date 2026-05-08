@@ -31,6 +31,22 @@ def media_session_path(phase: str) -> str:
     return f".agent/tmp/{normalized}_media_session.json"
 
 
+def media_registry_path() -> str:
+    """Path for the centralized media artifact registry.
+
+    Maps artifact_id to full v2 metadata for cross-session replay lookup.
+    """
+    return ".agent/tmp/media_registry.json"
+
+
+def media_cache_artifact_path(artifact_id: str) -> str:
+    """Path for the durable byte cache of a media artifact.
+
+    Bytes written here survive the session and enable cross-session replay.
+    """
+    return f".agent/tmp/media/{artifact_id}"
+
+
 def dump_rendered_prompt(workspace: Workspace, phase: str, prompt: str) -> str:
     """Write the rendered prompt to the debug dump path and return the path."""
     path = prompt_dump_path(phase)
