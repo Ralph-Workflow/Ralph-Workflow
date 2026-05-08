@@ -4349,6 +4349,30 @@ def test_multimodal_appendix_includes_all_artifacts_for_mixed_modality(
     assert "ralph://media/pdf456" in full_prompt
 
 
+def test_multimodal_appendix_uses_path_equals_replay_handle_wording(tmp_path: Path) -> None:
+    """The appendix must instruct agents to use path=<ralph://media/...> replay handles."""
+    prompt_file = tmp_path / "development_prompt.md"
+    prompt_file.write_text("Work on the task.", encoding="utf-8")
+    _write_sidecar(prompt_file, [_SAMPLE_IMAGE_ARTIFACT, _SAMPLE_PDF_ARTIFACT])
+
+    config = AgentConfig(
+        cmd="opencode",
+        output_flag="--json-stream",
+        json_parser=JsonParserType.OPENCODE,
+        transport=AgentTransport.OPENCODE,
+    )
+    cmd = _build_command(config, str(prompt_file), options=_BuildCommandOptions())
+    full_prompt = cmd[-1]
+
+    # New wording: path= not "URI:"
+    assert "path=ralph://media/abc123" in full_prompt
+    assert "path=ralph://media/pdf456" in full_prompt
+    assert "URI: ralph://media/" not in full_prompt
+    # The appendix must mention read_media and replay handle concept
+    assert "read_media" in full_prompt
+    assert "ralph://media/..." in full_prompt
+
+
 def test_sidecar_with_non_standard_prompt_name_is_ignored(tmp_path: Path) -> None:
     """Prompt file not ending in _prompt.md must not attempt sidecar lookup."""
     prompt_file = tmp_path / "PROMPT.md"

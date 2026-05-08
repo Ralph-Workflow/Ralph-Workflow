@@ -17,10 +17,11 @@ from ralph.mcp.multimodal.artifacts import SUPPORTED_MODALITIES
 class DeliveryMode(StrEnum):
     """How a multimodal artifact will be delivered to the model."""
 
-    INLINE = "inline"
-    RESOURCE_REFERENCE = "resource_reference"
+    INLINE_IMAGE = "inline_image"
+    TYPED_BLOCK = "typed_block"
+    RESOURCE_REFERENCE_REPLAY = "resource_reference_replay"
+    PRESERVED_ONLY = "preserved_only"
     UNSUPPORTED = "unsupported"
-    UNKNOWN = "unknown"
 
 
 @dataclass(frozen=True)
@@ -48,14 +49,19 @@ class CapabilityVerdict:
     provider: str
     model_id: str | None = None
     reason: str = ""
+    block_type: str | None = None
 
     def is_inline(self) -> bool:
-        """Return True if inline delivery is supported."""
-        return self.delivery == DeliveryMode.INLINE
+        """Return True if inline image delivery is used."""
+        return self.delivery == DeliveryMode.INLINE_IMAGE
 
     def is_resource_reference(self) -> bool:
-        """Return True if resource-reference delivery will be used."""
-        return self.delivery == DeliveryMode.RESOURCE_REFERENCE
+        """Return True if resource-reference replay delivery will be used."""
+        return self.delivery == DeliveryMode.RESOURCE_REFERENCE_REPLAY
+
+    def is_typed_block(self) -> bool:
+        """Return True if typed block delivery will be used."""
+        return self.delivery == DeliveryMode.TYPED_BLOCK
 
     def is_supported(self) -> bool:
         """Return True if the modality has any supported delivery mode."""
@@ -91,6 +97,15 @@ def _inline_image_reason(provider: str, model_id: str | None) -> str | None:
     if provider == "gemini" and _gemini_supports_inline_image(model_id):
         return "Gemini supports inline image delivery"
     return None
+
+
+# Typed-block support per provider and modality.
+# Maps (provider, modality) -> block_type string for TYPED_BLOCK delivery.
+_TYPED_BLOCK_SUPPORT: dict[str, dict[str, str]] = {
+    "claude": {"pdf": "pdf", "document": "document"},
+    "anthropic": {"pdf": "pdf", "document": "document"},
+    "gemini": {"pdf": "pdf", "document": "document", "audio": "audio", "video": "video"},
+}
 
 
 # ---------------------------------------------------------------------------
@@ -138,15 +153,16 @@ def get_delivery_mode(
 ) -> CapabilityVerdict:
     """Determine how to deliver a modality for the given model identity.
 
-    Returns a CapabilityVerdict indicating whether the modality should be
-    delivered inline, via resource_reference, or is unsupported.
+    Returns a CapabilityVerdict indicating the delivery mode:
 
-    Unknown providers default to resource_reference (safe, keeps multimodal
-    surface available without false inline-delivery promises).
+    - INLINE_IMAGE: provider accepts inline base64 image data.
+    - TYPED_BLOCK: provider accepts a named typed block (pdf, document, audio, video).
+    - RESOURCE_REFERENCE_REPLAY: unknown provider; multimodal surface stays visible
+      via resource reference replay handle.
+    - UNSUPPORTED: provider cannot accept this modality via Ralph's managed path.
 
-    For known providers, modalities that cannot be delivered through Ralph's
-    managed MCP path return UNSUPPORTED with an explicit reason rather than
-    silently routing to resource_reference.
+    Unknown providers default to RESOURCE_REFERENCE_REPLAY (safe, keeps multimodal
+    surface available without false typed-delivery promises).
     """
     if modality not in SUPPORTED_MODALITIES:
         return CapabilityVerdict(
@@ -160,18 +176,20 @@ def get_delivery_mode(
     if not identity.is_known():
         return CapabilityVerdict(
             modality=modality,
-            delivery=DeliveryMode.RESOURCE_REFERENCE,
+            delivery=DeliveryMode.RESOURCE_REFERENCE_REPLAY,
             provider=identity.provider,
             model_id=identity.model_id,
-            reason="unknown provider — defaulting to resource_reference delivery",
+            reason="unknown provider — defaulting to resource_reference_replay delivery",
         )
 
     provider_lower = identity.provider.lower()
 
     if modality == "image":
         inline_reason = _inline_image_reason(provider_lower, identity.model_id)
+        delivery = (
+            DeliveryMode.INLINE_IMAGE if inline_reason else DeliveryMode.RESOURCE_REFERENCE_REPLAY
+        )
         reason = inline_reason or "provider does not support inline image delivery"
-        delivery = DeliveryMode.INLINE if inline_reason else DeliveryMode.RESOURCE_REFERENCE
         return CapabilityVerdict(
             modality=modality,
             delivery=delivery,
@@ -195,14 +213,22 @@ def get_delivery_mode(
             reason=f"{base_reason} (modality: {modality})",
         )
 
-    # PDF, document, and any other supported modality not explicitly blocked
-    # are delivered as resource references so the agent can retrieve and relay.
+    # Typed-block or resource_reference_replay for remaining known-provider modalities.
+    typed_blocks = _TYPED_BLOCK_SUPPORT.get(provider_lower, {})
+    block_type: str | None = typed_blocks.get(modality)
+    delivery = DeliveryMode.TYPED_BLOCK if block_type else DeliveryMode.RESOURCE_REFERENCE_REPLAY
+    reason = (
+        f"'{modality}' delivered as typed block '{block_type}' for provider '{identity.provider}'"
+        if block_type
+        else f"'{modality}' as resource_reference_replay for provider '{identity.provider}'"
+    )
     return CapabilityVerdict(
         modality=modality,
-        delivery=DeliveryMode.RESOURCE_REFERENCE,
+        delivery=delivery,
         provider=identity.provider,
         model_id=identity.model_id,
-        reason=f"'{modality}' delivered as resource reference for provider '{identity.provider}'",
+        reason=reason,
+        block_type=block_type,
     )
 
 

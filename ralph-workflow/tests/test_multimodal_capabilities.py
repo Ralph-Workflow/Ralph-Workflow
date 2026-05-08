@@ -49,16 +49,18 @@ def test_explicit_unknown_provider_is_not_known() -> None:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("delivery,expected_inline,expected_rr,expected_supported", [
-    (DeliveryMode.INLINE, True, False, True),
-    (DeliveryMode.RESOURCE_REFERENCE, False, True, True),
-    (DeliveryMode.UNSUPPORTED, False, False, False),
-    (DeliveryMode.UNKNOWN, False, False, True),
+@pytest.mark.parametrize("delivery,expected_inline,expected_rr,expected_typed,expected_supported", [
+    (DeliveryMode.INLINE_IMAGE, True, False, False, True),
+    (DeliveryMode.RESOURCE_REFERENCE_REPLAY, False, True, False, True),
+    (DeliveryMode.UNSUPPORTED, False, False, False, False),
+    (DeliveryMode.TYPED_BLOCK, False, False, True, True),
+    (DeliveryMode.PRESERVED_ONLY, False, False, False, True),
 ])
 def test_capability_verdict_helpers(
     delivery: DeliveryMode,
     expected_inline: bool,
     expected_rr: bool,
+    expected_typed: bool,
     expected_supported: bool,
 ) -> None:
     verdict = CapabilityVerdict(
@@ -66,6 +68,7 @@ def test_capability_verdict_helpers(
     )
     assert verdict.is_inline() == expected_inline
     assert verdict.is_resource_reference() == expected_rr
+    assert verdict.is_typed_block() == expected_typed
     assert verdict.is_supported() == expected_supported
 
 
@@ -89,9 +92,9 @@ def test_unknown_modality_is_unsupported(provider: str) -> None:
 
 
 @pytest.mark.parametrize("modality", sorted(SUPPORTED_MODALITIES))
-def test_unknown_provider_defaults_to_resource_reference(modality: str) -> None:
+def test_unknown_provider_defaults_to_resource_reference_replay(modality: str) -> None:
     verdict = get_delivery_mode(UNKNOWN_IDENTITY, modality)
-    assert verdict.delivery == DeliveryMode.RESOURCE_REFERENCE
+    assert verdict.delivery == DeliveryMode.RESOURCE_REFERENCE_REPLAY
     assert verdict.is_supported()
     assert verdict.is_resource_reference()
     assert "unknown provider" in verdict.reason.lower()
@@ -106,7 +109,7 @@ def test_unknown_provider_defaults_to_resource_reference(modality: str) -> None:
 def test_claude_image_is_inline(model_id: str | None) -> None:
     identity = MultimodalModelIdentity(provider="claude", model_id=model_id)
     verdict = get_delivery_mode(identity, MODALITY_IMAGE)
-    assert verdict.delivery == DeliveryMode.INLINE
+    assert verdict.delivery == DeliveryMode.INLINE_IMAGE
     assert verdict.is_inline()
     assert verdict.is_supported()
 
@@ -114,13 +117,14 @@ def test_claude_image_is_inline(model_id: str | None) -> None:
 @pytest.mark.parametrize(
     "modality", [MODALITY_PDF, MODALITY_DOCUMENT]
 )
-def test_claude_pdf_and_document_are_resource_reference(modality: str) -> None:
-    """Claude supports PDF and document modalities via document blocks."""
+def test_claude_pdf_and_document_are_typed_block(modality: str) -> None:
+    """Claude supports PDF and document modalities via typed document blocks."""
     identity = MultimodalModelIdentity(provider="claude", model_id="claude-3-5-sonnet-20241022")
     verdict = get_delivery_mode(identity, modality)
-    assert verdict.delivery == DeliveryMode.RESOURCE_REFERENCE
-    assert verdict.is_resource_reference()
+    assert verdict.delivery == DeliveryMode.TYPED_BLOCK
+    assert verdict.is_typed_block()
     assert verdict.is_supported()
+    assert verdict.block_type == modality
 
 
 @pytest.mark.parametrize(
@@ -137,7 +141,7 @@ def test_claude_av_modalities_are_unsupported(modality: str) -> None:
 def test_claude_anthropic_alias_also_supports_inline_image() -> None:
     identity = MultimodalModelIdentity(provider="anthropic")
     verdict = get_delivery_mode(identity, MODALITY_IMAGE)
-    assert verdict.delivery == DeliveryMode.INLINE
+    assert verdict.delivery == DeliveryMode.INLINE_IMAGE
 
 
 # ---------------------------------------------------------------------------
@@ -159,14 +163,14 @@ def test_claude_anthropic_alias_also_supports_inline_image() -> None:
 def test_openai_vision_model_image_is_inline(provider: str, model_id: str | None) -> None:
     identity = MultimodalModelIdentity(provider=provider, model_id=model_id)
     verdict = get_delivery_mode(identity, MODALITY_IMAGE)
-    assert verdict.delivery == DeliveryMode.INLINE
+    assert verdict.delivery == DeliveryMode.INLINE_IMAGE
     assert verdict.is_inline()
 
 
-def test_openai_non_vision_model_image_is_resource_reference() -> None:
+def test_openai_non_vision_model_image_is_resource_reference_replay() -> None:
     identity = MultimodalModelIdentity(provider="openai", model_id="gpt-3.5-turbo")
     verdict = get_delivery_mode(identity, MODALITY_IMAGE)
-    assert verdict.delivery == DeliveryMode.RESOURCE_REFERENCE
+    assert verdict.delivery == DeliveryMode.RESOURCE_REFERENCE_REPLAY
     assert verdict.is_resource_reference()
 
 
@@ -214,18 +218,20 @@ def test_codex_pdf_and_document_are_unsupported(modality: str) -> None:
 def test_gemini_image_is_inline(model_id: str | None) -> None:
     identity = MultimodalModelIdentity(provider="gemini", model_id=model_id)
     verdict = get_delivery_mode(identity, MODALITY_IMAGE)
-    assert verdict.delivery == DeliveryMode.INLINE
+    assert verdict.delivery == DeliveryMode.INLINE_IMAGE
     assert verdict.is_inline()
 
 
 @pytest.mark.parametrize(
     "modality", [MODALITY_PDF, MODALITY_AUDIO, MODALITY_VIDEO, MODALITY_DOCUMENT]
 )
-def test_gemini_non_image_modalities_are_resource_reference(modality: str) -> None:
+def test_gemini_non_image_modalities_are_typed_block(modality: str) -> None:
     identity = MultimodalModelIdentity(provider="gemini")
     verdict = get_delivery_mode(identity, modality)
-    assert verdict.delivery == DeliveryMode.RESOURCE_REFERENCE
+    assert verdict.delivery == DeliveryMode.TYPED_BLOCK
+    assert verdict.is_typed_block()
     assert verdict.is_supported()
+    assert verdict.block_type == modality
 
 
 # ---------------------------------------------------------------------------
@@ -238,16 +244,16 @@ def test_claude_mixed_modality_verdicts_are_consistent() -> None:
     modalities = [MODALITY_IMAGE, MODALITY_PDF, MODALITY_AUDIO, MODALITY_VIDEO, MODALITY_DOCUMENT]
     verdicts = [get_delivery_mode(identity, m) for m in modalities]
     image_v, pdf_v, audio_v, video_v, doc_v = verdicts
-    # Image: inline; pdf/document: resource_reference; audio/video: unsupported
+    # Image: inline_image; pdf/document: typed_block; audio/video: unsupported
     assert image_v.is_inline()
-    assert pdf_v.is_resource_reference()
-    assert doc_v.is_resource_reference()
+    assert pdf_v.is_typed_block()
+    assert doc_v.is_typed_block()
     assert audio_v.delivery == DeliveryMode.UNSUPPORTED
     assert video_v.delivery == DeliveryMode.UNSUPPORTED
 
 
 def test_unknown_provider_all_modalities_all_supported() -> None:
-    """Unknown provider must expose all modalities as resource_reference, never block them."""
+    """Unknown provider: all modalities must be resource_reference_replay, never blocked."""
     for modality in SUPPORTED_MODALITIES:
         verdict = get_delivery_mode(UNKNOWN_IDENTITY, modality)
         assert verdict.is_supported(), f"modality {modality} blocked for unknown provider"
@@ -291,6 +297,8 @@ def test_multimodal_failure_kinds_are_importable() -> None:
     assert MultimodalFailureKind.FILE_READ_ERROR == "file_read_error"
     assert MultimodalFailureKind.NO_ACTIVE_MANIFEST == "no_active_manifest"
     assert MultimodalFailureKind.PROVIDER_REJECTED == "provider_rejected"
+    assert MultimodalFailureKind.INVALID_REPLAY_HANDLE == "invalid_replay_handle"
+    assert MultimodalFailureKind.MISSING_REPLAY_SOURCE == "missing_replay_source"
     f = MultimodalFailure(
         kind=MultimodalFailureKind.UNSUPPORTED_MODALITY,
         message="audio not supported",

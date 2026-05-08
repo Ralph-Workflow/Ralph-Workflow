@@ -75,6 +75,10 @@ class MultimodalSidecarEntry:
     modality: str
     delivery: str
     reason: str = ""
+    source_path: str = ""
+    cache_path: str = ""
+    source_uri: str = ""
+    block_type: str = ""
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -85,10 +89,14 @@ class MultimodalSidecarEntry:
             "modality": self.modality,
             "delivery": self.delivery,
             "reason": self.reason,
+            "source_path": self.source_path,
+            "cache_path": self.cache_path,
+            "source_uri": self.source_uri,
+            "block_type": self.block_type,
         }
 
 
-_SIDECAR_SCHEMA_VERSION = "1"
+_SIDECAR_SCHEMA_VERSION = "2"
 
 
 def _write_multimodal_sidecar(
@@ -145,8 +153,12 @@ def collect_media_entries_for_phase(
                     mime_type=str(item.get("mime_type", "")),
                     title=str(item.get("title", "")),
                     modality=str(item.get("modality", "")),
-                    delivery=str(item.get("delivery", "resource_reference")),
+                    delivery=str(item.get("delivery", "resource_reference_replay")),
                     reason=str(item.get("reason", "")),
+                    source_path=str(item.get("source_path", "")),
+                    cache_path=str(item.get("cache_path", "")),
+                    source_uri=str(item.get("source_uri", "")),
+                    block_type=str(item.get("block_type", "")),
                 ))
             except Exception:
                 continue

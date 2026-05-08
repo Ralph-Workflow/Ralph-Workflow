@@ -22,6 +22,8 @@ class MultimodalFailureKind(StrEnum):
     FILE_READ_ERROR = "file_read_error"
     NO_ACTIVE_MANIFEST = "no_active_manifest"
     PROVIDER_REJECTED = "provider_rejected"
+    INVALID_REPLAY_HANDLE = "invalid_replay_handle"
+    MISSING_REPLAY_SOURCE = "missing_replay_source"
 
 
 @dataclass(frozen=True)

@@ -18,7 +18,11 @@ from typing import TYPE_CHECKING, NamedTuple, cast
 from ralph.mcp.artifacts.policy_outcomes import is_policy_approved
 from ralph.mcp.multimodal.artifacts import (
     INLINE_IMAGE_MIME_TYPES,
+    AudioContent,
+    DocumentContent,
+    PdfContent,
     ResourceReferenceContent,
+    VideoContent,
     infer_modality_and_mime,
 )
 from ralph.mcp.multimodal.capabilities import (
@@ -27,7 +31,8 @@ from ralph.mcp.multimodal.capabilities import (
     MultimodalModelIdentity,
     get_delivery_mode,
 )
-from ralph.mcp.multimodal.resources import MediaManifest
+from ralph.mcp.multimodal.errors import MultimodalFailureKind
+from ralph.mcp.multimodal.resources import MediaManifest, parse_media_uri
 from ralph.mcp.tools.coordination import (
     CapabilityDeniedError,
     CoordinationSessionLike,
@@ -44,6 +49,9 @@ from ralph.workspace.skip import RECURSIVE_SKIP_DIRECTORY_NAMES
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+    from ralph.mcp.multimodal.capabilities import CapabilityVerdict
+    from ralph.mcp.multimodal.resources import ManifestEntry
+    from ralph.mcp.tools.coordination import ContentBlock
     from ralph.workspace import Workspace
 
 WORKSPACE_READ_CAPABILITY = "WorkspaceRead"
@@ -1125,7 +1133,7 @@ def _persist_media_session_entry(
         "mime_type": meta["mime_type"],
         "title": meta["title"],
         "modality": meta["modality"],
-        "delivery": "resource_reference",
+        "delivery": meta.get("delivery", "resource_reference_replay"),
         "reason": meta["reason"],
     }
     try:
@@ -1148,26 +1156,121 @@ def _persist_media_session_entry(
         pass  # Session index persistence is best-effort; never block a tool call
 
 
-def handle_read_media(
+def _make_typed_block(
+    block_type: str,
+    *,
+    uri: str,
+    mime_type: str,
+    title: str,
+) -> PdfContent | DocumentContent | AudioContent | VideoContent | None:
+    """Build the correct typed content block for a TYPED_BLOCK verdict."""
+    if block_type == "pdf":
+        return PdfContent(uri=uri, mime_type=mime_type, title=title)
+    if block_type == "document":
+        return DocumentContent(uri=uri, mime_type=mime_type, title=title)
+    if block_type == "audio":
+        return AudioContent(uri=uri, mime_type=mime_type, title=title)
+    if block_type == "video":
+        return VideoContent(uri=uri, mime_type=mime_type, title=title)
+    return None
+
+
+def _make_non_inline_workspace_block(
+    verdict: CapabilityVerdict,
+    entry: ManifestEntry,
+    mime_type: str,
+    modality: str,
+    title: str,
+) -> tuple[ContentBlock, DeliveryMode]:
+    """Return (content_block, delivery_mode) for non-inline workspace delivery."""
+    if verdict.delivery == DeliveryMode.TYPED_BLOCK and verdict.block_type:
+        block = _make_typed_block(
+            verdict.block_type,
+            uri=entry.uri,
+            mime_type=mime_type,
+            title=title,
+        )
+        if block is not None:
+            return block, DeliveryMode.TYPED_BLOCK
+    ref = ResourceReferenceContent(
+        uri=entry.uri,
+        mime_type=mime_type,
+        title=title,
+        modality=modality,
+        delivery=DeliveryMode.RESOURCE_REFERENCE_REPLAY,
+    )
+    return ref, DeliveryMode.RESOURCE_REFERENCE_REPLAY
+
+
+def _handle_replay_uri(
+    session: CoordinationSessionLike,
+    path: str,
+) -> ToolResult:
+    artifact_id = parse_media_uri(path)
+    if artifact_id is None:
+        return ToolResult(
+            content=[ToolContent.text_content(
+                f"{MultimodalFailureKind.INVALID_REPLAY_HANDLE}: "
+                f"'{path}' is not a valid ralph://media/{{artifact_id}} handle. "
+                f"Use the URI exactly as returned by a prior read_media call."
+            )],
+            is_error=True,
+        )
+    manifest = _get_media_manifest(session)
+    entry = manifest.get(artifact_id) if manifest is not None else None
+    if entry is None:
+        return ToolResult(
+            content=[ToolContent.text_content(
+                f"{MultimodalFailureKind.MISSING_REPLAY_SOURCE}: "
+                f"Artifact '{path}' is not available in the current session manifest. "
+                f"The artifact may be from a previous session or was never created. "
+                f"Replay is only available for artifacts created in the current live session."
+            )],
+            is_error=True,
+        )
+    model_identity = _get_session_model_identity(session)
+    verdict = get_delivery_mode(model_identity, entry.modality)
+    if verdict.delivery == DeliveryMode.INLINE_IMAGE:
+        encoded = base64.b64encode(entry.raw_bytes).decode("ascii")
+        return ToolResult(
+            content=[ImageContent(data=encoded, mime_type=entry.mime_type)],
+            is_error=False,
+        )
+    if verdict.delivery == DeliveryMode.TYPED_BLOCK and verdict.block_type:
+        block = _make_typed_block(
+            verdict.block_type,
+            uri=entry.uri,
+            mime_type=entry.mime_type,
+            title=entry.title,
+        )
+        if block is not None:
+            return ToolResult(content=[block], is_error=False)
+    if verdict.delivery == DeliveryMode.UNSUPPORTED:
+        return ToolResult(
+            content=[ToolContent.text_content(
+                f"Modality '{entry.modality}' is not supported by provider "
+                f"'{verdict.provider}' (model: {verdict.model_id or 'unknown'}). "
+                f"Reason: {verdict.reason}"
+            )],
+            is_error=True,
+        )
+    ref = ResourceReferenceContent(
+        uri=entry.uri,
+        mime_type=entry.mime_type,
+        title=entry.title,
+        modality=entry.modality,
+        delivery=verdict.delivery,
+    )
+    return ToolResult(content=[ref], is_error=False)
+
+
+def _handle_workspace_media(
     session: CoordinationSessionLike,
     workspace: Workspace,
-    params: dict[str, object],
-    *,
-    max_inline_bytes: int = 5_242_880,
+    path: str,
+    max_inline_bytes: int,
 ) -> ToolResult:
-    """Read a media file and return the appropriate content block.
-
-    Supports images, PDFs, audio, video, and visually meaningful documents.
-    Delivery mode (inline image vs resource_reference) is determined by the
-    session's model identity via the capability policy, not just file type/size.
-    For models that support inline delivery and small-enough images, returns an
-    ImageContent block. For all other media or unsupported delivery modes, returns
-    a ResourceReferenceContent block stored in the session manifest.
-    """
-    require_capability(session, MEDIA_READ_CAPABILITY, "Media read")
-    path = required_string_param(params, "path")
     normalized = _normalize_relative_path(path)
-
     suffix = PurePosixPath(normalized or path).suffix.lower()
     inferred = infer_modality_and_mime(suffix)
     if inferred is None:
@@ -1178,61 +1281,42 @@ def handle_read_media(
             ".docx", ".pptx", ".xlsx",
         })
         return ToolResult(
-            content=[
-                ToolContent.text_content(
-                    f"Unsupported media format '{suffix or '(none)'}'. "
-                    f"Supported: {', '.join(supported)}"
-                )
-            ],
+            content=[ToolContent.text_content(
+                f"Unsupported media format '{suffix or '(none)'}'. "
+                f"Supported: {', '.join(supported)}"
+            )],
             is_error=True,
         )
-
     modality, mime_type = inferred
-
-    # Consult the capability policy to determine model-aware delivery mode.
     model_identity = _get_session_model_identity(session)
     verdict = get_delivery_mode(model_identity, modality)
-
     if verdict.delivery == DeliveryMode.UNSUPPORTED:
         return ToolResult(
             content=[ToolContent.text_content(
                 f"Modality '{modality}' is not supported by provider '{verdict.provider}' "
                 f"(model: {verdict.model_id or 'unknown'}). "
-                f"Accepted forms: resource_reference or none. Reason: {verdict.reason}"
+                f"Accepted forms: typed_block or none. Reason: {verdict.reason}"
             )],
             is_error=True,
         )
-
     abs_path = workspace.absolute_path(normalized or path)
-
     try:
         raw_bytes = Path(abs_path).read_bytes()
     except OSError as exc:
         return ToolResult(
-            content=[ToolContent.text_content(
-                f"Failed to read media file '{path}': {exc}"
-            )],
+            content=[ToolContent.text_content(f"Failed to read media file '{path}': {exc}")],
             is_error=True,
         )
-
     file_size = len(raw_bytes)
     title = PurePosixPath(path).name
-
-    # Deliver inline when the capability policy allows and the file is within the size limit.
-    use_inline = (
-        verdict.delivery == DeliveryMode.INLINE
+    if (
+        verdict.delivery == DeliveryMode.INLINE_IMAGE
         and modality == "image"
         and mime_type in INLINE_IMAGE_MIME_TYPES
         and file_size <= max_inline_bytes
-    )
-    if use_inline:
+    ):
         encoded = base64.b64encode(raw_bytes).decode("ascii")
-        return ToolResult(
-            content=[ImageContent(data=encoded, mime_type=mime_type)],
-            is_error=False,
-        )
-
-    # Resource-reference delivery for all other media.
+        return ToolResult(content=[ImageContent(data=encoded, mime_type=mime_type)], is_error=False)
     manifest = _get_media_manifest(session)
     if manifest is None:
         return ToolResult(
@@ -1243,26 +1327,49 @@ def handle_read_media(
             )],
             is_error=True,
         )
-
-    entry = manifest.add(
-        title=title,
-        mime_type=mime_type,
-        modality=modality,
-        raw_bytes=raw_bytes,
-    )
-    ref = ResourceReferenceContent(
-        uri=entry.uri,
-        mime_type=mime_type,
-        title=title,
-        modality=modality,
-    )
+    entry = manifest.add(title=title, mime_type=mime_type, modality=modality, raw_bytes=raw_bytes)
+    block, delivery = _make_non_inline_workspace_block(verdict, entry, mime_type, modality, title)
     _persist_media_session_entry(
         session,
         workspace,
-        {"uri": entry.uri, "mime_type": mime_type, "title": title,
-         "modality": modality, "reason": verdict.reason},
+        {
+            "uri": entry.uri,
+            "mime_type": mime_type,
+            "title": title,
+            "modality": modality,
+            "delivery": delivery,
+            "reason": verdict.reason,
+        },
     )
-    return ToolResult(content=[ref], is_error=False)
+    return ToolResult(content=[block], is_error=False)
+
+
+def handle_read_media(
+    session: CoordinationSessionLike,
+    workspace: Workspace,
+    params: dict[str, object],
+    *,
+    max_inline_bytes: int = 5_242_880,
+) -> ToolResult:
+    """Read a media file or replay a stored artifact handle.
+
+    Accepts either:
+    - a workspace file path (e.g., ``screenshots/shot.png``)
+    - a ``ralph://media/{artifact_id}`` replay handle from a prior session
+
+    When given a replay handle, rehydrates the artifact from the live session
+    manifest and returns the same typed block that was originally emitted.
+    Invalid or unrecognised handles return an explicit structured failure.
+
+    For workspace paths, delivery mode is determined by the session's model
+    identity via the capability matrix: INLINE_IMAGE, TYPED_BLOCK,
+    RESOURCE_REFERENCE_REPLAY, or UNSUPPORTED.
+    """
+    require_capability(session, MEDIA_READ_CAPABILITY, "Media read")
+    path = required_string_param(params, "path")
+    if path.startswith("ralph://media/"):
+        return _handle_replay_uri(session, path)
+    return _handle_workspace_media(session, workspace, path, max_inline_bytes)
 
 
 def handle_read_image(

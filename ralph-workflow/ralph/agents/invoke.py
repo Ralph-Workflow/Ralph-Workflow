@@ -1532,17 +1532,29 @@ def _build_multimodal_appendix(artifacts: list[dict[str, object]]) -> str:
         "## Multimodal Artifacts",
         "",
         "The following artifacts are available via Ralph's MCP surface.",
-        "Retrieve each artifact using the read_media tool (or resources/read) with its URI:",
+        "Retrieve each artifact by calling the read_media tool"
+        " with path=<ralph://media/...> replay handle:",
         "",
     ]
     for entry in artifacts:
         modality = entry.get("modality", "unknown")
         title = entry.get("title", "untitled")
         uri = entry.get("uri", "")
-        delivery = entry.get("delivery", "resource_reference")
+        delivery = entry.get("delivery", "resource_reference_replay")
         lines.append(f"- [{modality}] {title}")
-        lines.append(f'  URI: {uri}')
+        lines.append(f'  path={uri}')
         lines.append(f'  Delivery: {delivery}')
+        if delivery in {"preserved_only", "resource_reference_replay"}:
+            lines.append(
+                "  Note: if the artifact is from a previous session it may not be"
+                " replayable; read_media will return an explicit"
+                " missing_replay_source failure in that case."
+            )
+        elif delivery == "unsupported":
+            lines.append(
+                "  Note: this modality is unsupported by the active provider;"
+                " read_media will return an explicit unsupported_modality failure."
+            )
         lines.append("")
     return "\n".join(lines)
 

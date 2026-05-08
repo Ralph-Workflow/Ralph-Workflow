@@ -19,6 +19,7 @@ from ralph.policy.models import (
 from ralph.prompts.debug_dump import multimodal_sidecar_path
 from ralph.prompts.materialize import (
     MultimodalSidecarEntry,
+    collect_media_entries_for_phase,
     materialize_prompt_for_phase,
     prompt_file_for_phase,
 )
@@ -1741,8 +1742,12 @@ def _make_sidecar_entry(  # noqa: PLR0913
     mime_type: str = "image/png",
     title: str = "screenshot.png",
     modality: str = "image",
-    delivery: str = "inline",
+    delivery: str = "inline_image",
     reason: str = "Claude supports inline image delivery",
+    source_path: str = "",
+    cache_path: str = "",
+    source_uri: str = "",
+    block_type: str = "",
 ) -> MultimodalSidecarEntry:
     return MultimodalSidecarEntry(
         artifact_id=artifact_id,
@@ -1752,6 +1757,10 @@ def _make_sidecar_entry(  # noqa: PLR0913
         modality=modality,
         delivery=delivery,
         reason=reason,
+        source_path=source_path,
+        cache_path=cache_path,
+        source_uri=source_uri,
+        block_type=block_type,
     )
 
 
@@ -1841,7 +1850,7 @@ def test_materialize_with_multimodal_entries_creates_sidecar(
     sidecar_path = multimodal_sidecar_path("development")
     assert workspace.exists(sidecar_path)
     data = json.loads(workspace.read(sidecar_path))
-    assert data["schema_version"] == "1"
+    assert data["schema_version"] == "2"
     assert data["phase"] == "development"
     assert len(data["artifacts"]) == 1
     art = data["artifacts"][0]
@@ -1850,8 +1859,12 @@ def test_materialize_with_multimodal_entries_creates_sidecar(
     assert art["mime_type"] == "image/png"
     assert art["title"] == "screenshot.png"
     assert art["modality"] == "image"
-    assert art["delivery"] == "inline"
+    assert art["delivery"] == "inline_image"
     assert art["reason"] == "Claude supports inline image delivery"
+    assert "source_path" in art
+    assert "cache_path" in art
+    assert "source_uri" in art
+    assert "block_type" in art
 
 
 def test_materialize_sidecar_contains_all_artifacts(
@@ -1875,7 +1888,7 @@ def test_materialize_sidecar_contains_all_artifacts(
             modality="pdf",
             title="doc.pdf",
             mime_type="application/pdf",
-            delivery="resource_reference",
+            delivery="resource_reference_replay",
         ),
     ]
     materialize_prompt_for_phase(
@@ -1931,3 +1944,73 @@ def test_stale_sidecar_is_cleared_on_text_only_run(
     )
 
     assert not workspace.exists(sidecar_path), "Stale sidecar must be removed on text-only run"
+
+
+def test_v1_sidecar_is_read_with_defaults_for_new_fields(
+    tmp_path: Path,
+) -> None:
+    """v1 sidecars (no source_path/cache_path/source_uri/block_type) must load without error."""
+    workspace = MemoryWorkspace(root=str(tmp_path))
+    v1_payload = json.dumps({
+        "schema_version": "1",
+        "phase": "development",
+        "artifacts": [
+            {
+                "artifact_id": "old-id",
+                "uri": "ralph://media/old-id",
+                "mime_type": "image/png",
+                "title": "old.png",
+                "modality": "image",
+                "delivery": "resource_reference",
+                "reason": "prior run",
+            }
+        ],
+    })
+    from ralph.prompts.debug_dump import media_session_path  # noqa: PLC0415
+    workspace.write(media_session_path("development"), v1_payload)
+
+    entries = collect_media_entries_for_phase(workspace, "development")
+    assert len(entries) == 1
+    entry = entries[0]
+    assert entry.artifact_id == "old-id"
+    assert entry.delivery == "resource_reference"
+    assert entry.source_path == ""
+    assert entry.cache_path == ""
+    assert entry.source_uri == ""
+    assert entry.block_type == ""
+
+
+def test_v2_sidecar_persists_all_new_fields(
+    tmp_path: Path,
+) -> None:
+    """v2 entries must round-trip all new metadata fields through sidecar."""
+    workspace = MemoryWorkspace(root=str(tmp_path))
+    v2_payload = json.dumps({
+        "schema_version": "2",
+        "phase": "development",
+        "artifacts": [
+            {
+                "artifact_id": "new-id",
+                "uri": "ralph://media/new-id",
+                "mime_type": "application/pdf",
+                "title": "doc.pdf",
+                "modality": "pdf",
+                "delivery": "typed_block",
+                "reason": "Claude typed PDF",
+                "source_path": "reports/doc.pdf",
+                "cache_path": ".agent/tmp/media/doc.pdf",
+                "source_uri": "",
+                "block_type": "pdf",
+            }
+        ],
+    })
+    from ralph.prompts.debug_dump import media_session_path  # noqa: PLC0415
+    workspace.write(media_session_path("development"), v2_payload)
+
+    entries = collect_media_entries_for_phase(workspace, "development")
+    assert len(entries) == 1
+    entry = entries[0]
+    assert entry.delivery == "typed_block"
+    assert entry.source_path == "reports/doc.pdf"
+    assert entry.cache_path == ".agent/tmp/media/doc.pdf"
+    assert entry.block_type == "pdf"

@@ -12,8 +12,15 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from ralph.mcp.multimodal.artifacts import ResourceReferenceContent
+from ralph.mcp.multimodal.artifacts import (
+    AudioContent,
+    DocumentContent,
+    PdfContent,
+    ResourceReferenceContent,
+    VideoContent,
+)
 from ralph.mcp.multimodal.capabilities import UNKNOWN_IDENTITY, MultimodalModelIdentity
+from ralph.mcp.multimodal.errors import MultimodalFailureKind
 from ralph.mcp.multimodal.resources import MediaManifest
 from ralph.mcp.tools.coordination import (
     CapabilityDeniedError,
@@ -1708,7 +1715,7 @@ class TestHandleReadMedia:
             assert content.modality == "pdf"
             assert content.mime_type == "application/pdf"
             assert content.title == "report.pdf"
-            assert content.delivery == "resource_reference"
+            assert content.delivery == "resource_reference_replay"
             assert content.uri.startswith("ralph://media/")
         finally:
             Path(temp_path).unlink()
@@ -1862,7 +1869,7 @@ class TestHandleReadMedia:
         assert artifacts[0]["modality"] == "pdf"
         assert artifacts[0]["mime_type"] == "application/pdf"
         assert artifacts[0]["title"] == "report.pdf"
-        assert artifacts[0]["delivery"] == "resource_reference"
+        assert artifacts[0]["delivery"] == "resource_reference_replay"
         assert artifacts[0]["uri"].startswith("ralph://media/")
 
     def test_resource_reference_accumulates_entries_in_session_index(self, tmp_path: Path) -> None:
@@ -1901,3 +1908,206 @@ class TestHandleReadMedia:
         titles = {a["title"] for a in artifacts}
         assert "a.pdf" in titles
         assert "b.pdf" in titles
+
+    # -------------------------------------------------------------------------
+    # Typed-block delivery tests (Claude provider)
+    # -------------------------------------------------------------------------
+
+    def test_claude_pdf_returns_typed_pdf_block(self) -> None:
+        from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity  # noqa: PLC0415
+
+        pdf_bytes = b"%PDF-1.4 fake pdf content"
+        with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as f:
+            f.write(pdf_bytes)
+            temp_path = f.name
+
+        try:
+            ws = MagicMock()
+            ws.absolute_path.return_value = temp_path
+            session = MockSessionWithManifest(
+                MEDIA_READ_CAPABILITY,
+                model_identity=MultimodalModelIdentity(
+                    provider="claude", model_id="claude-3-5-sonnet-20241022"
+                ),
+            )
+            result = handle_read_media(session, ws, {"path": "report.pdf"})
+
+            assert result.is_error is False
+            content = result.content[0]
+            assert isinstance(content, PdfContent)
+            assert content.type == "pdf"
+            assert content.delivery == "typed_block"
+            assert content.uri.startswith("ralph://media/")
+            assert content.mime_type == "application/pdf"
+            assert content.title == "report.pdf"
+        finally:
+            Path(temp_path).unlink()
+
+    def test_gemini_audio_returns_typed_audio_block(self) -> None:
+        from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity  # noqa: PLC0415
+
+        mp3_bytes = b"ID3" + b"\x00" * 50
+        with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
+            f.write(mp3_bytes)
+            temp_path = f.name
+
+        try:
+            ws = MagicMock()
+            ws.absolute_path.return_value = temp_path
+            session = MockSessionWithManifest(
+                MEDIA_READ_CAPABILITY,
+                model_identity=MultimodalModelIdentity(provider="gemini"),
+            )
+            result = handle_read_media(session, ws, {"path": "clip.mp3"})
+
+            assert result.is_error is False
+            content = result.content[0]
+            assert isinstance(content, AudioContent)
+            assert content.type == "audio"
+            assert content.delivery == "typed_block"
+        finally:
+            Path(temp_path).unlink()
+
+    def test_gemini_video_returns_typed_video_block(self) -> None:
+        from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity  # noqa: PLC0415
+
+        mp4_bytes = b"\x00" * 100
+        with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as f:
+            f.write(mp4_bytes)
+            temp_path = f.name
+
+        try:
+            ws = MagicMock()
+            ws.absolute_path.return_value = temp_path
+            session = MockSessionWithManifest(
+                MEDIA_READ_CAPABILITY,
+                model_identity=MultimodalModelIdentity(provider="gemini"),
+            )
+            result = handle_read_media(session, ws, {"path": "video.mp4"})
+
+            assert result.is_error is False
+            content = result.content[0]
+            assert isinstance(content, VideoContent)
+            assert content.type == "video"
+            assert content.delivery == "typed_block"
+        finally:
+            Path(temp_path).unlink()
+
+    def test_claude_document_returns_typed_document_block(self) -> None:
+        from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity  # noqa: PLC0415
+
+        docx_bytes = b"PK\x03\x04" + b"\x00" * 50  # Fake DOCX (zip magic)
+        with tempfile.NamedTemporaryFile(suffix=".docx", delete=False) as f:
+            f.write(docx_bytes)
+            temp_path = f.name
+
+        try:
+            ws = MagicMock()
+            ws.absolute_path.return_value = temp_path
+            session = MockSessionWithManifest(
+                MEDIA_READ_CAPABILITY,
+                model_identity=MultimodalModelIdentity(provider="claude"),
+            )
+            result = handle_read_media(session, ws, {"path": "doc.docx"})
+
+            assert result.is_error is False
+            content = result.content[0]
+            assert isinstance(content, DocumentContent)
+            assert content.type == "document"
+            assert content.delivery == "typed_block"
+        finally:
+            Path(temp_path).unlink()
+
+    # -------------------------------------------------------------------------
+    # Replay handle tests (ralph://media/{artifact_id})
+    # -------------------------------------------------------------------------
+
+    def test_replay_handle_precedence_before_filesystem_lookup(self) -> None:
+        """A ralph://media/... handle must be resolved from manifest before any filesystem check."""
+        from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity  # noqa: PLC0415
+
+        png_bytes = b"\x89PNG" + b"\x00" * 20
+        session = MockSessionWithManifest(
+            MEDIA_READ_CAPABILITY,
+            model_identity=MultimodalModelIdentity(provider="claude"),
+        )
+        entry = session.media_manifest.add(
+            title="capture.png",
+            mime_type="image/png",
+            modality="image",
+            raw_bytes=png_bytes,
+        )
+
+        ws = MagicMock()
+        result = handle_read_media(session, ws, {"path": entry.uri})
+
+        # Should succeed from manifest without touching the filesystem
+        assert result.is_error is False
+        ws.absolute_path.assert_not_called()
+        content = result.content[0]
+        assert isinstance(content, ImageContent)
+
+    def test_replay_handle_returns_typed_pdf_block_from_manifest(self) -> None:
+        from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity  # noqa: PLC0415
+
+        pdf_bytes = b"%PDF-1.4 fake"
+        session = MockSessionWithManifest(
+            MEDIA_READ_CAPABILITY,
+            model_identity=MultimodalModelIdentity(provider="claude"),
+        )
+        entry = session.media_manifest.add(
+            title="report.pdf",
+            mime_type="application/pdf",
+            modality="pdf",
+            raw_bytes=pdf_bytes,
+        )
+
+        ws = MagicMock()
+        result = handle_read_media(session, ws, {"path": entry.uri})
+
+        assert result.is_error is False
+        content = result.content[0]
+        assert isinstance(content, PdfContent)
+        assert content.uri == entry.uri
+
+    def test_replay_invalid_handle_returns_invalid_replay_handle_error(self) -> None:
+        session = MockSessionWithManifest(MEDIA_READ_CAPABILITY)
+        ws = MagicMock()
+
+        result = handle_read_media(session, ws, {"path": "ralph://media/not-a-valid-uuid"})
+
+        assert result.is_error is True
+        text = cast("ToolContent", result.content[0]).text
+        assert MultimodalFailureKind.INVALID_REPLAY_HANDLE in text
+
+    def test_replay_unknown_artifact_id_returns_missing_replay_source_error(self) -> None:
+        import uuid  # noqa: PLC0415
+
+        from ralph.mcp.multimodal.resources import build_media_uri  # noqa: PLC0415
+
+        unknown_uri = build_media_uri(str(uuid.uuid4()))
+        session = MockSessionWithManifest(MEDIA_READ_CAPABILITY)
+        ws = MagicMock()
+
+        result = handle_read_media(session, ws, {"path": unknown_uri})
+
+        assert result.is_error is True
+        text = cast("ToolContent", result.content[0]).text
+        assert MultimodalFailureKind.MISSING_REPLAY_SOURCE in text
+
+    def test_typed_block_to_dict_shapes(self) -> None:
+        pdf = PdfContent(uri="ralph://media/x", mime_type="application/pdf", title="r.pdf")
+        doc = DocumentContent(
+            uri="ralph://media/y",
+            mime_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            title="d.docx",
+        )
+        audio = AudioContent(uri="ralph://media/a", mime_type="audio/mpeg", title="c.mp3")
+        video = VideoContent(uri="ralph://media/v", mime_type="video/mp4", title="v.mp4")
+
+        assert pdf.to_dict()["type"] == "pdf"
+        assert pdf.to_dict()["mimeType"] == "application/pdf"
+        assert pdf.to_dict()["delivery"] == "typed_block"
+        assert doc.to_dict()["type"] == "document"
+        assert audio.to_dict()["type"] == "audio"
+        assert video.to_dict()["type"] == "video"
