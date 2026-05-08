@@ -4396,3 +4396,52 @@ def test_sidecar_with_non_standard_prompt_name_is_ignored(tmp_path: Path) -> Non
 
     assert cmd[-1] == prompt_text
     assert "Multimodal Artifacts" not in cmd[-1]
+
+
+_SAMPLE_AUDIO_ARTIFACT: dict[str, object] = {
+    "artifact_id": "aud789",
+    "uri": "ralph://media/aud789",
+    "mime_type": "audio/mpeg",
+    "title": "meeting.mp3",
+    "modality": "audio",
+    "delivery": "resource_reference_replay",
+    "reason": "unknown provider — defaulting to resource_reference_replay delivery",
+}
+
+
+def test_multimodal_appendix_includes_replay_guidance_for_non_image_media(
+    tmp_path: Path,
+) -> None:
+    """Appendix for non-image media must include replay-handle guidance with path= wording.
+
+    When the sidecar contains audio or video artifacts, the generated appendix
+    must instruct the agent to use path=<ralph://media/...> replay handles via
+    read_media, not just list the URI as opaque data.
+    """
+    prompt_file = tmp_path / "development_prompt.md"
+    prompt_file.write_text("Analyze the meeting recording.", encoding="utf-8")
+    _write_sidecar(prompt_file, [_SAMPLE_AUDIO_ARTIFACT])
+
+    config = AgentConfig(
+        cmd="opencode",
+        output_flag="--json-stream",
+        json_parser=JsonParserType.OPENCODE,
+        transport=AgentTransport.OPENCODE,
+    )
+
+    cmd = _build_command(config, str(prompt_file), options=_BuildCommandOptions())
+    full_prompt = cmd[-1]
+
+    # Appendix must include the audio artifact with replay handle wording
+    assert "path=ralph://media/aud789" in full_prompt, (
+        f"Expected 'path=ralph://media/aud789' in prompt, not found.\n"
+        f"Full prompt:\n{full_prompt}"
+    )
+    # The appendix must mention read_media for replay guidance
+    assert "read_media" in full_prompt, (
+        "Expected 'read_media' in appendix to guide agents toward replay handles"
+    )
+    # The audio title should appear in the appendix
+    assert "meeting.mp3" in full_prompt, (
+        "Expected audio title 'meeting.mp3' in appendix"
+    )

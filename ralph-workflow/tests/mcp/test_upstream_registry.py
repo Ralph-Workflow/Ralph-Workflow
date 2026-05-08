@@ -749,3 +749,196 @@ class TestUpstreamMultimodalBoundary:
         error_message = str(exc_info.value)
         assert "no active session" in error_message
         assert "Embedded media requires" in error_message
+
+
+# ---------------------------------------------------------------------------
+# Named acceptance tests: session manifest storage (Step 3)
+# ---------------------------------------------------------------------------
+
+
+def _make_single_response_client(
+    server: UpstreamMcpServer,
+    tool_name: str,
+    tool_description: str,
+    content_block: dict[str, object],
+) -> HttpUpstreamClient:
+    """Create a fake HTTP client returning a single-block tool response."""
+    responses: list[dict[str, object]] = [
+        {"tools": [{"name": tool_name, "description": tool_description, "inputSchema": {}}]},
+        {"content": [content_block]},
+    ]
+    responses_copy = list(responses)
+    index = {"value": 0}
+
+    def caller(method: str, params: dict[str, object]) -> dict[str, object]:
+        idx = index["value"]
+        index["value"] += 1
+        if idx < len(responses_copy):
+            return responses_copy[idx]
+        return {}
+
+    return HttpUpstreamClient(server, caller=caller)  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+
+
+def test_upstream_embedded_audio_is_stored_in_session_manifest() -> None:
+    """After normalizing an upstream audio block, the session manifest must hold the entry.
+
+    The resource_reference URI in the returned block must correspond to an artifact
+    stored in the session manifest with correct modality and mime_type metadata.
+    """
+    server = UpstreamMcpServer(name="audio_srv", transport="http", url="http://unused")
+    client = _make_single_response_client(
+        server,
+        tool_name="get_clip",
+        tool_description="Audio clip",
+        content_block={"type": "audio", "data": "SGVsbG8gV29ybGQ=", "mimeType": "audio/mpeg"},
+    )
+
+    registry = UpstreamRegistry.build(
+        [server],
+        client_factory=lambda _srv: client,  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+    )
+
+    class _FakeSession:
+        media_manifest = MediaManifest()
+
+    session = _FakeSession()
+    result = registry.call_tool("ralph_upstream__audio_srv__get_clip", {}, session=session)
+
+    content = result.get("content", [])
+    assert len(content) == 1
+    block = content[0]
+    assert block.get("type") == "resource_reference"
+    uri = str(block.get("uri", ""))
+    assert uri.startswith("ralph://media/")
+
+    # Verify the manifest has the entry
+    artifact_id = parse_media_uri(uri)
+    assert artifact_id is not None, f"Expected valid ralph://media/ URI, got: {uri!r}"
+    entry = session.media_manifest.get(artifact_id)
+    assert entry is not None, (
+        f"Session manifest must store the audio artifact; URI={uri!r}"
+    )
+    assert entry.modality == "audio", (
+        f"Manifest entry modality must be 'audio', got: {entry.modality!r}"
+    )
+    assert entry.mime_type == "audio/mpeg", (
+        f"Manifest MIME must be 'audio/mpeg', got: {entry.mime_type!r}"
+    )
+    assert entry.raw_bytes, "Manifest entry must carry the decoded bytes"
+
+
+def test_upstream_embedded_video_is_stored_in_session_manifest() -> None:
+    """After normalizing an upstream video block, the session manifest must hold the entry."""
+    server = UpstreamMcpServer(name="video_srv", transport="http", url="http://unused")
+    client = _make_single_response_client(
+        server,
+        tool_name="get_video",
+        tool_description="Video clip",
+        content_block={"type": "video", "data": "SGVsbG8gV29ybGQ=", "mimeType": "video/mp4"},
+    )
+
+    registry = UpstreamRegistry.build(
+        [server],
+        client_factory=lambda _srv: client,  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+    )
+
+    class _FakeSession:
+        media_manifest = MediaManifest()
+
+    session = _FakeSession()
+    result = registry.call_tool("ralph_upstream__video_srv__get_video", {}, session=session)
+
+    content = result.get("content", [])
+    assert len(content) == 1
+    block = content[0]
+    assert block.get("type") == "resource_reference"
+    uri = str(block.get("uri", ""))
+    assert uri.startswith("ralph://media/")
+
+    artifact_id = parse_media_uri(uri)
+    assert artifact_id is not None
+    entry = session.media_manifest.get(artifact_id)
+    assert entry is not None, (
+        f"Session manifest must store the video artifact; URI={uri!r}"
+    )
+    assert entry.modality == "video", (
+        f"Manifest entry modality must be 'video', got: {entry.modality!r}"
+    )
+    assert entry.mime_type == "video/mp4", (
+        f"Manifest MIME must be 'video/mp4', got: {entry.mime_type!r}"
+    )
+
+
+def test_upstream_mixed_modalities_preserve_order_and_modality_metadata() -> None:
+    """Mixed text+image+audio response must preserve block order and modality metadata.
+
+    The normalized output must maintain the same positional order as the upstream
+    response and each resource_reference block must carry correct modality and URI.
+    """
+    server = UpstreamMcpServer(name="mix_srv", transport="http", url="http://unused")
+    responses: list[dict[str, object]] = [
+        {"tools": [{"name": "multi", "description": "Multi-modal tool", "inputSchema": {}}]},
+        {
+            "content": [
+                {"type": "text", "text": "caption text"},
+                {"type": "image", "data": "aW1hZ2U=", "mimeType": "image/png"},
+                {"type": "audio", "data": "YXVkaW8=", "mimeType": "audio/mpeg"},
+            ]
+        },
+    ]
+    responses_copy = list(responses)
+    index = {"value": 0}
+
+    def caller(method: str, params: dict[str, object]) -> dict[str, object]:
+        idx = index["value"]
+        index["value"] += 1
+        return responses_copy[idx] if idx < len(responses_copy) else {}
+
+    client = HttpUpstreamClient(server, caller=caller)  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+
+    class _FakeSession:
+        media_manifest = MediaManifest()
+
+    session = _FakeSession()
+    registry = UpstreamRegistry.build(
+        [server],
+        client_factory=lambda _srv: client,  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+    )
+
+    result = registry.call_tool("ralph_upstream__mix_srv__multi", {}, session=session)
+
+    content = result.get("content", [])
+    assert len(content) == 3, f"Expected 3 blocks (order preserved), got: {len(content)}"  # noqa: PLR2004
+
+    # Order: text, resource_reference(image), resource_reference(audio)
+    assert content[0].get("type") == "text", (
+        f"Block 0 must be text, got: {content[0].get('type')!r}"
+    )
+    assert content[1].get("type") == "resource_reference", (
+        f"Block 1 must be resource_reference, got: {content[1]}"
+    )
+    assert content[2].get("type") == "resource_reference", (
+        f"Block 2 must be resource_reference, got: {content[2]}"
+    )
+
+    # Modality metadata must be correct for each block
+    assert content[1].get("modality") == "image", (
+        f"Block 1 modality must be 'image', got: {content[1].get('modality')!r}"
+    )
+    assert content[2].get("modality") == "audio", (
+        f"Block 2 modality must be 'audio', got: {content[2].get('modality')!r}"
+    )
+    assert str(content[1].get("uri", "")).startswith("ralph://media/")
+    assert str(content[2].get("uri", "")).startswith("ralph://media/")
+
+    # Both resource_references must be in the manifest with correct metadata
+    for block in content[1:]:
+        uri = str(block.get("uri", ""))
+        artifact_id = parse_media_uri(uri)
+        assert artifact_id is not None, f"Block URI must be a valid ralph://media/ URI: {uri!r}"
+        entry = session.media_manifest.get(artifact_id)
+        assert entry is not None, f"Manifest must store artifact for URI={uri!r}"
+        assert entry.modality == block.get("modality"), (
+            f"Manifest modality must match block modality for URI={uri!r}"
+        )

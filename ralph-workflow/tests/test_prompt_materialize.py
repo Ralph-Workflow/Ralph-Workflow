@@ -2014,3 +2014,88 @@ def test_v2_sidecar_persists_all_new_fields(
     assert entry.source_path == "reports/doc.pdf"
     assert entry.cache_path == ".agent/tmp/media/doc.pdf"
     assert entry.block_type == "pdf"
+
+
+def test_materialize_sidecar_preserves_delivery_reason_and_block_type_for_mixed_modalities(
+) -> None:
+    """Sidecar round-trip must preserve delivery, reason, and block_type for all modality classes.
+
+    The managed-runtime path carries these fields from the MCP session index through
+    the sidecar so prompt-materialization and invoke-time appendix code can use them
+    without re-deriving capability information.
+    """
+    from ralph.prompts.debug_dump import media_session_path  # noqa: PLC0415
+
+    workspace = MemoryWorkspace()
+    payload = json.dumps({
+        "schema_version": "2",
+        "phase": "development",
+        "artifacts": [
+            {
+                "artifact_id": "img-rr",
+                "uri": "ralph://media/img-rr",
+                "mime_type": "image/png",
+                "title": "capture.png",
+                "modality": "image",
+                "delivery": "resource_reference_replay",
+                "reason": "unknown provider — defaulting to resource_reference_replay delivery",
+                "source_path": "",
+                "cache_path": "",
+                "source_uri": "",
+                "block_type": "",
+            },
+            {
+                "artifact_id": "pdf-tb",
+                "uri": "ralph://media/pdf-tb",
+                "mime_type": "application/pdf",
+                "title": "spec.pdf",
+                "modality": "pdf",
+                "delivery": "typed_block",
+                "reason": "'pdf' delivered as typed block 'pdf' for provider 'claude'",
+                "source_path": "docs/spec.pdf",
+                "cache_path": ".agent/tmp/media/spec.pdf",
+                "source_uri": "",
+                "block_type": "pdf",
+            },
+            {
+                "artifact_id": "aud-rr",
+                "uri": "ralph://media/aud-rr",
+                "mime_type": "audio/mpeg",
+                "title": "meeting.mp3",
+                "modality": "audio",
+                "delivery": "resource_reference_replay",
+                "reason": "unknown provider — defaulting to resource_reference_replay delivery",
+                "source_path": "audio/meeting.mp3",
+                "cache_path": "",
+                "source_uri": "",
+                "block_type": "",
+            },
+        ],
+    })
+    workspace.write(media_session_path("development"), payload)
+
+    entries = collect_media_entries_for_phase(workspace, "development")
+
+    assert len(entries) == 3, f"Expected 3 entries, got {len(entries)}"  # noqa: PLR2004
+
+    by_modality = {e.modality: e for e in entries}
+
+    # Image: resource_reference_replay delivery + empty block_type
+    img = by_modality["image"]
+    assert img.delivery == "resource_reference_replay"
+    assert img.reason != "", "reason must not be empty for image entry"
+    assert img.block_type == ""
+
+    # PDF: typed_block delivery + non-empty block_type + source_path preserved
+    pdf = by_modality["pdf"]
+    assert pdf.delivery == "typed_block"
+    assert pdf.block_type == "pdf"
+    assert pdf.reason != "", "reason must not be empty for PDF typed_block"
+    assert pdf.source_path == "docs/spec.pdf"
+    assert pdf.cache_path == ".agent/tmp/media/spec.pdf"
+
+    # Audio: resource_reference_replay delivery preserved
+    aud = by_modality["audio"]
+    assert aud.delivery == "resource_reference_replay"
+    assert aud.modality == "audio"
+    assert aud.block_type == ""

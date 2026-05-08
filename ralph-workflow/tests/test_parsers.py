@@ -1135,3 +1135,121 @@ def test_claude_parser_tool_result_with_mixed_text_and_image_preserves_text() ->
     combined = " ".join(r.content for r in tool_results)
     assert "Analysis complete." in combined
     assert "[image:" in combined
+
+
+# ---------------------------------------------------------------------------
+# Named acceptance tests: parser resource_reference placeholder handling (Step 4)
+# ---------------------------------------------------------------------------
+
+
+def test_claude_parser_tool_result_with_audio_resource_reference_emits_placeholder() -> None:
+    """Claude parser emits explicit [audio: URI] placeholder for audio resource_reference blocks.
+
+    The placeholder must name the modality and URI so unattended workflows can
+    diagnose modality loss without pretending the audio content was delivered.
+    """
+    import json as _json  # noqa: PLC0415
+
+    parser = ClaudeParser()
+    line = _json.dumps({
+        "type": "assistant",
+        "message": {
+            "content": [
+                {
+                    "type": "tool_result",
+                    "tool_use_id": "toolu_audio",
+                    "content": [
+                        {
+                            "type": "resource_reference",
+                            "uri": "ralph://media/audio-abc",
+                            "modality": "audio",
+                            "mimeType": "audio/mpeg",
+                        },
+                    ],
+                },
+            ],
+        },
+    })
+    results = list(parser.parse(iter([line])))
+    assert any(r.type == "tool_result" for r in results), (
+        f"Expected tool_result, got: {[r.type for r in results]}"
+    )
+    assert not any(r.type == "error" for r in results), (
+        f"Got unexpected error: {[r for r in results if r.type == 'error']}"
+    )
+    tool_results = [r for r in results if r.type == "tool_result"]
+    assert any("[audio: ralph://media/audio-abc]" in r.content for r in tool_results), (
+        f"Expected '[audio: ralph://media/audio-abc]' placeholder, "
+        f"got: {[r.content for r in tool_results]}"
+    )
+
+
+def test_claude_parser_tool_result_with_video_resource_reference_emits_placeholder() -> None:
+    """Claude parser emits explicit [video: URI] placeholder for video resource_reference blocks."""
+    import json as _json  # noqa: PLC0415
+
+    parser = ClaudeParser()
+    line = _json.dumps({
+        "type": "assistant",
+        "message": {
+            "content": [
+                {
+                    "type": "tool_result",
+                    "tool_use_id": "toolu_video",
+                    "content": [
+                        {
+                            "type": "resource_reference",
+                            "uri": "ralph://media/video-xyz",
+                            "modality": "video",
+                            "mimeType": "video/mp4",
+                        },
+                    ],
+                },
+            ],
+        },
+    })
+    results = list(parser.parse(iter([line])))
+    assert any(r.type == "tool_result" for r in results)
+    assert not any(r.type == "error" for r in results)
+    tool_results = [r for r in results if r.type == "tool_result"]
+    assert any("[video: ralph://media/video-xyz]" in r.content for r in tool_results), (
+        f"Expected '[video: ralph://media/video-xyz]' placeholder, "
+        f"got: {[r.content for r in tool_results]}"
+    )
+
+
+def test_opencode_parser_tool_result_with_resource_reference_emits_placeholder() -> None:
+    """OpenCode parser emits a modality placeholder for resource_reference in tool results.
+
+    When read_media returns a resource_reference block (e.g. audio or video),
+    the OpenCode parser must emit a bounded placeholder that names the modality
+    and URI so unattended workflows can detect modality loss.
+    """
+    import json as _json  # noqa: PLC0415
+
+    parser = OpenCodeParser()
+    lines = [
+        _json.dumps({
+            "type": "tool_result",
+            "tool": "read_media",
+            "result": [
+                {
+                    "type": "resource_reference",
+                    "uri": "ralph://media/aud-001",
+                    "modality": "audio",
+                    "mimeType": "audio/mpeg",
+                }
+            ],
+            "part": {"tool": "read_media", "input": {"path": "clip.mp3"}},
+        })
+    ]
+    results = list(parser.parse(_make_lines(lines)))
+    assert any(r.type == "tool_result" for r in results), (
+        f"Expected tool_result, got: {[r.type for r in results]}"
+    )
+    assert not any(r.type == "error" for r in results)
+    tool_results = [r for r in results if r.type == "tool_result"]
+    assert any("[audio: ralph://media/aud-001]" in r.content for r in tool_results), (
+        f"Expected '[audio: ralph://media/aud-001]' placeholder, "
+        f"got: {[r.content for r in tool_results]}"
+    )

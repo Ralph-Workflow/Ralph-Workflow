@@ -2224,3 +2224,105 @@ class TestHandleReadMedia:
         assert doc.to_dict()["type"] == "document"
         assert audio.to_dict()["type"] == "audio"
         assert video.to_dict()["type"] == "video"
+
+
+# ---------------------------------------------------------------------------
+# Named acceptance tests required by the managed-runtime plan (Step 3)
+# ---------------------------------------------------------------------------
+
+
+def test_read_media_replay_handle_round_trips_audio_metadata() -> None:
+    """Replaying a ralph://media/ handle for audio preserves URI, modality, and mime_type.
+
+    After read_media stores audio in the session manifest, replaying the handle
+    must return a resource_reference block with the original metadata intact.
+    """
+    mp3_bytes = b"ID3" + b"\x00" * 50
+
+    session = MockSessionWithManifest(MEDIA_READ_CAPABILITY)
+    entry = session.media_manifest.add(
+        title="clip.mp3",
+        mime_type="audio/mpeg",
+        modality="audio",
+        raw_bytes=mp3_bytes,
+    )
+
+    ws = MagicMock()
+    result = handle_read_media(session, ws, {"path": entry.uri})
+
+    assert result.is_error is False, f"Expected success, got error: {result.content}"
+    block = result.content[0]
+    # For unknown provider, audio → resource_reference_replay
+    assert isinstance(block, ResourceReferenceContent), (
+        f"Expected ResourceReferenceContent for audio replay, got {type(block).__name__}"
+    )
+    assert block.uri == entry.uri, f"URI mismatch: {block.uri!r} != {entry.uri!r}"
+    assert block.modality == "audio", f"Modality mismatch: {block.modality!r}"
+    assert block.mime_type == "audio/mpeg", f"MIME type mismatch: {block.mime_type!r}"
+    # Filesystem must not be touched — the manifest was the source
+    ws.absolute_path.assert_not_called()
+
+
+def test_read_media_replay_handle_round_trips_video_metadata() -> None:
+    """Replaying a ralph://media/ handle for video preserves URI, modality, and mime_type."""
+    mp4_bytes = b"\x00\x00\x00\x20ftyp" + b"\x00" * 40
+
+    session = MockSessionWithManifest(MEDIA_READ_CAPABILITY)
+    entry = session.media_manifest.add(
+        title="video.mp4",
+        mime_type="video/mp4",
+        modality="video",
+        raw_bytes=mp4_bytes,
+    )
+
+    ws = MagicMock()
+    result = handle_read_media(session, ws, {"path": entry.uri})
+
+    assert result.is_error is False, f"Expected success, got error: {result.content}"
+    block = result.content[0]
+    assert isinstance(block, ResourceReferenceContent), (
+        f"Expected ResourceReferenceContent for video replay, got {type(block).__name__}"
+    )
+    assert block.uri == entry.uri, f"URI mismatch: {block.uri!r} != {entry.uri!r}"
+    assert block.modality == "video", f"Modality mismatch: {block.modality!r}"
+    assert block.mime_type == "video/mp4", f"MIME type mismatch: {block.mime_type!r}"
+    ws.absolute_path.assert_not_called()
+
+
+def test_unknown_provider_media_preserves_delivery_metadata() -> None:
+    """For an unknown provider, resource_reference blocks carry modality and URI metadata.
+
+    Unknown providers default to resource_reference_replay, which must preserve
+    enough metadata for agents to diagnose the delivery mode without re-reading
+    the raw artifact.
+    """
+    import tempfile  # noqa: PLC0415
+
+    mp3_bytes = b"ID3" + b"\x00" * 50
+
+    with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
+        f.write(mp3_bytes)
+        temp_path = f.name
+
+    try:
+        ws = MagicMock()
+        ws.absolute_path.return_value = temp_path
+        # UNKNOWN_IDENTITY → resource_reference_replay for all modalities
+        session = MockSessionWithManifest(MEDIA_READ_CAPABILITY, model_identity=UNKNOWN_IDENTITY)
+
+        result = handle_read_media(session, ws, {"path": "clip.mp3"})
+
+        assert result.is_error is False, f"Expected success, got error: {result.content}"
+        block = result.content[0]
+        assert isinstance(block, ResourceReferenceContent), (
+            f"Expected ResourceReferenceContent, got {type(block).__name__}"
+        )
+        assert block.modality == "audio", f"Modality must be 'audio', got: {block.modality!r}"
+        assert block.uri.startswith("ralph://media/"), (
+            f"URI must be a ralph://media/ handle: {block.uri!r}"
+        )
+        assert block.mime_type == "audio/mpeg", (
+            f"MIME type must be preserved: {block.mime_type!r}"
+        )
+    finally:
+        Path(temp_path).unlink()

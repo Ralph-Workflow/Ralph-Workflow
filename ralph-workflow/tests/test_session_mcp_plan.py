@@ -667,3 +667,33 @@ class TestModelFlagResolutionInBuildSessionMcpPlan:
 
         assert plan.model_identity.provider == "anthropic"
         assert plan.model_identity.model_id == "anthropic/claude-3-5-sonnet"
+
+
+def test_build_session_mcp_plan_falls_back_to_unknown_provider_for_unmapped_opencode_model(
+    isolated_home: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When OpenCode catalog succeeds but model is not listed, provider is 'unknown'.
+
+    This is distinct from the catalog-failure case: the catalog is reachable but
+    does not contain an entry for the requested model_id.
+    """
+    del isolated_home
+
+    # Return an empty catalog — model not found → get_model_by_id returns None
+    monkeypatch.setattr(opencode_module, "fetch_catalog", lambda: [])
+
+    plan = build_session_mcp_plan(
+        transport=AgentTransport.OPENCODE,
+        drain="development",
+        workspace_path=tmp_path,
+        agents_policy=_DEFAULT_AGENTS_POLICY,
+        model_flag="some-model-not-in-catalog",
+    )
+
+    assert plan.model_identity.provider == "unknown", (
+        f"Expected 'unknown' provider for unmapped model, got: {plan.model_identity.provider!r}"
+    )
+    assert plan.model_identity.model_id == "some-model-not-in-catalog"
+    assert plan.model_identity.transport == "opencode"

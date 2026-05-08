@@ -4360,3 +4360,77 @@ def test_materialize_agent_prompt_carries_multiple_media_entries(
     ids = {a["artifact_id"] for a in data["artifacts"]}
     assert "sess-img-001" in ids
     assert "sess-pdf-002" in ids
+
+
+_SAMPLE_SESSION_AUDIO = {
+    "artifact_id": "sess-aud-003",
+    "uri": "ralph://media/sess-aud-003",
+    "mime_type": "audio/mpeg",
+    "title": "meeting.mp3",
+    "modality": "audio",
+    "delivery": "resource_reference_replay",
+    "reason": "unknown provider — defaulting to resource_reference_replay delivery",
+    "block_type": "",
+}
+
+
+def test_materialize_agent_prompt_preserves_multimodal_metadata_across_preparation(
+    tmp_path: Path,
+) -> None:
+    """Runner must carry delivery, reason, and block_type from the session index into the sidecar.
+
+    This proves that the managed-path handoff preserves the full capability verdict
+    metadata so the invoke-time appendix and parser layers do not need to re-derive it.
+    """
+    policy_bundle = _load_default_policy_bundle()
+    workspace = FsWorkspace(tmp_path)
+    workspace.write("PROMPT.md", "Build the feature")
+    workspace.write(".agent/PLAN.md", "# Implementation Plan\n\nStep 1.\n")
+
+    mixed_artifacts = [_SAMPLE_SESSION_IMAGE, _SAMPLE_SESSION_PDF, _SAMPLE_SESSION_AUDIO]
+    _write_media_session(tmp_path, "development", mixed_artifacts)
+
+    effect = InvokeAgentEffect(
+        agent_name="claude",
+        phase="development",
+        prompt_file="PROMPT.md",
+        drain="development",
+        chain_name="development",
+    )
+    state = PipelineState(phase="development", previous_phase="planning")
+    registry = MagicMock()
+    registry.get.return_value = None
+
+    runner_module._materialize_agent_prompt_if_needed(
+        effect,
+        state,
+        workspace,
+        policy_bundle,
+        registry,
+    )
+
+    sidecar_path = tmp_path / ".agent" / "tmp" / "development_multimodal_handoff.json"
+    assert sidecar_path.exists(), "Sidecar must be created for mixed-modality session index"
+    data = json.loads(sidecar_path.read_text(encoding="utf-8"))
+
+    assert len(data["artifacts"]) == 3, (  # noqa: PLR2004
+        f"Expected 3 artifacts (image + pdf + audio), got {len(data['artifacts'])}"
+    )
+
+    by_id = {a["artifact_id"]: a for a in data["artifacts"]}
+    assert "sess-img-001" in by_id, "Image artifact must be in sidecar"
+    assert "sess-pdf-002" in by_id, "PDF artifact must be in sidecar"
+    assert "sess-aud-003" in by_id, "Audio artifact must be in sidecar"
+
+    img = by_id["sess-img-001"]
+    assert img["modality"] == "image"
+    assert img["delivery"] == "resource_reference"
+
+    pdf = by_id["sess-pdf-002"]
+    assert pdf["modality"] == "pdf"
+    assert pdf["delivery"] == "resource_reference"
+
+    aud = by_id["sess-aud-003"]
+    assert aud["modality"] == "audio"
+    assert aud["delivery"] == "resource_reference_replay"
+    assert aud["reason"] != "", "Audio reason must be preserved in sidecar"

@@ -669,3 +669,109 @@ class TestMultimodalToolRoundtrip:
         assert contents[0].get("uri") == uri
         assert contents[0].get("mimeType") == "application/pdf"
         assert isinstance(contents[0].get("blob"), str) and len(contents[0]["blob"]) > 0
+
+
+    def test_read_media_audio_resource_reference_is_retrievable(
+        self, tmp_path: Path
+    ) -> None:
+        """Audio from unknown provider stored as resource_reference fetchable via resources/read."""
+        import tempfile  # noqa: PLC0415
+
+        mp3_bytes = b"ID3" + b"\x00" * 50
+        with tempfile.NamedTemporaryFile(
+            suffix=".mp3", dir=tmp_path, delete=False
+        ) as f:
+            f.write(mp3_bytes)
+            audio_name = Path(f.name).name
+
+        server = _build_multimodal_server(tmp_path, provider="unknown-provider")
+        state = _initialize_multimodal(server)
+
+        call_id = [30]
+        result = _do_tool_call(
+            server, state, call_id, str(RalphToolName.READ_MEDIA), {"path": audio_name}
+        )
+
+        assert result.get("isError") is not True, f"read_media returned error: {result}"
+        content = cast("list[dict[str, Any]]", result.get("content", []))
+        assert len(content) == 1
+        block = content[0]
+        assert block.get("type") == "resource_reference", (
+            f"Expected resource_reference for audio, got type={block.get('type')!r}"
+        )
+        assert block.get("modality") == "audio", (
+            f"Expected audio modality, got: {block.get('modality')!r}"
+        )
+        uri = str(block.get("uri", ""))
+        assert uri.startswith("ralph://media/"), f"Expected ralph://media/ URI: {uri!r}"
+
+        # Artifact must be retrievable via resources/read
+        read_req = JsonRpcRequest(
+            jsonrpc="2.0",
+            method="resources/read",
+            params={"uri": uri},
+            msg_id=31,
+        )
+        read_resp, _ = server.handle_request(read_req, state)
+        assert read_resp is not None and read_resp.result is not None, (
+            f"resources/read failed for audio: {read_resp}"
+        )
+        contents = cast(
+            "list[dict[str, Any]]",
+            cast("dict[str, Any]", read_resp.result).get("contents", []),
+        )
+        assert len(contents) == 1
+        assert contents[0].get("uri") == uri
+        assert isinstance(contents[0].get("blob"), str) and len(contents[0]["blob"]) > 0
+
+    def test_read_media_video_resource_reference_is_retrievable(
+        self, tmp_path: Path
+    ) -> None:
+        """Video from unknown provider stored as resource_reference fetchable via resources/read."""
+        import tempfile  # noqa: PLC0415
+
+        mp4_bytes = b"\x00\x00\x00\x20ftyp" + b"\x00" * 40
+        with tempfile.NamedTemporaryFile(
+            suffix=".mp4", dir=tmp_path, delete=False
+        ) as f:
+            f.write(mp4_bytes)
+            video_name = Path(f.name).name
+
+        server = _build_multimodal_server(tmp_path, provider="unknown-provider")
+        state = _initialize_multimodal(server)
+
+        call_id = [40]
+        result = _do_tool_call(
+            server, state, call_id, str(RalphToolName.READ_MEDIA), {"path": video_name}
+        )
+
+        assert result.get("isError") is not True, f"read_media returned error: {result}"
+        content = cast("list[dict[str, Any]]", result.get("content", []))
+        assert len(content) == 1
+        block = content[0]
+        assert block.get("type") == "resource_reference", (
+            f"Expected resource_reference for video, got type={block.get('type')!r}"
+        )
+        assert block.get("modality") == "video", (
+            f"Expected video modality, got: {block.get('modality')!r}"
+        )
+        uri = str(block.get("uri", ""))
+        assert uri.startswith("ralph://media/"), f"Expected ralph://media/ URI: {uri!r}"
+
+        read_req = JsonRpcRequest(
+            jsonrpc="2.0",
+            method="resources/read",
+            params={"uri": uri},
+            msg_id=41,
+        )
+        read_resp, _ = server.handle_request(read_req, state)
+        assert read_resp is not None and read_resp.result is not None, (
+            f"resources/read failed for video: {read_resp}"
+        )
+        contents = cast(
+            "list[dict[str, Any]]",
+            cast("dict[str, Any]", read_resp.result).get("contents", []),
+        )
+        assert len(contents) == 1
+        assert contents[0].get("uri") == uri
+        assert isinstance(contents[0].get("blob"), str) and len(contents[0]["blob"]) > 0
