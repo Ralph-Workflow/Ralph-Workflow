@@ -705,6 +705,24 @@ class FileBackedSession:
         return Path(raw)
 
     @property
+    def model_identity(self) -> object:
+        from ralph.mcp.multimodal.capabilities import (  # noqa: PLC0415
+            UNKNOWN_IDENTITY,
+            MultimodalModelIdentity,
+        )
+        raw = self._load().get("model_identity")
+        if not isinstance(raw, dict):
+            return UNKNOWN_IDENTITY
+        provider = str(raw.get("provider", "unknown"))
+        model_id = raw.get("model_id")
+        transport = raw.get("transport")
+        return MultimodalModelIdentity(
+            provider=provider,
+            model_id=str(model_id) if model_id is not None else None,
+            transport=str(transport) if transport is not None else None,
+        )
+
+    @property
     def media_manifest(self) -> object:
         return self._media_manifest
 

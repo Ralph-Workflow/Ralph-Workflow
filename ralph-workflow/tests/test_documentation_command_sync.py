@@ -79,3 +79,86 @@ def test_mcp_servers_doc_describes_upstream_normalization_policy() -> None:
     assert "resource_reference" in content
     assert "URI-backed" in content
     assert "Embedded-data" in content
+
+
+_README_PATH = REPO_ROOT / "README.md"
+_CONTRIBUTING_PATH = REPO_ROOT / "CONTRIBUTING.md"
+_ARCHITECTURE_PATH = REPO_ROOT / "ralph" / "mcp" / "ARCHITECTURE.md"
+_SPHINX_MCP_TOOLS_PATH = REPO_ROOT / "docs" / "sphinx" / "mcp-tools.md"
+_SPHINX_MCP_ARCH_PATH = REPO_ROOT / "docs" / "sphinx" / "mcp-architecture.md"
+_SPHINX_AGENTS_PATH = REPO_ROOT / "docs" / "sphinx" / "agents.md"
+
+
+def test_readme_describes_read_media_as_primary_multimodal_tool() -> None:
+    """README.md must describe read_media as the primary multimodal tool."""
+    content = _README_PATH.read_text(encoding="utf-8")
+    assert "read_media" in content
+    assert "compatibility" in content
+    # Old image-only wording must be gone or augmented
+    assert "read_image" in content  # kept as compatibility alias reference
+    # Old reject-all wording must be gone
+    assert "Upstream multimodal rejection" not in content
+    assert "rejects it with a clear error" not in content
+
+
+def test_readme_describes_broad_modality_support() -> None:
+    """README.md must describe broad modality support (not image-only)."""
+    content = _README_PATH.read_text(encoding="utf-8")
+    assert "resource_reference" in content or "resource-reference" in content
+    # Must mention normalization of upstream content
+    assert (
+        "normalizes it to a" in content
+        or "normalized to a" in content
+        or "Upstream normalization" in content
+    )
+
+
+def test_contributing_describes_read_media_as_primary_multimodal_tool() -> None:
+    """CONTRIBUTING.md must describe read_media as primary tool, not image-only."""
+    content = _CONTRIBUTING_PATH.read_text(encoding="utf-8")
+    assert "read_media" in content
+    assert "compatibility" in content
+    # Old upstream-rejection wording must be replaced with normalization
+    assert "rejects it with a clear error" not in content
+    assert "resource_reference" in content
+
+
+def test_architecture_md_describes_read_media_as_primary_tool() -> None:
+    """ralph/mcp/ARCHITECTURE.md must describe read_media as primary multimodal tool."""
+    content = _ARCHITECTURE_PATH.read_text(encoding="utf-8")
+    assert "read_media" in content
+    assert "compatibility" in content
+    # Must not describe old rejection policy
+    assert "Upstream Multimodal Rejection Policy" not in content
+    assert "text-only passthrough" not in content
+    # Must describe normalization
+    assert "resource_reference" in content
+    assert "Normalization" in content or "normalization" in content
+
+
+def test_sphinx_mcp_tools_describes_read_media_as_primary_tool() -> None:
+    """docs/sphinx/mcp-tools.md must list read_media as primary multimodal tool."""
+    content = _SPHINX_MCP_TOOLS_PATH.read_text(encoding="utf-8")
+    assert "read_media" in content
+    assert "compatibility" in content or "read_image" in content
+    # media.read capability row must mention read_media
+    lines = content.splitlines()
+    media_read_rows = [row for row in lines if "media.read" in row]
+    assert any("read_media" in row for row in media_read_rows), (
+        f"media.read rows do not mention read_media: {media_read_rows}"
+    )
+
+
+def test_sphinx_mcp_architecture_describes_read_media() -> None:
+    """docs/sphinx/mcp-architecture.md must list read_media in workspace tools."""
+    content = _SPHINX_MCP_ARCH_PATH.read_text(encoding="utf-8")
+    assert "read_media" in content
+
+
+def test_sphinx_agents_describes_bounded_summaries_not_first_class_artifacts() -> None:
+    """docs/sphinx/agents.md must describe parser behavior as bounded summaries, not first-class."""
+    content = _SPHINX_AGENTS_PATH.read_text(encoding="utf-8")
+    # Must describe the correct parser behavior
+    assert "bounded" in content or "summaries" in content or "summary" in content
+    # Must not claim parsers preserve multimodal as first-class artifacts in event stream
+    assert "preserve these blocks as first-class artifacts" not in content

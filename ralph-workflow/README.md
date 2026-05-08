@@ -343,9 +343,11 @@ as an upstream MCP server — see [`docs/mcp/mcp-servers.md`](docs/mcp/mcp-serve
 
 ## Multimodal MCP support (default-on)
 
-Ralph Workflow supports image-reading MCP tools via `read_image`. This feature is **enabled by default**.
+Ralph Workflow has broad multimodal support via `read_media` (primary tool) and `read_image` (compatibility alias). This feature is **enabled by default**.
 
-To disable it, add to `.agent/mcp.toml`:
+Supported modalities include images (PNG, JPEG, GIF, WebP), PDFs, documents, audio, video, and resource/file-reference-based flows. Ralph Workflow automatically detects what the active provider/model supports and selects the appropriate delivery mode.
+
+To disable multimodal support, add to `.agent/mcp.toml`:
 
 ```toml
 [media]
@@ -353,11 +355,12 @@ enabled = false
 ```
 
 When enabled (default):
-- supported formats are PNG, JPEG, GIF, and WebP
-- `read_image` only appears for clients that declare multimodal/image/media capability
+- `read_media` exposes broad multimodal capability; `read_image` is a compatibility alias for inline-image workflows
+- multimodal tools only appear for clients that declare multimodal/image/media capability in `initialize`
 - text-only clients keep the pre-multimodal tool set unchanged
-- image payloads are returned as MCP image content blocks with base64-encoded data
+- inline delivery (base64-encoded data blocks) is used when the model supports it; resource-reference delivery is used otherwise
 - `max_inline_bytes` enforces the inline size guard (5 MiB by default)
+- upstream non-text content blocks are normalized to `resource_reference` artifacts rather than rejected
 
 To customize, add to `.agent/mcp.toml`:
 
@@ -372,16 +375,16 @@ max_inline_bytes = 10485760  # 10 MiB to allow larger images
 The multimodal support is designed with strict backward compatibility:
 
 1. **Text-only clients unchanged** — Existing tools (`read_file`, `write_file`, etc.) continue to return text content blocks with the same shape.
-2. **Client capability filtering** — `read_image` only appears in `tools/list` for clients that declare multimodal/image/media capability in the MCP `initialize` handshake.
-3. **Upstream multimodal rejection** — If an upstream MCP server returns a non-text content block, Ralph Workflow rejects it with a clear error rather than silently passing it through.
+2. **Client capability filtering** — `read_media` and `read_image` only appear in `tools/list` for clients that declare multimodal/image/media capability in the MCP `initialize` handshake.
+3. **Upstream normalization** — If an upstream MCP server returns a non-text content block, Ralph Workflow normalizes it to a `resource_reference` artifact (for embedded-data content) or preserves the external URI (for URI-backed content) rather than rejecting it or silently dropping it.
 
 ### What text-only clients see
 
-When a client connects without declaring multimodal support, `read_image` is **not visible** in `tools/list`, even if `media.enabled = true`. The text-only tool set is byte-equivalent to pre-multimodal behavior.
+When a client connects without declaring multimodal support, `read_media` and `read_image` are **not visible** in `tools/list`, even if `media.enabled = true`. The text-only tool set is byte-equivalent to pre-multimodal behavior.
 
 ### What multimodal clients see
 
-Clients that declare `capabilities.image`, `capabilities.media`, or `capabilities.multimodal` in the `initialize` request will see `read_image` in `tools/list` when `media.enabled = true`.
+Clients that declare `capabilities.image`, `capabilities.media`, or `capabilities.multimodal` in the `initialize` request will see `read_media` and `read_image` in `tools/list` when `media.enabled = true`.
 
 ## MCP server robustness
 

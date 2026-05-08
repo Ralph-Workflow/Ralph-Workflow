@@ -552,36 +552,13 @@ class ClaudeParser:
         block: dict[str, object],
         raw: str,
     ) -> Iterator[AgentOutputLine]:
-        """Parse a tool_result content block, rejecting multimodal content."""
+        """Parse a tool_result content block, preserving multimodal content as bounded summaries."""
         content = block.get("content")
         if content is None:
             yield AgentOutputLine(type="tool_result", content="", raw=raw, metadata=block)
             return
 
-        # Check if content is a list with non-text blocks
         if isinstance(content, list):
-            has_multimodal = False
-            for item in content:
-                if not isinstance(item, dict):
-                    continue
-                item_type = str(item.get("type", ""))
-                if item_type != "text":
-                    has_multimodal = True
-                    break
-
-            if has_multimodal:
-                yield AgentOutputLine(
-                    type="error",
-                    content=(
-                        "multimodal content in tool_result not supported: "
-                        "Ralph agents do not support image/audio/video tool results. "
-                        "Use a text-only tool or disable multimodal capabilities."
-                    ),
-                    raw=raw,
-                    metadata=block,
-                )
-                return
-
             tool_result = stringify_text_blocks(content, require_text_type=True)
             yield AgentOutputLine(
                 type="tool_result",

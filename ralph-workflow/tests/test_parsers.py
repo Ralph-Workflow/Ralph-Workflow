@@ -1034,3 +1034,104 @@ def test_claude_prefixed_content_block_stop_is_suppressed() -> None:
     parser = ClaudeParser()
     results = list(parser.parse(_make_lines(["claude/sonnet: content_block_stop"])))
     assert results == [], f"Expected empty, got: {results}"
+
+
+# ---------------------------------------------------------------------------
+# Multimodal tool_result handling
+# ---------------------------------------------------------------------------
+
+
+def test_claude_parser_tool_result_with_image_block_emits_placeholder() -> None:
+    """Claude parser emits bounded placeholder for image block in tool_result, not an error."""
+    import json  # noqa: PLC0415
+
+    parser = ClaudeParser()
+    # tool_result blocks appear in assistant message content
+    line = json.dumps({
+        "type": "assistant",
+        "message": {
+            "content": [
+                {
+                    "type": "tool_result",
+                    "tool_use_id": "toolu_123",
+                    "content": [
+                        {"type": "image", "source": {"media_type": "image/png", "data": "abc123"}},
+                    ],
+                },
+            ],
+        },
+    })
+    results = list(parser.parse(iter([line])))
+    # Must yield a tool_result, not an error
+    assert any(r.type == "tool_result" for r in results), (
+        f"Expected a tool_result line, got: {[r.type for r in results]}"
+    )
+    assert not any(r.type == "error" for r in results), (
+        f"Got unexpected error line(s): {[r for r in results if r.type == 'error']}"
+    )
+    # The content must include a placeholder summary for the image
+    tool_results = [r for r in results if r.type == "tool_result"]
+    assert any("[image:" in r.content for r in tool_results), (
+        f"Expected '[image:' in tool_result content, got: {[r.content for r in tool_results]}"
+    )
+
+
+def test_claude_parser_tool_result_with_resource_reference_emits_placeholder() -> None:
+    """Claude parser emits bounded placeholder for resource_reference block in tool_result."""
+    import json  # noqa: PLC0415
+
+    parser = ClaudeParser()
+    line = json.dumps({
+        "type": "assistant",
+        "message": {
+            "content": [
+                {
+                    "type": "tool_result",
+                    "tool_use_id": "toolu_456",
+                    "content": [
+                        {
+                            "type": "resource_reference",
+                            "uri": "ralph://media/abc123",
+                            "modality": "pdf",
+                        },
+                    ],
+                },
+            ],
+        },
+    })
+    results = list(parser.parse(iter([line])))
+    assert any(r.type == "tool_result" for r in results)
+    assert not any(r.type == "error" for r in results)
+    tool_results = [r for r in results if r.type == "tool_result"]
+    assert any("[pdf: ralph://media/abc123]" in r.content for r in tool_results), (
+        f"Expected '[pdf: ...]' in content, got: {[r.content for r in tool_results]}"
+    )
+
+
+def test_claude_parser_tool_result_with_mixed_text_and_image_preserves_text() -> None:
+    """Claude parser preserves text blocks and adds placeholder for image in same tool_result."""
+    import json  # noqa: PLC0415
+
+    parser = ClaudeParser()
+    line = json.dumps({
+        "type": "assistant",
+        "message": {
+            "content": [
+                {
+                    "type": "tool_result",
+                    "tool_use_id": "toolu_789",
+                    "content": [
+                        {"type": "text", "text": "Analysis complete."},
+                        {"type": "image", "source": {"media_type": "image/jpeg", "data": "xyz"}},
+                    ],
+                },
+            ],
+        },
+    })
+    results = list(parser.parse(iter([line])))
+    assert any(r.type == "tool_result" for r in results)
+    assert not any(r.type == "error" for r in results)
+    tool_results = [r for r in results if r.type == "tool_result"]
+    combined = " ".join(r.content for r in tool_results)
+    assert "Analysis complete." in combined
+    assert "[image:" in combined

@@ -27,7 +27,7 @@ Ralph acts as an **MCP server** when advertising tools to connected AI agents.
 |------|---------|
 | `names.py` | Tool name constants (`RALPH_MCP_SERVER_NAME`, `READ_FILE_TOOL`, etc.) |
 | `bridge.py` | `ToolBridge` registry and `build_ralph_tool_registry` |
-| `workspace.py` | `handle_read_file`, `handle_read_multiple_files`, `handle_stat`, `handle_list_allowed_roots`, `handle_write_file`, `handle_list_directory`, `handle_search_files`, `handle_grep_files`, `handle_directory_tree`, `handle_edit_file`, `handle_append_file`, `handle_create_directory`, `handle_move_file`, `handle_copy_file`, `handle_delete_path`, `handle_read_image`, etc. |
+| `workspace.py` | `handle_read_file`, `handle_read_multiple_files`, `handle_stat`, `handle_list_allowed_roots`, `handle_write_file`, `handle_list_directory`, `handle_search_files`, `handle_grep_files`, `handle_directory_tree`, `handle_edit_file`, `handle_append_file`, `handle_create_directory`, `handle_move_file`, `handle_copy_file`, `handle_delete_path`, `handle_read_media`, `handle_read_image`, etc. |
 | `git_read.py` | `handle_git_status`, `handle_git_diff`, `handle_git_log`, `handle_git_show` |
 | `exec.py` | `handle_exec_command` with command blacklist |
 | `artifact.py` | `handle_submit_artifact`, `handle_submit_plan_section`, `handle_finalize_plan`, etc. |
@@ -154,7 +154,7 @@ Ralph uses an internal capability vocabulary for session access control:
 | `upstream.tool_use` | `upstream.tool_use` | Use upstream MCP tools |
 | `web.search` | `web.search` | Search the web |
 | `web.visit` | `web.visit` | Fetch and extract text from a URL (config opt-in; all drains) |
-| `media.read` | `media.read` | Read image files (default-on) |
+| `media.read` | `media.read` | Read media files (images, PDFs, documents, audio, video) — default-on |
 
 ### MCP Capability Mapping
 
@@ -186,7 +186,7 @@ MCP capabilities are mapped to Ralph capabilities:
 
 ### Multimodal Capability (MediaRead)
 
-The `MediaRead` capability gates access to the `read_image` tool. It is:
+The `MediaRead` capability gates access to the `read_media` and `read_image` tools. It is:
 
 - **Default-on** via `media.enabled = true` (or omitted, as it is the default)
 - **Can be disabled** via `media.enabled = false` in `mcp.toml`
@@ -195,7 +195,9 @@ The `MediaRead` capability gates access to the `read_image` tool. It is:
 
 ## Multimodal MCP Support
 
-Ralph supports image-reading MCP tools as a default-on, capability-gated feature.
+Ralph supports broad multimodal MCP tools as a default-on, capability-gated feature. `read_media` is the primary tool; `read_image` is a compatibility alias for inline-image workflows.
+
+Supported modality classes: images (PNG, JPEG, GIF, WebP), PDFs, documents, audio, video, and resource/file-reference-based flows. Ralph automatically determines what the active provider/model supports and selects inline vs resource-reference delivery accordingly.
 
 ### Disabling Multimodal Support
 
@@ -230,21 +232,17 @@ When building `tools/list` responses, Ralph filters out tools marked `is_multimo
 2. **Client-gated visibility** — multimodal tools only appear when the client declares support
 3. **Consistent wire format** — text content blocks remain `{"type": "text", "text": ...}`
 
-### Upstream Multimodal Rejection Policy
+### Upstream Multimodal Normalization Policy
 
-When an upstream MCP server returns a content block with `type != "text"`, Ralph rejects it with a clear error rather than silently stringifying or dropping the block.
+When an upstream MCP server returns a content block with `type != "text"`, Ralph normalizes it to a `resource_reference` rather than rejecting or silently dropping it:
 
-Error format:
-```
-upstream server '<name>' tool '<tool>' returned multimodal content block (type='<type>') 
-which is not supported in Ralph's text-only passthrough at index <idx>. 
-Upstream multimodal payloads must be rejected rather than passed through.
-```
+- **URI-backed content**: the external URI is preserved as-is in a `resource_reference` block
+- **Embedded-data content**: the bytes are stored in the session `MediaManifest` and a `resource_reference` block with a `ralph://media/...` URI is returned, making it retrievable via `resources/read`
 
 This policy:
-- Prevents silent data loss in text-only downstream flows
-- Makes incompatibility visible rather than隐性
-- Maintains a clear boundary between supported and unsupported upstream features
+- Preserves multimodal meaning across upstream tool boundaries
+- Makes multimodal content retrievable rather than discarded
+- Maintains a clear boundary between supported delivery modes and genuinely unsupported block shapes
 
 ## Canonical Import Paths
 
