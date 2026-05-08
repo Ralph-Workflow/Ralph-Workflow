@@ -143,8 +143,10 @@ ralph
 
 `ralph --init` is the canonical form. Compatibility labels such as `default` are deprecated,
 ignored, and no longer recommended in docs or scripts. `ralph --init` scaffolds the project-local
-support files; use `ralph --generate-local-config` only when this repo needs a main-config override
-instead of inheriting from `~/.config/ralph-workflow.toml`.
+support files and seeds a small default `.gitignore` policy for Ralph Workflow local artifacts such as
+`.agent/`, the local `PROMPT` file pattern, and default `wt-*` worktree directories; use
+`ralph --generate-local-config` only when this repo needs a main-config override instead of
+inheriting from `~/.config/ralph-workflow.toml`.
 
 ## First-run configuration
 

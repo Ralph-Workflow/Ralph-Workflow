@@ -244,6 +244,26 @@ def test_cli_init_does_not_create_local_main_config_when_global_exists(
 
 
 
+def test_cli_init_adds_default_gitignore_entries(
+    clean_env: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    runner = CliRunner()
+    monkeypatch.chdir(tmp_path)
+
+    result = runner.invoke(app, ["--init"], catch_exceptions=False)
+
+    assert result.exit_code == 0, f"Expected exit 0, got {result.exit_code}: {result.output}"
+    gitignore = tmp_path / ".gitignore"
+    assert gitignore.exists()
+    content = gitignore.read_text(encoding="utf-8")
+    assert ".agent/" in content
+    assert "/PROMPT*" in content
+    assert "wt-*/" in content
+
+
+
 def test_cli_generate_local_config_creates_local_main_override(
     clean_env: dict[str, str],
     monkeypatch: pytest.MonkeyPatch,

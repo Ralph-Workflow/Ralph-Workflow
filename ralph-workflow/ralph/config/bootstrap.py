@@ -19,6 +19,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
+from ralph.git.operations import append_to_gitignore
+
 if TYPE_CHECKING:
     from collections.abc import Mapping
 
@@ -29,6 +31,7 @@ _LOCAL_MCP_FILENAME = "mcp.toml"
 _LOCAL_POLICY_FILENAMES = ("pipeline.toml", "artifacts.toml")
 _ADVANCED_LOCAL_POLICY_FILENAMES = ("agents.toml",)
 _LOCAL_CONFIG_SOURCE = "ralph-workflow-local.toml"
+_DEFAULT_GITIGNORE_PATTERNS = (".agent/", "/PROMPT*", "wt-*/")
 
 
 def _get_bundled_defaults_dir() -> Path:
@@ -159,6 +162,7 @@ def ensure_local_support_configs(agent_dir: Path, *, force: bool = False) -> lis
         )
         for policy_filename in _LOCAL_POLICY_FILENAMES
     )
+    _ensure_default_gitignore(agent_dir.parent)
     return results
 
 
@@ -177,6 +181,10 @@ def ensure_local_configs(agent_dir: Path, *, force: bool = False) -> list[Bootst
         ensure_local_main_config(agent_dir, force=force),
         *ensure_local_support_configs(agent_dir, force=force),
     ]
+
+
+def _ensure_default_gitignore(repo_root: Path) -> None:
+    append_to_gitignore(repo_root, list(_DEFAULT_GITIGNORE_PATTERNS))
 
 
 def _regenerate_existing_advanced_local_configs(agent_dir: Path) -> list[BootstrapResult]:

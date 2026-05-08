@@ -6,6 +6,7 @@ import tomllib
 from pathlib import Path
 
 import pytest
+from git import Repo
 
 import ralph.config.loader as loader_module
 import ralph.policy
@@ -26,6 +27,18 @@ from ralph.workspace.scope import WorkspaceScope
 
 _EXPECTED_LOCAL_CONFIG_COUNT = 4
 _EXPECTED_REGENERATE_COUNT = 7
+_EXPECTED_DEFAULT_GITIGNORE_LINES = (".agent/", "/PROMPT*", "wt-*/")
+_EXPECTED_IGNORED_LOCAL_PATHS = (
+    ".agent/mcp.toml",
+    ".agent/checkpoint.json",
+    ".agent/artifacts/plan.json",
+    ".agent/tmp/last_retry_error_development.txt",
+    ".agent/raw/unit-a.log",
+    ".agent/workers/unit-a/artifacts/development_result.json",
+    ".agent/CURRENT_PROMPT.md",
+    "PROMPT.md",
+    "wt-123/worktree-file.txt",
+)
 
 
 def test_ensure_global_config_creates_when_absent(tmp_path: Path) -> None:
@@ -275,6 +288,45 @@ def test_generated_local_template_missing_required_drain_fails_policy_validation
     config = loader_module.load_config(workspace_scope=WorkspaceScope(tmp_path))
     with pytest.raises(LoaderPolicyValidationError, match="unbound drains"):
         load_policy(agent_dir, config=config)
+
+
+def test_ensure_local_configs_adds_default_gitignore_entries(tmp_path: Path) -> None:
+    agent_dir = tmp_path / ".agent"
+
+    ensure_local_configs(agent_dir)
+
+    gitignore = tmp_path / ".gitignore"
+    assert gitignore.exists()
+    content = gitignore.read_text(encoding="utf-8")
+    for line in _EXPECTED_DEFAULT_GITIGNORE_LINES:
+        assert line in content
+
+
+def test_ensure_local_configs_preserves_gitignore_without_duplicate_default_entries(
+    tmp_path: Path,
+) -> None:
+    agent_dir = tmp_path / ".agent"
+    gitignore = tmp_path / ".gitignore"
+    gitignore.write_text(".agent/\n", encoding="utf-8")
+
+    ensure_local_configs(agent_dir)
+    ensure_local_configs(agent_dir)
+
+    content = gitignore.read_text(encoding="utf-8")
+    assert content.count(".agent/") == 1
+    assert content.count("/PROMPT*") == 1
+    assert content.count("wt-*/") == 1
+
+
+def test_ensure_local_configs_gitignore_covers_representative_local_paths(tmp_path: Path) -> None:
+    agent_dir = tmp_path / ".agent"
+    Repo.init(tmp_path)
+
+    ensure_local_configs(agent_dir)
+
+    repo = Repo(tmp_path)
+    for relative_path in _EXPECTED_IGNORED_LOCAL_PATHS:
+        assert repo.git.check_ignore(relative_path).strip() == relative_path
 
 
 def test_ensure_local_configs_bootstraps_a_valid_policy_bundle(tmp_path: Path) -> None:
