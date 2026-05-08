@@ -232,14 +232,14 @@ def test_installed_wheel_plain_ralph_bootstraps_without_unbound_drain_failure() 
         home.mkdir()
 
         create_venv = _run_subprocess(
-            (sys.executable, "-m", "venv", "--system-site-packages", str(venv)),
+            (sys.executable, "-m", "venv", str(venv)),
             cwd=repo_root,
         )
         assert create_venv.returncode == 0, create_venv.stderr or create_venv.stdout
 
         python_bin = venv / "bin" / "python"
         install = _run_subprocess(
-            (str(python_bin), "-m", "pip", "install", "--no-deps", str(wheel_path)),
+            (str(python_bin), "-m", "pip", "install", str(wheel_path)),
             cwd=repo_root,
         )
         assert install.returncode == 0, install.stderr or install.stdout
@@ -299,14 +299,14 @@ def test_installed_wheel_migrates_legacy_global_config_before_plain_ralph() -> N
         home.mkdir()
 
         create_venv = _run_subprocess(
-            (sys.executable, "-m", "venv", "--system-site-packages", str(venv)),
+            (sys.executable, "-m", "venv", str(venv)),
             cwd=repo_root,
         )
         assert create_venv.returncode == 0, create_venv.stderr or create_venv.stdout
 
         python_bin = venv / "bin" / "python"
         install = _run_subprocess(
-            (str(python_bin), "-m", "pip", "install", "--no-deps", str(wheel_path)),
+            (str(python_bin), "-m", "pip", "install", str(wheel_path)),
             cwd=repo_root,
         )
         assert install.returncode == 0, install.stderr or install.stdout
