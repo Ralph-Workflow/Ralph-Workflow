@@ -1,4 +1,22 @@
-"""Tavily web-search backend."""
+"""Tavily web-search backend.
+
+Implements the ``TavilyBackend`` dataclass that wraps the ``tavily-python`` SDK
+to deliver web-search results via the Tavily API. Requires ``pip install
+ralph-workflow[web-search]`` (or ``pip install tavily-python``) at runtime;
+importing without the SDK is safe, but calling ``search`` raises
+``WebSearchError``.
+
+API key resolution:
+
+- Pass ``api_key`` directly, or
+- set ``api_key_env`` to an environment variable name that holds the key
+  (resolved via ``ralph.mcp.websearch.secrets.resolve_secret``).
+
+Typical usage (from ``ralph.config.mcp_models`` backend selection)::
+
+    backend = TavilyBackend(api_key_env="TAVILY_API_KEY")
+    results = backend.search("FastAPI dependency injection", limit=5)
+"""
 
 from __future__ import annotations
 

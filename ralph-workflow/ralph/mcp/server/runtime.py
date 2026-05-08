@@ -1,4 +1,28 @@
-"""Standalone FastMCP HTTP server runtime for Ralph tools."""
+"""Standalone FastMCP HTTP server runtime for Ralph tools.
+
+Runs the Ralph MCP server as a long-lived HTTP process that AI agents connect
+to over the MCP protocol. The server exposes Ralph's tool registry (file
+operations, git commands, artifact submission, coordination, etc.) through
+FastMCP endpoints.
+
+Key responsibilities:
+
+- ``RalphmcpServer`` - the main server class; call ``start(config)`` to launch
+  and ``stop()`` to shut down gracefully. A health-check endpoint listens on
+  ``/health``; liveness is polled by ``ralph.process.mcp_supervisor``.
+- Environment handshake: the server reads ``MCP_SESSION`` (session JSON) and
+  ``MCP_SESSION_FILE`` env vars to populate the agent session, which governs
+  which capabilities and upstream MCP servers are enabled.
+- Tool capability filtering: tools are registered or skipped based on the
+  session's declared ``McpCapability`` set so each agent only sees the tools
+  it needs.
+- Upstream MCP registry: ``load_upstream_mcp_servers`` discovers additional
+  MCP servers from ``UPSTREAM_MCP_CONFIG`` and mounts them alongside Ralph
+  tools.
+
+The server is launched by ``ralph.process.manager`` via the
+``ralph-mcp`` entry point (``ralph/mcp/server/__main__.py``).
+"""
 
 from __future__ import annotations
 

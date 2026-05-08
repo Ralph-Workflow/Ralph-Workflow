@@ -31,7 +31,7 @@ class PlanSummary:
 
 @dataclass(frozen=True, slots=True)
 class AnalysisDecisionSummary:
-    """A stable projection of a *_analysis_decision.json artifact."""
+    """A stable projection of an ``*_analysis_decision.json`` artifact."""
 
     drain: str
     decision: str

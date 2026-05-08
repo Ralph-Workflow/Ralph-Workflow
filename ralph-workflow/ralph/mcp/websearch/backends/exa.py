@@ -1,4 +1,22 @@
-"""Exa web-search backend."""
+"""Exa web-search backend.
+
+Implements the ``ExaBackend`` dataclass that wraps the ``exa-py`` Python SDK to
+deliver web-search results via the Exa API. Requires ``pip install
+ralph-workflow[web-search]`` (or ``pip install exa-py``) at runtime; importing
+this module without the SDK installed is safe, but calling ``search`` raises
+``WebSearchError``.
+
+API key resolution:
+
+- Pass ``api_key`` directly, or
+- set ``api_key_env`` to an environment variable name that holds the key
+  (resolved via ``ralph.mcp.websearch.secrets.resolve_secret``).
+
+Typical usage (from ``ralph.config.mcp_models`` backend selection)::
+
+    backend = ExaBackend(api_key_env="EXA_API_KEY")
+    results = backend.search("async Python tutorial", limit=5)
+"""
 
 from __future__ import annotations
 
