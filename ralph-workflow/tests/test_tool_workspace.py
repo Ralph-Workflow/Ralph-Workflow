@@ -1821,3 +1821,83 @@ class TestHandleReadMedia:
         assert d["title"] == "report.pdf"
         assert d["modality"] == "pdf"
         assert d["delivery"] == "resource_reference"
+
+
+    def test_resource_reference_persists_to_session_index(self, tmp_path: Path) -> None:
+        """handle_read_media must write artifact metadata to the session media index."""
+        from ralph.workspace.fs import FsWorkspace  # noqa: PLC0415
+
+        pdf_bytes = b"%PDF-1.4 fake pdf content"
+        media_file = tmp_path / "report.pdf"
+        media_file.write_bytes(pdf_bytes)
+
+        @dataclass
+        class SessionWithDrain:
+            allowed_capability: str | None = None
+            drain: str = "development"
+            session_id: str = "test-session"
+            media_manifest: MediaManifest = field(default_factory=MediaManifest)
+            model_identity: MultimodalModelIdentity = field(default=UNKNOWN_IDENTITY)
+
+            def check_capability(self, capability: str) -> object:
+                return capability == self.allowed_capability
+
+            def check_edit_area(self, _: str) -> object:
+                return True
+
+        session = SessionWithDrain(MEDIA_READ_CAPABILITY)
+        ws = FsWorkspace(tmp_path)
+
+        result = handle_read_media(session, ws, {"path": "report.pdf"})
+
+        assert result.is_error is False
+        index_path = tmp_path / ".agent" / "tmp" / "development_media_session.json"
+        assert index_path.exists(), (
+            "Media session index must be written after resource_reference delivery"
+        )
+        data = json.loads(index_path.read_text(encoding="utf-8"))
+        assert data["phase"] == "development"
+        artifacts = data["artifacts"]
+        assert len(artifacts) == 1
+        assert artifacts[0]["modality"] == "pdf"
+        assert artifacts[0]["mime_type"] == "application/pdf"
+        assert artifacts[0]["title"] == "report.pdf"
+        assert artifacts[0]["delivery"] == "resource_reference"
+        assert artifacts[0]["uri"].startswith("ralph://media/")
+
+    def test_resource_reference_accumulates_entries_in_session_index(self, tmp_path: Path) -> None:
+        """Multiple read_media calls must append entries to the session index."""
+        from ralph.workspace.fs import FsWorkspace  # noqa: PLC0415
+
+        @dataclass
+        class SessionWithDrain:
+            allowed_capability: str | None = None
+            drain: str = "development"
+            session_id: str = "test-session"
+            media_manifest: MediaManifest = field(default_factory=MediaManifest)
+            model_identity: MultimodalModelIdentity = field(default=UNKNOWN_IDENTITY)
+
+            def check_capability(self, capability: str) -> object:
+                return capability == self.allowed_capability
+
+            def check_edit_area(self, _: str) -> object:
+                return True
+
+        session = SessionWithDrain(MEDIA_READ_CAPABILITY)
+        ws = FsWorkspace(tmp_path)
+
+        pdf1 = tmp_path / "a.pdf"
+        pdf2 = tmp_path / "b.pdf"
+        pdf1.write_bytes(b"%PDF-1.4 doc1")
+        pdf2.write_bytes(b"%PDF-1.4 doc2")
+
+        handle_read_media(session, ws, {"path": "a.pdf"})
+        handle_read_media(session, ws, {"path": "b.pdf"})
+
+        index_path = tmp_path / ".agent" / "tmp" / "development_media_session.json"
+        data = json.loads(index_path.read_text(encoding="utf-8"))
+        artifacts = data["artifacts"]
+        assert len(artifacts) == 2  # noqa: PLR2004
+        titles = {a["title"] for a in artifacts}
+        assert "a.pdf" in titles
+        assert "b.pdf" in titles

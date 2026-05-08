@@ -30,7 +30,12 @@ from ralph.phases.required_artifacts import (
 from ralph.pipeline.cycle_baseline import read_cycle_baseline
 from ralph.policy.models import ROLE_REVIEW
 from ralph.prompts.commit import CommitPromptPayloadConfig, prompt_commit_message
-from ralph.prompts.debug_dump import dump_rendered_prompt, multimodal_sidecar_path, prompt_dump_path
+from ralph.prompts.debug_dump import (
+    dump_rendered_prompt,
+    media_session_path,
+    multimodal_sidecar_path,
+    prompt_dump_path,
+)
 from ralph.prompts.developer import (
     DeveloperPromptInputs,
     PlanningPromptInputs,
@@ -104,6 +109,50 @@ def _clear_multimodal_sidecar(workspace: Workspace, phase: str) -> None:
     path = multimodal_sidecar_path(phase)
     with suppress(Exception):
         workspace.remove(path)
+
+
+def collect_media_entries_for_phase(
+    workspace: Workspace,
+    phase: str,
+) -> list[MultimodalSidecarEntry]:
+    """Read media entries from the persistent session index for a phase.
+
+    The MCP server writes artifact metadata to this index whenever read_media
+    creates a resource-reference artifact during a live session. The runner
+    reads this index at the next prompt materialization to carry those artifacts
+    forward so the agent can retrieve them via read_media / resources/read.
+
+    Returns an empty list when no session index exists or it cannot be parsed.
+    """
+    path = media_session_path(phase)
+    try:
+        raw = workspace.read(path)
+    except Exception:
+        return []
+    try:
+        data: dict[str, object] = json.loads(raw)
+        artifacts = data.get("artifacts")
+        if not isinstance(artifacts, list):
+            return []
+        entries: list[MultimodalSidecarEntry] = []
+        for item in artifacts:
+            if not isinstance(item, dict):
+                continue
+            try:
+                entries.append(MultimodalSidecarEntry(
+                    artifact_id=str(item.get("artifact_id", "")),
+                    uri=str(item.get("uri", "")),
+                    mime_type=str(item.get("mime_type", "")),
+                    title=str(item.get("title", "")),
+                    modality=str(item.get("modality", "")),
+                    delivery=str(item.get("delivery", "resource_reference")),
+                    reason=str(item.get("reason", "")),
+                ))
+            except Exception:
+                continue
+        return entries
+    except Exception:
+        return []
 
 
 def materialize_prompt_for_phase(  # noqa: PLR0913

@@ -62,6 +62,11 @@ class CapabilityVerdict:
         return self.delivery not in {DeliveryMode.UNSUPPORTED}
 
 
+# ---------------------------------------------------------------------------
+# Per-provider inline-image support
+# ---------------------------------------------------------------------------
+
+
 def _claude_supports_inline_image(model_id: str | None) -> bool:
     return True  # All current Claude models support vision
 
@@ -88,6 +93,45 @@ def _inline_image_reason(provider: str, model_id: str | None) -> str | None:
     return None
 
 
+# ---------------------------------------------------------------------------
+# Per-provider non-image modality support matrix
+# ---------------------------------------------------------------------------
+
+# Modalities explicitly unsupported for each known provider via Ralph's
+# managed MCP runtime path. Providers not listed here fall through to the
+# safe resource_reference default.
+#
+# UNSUPPORTED means Ralph cannot deliver the modality through its managed
+# path for this provider — the model API simply does not accept it.
+# RESOURCE_REFERENCE means the agent can retrieve the bytes via resources/read
+# and attempt to relay them to the model in a provider-appropriate form.
+_PROVIDER_UNSUPPORTED_MODALITIES: dict[str, frozenset[str]] = {
+    # Claude/Anthropic does not accept audio or video input via its API.
+    # Images and PDFs are deliverable (inline or via document blocks).
+    # Documents (.docx, .pptx, .xlsx) are accepted via document blocks on
+    # models that support them.
+    "claude": frozenset({"audio", "video"}),
+    "anthropic": frozenset({"audio", "video"}),
+    # OpenAI chat completion API does not accept PDFs, documents, audio, or
+    # video as raw bytes through Ralph's managed MCP path. Only images are
+    # supported (for vision-capable models). Marking pdf/document/audio/video
+    # as UNSUPPORTED so the agent receives an explicit failure instead of a
+    # resource_reference that the model cannot process.
+    "openai": frozenset({"audio", "video", "pdf", "document"}),
+    "codex": frozenset({"audio", "video", "pdf", "document"}),
+    # Gemini supports audio, video, PDFs, and documents natively;
+    # no modalities are unsupported.
+    "gemini": frozenset(),
+}
+
+_PROVIDER_UNSUPPORTED_REASON: dict[str, str] = {
+    "claude": "Claude does not accept this modality via Ralph's managed MCP path",
+    "anthropic": "Anthropic does not accept this modality via Ralph's managed MCP path",
+    "openai": "OpenAI does not accept this modality via Ralph's managed MCP path",
+    "codex": "Codex does not accept this modality via Ralph's managed MCP path",
+}
+
+
 def get_delivery_mode(
     identity: MultimodalModelIdentity,
     modality: str,
@@ -99,6 +143,10 @@ def get_delivery_mode(
 
     Unknown providers default to resource_reference (safe, keeps multimodal
     surface available without false inline-delivery promises).
+
+    For known providers, modalities that cannot be delivered through Ralph's
+    managed MCP path return UNSUPPORTED with an explicit reason rather than
+    silently routing to resource_reference.
     """
     if modality not in SUPPORTED_MODALITIES:
         return CapabilityVerdict(
@@ -118,8 +166,10 @@ def get_delivery_mode(
             reason="unknown provider — defaulting to resource_reference delivery",
         )
 
+    provider_lower = identity.provider.lower()
+
     if modality == "image":
-        inline_reason = _inline_image_reason(identity.provider.lower(), identity.model_id)
+        inline_reason = _inline_image_reason(provider_lower, identity.model_id)
         reason = inline_reason or "provider does not support inline image delivery"
         delivery = DeliveryMode.INLINE if inline_reason else DeliveryMode.RESOURCE_REFERENCE
         return CapabilityVerdict(
@@ -130,13 +180,29 @@ def get_delivery_mode(
             reason=reason,
         )
 
-    # PDF, audio, video, document -> resource_reference for all current providers
+    # Check whether this provider explicitly does not support this modality.
+    unsupported = _PROVIDER_UNSUPPORTED_MODALITIES.get(provider_lower, frozenset())
+    if modality in unsupported:
+        base_reason = _PROVIDER_UNSUPPORTED_REASON.get(
+            provider_lower,
+            f"provider '{identity.provider}' does not support '{modality}'",
+        )
+        return CapabilityVerdict(
+            modality=modality,
+            delivery=DeliveryMode.UNSUPPORTED,
+            provider=identity.provider,
+            model_id=identity.model_id,
+            reason=f"{base_reason} (modality: {modality})",
+        )
+
+    # PDF, document, and any other supported modality not explicitly blocked
+    # are delivered as resource references so the agent can retrieve and relay.
     return CapabilityVerdict(
         modality=modality,
         delivery=DeliveryMode.RESOURCE_REFERENCE,
         provider=identity.provider,
         model_id=identity.model_id,
-        reason=f"'{modality}' delivered as resource reference",
+        reason=f"'{modality}' delivered as resource reference for provider '{identity.provider}'",
     )
 
 

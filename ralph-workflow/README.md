@@ -345,7 +345,12 @@ as an upstream MCP server — see [`docs/mcp/mcp-servers.md`](docs/mcp/mcp-serve
 
 Ralph Workflow has broad multimodal support via `read_media` (primary tool) and `read_image` (compatibility alias). This feature is **enabled by default**.
 
-Supported modalities include images (PNG, JPEG, GIF, WebP), PDFs, documents, audio, video, and resource/file-reference-based flows. Ralph Workflow automatically detects what the active provider/model supports and selects the appropriate delivery mode.
+Supported modalities include images (PNG, JPEG, GIF, WebP), PDFs, documents, audio, video, and resource/file-reference-based flows. Ralph Workflow selects the delivery mode based on a static provider/model capability matrix:
+
+- **Claude/Anthropic** — images delivered inline; PDFs and documents as resource references; audio and video are unsupported via Ralph Workflow's managed MCP path.
+- **OpenAI/Codex** — vision-capable models (gpt-4o, gpt-4-turbo, o1, o3) receive images inline; other models fall back to resource reference. PDFs, documents, audio, and video are unsupported via the chat completion API.
+- **Gemini** — images, PDFs, documents, audio, and video are all delivered as resource references (Gemini supports them natively).
+- **Unknown providers** — all modalities are made available as resource references (safe default, no capability blocked).
 
 To disable multimodal support, add to `.agent/mcp.toml`:
 

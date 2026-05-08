@@ -1,9 +1,10 @@
 """Ralph multimodal platform package.
 
 Provides the shared contract for multimodal artifacts, provider/model
-capability detection, resource URI handling, and session-scoped manifests.
-All runtime layers that need multimodal behavior must derive their decisions
-from this package rather than duplicating provider or format knowledge.
+capability detection, resource URI handling, session-scoped manifests,
+and failure taxonomy. All runtime layers that need multimodal behavior
+must derive their decisions from this package rather than duplicating
+provider or format knowledge.
 """
 
 from ralph.mcp.multimodal.artifacts import (
@@ -24,6 +25,10 @@ from ralph.mcp.multimodal.capabilities import (
     DeliveryMode,
     MultimodalModelIdentity,
     get_delivery_mode,
+)
+from ralph.mcp.multimodal.errors import (
+    MultimodalFailure,
+    MultimodalFailureKind,
 )
 from ralph.mcp.multimodal.resources import (
     MEDIA_URI_TEMPLATE,
@@ -49,6 +54,8 @@ __all__ = [
     "DeliveryMode",
     "ManifestEntry",
     "MediaManifest",
+    "MultimodalFailure",
+    "MultimodalFailureKind",
     "MultimodalModelIdentity",
     "ResourceReferenceContent",
     "build_media_uri",

@@ -873,6 +873,13 @@ ralph.mcp.multimodal.capabilities
    :members:
    :show-inheritance:
 
+ralph.mcp.multimodal.errors
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ralph.mcp.multimodal.errors
+   :members:
+   :show-inheritance:
+
 ralph.mcp.multimodal.resources
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

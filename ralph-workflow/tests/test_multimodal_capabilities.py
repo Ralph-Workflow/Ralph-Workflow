@@ -112,14 +112,26 @@ def test_claude_image_is_inline(model_id: str | None) -> None:
 
 
 @pytest.mark.parametrize(
-    "modality", [MODALITY_PDF, MODALITY_AUDIO, MODALITY_VIDEO, MODALITY_DOCUMENT]
+    "modality", [MODALITY_PDF, MODALITY_DOCUMENT]
 )
-def test_claude_non_image_modalities_are_resource_reference(modality: str) -> None:
+def test_claude_pdf_and_document_are_resource_reference(modality: str) -> None:
+    """Claude supports PDF and document modalities via document blocks."""
     identity = MultimodalModelIdentity(provider="claude", model_id="claude-3-5-sonnet-20241022")
     verdict = get_delivery_mode(identity, modality)
     assert verdict.delivery == DeliveryMode.RESOURCE_REFERENCE
     assert verdict.is_resource_reference()
     assert verdict.is_supported()
+
+
+@pytest.mark.parametrize(
+    "modality", [MODALITY_AUDIO, MODALITY_VIDEO]
+)
+def test_claude_av_modalities_are_unsupported(modality: str) -> None:
+    """Claude's API does not accept audio or video input."""
+    identity = MultimodalModelIdentity(provider="claude", model_id="claude-3-5-sonnet-20241022")
+    verdict = get_delivery_mode(identity, modality)
+    assert verdict.delivery == DeliveryMode.UNSUPPORTED
+    assert not verdict.is_supported()
 
 
 def test_claude_anthropic_alias_also_supports_inline_image() -> None:
@@ -159,13 +171,38 @@ def test_openai_non_vision_model_image_is_resource_reference() -> None:
 
 
 @pytest.mark.parametrize(
-    "modality", [MODALITY_PDF, MODALITY_AUDIO, MODALITY_VIDEO, MODALITY_DOCUMENT]
+    "modality", [MODALITY_AUDIO, MODALITY_VIDEO]
 )
-def test_openai_non_image_modalities_are_resource_reference(modality: str) -> None:
+def test_openai_av_modalities_are_unsupported(modality: str) -> None:
     identity = MultimodalModelIdentity(provider="openai", model_id="gpt-4o")
     verdict = get_delivery_mode(identity, modality)
-    assert verdict.delivery == DeliveryMode.RESOURCE_REFERENCE
-    assert verdict.is_supported()
+    assert verdict.delivery == DeliveryMode.UNSUPPORTED
+    assert not verdict.is_supported()
+
+
+@pytest.mark.parametrize(
+    "modality", [MODALITY_PDF, MODALITY_DOCUMENT]
+)
+def test_openai_pdf_and_document_are_unsupported(modality: str) -> None:
+    """OpenAI chat API cannot process PDFs or documents as raw bytes.
+
+    Returning UNSUPPORTED gives the agent an explicit, actionable failure
+    instead of a resource_reference that the model cannot use.
+    """
+    identity = MultimodalModelIdentity(provider="openai", model_id="gpt-4o")
+    verdict = get_delivery_mode(identity, modality)
+    assert verdict.delivery == DeliveryMode.UNSUPPORTED
+    assert not verdict.is_supported()
+
+
+@pytest.mark.parametrize(
+    "modality", [MODALITY_PDF, MODALITY_DOCUMENT]
+)
+def test_codex_pdf_and_document_are_unsupported(modality: str) -> None:
+    identity = MultimodalModelIdentity(provider="codex", model_id="gpt-4o")
+    verdict = get_delivery_mode(identity, modality)
+    assert verdict.delivery == DeliveryMode.UNSUPPORTED
+    assert not verdict.is_supported()
 
 
 # ---------------------------------------------------------------------------
@@ -200,12 +237,13 @@ def test_claude_mixed_modality_verdicts_are_consistent() -> None:
     identity = MultimodalModelIdentity(provider="claude", model_id="claude-3-5-sonnet-20241022")
     modalities = [MODALITY_IMAGE, MODALITY_PDF, MODALITY_AUDIO, MODALITY_VIDEO, MODALITY_DOCUMENT]
     verdicts = [get_delivery_mode(identity, m) for m in modalities]
-    # All supported
-    assert all(v.is_supported() for v in verdicts)
-    # Image inline, rest resource_reference
-    assert verdicts[0].is_inline()
-    for v in verdicts[1:]:
-        assert v.is_resource_reference()
+    image_v, pdf_v, audio_v, video_v, doc_v = verdicts
+    # Image: inline; pdf/document: resource_reference; audio/video: unsupported
+    assert image_v.is_inline()
+    assert pdf_v.is_resource_reference()
+    assert doc_v.is_resource_reference()
+    assert audio_v.delivery == DeliveryMode.UNSUPPORTED
+    assert video_v.delivery == DeliveryMode.UNSUPPORTED
 
 
 def test_unknown_provider_all_modalities_all_supported() -> None:
@@ -234,3 +272,49 @@ def test_unsupported_verdict_cites_modality_name() -> None:
     identity = MultimodalModelIdentity(provider="claude")
     verdict = get_delivery_mode(identity, "hologram")
     assert "hologram" in verdict.reason
+
+
+# ---------------------------------------------------------------------------
+# MultimodalFailure taxonomy
+# ---------------------------------------------------------------------------
+
+
+def test_multimodal_failure_kinds_are_importable() -> None:
+    from ralph.mcp.multimodal.errors import (  # noqa: PLC0415
+        MultimodalFailure,
+        MultimodalFailureKind,
+    )
+    assert MultimodalFailureKind.UNSUPPORTED_MODALITY == "unsupported_modality"
+    assert MultimodalFailureKind.UNSUPPORTED_RUNTIME_SEAM == "unsupported_runtime_seam"
+    assert MultimodalFailureKind.UNSUPPORTED_MIME_TYPE == "unsupported_mime_type"
+    assert MultimodalFailureKind.PAYLOAD_TOO_LARGE == "payload_too_large"
+    assert MultimodalFailureKind.FILE_READ_ERROR == "file_read_error"
+    assert MultimodalFailureKind.NO_ACTIVE_MANIFEST == "no_active_manifest"
+    assert MultimodalFailureKind.PROVIDER_REJECTED == "provider_rejected"
+    f = MultimodalFailure(
+        kind=MultimodalFailureKind.UNSUPPORTED_MODALITY,
+        message="audio not supported",
+        modality="audio",
+        provider="claude",
+    )
+    assert "audio not supported" in f.user_message()
+    assert "modality: audio" in f.user_message()
+    assert "provider: claude" in f.user_message()
+
+
+def test_multimodal_failure_is_exported_from_package() -> None:
+    from ralph.mcp.multimodal import MultimodalFailure, MultimodalFailureKind  # noqa: PLC0415
+    assert MultimodalFailure is not None
+    assert MultimodalFailureKind is not None
+
+
+def test_multimodal_failure_user_message_without_optional_fields() -> None:
+    from ralph.mcp.multimodal.errors import (  # noqa: PLC0415
+        MultimodalFailure,
+        MultimodalFailureKind,
+    )
+    f = MultimodalFailure(
+        kind=MultimodalFailureKind.FILE_READ_ERROR,
+        message="file not found",
+    )
+    assert f.user_message() == "file not found"

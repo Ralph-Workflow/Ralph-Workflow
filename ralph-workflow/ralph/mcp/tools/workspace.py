@@ -38,6 +38,7 @@ from ralph.mcp.tools.coordination import (
     ToolResult,
     require_capability,
 )
+from ralph.prompts.debug_dump import media_session_path
 from ralph.workspace.skip import RECURSIVE_SKIP_DIRECTORY_NAMES
 
 if TYPE_CHECKING:
@@ -1083,6 +1084,55 @@ def _get_session_model_identity(session: object) -> MultimodalModelIdentity:
     return UNKNOWN_IDENTITY
 
 
+_MEDIA_SESSION_SCHEMA_VERSION = "1"
+
+
+def _persist_media_session_entry(
+    session: object,
+    workspace: Workspace,
+    meta: dict[str, str],
+) -> None:
+    """Append a resource-reference artifact to the persistent session media index.
+
+    The runner reads this index at the next prompt materialization to carry
+    media artifacts forward across sessions via the handoff sidecar.
+
+    *meta* must contain: uri, mime_type, title, modality, reason.
+    """
+    drain: object = getattr(session, "drain", None)
+    phase = str(drain) if drain else "standalone"
+    path = media_session_path(phase)
+    uri = meta["uri"]
+    artifact_id = uri.rsplit("/", maxsplit=1)[-1]
+    new_entry: dict[str, str] = {
+        "artifact_id": artifact_id,
+        "uri": uri,
+        "mime_type": meta["mime_type"],
+        "title": meta["title"],
+        "modality": meta["modality"],
+        "delivery": "resource_reference",
+        "reason": meta["reason"],
+    }
+    try:
+        try:
+            data: dict[str, object] = json.loads(workspace.read(path))
+            raw_artifacts = data.get("artifacts", [])
+            artifacts: list[dict[str, str]] = (
+                list(raw_artifacts) if isinstance(raw_artifacts, list) else []
+            )
+        except Exception:
+            artifacts = []
+        artifacts = [*artifacts, new_entry]
+        payload: dict[str, object] = {
+            "schema_version": _MEDIA_SESSION_SCHEMA_VERSION,
+            "phase": phase,
+            "artifacts": artifacts,
+        }
+        workspace.write(path, json.dumps(payload, indent=2))
+    except Exception:
+        pass  # Session index persistence is best-effort; never block a tool call
+
+
 def handle_read_media(
     session: CoordinationSessionLike,
     workspace: Workspace,
@@ -1190,6 +1240,12 @@ def handle_read_media(
         mime_type=mime_type,
         title=title,
         modality=modality,
+    )
+    _persist_media_session_entry(
+        session,
+        workspace,
+        {"uri": entry.uri, "mime_type": mime_type, "title": title,
+         "modality": modality, "reason": verdict.reason},
     )
     return ToolResult(content=[ref], is_error=False)
 
