@@ -16,6 +16,12 @@ from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, NamedTuple, cast
 
 from ralph.mcp.artifacts.policy_outcomes import is_policy_approved
+from ralph.mcp.multimodal.artifacts import (
+    INLINE_IMAGE_MIME_TYPES,
+    ResourceReferenceContent,
+    infer_modality_and_mime,
+)
+from ralph.mcp.multimodal.resources import MediaManifest
 from ralph.mcp.tools.coordination import (
     CapabilityDeniedError,
     CoordinationSessionLike,
@@ -1055,6 +1061,116 @@ def _infer_image_mime_type(path: str) -> str | None:
     return _SUPPORTED_IMAGE_MIME_TYPES.get(suffix)
 
 
+def _get_media_manifest(session: object) -> MediaManifest | None:
+    """Return the session's MediaManifest if available."""
+    raw: object = getattr(session, "media_manifest", None)
+    if isinstance(raw, MediaManifest):
+        return raw
+    return None
+
+
+def handle_read_media(
+    session: CoordinationSessionLike,
+    workspace: Workspace,
+    params: dict[str, object],
+    *,
+    max_inline_bytes: int = 5_242_880,
+) -> ToolResult:
+    """Read a media file and return the appropriate content block.
+
+    Supports images, PDFs, audio, video, and visually meaningful documents.
+    For supported inline images within the size limit, returns an ImageContent
+    block identical to read_image. For all other media (PDFs, audio, video,
+    oversized images, layout-dependent documents), returns a ResourceReferenceContent
+    block and stores the artifact in the session manifest for later retrieval
+    via resources/read.
+    """
+    require_capability(session, MEDIA_READ_CAPABILITY, "Media read")
+    path = required_string_param(params, "path")
+    normalized = _normalize_relative_path(path)
+
+    suffix = PurePosixPath(normalized or path).suffix.lower()
+    inferred = infer_modality_and_mime(suffix)
+    if inferred is None:
+        supported = sorted({
+            ".png", ".jpg", ".jpeg", ".gif", ".webp",
+            ".pdf", ".mp3", ".wav", ".ogg", ".m4a", ".flac", ".aac",
+            ".mp4", ".avi", ".mov", ".mkv", ".webm",
+            ".docx", ".pptx", ".xlsx",
+        })
+        return ToolResult(
+            content=[
+                ToolContent.text_content(
+                    f"Unsupported media format '{suffix or '(none)'}'. "
+                    f"Supported: {', '.join(supported)}"
+                )
+            ],
+            is_error=True,
+        )
+
+    modality, mime_type = inferred
+    abs_path = workspace.absolute_path(normalized or path)
+
+    try:
+        file_size = Path(abs_path).stat().st_size
+    except OSError as exc:
+        return ToolResult(
+            content=[ToolContent.text_content(
+                f"Failed to stat media file '{path}': {exc}"
+            )],
+            is_error=True,
+        )
+
+    try:
+        with Path(abs_path).open("rb") as fh:
+            raw_bytes = fh.read()
+    except OSError as exc:
+        return ToolResult(
+            content=[ToolContent.text_content(
+                f"Failed to read media file '{path}': {exc}"
+            )],
+            is_error=True,
+        )
+
+    title = PurePosixPath(path).name
+
+    # Deliver small inline images directly when supported
+    is_small_inline_image = (
+        modality == "image"
+        and mime_type in INLINE_IMAGE_MIME_TYPES
+        and file_size <= max_inline_bytes
+    )
+    if is_small_inline_image:
+        encoded = base64.b64encode(raw_bytes).decode("ascii")
+        return ToolResult(
+            content=[ImageContent(data=encoded, mime_type=mime_type)],
+            is_error=False,
+        )
+
+    # Everything else (PDF, audio, video, document, oversized image) -> resource_reference
+    manifest = _get_media_manifest(session)
+    if manifest is not None:
+        entry = manifest.add(
+            title=title,
+            mime_type=mime_type,
+            modality=modality,
+            raw_bytes=raw_bytes,
+        )
+        uri = entry.uri
+    else:
+        # No manifest available (e.g., standalone/test session) — emit reference without storage
+        from ralph.mcp.multimodal.resources import build_media_uri, new_artifact_id  # noqa: PLC0415
+        uri = build_media_uri(new_artifact_id())
+
+    ref = ResourceReferenceContent(
+        uri=uri,
+        mime_type=mime_type,
+        title=title,
+        modality=modality,
+    )
+    return ToolResult(content=[ref], is_error=False)
+
+
 def handle_read_image(
     session: CoordinationSessionLike,
     workspace: Workspace,
@@ -1144,6 +1260,7 @@ __all__ = [
     "handle_move_file",
     "handle_read_file",
     "handle_read_image",
+    "handle_read_media",
     "handle_read_multiple_files",
     "handle_search_files",
     "handle_stat",

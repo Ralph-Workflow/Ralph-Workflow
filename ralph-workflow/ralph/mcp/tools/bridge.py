@@ -39,6 +39,7 @@ from ralph.mcp.tools.names import (
     READ_ENV_TOOL,
     READ_FILE_TOOL,
     READ_IMAGE_TOOL,
+    READ_MEDIA_TOOL,
     READ_MULTIPLE_FILES_TOOL,
     REPORT_PROGRESS_TOOL,
     SEARCH_FILES_TOOL,
@@ -1485,6 +1486,42 @@ def _tool_specs(mcp_config: McpConfig) -> tuple[ToolSpec, ...]:
                 handler_name="handle_read_image",
             ),
         )
+        _specs.append(
+            ToolSpec(
+                metadata=_metadata(
+                    name=READ_MEDIA_TOOL,
+                    description=(
+                        "Read a media file and return the appropriate content block. "
+                        "Supports images, PDFs, audio, video, and visually meaningful documents. "
+                        "Required param: path (string, relative or absolute path). "
+                        "For supported inline images within the size limit, returns an image "
+                        "content block. For PDFs, audio, video, documents, or oversized images, "
+                        "returns a resource_reference block with uri, mimeType, title, modality, "
+                        "and delivery fields. The referenced artifact can be retrieved via "
+                        "resources/read using the returned URI. "
+                        'Example: {"path": "docs/report.pdf"} returns a resource_reference block.'
+                    ),
+                    input_schema={
+                        "type": "object",
+                        "properties": {
+                            "path": {
+                                "type": "string",
+                                "description": (
+                                    "File path as a string, relative or absolute inside "
+                                    "the workspace (example values: 'docs/report.pdf', "
+                                    "'audio/clip.mp3', 'screenshot.png')."
+                                ),
+                            },
+                        },
+                        "required": ["path"],
+                    },
+                    required_capability="media.read",
+                    is_multimodal=True,
+                ),
+                module_name="ralph.mcp.tools.workspace",
+                handler_name="handle_read_media",
+            ),
+        )
     return tuple(_specs)
 
 
@@ -1531,6 +1568,10 @@ def build_ralph_tool_registry(
             spec.module_name == "ralph.mcp.tools.workspace"
             and spec.handler_name == "handle_read_image"
         )
+        is_read_media = (
+            spec.module_name == "ralph.mcp.tools.workspace"
+            and spec.handler_name == "handle_read_media"
+        )
         if is_websearch:
             bridge.register(
                 spec.metadata,
@@ -1553,7 +1594,7 @@ def build_ralph_tool_registry(
                     extra_kwargs={"web_visit_config": mcp_cfg.web_visit},
                 ),
             )
-        elif is_read_image:
+        elif is_read_image or is_read_media:
             bridge.register(
                 spec.metadata,
                 LazyToolHandler(

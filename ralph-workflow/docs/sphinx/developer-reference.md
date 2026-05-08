@@ -11,7 +11,7 @@ If you only need to install, configure, and run Ralph Workflow, start with
 ## What lives here
 
 - [Operator Reference](reference.md) stays focused on command, config, and tool lookup
-- [Developer Internals](developer-internals.md) groups the maintainer-facing architecture and runtime pages (including [Agents Architecture](agents.md))
+- [Developer Internals](developer-internals.md) groups the maintainer-facing architecture and runtime pages (including Agents Architecture, MCP Architecture, Artifacts, Prompts, and Transcript)
 - [Python API Reference](modules.rst) documents the public `ralph.*` package surface
 - [Release & Versioning](versioning.md) covers release, tagging, and publishing policy
 

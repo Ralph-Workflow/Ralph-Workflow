@@ -45,6 +45,7 @@ class RalphToolName(StrEnum):
     WEB_SEARCH = "web_search"
     VISIT_URL = "visit_url"
     READ_IMAGE = "read_image"
+    READ_MEDIA = "read_media"
 
     def with_prefix(self, *, tool_name_prefix: str = "") -> str:
         return f"{tool_name_prefix}{self}" if tool_name_prefix else self.value
@@ -98,6 +99,7 @@ READ_ENV_TOOL = RalphToolName.READ_ENV
 WEB_SEARCH_TOOL = RalphToolName.WEB_SEARCH
 VISIT_URL_TOOL = RalphToolName.VISIT_URL
 READ_IMAGE_TOOL = RalphToolName.READ_IMAGE
+READ_MEDIA_TOOL = RalphToolName.READ_MEDIA
 
 WORKSPACE_READ_TOOLS: tuple[str, ...] = (
     READ_FILE_TOOL,
@@ -139,7 +141,7 @@ PROGRESS_TOOLS: tuple[str, ...] = (REPORT_PROGRESS_TOOL,)
 ENV_READ_TOOLS: tuple[str, ...] = (READ_ENV_TOOL,)
 WEB_SEARCH_TOOLS: tuple[str, ...] = (WEB_SEARCH_TOOL,)
 WEB_VISIT_TOOLS: tuple[str, ...] = (VISIT_URL_TOOL,)
-MEDIA_READ_TOOLS: tuple[str, ...] = (READ_IMAGE_TOOL,)
+MEDIA_READ_TOOLS: tuple[str, ...] = (READ_IMAGE_TOOL, READ_MEDIA_TOOL)
 
 ALL_RALPH_TOOLS: tuple[str, ...] = (
     *WORKSPACE_READ_TOOLS,

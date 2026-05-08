@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from ralph.mcp.artifacts.policy_outcomes import is_policy_approved
+from ralph.mcp.multimodal.artifacts import ResourceReferenceContent
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -64,7 +65,7 @@ class ImageContent:
         return {"type": self.type, "data": self.data, "mimeType": self.mime_type}
 
 
-type ContentBlock = ToolContent | ImageContent
+type ContentBlock = ToolContent | ImageContent | ResourceReferenceContent
 
 
 @dataclass(frozen=True)
@@ -252,6 +253,7 @@ __all__ = [
     "CoordinationSessionLike",
     "ImageContent",
     "InvalidParamsError",
+    "ResourceReferenceContent",
     "ToolContent",
     "ToolError",
     "ToolResult",
