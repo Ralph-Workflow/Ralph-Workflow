@@ -48,6 +48,8 @@ class AuditSink(Protocol):
 
 
 class McpAuditEventType(StrEnum):
+    """Enumeration of MCP audit event categories."""
+
     TOOL = "tool"
     DENIAL = "denial"
     MODE_TRANSITION = "mode_transition"

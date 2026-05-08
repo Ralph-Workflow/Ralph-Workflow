@@ -60,6 +60,7 @@ def capability_template_variables(
     *,
     tool_name_prefix: str = "",
 ) -> dict[str, str]:
+    """Return template variable dict derived from the given capability and policy sets."""
     return _capability_template_variables(
         capabilities,
         policy_flags,
@@ -68,6 +69,7 @@ def capability_template_variables(
 
 
 def bool_to_template_value(value: bool) -> str:
+    """Convert a boolean to the canonical template string representation."""
     return bool_to_string(value)
 
 

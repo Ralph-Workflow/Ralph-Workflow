@@ -38,6 +38,8 @@ _PACKAGE_ROOT = Path(__file__).resolve().parents[3]
 
 
 class ProcessLike(Protocol):
+    """Subset of ManagedProcess API required by the MCP server lifecycle."""
+
     def poll(self) -> int | None: ...
     def terminate(self, grace_period_s: float = 5.0) -> None: ...
     def wait(self, timeout: float | None = None) -> int | None: ...
@@ -69,6 +71,8 @@ type PreflightFn = Callable[[str, list[str], timedelta], None]
 
 @dataclass(frozen=True)
 class LifecycleDeps:
+    """Injectable dependencies for MCP server lifecycle management."""
+
     reserve_port: Callable[[], int]
     create_session_file: Callable[[Path, SessionLike], Path]
     subprocess_env: Callable[[Path], dict[str, str]]
@@ -81,6 +85,8 @@ class LifecycleDeps:
 
 @dataclass
 class StandaloneMcpProcess:
+    """A running standalone MCP HTTP server process with its endpoint and session file."""
+
     endpoint: str
     process: ProcessLike
     session_file: Path

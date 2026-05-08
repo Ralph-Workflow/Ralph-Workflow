@@ -19,11 +19,15 @@ class TemplateNode:
 
 @dataclass
 class TextNode(TemplateNode):
+    """A literal text segment in a parsed template."""
+
     text: str
 
 
 @dataclass
 class VariableNode(TemplateNode):
+    """A `{{ VARIABLE }}` substitution with an optional default value."""
+
     name: str
     default: str | None
     placeholder: str
@@ -31,11 +35,15 @@ class VariableNode(TemplateNode):
 
 @dataclass
 class PartialNode(TemplateNode):
+    """A `{{> partial_name }}` include directive."""
+
     name: str
 
 
 @dataclass
 class LoopNode(TemplateNode):
+    """A `{% for x in iterable %}` loop with a body."""
+
     variable: str
     iterable: str
     body: list[TemplateNode]
@@ -43,6 +51,8 @@ class LoopNode(TemplateNode):
 
 @dataclass
 class ConditionalNode(TemplateNode):
+    """An `{% if condition %}` block with truthy and falsy branches."""
+
     condition: str
     truthy: list[TemplateNode]
     falsy: list[TemplateNode]
@@ -242,6 +252,7 @@ def _parse_for_header(header: str) -> tuple[str, str]:
 
 
 def parse_variable_spec(var_spec: str) -> tuple[str, str | None] | None:
+    """Parse a variable spec string into (name, default) or None if invalid."""
     trimmed = var_spec.strip()
     if not trimmed or trimmed.startswith(">"):
         return None
@@ -263,6 +274,7 @@ def parse_variable_spec(var_spec: str) -> tuple[str, str | None] | None:
 
 
 def parse_metadata_line(line: str) -> tuple[str | None, str | None] | None:
+    """Parse a `{# ... #}` metadata comment line into (version, purpose) or None."""
     trimmed = line.strip()
     if (
         len(trimmed) < METADATA_COMMENT_MIN_LENGTH
@@ -281,17 +293,20 @@ def parse_metadata_line(line: str) -> tuple[str | None, str | None] | None:
 
 
 def is_metadata_comment(line: str) -> bool:
+    """Return True if the line is a `{# ... #}` metadata comment."""
     trimmed = line.strip()
     return trimmed.startswith("{#") and trimmed.endswith("#}")
 
 
 def split_loop_items(values: str) -> list[str]:
+    """Split a comma- or newline-separated string into a list of trimmed items."""
     if "," in values:
         return [item.strip() for item in values.split(",")]
     return [line.strip() for line in values.splitlines() if line.strip()]
 
 
 def eval_conditional(condition: str, variables: Mapping[str, str]) -> bool:
+    """Evaluate a template condition as truthy if the named variable is non-empty."""
     if not condition:
         return False
     return bool(variables.get(condition, ""))

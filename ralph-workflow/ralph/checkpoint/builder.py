@@ -16,6 +16,8 @@ if TYPE_CHECKING:
 
 
 class CheckpointPayloadDict(TypedDict):
+    """Serialisable checkpoint payload written to and read from disk."""
+
     state: dict[str, object]
     run_context: RunContextDict
     execution_history: ExecutionHistoryDict

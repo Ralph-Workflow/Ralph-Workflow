@@ -74,6 +74,8 @@ _MISSING_COMMIT_ARTIFACT_REASON = "agent completed without writing a commit_mess
 
 @dataclass(frozen=True)
 class CommitAgentAttempt:
+    """Result of a single commit-message agent invocation attempt."""
+
     message: str = ""
     skipped: bool = False
     failure_detail: str = ""
@@ -120,6 +122,8 @@ class CommitPlumbingOptions:
 
 @dataclass(frozen=True)
 class CommitAgentResult:
+    """Aggregated result returned after all commit-message agent attempts complete."""
+
     message: str = ""
     skipped: bool = False
     failure_details: list[str] = field(default_factory=list)

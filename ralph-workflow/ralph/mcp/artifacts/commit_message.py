@@ -39,10 +39,12 @@ def _now_iso() -> str:
 
 
 def commit_message_artifact_path(repo_root: Path) -> Path:
+    """Return the canonical artifact JSON path for the given repo root."""
     return repo_root / COMMIT_MESSAGE_ARTIFACT
 
 
 def commit_message_text_path(repo_root: Path) -> Path:
+    """Return the plain-text mirror path for commit messages."""
     return repo_root / COMMIT_MESSAGE_TEXT
 
 
@@ -53,6 +55,7 @@ def write_commit_message_artifact(
     backend: FileBackend = DEFAULT_FILE_BACKEND,
     now_iso: Callable[[], str] = _now_iso,
 ) -> None:
+    """Persist a commit message as both a JSON artifact and a plain-text file."""
     artifact_path = commit_message_artifact_path(repo_root)
     text_path = commit_message_text_path(repo_root)
     backend.mkdir(artifact_path.parent, parents=True, exist_ok=True)
@@ -75,6 +78,7 @@ def write_commit_message_artifact(
 def read_commit_message_artifact(
     repo_root: Path, *, backend: FileBackend = DEFAULT_FILE_BACKEND
 ) -> str | None:
+    """Read the commit message from the canonical artifact, falling back to the text file."""
     artifact_path = commit_message_artifact_path(repo_root)
     if backend.exists(artifact_path):
         parsed = _read_commit_message_text_from_json_path(artifact_path, backend=backend)
@@ -91,6 +95,7 @@ def read_commit_message_artifact(
 def read_commit_message_from_path(
     message_file: Path, *, backend: FileBackend = DEFAULT_FILE_BACKEND
 ) -> str | None:
+    """Read a commit message from an arbitrary file path (JSON or plain text)."""
     if message_file.suffix == ".json":
         if not backend.exists(message_file):
             return None
@@ -113,6 +118,7 @@ _LEGACY_STALE_GLOBS = (
 def delete_commit_message_artifacts(
     repo_root: Path, *, backend: FileBackend = DEFAULT_FILE_BACKEND
 ) -> None:
+    """Remove all commit message artifacts and legacy stale files."""
     for path in (commit_message_artifact_path(repo_root), commit_message_text_path(repo_root)):
         if backend.exists(path):
             backend.unlink(path)
@@ -125,6 +131,7 @@ def delete_commit_message_artifacts(
 
 
 def normalize_commit_message_content(content: str | dict[str, object]) -> dict[str, object]:
+    """Validate and normalize a commit message payload to a canonical dict form."""
     if isinstance(content, str):
         stripped = content.strip()
         if not stripped:
@@ -157,6 +164,7 @@ def normalize_commit_message_content(content: str | dict[str, object]) -> dict[s
 
 
 def render_commit_message_content(content: dict[str, object]) -> str:
+    """Render normalized commit message content as a plain-text commit message string."""
     normalized = normalize_commit_message_content(content)
     kind = cast("str", normalized["type"])
     if kind == _SKIP_KIND:

@@ -36,6 +36,8 @@ class _ImplementationProtocol(Protocol):
 
 
 class SysModuleProtocol(Protocol):
+    """Subset of the sys module interface required for runtime environment detection."""
+
     @property
     def version_info(self) -> _VersionInfoProtocol: ...
 

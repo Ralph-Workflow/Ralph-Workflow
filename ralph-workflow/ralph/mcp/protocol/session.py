@@ -18,6 +18,7 @@ def _normalize_capability_token(value: str) -> str:
 
 
 def session_has_capability(granted: set[str], requested: str) -> bool:
+    """Return True if the requested capability is present in the granted set."""
     normalized_granted = set[str]()
     for value in granted:
         normalized_granted.add(_normalize_capability_token(value))

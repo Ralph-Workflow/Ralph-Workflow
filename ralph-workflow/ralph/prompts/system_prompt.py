@@ -16,6 +16,7 @@ def materialize_system_prompt(
     name: str,
     default_current_prompt: str | None = None,
 ) -> str:
+    """Write a system prompt file for the named agent and return its path."""
     current_prompt_path = workspace_root / ".agent" / "CURRENT_PROMPT.md"
     if not current_prompt_path.exists() and default_current_prompt is not None:
         current_prompt_path.parent.mkdir(parents=True, exist_ok=True)
@@ -30,6 +31,7 @@ def materialize_system_prompt(
 
 
 def build_system_prompt(*, current_prompt_path: str) -> str:
+    """Build the system prompt text that points the agent at the current prompt file."""
     unattended = _unattended_mode_text().strip()
     return (
         f"{unattended}\n\n"

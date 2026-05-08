@@ -8,6 +8,8 @@ from uuid import uuid4
 
 
 class RunContextDict(TypedDict):
+    """JSON-safe representation of run lineage data for checkpointing."""
+
     run_id: str
     parent_run_id: str | None
     resume_count: int

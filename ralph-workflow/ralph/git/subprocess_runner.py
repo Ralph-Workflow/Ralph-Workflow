@@ -15,6 +15,8 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class GitRunResult:
+    """Result of a git subprocess invocation."""
+
     args: tuple[str, ...]
     returncode: int
     stdout: str

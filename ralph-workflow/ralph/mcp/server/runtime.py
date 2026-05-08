@@ -143,12 +143,16 @@ class FastMcpServerLike(Protocol):
 
 
 class FastMcpConstructorLike(Protocol):
+    """Protocol for constructing FastMCP server instances."""
+
     def __call__(self, *args: object, **kwargs: object) -> FastMcpServerLike:
         """Construct a FastMCP server instance."""
         ...
 
 
 class ServerState(StrEnum):
+    """Lifecycle state of a running MCP server instance."""
+
     UNINITIALIZED = "uninitialized"
     RUNNING = "running"
     SHUTDOWN = "shutdown"
@@ -156,6 +160,8 @@ class ServerState(StrEnum):
 
 @dataclass
 class JsonRpcRequest:
+    """Parsed representation of an incoming JSON-RPC request."""
+
     jsonrpc: str
     method: str
     params: dict[str, object] | None = None
@@ -164,6 +170,8 @@ class JsonRpcRequest:
 
 @dataclass
 class JsonRpcResponse:
+    """Outgoing JSON-RPC response built by McpServer request handlers."""
+
     jsonrpc: str
     result: object = None
     error: dict[str, object] | None = None
@@ -254,6 +262,8 @@ def _extract_client_capabilities(params: dict[str, object] | None) -> set[str]:
 
 
 class McpServer:
+    """Lightweight MCP server that dispatches JSON-RPC requests to Ralph tools."""
+
     def __init__(self, session: AgentSession, workspace: FsWorkspace, registry: ToolBridge) -> None:
         self._session = session
         self._workspace = workspace
@@ -536,6 +546,7 @@ def build_standalone_http_server(  # noqa: PLR0913
     upstream_registry: UpstreamRegistry | None = None,
     mcp_config: McpConfig | None = None,
 ) -> _StandaloneHttpServer:
+    """Build a standalone HTTP MCP server backed by the Ralph tool registry."""
     effective_session = session or AgentSession(
         session_id=f"standalone-{uuid.uuid4().hex[:8]}",
         run_id=str(uuid.uuid4()),

@@ -34,17 +34,21 @@ if TYPE_CHECKING:
 
 
 class RegistryCollisionError(ValueError):
-    pass
+    """Raised when two upstream servers produce the same proxy alias for a tool."""
 
 
 @dataclass(frozen=True)
 class ProxiedTool:
+    """A single upstream tool mapped to a stable proxy alias."""
+
     alias: str
     server_name: str
     tool: UpstreamTool
 
 
 class UpstreamRegistry:
+    """Aggregates tools from multiple upstream MCP servers under stable proxy aliases."""
+
     def __init__(
         self,
         proxied_tools: list[ProxiedTool],

@@ -13,6 +13,8 @@ def _timestamp() -> str:
 
 
 class StepOutcomeDict(TypedDict, total=False):
+    """JSON-safe representation of a single step outcome for checkpointing."""
+
     kind: str
     output: str | None
     files_modified: list[str]
@@ -83,6 +85,8 @@ class StepOutcome:
 
 
 class ExecutionStepDict(TypedDict, total=False):
+    """JSON-safe representation of a single execution step for checkpointing."""
+
     phase: str
     iteration: int
     step_type: str
@@ -134,6 +138,8 @@ class ExecutionStep:
 
 
 class ExecutionHistoryDict(TypedDict):
+    """JSON-safe representation of the full execution history for checkpointing."""
+
     steps: list[ExecutionStepDict]
     file_snapshots: dict[str, str]
 

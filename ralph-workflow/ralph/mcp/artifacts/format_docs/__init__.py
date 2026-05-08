@@ -26,18 +26,22 @@ FORMAT_DOCS_WORKSPACE_DIR = ".agent/artifact-formats"
 
 
 def has_format_doc(artifact_type: str) -> bool:
+    """Return True if a bundled format doc exists for the given artifact type."""
     return artifact_type in FORMAT_DOC_ARTIFACT_TYPES
 
 
 def format_doc_workspace_path(artifact_type: str) -> str:
+    """Return the workspace-relative path for an artifact format doc."""
     return f"{FORMAT_DOCS_WORKSPACE_DIR}/{artifact_type}.md"
 
 
 def format_index_workspace_path() -> str:
+    """Return the workspace-relative path for the artifact formats index doc."""
     return f"{FORMAT_DOCS_WORKSPACE_DIR}/{ARTIFACT_FORMAT_INDEX_ARTIFACT_TYPE}.md"
 
 
 def load_bundled_format_doc(artifact_type: str) -> str | None:
+    """Load a bundled Markdown format doc for the given artifact type, or None if unknown."""
     if artifact_type not in FORMAT_DOC_ARTIFACT_TYPES:
         return None
     pkg = importlib.resources.files("ralph.mcp.artifacts.format_docs")
@@ -58,6 +62,7 @@ def materialize_format_doc(
     *,
     backend: FileBackend = DEFAULT_FILE_BACKEND,
 ) -> str | None:
+    """Write a bundled format doc into the workspace and return its relative path."""
     if artifact_type not in FORMAT_DOC_ARTIFACT_TYPES:
         return None
     content = load_bundled_format_doc(artifact_type)
@@ -90,6 +95,7 @@ def materialize_all_format_docs(
     *,
     backend: FileBackend = DEFAULT_FILE_BACKEND,
 ) -> list[str]:
+    """Write all bundled format docs and the index into the workspace."""
     result = []
     for artifact_type in FORMAT_DOC_ARTIFACT_TYPES:
         path = materialize_format_doc(workspace_root, artifact_type, backend=backend)

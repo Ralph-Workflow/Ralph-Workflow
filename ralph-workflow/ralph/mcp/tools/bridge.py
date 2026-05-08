@@ -65,6 +65,8 @@ _EXAMPLE_STEPS_CONTENT = '{"steps": [{"step": "placeholder"}]}'
 
 
 class RegistrationHandler(Protocol):
+    """Callable protocol for MCP tool handler functions registered in the tool bridge."""
+
     def __call__(
         self,
         host_session: object | None,
@@ -152,6 +154,8 @@ class LazyToolHandler:
 
 
 class UpstreamProxyHandler:
+    """Proxy handler that forwards tool calls to an upstream MCP registry."""
+
     def __init__(self, alias: str, upstream_registry: UpstreamRegistry) -> None:
         self._alias = alias
         self._upstream_registry = upstream_registry

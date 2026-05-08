@@ -116,6 +116,8 @@ def _noop_now_iso() -> str:
 
 @dataclass(frozen=True)
 class ArtifactHandlerDeps:
+    """Injectable dependencies for artifact handler operations."""
+
     backend: FileBackend = DEFAULT_FILE_BACKEND
     now_iso: Callable[[], str] = _noop_now_iso
     history_enabled: bool = False
@@ -180,6 +182,7 @@ def handle_submit_artifact(
     *,
     deps: ArtifactHandlerDeps | None = None,
 ) -> ToolResult:
+    """Validate and persist an artifact submitted by an MCP agent."""
     require_capability(session, ARTIFACT_SUBMIT_CAPABILITY, "Artifact submission")
     resolved_deps = deps or DEFAULT_ARTIFACT_HANDLER_DEPS
     drain = _session_drain(session)

@@ -15,6 +15,13 @@ from ralph.pipeline.worker_state import WorkerStatus
 
 @dataclass(frozen=True)
 class WorkerResult:
+    """Immutable result returned by an executor after a work unit finishes.
+
+    ``exit_code`` mirrors the subprocess exit status; 0 indicates success.
+    ``final_message`` is the last status line emitted by the agent.
+    ``duration_ms`` is the wall-clock elapsed time for the unit.
+    """
+
     unit_id: str
     exit_code: int
     final_message: str
@@ -22,11 +29,18 @@ class WorkerResult:
 
 
 class ExecutorError(Exception):
-    pass
+    """Raised when an executor encounters an unrecoverable failure."""
 
 
 @runtime_checkable
 class AgentExecutor(Protocol):
+    """Protocol that every agent executor implementation must satisfy.
+
+    Implementors receive a ``WorkUnit``, stream output via ``on_output``,
+    report status transitions via ``on_status``, and return a ``WorkerResult``
+    when the unit completes or fails.
+    """
+
     async def run(
         self,
         unit: WorkUnit,

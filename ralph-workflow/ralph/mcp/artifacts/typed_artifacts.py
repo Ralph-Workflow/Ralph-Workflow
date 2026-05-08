@@ -53,6 +53,8 @@ class _IssueEntry(BaseModel):  # type: ignore[explicit-any]  # reason: external 
 
 
 class Issues(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+    """Validated schema for an issues artifact payload."""
+
     model_config = ConfigDict(extra="forbid")
 
     status: Literal["issues_found", "no_issues"]
@@ -80,6 +82,8 @@ class Issues(BaseModel):  # type: ignore[explicit-any]  # reason: external libra
 
 
 class FixResult(BaseModel):  # type: ignore[explicit-any]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+    """Validated schema for a fix_result artifact payload."""
+
     model_config = ConfigDict(extra="forbid")
 
     summary: str = Field(..., min_length=1)
@@ -130,10 +134,12 @@ def _validate(model_cls: type[BaseModel], content: dict[str, object]) -> dict[st
 
 
 def normalize_issues_content(content: dict[str, object]) -> dict[str, object]:
+    """Validate and normalize a raw issues artifact content dict."""
     return _validate(Issues, content)
 
 
 def normalize_fix_result_content(content: dict[str, object]) -> dict[str, object]:
+    """Validate and normalize a raw fix_result artifact content dict."""
     return _validate(FixResult, content)
 
 
@@ -142,6 +148,7 @@ def normalize_analysis_decision_content(
     *,
     allowed_statuses: Collection[str] | None = None,
 ) -> dict[str, object]:
+    """Validate and normalize an analysis decision artifact content dict."""
     normalized = _validate(AnalysisDecision, content)
     statuses = (
         frozenset(allowed_statuses)

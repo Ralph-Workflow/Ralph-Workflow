@@ -444,6 +444,7 @@ def handle_read_multiple_files(
     workspace: Workspace,
     params: dict[str, object],
 ) -> ToolResult:
+    """Read multiple workspace files in one call and return per-file results."""
     require_capability(session, WORKSPACE_READ_CAPABILITY, "Read multiple files")
     paths_param = params.get("paths")
     if not isinstance(paths_param, list):
@@ -470,6 +471,7 @@ def handle_stat(
     workspace: Workspace,
     params: dict[str, object],
 ) -> ToolResult:
+    """Return file metadata (type, size, timestamps) for a workspace path."""
     require_capability(
         session, WORKSPACE_METADATA_READ_CAPABILITY, "Workspace metadata read"
     )
@@ -489,6 +491,7 @@ def handle_list_allowed_roots(
     workspace: Workspace,
     params: dict[str, object],
 ) -> ToolResult:
+    """Return the list of workspace paths the session is permitted to access."""
     require_capability(session, WORKSPACE_READ_CAPABILITY, "List allowed roots")
     try:
         roots = workspace.allowed_roots()
@@ -503,6 +506,7 @@ def handle_list_directory(
     workspace: Workspace,
     params: dict[str, object],
 ) -> ToolResult:
+    """List entries in a workspace directory, optionally recursive."""
     require_capability(session, WORKSPACE_READ_CAPABILITY, "Directory listing")
     path = required_string_param(params, "path")
     recursive = bool(params.get("recursive", False))
@@ -519,6 +523,7 @@ def handle_list_directory_recursive(
     workspace: Workspace,
     params: dict[str, object],
 ) -> ToolResult:
+    """Return a flat listing of all entries under a workspace directory."""
     require_capability(
         session, WORKSPACE_READ_CAPABILITY, "Recursive directory listing"
     )
@@ -580,6 +585,7 @@ def handle_directory_tree(
     workspace: Workspace,
     params: dict[str, object],
 ) -> ToolResult:
+    """Return a nested JSON directory tree for a workspace path."""
     require_capability(session, WORKSPACE_READ_CAPABILITY, "Directory tree")
     path = required_string_param(params, "path")
     max_depth = _int_opt_param(params, "max_depth")
@@ -606,6 +612,7 @@ def handle_search_files(
     workspace: Workspace,
     params: dict[str, object],
 ) -> ToolResult:
+    """Search for files matching a glob pattern within a workspace directory."""
     require_capability(session, WORKSPACE_READ_CAPABILITY, "File search")
     pattern = required_string_param(params, "pattern")
     path = required_string_param(params, "path")
@@ -714,6 +721,7 @@ def handle_grep_files(
     workspace: Workspace,
     params: dict[str, object],
 ) -> ToolResult:
+    """Search file contents for a pattern and return line-level matches."""
     require_capability(session, WORKSPACE_READ_CAPABILITY, "Content search")
     pattern = required_string_param(params, "pattern")
     path = required_string_param(params, "path")
@@ -801,6 +809,7 @@ def handle_write_file(
     workspace: Workspace,
     params: dict[str, object],
 ) -> ToolResult:
+    """Write UTF-8 content to a workspace file, creating it if necessary."""
     # Path is extracted first to determine which write capability applies
     # (tracked vs ephemeral), then capability check fires before content extraction.
     path = required_string_param(params, "path")
@@ -828,6 +837,7 @@ def handle_edit_file(
     workspace: Workspace,
     params: dict[str, object],
 ) -> ToolResult:
+    """Apply structured oldText/newText replacements to a workspace file."""
     path = required_string_param(params, "path")
     normalized = _normalize_relative_path(path)
     _check_edit_area_restriction(session, normalized)
@@ -912,6 +922,7 @@ def handle_append_file(
     workspace: Workspace,
     params: dict[str, object],
 ) -> ToolResult:
+    """Append content to a workspace file."""
     path = required_string_param(params, "path")
     normalized = _normalize_relative_path(path)
     _check_edit_area_restriction(session, normalized)
@@ -937,6 +948,7 @@ def handle_create_directory(
     workspace: Workspace,
     params: dict[str, object],
 ) -> ToolResult:
+    """Create a directory (and parents) within the workspace."""
     path = required_string_param(params, "path")
     normalized = _normalize_relative_path(path)
     _check_edit_area_restriction(session, normalized)
@@ -961,6 +973,7 @@ def handle_move_file(
     workspace: Workspace,
     params: dict[str, object],
 ) -> ToolResult:
+    """Move or rename a workspace file or directory."""
     src = required_string_param(params, "src")
     dest = required_string_param(params, "dest")
     src_norm = _normalize_relative_path(src)
@@ -991,6 +1004,7 @@ def handle_copy_file(
     workspace: Workspace,
     params: dict[str, object],
 ) -> ToolResult:
+    """Copy a workspace file or directory to a new location."""
     src = required_string_param(params, "src")
     dest = required_string_param(params, "dest")
     src_norm = _normalize_relative_path(src)
@@ -1020,6 +1034,7 @@ def handle_delete_path(
     workspace: Workspace,
     params: dict[str, object],
 ) -> ToolResult:
+    """Delete a workspace file or directory."""
     path = required_string_param(params, "path")
     normalized = _normalize_relative_path(path)
     _check_edit_area_restriction(session, normalized)

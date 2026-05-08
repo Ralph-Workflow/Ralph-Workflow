@@ -47,22 +47,26 @@ TEST_DIRECTORY_NAMES: set[str] = {"tests", "test", "spec", "__tests__"}
 
 
 def normalize_path(path: str) -> str:
+    """Normalise ``path`` to a forward-slash form, returning empty string for the root."""
     normalized = str(PurePosixPath(path))
     return "" if normalized in {"", "."} else normalized
 
 
 def join_path(parent: str, child: str) -> str:
+    """Join ``parent`` and ``child`` as a normalised POSIX path."""
     if not parent:
         return normalize_path(child)
     return normalize_path(str(PurePosixPath(parent) / child))
 
 
 def should_skip_dir_name(name: str) -> bool:
+    """Return True if ``name`` is a hidden directory or a known build/cache directory."""
     lowered = name.lower()
     return lowered.startswith(".") or lowered in SKIP_DIR_NAMES
 
 
 def iter_files(workspace: Workspace, root: str = "") -> Iterator[str]:
+    """Yield every file path under ``root`` up to ``MAX_FILES_TO_SCAN`` files."""
     queue: deque[str] = deque([normalize_path(root)])
     visited: set[str] = set()
     scanned = 0
@@ -92,6 +96,7 @@ def iter_files(workspace: Workspace, root: str = "") -> Iterator[str]:
 
 
 def count_extensions(workspace: Workspace, root: str = "") -> dict[str, int]:
+    """Return a map from lowercase file extension to file count under ``root``."""
     counts: dict[str, int] = {}
     for path in iter_files(workspace, root):
         suffix = PurePosixPath(path).suffix
@@ -103,6 +108,7 @@ def count_extensions(workspace: Workspace, root: str = "") -> dict[str, int]:
 
 
 def collect_signature_files(workspace: Workspace, root: str = "") -> dict[str, list[str]]:
+    """Return a map from lowercased signature file name to a list of matching paths."""
     signatures: dict[str, list[str]] = {}
     queue: deque[tuple[str, int]] = deque([(normalize_path(root), 0)])
 
@@ -127,6 +133,7 @@ def collect_signature_files(workspace: Workspace, root: str = "") -> dict[str, l
 
 
 def is_test_file_name(file_name: str, primary_language: str, path_components: list[str]) -> bool:
+    """Return True if ``file_name`` matches the test file convention for ``primary_language``."""
     lower_name = file_name.lower()
     language_checks = {
         "Go": lambda: lower_name.endswith("_test.go"),
@@ -166,6 +173,7 @@ def is_test_file_name(file_name: str, primary_language: str, path_components: li
 
 
 def detect_tests(workspace: Workspace, root: str = "", primary_language: str = "Unknown") -> bool:
+    """Return True if the workspace contains any recognisable test directories or test files."""
     queue: deque[str] = deque([normalize_path(root)])
     scanned = 0
 

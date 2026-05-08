@@ -14,6 +14,7 @@ def _attribute_value(
 
 
 def is_policy_approved(outcome: object | None) -> bool:
+    """Return True if the given policy outcome represents an approval decision."""
     if outcome is True:
         return True
     if isinstance(outcome, str):

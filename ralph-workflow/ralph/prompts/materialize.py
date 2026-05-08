@@ -70,6 +70,7 @@ def materialize_prompt_for_phase(  # noqa: PLR0913
     previous_phase: str | None = None,
     resume_existing_phase: bool = False,
 ) -> str:
+    """Render and persist the prompt for a pipeline phase, returning its dump path."""
     prompt = _render_prompt_for_phase(
         phase=phase,
         workspace=workspace,
@@ -85,6 +86,7 @@ def materialize_prompt_for_phase(  # noqa: PLR0913
 
 
 def prompt_file_for_phase(phase: str) -> str:
+    """Return the workspace-relative path where a phase's prompt is stored."""
     return prompt_dump_path(phase)
 
 
@@ -313,6 +315,7 @@ def render_worker_prompt(unit: WorkUnit, base_prompt: str, policy: PipelinePolic
 
 
 def tool_name_prefix_for_transport(transport: AgentTransport | None) -> str:
+    """Return the tool name prefix for the given agent transport."""
     # Prompt templates should talk about the same tool names the current agent
     # transport will actually see. Claude gets namespaced MCP tools; other
     # transports continue to see Ralph's bare tool names.

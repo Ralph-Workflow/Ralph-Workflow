@@ -12,6 +12,8 @@ from typing import Protocol, runtime_checkable
 
 @dataclass(frozen=True)
 class McpServerHandle:
+    """Return value from McpServerFactory.build carrying endpoint, PID, and shutdown hook."""
+
     endpoint: str
     pid: int
     shutdown: Callable[[], None]
@@ -19,6 +21,8 @@ class McpServerHandle:
 
 @runtime_checkable
 class McpServerFactory(Protocol):
+    """Protocol that every MCP server factory implementation must satisfy."""
+
     def build(self, session: object) -> McpServerHandle: ...
 
 

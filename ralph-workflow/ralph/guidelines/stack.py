@@ -152,6 +152,8 @@ SIGNATURE_LANGUAGE_MAP: dict[str, str] = {
 
 @dataclass
 class DetectedStack:
+    """Language and framework composition detected from workspace signature files."""
+
     primary_language: str = "Unknown"
     secondary_languages: list[str] = field(default_factory=list)
     frameworks: list[str] = field(default_factory=list)
@@ -276,6 +278,8 @@ LANGUAGE_HANDLERS: dict[str, Callable[[Iterable[str], bool], GuidelineSource]] =
 
 @dataclass
 class StackGuidelines:
+    """Merged review guidelines accumulated from all detected language handlers."""
+
     quality_checks: Sequence[str] = field(default_factory=lambda: list(BASE_QUALITY_CHECKS))
     security_checks: Sequence[str] = field(default_factory=lambda: list(BASE_SECURITY_CHECKS))
     performance_checks: Sequence[str] = field(default_factory=lambda: list(BASE_PERFORMANCE_CHECKS))
@@ -323,6 +327,7 @@ class StackGuidelines:
 
 
 def get_stack_guidelines(workspace: Workspace, root: str = "") -> StackGuidelines:
+    """Build merged review guidelines from the stack detected in ``workspace``."""
     stack = _detect_stack_with_workspace(workspace, root)
     languages = [stack.primary_language, *stack.secondary_languages]
     normalized = [lang for lang in languages if lang]

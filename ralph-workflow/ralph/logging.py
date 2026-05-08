@@ -195,6 +195,8 @@ def _configure_file_handlers(config: LoggingConfig, level: str) -> LoggingPaths:
 
 @dataclass(frozen=True)
 class WorkerSinkHandle:
+    """Handle returned by ``bind_worker_sink`` to identify a per-worker loguru sink."""
+
     sink_id: int
     log_path: Path
 
@@ -204,6 +206,7 @@ def bind_worker_sink(
     log_dir: Path,
     run_id: str = "default",
 ) -> WorkerSinkHandle:
+    """Add a per-worker loguru sink that filters to ``unit_id`` and returns its handle."""
     worker_log_dir = log_dir / run_id / "workers"
     worker_log_dir.mkdir(parents=True, exist_ok=True)
     log_path = worker_log_dir / f"unit-{unit_id}.log"
@@ -216,6 +219,7 @@ def bind_worker_sink(
 
 
 def remove_worker_sink(handle: WorkerSinkHandle) -> None:
+    """Remove the per-worker loguru sink identified by ``handle``."""
     logger.remove(handle.sink_id)
 
 

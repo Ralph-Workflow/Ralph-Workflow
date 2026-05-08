@@ -51,6 +51,7 @@ class TemplateRegistry:
 
 
 def load_partial_templates(template_dirs: Iterable[Path]) -> dict[str, str]:
+    """Load all Jinja/j2/txt templates from the given directories into a dict."""
     partials: dict[str, str] = {}
     for directory in template_dirs:
         if not directory.exists() or not directory.is_dir():
@@ -68,6 +69,7 @@ def load_partial_templates(template_dirs: Iterable[Path]) -> dict[str, str]:
 
 
 def packaged_template_root() -> Path:
+    """Return the path to the bundled prompt templates directory."""
     return Path(__file__).resolve().parent / "templates"
 
 

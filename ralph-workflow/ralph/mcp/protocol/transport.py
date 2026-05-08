@@ -59,6 +59,8 @@ class MCPTransport(ABC):
 
 
 class ProcessLike(Protocol):
+    """Subset of subprocess.Popen required by StdioTransport."""
+
     @property
     def stdin(self) -> IO[bytes] | None: ...
 
@@ -74,6 +76,8 @@ class ProcessLike(Protocol):
 
 
 class ThreadLike(Protocol):
+    """Minimal threading.Thread interface required by StdioTransport."""
+
     def start(self) -> None: ...
 
 

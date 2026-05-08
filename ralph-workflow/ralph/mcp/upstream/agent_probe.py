@@ -56,6 +56,8 @@ class AgentTransportProbeError(RuntimeError):
 
 @dataclass(frozen=True)
 class AgentProbeReport:
+    """Result of probing one (transport, upstream server) combination."""
+
     transport: AgentTransport
     server_name: str
     ok: bool
