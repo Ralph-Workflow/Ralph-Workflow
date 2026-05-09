@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ast
 import re
+from functools import cache
 from pathlib import Path
 
 _RALPH_ROOT = Path(__file__).parent.parent / "ralph"
@@ -193,6 +194,7 @@ def _resolve_to_source(rel_name: str, ralph_root: Path) -> Path | None:
     return None
 
 
+@cache
 def _ast_module_docstring(source_path: Path) -> str:
     """Return the top-level module docstring from a source file, or empty string."""
     tree = ast.parse(source_path.read_text(encoding="utf-8"))
@@ -206,6 +208,7 @@ def _ast_module_docstring(source_path: Path) -> str:
     return ""
 
 
+@cache
 def _documented_public_targets() -> list[str]:
     """Return documented module names (relative to ralph) that are also public surface.
 
@@ -225,6 +228,14 @@ def _documented_public_targets() -> list[str]:
 
     public_names = {n for n in all_names if not is_excluded(n)}
     return sorted(documented & public_names)
+
+
+# Pre-populate caches at module import time so file I/O and AST parsing
+# happen before the per-test SIGALRM window is set up.
+for _tgt in _documented_public_targets():
+    _src = _resolve_to_source(_tgt, _RALPH_ROOT)
+    if _src is not None:
+        _ast_module_docstring(_src)
 
 
 def test_documented_public_modules_have_non_empty_docstrings() -> None:

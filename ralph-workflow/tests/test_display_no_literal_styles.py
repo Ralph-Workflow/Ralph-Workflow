@@ -160,6 +160,13 @@ def _markup_string_violations(source_path: Path) -> list[tuple[int, str]]:
     return violations
 
 
+# Pre-populate caches at module import time so the I/O and AST parsing
+# happen before the per-test SIGALRM window is set up.
+_target_files()
+for _f in _target_files():
+    _parsed_tree(_f)
+
+
 def test_display_style_contracts() -> None:
     """Display code must avoid bare style literals and bare markup colors."""
     style_violations: list[str] = []

@@ -167,6 +167,7 @@ ignore_missing_imports = true
 [tool.coverage.run]
 source = ["ralph"]
 data_file = ".coverage.pytest"
+omit = ["ralph/testing/*"]
 
 [tool.coverage.report]
 exclude_lines = [

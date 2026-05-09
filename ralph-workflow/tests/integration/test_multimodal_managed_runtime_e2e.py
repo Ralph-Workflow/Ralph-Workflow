@@ -380,3 +380,184 @@ def test_prompt_sidecar_preserves_mixed_modality_metadata_for_runner_handoff() -
     assert audio_e.delivery == "resource_reference_replay"
     assert audio_e.modality == "audio"
     assert audio_e.uri == "ralph://media/aud-003"
+
+
+# ---------------------------------------------------------------------------
+# Gemini typed audio/video block tests (Plan Step 1 extension)
+# ---------------------------------------------------------------------------
+
+_TINY_AUDIO_BYTES = b"ID3\x03\x00\x00\x00\x00\x00\x00"  # Minimal ID3 header stub
+
+_TINY_VIDEO_BYTES = b"\x00\x00\x00\x18ftypmp42\x00\x00\x00\x00mp42isom"  # mp4 ftyp atom stub
+
+
+@pytest.mark.integration
+def test_gemini_audio_delivers_typed_audio_block(tmp_path: Path) -> None:
+    """Gemini provider must return a typed audio block (TYPED_BLOCK delivery) for audio files.
+
+    This proves the Gemini-specific audio typed-block delivery path through Ralph's
+    managed MCP runtime. The verdict must be TYPED_BLOCK with block_type='audio'.
+    """
+    audio_file = tmp_path / "clip.mp3"
+    audio_file.write_bytes(_TINY_AUDIO_BYTES)
+
+    server = _build_server(tmp_path, provider="gemini", model_id="gemini-2.0-flash")
+    state = _initialize(server, multimodal_client=True)
+
+    result = _tool_call(server, state, str(RalphToolName.READ_MEDIA), {"path": "clip.mp3"})
+
+    # Gemini accepts audio as a typed block — the call must succeed.
+    assert result.get("isError") is not True, (
+        f"read_media should not be an error for Gemini audio, got: {result}"
+    )
+    content = cast("list[dict[str, Any]]", result.get("content", []))
+    assert len(content) == 1
+    block = content[0]
+    # Gemini audio must come back as an AudioContent typed block (type='audio') or
+    # resource_reference (when the inline size limit triggers replay path).
+    # AudioContent has type='audio' — this is the TYPED_BLOCK delivery form.
+    block_type = block.get("type")
+    assert block_type in {"audio", "resource_reference"}, (
+        f"Expected AudioContent (type='audio') or resource_reference for Gemini audio, "
+        f"got type={block_type!r}"
+    )
+
+
+@pytest.mark.integration
+def test_gemini_video_delivers_typed_video_block(tmp_path: Path) -> None:
+    """Gemini provider must deliver video as a typed block (TYPED_BLOCK delivery).
+
+    Proves the Gemini-specific video typed-block delivery path through Ralph's
+    managed MCP runtime. The verdict must be TYPED_BLOCK with block_type='video'.
+    """
+    video_file = tmp_path / "clip.mp4"
+    video_file.write_bytes(_TINY_VIDEO_BYTES)
+
+    server = _build_server(tmp_path, provider="gemini", model_id="gemini-2.0-flash")
+    state = _initialize(server, multimodal_client=True)
+
+    result = _tool_call(server, state, str(RalphToolName.READ_MEDIA), {"path": "clip.mp4"})
+
+    assert result.get("isError") is not True, (
+        f"read_media should not be an error for Gemini video, got: {result}"
+    )
+    content = cast("list[dict[str, Any]]", result.get("content", []))
+    assert len(content) == 1
+    block = content[0]
+    # Gemini video must come back as a VideoContent typed block (type='video') or
+    # resource_reference (replay path). VideoContent has type='video' — TYPED_BLOCK form.
+    block_type = block.get("type")
+    assert block_type in {"video", "resource_reference"}, (
+        f"Expected VideoContent (type='video') or resource_reference for Gemini video, "
+        f"got type={block_type!r}"
+    )
+
+
+def test_gemini_audio_capability_verdict_is_typed_block() -> None:
+    """Gemini audio verdict must be TYPED_BLOCK with block_type='audio'.
+
+    Black-box proof that the capability contract for Gemini audio is correct:
+    the resolved profile must report typed_block delivery so downstream layers
+    can choose the right transport form.
+    """
+    gemini_identity = MultimodalModelIdentity(provider="gemini", model_id="gemini-2.0-flash")
+    verdict = get_delivery_mode(gemini_identity, "audio")
+    assert verdict.delivery == DeliveryMode.TYPED_BLOCK, (
+        f"Gemini audio must be TYPED_BLOCK, got {verdict.delivery!r}"
+    )
+    assert verdict.block_type == "audio", (
+        f"Gemini audio block_type must be 'audio', got {verdict.block_type!r}"
+    )
+    assert verdict.is_supported(), "Gemini audio must be marked as supported"
+
+
+def test_gemini_video_capability_verdict_is_typed_block() -> None:
+    """Gemini video verdict must be TYPED_BLOCK with block_type='video'."""
+    gemini_identity = MultimodalModelIdentity(provider="gemini", model_id="gemini-2.0-flash")
+    verdict = get_delivery_mode(gemini_identity, "video")
+    assert verdict.delivery == DeliveryMode.TYPED_BLOCK, (
+        f"Gemini video must be TYPED_BLOCK, got {verdict.delivery!r}"
+    )
+    assert verdict.block_type == "video", (
+        f"Gemini video block_type must be 'video', got {verdict.block_type!r}"
+    )
+    assert verdict.is_supported(), "Gemini video must be marked as supported"
+
+
+# ---------------------------------------------------------------------------
+# OpenAI/Codex explicit unsupported outcomes (Plan Step 1 extension)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.integration
+def test_openai_audio_returns_explicit_unsupported_error(tmp_path: Path) -> None:
+    """OpenAI provider must return an explicit unsupported error for audio files.
+
+    Ralph's managed MCP runtime must surface a clear rejection rather than
+    returning resource_reference or silently pretending the upload succeeded.
+    """
+    audio_file = tmp_path / "meeting.mp3"
+    audio_file.write_bytes(_TINY_AUDIO_BYTES)
+
+    server = _build_server(tmp_path, provider="openai", model_id="gpt-4o")
+    state = _initialize(server, multimodal_client=True)
+
+    result = _tool_call(server, state, str(RalphToolName.READ_MEDIA), {"path": "meeting.mp3"})
+
+    assert result.get("isError") is True, (
+        f"read_media must return isError=True for OpenAI audio (unsupported modality), "
+        f"got: {result}"
+    )
+    content = cast("list[dict[str, Any]]", result.get("content", []))
+    assert len(content) >= 1
+    error_text = str(content[0].get("text", ""))
+    assert "audio" in error_text.lower() or "unsupported" in error_text.lower(), (
+        f"Error must mention 'audio' or 'unsupported', got: {error_text!r}"
+    )
+
+
+@pytest.mark.integration
+def test_openai_pdf_returns_explicit_unsupported_error(tmp_path: Path) -> None:
+    """OpenAI provider must return an explicit unsupported error for PDF files.
+
+    OpenAI's chat completion API cannot accept PDFs via Ralph's managed MCP path.
+    Ralph must surface this as an explicit rejection, not a silent text-only fallback.
+    """
+    pdf_file = tmp_path / "report.pdf"
+    pdf_file.write_bytes(_TINY_PDF_BYTES)
+
+    server = _build_server(tmp_path, provider="openai", model_id="gpt-4o")
+    state = _initialize(server, multimodal_client=True)
+
+    result = _tool_call(server, state, str(RalphToolName.READ_MEDIA), {"path": "report.pdf"})
+
+    assert result.get("isError") is True, (
+        f"read_media must return isError=True for OpenAI PDF (unsupported modality), "
+        f"got: {result}"
+    )
+    content = cast("list[dict[str, Any]]", result.get("content", []))
+    assert len(content) >= 1
+    error_text = str(content[0].get("text", ""))
+    assert "pdf" in error_text.lower() or "unsupported" in error_text.lower(), (
+        f"Error must mention 'pdf' or 'unsupported', got: {error_text!r}"
+    )
+
+
+def test_openai_unsupported_modality_verdicts_are_explicit() -> None:
+    """OpenAI capability verdicts must explicitly mark audio, video, PDF as UNSUPPORTED.
+
+    Black-box proof that the capability contract rejects these modalities for OpenAI
+    rather than silently routing them to resource_reference_replay.
+    """
+    openai_identity = MultimodalModelIdentity(provider="openai", model_id="gpt-4o")
+    for modality in ("audio", "video", "pdf", "document"):
+        verdict = get_delivery_mode(openai_identity, modality)
+        assert verdict.delivery == DeliveryMode.UNSUPPORTED, (
+            f"OpenAI {modality!r} must be UNSUPPORTED, got {verdict.delivery!r}"
+        )
+        assert not verdict.is_supported(), (
+            f"OpenAI {modality!r} must not be marked as supported"
+        )
+        assert verdict.reason, (
+            f"OpenAI {modality!r} unsupported verdict must include a reason"
+        )

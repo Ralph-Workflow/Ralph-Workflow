@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import ast
 import re
+from functools import cache
 from pathlib import Path
 
 _RALPH_ROOT = Path(__file__).parent.parent / "ralph"
@@ -84,6 +85,7 @@ def _is_overload(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
     return False
 
 
+@cache
 def _public_members_with_missing_docstrings(source_path: Path) -> list[str]:
     """Return names of public top-level classes/functions without docstrings.
 
@@ -114,6 +116,20 @@ def _public_members_with_missing_docstrings(source_path: Path) -> list[str]:
     return missing
 
 
+@cache
+def _members_modules() -> set[str]:
+    """Return documented modules (relative to ralph) rendered with :members:."""
+    return _parse_members_modules(_MODULES_RST.read_text(encoding="utf-8"))
+
+
+# Pre-populate caches at module import time so file I/O and AST parsing
+# happen before the per-test SIGALRM window is set up.
+for _rel in sorted(_members_modules()):
+    _src = _resolve_to_source(_rel, _RALPH_ROOT)
+    if _src is not None:
+        _public_members_with_missing_docstrings(_src)
+
+
 def test_members_modules_public_classes_and_functions_have_docstrings() -> None:
     """Every public class/function in :members: documented modules must have a docstring.
 
@@ -121,8 +137,7 @@ def test_members_modules_public_classes_and_functions_have_docstrings() -> None:
     rendered with ``:members:``, then AST-inspects each backing source file and
     reports any public top-level class or function without a non-empty docstring.
     """
-    modules_rst_text = _MODULES_RST.read_text(encoding="utf-8")
-    members_modules = _parse_members_modules(modules_rst_text)
+    members_modules = _members_modules()
 
     failures: list[str] = []
     for rel_name in sorted(members_modules):

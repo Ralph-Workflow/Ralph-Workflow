@@ -1541,9 +1541,13 @@ def _build_multimodal_appendix(artifacts: list[dict[str, object]]) -> str:
         title = entry.get("title", "untitled")
         uri = entry.get("uri", "")
         delivery = entry.get("delivery", "resource_reference_replay")
+        block_type = entry.get("block_type", "")
+        reason = entry.get("reason", "")
         lines.append(f"- [{modality}] {title}")
         lines.append(f'  path={uri}')
         lines.append(f'  Delivery: {delivery}')
+        if block_type:
+            lines.append(f'  Block-type: {block_type}')
         if delivery in {"preserved_only", "resource_reference_replay"}:
             lines.append(
                 "  Note: if the artifact is from a previous session it may not be"
@@ -1551,8 +1555,10 @@ def _build_multimodal_appendix(artifacts: list[dict[str, object]]) -> str:
                 " missing_replay_source failure in that case."
             )
         elif delivery == "unsupported":
+            reason_suffix = f" Reason: {reason}" if reason else ""
             lines.append(
-                "  Note: this modality is unsupported by the active provider;"
+                f"  Note: this modality is unsupported by the active provider;"
+                f"{reason_suffix}"
                 " read_media will return an explicit unsupported_modality failure."
             )
         lines.append("")

@@ -329,15 +329,17 @@ def test_ensure_local_configs_preserves_gitignore_without_duplicate_default_entr
     assert content.count("wt-*/") == 1
 
 
-def test_ensure_local_configs_gitignore_covers_representative_local_paths(tmp_path: Path) -> None:
-    agent_dir = tmp_path / ".agent"
-    Repo.init(tmp_path)
-
+def test_ensure_local_configs_gitignore_covers_representative_local_paths(
+    tmp_git_repo: Path,
+) -> None:
+    agent_dir = tmp_git_repo / ".agent"
     ensure_local_configs(agent_dir)
 
-    repo = Repo(tmp_path)
-    for relative_path in _EXPECTED_IGNORED_LOCAL_PATHS:
-        assert repo.git.check_ignore(relative_path).strip() == relative_path
+    repo = Repo(tmp_git_repo)
+    raw = repo.git.check_ignore(*_EXPECTED_IGNORED_LOCAL_PATHS).splitlines()
+    ignored = {p.strip() for p in raw}
+    missing = [p for p in _EXPECTED_IGNORED_LOCAL_PATHS if p not in ignored]
+    assert not missing, f"Paths not covered by .gitignore: {missing}"
 
 
 def test_ensure_local_configs_bootstraps_a_valid_policy_bundle(tmp_path: Path) -> None:

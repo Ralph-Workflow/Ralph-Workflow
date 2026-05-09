@@ -97,7 +97,7 @@ When `media.enabled = true` (default), Ralph Workflow registers `read_media` as 
 - Returns PDFs and documents as typed blocks (e.g., `pdf` or `document` block type) for providers that support them natively (Claude, Gemini)
 - Returns audio and video as typed blocks for providers that support them (Gemini); returns an explicit unsupported error for providers that do not (Claude, OpenAI/Codex)
 - Returns all media as replayable `resource_reference` blocks for unknown providers, stored in the session manifest and retrievable via `ralph://media/...` URIs through `resources/read`
-- Consults the active model’s capability policy to determine the appropriate delivery mode
+- Uses the session’s `ResolvedCapabilityProfile` — pre-computed at session start from the provider/model identity — to select the delivery mode for each modality (inline, typed-block, resource-reference, or explicit unsupported)
 - Returns an explicit error when the modality is unsupported by the current provider/model
 
 `read_image` is a compatibility alias that forwards to `read_media` for inline image workflows.

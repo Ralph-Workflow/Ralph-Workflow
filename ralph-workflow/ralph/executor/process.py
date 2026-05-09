@@ -141,26 +141,33 @@ async def run_process_async(
     )
 
 
-def run_process(
+def run_process(  # noqa: PLR0913
     command: str,
     args: Sequence[str] = (),
     *,
     cwd: str | Path | None = None,
     env: Mapping[str, str] | None = None,
     timeout: float | None = None,
+    capture_output: bool = True,
     _pm: ProcessManager | None = None,
 ) -> ProcessResult:
-    """Run a process synchronously and capture its output."""
+    """Run a process synchronously, optionally capturing output.
+
+    When *capture_output* is ``False`` the child process inherits the parent's
+    stdout/stderr so output streams directly to the terminal.  The returned
+    ``ProcessResult`` will have empty ``stdout`` and ``stderr`` strings.
+    """
     cmd = _normalize_command(command, args)
     pm = _pm if _pm is not None else get_process_manager()
 
+    pipe = subprocess.PIPE if capture_output else None
     try:
         handle = pm.spawn(
             cmd,
             cwd=_normalize_cwd(cwd),
             env=_build_env(env),
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            stdout=pipe,
+            stderr=pipe,
         )
     except OSError as exc:
         raise ProcessExecutionError.from_os_error(cmd, exc) from exc
@@ -169,9 +176,10 @@ def run_process(
         stdout_bytes, stderr_bytes = handle.communicate(timeout=timeout)
     except subprocess.TimeoutExpired:
         handle.terminate(grace_period_s=0)
-        # After kill, communicate() drains the pipe including any data accumulated
-        # by the internal reader before the timeout fired (Python preserves this
-        # across communicate() calls via self._fileobj2output).
+        # After kill, communicate() drains any buffered pipe data (Python
+        # preserves accumulated data across communicate() calls via
+        # self._fileobj2output).  With inherited streams (capture_output=False)
+        # this simply waits for the process to exit.
         stdout_bytes, stderr_bytes = handle.communicate()
         raise ProcessExecutionError.from_timeout(
             cmd,

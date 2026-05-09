@@ -103,6 +103,7 @@ def run_command_with_timeout(
     cwd: Path,
     env: Mapping[str, str] | None = None,
     suite_timeout_seconds: float = DEFAULT_SUITE_TIMEOUT_SECONDS,
+    capture_output: bool = True,
 ) -> ProcessResult:
     cmd = tuple(command)
     try:
@@ -112,6 +113,7 @@ def run_command_with_timeout(
             cwd=cwd,
             env=dict(env) if env is not None else None,
             timeout=suite_timeout_seconds,
+            capture_output=capture_output,
         )
     except ProcessExecutionError as exc:
         if exc.timed_out:
@@ -146,15 +148,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             cwd=Path.cwd(),
             env=env,
             suite_timeout_seconds=suite_timeout_seconds,
+            capture_output=False,
         )
     except SuiteTimeoutError as exc:
         print(str(exc), file=sys.stderr)
         return 124
 
-    if result.stdout:
-        print(result.stdout, end="")
-    if result.stderr:
-        print(result.stderr, end="", file=sys.stderr)
     return result.returncode
 
 

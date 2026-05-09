@@ -3900,6 +3900,7 @@ def test_invoke_agent_passes_config_drain_window_to_watchdog(
     assert cfg.max_waiting_on_child_seconds == custom_max
 
 
+@pytest.mark.timeout_seconds(2)
 def test_invoke_agent_yields_lines_with_minimal_latency_under_system_clock(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -4444,4 +4445,93 @@ def test_multimodal_appendix_includes_replay_guidance_for_non_image_media(
     # The audio title should appear in the appendix
     assert "meeting.mp3" in full_prompt, (
         "Expected audio title 'meeting.mp3' in appendix"
+    )
+
+
+# ---------------------------------------------------------------------------
+# block_type and reason propagation in multimodal appendix (Plan Step 4)
+# ---------------------------------------------------------------------------
+
+_SAMPLE_PDF_TYPED_ARTIFACT: dict[str, object] = {
+    "artifact_id": "pdf-typed-001",
+    "uri": "ralph://media/pdf-typed-001",
+    "mime_type": "application/pdf",
+    "title": "spec.pdf",
+    "modality": "pdf",
+    "delivery": "typed_block",
+    "reason": "'pdf' delivered as typed block 'pdf' for provider 'claude'",
+    "block_type": "pdf",
+}
+
+_SAMPLE_UNSUPPORTED_ARTIFACT: dict[str, object] = {
+    "artifact_id": "aud-unsupported-001",
+    "uri": "ralph://media/aud-unsupported-001",
+    "mime_type": "audio/mpeg",
+    "title": "clip.mp3",
+    "modality": "audio",
+    "delivery": "unsupported",
+    "reason": "Claude does not accept this modality via Ralph's managed MCP path (modality: audio)",
+    "block_type": "",
+}
+
+
+def test_multimodal_appendix_includes_block_type_when_set(tmp_path: Path) -> None:
+    """Appendix must include Block-type line when the sidecar entry has a non-empty block_type.
+
+    This proves that capability-profile-derived block_type metadata is carried through
+    the prompt handoff so the agent receives the full delivery contract.
+    """
+    prompt_file = tmp_path / "development_prompt.md"
+    prompt_file.write_text("Work on the feature.", encoding="utf-8")
+    _write_sidecar(prompt_file, [_SAMPLE_PDF_TYPED_ARTIFACT])
+
+    config = AgentConfig(
+        cmd="opencode",
+        output_flag="--json-stream",
+        json_parser=JsonParserType.OPENCODE,
+        transport=AgentTransport.OPENCODE,
+    )
+    cmd = _build_command(config, str(prompt_file), options=_BuildCommandOptions())
+    full_prompt = cmd[-1]
+
+    assert "Block-type: pdf" in full_prompt, (
+        f"Expected 'Block-type: pdf' in appendix for typed_block PDF, not found.\n"
+        f"Prompt:\n{full_prompt}"
+    )
+    assert "Delivery: typed_block" in full_prompt, (
+        "Expected 'Delivery: typed_block' in appendix"
+    )
+
+
+def test_multimodal_appendix_includes_explicit_reason_for_unsupported_modality(
+    tmp_path: Path,
+) -> None:
+    """Appendix must include the capability-profile unsupported reason for rejected modalities.
+
+    This proves (c) from plan Step 1 in the invoke layer: when delivery is 'unsupported',
+    the prompt appendix must include the explicit reason from the capability verdict so
+    the agent sees why the modality was rejected rather than a generic error message.
+    """
+    prompt_file = tmp_path / "development_prompt.md"
+    prompt_file.write_text("Process the audio.", encoding="utf-8")
+    _write_sidecar(prompt_file, [_SAMPLE_UNSUPPORTED_ARTIFACT])
+
+    config = AgentConfig(
+        cmd="opencode",
+        output_flag="--json-stream",
+        json_parser=JsonParserType.OPENCODE,
+        transport=AgentTransport.OPENCODE,
+    )
+    cmd = _build_command(config, str(prompt_file), options=_BuildCommandOptions())
+    full_prompt = cmd[-1]
+
+    assert "Delivery: unsupported" in full_prompt, (
+        "Expected 'Delivery: unsupported' in appendix for unsupported modality"
+    )
+    assert "unsupported_modality" in full_prompt, (
+        "Expected 'unsupported_modality' failure reference in appendix"
+    )
+    assert "Claude does not accept this modality" in full_prompt, (
+        f"Expected the capability-profile reason in appendix, not found.\n"
+        f"Prompt:\n{full_prompt}"
     )

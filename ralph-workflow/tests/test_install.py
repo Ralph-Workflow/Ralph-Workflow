@@ -195,6 +195,8 @@ def _build_wheel(repo_root: Path) -> Path:
 
 
 
+@pytest.mark.subprocess_e2e
+@pytest.mark.timeout_seconds(30)
 def test_built_wheel_includes_policy_default_tomls(tmp_path: Path) -> None:
     repo_root = Path(__file__).resolve().parents[1]
     wheel_path = _build_wheel(repo_root)

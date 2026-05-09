@@ -335,3 +335,21 @@ def test_mcp_servers_doc_text_only_safety_is_explicit() -> None:
     assert "text-only" in content, (
         "docs/mcp/mcp-servers.md must explicitly describe text-only client safety"
     )
+
+
+def test_agents_doc_describes_resolved_capability_profile() -> None:
+    """docs/sphinx/agents.md must describe ResolvedCapabilityProfile as session-owned contract."""
+    content = _SPHINX_AGENTS_PATH.read_text(encoding="utf-8")
+    assert "ResolvedCapabilityProfile" in content, (
+        "docs/sphinx/agents.md must mention ResolvedCapabilityProfile as the "
+        "pre-computed, session-owned delivery contract"
+    )
+
+
+def test_mcp_servers_doc_describes_resolved_capability_profile() -> None:
+    """docs/mcp/mcp-servers.md must describe ResolvedCapabilityProfile-based delivery."""
+    content = _MCP_SERVERS_DOC.read_text(encoding="utf-8")
+    assert "ResolvedCapabilityProfile" in content, (
+        "docs/mcp/mcp-servers.md must mention ResolvedCapabilityProfile as the "
+        "mechanism for per-modality delivery selection"
+    )
