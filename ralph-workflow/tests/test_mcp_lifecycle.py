@@ -663,3 +663,87 @@ def test_session_payload_json_omits_model_identity_for_sessions_without_attribut
 
     payload = json.loads(_session_payload_json(_MinimalSession()))  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
     assert "model_identity" not in payload
+
+
+# ---------------------------------------------------------------------------
+# capability_profile serialization tests
+# ---------------------------------------------------------------------------
+
+
+def test_session_payload_json_includes_capability_profile_for_known_provider() -> None:
+    """_session_payload_json serializes capability_profile for sessions with a known provider."""
+    import json  # noqa: PLC0415
+
+    from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity  # noqa: PLC0415
+    from ralph.mcp.server.lifecycle import _session_payload_json  # noqa: PLC0415
+
+    session = AgentSession(
+        session_id="sid-cp",
+        run_id="run-cp",
+        drain="development",
+        capabilities={"WorkspaceRead"},
+        model_identity=MultimodalModelIdentity(
+            provider="claude", model_id="claude-opus-4-7", transport="claude"
+        ),
+    )
+    payload = json.loads(_session_payload_json(session))
+    assert "capability_profile" in payload
+    profile = payload["capability_profile"]
+    assert profile["provider"] == "claude"
+    assert "verdicts" in profile
+    verdicts = profile["verdicts"]
+    assert "image" in verdicts
+    assert verdicts["image"]["delivery"] == "inline_image"
+    assert "pdf" in verdicts
+    assert verdicts["pdf"]["delivery"] == "typed_block"
+    assert "audio" in verdicts
+    assert verdicts["audio"]["delivery"] == "unsupported"
+
+
+def test_session_payload_json_includes_profile_for_unknown_provider_with_rr_delivery() -> None:
+    """_session_payload_json includes capability_profile for unknown-provider sessions.
+
+    Unknown providers produce a profile with RESOURCE_REFERENCE_REPLAY for all
+    modalities — the profile is still serialized so the subprocess has a consistent
+    runtime contract even when the provider identity cannot be resolved.
+    """
+    import json  # noqa: PLC0415
+
+    from ralph.mcp.server.lifecycle import _session_payload_json  # noqa: PLC0415
+
+    session = AgentSession(
+        session_id="sid-cp-unknown",
+        run_id="run-cp-unknown",
+        drain="development",
+        capabilities={"WorkspaceRead"},
+    )
+    payload = json.loads(_session_payload_json(session))
+    assert "capability_profile" in payload
+    profile = payload["capability_profile"]
+    assert profile["provider"] == "unknown"
+    verdicts = profile.get("verdicts", {})
+    for modality, v in verdicts.items():
+        assert v["delivery"] == "resource_reference_replay", (
+            f"unknown provider modality={modality!r}: expected resource_reference_replay"
+        )
+
+
+def test_session_payload_json_capability_profile_verdicts_cover_all_modalities() -> None:
+    """Serialized capability_profile verdicts include all supported modalities."""
+    import json  # noqa: PLC0415
+
+    from ralph.mcp.multimodal.artifacts import SUPPORTED_MODALITIES  # noqa: PLC0415
+    from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity  # noqa: PLC0415
+    from ralph.mcp.server.lifecycle import _session_payload_json  # noqa: PLC0415
+
+    session = AgentSession(
+        session_id="sid-cp-full",
+        run_id="run-cp-full",
+        drain="development",
+        capabilities={"WorkspaceRead"},
+        model_identity=MultimodalModelIdentity(provider="gemini", model_id="gemini-2.0-flash"),
+    )
+    payload = json.loads(_session_payload_json(session))
+    verdicts = payload["capability_profile"]["verdicts"]
+    for modality in SUPPORTED_MODALITIES:
+        assert modality in verdicts, f"modality {modality!r} missing from serialized profile"

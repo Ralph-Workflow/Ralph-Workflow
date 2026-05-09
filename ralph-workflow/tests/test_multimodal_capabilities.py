@@ -392,3 +392,119 @@ def test_capability_verdict_reason_is_explicit_for_unsupported_modality() -> Non
             f"provider={identity.provider!r} modality={modality!r}: reason must name the "
             f"modality so agents can diagnose the failure; reason={verdict.reason!r}"
         )
+
+
+# ---------------------------------------------------------------------------
+# ResolvedCapabilityProfile
+# ---------------------------------------------------------------------------
+
+
+def test_resolve_capability_profile_contains_all_supported_modalities() -> None:
+    from ralph.mcp.multimodal.capabilities import resolve_capability_profile  # noqa: PLC0415
+
+    identity = MultimodalModelIdentity(provider="claude", model_id="claude-3-5-sonnet-20241022")
+    profile = resolve_capability_profile(identity)
+    assert set(profile.verdicts.keys()) == SUPPORTED_MODALITIES
+
+
+def test_resolve_capability_profile_verdict_for_known_modality() -> None:
+    from ralph.mcp.multimodal.capabilities import resolve_capability_profile  # noqa: PLC0415
+
+    identity = MultimodalModelIdentity(provider="claude")
+    profile = resolve_capability_profile(identity)
+    verdict = profile.verdict_for(MODALITY_IMAGE)
+    assert verdict.delivery == DeliveryMode.INLINE_IMAGE
+
+
+def test_resolve_capability_profile_verdict_for_unknown_modality_computes_fresh() -> None:
+    from ralph.mcp.multimodal.capabilities import resolve_capability_profile  # noqa: PLC0415
+
+    identity = MultimodalModelIdentity(provider="claude")
+    profile = resolve_capability_profile(identity)
+    verdict = profile.verdict_for("not_a_real_modality")
+    assert verdict.delivery == DeliveryMode.UNSUPPORTED
+
+
+def test_resolve_capability_profile_unknown_provider_all_resource_reference() -> None:
+    from ralph.mcp.multimodal.capabilities import resolve_capability_profile  # noqa: PLC0415
+
+    profile = resolve_capability_profile(UNKNOWN_IDENTITY)
+    for modality in SUPPORTED_MODALITIES:
+        verdict = profile.verdict_for(modality)
+        assert verdict.delivery == DeliveryMode.RESOURCE_REFERENCE_REPLAY, (
+            f"unknown provider modality={modality!r}: expected RESOURCE_REFERENCE_REPLAY"
+        )
+
+
+@pytest.mark.parametrize("provider,model_id,modality,expected_delivery", [
+    ("claude", "claude-opus-4-7", MODALITY_IMAGE, DeliveryMode.INLINE_IMAGE),
+    ("claude", "claude-opus-4-7", MODALITY_PDF, DeliveryMode.TYPED_BLOCK),
+    ("claude", "claude-opus-4-7", MODALITY_AUDIO, DeliveryMode.UNSUPPORTED),
+    ("openai", "gpt-4o", MODALITY_IMAGE, DeliveryMode.INLINE_IMAGE),
+    ("openai", "gpt-4o", MODALITY_PDF, DeliveryMode.UNSUPPORTED),
+    ("gemini", "gemini-2.0-flash", MODALITY_AUDIO, DeliveryMode.TYPED_BLOCK),
+    ("gemini", "gemini-2.0-flash", MODALITY_VIDEO, DeliveryMode.TYPED_BLOCK),
+])
+def test_resolve_capability_profile_provider_modality_coverage(
+    provider: str,
+    model_id: str,
+    modality: str,
+    expected_delivery: DeliveryMode,
+) -> None:
+    from ralph.mcp.multimodal.capabilities import resolve_capability_profile  # noqa: PLC0415
+
+    identity = MultimodalModelIdentity(provider=provider, model_id=model_id)
+    profile = resolve_capability_profile(identity)
+    verdict = profile.verdict_for(modality)
+    assert verdict.delivery == expected_delivery, (
+        f"provider={provider!r} modality={modality!r}: expected {expected_delivery!r}, "
+        f"got {verdict.delivery!r}"
+    )
+
+
+def test_resolved_capability_profile_to_payload_roundtrip() -> None:
+    """profile_from_payload(profile.to_payload()) restores the same verdicts."""
+    from ralph.mcp.multimodal.capabilities import (  # noqa: PLC0415
+        profile_from_payload,
+        resolve_capability_profile,
+    )
+
+    identity = MultimodalModelIdentity(provider="gemini", model_id="gemini-2.0-flash")
+    original = resolve_capability_profile(identity)
+    payload = original.to_payload()
+    restored = profile_from_payload(payload)
+
+    for modality in SUPPORTED_MODALITIES:
+        orig_v = original.verdict_for(modality)
+        rest_v = restored.verdict_for(modality)
+        assert orig_v.delivery == rest_v.delivery, (
+            f"modality={modality!r}: delivery mismatch after roundtrip"
+        )
+        assert orig_v.block_type == rest_v.block_type, (
+            f"modality={modality!r}: block_type mismatch after roundtrip"
+        )
+
+
+def test_profile_from_payload_missing_verdicts_falls_back_to_computed() -> None:
+    """profile_from_payload with no verdicts key falls back to get_delivery_mode."""
+    from ralph.mcp.multimodal.capabilities import profile_from_payload  # noqa: PLC0415
+
+    raw: dict[str, object] = {"provider": "claude", "model_id": None, "transport": None}
+    profile = profile_from_payload(raw)
+    assert profile.verdict_for(MODALITY_IMAGE).delivery == DeliveryMode.INLINE_IMAGE
+
+
+def test_profile_from_payload_bad_delivery_value_defaults_to_resource_reference() -> None:
+    """profile_from_payload with an unrecognized delivery string uses RESOURCE_REFERENCE."""
+    from ralph.mcp.multimodal.capabilities import profile_from_payload  # noqa: PLC0415
+
+    raw: dict[str, object] = {
+        "provider": "unknown",
+        "model_id": None,
+        "transport": None,
+        "verdicts": {
+            MODALITY_IMAGE: {"delivery": "totally_invalid", "reason": "", "block_type": None},
+        },
+    }
+    profile = profile_from_payload(raw)
+    assert profile.verdict_for(MODALITY_IMAGE).delivery == DeliveryMode.RESOURCE_REFERENCE_REPLAY

@@ -1271,3 +1271,110 @@ class TestFileBackedSessionModelIdentity:
         # Verify the raw payload also contains model_identity
         raw = _json.loads(payload_str)
         assert raw["model_identity"]["provider"] == "anthropic"
+
+
+# ---------------------------------------------------------------------------
+# FileBackedSession.capability_profile tests
+# ---------------------------------------------------------------------------
+
+
+class TestFileBackedSessionCapabilityProfile:
+    """Tests for FileBackedSession.capability_profile property."""
+
+    def test_file_backed_session_restores_capability_profile_from_payload(
+        self, tmp_path: Path
+    ) -> None:
+        """FileBackedSession.capability_profile reads from the serialized payload."""
+        import json  # noqa: PLC0415
+
+        from ralph.mcp.multimodal.capabilities import (  # noqa: PLC0415
+            DeliveryMode,
+            MultimodalModelIdentity,
+            ResolvedCapabilityProfile,
+        )
+        from ralph.mcp.server.lifecycle import _session_payload_json  # noqa: PLC0415
+        from ralph.mcp.server.runtime import FileBackedSession  # noqa: PLC0415
+
+        agent_session = AgentSession(
+            session_id="sid-cap",
+            run_id="run-cap",
+            drain="development",
+            capabilities={"WorkspaceRead"},
+            model_identity=MultimodalModelIdentity(
+                provider="claude", model_id="claude-opus-4-7", transport="claude"
+            ),
+        )
+        payload_str = _session_payload_json(agent_session)
+        session_file = tmp_path / "session-cap.json"
+        session_file.write_text(payload_str, encoding="utf-8")
+
+        restored = FileBackedSession(session_file)
+        profile = restored.capability_profile
+        assert isinstance(profile, ResolvedCapabilityProfile)
+        assert profile.identity.provider == "claude"
+        assert profile.verdict_for("image").delivery == DeliveryMode.INLINE_IMAGE
+        assert profile.verdict_for("pdf").delivery == DeliveryMode.TYPED_BLOCK
+        assert profile.verdict_for("audio").delivery == DeliveryMode.UNSUPPORTED
+
+        # Ensure the raw payload contained capability_profile
+        raw = json.loads(payload_str)
+        assert "capability_profile" in raw
+
+    def test_file_backed_session_capability_profile_falls_back_to_model_identity(
+        self, tmp_path: Path
+    ) -> None:
+        """FileBackedSession.capability_profile falls back to computing from model_identity."""
+        import json  # noqa: PLC0415
+
+        from ralph.mcp.multimodal.capabilities import (  # noqa: PLC0415
+            DeliveryMode,
+            ResolvedCapabilityProfile,
+        )
+        from ralph.mcp.server.runtime import FileBackedSession  # noqa: PLC0415
+
+        # Write a payload that has model_identity but no capability_profile
+        payload = {
+            "session_id": "sid-fb",
+            "run_id": "run-fb",
+            "drain": "development",
+            "capabilities": ["WorkspaceRead"],
+            "model_identity": {
+                "provider": "gemini", "model_id": "gemini-2.0-flash", "transport": None
+            },
+        }
+        session_file = tmp_path / "session-fb.json"
+        session_file.write_text(json.dumps(payload), encoding="utf-8")
+
+        restored = FileBackedSession(session_file)
+        profile = restored.capability_profile
+        assert isinstance(profile, ResolvedCapabilityProfile)
+        assert profile.identity.provider == "gemini"
+        assert profile.verdict_for("audio").delivery == DeliveryMode.TYPED_BLOCK
+
+    def test_lifecycle_payload_roundtrip_preserves_capability_profile(
+        self, tmp_path: Path
+    ) -> None:
+        """_session_payload_json + FileBackedSession preserves the full capability profile."""
+        from ralph.mcp.multimodal.artifacts import SUPPORTED_MODALITIES  # noqa: PLC0415
+        from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity  # noqa: PLC0415
+        from ralph.mcp.server.lifecycle import _session_payload_json  # noqa: PLC0415
+        from ralph.mcp.server.runtime import FileBackedSession  # noqa: PLC0415
+
+        agent_session = AgentSession(
+            session_id="sid-rt-cp",
+            run_id="run-rt-cp",
+            drain="development",
+            capabilities={"WorkspaceRead"},
+            model_identity=MultimodalModelIdentity(
+                provider="claude", model_id="claude-opus-4-7", transport="claude"
+            ),
+        )
+        payload_str = _session_payload_json(agent_session)
+        session_file = tmp_path / "session-rt-cp.json"
+        session_file.write_text(payload_str, encoding="utf-8")
+
+        restored = FileBackedSession(session_file)
+        profile = restored.capability_profile
+        for modality in SUPPORTED_MODALITIES:
+            verdict = profile.verdict_for(modality)
+            assert verdict is not None, f"no verdict for modality={modality!r}"

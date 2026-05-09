@@ -758,6 +758,22 @@ class FileBackedSession:
         )
 
     @property
+    def capability_profile(self) -> object:
+        from ralph.mcp.multimodal.capabilities import (  # noqa: PLC0415
+            UNKNOWN_IDENTITY,
+            MultimodalModelIdentity,
+            profile_from_payload,
+            resolve_capability_profile,
+        )
+        raw = self._load().get("capability_profile")
+        if isinstance(raw, dict):
+            return profile_from_payload(raw)
+        identity = self.model_identity
+        if not isinstance(identity, MultimodalModelIdentity):
+            return resolve_capability_profile(UNKNOWN_IDENTITY)
+        return resolve_capability_profile(identity)
+
+    @property
     def media_manifest(self) -> object:
         return self._media_manifest
 

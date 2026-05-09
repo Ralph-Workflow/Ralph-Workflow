@@ -17,7 +17,11 @@ from typing import TYPE_CHECKING, Protocol, cast
 
 from loguru import logger
 
-from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity
+from ralph.mcp.multimodal.capabilities import (
+    MultimodalModelIdentity,
+    ResolvedCapabilityProfile,
+    resolve_capability_profile,
+)
 from ralph.mcp.protocol.env import MCP_SESSION_FILE_ENV as SESSION_FILE_ENV
 from ralph.mcp.protocol.startup import (
     SessionBridgeLike,
@@ -427,6 +431,13 @@ def _session_payload_json(session: SessionLike) -> str:
             "model_id": raw_identity.model_id,
             "transport": raw_identity.transport,
         }
+    raw_profile: object = getattr(session, "capability_profile", None)
+    if isinstance(raw_profile, ResolvedCapabilityProfile):
+        session_payload["capability_profile"] = raw_profile.to_payload()
+    elif isinstance(raw_identity, MultimodalModelIdentity) and raw_identity.is_known():
+        session_payload["capability_profile"] = (
+            resolve_capability_profile(raw_identity).to_payload()
+        )
     return json.dumps(session_payload)
 
 

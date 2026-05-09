@@ -12,7 +12,12 @@ from typing import TYPE_CHECKING
 
 from ralph.config.enums import AgentTransport
 from ralph.config.mcp_loader import load_mcp_config
-from ralph.mcp.multimodal.capabilities import UNKNOWN_IDENTITY, MultimodalModelIdentity
+from ralph.mcp.multimodal.capabilities import (
+    UNKNOWN_IDENTITY,
+    MultimodalModelIdentity,
+    ResolvedCapabilityProfile,
+    resolve_capability_profile,
+)
 from ralph.mcp.protocol.capability_mapping import DrainClass, drain_class_for_session
 from ralph.mcp.transport.claude import load_existing_claude_upstream_servers
 from ralph.mcp.transport.common import (
@@ -44,6 +49,7 @@ class SessionMcpPlan:
     capabilities: frozenset[str]
     server_env: dict[str, str] | None = None
     model_identity: MultimodalModelIdentity = field(default=UNKNOWN_IDENTITY)
+    capability_profile: ResolvedCapabilityProfile | None = None
 
 
 def resolve_model_identity(
@@ -157,6 +163,7 @@ def build_session_mcp_plan(  # noqa: PLR0913
         capabilities=frozenset(capabilities),
         server_env=server_env or None,
         model_identity=resolved_identity,
+        capability_profile=resolve_capability_profile(resolved_identity),
     )
 
 
@@ -209,4 +216,8 @@ def _base_capabilities_for_drain(
     return base | _DEVELOPMENT_EXTRA
 
 
-__all__ = ["SessionMcpPlan", "build_session_mcp_plan", "resolve_model_identity"]
+__all__ = [
+    "SessionMcpPlan",
+    "build_session_mcp_plan",
+    "resolve_model_identity",
+]

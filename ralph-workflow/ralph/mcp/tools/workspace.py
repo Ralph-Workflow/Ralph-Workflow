@@ -29,7 +29,8 @@ from ralph.mcp.multimodal.capabilities import (
     UNKNOWN_IDENTITY,
     DeliveryMode,
     MultimodalModelIdentity,
-    get_delivery_mode,
+    ResolvedCapabilityProfile,
+    resolve_capability_profile,
 )
 from ralph.mcp.multimodal.errors import MultimodalFailureKind
 from ralph.mcp.multimodal.resources import MediaManifest, parse_media_uri
@@ -57,6 +58,7 @@ if TYPE_CHECKING:
     from ralph.mcp.multimodal.resources import ManifestEntry
     from ralph.mcp.tools.coordination import ContentBlock
     from ralph.workspace import Workspace
+
 
 WORKSPACE_READ_CAPABILITY = "WorkspaceRead"
 WORKSPACE_WRITE_TRACKED_CAPABILITY = "WorkspaceWriteTracked"
@@ -1111,6 +1113,19 @@ def _get_session_model_identity(session: object) -> MultimodalModelIdentity:
     return UNKNOWN_IDENTITY
 
 
+def _get_session_capability_profile(session: object) -> ResolvedCapabilityProfile:
+    """Return the resolved capability profile from a session.
+
+    Prefers a pre-resolved profile from the session (populated by the managed
+    runtime path from the persisted session contract), falling back to
+    computing one from the session's model identity.
+    """
+    raw: object = getattr(session, "capability_profile", None)
+    if isinstance(raw, ResolvedCapabilityProfile):
+        return raw
+    return resolve_capability_profile(_get_session_model_identity(session))
+
+
 _MEDIA_SESSION_SCHEMA_VERSION = "2"
 
 
@@ -1300,8 +1315,8 @@ def _replay_from_manifest_entry(
     entry: ManifestEntry,
 ) -> ToolResult:
     """Return the appropriate typed block from a live manifest entry."""
-    model_identity = _get_session_model_identity(session)
-    verdict = get_delivery_mode(model_identity, entry.modality)
+    profile = _get_session_capability_profile(session)
+    verdict = profile.verdict_for(entry.modality)
     if verdict.delivery == DeliveryMode.INLINE_IMAGE:
         encoded = base64.b64encode(entry.raw_bytes).decode("ascii")
         return ToolResult(
@@ -1364,8 +1379,8 @@ def _replay_from_persisted_entry(
             is_error=True,
         )
 
-    model_identity = _get_session_model_identity(session)
-    verdict = get_delivery_mode(model_identity, modality)
+    profile = _get_session_capability_profile(session)
+    verdict = profile.verdict_for(modality)
     if verdict.delivery == DeliveryMode.INLINE_IMAGE:
         encoded = base64.b64encode(raw_bytes).decode("ascii")
         return ToolResult(
@@ -1452,8 +1467,8 @@ def _handle_workspace_media(
             is_error=True,
         )
     modality, mime_type = inferred
-    model_identity = _get_session_model_identity(session)
-    verdict = get_delivery_mode(model_identity, modality)
+    profile = _get_session_capability_profile(session)
+    verdict = profile.verdict_for(modality)
     if verdict.delivery == DeliveryMode.UNSUPPORTED:
         return ToolResult(
             content=[ToolContent.text_content(

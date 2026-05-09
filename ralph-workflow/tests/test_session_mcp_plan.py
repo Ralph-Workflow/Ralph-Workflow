@@ -697,3 +697,105 @@ def test_build_session_mcp_plan_falls_back_to_unknown_provider_for_unmapped_open
     )
     assert plan.model_identity.model_id == "some-model-not-in-catalog"
     assert plan.model_identity.transport == "opencode"
+
+
+# ---------------------------------------------------------------------------
+# SessionMcpPlan.capability_profile
+# ---------------------------------------------------------------------------
+
+
+class TestSessionMcpPlanCapabilityProfile:
+    """SessionMcpPlan includes a resolved capability profile keyed by provider/model identity."""
+
+    def test_plan_includes_capability_profile_for_claude_transport(
+        self, isolated_home: Path, tmp_path: Path
+    ) -> None:
+        from ralph.mcp.multimodal.artifacts import MODALITY_AUDIO, MODALITY_IMAGE  # noqa: PLC0415
+        from ralph.mcp.multimodal.capabilities import (  # noqa: PLC0415
+            DeliveryMode,
+            ResolvedCapabilityProfile,
+        )
+
+        del isolated_home
+        plan = build_session_mcp_plan(
+            transport=AgentTransport.CLAUDE,
+            drain="development",
+            workspace_path=tmp_path,
+            agents_policy=_DEFAULT_AGENTS_POLICY,
+            model_flag="claude-opus-4-7",
+        )
+
+        assert plan.capability_profile is not None
+        assert isinstance(plan.capability_profile, ResolvedCapabilityProfile)
+        image_delivery = plan.capability_profile.verdict_for(MODALITY_IMAGE).delivery
+        assert image_delivery == DeliveryMode.INLINE_IMAGE
+        audio_delivery = plan.capability_profile.verdict_for(MODALITY_AUDIO).delivery
+        assert audio_delivery == DeliveryMode.UNSUPPORTED
+
+    def test_plan_includes_capability_profile_for_openai_codex_transport(
+        self, isolated_home: Path, tmp_path: Path
+    ) -> None:
+        from ralph.mcp.multimodal.artifacts import MODALITY_IMAGE, MODALITY_PDF  # noqa: PLC0415
+        from ralph.mcp.multimodal.capabilities import (  # noqa: PLC0415
+            DeliveryMode,
+            ResolvedCapabilityProfile,
+        )
+
+        del isolated_home
+        plan = build_session_mcp_plan(
+            transport=AgentTransport.CODEX,
+            drain="development",
+            workspace_path=tmp_path,
+            agents_policy=_DEFAULT_AGENTS_POLICY,
+            model_flag="gpt-4o",
+        )
+
+        assert plan.capability_profile is not None
+        assert isinstance(plan.capability_profile, ResolvedCapabilityProfile)
+        assert plan.capability_profile.identity.provider == "openai"
+        image_delivery = plan.capability_profile.verdict_for(MODALITY_IMAGE).delivery
+        assert image_delivery == DeliveryMode.INLINE_IMAGE
+        pdf_delivery = plan.capability_profile.verdict_for(MODALITY_PDF).delivery
+        assert pdf_delivery == DeliveryMode.UNSUPPORTED
+
+    def test_plan_capability_profile_for_unknown_provider_uses_resource_reference(
+        self, isolated_home: Path, tmp_path: Path
+    ) -> None:
+        from ralph.mcp.multimodal.artifacts import SUPPORTED_MODALITIES  # noqa: PLC0415
+        from ralph.mcp.multimodal.capabilities import (  # noqa: PLC0415
+            DeliveryMode,
+            ResolvedCapabilityProfile,
+        )
+
+        del isolated_home
+        plan = build_session_mcp_plan(
+            transport=AgentTransport.CLAUDE,
+            drain="development",
+            workspace_path=tmp_path,
+            agents_policy=_DEFAULT_AGENTS_POLICY,
+        )
+
+        assert plan.capability_profile is not None
+        assert isinstance(plan.capability_profile, ResolvedCapabilityProfile)
+        for modality in SUPPORTED_MODALITIES:
+            verdict = plan.capability_profile.verdict_for(modality)
+            assert verdict.delivery == DeliveryMode.RESOURCE_REFERENCE_REPLAY, (
+                f"unknown provider modality={modality!r}: expected RESOURCE_REFERENCE_REPLAY, "
+                f"got {verdict.delivery!r}"
+            )
+
+    def test_plan_capability_profile_identity_matches_model_identity(
+        self, isolated_home: Path, tmp_path: Path
+    ) -> None:
+        del isolated_home
+        plan = build_session_mcp_plan(
+            transport=AgentTransport.CLAUDE,
+            drain="development",
+            workspace_path=tmp_path,
+            agents_policy=_DEFAULT_AGENTS_POLICY,
+            model_flag="claude-opus-4-7",
+        )
+
+        assert plan.capability_profile is not None
+        assert plan.capability_profile.identity.provider == plan.model_identity.provider
+        assert plan.capability_profile.identity.model_id == plan.model_identity.model_id

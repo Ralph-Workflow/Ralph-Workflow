@@ -6,7 +6,12 @@ import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
-from ralph.mcp.multimodal.capabilities import UNKNOWN_IDENTITY, MultimodalModelIdentity
+from ralph.mcp.multimodal.capabilities import (
+    UNKNOWN_IDENTITY,
+    MultimodalModelIdentity,
+    ResolvedCapabilityProfile,
+    resolve_capability_profile,
+)
 from ralph.mcp.multimodal.resources import MediaManifest
 from ralph.mcp.protocol.capability_mapping import lookup_ralph_capability
 from ralph.mcp.protocol.env import MCP_ENDPOINT_ENV, MCP_RUN_ID_ENV
@@ -53,6 +58,11 @@ class AgentSession:
     worker_namespace: Path | None = None
     media_manifest: MediaManifest = field(default_factory=MediaManifest)
     model_identity: MultimodalModelIdentity = field(default=UNKNOWN_IDENTITY)
+
+    @property
+    def capability_profile(self) -> ResolvedCapabilityProfile:
+        """Return the resolved multimodal capability profile for this session."""
+        return resolve_capability_profile(self.model_identity)
 
     def check_capability(self, capability: str) -> object:
         return "approved" if session_has_capability(self.capabilities, capability) else "denied"

@@ -29,7 +29,10 @@ from ralph.mcp.multimodal.capabilities import (
     CapabilityVerdict,
     DeliveryMode,
     MultimodalModelIdentity,
+    ResolvedCapabilityProfile,
     get_delivery_mode,
+    profile_from_payload,
+    resolve_capability_profile,
 )
 from ralph.mcp.multimodal.errors import (
     MultimodalFailure,
@@ -66,6 +69,7 @@ __all__ = [
     "MultimodalFailureKind",
     "MultimodalModelIdentity",
     "PdfContent",
+    "ResolvedCapabilityProfile",
     "ResourceReferenceContent",
     "VideoContent",
     "build_media_uri",
@@ -73,4 +77,7 @@ __all__ = [
     "infer_modality_and_mime",
     "new_artifact_id",
     "parse_media_uri",
+    "profile_from_payload",
+    "resolve_capability_profile",
 ]
+

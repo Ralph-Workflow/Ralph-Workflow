@@ -232,10 +232,94 @@ def get_delivery_mode(
     )
 
 
+@dataclass
+class ResolvedCapabilityProfile:
+    """Pre-computed capability verdicts for a resolved model identity.
+
+    This is the runtime-owned contract for multimodal delivery decisions.
+    Downstream layers consume this profile from the session rather than
+    re-calling get_delivery_mode() at each use site.
+    """
+
+    identity: MultimodalModelIdentity
+    verdicts: dict[str, CapabilityVerdict]
+
+    def verdict_for(self, modality: str) -> CapabilityVerdict:
+        """Return the pre-computed verdict, or compute fresh for unlisted modalities."""
+        if modality in self.verdicts:
+            return self.verdicts[modality]
+        return get_delivery_mode(self.identity, modality)
+
+    def to_payload(self) -> dict[str, object]:
+        """Serialize to a JSON-compatible dict for session payload persistence."""
+        return {
+            "provider": self.identity.provider,
+            "model_id": self.identity.model_id,
+            "transport": self.identity.transport,
+            "verdicts": {
+                modality: {
+                    "delivery": v.delivery.value,
+                    "reason": v.reason,
+                    "block_type": v.block_type,
+                }
+                for modality, v in self.verdicts.items()
+            },
+        }
+
+
+def resolve_capability_profile(identity: MultimodalModelIdentity) -> ResolvedCapabilityProfile:
+    """Build a pre-computed capability profile for all supported modalities."""
+    verdicts = {
+        modality: get_delivery_mode(identity, modality)
+        for modality in SUPPORTED_MODALITIES
+    }
+    return ResolvedCapabilityProfile(identity=identity, verdicts=verdicts)
+
+
+def profile_from_payload(raw: dict[str, object]) -> ResolvedCapabilityProfile:
+    """Rehydrate a ResolvedCapabilityProfile from a serialized session payload dict."""
+    provider = str(raw.get("provider", "unknown"))
+    model_id_raw = raw.get("model_id")
+    transport_raw = raw.get("transport")
+    identity = MultimodalModelIdentity(
+        provider=provider,
+        model_id=str(model_id_raw) if model_id_raw is not None else None,
+        transport=str(transport_raw) if transport_raw is not None else None,
+    )
+    raw_verdicts = raw.get("verdicts")
+    if not isinstance(raw_verdicts, dict):
+        return resolve_capability_profile(identity)
+    verdicts: dict[str, CapabilityVerdict] = {}
+    for modality, v in raw_verdicts.items():
+        if not isinstance(v, dict):
+            continue
+        delivery_raw = v.get("delivery", "")
+        try:
+            delivery = DeliveryMode(str(delivery_raw))
+        except ValueError:
+            delivery = DeliveryMode.RESOURCE_REFERENCE_REPLAY
+        block_type_raw = v.get("block_type")
+        verdicts[modality] = CapabilityVerdict(
+            modality=modality,
+            delivery=delivery,
+            provider=provider,
+            model_id=str(model_id_raw) if model_id_raw is not None else None,
+            reason=str(v.get("reason", "")),
+            block_type=str(block_type_raw) if block_type_raw is not None else None,
+        )
+    for modality in SUPPORTED_MODALITIES:
+        if modality not in verdicts:
+            verdicts[modality] = get_delivery_mode(identity, modality)
+    return ResolvedCapabilityProfile(identity=identity, verdicts=verdicts)
+
+
 __all__ = [
     "UNKNOWN_IDENTITY",
     "CapabilityVerdict",
     "DeliveryMode",
     "MultimodalModelIdentity",
+    "ResolvedCapabilityProfile",
     "get_delivery_mode",
+    "profile_from_payload",
+    "resolve_capability_profile",
 ]
