@@ -1626,6 +1626,81 @@ def handle_read_image(
     )
 
 
+def _extract_resource_reference_replay_blocks(
+    result: object,
+) -> list[dict[str, str]]:
+    """Extract resource_reference_replay blocks from a normalized upstream result."""
+    if not isinstance(result, dict):
+        return []
+    raw_content: object = result.get("content")
+    if not isinstance(raw_content, list):
+        return []
+    blocks: list[dict[str, str]] = []
+    for item in raw_content:
+        if not isinstance(item, dict):
+            continue
+        block: dict[str, str] = {
+            k: str(v) for k, v in item.items()
+            if isinstance(v, str)
+        }
+        if (
+            block.get("type") == "resource_reference"
+            and block.get("delivery") == "resource_reference_replay"
+        ):
+            blocks.append(block)
+    return blocks
+
+
+def persist_upstream_media_artifacts(
+    result: object,
+    session: object,
+    workspace: Workspace,
+) -> None:
+    """Persist upstream embedded media artifacts to the durable cache and session index.
+
+    Called after normalize_upstream_content_blocks so that resource_reference_replay
+    blocks (backed by ralph://media/... URIs stored in the session manifest) are
+    also written to the durable cache and session index. This enables cross-session
+    replay of artifacts that originated from upstream embedded-data blocks.
+
+    URI-backed resource_reference blocks (delivery='resource_reference') are
+    skipped — they reference external URIs, not Ralph-owned artifacts.
+    """
+    replay_blocks = _extract_resource_reference_replay_blocks(result)
+    if not replay_blocks:
+        return
+    manifest = _get_media_manifest(session)
+    if manifest is None:
+        return
+    profile = _get_session_capability_profile(session)
+    for block in replay_blocks:
+        uri = block.get("uri", "")
+        artifact_id = parse_media_uri(uri)
+        if artifact_id is None:
+            continue
+        entry = manifest.get(artifact_id)
+        if entry is None:
+            continue
+        verdict = profile.verdict_for(entry.modality)
+        cache_path = _write_durable_media_cache(workspace, artifact_id, entry.raw_bytes)
+        _persist_media_session_entry(
+            session,
+            workspace,
+            {
+                "uri": uri,
+                "mime_type": entry.mime_type,
+                "title": entry.title,
+                "modality": entry.modality,
+                "delivery": "resource_reference_replay",
+                "reason": verdict.reason,
+                "source_path": "",
+                "cache_path": cache_path,
+                "source_uri": "",
+                "block_type": verdict.block_type or "",
+            },
+        )
+
+
 __all__ = [
     "MEDIA_READ_CAPABILITY",
     "WORKSPACE_DELETE_CAPABILITY",
@@ -1652,5 +1727,6 @@ __all__ = [
     "handle_search_files",
     "handle_stat",
     "handle_write_file",
+    "persist_upstream_media_artifacts",
     "required_string_param",
 ]

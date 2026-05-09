@@ -2289,6 +2289,117 @@ def test_read_media_replay_handle_round_trips_video_metadata() -> None:
     ws.absolute_path.assert_not_called()
 
 
+def test_persist_upstream_media_artifacts_writes_session_index(tmp_path: Path) -> None:
+    """persist_upstream_media_artifacts must write embedded upstream blocks to the session index.
+
+    When an upstream tool returns embedded bytes (stored as ralph://media/... in the manifest),
+    the caller should call persist_upstream_media_artifacts so the artifact survives the session
+    in the session index and registry for cross-session replay.
+    """
+    from ralph.mcp.multimodal.resources import MediaManifest  # noqa: PLC0415
+    from ralph.mcp.tools.workspace import persist_upstream_media_artifacts  # noqa: PLC0415
+    from ralph.workspace.fs import FsWorkspace  # noqa: PLC0415
+
+    manifest = MediaManifest()
+    audio_entry = manifest.add(
+        title="clip.mp3",
+        mime_type="audio/mpeg",
+        modality="audio",
+        raw_bytes=b"ID3" + b"\x00" * 50,
+    )
+
+    result: dict[str, object] = {
+        "content": [
+            {"type": "text", "text": "header"},
+            {
+                "type": "resource_reference",
+                "uri": audio_entry.uri,
+                "mimeType": "audio/mpeg",
+                "title": "clip.mp3",
+                "modality": "audio",
+                "delivery": "resource_reference_replay",
+            },
+        ]
+    }
+
+    @dataclass
+    class _Session:
+        drain: str = "development"
+        session_id: str = "test"
+        allowed_capability: str | None = "media.read"
+        media_manifest: MediaManifest = field(default_factory=MediaManifest)
+        model_identity: MultimodalModelIdentity = field(default=UNKNOWN_IDENTITY)
+
+        def check_capability(self, cap: str) -> object:
+            return cap == self.allowed_capability
+
+    session = _Session(media_manifest=manifest)
+    ws = FsWorkspace(tmp_path)
+
+    persist_upstream_media_artifacts(result, session, ws)
+
+    index_path = tmp_path / ".agent" / "tmp" / "development_media_session.json"
+    assert index_path.exists(), "Session index must be written for embedded upstream blocks"
+    data = json.loads(index_path.read_text(encoding="utf-8"))
+    artifacts = data["artifacts"]
+    assert len(artifacts) == 1
+    a = artifacts[0]
+    assert a["modality"] == "audio"
+    assert a["delivery"] == "resource_reference_replay"
+    assert a["uri"] == audio_entry.uri
+    assert a["mime_type"] == "audio/mpeg"
+    assert a["title"] == "clip.mp3"
+    assert a["cache_path"].startswith(".agent/tmp/media/")
+    # Durable cache file must be written
+    artifact_id = audio_entry.uri.rsplit("/", 1)[-1]
+    cache_file = tmp_path / ".agent" / "tmp" / "media" / artifact_id
+    assert cache_file.exists(), "Durable cache file must be written for embedded upstream blocks"
+    assert cache_file.read_bytes() == b"ID3" + b"\x00" * 50
+
+
+def test_persist_upstream_media_artifacts_skips_uri_backed_blocks(tmp_path: Path) -> None:
+    """persist_upstream_media_artifacts must not write URI-backed resource_reference blocks.
+
+    URI-backed blocks (delivery='resource_reference') reference external URIs and are not
+    Ralph-owned artifacts — they must not be written to the session index.
+    """
+    from ralph.mcp.tools.workspace import persist_upstream_media_artifacts  # noqa: PLC0415
+    from ralph.workspace.fs import FsWorkspace  # noqa: PLC0415
+
+    result: dict[str, object] = {
+        "content": [
+            {
+                "type": "resource_reference",
+                "uri": "https://example.com/report.pdf",
+                "mimeType": "application/pdf",
+                "title": "report.pdf",
+                "modality": "pdf",
+                "delivery": "resource_reference",
+            },
+        ]
+    }
+
+    @dataclass
+    class _Session:
+        drain: str = "development"
+        session_id: str = "test"
+        media_manifest: MediaManifest = field(default_factory=MediaManifest)
+        model_identity: MultimodalModelIdentity = field(default=UNKNOWN_IDENTITY)
+
+        def check_capability(self, cap: str) -> object:
+            return True
+
+    session = _Session()
+    ws = FsWorkspace(tmp_path)
+
+    persist_upstream_media_artifacts(result, session, ws)
+
+    index_path = tmp_path / ".agent" / "tmp" / "development_media_session.json"
+    assert not index_path.exists(), (
+        "URI-backed resource_reference blocks must NOT be written to the session index"
+    )
+
+
 def test_unknown_provider_media_preserves_delivery_metadata() -> None:
     """For an unknown provider, resource_reference blocks carry modality and URI metadata.
 

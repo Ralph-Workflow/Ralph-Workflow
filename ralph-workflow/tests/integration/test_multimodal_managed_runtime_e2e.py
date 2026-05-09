@@ -304,6 +304,72 @@ def test_upstream_mixed_modalities_are_normalized_without_silent_loss() -> None:
     assert modalities == {"image", "audio"}, (
         f"Expected image and audio modalities, got: {modalities}"
     )
+    # Embedded blocks must be resource_reference_replay (Ralph-owned manifest handles)
+    for rr in rr_blocks:
+        assert rr.get("delivery") == "resource_reference_replay", (
+            f"Embedded upstream blocks must use resource_reference_replay delivery, "
+            f"got: {rr.get('delivery')!r} for block: {rr}"
+        )
+        assert str(rr.get("uri", "")).startswith("ralph://media/"), (
+            f"Embedded upstream blocks must have ralph://media/... URI, got: {rr.get('uri')!r}"
+        )
+
+
+def test_upstream_uri_backed_block_uses_resource_reference_delivery() -> None:
+    """URI-backed upstream blocks must use 'resource_reference' delivery (not replay).
+
+    URI-backed blocks preserve an external URI and are NOT Ralph-owned artifacts.
+    They should NOT be replayed via read_media — the agent can access the URI directly.
+    """
+    class _FakeClient:
+        def list_tools(self) -> list[object]:
+            from ralph.mcp.upstream.models import UpstreamTool  # noqa: PLC0415
+            return [UpstreamTool(name="pdf_tool", description="returns a PDF URI")]
+
+        def call_tool(self, _name: str, _args: object) -> dict[str, object]:
+            return {
+                "content": [
+                    {
+                        "type": "pdf",
+                        "uri": "https://example.com/report.pdf",
+                        "mimeType": "application/pdf",
+                    },
+                ]
+            }
+
+    server = UpstreamMcpServer(name="pdf_server", transport="http", url="http://unused")
+
+    class _FakeSession:
+        media_manifest = MediaManifest()
+
+    registry = UpstreamRegistry.build(
+        [server],
+        client_factory=lambda _srv: _FakeClient(),  # type: ignore[arg-type]  # reason: external library has no type support, see docs/agents/type-ignore-policy.md#external-library
+    )
+
+    result = registry.call_tool(
+        "ralph_upstream__pdf_server__pdf_tool", {}, session=_FakeSession()
+    )
+
+    content = result.get("content", [])
+    assert len(content) == 1
+    block = content[0]
+    assert block.get("type") == "resource_reference"
+    assert block.get("delivery") == "resource_reference", (
+        f"URI-backed upstream blocks must use 'resource_reference' delivery, "
+        f"got: {block.get('delivery')!r}"
+    )
+    assert block.get("uri") == "https://example.com/report.pdf", (
+        f"URI-backed upstream blocks must preserve the external URI, got: {block.get('uri')!r}"
+    )
+    # URI-backed blocks must NOT create manifest entries
+    session = _FakeSession()
+    registry.call_tool(
+        "ralph_upstream__pdf_server__pdf_tool", {}, session=session
+    )
+    assert session.media_manifest.is_empty(), (
+        "URI-backed upstream blocks must NOT store entries in the session manifest"
+    )
 
 
 def test_prompt_sidecar_preserves_mixed_modality_metadata_for_runner_handoff() -> None:

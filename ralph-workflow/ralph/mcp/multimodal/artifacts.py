@@ -177,9 +177,17 @@ class VideoContent:
 class ResourceReferenceContent:
     """Content block representing a media artifact via resource reference.
 
-    Used when a file cannot or should not be delivered as a typed block
-    (e.g., unknown provider, or preserved-only artifact).  The artifact is
-    stored in the session manifest and retrievable via resources/read.
+    The ``delivery`` field distinguishes two cases:
+
+    - ``'resource_reference_replay'``: a Ralph-owned ``ralph://media/...``
+      artifact stored in the session manifest. The agent calls ``read_media``
+      with the URI to retrieve or replay the artifact. Always pass
+      ``delivery=DeliveryMode.RESOURCE_REFERENCE_REPLAY`` explicitly when
+      constructing these blocks.
+
+    - ``'resource_reference'`` (default): a URI-preserving upstream reference.
+      The URI points to an external resource, not a Ralph-owned artifact.
+      Used when an upstream MCP tool returns a URI-backed media block.
     """
 
     uri: str

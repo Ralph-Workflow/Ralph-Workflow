@@ -1554,6 +1554,17 @@ def _build_multimodal_appendix(artifacts: list[dict[str, object]]) -> str:
                 " replayable; read_media will return an explicit"
                 " missing_replay_source failure in that case."
             )
+        elif delivery == "typed_block":
+            block_type_hint = f" (block_type={block_type!r})" if block_type else ""
+            lines.append(
+                f"  Note: call read_media with this path to receive a typed block"
+                f"{block_type_hint} for direct delivery to the model."
+            )
+        elif delivery == "resource_reference":
+            lines.append(
+                "  Note: this artifact references an external URI; the model may"
+                " access it directly via the URI without calling read_media."
+            )
         elif delivery == "unsupported":
             reason_suffix = f" Reason: {reason}" if reason else ""
             lines.append(

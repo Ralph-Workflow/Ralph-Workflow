@@ -168,10 +168,13 @@ class UpstreamProxyHandler:
         workspace: object | None,
         params: JsonObject,
     ) -> object:
-        del workspace
-        return self._upstream_registry.call_tool(
+        result = self._upstream_registry.call_tool(
             self._alias, params, session=cast("HasMediaManifest | None", host_session)
         )
+        if workspace is not None and host_session is not None and isinstance(result, dict):
+            mod = import_module("ralph.mcp.tools.workspace")
+            mod.persist_upstream_media_artifacts(result, host_session, workspace)
+        return result
 
 
 class ToolBridge:

@@ -278,8 +278,16 @@ def _normalize_media_block(  # noqa: PLR0913
     """Normalize an upstream media block into a resource_reference content block.
 
     Handles image/audio/video/pdf/document blocks with either URI-backed or
-    embedded-data shapes. URI-backed blocks preserve the upstream URI; embedded
-    blocks store bytes in the session manifest when a session is available.
+    embedded-data shapes:
+
+    - Embedded-data blocks (with 'data'/'source.data'): bytes are stored in
+      the session manifest as a Ralph-owned ralph://media/... artifact.
+      Delivery is 'resource_reference_replay' — the agent can call read_media
+      with the returned URI to retrieve the artifact.
+
+    - URI-backed blocks (with 'uri'/'source.uri'): the original upstream URI is
+      preserved as-is. Delivery is 'resource_reference' — the URI points to
+      an external resource, not a Ralph-owned artifact.
     """
     mime_type = _extract_mime(block, block_type)
 
@@ -311,8 +319,10 @@ def _normalize_media_block(  # noqa: PLR0913
             raw_bytes=raw_bytes,
         )
         uri = entry.uri
+        delivery = "resource_reference_replay"
     elif upstream_uri is not None:
         uri = upstream_uri
+        delivery = "resource_reference"
     else:
         raise UpstreamCallError(
             f"upstream server '{server_name}' tool '{tool_name}' returned "
@@ -326,7 +336,7 @@ def _normalize_media_block(  # noqa: PLR0913
         "mimeType": mime_type,
         "title": title,
         "modality": block_type,
-        "delivery": "resource_reference",
+        "delivery": delivery,
     }
 
 
