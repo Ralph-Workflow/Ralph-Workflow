@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from ralph.mcp.multimodal.capabilities import UNKNOWN_IDENTITY, ResolvedCapabilityProfile
 from ralph.mcp.server.factory import McpServerHandle
 from ralph.pipeline.parallel.worker_session import build_worker_session
 from ralph.pipeline.work_units import WorkUnit
@@ -106,3 +107,19 @@ def test_worker_artifact_dir_stored_in_session(tmp_path: Path) -> None:
         unit, _make_factory(), _make_scope(tmp_path), worker_artifact_dir=artifact_dir
     )
     assert bundle.session.worker_artifact_dir == artifact_dir
+
+
+def test_worker_session_has_unknown_identity(tmp_path: Path) -> None:
+    # Worker sessions intentionally have no provider/model context under the
+    # current build_worker_session + coordinator + factory API boundary.
+    bundle = build_worker_session(_make_unit(), _make_factory(), _make_scope(tmp_path))
+    assert bundle.session.model_identity == UNKNOWN_IDENTITY
+
+
+def test_worker_session_has_unknown_capability_profile(tmp_path: Path) -> None:
+    # Capability profile must resolve to unknown-provider defaults, not a
+    # known-provider profile, because the worker session carries no identity.
+    bundle = build_worker_session(_make_unit(), _make_factory(), _make_scope(tmp_path))
+    profile = bundle.session.capability_profile
+    assert isinstance(profile, ResolvedCapabilityProfile)
+    assert not profile.identity.is_known()

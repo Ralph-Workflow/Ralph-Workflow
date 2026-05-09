@@ -918,6 +918,8 @@ def _start_commit_bridge(repo_root: Path, *, agents_policy: AgentsPolicy) -> Ses
         run_id=str(uuid.uuid4()),
         drain="commit",
         capabilities=set(session_mcp_plan.capabilities),
+        model_identity=session_mcp_plan.model_identity,
+        stored_capability_profile=session_mcp_plan.capability_profile,
     )
     workspace = FsWorkspace(repo_root)
     return start_mcp_server(session, workspace, extra_env=session_mcp_plan.server_env)

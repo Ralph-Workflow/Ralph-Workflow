@@ -22,6 +22,12 @@ from ralph.config.models import AgentConfig, GeneralConfig, UnifiedConfig
 from ralph.display.context import DisplayContext, make_display_context
 from ralph.display.theme import RALPH_THEME
 from ralph.mcp.artifacts.commit_message import write_commit_message_artifact
+from ralph.mcp.multimodal.capabilities import (
+    UNKNOWN_IDENTITY,
+    MultimodalModelIdentity,
+    ResolvedCapabilityProfile,
+    resolve_capability_profile,
+)
 from ralph.mcp.protocol.session import AgentSession
 from ralph.mcp.session_plan import build_session_mcp_plan
 from ralph.mcp.tools.bridge import build_ralph_tool_registry
@@ -1760,3 +1766,35 @@ class TestCheckPolicyCommand:
         err = capsys.readouterr().err
         assert code == 2  # noqa: PLR2004
         assert "Policy validation error" in err
+
+
+# ---------------------------------------------------------------------------
+# AgentSession stored_capability_profile preservation
+# ---------------------------------------------------------------------------
+
+
+def test_agent_session_uses_stored_capability_profile_when_set() -> None:
+    identity = MultimodalModelIdentity(provider="claude")
+    stored = resolve_capability_profile(identity)
+    session = AgentSession(
+        session_id="commit-test",
+        run_id="run-test",
+        drain="commit",
+        capabilities=set(),
+        model_identity=identity,
+        stored_capability_profile=stored,
+    )
+    assert isinstance(session.capability_profile, ResolvedCapabilityProfile)
+    assert session.capability_profile is stored
+
+
+def test_agent_session_falls_back_to_resolved_profile_when_not_stored() -> None:
+    session = AgentSession(
+        session_id="commit-test",
+        run_id="run-test",
+        drain="commit",
+        capabilities=set(),
+    )
+    profile = session.capability_profile
+    assert isinstance(profile, ResolvedCapabilityProfile)
+    assert profile.identity == UNKNOWN_IDENTITY

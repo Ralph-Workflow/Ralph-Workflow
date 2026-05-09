@@ -58,10 +58,13 @@ class AgentSession:
     worker_namespace: Path | None = None
     media_manifest: MediaManifest = field(default_factory=MediaManifest)
     model_identity: MultimodalModelIdentity = field(default=UNKNOWN_IDENTITY)
+    stored_capability_profile: ResolvedCapabilityProfile | None = field(default=None)
 
     @property
     def capability_profile(self) -> ResolvedCapabilityProfile:
-        """Return the resolved multimodal capability profile for this session."""
+        """Return the stored profile when present, otherwise resolve from model_identity."""
+        if self.stored_capability_profile is not None:
+            return self.stored_capability_profile
         return resolve_capability_profile(self.model_identity)
 
     def check_capability(self, capability: str) -> object:

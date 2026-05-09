@@ -12,6 +12,12 @@ from loguru import logger
 
 # Config imports for multimodal tests
 from ralph.config.mcp_models import McpConfig, MediaConfig
+from ralph.mcp.multimodal.capabilities import (
+    UNKNOWN_IDENTITY,
+    DeliveryMode,
+    MultimodalModelIdentity,
+    ResolvedCapabilityProfile,
+)
 from ralph.mcp.protocol import startup
 from ralph.mcp.protocol.capability_mapping import McpCapability
 from ralph.mcp.protocol.session import AgentSession
@@ -123,6 +129,76 @@ def test_session_from_env_accepts_injected_id_factories() -> None:
     )
 
     assert session is None
+
+
+def test_session_from_env_preserves_model_identity() -> None:
+    session = server_runtime.session_from_env(
+        {
+            "RALPH_MCP_SESSION_JSON": json.dumps(
+                {
+                    "session_id": "id-session",
+                    "run_id": "id-run",
+                    "drain": "planning",
+                    "capabilities": [],
+                    "model_identity": {
+                        "provider": "claude",
+                        "model_id": "claude-3-5-sonnet",
+                        "transport": None,
+                    },
+                }
+            )
+        }
+    )
+
+    assert session is not None
+    assert isinstance(session.model_identity, MultimodalModelIdentity)
+    assert session.model_identity.provider == "claude"
+    assert session.model_identity.model_id == "claude-3-5-sonnet"
+
+
+def test_session_from_env_without_model_identity_defaults_to_unknown() -> None:
+    session = server_runtime.session_from_env(
+        {
+            "RALPH_MCP_SESSION_JSON": json.dumps(
+                {
+                    "session_id": "id-session",
+                    "run_id": "id-run",
+                    "drain": "planning",
+                    "capabilities": [],
+                }
+            )
+        }
+    )
+
+    assert session is not None
+    assert session.model_identity == UNKNOWN_IDENTITY
+
+
+def test_session_from_env_preserves_capability_profile() -> None:
+    session = server_runtime.session_from_env(
+        {
+            "RALPH_MCP_SESSION_JSON": json.dumps(
+                {
+                    "session_id": "prof-session",
+                    "run_id": "prof-run",
+                    "drain": "planning",
+                    "capabilities": [],
+                    "model_identity": {
+                        "provider": "claude",
+                        "model_id": None,
+                        "transport": None,
+                    },
+                }
+            )
+        }
+    )
+
+    assert session is not None
+    profile = session.capability_profile
+    assert isinstance(profile, ResolvedCapabilityProfile)
+    assert profile.identity.provider == "claude"
+    verdict = profile.verdict_for("image")
+    assert verdict.delivery == DeliveryMode.INLINE_IMAGE
 
 
 def test_file_backed_session_accepts_injected_loader() -> None:

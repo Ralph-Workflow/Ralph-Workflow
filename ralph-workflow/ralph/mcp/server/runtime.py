@@ -826,6 +826,28 @@ def session_from_env(
         if isinstance(capabilities_value, list)
         else set()
     )
+    from ralph.mcp.multimodal.capabilities import (  # noqa: PLC0415
+        UNKNOWN_IDENTITY,
+        MultimodalModelIdentity,
+        profile_from_payload,
+        resolve_capability_profile,
+    )
+    raw_identity = payload.get("model_identity")
+    if isinstance(raw_identity, dict):
+        provider = str(raw_identity.get("provider", "unknown"))
+        model_id_raw = raw_identity.get("model_id")
+        transport_raw = raw_identity.get("transport")
+        model_identity = MultimodalModelIdentity(
+            provider=provider,
+            model_id=str(model_id_raw) if model_id_raw is not None else None,
+            transport=str(transport_raw) if transport_raw is not None else None,
+        )
+    else:
+        model_identity = UNKNOWN_IDENTITY
+    raw_profile = payload.get("capability_profile")
+    stored_profile = profile_from_payload(raw_profile) if isinstance(raw_profile, dict) else None
+    if stored_profile is None and model_identity.is_known():
+        stored_profile = resolve_capability_profile(model_identity)
     return AgentSession(
         session_id=cast(
             "str",
@@ -845,6 +867,8 @@ def session_from_env(
         ),
         drain=cast("str", payload.get("drain", "standalone")),
         capabilities=capabilities,
+        model_identity=model_identity,
+        stored_capability_profile=stored_profile,
     )
 
 

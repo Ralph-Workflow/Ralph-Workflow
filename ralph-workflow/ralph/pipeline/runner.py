@@ -3047,6 +3047,7 @@ def _execute_agent_effect(  # noqa: PLR0911, PLR0912, PLR0913, PLR0915
             drain=effect.drain or effect.phase,
             capabilities=set(session_mcp_plan.capabilities),
             model_identity=session_mcp_plan.model_identity,
+            stored_capability_profile=session_mcp_plan.capability_profile,
         )
         workspace = FsWorkspace(
             workspace_scope.root,

@@ -1548,7 +1548,7 @@ def _build_multimodal_appendix(artifacts: list[dict[str, object]]) -> str:
         lines.append(f'  Delivery: {delivery}')
         if block_type:
             lines.append(f'  Block-type: {block_type}')
-        if delivery in {"preserved_only", "resource_reference_replay"}:
+        if delivery == "resource_reference_replay":
             lines.append(
                 "  Note: if the artifact is from a previous session it may not be"
                 " replayable; read_media will return an explicit"

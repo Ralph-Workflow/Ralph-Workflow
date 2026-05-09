@@ -20,7 +20,6 @@ class DeliveryMode(StrEnum):
     INLINE_IMAGE = "inline_image"
     TYPED_BLOCK = "typed_block"
     RESOURCE_REFERENCE_REPLAY = "resource_reference_replay"
-    PRESERVED_ONLY = "preserved_only"
     UNSUPPORTED = "unsupported"
 
 

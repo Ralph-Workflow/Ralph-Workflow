@@ -54,7 +54,6 @@ def test_explicit_unknown_provider_is_not_known() -> None:
     (DeliveryMode.RESOURCE_REFERENCE_REPLAY, False, True, False, True),
     (DeliveryMode.UNSUPPORTED, False, False, False, False),
     (DeliveryMode.TYPED_BLOCK, False, False, True, True),
-    (DeliveryMode.PRESERVED_ONLY, False, False, False, True),
 ])
 def test_capability_verdict_helpers(
     delivery: DeliveryMode,
