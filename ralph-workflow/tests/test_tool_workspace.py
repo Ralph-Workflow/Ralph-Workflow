@@ -2437,3 +2437,52 @@ def test_unknown_provider_media_preserves_delivery_metadata() -> None:
         )
     finally:
         Path(temp_path).unlink()
+
+
+def test_persist_media_session_entry_stores_failure_kind(tmp_path: Path) -> None:
+    """Session index entries written by read_media must include the failure_kind field.
+
+    This proves the canonical artifact schema carries failure_kind so that
+    unsupported_runtime_seam remains distinct from unsupported_modality through
+    sidecar persistence and invoke-time rendering.
+    """
+    from ralph.mcp.multimodal.capabilities import MultimodalModelIdentity  # noqa: PLC0415
+    from ralph.workspace.fs import FsWorkspace  # noqa: PLC0415
+
+    @dataclass
+    class _Session:
+        allowed_capability: str | None = None
+        drain: str = "development"
+        session_id: str = "test-session"
+        media_manifest: MediaManifest = field(default_factory=MediaManifest)
+        model_identity: MultimodalModelIdentity = field(
+            default_factory=lambda: MultimodalModelIdentity(provider="unknown-x")
+        )
+
+        def check_capability(self, capability: str) -> object:
+            return capability == self.allowed_capability
+
+        def check_edit_area(self, _: str) -> object:
+            return True
+
+    pdf_file = tmp_path / "report.pdf"
+    pdf_file.write_bytes(b"%PDF-1.4 test")
+
+    session = _Session(MEDIA_READ_CAPABILITY)
+    ws = FsWorkspace(tmp_path)
+    result = handle_read_media(session, ws, {"path": "report.pdf"})
+
+    assert result.is_error is False, f"Expected success, got error: {result.content}"
+
+    index_path = tmp_path / ".agent" / "tmp" / "development_media_session.json"
+    assert index_path.exists(), "Session index must be written after read_media"
+    data = json.loads(index_path.read_text(encoding="utf-8"))
+    artifacts = data["artifacts"]
+    assert len(artifacts) == 1
+    entry = artifacts[0]
+    assert "failure_kind" in entry, (
+        "Persisted artifact entry must include 'failure_kind' field in canonical schema"
+    )
+    assert entry["failure_kind"] == "", (
+        "Successful delivery must store empty failure_kind, not a failure classification"
+    )

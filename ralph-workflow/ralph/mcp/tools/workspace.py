@@ -1223,7 +1223,8 @@ def _persist_media_session_entry(
     media artifacts forward across sessions via the handoff sidecar.
 
     *meta* must contain: uri, mime_type, title, modality, reason.
-    v2 fields (source_path, cache_path, source_uri, block_type) are written when present.
+    v2 fields (source_path, cache_path, source_uri, block_type, failure_kind) are written
+    when present.
     """
     drain: object = getattr(session, "drain", None)
     phase = str(drain) if drain else "standalone"
@@ -1242,6 +1243,7 @@ def _persist_media_session_entry(
         "cache_path": meta.get("cache_path", ""),
         "source_uri": meta.get("source_uri", ""),
         "block_type": meta.get("block_type", ""),
+        "failure_kind": meta.get("failure_kind", ""),
     }
     try:
         try:

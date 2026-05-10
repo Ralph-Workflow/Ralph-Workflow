@@ -1543,12 +1543,20 @@ def _build_multimodal_appendix(artifacts: list[dict[str, object]]) -> str:
         delivery = entry.get("delivery", "resource_reference_replay")
         block_type = entry.get("block_type", "")
         reason = entry.get("reason", "")
+        failure_kind = entry.get("failure_kind", "")
         lines.append(f"- [{modality}] {title}")
         lines.append(f'  path={uri}')
         lines.append(f'  Delivery: {delivery}')
         if block_type:
             lines.append(f'  Block-type: {block_type}')
-        if delivery == "resource_reference_replay":
+        if failure_kind == "unsupported_runtime_seam":
+            reason_suffix = f" Reason: {reason}" if reason else ""
+            lines.append(
+                f"  Note: the upstream artifact exists but cannot be delivered"
+                f" through the active runtime seam.{reason_suffix}"
+                " Do not use read_media, replay handles, or typed blocks for this artifact."
+            )
+        elif delivery == "resource_reference_replay":
             lines.append(
                 "  Note: if the artifact is from a previous session it may not be"
                 " replayable; read_media will return an explicit"

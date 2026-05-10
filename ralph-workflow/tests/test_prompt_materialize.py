@@ -2200,3 +2200,73 @@ def test_sidecar_entries_built_from_capability_profile_verdicts_preserve_all_met
     )
     assert aud.reason, "Unsupported audio entry must carry non-empty reason"
     assert aud.block_type == "", "Unsupported audio must have empty block_type"
+
+
+def test_collect_media_entries_preserves_failure_kind_through_sidecar_round_trip() -> None:
+    """failure_kind must survive JSON serialization and reload without re-inference.
+
+    Writing a session index entry with failure_kind='unsupported_runtime_seam' and
+    reloading via collect_media_entries_for_phase must yield the same value, keeping
+    unsupported_runtime_seam distinct from unsupported_modality all the way to invoke time.
+    """
+    import json  # noqa: PLC0415
+
+    from ralph.prompts.debug_dump import media_session_path  # noqa: PLC0415
+    from ralph.prompts.materialize import collect_media_entries_for_phase  # noqa: PLC0415
+    from ralph.workspace.memory import MemoryWorkspace  # noqa: PLC0415
+
+    payload = json.dumps({
+        "schema_version": "2",
+        "phase": "development",
+        "artifacts": [
+            {
+                "artifact_id": "seam-fail-001",
+                "uri": "ralph://media/seam-fail-001",
+                "mime_type": "video/mp4",
+                "title": "clip.mp4",
+                "modality": "video",
+                "delivery": "unsupported",
+                "reason": "Active runtime seam cannot carry video through the handoff path",
+                "source_path": "",
+                "cache_path": "",
+                "source_uri": "",
+                "block_type": "",
+                "failure_kind": "unsupported_runtime_seam",
+            },
+            {
+                "artifact_id": "modality-fail-002",
+                "uri": "ralph://media/modality-fail-002",
+                "mime_type": "audio/mpeg",
+                "title": "clip.mp3",
+                "modality": "audio",
+                "delivery": "unsupported",
+                "reason": "Provider does not support audio",
+                "source_path": "",
+                "cache_path": "",
+                "source_uri": "",
+                "block_type": "",
+                "failure_kind": "unsupported_modality",
+            },
+        ],
+    })
+
+    workspace = MemoryWorkspace()
+    workspace.write(media_session_path("development"), payload)
+
+    entries = collect_media_entries_for_phase(workspace, "development")
+
+    assert len(entries) == 2  # noqa: PLR2004
+    by_modality = {e.modality: e for e in entries}
+
+    video_e = by_modality["video"]
+    assert video_e.failure_kind == "unsupported_runtime_seam", (
+        f"failure_kind must survive sidecar round-trip, got: {video_e.failure_kind!r}"
+    )
+    assert video_e.delivery == "unsupported"
+
+    audio_e = by_modality["audio"]
+    assert audio_e.failure_kind == "unsupported_modality", (
+        "unsupported_modality failure_kind must survive sidecar round-trip, "
+        f"got: {audio_e.failure_kind!r}"
+    )
+    assert audio_e.delivery == "unsupported"

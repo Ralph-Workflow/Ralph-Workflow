@@ -627,3 +627,56 @@ def test_openai_unsupported_modality_verdicts_are_explicit() -> None:
         assert verdict.reason, (
             f"OpenAI {modality!r} unsupported verdict must include a reason"
         )
+
+
+# ---------------------------------------------------------------------------
+# Managed document-path proof (DOCX-class typed document or replay delivery)
+# ---------------------------------------------------------------------------
+
+_TINY_DOCX_BYTES = (
+    b"PK\x03\x04"  # ZIP local file header magic (OOXML is a ZIP archive)
+    + b"\x14\x00" * 25  # minimal content to satisfy the file reader
+)
+
+
+@pytest.mark.integration
+def test_claude_docx_round_trip_preserves_typed_document_or_replay_delivery(
+    tmp_path: Path,
+) -> None:
+    """DOCX artifact obtained via Ralph's MCP surface must survive the managed path.
+
+    This proves the managed-runtime document-path requirement: when a Claude-provider
+    session calls read_media on a DOCX file, the response must be a typed document
+    block (typed_block delivery) or a replayable resource reference — NOT silent
+    text flattening. The test drives McpServer.handle_request() in-process.
+    """
+    docx_file = tmp_path / "report.docx"
+    docx_file.write_bytes(_TINY_DOCX_BYTES)
+
+    server = _build_server(tmp_path, provider="claude", model_id="claude-3-5-sonnet-20241022")
+    state = _initialize(server, multimodal_client=True)
+
+    result = _tool_call(server, state, str(RalphToolName.READ_MEDIA), {"path": "report.docx"})
+
+    assert result.get("isError") is not True, (
+        f"read_media must not return an error for Claude DOCX, got: {result}"
+    )
+    content = cast("list[dict[str, Any]]", result.get("content", []))
+    assert len(content) == 1, f"Expected exactly 1 content block, got: {content}"
+    block = content[0]
+    block_type = block.get("type")
+    # Claude provider must deliver DOCX as a typed document block or as a replayable
+    # resource reference — never as raw text or as an error.
+    assert block_type in {"document", "resource_reference"}, (
+        f"DOCX must be delivered as typed 'document' block or resource_reference, "
+        f"got type={block_type!r}. Text flattening is not acceptable."
+    )
+    if block_type == "document":
+        assert block.get("delivery") == "typed_block", (
+            f"document block must have delivery='typed_block', got: {block.get('delivery')!r}"
+        )
+    elif block_type == "resource_reference":
+        uri = str(block.get("uri", ""))
+        assert uri.startswith("ralph://media/"), (
+            f"resource_reference must use ralph://media/ handle, got: {uri!r}"
+        )

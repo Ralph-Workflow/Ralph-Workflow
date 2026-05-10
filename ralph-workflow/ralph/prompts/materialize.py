@@ -79,6 +79,7 @@ class MultimodalSidecarEntry:
     cache_path: str = ""
     source_uri: str = ""
     block_type: str = ""
+    failure_kind: str = ""
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -93,6 +94,7 @@ class MultimodalSidecarEntry:
             "cache_path": self.cache_path,
             "source_uri": self.source_uri,
             "block_type": self.block_type,
+            "failure_kind": self.failure_kind,
         }
 
 
@@ -159,6 +161,7 @@ def collect_media_entries_for_phase(
                     cache_path=str(item.get("cache_path", "")),
                     source_uri=str(item.get("source_uri", "")),
                     block_type=str(item.get("block_type", "")),
+                    failure_kind=str(item.get("failure_kind", "")),
                 ))
             except Exception:
                 continue

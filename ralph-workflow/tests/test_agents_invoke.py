@@ -4535,3 +4535,69 @@ def test_multimodal_appendix_includes_explicit_reason_for_unsupported_modality(
         f"Expected the capability-profile reason in appendix, not found.\n"
         f"Prompt:\n{full_prompt}"
     )
+
+
+_SAMPLE_RUNTIME_SEAM_ARTIFACT: dict[str, object] = {
+    "artifact_id": "seam-fail-001",
+    "uri": "ralph://media/seam-fail-001",
+    "mime_type": "video/mp4",
+    "title": "recording.mp4",
+    "modality": "video",
+    "delivery": "unsupported",
+    "reason": "Active runtime seam cannot carry video through the handoff path",
+    "block_type": "",
+    "failure_kind": "unsupported_runtime_seam",
+}
+
+
+def test_multimodal_appendix_surfaces_unsupported_runtime_seam_without_replay_guidance(
+    tmp_path: Path,
+) -> None:
+    """Appendix for unsupported_runtime_seam must not suggest read_media or replay handles.
+
+    When an artifact has failure_kind='unsupported_runtime_seam', the appendix must
+    explain the runtime seam failure and must not suggest read_media, replay paths,
+    or typed blocks, since those would overclaim support the runtime cannot deliver.
+    """
+    prompt_file = tmp_path / "development_prompt.md"
+    prompt_file.write_text("Process the video recording.", encoding="utf-8")
+    _write_sidecar(prompt_file, [_SAMPLE_RUNTIME_SEAM_ARTIFACT])
+
+    config = AgentConfig(
+        cmd="opencode",
+        output_flag="--json-stream",
+        json_parser=JsonParserType.OPENCODE,
+        transport=AgentTransport.OPENCODE,
+    )
+
+    cmd = _build_command(config, str(prompt_file), options=_BuildCommandOptions())
+    full_prompt = cmd[-1]
+
+    # The appendix must mention the video artifact
+    assert "recording.mp4" in full_prompt, (
+        "Expected artifact title 'recording.mp4' in appendix"
+    )
+    # The appendix must mention the runtime seam failure
+    assert "runtime seam" in full_prompt.lower(), (
+        f"Expected runtime seam failure explanation in appendix, not found.\n"
+        f"Full prompt:\n{full_prompt}"
+    )
+    # Must NOT suggest read_media for unsupported_runtime_seam
+    # (The header mentions read_media generically, so we check the per-entry note)
+    assert "Do not use read_media" in full_prompt, (
+        f"Expected 'Do not use read_media' instruction in appendix for unsupported_runtime_seam.\n"
+        f"Full prompt:\n{full_prompt}"
+    )
+    # Must NOT suggest a replay handle (typed block or resource_reference) for this artifact
+    assert "call read_media with this path to receive" not in full_prompt, (
+        "Appendix must not suggest typed block retrieval for unsupported_runtime_seam"
+    )
+    # The reason must appear in the appendix
+    assert "Active runtime seam cannot carry video" in full_prompt, (
+        f"Expected runtime seam reason in appendix, not found.\nFull prompt:\n{full_prompt}"
+    )
+    # The failure_kind must be distinct: unsupported_runtime_seam must not be rendered
+    # as unsupported_modality
+    assert "unsupported_modality" not in full_prompt, (
+        "unsupported_runtime_seam must not be rendered as unsupported_modality in appendix"
+    )
